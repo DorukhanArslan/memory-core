@@ -93,12 +93,11 @@ def append_current_time_line(text: str, time_line: str) -> str:
 
 
 def validate_daily_memory_target(relative_path: str) -> str:
-    normalized = relative_path.replace("\\", "/").lstrip("/")
-    if not _DAILY_MEMORY_TARGET_RE.fullmatch(normalized):
+    if not _DAILY_MEMORY_TARGET_RE.fullmatch(relative_path):
         raise UnsafeMemoryFlushTargetError(
             f"memory flush target must be memory/YYYY-MM-DD.md: {relative_path}",
         )
-    return normalized
+    return relative_path
 
 
 def build_memory_flush_plan(

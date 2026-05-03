@@ -67,6 +67,8 @@ def test_validate_daily_memory_target_accepts_only_canonical_daily_file():
         "memory/2026-05-03-1900.md",
         "memory/note.md",
         "../memory/2026-05-03.md",
+        "/memory/2026-05-03.md",
+        "memory\\2026-05-03.md",
         "memory/nested/2026-05-03.md",
     ],
 )

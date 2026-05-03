@@ -2,6 +2,9 @@ from __future__ import annotations
 
 
 def build_prompt_section(available_tools: set[str], *, citations_mode: str) -> list[str]:
+    if citations_mode not in {"on", "off"}:
+        raise ValueError("citations_mode must be 'on' or 'off'")
+
     has_memory_search = "memory_search" in available_tools
     has_memory_get = "memory_get" in available_tools
     if not has_memory_search and not has_memory_get:

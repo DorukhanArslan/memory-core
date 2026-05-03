@@ -174,6 +174,9 @@ def _find_durable_statement(transcript: list[ChatMessage]) -> str | None:
         "always",
         "never",
         "project uses",
+        "my name is",
+        "i live in",
+        "i work at",
     )
     for message in reversed(transcript):
         if message.role != "user":

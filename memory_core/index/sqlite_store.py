@@ -13,6 +13,11 @@ from memory_core.index.hybrid import (
     HybridVectorResult,
     merge_hybrid_results,
 )
+from memory_core.index.mmr import mmr_rerank
+from memory_core.index.temporal_decay import (
+    TemporalDecayConfig,
+    apply_temporal_decay_to_hybrid_results,
+)
 from memory_core.index.vector import cosine_similarity
 from memory_core.workspace import MemoryWorkspace
 
@@ -143,4 +148,35 @@ class SQLiteMemoryStore:
             vector_weight=self.config.vector_weight,
             text_weight=self.config.text_weight,
         )
-        return [item for item in merged if item.score >= min_score][:max_results]
+        decayed = apply_temporal_decay_to_hybrid_results(
+            merged,
+            temporal_decay=TemporalDecayConfig(
+                enabled=self.config.temporal_decay_enabled,
+                half_life_days=self.config.temporal_decay_half_life_days,
+            ),
+            workspace_dir=str(self.config.workspace_dir),
+        )
+        ranked = sorted(decayed, key=lambda item: item.score, reverse=True)
+        if self.config.mmr_enabled:
+            by_key = {
+                _mmr_key(item): item
+                for item in ranked
+            }
+            reranked = mmr_rerank(
+                [
+                    {
+                        "id": key,
+                        "score": item.score,
+                        "content": item.snippet,
+                    }
+                    for key, item in by_key.items()
+                ],
+                enabled=True,
+                lambda_=self.config.mmr_lambda,
+            )
+            ranked = [by_key[str(item["id"])] for item in reranked]
+        return [item for item in ranked if item.score >= min_score][:max_results]
+
+
+def _mmr_key(item: HybridResult) -> str:
+    return f"{item.source}:{item.path}:{item.start_line}:{item.end_line}"

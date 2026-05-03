@@ -53,6 +53,7 @@
       </section>
 
       <pre id="output">{}</pre>
+      <section id="citations" class="citations" aria-label="Search citations"></section>
     </main>
 
     <script>
@@ -71,8 +72,21 @@
         if (!response.ok && !payload.error) {
           payload.error = response.statusText || "Request failed";
         }
+        renderCitations(payload);
         document.querySelector("#output").textContent =
           JSON.stringify(payload, null, 2);
+      }
+
+      function renderCitations(payload) {
+        const citations = document.querySelector("#citations");
+        const results = Array.isArray(payload.results) ? payload.results : [];
+        const labels = results.map((result) => result.citation).filter(Boolean);
+        citations.replaceChildren();
+        for (const label of labels) {
+          const item = document.createElement("div");
+          item.textContent = label;
+          citations.appendChild(item);
+        }
       }
 
       document.querySelector("#seed").onclick = () => postJson("/api/seed");

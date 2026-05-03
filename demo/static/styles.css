@@ -72,6 +72,14 @@ pre {
   padding: 16px;
 }
 
+.citations {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  color: #314155;
+  font-size: 14px;
+}
+
 @media (max-width: 760px) {
   .grid {
     grid-template-columns: 1fr;

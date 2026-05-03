@@ -62,8 +62,17 @@
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify(body)
         });
+        let payload;
+        try {
+          payload = await response.json();
+        } catch {
+          payload = {error: response.statusText || "Request failed"};
+        }
+        if (!response.ok && !payload.error) {
+          payload.error = response.statusText || "Request failed";
+        }
         document.querySelector("#output").textContent =
-          JSON.stringify(await response.json(), null, 2);
+          JSON.stringify(payload, null, 2);
       }
 
       document.querySelector("#seed").onclick = () => postJson("/api/seed");

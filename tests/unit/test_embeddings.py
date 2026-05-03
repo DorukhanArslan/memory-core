@@ -33,6 +33,16 @@ def test_openai_provider_requires_api_key():
         OpenAICompatibleEmbeddingProvider(api_key="", model="text-embedding-3-small")
 
 
+def test_openai_provider_default_base_url_and_timeout():
+    provider = OpenAICompatibleEmbeddingProvider(
+        api_key="key",
+        model="text-embedding-3-small",
+    )
+
+    assert provider.base_url == "https://api.openai.com/v1"
+    assert provider.timeout == 30.0
+
+
 def test_openai_provider_defaults_and_strips_base_url():
     provider = OpenAICompatibleEmbeddingProvider(
         api_key="test-key",

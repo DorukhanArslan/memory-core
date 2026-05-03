@@ -21,7 +21,8 @@ def build_fts_query(raw: str) -> str | None:
     tokens = _unicode_word_tokens(raw)
     if not tokens:
         return None
-    quoted = [f'"{token.replace('"', '')}"' for token in tokens]
+    double_quote = chr(34)
+    quoted = [f"{double_quote}{token.replace(double_quote, '')}{double_quote}" for token in tokens]
     return " AND ".join(quoted)
 
 

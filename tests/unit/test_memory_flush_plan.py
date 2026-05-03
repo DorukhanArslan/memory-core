@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from memory_core.memory_flush import (
+    DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR,
     DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES,
     DEFAULT_MEMORY_FLUSH_SOFT_TOKENS,
     SILENT_REPLY_TOKEN,
@@ -25,6 +26,7 @@ def test_build_memory_flush_plan_ports_openclaw_defaults(tmp_path: Path):
         == DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES
         == 2 * 1024 * 1024
     )
+    assert plan.reserve_tokens_floor == DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR == 20_000
     assert plan.relative_path == "memory/2026-05-03.md"
     assert "Pre-compaction memory flush." in plan.prompt
     assert (
@@ -50,6 +52,17 @@ def test_build_memory_flush_plan_ports_openclaw_defaults(tmp_path: Path):
     assert (
         f"You may reply, but usually {SILENT_REPLY_TOKEN} is correct."
     ) in plan.system_prompt
+
+
+def test_build_memory_flush_plan_allows_reserve_floor_override(tmp_path: Path):
+    plan = build_memory_flush_plan(
+        workspace_dir=tmp_path,
+        now_ms=1777824000000,
+        timezone="Europe/Istanbul",
+        reserve_tokens_floor=123,
+    )
+
+    assert plan.reserve_tokens_floor == 123
 
 
 def test_validate_daily_memory_target_accepts_only_canonical_daily_file():

@@ -186,6 +186,7 @@ def _serialize_flush(flush: MemoryFlushRun) -> dict[str, Any]:
         "diff": flush.diff,
         "indexedFiles": flush.indexed_files,
         "chunks": flush.chunks,
+        "reindexError": flush.reindex_error,
     }
 
 

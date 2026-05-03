@@ -190,6 +190,7 @@
         if (!latest) {
           panel.append(stepNode("Recall", "Waiting for a chat turn."));
           panel.append(stepNode("Assistant Context", "No recalled memory yet."));
+          panel.append(stepNode("Raw Flush Output", "No raw flush output yet."));
           panel.append(stepNode("Flush Decision", "No flush decision yet."));
           panel.append(stepNode("File Diff", "No file diff yet."));
           panel.append(stepNode("Reindex", "No reindex run yet."));
@@ -197,9 +198,15 @@
         }
         panel.append(stepNode("Recall", `${latest.recallQuery}\n\n${formatJson(latest.recallResults)}`));
         panel.append(stepNode("Assistant Context", (latest.memoryContext || []).join("\n") || "No recalled memory."));
+        panel.append(stepNode("Raw Flush Output", latest.flush ? latest.flush.rawText || "(empty)" : "Not run for this turn."));
         panel.append(stepNode("Flush Decision", latest.flush ? formatJson(latest.flush.parsed) : "Not run for this turn."));
         panel.append(stepNode("File Diff", latest.flush ? latest.flush.diff || "No file changes." : "Not run for this turn."));
-        panel.append(stepNode("Reindex", latest.flush ? `${latest.flush.indexedFiles} files, ${latest.flush.chunks} chunks` : "Not run for this turn."));
+        panel.append(stepNode("Reindex", latest.flush ? reindexStatus(latest.flush) : "Not run for this turn."));
+      }
+
+      function reindexStatus(flush) {
+        const summary = `${flush.indexedFiles} files, ${flush.chunks} chunks`;
+        return flush.reindexError ? `${summary}\n\nError: ${flush.reindexError}` : summary;
       }
 
       function stepNode(title, text) {

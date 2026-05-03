@@ -42,6 +42,7 @@ class MemoryFlushRun:
     diff: str
     indexed_files: int
     chunks: int
+    reindex_error: str | None = None
 
 
 def parse_flush_output(raw_text: str, *, target: str) -> ParsedFlushOutput:
@@ -153,9 +154,13 @@ def run_memory_flush(
     parsed = parse_flush_output(output.raw_text, target=plan.relative_path)
 
     indexed_files = 0
+    reindex_error = None
     if parsed.should_write and parsed.error is None:
         workspace.append_daily_memory(parsed.target, parsed.entry)
-        indexed_files = store.reindex(workspace)
+        try:
+            indexed_files = store.reindex(workspace)
+        except Exception as exc:
+            reindex_error = _exception_message(exc)
 
     after = _read_text_if_exists(target_path)
     return MemoryFlushRun(
@@ -165,6 +170,7 @@ def run_memory_flush(
         diff=_unified_diff(before, after, plan.relative_path),
         indexed_files=indexed_files,
         chunks=store.count_chunks(),
+        reindex_error=reindex_error,
     )
 
 
@@ -177,6 +183,11 @@ def _read_text_if_exists(path: Path) -> str:
     if not path.exists():
         return ""
     return path.read_text(encoding="utf-8")
+
+
+def _exception_message(exc: Exception) -> str:
+    message = str(exc) or exc.__class__.__name__
+    return f"{exc.__class__.__name__}: {message}"
 
 
 def _unified_diff(before: str, after: str, target: str) -> str:

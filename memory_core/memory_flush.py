@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 SILENT_REPLY_TOKEN = "<NO_REPLY>"
 DEFAULT_MEMORY_FLUSH_SOFT_TOKENS = 4000
 DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES = 2 * 1024 * 1024
+DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR = 20_000
 
 MEMORY_FLUSH_TARGET_HINT = (
     "Store durable memories only in memory/YYYY-MM-DD.md (create memory/ if needed)."
@@ -109,7 +110,7 @@ def build_memory_flush_plan(
     system_prompt: str | None = None,
     soft_threshold_tokens: int = DEFAULT_MEMORY_FLUSH_SOFT_TOKENS,
     force_flush_transcript_bytes: int = DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES,
-    reserve_tokens_floor: int = 0,
+    reserve_tokens_floor: int = DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR,
 ) -> MemoryFlushPlan:
     del workspace_dir
 

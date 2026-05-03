@@ -65,6 +65,39 @@ def test_run_memory_flush_appends_reindexes_and_returns_diff(tmp_path: Path):
     assert store.count_chunks() > 0
 
 
+class FailingReindexStore:
+    def reindex(self, workspace):
+        del workspace
+        raise RuntimeError("index broke")
+
+    def count_chunks(self):
+        return 0
+
+
+def test_run_memory_flush_returns_written_state_when_reindex_fails(tmp_path: Path):
+    cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+
+    result = run_memory_flush(
+        config=cfg,
+        store=FailingReindexStore(),
+        engine=FakeChatEngine(),
+        transcript=[ChatMessage(role="user", content="Ben teknik cevapları Türkçe tercih ediyorum.")],
+        now_ms=1777824000000,
+        timezone="Europe/Istanbul",
+    )
+
+    daily_file = tmp_path / "memory" / "2026-05-03.md"
+    assert daily_file.exists()
+    assert "- Ben teknik cevapları Türkçe tercih ediyorum." in daily_file.read_text(
+        encoding="utf-8"
+    )
+    assert result.parsed.should_write is True
+    assert "+- Ben teknik cevapları Türkçe tercih ediyorum." in result.diff
+    assert result.indexed_files == 0
+    assert result.reindex_error
+    assert "index broke" in result.reindex_error
+
+
 class BadTargetEngine:
     name = "bad"
 

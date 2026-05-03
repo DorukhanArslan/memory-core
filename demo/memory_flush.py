@@ -77,7 +77,17 @@ def parse_flush_output(raw_text: str, *, target: str) -> ParsedFlushOutput:
     output_target = _string_field(payload, "target") or target
     reason = _string_field(payload, "reason")
     entry = _string_field(payload, "entry")
-    should_write = bool(payload.get("shouldWrite", payload.get("should_write", False)))
+
+    write_flag = payload.get("shouldWrite", payload.get("should_write", False))
+    if not isinstance(write_flag, bool):
+        return ParsedFlushOutput(
+            should_write=False,
+            target=output_target,
+            entry="",
+            reason=reason,
+            error="flush output shouldWrite must be a boolean",
+        )
+    should_write = write_flag is True
 
     if output_target != target:
         return ParsedFlushOutput(

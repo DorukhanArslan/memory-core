@@ -1,4 +1,7 @@
+import json
 from pathlib import Path
+
+import pytest
 
 from demo.chat_engine import ChatMessage, FakeChatEngine, FlushModelOutput
 from demo.memory_flush import parse_flush_output, run_memory_flush
@@ -17,6 +20,24 @@ def test_parse_flush_output_accepts_silent_token():
 def test_parse_flush_output_rejects_target_mismatch():
     parsed = parse_flush_output(
         '{"shouldWrite": true, "target": "MEMORY.md", "entry": "- bad", "reason": "bad"}',
+        target="memory/2026-05-03.md",
+    )
+
+    assert parsed.should_write is False
+    assert parsed.error
+
+
+@pytest.mark.parametrize("flag", ["false", 1])
+def test_parse_flush_output_rejects_non_boolean_should_write(flag: object):
+    parsed = parse_flush_output(
+        json.dumps(
+            {
+                "shouldWrite": flag,
+                "target": "memory/2026-05-03.md",
+                "entry": "- should not write",
+                "reason": "malformed",
+            }
+        ),
         target="memory/2026-05-03.md",
     )
 
@@ -56,6 +77,25 @@ class BadTargetEngine:
         )
 
 
+class MalformedShouldWriteEngine:
+    name = "malformed"
+
+    def complete(self, *, messages, memory_context):
+        raise NotImplementedError
+
+    def flush(self, *, system_prompt, prompt, transcript, target):
+        return FlushModelOutput(
+            raw_text=json.dumps(
+                {
+                    "shouldWrite": "false",
+                    "target": target,
+                    "entry": "- should not write",
+                    "reason": "malformed",
+                }
+            )
+        )
+
+
 def test_run_memory_flush_writes_nothing_on_invalid_target(tmp_path: Path):
     cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
     store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=16))
@@ -72,3 +112,23 @@ def test_run_memory_flush_writes_nothing_on_invalid_target(tmp_path: Path):
     assert result.parsed.should_write is False
     assert result.parsed.error
     assert not (tmp_path / "MEMORY.md").exists()
+
+
+def test_run_memory_flush_writes_nothing_on_malformed_should_write(tmp_path: Path):
+    cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=16))
+
+    result = run_memory_flush(
+        config=cfg,
+        store=store,
+        engine=MalformedShouldWriteEngine(),
+        transcript=[ChatMessage(role="user", content="malformed write flag")],
+        now_ms=1777824000000,
+        timezone="Europe/Istanbul",
+    )
+
+    assert result.parsed.should_write is False
+    assert result.parsed.error
+    assert result.indexed_files == 0
+    assert result.chunks == 0
+    assert not (tmp_path / "memory" / "2026-05-03.md").exists()

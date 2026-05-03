@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
+
+DATED_MEMORY_FILE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
 
 
 class UnsafeMemoryPathError(ValueError):
@@ -37,12 +40,15 @@ class MemoryWorkspace:
         memory_dir = self.root / "memory"
         if memory_dir.is_dir():
             for path in sorted(memory_dir.glob("*.md")):
-                if path.name[:10].count("-") == 2 and len(path.name) == len("YYYY-MM-DD.md"):
+                if DATED_MEMORY_FILE_RE.match(path.name):
                     files.append(MemoryFile(path.relative_to(self.root).as_posix(), path))
         return files
 
+    def normalize_memory_path(self, rel_path: str) -> str:
+        return rel_path.replace("\\", "/").lstrip("/")
+
     def resolve_memory_path(self, rel_path: str) -> Path:
-        normalized = rel_path.replace("\\", "/").lstrip("/")
+        normalized = self.normalize_memory_path(rel_path)
         candidate = (self.root / normalized).resolve()
         if candidate != self.root and self.root not in candidate.parents:
             raise UnsafeMemoryPathError(f"memory path escapes workspace: {rel_path}")
@@ -63,4 +69,4 @@ class MemoryWorkspace:
         else:
             selected = lines[start - 1 : start - 1 + max(0, line_count)]
         end = start + len(selected) - 1 if selected else start - 1
-        return MemoryReadResult(rel_path.replace("\\", "/"), "".join(selected), start, end)
+        return MemoryReadResult(self.normalize_memory_path(rel_path), "".join(selected), start, end)

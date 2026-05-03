@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -57,6 +58,18 @@ class DemoPayloadError(ValueError):
 
 def _json_error(message: str) -> JSONResponse:
     return JSONResponse({"error": message}, status_code=400)
+
+
+def _json_runtime_error(operation: str, exc: Exception) -> JSONResponse:
+    return _json_error(f"{operation} failed: {_safe_exception_message(exc)}")
+
+
+def _safe_exception_message(exc: Exception) -> str:
+    message = str(exc) or exc.__class__.__name__
+    api_key = os.getenv("OPENCLAW_DEMO_OPENAI_API_KEY")
+    if api_key:
+        message = message.replace(api_key, "[redacted]")
+    return f"{exc.__class__.__name__}: {message}"
 
 
 def _required_int(payload: dict, key: str, default: int) -> int:
@@ -306,6 +319,8 @@ def chat_send(payload: dict):
         return _state_payload()
     except DemoPayloadError as exc:
         return _json_error(str(exc))
+    except Exception as exc:
+        return _json_runtime_error("chat send", exc)
 
 
 @app.post("/api/chat/flush")
@@ -319,6 +334,8 @@ def chat_flush(payload: dict):
         return _state_payload()
     except DemoPayloadError as exc:
         return _json_error(str(exc))
+    except Exception as exc:
+        return _json_runtime_error("chat flush", exc)
 
 
 def _flush_latest_turn(engine: ChatEngine) -> dict[str, Any]:

@@ -2,7 +2,9 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from demo.app import app
+import demo.app as demo_app
+
+app = demo_app.app
 
 
 def test_demo_home_loads():
@@ -52,6 +54,7 @@ def test_endpoint_calls_do_not_create_repo_demo_workspace():
 
 def test_chat_state_endpoint_returns_engines_and_memory_files():
     client = TestClient(app)
+    client.post("/api/chat/reset", json={})
 
     response = client.get("/api/chat/state")
 
@@ -130,6 +133,7 @@ def test_chat_send_unconfigured_openai_returns_json_error(monkeypatch):
     monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_MODEL", raising=False)
     client = TestClient(app)
+    client.post("/api/chat/reset", json={})
 
     response = client.post(
         "/api/chat/send",
@@ -138,3 +142,50 @@ def test_chat_send_unconfigured_openai_returns_json_error(monkeypatch):
 
     assert response.status_code == 400
     assert "error" in response.json()
+
+
+def test_chat_send_runtime_error_returns_json_error(monkeypatch):
+    class BrokenEngine:
+        name = "broken"
+
+        def complete(self, *, messages, memory_context):
+            del messages, memory_context
+            raise RuntimeError("boom")
+
+        def flush(self, *, system_prompt, prompt, transcript, target):
+            del system_prompt, prompt, transcript, target
+            raise AssertionError("flush should not be called")
+
+    monkeypatch.setattr(demo_app, "_chat_engine", lambda name: BrokenEngine())
+    client = TestClient(app)
+    client.post("/api/chat/reset", json={})
+
+    response = client.post(
+        "/api/chat/send",
+        json={"message": "hello", "engine": "openai", "autoFlush": False},
+    )
+
+    assert response.status_code == 400
+    assert "chat send failed" in response.json()["error"]
+    assert "boom" in response.json()["error"]
+
+
+def test_chat_flush_runtime_error_returns_json_error(monkeypatch):
+    client = TestClient(app)
+    client.post("/api/chat/reset", json={})
+    client.post(
+        "/api/chat/send",
+        json={"message": "Ben teknik cevapları Türkçe tercih ediyorum.", "engine": "fake"},
+    )
+
+    def fail_flush(**kwargs):
+        del kwargs
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(demo_app, "run_memory_flush", fail_flush)
+
+    response = client.post("/api/chat/flush", json={"engine": "fake"})
+
+    assert response.status_code == 400
+    assert "chat flush failed" in response.json()["error"]
+    assert "boom" in response.json()["error"]

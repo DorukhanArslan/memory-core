@@ -34,23 +34,30 @@ class MemoryWorkspace:
         files: list[MemoryFile] = []
         for name in ("MEMORY.md", "memory.md"):
             path = self.root / name
-            if path.is_file():
-                files.append(MemoryFile(name, path))
+            resolved_path = path.resolve()
+            if path.is_file() and self.is_path_inside_root(resolved_path):
+                files.append(MemoryFile(name, resolved_path))
                 break
         memory_dir = self.root / "memory"
         if memory_dir.is_dir():
             for path in sorted(memory_dir.glob("*.md")):
-                if DATED_MEMORY_FILE_RE.match(path.name):
-                    files.append(MemoryFile(path.relative_to(self.root).as_posix(), path))
+                resolved_path = path.resolve()
+                if DATED_MEMORY_FILE_RE.match(path.name) and self.is_path_inside_root(
+                    resolved_path
+                ):
+                    files.append(MemoryFile(path.relative_to(self.root).as_posix(), resolved_path))
         return files
 
     def normalize_memory_path(self, rel_path: str) -> str:
         return rel_path.replace("\\", "/").lstrip("/")
 
+    def is_path_inside_root(self, path: Path) -> bool:
+        return path == self.root or self.root in path.parents
+
     def resolve_memory_path(self, rel_path: str) -> Path:
         normalized = self.normalize_memory_path(rel_path)
         candidate = (self.root / normalized).resolve()
-        if candidate != self.root and self.root not in candidate.parents:
+        if not self.is_path_inside_root(candidate):
             raise UnsafeMemoryPathError(f"memory path escapes workspace: {rel_path}")
         return candidate
 

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
+
+SAFE_AGENT_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 @dataclass(frozen=True)
@@ -25,4 +28,6 @@ class MemoryConfig:
     def resolved_store_path(self) -> Path:
         if self.store_path is not None:
             return self.store_path
+        if not SAFE_AGENT_ID_RE.match(self.agent_id):
+            raise ValueError(f"agent_id is not filename-safe: {self.agent_id}")
         return self.workspace_dir / ".openclaw-memory" / f"{self.agent_id}.sqlite"

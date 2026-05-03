@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from memory_core.config import MemoryConfig
 
 
@@ -12,3 +14,10 @@ def test_default_config_matches_first_slice_requirements(tmp_path: Path):
     assert cfg.text_weight == 0.5
     assert cfg.memory_get_max_chars == 20_000
     assert cfg.memory_get_default_lines == 120
+
+
+def test_resolved_store_path_rejects_unsafe_agent_id(tmp_path: Path):
+    cfg = MemoryConfig(workspace_dir=tmp_path, agent_id="../../outside")
+
+    with pytest.raises(ValueError):
+        cfg.resolved_store_path()

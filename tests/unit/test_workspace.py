@@ -20,6 +20,23 @@ def test_discovers_root_and_dated_memory_files(tmp_path: Path):
     ]
 
 
+def test_discovery_skips_dated_symlink_that_escapes_workspace(tmp_path: Path):
+    outside_file = tmp_path.parent / "outside-memory.md"
+    outside_file.write_text("# Outside\n", encoding="utf-8")
+    (tmp_path / "memory").mkdir()
+    symlink_path = tmp_path / "memory" / "2026-05-04.md"
+    try:
+        symlink_path.symlink_to(outside_file)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symlinks are not supported on this platform: {exc}")
+
+    workspace = MemoryWorkspace(tmp_path)
+
+    assert "memory/2026-05-04.md" not in [
+        entry.rel_path for entry in workspace.discover_memory_files()
+    ]
+
+
 def test_safe_read_rejects_parent_escape(tmp_path: Path):
     workspace = MemoryWorkspace(tmp_path)
     with pytest.raises(UnsafeMemoryPathError):

@@ -12,14 +12,14 @@ def build_prompt_section(available_tools: set[str], *, citations_mode: str) -> l
     if has_memory_search and has_memory_get:
         tool_guidance = (
             "Before answering anything about prior work, decisions, dates, people, preferences, "
-            "or todos: run memory_search on MEMORY.md + memory/*.md; then use memory_get to "
-            "pull only the needed lines. If low confidence after search, say you checked."
+            "or todos: run memory_search on MEMORY.md + memory/*.md + indexed session transcripts; "
+            "then use memory_get to pull only the needed lines. If low confidence after search, say you checked."
         )
     elif has_memory_search:
         tool_guidance = (
             "Before answering anything about prior work, decisions, dates, people, preferences, "
-            "or todos: run memory_search on MEMORY.md + memory/*.md and answer from the matching "
-            "results. If low confidence after search, say you checked."
+            "or todos: run memory_search on MEMORY.md + memory/*.md + indexed session transcripts "
+            "and answer from the matching results. If low confidence after search, say you checked."
         )
     else:
         tool_guidance = (

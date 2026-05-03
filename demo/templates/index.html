@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenClaw Memory Demo</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <main>
+      <h1>OpenClaw Memory Demo</h1>
+
+      <section class="actions" aria-label="Workspace actions">
+        <button id="seed" type="button">Seed Memory</button>
+        <button id="reindex" type="button">Reindex</button>
+        <button id="prompt-preview" type="button">Prompt Preview</button>
+      </section>
+
+      <section class="grid">
+        <form id="search-form">
+          <h2>memory_search</h2>
+          <label>
+            Query
+            <input name="query" value="lemon pepper" aria-label="query">
+          </label>
+          <label>
+            Max Results
+            <input name="maxResults" value="5" inputmode="numeric" aria-label="max results">
+          </label>
+          <label>
+            Min Score
+            <input name="minScore" value="0" inputmode="decimal" aria-label="min score">
+          </label>
+          <button type="submit">Search</button>
+        </form>
+
+        <form id="get-form">
+          <h2>memory_get</h2>
+          <label>
+            Path
+            <input name="path" value="MEMORY.md" aria-label="path">
+          </label>
+          <label>
+            From Line
+            <input name="from" value="1" inputmode="numeric" aria-label="from line">
+          </label>
+          <label>
+            Line Count
+            <input name="lines" value="20" inputmode="numeric" aria-label="line count">
+          </label>
+          <button type="submit">Get</button>
+        </form>
+      </section>
+
+      <pre id="output">{}</pre>
+    </main>
+
+    <script>
+      async function postJson(url, body = {}) {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(body)
+        });
+        document.querySelector("#output").textContent =
+          JSON.stringify(await response.json(), null, 2);
+      }
+
+      document.querySelector("#seed").onclick = () => postJson("/api/seed");
+      document.querySelector("#reindex").onclick = () => postJson("/api/reindex");
+      document.querySelector("#prompt-preview").onclick = () => {
+        postJson("/api/prompt-preview", {
+          tools: ["memory_search", "memory_get"],
+          citationsMode: "on"
+        });
+      };
+      document.querySelector("#search-form").onsubmit = (event) => {
+        event.preventDefault();
+        const data = Object.fromEntries(new FormData(event.currentTarget));
+        postJson("/api/search", data);
+      };
+      document.querySelector("#get-form").onsubmit = (event) => {
+        event.preventDefault();
+        const raw = Object.fromEntries(new FormData(event.currentTarget));
+        postJson("/api/get", {
+          path: raw.path,
+          from: Number(raw.from),
+          lines: Number(raw.lines)
+        });
+      };
+    </script>
+  </body>
+</html>

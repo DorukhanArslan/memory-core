@@ -1,0 +1,74 @@
+from pathlib import Path
+
+from demo.chat_engine import ChatMessage, FakeChatEngine, FlushModelOutput
+from demo.memory_flush import parse_flush_output, run_memory_flush
+from memory_core.config import MemoryConfig
+from memory_core.embeddings.base import FakeEmbeddingProvider
+from memory_core.index.sqlite_store import SQLiteMemoryStore
+
+
+def test_parse_flush_output_accepts_silent_token():
+    parsed = parse_flush_output("<NO_REPLY>", target="memory/2026-05-03.md")
+
+    assert parsed.should_write is False
+    assert parsed.entry == ""
+
+
+def test_parse_flush_output_rejects_target_mismatch():
+    parsed = parse_flush_output(
+        '{"shouldWrite": true, "target": "MEMORY.md", "entry": "- bad", "reason": "bad"}',
+        target="memory/2026-05-03.md",
+    )
+
+    assert parsed.should_write is False
+    assert parsed.error
+
+
+def test_run_memory_flush_appends_reindexes_and_returns_diff(tmp_path: Path):
+    cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=16))
+
+    result = run_memory_flush(
+        config=cfg,
+        store=store,
+        engine=FakeChatEngine(),
+        transcript=[ChatMessage(role="user", content="Ben teknik cevapları Türkçe tercih ediyorum.")],
+        now_ms=1777824000000,
+        timezone="Europe/Istanbul",
+    )
+
+    assert result.parsed.should_write is True
+    assert result.target == "memory/2026-05-03.md"
+    assert "+- Ben teknik cevapları Türkçe tercih ediyorum." in result.diff
+    assert (tmp_path / "memory" / "2026-05-03.md").exists()
+    assert store.count_chunks() > 0
+
+
+class BadTargetEngine:
+    name = "bad"
+
+    def complete(self, *, messages, memory_context):
+        raise NotImplementedError
+
+    def flush(self, *, system_prompt, prompt, transcript, target):
+        return FlushModelOutput(
+            raw_text='{"shouldWrite": true, "target": "MEMORY.md", "entry": "- bad", "reason": "bad"}'
+        )
+
+
+def test_run_memory_flush_writes_nothing_on_invalid_target(tmp_path: Path):
+    cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=16))
+
+    result = run_memory_flush(
+        config=cfg,
+        store=store,
+        engine=BadTargetEngine(),
+        transcript=[ChatMessage(role="user", content="always write bad target")],
+        now_ms=1777824000000,
+        timezone="Europe/Istanbul",
+    )
+
+    assert result.parsed.should_write is False
+    assert result.parsed.error
+    assert not (tmp_path / "MEMORY.md").exists()

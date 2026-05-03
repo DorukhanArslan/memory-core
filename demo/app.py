@@ -10,9 +10,19 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
+from demo.chat_engine import (
+    ChatEngine,
+    ChatMessage,
+    FakeChatEngine,
+    OpenAICompatibleChatEngine,
+    engine_status,
+)
+from demo.chat_session import ChatSessionState
+from demo.memory_flush import MemoryFlushRun, ParsedFlushOutput, run_memory_flush
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.memory_flush import build_memory_flush_plan
 from memory_core.prompt_section import build_prompt_section
 from memory_core.tools.memory_get import memory_get
 from memory_core.tools.memory_search import memory_search
@@ -20,6 +30,9 @@ from memory_core.workspace import MemoryWorkspace
 
 DEMO_ROOT = Path(__file__).resolve().parent
 DEMO_WORKSPACE = Path(tempfile.gettempdir()) / "openclaw-memory-demo-workspace"
+DEMO_TIMEZONE = "Europe/Istanbul"
+DEMO_NOW_MS = 1777824000000
+CHAT_STATE = ChatSessionState()
 
 app = FastAPI(title="OpenClaw Memory Demo")
 app.mount("/static", StaticFiles(directory=DEMO_ROOT / "static"), name="static")
@@ -88,6 +101,85 @@ def _citations_mode(value: Any) -> str:
     return mode
 
 
+def _chat_engine(name: str) -> ChatEngine:
+    if name == "fake":
+        return FakeChatEngine()
+    if name == "openai":
+        engine = OpenAICompatibleChatEngine.from_env()
+        if engine is None:
+            raise DemoPayloadError(
+                "openai engine requires OPENCLAW_DEMO_OPENAI_BASE_URL, "
+                "OPENCLAW_DEMO_OPENAI_API_KEY, and OPENCLAW_DEMO_OPENAI_MODEL",
+            )
+        return engine
+    raise DemoPayloadError("engine must be 'fake' or 'openai'")
+
+
+def _memory_context_from_results(results: list[dict[str, Any]]) -> list[str]:
+    context: list[str] = []
+    for result in results:
+        citation = str(result.get("citation") or result.get("path") or "memory")
+        snippet = str(result.get("snippet") or "").strip()
+        if snippet:
+            context.append(f"{citation}: {snippet}")
+    return context
+
+
+def _chat_messages(message: str) -> list[ChatMessage]:
+    messages = CHAT_STATE.transcript_messages()
+    messages.append(ChatMessage(role="user", content=message))
+    return messages
+
+
+def _memory_files() -> list[str]:
+    workspace = MemoryWorkspace(demo_config().workspace_dir)
+    discovered = {file.rel_path for file in workspace.discover_memory_files()}
+    plan = build_memory_flush_plan(
+        workspace_dir=demo_config().workspace_dir,
+        now_ms=DEMO_NOW_MS,
+        timezone=DEMO_TIMEZONE,
+    )
+    discovered.update({"MEMORY.md", "DREAMS.md", plan.relative_path})
+    return sorted(discovered)
+
+
+def _state_payload() -> dict[str, Any]:
+    payload = CHAT_STATE.as_dict()
+    payload.update(
+        {
+            "engines": engine_status(),
+            "memoryFiles": _memory_files(),
+        }
+    )
+    return payload
+
+
+def _serialize_flush(flush: MemoryFlushRun) -> dict[str, Any]:
+    return {
+        "target": flush.target,
+        "rawText": flush.raw_text,
+        "parsed": _serialize_parsed_flush(flush.parsed),
+        "diff": flush.diff,
+        "indexedFiles": flush.indexed_files,
+        "chunks": flush.chunks,
+    }
+
+
+def _serialize_parsed_flush(parsed: ParsedFlushOutput) -> dict[str, Any]:
+    return {
+        "shouldWrite": parsed.should_write,
+        "target": parsed.target,
+        "entry": parsed.entry,
+        "reason": parsed.reason,
+        "error": parsed.error,
+    }
+
+
+def _reset_demo_memory() -> None:
+    seed()
+    reindex()
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse(request, "index.html")
@@ -154,3 +246,78 @@ def prompt_preview(payload: dict):
         }
     except DemoPayloadError as exc:
         return _json_error(str(exc))
+
+
+@app.get("/api/chat/state")
+def chat_state():
+    return _state_payload()
+
+
+@app.post("/api/chat/reset")
+def chat_reset(payload: dict):
+    CHAT_STATE.reset()
+    if not bool(payload.get("keepMemory", False)):
+        _reset_demo_memory()
+    return _state_payload()
+
+
+@app.post("/api/chat/send")
+def chat_send(payload: dict):
+    try:
+        message = str(payload.get("message", "")).strip()
+        if not message:
+            raise DemoPayloadError("message is required")
+        engine = _chat_engine(str(payload.get("engine", "fake")))
+        recall_query = message
+        store = demo_store()
+        recall = memory_search(
+            demo_config(),
+            store,
+            query=recall_query,
+            max_results=5,
+            min_score=0,
+        )
+        recall_results = recall.get("results", [])
+        memory_context = _memory_context_from_results(recall_results)
+        response = engine.complete(
+            messages=_chat_messages(message),
+            memory_context=memory_context,
+        )
+        turn = CHAT_STATE.add_turn(
+            user_message=message,
+            recall_query=recall_query,
+            recall_results=recall_results,
+            assistant_response=response.content,
+            memory_context=memory_context,
+        )
+        if bool(payload.get("autoFlush", False)):
+            turn.flush = _flush_latest_turn(engine)
+        return _state_payload()
+    except DemoPayloadError as exc:
+        return _json_error(str(exc))
+
+
+@app.post("/api/chat/flush")
+def chat_flush(payload: dict):
+    try:
+        latest = CHAT_STATE.latest()
+        if latest is None:
+            raise DemoPayloadError("no chat turn to flush")
+        engine = _chat_engine(str(payload.get("engine", "fake")))
+        latest.flush = _flush_latest_turn(engine)
+        return _state_payload()
+    except DemoPayloadError as exc:
+        return _json_error(str(exc))
+
+
+def _flush_latest_turn(engine: ChatEngine) -> dict[str, Any]:
+    return _serialize_flush(
+        run_memory_flush(
+            config=demo_config(),
+            store=demo_store(),
+            engine=engine,
+            transcript=CHAT_STATE.transcript_messages(),
+            now_ms=DEMO_NOW_MS,
+            timezone=DEMO_TIMEZONE,
+        )
+    )

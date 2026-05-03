@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DATED_MEMORY_FILE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
+DAILY_MEMORY_PATH_RE = re.compile(r"^memory/\d{4}-\d{2}-\d{2}\.md$")
 
 
 class UnsafeMemoryPathError(ValueError):
@@ -71,6 +72,20 @@ class MemoryWorkspace:
         if not self.is_path_inside_root(candidate):
             raise UnsafeMemoryPathError(f"memory path escapes workspace: {rel_path}")
         return candidate
+
+    def append_daily_memory(self, rel_path: str, entry: str) -> Path:
+        if DAILY_MEMORY_PATH_RE.match(rel_path) is None:
+            raise UnsafeMemoryPathError(f"path is not a canonical daily memory file: {rel_path}")
+        path = (self.root / rel_path).resolve()
+        if not self.is_path_inside_root(path):
+            raise UnsafeMemoryPathError(f"memory path escapes workspace: {rel_path}")
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if entry.strip():
+            text = entry.rstrip("\r\n")
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(f"{text}\n")
+        return path
 
     def read_text(
         self,

@@ -80,3 +80,44 @@ def test_read_text_normalizes_returned_path(tmp_path: Path):
     result = workspace.read_text("/MEMORY.md")
 
     assert result.path == "MEMORY.md"
+
+
+def test_append_daily_memory_creates_memory_directory(tmp_path: Path):
+    workspace = MemoryWorkspace(tmp_path)
+
+    path = workspace.append_daily_memory("memory/2026-05-03.md", "- User prefers concise answers.")
+
+    assert path.relative_to(tmp_path).as_posix() == "memory/2026-05-03.md"
+    assert (tmp_path / "memory" / "2026-05-03.md").read_text(encoding="utf-8") == (
+        "- User prefers concise answers.\n"
+    )
+
+
+def test_append_daily_memory_appends_without_overwriting(tmp_path: Path):
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    daily = memory_dir / "2026-05-03.md"
+    daily.write_text("# 2026-05-03\n", encoding="utf-8")
+    workspace = MemoryWorkspace(tmp_path)
+
+    workspace.append_daily_memory("memory/2026-05-03.md", "- Keep OpenClaw parity.")
+
+    assert daily.read_text(encoding="utf-8") == "# 2026-05-03\n- Keep OpenClaw parity.\n"
+
+
+def test_append_daily_memory_rejects_bootstrap_and_timestamped_files(tmp_path: Path):
+    workspace = MemoryWorkspace(tmp_path)
+
+    with pytest.raises(UnsafeMemoryPathError):
+        workspace.append_daily_memory("MEMORY.md", "- bad")
+    with pytest.raises(UnsafeMemoryPathError):
+        workspace.append_daily_memory("memory/2026-05-03-1200.md", "- bad")
+
+
+def test_append_daily_memory_rejects_non_canonical_paths(tmp_path: Path):
+    workspace = MemoryWorkspace(tmp_path)
+
+    with pytest.raises(UnsafeMemoryPathError):
+        workspace.append_daily_memory("/memory/2026-05-03.md", "- bad")
+    with pytest.raises(UnsafeMemoryPathError):
+        workspace.append_daily_memory(r"memory\2026-05-03.md", "- bad")

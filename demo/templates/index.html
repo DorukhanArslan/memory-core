@@ -17,10 +17,11 @@
           <label>
             Engine
             <select id="engine">
-              <option value="fake">Fake</option>
-              <option value="openai">OpenAI-compatible</option>
+              <option value="fake" data-label="Fake">Fake</option>
+              <option value="openai" data-label="OpenAI-compatible">OpenAI-compatible</option>
             </select>
           </label>
+          <span id="engine-status" class="engine-status" aria-live="polite">Engine status loading</span>
           <label class="toggle">
             <input id="auto-flush" type="checkbox">
             Auto flush
@@ -247,10 +248,34 @@
 
       function renderEngineStatus() {
         const engineSelect = document.querySelector("#engine");
+        const openai = state.engines ? state.engines.openai : undefined;
+        const openaiUnavailable = openai && openai.available === false;
         for (const option of engineSelect.options) {
           const status = state.engines ? state.engines[option.value] : undefined;
-          option.textContent = status && status.configured === false ? `${status.label || option.value} (unconfigured)` : (status && status.label) || option.textContent;
+          const label = option.dataset.label || option.value;
+          option.disabled = status && status.available === false;
+          if (option.value === "openai" && status) {
+            option.textContent = status.available === false
+              ? `${label} (unavailable)`
+              : `${label} (${status.model || "configured"})`;
+            option.title = status.baseUrl || "";
+          } else if (option.value === "fake" && status) {
+            option.textContent = status.model ? `${label} (${status.model})` : label;
+          } else {
+            option.textContent = label;
+          }
         }
+        if (engineSelect.selectedOptions[0] && engineSelect.selectedOptions[0].disabled) {
+          engineSelect.value = "fake";
+        }
+        document.querySelector("#engine-status").textContent = openaiUnavailable
+          ? "OpenAI unavailable; using Fake."
+          : `OpenAI available${openai && openai.model ? `: ${openai.model}` : ""}`;
+      }
+
+      function selectedEngine() {
+        renderEngineStatus();
+        return document.querySelector("#engine").value;
       }
 
       function formatJson(value) {
@@ -289,7 +314,7 @@
         try {
           state = await requestJson("/api/chat/send", {
             message: input.value,
-            engine: document.querySelector("#engine").value,
+            engine: selectedEngine(),
             autoFlush: document.querySelector("#auto-flush").checked
           });
           input.value = "";
@@ -302,7 +327,7 @@
 
       document.querySelector("#manual-flush").onclick = async () => {
         try {
-          state = await requestJson("/api/chat/flush", {engine: document.querySelector("#engine").value});
+          state = await requestJson("/api/chat/flush", {engine: selectedEngine()});
           render();
         } catch (error) {
           showOutput({error: error.message});

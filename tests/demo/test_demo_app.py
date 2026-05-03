@@ -14,6 +14,7 @@ def test_demo_home_loads():
     assert "OpenClaw Chat Memory Lab" in response.text
     assert "chat-form" in response.text
     assert "memory-pipeline" in response.text
+    assert "engine-status" in response.text
     assert "Tool Inspector" in response.text
 
 

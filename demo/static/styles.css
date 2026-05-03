@@ -142,9 +142,20 @@ label {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) auto repeat(4, auto);
+  grid-template-columns: minmax(150px, 1fr) minmax(150px, auto) auto repeat(4, auto);
   gap: 8px;
   align-items: end;
+}
+
+.engine-status {
+  min-height: 34px;
+  align-content: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-muted);
+  padding: 7px 10px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .toggle {

@@ -7,7 +7,8 @@ def test_prompt_section_with_both_tools_matches_upstream_shape():
     lines = build_prompt_section({"memory_search", "memory_get"}, citations_mode="on")
     assert lines[0] == "## Memory Recall"
     assert "Before answering anything about prior work" in lines[1]
-    assert "run memory_search on MEMORY.md + memory/*.md + indexed session transcripts" in lines[1]
+    assert "run memory_search on MEMORY.md + memory/*.md" in lines[1]
+    assert "indexed session transcripts" not in lines[1]
     assert "then use memory_get to pull only the needed lines" in lines[1]
     assert lines[2] == "Citations: include Source: <path#line> when it helps the user verify memory snippets."
     assert lines[3] == ""
@@ -22,8 +23,8 @@ def test_prompt_section_with_search_only_matches_upstream_shape():
         "## Memory Recall",
         (
             "Before answering anything about prior work, decisions, dates, people, preferences, "
-            "or todos: run memory_search on MEMORY.md + memory/*.md + indexed session transcripts "
-            "and answer from the matching results. If low confidence after search, say you checked."
+            "or todos: run memory_search on MEMORY.md + memory/*.md and answer from the matching "
+            "results. If low confidence after search, say you checked."
         ),
         "Citations: include Source: <path#line> when it helps the user verify memory snippets.",
         "",
@@ -48,8 +49,8 @@ def test_prompt_section_with_citations_off_matches_upstream_shape():
         "## Memory Recall",
         (
             "Before answering anything about prior work, decisions, dates, people, preferences, "
-            "or todos: run memory_search on MEMORY.md + memory/*.md + indexed session transcripts "
-            "and answer from the matching results. If low confidence after search, say you checked."
+            "or todos: run memory_search on MEMORY.md + memory/*.md and answer from the matching "
+            "results. If low confidence after search, say you checked."
         ),
         "Citations are disabled: do not mention file paths or line numbers in replies unless the user explicitly asks.",
         "",

@@ -22,7 +22,7 @@ from demo.memory_flush import MemoryFlushRun, ParsedFlushOutput, run_memory_flus
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
-from memory_core.memory_flush import build_memory_flush_plan
+from memory_core.memory_flush import MemoryFlushPlan, build_memory_flush_plan
 from memory_core.prompt_section import build_prompt_section
 from memory_core.tools.memory_get import memory_get
 from memory_core.tools.memory_search import memory_search
@@ -131,24 +131,35 @@ def _chat_messages(message: str) -> list[ChatMessage]:
     return messages
 
 
-def _memory_files() -> list[str]:
-    workspace = MemoryWorkspace(demo_config().workspace_dir)
-    discovered = {file.rel_path for file in workspace.discover_memory_files()}
-    plan = build_memory_flush_plan(
+def _demo_flush_plan() -> MemoryFlushPlan:
+    return build_memory_flush_plan(
         workspace_dir=demo_config().workspace_dir,
         now_ms=DEMO_NOW_MS,
         timezone=DEMO_TIMEZONE,
     )
+
+
+def _memory_files() -> list[str]:
+    workspace = MemoryWorkspace(demo_config().workspace_dir)
+    discovered = {file.rel_path for file in workspace.discover_memory_files()}
+    plan = _demo_flush_plan()
     discovered.update({"MEMORY.md", "DREAMS.md", plan.relative_path})
     return sorted(discovered)
 
 
 def _state_payload() -> dict[str, Any]:
+    config = demo_config()
+    plan = _demo_flush_plan()
     payload = CHAT_STATE.as_dict()
     payload.update(
         {
             "engines": engine_status(),
             "memoryFiles": _memory_files(),
+            "config": {
+                "workspace": str(config.workspace_dir),
+                "timezone": DEMO_TIMEZONE,
+                "dailyMemoryPath": plan.relative_path,
+            },
         }
     )
     return payload

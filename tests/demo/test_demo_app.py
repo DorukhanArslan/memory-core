@@ -59,6 +59,9 @@ def test_chat_state_endpoint_returns_engines_and_memory_files():
     payload = response.json()
     assert "engines" in payload
     assert "memoryFiles" in payload
+    assert payload["config"]["workspace"]
+    assert payload["config"]["timezone"] == "Europe/Istanbul"
+    assert payload["config"]["dailyMemoryPath"] == "memory/2026-05-03.md"
     assert payload["turns"] == []
 
 

@@ -30,6 +30,30 @@ uvicorn demo.app:app --reload --port 8000
 Open <http://localhost:8000>, click Seed Memory, click Reindex, then test
 `memory_search` and `memory_get`.
 
+Smoke test the demo endpoints:
+
+```bash
+python - <<'PY'
+import httpx
+
+base = "http://127.0.0.1:8000"
+print(httpx.get(base + "/").status_code)
+print(httpx.post(base + "/api/seed").json())
+print(httpx.post(base + "/api/reindex").json())
+print(httpx.post(base + "/api/search", json={"query": "lemon pepper"}).json()["results"][0]["path"])
+print(httpx.post(base + "/api/get", json={"path": "MEMORY.md", "from": 3, "lines": 1}).json()["text"])
+PY
+```
+
+Expected output contains:
+
+```text
+200
+{'ok': True}
+MEMORY.md
+User prefers lemon pepper wings with blue cheese.
+```
+
 ## Live OpenAI-Compatible Embeddings
 
 The demo and tests default to deterministic fake embeddings. To add a live

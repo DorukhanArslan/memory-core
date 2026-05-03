@@ -76,14 +76,24 @@ class MemoryWorkspace:
     def append_daily_memory(self, rel_path: str, entry: str) -> Path:
         if DAILY_MEMORY_PATH_RE.match(rel_path) is None:
             raise UnsafeMemoryPathError(f"path is not a canonical daily memory file: {rel_path}")
-        path = (self.root / rel_path).resolve()
+        lexical_path = self.root / rel_path
+        if lexical_path.is_symlink():
+            raise UnsafeMemoryPathError(f"memory path is a symlink: {rel_path}")
+        path = lexical_path.resolve()
         if not self.is_path_inside_root(path):
             raise UnsafeMemoryPathError(f"memory path escapes workspace: {rel_path}")
 
         path.parent.mkdir(parents=True, exist_ok=True)
         if entry.strip():
             text = entry.rstrip("\r\n")
+            needs_separator = False
+            if path.exists() and path.stat().st_size > 0:
+                with path.open("rb") as existing:
+                    existing.seek(-1, 2)
+                    needs_separator = existing.read(1) != b"\n"
             with path.open("a", encoding="utf-8") as handle:
+                if needs_separator:
+                    handle.write("\n")
                 handle.write(f"{text}\n")
         return path
 

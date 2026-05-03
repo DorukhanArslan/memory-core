@@ -105,6 +105,38 @@ def test_append_daily_memory_appends_without_overwriting(tmp_path: Path):
     assert daily.read_text(encoding="utf-8") == "# 2026-05-03\n- Keep OpenClaw parity.\n"
 
 
+def test_append_daily_memory_separates_existing_content_without_trailing_newline(
+    tmp_path: Path,
+):
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    daily = memory_dir / "2026-05-03.md"
+    daily.write_text("# 2026-05-03", encoding="utf-8")
+    workspace = MemoryWorkspace(tmp_path)
+
+    workspace.append_daily_memory("memory/2026-05-03.md", "- Keep OpenClaw parity.")
+
+    assert daily.read_text(encoding="utf-8") == "# 2026-05-03\n- Keep OpenClaw parity.\n"
+
+
+def test_append_daily_memory_rejects_symlink_target(tmp_path: Path):
+    bootstrap = tmp_path / "MEMORY.md"
+    bootstrap.write_text("# Protected\n", encoding="utf-8")
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    daily = memory_dir / "2026-05-03.md"
+    try:
+        daily.symlink_to(bootstrap)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symlinks are not supported on this platform: {exc}")
+    workspace = MemoryWorkspace(tmp_path)
+
+    with pytest.raises(UnsafeMemoryPathError):
+        workspace.append_daily_memory("memory/2026-05-03.md", "- bad")
+
+    assert bootstrap.read_text(encoding="utf-8") == "# Protected\n"
+
+
 def test_append_daily_memory_rejects_bootstrap_and_timestamped_files(tmp_path: Path):
     workspace = MemoryWorkspace(tmp_path)
 

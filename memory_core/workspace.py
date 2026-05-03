@@ -51,11 +51,22 @@ class MemoryWorkspace:
     def normalize_memory_path(self, rel_path: str) -> str:
         return rel_path.replace("\\", "/").lstrip("/")
 
+    def is_allowed_memory_path(self, rel_path: str) -> bool:
+        normalized = self.normalize_memory_path(rel_path)
+        if normalized in {"MEMORY.md", "memory.md", "DREAMS.md"}:
+            return True
+        if not normalized.startswith("memory/"):
+            return False
+        name = normalized.removeprefix("memory/")
+        return "/" not in name and DATED_MEMORY_FILE_RE.match(name) is not None
+
     def is_path_inside_root(self, path: Path) -> bool:
         return path == self.root or self.root in path.parents
 
     def resolve_memory_path(self, rel_path: str) -> Path:
         normalized = self.normalize_memory_path(rel_path)
+        if not self.is_allowed_memory_path(normalized):
+            raise UnsafeMemoryPathError(f"path is not an allowed memory file: {rel_path}")
         candidate = (self.root / normalized).resolve()
         if not self.is_path_inside_root(candidate):
             raise UnsafeMemoryPathError(f"memory path escapes workspace: {rel_path}")

@@ -43,6 +43,24 @@ def test_safe_read_rejects_parent_escape(tmp_path: Path):
         workspace.read_text("../secret.txt")
 
 
+def test_safe_read_rejects_non_memory_workspace_file(tmp_path: Path):
+    (tmp_path / "notes.txt").write_text("not memory\n", encoding="utf-8")
+    workspace = MemoryWorkspace(tmp_path)
+
+    with pytest.raises(UnsafeMemoryPathError):
+        workspace.read_text("notes.txt")
+
+
+def test_safe_read_allows_dreams_file(tmp_path: Path):
+    (tmp_path / "DREAMS.md").write_text("dream log\n", encoding="utf-8")
+    workspace = MemoryWorkspace(tmp_path)
+
+    result = workspace.read_text("DREAMS.md")
+
+    assert result.path == "DREAMS.md"
+    assert result.text == "dream log\n"
+
+
 def test_read_lines_uses_one_based_line_window(tmp_path: Path):
     (tmp_path / "MEMORY.md").write_text("a\nb\nc\nd\n", encoding="utf-8")
     workspace = MemoryWorkspace(tmp_path)

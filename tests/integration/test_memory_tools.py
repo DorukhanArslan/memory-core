@@ -19,6 +19,16 @@ def test_memory_get_reads_line_window(tmp_path: Path):
     assert result["endLine"] == 2
 
 
+def test_memory_get_rejects_non_memory_workspace_file(tmp_path: Path):
+    (tmp_path / "notes.txt").write_text("not memory\n", encoding="utf-8")
+
+    result = memory_get(MemoryConfig(workspace_dir=tmp_path), path="notes.txt")
+
+    assert result["disabled"] is True
+    assert result["text"] == ""
+    assert "not an allowed memory file" in result["error"]
+
+
 def test_memory_search_returns_hybrid_results(tmp_path: Path):
     (tmp_path / "MEMORY.md").write_text(
         "User likes lemon pepper wings.\n", encoding="utf-8"

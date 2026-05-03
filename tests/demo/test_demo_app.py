@@ -11,7 +11,10 @@ def test_demo_home_loads():
     client = TestClient(app)
     response = client.get("/")
     assert response.status_code == 200
-    assert "OpenClaw Memory Demo" in response.text
+    assert "OpenClaw Chat Memory Lab" in response.text
+    assert "chat-form" in response.text
+    assert "memory-pipeline" in response.text
+    assert "Tool Inspector" in response.text
 
 
 def test_prompt_preview_endpoint():

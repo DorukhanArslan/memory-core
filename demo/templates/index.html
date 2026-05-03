@@ -3,114 +3,340 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>OpenClaw Memory Demo</title>
+    <title>OpenClaw Chat Memory Lab</title>
     <link rel="stylesheet" href="/static/styles.css">
   </head>
   <body>
-    <main>
-      <h1>OpenClaw Memory Demo</h1>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1>OpenClaw Chat Memory Lab</h1>
+          <p>Inspect recall, assistant context, memory flush, file diff, and reindex behavior turn by turn.</p>
+        </div>
+        <div class="toolbar" aria-label="Engine and memory controls">
+          <label>
+            Engine
+            <select id="engine">
+              <option value="fake">Fake</option>
+              <option value="openai">OpenAI-compatible</option>
+            </select>
+          </label>
+          <label class="toggle">
+            <input id="auto-flush" type="checkbox">
+            Auto flush
+          </label>
+          <button id="manual-flush" type="button">Manual flush</button>
+          <button id="reset" type="button">Reset</button>
+          <button id="seed" type="button">Seed</button>
+          <button id="reindex" type="button">Reindex</button>
+        </div>
+      </header>
 
-      <section class="actions" aria-label="Workspace actions">
-        <button id="seed" type="button">Seed Memory</button>
-        <button id="reindex" type="button">Reindex</button>
-        <button id="prompt-preview" type="button">Prompt Preview</button>
+      <section class="workspace" aria-label="Chat memory workspace">
+        <section class="chat-panel" aria-label="Chat">
+          <div id="chat-log" class="chat-log" aria-live="polite"></div>
+          <form id="chat-form" class="composer">
+            <textarea id="chat-input" rows="3" placeholder="Type a chat turn to observe memory recall and flush behavior." aria-label="Chat message"></textarea>
+            <button type="submit">Send</button>
+          </form>
+        </section>
+
+        <aside id="memory-pipeline" class="pipeline" aria-label="Memory pipeline">
+          <div class="panel-heading">
+            <h2>Memory Pipeline</h2>
+            <span id="turn-count">0 turns</span>
+          </div>
+          <div id="pipeline-content" class="pipeline-content"></div>
+        </aside>
       </section>
 
-      <section class="grid">
-        <form id="search-form">
-          <h2>memory_search</h2>
-          <label>
-            Query
-            <input name="query" value="lemon pepper" aria-label="query">
-          </label>
-          <label>
-            Max Results
-            <input name="maxResults" value="5" inputmode="numeric" aria-label="max results">
-          </label>
-          <label>
-            Min Score
-            <input name="minScore" value="0" inputmode="decimal" aria-label="min score">
-          </label>
-          <button type="submit">Search</button>
-        </form>
+      <nav class="tabs" aria-label="Demo tabs">
+        <button class="tab active" data-tab="memory-files" type="button">Memory Files</button>
+        <button class="tab" data-tab="tool-inspector" type="button">Tool Inspector</button>
+        <button class="tab" data-tab="config" type="button">Config</button>
+      </nav>
 
-        <form id="get-form">
-          <h2>memory_get</h2>
-          <label>
-            Path
-            <input name="path" value="MEMORY.md" aria-label="path">
-          </label>
-          <label>
-            From Line
-            <input name="from" value="1" inputmode="numeric" aria-label="from line">
-          </label>
-          <label>
-            Line Count
-            <input name="lines" value="20" inputmode="numeric" aria-label="line count">
-          </label>
-          <button type="submit">Get</button>
-        </form>
+      <section id="memory-files" class="tab-panel active" aria-label="Memory files"></section>
+
+      <section id="tool-inspector" class="tab-panel" aria-label="Tool Inspector">
+        <div class="panel-heading">
+          <h2>Tool Inspector</h2>
+          <span>Existing endpoints</span>
+        </div>
+        <div class="inspector-grid">
+          <form id="search-form" class="tool-form">
+            <h3>memory_search</h3>
+            <label>
+              Query
+              <input name="query" value="lemon pepper" aria-label="query">
+            </label>
+            <label>
+              Max results
+              <input name="maxResults" value="5" inputmode="numeric" aria-label="max results">
+            </label>
+            <label>
+              Min score
+              <input name="minScore" value="0" inputmode="decimal" aria-label="min score">
+            </label>
+            <button type="submit">Search</button>
+          </form>
+          <form id="get-form" class="tool-form">
+            <h3>memory_get</h3>
+            <label>
+              Path
+              <input name="path" value="MEMORY.md" aria-label="path">
+            </label>
+            <label>
+              From line
+              <input name="from" value="1" inputmode="numeric" aria-label="from line">
+            </label>
+            <label>
+              Line count
+              <input name="lines" value="20" inputmode="numeric" aria-label="line count">
+            </label>
+            <button type="submit">Get</button>
+          </form>
+          <form id="prompt-form" class="tool-form">
+            <h3>prompt_preview</h3>
+            <label>
+              Tools
+              <input name="tools" value="memory_search,memory_get" aria-label="tools">
+            </label>
+            <label>
+              Citations
+              <select name="citationsMode" aria-label="citations mode">
+                <option value="on">on</option>
+                <option value="off">off</option>
+              </select>
+            </label>
+            <button type="submit">Preview</button>
+          </form>
+        </div>
+        <pre id="output">{}</pre>
       </section>
 
-      <pre id="output">{}</pre>
-      <section id="citations" class="citations" aria-label="Search citations"></section>
+      <section id="config" class="tab-panel" aria-label="Config"></section>
     </main>
 
     <script>
-      async function postJson(url, body = {}) {
-        const response = await fetch(url, {
+      let state = {turns: [], memoryFiles: [], engines: {}, config: {}};
+
+      async function requestJson(url, body) {
+        const options = body === undefined ? {} : {
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify(body)
-        });
+        };
+        const response = await fetch(url, options);
         let payload;
         try {
           payload = await response.json();
         } catch {
           payload = {error: response.statusText || "Request failed"};
         }
-        if (!response.ok && !payload.error) {
-          payload.error = response.statusText || "Request failed";
+        if (!response.ok) {
+          throw new Error(payload.error || response.statusText || "Request failed");
         }
-        renderCitations(payload);
-        document.querySelector("#output").textContent =
-          JSON.stringify(payload, null, 2);
+        return payload;
       }
 
-      function renderCitations(payload) {
-        const citations = document.querySelector("#citations");
-        const results = Array.isArray(payload.results) ? payload.results : [];
-        const labels = results.map((result) => result.citation).filter(Boolean);
-        citations.replaceChildren();
-        for (const label of labels) {
-          const item = document.createElement("div");
-          item.textContent = label;
-          citations.appendChild(item);
+      async function refresh() {
+        state = await requestJson("/api/chat/state");
+        render();
+      }
+
+      function render() {
+        renderChat();
+        renderPipeline();
+        renderMemoryFiles();
+        renderConfig();
+        renderEngineStatus();
+      }
+
+      function renderChat() {
+        const log = document.querySelector("#chat-log");
+        log.replaceChildren();
+        if (!state.turns.length) {
+          const empty = document.createElement("p");
+          empty.className = "empty-state";
+          empty.textContent = "Send a message to start observing memory behavior.";
+          log.append(empty);
+          return;
+        }
+        for (const [index, turn] of state.turns.entries()) {
+          log.append(messageNode("user", `Turn ${index + 1}`, turn.userMessage));
+          log.append(messageNode("assistant", "Assistant", turn.assistantResponse));
+        }
+        log.scrollTop = log.scrollHeight;
+      }
+
+      function messageNode(role, label, text) {
+        const node = document.createElement("article");
+        node.className = `message ${role}`;
+        const meta = document.createElement("strong");
+        meta.textContent = label;
+        const body = document.createElement("p");
+        body.textContent = text || "(empty)";
+        node.append(meta, body);
+        return node;
+      }
+
+      function renderPipeline() {
+        const latest = state.turns[state.turns.length - 1];
+        document.querySelector("#turn-count").textContent = `${state.turns.length} ${state.turns.length === 1 ? "turn" : "turns"}`;
+        const panel = document.querySelector("#pipeline-content");
+        panel.replaceChildren();
+        if (!latest) {
+          panel.append(stepNode("Recall", "Waiting for a chat turn."));
+          panel.append(stepNode("Assistant Context", "No recalled memory yet."));
+          panel.append(stepNode("Flush Decision", "No flush decision yet."));
+          panel.append(stepNode("File Diff", "No file diff yet."));
+          panel.append(stepNode("Reindex", "No reindex run yet."));
+          return;
+        }
+        panel.append(stepNode("Recall", `${latest.recallQuery}\n\n${formatJson(latest.recallResults)}`));
+        panel.append(stepNode("Assistant Context", (latest.memoryContext || []).join("\n") || "No recalled memory."));
+        panel.append(stepNode("Flush Decision", latest.flush ? formatJson(latest.flush.parsed) : "Not run for this turn."));
+        panel.append(stepNode("File Diff", latest.flush ? latest.flush.diff || "No file changes." : "Not run for this turn."));
+        panel.append(stepNode("Reindex", latest.flush ? `${latest.flush.indexedFiles} files, ${latest.flush.chunks} chunks` : "Not run for this turn."));
+      }
+
+      function stepNode(title, text) {
+        const node = document.createElement("section");
+        node.className = "pipeline-step";
+        const heading = document.createElement("h3");
+        heading.textContent = title;
+        const body = document.createElement("pre");
+        body.textContent = text;
+        node.append(heading, body);
+        return node;
+      }
+
+      function renderMemoryFiles() {
+        const panel = document.querySelector("#memory-files");
+        panel.replaceChildren();
+        const heading = document.createElement("div");
+        heading.className = "panel-heading";
+        heading.innerHTML = "<h2>Memory Files</h2><span>Click a file to inspect with memory_get</span>";
+        panel.append(heading);
+        const list = document.createElement("div");
+        list.className = "file-list";
+        for (const path of state.memoryFiles || []) {
+          const button = document.createElement("button");
+          button.className = "file-button";
+          button.type = "button";
+          button.textContent = path;
+          button.onclick = () => inspectMemoryFile(path);
+          list.append(button);
+        }
+        if (!list.children.length) {
+          const empty = document.createElement("p");
+          empty.className = "empty-state";
+          empty.textContent = "No memory files discovered.";
+          list.append(empty);
+        }
+        panel.append(list);
+      }
+
+      function renderConfig() {
+        document.querySelector("#config").innerHTML = `<div class="panel-heading"><h2>Config</h2><span>Runtime state</span></div><pre>${formatJson({
+          engines: state.engines,
+          config: state.config
+        })}</pre>`;
+      }
+
+      function renderEngineStatus() {
+        const engineSelect = document.querySelector("#engine");
+        for (const option of engineSelect.options) {
+          const status = state.engines ? state.engines[option.value] : undefined;
+          option.textContent = status && status.configured === false ? `${status.label || option.value} (unconfigured)` : (status && status.label) || option.textContent;
         }
       }
 
-      document.querySelector("#seed").onclick = () => postJson("/api/seed");
-      document.querySelector("#reindex").onclick = () => postJson("/api/reindex");
-      document.querySelector("#prompt-preview").onclick = () => {
-        postJson("/api/prompt-preview", {
-          tools: ["memory_search", "memory_get"],
-          citationsMode: "on"
-        });
+      function formatJson(value) {
+        return JSON.stringify(value, null, 2);
+      }
+
+      function showOutput(payload) {
+        document.querySelector("#output").textContent = formatJson(payload);
+      }
+
+      async function postInspector(url, body) {
+        try {
+          const payload = await requestJson(url, body);
+          showOutput(payload);
+          await refresh();
+        } catch (error) {
+          showOutput({error: error.message});
+        }
+      }
+
+      async function inspectMemoryFile(path) {
+        activateTab("tool-inspector");
+        document.querySelector("#get-form input[name='path']").value = path;
+        await postInspector("/api/get", {path, from: 1, lines: 200});
+      }
+
+      function activateTab(id) {
+        document.querySelectorAll(".tab, .tab-panel").forEach((node) => node.classList.remove("active"));
+        document.querySelector(`.tab[data-tab='${id}']`).classList.add("active");
+        document.querySelector(`#${id}`).classList.add("active");
+      }
+
+      document.querySelector("#chat-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const input = document.querySelector("#chat-input");
+        try {
+          state = await requestJson("/api/chat/send", {
+            message: input.value,
+            engine: document.querySelector("#engine").value,
+            autoFlush: document.querySelector("#auto-flush").checked
+          });
+          input.value = "";
+          render();
+        } catch (error) {
+          showOutput({error: error.message});
+          activateTab("tool-inspector");
+        }
+      });
+
+      document.querySelector("#manual-flush").onclick = async () => {
+        try {
+          state = await requestJson("/api/chat/flush", {engine: document.querySelector("#engine").value});
+          render();
+        } catch (error) {
+          showOutput({error: error.message});
+          activateTab("tool-inspector");
+        }
       };
+      document.querySelector("#reset").onclick = async () => {
+        state = await requestJson("/api/chat/reset", {});
+        render();
+      };
+      document.querySelector("#seed").onclick = async () => postInspector("/api/seed", {});
+      document.querySelector("#reindex").onclick = async () => postInspector("/api/reindex", {});
       document.querySelector("#search-form").onsubmit = (event) => {
         event.preventDefault();
-        const data = Object.fromEntries(new FormData(event.currentTarget));
-        postJson("/api/search", data);
+        postInspector("/api/search", Object.fromEntries(new FormData(event.currentTarget)));
       };
       document.querySelector("#get-form").onsubmit = (event) => {
         event.preventDefault();
         const raw = Object.fromEntries(new FormData(event.currentTarget));
-        postJson("/api/get", {
-          path: raw.path,
-          from: Number(raw.from),
-          lines: Number(raw.lines)
+        postInspector("/api/get", {path: raw.path, from: Number(raw.from), lines: Number(raw.lines)});
+      };
+      document.querySelector("#prompt-form").onsubmit = (event) => {
+        event.preventDefault();
+        const raw = Object.fromEntries(new FormData(event.currentTarget));
+        postInspector("/api/prompt-preview", {
+          tools: raw.tools.split(",").map((tool) => tool.trim()).filter(Boolean),
+          citationsMode: raw.citationsMode
         });
       };
+      document.querySelectorAll(".tab").forEach((tab) => {
+        tab.onclick = () => activateTab(tab.dataset.tab);
+      });
+
+      refresh().catch((error) => showOutput({error: error.message}));
     </script>
   </body>
 </html>

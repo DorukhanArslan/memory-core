@@ -142,9 +142,21 @@ label {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(150px, auto) auto repeat(4, auto);
+  grid-template-columns: minmax(190px, 1.1fr) minmax(210px, 1fr) minmax(130px, 0.7fr) minmax(220px, 1fr);
   gap: 8px;
   align-items: end;
+}
+
+.toolbar .toggle,
+.toolbar button {
+  align-self: end;
+}
+
+.toolbar button:disabled {
+  border-color: var(--line);
+  background: #c8d2dc;
+  color: #607080;
+  cursor: not-allowed;
 }
 
 .engine-status {
@@ -369,7 +381,7 @@ label {
   }
 
   .toolbar {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .chat-panel,

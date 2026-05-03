@@ -1,4 +1,10 @@
-from demo.chat_engine import ChatMessage, FakeChatEngine, OpenAICompatibleChatEngine, engine_status
+from demo.chat_engine import (
+    DEFAULT_OPENAI_BASE_URL,
+    DEFAULT_OPENAI_MODEL,
+    ChatMessage,
+    OpenAICompatibleChatEngine,
+    engine_status,
+)
 
 
 class StubResponse:
@@ -12,96 +18,22 @@ class StubResponse:
         return self.payload
 
 
-def test_fake_engine_uses_memory_context_without_keyword_trigger():
-    engine = FakeChatEngine()
-
-    response = engine.complete(
-        messages=[ChatMessage(role="user", content="Ben kısa yanıtları severim.")],
-        memory_context=["MEMORY.md#1: User prefers Turkish."],
-    )
-
-    assert response.role == "assistant"
-    assert "memory context" in response.content.lower()
-    assert "Ben kısa yanıtları severim." in response.content
-
-
-def test_fake_engine_flush_decision_does_not_require_remember_word():
-    engine = FakeChatEngine()
-
-    output = engine.flush(
-        system_prompt="Pre-compaction memory flush turn.",
-        prompt="Pre-compaction memory flush.",
-        transcript=[
-            ChatMessage(
-                role="user",
-                content="Ben bundan sonra teknik cevapları Türkçe tercih ediyorum.",
-            )
-        ],
-        target="memory/2026-05-03.md",
-    )
-
-    assert '"shouldWrite": true' in output.raw_text
-    assert "memory/2026-05-03.md" in output.raw_text
-    assert "Türkçe" in output.raw_text
-
-
-def test_fake_engine_flush_writes_json_for_durable_facts_without_remember_word():
-    engine = FakeChatEngine()
-
-    for fact in ("My name is Alex", "I live in Ankara", "I work at Acme"):
-        output = engine.flush(
-            system_prompt="Pre-compaction memory flush turn.",
-            prompt="Pre-compaction memory flush.",
-            transcript=[ChatMessage(role="user", content=fact)],
-            target="memory/2026-05-03.md",
-        )
-
-        assert '"shouldWrite": true' in output.raw_text
-        assert "memory/2026-05-03.md" in output.raw_text
-        assert fact in output.raw_text
-
-
-def test_fake_engine_flush_returns_silent_token_for_transient_chat():
-    engine = FakeChatEngine()
-
-    output = engine.flush(
-        system_prompt="Pre-compaction memory flush turn.",
-        prompt="Pre-compaction memory flush.",
-        transcript=[ChatMessage(role="user", content="Selam, nasılsın?")],
-        target="memory/2026-05-03.md",
-    )
-
-    assert output.raw_text == "<NO_REPLY>"
-
-
-def test_fake_engine_flush_ignores_transient_keyword_phrases():
-    engine = FakeChatEngine()
-
-    for message in (
-        "Never mind, continue.",
-        "Do you have a preference?",
-        "Can you make a decision now?",
-    ):
-        output = engine.flush(
-            system_prompt="Pre-compaction memory flush turn.",
-            prompt="Pre-compaction memory flush.",
-            transcript=[ChatMessage(role="user", content=message)],
-            target="memory/2026-05-03.md",
-        )
-
-        assert output.raw_text == "<NO_REPLY>"
-
-
-def test_openai_engine_is_unavailable_without_config(monkeypatch):
+def test_openai_engine_is_unavailable_without_api_key_but_reports_defaults(monkeypatch):
     monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_MODEL", raising=False)
 
-    assert engine_status()["openai"]["available"] is False
+    status = engine_status()
+
+    assert status["openai"] == {
+        "available": False,
+        "model": DEFAULT_OPENAI_MODEL,
+        "baseUrl": DEFAULT_OPENAI_BASE_URL,
+    }
     assert OpenAICompatibleChatEngine.from_env() is None
 
 
-def test_openai_engine_status_uses_config_without_exposing_api_key(monkeypatch):
+def test_openai_engine_status_uses_env_without_exposing_api_key(monkeypatch):
     monkeypatch.setenv("OPENCLAW_DEMO_OPENAI_BASE_URL", "https://llm.example/v1")
     monkeypatch.setenv("OPENCLAW_DEMO_OPENAI_API_KEY", "secret-key")
     monkeypatch.setenv("OPENCLAW_DEMO_OPENAI_MODEL", "demo-model")
@@ -115,6 +47,23 @@ def test_openai_engine_status_uses_config_without_exposing_api_key(monkeypatch):
         "baseUrl": "https://llm.example/v1",
     }
     assert "secret-key" not in str(status)
+
+
+def test_openai_engine_from_config_uses_payload_key_and_defaults(monkeypatch):
+    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_MODEL", raising=False)
+
+    engine = OpenAICompatibleChatEngine.from_config(
+        base_url=None,
+        api_key="request-key",
+        model=None,
+    )
+
+    assert engine is not None
+    assert engine.base_url == DEFAULT_OPENAI_BASE_URL
+    assert engine.api_key == "request-key"
+    assert engine.model == DEFAULT_OPENAI_MODEL
 
 
 def test_openai_engine_complete_posts_openai_compatible_chat_request(monkeypatch):

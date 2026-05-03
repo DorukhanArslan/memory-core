@@ -14,7 +14,6 @@ from starlette.requests import Request
 from demo.chat_engine import (
     ChatEngine,
     ChatMessage,
-    FakeChatEngine,
     OpenAICompatibleChatEngine,
     engine_status,
 )
@@ -60,15 +59,11 @@ def _json_error(message: str) -> JSONResponse:
     return JSONResponse({"error": message}, status_code=400)
 
 
-def _json_runtime_error(operation: str, exc: Exception) -> JSONResponse:
-    return _json_error(f"{operation} failed: {_safe_exception_message(exc)}")
-
-
-def _safe_exception_message(exc: Exception) -> str:
+def _safe_exception_message(exc: Exception, secrets: tuple[str, ...] = ()) -> str:
     message = str(exc) or exc.__class__.__name__
-    api_key = os.getenv("OPENCLAW_DEMO_OPENAI_API_KEY")
-    if api_key:
-        message = message.replace(api_key, "[redacted]")
+    for secret in (*secrets, os.getenv("OPENCLAW_DEMO_OPENAI_API_KEY") or ""):
+        if secret:
+            message = message.replace(secret, "[redacted]")
     return f"{exc.__class__.__name__}: {message}"
 
 
@@ -114,18 +109,35 @@ def _citations_mode(value: Any) -> str:
     return mode
 
 
-def _chat_engine(name: str) -> ChatEngine:
-    if name == "fake":
-        return FakeChatEngine()
-    if name == "openai":
-        engine = OpenAICompatibleChatEngine.from_env()
-        if engine is None:
-            raise DemoPayloadError(
-                "openai engine requires OPENCLAW_DEMO_OPENAI_BASE_URL, "
-                "OPENCLAW_DEMO_OPENAI_API_KEY, and OPENCLAW_DEMO_OPENAI_MODEL",
-            )
-        return engine
-    raise DemoPayloadError("engine must be 'fake' or 'openai'")
+def _chat_engine(payload: dict[str, Any]) -> ChatEngine:
+    name = str(payload.get("engine", "openai"))
+    if name != "openai":
+        raise DemoPayloadError("engine must be 'openai'")
+    openai_payload = payload.get("openai", {})
+    if not isinstance(openai_payload, dict):
+        raise DemoPayloadError("openai config must be an object")
+    engine = OpenAICompatibleChatEngine.from_config(
+        base_url=_optional_text(openai_payload.get("baseUrl")),
+        api_key=_optional_text(openai_payload.get("apiKey")),
+        model=_optional_text(openai_payload.get("model")),
+    )
+    if engine is None:
+        raise DemoPayloadError("openai engine requires an API key")
+    return engine
+
+
+def _payload_api_key(payload: dict[str, Any]) -> str:
+    openai_payload = payload.get("openai", {})
+    if not isinstance(openai_payload, dict):
+        return ""
+    return _optional_text(openai_payload.get("apiKey")) or ""
+
+
+def _optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _memory_context_from_results(results: list[dict[str, Any]]) -> list[str]:
@@ -292,7 +304,7 @@ def chat_send(payload: dict):
         message = str(payload.get("message", "")).strip()
         if not message:
             raise DemoPayloadError("message is required")
-        engine = _chat_engine(str(payload.get("engine", "fake")))
+        engine = _chat_engine(payload)
         recall_query = message
         store = demo_store()
         recall = memory_search(
@@ -321,7 +333,7 @@ def chat_send(payload: dict):
     except DemoPayloadError as exc:
         return _json_error(str(exc))
     except Exception as exc:
-        return _json_runtime_error("chat send", exc)
+        return _json_error(f"chat send failed: {_safe_exception_message(exc, (_payload_api_key(payload),))}")
 
 
 @app.post("/api/chat/flush")
@@ -330,13 +342,13 @@ def chat_flush(payload: dict):
         latest = CHAT_STATE.latest()
         if latest is None:
             raise DemoPayloadError("no chat turn to flush")
-        engine = _chat_engine(str(payload.get("engine", "fake")))
+        engine = _chat_engine(payload)
         latest.flush = _flush_latest_turn(engine)
         return _state_payload()
     except DemoPayloadError as exc:
         return _json_error(str(exc))
     except Exception as exc:
-        return _json_runtime_error("chat flush", exc)
+        return _json_error(f"chat flush failed: {_safe_exception_message(exc, (_payload_api_key(payload),))}")
 
 
 def _flush_latest_turn(engine: ChatEngine) -> dict[str, Any]:

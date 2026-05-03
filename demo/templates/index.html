@@ -15,11 +15,16 @@
         </div>
         <div class="toolbar" aria-label="Engine and memory controls">
           <label>
-            Engine
-            <select id="engine">
-              <option value="fake" data-label="Fake">Fake</option>
-              <option value="openai" data-label="OpenAI-compatible">OpenAI-compatible</option>
-            </select>
+            API key
+            <input id="api-key" type="password" autocomplete="off" placeholder="sk-..." aria-label="OpenAI API key">
+          </label>
+          <label>
+            Base URL
+            <input id="base-url" value="https://api.openai.com/v1" aria-label="OpenAI-compatible base URL">
+          </label>
+          <label>
+            Model
+            <input id="model" value="gpt-5.5" aria-label="OpenAI-compatible model">
           </label>
           <span id="engine-status" class="engine-status" aria-live="polite">Engine status loading</span>
           <label class="toggle">
@@ -121,6 +126,10 @@
 
     <script>
       let state = {turns: [], memoryFiles: [], engines: {}, config: {}};
+      const DEFAULT_OPENAI = {
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-5.5"
+      };
 
       async function requestJson(url, body) {
         const options = body === undefined ? {} : {
@@ -147,6 +156,7 @@
       }
 
       function render() {
+        hydrateOpenAIConfig();
         renderChat();
         renderPipeline();
         renderMemoryFiles();
@@ -254,35 +264,43 @@
       }
 
       function renderEngineStatus() {
-        const engineSelect = document.querySelector("#engine");
         const openai = state.engines ? state.engines.openai : undefined;
-        const openaiUnavailable = openai && openai.available === false;
-        for (const option of engineSelect.options) {
-          const status = state.engines ? state.engines[option.value] : undefined;
-          const label = option.dataset.label || option.value;
-          option.disabled = status && status.available === false;
-          if (option.value === "openai" && status) {
-            option.textContent = status.available === false
-              ? `${label} (unavailable)`
-              : `${label} (${status.model || "configured"})`;
-            option.title = status.baseUrl || "";
-          } else if (option.value === "fake" && status) {
-            option.textContent = status.model ? `${label} (${status.model})` : label;
-          } else {
-            option.textContent = label;
-          }
-        }
-        if (engineSelect.selectedOptions[0] && engineSelect.selectedOptions[0].disabled) {
-          engineSelect.value = "fake";
-        }
-        document.querySelector("#engine-status").textContent = openaiUnavailable
-          ? "OpenAI unavailable; using Fake."
-          : `OpenAI available${openai && openai.model ? `: ${openai.model}` : ""}`;
+        const envAvailable = openai && openai.available === true;
+        const apiKey = document.querySelector("#api-key").value.trim();
+        const model = document.querySelector("#model").value.trim() || DEFAULT_OPENAI.model;
+        document.querySelector("#engine-status").textContent = apiKey
+          ? `OpenAI-compatible ready: ${model}`
+          : envAvailable
+            ? `OpenAI-compatible ready from environment: ${openai.model || model}`
+            : `Enter an API key to use OpenAI-compatible chat (${openai ? openai.model : DEFAULT_OPENAI.model}).`;
+        const disabled = !apiKey && !envAvailable;
+        document.querySelector("#chat-form button[type='submit']").disabled = disabled;
+        document.querySelector("#manual-flush").disabled = disabled;
       }
 
-      function selectedEngine() {
-        renderEngineStatus();
-        return document.querySelector("#engine").value;
+      function hydrateOpenAIConfig() {
+        if (hydrateOpenAIConfig.done) return;
+        const baseUrl = sessionStorage.getItem("openclaw-demo-base-url");
+        const model = sessionStorage.getItem("openclaw-demo-model");
+        const apiKey = sessionStorage.getItem("openclaw-demo-api-key");
+        if (baseUrl) document.querySelector("#base-url").value = baseUrl;
+        if (model) document.querySelector("#model").value = model;
+        if (apiKey) document.querySelector("#api-key").value = apiKey;
+        hydrateOpenAIConfig.done = true;
+      }
+
+      function openAIConfig() {
+        const config = {
+          baseUrl: document.querySelector("#base-url").value.trim() || DEFAULT_OPENAI.baseUrl,
+          apiKey: document.querySelector("#api-key").value.trim(),
+          model: document.querySelector("#model").value.trim() || DEFAULT_OPENAI.model
+        };
+        sessionStorage.setItem("openclaw-demo-base-url", config.baseUrl);
+        sessionStorage.setItem("openclaw-demo-model", config.model);
+        if (config.apiKey) {
+          sessionStorage.setItem("openclaw-demo-api-key", config.apiKey);
+        }
+        return config;
       }
 
       function formatJson(value) {
@@ -321,7 +339,8 @@
         try {
           state = await requestJson("/api/chat/send", {
             message: input.value,
-            engine: selectedEngine(),
+            engine: "openai",
+            openai: openAIConfig(),
             autoFlush: document.querySelector("#auto-flush").checked
           });
           input.value = "";
@@ -334,7 +353,7 @@
 
       document.querySelector("#manual-flush").onclick = async () => {
         try {
-          state = await requestJson("/api/chat/flush", {engine: selectedEngine()});
+          state = await requestJson("/api/chat/flush", {engine: "openai", openai: openAIConfig()});
           render();
         } catch (error) {
           showOutput({error: error.message});
@@ -347,6 +366,15 @@
       };
       document.querySelector("#seed").onclick = async () => postInspector("/api/seed", {});
       document.querySelector("#reindex").onclick = async () => postInspector("/api/reindex", {});
+      document.querySelector("#api-key").oninput = () => {
+        sessionStorage.setItem("openclaw-demo-api-key", document.querySelector("#api-key").value.trim());
+        renderEngineStatus();
+      };
+      document.querySelector("#base-url").oninput = () => sessionStorage.setItem("openclaw-demo-base-url", document.querySelector("#base-url").value.trim());
+      document.querySelector("#model").oninput = () => {
+        sessionStorage.setItem("openclaw-demo-model", document.querySelector("#model").value.trim());
+        renderEngineStatus();
+      };
       document.querySelector("#search-form").onsubmit = (event) => {
         event.preventDefault();
         postInspector("/api/search", Object.fromEntries(new FormData(event.currentTarget)));

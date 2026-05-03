@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import json
 import os
-import re
 from dataclasses import dataclass
 from typing import Protocol
 
 import httpx
 
-from memory_core.memory_flush import SILENT_REPLY_TOKEN
+DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_OPENAI_MODEL = "gpt-5.5"
 
 
 @dataclass(frozen=True)
@@ -47,47 +46,6 @@ class ChatEngine(Protocol):
         raise NotImplementedError
 
 
-class FakeChatEngine:
-    name = "fake"
-
-    def complete(self, *, messages: list[ChatMessage], memory_context: list[str]) -> ChatResponse:
-        latest = _latest_user_message(messages)
-        context_note = "; ".join(memory_context[:3]) if memory_context else "no recalled memory"
-        return ChatResponse(
-            role="assistant",
-            content=(
-                f"Fake assistant saw memory context: {context_note}. "
-                f"Latest user message: {latest}"
-            ),
-        )
-
-    def flush(
-        self,
-        *,
-        system_prompt: str,
-        prompt: str,
-        transcript: list[ChatMessage],
-        target: str,
-    ) -> FlushModelOutput:
-        del system_prompt, prompt
-
-        durable = _find_durable_statement(transcript)
-        if durable is None:
-            return FlushModelOutput(raw_text=SILENT_REPLY_TOKEN)
-
-        return FlushModelOutput(
-            raw_text=json.dumps(
-                {
-                    "shouldWrite": True,
-                    "target": target,
-                    "entry": f"- {durable}",
-                    "reason": "Stable preference, fact, or project decision worth preserving.",
-                },
-                ensure_ascii=False,
-            )
-        )
-
-
 class OpenAICompatibleChatEngine:
     name = "openai"
 
@@ -99,12 +57,31 @@ class OpenAICompatibleChatEngine:
 
     @classmethod
     def from_env(cls) -> OpenAICompatibleChatEngine | None:
-        base_url = os.getenv("OPENCLAW_DEMO_OPENAI_BASE_URL")
+        base_url = os.getenv("OPENCLAW_DEMO_OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL
         api_key = os.getenv("OPENCLAW_DEMO_OPENAI_API_KEY")
-        model = os.getenv("OPENCLAW_DEMO_OPENAI_MODEL")
-        if not base_url or not api_key or not model:
+        model = os.getenv("OPENCLAW_DEMO_OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
+        if not api_key:
             return None
         return cls(base_url=base_url, api_key=api_key, model=model)
+
+    @classmethod
+    def from_config(
+        cls,
+        *,
+        base_url: str | None,
+        api_key: str | None,
+        model: str | None,
+    ) -> OpenAICompatibleChatEngine | None:
+        resolved_api_key = (api_key or os.getenv("OPENCLAW_DEMO_OPENAI_API_KEY") or "").strip()
+        if not resolved_api_key:
+            return None
+        return cls(
+            base_url=(
+                base_url or os.getenv("OPENCLAW_DEMO_OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL
+            ).strip(),
+            api_key=resolved_api_key,
+            model=(model or os.getenv("OPENCLAW_DEMO_OPENAI_MODEL") or DEFAULT_OPENAI_MODEL).strip(),
+        )
 
     def complete(self, *, messages: list[ChatMessage], memory_context: list[str]) -> ChatResponse:
         api_messages = [
@@ -156,45 +133,12 @@ class OpenAICompatibleChatEngine:
         return response.json()
 
 
-def _latest_user_message(messages: list[ChatMessage]) -> str:
-    for message in reversed(messages):
-        if message.role == "user":
-            return message.content
-    return messages[-1].content if messages else ""
-
-
-def _find_durable_statement(transcript: list[ChatMessage]) -> str | None:
-    durable_patterns = (
-        r"\bben\b.*\btercih ediyorum\b",
-        r"\bben\b.*\bseverim\b",
-        r"\bbundan sonra\b.*\btercih ediyorum\b",
-        r"\buser prefers\b",
-        r"\bi prefer\b",
-        r"\bmy preference is\b",
-        r"\bmy name is\b",
-        r"\bi live in\b",
-        r"\bi work at\b",
-        r"\bproject uses\b",
-        r"\bwe decided\b",
-        r"\bthe decision is\b",
-        r"\bproject decision\b",
-    )
-    for message in reversed(transcript):
-        if message.role != "user":
-            continue
-        lowered = message.content.lower()
-        if any(re.search(pattern, lowered) for pattern in durable_patterns):
-            return message.content.strip()
-    return None
-
-
 def engine_status() -> dict:
     configured = OpenAICompatibleChatEngine.from_env() is not None
     return {
-        "fake": {"available": True, "model": "deterministic"},
         "openai": {
             "available": configured,
-            "model": os.getenv("OPENCLAW_DEMO_OPENAI_MODEL") or "",
-            "baseUrl": os.getenv("OPENCLAW_DEMO_OPENAI_BASE_URL") or "",
+            "model": os.getenv("OPENCLAW_DEMO_OPENAI_MODEL") or DEFAULT_OPENAI_MODEL,
+            "baseUrl": os.getenv("OPENCLAW_DEMO_OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL,
         },
     }

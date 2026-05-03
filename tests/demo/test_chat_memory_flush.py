@@ -3,11 +3,33 @@ from pathlib import Path
 
 import pytest
 
-from demo.chat_engine import ChatMessage, FakeChatEngine, FlushModelOutput
+from demo.chat_engine import ChatMessage, FlushModelOutput
 from demo.memory_flush import parse_flush_output, run_memory_flush
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
+
+
+class DurableFlushEngine:
+    name = "durable"
+
+    def complete(self, *, messages, memory_context):
+        raise NotImplementedError
+
+    def flush(self, *, system_prompt, prompt, transcript, target):
+        del system_prompt, prompt
+        content = transcript[-1].content
+        return FlushModelOutput(
+            raw_text=json.dumps(
+                {
+                    "shouldWrite": True,
+                    "target": target,
+                    "entry": f"- {content}",
+                    "reason": "Durable test memory.",
+                },
+                ensure_ascii=False,
+            )
+        )
 
 
 def test_parse_flush_output_accepts_silent_token():
@@ -52,7 +74,7 @@ def test_run_memory_flush_appends_reindexes_and_returns_diff(tmp_path: Path):
     result = run_memory_flush(
         config=cfg,
         store=store,
-        engine=FakeChatEngine(),
+        engine=DurableFlushEngine(),
         transcript=[ChatMessage(role="user", content="Ben teknik cevapları Türkçe tercih ediyorum.")],
         now_ms=1777824000000,
         timezone="Europe/Istanbul",
@@ -80,7 +102,7 @@ def test_run_memory_flush_returns_written_state_when_reindex_fails(tmp_path: Pat
     result = run_memory_flush(
         config=cfg,
         store=FailingReindexStore(),
-        engine=FakeChatEngine(),
+        engine=DurableFlushEngine(),
         transcript=[ChatMessage(role="user", content="Ben teknik cevapları Türkçe tercih ediyorum.")],
         now_ms=1777824000000,
         timezone="Europe/Istanbul",

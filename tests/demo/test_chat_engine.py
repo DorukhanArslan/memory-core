@@ -74,6 +74,24 @@ def test_fake_engine_flush_returns_silent_token_for_transient_chat():
     assert output.raw_text == "<NO_REPLY>"
 
 
+def test_fake_engine_flush_ignores_transient_keyword_phrases():
+    engine = FakeChatEngine()
+
+    for message in (
+        "Never mind, continue.",
+        "Do you have a preference?",
+        "Can you make a decision now?",
+    ):
+        output = engine.flush(
+            system_prompt="Pre-compaction memory flush turn.",
+            prompt="Pre-compaction memory flush.",
+            transcript=[ChatMessage(role="user", content=message)],
+            target="memory/2026-05-03.md",
+        )
+
+        assert output.raw_text == "<NO_REPLY>"
+
+
 def test_openai_engine_is_unavailable_without_config(monkeypatch):
     monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_API_KEY", raising=False)

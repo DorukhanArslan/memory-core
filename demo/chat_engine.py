@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -163,26 +164,26 @@ def _latest_user_message(messages: list[ChatMessage]) -> str:
 
 
 def _find_durable_statement(transcript: list[ChatMessage]) -> str | None:
-    durable_markers = (
-        "tercih ediyorum",
-        "severim",
-        "prefers",
-        "preference",
-        "bundan sonra",
-        "karar",
-        "decision",
-        "always",
-        "never",
-        "project uses",
-        "my name is",
-        "i live in",
-        "i work at",
+    durable_patterns = (
+        r"\bben\b.*\btercih ediyorum\b",
+        r"\bben\b.*\bseverim\b",
+        r"\bbundan sonra\b.*\btercih ediyorum\b",
+        r"\buser prefers\b",
+        r"\bi prefer\b",
+        r"\bmy preference is\b",
+        r"\bmy name is\b",
+        r"\bi live in\b",
+        r"\bi work at\b",
+        r"\bproject uses\b",
+        r"\bwe decided\b",
+        r"\bthe decision is\b",
+        r"\bproject decision\b",
     )
     for message in reversed(transcript):
         if message.role != "user":
             continue
         lowered = message.content.lower()
-        if any(marker in lowered for marker in durable_markers):
+        if any(re.search(pattern, lowered) for pattern in durable_patterns):
             return message.content.strip()
     return None
 

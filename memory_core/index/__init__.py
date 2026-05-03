@@ -3,7 +3,7 @@
 from memory_core.index.fts import bm25_rank_to_score, build_fts_query
 from memory_core.index.hybrid import (
     HybridKeywordResult,
-    HybridMergedResult,
+    HybridResult,
     HybridVectorResult,
     merge_hybrid_results,
 )
@@ -13,7 +13,7 @@ from memory_core.index.vector import cosine_similarity
 
 __all__ = [
     "HybridKeywordResult",
-    "HybridMergedResult",
+    "HybridResult",
     "HybridVectorResult",
     "bm25_rank_to_score",
     "build_fts_query",

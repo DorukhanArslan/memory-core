@@ -1,6 +1,7 @@
 from memory_core.index.fts import bm25_rank_to_score, build_fts_query
 from memory_core.index.hybrid import (
     HybridKeywordResult,
+    HybridResult,
     HybridVectorResult,
     merge_hybrid_results,
 )
@@ -25,6 +26,8 @@ def test_hybrid_merge_combines_vector_and_keyword_scores():
         vector_weight=0.5,
         text_weight=0.5,
     )
+    assert isinstance(merged[0], HybridResult)
+    assert not hasattr(merged[0], "id")
     assert merged[0].score == 0.6000000000000001
     assert merged[0].snippet == "alpha keyword"
 

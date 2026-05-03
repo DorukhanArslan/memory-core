@@ -6,6 +6,14 @@ import sqlite3
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.index.chunking import MemoryChunk, chunk_markdown
+from memory_core.index.fts import bm25_rank_to_score, build_fts_query
+from memory_core.index.hybrid import (
+    HybridKeywordResult,
+    HybridResult,
+    HybridVectorResult,
+    merge_hybrid_results,
+)
+from memory_core.index.vector import cosine_similarity
 from memory_core.workspace import MemoryWorkspace
 
 
@@ -77,3 +85,62 @@ class SQLiteMemoryStore:
         with self.connect() as db:
             row = db.execute("SELECT COUNT(*) FROM chunks").fetchone()
         return int(row[0])
+
+    def search(
+        self,
+        query: str,
+        *,
+        max_results: int = 5,
+        min_score: float = 0.0,
+    ) -> list[HybridResult]:
+        query_embedding = self.embeddings.embed_query(query)
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT id, path, start_line, end_line, source, text, embedding FROM chunks"
+            ).fetchall()
+            vector = [
+                HybridVectorResult(
+                    id=row[0],
+                    path=row[1],
+                    start_line=row[2],
+                    end_line=row[3],
+                    source=row[4],
+                    snippet=row[5],
+                    vector_score=cosine_similarity(query_embedding, json.loads(row[6])),
+                )
+                for row in rows
+            ]
+
+            keyword: list[HybridKeywordResult] = []
+            fts_query = build_fts_query(query)
+            if fts_query:
+                for row in db.execute(
+                    """
+                    SELECT c.id, c.path, c.start_line, c.end_line, c.source, c.text,
+                           bm25(chunks_fts) AS rank
+                    FROM chunks_fts
+                    JOIN chunks c ON c.id = chunks_fts.id
+                    WHERE chunks_fts MATCH ?
+                    ORDER BY rank
+                    """,
+                    (fts_query,),
+                ):
+                    keyword.append(
+                        HybridKeywordResult(
+                            id=row[0],
+                            path=row[1],
+                            start_line=row[2],
+                            end_line=row[3],
+                            source=row[4],
+                            snippet=row[5],
+                            text_score=bm25_rank_to_score(float(row[6])),
+                        )
+                    )
+
+        merged = merge_hybrid_results(
+            vector=vector,
+            keyword=keyword,
+            vector_weight=self.config.vector_weight,
+            text_weight=self.config.text_weight,
+        )
+        return [item for item in merged if item.score >= min_score][:max_results]

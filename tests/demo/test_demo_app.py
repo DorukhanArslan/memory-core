@@ -41,7 +41,7 @@ def test_demo_home_loads():
     assert "Raw Flush Output" in response.text
     assert "engine-status" in response.text
     assert "api-key" in response.text
-    assert "gpt-5.5" in response.text
+    assert "gpt-5.2" in response.text
     assert "Tool Inspector" in response.text
     assert "Fake</option>" not in response.text
 
@@ -94,6 +94,8 @@ def test_chat_state_endpoint_returns_engines_and_memory_files():
     payload = response.json()
     assert "engines" in payload
     assert "memoryFiles" in payload
+    assert "memoryFileContents" in payload
+    assert "MEMORY.md" in payload["memoryFileContents"]
     assert payload["config"]["workspace"]
     assert payload["config"]["timezone"] == "Europe/Istanbul"
     assert payload["config"]["dailyMemoryPath"] == "memory/2026-05-03.md"

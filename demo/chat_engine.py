@@ -7,7 +7,7 @@ from typing import Protocol
 import httpx
 
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
-DEFAULT_OPENAI_MODEL = "gpt-5.5"
+DEFAULT_OPENAI_MODEL = "gpt-5.2"
 
 
 @dataclass(frozen=True)

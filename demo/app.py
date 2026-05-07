@@ -172,14 +172,27 @@ def _memory_files() -> list[str]:
     return sorted(discovered)
 
 
+def _memory_file_contents(paths: list[str]) -> dict[str, str]:
+    workspace = MemoryWorkspace(demo_config().workspace_dir)
+    contents: dict[str, str] = {}
+    for path in paths:
+        try:
+            contents[path] = workspace.read_text(path).text
+        except FileNotFoundError:
+            contents[path] = ""
+    return contents
+
+
 def _state_payload() -> dict[str, Any]:
     config = demo_config()
     plan = _demo_flush_plan()
+    memory_files = _memory_files()
     payload = CHAT_STATE.as_dict()
     payload.update(
         {
             "engines": engine_status(),
-            "memoryFiles": _memory_files(),
+            "memoryFiles": memory_files,
+            "memoryFileContents": _memory_file_contents(memory_files),
             "config": {
                 "workspace": str(config.workspace_dir),
                 "timezone": DEMO_TIMEZONE,

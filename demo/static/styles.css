@@ -237,6 +237,7 @@ label {
 .message p {
   margin-bottom: 0;
   line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .message.user {
@@ -330,23 +331,42 @@ label {
 
 .file-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.file-button {
-  width: 100%;
-  overflow: hidden;
+.memory-file {
+  display: grid;
+  grid-template-rows: auto minmax(220px, 1fr);
+  min-width: 0;
+  border: 1px solid var(--line);
   background: var(--panel-muted);
-  border-color: var(--line);
-  color: var(--text);
-  text-align: left;
-  text-overflow: ellipsis;
 }
 
-.file-button:hover {
-  background: #e7edf3;
-  border-color: var(--line-strong);
+.memory-file-heading {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  padding: 8px 10px;
+}
+
+.memory-file-heading strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-file-heading button {
+  min-height: 28px;
+  padding: 4px 8px;
+}
+
+.memory-file pre {
+  min-height: 220px;
+  max-height: 360px;
+  border-radius: 0;
 }
 
 .inspector-grid {
@@ -376,6 +396,7 @@ label {
 @media (max-width: 1080px) {
   .topbar,
   .workspace,
+  .file-list,
   .inspector-grid {
     grid-template-columns: 1fr;
   }

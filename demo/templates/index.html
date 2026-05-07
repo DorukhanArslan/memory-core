@@ -24,7 +24,7 @@
           </label>
           <label>
             Model
-            <input id="model" value="gpt-5.5" aria-label="OpenAI-compatible model">
+            <input id="model" value="gpt-5.2" aria-label="OpenAI-compatible model">
           </label>
           <span id="engine-status" class="engine-status" aria-live="polite">Engine status loading</span>
           <label class="toggle">
@@ -125,10 +125,10 @@
     </main>
 
     <script>
-      let state = {turns: [], memoryFiles: [], engines: {}, config: {}};
+      let state = {turns: [], memoryFiles: [], memoryFileContents: {}, engines: {}, config: {}};
       const DEFAULT_OPENAI = {
         baseUrl: "https://api.openai.com/v1",
-        model: "gpt-5.5"
+        model: "gpt-5.2"
       };
 
       async function requestJson(url, body) {
@@ -240,12 +240,21 @@
         const list = document.createElement("div");
         list.className = "file-list";
         for (const path of state.memoryFiles || []) {
+          const file = document.createElement("section");
+          file.className = "memory-file";
+          const heading = document.createElement("div");
+          heading.className = "memory-file-heading";
+          const title = document.createElement("strong");
+          title.textContent = path;
           const button = document.createElement("button");
-          button.className = "file-button";
           button.type = "button";
-          button.textContent = path;
+          button.textContent = "Inspect";
           button.onclick = () => inspectMemoryFile(path);
-          list.append(button);
+          heading.append(title, button);
+          const body = document.createElement("pre");
+          body.textContent = (state.memoryFileContents && state.memoryFileContents[path]) || "(missing or empty)";
+          file.append(heading, body);
+          list.append(file);
         }
         if (!list.children.length) {
           const empty = document.createElement("p");
@@ -284,7 +293,7 @@
         const model = sessionStorage.getItem("openclaw-demo-model");
         const apiKey = sessionStorage.getItem("openclaw-demo-api-key");
         if (baseUrl) document.querySelector("#base-url").value = baseUrl;
-        if (model) document.querySelector("#model").value = model;
+        if (model) document.querySelector("#model").value = model === "gpt-5.5" ? DEFAULT_OPENAI.model : model;
         if (apiKey) document.querySelector("#api-key").value = apiKey;
         hydrateOpenAIConfig.done = true;
       }

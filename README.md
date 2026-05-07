@@ -35,12 +35,12 @@ memories while chatting.
 The chat demo uses only the OpenAI-compatible engine. The browser keeps the API
 key in session storage and sends it with each chat/flush request; the backend
 does not write it to disk. Defaults are `https://api.openai.com/v1` and
-`gpt-5.5`. You can also configure the backend with environment variables:
+`gpt-5.2`. You can also configure the backend with environment variables:
 
 ```bash
 export OPENCLAW_DEMO_OPENAI_BASE_URL="https://api.openai.com/v1"
 export OPENCLAW_DEMO_OPENAI_API_KEY="sk-demo-key"
-export OPENCLAW_DEMO_OPENAI_MODEL="gpt-5.5"
+export OPENCLAW_DEMO_OPENAI_MODEL="gpt-5.2"
 ```
 
 Memory flush writes are restricted to `memory/YYYY-MM-DD.md`, matching
@@ -53,7 +53,7 @@ Smoke test the chat lab endpoints:
 curl -s http://127.0.0.1:8000/api/chat/state
 curl -s -X POST http://127.0.0.1:8000/api/chat/send \
   -H 'Content-Type: application/json' \
-  -d '{"message":"Ben teknik cevapları Türkçe tercih ediyorum.","engine":"openai","openai":{"apiKey":"sk-demo-key","model":"gpt-5.5"},"autoFlush":true}'
+  -d '{"message":"Ben teknik cevapları Türkçe tercih ediyorum.","engine":"openai","openai":{"apiKey":"sk-demo-key","model":"gpt-5.2"},"autoFlush":true}'
 ```
 
 ## Live OpenAI-Compatible Embeddings

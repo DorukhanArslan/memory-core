@@ -28,7 +28,7 @@
           </label>
           <span id="engine-status" class="engine-status" aria-live="polite">Engine status loading</span>
           <label class="toggle">
-            <input id="auto-flush" type="checkbox">
+            <input id="auto-flush" type="checkbox" checked>
             Auto flush
           </label>
           <button id="manual-flush" type="button">Manual flush</button>
@@ -192,6 +192,18 @@
         return node;
       }
 
+      function appendStreamingAssistant(text) {
+        const log = document.querySelector("#chat-log");
+        let node = document.querySelector("#streaming-assistant");
+        if (!node) {
+          node = messageNode("assistant", "Assistant", "");
+          node.id = "streaming-assistant";
+          log.append(node);
+        }
+        node.querySelector("p").textContent += text;
+        log.scrollTop = log.scrollHeight;
+      }
+
       function renderPipeline() {
         const latest = state.turns[state.turns.length - 1];
         document.querySelector("#turn-count").textContent = `${state.turns.length} ${state.turns.length === 1 ? "turn" : "turns"}`;
@@ -346,19 +358,62 @@
         event.preventDefault();
         const input = document.querySelector("#chat-input");
         try {
-          state = await requestJson("/api/chat/send", {
-            message: input.value,
-            engine: "openai",
-            openai: openAIConfig(),
-            autoFlush: document.querySelector("#auto-flush").checked
-          });
+          await sendStreamingMessage(input.value);
           input.value = "";
-          render();
         } catch (error) {
           showOutput({error: error.message});
           activateTab("tool-inspector");
         }
       });
+
+      async function sendStreamingMessage(message) {
+        const trimmed = message.trim();
+        if (!trimmed) return;
+        const log = document.querySelector("#chat-log");
+        if (!state.turns.length) log.replaceChildren();
+        log.append(messageNode("user", `Turn ${state.turns.length + 1}`, trimmed));
+        const response = await fetch("/api/chat/send-stream", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            message: trimmed,
+            engine: "openai",
+            openai: openAIConfig(),
+            autoFlush: document.querySelector("#auto-flush").checked
+          })
+        });
+        if (!response.ok || !response.body) {
+          throw new Error(response.statusText || "Streaming request failed");
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const {value, done} = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, {stream: true});
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+          for (const part of parts) handleSseEvent(part);
+        }
+        if (buffer.trim()) handleSseEvent(buffer);
+      }
+
+      function handleSseEvent(block) {
+        const eventLine = block.split("\n").find((line) => line.startsWith("event: "));
+        const dataLine = block.split("\n").find((line) => line.startsWith("data: "));
+        if (!eventLine || !dataLine) return;
+        const event = eventLine.replace("event: ", "").trim();
+        const data = JSON.parse(dataLine.replace("data: ", ""));
+        if (event === "assistant_delta") {
+          appendStreamingAssistant(data.text || "");
+        } else if (event === "final_state") {
+          state = data;
+          render();
+        } else if (event === "error") {
+          throw new Error(data.error || "Streaming chat failed");
+        }
+      }
 
       document.querySelector("#manual-flush").onclick = async () => {
         try {

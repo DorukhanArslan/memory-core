@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import json
 from dataclasses import dataclass
+from collections.abc import Iterator
 from typing import Protocol
 
 import httpx
@@ -33,6 +35,11 @@ class ChatEngine(Protocol):
     name: str
 
     def complete(self, *, messages: list[ChatMessage], memory_context: list[str]) -> ChatResponse:
+        raise NotImplementedError
+
+    def stream_complete(
+        self, *, messages: list[ChatMessage], memory_context: list[str]
+    ) -> Iterator[str]:
         raise NotImplementedError
 
     def flush(
@@ -84,20 +91,17 @@ class OpenAICompatibleChatEngine:
         )
 
     def complete(self, *, messages: list[ChatMessage], memory_context: list[str]) -> ChatResponse:
-        api_messages = [
-            {
-                "role": "system",
-                "content": "Use the supplied memory context when relevant. Do not invent memory.",
-            },
-            {
-                "role": "system",
-                "content": "Memory context:\n" + "\n".join(memory_context),
-            },
-        ]
-        api_messages.extend({"role": message.role, "content": message.content} for message in messages)
+        api_messages = self._api_messages(messages=messages, memory_context=memory_context)
         raw = self._chat(api_messages)
         content = raw["choices"][0]["message"]["content"]
         return ChatResponse(role="assistant", content=content, raw=raw)
+
+    def stream_complete(
+        self, *, messages: list[ChatMessage], memory_context: list[str]
+    ) -> Iterator[str]:
+        yield from self._chat_stream(
+            self._api_messages(messages=messages, memory_context=memory_context)
+        )
 
     def flush(
         self,
@@ -131,6 +135,56 @@ class OpenAICompatibleChatEngine:
         )
         response.raise_for_status()
         return response.json()
+
+    def _chat_stream(self, messages: list[dict[str, str]]) -> Iterator[str]:
+        with httpx.stream(
+            "POST",
+            f"{self.base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={"model": self.model, "messages": messages, "stream": True},
+            timeout=self.timeout,
+        ) as response:
+            response.raise_for_status()
+            for line in response.iter_lines():
+                chunk = _parse_stream_line(line)
+                if chunk is None:
+                    continue
+                yield chunk
+
+    def _api_messages(
+        self, *, messages: list[ChatMessage], memory_context: list[str]
+    ) -> list[dict[str, str]]:
+        api_messages = [
+            {
+                "role": "system",
+                "content": "Use the supplied memory context when relevant. Do not invent memory.",
+            },
+            {
+                "role": "system",
+                "content": "Memory context:\n" + "\n".join(memory_context),
+            },
+        ]
+        api_messages.extend({"role": message.role, "content": message.content} for message in messages)
+        return api_messages
+
+
+def _parse_stream_line(line: str | bytes) -> str | None:
+    text = line.decode("utf-8") if isinstance(line, bytes) else line
+    if not text.startswith("data: "):
+        return None
+    data = text.removeprefix("data: ").strip()
+    if not data or data == "[DONE]":
+        return None
+    payload = json.loads(data)
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None
+    delta = choices[0].get("delta", {})
+    content = delta.get("content")
+    return content if isinstance(content, str) else None
 
 
 def engine_status() -> dict:

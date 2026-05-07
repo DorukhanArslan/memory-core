@@ -4,6 +4,7 @@ from demo.chat_engine import (
     ChatMessage,
     OpenAICompatibleChatEngine,
     engine_status,
+    _parse_stream_line,
 )
 
 
@@ -162,3 +163,11 @@ def test_openai_engine_flush_posts_prompt_target_and_transcript(monkeypatch):
     assert "Transcript:" in user_message["content"]
     assert "user: My name is Alex" in user_message["content"]
     assert "assistant: Noted." in user_message["content"]
+
+
+def test_parse_stream_line_extracts_delta_content():
+    line = 'data: {"choices":[{"delta":{"content":"hello"}}]}'
+
+    assert _parse_stream_line(line) == "hello"
+    assert _parse_stream_line("data: [DONE]") is None
+    assert _parse_stream_line(": keep-alive") is None

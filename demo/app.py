@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import os
+import json
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
@@ -340,13 +341,22 @@ def chat_send(payload: dict):
             assistant_response=response.content,
             memory_context=memory_context,
         )
-        if bool(payload.get("autoFlush", False)):
+        if bool(payload.get("autoFlush", True)):
             turn.flush = _flush_latest_turn(engine)
         return _state_payload()
     except DemoPayloadError as exc:
         return _json_error(str(exc))
     except Exception as exc:
         return _json_error(f"chat send failed: {_safe_exception_message(exc, (_payload_api_key(payload),))}")
+
+
+@app.post("/api/chat/send-stream")
+def chat_send_stream(payload: dict):
+    return StreamingResponse(
+        _chat_send_stream_events(payload),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.post("/api/chat/flush")
@@ -375,3 +385,50 @@ def _flush_latest_turn(engine: ChatEngine) -> dict[str, Any]:
             timezone=DEMO_TIMEZONE,
         )
     )
+
+
+def _chat_send_stream_events(payload: dict):
+    try:
+        message = str(payload.get("message", "")).strip()
+        if not message:
+            raise DemoPayloadError("message is required")
+        engine = _chat_engine(payload)
+        recall_query = message
+        store = demo_store()
+        recall = memory_search(
+            demo_config(),
+            store,
+            query=recall_query,
+            max_results=5,
+            min_score=0,
+        )
+        recall_results = recall.get("results", [])
+        memory_context = _memory_context_from_results(recall_results)
+        full_response = []
+        for chunk in engine.stream_complete(
+            messages=_chat_messages(message),
+            memory_context=memory_context,
+        ):
+            full_response.append(chunk)
+            yield _sse("assistant_delta", {"text": chunk})
+        turn = CHAT_STATE.add_turn(
+            user_message=message,
+            recall_query=recall_query,
+            recall_results=recall_results,
+            assistant_response="".join(full_response),
+            memory_context=memory_context,
+        )
+        if bool(payload.get("autoFlush", True)):
+            turn.flush = _flush_latest_turn(engine)
+        yield _sse("final_state", _state_payload())
+    except DemoPayloadError as exc:
+        yield _sse("error", {"error": str(exc)})
+    except Exception as exc:
+        yield _sse(
+            "error",
+            {"error": f"chat send failed: {_safe_exception_message(exc, (_payload_api_key(payload),))}"},
+        )
+
+
+def _sse(event: str, data: dict[str, Any]) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"

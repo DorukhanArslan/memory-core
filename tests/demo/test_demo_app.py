@@ -18,6 +18,11 @@ class StubOpenAIEngine:
             content=f"stub response to {messages[-1].content}",
         )
 
+    def stream_complete(self, *, messages, memory_context):
+        del memory_context
+        yield "streamed "
+        yield f"response to {messages[-1].content}"
+
     def flush(self, *, system_prompt, prompt, transcript, target):
         del system_prompt, prompt
         return FlushModelOutput(
@@ -44,6 +49,7 @@ def test_demo_home_loads():
     assert "gpt-5.2" in response.text
     assert "Tool Inspector" in response.text
     assert "Fake</option>" not in response.text
+    assert 'id="auto-flush" type="checkbox" checked' in response.text
 
 
 def test_prompt_preview_endpoint():
@@ -169,6 +175,48 @@ def test_chat_send_auto_flush_updates_turn(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["turns"][-1]["flush"]["parsed"]["shouldWrite"] is True
+
+
+def test_chat_send_defaults_to_auto_flush(monkeypatch):
+    monkeypatch.setattr(demo_app, "_chat_engine", lambda payload: StubOpenAIEngine())
+    client = TestClient(app)
+    client.post("/api/chat/reset", json={})
+
+    response = client.post(
+        "/api/chat/send",
+        json={
+            "message": "Project decision: default auto flush.",
+            "engine": "openai",
+            "openai": {"apiKey": "request-key"},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["turns"][-1]["flush"]["parsed"]["shouldWrite"] is True
+
+
+def test_chat_send_stream_emits_deltas_and_final_state(monkeypatch):
+    monkeypatch.setattr(demo_app, "_chat_engine", lambda payload: StubOpenAIEngine())
+    client = TestClient(app)
+    client.post("/api/chat/reset", json={})
+
+    with client.stream(
+        "POST",
+        "/api/chat/send-stream",
+        json={
+            "message": "Project decision: stream chat.",
+            "engine": "openai",
+            "openai": {"apiKey": "request-key"},
+        },
+    ) as response:
+        body = response.read().decode("utf-8")
+
+    assert response.status_code == 200
+    assert "event: assistant_delta" in body
+    assert "streamed " in body
+    assert "event: final_state" in body
+    assert "Project decision: stream chat." in body
+    assert '"shouldWrite": true' in body
 
 
 def test_chat_send_unconfigured_openai_returns_json_error(monkeypatch):

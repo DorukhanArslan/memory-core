@@ -193,11 +193,12 @@ label {
   grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.9fr);
   gap: 14px;
   margin-top: 14px;
+  min-height: calc(100vh - 190px);
 }
 
 .chat-panel,
 .pipeline {
-  min-height: 640px;
+  min-height: min(640px, calc(100vh - 210px));
 }
 
 .chat-panel {
@@ -209,7 +210,7 @@ label {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: 610px;
+  max-height: calc(100vh - 350px);
   overflow: auto;
   padding: 14px;
 }
@@ -284,6 +285,8 @@ label {
 .pipeline-content {
   display: grid;
   gap: 10px;
+  max-height: calc(100vh - 260px);
+  overflow: auto;
 }
 
 .pipeline-step {

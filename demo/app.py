@@ -588,10 +588,13 @@ def memory_audit():
 
 @app.post("/api/memory/repair")
 def memory_repair(payload: dict | None = None):
-    global MEMORY_REPAIR
+    global MEMORY_AUDIT, MEMORY_REPAIR
     try:
         MEMORY_REPAIR = repair_short_term_promotion_artifacts(
             config=demo_config(), now_ms=_now_ms()
+        )
+        MEMORY_AUDIT = _serialize_audit(
+            audit_short_term_promotion_artifacts(config=demo_config(), now_ms=_now_ms())
         )
         return _state_payload()
     except Exception as exc:
@@ -612,6 +615,18 @@ def dreaming_run(payload: dict):
             now_ms=_now_ms(),
             timezone=DEMO_TIMEZONE,
         )
+        if DREAMING_SWEEP.get("filesChanged"):
+            try:
+                DREAMING_SWEEP["indexedFiles"] = store.reindex(
+                    MemoryWorkspace(demo_config().workspace_dir)
+                )
+                DREAMING_SWEEP["reindexError"] = None
+            except Exception as exc:
+                DREAMING_SWEEP["indexedFiles"] = 0
+                DREAMING_SWEEP["reindexError"] = _safe_exception_message(
+                    exc, (_payload_api_key(payload),)
+                )
+            DREAMING_SWEEP["chunks"] = store.count_chunks()
         return _state_payload()
     except DemoPayloadError as exc:
         return _json_error(str(exc))

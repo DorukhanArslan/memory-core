@@ -21,6 +21,19 @@ def fake_demo_store(payload=None):
     return SQLiteMemoryStore(demo_app.demo_config(), FakeEmbeddingProvider(dimensions=16))
 
 
+class CountingStore:
+    def __init__(self):
+        self.reindex_calls = 0
+
+    def reindex(self, workspace):
+        del workspace
+        self.reindex_calls += 1
+        return 7
+
+    def count_chunks(self):
+        return 11
+
+
 class StubOpenAIEngine:
     name = "openai"
 
@@ -551,6 +564,9 @@ def test_memory_audit_and_repair_endpoints(monkeypatch):
     assert audit.json()["memoryAudit"]["issues"][0]["code"] == "recall-store-unreadable"
     assert repair.status_code == 200
     assert repair.json()["memoryRepair"]["changed"] is True
+    assert {
+        issue["code"] for issue in repair.json()["memoryAudit"]["issues"]
+    } == set()
 
 
 def test_dreaming_endpoint_runs_light_sweep(monkeypatch):
@@ -567,6 +583,29 @@ def test_dreaming_endpoint_runs_light_sweep(monkeypatch):
     assert response.json()["dreamingSweep"]["phase"] == "light"
 
 
+def test_dreaming_endpoint_reindexes_changed_files(monkeypatch):
+    store = CountingStore()
+    monkeypatch.setattr(demo_app, "demo_store", lambda payload: store)
+    monkeypatch.setattr(
+        demo_app,
+        "run_dreaming_sweep",
+        lambda **kwargs: {"phase": "rem", "filesChanged": ["DREAMS.md"]},
+    )
+    client = TestClient(app)
+    client.post("/api/chat/reset", json={})
+
+    response = client.post(
+        "/api/dreaming/run",
+        json={"phase": "rem", "openai": {"apiKey": "request-key"}},
+    )
+
+    assert response.status_code == 200
+    assert store.reindex_calls == 1
+    assert response.json()["dreamingSweep"]["indexedFiles"] == 7
+    assert response.json()["dreamingSweep"]["chunks"] == 11
+    assert response.json()["dreamingSweep"]["reindexError"] is None
+
+
 def test_reset_clears_dreaming_artifacts():
     client = TestClient(app)
     dreams = demo_app.DEMO_WORKSPACE / "memory" / ".dreams"
@@ -576,6 +615,25 @@ def test_reset_clears_dreaming_artifacts():
     client.post("/api/chat/reset", json={})
 
     assert not (demo_app.DEMO_WORKSPACE / "memory" / ".dreams" / "phase-signals.json").exists()
+
+
+def test_reset_clears_memory_endpoint_state(monkeypatch):
+    monkeypatch.setattr(demo_app, "demo_store", fake_demo_store)
+    client = TestClient(app)
+    client.post("/api/chat/reset", json={})
+    store_path = demo_app.DEMO_WORKSPACE / "memory" / ".dreams" / "short-term-recall.json"
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    store_path.write_text("{not-json", encoding="utf-8")
+    client.get("/api/memory/audit")
+    client.post("/api/memory/repair", json={})
+    client.post("/api/dreaming/run", json={"phase": "light", "openai": {"apiKey": "request-key"}})
+
+    response = client.post("/api/chat/reset", json={})
+
+    assert response.status_code == 200
+    assert response.json()["dreamingSweep"] is None
+    assert response.json()["memoryAudit"] is None
+    assert response.json()["memoryRepair"] is None
 
 
 def test_chat_send_defaults_to_auto_flush(monkeypatch):

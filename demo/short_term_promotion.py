@@ -1,25 +1,57 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import difflib
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from demo.memory_flush import ParsedFlushOutput
 from memory_core.config import MemoryConfig
 from memory_core.workspace import MemoryWorkspace
 
 SHORT_TERM_STORE_RELATIVE_PATH = Path("memory") / ".dreams" / "short-term-recall.json"
+SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH = Path("memory") / ".dreams" / "phase-signals.json"
+SHORT_TERM_LOCK_RELATIVE_PATH = Path("memory") / ".dreams" / "short-term-promotion.lock"
+SHORT_TERM_LOCK_STALE_MS = 60_000
 PROMOTION_MARKER_PREFIX = "openclaw-memory-promotion:"
 DEFAULT_PROMOTION_MIN_SCORE = 0.75
 DEFAULT_PROMOTION_MIN_RECALL_COUNT = 3
 DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES = 2
 DEFAULT_RECENCY_HALF_LIFE_DAYS = 14
 DAY_MS = 24 * 60 * 60 * 1000
+
+
+@dataclass(frozen=True)
+class ShortTermLockResult:
+    acquired: bool
+    path: Path
+    reason: str | None = None
+    stole_stale: bool = False
+
+
+@dataclass(frozen=True)
+class ShortTermAuditIssue:
+    severity: str
+    code: str
+    message: str
+    fixable: bool
+
+
+@dataclass(frozen=True)
+class ShortTermAuditSummary:
+    exists: bool
+    entry_count: int
+    promoted_entry_count: int
+    spaced_entry_count: int
+    concept_tagged_entry_count: int
+    invalid_entry_count: int
+    issues: tuple[ShortTermAuditIssue, ...]
 
 
 @dataclass(frozen=True)
@@ -71,6 +103,110 @@ class MemoryPromotionRun:
     chunks: int
     evaluated_candidates: list[PromotionEvaluation]
     reindex_error: str | None = None
+
+
+@contextmanager
+def acquire_short_term_promotion_lock(
+    *, config: MemoryConfig, now_ms: int
+) -> Iterator[ShortTermLockResult]:
+    lock_path = config.workspace_dir / SHORT_TERM_LOCK_RELATIVE_PATH
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    stole_stale = False
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            if not _lock_is_stale(lock_path, now_ms):
+                yield ShortTermLockResult(acquired=False, path=lock_path, reason="locked")
+                return
+            try:
+                lock_path.unlink()
+            except FileNotFoundError:
+                continue
+            stole_stale = True
+            continue
+        break
+
+    try:
+        payload = {"pid": os.getpid(), "createdAt": _iso(now_ms)}
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False)
+            handle.write("\n")
+        yield ShortTermLockResult(acquired=True, path=lock_path, stole_stale=stole_stale)
+    finally:
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def audit_short_term_promotion_artifacts(
+    *, config: MemoryConfig, now_ms: int
+) -> ShortTermAuditSummary:
+    del now_ms
+    store_path = config.workspace_dir / SHORT_TERM_STORE_RELATIVE_PATH
+    if not store_path.exists():
+        return ShortTermAuditSummary(
+            exists=False,
+            entry_count=0,
+            promoted_entry_count=0,
+            spaced_entry_count=0,
+            concept_tagged_entry_count=0,
+            invalid_entry_count=0,
+            issues=(),
+        )
+    try:
+        raw = json.loads(store_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return ShortTermAuditSummary(
+            exists=True,
+            entry_count=0,
+            promoted_entry_count=0,
+            spaced_entry_count=0,
+            concept_tagged_entry_count=0,
+            invalid_entry_count=0,
+            issues=(
+                ShortTermAuditIssue(
+                    severity="error",
+                    code="recall-store-unreadable",
+                    message="Short-term recall store could not be read.",
+                    fixable=True,
+                ),
+            ),
+        )
+
+    entries = raw.get("entries") if isinstance(raw, dict) else None
+    if not isinstance(entries, dict):
+        entries = {}
+    entry_count = 0
+    promoted_entry_count = 0
+    spaced_entry_count = 0
+    concept_tagged_entry_count = 0
+    invalid_entry_count = 0
+    for entry in entries.values():
+        if not isinstance(entry, dict):
+            invalid_entry_count += 1
+            continue
+        entry_count += 1
+        if entry.get("promotedAt"):
+            promoted_entry_count += 1
+        recall_days = entry.get("recallDays")
+        if isinstance(recall_days, list) and len({day for day in recall_days if isinstance(day, str)}) > 1:
+            spaced_entry_count += 1
+        concept_tags = entry.get("conceptTags")
+        if isinstance(concept_tags, list) and any(isinstance(tag, str) and tag for tag in concept_tags):
+            concept_tagged_entry_count += 1
+        if not entry.get("key") or not entry.get("path") or not entry.get("snippet"):
+            invalid_entry_count += 1
+    return ShortTermAuditSummary(
+        exists=True,
+        entry_count=entry_count,
+        promoted_entry_count=promoted_entry_count,
+        spaced_entry_count=spaced_entry_count,
+        concept_tagged_entry_count=concept_tagged_entry_count,
+        invalid_entry_count=invalid_entry_count,
+        issues=(),
+    )
 
 
 def record_short_term_recalls(
@@ -418,6 +554,24 @@ def _read_store(path: Path, now_ms: int) -> dict[str, Any]:
         "updatedAt": str(raw.get("updatedAt") or _iso(now_ms)) if isinstance(raw, dict) else _iso(now_ms),
         "entries": entries if isinstance(entries, dict) else {},
     }
+
+
+def _lock_is_stale(lock_path: Path, now_ms: int) -> bool:
+    try:
+        raw = json.loads(lock_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        raw = None
+    if isinstance(raw, dict):
+        created_at = raw.get("createdAt")
+        if isinstance(created_at, str):
+            created_at_ms = _parse_ms(created_at, -1)
+            if created_at_ms >= 0:
+                return now_ms - created_at_ms > SHORT_TERM_LOCK_STALE_MS
+    try:
+        lock_mtime_ms = int(lock_path.stat().st_mtime * 1000)
+    except FileNotFoundError:
+        return False
+    return now_ms - lock_mtime_ms > SHORT_TERM_LOCK_STALE_MS
 
 
 def _write_store(path: Path, store: dict[str, Any]) -> None:

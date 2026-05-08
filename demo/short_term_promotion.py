@@ -107,7 +107,7 @@ class MemoryPromotionRun:
 
 @contextmanager
 def acquire_short_term_promotion_lock(
-    *, config: MemoryConfig, now_ms: int
+    config: MemoryConfig, now_ms: int
 ) -> Iterator[ShortTermLockResult]:
     lock_path = config.workspace_dir / SHORT_TERM_LOCK_RELATIVE_PATH
     lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -141,7 +141,7 @@ def acquire_short_term_promotion_lock(
 
 
 def audit_short_term_promotion_artifacts(
-    *, config: MemoryConfig, now_ms: int
+    config: MemoryConfig, now_ms: int
 ) -> ShortTermAuditSummary:
     del now_ms
     store_path = config.workspace_dir / SHORT_TERM_STORE_RELATIVE_PATH
@@ -157,7 +157,7 @@ def audit_short_term_promotion_artifacts(
         )
     try:
         raw = json.loads(store_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return ShortTermAuditSummary(
             exists=True,
             entry_count=0,

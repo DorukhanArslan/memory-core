@@ -26,9 +26,9 @@ def test_active_short_term_lock_blocks_second_owner(tmp_path: Path):
     config = MemoryConfig(workspace_dir=tmp_path)
     now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
 
-    with acquire_short_term_promotion_lock(config=config, now_ms=now) as first:
+    with acquire_short_term_promotion_lock(config, now) as first:
         assert first.acquired is True
-        second = acquire_short_term_promotion_lock(config=config, now_ms=now)
+        second = acquire_short_term_promotion_lock(config, now)
         with second as blocked:
             assert blocked.acquired is False
             assert blocked.reason == "locked"
@@ -53,12 +53,9 @@ def test_audit_reports_unreadable_recall_store(tmp_path: Path):
     config = MemoryConfig(workspace_dir=tmp_path)
     store_path = tmp_path / "memory" / ".dreams" / "short-term-recall.json"
     store_path.parent.mkdir(parents=True)
-    store_path.write_text("{not-json", encoding="utf-8")
+    store_path.write_bytes(b"\xff\xfe{not-json")
 
-    audit = audit_short_term_promotion_artifacts(
-        config=config,
-        now_ms=ms(datetime(2026, 5, 8, tzinfo=UTC)),
-    )
+    audit = audit_short_term_promotion_artifacts(config, ms(datetime(2026, 5, 8, tzinfo=UTC)))
 
     assert audit.exists is True
     assert audit.invalid_entry_count == 0

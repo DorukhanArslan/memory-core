@@ -15,12 +15,20 @@ from demo.short_term_promotion import (
     rank_short_term_promotion_candidates,
     record_short_term_phase_signals,
     record_short_term_recalls,
+    repair_short_term_promotion_artifacts,
+    run_short_term_promotion,
 )
 from memory_core.config import MemoryConfig
+from memory_core.embeddings.base import FakeEmbeddingProvider
+from memory_core.index.sqlite_store import SQLiteMemoryStore
 
 
 def ms(dt: datetime) -> int:
     return int(dt.timestamp() * 1000)
+
+
+def fake_store(config: MemoryConfig):
+    return SQLiteMemoryStore(config, FakeEmbeddingProvider(dimensions=8))
 
 
 def test_lock_constants_match_openclaw_paths():
@@ -117,6 +125,23 @@ def test_changed_stale_lock_is_not_unlinked_during_steal(tmp_path: Path, monkeyp
     assert json.loads(lock_path.read_text(encoding="utf-8"))["ownerToken"] == "fresh"
 
 
+def test_promotion_run_returns_locked_result_when_lock_is_active(tmp_path: Path):
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    (tmp_path / "MEMORY.md").write_text("# MEMORY.md\n", encoding="utf-8")
+    now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+
+    with acquire_short_term_promotion_lock(config=config, now_ms=now):
+        run = run_short_term_promotion(
+            config=config,
+            store=fake_store(config),
+            now_ms=now,
+            timezone="Europe/Istanbul",
+        )
+
+    assert run.parsed.should_write is False
+    assert run.parsed.reason == "promotion locked"
+
+
 def test_audit_reports_unreadable_recall_store(tmp_path: Path):
     config = MemoryConfig(workspace_dir=tmp_path)
     store_path = tmp_path / "memory" / ".dreams" / "short-term-recall.json"
@@ -174,6 +199,29 @@ def test_audit_counts_readable_recall_store_entries(tmp_path: Path):
     assert audit.concept_tagged_entry_count == 1
     assert audit.invalid_entry_count == 2
     assert audit.issues == ()
+
+
+def test_repair_removes_invalid_entries_and_stale_lock(tmp_path: Path):
+    config = MemoryConfig(workspace_dir=tmp_path)
+    dreams = tmp_path / "memory" / ".dreams"
+    dreams.mkdir(parents=True)
+    (dreams / "short-term-recall.json").write_text(
+        '{"version": 1, "updatedAt": "2026-05-08T00:00:00Z", "entries": {"bad": null}}\n',
+        encoding="utf-8",
+    )
+    lock = dreams / "short-term-promotion.lock"
+    lock.write_text('{"pid": 999999}\n', encoding="utf-8")
+    old = datetime(2026, 5, 8, 11, 55, tzinfo=UTC).timestamp()
+    os.utime(lock, times=(old, old))
+
+    result = repair_short_term_promotion_artifacts(
+        config=config,
+        now_ms=ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC)),
+    )
+
+    assert result["removedInvalidEntries"] == 1
+    assert result["removedStaleLock"] is True
+    assert not lock.exists()
 
 
 def test_phase_signals_are_recorded_and_decay_old_keys(tmp_path: Path):

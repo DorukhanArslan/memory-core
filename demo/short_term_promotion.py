@@ -233,6 +233,49 @@ def audit_short_term_promotion_artifacts(
     )
 
 
+def repair_short_term_promotion_artifacts(config: MemoryConfig, now_ms: int) -> dict[str, Any]:
+    store_path = config.workspace_dir / SHORT_TERM_STORE_RELATIVE_PATH
+    lock_path = config.workspace_dir / SHORT_TERM_LOCK_RELATIVE_PATH
+    removed_invalid_entries = 0
+    rewrote_store = False
+    removed_stale_lock = False
+
+    if store_path.exists():
+        try:
+            raw = json.loads(store_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            _write_store(store_path, {"version": 1, "updatedAt": _iso(now_ms), "entries": {}})
+            rewrote_store = True
+        else:
+            entries = raw.get("entries") if isinstance(raw, dict) else None
+            if not isinstance(raw, dict) or not isinstance(entries, dict):
+                _write_store(store_path, {"version": 1, "updatedAt": _iso(now_ms), "entries": {}})
+                rewrote_store = True
+            else:
+                valid_entries = {
+                    key: entry for key, entry in entries.items() if isinstance(entry, dict)
+                }
+                removed_invalid_entries = len(entries) - len(valid_entries)
+                if removed_invalid_entries:
+                    raw["version"] = 1
+                    raw["updatedAt"] = _iso(now_ms)
+                    raw["entries"] = valid_entries
+                    _write_store(store_path, raw)
+
+    if lock_path.exists() and _lock_is_stale(lock_path, now_ms):
+        with _short_term_promotion_guard(lock_path):
+            snapshot = _read_short_term_lock_snapshot(lock_path)
+            if snapshot is not None and _lock_is_stale(lock_path, now_ms):
+                removed_stale_lock = _unlink_matching_short_term_lock(lock_path, snapshot)
+
+    return {
+        "changed": bool(removed_invalid_entries or rewrote_store or removed_stale_lock),
+        "removedInvalidEntries": removed_invalid_entries,
+        "rewroteStore": rewrote_store,
+        "removedStaleLock": removed_stale_lock,
+    }
+
+
 def record_short_term_recalls(
     *,
     config: MemoryConfig,
@@ -369,6 +412,46 @@ def record_daily_memory_flush(
 
 
 def run_short_term_promotion(
+    *,
+    config: MemoryConfig,
+    store: Any,
+    now_ms: int,
+    timezone: str,
+    limit: int = 5,
+    min_score: float = DEFAULT_PROMOTION_MIN_SCORE,
+    min_recall_count: int = DEFAULT_PROMOTION_MIN_RECALL_COUNT,
+    min_unique_queries: int = DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+) -> MemoryPromotionRun:
+    with acquire_short_term_promotion_lock(config=config, now_ms=now_ms) as lock:
+        if not lock.acquired:
+            target = "MEMORY.md"
+            return MemoryPromotionRun(
+                target=target,
+                raw_text="short-term promotion skipped: locked",
+                parsed=ParsedFlushOutput(
+                    should_write=False,
+                    target=target,
+                    entry="",
+                    reason="promotion locked",
+                ),
+                diff="",
+                indexed_files=0,
+                chunks=store.count_chunks(),
+                evaluated_candidates=[],
+            )
+        return _run_short_term_promotion_unlocked(
+            config=config,
+            store=store,
+            now_ms=now_ms,
+            timezone=timezone,
+            limit=limit,
+            min_score=min_score,
+            min_recall_count=min_recall_count,
+            min_unique_queries=min_unique_queries,
+        )
+
+
+def _run_short_term_promotion_unlocked(
     *,
     config: MemoryConfig,
     store: Any,

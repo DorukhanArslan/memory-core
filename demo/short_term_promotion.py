@@ -9,6 +9,7 @@ import json
 import math
 import os
 from pathlib import Path
+import secrets
 from typing import Any, Iterator
 
 from demo.memory_flush import ParsedFlushOutput
@@ -127,17 +128,15 @@ def acquire_short_term_promotion_lock(
             continue
         break
 
+    owner_token = secrets.token_hex(16)
     try:
-        payload = {"pid": os.getpid(), "createdAt": _iso(now_ms)}
+        payload = {"pid": os.getpid(), "createdAt": _iso(now_ms), "ownerToken": owner_token}
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False)
             handle.write("\n")
         yield ShortTermLockResult(acquired=True, path=lock_path, stole_stale=stole_stale)
     finally:
-        try:
-            lock_path.unlink()
-        except FileNotFoundError:
-            pass
+        _release_short_term_promotion_lock(lock_path, owner_token)
 
 
 def audit_short_term_promotion_artifacts(
@@ -572,6 +571,19 @@ def _lock_is_stale(lock_path: Path, now_ms: int) -> bool:
     except FileNotFoundError:
         return False
     return now_ms - lock_mtime_ms > SHORT_TERM_LOCK_STALE_MS
+
+
+def _release_short_term_promotion_lock(lock_path: Path, owner_token: str) -> None:
+    try:
+        raw = json.loads(lock_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return
+    if not isinstance(raw, dict) or raw.get("ownerToken") != owner_token:
+        return
+    try:
+        lock_path.unlink()
+    except FileNotFoundError:
+        pass
 
 
 def _write_store(path: Path, store: dict[str, Any]) -> None:

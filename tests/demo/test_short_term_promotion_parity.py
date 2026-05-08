@@ -6,6 +6,7 @@ from pathlib import Path
 
 from demo.short_term_promotion import (
     SHORT_TERM_LOCK_RELATIVE_PATH,
+    SHORT_TERM_LOCK_STALE_MS,
     SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH,
     acquire_short_term_promotion_lock,
     audit_short_term_promotion_artifacts,
@@ -20,6 +21,7 @@ def ms(dt: datetime) -> int:
 def test_lock_constants_match_openclaw_paths():
     assert SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH.as_posix() == "memory/.dreams/phase-signals.json"
     assert SHORT_TERM_LOCK_RELATIVE_PATH.as_posix() == "memory/.dreams/short-term-promotion.lock"
+    assert SHORT_TERM_LOCK_STALE_MS == 60_000
 
 
 def test_active_short_term_lock_blocks_second_owner(tmp_path: Path):

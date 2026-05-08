@@ -56,6 +56,13 @@ class ShortTermAuditSummary:
 
 
 @dataclass(frozen=True)
+class _ShortTermLockSnapshot:
+    mtime_ns: int
+    payload: bytes
+    owner_token: str | None
+
+
+@dataclass(frozen=True)
 class PromotionCandidate:
     key: str
     path: str
@@ -117,13 +124,15 @@ def acquire_short_term_promotion_lock(
         try:
             fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         except FileExistsError:
+            stale_snapshot = _read_short_term_lock_snapshot(lock_path)
+            if stale_snapshot is None:
+                continue
             if not _lock_is_stale(lock_path, now_ms):
                 yield ShortTermLockResult(acquired=False, path=lock_path, reason="locked")
                 return
-            try:
-                lock_path.unlink()
-            except FileNotFoundError:
-                continue
+            if not _unlink_matching_short_term_lock(lock_path, stale_snapshot):
+                yield ShortTermLockResult(acquired=False, path=lock_path, reason="locked")
+                return
             stole_stale = True
             continue
         break
@@ -558,7 +567,7 @@ def _read_store(path: Path, now_ms: int) -> dict[str, Any]:
 def _lock_is_stale(lock_path: Path, now_ms: int) -> bool:
     try:
         raw = json.loads(lock_path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+    except (FileNotFoundError, json.JSONDecodeError, OSError, UnicodeDecodeError):
         raw = None
     if isinstance(raw, dict):
         created_at = raw.get("createdAt")
@@ -571,6 +580,43 @@ def _lock_is_stale(lock_path: Path, now_ms: int) -> bool:
     except FileNotFoundError:
         return False
     return now_ms - lock_mtime_ms > SHORT_TERM_LOCK_STALE_MS
+
+
+def _read_short_term_lock_snapshot(lock_path: Path) -> _ShortTermLockSnapshot | None:
+    try:
+        stat = lock_path.stat()
+        payload = lock_path.read_bytes()
+    except (FileNotFoundError, OSError):
+        return None
+    owner_token = None
+    try:
+        raw = json.loads(payload)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raw = None
+    if isinstance(raw, dict):
+        raw_owner_token = raw.get("ownerToken")
+        if isinstance(raw_owner_token, str):
+            owner_token = raw_owner_token
+    return _ShortTermLockSnapshot(
+        mtime_ns=stat.st_mtime_ns,
+        payload=payload,
+        owner_token=owner_token,
+    )
+
+
+def _unlink_matching_short_term_lock(
+    lock_path: Path, snapshot: _ShortTermLockSnapshot
+) -> bool:
+    current = _read_short_term_lock_snapshot(lock_path)
+    if current is None:
+        return True
+    if current != snapshot:
+        return False
+    try:
+        lock_path.unlink()
+    except FileNotFoundError:
+        return True
+    return True
 
 
 def _release_short_term_promotion_lock(lock_path: Path, owner_token: str) -> None:

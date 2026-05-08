@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 
+import demo.short_term_promotion as promotion_module
 from demo.short_term_promotion import (
     SHORT_TERM_LOCK_RELATIVE_PATH,
     SHORT_TERM_LOCK_STALE_MS,
@@ -78,6 +79,34 @@ def test_stale_owner_release_does_not_delete_new_owner_lock(tmp_path: Path):
     finally:
         if not first_released:
             first_manager.__exit__(None, None, None)
+
+
+def test_changed_stale_lock_is_not_unlinked_during_steal(tmp_path: Path, monkeypatch):
+    config = MemoryConfig(workspace_dir=tmp_path)
+    now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    lock_path = tmp_path / SHORT_TERM_LOCK_RELATIVE_PATH
+    lock_path.parent.mkdir(parents=True)
+    lock_path.write_text(
+        '{"pid": 999999, "createdAt": "2026-05-08T11:58:00Z", "ownerToken": "stale"}\n',
+        encoding="utf-8",
+    )
+
+    def replace_with_fresh_lock(path: Path, checked_now: int) -> bool:
+        assert path == lock_path
+        assert checked_now == now
+        lock_path.write_text(
+            '{"pid": 123, "createdAt": "2026-05-08T12:00:00Z", "ownerToken": "fresh"}\n',
+            encoding="utf-8",
+        )
+        return True
+
+    monkeypatch.setattr(promotion_module, "_lock_is_stale", replace_with_fresh_lock)
+
+    with acquire_short_term_promotion_lock(config, now) as lock:
+        assert lock.acquired is False
+        assert lock.reason == "locked"
+
+    assert json.loads(lock_path.read_text(encoding="utf-8"))["ownerToken"] == "fresh"
 
 
 def test_audit_reports_unreadable_recall_store(tmp_path: Path):

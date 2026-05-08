@@ -36,6 +36,26 @@ def seed_candidate(config: MemoryConfig, now_ms: int):
         record_short_term_recalls(config=config, query=query, results=[result], now_ms=now_ms)
 
 
+def seed_weak_candidate(config: MemoryConfig, now_ms: int):
+    daily = config.workspace_dir / "memory" / "2026-05-08.md"
+    daily.parent.mkdir(parents=True, exist_ok=True)
+    daily.write_text("# 2026-05-08\n\n- User mentioned tabs once.\n", encoding="utf-8")
+    record_short_term_recalls(
+        config=config,
+        query="tabs",
+        results=[
+            {
+                "path": "memory/2026-05-08.md",
+                "startLine": 3,
+                "endLine": 3,
+                "snippet": "- User mentioned tabs once.",
+                "score": 0.2,
+            }
+        ],
+        now_ms=now_ms,
+    )
+
+
 def test_light_dreaming_records_phase_signal(tmp_path: Path):
     config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
     now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
@@ -78,6 +98,14 @@ def test_deep_dreaming_runs_promotion(tmp_path: Path):
     (tmp_path / "MEMORY.md").write_text("# MEMORY.md\n", encoding="utf-8")
     now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
     seed_candidate(config, now)
+    for phase in ("light", "rem"):
+        run_dreaming_sweep(
+            config=config,
+            store=fake_store(config),
+            phase=phase,
+            now_ms=now,
+            timezone="Europe/Istanbul",
+        )
 
     run = run_dreaming_sweep(
         config=config,
@@ -90,3 +118,23 @@ def test_deep_dreaming_runs_promotion(tmp_path: Path):
     assert run["phase"] == "deep"
     assert run["promotion"]["parsed"]["shouldWrite"] is True
     assert "lowercase answers" in (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
+
+
+def test_deep_dreaming_does_not_promote_single_weak_recall(tmp_path: Path):
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    memory = tmp_path / "MEMORY.md"
+    memory.write_text("# MEMORY.md\n", encoding="utf-8")
+    now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    seed_weak_candidate(config, now)
+
+    run = run_dreaming_sweep(
+        config=config,
+        store=fake_store(config),
+        phase="deep",
+        now_ms=now,
+        timezone="Europe/Istanbul",
+    )
+
+    assert run["phase"] == "deep"
+    assert run["promotion"]["parsed"]["shouldWrite"] is False
+    assert memory.read_text(encoding="utf-8") == "# MEMORY.md\n"

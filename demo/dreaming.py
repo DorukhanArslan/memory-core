@@ -69,9 +69,6 @@ def run_dreaming_sweep(
             now_ms=now_ms,
             timezone=timezone,
             limit=limit,
-            min_score=0,
-            min_recall_count=1,
-            min_unique_queries=1,
         )
         promotion = _serialize_promotion_run(promotion_run)
         if promotion_run.parsed.should_write:

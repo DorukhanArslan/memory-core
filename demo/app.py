@@ -22,14 +22,19 @@ from demo.chat_engine import (
     engine_status,
 )
 from demo.chat_session import ChatSessionState
+from demo.dreaming import run_dreaming_sweep
 from demo.memory_flush import MemoryFlushRun, ParsedFlushOutput, run_memory_flush
 from demo.short_term_promotion import (
     DEFAULT_PROMOTION_MIN_RECALL_COUNT,
     DEFAULT_PROMOTION_MIN_SCORE,
     DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
     MemoryPromotionRun,
+    SHORT_TERM_LOCK_RELATIVE_PATH,
+    SHORT_TERM_STORE_RELATIVE_PATH,
+    audit_short_term_promotion_artifacts,
     record_daily_memory_flush,
     record_short_term_recalls,
+    repair_short_term_promotion_artifacts,
     run_short_term_promotion,
 )
 from memory_core.config import MemoryConfig
@@ -47,6 +52,9 @@ DEMO_TIMEZONE = "Europe/Istanbul"
 DEMO_NOW_MS = 1777824000000
 CHAT_STATE = ChatSessionState()
 PROMOTION_SWEEP: dict[str, Any] | None = None
+DREAMING_SWEEP: dict[str, Any] | None = None
+MEMORY_AUDIT: dict[str, Any] | None = None
+MEMORY_REPAIR: dict[str, Any] | None = None
 
 DEFAULT_MEMORY_MD = """# MEMORY.md - Long-Term Memory
 
@@ -271,6 +279,9 @@ def _state_payload() -> dict[str, Any]:
             "memoryFiles": memory_files,
             "memoryFileContents": _memory_file_contents(memory_files),
             "promotionSweep": PROMOTION_SWEEP,
+            "dreamingSweep": DREAMING_SWEEP,
+            "memoryAudit": MEMORY_AUDIT,
+            "memoryRepair": MEMORY_REPAIR,
             "config": {
                 "workspace": str(config.workspace_dir),
                 "timezone": DEMO_TIMEZONE,
@@ -337,6 +348,32 @@ def _serialize_promotion(promotion: MemoryPromotionRun) -> dict[str, Any]:
             for candidate in promotion.evaluated_candidates
         ],
         "reindexError": promotion.reindex_error,
+    }
+
+
+def _serialize_audit(audit: Any) -> dict[str, Any]:
+    config = demo_config()
+    return {
+        "storePath": str(config.workspace_dir / SHORT_TERM_STORE_RELATIVE_PATH),
+        "lockPath": str(config.workspace_dir / SHORT_TERM_LOCK_RELATIVE_PATH),
+        "updatedAt": datetime.fromtimestamp(_now_ms() / 1000, tz=UTC)
+        .isoformat()
+        .replace("+00:00", "Z"),
+        "exists": audit.exists,
+        "entryCount": audit.entry_count,
+        "promotedCount": audit.promoted_entry_count,
+        "spacedEntryCount": audit.spaced_entry_count,
+        "conceptTaggedEntryCount": audit.concept_tagged_entry_count,
+        "invalidEntryCount": audit.invalid_entry_count,
+        "issues": [
+            {
+                "severity": issue.severity,
+                "code": issue.code,
+                "message": issue.message,
+                "fixable": issue.fixable,
+            }
+            for issue in audit.issues
+        ],
     }
 
 
@@ -439,9 +476,12 @@ def chat_state():
 
 @app.post("/api/chat/reset")
 def chat_reset(payload: dict):
-    global PROMOTION_SWEEP
+    global DREAMING_SWEEP, MEMORY_AUDIT, MEMORY_REPAIR, PROMOTION_SWEEP
     CHAT_STATE.reset()
     PROMOTION_SWEEP = None
+    DREAMING_SWEEP = None
+    MEMORY_AUDIT = None
+    MEMORY_REPAIR = None
     if not bool(payload.get("keepMemory", False)):
         _reset_demo_memory()
     return _state_payload()
@@ -532,6 +572,51 @@ def memory_promote(payload: dict):
         return _json_error(str(exc))
     except Exception as exc:
         return _json_error(f"memory promote failed: {_safe_exception_message(exc, (_payload_api_key(payload),))}")
+
+
+@app.get("/api/memory/audit")
+def memory_audit():
+    global MEMORY_AUDIT
+    try:
+        MEMORY_AUDIT = _serialize_audit(
+            audit_short_term_promotion_artifacts(config=demo_config(), now_ms=_now_ms())
+        )
+        return _state_payload()
+    except Exception as exc:
+        return _json_error(f"memory audit failed: {_safe_exception_message(exc)}")
+
+
+@app.post("/api/memory/repair")
+def memory_repair(payload: dict | None = None):
+    global MEMORY_REPAIR
+    try:
+        MEMORY_REPAIR = repair_short_term_promotion_artifacts(
+            config=demo_config(), now_ms=_now_ms()
+        )
+        return _state_payload()
+    except Exception as exc:
+        payload = payload or {}
+        return _json_error(f"memory repair failed: {_safe_exception_message(exc, (_payload_api_key(payload),))}")
+
+
+@app.post("/api/dreaming/run")
+def dreaming_run(payload: dict):
+    global DREAMING_SWEEP
+    try:
+        phase = str(payload.get("phase") or "light")
+        store = demo_store(payload)
+        DREAMING_SWEEP = run_dreaming_sweep(
+            config=demo_config(),
+            store=store,
+            phase=phase,
+            now_ms=_now_ms(),
+            timezone=DEMO_TIMEZONE,
+        )
+        return _state_payload()
+    except DemoPayloadError as exc:
+        return _json_error(str(exc))
+    except Exception as exc:
+        return _json_error(f"dreaming run failed: {_safe_exception_message(exc, (_payload_api_key(payload),))}")
 
 
 def _flush_latest_turn(engine: ChatEngine, store: SQLiteMemoryStore) -> dict[str, Any]:

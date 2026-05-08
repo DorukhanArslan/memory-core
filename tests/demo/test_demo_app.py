@@ -536,6 +536,48 @@ def test_memory_promote_endpoint_rejects_single_daily_signal_like_openclaw(monke
     ]["MEMORY.md"]
 
 
+def test_memory_audit_and_repair_endpoints(monkeypatch):
+    del monkeypatch
+    client = TestClient(app)
+    client.post("/api/chat/reset", json={})
+    store_path = demo_app.DEMO_WORKSPACE / "memory" / ".dreams" / "short-term-recall.json"
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    store_path.write_text("{not-json", encoding="utf-8")
+
+    audit = client.get("/api/memory/audit")
+    repair = client.post("/api/memory/repair", json={})
+
+    assert audit.status_code == 200
+    assert audit.json()["memoryAudit"]["issues"][0]["code"] == "recall-store-unreadable"
+    assert repair.status_code == 200
+    assert repair.json()["memoryRepair"]["changed"] is True
+
+
+def test_dreaming_endpoint_runs_light_sweep(monkeypatch):
+    monkeypatch.setattr(demo_app, "demo_store", fake_demo_store)
+    client = TestClient(app)
+    client.post("/api/chat/reset", json={})
+
+    response = client.post(
+        "/api/dreaming/run",
+        json={"phase": "light", "openai": {"apiKey": "request-key"}},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["dreamingSweep"]["phase"] == "light"
+
+
+def test_reset_clears_dreaming_artifacts():
+    client = TestClient(app)
+    dreams = demo_app.DEMO_WORKSPACE / "memory" / ".dreams"
+    dreams.mkdir(parents=True, exist_ok=True)
+    (dreams / "phase-signals.json").write_text("{}", encoding="utf-8")
+
+    client.post("/api/chat/reset", json={})
+
+    assert not (demo_app.DEMO_WORKSPACE / "memory" / ".dreams" / "phase-signals.json").exists()
+
+
 def test_chat_send_defaults_to_auto_flush(monkeypatch):
     monkeypatch.setattr(demo_app, "_chat_engine", lambda payload: StubOpenAIEngine())
     monkeypatch.setattr(demo_app, "demo_store", fake_demo_store)

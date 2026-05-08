@@ -261,6 +261,7 @@ def repair_short_term_promotion_artifacts(config: MemoryConfig, now_ms: int) -> 
                     raw["updatedAt"] = _iso(now_ms)
                     raw["entries"] = valid_entries
                     _write_store(store_path, raw)
+                    rewrote_store = True
 
     if lock_path.exists() and _lock_is_stale(lock_path, now_ms):
         with _short_term_promotion_guard(lock_path):

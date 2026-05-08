@@ -15,6 +15,7 @@ class ChatTurn:
     memory_context: list[str]
     assistant_response: str
     flush: dict[str, Any] | None = None
+    promotion: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -25,6 +26,7 @@ class ChatTurn:
             "memoryContext": self.memory_context,
             "assistantResponse": self.assistant_response,
             "flush": self.flush,
+            "promotion": self.promotion,
         }
 
 
@@ -42,6 +44,7 @@ class ChatSessionState:
         assistant_response: str,
         memory_context: list[str],
         flush: dict[str, Any] | None = None,
+        promotion: dict[str, Any] | None = None,
     ) -> ChatTurn:
         turn = ChatTurn(
             id=len(self.turns) + 1,
@@ -51,6 +54,7 @@ class ChatSessionState:
             memory_context=memory_context,
             assistant_response=assistant_response,
             flush=flush,
+            promotion=promotion,
         )
         self.turns.append(turn)
         self.selected_turn_id = turn.id

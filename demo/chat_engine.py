@@ -26,9 +26,18 @@ class ChatResponse:
 
 
 @dataclass(frozen=True)
+class FlushWriteCall:
+    path: str
+    content: str
+    call_id: str
+    name: str = "write"
+
+
+@dataclass(frozen=True)
 class FlushModelOutput:
     raw_text: str
     raw: dict | None = None
+    writes: tuple[FlushWriteCall, ...] = ()
 
 
 class ChatEngine(Protocol):
@@ -51,6 +60,7 @@ class ChatEngine(Protocol):
         target: str,
     ) -> FlushModelOutput:
         raise NotImplementedError
+
 
 
 class OpenAICompatibleChatEngine:
@@ -111,26 +121,41 @@ class OpenAICompatibleChatEngine:
         transcript: list[ChatMessage],
         target: str,
     ) -> FlushModelOutput:
-        transcript_text = "\n".join(f"{message.role}: {message.content}" for message in transcript)
         raw = self._chat(
-            [
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": f"{prompt}\n\nTarget: {target}\n\nTranscript:\n{transcript_text}",
-                },
-            ]
+            (
+                [
+                    {"role": "system", "content": system_prompt},
+                    *[
+                        {"role": message.role, "content": message.content}
+                        for message in transcript
+                        if message.role in {"system", "user", "assistant"}
+                    ],
+                    {"role": "user", "content": prompt},
+                ]
+            ),
+            tools=[_memory_flush_write_tool(target)],
         )
-        return FlushModelOutput(raw_text=raw["choices"][0]["message"]["content"].strip(), raw=raw)
+        message = raw["choices"][0]["message"]
+        writes = _extract_write_tool_calls(message)
+        if writes:
+            raw_text = "\n".join(f"{write.name}({write.path})" for write in writes)
+        else:
+            content = message.get("content")
+            raw_text = content.strip() if isinstance(content, str) else ""
+        return FlushModelOutput(raw_text=raw_text, raw=raw, writes=writes)
 
-    def _chat(self, messages: list[dict]) -> dict:
+    def _chat(self, messages: list[dict], *, tools: list[dict] | None = None) -> dict:
+        body: dict = {"model": self.model, "messages": messages}
+        if tools:
+            body["tools"] = tools
+            body["tool_choice"] = "auto"
         response = httpx.post(
             f"{self.base_url}/chat/completions",
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             },
-            json={"model": self.model, "messages": messages},
+            json=body,
             timeout=self.timeout,
         )
         response.raise_for_status()
@@ -169,6 +194,73 @@ class OpenAICompatibleChatEngine:
         ]
         api_messages.extend({"role": message.role, "content": message.content} for message in messages)
         return api_messages
+
+
+def _memory_flush_write_tool(target: str) -> dict:
+    return _memory_write_tool(target, context="memory flush")
+
+
+def _memory_write_tool(target: str, *, context: str) -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": "write",
+            "description": (
+                "Write content to a file. "
+                f"During {context}, this tool may only append to {target}."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": f"The memory flush target path. Must be {target}.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Durable memory content to append.",
+                    },
+                },
+                "required": ["path", "content"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+def _extract_write_tool_calls(message: dict) -> tuple[FlushWriteCall, ...]:
+    calls = message.get("tool_calls")
+    if not isinstance(calls, list):
+        return ()
+    writes = []
+    for call in calls:
+        if not isinstance(call, dict):
+            continue
+        function = call.get("function")
+        if not isinstance(function, dict) or function.get("name") != "write":
+            continue
+        arguments = function.get("arguments")
+        if isinstance(arguments, str):
+            try:
+                payload = json.loads(arguments)
+            except json.JSONDecodeError:
+                continue
+        elif isinstance(arguments, dict):
+            payload = arguments
+        else:
+            continue
+        path = payload.get("path")
+        content = payload.get("content")
+        if isinstance(path, str) and isinstance(content, str):
+            writes.append(
+                FlushWriteCall(
+                    path=path,
+                    content=content,
+                    call_id=str(call.get("id") or ""),
+                    name="write",
+                )
+            )
+    return tuple(writes)
 
 
 def _parse_stream_line(line: str | bytes) -> str | None:

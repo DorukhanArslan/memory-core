@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from demo.chat_engine import ChatMessage, FlushModelOutput
+from demo.chat_engine import ChatMessage, FlushModelOutput, FlushWriteCall
 from demo.memory_flush import parse_flush_output, run_memory_flush
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
@@ -29,6 +29,27 @@ class DurableFlushEngine:
                 },
                 ensure_ascii=False,
             )
+        )
+
+
+class DurableToolFlushEngine:
+    name = "durable-tool"
+
+    def complete(self, *, messages, memory_context):
+        raise NotImplementedError
+
+    def flush(self, *, system_prompt, prompt, transcript, target):
+        del system_prompt, prompt, transcript
+        return FlushModelOutput(
+            raw_text=f"write({target})",
+            writes=(
+                FlushWriteCall(
+                    path=target,
+                    content="- User was fired from work.",
+                    call_id="call_1",
+                    name="write",
+                ),
+            ),
         )
 
 
@@ -84,6 +105,26 @@ def test_run_memory_flush_appends_reindexes_and_returns_diff(tmp_path: Path):
     assert result.target == "memory/2026-05-03.md"
     assert "+- Ben teknik cevapları Türkçe tercih ediyorum." in result.diff
     assert (tmp_path / "memory" / "2026-05-03.md").exists()
+    assert store.count_chunks() > 0
+
+
+def test_run_memory_flush_appends_openclaw_style_write_tool_call(tmp_path: Path):
+    cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=16))
+
+    result = run_memory_flush(
+        config=cfg,
+        store=store,
+        engine=DurableToolFlushEngine(),
+        transcript=[ChatMessage(role="user", content="iş, kovuldum")],
+        now_ms=1777824000000,
+        timezone="Europe/Istanbul",
+    )
+
+    assert result.parsed.should_write is True
+    assert result.parsed.reason == "write tool call"
+    assert result.parsed.entry == "- User was fired from work."
+    assert "+- User was fired from work." in result.diff
     assert store.count_chunks() > 0
 
 

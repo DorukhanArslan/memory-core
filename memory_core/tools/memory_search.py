@@ -12,13 +12,23 @@ def memory_search(
     query: str,
     max_results: int = 5,
     min_score: float = 0.0,
-    corpus: str = "memory",
+    corpus: str = "all",
 ) -> dict:
-    if corpus != "memory":
+    sources_by_corpus = {
+        "all": {"memory", "sessions"},
+        "memory": {"memory"},
+        "sessions": {"sessions"},
+    }
+    if corpus not in sources_by_corpus:
         return {"results": [], "disabled": True, "error": f"unsupported corpus: {corpus}"}
 
     try:
-        results = store.search(query, max_results=max_results, min_score=min_score)
+        results = store.search(
+            query,
+            max_results=max_results,
+            min_score=min_score,
+            sources=sources_by_corpus[corpus],
+        )
         return {
             "results": [
                 _serialize_result(config, item)
@@ -34,7 +44,7 @@ def memory_search(
 def _serialize_result(config: MemoryConfig, item) -> dict:
     snippet = clamp_text(item.snippet, max_chars=config.memory_get_max_chars)
     return {
-        "corpus": "memory",
+        "corpus": item.source,
         "path": item.path,
         "startLine": item.start_line,
         "endLine": item.end_line,

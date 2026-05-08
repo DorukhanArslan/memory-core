@@ -18,6 +18,7 @@ def chunk_markdown(
     path: str,
     text: str,
     *,
+    source: str = "memory",
     target_tokens: int = 400,
     overlap_tokens: int = 80,
 ) -> list[MemoryChunk]:
@@ -34,14 +35,14 @@ def chunk_markdown(
         current.append(item)
         current_count += len(item[2])
         if current_count >= target:
-            chunk = _make_chunk(path, current)
+            chunk = _make_chunk(path, current, source=source)
             if chunk is not None:
                 chunks.append(chunk)
             current = _overlap_rows(current, overlap)
             current_count = sum(len(row[2]) for row in current)
 
     if current:
-        chunk = _make_chunk(path, current)
+        chunk = _make_chunk(path, current, source=source)
         if chunk is not None and (not chunks or chunks[-1].id != chunk.id):
             chunks.append(chunk)
 
@@ -65,7 +66,12 @@ def _overlap_rows(
     return selected
 
 
-def _make_chunk(path: str, rows: list[tuple[int, str, list[str]]]) -> MemoryChunk | None:
+def _make_chunk(
+    path: str,
+    rows: list[tuple[int, str, list[str]]],
+    *,
+    source: str,
+) -> MemoryChunk | None:
     start_line = rows[0][0]
     end_line = rows[-1][0]
     chunk_text = "\n".join(row[1] for row in rows).strip()
@@ -81,4 +87,5 @@ def _make_chunk(path: str, rows: list[tuple[int, str, list[str]]]) -> MemoryChun
         start_line=start_line,
         end_line=end_line,
         text=chunk_text,
+        source=source,
     )

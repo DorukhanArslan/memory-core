@@ -32,6 +32,7 @@
             Auto flush
           </label>
           <button id="manual-flush" type="button">Manual flush</button>
+          <button id="promotion-sweep" type="button">Promotion sweep</button>
           <button id="reset" type="button">Reset</button>
           <button id="seed" type="button">Seed</button>
           <button id="reindex" type="button">Reindex</button>
@@ -56,76 +57,88 @@
         </aside>
       </section>
 
-      <nav class="tabs" aria-label="Demo tabs">
-        <button class="tab active" data-tab="memory-files" type="button">Memory Files</button>
-        <button class="tab" data-tab="tool-inspector" type="button">Tool Inspector</button>
-        <button class="tab" data-tab="config" type="button">Config</button>
-      </nav>
+      <section class="tab-panels" aria-label="Memory files and tools">
+        <nav class="tabs" aria-label="Demo tabs">
+          <button class="tab active" data-tab="memory-files" type="button">Memory Files</button>
+          <button class="tab" data-tab="tool-inspector" type="button">Tool Inspector</button>
+          <button class="tab" data-tab="config" type="button">Config</button>
+        </nav>
 
-      <section id="memory-files" class="tab-panel active" aria-label="Memory files"></section>
+        <section id="memory-files" class="tab-panel active" aria-label="Memory files"></section>
 
-      <section id="tool-inspector" class="tab-panel" aria-label="Tool Inspector">
-        <div class="panel-heading">
-          <h2>Tool Inspector</h2>
-          <span>Existing endpoints</span>
-        </div>
-        <div class="inspector-grid">
-          <form id="search-form" class="tool-form">
-            <h3>memory_search</h3>
-            <label>
-              Query
-              <input name="query" value="lemon pepper" aria-label="query">
-            </label>
-            <label>
-              Max results
-              <input name="maxResults" value="5" inputmode="numeric" aria-label="max results">
-            </label>
-            <label>
-              Min score
-              <input name="minScore" value="0" inputmode="decimal" aria-label="min score">
-            </label>
-            <button type="submit">Search</button>
-          </form>
-          <form id="get-form" class="tool-form">
-            <h3>memory_get</h3>
-            <label>
-              Path
-              <input name="path" value="MEMORY.md" aria-label="path">
-            </label>
-            <label>
-              From line
-              <input name="from" value="1" inputmode="numeric" aria-label="from line">
-            </label>
-            <label>
-              Line count
-              <input name="lines" value="20" inputmode="numeric" aria-label="line count">
-            </label>
-            <button type="submit">Get</button>
-          </form>
-          <form id="prompt-form" class="tool-form">
-            <h3>prompt_preview</h3>
-            <label>
-              Tools
-              <input name="tools" value="memory_search,memory_get" aria-label="tools">
-            </label>
-            <label>
-              Citations
-              <select name="citationsMode" aria-label="citations mode">
-                <option value="on">on</option>
-                <option value="off">off</option>
-              </select>
-            </label>
-            <button type="submit">Preview</button>
-          </form>
-        </div>
-        <pre id="output">{}</pre>
+        <section id="tool-inspector" class="tab-panel" aria-label="Tool Inspector">
+          <div class="panel-heading">
+            <h2>Tool Inspector</h2>
+            <span>Existing endpoints</span>
+          </div>
+          <div class="inspector-grid">
+            <form id="search-form" class="tool-form">
+              <h3>memory_search</h3>
+              <label>
+                Query
+                <input name="query" value="lemon pepper" aria-label="query">
+              </label>
+              <label>
+                Max results
+                <input name="maxResults" value="5" inputmode="numeric" aria-label="max results">
+              </label>
+              <label>
+                Min score
+                <input name="minScore" value="0" inputmode="decimal" aria-label="min score">
+              </label>
+              <label>
+                Corpus
+                <select name="corpus" aria-label="corpus">
+                  <option value="all">all</option>
+                  <option value="memory">memory</option>
+                  <option value="sessions">sessions</option>
+                </select>
+              </label>
+              <button type="submit">Search</button>
+            </form>
+            <form id="get-form" class="tool-form">
+              <h3>memory_get</h3>
+              <label>
+                Path
+                <input name="path" value="MEMORY.md" aria-label="path">
+              </label>
+              <label>
+                From line
+                <input name="from" value="1" inputmode="numeric" aria-label="from line">
+              </label>
+              <label>
+                Line count
+                <input name="lines" value="20" inputmode="numeric" aria-label="line count">
+              </label>
+              <button type="submit">Get</button>
+            </form>
+            <form id="prompt-form" class="tool-form">
+              <h3>prompt_preview</h3>
+              <label>
+                Tools
+                <input name="tools" value="memory_search,memory_get" aria-label="tools">
+              </label>
+              <label>
+                Citations
+                <select name="citationsMode" aria-label="citations mode">
+                  <option value="on">on</option>
+                  <option value="off">off</option>
+                </select>
+              </label>
+              <button type="submit">Preview</button>
+            </form>
+          </div>
+          <pre id="output">{}</pre>
+        </section>
+
+        <section id="config" class="tab-panel" aria-label="Config"></section>
       </section>
-
-      <section id="config" class="tab-panel" aria-label="Config"></section>
     </main>
 
     <script>
       let state = {turns: [], memoryFiles: [], memoryFileContents: {}, engines: {}, config: {}};
+      let streamingAssistantText = "";
+      let selectedDailyMemoryPath = "";
       const DEFAULT_OPENAI = {
         baseUrl: "https://api.openai.com/v1",
         model: "gpt-5.2"
@@ -176,19 +189,100 @@
         }
         for (const [index, turn] of state.turns.entries()) {
           log.append(messageNode("user", `Turn ${index + 1}`, turn.userMessage));
-          log.append(messageNode("assistant", "Assistant", turn.assistantResponse));
+          log.append(messageNode("assistant", "Assistant", turn.assistantResponse, memoryWriteDetailsNode(turn)));
         }
         log.scrollTop = log.scrollHeight;
       }
 
-      function messageNode(role, label, text) {
+      function messageNode(role, label, text, detailNode) {
         const node = document.createElement("article");
         node.className = `message ${role}`;
         const meta = document.createElement("strong");
         meta.textContent = label;
-        const body = document.createElement("p");
-        body.textContent = text || "(empty)";
+        const body = document.createElement("div");
+        body.className = "markdown-body";
+        renderMarkdown(body, text || "(empty)");
         node.append(meta, body);
+        if (detailNode) node.append(detailNode);
+        return node;
+      }
+
+      function memoryWriteDetailsNode(turn) {
+        const details = document.createElement("details");
+        details.className = "memory-detail";
+        const summary = document.createElement("summary");
+        summary.textContent = memoryWriteSummary(turn);
+        const body = document.createElement("div");
+        body.className = "memory-detail-body";
+        renderMemoryWriteDetail(body, turn);
+        details.append(summary, body);
+        return details;
+      }
+
+      function memoryWriteSummary(turn) {
+        const daily = memoryActionSummary(turn.flush, "daily");
+        return `Memory: ${daily}; promotion not run during chat turn`;
+      }
+
+      function memoryActionSummary(action, label) {
+        if (!action) return `${label} not run`;
+        if (action.parsed && action.parsed.shouldWrite) {
+          return `${label} wrote ${action.parsed.target || action.target}`;
+        }
+        const reason = action.parsed && action.parsed.reason ? ` (${action.parsed.reason})` : "";
+        return `${label} no write${reason}`;
+      }
+
+      function memoryWriteDetailText(turn) {
+        if (!turn.flush) return "Auto flush was disabled or no flush has run for this assistant answer.";
+        const parsed = turn.flush.parsed || {};
+        const lines = [
+          `Target: ${parsed.target || turn.flush.target || "(unknown)"}`,
+          `Decision: ${parsed.shouldWrite ? "write" : "no write"}`,
+          `Reason: ${parsed.reason || "(none)"}`,
+        ];
+        if (parsed.error) lines.push(`Error: ${parsed.error}`);
+        lines.push("", "Raw output:", turn.flush.rawText || "(empty)");
+        if (parsed.shouldWrite) lines.push("", "Entry:", parsed.entry || "(empty)");
+        lines.push("", "Diff:", turn.flush.diff || "No file changes.");
+        lines.push("", "Reindex:", reindexStatus(turn.flush));
+        return lines.join("\n");
+      }
+
+      function renderMemoryWriteDetail(container, turn) {
+        container.replaceChildren();
+        if (!turn.flush) {
+          const note = document.createElement("p");
+          note.className = "muted-note";
+          note.textContent = memoryWriteDetailText(turn);
+          container.append(note);
+        } else {
+          container.append(sectionBlock("Daily memory flush", memoryActionDetailNode(turn.flush)));
+        }
+        container.append(sectionBlock("Long-term promotion", textBlock("Not run for this turn. OpenClaw applies short-term promotions from a separate promotion/dreaming sweep.")));
+      }
+
+      function memoryActionDetailNode(action) {
+        const node = document.createElement("div");
+        node.className = "stacked-detail";
+        const parsed = action.parsed || {};
+        node.append(kvGrid({
+          Target: parsed.target || action.target || "(unknown)",
+          Decision: parsed.shouldWrite ? "write" : "no write",
+          Reason: parsed.reason || "(none)",
+          Error: parsed.error || "",
+        }));
+        node.append(sectionBlock("Raw output", codeBlock(action.rawText || "(empty)")));
+        if (parsed.shouldWrite) node.append(sectionBlock("Entry", codeBlock(parsed.entry || "(empty)")));
+        node.append(sectionBlock("Diff", diffNode(action.diff || "")));
+        node.append(sectionBlock("Reindex", kvGrid({
+          "Indexed files": action.indexedFiles,
+          Chunks: action.chunks,
+          Error: action.reindexError || "",
+        })));
+        if (Array.isArray(action.evaluatedCandidates)) {
+          node.append(sectionBlock("Evaluated candidates", renderJsonView(action.evaluatedCandidates)));
+        }
         return node;
       }
 
@@ -200,7 +294,9 @@
           node.id = "streaming-assistant";
           log.append(node);
         }
-        node.querySelector("p").textContent += text;
+        streamingAssistantText += text;
+        const body = node.querySelector(".markdown-body");
+        renderMarkdown(body, streamingAssistantText);
         log.scrollTop = log.scrollHeight;
       }
 
@@ -215,15 +311,21 @@
           panel.append(stepNode("Raw Flush Output", "No raw flush output yet."));
           panel.append(stepNode("Flush Decision", "No flush decision yet."));
           panel.append(stepNode("File Diff", "No file diff yet."));
+          panel.append(stepNode("Promotion Sweep", state.promotionSweep ? memoryActionDetailNode(state.promotionSweep) : textBlock("Not run yet.")));
           panel.append(stepNode("Reindex", "No reindex run yet."));
           return;
         }
-        panel.append(stepNode("Recall", `${latest.recallQuery}\n\n${formatJson(latest.recallResults)}`));
-        panel.append(stepNode("Assistant Context", (latest.memoryContext || []).join("\n") || "No recalled memory."));
-        panel.append(stepNode("Raw Flush Output", latest.flush ? latest.flush.rawText || "(empty)" : "Not run for this turn."));
-        panel.append(stepNode("Flush Decision", latest.flush ? formatJson(latest.flush.parsed) : "Not run for this turn."));
-        panel.append(stepNode("File Diff", latest.flush ? latest.flush.diff || "No file changes." : "Not run for this turn."));
-        panel.append(stepNode("Reindex", latest.flush ? reindexStatus(latest.flush) : "Not run for this turn."));
+        panel.append(stepNode("Recall", recallNode(latest)));
+        panel.append(stepNode("Assistant Context", codeBlock((latest.memoryContext || []).join("\n") || "No recalled memory.")));
+        panel.append(stepNode("Raw Flush Output", codeBlock(latest.flush ? latest.flush.rawText || "(empty)" : "Not run for this turn.")));
+        panel.append(stepNode("Flush Decision", latest.flush ? renderJsonView(latest.flush.parsed) : textBlock("Not run for this turn.")));
+        panel.append(stepNode("File Diff", latest.flush ? diffNode(latest.flush.diff || "") : textBlock("Not run for this turn.")));
+        panel.append(stepNode("Promotion Sweep", state.promotionSweep ? memoryActionDetailNode(state.promotionSweep) : textBlock("Not run yet. Use Promotion sweep to apply ranked short-term promotions.")));
+        panel.append(stepNode("Reindex", latest.flush ? kvGrid({
+          "Indexed files": latest.flush.indexedFiles,
+          Chunks: latest.flush.chunks,
+          Error: latest.flush.reindexError || "",
+        }) : textBlock("Not run for this turn.")));
       }
 
       function reindexStatus(flush) {
@@ -236,10 +338,217 @@
         node.className = "pipeline-step";
         const heading = document.createElement("h3");
         heading.textContent = title;
-        const body = document.createElement("pre");
-        body.textContent = text;
+        const body = text instanceof Node ? text : codeBlock(text);
         node.append(heading, body);
         return node;
+      }
+
+      function recallNode(turn) {
+        const node = document.createElement("div");
+        node.className = "stacked-detail";
+        node.append(kvGrid({Query: turn.recallQuery || "(empty)", Results: (turn.recallResults || []).length}));
+        node.append(renderJsonView(turn.recallResults || []));
+        return node;
+      }
+
+      function textBlock(text) {
+        const node = document.createElement("p");
+        node.className = "muted-note";
+        node.textContent = text;
+        return node;
+      }
+
+      function codeBlock(text) {
+        const node = document.createElement("pre");
+        node.className = "code-block";
+        node.textContent = text;
+        return node;
+      }
+
+      function sectionBlock(title, child) {
+        const node = document.createElement("section");
+        node.className = "detail-section";
+        const heading = document.createElement("h4");
+        heading.textContent = title;
+        node.append(heading, child);
+        return node;
+      }
+
+      function kvGrid(entries) {
+        const grid = document.createElement("dl");
+        grid.className = "kv-grid";
+        for (const [key, value] of Object.entries(entries)) {
+          if (value === "" || value === undefined || value === null) continue;
+          const term = document.createElement("dt");
+          term.textContent = key;
+          const definition = document.createElement("dd");
+          definition.textContent = String(value);
+          grid.append(term, definition);
+        }
+        return grid;
+      }
+
+      function renderJsonView(value) {
+        const node = document.createElement("div");
+        node.className = "json-view";
+        renderJsonValue(node, value, 0);
+        return node;
+      }
+
+      function renderJsonValue(parent, value, depth) {
+        if (Array.isArray(value)) {
+          if (!value.length) {
+            parent.append(textBlock("[]"));
+            return;
+          }
+          value.forEach((item, index) => {
+            const itemNode = document.createElement("details");
+            itemNode.className = "json-item";
+            if (depth < 1) itemNode.open = true;
+            const summary = document.createElement("summary");
+            summary.textContent = Array.isArray(item) || isPlainObject(item) ? `[${index}] ${jsonSummary(item)}` : `[${index}] ${formatPrimitive(item)}`;
+            itemNode.append(summary);
+            renderJsonValue(itemNode, item, depth + 1);
+            parent.append(itemNode);
+          });
+          return;
+        }
+        if (isPlainObject(value)) {
+          parent.append(kvGrid(value));
+          return;
+        }
+        parent.append(textBlock(formatPrimitive(value)));
+      }
+
+      function isPlainObject(value) {
+        return value !== null && typeof value === "object" && !Array.isArray(value);
+      }
+
+      function jsonSummary(value) {
+        if (Array.isArray(value)) return `${value.length} items`;
+        const path = value.path || value.target || value.citation || value.source || "";
+        return path ? String(path) : `${Object.keys(value).length} fields`;
+      }
+
+      function formatPrimitive(value) {
+        if (value === null) return "null";
+        if (value === undefined) return "undefined";
+        return String(value);
+      }
+
+      function diffNode(diffText) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "diff-view";
+        if (!diffText) {
+          wrapper.append(textBlock("No file changes."));
+          return wrapper;
+        }
+        for (const line of diffText.split("\n")) {
+          if (line === "") continue;
+          const row = document.createElement("div");
+          row.className = "diff-line";
+          if (line.startsWith("+++") || line.startsWith("---")) row.classList.add("diff-file");
+          else if (line.startsWith("@@")) row.classList.add("diff-hunk");
+          else if (line.startsWith("+")) row.classList.add("diff-add");
+          else if (line.startsWith("-")) row.classList.add("diff-remove");
+          else row.classList.add("diff-context");
+          row.textContent = line;
+          wrapper.append(row);
+        }
+        return wrapper;
+      }
+
+      function renderMarkdown(container, text) {
+        container.replaceChildren();
+        const lines = String(text || "").split(/\r?\n/);
+        let index = 0;
+        while (index < lines.length) {
+          const line = lines[index];
+          if (!line.trim()) {
+            index += 1;
+            continue;
+          }
+          if (line.startsWith("```")) {
+            const lang = line.slice(3).trim();
+            const code = [];
+            index += 1;
+            while (index < lines.length && !lines[index].startsWith("```")) {
+              code.push(lines[index]);
+              index += 1;
+            }
+            if (index < lines.length) index += 1;
+            const block = codeBlock(code.join("\n"));
+            if (lang) block.dataset.lang = lang;
+            container.append(block);
+            continue;
+          }
+          const heading = line.match(/^(#{1,3})\s+(.+)$/);
+          if (heading) {
+            const node = document.createElement(`h${Math.min(heading[1].length + 3, 6)}`);
+            appendInlineMarkdown(node, heading[2]);
+            container.append(node);
+            index += 1;
+            continue;
+          }
+          if (/^\s*[-*]\s+/.test(line)) {
+            const list = document.createElement("ul");
+            while (index < lines.length && /^\s*[-*]\s+/.test(lines[index])) {
+              const item = document.createElement("li");
+              appendInlineMarkdown(item, lines[index].replace(/^\s*[-*]\s+/, ""));
+              list.append(item);
+              index += 1;
+            }
+            container.append(list);
+            continue;
+          }
+          if (/^\s*\d+\.\s+/.test(line)) {
+            const list = document.createElement("ol");
+            while (index < lines.length && /^\s*\d+\.\s+/.test(lines[index])) {
+              const item = document.createElement("li");
+              appendInlineMarkdown(item, lines[index].replace(/^\s*\d+\.\s+/, ""));
+              list.append(item);
+              index += 1;
+            }
+            container.append(list);
+            continue;
+          }
+          const paragraphLines = [];
+          while (index < lines.length && lines[index].trim() && !lines[index].startsWith("```") && !/^(#{1,3})\s+/.test(lines[index]) && !/^\s*[-*]\s+/.test(lines[index]) && !/^\s*\d+\.\s+/.test(lines[index])) {
+            paragraphLines.push(lines[index]);
+            index += 1;
+          }
+          const paragraph = document.createElement("p");
+          appendInlineMarkdown(paragraph, paragraphLines.join("\n"));
+          container.append(paragraph);
+        }
+      }
+
+      function appendInlineMarkdown(parent, text) {
+        const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)\s]+\))/g;
+        let cursor = 0;
+        for (const match of String(text).matchAll(pattern)) {
+          if (match.index > cursor) parent.append(document.createTextNode(text.slice(cursor, match.index)));
+          const token = match[0];
+          if (token.startsWith("**")) {
+            const strong = document.createElement("strong");
+            strong.textContent = token.slice(2, -2);
+            parent.append(strong);
+          } else if (token.startsWith("`")) {
+            const code = document.createElement("code");
+            code.textContent = token.slice(1, -1);
+            parent.append(code);
+          } else {
+            const linkMatch = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+            const link = document.createElement("a");
+            link.textContent = linkMatch[1];
+            link.href = linkMatch[2];
+            link.rel = "noreferrer";
+            link.target = "_blank";
+            parent.append(link);
+          }
+          cursor = match.index + token.length;
+        }
+        if (cursor < text.length) parent.append(document.createTextNode(text.slice(cursor)));
       }
 
       function renderMemoryFiles() {
@@ -247,28 +556,30 @@
         panel.replaceChildren();
         const heading = document.createElement("div");
         heading.className = "panel-heading";
-        heading.innerHTML = "<h2>Memory Files</h2><span>Click a file to inspect with memory_get</span>";
+        heading.innerHTML = "<h2>Memory Files</h2><span>Latest daily memory is shown first; older daily files stay selectable</span>";
         panel.append(heading);
+
+        const dailyPaths = dailyMemoryPaths();
+        const latestDailyPath = latestDailyMemoryPath(dailyPaths);
+        if (!selectedDailyMemoryPath || !dailyPaths.includes(selectedDailyMemoryPath)) {
+          selectedDailyMemoryPath = latestDailyPath;
+        }
+        if (dailyPaths.length) {
+          panel.append(dailyMemoryPanel(dailyPaths, selectedDailyMemoryPath));
+        }
+
+        const workspacePaths = (state.memoryFiles || []).filter((path) => !isDailyMemoryPath(path));
         const list = document.createElement("div");
         list.className = "file-list";
-        for (const path of state.memoryFiles || []) {
-          const file = document.createElement("section");
-          file.className = "memory-file";
-          const heading = document.createElement("div");
-          heading.className = "memory-file-heading";
-          const title = document.createElement("strong");
-          title.textContent = path;
-          const button = document.createElement("button");
-          button.type = "button";
-          button.textContent = "Inspect";
-          button.onclick = () => inspectMemoryFile(path);
-          heading.append(title, button);
-          const body = document.createElement("pre");
-          body.textContent = (state.memoryFileContents && state.memoryFileContents[path]) || "(missing or empty)";
-          file.append(heading, body);
-          list.append(file);
+        if (workspacePaths.length) {
+          const workspaceHeading = document.createElement("h3");
+          workspaceHeading.textContent = "Workspace files";
+          panel.append(workspaceHeading);
         }
-        if (!list.children.length) {
+        for (const path of workspacePaths) {
+          list.append(memoryFileNode(path));
+        }
+        if (!dailyPaths.length && !list.children.length) {
           const empty = document.createElement("p");
           empty.className = "empty-state";
           empty.textContent = "No memory files discovered.";
@@ -277,8 +588,79 @@
         panel.append(list);
       }
 
+      function dailyMemoryPaths() {
+        return (state.memoryFiles || []).filter(isDailyMemoryPath).sort((a, b) => b.localeCompare(a));
+      }
+
+      function latestDailyMemoryPath(paths) {
+        return paths[0] || "";
+      }
+
+      function isDailyMemoryPath(path) {
+        return /^memory\/\d{4}-\d{2}-\d{2}\.md$/.test(path);
+      }
+
+      function dailyMemoryPanel(paths, selectedPath) {
+        const panel = document.createElement("section");
+        panel.className = "daily-memory-panel";
+        const controls = document.createElement("div");
+        controls.className = "daily-memory-controls";
+        const label = document.createElement("label");
+        label.textContent = "Daily memory";
+        const select = document.createElement("select");
+        select.id = "daily-memory-select";
+        select.setAttribute("aria-label", "Select daily memory file");
+        for (const path of paths) {
+          const option = document.createElement("option");
+          option.value = path;
+          option.textContent = path === latestDailyMemoryPath(paths) ? `${path} (latest)` : path;
+          option.selected = path === selectedPath;
+          select.append(option);
+        }
+        select.onchange = () => {
+          selectedDailyMemoryPath = select.value;
+          renderMemoryFiles();
+        };
+        label.append(select);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "Inspect";
+        button.onclick = () => inspectMemoryFile(selectedPath);
+        controls.append(label, button);
+        panel.append(controls, memoryFilePreview(selectedPath));
+        return panel;
+      }
+
+      function memoryFileNode(path) {
+        const file = document.createElement("section");
+        file.className = "memory-file";
+        const heading = document.createElement("div");
+        heading.className = "memory-file-heading";
+        const title = document.createElement("strong");
+        title.textContent = path;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "Inspect";
+        button.onclick = () => inspectMemoryFile(path);
+        heading.append(title, button);
+        file.append(heading, memoryFilePreview(path));
+        return file;
+      }
+
+      function memoryFilePreview(path) {
+        const body = document.createElement("pre");
+        body.textContent = (state.memoryFileContents && state.memoryFileContents[path]) || "(missing or empty)";
+        return body;
+      }
+
       function renderConfig() {
-        document.querySelector("#config").innerHTML = `<div class="panel-heading"><h2>Config</h2><span>Runtime state</span></div><pre>${formatJson({
+        const promotion = state.config && state.config.promotion ? state.config.promotion : {};
+        const openclawDefaults = promotion.openclawDefaults || {};
+        document.querySelector("#config").innerHTML = `<div class="panel-heading"><h2>Config</h2><span>Runtime state</span></div>
+          <div class="kv-grid">
+            <div><strong>OpenClaw defaults</strong><span>score >= ${openclawDefaults.minScore ?? "?"}, signals >= ${openclawDefaults.minRecallCount ?? "?"}, unique queries/days >= ${openclawDefaults.minUniqueQueries ?? "?"}</span></div>
+          </div>
+          <pre>${formatJson({
           engines: state.engines,
           config: state.config
         })}</pre>`;
@@ -370,6 +752,7 @@
         const trimmed = message.trim();
         if (!trimmed) return;
         const log = document.querySelector("#chat-log");
+        streamingAssistantText = "";
         if (!state.turns.length) log.replaceChildren();
         log.append(messageNode("user", `Turn ${state.turns.length + 1}`, trimmed));
         const response = await fetch("/api/chat/send-stream", {
@@ -424,12 +807,21 @@
           activateTab("tool-inspector");
         }
       };
+      document.querySelector("#promotion-sweep").onclick = async () => {
+        try {
+          state = await requestJson("/api/memory/promote", {openai: openAIConfig()});
+          render();
+        } catch (error) {
+          showOutput({error: error.message});
+          activateTab("tool-inspector");
+        }
+      };
       document.querySelector("#reset").onclick = async () => {
         state = await requestJson("/api/chat/reset", {});
         render();
       };
       document.querySelector("#seed").onclick = async () => postInspector("/api/seed", {});
-      document.querySelector("#reindex").onclick = async () => postInspector("/api/reindex", {});
+      document.querySelector("#reindex").onclick = async () => postInspector("/api/reindex", {openai: openAIConfig()});
       document.querySelector("#api-key").oninput = () => {
         sessionStorage.setItem("openclaw-demo-api-key", document.querySelector("#api-key").value.trim());
         renderEngineStatus();
@@ -441,7 +833,7 @@
       };
       document.querySelector("#search-form").onsubmit = (event) => {
         event.preventDefault();
-        postInspector("/api/search", Object.fromEntries(new FormData(event.currentTarget)));
+        postInspector("/api/search", {...Object.fromEntries(new FormData(event.currentTarget)), openai: openAIConfig()});
       };
       document.querySelector("#get-form").onsubmit = (event) => {
         event.preventDefault();

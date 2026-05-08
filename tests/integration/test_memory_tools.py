@@ -46,6 +46,47 @@ def test_memory_search_returns_hybrid_results(tmp_path: Path):
     assert result["results"][0]["citation"] == "Source: MEMORY.md#1"
 
 
+def test_memory_search_indexes_session_transcripts_by_default(tmp_path: Path):
+    (tmp_path / "MEMORY.md").write_text("User likes lemon pepper wings.\n", encoding="utf-8")
+    session_dir = tmp_path / "memory" / ".dreams" / "session-corpus"
+    session_dir.mkdir(parents=True)
+    (session_dir / "2026-05-07.md").write_text(
+        "[chat] User: discussed cobalt router migration.\n", encoding="utf-8"
+    )
+    cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+
+    result = memory_search(cfg, store, query="cobalt router", max_results=3, min_score=0.0)
+
+    assert {
+        (item["path"], item["corpus"]) for item in result["results"]
+    } >= {("memory/.dreams/session-corpus/2026-05-07.md", "sessions")}
+
+
+def test_memory_search_corpus_memory_excludes_session_transcripts(tmp_path: Path):
+    (tmp_path / "MEMORY.md").write_text("User likes lemon pepper wings.\n", encoding="utf-8")
+    session_dir = tmp_path / "memory" / ".dreams" / "session-corpus"
+    session_dir.mkdir(parents=True)
+    (session_dir / "2026-05-07.md").write_text(
+        "[chat] User: discussed cobalt router migration.\n", encoding="utf-8"
+    )
+    cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+
+    result = memory_search(
+        cfg,
+        store,
+        query="cobalt router",
+        max_results=3,
+        min_score=0.0,
+        corpus="memory",
+    )
+
+    assert {item["corpus"] for item in result["results"]} == {"memory"}
+
+
 def test_memory_search_clamps_snippets_and_reports_truncation(tmp_path: Path):
     (tmp_path / "MEMORY.md").write_text(
         "User likes lemon pepper wings with blue cheese.\n", encoding="utf-8"

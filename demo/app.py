@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-import os
 import json
+import os
+import shutil
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
@@ -20,8 +23,17 @@ from demo.chat_engine import (
 )
 from demo.chat_session import ChatSessionState
 from demo.memory_flush import MemoryFlushRun, ParsedFlushOutput, run_memory_flush
+from demo.short_term_promotion import (
+    DEFAULT_PROMOTION_MIN_RECALL_COUNT,
+    DEFAULT_PROMOTION_MIN_SCORE,
+    DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+    MemoryPromotionRun,
+    record_daily_memory_flush,
+    record_short_term_recalls,
+    run_short_term_promotion,
+)
 from memory_core.config import MemoryConfig
-from memory_core.embeddings.base import FakeEmbeddingProvider
+from memory_core.embeddings.openai_compatible import OpenAICompatibleEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.memory_flush import MemoryFlushPlan, build_memory_flush_plan
 from memory_core.prompt_section import build_prompt_section
@@ -34,6 +46,24 @@ DEMO_WORKSPACE = Path(tempfile.gettempdir()) / "openclaw-memory-demo-workspace"
 DEMO_TIMEZONE = "Europe/Istanbul"
 DEMO_NOW_MS = 1777824000000
 CHAT_STATE = ChatSessionState()
+PROMOTION_SWEEP: dict[str, Any] | None = None
+
+DEFAULT_MEMORY_MD = """# MEMORY.md - Long-Term Memory
+
+This file is the curated long-term memory for the main session.
+
+Use it for durable, high-signal context:
+
+- Important user preferences
+- Stable personal or project context
+- Significant decisions
+- Lessons worth carrying into future sessions
+
+Keep raw day-to-day notes in `memory/YYYY-MM-DD.md`. Periodically promote only the distilled facts that still matter here.
+
+Do not store secrets unless the user explicitly asks. Keep this file concise, accurate, and useful.
+"""
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 
 app = FastAPI(title="OpenClaw Memory Demo")
 app.mount("/static", StaticFiles(directory=DEMO_ROOT / "static"), name="static")
@@ -48,8 +78,8 @@ def demo_config() -> MemoryConfig:
     )
 
 
-def demo_store() -> SQLiteMemoryStore:
-    return SQLiteMemoryStore(demo_config(), FakeEmbeddingProvider(dimensions=16))
+def demo_store(payload: dict[str, Any] | None = None) -> SQLiteMemoryStore:
+    return SQLiteMemoryStore(demo_config(), _embedding_provider(payload or {}))
 
 
 class DemoPayloadError(ValueError):
@@ -127,10 +157,30 @@ def _chat_engine(payload: dict[str, Any]) -> ChatEngine:
     return engine
 
 
-def _payload_api_key(payload: dict[str, Any]) -> str:
+def _embedding_provider(payload: dict[str, Any]) -> OpenAICompatibleEmbeddingProvider:
+    openai_payload = _openai_payload(payload)
+    api_key = _optional_text(openai_payload.get("apiKey")) or os.getenv(
+        "OPENCLAW_DEMO_OPENAI_API_KEY", ""
+    )
+    if not api_key:
+        raise DemoPayloadError("openai embeddings require an API key")
+    return OpenAICompatibleEmbeddingProvider(
+        base_url=_optional_text(openai_payload.get("baseUrl"))
+        or os.getenv("OPENCLAW_DEMO_OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        api_key=api_key,
+        model=os.getenv("OPENCLAW_DEMO_OPENAI_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL),
+    )
+
+
+def _openai_payload(payload: dict[str, Any]) -> dict[str, Any]:
     openai_payload = payload.get("openai", {})
     if not isinstance(openai_payload, dict):
-        return ""
+        raise DemoPayloadError("openai config must be an object")
+    return openai_payload
+
+
+def _payload_api_key(payload: dict[str, Any]) -> str:
+    openai_payload = _openai_payload(payload)
     return _optional_text(openai_payload.get("apiKey")) or ""
 
 
@@ -151,16 +201,42 @@ def _memory_context_from_results(results: list[dict[str, Any]]) -> list[str]:
     return context
 
 
+def _filter_chat_auto_memory_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    allowed_paths = {"MEMORY.md", "memory.md", *_active_daily_memory_paths(_now_ms())}
+    return [result for result in results if str(result.get("path") or "") in allowed_paths]
+
+
+def _active_daily_memory_paths(now_ms: int) -> set[str]:
+    local_today = _local_date(now_ms)
+    local_yesterday = local_today.fromordinal(local_today.toordinal() - 1)
+    return {
+        f"memory/{local_today.isoformat()}.md",
+        f"memory/{local_yesterday.isoformat()}.md",
+    }
+
+
+def _local_date(now_ms: int):
+    try:
+        timezone = ZoneInfo(DEMO_TIMEZONE)
+    except ZoneInfoNotFoundError:
+        timezone = UTC
+    return datetime.fromtimestamp(now_ms / 1000, tz=UTC).astimezone(timezone).date()
+
+
 def _chat_messages(message: str) -> list[ChatMessage]:
     messages = CHAT_STATE.transcript_messages()
     messages.append(ChatMessage(role="user", content=message))
     return messages
 
 
+def _now_ms() -> int:
+    return int(datetime.now(tz=UTC).timestamp() * 1000)
+
+
 def _demo_flush_plan() -> MemoryFlushPlan:
     return build_memory_flush_plan(
         workspace_dir=demo_config().workspace_dir,
-        now_ms=DEMO_NOW_MS,
+        now_ms=_now_ms(),
         timezone=DEMO_TIMEZONE,
     )
 
@@ -194,14 +270,26 @@ def _state_payload() -> dict[str, Any]:
             "engines": engine_status(),
             "memoryFiles": memory_files,
             "memoryFileContents": _memory_file_contents(memory_files),
+            "promotionSweep": PROMOTION_SWEEP,
             "config": {
                 "workspace": str(config.workspace_dir),
                 "timezone": DEMO_TIMEZONE,
                 "dailyMemoryPath": plan.relative_path,
+                "promotion": _promotion_config_payload(),
             },
         }
     )
     return payload
+
+
+def _promotion_config_payload() -> dict[str, Any]:
+    return {
+        "openclawDefaults": {
+            "minScore": DEFAULT_PROMOTION_MIN_SCORE,
+            "minRecallCount": DEFAULT_PROMOTION_MIN_RECALL_COUNT,
+            "minUniqueQueries": DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+        },
+    }
 
 
 def _serialize_flush(flush: MemoryFlushRun) -> dict[str, Any]:
@@ -213,6 +301,37 @@ def _serialize_flush(flush: MemoryFlushRun) -> dict[str, Any]:
         "indexedFiles": flush.indexed_files,
         "chunks": flush.chunks,
         "reindexError": flush.reindex_error,
+    }
+
+
+def _serialize_promotion(promotion: MemoryPromotionRun) -> dict[str, Any]:
+    return {
+        "target": promotion.target,
+        "rawText": promotion.raw_text,
+        "parsed": _serialize_parsed_flush(promotion.parsed),
+        "diff": promotion.diff,
+        "indexedFiles": promotion.indexed_files,
+        "chunks": promotion.chunks,
+        "evaluatedCandidates": [
+            {
+                "path": candidate.path,
+                "startLine": candidate.start_line,
+                "endLine": candidate.end_line,
+                "snippet": candidate.snippet,
+                "score": round(candidate.score, 3),
+                "recallCount": candidate.recall_count,
+                "dailyCount": candidate.daily_count,
+                "groundedCount": candidate.grounded_count,
+                "signalCount": candidate.signal_count,
+                "avgScore": round(candidate.avg_score, 3),
+                "maxScore": round(candidate.max_score, 3),
+                "uniqueQueries": candidate.unique_queries,
+                "contextDiversity": candidate.context_diversity,
+                "reasons": list(candidate.reasons),
+            }
+            for candidate in promotion.evaluated_candidates
+        ],
+        "reindexError": promotion.reindex_error,
     }
 
 
@@ -228,7 +347,6 @@ def _serialize_parsed_flush(parsed: ParsedFlushOutput) -> dict[str, Any]:
 
 def _reset_demo_memory() -> None:
     seed()
-    reindex()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -238,25 +356,34 @@ def home(request: Request):
 
 @app.post("/api/seed")
 def seed():
+    if DEMO_WORKSPACE.exists():
+        shutil.rmtree(DEMO_WORKSPACE)
     DEMO_WORKSPACE.mkdir(parents=True, exist_ok=True)
     (DEMO_WORKSPACE / "memory").mkdir(exist_ok=True)
+    daily_plan = _demo_flush_plan()
+    daily_path = DEMO_WORKSPACE / daily_plan.relative_path
+    daily_date = Path(daily_plan.relative_path).stem
     (DEMO_WORKSPACE / "MEMORY.md").write_text(
-        "# Workspace Memory\n\nUser prefers lemon pepper wings with blue cheese.\n",
+        DEFAULT_MEMORY_MD,
         encoding="utf-8",
     )
-    (DEMO_WORKSPACE / "memory" / "2026-05-03.md").write_text(
-        "# 2026-05-03\n\nDiscussed router VLAN troubleshooting and memory recall parity.\n",
+    daily_path.write_text(
+        f"# {daily_date}\n\nDiscussed router VLAN troubleshooting and memory recall parity.\n",
         encoding="utf-8",
     )
     return {"ok": True}
 
 
 @app.post("/api/reindex")
-def reindex():
-    config = demo_config()
-    store = SQLiteMemoryStore(config, FakeEmbeddingProvider(dimensions=16))
-    indexed_files = store.reindex(MemoryWorkspace(config.workspace_dir))
-    return {"indexedFiles": indexed_files, "chunks": store.count_chunks()}
+def reindex(payload: dict[str, Any] | None = None):
+    try:
+        payload = payload or {}
+        config = demo_config()
+        store = demo_store(payload)
+        indexed_files = store.reindex(MemoryWorkspace(config.workspace_dir))
+        return {"indexedFiles": indexed_files, "chunks": store.count_chunks()}
+    except DemoPayloadError as exc:
+        return _json_error(str(exc))
 
 
 @app.post("/api/search")
@@ -264,10 +391,11 @@ def search(payload: dict):
     try:
         return memory_search(
             demo_config(),
-            demo_store(),
+            demo_store(payload),
             query=str(payload.get("query", "")),
             max_results=_required_int(payload, "maxResults", 5),
             min_score=_required_float(payload, "minScore", 0),
+            corpus=str(payload.get("corpus") or "all"),
         )
     except DemoPayloadError as exc:
         return _json_error(str(exc))
@@ -306,7 +434,9 @@ def chat_state():
 
 @app.post("/api/chat/reset")
 def chat_reset(payload: dict):
+    global PROMOTION_SWEEP
     CHAT_STATE.reset()
+    PROMOTION_SWEEP = None
     if not bool(payload.get("keepMemory", False)):
         _reset_demo_memory()
     return _state_payload()
@@ -320,7 +450,8 @@ def chat_send(payload: dict):
             raise DemoPayloadError("message is required")
         engine = _chat_engine(payload)
         recall_query = message
-        store = demo_store()
+        store = demo_store(payload)
+        store.reindex(MemoryWorkspace(demo_config().workspace_dir))
         recall = memory_search(
             demo_config(),
             store,
@@ -329,7 +460,14 @@ def chat_send(payload: dict):
             min_score=0,
         )
         recall_results = recall.get("results", [])
-        memory_context = _memory_context_from_results(recall_results)
+        chat_recall_results = _filter_chat_auto_memory_results(recall_results)
+        record_short_term_recalls(
+            config=demo_config(),
+            query=recall_query,
+            results=chat_recall_results,
+            now_ms=_now_ms(),
+        )
+        memory_context = _memory_context_from_results(chat_recall_results)
         response = engine.complete(
             messages=_chat_messages(message),
             memory_context=memory_context,
@@ -337,12 +475,14 @@ def chat_send(payload: dict):
         turn = CHAT_STATE.add_turn(
             user_message=message,
             recall_query=recall_query,
-            recall_results=recall_results,
+            recall_results=chat_recall_results,
             assistant_response=response.content,
             memory_context=memory_context,
         )
         if bool(payload.get("autoFlush", True)):
-            turn.flush = _flush_latest_turn(engine)
+            turn.flush = _flush_latest_turn(engine, store)
+            _record_daily_flush_signal(turn.flush)
+        _write_session_transcript(_now_ms())
         return _state_payload()
     except DemoPayloadError as exc:
         return _json_error(str(exc))
@@ -366,7 +506,9 @@ def chat_flush(payload: dict):
         if latest is None:
             raise DemoPayloadError("no chat turn to flush")
         engine = _chat_engine(payload)
-        latest.flush = _flush_latest_turn(engine)
+        store = demo_store(payload)
+        latest.flush = _flush_latest_turn(engine, store)
+        _record_daily_flush_signal(latest.flush)
         return _state_payload()
     except DemoPayloadError as exc:
         return _json_error(str(exc))
@@ -374,17 +516,68 @@ def chat_flush(payload: dict):
         return _json_error(f"chat flush failed: {_safe_exception_message(exc, (_payload_api_key(payload),))}")
 
 
-def _flush_latest_turn(engine: ChatEngine) -> dict[str, Any]:
+@app.post("/api/memory/promote")
+def memory_promote(payload: dict):
+    global PROMOTION_SWEEP
+    try:
+        store = demo_store(payload)
+        PROMOTION_SWEEP = _promote_short_term(store)
+        return _state_payload()
+    except DemoPayloadError as exc:
+        return _json_error(str(exc))
+    except Exception as exc:
+        return _json_error(f"memory promote failed: {_safe_exception_message(exc, (_payload_api_key(payload),))}")
+
+
+def _flush_latest_turn(engine: ChatEngine, store: SQLiteMemoryStore) -> dict[str, Any]:
     return _serialize_flush(
         run_memory_flush(
             config=demo_config(),
-            store=demo_store(),
+            store=store,
             engine=engine,
             transcript=CHAT_STATE.transcript_messages(),
-            now_ms=DEMO_NOW_MS,
+            now_ms=_now_ms(),
             timezone=DEMO_TIMEZONE,
         )
     )
+
+
+def _promote_short_term(store: SQLiteMemoryStore) -> dict[str, Any]:
+    return _serialize_promotion(
+        run_short_term_promotion(
+            config=demo_config(),
+            store=store,
+            now_ms=_now_ms(),
+            timezone=DEMO_TIMEZONE,
+        )
+    )
+
+
+def _record_daily_flush_signal(flush: dict[str, Any] | None) -> None:
+    if not flush:
+        return
+    parsed = flush.get("parsed")
+    if not isinstance(parsed, dict) or not parsed.get("shouldWrite"):
+        return
+    record_daily_memory_flush(
+        config=demo_config(),
+        target=str(parsed.get("target") or ""),
+        entry=str(parsed.get("entry") or ""),
+        now_ms=_now_ms(),
+    )
+
+
+def _write_session_transcript(now_ms: int) -> None:
+    local_date = _local_date(now_ms).isoformat()
+    session_dir = DEMO_WORKSPACE / "memory" / ".dreams" / "session-corpus"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    transcript_path = session_dir / f"{local_date}.md"
+    lines = [f"# Session transcript {local_date}", ""]
+    for message in CHAT_STATE.transcript_messages():
+        role = "User" if message.role == "user" else "Assistant"
+        lines.append(f"[chat] {role}: {message.content.strip()}")
+        lines.append("")
+    transcript_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
 def _chat_send_stream_events(payload: dict):
@@ -394,7 +587,8 @@ def _chat_send_stream_events(payload: dict):
             raise DemoPayloadError("message is required")
         engine = _chat_engine(payload)
         recall_query = message
-        store = demo_store()
+        store = demo_store(payload)
+        store.reindex(MemoryWorkspace(demo_config().workspace_dir))
         recall = memory_search(
             demo_config(),
             store,
@@ -403,7 +597,14 @@ def _chat_send_stream_events(payload: dict):
             min_score=0,
         )
         recall_results = recall.get("results", [])
-        memory_context = _memory_context_from_results(recall_results)
+        chat_recall_results = _filter_chat_auto_memory_results(recall_results)
+        record_short_term_recalls(
+            config=demo_config(),
+            query=recall_query,
+            results=chat_recall_results,
+            now_ms=_now_ms(),
+        )
+        memory_context = _memory_context_from_results(chat_recall_results)
         full_response = []
         for chunk in engine.stream_complete(
             messages=_chat_messages(message),
@@ -414,12 +615,14 @@ def _chat_send_stream_events(payload: dict):
         turn = CHAT_STATE.add_turn(
             user_message=message,
             recall_query=recall_query,
-            recall_results=recall_results,
+            recall_results=chat_recall_results,
             assistant_response="".join(full_response),
             memory_context=memory_context,
         )
         if bool(payload.get("autoFlush", True)):
-            turn.flush = _flush_latest_turn(engine)
+            turn.flush = _flush_latest_turn(engine, store)
+            _record_daily_flush_signal(turn.flush)
+        _write_session_transcript(_now_ms())
         yield _sse("final_state", _state_payload())
     except DemoPayloadError as exc:
         yield _sse("error", {"error": str(exc)})

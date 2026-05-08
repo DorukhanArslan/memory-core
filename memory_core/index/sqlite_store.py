@@ -53,11 +53,17 @@ class SQLiteMemoryStore:
             )
 
     def reindex(self, workspace: MemoryWorkspace) -> int:
-        files = workspace.discover_memory_files()
+        files = workspace.discover_indexable_files()
         chunks: list[MemoryChunk] = []
         for file in files:
             text = file.abs_path.read_text(encoding="utf-8")
-            chunks.extend(chunk_markdown(file.rel_path, text))
+            chunks.extend(
+                chunk_markdown(
+                    file.rel_path,
+                    text,
+                    source=file.source,
+                )
+            )
 
         embeddings = (
             self.embeddings.embed_documents([chunk.text for chunk in chunks]) if chunks else []
@@ -97,11 +103,15 @@ class SQLiteMemoryStore:
         *,
         max_results: int = 5,
         min_score: float = 0.0,
+        sources: set[str] | None = None,
     ) -> list[HybridResult]:
         query_embedding = self.embeddings.embed_query(query)
         with self.connect() as db:
+            source_filter = _source_filter_clause(sources)
             rows = db.execute(
                 "SELECT id, path, start_line, end_line, source, text, embedding FROM chunks"
+                + source_filter.sql,
+                source_filter.params,
             ).fetchall()
             vector = [
                 HybridVectorResult(
@@ -125,10 +135,10 @@ class SQLiteMemoryStore:
                            bm25(chunks_fts) AS rank
                     FROM chunks_fts
                     JOIN chunks c ON c.id = chunks_fts.id
-                    WHERE chunks_fts MATCH ?
+                    WHERE chunks_fts MATCH ?""" + source_filter.and_sql + """
                     ORDER BY rank
                     """,
-                    (fts_query,),
+                    (fts_query, *source_filter.params),
                 ):
                     keyword.append(
                         HybridKeywordResult(
@@ -180,3 +190,20 @@ class SQLiteMemoryStore:
 
 def _mmr_key(item: HybridResult) -> str:
     return f"{item.source}:{item.path}:{item.start_line}:{item.end_line}"
+
+
+class _SourceFilter:
+    def __init__(self, sources: set[str] | None):
+        if not sources:
+            self.sql = ""
+            self.and_sql = ""
+            self.params: tuple[str, ...] = ()
+            return
+        placeholders = ", ".join("?" for _ in sources)
+        self.sql = f" WHERE source IN ({placeholders})"
+        self.and_sql = f" AND c.source IN ({placeholders})"
+        self.params = tuple(sorted(sources))
+
+
+def _source_filter_clause(sources: set[str] | None) -> _SourceFilter:
+    return _SourceFilter(sources)

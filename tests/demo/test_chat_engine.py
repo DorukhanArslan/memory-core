@@ -2,6 +2,7 @@ from demo.chat_engine import (
     DEFAULT_OPENAI_BASE_URL,
     DEFAULT_OPENAI_MODEL,
     ChatMessage,
+    FlushWriteCall,
     OpenAICompatibleChatEngine,
     engine_status,
     _parse_stream_line,
@@ -112,7 +113,7 @@ def test_openai_engine_complete_posts_openai_compatible_chat_request(monkeypatch
     ]
 
 
-def test_openai_engine_flush_posts_prompt_target_and_transcript(monkeypatch):
+def test_openai_engine_flush_runs_openclaw_style_write_tool(monkeypatch):
     calls = []
 
     def fake_post(url, *, headers, json, timeout):
@@ -123,7 +124,20 @@ def test_openai_engine_flush_posts_prompt_target_and_transcript(monkeypatch):
                     {
                         "message": {
                             "role": "assistant",
-                            "content": '{"shouldWrite": true}',
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "write",
+                                        "arguments": (
+                                            '{"path":"memory/2026-05-03.md",'
+                                            '"content":"- User was fired from work."}'
+                                        ),
+                                    },
+                                }
+                            ],
                         }
                     },
                 ]
@@ -147,22 +161,33 @@ def test_openai_engine_flush_posts_prompt_target_and_transcript(monkeypatch):
         target="memory/2026-05-03.md",
     )
 
-    assert output.raw_text == '{"shouldWrite": true}'
+    assert output.raw_text == "write(memory/2026-05-03.md)"
+    assert output.writes == (
+        FlushWriteCall(
+            path="memory/2026-05-03.md",
+            content="- User was fired from work.",
+            call_id="call_1",
+            name="write",
+        ),
+    )
     assert len(calls) == 1
     assert calls[0]["url"].endswith("/chat/completions")
     assert calls[0]["headers"]["Authorization"] == "Bearer secret-key"
     assert calls[0]["json"]["model"] == "demo-model"
+    assert calls[0]["json"]["tool_choice"] == "auto"
+    assert calls[0]["json"]["tools"][0]["function"]["name"] == "write"
+    assert "During memory flush, this tool may only append to memory/2026-05-03.md." in calls[0][
+        "json"
+    ]["tools"][0]["function"]["description"]
     assert calls[0]["json"]["messages"][0] == {
         "role": "system",
         "content": "Pre-compaction memory flush turn.",
     }
-    user_message = calls[0]["json"]["messages"][1]
+    assert calls[0]["json"]["messages"][1] == {"role": "user", "content": "My name is Alex"}
+    assert calls[0]["json"]["messages"][2] == {"role": "assistant", "content": "Noted."}
+    user_message = calls[0]["json"]["messages"][3]
     assert user_message["role"] == "user"
-    assert "Pre-compaction memory flush." in user_message["content"]
-    assert "Target: memory/2026-05-03.md" in user_message["content"]
-    assert "Transcript:" in user_message["content"]
-    assert "user: My name is Alex" in user_message["content"]
-    assert "assistant: Noted." in user_message["content"]
+    assert user_message["content"] == "Pre-compaction memory flush."
 
 
 def test_parse_stream_line_extracts_delta_content():

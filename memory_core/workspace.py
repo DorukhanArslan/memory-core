@@ -6,6 +6,7 @@ from pathlib import Path
 
 DATED_MEMORY_FILE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
 DAILY_MEMORY_PATH_RE = re.compile(r"^memory/\d{4}-\d{2}-\d{2}\.md$")
+SESSION_CORPUS_FILE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.(?:md|txt)$")
 
 
 class UnsafeMemoryPathError(ValueError):
@@ -48,6 +49,27 @@ class MemoryWorkspace:
                 ):
                     files.append(MemoryFile(path.relative_to(self.root).as_posix(), resolved_path))
         return files
+
+    def discover_session_transcript_files(self) -> list[MemoryFile]:
+        files: list[MemoryFile] = []
+        session_dir = self.root / "memory" / ".dreams" / "session-corpus"
+        if session_dir.is_dir():
+            for path in sorted(session_dir.iterdir()):
+                resolved_path = path.resolve()
+                if SESSION_CORPUS_FILE_RE.match(path.name) and self.is_path_inside_root(
+                    resolved_path
+                ):
+                    files.append(
+                        MemoryFile(
+                            path.relative_to(self.root).as_posix(),
+                            resolved_path,
+                            source="sessions",
+                        )
+                    )
+        return files
+
+    def discover_indexable_files(self) -> list[MemoryFile]:
+        return [*self.discover_memory_files(), *self.discover_session_transcript_files()]
 
     def normalize_memory_path(self, rel_path: str) -> str:
         return rel_path.replace("\\", "/").lstrip("/")

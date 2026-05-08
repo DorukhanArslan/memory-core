@@ -99,15 +99,14 @@ def parse_flush_output(raw_text: str, *, target: str) -> ParsedFlushOutput:
             error=f"flush target mismatch: expected {target}, got {output_target}",
         )
 
-    try:
-        validate_daily_memory_target(output_target)
-    except UnsafeMemoryFlushTargetError as exc:
+    validation_error = _validate_memory_write_target(output_target)
+    if validation_error:
         return ParsedFlushOutput(
             should_write=False,
             target=output_target,
             entry="",
             reason=reason,
-            error=str(exc),
+            error=validation_error,
         )
 
     if should_write and not entry.strip():
@@ -151,7 +150,9 @@ def run_memory_flush(
         transcript=transcript,
         target=plan.relative_path,
     )
-    parsed = parse_flush_output(output.raw_text, target=plan.relative_path)
+    parsed = parse_flush_tool_writes(output.writes, target=plan.relative_path) or parse_flush_output(
+        output.raw_text, target=plan.relative_path
+    )
 
     indexed_files = 0
     reindex_error = None
@@ -172,6 +173,57 @@ def run_memory_flush(
         chunks=store.count_chunks(),
         reindex_error=reindex_error,
     )
+
+
+def parse_flush_tool_writes(writes: object, *, target: str) -> ParsedFlushOutput | None:
+    if not isinstance(writes, tuple) or not writes:
+        return None
+    entries = []
+    for write in writes:
+        output_target = getattr(write, "path", "")
+        entry = getattr(write, "content", "")
+        if output_target != target:
+            return ParsedFlushOutput(
+                should_write=False,
+                target=output_target,
+                entry="",
+                reason="write tool call",
+                error=f"flush target mismatch: expected {target}, got {output_target}",
+            )
+        validation_error = _validate_memory_write_target(output_target)
+        if validation_error:
+            return ParsedFlushOutput(
+                should_write=False,
+                target=output_target,
+                entry="",
+                reason="write tool call",
+                error=validation_error,
+            )
+        if not isinstance(entry, str) or not entry.strip():
+            return ParsedFlushOutput(
+                should_write=False,
+                target=output_target,
+                entry="",
+                reason="write tool call",
+                error="flush write tool call had empty content",
+            )
+        entries.append(entry)
+    return ParsedFlushOutput(
+        should_write=True,
+        target=target,
+        entry="\n".join(entries),
+        reason="write tool call",
+    )
+
+
+def _validate_memory_write_target(target: str) -> str | None:
+    if target == "MEMORY.md":
+        return None
+    try:
+        validate_daily_memory_target(target)
+    except UnsafeMemoryFlushTargetError as exc:
+        return str(exc)
+    return None
 
 
 def _string_field(payload: dict, name: str) -> str:

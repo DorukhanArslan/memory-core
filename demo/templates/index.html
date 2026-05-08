@@ -13,7 +13,7 @@
           <h1>OpenClaw Chat Memory Lab</h1>
           <p>Inspect recall, assistant context, memory flush, file diff, and reindex behavior turn by turn.</p>
         </div>
-        <div class="toolbar" aria-label="Engine and memory controls">
+        <div class="toolbar memory-controls" aria-label="Engine and memory controls">
           <label>
             API key
             <input id="api-key" type="password" autocomplete="off" placeholder="sk-..." aria-label="OpenAI API key">
@@ -33,6 +33,14 @@
           </label>
           <button id="manual-flush" type="button">Manual flush</button>
           <button id="promotion-sweep" type="button">Promotion sweep</button>
+          <select id="dreaming-phase" aria-label="Dreaming phase">
+            <option value="light">light</option>
+            <option value="rem">rem</option>
+            <option value="deep">deep</option>
+          </select>
+          <button id="dreaming-run" type="button" data-observability-fields="phaseSignalsRecorded">Dreaming sweep</button>
+          <button id="memory-audit" type="button">Audit</button>
+          <button id="memory-repair" type="button">Repair</button>
           <button id="reset" type="button">Reset</button>
           <button id="seed" type="button">Seed</button>
           <button id="reindex" type="button">Reindex</button>
@@ -144,12 +152,9 @@
         model: "gpt-5.2"
       };
 
-      async function requestJson(url, body) {
-        const options = body === undefined ? {} : {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify(body)
-        };
+      async function requestJson(url, body = {}, method = "POST") {
+        const options = {method, headers: {"Content-Type": "application/json"}};
+        if (method !== "GET") options.body = JSON.stringify(body || {});
         const response = await fetch(url, options);
         let payload;
         try {
@@ -164,7 +169,7 @@
       }
 
       async function refresh() {
-        state = await requestJson("/api/chat/state");
+        state = await requestJson("/api/chat/state", null, "GET");
         render();
       }
 
@@ -312,6 +317,8 @@
           panel.append(stepNode("Flush Decision", "No flush decision yet."));
           panel.append(stepNode("File Diff", "No file diff yet."));
           panel.append(stepNode("Promotion Sweep", state.promotionSweep ? memoryActionDetailNode(state.promotionSweep) : textBlock("Not run yet.")));
+          panel.append(stepNode("Dreaming Sweep", state.dreamingSweep ? renderJsonView(state.dreamingSweep) : textBlock("Not run yet.")));
+          panel.append(stepNode("Audit / Repair", auditRepairNode()));
           panel.append(stepNode("Reindex", "No reindex run yet."));
           return;
         }
@@ -321,6 +328,8 @@
         panel.append(stepNode("Flush Decision", latest.flush ? renderJsonView(latest.flush.parsed) : textBlock("Not run for this turn.")));
         panel.append(stepNode("File Diff", latest.flush ? diffNode(latest.flush.diff || "") : textBlock("Not run for this turn.")));
         panel.append(stepNode("Promotion Sweep", state.promotionSweep ? memoryActionDetailNode(state.promotionSweep) : textBlock("Not run yet. Use Promotion sweep to apply ranked short-term promotions.")));
+        panel.append(stepNode("Dreaming Sweep", state.dreamingSweep ? renderJsonView(state.dreamingSweep) : textBlock("Not run yet.")));
+        panel.append(stepNode("Audit / Repair", auditRepairNode()));
         panel.append(stepNode("Reindex", latest.flush ? kvGrid({
           "Indexed files": latest.flush.indexedFiles,
           Chunks: latest.flush.chunks,
@@ -331,6 +340,13 @@
       function reindexStatus(flush) {
         const summary = `${flush.indexedFiles} files, ${flush.chunks} chunks`;
         return flush.reindexError ? `${summary}\n\nError: ${flush.reindexError}` : summary;
+      }
+
+      function auditRepairNode() {
+        const wrap = document.createElement("div");
+        wrap.append(sectionBlock("Audit", state.memoryAudit ? renderJsonView(state.memoryAudit) : textBlock("Not run yet.")));
+        wrap.append(sectionBlock("Repair", state.memoryRepair ? renderJsonView(state.memoryRepair) : textBlock("Not run yet.")));
+        return wrap;
       }
 
       function stepNode(title, text) {
@@ -815,6 +831,21 @@
           showOutput({error: error.message});
           activateTab("tool-inspector");
         }
+      };
+      document.querySelector("#dreaming-run").onclick = async () => {
+        state = await requestJson("/api/dreaming/run", {
+          phase: document.querySelector("#dreaming-phase").value,
+          openai: openAIConfig()
+        });
+        render();
+      };
+      document.querySelector("#memory-audit").onclick = async () => {
+        state = await requestJson("/api/memory/audit", null, "GET");
+        render();
+      };
+      document.querySelector("#memory-repair").onclick = async () => {
+        state = await requestJson("/api/memory/repair", {});
+        render();
       };
       document.querySelector("#reset").onclick = async () => {
         state = await requestJson("/api/chat/reset", {});

@@ -6,6 +6,7 @@
   --line: #cbd5df;
   --line-strong: #aebccd;
   --text: #17212b;
+  --ink: var(--text);
   --muted: #5c6b7b;
   --accent: #235fb8;
   --accent-dark: #184782;
@@ -162,6 +163,15 @@ label {
   background: #c8d2dc;
   color: #607080;
   cursor: not-allowed;
+}
+
+.memory-controls select {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  background: #ffffff;
+  color: var(--ink);
+  font: inherit;
 }
 
 .engine-status {
@@ -494,6 +504,10 @@ label {
 .pipeline-step pre,
 .pipeline-step .diff-view {
   max-height: 168px;
+}
+
+.pipeline-step .kv-grid {
+  margin-top: 0.75rem;
 }
 
 .tab-panels {

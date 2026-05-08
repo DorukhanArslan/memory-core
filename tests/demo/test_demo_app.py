@@ -86,6 +86,12 @@ def test_demo_home_loads():
     assert "diff-view" in response.text
     assert "kv-grid" in response.text
     assert "promotion-sweep" in response.text
+    assert "dreaming-run" in response.text
+    assert "memory-audit" in response.text
+    assert "memory-repair" in response.text
+    assert "Dreaming Sweep" in response.text
+    assert "Audit / Repair" in response.text
+    assert "phaseSignalsRecorded" in response.text
     assert "/api/memory/promote" in response.text
     assert '<option value="sessions">sessions</option>' in response.text
     assert "daily-memory-select" in response.text

@@ -91,8 +91,13 @@ def test_demo_home_loads():
     assert "memory-repair" in response.text
     assert "Dreaming Sweep" in response.text
     assert "Audit / Repair" in response.text
-    assert "phaseSignalsRecorded" in response.text
     assert "/api/memory/promote" in response.text
+    assert "/api/dreaming/run" in response.text
+    assert "/api/memory/audit" in response.text
+    assert '/api/memory/audit", null, "GET"' in response.text
+    assert "/api/memory/repair" in response.text
+    assert "renderJsonView(state.dreamingSweep)" in response.text
+    assert "data-observability-fields" not in response.text
     assert '<option value="sessions">sessions</option>' in response.text
     assert "daily-memory-select" in response.text
     assert "dailyMemoryPaths" in response.text

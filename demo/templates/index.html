@@ -38,7 +38,7 @@
             <option value="rem">rem</option>
             <option value="deep">deep</option>
           </select>
-          <button id="dreaming-run" type="button" data-observability-fields="phaseSignalsRecorded">Dreaming sweep</button>
+          <button id="dreaming-run" type="button">Dreaming sweep</button>
           <button id="memory-audit" type="button">Audit</button>
           <button id="memory-repair" type="button">Repair</button>
           <button id="reset" type="button">Reset</button>
@@ -833,19 +833,34 @@
         }
       };
       document.querySelector("#dreaming-run").onclick = async () => {
-        state = await requestJson("/api/dreaming/run", {
-          phase: document.querySelector("#dreaming-phase").value,
-          openai: openAIConfig()
-        });
-        render();
+        try {
+          state = await requestJson("/api/dreaming/run", {
+            phase: document.querySelector("#dreaming-phase").value,
+            openai: openAIConfig()
+          });
+          render();
+        } catch (error) {
+          showOutput({error: error.message});
+          activateTab("tool-inspector");
+        }
       };
       document.querySelector("#memory-audit").onclick = async () => {
-        state = await requestJson("/api/memory/audit", null, "GET");
-        render();
+        try {
+          state = await requestJson("/api/memory/audit", null, "GET");
+          render();
+        } catch (error) {
+          showOutput({error: error.message});
+          activateTab("tool-inspector");
+        }
       };
       document.querySelector("#memory-repair").onclick = async () => {
-        state = await requestJson("/api/memory/repair", {});
-        render();
+        try {
+          state = await requestJson("/api/memory/repair", {});
+          render();
+        } catch (error) {
+          showOutput({error: error.message});
+          activateTab("tool-inspector");
+        }
       };
       document.querySelector("#reset").onclick = async () => {
         state = await requestJson("/api/chat/reset", {});

@@ -188,10 +188,35 @@ def test_phase_signals_are_recorded_and_decay_old_keys(tmp_path: Path):
 
     phase_path = tmp_path / SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH
     raw = phase_path.read_text(encoding="utf-8")
+    payload = json.loads(raw)
+    entry = payload["entries"]["memory:memory/2026-05-08.md:2:2:abc"]
 
     assert changed == 1
     assert '"lightHits": 1' in raw
     assert '"remHits": 0' in raw
+    assert entry["lastLightAt"] == "2026-05-08T12:00:00Z"
+    assert entry["lastRemAt"] is None
+
+
+def test_new_rem_phase_signal_entry_includes_last_light_at(tmp_path: Path):
+    config = MemoryConfig(workspace_dir=tmp_path)
+    now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    changed = record_short_term_phase_signals(
+        config=config,
+        keys=["memory:memory/2026-05-08.md:2:2:def"],
+        phase="rem",
+        now_ms=now,
+    )
+
+    phase_path = tmp_path / SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH
+    payload = json.loads(phase_path.read_text(encoding="utf-8"))
+    entry = payload["entries"]["memory:memory/2026-05-08.md:2:2:def"]
+
+    assert changed == 1
+    assert entry["lightHits"] == 0
+    assert entry["remHits"] == 1
+    assert entry["lastLightAt"] is None
+    assert entry["lastRemAt"] == "2026-05-08T12:00:00Z"
 
 
 def test_candidate_output_includes_score_components_and_phase_boost(tmp_path: Path):
@@ -218,12 +243,13 @@ def test_candidate_output_includes_score_components_and_phase_boost(tmp_path: Pa
         min_recall_count=1,
         min_unique_queries=1,
     )
-    record_short_term_phase_signals(
-        config=config,
-        keys=[candidates[0].key],
-        phase="rem",
-        now_ms=now,
-    )
+    for phase in ("light", "light", "light", "rem", "rem", "rem"):
+        record_short_term_phase_signals(
+            config=config,
+            keys=[candidates[0].key],
+            phase=phase,
+            now_ms=now,
+        )
     boosted = rank_short_term_promotion_candidates(
         config=config,
         now_ms=now,
@@ -235,4 +261,5 @@ def test_candidate_output_includes_score_components_and_phase_boost(tmp_path: Pa
 
     assert boosted[0].components["frequency"] > 0
     assert boosted[0].components["phaseBoost"] > 0
+    assert boosted[0].components["phaseBoost"] <= 0.09
     assert boosted[0].score >= candidates[0].score

@@ -316,12 +316,7 @@ def record_short_term_phase_signals(
     for key in keys:
         if not key:
             continue
-        entry = store["entries"].get(key)
-        if not isinstance(entry, dict):
-            entry = {"key": key, "lightHits": 0, "remHits": 0}
-        entry["key"] = key
-        entry["lightHits"] = _int(entry.get("lightHits"), 0)
-        entry["remHits"] = _int(entry.get("remHits"), 0)
+        entry = _normalize_phase_signal_entry(key, store["entries"].get(key))
         if phase == "light":
             entry["lightHits"] += 1
             entry["lastLightAt"] = now_iso
@@ -633,7 +628,9 @@ def _phase_signal_boost(entry: Any, now_ms: int) -> float:
         return 0.0
     light_hits = _int(entry.get("lightHits"), 0)
     rem_hits = _int(entry.get("remHits"), 0)
-    return min(0.06, max(0, light_hits) * 0.02) + min(0.09, max(0, rem_hits) * 0.03)
+    light = min(0.06, max(0, light_hits) * 0.02)
+    rem = min(0.09, max(0, rem_hits) * 0.03)
+    return min(0.09, light + rem)
 
 
 def _build_promotion_section(
@@ -688,11 +685,24 @@ def _read_phase_signal_store(path: Path, now_ms: int) -> dict[str, Any]:
             continue
         if _phase_signal_is_expired(entry, now_ms):
             continue
-        active_entries[key] = entry
+        active_entries[key] = _normalize_phase_signal_entry(key, entry)
     return {
         "version": 1,
         "updatedAt": str(raw.get("updatedAt") or _iso(now_ms)) if isinstance(raw, dict) else _iso(now_ms),
         "entries": active_entries,
+    }
+
+
+def _normalize_phase_signal_entry(key: str, entry: Any) -> dict[str, Any]:
+    if not isinstance(entry, dict):
+        entry = {}
+    return {
+        "key": key,
+        "lightHits": _int(entry.get("lightHits"), 0),
+        "remHits": _int(entry.get("remHits"), 0),
+        "lastLightAt": entry.get("lastLightAt") if isinstance(entry.get("lastLightAt"), str) else None,
+        "lastRemAt": entry.get("lastRemAt") if isinstance(entry.get("lastRemAt"), str) else None,
+        "updatedAt": entry.get("updatedAt") if isinstance(entry.get("updatedAt"), str) else None,
     }
 
 

@@ -494,7 +494,12 @@ def test_memory_promote_endpoint_applies_short_term_promotions(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["promotionSweep"]["parsed"]["shouldWrite"] is True
-    assert response.json()["promotionSweep"]["evaluatedCandidates"][0]["reasons"] == []
+    candidate = response.json()["promotionSweep"]["evaluatedCandidates"][0]
+    assert candidate["reasons"] == []
+    assert candidate["ageDays"] >= 0
+    assert candidate["conceptTags"]
+    assert candidate["components"]["frequency"] > 0
+    assert "phaseBoost" in candidate["components"]
     assert "User was fired from work." in response.json()["memoryFileContents"]["MEMORY.md"]
 
 

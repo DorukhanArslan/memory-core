@@ -179,6 +179,28 @@ def test_audit_counts_readable_recall_store_entries(tmp_path: Path):
 def test_phase_signals_are_recorded_and_decay_old_keys(tmp_path: Path):
     config = MemoryConfig(workspace_dir=tmp_path)
     now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    phase_path = tmp_path / SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH
+    phase_path.parent.mkdir(parents=True)
+    phase_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "updatedAt": "2026-03-01T12:00:00Z",
+                "entries": {
+                    "memory:memory/2026-03-01.md:2:2:old": {
+                        "key": "memory:memory/2026-03-01.md:2:2:old",
+                        "lightHits": 1,
+                        "remHits": 1,
+                        "lastLightAt": "2026-03-01T12:00:00Z",
+                        "lastRemAt": "2026-03-01T12:00:00Z",
+                        "updatedAt": "2026-03-01T12:00:00Z",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
     changed = record_short_term_phase_signals(
         config=config,
         keys=["memory:memory/2026-05-08.md:2:2:abc"],
@@ -186,12 +208,12 @@ def test_phase_signals_are_recorded_and_decay_old_keys(tmp_path: Path):
         now_ms=now,
     )
 
-    phase_path = tmp_path / SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH
     raw = phase_path.read_text(encoding="utf-8")
     payload = json.loads(raw)
     entry = payload["entries"]["memory:memory/2026-05-08.md:2:2:abc"]
 
     assert changed == 1
+    assert "memory:memory/2026-03-01.md:2:2:old" not in payload["entries"]
     assert '"lightHits": 1' in raw
     assert '"remHits": 0' in raw
     assert entry["lastLightAt"] == "2026-05-08T12:00:00Z"

@@ -559,34 +559,6 @@ def _evaluation_to_candidate(evaluation: PromotionEvaluation) -> PromotionCandid
     )
 
 
-def _candidate_score(
-    *,
-    signal_count: int,
-    avg_score: float,
-    context_diversity: int,
-    age_days: float,
-    recall_days: list[str],
-    grounded_count: int,
-    concept_tags: list[str],
-) -> float:
-    frequency = _clamp(math.log1p(max(0, signal_count)) / math.log1p(10))
-    diversity = _clamp(max(0, context_diversity) / 5)
-    recency = math.exp(-(math.log(2) / DEFAULT_RECENCY_HALF_LIFE_DAYS) * age_days)
-    consolidation = max(
-        _calculate_consolidation_component(recall_days),
-        _clamp(max(0, grounded_count) / 3),
-    )
-    conceptual = _clamp(len(concept_tags) / 6)
-    return _clamp(
-        0.24 * frequency
-        + 0.3 * _clamp(avg_score)
-        + 0.15 * diversity
-        + 0.15 * _clamp(recency)
-        + 0.1 * consolidation
-        + 0.06 * conceptual
-    )
-
-
 def _candidate_components(
     *,
     entry: dict[str, Any],
@@ -618,12 +590,11 @@ def _candidate_components(
         "recency": 0.15 * _clamp(recency),
         "consolidation": 0.10 * consolidation,
         "conceptual": 0.06 * _clamp(len(concept_tags) / 6),
-        "phaseBoost": _phase_signal_boost(phase_entries.get(key), now_ms),
+        "phaseBoost": _phase_signal_boost(phase_entries.get(key)),
     }
 
 
-def _phase_signal_boost(entry: Any, now_ms: int) -> float:
-    del now_ms
+def _phase_signal_boost(entry: Any) -> float:
     if not isinstance(entry, dict):
         return 0.0
     light_hits = _int(entry.get("lightHits"), 0)

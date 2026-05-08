@@ -327,6 +327,11 @@ def _serialize_promotion(promotion: MemoryPromotionRun) -> dict[str, Any]:
                 "maxScore": round(candidate.max_score, 3),
                 "uniqueQueries": candidate.unique_queries,
                 "contextDiversity": candidate.context_diversity,
+                "ageDays": round(candidate.age_days, 3),
+                "conceptTags": list(candidate.concept_tags),
+                "components": {
+                    key: round(value, 3) for key, value in candidate.components.items()
+                },
                 "reasons": list(candidate.reasons),
             }
             for candidate in promotion.evaluated_candidates

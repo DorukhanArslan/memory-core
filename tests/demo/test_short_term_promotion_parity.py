@@ -221,6 +221,10 @@ def test_repair_removes_invalid_entries_and_stale_lock(tmp_path: Path):
 
     assert result["removedInvalidEntries"] == 1
     assert result["removedStaleLock"] is True
+    payload = json.loads((dreams / "short-term-recall.json").read_text(encoding="utf-8"))
+    assert payload["updatedAt"] == "2026-05-08T12:00:00Z"
+    assert isinstance(payload["entries"], dict)
+    assert "bad" not in payload["entries"]
     assert not lock.exists()
 
 

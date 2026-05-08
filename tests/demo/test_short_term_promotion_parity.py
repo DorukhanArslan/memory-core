@@ -193,7 +193,7 @@ def test_audit_counts_readable_recall_store_entries(tmp_path: Path):
     audit = audit_short_term_promotion_artifacts(config, ms(datetime(2026, 5, 8, tzinfo=UTC)))
 
     assert audit.exists is True
-    assert audit.entry_count == 3
+    assert audit.entry_count == 2
     assert audit.promoted_entry_count == 1
     assert audit.spaced_entry_count == 1
     assert audit.concept_tagged_entry_count == 1
@@ -206,7 +206,20 @@ def test_repair_removes_invalid_entries_and_stale_lock(tmp_path: Path):
     dreams = tmp_path / "memory" / ".dreams"
     dreams.mkdir(parents=True)
     (dreams / "short-term-recall.json").write_text(
-        '{"version": 1, "updatedAt": "2026-05-08T00:00:00Z", "entries": {"bad": null}}\n',
+        json.dumps(
+            {
+                "version": 1,
+                "updatedAt": "2026-05-08T00:00:00Z",
+                "entries": {
+                    "bad": None,
+                    "missing-fields": {
+                        "key": "missing-fields",
+                        "path": "memory/topic.md",
+                    },
+                },
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
     lock = dreams / "short-term-promotion.lock"
@@ -219,13 +232,14 @@ def test_repair_removes_invalid_entries_and_stale_lock(tmp_path: Path):
         now_ms=ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC)),
     )
 
-    assert result["removedInvalidEntries"] == 1
+    assert result["removedInvalidEntries"] == 2
     assert result["rewroteStore"] is True
     assert result["removedStaleLock"] is True
     payload = json.loads((dreams / "short-term-recall.json").read_text(encoding="utf-8"))
     assert payload["updatedAt"] == "2026-05-08T12:00:00Z"
     assert isinstance(payload["entries"], dict)
     assert "bad" not in payload["entries"]
+    assert "missing-fields" not in payload["entries"]
     assert not lock.exists()
 
 

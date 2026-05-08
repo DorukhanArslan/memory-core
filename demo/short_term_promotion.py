@@ -208,7 +208,7 @@ def audit_short_term_promotion_artifacts(
     concept_tagged_entry_count = 0
     invalid_entry_count = 0
     for entry in entries.values():
-        if not isinstance(entry, dict):
+        if not _is_valid_short_term_recall_entry(entry):
             invalid_entry_count += 1
             continue
         entry_count += 1
@@ -253,7 +253,9 @@ def repair_short_term_promotion_artifacts(config: MemoryConfig, now_ms: int) -> 
                 rewrote_store = True
             else:
                 valid_entries = {
-                    key: entry for key, entry in entries.items() if isinstance(entry, dict)
+                    key: entry
+                    for key, entry in entries.items()
+                    if _is_valid_short_term_recall_entry(entry)
                 }
                 removed_invalid_entries = len(entries) - len(valid_entries)
                 if removed_invalid_entries:
@@ -275,6 +277,15 @@ def repair_short_term_promotion_artifacts(config: MemoryConfig, now_ms: int) -> 
         "rewroteStore": rewrote_store,
         "removedStaleLock": removed_stale_lock,
     }
+
+
+def _is_valid_short_term_recall_entry(entry: Any) -> bool:
+    return (
+        isinstance(entry, dict)
+        and bool(entry.get("key"))
+        and bool(entry.get("path"))
+        and bool(entry.get("snippet"))
+    )
 
 
 def record_short_term_recalls(

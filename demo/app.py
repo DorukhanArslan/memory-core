@@ -620,13 +620,14 @@ def dreaming_run(payload: dict):
                 DREAMING_SWEEP["indexedFiles"] = store.reindex(
                     MemoryWorkspace(demo_config().workspace_dir)
                 )
+                DREAMING_SWEEP["chunks"] = store.count_chunks()
                 DREAMING_SWEEP["reindexError"] = None
             except Exception as exc:
                 DREAMING_SWEEP["indexedFiles"] = 0
+                DREAMING_SWEEP["chunks"] = 0
                 DREAMING_SWEEP["reindexError"] = _safe_exception_message(
                     exc, (_payload_api_key(payload),)
                 )
-            DREAMING_SWEEP["chunks"] = store.count_chunks()
         return _state_payload()
     except DemoPayloadError as exc:
         return _json_error(str(exc))

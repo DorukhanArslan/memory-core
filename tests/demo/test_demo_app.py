@@ -34,6 +34,11 @@ class CountingStore:
         return 11
 
 
+class FailingChunkStore(CountingStore):
+    def count_chunks(self):
+        raise RuntimeError("chunk count failed")
+
+
 class StubOpenAIEngine:
     name = "openai"
 
@@ -604,6 +609,35 @@ def test_dreaming_endpoint_reindexes_changed_files(monkeypatch):
     assert response.json()["dreamingSweep"]["indexedFiles"] == 7
     assert response.json()["dreamingSweep"]["chunks"] == 11
     assert response.json()["dreamingSweep"]["reindexError"] is None
+
+
+def test_dreaming_endpoint_preserves_sweep_when_reindex_metadata_fails(monkeypatch):
+    store = FailingChunkStore()
+    monkeypatch.setattr(demo_app, "demo_store", lambda payload: store)
+    monkeypatch.setattr(
+        demo_app,
+        "run_dreaming_sweep",
+        lambda **kwargs: {
+            "phase": "rem",
+            "filesChanged": ["DREAMS.md"],
+            "candidateCount": 0,
+        },
+    )
+    client = TestClient(app)
+    client.post("/api/chat/reset", json={})
+
+    response = client.post(
+        "/api/dreaming/run",
+        json={"phase": "rem", "openai": {"apiKey": "request-key"}},
+    )
+
+    sweep = response.json()["dreamingSweep"]
+    assert response.status_code == 200
+    assert sweep["phase"] == "rem"
+    assert sweep["filesChanged"] == ["DREAMS.md"]
+    assert sweep["indexedFiles"] == 0
+    assert sweep["chunks"] == 0
+    assert "chunk count failed" in sweep["reindexError"]
 
 
 def test_reset_clears_dreaming_artifacts():

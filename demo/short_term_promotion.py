@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import difflib
+import fcntl
 import hashlib
 import json
 import math
@@ -19,6 +20,7 @@ from memory_core.workspace import MemoryWorkspace
 SHORT_TERM_STORE_RELATIVE_PATH = Path("memory") / ".dreams" / "short-term-recall.json"
 SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH = Path("memory") / ".dreams" / "phase-signals.json"
 SHORT_TERM_LOCK_RELATIVE_PATH = Path("memory") / ".dreams" / "short-term-promotion.lock"
+_SHORT_TERM_LOCK_GUARD_RELATIVE_PATH = Path("memory") / ".dreams" / "short-term-promotion.lock.guard"
 SHORT_TERM_LOCK_STALE_MS = 60_000
 PROMOTION_MARKER_PREFIX = "openclaw-memory-promotion:"
 DEFAULT_PROMOTION_MIN_SCORE = 0.75
@@ -120,29 +122,36 @@ def acquire_short_term_promotion_lock(
     lock_path = config.workspace_dir / SHORT_TERM_LOCK_RELATIVE_PATH
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     stole_stale = False
-    while True:
-        try:
-            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        except FileExistsError:
-            stale_snapshot = _read_short_term_lock_snapshot(lock_path)
-            if stale_snapshot is None:
-                continue
-            if not _lock_is_stale(lock_path, now_ms):
-                yield ShortTermLockResult(acquired=False, path=lock_path, reason="locked")
-                return
-            if not _unlink_matching_short_term_lock(lock_path, stale_snapshot):
-                yield ShortTermLockResult(acquired=False, path=lock_path, reason="locked")
-                return
-            stole_stale = True
-            continue
-        break
-
     owner_token = secrets.token_hex(16)
+    acquired = False
+    with _short_term_promotion_guard(lock_path):
+        while True:
+            try:
+                fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except FileExistsError:
+                stale_snapshot = _read_short_term_lock_snapshot(lock_path)
+                if stale_snapshot is None:
+                    continue
+                if not _lock_is_stale(lock_path, now_ms):
+                    break
+                if not _unlink_matching_short_term_lock(lock_path, stale_snapshot):
+                    break
+                stole_stale = True
+                continue
+            acquired = True
+            break
+
+        if acquired:
+            payload = {"pid": os.getpid(), "createdAt": _iso(now_ms), "ownerToken": owner_token}
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False)
+                handle.write("\n")
+
+    if not acquired:
+        yield ShortTermLockResult(acquired=False, path=lock_path, reason="locked")
+        return
+
     try:
-        payload = {"pid": os.getpid(), "createdAt": _iso(now_ms), "ownerToken": owner_token}
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=False)
-            handle.write("\n")
         yield ShortTermLockResult(acquired=True, path=lock_path, stole_stale=stole_stale)
     finally:
         _release_short_term_promotion_lock(lock_path, owner_token)
@@ -604,6 +613,18 @@ def _read_short_term_lock_snapshot(lock_path: Path) -> _ShortTermLockSnapshot | 
     )
 
 
+@contextmanager
+def _short_term_promotion_guard(lock_path: Path) -> Iterator[None]:
+    guard_path = lock_path.with_name(_SHORT_TERM_LOCK_GUARD_RELATIVE_PATH.name)
+    guard_path.parent.mkdir(parents=True, exist_ok=True)
+    with guard_path.open("a+b") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
 def _unlink_matching_short_term_lock(
     lock_path: Path, snapshot: _ShortTermLockSnapshot
 ) -> bool:
@@ -620,16 +641,17 @@ def _unlink_matching_short_term_lock(
 
 
 def _release_short_term_promotion_lock(lock_path: Path, owner_token: str) -> None:
-    try:
-        raw = json.loads(lock_path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError, UnicodeDecodeError):
-        return
-    if not isinstance(raw, dict) or raw.get("ownerToken") != owner_token:
-        return
-    try:
-        lock_path.unlink()
-    except FileNotFoundError:
-        pass
+    with _short_term_promotion_guard(lock_path):
+        try:
+            raw = json.loads(lock_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError, OSError, UnicodeDecodeError):
+            return
+        if not isinstance(raw, dict) or raw.get("ownerToken") != owner_token:
+            return
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _write_store(path: Path, store: dict[str, Any]) -> None:

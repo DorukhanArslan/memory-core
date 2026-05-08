@@ -24,6 +24,11 @@ def test_lock_constants_match_openclaw_paths():
     assert SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH.as_posix() == "memory/.dreams/phase-signals.json"
     assert SHORT_TERM_LOCK_RELATIVE_PATH.as_posix() == "memory/.dreams/short-term-promotion.lock"
     assert SHORT_TERM_LOCK_STALE_MS == 60_000
+    assert not hasattr(promotion_module, "SHORT_TERM_LOCK_GUARD_RELATIVE_PATH")
+    assert (
+        promotion_module._SHORT_TERM_LOCK_GUARD_RELATIVE_PATH.as_posix()
+        == "memory/.dreams/short-term-promotion.lock.guard"
+    )
 
 
 def test_active_short_term_lock_blocks_second_owner(tmp_path: Path):

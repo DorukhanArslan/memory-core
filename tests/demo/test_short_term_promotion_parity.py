@@ -12,6 +12,9 @@ from demo.short_term_promotion import (
     SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH,
     acquire_short_term_promotion_lock,
     audit_short_term_promotion_artifacts,
+    rank_short_term_promotion_candidates,
+    record_short_term_phase_signals,
+    record_short_term_recalls,
 )
 from memory_core.config import MemoryConfig
 
@@ -171,3 +174,65 @@ def test_audit_counts_readable_recall_store_entries(tmp_path: Path):
     assert audit.concept_tagged_entry_count == 1
     assert audit.invalid_entry_count == 2
     assert audit.issues == ()
+
+
+def test_phase_signals_are_recorded_and_decay_old_keys(tmp_path: Path):
+    config = MemoryConfig(workspace_dir=tmp_path)
+    now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    changed = record_short_term_phase_signals(
+        config=config,
+        keys=["memory:memory/2026-05-08.md:2:2:abc"],
+        phase="light",
+        now_ms=now,
+    )
+
+    phase_path = tmp_path / SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH
+    raw = phase_path.read_text(encoding="utf-8")
+
+    assert changed == 1
+    assert '"lightHits": 1' in raw
+    assert '"remHits": 0' in raw
+
+
+def test_candidate_output_includes_score_components_and_phase_boost(tmp_path: Path):
+    config = MemoryConfig(workspace_dir=tmp_path)
+    now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    daily = tmp_path / "memory" / "2026-05-08.md"
+    daily.parent.mkdir(parents=True)
+    daily.write_text("# 2026-05-08\n\n- User prefers lowercase answers.\n", encoding="utf-8")
+    result = {
+        "path": "memory/2026-05-08.md",
+        "startLine": 3,
+        "endLine": 3,
+        "snippet": "- User prefers lowercase answers.",
+        "score": 0.9,
+    }
+    for query in ("lowercase", "answer case", "writing style"):
+        record_short_term_recalls(config=config, query=query, results=[result], now_ms=now)
+
+    candidates = rank_short_term_promotion_candidates(
+        config=config,
+        now_ms=now,
+        limit=5,
+        min_score=0,
+        min_recall_count=1,
+        min_unique_queries=1,
+    )
+    record_short_term_phase_signals(
+        config=config,
+        keys=[candidates[0].key],
+        phase="rem",
+        now_ms=now,
+    )
+    boosted = rank_short_term_promotion_candidates(
+        config=config,
+        now_ms=now,
+        limit=5,
+        min_score=0,
+        min_recall_count=1,
+        min_unique_queries=1,
+    )
+
+    assert boosted[0].components["frequency"] > 0
+    assert boosted[0].components["phaseBoost"] > 0
+    assert boosted[0].score >= candidates[0].score

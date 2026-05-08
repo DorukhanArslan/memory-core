@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import difflib
 import fcntl
@@ -28,6 +28,7 @@ DEFAULT_PROMOTION_MIN_RECALL_COUNT = 3
 DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES = 2
 DEFAULT_RECENCY_HALF_LIFE_DAYS = 14
 DAY_MS = 24 * 60 * 60 * 1000
+PHASE_SIGNAL_DECAY_MS = 30 * DAY_MS
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,9 @@ class PromotionCandidate:
     first_recalled_at: str
     last_recalled_at: str
     promoted_at: str | None = None
+    age_days: float = 0.0
+    concept_tags: tuple[str, ...] = ()
+    components: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -101,6 +105,9 @@ class PromotionEvaluation:
     context_diversity: int
     score: float
     reasons: tuple[str, ...]
+    age_days: float = 0.0
+    concept_tags: tuple[str, ...] = ()
+    components: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -293,6 +300,43 @@ def record_short_term_recalls(
     return changed
 
 
+def record_short_term_phase_signals(
+    *,
+    config: MemoryConfig,
+    keys: list[str],
+    phase: str,
+    now_ms: int,
+) -> int:
+    if phase not in {"light", "rem"}:
+        raise ValueError(f"unsupported dreaming phase: {phase}")
+    path = config.workspace_dir / SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH
+    store = _read_phase_signal_store(path, now_ms)
+    now_iso = _iso(now_ms)
+    changed = 0
+    for key in keys:
+        if not key:
+            continue
+        entry = store["entries"].get(key)
+        if not isinstance(entry, dict):
+            entry = {"key": key, "lightHits": 0, "remHits": 0}
+        entry["key"] = key
+        entry["lightHits"] = _int(entry.get("lightHits"), 0)
+        entry["remHits"] = _int(entry.get("remHits"), 0)
+        if phase == "light":
+            entry["lightHits"] += 1
+            entry["lastLightAt"] = now_iso
+        else:
+            entry["remHits"] += 1
+            entry["lastRemAt"] = now_iso
+        entry["updatedAt"] = now_iso
+        store["entries"][key] = entry
+        changed += 1
+    if changed:
+        store["updatedAt"] = now_iso
+        _write_json_atomic(path, store)
+    return changed
+
+
 def record_daily_memory_flush(
     *,
     config: MemoryConfig,
@@ -429,6 +473,11 @@ def evaluate_short_term_promotion_candidates(
     min_unique_queries: int,
 ) -> list[PromotionEvaluation]:
     store = _read_store(config.workspace_dir / SHORT_TERM_STORE_RELATIVE_PATH, now_ms)
+    phase_signals = _read_phase_signal_store(
+        config.workspace_dir / SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH,
+        now_ms,
+    )
+    phase_entries = phase_signals.get("entries", {})
     memory_text = _read_text_if_exists(config.workspace_dir / "MEMORY.md")
     markers = set(_extract_promotion_markers(memory_text))
     evaluations = []
@@ -451,15 +500,15 @@ def evaluate_short_term_promotion_candidates(
         age_days = max(0.0, (now_ms - _parse_ms(last_recalled_at, now_ms)) / DAY_MS)
         recall_days = [value for value in raw.get("recallDays", []) if isinstance(value, str)]
         context_diversity = max(unique_queries, len(set(recall_days)))
-        score = _candidate_score(
-            signal_count=signal_count,
-            avg_score=avg_score,
-            context_diversity=context_diversity,
-            age_days=age_days,
-            recall_days=recall_days,
-            grounded_count=grounded_count,
-            concept_tags=[value for value in raw.get("conceptTags", []) if isinstance(value, str)],
+        concept_tags = tuple(
+            value for value in raw.get("conceptTags", []) if isinstance(value, str) and value
         )
+        components = _candidate_components(
+            entry=raw,
+            now_ms=now_ms,
+            phase_entries=phase_entries if isinstance(phase_entries, dict) else {},
+        )
+        score = _clamp(sum(components.values()))
         reasons = []
         if score < min_score:
             reasons.append(f"score {score:.3f} < {min_score:.3f}")
@@ -484,6 +533,9 @@ def evaluate_short_term_promotion_candidates(
                 context_diversity=context_diversity,
                 score=score,
                 reasons=tuple(reasons),
+                age_days=age_days,
+                concept_tags=concept_tags,
+                components=components,
             )
         )
     return sorted(evaluations, key=lambda evaluation: evaluation.score, reverse=True)
@@ -506,6 +558,9 @@ def _evaluation_to_candidate(evaluation: PromotionEvaluation) -> PromotionCandid
         score=evaluation.score,
         first_recalled_at="",
         last_recalled_at="",
+        age_days=evaluation.age_days,
+        concept_tags=evaluation.concept_tags,
+        components=dict(evaluation.components),
     )
 
 
@@ -535,6 +590,50 @@ def _candidate_score(
         + 0.1 * consolidation
         + 0.06 * conceptual
     )
+
+
+def _candidate_components(
+    *,
+    entry: dict[str, Any],
+    now_ms: int,
+    phase_entries: dict[str, Any],
+) -> dict[str, float]:
+    recall_count = _int(entry.get("recallCount"), 0)
+    daily_count = _int(entry.get("dailyCount"), 0)
+    grounded_count = _int(entry.get("groundedCount"), 0)
+    signal_count = recall_count + daily_count + grounded_count
+    total_score = float(entry.get("totalScore") or 0)
+    avg_score = total_score / max(1, signal_count)
+    query_hashes = [value for value in entry.get("queryHashes", []) if isinstance(value, str)]
+    recall_days = [value for value in entry.get("recallDays", []) if isinstance(value, str)]
+    context_diversity = max(len(set(query_hashes)), len(set(recall_days)))
+    last_recalled_at = str(entry.get("lastRecalledAt") or _iso(now_ms))
+    age_days = max(0.0, (now_ms - _parse_ms(last_recalled_at, now_ms)) / DAY_MS)
+    recency = math.exp(-(math.log(2) / DEFAULT_RECENCY_HALF_LIFE_DAYS) * age_days)
+    concept_tags = [value for value in entry.get("conceptTags", []) if isinstance(value, str)]
+    consolidation = max(
+        _calculate_consolidation_component(recall_days),
+        _clamp(max(0, grounded_count) / 3),
+    )
+    key = str(entry.get("key") or "")
+    return {
+        "frequency": 0.24 * _clamp(math.log1p(max(0, signal_count)) / math.log1p(10)),
+        "relevance": 0.30 * _clamp(avg_score),
+        "diversity": 0.15 * _clamp(max(0, context_diversity) / 5),
+        "recency": 0.15 * _clamp(recency),
+        "consolidation": 0.10 * consolidation,
+        "conceptual": 0.06 * _clamp(len(concept_tags) / 6),
+        "phaseBoost": _phase_signal_boost(phase_entries.get(key), now_ms),
+    }
+
+
+def _phase_signal_boost(entry: Any, now_ms: int) -> float:
+    del now_ms
+    if not isinstance(entry, dict):
+        return 0.0
+    light_hits = _int(entry.get("lightHits"), 0)
+    rem_hits = _int(entry.get("remHits"), 0)
+    return min(0.06, max(0, light_hits) * 0.02) + min(0.09, max(0, rem_hits) * 0.03)
 
 
 def _build_promotion_section(
@@ -571,6 +670,44 @@ def _read_store(path: Path, now_ms: int) -> dict[str, Any]:
         "updatedAt": str(raw.get("updatedAt") or _iso(now_ms)) if isinstance(raw, dict) else _iso(now_ms),
         "entries": entries if isinstance(entries, dict) else {},
     }
+
+
+def _read_phase_signal_store(path: Path, now_ms: int) -> dict[str, Any]:
+    if not path.exists():
+        return {"version": 1, "updatedAt": _iso(now_ms), "entries": {}}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {"version": 1, "updatedAt": _iso(now_ms), "entries": {}}
+    entries = raw.get("entries") if isinstance(raw, dict) else None
+    if not isinstance(entries, dict):
+        entries = {}
+    active_entries = {}
+    for key, entry in entries.items():
+        if not isinstance(key, str) or not isinstance(entry, dict):
+            continue
+        if _phase_signal_is_expired(entry, now_ms):
+            continue
+        active_entries[key] = entry
+    return {
+        "version": 1,
+        "updatedAt": str(raw.get("updatedAt") or _iso(now_ms)) if isinstance(raw, dict) else _iso(now_ms),
+        "entries": active_entries,
+    }
+
+
+def _phase_signal_is_expired(entry: dict[str, Any], now_ms: int) -> bool:
+    timestamps = [
+        _parse_ms(value, -1)
+        for value in (
+            entry.get("updatedAt"),
+            entry.get("lastLightAt"),
+            entry.get("lastRemAt"),
+        )
+        if isinstance(value, str)
+    ]
+    latest = max(timestamps, default=-1)
+    return latest >= 0 and now_ms - latest > PHASE_SIGNAL_DECAY_MS
 
 
 def _lock_is_stale(lock_path: Path, now_ms: int) -> bool:
@@ -655,8 +792,17 @@ def _release_short_term_promotion_lock(lock_path: Path, owner_token: str) -> Non
 
 
 def _write_store(path: Path, store: dict[str, Any]) -> None:
+    _write_json_atomic(path, store)
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary_path = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
+    temporary_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    temporary_path.replace(path)
 
 
 def _mark_promoted(path: Path, candidates: list[PromotionCandidate], now_ms: int) -> None:

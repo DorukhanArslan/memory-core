@@ -14,6 +14,22 @@ type Payload = {
   candidates?: unknown[];
   keys?: string[];
   phase?: "light" | "rem";
+  limit?: number;
+  minScore?: number;
+  minRecallCount?: number;
+  minUniqueQueries?: number;
+  maxAgeDays?: number;
+  recencyHalfLifeDays?: number;
+};
+
+type PromotionPolicy = {
+  enabled?: boolean;
+  limit?: number;
+  minScore?: number;
+  minRecallCount?: number;
+  minUniqueQueries?: number;
+  maxAgeDays?: number;
+  recencyHalfLifeDays?: number;
 };
 
 async function readStdin(): Promise<Payload> {
@@ -50,6 +66,25 @@ async function snapshotFiles(workspaceDir?: string): Promise<Record<string, stri
   return out;
 }
 
+async function resolvePromotionPolicy(repoPath: string, payload: Payload): Promise<PromotionPolicy> {
+  const dreaming = await importFromRepo(repoPath, "src/memory-host-sdk/dreaming.ts");
+  const resolved = dreaming.resolveMemoryDeepDreamingConfig({
+    pluginConfig: payload.config ?? {},
+    cfg: payload.config ?? {},
+  });
+
+  // Match managed deep dreaming defaults, while allowing explicit oracle payload overrides.
+  return {
+    enabled: resolved.enabled,
+    limit: payload.limit ?? resolved.limit,
+    minScore: payload.minScore ?? resolved.minScore,
+    minRecallCount: payload.minRecallCount ?? resolved.minRecallCount,
+    minUniqueQueries: payload.minUniqueQueries ?? resolved.minUniqueQueries,
+    maxAgeDays: payload.maxAgeDays ?? resolved.maxAgeDays,
+    recencyHalfLifeDays: payload.recencyHalfLifeDays ?? resolved.recencyHalfLifeDays,
+  };
+}
+
 async function main() {
   const payload = await readStdin();
   const repoPath = payload.repoPath;
@@ -60,11 +95,7 @@ async function main() {
   const timezone = payload.timezone || "UTC";
 
   if (payload.operation === "deepPolicy") {
-    const dreaming = await importFromRepo(repoPath, "src/memory-host-sdk/dreaming.ts");
-    const resolved = dreaming.resolveMemoryDeepDreamingConfig({
-      pluginConfig: payload.config ?? {},
-      cfg: payload.config ?? {},
-    });
+    const resolved = await resolvePromotionPolicy(repoPath, payload);
     return {
       ok: true,
       operation: payload.operation,
@@ -115,23 +146,32 @@ async function main() {
   }
 
   if (payload.operation === "rankShortTermPromotionCandidates") {
+    const policy = await resolvePromotionPolicy(repoPath, payload);
     const candidates = await promotion.rankShortTermPromotionCandidates({
       workspaceDir: payload.workspaceDir,
       nowMs,
-      limit: 10,
-      minScore: 0.75,
-      minRecallCount: 3,
-      minUniqueQueries: 2,
+      limit: policy.limit,
+      minScore: policy.minScore,
+      minRecallCount: policy.minRecallCount,
+      minUniqueQueries: policy.minUniqueQueries,
+      maxAgeDays: policy.maxAgeDays,
+      recencyHalfLifeDays: policy.recencyHalfLifeDays,
     });
     return { ok: true, operation: payload.operation, result: { candidates } };
   }
 
   if (payload.operation === "applyShortTermPromotions") {
+    const policy = await resolvePromotionPolicy(repoPath, payload);
     const result = await promotion.applyShortTermPromotions({
       workspaceDir: payload.workspaceDir,
       nowMs,
       timezone,
       candidates: payload.candidates ?? [],
+      limit: policy.limit,
+      minScore: policy.minScore,
+      minRecallCount: policy.minRecallCount,
+      minUniqueQueries: policy.minUniqueQueries,
+      maxAgeDays: policy.maxAgeDays,
     });
     return {
       ok: true,

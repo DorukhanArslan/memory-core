@@ -84,3 +84,21 @@ def test_run_returns_runner_json(monkeypatch, tmp_path: Path):
     assert result["ok"] is True
     assert result["result"]["minScore"] == 0.8
     assert result["metadata"]["commit"] == "abc123"
+
+
+def test_runner_forwards_policy_fields_to_rank_and_apply():
+    source = openclaw_oracle.RUNNER_PATH.read_text(encoding="utf-8")
+
+    for field in [
+        "limit",
+        "minScore",
+        "minRecallCount",
+        "minUniqueQueries",
+        "maxAgeDays",
+        "recencyHalfLifeDays",
+    ]:
+        assert f"{field}: policy.{field}" in source
+
+    assert "limit: 10" not in source
+    assert "minScore: 0.75" not in source
+    assert "minUniqueQueries: 2" not in source

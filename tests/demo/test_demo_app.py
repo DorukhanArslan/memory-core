@@ -103,6 +103,12 @@ def test_demo_home_loads():
     assert "memory-repair" in response.text
     assert "Dreaming Sweep" in response.text
     assert "Audit / Repair" in response.text
+    assert "OpenClaw Parity" in response.text
+    assert "parity-trace" in response.text
+    assert "/api/parity/trace" in response.text
+    assert "renderParityTrace" in response.text
+    assert "Python Port" in response.text
+    assert "OpenClaw TS Oracle" in response.text
     assert "/api/memory/promote" in response.text
     assert "/api/dreaming/run" in response.text
     assert "/api/memory/audit" in response.text
@@ -116,8 +122,6 @@ def test_demo_home_loads():
     assert "latestDailyMemoryPath" in response.text
     assert "Long-term and reference files" in response.text
     assert "memory-core defaults" in response.text
-    assert "OpenClaw" not in response.text
-    assert "openclaw" not in response.text
     assert "streamingAssistantText" in response.text
     assert "renderMarkdown(body, streamingAssistantText)" in response.text
     assert 'textContent += text' not in response.text

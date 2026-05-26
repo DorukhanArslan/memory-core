@@ -76,6 +76,7 @@
           <button class="tab active" data-tab="memory-files" type="button">Memory Files</button>
           <button class="tab" data-tab="workspace-files" type="button">Workspace Files</button>
           <button class="tab" data-tab="tool-inspector" type="button">Tool Inspector</button>
+          <button class="tab" data-tab="parity-trace" type="button">OpenClaw Parity</button>
           <button class="tab" data-tab="config" type="button">Config</button>
         </nav>
 
@@ -145,6 +146,15 @@
             </form>
           </div>
           <pre id="output">{}</pre>
+        </section>
+
+        <section id="parity-trace" class="tab-panel" aria-label="OpenClaw Parity">
+          <div class="panel-heading">
+            <h2>OpenClaw Parity</h2>
+            <span>Python Port vs OpenClaw TS Oracle</span>
+          </div>
+          <button id="run-parity-trace" type="button">Run parity trace</button>
+          <div id="parity-output" class="parity-output"></div>
         </section>
 
         <section id="config" class="tab-panel" aria-label="Config"></section>
@@ -491,6 +501,34 @@
           wrapper.append(row);
         }
         return wrapper;
+      }
+
+      function renderParityTrace(payload) {
+        const panel = document.querySelector("#parity-output");
+        panel.replaceChildren();
+        const meta = document.createElement("section");
+        meta.className = "pipeline-step";
+        meta.append(sectionBlock("Oracle", kvGrid({
+          Available: payload.oracle && payload.oracle.available,
+          Commit: payload.oracle && payload.oracle.commit || "",
+          Path: payload.oracle && payload.oracle.repoPath || "",
+        })));
+        panel.append(meta);
+        for (const step of payload.steps || []) {
+          const row = document.createElement("section");
+          row.className = `pipeline-step parity-row parity-${step.diff && step.diff.status || "unknown"}`;
+          const heading = document.createElement("h3");
+          heading.textContent = `${step.label || step.id} - ${step.diff && step.diff.status || "unknown"}`;
+          const columns = document.createElement("div");
+          columns.className = "inspector-grid";
+          columns.append(sectionBlock("Python Port", renderJsonView(step.python || {})));
+          columns.append(sectionBlock("OpenClaw TS Oracle", renderJsonView(step.openclaw || {})));
+          row.append(heading);
+          if (step.condition) row.append(sectionBlock("Condition", codeBlock(step.condition)));
+          row.append(columns);
+          row.append(sectionBlock("Diff", renderJsonView(step.diff || {})));
+          panel.append(row);
+        }
       }
 
       function renderMarkdown(container, text) {
@@ -925,6 +963,14 @@
         } catch (error) {
           showOutput({error: error.message});
           activateTab("tool-inspector");
+        }
+      };
+      document.querySelector("#run-parity-trace").onclick = async () => {
+        try {
+          const payload = await requestJson("/api/parity/trace", {});
+          renderParityTrace(payload);
+        } catch (error) {
+          document.querySelector("#parity-output").textContent = error.message;
         }
       };
       document.querySelector("#reset").onclick = async () => {

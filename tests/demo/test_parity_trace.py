@@ -1,4 +1,4 @@
-from demo.parity_trace import build_deep_policy_trace, diff_values
+from demo.parity_trace import build_deep_policy_trace, build_parity_trace, diff_values
 
 
 class FakeOracle:
@@ -6,17 +6,26 @@ class FakeOracle:
         return {"available": True, "commit": "abc123", "repoPath": "/repo"}
 
     def run(self, payload):
-        assert payload["operation"] == "deepPolicy"
-        return {
-            "ok": True,
-            "operation": "deepPolicy",
-            "result": {
-                "minScore": 0.8,
-                "minRecallCount": 3,
-                "minUniqueQueries": 3,
-                "maxAgeDays": 30,
-            },
-        }
+        if payload["operation"] == "deepPolicy":
+            return {
+                "ok": True,
+                "operation": "deepPolicy",
+                "result": {
+                    "minScore": 0.8,
+                    "minRecallCount": 3,
+                    "minUniqueQueries": 3,
+                    "maxAgeDays": 30,
+                },
+            }
+        if payload["operation"] == "recordShortTermRecalls":
+            return {
+                "ok": True,
+                "operation": "recordShortTermRecalls",
+                "files": {
+                    "memory/.dreams/short-term-recall.json": '{"entries": {}}'
+                },
+            }
+        raise AssertionError(f"unexpected operation: {payload['operation']}")
 
 
 class ExplodingOracle:
@@ -65,3 +74,11 @@ def test_build_deep_policy_trace_returns_error_for_invalid_oracle_result():
     assert trace["diff"]["status"] == "error"
     assert "invalid oracle result" in trace["openclaw"]["reasons"]
     assert any("invalid oracle result" in str(detail) for detail in trace["diff"]["details"])
+
+
+def test_build_parity_trace_includes_recall_tracking_step():
+    trace = build_parity_trace(FakeOracle())
+
+    ids = [step["id"] for step in trace["steps"]]
+
+    assert "recall-tracking" in ids

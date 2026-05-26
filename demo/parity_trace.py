@@ -82,11 +82,52 @@ def _deep_policy_error_trace(
     }
 
 
+def build_recall_tracking_trace(oracle: OpenClawOracle | Any) -> dict[str, Any]:
+    query = "address preference"
+    result = {
+        "source": "memory",
+        "path": "memory/2026-05-26.md",
+        "startLine": 3,
+        "endLine": 3,
+        "snippet": "- User prefers to be addressed as dodo.",
+        "score": 1,
+    }
+    oracle_result = oracle.run(
+        {
+            "operation": "recordShortTermRecalls",
+            "query": query,
+            "results": [result],
+            "nowMs": 1779811200000,
+            "timezone": "Europe/Istanbul",
+        }
+    )
+    openclaw_decision = "recorded" if oracle_result.get("ok") else "error"
+    return {
+        "id": "recall-tracking",
+        "label": "Recall tracking from memory_search",
+        "condition": 'result.source === "memory" && isShortTermMemoryPath(result.path)',
+        "python": {
+            "decision": "recordable",
+            "values": {"query": query, "path": result["path"], "score": result["score"]},
+            "reasons": [],
+        },
+        "openclaw": {
+            "decision": openclaw_decision,
+            "values": {"ok": oracle_result.get("ok")},
+            "reasons": []
+            if oracle_result.get("ok")
+            else [oracle_result.get("error", {}).get("message", "")],
+        },
+        "diff": {"status": "match" if oracle_result.get("ok") else "error", "details": []},
+    }
+
+
 def build_parity_trace(oracle: OpenClawOracle | None = None) -> dict[str, Any]:
     oracle = oracle or OpenClawOracle()
     return {
         "oracle": oracle.metadata(),
         "steps": [
             build_deep_policy_trace(oracle),
+            build_recall_tracking_trace(oracle),
         ],
     }

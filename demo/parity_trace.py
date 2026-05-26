@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from demo.openclaw_oracle import OpenClawOracle
@@ -7,12 +10,28 @@ from demo.short_term_promotion import (
     DEFAULT_PROMOTION_MIN_RECALL_COUNT,
     DEFAULT_PROMOTION_MIN_SCORE,
     DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+    SHORT_TERM_STORE_RELATIVE_PATH,
+    record_short_term_recalls,
 )
+from memory_core.config import MemoryConfig
 
 DEEP_POLICY_CONDITION = (
     "score >= minScore && signals >= minRecallCount && "
     "contextDiversity >= minUniqueQueries && ageDays <= maxAgeDays"
 )
+RECALL_QUERY = "address preference"
+RECALL_RESULT = {
+    "source": "memory",
+    "path": "memory/2026-05-26.md",
+    "startLine": 3,
+    "endLine": 3,
+    "snippet": "- User prefers to be addressed as dodo.",
+    "score": 1,
+}
+RECALL_NOW_MS = 1779811200000
+RECALL_TIMEZONE = "Europe/Istanbul"
+RECALL_STORE_PATH = SHORT_TERM_STORE_RELATIVE_PATH.as_posix()
+RECALL_CONDITION = 'result.source === "memory" && isShortTermMemoryPath(result.path)'
 
 
 def diff_values(python_values: dict[str, Any], openclaw_values: dict[str, Any]) -> dict[str, Any]:
@@ -83,42 +102,129 @@ def _deep_policy_error_trace(
 
 
 def build_recall_tracking_trace(oracle: OpenClawOracle | Any) -> dict[str, Any]:
-    query = "address preference"
-    result = {
-        "source": "memory",
-        "path": "memory/2026-05-26.md",
-        "startLine": 3,
-        "endLine": 3,
-        "snippet": "- User prefers to be addressed as dodo.",
-        "score": 1,
-    }
-    oracle_result = oracle.run(
-        {
-            "operation": "recordShortTermRecalls",
-            "query": query,
-            "results": [result],
-            "nowMs": 1779811200000,
-            "timezone": "Europe/Istanbul",
-        }
-    )
-    openclaw_decision = "recorded" if oracle_result.get("ok") else "error"
+    with (
+        tempfile.TemporaryDirectory(prefix="memory-core-python-recall-") as python_dir,
+        tempfile.TemporaryDirectory(prefix="memory-core-openclaw-recall-") as oracle_dir,
+    ):
+        python_workspace = Path(python_dir)
+        oracle_workspace = Path(oracle_dir)
+        _seed_recall_workspace(python_workspace)
+        _seed_recall_workspace(oracle_workspace)
+        record_short_term_recalls(
+            config=MemoryConfig(workspace_dir=python_workspace),
+            query=RECALL_QUERY,
+            results=[RECALL_RESULT],
+            now_ms=RECALL_NOW_MS,
+        )
+        try:
+            python_values = _recall_values_from_files(
+                _snapshot_recall_files(python_workspace),
+                query=RECALL_QUERY,
+                result=RECALL_RESULT,
+            )
+        except Exception as exc:
+            error = {"message": f"invalid python fixture: {exc}"}
+            return _recall_tracking_error_trace({}, error["message"], error)
+
+        try:
+            oracle_result = oracle.run(
+                {
+                    "operation": "recordShortTermRecalls",
+                    "query": RECALL_QUERY,
+                    "results": [RECALL_RESULT],
+                    "nowMs": RECALL_NOW_MS,
+                    "timezone": RECALL_TIMEZONE,
+                    "workspaceDir": str(oracle_workspace),
+                }
+            )
+        except Exception as exc:
+            oracle_result = {"ok": False, "error": {"message": str(exc)}}
+
+    if not isinstance(oracle_result, dict):
+        error = {"message": "invalid oracle result"}
+        return _recall_tracking_error_trace(python_values, error["message"], error)
+    if not oracle_result.get("ok"):
+        error = oracle_result.get("error", {})
+        message = (
+            error.get("message", "oracle error")
+            if isinstance(error, dict)
+            else "oracle error"
+        )
+        return _recall_tracking_error_trace(python_values, message, error)
+    try:
+        openclaw_values = _recall_values_from_files(
+            oracle_result.get("files"),
+            query=RECALL_QUERY,
+            result=RECALL_RESULT,
+        )
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        error = {"message": "invalid oracle result", "details": str(exc)}
+        return _recall_tracking_error_trace(python_values, error["message"], error)
     return {
         "id": "recall-tracking",
         "label": "Recall tracking from memory_search",
-        "condition": 'result.source === "memory" && isShortTermMemoryPath(result.path)',
+        "condition": RECALL_CONDITION,
         "python": {
             "decision": "recordable",
-            "values": {"query": query, "path": result["path"], "score": result["score"]},
+            "values": python_values,
             "reasons": [],
         },
         "openclaw": {
-            "decision": openclaw_decision,
-            "values": {"ok": oracle_result.get("ok")},
-            "reasons": []
-            if oracle_result.get("ok")
-            else [oracle_result.get("error", {}).get("message", "")],
+            "decision": "recorded",
+            "values": openclaw_values,
+            "reasons": [],
         },
-        "diff": {"status": "match" if oracle_result.get("ok") else "error", "details": []},
+        "diff": diff_values(python_values, openclaw_values),
+    }
+
+
+def _seed_recall_workspace(workspace: Path) -> None:
+    memory_path = workspace / RECALL_RESULT["path"]
+    memory_path.parent.mkdir(parents=True, exist_ok=True)
+    memory_path.write_text("# 2026-05-26\n\n- User prefers to be addressed as dodo.\n", encoding="utf-8")
+
+
+def _snapshot_recall_files(workspace: Path) -> dict[str, str]:
+    path = workspace / SHORT_TERM_STORE_RELATIVE_PATH
+    return {RECALL_STORE_PATH: path.read_text(encoding="utf-8") if path.exists() else ""}
+
+
+def _recall_values_from_files(
+    files: Any, *, query: str, result: dict[str, Any]
+) -> dict[str, Any]:
+    if not isinstance(files, dict):
+        raise TypeError("files must be an object")
+    raw_store = files.get(RECALL_STORE_PATH)
+    if not isinstance(raw_store, str) or not raw_store:
+        raise ValueError(f"missing {RECALL_STORE_PATH}")
+    store = json.loads(raw_store)
+    entries = store.get("entries") if isinstance(store, dict) else None
+    if not isinstance(entries, dict):
+        raise ValueError("recall store entries must be an object")
+    return {
+        "query": query,
+        "path": result["path"],
+        "score": result["score"],
+        "file": RECALL_STORE_PATH,
+        "entryCount": len(entries),
+        "entries": entries,
+    }
+
+
+def _recall_tracking_error_trace(
+    python_values: dict[str, Any], message: str, error: dict[str, Any] | Any
+) -> dict[str, Any]:
+    return {
+        "id": "recall-tracking",
+        "label": "Recall tracking from memory_search",
+        "condition": RECALL_CONDITION,
+        "python": {"decision": "recordable", "values": python_values, "reasons": []},
+        "openclaw": {
+            "decision": "error",
+            "values": {},
+            "reasons": [message],
+        },
+        "diff": {"status": "error", "details": [error]},
     }
 
 

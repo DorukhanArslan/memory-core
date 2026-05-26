@@ -1,4 +1,48 @@
-from demo.parity_trace import build_deep_policy_trace, build_parity_trace, diff_values
+from demo.parity_trace import (
+    build_deep_policy_trace,
+    build_parity_trace,
+    build_recall_tracking_trace,
+    diff_values,
+)
+
+
+RECALL_STORE_PATH = "memory/.dreams/short-term-recall.json"
+EXPECTED_RECALL_STORE = """{
+  "version": 1,
+  "updatedAt": "2026-05-26T16:00:00Z",
+  "entries": {
+    "memory:memory/2026-05-26.md:3:3:64b54b44741d": {
+      "key": "memory:memory/2026-05-26.md:3:3:64b54b44741d",
+      "path": "memory/2026-05-26.md",
+      "startLine": 3,
+      "endLine": 3,
+      "source": "memory",
+      "snippet": "User prefers to be addressed as dodo.",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 1.0,
+      "maxScore": 1.0,
+      "firstRecalledAt": "2026-05-26T16:00:00Z",
+      "lastRecalledAt": "2026-05-26T16:00:00Z",
+      "queryHashes": [
+        "aa5368a7c7bd"
+      ],
+      "recallDays": [
+        "2026-05-26"
+      ],
+      "conceptTags": [
+        "26md",
+        "user",
+        "prefers",
+        "addressed",
+        "dodo"
+      ],
+      "claimHash": "64b54b44741d"
+    }
+  }
+}
+"""
 
 
 class FakeOracle:
@@ -21,9 +65,7 @@ class FakeOracle:
             return {
                 "ok": True,
                 "operation": "recordShortTermRecalls",
-                "files": {
-                    "memory/.dreams/short-term-recall.json": '{"entries": {}}'
-                },
+                "files": {RECALL_STORE_PATH: EXPECTED_RECALL_STORE},
             }
         raise AssertionError(f"unexpected operation: {payload['operation']}")
 
@@ -38,6 +80,31 @@ class MalformedSuccessOracle:
     def run(self, payload):
         assert payload["operation"] == "deepPolicy"
         return {"ok": True, "operation": "deepPolicy"}
+
+
+class NoOpRecallOracle(FakeOracle):
+    def run(self, payload):
+        if payload["operation"] == "recordShortTermRecalls":
+            return {
+                "ok": True,
+                "operation": "recordShortTermRecalls",
+                "files": {RECALL_STORE_PATH: '{"version": 1, "entries": {}}'},
+            }
+        return super().run(payload)
+
+
+class MalformedRecallOracle(FakeOracle):
+    def run(self, payload):
+        if payload["operation"] == "recordShortTermRecalls":
+            return {"ok": True, "operation": "recordShortTermRecalls"}
+        return super().run(payload)
+
+
+class ExplodingRecallOracle(FakeOracle):
+    def run(self, payload):
+        if payload["operation"] == "recordShortTermRecalls":
+            raise RuntimeError("recall oracle exploded")
+        return super().run(payload)
 
 
 def test_diff_values_reports_mismatch():
@@ -82,3 +149,43 @@ def test_build_parity_trace_includes_recall_tracking_step():
     ids = [step["id"] for step in trace["steps"]]
 
     assert "recall-tracking" in ids
+
+
+def test_build_recall_tracking_trace_exposes_matching_recorded_file_values():
+    trace = build_recall_tracking_trace(FakeOracle())
+
+    assert trace["id"] == "recall-tracking"
+    assert trace["diff"]["status"] == "match"
+    assert trace["python"]["decision"] == "recordable"
+    assert trace["openclaw"]["decision"] == "recorded"
+    assert trace["python"]["values"]["file"] == RECALL_STORE_PATH
+    assert trace["openclaw"]["values"]["file"] == RECALL_STORE_PATH
+    assert trace["python"]["values"]["entryCount"] == 1
+    assert trace["openclaw"]["values"]["entryCount"] == 1
+    assert trace["python"]["values"]["entries"] == trace["openclaw"]["values"]["entries"]
+
+
+def test_build_recall_tracking_trace_reports_mismatch_when_oracle_records_nothing():
+    trace = build_recall_tracking_trace(NoOpRecallOracle())
+
+    assert trace["diff"]["status"] == "mismatch"
+    assert trace["python"]["values"]["entryCount"] == 1
+    assert trace["openclaw"]["values"]["entryCount"] == 0
+
+
+def test_build_recall_tracking_trace_returns_error_for_invalid_oracle_result():
+    trace = build_recall_tracking_trace(MalformedRecallOracle())
+
+    assert trace["openclaw"]["decision"] == "error"
+    assert trace["diff"]["status"] == "error"
+    assert "invalid oracle result" in trace["openclaw"]["reasons"]
+    assert any("invalid oracle result" in str(detail) for detail in trace["diff"]["details"])
+
+
+def test_build_recall_tracking_trace_returns_error_when_oracle_raises():
+    trace = build_recall_tracking_trace(ExplodingRecallOracle())
+
+    assert trace["openclaw"]["decision"] == "error"
+    assert trace["diff"]["status"] == "error"
+    assert "recall oracle exploded" in trace["openclaw"]["reasons"]
+    assert any("recall oracle exploded" in str(detail) for detail in trace["diff"]["details"])

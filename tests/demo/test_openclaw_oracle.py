@@ -56,3 +56,31 @@ def test_run_does_not_allow_payload_to_override_repo_path(tmp_path: Path, monkey
 
     assert result["ok"] is True
     assert json.loads(captured_inputs[0])["repoPath"] == str(repo_path)
+
+
+def test_run_returns_runner_json(monkeypatch, tmp_path: Path):
+    repo = tmp_path / "openclaw"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    (repo / "pnpm-lock.yaml").write_text("lock", encoding="utf-8")
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:3] == ["git", "rev-parse", "HEAD"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
+        assert cmd[:3] == ["pnpm", "exec", "tsx"]
+        assert json.loads(kwargs["input"])["operation"] == "deepPolicy"
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout=json.dumps({"ok": True, "operation": "deepPolicy", "result": {"minScore": 0.8}}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    oracle = OpenClawOracle(repo_path=repo)
+
+    result = oracle.run({"operation": "deepPolicy"})
+
+    assert result["ok"] is True
+    assert result["result"]["minScore"] == 0.8
+    assert result["metadata"]["commit"] == "abc123"

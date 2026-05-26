@@ -75,6 +75,9 @@ class OpenClawOracle:
         except subprocess.TimeoutExpired:
             return self._subprocess_error("oracle-timeout", "oracle runner timed out", metadata)
         if completed.returncode != 0:
+            structured_error = self._structured_result(completed.stdout, metadata)
+            if structured_error is not None and structured_error.get("ok") is False:
+                return structured_error
             message = (completed.stderr or completed.stdout or "oracle runner failed").strip()
             return self._subprocess_error("oracle-runner-failed", message, metadata)
         try:
@@ -115,3 +118,14 @@ class OpenClawOracle:
     @staticmethod
     def _subprocess_error(code: str, message: str, metadata: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "error": {"code": code, "message": message}, "metadata": metadata}
+
+    @staticmethod
+    def _structured_result(stdout: str, metadata: dict[str, Any]) -> dict[str, Any] | None:
+        try:
+            result = json.loads(stdout)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(result, dict):
+            return None
+        result.setdefault("metadata", metadata)
+        return result

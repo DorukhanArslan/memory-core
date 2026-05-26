@@ -32,6 +32,10 @@ type PromotionPolicy = {
   recencyHalfLifeDays?: number;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 async function readStdin(): Promise<Payload> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) {
@@ -68,8 +72,9 @@ async function snapshotFiles(workspaceDir?: string): Promise<Record<string, stri
 
 async function resolvePromotionPolicy(repoPath: string, payload: Payload): Promise<PromotionPolicy> {
   const dreaming = await importFromRepo(repoPath, "src/memory-host-sdk/dreaming.ts");
+  const pluginConfig = resolveMemoryCorePluginConfig(payload.config);
   const resolved = dreaming.resolveMemoryDeepDreamingConfig({
-    pluginConfig: payload.config ?? {},
+    pluginConfig,
     cfg: payload.config ?? {},
   });
 
@@ -83,6 +88,14 @@ async function resolvePromotionPolicy(repoPath: string, payload: Payload): Promi
     maxAgeDays: payload.maxAgeDays ?? resolved.maxAgeDays,
     recencyHalfLifeDays: payload.recencyHalfLifeDays ?? resolved.recencyHalfLifeDays,
   };
+}
+
+function resolveMemoryCorePluginConfig(config?: Record<string, unknown>): Record<string, unknown> {
+  const plugins = isRecord(config?.plugins) ? config.plugins : undefined;
+  const entries = isRecord(plugins?.entries) ? plugins.entries : undefined;
+  const memoryCore = isRecord(entries?.["memory-core"]) ? entries["memory-core"] : undefined;
+  const memoryCoreConfig = isRecord(memoryCore?.config) ? memoryCore.config : undefined;
+  return memoryCoreConfig ?? config ?? {};
 }
 
 async function main() {

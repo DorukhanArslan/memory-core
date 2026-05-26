@@ -24,6 +24,7 @@ from demo.chat_engine import (
 from demo.chat_session import ChatSessionState
 from demo.dreaming import run_dreaming_sweep
 from demo.memory_flush import MemoryFlushRun, ParsedFlushOutput, run_memory_flush
+from demo.parity_trace import build_parity_trace
 from demo.short_term_promotion import (
     DEFAULT_PROMOTION_MIN_RECALL_COUNT,
     DEFAULT_PROMOTION_MIN_SCORE,
@@ -491,6 +492,12 @@ def prompt_preview(payload: dict):
         }
     except DemoPayloadError as exc:
         return _json_error(str(exc))
+
+
+@app.post("/api/parity/trace")
+def parity_trace(payload: dict[str, Any] | None = None):
+    del payload
+    return build_parity_trace()
 
 
 @app.get("/api/chat/state")

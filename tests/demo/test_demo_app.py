@@ -878,3 +878,32 @@ def test_chat_flush_runtime_error_returns_json_error(monkeypatch):
     assert response.status_code == 400
     assert "chat flush failed" in response.json()["error"]
     assert "boom" in response.json()["error"]
+
+
+def test_parity_trace_endpoint_returns_steps(monkeypatch):
+    monkeypatch.setattr(
+        demo_app,
+        "build_parity_trace",
+        lambda: {
+            "oracle": {"available": True, "commit": "abc123"},
+            "steps": [
+                {
+                    "id": "deep-policy",
+                    "label": "Deep dreaming policy values",
+                    "python": {"decision": "computed", "values": {"minScore": 0.75}, "reasons": []},
+                    "openclaw": {"decision": "computed", "values": {"minScore": 0.8}, "reasons": []},
+                    "diff": {"status": "mismatch", "details": ["minScore differs"]},
+                }
+            ],
+        },
+        raising=False,
+    )
+    client = TestClient(app)
+
+    response = client.post("/api/parity/trace", json={})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["oracle"]["commit"] == "abc123"
+    assert payload["steps"][0]["id"] == "deep-policy"
+    assert payload["steps"][0]["diff"]["status"] == "mismatch"

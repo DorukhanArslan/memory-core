@@ -28,7 +28,10 @@ def build_deep_policy_trace(oracle: OpenClawOracle | Any | None = None) -> dict[
         "minUniqueQueries": DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
         "maxAgeDays": None,
     }
-    oracle_result = oracle.run({"operation": "deepPolicy", "config": {}})
+    try:
+        oracle_result = oracle.run({"operation": "deepPolicy", "config": {}})
+    except Exception as exc:
+        oracle_result = {"ok": False, "error": {"message": str(exc)}}
     if not oracle_result.get("ok"):
         return {
             "id": "deep-policy",

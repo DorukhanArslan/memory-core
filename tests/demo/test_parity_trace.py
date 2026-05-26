@@ -19,6 +19,12 @@ class FakeOracle:
         }
 
 
+class ExplodingOracle:
+    def run(self, payload):
+        assert payload["operation"] == "deepPolicy"
+        raise RuntimeError("oracle exploded")
+
+
 def test_diff_values_reports_mismatch():
     diff = diff_values({"minScore": 0.75}, {"minScore": 0.8})
 
@@ -34,3 +40,13 @@ def test_build_deep_policy_trace_shows_known_default_mismatch():
     assert trace["python"]["values"]["minScore"] == 0.75
     assert trace["openclaw"]["values"]["minScore"] == 0.8
     assert trace["openclaw"]["values"]["minUniqueQueries"] == 3
+
+
+def test_build_deep_policy_trace_returns_error_when_oracle_raises():
+    trace = build_deep_policy_trace(ExplodingOracle())
+
+    assert trace["id"] == "deep-policy"
+    assert trace["openclaw"]["decision"] == "error"
+    assert trace["diff"]["status"] == "error"
+    assert "oracle exploded" in trace["openclaw"]["reasons"]
+    assert any("oracle exploded" in str(detail) for detail in trace["diff"]["details"])

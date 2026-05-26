@@ -59,6 +59,9 @@ class FakeOracle:
                     "minRecallCount": 3,
                     "minUniqueQueries": 3,
                     "maxAgeDays": 30,
+                    "enabled": True,
+                    "limit": 10,
+                    "recencyHalfLifeDays": 14,
                 },
             }
         if payload["operation"] == "recordShortTermRecalls":
@@ -122,6 +125,9 @@ def test_build_deep_policy_trace_shows_known_default_mismatch():
     assert trace["python"]["values"]["minScore"] == 0.75
     assert trace["openclaw"]["values"]["minScore"] == 0.8
     assert trace["openclaw"]["values"]["minUniqueQueries"] == 3
+    assert trace["python"]["values"]["limit"] == 5
+    assert trace["openclaw"]["values"]["limit"] == 10
+    assert trace["python"]["values"]["recencyHalfLifeDays"] == 14
 
 
 def test_build_deep_policy_trace_returns_error_when_oracle_raises():

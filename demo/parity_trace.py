@@ -10,6 +10,7 @@ from demo.short_term_promotion import (
     DEFAULT_PROMOTION_MIN_RECALL_COUNT,
     DEFAULT_PROMOTION_MIN_SCORE,
     DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+    DEFAULT_RECENCY_HALF_LIFE_DAYS,
     SHORT_TERM_STORE_RELATIVE_PATH,
     record_short_term_recalls,
 )
@@ -51,6 +52,9 @@ def build_deep_policy_trace(oracle: OpenClawOracle | Any | None = None) -> dict[
         "minRecallCount": DEFAULT_PROMOTION_MIN_RECALL_COUNT,
         "minUniqueQueries": DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
         "maxAgeDays": None,
+        "enabled": True,
+        "limit": 5,
+        "recencyHalfLifeDays": DEFAULT_RECENCY_HALF_LIFE_DAYS,
     }
     try:
         oracle_result = oracle.run({"operation": "deepPolicy", "config": {}})
@@ -73,6 +77,9 @@ def build_deep_policy_trace(oracle: OpenClawOracle | Any | None = None) -> dict[
         "minRecallCount": oracle_result_values.get("minRecallCount"),
         "minUniqueQueries": oracle_result_values.get("minUniqueQueries"),
         "maxAgeDays": oracle_result_values.get("maxAgeDays"),
+        "enabled": oracle_result_values.get("enabled"),
+        "limit": oracle_result_values.get("limit"),
+        "recencyHalfLifeDays": oracle_result_values.get("recencyHalfLifeDays"),
     }
     return {
         "id": "deep-policy",

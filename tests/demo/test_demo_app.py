@@ -95,6 +95,7 @@ def test_demo_home_loads():
     assert "memory-detail" in response.text
     assert "renderMarkdown" in response.text
     assert "renderJsonView" in response.text
+    assert "renderJsonValue(definition, value, 1)" in response.text
     assert "diff-view" in response.text
     assert "kv-grid" in response.text
     assert "promotion-sweep" in response.text

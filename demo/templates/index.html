@@ -427,7 +427,11 @@
           const term = document.createElement("dt");
           term.textContent = key;
           const definition = document.createElement("dd");
-          definition.textContent = String(value);
+          if (Array.isArray(value) || isPlainObject(value)) {
+            renderJsonValue(definition, value, 1);
+          } else {
+            definition.textContent = String(value);
+          }
           grid.append(term, definition);
         }
         return grid;

@@ -9,6 +9,11 @@ from demo.short_term_promotion import (
     DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
 )
 
+DEEP_POLICY_CONDITION = (
+    "score >= minScore && signals >= minRecallCount && "
+    "contextDiversity >= minUniqueQueries && ageDays <= maxAgeDays"
+)
+
 
 def diff_values(python_values: dict[str, Any], openclaw_values: dict[str, Any]) -> dict[str, Any]:
     details: list[str] = []
@@ -33,30 +38,47 @@ def build_deep_policy_trace(oracle: OpenClawOracle | Any | None = None) -> dict[
     except Exception as exc:
         oracle_result = {"ok": False, "error": {"message": str(exc)}}
     if not oracle_result.get("ok"):
-        return {
-            "id": "deep-policy",
-            "label": "Deep dreaming policy values",
-            "python": {"decision": "available", "values": python_values, "reasons": []},
-            "openclaw": {
-                "decision": "error",
-                "values": {},
-                "reasons": [oracle_result.get("error", {}).get("message", "oracle error")],
-            },
-            "diff": {"status": "error", "details": [oracle_result.get("error", {})]},
-        }
+        error = oracle_result.get("error", {})
+        message = (
+            error.get("message", "oracle error")
+            if isinstance(error, dict)
+            else "oracle error"
+        )
+        return _deep_policy_error_trace(python_values, message, error)
+    oracle_result_values = oracle_result.get("result")
+    if not isinstance(oracle_result_values, dict):
+        error = {"message": "invalid oracle result"}
+        return _deep_policy_error_trace(python_values, error["message"], error)
     openclaw_values = {
-        "minScore": oracle_result["result"].get("minScore"),
-        "minRecallCount": oracle_result["result"].get("minRecallCount"),
-        "minUniqueQueries": oracle_result["result"].get("minUniqueQueries"),
-        "maxAgeDays": oracle_result["result"].get("maxAgeDays"),
+        "minScore": oracle_result_values.get("minScore"),
+        "minRecallCount": oracle_result_values.get("minRecallCount"),
+        "minUniqueQueries": oracle_result_values.get("minUniqueQueries"),
+        "maxAgeDays": oracle_result_values.get("maxAgeDays"),
     }
     return {
         "id": "deep-policy",
         "label": "Deep dreaming policy values",
-        "condition": "score >= minScore && signals >= minRecallCount && contextDiversity >= minUniqueQueries && ageDays <= maxAgeDays",
+        "condition": DEEP_POLICY_CONDITION,
         "python": {"decision": "computed", "values": python_values, "reasons": []},
         "openclaw": {"decision": "computed", "values": openclaw_values, "reasons": []},
         "diff": diff_values(python_values, openclaw_values),
+    }
+
+
+def _deep_policy_error_trace(
+    python_values: dict[str, Any], message: str, error: dict[str, Any] | Any
+) -> dict[str, Any]:
+    return {
+        "id": "deep-policy",
+        "label": "Deep dreaming policy values",
+        "condition": DEEP_POLICY_CONDITION,
+        "python": {"decision": "available", "values": python_values, "reasons": []},
+        "openclaw": {
+            "decision": "error",
+            "values": {},
+            "reasons": [message],
+        },
+        "diff": {"status": "error", "details": [error]},
     }
 
 

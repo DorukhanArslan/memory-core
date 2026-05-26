@@ -1,5 +1,8 @@
+import json
+import subprocess
 from pathlib import Path
 
+import demo.openclaw_oracle as openclaw_oracle
 from demo.openclaw_oracle import OpenClawOracle, OracleError
 
 
@@ -28,3 +31,28 @@ def test_oracle_error_is_safe_string():
     err = OracleError("boom")
 
     assert str(err) == "boom"
+
+
+def test_run_does_not_allow_payload_to_override_repo_path(tmp_path: Path, monkeypatch):
+    repo_path = tmp_path / "oracle"
+    repo_path.mkdir()
+    (repo_path / ".git").mkdir()
+    runner_path = tmp_path / "openclaw_oracle_runner.ts"
+    runner_path.write_text("", encoding="utf-8")
+    captured_inputs = []
+
+    def fake_run(command, **kwargs):
+        if command == ["git", "rev-parse", "HEAD"]:
+            return subprocess.CompletedProcess(command, 0, stdout="abc123\n", stderr="")
+        captured_inputs.append(kwargs["input"])
+        return subprocess.CompletedProcess(command, 0, stdout='{"ok": true}', stderr="")
+
+    monkeypatch.setattr(openclaw_oracle, "RUNNER_PATH", runner_path)
+    monkeypatch.setattr(openclaw_oracle.subprocess, "run", fake_run)
+
+    oracle = OpenClawOracle(repo_path=repo_path)
+
+    result = oracle.run({"operation": "deepPolicy", "repoPath": "/tmp/spoofed"})
+
+    assert result["ok"] is True
+    assert json.loads(captured_inputs[0])["repoPath"] == str(repo_path)

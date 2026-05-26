@@ -59,7 +59,7 @@ class OpenClawOracle:
         return self._run_subprocess(payload, metadata)
 
     def _run_subprocess(self, payload: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
-        body = json.dumps({"repoPath": str(self.repo_path), **payload})
+        body = json.dumps({**payload, "repoPath": str(self.repo_path)})
         try:
             completed = subprocess.run(
                 ["pnpm", "exec", "tsx", str(RUNNER_PATH)],

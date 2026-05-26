@@ -6,6 +6,7 @@ from pathlib import Path
 from demo.dreaming import run_dreaming_sweep
 from demo.short_term_promotion import (
     SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH,
+    record_daily_memory_flush,
     record_short_term_recalls,
 )
 from memory_core.config import MemoryConfig
@@ -118,6 +119,110 @@ def test_deep_dreaming_runs_promotion(tmp_path: Path):
     assert run["phase"] == "deep"
     assert run["promotion"]["parsed"]["shouldWrite"] is True
     assert "lowercase answers" in (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
+
+
+def test_deep_dreaming_keeps_durable_user_preference_behind_openclaw_score_gate(
+    tmp_path: Path,
+):
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    memory = tmp_path / "MEMORY.md"
+    memory.write_text("# MEMORY.md\n", encoding="utf-8")
+    now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    daily = tmp_path / "memory" / "2026-05-08.md"
+    daily.parent.mkdir(parents=True, exist_ok=True)
+    daily.write_text(
+        "# 2026-05-08\n\n"
+        "- User prefers to be addressed as \"Kudret\" in every conversation.\n",
+        encoding="utf-8",
+    )
+    entry = "- User prefers to be addressed as \"Kudret\" in every conversation.\n"
+    record_daily_memory_flush(
+        config=config,
+        target="memory/2026-05-08.md",
+        entry=entry,
+        now_ms=now,
+    )
+    record_daily_memory_flush(
+        config=config,
+        target="memory/2026-05-08.md",
+        entry=entry,
+        now_ms=now + 1,
+    )
+    for query in ("call me kudret", "address me kudret", "future sessions kudret"):
+        record_short_term_recalls(
+            config=config,
+            query=query,
+            results=[
+                {
+                    "path": "memory/2026-05-08.md",
+                    "startLine": 3,
+                    "endLine": 3,
+                    "snippet": entry,
+                    "score": 0.3,
+                }
+            ],
+            now_ms=now,
+        )
+
+    run = run_dreaming_sweep(
+        config=config,
+        store=fake_store(config),
+        phase="deep",
+        now_ms=now,
+        timezone="Europe/Istanbul",
+    )
+
+    assert run["phase"] == "deep"
+    assert run["promotion"]["parsed"]["shouldWrite"] is False
+    assert "Kudret" not in memory.read_text(encoding="utf-8")
+
+
+def test_deep_dreaming_rejects_three_signal_durable_preference_like_openclaw(tmp_path: Path):
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    memory = tmp_path / "MEMORY.md"
+    memory.write_text("# MEMORY.md\n", encoding="utf-8")
+    now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    daily = tmp_path / "memory" / "2026-05-08.md"
+    daily.parent.mkdir(parents=True, exist_ok=True)
+    daily.write_text(
+        "# 2026-05-08\n\n"
+        "- User prefers to be addressed as \"Kudret\" in every conversation.\n",
+        encoding="utf-8",
+    )
+    entry = "- User prefers to be addressed as \"Kudret\" in every conversation.\n"
+    record_daily_memory_flush(
+        config=config,
+        target="memory/2026-05-08.md",
+        entry=entry,
+        now_ms=now,
+    )
+    for query in ("call me kudret", "future sessions kudret"):
+        record_short_term_recalls(
+            config=config,
+            query=query,
+            results=[
+                {
+                    "path": "memory/2026-05-08.md",
+                    "startLine": 3,
+                    "endLine": 3,
+                    "snippet": entry,
+                    "score": 0.3,
+                }
+            ],
+            now_ms=now,
+        )
+
+    run = run_dreaming_sweep(
+        config=config,
+        store=fake_store(config),
+        phase="deep",
+        now_ms=now,
+        timezone="Europe/Istanbul",
+    )
+
+    assert run["phase"] == "deep"
+    assert run["promotion"]["parsed"]["shouldWrite"] is False
+    assert "Kudret" not in memory.read_text(encoding="utf-8")
 
 
 def test_deep_dreaming_does_not_promote_single_weak_recall(tmp_path: Path):

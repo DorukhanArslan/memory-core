@@ -43,11 +43,21 @@ class FlushModelOutput:
 class ChatEngine(Protocol):
     name: str
 
-    def complete(self, *, messages: list[ChatMessage], memory_context: list[str]) -> ChatResponse:
+    def complete(
+        self,
+        *,
+        messages: list[ChatMessage],
+        memory_context: list[str],
+        workspace_context: str = "",
+    ) -> ChatResponse:
         raise NotImplementedError
 
     def stream_complete(
-        self, *, messages: list[ChatMessage], memory_context: list[str]
+        self,
+        *,
+        messages: list[ChatMessage],
+        memory_context: list[str],
+        workspace_context: str = "",
     ) -> Iterator[str]:
         raise NotImplementedError
 
@@ -100,17 +110,35 @@ class OpenAICompatibleChatEngine:
             model=(model or os.getenv("OPENCLAW_DEMO_OPENAI_MODEL") or DEFAULT_OPENAI_MODEL).strip(),
         )
 
-    def complete(self, *, messages: list[ChatMessage], memory_context: list[str]) -> ChatResponse:
-        api_messages = self._api_messages(messages=messages, memory_context=memory_context)
+    def complete(
+        self,
+        *,
+        messages: list[ChatMessage],
+        memory_context: list[str],
+        workspace_context: str = "",
+    ) -> ChatResponse:
+        api_messages = self._api_messages(
+            messages=messages,
+            memory_context=memory_context,
+            workspace_context=workspace_context,
+        )
         raw = self._chat(api_messages)
         content = raw["choices"][0]["message"]["content"]
         return ChatResponse(role="assistant", content=content, raw=raw)
 
     def stream_complete(
-        self, *, messages: list[ChatMessage], memory_context: list[str]
+        self,
+        *,
+        messages: list[ChatMessage],
+        memory_context: list[str],
+        workspace_context: str = "",
     ) -> Iterator[str]:
         yield from self._chat_stream(
-            self._api_messages(messages=messages, memory_context=memory_context)
+            self._api_messages(
+                messages=messages,
+                memory_context=memory_context,
+                workspace_context=workspace_context,
+            )
         )
 
     def flush(
@@ -180,18 +208,29 @@ class OpenAICompatibleChatEngine:
                 yield chunk
 
     def _api_messages(
-        self, *, messages: list[ChatMessage], memory_context: list[str]
+        self,
+        *,
+        messages: list[ChatMessage],
+        memory_context: list[str],
+        workspace_context: str = "",
     ) -> list[dict[str, str]]:
         api_messages = [
             {
                 "role": "system",
-                "content": "Use the supplied memory context when relevant. Do not invent memory.",
+                "content": (
+                    "Use injected workspace files as standing instructions and stable context. "
+                    "Use supplied memory context when relevant. Do not invent memory."
+                ),
             },
+        ]
+        if workspace_context.strip():
+            api_messages.append({"role": "system", "content": workspace_context})
+        api_messages.append(
             {
                 "role": "system",
                 "content": "Memory context:\n" + "\n".join(memory_context),
-            },
-        ]
+            }
+        )
         api_messages.extend({"role": message.role, "content": message.content} for message in messages)
         return api_messages
 

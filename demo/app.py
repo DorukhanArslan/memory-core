@@ -37,6 +37,12 @@ from demo.short_term_promotion import (
     repair_short_term_promotion_artifacts,
     run_short_term_promotion,
 )
+from demo.workspace_context import (
+    DEFAULT_WORKSPACE_FILES,
+    ensure_workspace_bootstrap_files,
+    build_workspace_context,
+    workspace_file_contents,
+)
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.openai_compatible import OpenAICompatibleEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
@@ -47,7 +53,7 @@ from memory_core.tools.memory_search import memory_search
 from memory_core.workspace import MemoryWorkspace
 
 DEMO_ROOT = Path(__file__).resolve().parent
-DEMO_WORKSPACE = Path(tempfile.gettempdir()) / "openclaw-memory-demo-workspace"
+DEMO_WORKSPACE = Path(tempfile.gettempdir()) / "memory-core-lab-workspace"
 DEMO_TIMEZONE = "Europe/Istanbul"
 DEMO_NOW_MS = 1777824000000
 CHAT_STATE = ChatSessionState()
@@ -73,13 +79,14 @@ Do not store secrets unless the user explicitly asks. Keep this file concise, ac
 """
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 
-app = FastAPI(title="OpenClaw Memory Demo")
+app = FastAPI(title="memory-core Lab")
 app.mount("/static", StaticFiles(directory=DEMO_ROOT / "static"), name="static")
 templates = Jinja2Templates(directory=DEMO_ROOT / "templates")
 
 
 def demo_config() -> MemoryConfig:
     DEMO_WORKSPACE.mkdir(parents=True, exist_ok=True)
+    ensure_workspace_bootstrap_files(DEMO_WORKSPACE)
     return MemoryConfig(
         workspace_dir=DEMO_WORKSPACE,
         store_path=DEMO_WORKSPACE / "memory.sqlite",
@@ -268,6 +275,14 @@ def _memory_file_contents(paths: list[str]) -> dict[str, str]:
     return contents
 
 
+def _workspace_files() -> list[str]:
+    return list(DEFAULT_WORKSPACE_FILES)
+
+
+def _workspace_context() -> str:
+    return build_workspace_context(demo_config().workspace_dir)
+
+
 def _state_payload() -> dict[str, Any]:
     config = demo_config()
     plan = _demo_flush_plan()
@@ -278,6 +293,9 @@ def _state_payload() -> dict[str, Any]:
             "engines": engine_status(),
             "memoryFiles": memory_files,
             "memoryFileContents": _memory_file_contents(memory_files),
+            "workspaceFiles": _workspace_files(),
+            "workspaceFileContents": workspace_file_contents(config.workspace_dir),
+            "workspaceContext": _workspace_context(),
             "promotionSweep": PROMOTION_SWEEP,
             "dreamingSweep": DREAMING_SWEEP,
             "memoryAudit": MEMORY_AUDIT,
@@ -295,7 +313,7 @@ def _state_payload() -> dict[str, Any]:
 
 def _promotion_config_payload() -> dict[str, Any]:
     return {
-        "openclawDefaults": {
+        "memoryCoreDefaults": {
             "minScore": DEFAULT_PROMOTION_MIN_SCORE,
             "minRecallCount": DEFAULT_PROMOTION_MIN_RECALL_COUNT,
             "minUniqueQueries": DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
@@ -396,12 +414,18 @@ def home(request: Request):
     return templates.TemplateResponse(request, "index.html")
 
 
+@app.get("/memory-system", response_class=HTMLResponse)
+def memory_system(request: Request):
+    return templates.TemplateResponse(request, "memory_system.html")
+
+
 @app.post("/api/seed")
 def seed():
     if DEMO_WORKSPACE.exists():
         shutil.rmtree(DEMO_WORKSPACE)
     DEMO_WORKSPACE.mkdir(parents=True, exist_ok=True)
     (DEMO_WORKSPACE / "memory").mkdir(exist_ok=True)
+    ensure_workspace_bootstrap_files(DEMO_WORKSPACE)
     daily_plan = _demo_flush_plan()
     daily_path = DEMO_WORKSPACE / daily_plan.relative_path
     daily_date = Path(daily_plan.relative_path).stem
@@ -516,6 +540,7 @@ def chat_send(payload: dict):
         response = engine.complete(
             messages=_chat_messages(message),
             memory_context=memory_context,
+            workspace_context=_workspace_context(),
         )
         turn = CHAT_STATE.add_turn(
             user_message=message,
@@ -715,6 +740,7 @@ def _chat_send_stream_events(payload: dict):
         for chunk in engine.stream_complete(
             messages=_chat_messages(message),
             memory_context=memory_context,
+            workspace_context=_workspace_context(),
         ):
             full_response.append(chunk)
             yield _sse("assistant_delta", {"text": chunk})

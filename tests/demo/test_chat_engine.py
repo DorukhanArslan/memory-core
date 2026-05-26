@@ -91,6 +91,7 @@ def test_openai_engine_complete_posts_openai_compatible_chat_request(monkeypatch
     response = engine.complete(
         messages=[ChatMessage(role="user", content="Kısa yanıt verir misin?")],
         memory_context=["MEMORY.md#1: User prefers Turkish."],
+        workspace_context="## Workspace Files (injected)\n\n### AGENTS.md\nUse Turkish.",
     )
 
     assert response.role == "assistant"
@@ -103,7 +104,14 @@ def test_openai_engine_complete_posts_openai_compatible_chat_request(monkeypatch
     assert calls[0]["json"]["messages"] == [
         {
             "role": "system",
-            "content": "Use the supplied memory context when relevant. Do not invent memory.",
+            "content": (
+                "Use injected workspace files as standing instructions and stable context. "
+                "Use supplied memory context when relevant. Do not invent memory."
+            ),
+        },
+        {
+            "role": "system",
+            "content": "## Workspace Files (injected)\n\n### AGENTS.md\nUse Turkish.",
         },
         {
             "role": "system",

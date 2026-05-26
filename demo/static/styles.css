@@ -1,19 +1,21 @@
 :root {
-  color-scheme: light;
-  --bg: #edf1f5;
-  --panel: #ffffff;
-  --panel-muted: #f7f9fb;
-  --line: #cbd5df;
-  --line-strong: #aebccd;
-  --text: #17212b;
+  color-scheme: dark;
+  --bg: #0d0d0d;
+  --panel: #171717;
+  --panel-muted: #202020;
+  --line: #2f2f2f;
+  --line-strong: #3f3f3f;
+  --text: #f4f4f5;
   --ink: var(--text);
-  --muted: #5c6b7b;
-  --accent: #235fb8;
-  --accent-dark: #184782;
-  --code: #101923;
-  --code-text: #d9e2ec;
-  --user: #e9f1ff;
-  --assistant: #f4f7f7;
+  --muted: #a1a1aa;
+  --accent: #3b82f6;
+  --accent-dark: #2563eb;
+  --code: #0a0a0a;
+  --code-text: #e5e7eb;
+  --user: #1b2431;
+  --assistant: #171717;
+  --field: #111111;
+  --surface-hover: #262626;
 }
 
 * {
@@ -56,7 +58,7 @@ select,
 textarea,
 input {
   width: 100%;
-  background: #ffffff;
+  background: var(--field);
   color: var(--text);
   padding: 8px 9px;
 }
@@ -134,7 +136,7 @@ label {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) minmax(420px, 1.4fr);
   gap: 14px;
-  align-items: end;
+  align-items: start;
   padding: 12px;
 }
 
@@ -146,11 +148,63 @@ label {
   line-height: 1.45;
 }
 
+.controls-panel {
+  align-self: start;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-muted);
+}
+
+.controls-panel summary {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 11px;
+  color: var(--text);
+  cursor: pointer;
+  list-style: none;
+}
+
+.controls-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.controls-panel summary::before {
+  content: "›";
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  transition: transform 160ms ease;
+}
+
+.controls-panel[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.controls-panel summary span {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.controls-panel summary strong {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .toolbar {
   display: grid;
   grid-template-columns: minmax(190px, 1.1fr) minmax(210px, 1fr) minmax(130px, 0.7fr) minmax(220px, 1fr);
   gap: 8px;
   align-items: end;
+  border-top: 1px solid var(--line);
+  padding: 10px;
 }
 
 .toolbar .toggle,
@@ -160,8 +214,8 @@ label {
 
 .toolbar button:disabled {
   border-color: var(--line);
-  background: #c8d2dc;
-  color: #607080;
+  background: #262626;
+  color: #71717a;
   cursor: not-allowed;
 }
 
@@ -169,7 +223,7 @@ label {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.55rem 0.7rem;
-  background: #ffffff;
+  background: var(--field);
   color: var(--ink);
   font: inherit;
 }
@@ -283,11 +337,11 @@ label {
 
 .markdown-body code,
 .json-view code {
-  border: 1px solid #d5dee8;
+  border: 1px solid var(--line);
   border-radius: 4px;
-  background: #eef3f8;
+  background: #111111;
   padding: 1px 4px;
-  color: #123047;
+  color: #dbeafe;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.92em;
 }
@@ -334,7 +388,7 @@ label {
 
 .code-block {
   max-height: 260px;
-  background: #17212b;
+  background: var(--code);
 }
 
 .muted-note {
@@ -360,7 +414,7 @@ label {
   margin: 0;
   min-width: 0;
   padding: 7px 8px;
-  background: #ffffff;
+  background: var(--panel);
   line-height: 1.35;
 }
 
@@ -382,7 +436,7 @@ label {
 .json-item {
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--panel);
 }
 
 .json-item summary {
@@ -404,7 +458,7 @@ label {
 .diff-view {
   overflow: auto;
   max-height: 300px;
-  border: 1px solid #223047;
+  border: 1px solid var(--line);
   border-radius: 6px;
   background: #101923;
   padding: 6px 0;
@@ -526,13 +580,13 @@ label {
   border-color: var(--line);
   border-bottom: 0;
   border-radius: 6px 6px 0 0;
-  background: #dfe6ee;
+  background: #202020;
   color: var(--text);
 }
 
 .tab:hover,
 .tab.active {
-  background: var(--panel);
+  background: var(--surface-hover);
   border-color: var(--line-strong);
   color: var(--text);
 }

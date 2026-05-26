@@ -3,48 +3,54 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>OpenClaw Chat Memory Lab</title>
+    <title>memory-core Lab</title>
     <link rel="stylesheet" href="/static/styles.css">
   </head>
   <body>
     <main class="app-shell">
       <header class="topbar">
         <div class="topbar-title">
-          <h1>OpenClaw Chat Memory Lab</h1>
+          <h1>memory-core Lab</h1>
           <p>Inspect recall, assistant context, memory flush, file diff, and reindex behavior turn by turn.</p>
         </div>
-        <div class="toolbar memory-controls" aria-label="Engine and memory controls">
-          <label>
-            API key
-            <input id="api-key" type="password" autocomplete="off" placeholder="sk-..." aria-label="OpenAI API key">
-          </label>
-          <label>
-            Base URL
-            <input id="base-url" value="https://api.openai.com/v1" aria-label="OpenAI-compatible base URL">
-          </label>
-          <label>
-            Model
-            <input id="model" value="gpt-5.2" aria-label="OpenAI-compatible model">
-          </label>
-          <span id="engine-status" class="engine-status" aria-live="polite">Engine status loading</span>
-          <label class="toggle">
-            <input id="auto-flush" type="checkbox" checked>
-            Auto flush
-          </label>
-          <button id="manual-flush" type="button">Manual flush</button>
-          <button id="promotion-sweep" type="button">Promotion sweep</button>
-          <select id="dreaming-phase" aria-label="Dreaming phase">
-            <option value="light">light</option>
-            <option value="rem">rem</option>
-            <option value="deep">deep</option>
-          </select>
-          <button id="dreaming-run" type="button">Dreaming sweep</button>
-          <button id="memory-audit" type="button">Audit</button>
-          <button id="memory-repair" type="button">Repair</button>
-          <button id="reset" type="button">Reset</button>
-          <button id="seed" type="button">Seed</button>
-          <button id="reindex" type="button">Reindex</button>
-        </div>
+        <details class="controls-panel" aria-label="Memory lab controls">
+          <summary>
+            <span>Lab controls</span>
+            <strong>Engine, sweeps, reset, and indexing</strong>
+          </summary>
+          <div class="toolbar memory-controls" aria-label="Engine and memory controls">
+            <label>
+              Provider key
+              <input id="api-key" type="password" autocomplete="off" placeholder="sk-..." aria-label="Provider API key">
+            </label>
+            <label>
+              Endpoint URL
+              <input id="base-url" value="https://api.openai.com/v1" aria-label="Provider endpoint URL">
+            </label>
+            <label>
+              Model name
+              <input id="model" value="gpt-5.2" aria-label="Model name">
+            </label>
+            <span id="engine-status" class="engine-status" aria-live="polite">Engine status loading</span>
+            <label class="toggle">
+              <input id="auto-flush" type="checkbox" checked>
+              Auto flush
+            </label>
+            <button id="manual-flush" type="button">Manual flush</button>
+            <button id="promotion-sweep" type="button">Promotion sweep</button>
+            <select id="dreaming-phase" aria-label="Dreaming phase">
+              <option value="light">light</option>
+              <option value="rem">rem</option>
+              <option value="deep">deep</option>
+            </select>
+            <button id="dreaming-run" type="button">Dreaming sweep</button>
+            <button id="memory-audit" type="button">Audit</button>
+            <button id="memory-repair" type="button">Repair</button>
+            <button id="reset" type="button">Reset</button>
+            <button id="seed" type="button">Seed</button>
+            <button id="reindex" type="button">Reindex</button>
+          </div>
+        </details>
       </header>
 
       <section class="workspace" aria-label="Chat memory workspace">
@@ -68,11 +74,13 @@
       <section class="tab-panels" aria-label="Memory files and tools">
         <nav class="tabs" aria-label="Demo tabs">
           <button class="tab active" data-tab="memory-files" type="button">Memory Files</button>
+          <button class="tab" data-tab="workspace-files" type="button">Workspace Files</button>
           <button class="tab" data-tab="tool-inspector" type="button">Tool Inspector</button>
           <button class="tab" data-tab="config" type="button">Config</button>
         </nav>
 
         <section id="memory-files" class="tab-panel active" aria-label="Memory files"></section>
+        <section id="workspace-files" class="tab-panel" aria-label="Workspace files"></section>
 
         <section id="tool-inspector" class="tab-panel" aria-label="Tool Inspector">
           <div class="panel-heading">
@@ -144,7 +152,15 @@
     </main>
 
     <script>
-      let state = {turns: [], memoryFiles: [], memoryFileContents: {}, engines: {}, config: {}};
+      let state = {
+        turns: [],
+        memoryFiles: [],
+        memoryFileContents: {},
+        workspaceFiles: [],
+        workspaceFileContents: {},
+        engines: {},
+        config: {}
+      };
       let streamingAssistantText = "";
       let selectedDailyMemoryPath = "";
       const DEFAULT_OPENAI = {
@@ -178,6 +194,7 @@
         renderChat();
         renderPipeline();
         renderMemoryFiles();
+        renderWorkspaceFiles();
         renderConfig();
         renderEngineStatus();
       }
@@ -264,7 +281,7 @@
         } else {
           container.append(sectionBlock("Daily memory flush", memoryActionDetailNode(turn.flush)));
         }
-        container.append(sectionBlock("Long-term promotion", textBlock("Not run for this turn. OpenClaw applies short-term promotions from a separate promotion/dreaming sweep.")));
+        container.append(sectionBlock("Long-term promotion", textBlock("Not run for this turn. memory-core applies short-term promotions from a separate promotion/dreaming sweep.")));
       }
 
       function memoryActionDetailNode(action) {
@@ -312,6 +329,7 @@
         panel.replaceChildren();
         if (!latest) {
           panel.append(stepNode("Recall", "Waiting for a chat turn."));
+          panel.append(stepNode("Workspace Bootstrap", workspaceBootstrapNode()));
           panel.append(stepNode("Assistant Context", "No recalled memory yet."));
           panel.append(stepNode("Raw Flush Output", "No raw flush output yet."));
           panel.append(stepNode("Flush Decision", "No flush decision yet."));
@@ -323,6 +341,7 @@
           return;
         }
         panel.append(stepNode("Recall", recallNode(latest)));
+        panel.append(stepNode("Workspace Bootstrap", workspaceBootstrapNode()));
         panel.append(stepNode("Assistant Context", codeBlock((latest.memoryContext || []).join("\n") || "No recalled memory.")));
         panel.append(stepNode("Raw Flush Output", codeBlock(latest.flush ? latest.flush.rawText || "(empty)" : "Not run for this turn.")));
         panel.append(stepNode("Flush Decision", latest.flush ? renderJsonView(latest.flush.parsed) : textBlock("Not run for this turn.")));
@@ -589,7 +608,7 @@
         list.className = "file-list";
         if (workspacePaths.length) {
           const workspaceHeading = document.createElement("h3");
-          workspaceHeading.textContent = "Workspace files";
+          workspaceHeading.textContent = "Long-term and reference files";
           panel.append(workspaceHeading);
         }
         for (const path of workspacePaths) {
@@ -602,6 +621,51 @@
           list.append(empty);
         }
         panel.append(list);
+      }
+
+      function renderWorkspaceFiles() {
+        const panel = document.querySelector("#workspace-files");
+        panel.replaceChildren();
+        const heading = document.createElement("div");
+        heading.className = "panel-heading";
+        heading.innerHTML = "<h2>Workspace Files</h2><span>Injected before memory context on every chat turn</span>";
+        panel.append(heading);
+        panel.append(workspaceBootstrapNode());
+        const list = document.createElement("div");
+        list.className = "file-list";
+        for (const path of state.workspaceFiles || []) {
+          list.append(workspaceFileNode(path));
+        }
+        panel.append(list);
+      }
+
+      function workspaceBootstrapNode() {
+        const wrap = document.createElement("div");
+        wrap.className = "stacked-detail";
+        wrap.append(kvGrid({
+          "Injected order": "AGENTS.md -> SOUL.md -> TOOLS.md -> IDENTITY.md -> USER.md -> MEMORY.md",
+          "Daily memory": "Not injected by default; searched/read on demand",
+          "Missing files": "Represented as missing-file markers",
+        }));
+        return wrap;
+      }
+
+      function workspaceFileNode(path) {
+        const file = document.createElement("section");
+        file.className = "memory-file workspace-bootstrap-file";
+        const heading = document.createElement("div");
+        heading.className = "memory-file-heading";
+        const title = document.createElement("strong");
+        title.textContent = path;
+        heading.append(title);
+        file.append(heading, workspaceFilePreview(path));
+        return file;
+      }
+
+      function workspaceFilePreview(path) {
+        const body = document.createElement("pre");
+        body.textContent = (state.workspaceFileContents && state.workspaceFileContents[path]) || "(missing or empty)";
+        return body;
       }
 
       function dailyMemoryPaths() {
@@ -671,10 +735,11 @@
 
       function renderConfig() {
         const promotion = state.config && state.config.promotion ? state.config.promotion : {};
-        const openclawDefaults = promotion.openclawDefaults || {};
+        const memoryCoreDefaults = promotion.memoryCoreDefaults || {};
         document.querySelector("#config").innerHTML = `<div class="panel-heading"><h2>Config</h2><span>Runtime state</span></div>
           <div class="kv-grid">
-            <div><strong>OpenClaw defaults</strong><span>score >= ${openclawDefaults.minScore ?? "?"}, signals >= ${openclawDefaults.minRecallCount ?? "?"}, unique queries/days >= ${openclawDefaults.minUniqueQueries ?? "?"}</span></div>
+            <div><strong>memory-core defaults</strong><span>score >= ${memoryCoreDefaults.minScore ?? "?"}, signals >= ${memoryCoreDefaults.minRecallCount ?? "?"}, unique queries/days >= ${memoryCoreDefaults.minUniqueQueries ?? "?"}</span></div>
+            <div><strong>Workspace bootstrap</strong><span>AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, USER.md, MEMORY.md</span></div>
           </div>
           <pre>${formatJson({
           engines: state.engines,
@@ -699,9 +764,9 @@
 
       function hydrateOpenAIConfig() {
         if (hydrateOpenAIConfig.done) return;
-        const baseUrl = sessionStorage.getItem("openclaw-demo-base-url");
-        const model = sessionStorage.getItem("openclaw-demo-model");
-        const apiKey = sessionStorage.getItem("openclaw-demo-api-key");
+        const baseUrl = sessionStorage.getItem("memory-core-demo-base-url");
+        const model = sessionStorage.getItem("memory-core-demo-model");
+        const apiKey = sessionStorage.getItem("memory-core-demo-api-key");
         if (baseUrl) document.querySelector("#base-url").value = baseUrl;
         if (model) document.querySelector("#model").value = model === "gpt-5.5" ? DEFAULT_OPENAI.model : model;
         if (apiKey) document.querySelector("#api-key").value = apiKey;
@@ -714,10 +779,10 @@
           apiKey: document.querySelector("#api-key").value.trim(),
           model: document.querySelector("#model").value.trim() || DEFAULT_OPENAI.model
         };
-        sessionStorage.setItem("openclaw-demo-base-url", config.baseUrl);
-        sessionStorage.setItem("openclaw-demo-model", config.model);
+        sessionStorage.setItem("memory-core-demo-base-url", config.baseUrl);
+        sessionStorage.setItem("memory-core-demo-model", config.model);
         if (config.apiKey) {
-          sessionStorage.setItem("openclaw-demo-api-key", config.apiKey);
+          sessionStorage.setItem("memory-core-demo-api-key", config.apiKey);
         }
         return config;
       }
@@ -869,12 +934,12 @@
       document.querySelector("#seed").onclick = async () => postInspector("/api/seed", {});
       document.querySelector("#reindex").onclick = async () => postInspector("/api/reindex", {openai: openAIConfig()});
       document.querySelector("#api-key").oninput = () => {
-        sessionStorage.setItem("openclaw-demo-api-key", document.querySelector("#api-key").value.trim());
+        sessionStorage.setItem("memory-core-demo-api-key", document.querySelector("#api-key").value.trim());
         renderEngineStatus();
       };
-      document.querySelector("#base-url").oninput = () => sessionStorage.setItem("openclaw-demo-base-url", document.querySelector("#base-url").value.trim());
+      document.querySelector("#base-url").oninput = () => sessionStorage.setItem("memory-core-demo-base-url", document.querySelector("#base-url").value.trim());
       document.querySelector("#model").oninput = () => {
-        sessionStorage.setItem("openclaw-demo-model", document.querySelector("#model").value.trim());
+        sessionStorage.setItem("memory-core-demo-model", document.querySelector("#model").value.trim());
         renderEngineStatus();
       };
       document.querySelector("#search-form").onsubmit = (event) => {

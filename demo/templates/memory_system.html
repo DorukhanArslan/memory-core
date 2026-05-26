@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Memory Sistemi Anlatımı</title>
+    <link rel="stylesheet" href="/static/memory_system.css">
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "base",
+        securityLevel: "loose",
+        themeVariables: {
+          background: "#171717",
+          primaryColor: "#202020",
+          primaryTextColor: "#f4f4f5",
+          primaryBorderColor: "#3f3f3f",
+          lineColor: "#737373",
+          secondaryColor: "#111111",
+          tertiaryColor: "#0d0d0d",
+          fontFamily: "Inter, system-ui, sans-serif"
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <main class="story-shell">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">memory-core Lab sunum sayfası</p>
+          <h1>Konuşma hafızası nasıl günlük nottan uzun vadeli bilgiye dönüşür?</h1>
+          <p>
+            Bu sayfa, chat sırasında oluşan bilginin nasıl arandığını, günlük dosyalara
+            nasıl işlendiğini, hangi sinyallerle güçlendiğini ve hangi koşullarda
+            <code>MEMORY.md</code> içine terfi ettiğini şematik olarak anlatır.
+          </p>
+        </div>
+        <div class="hero-panel" aria-label="Özet metrikler">
+          <div>
+            <span>score</span>
+            <strong>&ge; 0.75</strong>
+          </div>
+          <div>
+            <span>signals</span>
+            <strong>&ge; 3</strong>
+          </div>
+          <div>
+            <span>unique context</span>
+            <strong>&ge; 2</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="layer-brief" aria-labelledby="layer-brief-title">
+        <p class="eyebrow">Katman mantığı</p>
+        <h2 id="layer-brief-title">Bu sistem context bandwidth'i yönetmek için üç ana hafıza katmanı kullanır.</h2>
+        <div class="highlight-lines">
+          <p>
+            <mark>Layer 1 - MEMORY.md (always loaded):</mark>
+            Kalıcı, kısa ve yüksek sinyalli bilgiler. Her session başlangıcında bağlama girer.
+          </p>
+          <p>
+            <mark>Layer 2 - Daily memory (on-demand + auto recent):</mark>
+            Günlük gözlemler. Bugün ve dün otomatik bağlama yakın durur; eski günler search ile gelir.
+          </p>
+          <p>
+            <mark>Layer 3 - Session transcripts (searched, not fully read):</mark>
+            Ham konuşma izi. Dar arama ile sinyal üretir, komple context'e basılmaz.
+          </p>
+        </div>
+      </section>
+
+      <section class="canvas-section" aria-labelledby="canvas-title">
+        <div class="section-heading">
+          <p class="eyebrow">Kesin şema</p>
+          <h2 id="canvas-title">Write path, read path ve promotion ilişkisi</h2>
+        </div>
+        <div class="figjam-canvas" role="img" aria-label="Memory sisteminin katmanlı akış şeması">
+          <svg viewBox="0 0 1280 760" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="arrow" markerWidth="16" markerHeight="16" refX="12" refY="8" orient="auto" markerUnits="strokeWidth">
+                <path d="M2,2 L13,8 L2,14" fill="none" stroke="#737373" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+              </marker>
+            </defs>
+
+            <text x="80" y="58" class="svg-label">write paths</text>
+            <text x="865" y="58" class="svg-label">read / context paths</text>
+
+            <rect x="46" y="90" width="230" height="92" rx="8" class="svg-box side" />
+            <text x="161" y="128" text-anchor="middle" class="svg-title">Manual flush</text>
+            <text x="161" y="154" text-anchor="middle" class="svg-copy">chat turn sonrası daily write</text>
+
+            <rect x="46" y="300" width="230" height="104" rx="8" class="svg-box side" />
+            <text x="161" y="342" text-anchor="middle" class="svg-title">Dreaming sweep</text>
+            <text x="161" y="368" text-anchor="middle" class="svg-copy">light / rem / deep</text>
+
+            <rect x="46" y="535" width="230" height="104" rx="8" class="svg-box side" />
+            <text x="161" y="576" text-anchor="middle" class="svg-title">Session logging</text>
+            <text x="161" y="602" text-anchor="middle" class="svg-copy">raw transcript corpus</text>
+
+            <rect x="390" y="72" width="470" height="136" rx="8" class="svg-box layer1" />
+            <text x="625" y="118" text-anchor="middle" class="svg-title">MEMORY.md</text>
+            <text x="625" y="146" text-anchor="middle" class="svg-copy">Layer 1 - always loaded</text>
+            <text x="625" y="174" text-anchor="middle" class="svg-copy">durable facts - preferences - decisions</text>
+
+            <rect x="390" y="276" width="470" height="146" rx="8" class="svg-box layer2" />
+            <text x="625" y="326" text-anchor="middle" class="svg-title">memory/YYYY-MM-DD.md</text>
+            <text x="625" y="354" text-anchor="middle" class="svg-copy">Layer 2 - daily notes</text>
+            <text x="625" y="382" text-anchor="middle" class="svg-copy">today + yesterday auto, older via search</text>
+
+            <rect x="390" y="518" width="470" height="138" rx="8" class="svg-box layer3" />
+            <text x="625" y="566" text-anchor="middle" class="svg-title">session-corpus/YYYY-MM-DD.md</text>
+            <text x="625" y="594" text-anchor="middle" class="svg-copy">Layer 3 - searched, never fully injected</text>
+            <text x="625" y="622" text-anchor="middle" class="svg-copy">narrow recall terms - raw chat evidence</text>
+
+            <rect x="1008" y="90" width="220" height="92" rx="8" class="svg-box side" />
+            <text x="1118" y="128" text-anchor="middle" class="svg-title">system prompt</text>
+            <text x="1118" y="154" text-anchor="middle" class="svg-copy">injects MEMORY.md</text>
+
+            <rect x="1008" y="300" width="220" height="104" rx="8" class="svg-box side" />
+            <text x="1118" y="342" text-anchor="middle" class="svg-title">memory_search</text>
+            <text x="1118" y="368" text-anchor="middle" class="svg-copy">daily notes on demand</text>
+
+            <rect x="1008" y="535" width="220" height="104" rx="8" class="svg-box side" />
+            <text x="1118" y="576" text-anchor="middle" class="svg-title">narrow search</text>
+            <text x="1118" y="602" text-anchor="middle" class="svg-copy">transcript evidence only</text>
+
+            <rect x="390" y="690" width="470" height="46" rx="8" class="svg-box gate" />
+            <text x="625" y="719" text-anchor="middle" class="svg-copy">promotion gate: score >= 0.75 | signals >= 3 | unique context >= 2 | lock + marker</text>
+
+            <path d="M276 136 L370 136" class="svg-arrow" />
+            <path d="M276 352 L370 352" class="svg-arrow" />
+            <path d="M276 587 L370 587" class="svg-arrow" />
+            <path d="M860 136 L990 136" class="svg-arrow" />
+            <path d="M860 352 L990 352" class="svg-arrow" />
+            <path d="M860 587 L990 587" class="svg-arrow" />
+            <path d="M625 422 C625 486 625 610 625 682" class="svg-arrow dashed" />
+            <path d="M625 690 C625 624 625 277 625 218" class="svg-arrow promote" />
+
+            <text x="890" y="124" class="svg-label">always</text>
+            <text x="888" y="340" class="svg-label">if relevant</text>
+            <text x="888" y="574" class="svg-label">grep-like</text>
+            <text x="664" y="474" class="svg-label">signals accumulate</text>
+            <text x="650" y="258" class="svg-label">promote only after gates</text>
+          </svg>
+        </div>
+      </section>
+
+      <section class="mermaid-section" aria-labelledby="mermaid-title">
+        <div class="section-heading">
+          <p class="eyebrow">Mermaid kaynak şema</p>
+          <h2 id="mermaid-title">Aynı akışın Mermaid versiyonu</h2>
+        </div>
+        <pre class="mermaid">
+flowchart LR
+  chat[User chat] --> recall[memory_search]
+  recall --> daily[memory/YYYY-MM-DD.md]
+  daily --> signals[short-term-recall.json]
+  signals --> phase[phase-signals.json]
+  phase --> dream{Dreaming sweep}
+  dream --> light[Light: signal boost]
+  dream --> rem[REM: DREAMS.md]
+  dream --> deep[Deep: promotion gate]
+  deep --> gate{score >= 0.75<br/>signals >= 3<br/>unique >= 2}
+  gate -->|pass| memory[MEMORY.md]
+  memory --> prompt[loaded into next session]
+  recall --> sessions[session-corpus<br/>searched only]
+        </pre>
+      </section>
+
+      <section class="flow-section" aria-labelledby="flow-title">
+        <div class="section-heading">
+          <p class="eyebrow">Ana akış</p>
+          <h2 id="flow-title">Bir mesajdan kalıcı hafızaya giden yol</h2>
+        </div>
+        <ol class="flow-map">
+          <li>
+            <span class="node-index">1</span>
+            <strong>User chat</strong>
+            <p>Kullanıcı mesajı ve konuşma geçmişi değerlendirilir.</p>
+          </li>
+          <li>
+            <span class="node-index">2</span>
+            <strong>Recall / search</strong>
+            <p><code>MEMORY.md</code>, günlük notlar ve session corpus aranır.</p>
+          </li>
+          <li>
+            <span class="node-index">3</span>
+            <strong>Daily flush</strong>
+            <p>Yeni gözlemler yalnızca bugünün <code>memory/YYYY-MM-DD.md</code> dosyasına yazılır.</p>
+          </li>
+          <li>
+            <span class="node-index">4</span>
+            <strong>Short-term signals</strong>
+            <p>Recall, daily ve phase sinyalleri aday satırların gücünü artırır.</p>
+          </li>
+          <li>
+            <span class="node-index">5</span>
+            <strong>Dreaming sweep</strong>
+            <p>Light, REM ve deep fazları adayları tekrar ziyaret eder.</p>
+          </li>
+          <li>
+            <span class="node-index">6</span>
+            <strong>Long-term promotion</strong>
+            <p>Gate'lerden geçen kısa ve değerli bilgi <code>MEMORY.md</code> içine eklenir.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="memory-grid-section" aria-labelledby="memory-types-title">
+        <div class="section-heading">
+          <p class="eyebrow">Dosya katmanları</p>
+          <h2 id="memory-types-title">Memory türleri ve görevleri</h2>
+        </div>
+        <div class="memory-grid">
+          <article class="memory-card long-term">
+            <span>Long-term</span>
+            <h3>MEMORY.md</h3>
+            <p>Kalıcı tercihleri, önemli kararları ve gelecekte tekrar kullanılacak yüksek sinyalli bilgiyi tutar.</p>
+          </article>
+          <article class="memory-card daily">
+            <span>Daily</span>
+            <h3>memory/YYYY-MM-DD.md</h3>
+            <p>O günün konuşma notlarıdır. Chat sırasında yazılan ham ama faydalı kısa vadeli bağlam burada birikir.</p>
+          </article>
+          <article class="memory-card signal">
+            <span>Recall store</span>
+            <h3>short-term-recall.json</h3>
+            <p>Hangi satırın kaç kez, hangi sorgularla ve hangi skorla hatırlandığını sayar.</p>
+          </article>
+          <article class="memory-card phase">
+            <span>Phase signal</span>
+            <h3>phase-signals.json</h3>
+            <p>Light ve REM sweep'lerinde görülen adaylara ek güç verir; tek başına promotion bypass değildir.</p>
+          </article>
+          <article class="memory-card dream">
+            <span>Dream narrative</span>
+            <h3>DREAMS.md</h3>
+            <p>REM fazında aday parçaların anlatısal konsolidasyon izini gösterir.</p>
+          </article>
+          <article class="memory-card session">
+            <span>Session corpus</span>
+            <h3>session-corpus/YYYY-MM-DD.md</h3>
+            <p>Konuşma transcript arşividir. Aramada görünür, ama long-term yazımı doğrudan buradan yapılmaz.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="decision-section" aria-labelledby="decision-title">
+        <div class="section-heading">
+          <p class="eyebrow">Promotion gate</p>
+          <h2 id="decision-title">Her önemli görünen şey hemen long-term olmaz</h2>
+        </div>
+        <div class="decision-layout">
+          <div class="gate-stack">
+            <div class="gate-pass">
+              <strong>score &ge; 0.75</strong>
+              <span>Adayın semantic ve textual gücü yeterli olmalı.</span>
+            </div>
+            <div class="gate-pass">
+              <strong>signals &ge; 3</strong>
+              <span>Recall, daily veya grounded sinyaller tekrar etmelidir.</span>
+            </div>
+            <div class="gate-pass">
+              <strong>unique queries/days &ge; 2</strong>
+              <span>Bilgi tek bağlamdan değil, farklı sorgu veya günlerden destek almalıdır.</span>
+            </div>
+            <div class="gate-lock">
+              <strong>lock + marker kontrolü</strong>
+              <span>Aynı aday iki kez yazılmasın ve concurrent promotion çakışmasın.</span>
+            </div>
+          </div>
+          <div class="promotion-output">
+            <p class="eyebrow">Çıktı</p>
+            <h3>MEMORY.md içine kısa, damıtılmış madde</h3>
+            <pre>- User prefers concise technical answers in Turkish.</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="dreaming-section" aria-labelledby="dreaming-title">
+        <div class="section-heading">
+          <p class="eyebrow">Dreaming phases</p>
+          <h2 id="dreaming-title">Dreaming, memory'nin arka plandaki konsolidasyon turudur</h2>
+        </div>
+        <div class="phase-lanes">
+          <article>
+            <span>Light</span>
+            <h3>Adayları yoklar</h3>
+            <p>Short-term store'daki adayları tekrar ziyaret eder ve light signal yazar.</p>
+          </article>
+          <article>
+            <span>REM</span>
+            <h3>Anlatı üretir</h3>
+            <p>Aday parçaları <code>DREAMS.md</code> içinde okunabilir bir konsolidasyon izine dönüştürür.</p>
+          </article>
+          <article>
+            <span>Deep</span>
+            <h3>Promotion çalıştırır</h3>
+            <p>Varsayılan gate'leri geçen adayları <code>MEMORY.md</code> içine taşır.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="lab-section" aria-labelledby="lab-title">
+        <div class="section-heading">
+          <p class="eyebrow">memory-core Lab'de nerede görürsün?</p>
+          <h2 id="lab-title">Demo ekranındaki karşılıklar</h2>
+        </div>
+        <div class="lab-map">
+          <div><strong>Assistant cevabı altı</strong><span>Her turn sonrası daily flush ve memory details.</span></div>
+          <div><strong>Memory Files</strong><span><code>MEMORY.md</code>, güncel daily dosya ve eski günlükler.</span></div>
+          <div><strong>Promotion sweep</strong><span>Short-term adayların long-term'e geçip geçmediği.</span></div>
+          <div><strong>Dreaming sweep</strong><span>Light, REM ve deep fazlarının etkileri.</span></div>
+          <div><strong>Audit / Repair</strong><span>Recall store ve lock artifact sağlık kontrolü.</span></div>
+          <div><strong>Tool Inspector</strong><span><code>memory_search</code> ve <code>memory_get</code> davranışını canlı test eder.</span></div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

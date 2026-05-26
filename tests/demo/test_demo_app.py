@@ -42,15 +42,20 @@ class FailingChunkStore(CountingStore):
 class StubOpenAIEngine:
     name = "openai"
 
-    def complete(self, *, messages, memory_context):
+    def __init__(self):
+        self.workspace_contexts = []
+
+    def complete(self, *, messages, memory_context, workspace_context=""):
         del memory_context
+        self.workspace_contexts.append(workspace_context)
         return ChatResponse(
             role="assistant",
             content=f"stub response to {messages[-1].content}",
         )
 
-    def stream_complete(self, *, messages, memory_context):
+    def stream_complete(self, *, messages, memory_context, workspace_context=""):
         del memory_context
+        self.workspace_contexts.append(workspace_context)
         yield "streamed "
         yield f"response to {messages[-1].content}"
 
@@ -71,14 +76,21 @@ def test_demo_home_loads():
     client = TestClient(app)
     response = client.get("/")
     assert response.status_code == 200
-    assert "OpenClaw Chat Memory Lab" in response.text
+    assert "memory-core Lab" in response.text
     assert "chat-form" in response.text
     assert "memory-pipeline" in response.text
     assert "Raw Flush Output" in response.text
     assert "engine-status" in response.text
     assert "api-key" in response.text
+    assert '<details class="controls-panel"' in response.text
+    assert "Lab controls" in response.text
+    assert "Provider key" in response.text
+    assert "Provider endpoint URL" in response.text
     assert "gpt-5.2" in response.text
     assert "Tool Inspector" in response.text
+    assert "Workspace Files" in response.text
+    assert "workspaceBootstrapNode" in response.text
+    assert "Injected before memory context" in response.text
     assert "memoryWriteDetailsNode" in response.text
     assert "memory-detail" in response.text
     assert "renderMarkdown" in response.text
@@ -102,8 +114,10 @@ def test_demo_home_loads():
     assert "daily-memory-select" in response.text
     assert "dailyMemoryPaths" in response.text
     assert "latestDailyMemoryPath" in response.text
-    assert "Workspace files" in response.text
-    assert "OpenClaw defaults" in response.text
+    assert "Long-term and reference files" in response.text
+    assert "memory-core defaults" in response.text
+    assert "OpenClaw" not in response.text
+    assert "openclaw" not in response.text
     assert "streamingAssistantText" in response.text
     assert "renderMarkdown(body, streamingAssistantText)" in response.text
     assert 'textContent += text' not in response.text
@@ -111,14 +125,55 @@ def test_demo_home_loads():
     assert 'id="auto-flush" type="checkbox" checked' in response.text
 
 
+def test_memory_system_page_loads_without_changing_lab():
+    client = TestClient(app)
+
+    response = client.get("/memory-system")
+
+    assert response.status_code == 200
+    assert "Memory Sistemi Anlatımı" in response.text
+    assert "memory-core Lab sunum sayfası" in response.text
+    assert "Layer 1 - MEMORY.md" in response.text
+    assert "figjam-canvas" in response.text
+    assert "Bir mesajdan kalıcı hafızaya giden yol" in response.text
+    assert "memory/YYYY-MM-DD.md" in response.text
+    assert "short-term-recall.json" in response.text
+    assert "phase-signals.json" in response.text
+    assert "Dreaming phases" in response.text
+    assert "Kesin şema" in response.text
+    assert "flowchart LR" in response.text
+    assert "mermaid" in response.text
+    assert "/static/memory_system.css" in response.text
+    assert "chat-form" not in response.text
+
+
+def test_memory_system_css_is_responsive_and_separate():
+    client = TestClient(app)
+
+    response = client.get("/static/memory_system.css")
+
+    assert response.status_code == 200
+    assert ".flow-map" in response.text
+    assert ".figjam-canvas" in response.text
+    assert ".highlight-lines mark" in response.text
+    assert ".svg-arrow" in response.text
+    assert ".memory-grid" in response.text
+    assert ".phase-lanes" in response.text
+    assert "color-scheme: dark" in response.text
+    assert "@media (max-width: 640px)" in response.text
+
+
 def test_demo_css_uses_full_screen_layout():
     client = TestClient(app)
     response = client.get("/static/styles.css")
 
     assert response.status_code == 200
+    assert "color-scheme: dark" in response.text
     assert "height: 100dvh" in response.text
     assert "grid-template-rows: auto minmax(0, 1fr) minmax(260px, 0.45fr)" in response.text
     assert ".tab-panels" in response.text
+    assert ".controls-panel" in response.text
+    assert ".controls-panel[open] summary::before" in response.text
     assert "@media (max-width: 820px)" in response.text
 
 
@@ -171,15 +226,28 @@ def test_chat_state_endpoint_returns_engines_and_memory_files():
     assert "engines" in payload
     assert "memoryFiles" in payload
     assert "memoryFileContents" in payload
+    assert payload["workspaceFiles"] == [
+        "AGENTS.md",
+        "SOUL.md",
+        "TOOLS.md",
+        "IDENTITY.md",
+        "USER.md",
+    ]
+    assert "workspaceFileContents" in payload
+    assert "Operating Instructions" in payload["workspaceFileContents"]["AGENTS.md"]
+    assert "Persona and Tone" in payload["workspaceFileContents"]["SOUL.md"]
+    assert "Workspace Files (injected)" in payload["workspaceContext"]
+    assert "### AGENTS.md" in payload["workspaceContext"]
+    assert "### MEMORY.md" in payload["workspaceContext"]
     assert "MEMORY.md" in payload["memoryFileContents"]
     assert "Long-Term Memory" in payload["memoryFileContents"]["MEMORY.md"]
     assert "OpenClaw" not in payload["memoryFileContents"]["MEMORY.md"]
     assert payload["config"]["workspace"]
     assert payload["config"]["timezone"] == "Europe/Istanbul"
     assert payload["config"]["dailyMemoryPath"] == demo_app._demo_flush_plan().relative_path
-    assert payload["config"]["promotion"]["openclawDefaults"]["minRecallCount"] == 3
-    assert payload["config"]["promotion"]["openclawDefaults"]["minUniqueQueries"] == 2
-    assert payload["config"]["promotion"]["openclawDefaults"]["minScore"] == 0.75
+    assert payload["config"]["promotion"]["memoryCoreDefaults"]["minRecallCount"] == 3
+    assert payload["config"]["promotion"]["memoryCoreDefaults"]["minUniqueQueries"] == 2
+    assert payload["config"]["promotion"]["memoryCoreDefaults"]["minScore"] == 0.75
     assert payload["turns"] == []
 
 
@@ -297,7 +365,8 @@ def test_demo_store_requires_openai_embedding_key(monkeypatch):
 
 
 def test_chat_send_runs_recall_and_returns_turn(monkeypatch):
-    monkeypatch.setattr(demo_app, "_chat_engine", lambda payload: StubOpenAIEngine())
+    engine = StubOpenAIEngine()
+    monkeypatch.setattr(demo_app, "_chat_engine", lambda payload: engine)
     monkeypatch.setattr(demo_app, "demo_store", fake_demo_store)
     client = TestClient(app)
     client.post("/api/chat/reset", json={})
@@ -320,6 +389,9 @@ def test_chat_send_runs_recall_and_returns_turn(monkeypatch):
     assert payload["turns"][0]["recallQuery"]
     assert payload["turns"][0]["assistantResponse"]
     assert payload["turns"][0]["flush"] is None
+    assert engine.workspace_contexts
+    assert "### AGENTS.md" in engine.workspace_contexts[-1]
+    assert "### MEMORY.md" in engine.workspace_contexts[-1]
 
 
 def test_chat_send_writes_indexable_session_transcript(monkeypatch):
@@ -491,6 +563,11 @@ def test_short_term_promotion_writes_repeated_recalls_to_memory_md():
 
 def test_memory_promote_endpoint_applies_short_term_promotions(monkeypatch):
     monkeypatch.setattr(demo_app, "demo_store", fake_demo_store)
+    monkeypatch.setattr(
+        demo_app,
+        "_now_ms",
+        lambda: demo_app.DEMO_NOW_MS + 2 * 24 * 60 * 60 * 1000,
+    )
     client = TestClient(app)
     client.post("/api/chat/reset", json={})
     config = demo_app.demo_config()
@@ -745,8 +822,8 @@ def test_chat_send_runtime_error_returns_json_error(monkeypatch):
     class BrokenEngine:
         name = "broken"
 
-        def complete(self, *, messages, memory_context):
-            del messages, memory_context
+        def complete(self, *, messages, memory_context, workspace_context=""):
+            del messages, memory_context, workspace_context
             raise RuntimeError("boom")
 
         def flush(self, *, system_prompt, prompt, transcript, target):

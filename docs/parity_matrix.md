@@ -2,56 +2,62 @@
 
 Reference target:
 
-- Pinned OpenClaw commit recorded in this repo: `7f6798094ce9486a8f463772f4535484aca73fe2`
-- Latest GitHub source inspected during planning: `8c7f226401131164a450ee14e13c581eaf489993`
+- Pinned OpenClaw commit in `/tmp/openclaw-upstream`: `d8a14e77c35bb74c127d399222cd96f8c69ae529`
+- Repo metadata still records the earlier inspected upstream paths in `memory_core/parity/upstream.py`.
 
-This matrix tracks the Python lab against the OpenClaw workspace + memory core that affects chat behavior. The implementation target is the simple memory behavior plus the standard workspace bootstrap layer that is injected before memory context.
+Purpose:
 
-| Area | OpenClaw behavior | memory-core status | Gap / next action |
-| --- | --- | --- | --- |
-| Agent workspace | Active workspace is the default cwd and private operator state. Standard bootstrap files are created when missing unless bootstrap is skipped. | Implemented for demo workspace under tempdir. | No configurable `skipBootstrap` or profile-specific workspace path. |
-| `AGENTS.md` bootstrap | Operating instructions loaded at the start of every session. | Implemented. | Demo uses memory-core defaults instead of upstream template text to avoid brand leakage in UI. |
-| `SOUL.md` bootstrap | Persona, tone, boundaries; injected on normal sessions. | Implemented. | Demo defaults are concise Memory-Core-specific persona text. |
-| `TOOLS.md` bootstrap | Local tool conventions; guidance only, not tool access control. | Implemented. | No dynamic tool inventory generation. |
-| `IDENTITY.md` bootstrap | Agent name, vibe, emoji; created/updated by bootstrap ritual. | Implemented. | No bootstrap ritual UI; seeded default file only. |
-| `USER.md` bootstrap | Stable user profile and address preferences; loaded every session. | Implemented. | No dedicated UI editor yet. |
-| `HEARTBEAT.md` bootstrap | Optional heartbeat checklist; omitted on normal runs unless heartbeat context needs it. | Out of core scope. | Add only if heartbeat demo is in scope. |
-| `BOOT.md` / `BOOTSTRAP.md` | Optional startup checklist / first-run ritual. | Out of core scope. | Add only if runtime automation is in scope. |
-| Bootstrap injection order | OpenClaw resolves workspace files and injects bootstrap context before memory/tool recall; daily files are not normal bootstrap context. | Implemented for `AGENTS.md`, `SOUL.md`, `TOOLS.md`, `IDENTITY.md`, `USER.md`, `MEMORY.md`. | Native Codex role-splitting is approximated as system messages in the lab. |
-| Bootstrap truncation | Per-file default 12k chars and total default 60k chars, with `[MISSING] Expected at: ...` markers. `AGENTS.md` gets a special head/policy-digest/tail trim. | Partial. | Limits and missing marker match; `AGENTS.md` policy-digest truncation is approximated. Warning diagnostics are not surfaced separately in UI. |
-| `MEMORY.md` bootstrap | Curated long-term memory file; injected on normal main/private sessions when present. | Implemented. | Add memory budget compaction parity. |
-| Daily memory | Writes short-term facts to `memory/YYYY-MM-DD.md`; today/yesterday may be one-shot startup context on new/reset, but daily files are normally accessed by tools. | Implemented for writes and on-demand search; chat auto-recall still filters today/yesterday. | Consider removing chat auto-recall of yesterday for stricter tool-only behavior. |
-| Pre-compaction flush prompt | Tool-style write decision near compaction. | Partial. | Prompt text is close, but not wired into actual OpenClaw runtime compaction. |
-| `memory_search` | Hybrid memory/session/wiki search with citations and recall tracking. | Partial. | Memory/session corpora work; wiki/QMD paths missing. |
-| `memory_get` | Safe file read for memory artifacts. | Implemented. | Confirm exact path allowlist and citation text against pinned source. |
-| Hybrid search | FTS + vector + temporal decay + optional MMR. | Implemented. | Compare edge cases from upstream manager tests. |
-| Embedding providers | Provider discovery and adapters for multiple providers. | Out of core scope. | Keep OpenAI-compatible provider for the lab. |
-| Provider policy/cache | Provider state, cache, timeout, vector warnings. | Out of core scope. | Do not port unless runtime parity becomes a goal. |
-| QMD backend | Optional QMD index/search/vsearch/query integration. | Out of core scope. | Do not port for core memory parity. |
-| Short-term recall store | `memory/.dreams/short-term-recall.json`. | Implemented. | Need source-existence filtering and contaminated-snippet parity. |
-| Promotion score | Frequency, relevance, diversity, recency, consolidation, conceptual, phase boost. | Implemented. | Keep strict OpenClaw formula; no Memory-Core-specific boost. |
-| Promotion gates | Default score `0.75`, signals `3`, unique queries/days `2`. | Implemented. | Current UI labels memory-core defaults; strict OpenClaw mode should expose exact defaults. |
-| Phase boost | Log-scaled light/REM hits with recency decay. | Partial. | memory-core phase boost is simpler; port OpenClaw formula. |
-| Promotion apply | Rehydrate candidate from live source, skip stale/deleted/dreaming-fenced snippets. | Partial. | Implement live rehydration and dreaming fence checks. |
-| Promotion markers | HTML marker `openclaw-memory-promotion:<key>` prevents duplicate writes. | Implemented internally. | UI hides brand, but internal marker remains upstream-compatible. |
-| Memory budget | Compacts older promotion sections to keep `MEMORY.md` bounded. | Out of core scope. | Skip for the simple implementation. |
-| `promote --json` / `--apply` | Preview first, apply only when requested. | Out of core scope. | UI/API can stay demo-specific. |
-| `promote-explain` | Explains candidate scores and gate failures. | Partial. | UI evaluated candidates are enough for the lab. |
-| Light dreaming | Ingests recent daily notes, stages phase signals, writes optional reports. | Partial. | Demo records phase signals from existing candidates only. |
-| REM dreaming | Session/daily pattern extraction and narrative diary. | Partial. | Demo `DREAMS.md` is simplified; no detached narrative subagent. |
-| Deep dreaming | Applies short-term promotions. | Partial. | Core behavior exists; config/cron/apply parity missing. |
-| Dreaming scheduler | Managed cron job and heartbeat/system event trigger. | Out of core scope. | Manual button is enough for the lab. |
-| `/dreaming` command | Enable/disable/status/help and config persistence. | Out of core scope. | Skip unless CLI parity is required later. |
-| Session corpus | Redacted transcript ingestion with checkpoints and cron/heartbeat filtering. | Out of core scope. | Keep simple session-corpus demo only. |
-| Redaction | Sensitive content redacted before corpus write. | Out of core scope. | Note as production hardening, not core memory. |
-| Grounded backfill | Historical daily/session backfill with staged recall entries. | Out of core scope. | Skip for simple implementation. |
-| REM harness | Evidence harness for REM behavior. | Out of core scope. | Skip for simple implementation. |
-| Public artifacts/status | Structured status, public artifacts and diagnostics. | Partial. | Demo state endpoint is enough for the lab. |
-| Audit/repair | Recall store, lock, QMD index, health diagnostics. | Partial. | memory-core audits recall store/lock only. |
-| Runtime plugin integration | Plugin config, host APIs, private file store, memory events. | Out of core scope. | Explicitly not part of the simplified target. |
+- Track the Python port against real OpenClaw TypeScript behavior, not against a guessed spec.
+- Prefer executable oracle operations whenever a behavior can be isolated from the OpenClaw monorepo.
+- Keep runtime-only OpenClaw features out of the port until they affect observable memory-core behavior.
 
-Immediate sprint focus:
+Status legend:
 
-1. Keep this matrix current.
-2. Add fixture-based promotion comparison.
-3. Keep runtime-only OpenClaw features out unless they affect core memory behavior.
+- `match`: Python and OpenClaw are currently equivalent for the covered fixture.
+- `mismatch`: Oracle comparison exists and shows a real difference.
+- `partial`: Python implements part of the behavior, but oracle coverage or important edge cases are missing.
+- `missing`: No meaningful Python equivalent yet.
+- `out of scope`: OpenClaw runtime or platform feature not planned for the plug-and-play memory-core port.
+
+| Area | OpenClaw source | Python source | Oracle operation | Current parity status | Known gaps | Next test to add | Priority |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Deep dreaming policy defaults | `extensions/memory-core/src/dreaming.ts`, `extensions/memory-core/src/cli.runtime.ts` | `demo/parity_trace.py`, `demo/dreaming.py`, `demo/app.py` | `deepPolicy` | `mismatch` | OpenClaw default config returns `enabled=false`, `limit=10`, `minScore=0.8`, `minUniqueQueries=3`, `maxAgeDays=30`; Python demo uses enabled/manual defaults with `limit=5`, `minScore=0.75`, `minUniqueQueries=2`, no max age. | Assert Python default policy object equals oracle default policy for an empty config, then move demo overrides behind explicit lab config. | P0 |
+| Recall tracking from `memory_search` | `extensions/memory-core/src/tools.ts`, `extensions/memory-core/src/short-term-promotion.ts` | `demo/parity_trace.py`, `demo/short_term_promotion.py`, `memory_core/tools/memory_search.py` | `recordShortTermRecalls` | `mismatch` | OpenClaw recall keys currently omit Python's claim-hash suffix in the measured path; OpenClaw keeps the leading bullet in the snippet; concept tag extraction differs. | Add a Python unit test using the same single daily-memory fixture as the oracle and assert key, snippet, source range, recall count, query list, and concept tags. | P0 |
+| Recall store path and JSON shape | `extensions/memory-core/src/short-term-promotion.ts` | `demo/short_term_promotion.py` | `recordShortTermRecalls` | `partial` | Path `memory/.dreams/short-term-recall.json` exists in Python, but file-level normalization, pruning, and source existence filtering are not fully oracle-checked. | Extend the oracle runner to return the full recall JSON after two searches and compare Python JSON byte-normalized field-by-field. | P0 |
+| Promotion candidate ranking | `extensions/memory-core/src/short-term-promotion.ts` | `demo/short_term_promotion.py`, `tests/parity/test_promotion_fixture_runner.py` | `rankShortTermPromotionCandidates` | `partial` | Core scoring fixture exists, but edge cases around stale sources, promoted markers, contaminated snippets, decay, phase boost, and diversity are incomplete. | Add one oracle fixture where the same fact is recalled by three distinct queries across multiple days and assert score components plus gate pass/fail reasons. | P0 |
+| Promotion gates | `extensions/memory-core/src/short-term-promotion.ts` | `demo/short_term_promotion.py`, `demo/app.py` | `rankShortTermPromotionCandidates` | `partial` | Python has memory-core/demo defaults in UI; OpenClaw defaults need to be the library defaults while demo-specific overrides stay explicit. | Add config-default tests for `minScore`, `minRecallCount`, `minUniqueQueries`, `limit`, recency half-life, and max age using the oracle `deepPolicy` and candidate ranking operations. | P0 |
+| Apply short-term promotions | `extensions/memory-core/src/short-term-promotion.ts` | `demo/short_term_promotion.py` | `applyShortTermPromotions` | `partial` | Python writes sections to `MEMORY.md`, but live rehydration, stale/deleted source skip, dreaming fence checks, exact marker placement, and duplicate handling need oracle coverage. | Add oracle fixture that applies once and then applies again; assert first write content and second no-op result. | P1 |
+| Promotion marker parsing | `extensions/memory-core/src/short-term-promotion.ts`, `extensions/memory-core/src/memory-budget.ts` | `demo/short_term_promotion.py` | `applyShortTermPromotions` | `partial` | Internal marker prefix matches upstream, but parsing around malformed markers and compacted memory blocks is not covered. | Add malformed and duplicate marker fixtures comparing candidate exclusion against oracle ranking. | P1 |
+| Light dreaming phase signals | `extensions/memory-core/src/dreaming-phases.ts` | `demo/dreaming.py`, `demo/short_term_promotion.py` | `recordDreamingPhaseSignals` | `partial` | Python records simplified phase signals; OpenClaw has phase-specific metadata, evidence grouping, recency effects, and report behavior. | Extend oracle runner to run light dreaming over a daily-memory fixture and compare the phase signal entries written into short-term recall JSON. | P1 |
+| REM dreaming phase signals | `extensions/memory-core/src/dreaming-phases.ts`, `extensions/memory-core/src/rem-evidence.ts` | `demo/dreaming.py` | Not added | `missing` | Python does not model OpenClaw REM narrative/evidence extraction. | Add an oracle operation only if REM output is required for the public Python package; otherwise mark runtime/demo-only. | P2 |
+| Deep dreaming application flow | `extensions/memory-core/src/dreaming.ts` | `demo/dreaming.py`, `demo/app.py` | `deepPolicy`, `rankShortTermPromotionCandidates`, `applyShortTermPromotions` | `partial` | Python can run a manual deep sweep, but OpenClaw's enablement, scheduler/config handling, and apply limits are not fully modeled. | Add a single end-to-end oracle fixture: seed recall store, run deep dreaming, compare changed files and promoted candidate IDs. | P1 |
+| Pre-compaction memory flush plan | `extensions/memory-core/src/flush-plan.ts` | `memory_core/memory_flush.py`, `demo/memory_flush.py` | Not added | `partial` | Prompt/system prompt and target safety are ported; exact config override surface and flush-plan resolver metadata need comparison. | Add a `flushPlan` oracle operation that returns prompt, system prompt, target, soft token threshold, force transcript byte threshold, and target allowlist text. | P1 |
+| Runtime flush trigger | `src/auto-reply/reply/agent-runner-memory.ts`, `src/auto-reply/reply/memory-flush.ts`, `src/auto-reply/reply/reply-state.ts` | `demo/app.py`, `demo/chat_session.py` | Not added | `partial` | Demo currently supports manual/auto per-turn flush; OpenClaw flushes near compaction based on context window budget, force transcript bytes, compaction count guard, provider/runtime skips, and hash dedup. | Add pure Python tests for the trigger predicate after porting the OpenClaw threshold/dedup logic; do not bind it to every chat turn by default. | P1 |
+| Daily memory append target | `extensions/memory-core/src/flush-plan.ts`, `src/auto-reply/reply/agent-runner-payloads.ts` | `memory_core/workspace.py`, `demo/memory_flush.py` | `flushPlan` after added | `partial` | Python enforces `memory/YYYY-MM-DD.md`, but runtime write-tool error text and symlink/protected path behavior need source-level parity checks. | Add tests for wrong target, bootstrap-file target, symlink target, and valid daily target using OpenClaw error text as the expected model where practical. | P1 |
+| Workspace bootstrap files | OpenClaw workspace bootstrap/runtime files, memory-core host integration | `demo/workspace_context.py`, `tests/demo/test_workspace_context.py` | Not added | `partial` | Demo seeds `AGENTS.md`, `SOUL.md`, `TOOLS.md`, `IDENTITY.md`, `USER.md`, `MEMORY.md`; upstream bootstrap ritual and templates are intentionally not copied exactly. | Decide package boundary: expose generic bootstrap loader, not branded OpenClaw templates; add tests for order, missing marker, and truncation only. | P2 |
+| Bootstrap truncation | OpenClaw workspace bootstrap injection code | `demo/workspace_context.py` | Not added | `partial` | Python approximates per-file/total truncation; `AGENTS.md` policy-digest truncation and diagnostics are not ported. | Add a focused truncation contract test for Python package behavior; only oracle-test this if bootstrap becomes part of package parity. | P2 |
+| Prompt memory tool section | Memory-core prompt/tool guidance | `memory_core/prompt_section.py`, `tests/parity/test_prompt_section.py` | Not added | `partial` | Text is port-like but not currently oracle extracted; citations mode and available-tool combinations are covered by Python tests. | Add source snapshot test if upstream wording becomes an API compatibility target; otherwise keep as documented package guidance. | P2 |
+| `memory_get` | `extensions/memory-core/src/tools.ts` | `memory_core/tools/memory_get.py`, `tests/integration/test_memory_tools.py` | Not added | `partial` | Basic line-window reads work; exact allowlist, max chars, citation payload, and errors need comparison. | Add oracle operation for reading `MEMORY.md`, a daily file, a missing file, and a non-memory workspace file. | P1 |
+| `memory_search` corpora | `extensions/memory-core/src/tools.ts`, memory index manager sources | `memory_core/tools/memory_search.py`, `memory_core/store.py` | Not added | `partial` | Memory/session corpora work in Python; wiki/QMD and some indexed transcript behavior are not ported. | Add oracle operation returning search results for `corpus=memory`, `corpus=session`, and `corpus=all` with a fixed tiny workspace. | P1 |
+| Hybrid search scoring | OpenClaw index/search manager sources | `memory_core/store.py` | Not added | `partial` | Python has FTS/vector/temporal/MMR-like behavior, but exact upstream ranking edge cases are not measured. | Add fixture with two semantically similar memories and one recent exact hit; compare ordering and min-score filtering. | P2 |
+| Embedding providers | OpenClaw provider adapters/config | `memory_core/config.py`, demo OpenAI-compatible provider env | Not planned | `out of scope` | Python package should keep provider-agnostic hooks and one OpenAI-compatible path; OpenClaw's provider registry/cache is runtime-specific. | Add package-level interface tests only; no OpenClaw oracle needed. | P3 |
+| QMD/wiki backend | OpenClaw QMD integration | None | Not planned | `out of scope` | Not required for memory-core Python package MVP. | None until a user asks for QMD/wiki parity. | P3 |
+| Memory budget compaction | `extensions/memory-core/src/memory-budget.ts` | None | Not added | `missing` | Python does not compact old promotion blocks in `MEMORY.md`. | Add after apply-promotion parity: seed many promotion blocks and compare retained/compacted content against oracle. | P2 |
+| Promotion CLI/status commands | `extensions/memory-core/src/cli.runtime.ts` | Demo endpoints/buttons | Not planned | `out of scope` | Python library should expose functions/classes; CLI can come later as packaging sugar. | Add only after core behavior is stable. | P3 |
+| Dreaming scheduler and slash command | `extensions/memory-core/src/dreaming.ts`, `extensions/memory-core/src/cli.runtime.ts` | Demo manual button | Not planned | `out of scope` | Cron, heartbeat, slash command, and OpenClaw runtime events are platform behavior, not core memory behavior. | None for memory-core MVP. | P3 |
+| Session corpus ingestion | OpenClaw session corpus/redaction code | `memory_core/store.py`, demo chat session | Not added | `partial` | Python indexes simple session transcripts; OpenClaw checkpointing, redaction, cron/heartbeat filters, and transcript metadata are not ported. | Add a minimal session-corpus oracle fixture only after memory/daily search parity is stable. | P2 |
+| Redaction | OpenClaw transcript redaction code | None | Not planned | `missing` | Production hardening feature; not part of measured memory-core parity yet. | Add package-level redaction hooks before public package release if storing user transcripts. | P2 |
+| Audit and repair | `extensions/memory-core/src/short-term-promotion.ts`, CLI runtime audit paths | `demo/short_term_promotion.py` | Not added | `partial` | Python audits recall store/lock basics; upstream has broader diagnostics around stores, locks, and indexes. | Add corruption fixture for short-term recall JSON and stale lock, compare repair result shape where source behavior is isolated. | P2 |
+| Public artifacts/status | OpenClaw diagnostics/status output | `demo/app.py` | Not planned | `partial` | Demo state endpoint is lab-specific and should not be treated as OpenClaw parity. | Keep separate from package API; no oracle test. | P3 |
+
+Phase 1 output:
+
+1. The parity surface is now split into executable oracle rows, Python-only contract rows, and explicit out-of-scope rows.
+2. The first implementation target after this phase should be recall tracking parity because the oracle already proves a concrete mismatch and the blast radius is small.
+3. Deep policy defaults should be fixed alongside or immediately after recall tracking so the demo stops teaching Memory-Core-specific defaults as if they were OpenClaw defaults.
+
+Recommended Phase 2 sequence:
+
+1. Fix `recordShortTermRecalls` shape parity: key generation, snippet normalization, concept tags, and JSON store shape.
+2. Fix deep policy defaults and move demo overrides into explicit UI/config labels.
+3. Add `flushPlan`, `memory_get`, and `memory_search` oracle operations before changing those implementations.

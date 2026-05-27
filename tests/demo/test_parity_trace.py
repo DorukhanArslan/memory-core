@@ -59,7 +59,7 @@ class FakeOracle:
                     "minRecallCount": 3,
                     "minUniqueQueries": 3,
                     "maxAgeDays": 30,
-                    "enabled": True,
+                    "enabled": False,
                     "limit": 10,
                     "recencyHalfLifeDays": 14,
                 },

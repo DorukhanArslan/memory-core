@@ -86,6 +86,39 @@ def test_run_returns_runner_json(monkeypatch, tmp_path: Path):
     assert result["metadata"]["commit"] == "abc123"
 
 
+def test_run_falls_back_to_npm_exec_pnpm_when_pnpm_binary_is_missing(monkeypatch, tmp_path: Path):
+    repo = tmp_path / "openclaw"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    (repo / "pnpm-lock.yaml").write_text("lock", encoding="utf-8")
+    (repo / "package.json").write_text('{"packageManager": "pnpm@11.2.2"}', encoding="utf-8")
+    commands = []
+
+    def fake_run(cmd, **kwargs):
+        commands.append(cmd)
+        if cmd[:3] == ["git", "rev-parse", "HEAD"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
+        if cmd[:3] == ["pnpm", "exec", "tsx"]:
+            raise FileNotFoundError("pnpm")
+        assert cmd[:5] == ["npm", "exec", "--yes", "pnpm@11.2.2", "--"]
+        assert cmd[5:7] == ["exec", "tsx"]
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout=json.dumps({"ok": True, "operation": "deepPolicy", "result": {"minScore": 0.8}}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    oracle = OpenClawOracle(repo_path=repo)
+
+    result = oracle.run({"operation": "deepPolicy"})
+
+    assert result["ok"] is True
+    assert commands[1][:3] == ["pnpm", "exec", "tsx"]
+    assert commands[2][:5] == ["npm", "exec", "--yes", "pnpm@11.2.2", "--"]
+
+
 def test_run_preserves_structured_runner_error(monkeypatch, tmp_path: Path):
     repo = tmp_path / "openclaw"
     repo.mkdir()

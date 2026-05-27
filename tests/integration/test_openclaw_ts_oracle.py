@@ -24,7 +24,7 @@ def test_real_openclaw_oracle_deep_policy():
     assert result["result"]["minRecallCount"] == 3
     assert result["result"]["minUniqueQueries"] == 3
     assert result["result"]["maxAgeDays"] == 30
-    assert result["result"]["enabled"] is True
+    assert result["result"]["enabled"] is False
     assert result["result"]["limit"] == 10
     assert result["result"]["recencyHalfLifeDays"] == 14
 

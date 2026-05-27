@@ -30,6 +30,14 @@ DEFAULT_PROMOTION_MIN_SCORE = 0.8
 DEFAULT_PROMOTION_MIN_RECALL_COUNT = 3
 DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES = 3
 DEFAULT_RECENCY_HALF_LIFE_DAYS = 14
+PROMOTION_COMPONENT_WEIGHTS = {
+    "frequency": 0.24,
+    "relevance": 0.30,
+    "diversity": 0.15,
+    "recency": 0.15,
+    "consolidation": 0.10,
+    "conceptual": 0.06,
+}
 DAY_MS = 24 * 60 * 60 * 1000
 PHASE_SIGNAL_DECAY_MS = 30 * DAY_MS
 
@@ -599,7 +607,7 @@ def evaluate_short_term_promotion_candidates(
             now_ms=now_ms,
             phase_entries=phase_entries if isinstance(phase_entries, dict) else {},
         )
-        score = _clamp(sum(components.values()))
+        score = _candidate_score(components)
         reasons = []
         if score < min_score:
             reasons.append(f"score {score:.3f} < {min_score:.3f}")
@@ -680,14 +688,22 @@ def _candidate_components(
     )
     key = str(entry.get("key") or "")
     return {
-        "frequency": 0.24 * _clamp(math.log1p(max(0, signal_count)) / math.log1p(10)),
-        "relevance": 0.30 * _clamp(avg_score),
-        "diversity": 0.15 * _clamp(max(0, context_diversity) / 5),
-        "recency": 0.15 * _clamp(recency),
-        "consolidation": 0.10 * consolidation,
-        "conceptual": 0.06 * _clamp(len(concept_tags) / 6),
+        "frequency": _clamp(math.log1p(max(0, signal_count)) / math.log1p(10)),
+        "relevance": _clamp(avg_score),
+        "diversity": _clamp(max(0, context_diversity) / 5),
+        "recency": _clamp(recency),
+        "consolidation": consolidation,
+        "conceptual": _clamp(len(concept_tags) / 6),
         "phaseBoost": _phase_signal_boost(phase_entries.get(key)),
     }
+
+
+def _candidate_score(components: dict[str, float]) -> float:
+    weighted = sum(
+        PROMOTION_COMPONENT_WEIGHTS[key] * float(components.get(key) or 0)
+        for key in PROMOTION_COMPONENT_WEIGHTS
+    )
+    return _clamp(weighted + float(components.get("phaseBoost") or 0))
 
 
 def _phase_signal_boost(entry: Any) -> float:

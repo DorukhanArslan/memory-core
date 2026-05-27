@@ -2,6 +2,7 @@ from demo.parity_trace import (
     build_configured_deep_policy_trace,
     build_deep_policy_trace,
     build_parity_trace,
+    build_promotion_ranking_trace,
     build_recall_tracking_trace,
     build_repeated_recall_tracking_trace,
     diff_values,
@@ -134,6 +135,50 @@ class FakeOracle:
                 "operation": "recordShortTermRecallSequence",
                 "files": {RECALL_STORE_PATH: EXPECTED_REPEATED_RECALL_STORE},
             }
+        if payload["operation"] == "rankShortTermPromotionCandidates":
+            return {
+                "ok": True,
+                "operation": "rankShortTermPromotionCandidates",
+                "result": {
+                    "candidates": [
+                        {
+                            "key": "memory:memory/2026-05-26.md:3:3",
+                            "path": "memory/2026-05-26.md",
+                            "startLine": 3,
+                            "endLine": 3,
+                            "source": "memory",
+                            "snippet": "- User prefers to be addressed as dodo.",
+                            "recallCount": 5,
+                            "dailyCount": 0,
+                            "groundedCount": 0,
+                            "signalCount": 5,
+                            "avgScore": 1,
+                            "maxScore": 1,
+                            "uniqueQueries": 5,
+                            "firstRecalledAt": "2026-05-26T16:00:00.000Z",
+                            "lastRecalledAt": "2026-05-30T16:00:00.000Z",
+                            "ageDays": 0,
+                            "score": 0.8900475024284972,
+                            "recallDays": [
+                                "2026-05-26",
+                                "2026-05-27",
+                                "2026-05-28",
+                                "2026-05-29",
+                                "2026-05-30",
+                            ],
+                            "conceptTags": ["prefers", "addressed", "dodo"],
+                            "components": {
+                                "frequency": 0.7472217363092141,
+                                "relevance": 1,
+                                "diversity": 1,
+                                "recency": 1,
+                                "consolidation": 0.8071428571428572,
+                                "conceptual": 0.5,
+                            },
+                        }
+                    ]
+                },
+            }
         raise AssertionError(f"unexpected operation: {payload['operation']}")
 
 
@@ -242,6 +287,7 @@ def test_build_parity_trace_includes_recall_tracking_step():
 
     assert "recall-tracking" in ids
     assert "configured-deep-policy" in ids
+    assert "promotion-ranking" in ids
     assert "repeated-recall-tracking" in ids
 
 
@@ -270,6 +316,27 @@ def test_build_repeated_recall_tracking_trace_matches_oracle_sequence():
     assert entry["queryHashes"] == ["aa5368a7c7bd", "1da206d81a95"]
     assert entry["recallDays"] == ["2026-05-26", "2026-05-27"]
     assert trace["python"]["values"]["entries"] == trace["openclaw"]["values"]["entries"]
+
+
+def test_build_promotion_ranking_trace_matches_oracle_candidate_components():
+    trace = build_promotion_ranking_trace(FakeOracle())
+
+    assert trace["id"] == "promotion-ranking"
+    assert trace["diff"]["status"] == "match"
+    candidate = trace["python"]["values"]["candidates"][0]
+    assert candidate["key"] == "memory:memory/2026-05-26.md:3:3"
+    assert candidate["recallCount"] == 5
+    assert candidate["uniqueQueries"] == 5
+    assert candidate["score"] == 0.890047502428
+    assert candidate["components"] == {
+        "frequency": 0.747221736309,
+        "relevance": 1.0,
+        "diversity": 1.0,
+        "recency": 1.0,
+        "consolidation": 0.807142857143,
+        "conceptual": 0.5,
+    }
+    assert trace["python"]["values"] == trace["openclaw"]["values"]
 
 
 def test_build_recall_tracking_trace_reports_mismatch_when_oracle_records_nothing():

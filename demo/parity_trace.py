@@ -15,6 +15,7 @@ from demo.short_term_promotion import (
     DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
     DEFAULT_RECENCY_HALF_LIFE_DAYS,
     SHORT_TERM_STORE_RELATIVE_PATH,
+    rank_short_term_promotion_candidates,
     record_short_term_recalls,
 )
 from memory_core.config import MemoryConfig
@@ -70,6 +71,14 @@ NON_MEMORY_RECALL_RESULT = {
     "snippet": "Ignore this non-memory result.",
     "score": 1,
 }
+RANKING_NOW_MS = RECALL_NOW_MS + 4 * 86_400_000
+RANKING_QUERIES = [
+    "address preference",
+    "preferred name",
+    "user salutation",
+    "name preference",
+    "how to address user",
+]
 
 
 def diff_values(python_values: dict[str, Any], openclaw_values: dict[str, Any]) -> dict[str, Any]:
@@ -431,6 +440,134 @@ def build_repeated_recall_tracking_trace(oracle: OpenClawOracle | Any) -> dict[s
     }
 
 
+def build_promotion_ranking_trace(oracle: OpenClawOracle | Any) -> dict[str, Any]:
+    recalls = [
+        {"query": query, "results": [RECALL_RESULT], "nowMs": RECALL_NOW_MS + index * 86_400_000}
+        for index, query in enumerate(RANKING_QUERIES)
+    ]
+    with (
+        tempfile.TemporaryDirectory(prefix="memory-core-python-ranking-") as python_dir,
+        tempfile.TemporaryDirectory(prefix="memory-core-openclaw-ranking-") as oracle_dir,
+    ):
+        python_workspace = Path(python_dir)
+        oracle_workspace = Path(oracle_dir)
+        _seed_recall_workspace(python_workspace)
+        _seed_recall_workspace(oracle_workspace)
+        for recall in recalls:
+            record_short_term_recalls(
+                config=MemoryConfig(workspace_dir=python_workspace),
+                query=recall["query"],
+                results=recall["results"],
+                now_ms=recall["nowMs"],
+            )
+        python_candidates = rank_short_term_promotion_candidates(
+            config=MemoryConfig(workspace_dir=python_workspace),
+            now_ms=RANKING_NOW_MS,
+            limit=10,
+            min_score=DEFAULT_PROMOTION_MIN_SCORE,
+            min_recall_count=DEFAULT_PROMOTION_MIN_RECALL_COUNT,
+            min_unique_queries=DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+        )
+        python_values = {
+            "candidates": [_promotion_candidate_values(candidate) for candidate in python_candidates]
+        }
+
+        try:
+            sequence_result = oracle.run(
+                {
+                    "operation": "recordShortTermRecallSequence",
+                    "recalls": recalls,
+                    "timezone": RECALL_TIMEZONE,
+                    "workspaceDir": str(oracle_workspace),
+                }
+            )
+            if not isinstance(sequence_result, dict) or not sequence_result.get("ok"):
+                oracle_result = sequence_result
+            else:
+                oracle_result = oracle.run(
+                    {
+                        "operation": "rankShortTermPromotionCandidates",
+                        "workspaceDir": str(oracle_workspace),
+                        "nowMs": RANKING_NOW_MS,
+                        "timezone": RECALL_TIMEZONE,
+                    }
+                )
+        except Exception as exc:
+            oracle_result = {"ok": False, "error": {"message": str(exc)}}
+
+    if not isinstance(oracle_result, dict):
+        error = {"message": "invalid oracle result"}
+        return _promotion_ranking_error_trace(python_values, error["message"], error)
+    if not oracle_result.get("ok"):
+        error = oracle_result.get("error", {})
+        message = (
+            error.get("message", "oracle error")
+            if isinstance(error, dict)
+            else "oracle error"
+        )
+        return _promotion_ranking_error_trace(python_values, message, error)
+    raw_candidates = oracle_result.get("result", {}).get("candidates")
+    if not isinstance(raw_candidates, list):
+        error = {"message": "invalid oracle result"}
+        return _promotion_ranking_error_trace(python_values, error["message"], error)
+    openclaw_values = {"candidates": [_promotion_candidate_values(candidate) for candidate in raw_candidates]}
+    return {
+        "id": "promotion-ranking",
+        "label": "Promotion candidate ranking",
+        "condition": (
+            "rankShortTermPromotionCandidates over a five-query recall store"
+        ),
+        "python": {"decision": "ranked", "values": python_values, "reasons": []},
+        "openclaw": {"decision": "ranked", "values": openclaw_values, "reasons": []},
+        "diff": diff_values(python_values, openclaw_values),
+    }
+
+
+def _promotion_candidate_values(candidate: Any) -> dict[str, Any]:
+    get = candidate.get if isinstance(candidate, dict) else lambda key, default=None: getattr(candidate, key, default)
+    components = get("components", {}) or {}
+    if not isinstance(components, dict):
+        components = {}
+    return {
+        "key": get("key"),
+        "path": get("path"),
+        "startLine": get("startLine", get("start_line")),
+        "endLine": get("endLine", get("end_line")),
+        "snippet": get("snippet"),
+        "recallCount": get("recallCount", get("recall_count")),
+        "dailyCount": get("dailyCount", get("daily_count")),
+        "groundedCount": get("groundedCount", get("grounded_count")),
+        "signalCount": get("signalCount", get("signal_count")),
+        "avgScore": _round_float(get("avgScore", get("avg_score"))),
+        "maxScore": _round_float(get("maxScore", get("max_score"))),
+        "uniqueQueries": get("uniqueQueries", get("unique_queries")),
+        "ageDays": _round_float(get("ageDays", get("age_days"))),
+        "score": _round_float(get("score")),
+        "conceptTags": list(get("conceptTags", get("concept_tags", [])) or []),
+        "components": {
+            key: _round_float(components.get(key))
+            for key in ("frequency", "relevance", "diversity", "recency", "consolidation", "conceptual")
+        },
+    }
+
+
+def _round_float(value: Any) -> Any:
+    return round(float(value), 12) if isinstance(value, int | float) else value
+
+
+def _promotion_ranking_error_trace(
+    python_values: dict[str, Any], message: str, error: dict[str, Any] | Any
+) -> dict[str, Any]:
+    return {
+        "id": "promotion-ranking",
+        "label": "Promotion candidate ranking",
+        "condition": "rankShortTermPromotionCandidates over a five-query recall store",
+        "python": {"decision": "ranked", "values": python_values, "reasons": []},
+        "openclaw": {"decision": "error", "values": {}, "reasons": [message]},
+        "diff": {"status": "error", "details": [error]},
+    }
+
+
 def _seed_recall_workspace(workspace: Path) -> None:
     memory_path = workspace / RECALL_RESULT["path"]
     memory_path.parent.mkdir(parents=True, exist_ok=True)
@@ -490,5 +627,6 @@ def build_parity_trace(oracle: OpenClawOracle | None = None) -> dict[str, Any]:
             build_configured_deep_policy_trace(oracle),
             build_recall_tracking_trace(oracle),
             build_repeated_recall_tracking_trace(oracle),
+            build_promotion_ranking_trace(oracle),
         ],
     }

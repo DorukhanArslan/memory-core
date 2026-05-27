@@ -170,3 +170,69 @@ def test_real_openclaw_oracle_records_short_term_recall_sequence():
     assert entry["recallCount"] == 2
     assert entry["queryHashes"] == ["aa5368a7c7bd", "1da206d81a95"]
     assert entry["recallDays"] == ["2026-05-26", "2026-05-27"]
+
+
+def test_real_openclaw_oracle_ranks_short_term_promotion_candidate():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-ranking-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        memory_file = workspace / "memory" / "2026-05-26.md"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text(
+            "# 2026-05-26\n\n- User prefers to be addressed as dodo.\n",
+            encoding="utf-8",
+        )
+        base_result = {
+            "source": "memory",
+            "path": "memory/2026-05-26.md",
+            "startLine": 3,
+            "endLine": 3,
+            "snippet": "- User prefers to be addressed as dodo.",
+            "score": 1,
+        }
+        queries = [
+            "address preference",
+            "preferred name",
+            "user salutation",
+            "name preference",
+            "how to address user",
+        ]
+        oracle.run(
+            {
+                "operation": "recordShortTermRecallSequence",
+                "workspaceDir": str(workspace),
+                "timezone": "Europe/Istanbul",
+                "recalls": [
+                    {
+                        "query": query,
+                        "results": [base_result],
+                        "nowMs": 1779811200000 + index * 86_400_000,
+                    }
+                    for index, query in enumerate(queries)
+                ],
+            }
+        )
+        result = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1779811200000 + 4 * 86_400_000,
+                "timezone": "Europe/Istanbul",
+            }
+        )
+
+    assert result["ok"] is True
+    candidates = result["result"]["candidates"]
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["key"] == "memory:memory/2026-05-26.md:3:3"
+    assert candidate["recallCount"] == 5
+    assert candidate["uniqueQueries"] == 5
+    assert candidate["score"] == pytest.approx(0.8900475024284972)
+    assert candidate["components"]["frequency"] == pytest.approx(0.7472217363092141)
+    assert candidate["components"]["relevance"] == 1
+    assert candidate["components"]["diversity"] == 1
+    assert candidate["components"]["recency"] == 1
+    assert candidate["components"]["consolidation"] == pytest.approx(0.8071428571428572)
+    assert candidate["components"]["conceptual"] == 0.5

@@ -236,7 +236,7 @@ def test_repair_removes_invalid_entries_and_stale_lock(tmp_path: Path):
     assert result["rewroteStore"] is True
     assert result["removedStaleLock"] is True
     payload = json.loads((dreams / "short-term-recall.json").read_text(encoding="utf-8"))
-    assert payload["updatedAt"] == "2026-05-08T12:00:00Z"
+    assert payload["updatedAt"] == "2026-05-08T12:00:00.000Z"
     assert isinstance(payload["entries"], dict)
     assert "bad" not in payload["entries"]
     assert "missing-fields" not in payload["entries"]
@@ -283,7 +283,7 @@ def test_phase_signals_are_recorded_and_decay_old_keys(tmp_path: Path):
     assert "memory:memory/2026-03-01.md:2:2:old" not in payload["entries"]
     assert '"lightHits": 1' in raw
     assert '"remHits": 0' in raw
-    assert entry["lastLightAt"] == "2026-05-08T12:00:00Z"
+    assert entry["lastLightAt"] == "2026-05-08T12:00:00.000Z"
     assert entry["lastRemAt"] is None
 
 
@@ -305,7 +305,7 @@ def test_new_rem_phase_signal_entry_includes_last_light_at(tmp_path: Path):
     assert entry["lightHits"] == 0
     assert entry["remHits"] == 1
     assert entry["lastLightAt"] is None
-    assert entry["lastRemAt"] == "2026-05-08T12:00:00Z"
+    assert entry["lastRemAt"] == "2026-05-08T12:00:00.000Z"
 
 
 def test_candidate_output_includes_score_components_and_phase_boost(tmp_path: Path):

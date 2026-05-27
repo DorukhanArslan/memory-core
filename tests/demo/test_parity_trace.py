@@ -9,22 +9,22 @@ from demo.parity_trace import (
 RECALL_STORE_PATH = "memory/.dreams/short-term-recall.json"
 EXPECTED_RECALL_STORE = """{
   "version": 1,
-  "updatedAt": "2026-05-26T16:00:00Z",
+  "updatedAt": "2026-05-26T16:00:00.000Z",
   "entries": {
-    "memory:memory/2026-05-26.md:3:3:64b54b44741d": {
-      "key": "memory:memory/2026-05-26.md:3:3:64b54b44741d",
+    "memory:memory/2026-05-26.md:3:3": {
+      "key": "memory:memory/2026-05-26.md:3:3",
       "path": "memory/2026-05-26.md",
       "startLine": 3,
       "endLine": 3,
       "source": "memory",
-      "snippet": "User prefers to be addressed as dodo.",
+      "snippet": "- User prefers to be addressed as dodo.",
       "recallCount": 1,
       "dailyCount": 0,
       "groundedCount": 0,
       "totalScore": 1.0,
       "maxScore": 1.0,
-      "firstRecalledAt": "2026-05-26T16:00:00Z",
-      "lastRecalledAt": "2026-05-26T16:00:00Z",
+      "firstRecalledAt": "2026-05-26T16:00:00.000Z",
+      "lastRecalledAt": "2026-05-26T16:00:00.000Z",
       "queryHashes": [
         "aa5368a7c7bd"
       ],
@@ -32,13 +32,10 @@ EXPECTED_RECALL_STORE = """{
         "2026-05-26"
       ],
       "conceptTags": [
-        "26md",
-        "user",
         "prefers",
         "addressed",
         "dodo"
-      ],
-      "claimHash": "64b54b44741d"
+      ]
     }
   }
 }

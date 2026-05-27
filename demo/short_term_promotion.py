@@ -310,8 +310,7 @@ def record_short_term_recalls(
         for line_number, snippet in _candidate_lines(
             raw=str(result.get("snippet") or ""), start_line=start_line
         ):
-            claim_hash = _hash(snippet)
-            key = f"memory:{path}:{line_number}:{line_number}:{claim_hash}"
+            key = f"memory:{path}:{line_number}:{line_number}"
             entry = store["entries"].get(key)
             if entry is None:
                 entry = {
@@ -331,7 +330,6 @@ def record_short_term_recalls(
                     "queryHashes": [],
                     "recallDays": [],
                     "conceptTags": _derive_concept_tags(path, snippet),
-                    "claimHash": claim_hash,
                 }
                 store["entries"][key] = entry
             entry["totalScore"] = float(entry.get("totalScore") or 0) + score
@@ -918,8 +916,6 @@ def _candidate_lines(raw: str, start_line: int) -> list[tuple[int, str]]:
         snippet = _normalize_snippet(line)
         if not snippet or snippet.startswith("#"):
             continue
-        if snippet.startswith("- "):
-            snippet = snippet[2:].strip()
         if snippet:
             candidates.append((start_line + offset, snippet))
     if candidates:
@@ -932,8 +928,6 @@ def _find_line_number(lines: list[str], snippet: str) -> int | None:
     normalized = _normalize_snippet(snippet)
     for index, line in enumerate(lines, start=1):
         candidate = _normalize_snippet(line)
-        if candidate.startswith("- "):
-            candidate = candidate[2:].strip()
         if candidate == normalized:
             return index
     return None
@@ -958,11 +952,31 @@ def _calculate_consolidation_component(recall_days: list[str]) -> float:
 
 
 def _derive_concept_tags(path: str, snippet: str, limit: int = 6) -> list[str]:
+    stop_words = {
+        "the",
+        "and",
+        "for",
+        "from",
+        "that",
+        "this",
+        "with",
+        "user",
+        "users",
+        "their",
+        "they",
+        "them",
+    }
     words = []
     source = f"{Path(path).name} {snippet}".lower()
     for raw in source.replace("_", " ").replace("-", " ").split():
         token = "".join(char for char in raw if char.isalnum())
-        if len(token) < 3 or token.isdigit() or token in words:
+        if (
+            len(token) < 3
+            or token.isdigit()
+            or token in words
+            or token in stop_words
+            or token.endswith("md")
+        ):
             continue
         words.append(token)
         if len(words) >= limit:
@@ -1001,7 +1015,8 @@ def _clamp(value: float) -> float:
 
 
 def _iso(now_ms: int) -> str:
-    return datetime.fromtimestamp(now_ms / 1000, tz=UTC).isoformat().replace("+00:00", "Z")
+    dt = datetime.fromtimestamp(now_ms / 1000, tz=UTC)
+    return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _parse_ms(value: str, fallback: int) -> int:

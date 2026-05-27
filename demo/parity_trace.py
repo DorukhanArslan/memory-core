@@ -7,6 +7,9 @@ from typing import Any
 
 from demo.openclaw_oracle import OpenClawOracle
 from demo.short_term_promotion import (
+    DEFAULT_DEEP_DREAMING_ENABLED,
+    DEFAULT_DEEP_DREAMING_LIMIT,
+    DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS,
     DEFAULT_PROMOTION_MIN_RECALL_COUNT,
     DEFAULT_PROMOTION_MIN_SCORE,
     DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
@@ -51,9 +54,9 @@ def build_deep_policy_trace(oracle: OpenClawOracle | Any | None = None) -> dict[
         "minScore": DEFAULT_PROMOTION_MIN_SCORE,
         "minRecallCount": DEFAULT_PROMOTION_MIN_RECALL_COUNT,
         "minUniqueQueries": DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
-        "maxAgeDays": None,
-        "enabled": True,
-        "limit": 5,
+        "maxAgeDays": DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS,
+        "enabled": DEFAULT_DEEP_DREAMING_ENABLED,
+        "limit": DEFAULT_DEEP_DREAMING_LIMIT,
         "recencyHalfLifeDays": DEFAULT_RECENCY_HALF_LIFE_DAYS,
     }
     try:

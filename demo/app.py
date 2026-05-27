@@ -26,6 +26,9 @@ from demo.dreaming import run_dreaming_sweep
 from demo.memory_flush import MemoryFlushRun, ParsedFlushOutput, run_memory_flush
 from demo.parity_trace import build_parity_trace
 from demo.short_term_promotion import (
+    DEFAULT_DEEP_DREAMING_ENABLED,
+    DEFAULT_DEEP_DREAMING_LIMIT,
+    DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS,
     DEFAULT_PROMOTION_MIN_RECALL_COUNT,
     DEFAULT_PROMOTION_MIN_SCORE,
     DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
@@ -314,10 +317,13 @@ def _state_payload() -> dict[str, Any]:
 
 def _promotion_config_payload() -> dict[str, Any]:
     return {
-        "memoryCoreDefaults": {
+        "openclawDefaults": {
+            "enabled": DEFAULT_DEEP_DREAMING_ENABLED,
+            "limit": DEFAULT_DEEP_DREAMING_LIMIT,
             "minScore": DEFAULT_PROMOTION_MIN_SCORE,
             "minRecallCount": DEFAULT_PROMOTION_MIN_RECALL_COUNT,
             "minUniqueQueries": DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+            "maxAgeDays": DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS,
         },
     }
 

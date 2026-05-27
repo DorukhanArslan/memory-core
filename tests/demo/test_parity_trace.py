@@ -114,16 +114,21 @@ def test_diff_values_reports_mismatch():
     assert "minScore: python=0.75 openclaw=0.8" in diff["details"]
 
 
-def test_build_deep_policy_trace_shows_known_default_mismatch():
+def test_build_deep_policy_trace_matches_openclaw_defaults():
     trace = build_deep_policy_trace(FakeOracle())
 
     assert trace["id"] == "deep-policy"
-    assert trace["diff"]["status"] == "mismatch"
-    assert trace["python"]["values"]["minScore"] == 0.75
+    assert trace["diff"]["status"] == "match"
+    assert trace["python"]["values"]["minScore"] == 0.8
     assert trace["openclaw"]["values"]["minScore"] == 0.8
+    assert trace["python"]["values"]["minUniqueQueries"] == 3
     assert trace["openclaw"]["values"]["minUniqueQueries"] == 3
-    assert trace["python"]["values"]["limit"] == 5
+    assert trace["python"]["values"]["limit"] == 10
     assert trace["openclaw"]["values"]["limit"] == 10
+    assert trace["python"]["values"]["maxAgeDays"] == 30
+    assert trace["openclaw"]["values"]["maxAgeDays"] == 30
+    assert trace["python"]["values"]["enabled"] is False
+    assert trace["openclaw"]["values"]["enabled"] is False
     assert trace["python"]["values"]["recencyHalfLifeDays"] == 14
 
 

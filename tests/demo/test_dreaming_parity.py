@@ -33,8 +33,15 @@ def seed_candidate(config: MemoryConfig, now_ms: int):
         "snippet": "- User prefers lowercase answers.",
         "score": 0.9,
     }
-    for query in ("lowercase", "answer case", "writing style"):
-        record_short_term_recalls(config=config, query=query, results=[result], now_ms=now_ms)
+    day_ms = 24 * 60 * 60 * 1000
+    queries = ("lowercase", "answer case", "writing style", "response tone", "format preference")
+    for offset, query in enumerate(queries):
+        record_short_term_recalls(
+            config=config,
+            query=query,
+            results=[result],
+            now_ms=now_ms - (len(queries) - 1 - offset) * day_ms,
+        )
 
 
 def seed_weak_candidate(config: MemoryConfig, now_ms: int):

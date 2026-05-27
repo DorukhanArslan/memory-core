@@ -122,7 +122,7 @@ def test_demo_home_loads():
     assert "dailyMemoryPaths" in response.text
     assert "latestDailyMemoryPath" in response.text
     assert "Long-term and reference files" in response.text
-    assert "memory-core defaults" in response.text
+    assert "OpenClaw defaults" in response.text
     assert "streamingAssistantText" in response.text
     assert "renderMarkdown(body, streamingAssistantText)" in response.text
     assert 'textContent += text' not in response.text
@@ -250,9 +250,12 @@ def test_chat_state_endpoint_returns_engines_and_memory_files():
     assert payload["config"]["workspace"]
     assert payload["config"]["timezone"] == "Europe/Istanbul"
     assert payload["config"]["dailyMemoryPath"] == demo_app._demo_flush_plan().relative_path
-    assert payload["config"]["promotion"]["memoryCoreDefaults"]["minRecallCount"] == 3
-    assert payload["config"]["promotion"]["memoryCoreDefaults"]["minUniqueQueries"] == 2
-    assert payload["config"]["promotion"]["memoryCoreDefaults"]["minScore"] == 0.75
+    assert payload["config"]["promotion"]["openclawDefaults"]["minRecallCount"] == 3
+    assert payload["config"]["promotion"]["openclawDefaults"]["minUniqueQueries"] == 3
+    assert payload["config"]["promotion"]["openclawDefaults"]["minScore"] == 0.8
+    assert payload["config"]["promotion"]["openclawDefaults"]["enabled"] is False
+    assert payload["config"]["promotion"]["openclawDefaults"]["limit"] == 10
+    assert payload["config"]["promotion"]["openclawDefaults"]["maxAgeDays"] == 30
     assert payload["turns"] == []
 
 
@@ -535,7 +538,9 @@ def test_short_term_promotion_writes_repeated_recalls_to_memory_md():
         encoding="utf-8",
     )
 
-    for offset, query in enumerate(["job loss", "fired from work", "work situation"]):
+    for offset, query in enumerate(
+        ["job loss", "fired from work", "work situation", "career event", "employment status"]
+    ):
         record_short_term_recalls(
             config=config,
             query=query,
@@ -555,7 +560,7 @@ def test_short_term_promotion_writes_repeated_recalls_to_memory_md():
     promotion = run_short_term_promotion(
         config=config,
         store=fake_demo_store(),
-        now_ms=demo_app.DEMO_NOW_MS + 2 * 24 * 60 * 60 * 1000,
+        now_ms=demo_app.DEMO_NOW_MS + 4 * 24 * 60 * 60 * 1000,
         timezone=demo_app.DEMO_TIMEZONE,
     )
 
@@ -571,7 +576,7 @@ def test_memory_promote_endpoint_applies_short_term_promotions(monkeypatch):
     monkeypatch.setattr(
         demo_app,
         "_now_ms",
-        lambda: demo_app.DEMO_NOW_MS + 2 * 24 * 60 * 60 * 1000,
+        lambda: demo_app.DEMO_NOW_MS + 4 * 24 * 60 * 60 * 1000,
     )
     client = TestClient(app)
     client.post("/api/chat/reset", json={})
@@ -581,7 +586,9 @@ def test_memory_promote_endpoint_applies_short_term_promotions(monkeypatch):
         "# 2026-05-03\n\n- User was fired from work.\n",
         encoding="utf-8",
     )
-    for offset, query in enumerate(["job loss", "fired from work", "work situation"]):
+    for offset, query in enumerate(
+        ["job loss", "fired from work", "work situation", "career event", "employment status"]
+    ):
         record_short_term_recalls(
             config=config,
             query=query,
@@ -641,7 +648,7 @@ def test_memory_promote_endpoint_rejects_single_daily_signal_like_openclaw(monke
     assert response.json()["promotionSweep"]["parsed"]["shouldWrite"] is False
     assert candidate["signalCount"] == 1
     assert "signals 1 < 3" in candidate["reasons"]
-    assert "unique queries/days 1 < 2" in candidate["reasons"]
+    assert "unique queries/days 1 < 3" in candidate["reasons"]
     assert "User preference: wants to be addressed as Kudret." not in response.json()[
         "memoryFileContents"
     ]["MEMORY.md"]

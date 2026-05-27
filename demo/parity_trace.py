@@ -36,6 +36,16 @@ RECALL_NOW_MS = 1779811200000
 RECALL_TIMEZONE = "Europe/Istanbul"
 RECALL_STORE_PATH = SHORT_TERM_STORE_RELATIVE_PATH.as_posix()
 RECALL_CONDITION = 'result.source === "memory" && isShortTermMemoryPath(result.path)'
+REPEATED_RECALL_NOW_MS = 1779897600000
+REPEATED_RECALL_QUERY = "preferred name"
+NON_MEMORY_RECALL_RESULT = {
+    "source": "workspace",
+    "path": "notes.md",
+    "startLine": 1,
+    "endLine": 1,
+    "snippet": "Ignore this non-memory result.",
+    "score": 1,
+}
 
 
 def diff_values(python_values: dict[str, Any], openclaw_values: dict[str, Any]) -> dict[str, Any]:
@@ -188,6 +198,93 @@ def build_recall_tracking_trace(oracle: OpenClawOracle | Any) -> dict[str, Any]:
     }
 
 
+def build_repeated_recall_tracking_trace(oracle: OpenClawOracle | Any) -> dict[str, Any]:
+    recalls = [
+        {"query": RECALL_QUERY, "results": [RECALL_RESULT], "nowMs": RECALL_NOW_MS},
+        {
+            "query": REPEATED_RECALL_QUERY,
+            "results": [RECALL_RESULT, NON_MEMORY_RECALL_RESULT],
+            "nowMs": REPEATED_RECALL_NOW_MS,
+        },
+    ]
+    with (
+        tempfile.TemporaryDirectory(prefix="memory-core-python-recall-sequence-") as python_dir,
+        tempfile.TemporaryDirectory(prefix="memory-core-openclaw-recall-sequence-") as oracle_dir,
+    ):
+        python_workspace = Path(python_dir)
+        oracle_workspace = Path(oracle_dir)
+        _seed_recall_workspace(python_workspace)
+        _seed_recall_workspace(oracle_workspace)
+        for recall in recalls:
+            record_short_term_recalls(
+                config=MemoryConfig(workspace_dir=python_workspace),
+                query=recall["query"],
+                results=recall["results"],
+                now_ms=recall["nowMs"],
+            )
+        try:
+            python_values = _recall_values_from_files(
+                _snapshot_recall_files(python_workspace),
+                query=REPEATED_RECALL_QUERY,
+                result=RECALL_RESULT,
+            )
+        except Exception as exc:
+            error = {"message": f"invalid python fixture: {exc}"}
+            return _recall_tracking_error_trace({}, error["message"], error)
+
+        try:
+            oracle_result = oracle.run(
+                {
+                    "operation": "recordShortTermRecallSequence",
+                    "recalls": recalls,
+                    "timezone": RECALL_TIMEZONE,
+                    "workspaceDir": str(oracle_workspace),
+                }
+            )
+        except Exception as exc:
+            oracle_result = {"ok": False, "error": {"message": str(exc)}}
+
+    if not isinstance(oracle_result, dict):
+        error = {"message": "invalid oracle result"}
+        return _recall_tracking_error_trace(python_values, error["message"], error)
+    if not oracle_result.get("ok"):
+        error = oracle_result.get("error", {})
+        message = (
+            error.get("message", "oracle error")
+            if isinstance(error, dict)
+            else "oracle error"
+        )
+        return _recall_tracking_error_trace(python_values, message, error)
+    try:
+        openclaw_values = _recall_values_from_files(
+            oracle_result.get("files"),
+            query=REPEATED_RECALL_QUERY,
+            result=RECALL_RESULT,
+        )
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        error = {"message": "invalid oracle result", "details": str(exc)}
+        return _recall_tracking_error_trace(python_values, error["message"], error)
+    return {
+        "id": "repeated-recall-tracking",
+        "label": "Repeated recall tracking and non-memory filtering",
+        "condition": (
+            "two recordShortTermRecalls calls update one memory entry; "
+            "non-memory results are ignored"
+        ),
+        "python": {
+            "decision": "recordable",
+            "values": python_values,
+            "reasons": [],
+        },
+        "openclaw": {
+            "decision": "recorded",
+            "values": openclaw_values,
+            "reasons": [],
+        },
+        "diff": diff_values(python_values, openclaw_values),
+    }
+
+
 def _seed_recall_workspace(workspace: Path) -> None:
     memory_path = workspace / RECALL_RESULT["path"]
     memory_path.parent.mkdir(parents=True, exist_ok=True)
@@ -245,5 +342,6 @@ def build_parity_trace(oracle: OpenClawOracle | None = None) -> dict[str, Any]:
         "steps": [
             build_deep_policy_trace(oracle),
             build_recall_tracking_trace(oracle),
+            build_repeated_recall_tracking_trace(oracle),
         ],
     }

@@ -2,6 +2,7 @@ from demo.parity_trace import (
     build_deep_policy_trace,
     build_parity_trace,
     build_recall_tracking_trace,
+    build_repeated_recall_tracking_trace,
     diff_values,
 )
 
@@ -40,6 +41,41 @@ EXPECTED_RECALL_STORE = """{
   }
 }
 """
+EXPECTED_REPEATED_RECALL_STORE = """{
+  "version": 1,
+  "updatedAt": "2026-05-27T16:00:00.000Z",
+  "entries": {
+    "memory:memory/2026-05-26.md:3:3": {
+      "key": "memory:memory/2026-05-26.md:3:3",
+      "path": "memory/2026-05-26.md",
+      "startLine": 3,
+      "endLine": 3,
+      "source": "memory",
+      "snippet": "- User prefers to be addressed as dodo.",
+      "recallCount": 2,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 2.0,
+      "maxScore": 1.0,
+      "firstRecalledAt": "2026-05-26T16:00:00.000Z",
+      "lastRecalledAt": "2026-05-27T16:00:00.000Z",
+      "queryHashes": [
+        "aa5368a7c7bd",
+        "1da206d81a95"
+      ],
+      "recallDays": [
+        "2026-05-26",
+        "2026-05-27"
+      ],
+      "conceptTags": [
+        "prefers",
+        "addressed",
+        "dodo"
+      ]
+    }
+  }
+}
+"""
 
 
 class FakeOracle:
@@ -66,6 +102,12 @@ class FakeOracle:
                 "ok": True,
                 "operation": "recordShortTermRecalls",
                 "files": {RECALL_STORE_PATH: EXPECTED_RECALL_STORE},
+            }
+        if payload["operation"] == "recordShortTermRecallSequence":
+            return {
+                "ok": True,
+                "operation": "recordShortTermRecallSequence",
+                "files": {RECALL_STORE_PATH: EXPECTED_REPEATED_RECALL_STORE},
             }
         raise AssertionError(f"unexpected operation: {payload['operation']}")
 
@@ -157,6 +199,7 @@ def test_build_parity_trace_includes_recall_tracking_step():
     ids = [step["id"] for step in trace["steps"]]
 
     assert "recall-tracking" in ids
+    assert "repeated-recall-tracking" in ids
 
 
 def test_build_recall_tracking_trace_exposes_matching_recorded_file_values():
@@ -170,6 +213,19 @@ def test_build_recall_tracking_trace_exposes_matching_recorded_file_values():
     assert trace["openclaw"]["values"]["file"] == RECALL_STORE_PATH
     assert trace["python"]["values"]["entryCount"] == 1
     assert trace["openclaw"]["values"]["entryCount"] == 1
+    assert trace["python"]["values"]["entries"] == trace["openclaw"]["values"]["entries"]
+
+
+def test_build_repeated_recall_tracking_trace_matches_oracle_sequence():
+    trace = build_repeated_recall_tracking_trace(FakeOracle())
+
+    assert trace["id"] == "repeated-recall-tracking"
+    assert trace["diff"]["status"] == "match"
+    assert trace["python"]["values"]["entryCount"] == 1
+    entry = trace["python"]["values"]["entries"]["memory:memory/2026-05-26.md:3:3"]
+    assert entry["recallCount"] == 2
+    assert entry["queryHashes"] == ["aa5368a7c7bd", "1da206d81a95"]
+    assert entry["recallDays"] == ["2026-05-26", "2026-05-27"]
     assert trace["python"]["values"]["entries"] == trace["openclaw"]["values"]["entries"]
 
 

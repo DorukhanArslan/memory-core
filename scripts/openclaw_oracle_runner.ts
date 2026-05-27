@@ -11,6 +11,12 @@ type Payload = {
   config?: Record<string, unknown>;
   query?: string;
   results?: unknown[];
+  recalls?: Array<{
+    query?: string;
+    results?: unknown[];
+    nowMs?: number;
+    timezone?: string;
+  }>;
   candidates?: unknown[];
   keys?: string[];
   phase?: "light" | "rem";
@@ -137,6 +143,23 @@ async function main() {
       nowMs,
       timezone,
     });
+    return {
+      ok: true,
+      operation: payload.operation,
+      files: await snapshotFiles(payload.workspaceDir),
+    };
+  }
+
+  if (payload.operation === "recordShortTermRecallSequence") {
+    for (const recall of payload.recalls ?? []) {
+      await promotion.recordShortTermRecalls({
+        workspaceDir: payload.workspaceDir,
+        query: recall.query ?? "",
+        results: recall.results ?? [],
+        nowMs: Number.isFinite(recall.nowMs) ? Number(recall.nowMs) : nowMs,
+        timezone: recall.timezone ?? timezone,
+      });
+    }
     return {
       ok: true,
       operation: payload.operation,

@@ -1,4 +1,5 @@
 from demo.parity_trace import (
+    build_configured_deep_policy_trace,
     build_deep_policy_trace,
     build_parity_trace,
     build_recall_tracking_trace,
@@ -84,6 +85,30 @@ class FakeOracle:
 
     def run(self, payload):
         if payload["operation"] == "deepPolicy":
+            configured = (
+                payload.get("config", {})
+                .get("plugins", {})
+                .get("entries", {})
+                .get("memory-core", {})
+                .get("config", {})
+                .get("dreaming", {})
+                .get("phases", {})
+                .get("deep", {})
+            )
+            if configured:
+                return {
+                    "ok": True,
+                    "operation": "deepPolicy",
+                    "result": {
+                        "minScore": 0.72,
+                        "minRecallCount": 4,
+                        "minUniqueQueries": 2,
+                        "maxAgeDays": 14,
+                        "enabled": True,
+                        "limit": 7,
+                        "recencyHalfLifeDays": 10,
+                    },
+                }
             return {
                 "ok": True,
                 "operation": "deepPolicy",
@@ -174,6 +199,23 @@ def test_build_deep_policy_trace_matches_openclaw_defaults():
     assert trace["python"]["values"]["recencyHalfLifeDays"] == 14
 
 
+def test_build_configured_deep_policy_trace_matches_openclaw_config():
+    trace = build_configured_deep_policy_trace(FakeOracle())
+
+    assert trace["id"] == "configured-deep-policy"
+    assert trace["diff"]["status"] == "match"
+    assert trace["python"]["values"] == {
+        "minScore": 0.72,
+        "minRecallCount": 4,
+        "minUniqueQueries": 2,
+        "maxAgeDays": 14,
+        "enabled": True,
+        "limit": 7,
+        "recencyHalfLifeDays": 10,
+    }
+    assert trace["openclaw"]["values"] == trace["python"]["values"]
+
+
 def test_build_deep_policy_trace_returns_error_when_oracle_raises():
     trace = build_deep_policy_trace(ExplodingOracle())
 
@@ -199,6 +241,7 @@ def test_build_parity_trace_includes_recall_tracking_step():
     ids = [step["id"] for step in trace["steps"]]
 
     assert "recall-tracking" in ids
+    assert "configured-deep-policy" in ids
     assert "repeated-recall-tracking" in ids
 
 

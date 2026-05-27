@@ -23,6 +23,30 @@ DEEP_POLICY_CONDITION = (
     "score >= minScore && signals >= minRecallCount && "
     "contextDiversity >= minUniqueQueries && ageDays <= maxAgeDays"
 )
+CONFIGURED_DEEP_POLICY_CONFIG = {
+    "plugins": {
+        "entries": {
+            "memory-core": {
+                "config": {
+                    "dreaming": {
+                        "enabled": True,
+                        "phases": {
+                            "deep": {
+                                "enabled": True,
+                                "limit": 7,
+                                "minScore": 0.72,
+                                "minRecallCount": 4,
+                                "minUniqueQueries": 2,
+                                "maxAgeDays": 14,
+                                "recencyHalfLifeDays": 10,
+                            }
+                        },
+                    }
+                }
+            }
+        }
+    }
+}
 RECALL_QUERY = "address preference"
 RECALL_RESULT = {
     "source": "memory",
@@ -60,15 +84,7 @@ def diff_values(python_values: dict[str, Any], openclaw_values: dict[str, Any]) 
 
 def build_deep_policy_trace(oracle: OpenClawOracle | Any | None = None) -> dict[str, Any]:
     oracle = oracle or OpenClawOracle()
-    python_values = {
-        "minScore": DEFAULT_PROMOTION_MIN_SCORE,
-        "minRecallCount": DEFAULT_PROMOTION_MIN_RECALL_COUNT,
-        "minUniqueQueries": DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
-        "maxAgeDays": DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS,
-        "enabled": DEFAULT_DEEP_DREAMING_ENABLED,
-        "limit": DEFAULT_DEEP_DREAMING_LIMIT,
-        "recencyHalfLifeDays": DEFAULT_RECENCY_HALF_LIFE_DAYS,
-    }
+    python_values = _python_deep_policy_values({})
     try:
         oracle_result = oracle.run({"operation": "deepPolicy", "config": {}})
     except Exception as exc:
@@ -85,15 +101,7 @@ def build_deep_policy_trace(oracle: OpenClawOracle | Any | None = None) -> dict[
     if not isinstance(oracle_result_values, dict):
         error = {"message": "invalid oracle result"}
         return _deep_policy_error_trace(python_values, error["message"], error)
-    openclaw_values = {
-        "minScore": oracle_result_values.get("minScore"),
-        "minRecallCount": oracle_result_values.get("minRecallCount"),
-        "minUniqueQueries": oracle_result_values.get("minUniqueQueries"),
-        "maxAgeDays": oracle_result_values.get("maxAgeDays"),
-        "enabled": oracle_result_values.get("enabled"),
-        "limit": oracle_result_values.get("limit"),
-        "recencyHalfLifeDays": oracle_result_values.get("recencyHalfLifeDays"),
-    }
+    openclaw_values = _select_deep_policy_values(oracle_result_values)
     return {
         "id": "deep-policy",
         "label": "Deep dreaming policy values",
@@ -104,6 +112,127 @@ def build_deep_policy_trace(oracle: OpenClawOracle | Any | None = None) -> dict[
     }
 
 
+def build_configured_deep_policy_trace(oracle: OpenClawOracle | Any | None = None) -> dict[str, Any]:
+    oracle = oracle or OpenClawOracle()
+    python_values = _python_deep_policy_values(CONFIGURED_DEEP_POLICY_CONFIG)
+    try:
+        oracle_result = oracle.run(
+            {"operation": "deepPolicy", "config": CONFIGURED_DEEP_POLICY_CONFIG}
+        )
+    except Exception as exc:
+        oracle_result = {"ok": False, "error": {"message": str(exc)}}
+    if not oracle_result.get("ok"):
+        error = oracle_result.get("error", {})
+        message = (
+            error.get("message", "oracle error")
+            if isinstance(error, dict)
+            else "oracle error"
+        )
+        return _configured_deep_policy_error_trace(python_values, message, error)
+    oracle_result_values = oracle_result.get("result")
+    if not isinstance(oracle_result_values, dict):
+        error = {"message": "invalid oracle result"}
+        return _configured_deep_policy_error_trace(python_values, error["message"], error)
+    openclaw_values = _select_deep_policy_values(oracle_result_values)
+    return {
+        "id": "configured-deep-policy",
+        "label": "Configured deep dreaming policy values",
+        "condition": "config.plugins.entries.memory-core.config.dreaming.phases.deep",
+        "python": {"decision": "computed", "values": python_values, "reasons": []},
+        "openclaw": {"decision": "computed", "values": openclaw_values, "reasons": []},
+        "diff": diff_values(python_values, openclaw_values),
+    }
+
+
+def _python_deep_policy_values(config: dict[str, Any]) -> dict[str, Any]:
+    plugin_config = _memory_core_plugin_config(config)
+    dreaming = _as_dict(plugin_config.get("dreaming"))
+    phases = _as_dict(dreaming.get("phases"))
+    deep = _as_dict(phases.get("deep"))
+    dreaming_enabled = _bool(dreaming.get("enabled"), DEFAULT_DEEP_DREAMING_ENABLED)
+    deep_enabled = _bool(deep.get("enabled"), True)
+    return {
+        "minScore": _float(deep.get("minScore"), DEFAULT_PROMOTION_MIN_SCORE),
+        "minRecallCount": _non_negative_int(
+            deep.get("minRecallCount"), DEFAULT_PROMOTION_MIN_RECALL_COUNT
+        ),
+        "minUniqueQueries": _non_negative_int(
+            deep.get("minUniqueQueries"), DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES
+        ),
+        "maxAgeDays": _positive_int(
+            deep.get("maxAgeDays"), DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS
+        ),
+        "enabled": dreaming_enabled and deep_enabled,
+        "limit": _non_negative_int(deep.get("limit"), DEFAULT_DEEP_DREAMING_LIMIT),
+        "recencyHalfLifeDays": _non_negative_int(
+            deep.get("recencyHalfLifeDays"), DEFAULT_RECENCY_HALF_LIFE_DAYS
+        ),
+    }
+
+
+def _memory_core_plugin_config(config: dict[str, Any]) -> dict[str, Any]:
+    plugins = _as_dict(config.get("plugins"))
+    entries = _as_dict(plugins.get("entries"))
+    memory_core = _as_dict(entries.get("memory-core"))
+    return _as_dict(memory_core.get("config")) or config
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _select_deep_policy_values(values: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "minScore": values.get("minScore"),
+        "minRecallCount": values.get("minRecallCount"),
+        "minUniqueQueries": values.get("minUniqueQueries"),
+        "maxAgeDays": values.get("maxAgeDays"),
+        "enabled": values.get("enabled"),
+        "limit": values.get("limit"),
+        "recencyHalfLifeDays": values.get("recencyHalfLifeDays"),
+    }
+
+
+def _bool(value: Any, fallback: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+    return fallback
+
+
+def _non_negative_int(value: Any, fallback: int) -> int:
+    try:
+        number = int(float(value))
+    except (TypeError, ValueError):
+        return fallback
+    return number if number >= 0 else fallback
+
+
+def _positive_int(value: Any, fallback: int) -> int:
+    try:
+        number = int(float(value))
+    except (TypeError, ValueError):
+        return fallback
+    return number if number > 0 else fallback
+
+
+def _float(value: Any, fallback: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    if number < 0:
+        return 0.0
+    if number > 1:
+        return 1.0
+    return number
+
+
 def _deep_policy_error_trace(
     python_values: dict[str, Any], message: str, error: dict[str, Any] | Any
 ) -> dict[str, Any]:
@@ -111,6 +240,23 @@ def _deep_policy_error_trace(
         "id": "deep-policy",
         "label": "Deep dreaming policy values",
         "condition": DEEP_POLICY_CONDITION,
+        "python": {"decision": "available", "values": python_values, "reasons": []},
+        "openclaw": {
+            "decision": "error",
+            "values": {},
+            "reasons": [message],
+        },
+        "diff": {"status": "error", "details": [error]},
+    }
+
+
+def _configured_deep_policy_error_trace(
+    python_values: dict[str, Any], message: str, error: dict[str, Any] | Any
+) -> dict[str, Any]:
+    return {
+        "id": "configured-deep-policy",
+        "label": "Configured deep dreaming policy values",
+        "condition": "config.plugins.entries.memory-core.config.dreaming.phases.deep",
         "python": {"decision": "available", "values": python_values, "reasons": []},
         "openclaw": {
             "decision": "error",
@@ -341,6 +487,7 @@ def build_parity_trace(oracle: OpenClawOracle | None = None) -> dict[str, Any]:
         "oracle": oracle.metadata(),
         "steps": [
             build_deep_policy_trace(oracle),
+            build_configured_deep_policy_trace(oracle),
             build_recall_tracking_trace(oracle),
             build_repeated_recall_tracking_trace(oracle),
         ],

@@ -30,6 +30,50 @@ def test_real_openclaw_oracle_deep_policy():
     assert result["result"]["recencyHalfLifeDays"] == 14
 
 
+def test_real_openclaw_oracle_deep_policy_uses_configured_values():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+    result = oracle.run(
+        {
+            "operation": "deepPolicy",
+            "config": {
+                "plugins": {
+                    "entries": {
+                        "memory-core": {
+                            "config": {
+                                "dreaming": {
+                                    "enabled": True,
+                                    "phases": {
+                                        "deep": {
+                                            "enabled": True,
+                                            "limit": 7,
+                                            "minScore": 0.72,
+                                            "minRecallCount": 4,
+                                            "minUniqueQueries": 2,
+                                            "maxAgeDays": 14,
+                                            "recencyHalfLifeDays": 10,
+                                        }
+                                    },
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["operation"] == "deepPolicy"
+    assert result["result"]["enabled"] is True
+    assert result["result"]["limit"] == 7
+    assert result["result"]["minScore"] == 0.72
+    assert result["result"]["minRecallCount"] == 4
+    assert result["result"]["minUniqueQueries"] == 2
+    assert result["result"]["maxAgeDays"] == 14
+    assert result["result"]["recencyHalfLifeDays"] == 10
+
+
 def test_real_openclaw_oracle_records_short_term_recall():
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
 

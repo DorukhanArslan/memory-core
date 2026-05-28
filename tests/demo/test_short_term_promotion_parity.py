@@ -755,6 +755,111 @@ def test_promotion_run_compacts_oldest_promotion_section_when_memory_budget_exce
     assert "Rotate the staging Postgres credentials" in memory_text
 
 
+def test_promotion_run_leaves_memory_unchanged_before_append_when_budget_fits(tmp_path: Path):
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    now = ms(datetime(2026, 4, 29, 10, 0, tzinfo=UTC))
+    daily = tmp_path / "memory" / "2026-04-29.md"
+    daily.parent.mkdir(parents=True)
+    daily.write_text("# 2026-04-29\n\nA short snippet that fits comfortably.\n", encoding="utf-8")
+    seeded_memory = "# Long-Term Memory\n\nSome small existing content.\n"
+    (tmp_path / "MEMORY.md").write_text(seeded_memory, encoding="utf-8")
+    record_short_term_recalls(
+        config=config,
+        query="tiny note",
+        results=[
+            {
+                "path": "memory/2026-04-29.md",
+                "source": "memory",
+                "startLine": 3,
+                "endLine": 3,
+                "snippet": "A short snippet that fits comfortably.",
+                "score": 0.92,
+            }
+        ],
+        now_ms=now,
+    )
+
+    run = run_short_term_promotion(
+        config=config,
+        store=fake_store(config),
+        now_ms=now,
+        timezone="Europe/Istanbul",
+        limit=5,
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+        memory_file_max_chars=10_000,
+    )
+    memory_text = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
+
+    assert run.parsed.should_write is True
+    assert memory_text.startswith(seeded_memory)
+    assert "Some small existing content." in memory_text
+    assert "A short snippet that fits comfortably." in memory_text
+
+
+def test_promotion_run_drops_all_old_promotion_sections_when_budget_cannot_fit_otherwise(
+    tmp_path: Path,
+):
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    now = ms(datetime(2026, 4, 29, 10, 0, tzinfo=UTC))
+    daily = tmp_path / "memory" / "2026-04-29.md"
+    daily.parent.mkdir(parents=True)
+    daily.write_text("# 2026-04-29\n\nFresh material still gets written.\n", encoding="utf-8")
+    filler = "x" * 600
+    seeded_memory = "\n".join(
+        [
+            "## Promoted From Short-Term Memory (2026-04-10)",
+            "<!-- openclaw-memory-promotion:legacy-old -->",
+            f"- {filler}",
+            "## Promoted From Short-Term Memory (2026-04-15)",
+            "<!-- openclaw-memory-promotion:legacy-middle -->",
+            f"- {filler}",
+            "## Promoted From Short-Term Memory (2026-04-20)",
+            "<!-- openclaw-memory-promotion:legacy-newer -->",
+            f"- {filler}",
+        ]
+    )
+    (tmp_path / "MEMORY.md").write_text(seeded_memory, encoding="utf-8")
+    record_short_term_recalls(
+        config=config,
+        query="fresh material",
+        results=[
+            {
+                "path": "memory/2026-04-29.md",
+                "source": "memory",
+                "startLine": 3,
+                "endLine": 3,
+                "snippet": "Fresh material still gets written.",
+                "score": 0.92,
+            }
+        ],
+        now_ms=now,
+    )
+
+    run = run_short_term_promotion(
+        config=config,
+        store=fake_store(config),
+        now_ms=now,
+        timezone="Europe/Istanbul",
+        limit=5,
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+        memory_file_max_chars=700,
+    )
+    memory_text = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
+
+    assert run.parsed.should_write is True
+    assert "(2026-04-10)" not in memory_text
+    assert "(2026-04-15)" not in memory_text
+    assert "(2026-04-20)" not in memory_text
+    assert "legacy-old" not in memory_text
+    assert "legacy-middle" not in memory_text
+    assert "legacy-newer" not in memory_text
+    assert "Fresh material still gets written." in memory_text
+
+
 def test_first_promotion_write_bootstraps_long_term_memory_header_like_openclaw(
     tmp_path: Path,
 ):

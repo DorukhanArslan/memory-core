@@ -964,6 +964,155 @@ def test_real_openclaw_oracle_compacts_oldest_promotion_section_when_memory_budg
     assert "Rotate the staging Postgres credentials" in memory_text
 
 
+def test_real_openclaw_oracle_leaves_memory_unchanged_before_append_when_budget_fits():
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-memory-budget-fits-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        memory_file = workspace / "memory" / "2026-04-29.md"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text(
+            "# 2026-04-29\n\nA short snippet that fits comfortably.\n",
+            encoding="utf-8",
+        )
+        seeded_memory = "# Long-Term Memory\n\nSome small existing content.\n"
+        (workspace / "MEMORY.md").write_text(seeded_memory, encoding="utf-8")
+        result = {
+            "source": "memory",
+            "path": "memory/2026-04-29.md",
+            "startLine": 3,
+            "endLine": 3,
+            "snippet": "A short snippet that fits comfortably.",
+            "score": 0.92,
+        }
+        oracle.run(
+            {
+                "operation": "recordShortTermRecalls",
+                "workspaceDir": str(workspace),
+                "query": "tiny note",
+                "results": [result],
+                "nowMs": 1777456800000,
+                "timezone": "Europe/Istanbul",
+            }
+        )
+        ranked = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1777456800000,
+                "timezone": "Europe/Istanbul",
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+            }
+        )
+        applied = oracle.run(
+            {
+                "operation": "applyShortTermPromotions",
+                "workspaceDir": str(workspace),
+                "nowMs": 1777456800000,
+                "timezone": "Europe/Istanbul",
+                "candidates": ranked["result"]["candidates"],
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+                "memoryFileMaxChars": 10_000,
+            }
+        )
+
+    memory_text = applied["files"]["MEMORY.md"]
+    assert applied["ok"] is True
+    assert applied["result"]["compactedSections"] == 0
+    assert applied["result"]["compactedDates"] == []
+    assert memory_text.startswith(seeded_memory)
+    assert "Some small existing content." in memory_text
+    assert "A short snippet that fits comfortably." in memory_text
+
+
+def test_real_openclaw_oracle_drops_all_old_promotion_sections_when_budget_cannot_fit_otherwise():
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-memory-budget-impossible-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        memory_file = workspace / "memory" / "2026-04-29.md"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text("# 2026-04-29\n\nFresh material still gets written.\n", encoding="utf-8")
+        filler = "x" * 600
+        seeded_memory = "\n".join(
+            [
+                "## Promoted From Short-Term Memory (2026-04-10)",
+                "<!-- openclaw-memory-promotion:legacy-old -->",
+                f"- {filler}",
+                "## Promoted From Short-Term Memory (2026-04-15)",
+                "<!-- openclaw-memory-promotion:legacy-middle -->",
+                f"- {filler}",
+                "## Promoted From Short-Term Memory (2026-04-20)",
+                "<!-- openclaw-memory-promotion:legacy-newer -->",
+                f"- {filler}",
+            ]
+        )
+        (workspace / "MEMORY.md").write_text(seeded_memory, encoding="utf-8")
+        result = {
+            "source": "memory",
+            "path": "memory/2026-04-29.md",
+            "startLine": 3,
+            "endLine": 3,
+            "snippet": "Fresh material still gets written.",
+            "score": 0.92,
+        }
+        oracle.run(
+            {
+                "operation": "recordShortTermRecalls",
+                "workspaceDir": str(workspace),
+                "query": "fresh material",
+                "results": [result],
+                "nowMs": 1777456800000,
+                "timezone": "Europe/Istanbul",
+            }
+        )
+        ranked = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1777456800000,
+                "timezone": "Europe/Istanbul",
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+            }
+        )
+        applied = oracle.run(
+            {
+                "operation": "applyShortTermPromotions",
+                "workspaceDir": str(workspace),
+                "nowMs": 1777456800000,
+                "timezone": "Europe/Istanbul",
+                "candidates": ranked["result"]["candidates"],
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+                "memoryFileMaxChars": 700,
+            }
+        )
+
+    memory_text = applied["files"]["MEMORY.md"]
+    assert applied["ok"] is True
+    assert applied["result"]["compactedDates"] == ["2026-04-10", "2026-04-15", "2026-04-20"]
+    assert "(2026-04-10)" not in memory_text
+    assert "(2026-04-15)" not in memory_text
+    assert "(2026-04-20)" not in memory_text
+    assert "legacy-old" not in memory_text
+    assert "legacy-middle" not in memory_text
+    assert "legacy-newer" not in memory_text
+    assert "Fresh material still gets written." in memory_text
+
+
 def test_real_openclaw_oracle_ranking_skips_promoted_at_entry():
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),

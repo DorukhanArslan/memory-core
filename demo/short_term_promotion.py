@@ -767,25 +767,30 @@ def _run_short_term_promotion_unlocked(
         if not evaluation.reasons
     ][:limit]
     candidates = sorted(candidates, key=lambda candidate: candidate.score, reverse=True)
+    existing_markers = set(_extract_promotion_markers(before))
+    to_append = [candidate for candidate in candidates if candidate.key not in existing_markers]
     raw_text = (
         f"ranked {len(candidates)} short-term promotion candidate(s); "
-        f"evaluated {len(evaluations)} candidate(s)"
+        f"evaluated {len(evaluations)} candidate(s); "
+        f"appending {len(to_append)}; reconciled {len(candidates) - len(to_append)}"
     )
     indexed_files = 0
     reindex_error = None
     if candidates:
-        entry = _build_promotion_section(candidates, now_ms, timezone)
-        _append_to_memory(target_path, entry)
+        entry = _build_promotion_section(to_append, now_ms, timezone) if to_append else ""
+        if to_append:
+            _append_to_memory(target_path, entry)
         _mark_promoted(config.workspace_dir / SHORT_TERM_STORE_RELATIVE_PATH, candidates, now_ms)
-        try:
-            indexed_files = store.reindex(workspace)
-        except Exception as exc:
-            reindex_error = _exception_message(exc)
+        if to_append:
+            try:
+                indexed_files = store.reindex(workspace)
+            except Exception as exc:
+                reindex_error = _exception_message(exc)
         parsed = ParsedFlushOutput(
-            should_write=True,
+            should_write=bool(to_append),
             target=target,
             entry=entry.strip(),
-            reason="short-term promotion",
+            reason="short-term promotion" if to_append else "short-term promotion reconciled",
         )
     else:
         parsed = ParsedFlushOutput(
@@ -844,12 +849,10 @@ def evaluate_short_term_promotion_candidates(
         now_ms,
     )
     phase_entries = phase_signals.get("entries", {})
-    memory_text = _read_text_if_exists(config.workspace_dir / "MEMORY.md")
-    markers = set(_extract_promotion_markers(memory_text))
     evaluations = []
     for raw in store["entries"].values():
         key = str(raw.get("key") or "")
-        if not key or key in markers or raw.get("promotedAt"):
+        if not key or raw.get("promotedAt"):
             continue
         recall_count = _int(raw.get("recallCount"), 0)
         daily_count = _int(raw.get("dailyCount"), 0)
@@ -992,9 +995,10 @@ def _build_promotion_section(
     for candidate in candidates:
         source = f"{candidate.path}:{candidate.start_line}-{candidate.end_line}"
         lines.append(f"<!-- {PROMOTION_MARKER_PREFIX}{candidate.key} -->")
+        snippet = candidate.snippet.replace("- ", "", 1) if candidate.snippet.startswith("- ") else candidate.snippet
         lines.append(
             "- "
-            + candidate.snippet
+            + snippet
             + (
                 f" [score={candidate.score:.3f} recalls={candidate.recall_count} "
                 f"avg={candidate.avg_score:.3f} source={source}]"

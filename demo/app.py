@@ -57,6 +57,7 @@ from memory_core.tools.memory_search import memory_search
 from memory_core.workspace import MemoryWorkspace
 
 DEMO_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = DEMO_ROOT.parent
 DEMO_WORKSPACE = Path(tempfile.gettempdir()) / "memory-core-lab-workspace"
 DEMO_TIMEZONE = "Europe/Istanbul"
 DEMO_NOW_MS = 1777824000000
@@ -82,6 +83,23 @@ Keep raw day-to-day notes in `memory/YYYY-MM-DD.md`. Periodically promote only t
 Do not store secrets unless the user explicitly asks. Keep this file concise, accurate, and useful.
 """
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+
+
+def _load_env_defaults(path: Path = PROJECT_ROOT / ".env") -> None:
+    if not path.is_file():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_env_defaults()
 
 app = FastAPI(title="memory-core Lab")
 app.mount("/static", StaticFiles(directory=DEMO_ROOT / "static"), name="static")

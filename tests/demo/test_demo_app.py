@@ -373,6 +373,28 @@ def test_demo_store_requires_openai_embedding_key(monkeypatch):
         raise AssertionError("expected DemoPayloadError")
 
 
+def test_load_env_defaults_reads_dotenv_without_overwriting_existing_values(
+    tmp_path: Path, monkeypatch
+):
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "\n".join(
+            [
+                "OPENCLAW_DEMO_OPENAI_API_KEY=file-key",
+                "OPENCLAW_DEMO_OPENAI_BASE_URL=https://from-file.example/v1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("OPENCLAW_DEMO_OPENAI_BASE_URL", "https://existing.example/v1")
+
+    demo_app._load_env_defaults(env_path)
+
+    assert demo_app.os.environ["OPENCLAW_DEMO_OPENAI_API_KEY"] == "file-key"
+    assert demo_app.os.environ["OPENCLAW_DEMO_OPENAI_BASE_URL"] == "https://existing.example/v1"
+
+
 def test_chat_send_runs_recall_and_returns_turn(monkeypatch):
     engine = StubOpenAIEngine()
     monkeypatch.setattr(demo_app, "_chat_engine", lambda payload: engine)

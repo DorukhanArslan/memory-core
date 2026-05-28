@@ -824,23 +824,28 @@
         const baseUrl = sessionStorage.getItem("memory-core-demo-base-url");
         const model = sessionStorage.getItem("memory-core-demo-model");
         const apiKey = sessionStorage.getItem("memory-core-demo-api-key");
+        const envAvailable = state.engines && state.engines.openai && state.engines.openai.available === true;
         if (baseUrl) document.querySelector("#base-url").value = baseUrl;
         if (model) document.querySelector("#model").value = model === "gpt-5.5" ? DEFAULT_OPENAI.model : model;
-        if (apiKey) document.querySelector("#api-key").value = apiKey;
+        if (envAvailable) {
+          sessionStorage.removeItem("memory-core-demo-api-key");
+          document.querySelector("#api-key").value = "";
+        } else if (apiKey) {
+          document.querySelector("#api-key").value = apiKey;
+        }
         hydrateOpenAIConfig.done = true;
       }
 
       function openAIConfig() {
+        const apiKey = document.querySelector("#api-key").value.trim();
         const config = {
           baseUrl: document.querySelector("#base-url").value.trim() || DEFAULT_OPENAI.baseUrl,
-          apiKey: document.querySelector("#api-key").value.trim(),
           model: document.querySelector("#model").value.trim() || DEFAULT_OPENAI.model
         };
+        if (apiKey) config.apiKey = apiKey;
         sessionStorage.setItem("memory-core-demo-base-url", config.baseUrl);
         sessionStorage.setItem("memory-core-demo-model", config.model);
-        if (config.apiKey) {
-          sessionStorage.setItem("memory-core-demo-api-key", config.apiKey);
-        }
+        if (apiKey) sessionStorage.setItem("memory-core-demo-api-key", apiKey);
         return config;
       }
 

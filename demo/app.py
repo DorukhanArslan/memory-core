@@ -550,8 +550,9 @@ def chat_send(payload: dict):
             now_ms=_now_ms(),
         )
         memory_context = _memory_context_from_results(chat_recall_results)
+        transcript_messages = _chat_messages(message)
         response = engine.complete(
-            messages=_chat_messages(message),
+            messages=transcript_messages,
             memory_context=memory_context,
             workspace_context=_workspace_context(),
         )
@@ -561,6 +562,7 @@ def chat_send(payload: dict):
             recall_results=chat_recall_results,
             assistant_response=response.content,
             memory_context=memory_context,
+            transcript_messages=transcript_messages,
         )
         if bool(payload.get("autoFlush", True)):
             turn.flush = _flush_latest_turn(engine, store)
@@ -749,9 +751,10 @@ def _chat_send_stream_events(payload: dict):
             now_ms=_now_ms(),
         )
         memory_context = _memory_context_from_results(chat_recall_results)
+        transcript_messages = _chat_messages(message)
         full_response = []
         for chunk in engine.stream_complete(
-            messages=_chat_messages(message),
+            messages=transcript_messages,
             memory_context=memory_context,
             workspace_context=_workspace_context(),
         ):
@@ -763,6 +766,7 @@ def _chat_send_stream_events(payload: dict):
             recall_results=chat_recall_results,
             assistant_response="".join(full_response),
             memory_context=memory_context,
+            transcript_messages=transcript_messages,
         )
         if bool(payload.get("autoFlush", True)):
             turn.flush = _flush_latest_turn(engine, store)

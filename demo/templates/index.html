@@ -340,6 +340,7 @@
         if (!latest) {
           panel.append(stepNode("Recall", "Waiting for a chat turn."));
           panel.append(stepNode("Workspace Bootstrap", workspaceBootstrapNode()));
+          panel.append(stepNode("Live Transcript", "No active transcript yet."));
           panel.append(stepNode("Assistant Context", "No recalled memory yet."));
           panel.append(stepNode("Raw Flush Output", "No raw flush output yet."));
           panel.append(stepNode("Flush Decision", "No flush decision yet."));
@@ -352,6 +353,7 @@
         }
         panel.append(stepNode("Recall", recallNode(latest)));
         panel.append(stepNode("Workspace Bootstrap", workspaceBootstrapNode()));
+        panel.append(stepNode("Live Transcript", transcriptNode(latest)));
         panel.append(stepNode("Assistant Context", codeBlock((latest.memoryContext || []).join("\n") || "No recalled memory.")));
         panel.append(stepNode("Raw Flush Output", codeBlock(latest.flush ? latest.flush.rawText || "(empty)" : "Not run for this turn.")));
         panel.append(stepNode("Flush Decision", latest.flush ? renderJsonView(latest.flush.parsed) : textBlock("Not run for this turn.")));
@@ -394,6 +396,19 @@
         node.append(kvGrid({Query: turn.recallQuery || "(empty)", Results: (turn.recallResults || []).length}));
         node.append(renderJsonView(turn.recallResults || []));
         return node;
+      }
+
+      function transcriptNode(turn) {
+        const messages = turn.transcriptMessages || [];
+        if (!messages.length) {
+          return textBlock("No live transcript messages were sent with this turn.");
+        }
+        const lines = messages.map((message, index) => {
+          const role = message.role || "unknown";
+          const content = message.content || "";
+          return `${index + 1}. ${role}: ${content}`;
+        });
+        return codeBlock(lines.join("\n"));
       }
 
       function textBlock(text) {

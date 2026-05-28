@@ -20,6 +20,9 @@ type Payload = {
   candidates?: unknown[];
   keys?: string[];
   phase?: "light" | "rem";
+  path?: string;
+  snippet?: string;
+  conceptLimit?: number;
   limit?: number;
   minScore?: number;
   minRecallCount?: number;
@@ -126,6 +129,24 @@ async function main() {
         minUniqueQueries: resolved.minUniqueQueries,
         recencyHalfLifeDays: resolved.recencyHalfLifeDays,
         maxAgeDays: resolved.maxAgeDays,
+      },
+    };
+  }
+
+  if (payload.operation === "deriveConceptTags") {
+    const vocabulary = await importFromRepo(
+      repoPath,
+      "extensions/memory-core/src/concept-vocabulary.ts",
+    );
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        conceptTags: vocabulary.deriveConceptTags({
+          path: payload.path ?? "",
+          snippet: payload.snippet ?? "",
+          limit: payload.conceptLimit,
+        }),
       },
     };
   }

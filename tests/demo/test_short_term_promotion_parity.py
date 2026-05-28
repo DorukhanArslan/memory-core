@@ -42,52 +42,64 @@ def test_lock_constants_match_openclaw_paths():
     )
 
 
-def test_concept_tags_match_openclaw_vocabulary_for_personal_preference():
+def test_concept_tags_match_openclaw_vocabulary_for_european_languages():
     assert promotion_module._derive_concept_tags(
-        "memory/2026-05-26.md",
-        "- User prefers to be addressed as Doruk.",
-    ) == ["prefers", "addressed", "doruk"]
-
-
-def test_concept_tags_match_openclaw_vocabulary_for_network_memory():
-    assert promotion_module._derive_concept_tags(
-        "memory/2026-05-27-network.md",
-        "- Router VLAN DHCP firewall subnet Mikrotik configuration failed.",
+        "memory/2026-04-04.md",
+        "Configuración de gateway, configuration du routeur, Sicherung und Überwachung Glacier.",
     ) == [
-        "network",
-        "router",
-        "vlan",
-        "2026-05-27-network.md",
-        "network.md",
-        "dhcp",
-        "firewall",
-        "subnet",
-    ]
-
-
-def test_concept_tags_match_openclaw_vocabulary_for_stop_words_and_duplicates():
-    assert promotion_module._derive_concept_tags(
-        "memory/2026-05-28-topic.md",
-        "- The user and assistant discussed memory memory 2026-05-26.md "
-        "1234 router s3 gateway backup router.",
-    ) == ["backup", "gateway", "router", "2026-05-28-topic.md", "topic.md", "discussed"]
-
-
-def test_concept_tags_match_openclaw_vocabulary_limit_order():
-    assert promotion_module._derive_concept_tags(
-        "memory/2026-05-30-compound.md",
-        "- puerta-de-enlace openai_embeddings qmd routeur gateway router vlan s3 "
-        "backups failover glacier network extra tokens",
-    ) == [
-        "backup",
-        "backups",
-        "embedding",
-        "embeddings",
-        "failover",
         "gateway",
         "glacier",
-        "network",
+        "routeur",
+        "sicherung",
+        "überwachung",
+        "configuración",
+        "configuration",
     ]
+
+
+def test_concept_tags_match_openclaw_vocabulary_for_cjk_protected_terms():
+    assert promotion_module._derive_concept_tags(
+        "memory/2026-04-04.md",
+        "障害対応ルーター設定とバックアップ確認。路由器备份与网关同步。라우터 백업 페일오버 점검.",
+    ) == [
+        "バックアップ",
+        "ルーター",
+        "障害対応",
+        "路由器",
+        "备份",
+        "网关",
+        "라우터",
+        "백업",
+    ]
+
+
+def test_concept_tags_match_openclaw_vocabulary_for_chat_scaffolding_stop_words():
+    tags = promotion_module._derive_concept_tags(
+        "memory/.dreams/session-corpus/2026-04-16.txt",
+        "Assistant: the system should remind you about the Ollama provider setup in your workspace.",
+    )
+
+    assert "ollama" in tags
+    assert "provider" in tags
+    assert "assistant" not in tags
+    assert "system" not in tags
+    assert "the" not in tags
+    assert "you" not in tags
+    assert "your" not in tags
+
+
+def test_concept_tags_match_openclaw_vocabulary_for_stable_snippets_and_paths():
+    assert promotion_module._derive_concept_tags(
+        "memory/2026-04-03.md",
+        "Move backups to S3 Glacier and sync QMD router notes.",
+    ) == ["backup", "backups", "glacier", "qmd", "router", "sync"]
+
+
+def test_concept_tags_match_openclaw_vocabulary_for_multilingual_short_term_fixture():
+    assert promotion_module._derive_concept_tags(
+        "memory/2026-04-03.md",
+        "Configuración du routeur et sauvegarde Glacier.",
+    ) == ["glacier", "sauvegarde", "routeur", "configuración"]
 
 
 def test_active_short_term_lock_blocks_second_owner(tmp_path: Path):

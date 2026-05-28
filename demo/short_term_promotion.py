@@ -307,6 +307,12 @@ _PROTECTED_GLOSSARY = [
 ]
 _COMPOUND_TOKEN_RE = re.compile(r"[^\W_]+(?:[._/-][^\W_]+)+", re.UNICODE)
 _SEGMENT_TOKEN_RE = re.compile(r"[^\W\d_]*[^\W_][^\W_]*(?:\.[^\W_]+)?", re.UNICODE)
+_DREAMING_TRANSCRIPT_PROMPT_LINE_RE = re.compile(
+    r"\[[^\]]*dreaming-narrative[^\]]*]\s*(?:User|Assistant):\s*"
+    r"Write a dream diary entry from these memory fragments:?",
+    re.IGNORECASE,
+)
+_DREAMING_DIFF_PREFIX_RE = re.compile(r"@@\s*-\d+(?:,\d+)?\s+[-*+]\s+", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -579,15 +585,19 @@ def record_short_term_recalls(
     now_iso = _iso(now_ms)
     query_hash = _hash(query.lower().strip())
     changed = 0
+    touched = False
     for result in results:
         path = str(result.get("path") or "")
         if not path.startswith("memory/") or not path.endswith(".md"):
             continue
+        touched = True
         start_line = _int(result.get("startLine"), 1)
         score = _clamp(float(result.get("score") or 0))
         for line_number, snippet in _candidate_lines(
             raw=str(result.get("snippet") or ""), start_line=start_line
         ):
+            if _is_contaminated_dreaming_snippet(snippet):
+                continue
             key = f"memory:{path}:{line_number}:{line_number}"
             entry = store["entries"].get(key)
             if entry is None:
@@ -625,7 +635,7 @@ def record_short_term_recalls(
             else:
                 entry["recallCount"] = _int(entry.get("recallCount"), 0) + 1
             changed += 1
-    if changed:
+    if changed or touched:
         store["updatedAt"] = now_iso
         _write_store(store_path, store)
     return changed
@@ -853,6 +863,8 @@ def evaluate_short_term_promotion_candidates(
     for raw in store["entries"].values():
         key = str(raw.get("key") or "")
         if not key or raw.get("promotedAt"):
+            continue
+        if _is_contaminated_dreaming_snippet(str(raw.get("snippet") or "")):
             continue
         recall_count = _int(raw.get("recallCount"), 0)
         daily_count = _int(raw.get("dailyCount"), 0)
@@ -1198,6 +1210,55 @@ def _extract_promotion_markers(memory_text: str) -> list[str]:
 
 def _normalize_snippet(raw: str) -> str:
     return " ".join(raw.strip().split())
+
+
+def _consume_dreaming_lead_prefix(snippet: str) -> str:
+    index = 0
+    while index < len(snippet):
+        diff_match = _DREAMING_DIFF_PREFIX_RE.match(snippet, index)
+        if diff_match:
+            index = diff_match.end()
+            continue
+        char = snippet[index]
+        if char in "[(":
+            index += 1
+            while index < len(snippet) and snippet[index] == " ":
+                index += 1
+            continue
+        if char in "-*+>" and index + 1 < len(snippet) and snippet[index + 1] == " ":
+            index += 2
+            continue
+        break
+    return snippet[index:]
+
+
+def _has_dreaming_narrative_lead(snippet: str) -> bool:
+    without_prefix = _consume_dreaming_lead_prefix(snippet)
+    if re.match(r"^(?:Candidate|Reflections?):", without_prefix, re.IGNORECASE):
+        return True
+    return re.search(r"\b(?:Candidate|Reflections?):", without_prefix[:200], re.IGNORECASE) is not None
+
+
+def _is_contaminated_dreaming_snippet(raw: str) -> bool:
+    snippet = _normalize_snippet(raw)
+    if not snippet:
+        return False
+    if re.search(r"<!--\s*openclaw-memory-promotion:", snippet, re.IGNORECASE):
+        return True
+    if _DREAMING_TRANSCRIPT_PROMPT_LINE_RE.search(snippet):
+        return True
+    return (
+        _has_dreaming_narrative_lead(snippet)
+        and re.search(r"\bconfidence:\s*\d", snippet, re.IGNORECASE) is not None
+        and re.search(
+            r"\bevidence:\s*(?:memory/\.dreams/session-corpus/|memory/)",
+            snippet,
+            re.IGNORECASE,
+        )
+        is not None
+        and re.search(r"\bstatus:\s*staged\b", snippet, re.IGNORECASE) is not None
+        and re.search(r"\brecalls:\s*\d+\b", snippet, re.IGNORECASE) is not None
+    )
 
 
 def _candidate_lines(raw: str, start_line: int) -> list[tuple[int, str]]:

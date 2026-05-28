@@ -484,6 +484,91 @@ def test_ranking_skips_promoted_at_entry_like_openclaw(tmp_path: Path):
     assert candidates == []
 
 
+def test_record_short_term_recalls_ignores_contaminated_dreaming_snippet_like_openclaw(
+    tmp_path: Path,
+):
+    config = MemoryConfig(workspace_dir=tmp_path)
+    now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+
+    changed = record_short_term_recalls(
+        config=config,
+        query="action preference",
+        results=[
+            {
+                "path": "memory/2026-04-03.md",
+                "source": "memory",
+                "startLine": 1,
+                "endLine": 1,
+                "score": 0.92,
+                "snippet": (
+                    "Candidate: Default to action. confidence: 0.76 evidence: "
+                    "memory/.dreams/session-corpus/2026-04-08.txt:1-1 recalls: 3 "
+                    "status: staged"
+                ),
+            }
+        ],
+        now_ms=now,
+    )
+
+    assert changed == 0
+    store_payload = json.loads(
+        (tmp_path / "memory" / ".dreams" / "short-term-recall.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert store_payload["entries"] == {}
+
+
+def test_ranking_skips_contaminated_dreaming_snippet_like_openclaw(tmp_path: Path):
+    config = MemoryConfig(workspace_dir=tmp_path)
+    store_path = tmp_path / "memory" / ".dreams" / "short-term-recall.json"
+    store_path.parent.mkdir(parents=True)
+    store_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "updatedAt": "2026-04-04T00:00:00.000Z",
+                "entries": {
+                    "contaminated": {
+                        "key": "contaminated",
+                        "path": "memory/2026-04-03.md",
+                        "startLine": 1,
+                        "endLine": 1,
+                        "source": "memory",
+                        "snippet": (
+                            "Reflections: Theme: assistant. confidence: 1.00 evidence: "
+                            "memory/.dreams/session-corpus/2026-04-08.txt:2-2 recalls: "
+                            "4 status: staged"
+                        ),
+                        "recallCount": 4,
+                        "dailyCount": 0,
+                        "groundedCount": 0,
+                        "totalScore": 3.6,
+                        "maxScore": 0.95,
+                        "firstRecalledAt": "2026-04-03T00:00:00.000Z",
+                        "lastRecalledAt": "2026-04-04T00:00:00.000Z",
+                        "queryHashes": ["a", "b"],
+                        "recallDays": ["2026-04-03", "2026-04-04"],
+                        "conceptTags": ["assistant"],
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    candidates = rank_short_term_promotion_candidates(
+        config=config,
+        now_ms=ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC)),
+        limit=5,
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+    )
+
+    assert candidates == []
+
+
 def test_promotion_run_reconciles_existing_marker_without_duplicate_append(tmp_path: Path):
     config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
     now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))

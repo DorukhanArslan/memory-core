@@ -448,3 +448,88 @@ def test_real_openclaw_oracle_ranking_skips_promoted_at_entry():
 
     assert ranked["ok"] is True
     assert ranked["result"]["candidates"] == []
+
+
+def test_real_openclaw_oracle_ignores_contaminated_dreaming_snippets():
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+
+    contaminated_snippet = (
+        "Candidate: Default to action. confidence: 0.76 evidence: "
+        "memory/.dreams/session-corpus/2026-04-08.txt:1-1 recalls: 3 status: staged"
+    )
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-contaminated-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        recorded = oracle.run(
+            {
+                "operation": "recordShortTermRecalls",
+                "workspaceDir": str(workspace),
+                "timezone": "Europe/Istanbul",
+                "query": "action preference",
+                "results": [
+                    {
+                        "source": "memory",
+                        "path": "memory/2026-04-03.md",
+                        "startLine": 1,
+                        "endLine": 1,
+                        "snippet": contaminated_snippet,
+                        "score": 0.92,
+                    }
+                ],
+                "nowMs": 1779811200000,
+            }
+        )
+        store_path = workspace / "memory" / ".dreams" / "short-term-recall.json"
+        store_path.parent.mkdir(parents=True, exist_ok=True)
+        store_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "updatedAt": "2026-04-04T00:00:00.000Z",
+                    "entries": {
+                        "contaminated": {
+                            "key": "contaminated",
+                            "path": "memory/2026-04-03.md",
+                            "startLine": 1,
+                            "endLine": 1,
+                            "source": "memory",
+                            "snippet": (
+                                "Reflections: Theme: assistant. confidence: 1.00 evidence: "
+                                "memory/.dreams/session-corpus/2026-04-08.txt:2-2 recalls: "
+                                "4 status: staged"
+                            ),
+                            "recallCount": 4,
+                            "dailyCount": 0,
+                            "groundedCount": 0,
+                            "totalScore": 3.6,
+                            "maxScore": 0.95,
+                            "firstRecalledAt": "2026-04-03T00:00:00.000Z",
+                            "lastRecalledAt": "2026-04-04T00:00:00.000Z",
+                            "queryHashes": ["a", "b"],
+                            "recallDays": ["2026-04-03", "2026-04-04"],
+                            "conceptTags": ["assistant"],
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        ranked = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1779811200000,
+                "timezone": "Europe/Istanbul",
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+            }
+        )
+
+    assert recorded["ok"] is True
+    recall_store = json.loads(recorded["files"]["memory/.dreams/short-term-recall.json"])
+    assert recall_store["entries"] == {}
+    assert ranked["ok"] is True
+    assert ranked["result"]["candidates"] == []

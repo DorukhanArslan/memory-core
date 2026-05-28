@@ -274,7 +274,8 @@ def test_chat_state_uses_current_timezone_date_for_daily_memory(monkeypatch):
     payload = response.json()
     assert payload["config"]["dailyMemoryPath"] == "memory/2026-05-07.md"
     assert "memory/2026-05-07.md" in payload["memoryFiles"]
-    assert "# 2026-05-07" in payload["memoryFileContents"]["memory/2026-05-07.md"]
+    assert payload["memoryFileContents"]["memory/2026-05-07.md"] == "# 2026-05-07\n"
+    assert "router VLAN" not in payload["memoryFileContents"]["memory/2026-05-07.md"]
 
 
 def test_chat_reset_removes_stale_daily_memory_files(monkeypatch):

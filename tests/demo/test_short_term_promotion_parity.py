@@ -679,6 +679,62 @@ def test_first_promotion_write_bootstraps_long_term_memory_header_like_openclaw(
     )
 
 
+def test_second_promotion_apply_reconciles_existing_marker_without_duplicate_like_openclaw(
+    tmp_path: Path,
+):
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    daily = tmp_path / "memory" / "2026-05-08.md"
+    daily.parent.mkdir(parents=True)
+    daily.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+    result = {
+        "path": "memory/2026-05-08.md",
+        "source": "memory",
+        "startLine": 3,
+        "endLine": 3,
+        "snippet": "- Move backups to S3 Glacier.",
+        "score": 1,
+    }
+    record_short_term_recalls(config=config, query="glacier", results=[result], now_ms=now)
+
+    first = run_short_term_promotion(
+        config=config,
+        store=fake_store(config),
+        now_ms=now,
+        timezone="Europe/Istanbul",
+        limit=5,
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+    )
+    memory_after_first = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
+    recall_path = tmp_path / "memory" / ".dreams" / "short-term-recall.json"
+    recall_store = json.loads(recall_path.read_text(encoding="utf-8"))
+    key = "memory:memory/2026-05-08.md:3:3"
+    del recall_store["entries"][key]["promotedAt"]
+    recall_path.write_text(json.dumps(recall_store, indent=2) + "\n", encoding="utf-8")
+
+    second = run_short_term_promotion(
+        config=config,
+        store=fake_store(config),
+        now_ms=now,
+        timezone="Europe/Istanbul",
+        limit=5,
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+    )
+
+    assert first.parsed.should_write is True
+    assert second.parsed.should_write is False
+    assert "appending 0; reconciled 1" in second.raw_text
+    assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == memory_after_first
+    assert memory_after_first.count("openclaw-memory-promotion:") == 1
+    assert memory_after_first.count("Move backups to S3 Glacier.") == 1
+    recall_store = json.loads(recall_path.read_text(encoding="utf-8"))
+    assert recall_store["entries"][key]["promotedAt"] == "2026-05-08T12:00:00.000Z"
+
+
 def test_promotion_run_skips_candidate_when_live_daily_note_no_longer_contains_snippet(
     tmp_path: Path,
 ):

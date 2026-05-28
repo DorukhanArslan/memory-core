@@ -385,3 +385,66 @@ def test_real_openclaw_oracle_reconciles_existing_promotion_marker():
     assert applied["result"]["reconciledExisting"] == 1
     recall_store = json.loads(applied["files"]["memory/.dreams/short-term-recall.json"])
     assert recall_store["entries"][key]["promotedAt"] == "2026-05-26T16:00:00.000Z"
+
+
+def test_real_openclaw_oracle_ranking_skips_promoted_at_entry():
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-promoted-at-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        memory_file = workspace / "memory" / "2026-05-08.md"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+        base_result = {
+            "source": "memory",
+            "path": "memory/2026-05-08.md",
+            "startLine": 3,
+            "endLine": 3,
+            "snippet": "- Move backups to S3 Glacier.",
+            "score": 1,
+        }
+        oracle.run(
+            {
+                "operation": "recordShortTermRecallSequence",
+                "workspaceDir": str(workspace),
+                "timezone": "Europe/Istanbul",
+                "recalls": [
+                    {
+                        "query": query,
+                        "results": [base_result],
+                        "nowMs": 1779811200000 + index,
+                    }
+                    for index, query in enumerate(
+                        (
+                            "backup policy",
+                            "glacier backup",
+                            "s3 retention",
+                            "cold storage",
+                            "backup notes",
+                        )
+                    )
+                ],
+            }
+        )
+        recall_path = workspace / "memory" / ".dreams" / "short-term-recall.json"
+        recall_store = json.loads(recall_path.read_text(encoding="utf-8"))
+        key = "memory:memory/2026-05-08.md:3:3"
+        recall_store["entries"][key]["promotedAt"] = "2026-05-08T12:00:00.000Z"
+        recall_path.write_text(json.dumps(recall_store), encoding="utf-8")
+        ranked = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1779811200000,
+                "timezone": "Europe/Istanbul",
+                "minScore": 0,
+                "minRecallCount": 1,
+                "minUniqueQueries": 1,
+            }
+        )
+
+    assert ranked["ok"] is True
+    assert ranked["result"]["candidates"] == []

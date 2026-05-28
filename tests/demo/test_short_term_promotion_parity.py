@@ -569,6 +569,37 @@ def test_ranking_skips_contaminated_dreaming_snippet_like_openclaw(tmp_path: Pat
     assert candidates == []
 
 
+def test_candidate_like_daily_memory_evidence_is_not_contaminated_like_openclaw(
+    tmp_path: Path,
+):
+    config = MemoryConfig(workspace_dir=tmp_path)
+    now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    snippet = "Candidate: move backups weekly. confidence: 0.76 evidence: memory/2026-04-08.md:1-1"
+    result = {
+        "path": "memory/2026-04-08.md",
+        "source": "memory",
+        "startLine": 1,
+        "endLine": 1,
+        "snippet": snippet,
+        "score": 1,
+    }
+
+    for query in ("backup candidate", "weekly backups", "backup evidence"):
+        record_short_term_recalls(config=config, query=query, results=[result], now_ms=now)
+    candidates = rank_short_term_promotion_candidates(
+        config=config,
+        now_ms=now,
+        limit=5,
+        min_score=0,
+        min_recall_count=1,
+        min_unique_queries=1,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].snippet == snippet
+    assert candidates[0].key == "memory:memory/2026-04-08.md:1:1"
+
+
 def test_promotion_run_reconciles_existing_marker_without_duplicate_append(tmp_path: Path):
     config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
     now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))

@@ -533,3 +533,56 @@ def test_real_openclaw_oracle_ignores_contaminated_dreaming_snippets():
     assert recall_store["entries"] == {}
     assert ranked["ok"] is True
     assert ranked["result"]["candidates"] == []
+
+
+def test_real_openclaw_oracle_keeps_candidate_like_daily_memory_evidence():
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+
+    snippet = "Candidate: move backups weekly. confidence: 0.76 evidence: memory/2026-04-08.md:1-1"
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-clean-candidate-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        result = {
+            "source": "memory",
+            "path": "memory/2026-04-08.md",
+            "startLine": 1,
+            "endLine": 1,
+            "snippet": snippet,
+            "score": 1,
+        }
+        oracle.run(
+            {
+                "operation": "recordShortTermRecallSequence",
+                "workspaceDir": str(workspace),
+                "timezone": "Europe/Istanbul",
+                "recalls": [
+                    {
+                        "query": query,
+                        "results": [result],
+                        "nowMs": 1779811200000 + index,
+                    }
+                    for index, query in enumerate(
+                        ("backup candidate", "weekly backups", "backup evidence")
+                    )
+                ],
+            }
+        )
+        ranked = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1779811200000,
+                "timezone": "Europe/Istanbul",
+                "minScore": 0,
+                "minRecallCount": 1,
+                "minUniqueQueries": 1,
+            }
+        )
+
+    assert ranked["ok"] is True
+    candidates = ranked["result"]["candidates"]
+    assert len(candidates) == 1
+    assert candidates[0]["key"] == "memory:memory/2026-04-08.md:1:1"
+    assert candidates[0]["snippet"] == snippet

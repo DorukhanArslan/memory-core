@@ -648,3 +648,64 @@ def test_real_openclaw_oracle_apply_skips_candidate_when_live_note_no_longer_con
     assert applied["files"]["MEMORY.md"] == ""
     recall_store = json.loads(applied["files"]["memory/.dreams/short-term-recall.json"])
     assert "promotedAt" not in recall_store["entries"]["memory:memory/2026-05-08.md:3:3"]
+
+
+def test_real_openclaw_oracle_promotion_header_uses_dreaming_timezone():
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-promotion-timezone-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        memory_file = workspace / "memory" / "2026-04-01.md"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text(
+            "# 2026-04-01\n\n- Cross-midnight router maintenance window.\n",
+            encoding="utf-8",
+        )
+        result = {
+            "source": "memory",
+            "path": "memory/2026-04-01.md",
+            "startLine": 3,
+            "endLine": 3,
+            "snippet": "- Cross-midnight router maintenance window.",
+            "score": 0.9,
+        }
+        oracle.run(
+            {
+                "operation": "recordShortTermRecalls",
+                "workspaceDir": str(workspace),
+                "query": "router window",
+                "results": [result],
+                "nowMs": 1775086200000,
+                "timezone": "America/Los_Angeles",
+            }
+        )
+        ranked = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1775111400000,
+                "timezone": "America/Los_Angeles",
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+            }
+        )
+        applied = oracle.run(
+            {
+                "operation": "applyShortTermPromotions",
+                "workspaceDir": str(workspace),
+                "nowMs": 1775111400000,
+                "timezone": "America/Los_Angeles",
+                "candidates": ranked["result"]["candidates"],
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+            }
+        )
+
+    assert applied["ok"] is True
+    assert applied["result"]["applied"] == 1
+    assert "Promoted From Short-Term Memory (2026-04-01)" in applied["files"]["MEMORY.md"]

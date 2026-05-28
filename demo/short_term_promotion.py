@@ -14,6 +14,7 @@ import re
 import secrets
 from typing import Any, Iterator
 import unicodedata
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from demo.memory_flush import ParsedFlushOutput
 from memory_core.config import MemoryConfig
@@ -1011,8 +1012,7 @@ def _phase_signal_boost(entry: Any) -> float:
 def _build_promotion_section(
     candidates: list[PromotionCandidate], now_ms: int, timezone: str
 ) -> str:
-    del timezone
-    section_date = datetime.fromtimestamp(now_ms / 1000, tz=UTC).strftime("%Y-%m-%d")
+    section_date = _format_memory_dreaming_day(now_ms, timezone)
     lines = ["", f"## Promoted From Short-Term Memory ({section_date})", ""]
     for candidate in candidates:
         source = f"{candidate.path}:{candidate.start_line}-{candidate.end_line}"
@@ -1028,6 +1028,17 @@ def _build_promotion_section(
         )
     lines.append("")
     return "\n".join(lines)
+
+
+def _format_memory_dreaming_day(now_ms: int, timezone: str | None = None) -> str:
+    if timezone:
+        try:
+            return datetime.fromtimestamp(now_ms / 1000, tz=ZoneInfo(timezone)).strftime(
+                "%Y-%m-%d"
+            )
+        except ZoneInfoNotFoundError:
+            pass
+    return datetime.fromtimestamp(now_ms / 1000).strftime("%Y-%m-%d")
 
 
 def _read_store(path: Path, now_ms: int) -> dict[str, Any]:

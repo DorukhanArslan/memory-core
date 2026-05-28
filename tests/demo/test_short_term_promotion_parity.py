@@ -688,3 +688,46 @@ def test_promotion_run_skips_candidate_when_live_daily_note_no_longer_contains_s
         (tmp_path / "memory" / ".dreams" / "short-term-recall.json").read_text(encoding="utf-8")
     )
     assert "promotedAt" not in recall_store["entries"]["memory:memory/2026-05-08.md:3:3"]
+
+
+def test_promotion_header_uses_dreaming_timezone_like_openclaw(tmp_path: Path):
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    record_now = ms(datetime(2026, 4, 1, 23, 30, tzinfo=UTC))
+    apply_now = ms(datetime(2026, 4, 2, 6, 30, tzinfo=UTC))
+    daily = tmp_path / "memory" / "2026-04-01.md"
+    daily.parent.mkdir(parents=True)
+    daily.write_text(
+        "# 2026-04-01\n\n- Cross-midnight router maintenance window.\n",
+        encoding="utf-8",
+    )
+    record_short_term_recalls(
+        config=config,
+        query="router window",
+        results=[
+            {
+                "path": "memory/2026-04-01.md",
+                "source": "memory",
+                "startLine": 3,
+                "endLine": 3,
+                "snippet": "- Cross-midnight router maintenance window.",
+                "score": 0.9,
+            }
+        ],
+        now_ms=record_now,
+    )
+
+    run = run_short_term_promotion(
+        config=config,
+        store=fake_store(config),
+        now_ms=apply_now,
+        timezone="America/Los_Angeles",
+        limit=5,
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+    )
+
+    assert run.parsed.should_write is True
+    assert "Promoted From Short-Term Memory (2026-04-01)" in (
+        tmp_path / "MEMORY.md"
+    ).read_text(encoding="utf-8")

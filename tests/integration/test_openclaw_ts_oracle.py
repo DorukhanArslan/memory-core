@@ -570,6 +570,157 @@ def test_real_openclaw_oracle_ranking_uses_recency_half_life_days():
     assert half_life_candidate["score"] < default_candidate["score"]
 
 
+def test_real_openclaw_oracle_ranking_applies_score_recall_unique_query_and_limit_gates():
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-ranking-gates-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        memory_file = workspace / "memory" / "2026-05-08.md"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text(
+            "# 2026-05-08\n\n"
+            "- Strong promotion candidate for backups.\n"
+            "- Medium promotion candidate for routing.\n"
+            "- Weak promotion candidate for notes.\n",
+            encoding="utf-8",
+        )
+        strong = {
+            "source": "memory",
+            "path": "memory/2026-05-08.md",
+            "startLine": 3,
+            "endLine": 3,
+            "snippet": "- Strong promotion candidate for backups.",
+            "score": 1,
+        }
+        medium = {
+            "source": "memory",
+            "path": "memory/2026-05-08.md",
+            "startLine": 4,
+            "endLine": 4,
+            "snippet": "- Medium promotion candidate for routing.",
+            "score": 0.9,
+        }
+        weak = {
+            "source": "memory",
+            "path": "memory/2026-05-08.md",
+            "startLine": 5,
+            "endLine": 5,
+            "snippet": "- Weak promotion candidate for notes.",
+            "score": 0.8,
+        }
+        oracle.run(
+            {
+                "operation": "recordShortTermRecallSequence",
+                "workspaceDir": str(workspace),
+                "timezone": "Europe/Istanbul",
+                "recalls": [
+                    {
+                        "query": "backup policy",
+                        "results": [strong, medium, weak],
+                        "nowMs": 1778241600000,
+                    },
+                    {
+                        "query": "backup retention",
+                        "results": [strong, medium],
+                        "nowMs": 1778241600001,
+                    },
+                    {
+                        "query": "backup restore",
+                        "results": [strong],
+                        "nowMs": 1778241600002,
+                    },
+                ],
+            }
+        )
+        baseline = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1778241600002,
+                "timezone": "Europe/Istanbul",
+                "limit": 10,
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+            }
+        )
+        min_recall = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1778241600002,
+                "timezone": "Europe/Istanbul",
+                "limit": 10,
+                "minScore": 0,
+                "minRecallCount": 2,
+                "minUniqueQueries": 0,
+            }
+        )
+        unique_queries = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1778241600002,
+                "timezone": "Europe/Istanbul",
+                "limit": 10,
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 3,
+            }
+        )
+        limited = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1778241600002,
+                "timezone": "Europe/Istanbul",
+                "limit": 1,
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+            }
+        )
+        top_score = baseline["result"]["candidates"][0]["score"]
+        above_top_score = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1778241600002,
+                "timezone": "Europe/Istanbul",
+                "limit": 10,
+                "minScore": top_score + 0.001,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+            }
+        )
+
+    assert baseline["ok"] is True
+    assert [candidate["key"] for candidate in baseline["result"]["candidates"]] == [
+        "memory:memory/2026-05-08.md:3:3",
+        "memory:memory/2026-05-08.md:4:4",
+        "memory:memory/2026-05-08.md:5:5",
+    ]
+    assert [candidate["recallCount"] for candidate in baseline["result"]["candidates"]] == [
+        3,
+        2,
+        1,
+    ]
+    assert [candidate["key"] for candidate in min_recall["result"]["candidates"]] == [
+        "memory:memory/2026-05-08.md:3:3",
+        "memory:memory/2026-05-08.md:4:4",
+    ]
+    assert [candidate["key"] for candidate in unique_queries["result"]["candidates"]] == [
+        "memory:memory/2026-05-08.md:3:3"
+    ]
+    assert [candidate["key"] for candidate in limited["result"]["candidates"]] == [
+        "memory:memory/2026-05-08.md:3:3"
+    ]
+    assert above_top_score["result"]["candidates"] == []
+
+
 def test_real_openclaw_oracle_reconciles_existing_promotion_marker():
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),

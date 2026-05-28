@@ -807,6 +807,109 @@ def test_ranking_uses_recency_half_life_days_like_openclaw(tmp_path: Path):
     assert candidates[0].components["recency"] == 0.5
 
 
+def test_ranking_applies_score_recall_unique_query_and_limit_gates_like_openclaw(
+    tmp_path: Path,
+):
+    config = MemoryConfig(workspace_dir=tmp_path)
+    now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    daily = tmp_path / "memory" / "2026-05-08.md"
+    daily.parent.mkdir(parents=True)
+    daily.write_text(
+        "# 2026-05-08\n\n"
+        "- Strong promotion candidate for backups.\n"
+        "- Medium promotion candidate for routing.\n"
+        "- Weak promotion candidate for notes.\n",
+        encoding="utf-8",
+    )
+    strong = {
+        "path": "memory/2026-05-08.md",
+        "source": "memory",
+        "startLine": 3,
+        "endLine": 3,
+        "snippet": "- Strong promotion candidate for backups.",
+        "score": 1,
+    }
+    medium = {
+        "path": "memory/2026-05-08.md",
+        "source": "memory",
+        "startLine": 4,
+        "endLine": 4,
+        "snippet": "- Medium promotion candidate for routing.",
+        "score": 0.9,
+    }
+    weak = {
+        "path": "memory/2026-05-08.md",
+        "source": "memory",
+        "startLine": 5,
+        "endLine": 5,
+        "snippet": "- Weak promotion candidate for notes.",
+        "score": 0.8,
+    }
+    for query, results in (
+        ("backup policy", [strong, medium, weak]),
+        ("backup retention", [strong, medium]),
+        ("backup restore", [strong]),
+    ):
+        record_short_term_recalls(config=config, query=query, results=results, now_ms=now)
+
+    baseline = rank_short_term_promotion_candidates(
+        config=config,
+        now_ms=now,
+        limit=10,
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+    )
+    min_recall_candidates = rank_short_term_promotion_candidates(
+        config=config,
+        now_ms=now,
+        limit=10,
+        min_score=0,
+        min_recall_count=2,
+        min_unique_queries=0,
+    )
+    unique_query_candidates = rank_short_term_promotion_candidates(
+        config=config,
+        now_ms=now,
+        limit=10,
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=3,
+    )
+    limited = rank_short_term_promotion_candidates(
+        config=config,
+        now_ms=now,
+        limit=1,
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+    )
+    above_top_score = rank_short_term_promotion_candidates(
+        config=config,
+        now_ms=now,
+        limit=10,
+        min_score=baseline[0].score + 0.001,
+        min_recall_count=0,
+        min_unique_queries=0,
+    )
+
+    assert [candidate.key for candidate in baseline] == [
+        "memory:memory/2026-05-08.md:3:3",
+        "memory:memory/2026-05-08.md:4:4",
+        "memory:memory/2026-05-08.md:5:5",
+    ]
+    assert [candidate.recall_count for candidate in baseline] == [3, 2, 1]
+    assert [candidate.key for candidate in min_recall_candidates] == [
+        "memory:memory/2026-05-08.md:3:3",
+        "memory:memory/2026-05-08.md:4:4",
+    ]
+    assert [candidate.key for candidate in unique_query_candidates] == [
+        "memory:memory/2026-05-08.md:3:3"
+    ]
+    assert [candidate.key for candidate in limited] == ["memory:memory/2026-05-08.md:3:3"]
+    assert above_top_score == []
+
+
 def test_promotion_run_skips_candidate_when_live_daily_note_no_longer_contains_snippet(
     tmp_path: Path,
 ):

@@ -721,6 +721,7 @@ def run_short_term_promotion(
     min_recall_count: int = DEFAULT_PROMOTION_MIN_RECALL_COUNT,
     min_unique_queries: int = DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
     max_age_days: int = -1,
+    recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
 ) -> MemoryPromotionRun:
     with acquire_short_term_promotion_lock(config=config, now_ms=now_ms) as lock:
         if not lock.acquired:
@@ -749,6 +750,7 @@ def run_short_term_promotion(
             min_recall_count=min_recall_count,
             min_unique_queries=min_unique_queries,
             max_age_days=max_age_days,
+            recency_half_life_days=recency_half_life_days,
         )
 
 
@@ -763,6 +765,7 @@ def _run_short_term_promotion_unlocked(
     min_recall_count: int = DEFAULT_PROMOTION_MIN_RECALL_COUNT,
     min_unique_queries: int = DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
     max_age_days: int = -1,
+    recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
 ) -> MemoryPromotionRun:
     workspace = MemoryWorkspace(config.workspace_dir)
     target = "MEMORY.md"
@@ -775,6 +778,7 @@ def _run_short_term_promotion_unlocked(
         min_recall_count=min_recall_count,
         min_unique_queries=min_unique_queries,
         max_age_days=max_age_days,
+        recency_half_life_days=recency_half_life_days,
     )
     candidates = [
         _evaluation_to_candidate(evaluation)
@@ -846,6 +850,7 @@ def rank_short_term_promotion_candidates(
     min_recall_count: int,
     min_unique_queries: int,
     max_age_days: int = -1,
+    recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
 ) -> list[PromotionCandidate]:
     candidates = [
         _evaluation_to_candidate(evaluation)
@@ -856,6 +861,7 @@ def rank_short_term_promotion_candidates(
             min_recall_count=min_recall_count,
             min_unique_queries=min_unique_queries,
             max_age_days=max_age_days,
+            recency_half_life_days=recency_half_life_days,
         )
         if not evaluation.reasons
     ]
@@ -870,6 +876,7 @@ def evaluate_short_term_promotion_candidates(
     min_recall_count: int,
     min_unique_queries: int,
     max_age_days: int = -1,
+    recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
 ) -> list[PromotionEvaluation]:
     store = _read_store(config.workspace_dir / SHORT_TERM_STORE_RELATIVE_PATH, now_ms)
     phase_signals = _read_phase_signal_store(
@@ -906,6 +913,7 @@ def evaluate_short_term_promotion_candidates(
             entry=raw,
             now_ms=now_ms,
             phase_entries=phase_entries if isinstance(phase_entries, dict) else {},
+            recency_half_life_days=recency_half_life_days,
         )
         score = _candidate_score(components)
         reasons = []
@@ -970,6 +978,7 @@ def _candidate_components(
     entry: dict[str, Any],
     now_ms: int,
     phase_entries: dict[str, Any],
+    recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
 ) -> dict[str, float]:
     recall_count = _int(entry.get("recallCount"), 0)
     daily_count = _int(entry.get("dailyCount"), 0)
@@ -982,7 +991,12 @@ def _candidate_components(
     context_diversity = max(len(set(query_hashes)), len(set(recall_days)))
     last_recalled_at = str(entry.get("lastRecalledAt") or _iso(now_ms))
     age_days = max(0.0, (now_ms - _parse_ms(last_recalled_at, now_ms)) / DAY_MS)
-    recency = math.exp(-(math.log(2) / DEFAULT_RECENCY_HALF_LIFE_DAYS) * age_days)
+    half_life_days = (
+        recency_half_life_days
+        if math.isfinite(recency_half_life_days) and recency_half_life_days > 0
+        else DEFAULT_RECENCY_HALF_LIFE_DAYS
+    )
+    recency = math.exp(-(math.log(2) / half_life_days) * age_days)
     concept_tags = [value for value in entry.get("conceptTags", []) if isinstance(value, str)]
     consolidation = max(
         _calculate_consolidation_component(recall_days),

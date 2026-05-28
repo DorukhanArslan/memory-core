@@ -506,6 +506,70 @@ def test_real_openclaw_oracle_ranking_applies_max_age_gate():
     assert ranked_with_gate["result"]["candidates"] == []
 
 
+def test_real_openclaw_oracle_ranking_uses_recency_half_life_days():
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-recency-half-life-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        memory_file = workspace / "memory" / "2026-05-08.md"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+        result = {
+            "source": "memory",
+            "path": "memory/2026-05-08.md",
+            "startLine": 3,
+            "endLine": 3,
+            "snippet": "- Move backups to S3 Glacier.",
+            "score": 1,
+        }
+        oracle.run(
+            {
+                "operation": "recordShortTermRecalls",
+                "workspaceDir": str(workspace),
+                "query": "glacier",
+                "results": [result],
+                "nowMs": 1778241600000,
+                "timezone": "Europe/Istanbul",
+            }
+        )
+        ranked_default = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1778846400000,
+                "timezone": "Europe/Istanbul",
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+            }
+        )
+        ranked_half_life_7 = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1778846400000,
+                "timezone": "Europe/Istanbul",
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+                "recencyHalfLifeDays": 7,
+            }
+        )
+
+    assert ranked_default["ok"] is True
+    assert ranked_half_life_7["ok"] is True
+    default_candidate = ranked_default["result"]["candidates"][0]
+    half_life_candidate = ranked_half_life_7["result"]["candidates"][0]
+    assert default_candidate["ageDays"] == 7
+    assert default_candidate["components"]["recency"] == pytest.approx(0.7071067811865476)
+    assert half_life_candidate["ageDays"] == 7
+    assert half_life_candidate["components"]["recency"] == pytest.approx(0.5)
+    assert half_life_candidate["score"] < default_candidate["score"]
+
+
 def test_real_openclaw_oracle_reconciles_existing_promotion_marker():
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),

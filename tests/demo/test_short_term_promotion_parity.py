@@ -770,6 +770,43 @@ def test_ranking_applies_max_age_gate_like_openclaw(tmp_path: Path):
     assert candidates == []
 
 
+def test_ranking_uses_recency_half_life_days_like_openclaw(tmp_path: Path):
+    config = MemoryConfig(workspace_dir=tmp_path)
+    recalled_at = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    ranked_at = recalled_at + 7 * 86_400_000
+    daily = tmp_path / "memory" / "2026-05-08.md"
+    daily.parent.mkdir(parents=True)
+    daily.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+    result = {
+        "path": "memory/2026-05-08.md",
+        "source": "memory",
+        "startLine": 3,
+        "endLine": 3,
+        "snippet": "- Move backups to S3 Glacier.",
+        "score": 1,
+    }
+    record_short_term_recalls(
+        config=config,
+        query="glacier",
+        results=[result],
+        now_ms=recalled_at,
+    )
+
+    candidates = rank_short_term_promotion_candidates(
+        config=config,
+        now_ms=ranked_at,
+        limit=5,
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+        recency_half_life_days=7,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].age_days == 7
+    assert candidates[0].components["recency"] == 0.5
+
+
 def test_promotion_run_skips_candidate_when_live_daily_note_no_longer_contains_snippet(
     tmp_path: Path,
 ):

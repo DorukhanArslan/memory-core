@@ -1248,10 +1248,14 @@ def _append_to_memory(path: Path, content: str) -> None:
 
 def _extract_promotion_markers(memory_text: str) -> list[str]:
     markers = []
-    for line in memory_text.splitlines():
-        marker = f"<!-- {PROMOTION_MARKER_PREFIX}"
-        if line.startswith(marker) and line.endswith(" -->"):
-            markers.append(line[len(marker) : -4].strip())
+    for match in re.finditer(
+        r"<!--\s*openclaw-memory-promotion:([^\n]+?)\s*-->",
+        memory_text,
+        re.IGNORECASE,
+    ):
+        key = match.group(1).strip()
+        if key:
+            markers.append(key)
     return markers
 
 

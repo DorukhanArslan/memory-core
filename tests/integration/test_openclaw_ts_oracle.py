@@ -806,6 +806,76 @@ def test_real_openclaw_oracle_reconciles_existing_promotion_marker():
     assert recall_store["entries"][key]["promotedAt"] == "2026-05-26T16:00:00.000Z"
 
 
+def test_real_openclaw_oracle_reconciles_spaced_case_insensitive_promotion_marker():
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-marker-variant-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        memory_file = workspace / "memory" / "2026-05-08.md"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+        key = "memory:memory/2026-05-08.md:3:3"
+        (workspace / "MEMORY.md").write_text(
+            "# Long-Term Memory\n\n"
+            "## Promoted From Short-Term Memory (2026-05-08)\n\n"
+            f"<!--   OPENCLAW-MEMORY-PROMOTION:{key}-->\n"
+            "- Move backups to S3 Glacier. [score=0.900 recalls=1 avg=1.000 "
+            "source=memory/2026-05-08.md:3-3]\n",
+            encoding="utf-8",
+        )
+        result = {
+            "source": "memory",
+            "path": "memory/2026-05-08.md",
+            "startLine": 3,
+            "endLine": 3,
+            "snippet": "- Move backups to S3 Glacier.",
+            "score": 1,
+        }
+        oracle.run(
+            {
+                "operation": "recordShortTermRecalls",
+                "workspaceDir": str(workspace),
+                "query": "glacier",
+                "results": [result],
+                "nowMs": 1779811200000,
+                "timezone": "Europe/Istanbul",
+            }
+        )
+        ranked = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1779811200000,
+                "timezone": "Europe/Istanbul",
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+            }
+        )
+        applied = oracle.run(
+            {
+                "operation": "applyShortTermPromotions",
+                "workspaceDir": str(workspace),
+                "nowMs": 1779811200000,
+                "timezone": "Europe/Istanbul",
+                "candidates": ranked["result"]["candidates"],
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+            }
+        )
+
+    assert applied["ok"] is True
+    assert applied["result"]["applied"] == 1
+    assert applied["result"]["appended"] == 0
+    assert applied["result"]["reconciledExisting"] == 1
+    assert applied["files"]["MEMORY.md"].count("openclaw-memory-promotion:") == 0
+    assert applied["files"]["MEMORY.md"].count("OPENCLAW-MEMORY-PROMOTION:") == 1
+
+
 def test_real_openclaw_oracle_ranking_skips_promoted_at_entry():
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),

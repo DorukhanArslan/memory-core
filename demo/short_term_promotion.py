@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 import difflib
 import fcntl
@@ -777,20 +777,30 @@ def _run_short_term_promotion_unlocked(
         if not evaluation.reasons
     ][:limit]
     candidates = sorted(candidates, key=lambda candidate: candidate.score, reverse=True)
+    rehydrated_candidates = [
+        rehydrated
+        for candidate in candidates
+        if (rehydrated := _rehydrate_promotion_candidate(config.workspace_dir, candidate)) is not None
+    ]
     existing_markers = set(_extract_promotion_markers(before))
-    to_append = [candidate for candidate in candidates if candidate.key not in existing_markers]
+    to_append = [
+        candidate for candidate in rehydrated_candidates if candidate.key not in existing_markers
+    ]
     raw_text = (
         f"ranked {len(candidates)} short-term promotion candidate(s); "
         f"evaluated {len(evaluations)} candidate(s); "
-        f"appending {len(to_append)}; reconciled {len(candidates) - len(to_append)}"
+        f"rehydrated {len(rehydrated_candidates)}; "
+        f"appending {len(to_append)}; reconciled {len(rehydrated_candidates) - len(to_append)}"
     )
     indexed_files = 0
     reindex_error = None
-    if candidates:
+    if rehydrated_candidates:
         entry = _build_promotion_section(to_append, now_ms, timezone) if to_append else ""
         if to_append:
             _append_to_memory(target_path, entry)
-        _mark_promoted(config.workspace_dir / SHORT_TERM_STORE_RELATIVE_PATH, candidates, now_ms)
+        _mark_promoted(
+            config.workspace_dir / SHORT_TERM_STORE_RELATIVE_PATH, rehydrated_candidates, now_ms
+        )
         if to_append:
             try:
                 indexed_files = store.reindex(workspace)
@@ -807,7 +817,7 @@ def _run_short_term_promotion_unlocked(
             should_write=False,
             target=target,
             entry="",
-            reason="no promotion candidates",
+            reason="no live promotion candidates" if candidates else "no promotion candidates",
         )
     after = _read_text_if_exists(target_path)
     return MemoryPromotionRun(
@@ -1206,6 +1216,152 @@ def _extract_promotion_markers(memory_text: str) -> list[str]:
         if line.startswith(marker) and line.endswith(" -->"):
             markers.append(line[len(marker) : -4].strip())
     return markers
+
+
+def _normalize_memory_path(raw_path: str) -> str:
+    normalized = raw_path.replace("\\", "/")
+    return normalized[2:] if normalized.startswith("./") else normalized
+
+
+def _resolve_short_term_source_path_candidates(workspace_dir: Path, candidate_path: str) -> list[Path]:
+    normalized = _normalize_memory_path(candidate_path)
+    basenames = [normalized]
+    if not normalized.startswith("memory/"):
+        basenames.append((Path("memory") / Path(normalized).name).as_posix())
+    seen = set()
+    resolved = []
+    for relative_path in basenames:
+        source_path = (workspace_dir / relative_path).resolve()
+        if source_path in seen:
+            continue
+        seen.add(source_path)
+        resolved.append(source_path)
+    return resolved
+
+
+def _normalize_range_snippet(lines: list[str], start_line: int, end_line: int) -> str:
+    start_index = max(0, start_line - 1)
+    end_index = min(len(lines), end_line)
+    if start_index >= end_index:
+        return ""
+    return _normalize_snippet(" ".join(lines[start_index:end_index]))
+
+
+def _compare_candidate_window(target_snippet: str, window_snippet: str) -> tuple[bool, int]:
+    if not target_snippet or not window_snippet:
+        return False, 0
+    if window_snippet == target_snippet:
+        return True, 3
+    if target_snippet in window_snippet:
+        return True, 2
+    if window_snippet in target_snippet:
+        return True, 1
+    return False, 0
+
+
+def _relocate_candidate_range(
+    lines: list[str], candidate: PromotionCandidate
+) -> tuple[int, int, str] | None:
+    target_snippet = _normalize_snippet(candidate.snippet)
+    preferred_span = max(1, candidate.end_line - candidate.start_line + 1)
+    if not target_snippet:
+        fallback_snippet = _normalize_range_snippet(
+            lines, candidate.start_line, candidate.end_line
+        )
+        if not fallback_snippet:
+            return None
+        return candidate.start_line, candidate.end_line, fallback_snippet
+
+    exact_snippet = _normalize_range_snippet(lines, candidate.start_line, candidate.end_line)
+    if exact_snippet == target_snippet:
+        return candidate.start_line, candidate.end_line, exact_snippet
+
+    max_span = min(len(lines), max(preferred_span + 3, 8))
+    best_match: tuple[int, int, str, int, int] | None = None
+    for start_index in range(len(lines)):
+        for span in range(1, max_span + 1):
+            if start_index + span > len(lines):
+                break
+            start_line = start_index + 1
+            end_line = start_index + span
+            snippet = _normalize_range_snippet(lines, start_line, end_line)
+            matched, quality = _compare_candidate_window(target_snippet, snippet)
+            if not matched:
+                continue
+            distance = abs(start_line - candidate.start_line)
+            if best_match is None:
+                best_match = (start_line, end_line, snippet, quality, distance)
+                continue
+            best_start, best_end, _, best_quality, best_distance = best_match
+            best_span_delta = abs(best_end - best_start + 1 - preferred_span)
+            span_delta = abs(span - preferred_span)
+            if (
+                quality > best_quality
+                or (quality == best_quality and distance < best_distance)
+                or (
+                    quality == best_quality
+                    and distance == best_distance
+                    and span_delta < best_span_delta
+                )
+            ):
+                best_match = (start_line, end_line, snippet, quality, distance)
+
+    if best_match is None:
+        return None
+    start_line, end_line, snippet, _, _ = best_match
+    return start_line, end_line, snippet
+
+
+_DREAMING_FENCE_START_RE = re.compile(
+    r"<!--\s*openclaw:dreaming:[a-z][a-z0-9-]*:start\s*-->", re.IGNORECASE
+)
+_DREAMING_FENCE_END_RE = re.compile(
+    r"<!--\s*openclaw:dreaming:[a-z][a-z0-9-]*:end\s*-->", re.IGNORECASE
+)
+
+
+def _line_range_overlaps_dreaming_fence(
+    lines: list[str], start_line: int, end_line: int
+) -> bool:
+    if not lines:
+        return False
+    safe_start = max(1, min(start_line, len(lines)))
+    safe_end = max(safe_start, min(end_line, len(lines)))
+    inside_fence = False
+    for index, line in enumerate(lines[:safe_end], start=1):
+        if _DREAMING_FENCE_START_RE.search(line):
+            inside_fence = True
+            continue
+        if _DREAMING_FENCE_END_RE.search(line):
+            inside_fence = False
+            continue
+        if inside_fence and safe_start <= index <= safe_end:
+            return True
+    return False
+
+
+def _rehydrate_promotion_candidate(
+    workspace_dir: Path, candidate: PromotionCandidate
+) -> PromotionCandidate | None:
+    for source_path in _resolve_short_term_source_path_candidates(workspace_dir, candidate.path):
+        try:
+            raw_source = source_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            continue
+        lines = raw_source.splitlines()
+        relocated = _relocate_candidate_range(lines, candidate)
+        if relocated is None:
+            continue
+        start_line, end_line, snippet = relocated
+        if _line_range_overlaps_dreaming_fence(lines, start_line, end_line):
+            continue
+        return replace(
+            candidate,
+            start_line=start_line,
+            end_line=end_line,
+            snippet=snippet,
+        )
+    return None
 
 
 def _normalize_snippet(raw: str) -> str:

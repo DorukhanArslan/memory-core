@@ -586,3 +586,65 @@ def test_real_openclaw_oracle_keeps_candidate_like_daily_memory_evidence():
     assert len(candidates) == 1
     assert candidates[0]["key"] == "memory:memory/2026-04-08.md:1:1"
     assert candidates[0]["snippet"] == snippet
+
+
+def test_real_openclaw_oracle_apply_skips_candidate_when_live_note_no_longer_contains_snippet():
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-stale-source-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        memory_file = workspace / "memory" / "2026-05-08.md"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text("# 2026-05-08\n\n- Different note content now.\n", encoding="utf-8")
+        result = {
+            "source": "memory",
+            "path": "memory/2026-05-08.md",
+            "startLine": 3,
+            "endLine": 3,
+            "snippet": "- Move backups to S3 Glacier.",
+            "score": 1,
+        }
+        oracle.run(
+            {
+                "operation": "recordShortTermRecalls",
+                "workspaceDir": str(workspace),
+                "query": "glacier",
+                "results": [result],
+                "nowMs": 1779811200000,
+                "timezone": "Europe/Istanbul",
+            }
+        )
+        ranked = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1779811200000,
+                "timezone": "Europe/Istanbul",
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+            }
+        )
+        applied = oracle.run(
+            {
+                "operation": "applyShortTermPromotions",
+                "workspaceDir": str(workspace),
+                "nowMs": 1779811200000,
+                "timezone": "Europe/Istanbul",
+                "candidates": ranked["result"]["candidates"],
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+            }
+        )
+
+    assert ranked["ok"] is True
+    assert len(ranked["result"]["candidates"]) == 1
+    assert applied["ok"] is True
+    assert applied["result"]["applied"] == 0
+    assert applied["files"]["MEMORY.md"] == ""
+    recall_store = json.loads(applied["files"]["memory/.dreams/short-term-recall.json"])
+    assert "promotedAt" not in recall_store["entries"]["memory:memory/2026-05-08.md:3:3"]

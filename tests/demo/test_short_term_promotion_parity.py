@@ -642,3 +642,49 @@ def test_promotion_run_reconciles_existing_marker_without_duplicate_append(tmp_p
         (tmp_path / "memory" / ".dreams" / "short-term-recall.json").read_text(encoding="utf-8")
     )
     assert recall_store["entries"][key]["promotedAt"] == "2026-05-08T12:00:00.000Z"
+
+
+def test_promotion_run_skips_candidate_when_live_daily_note_no_longer_contains_snippet(
+    tmp_path: Path,
+):
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    daily = tmp_path / "memory" / "2026-05-08.md"
+    daily.parent.mkdir(parents=True)
+    daily.write_text("# 2026-05-08\n\n- Different note content now.\n", encoding="utf-8")
+    result = {
+        "path": "memory/2026-05-08.md",
+        "source": "memory",
+        "startLine": 3,
+        "endLine": 3,
+        "snippet": "- Move backups to S3 Glacier.",
+        "score": 1,
+    }
+    record_short_term_recalls(config=config, query="glacier", results=[result], now_ms=now)
+
+    candidates = rank_short_term_promotion_candidates(
+        config=config,
+        now_ms=now,
+        limit=5,
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+    )
+    run = run_short_term_promotion(
+        config=config,
+        store=fake_store(config),
+        now_ms=now,
+        timezone="Europe/Istanbul",
+        limit=5,
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+    )
+
+    assert len(candidates) == 1
+    assert run.parsed.should_write is False
+    assert not (tmp_path / "MEMORY.md").exists()
+    recall_store = json.loads(
+        (tmp_path / "memory" / ".dreams" / "short-term-recall.json").read_text(encoding="utf-8")
+    )
+    assert "promotedAt" not in recall_store["entries"]["memory:memory/2026-05-08.md:3:3"]

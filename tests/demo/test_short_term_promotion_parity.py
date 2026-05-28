@@ -42,6 +42,54 @@ def test_lock_constants_match_openclaw_paths():
     )
 
 
+def test_concept_tags_match_openclaw_vocabulary_for_personal_preference():
+    assert promotion_module._derive_concept_tags(
+        "memory/2026-05-26.md",
+        "- User prefers to be addressed as Doruk.",
+    ) == ["prefers", "addressed", "doruk"]
+
+
+def test_concept_tags_match_openclaw_vocabulary_for_network_memory():
+    assert promotion_module._derive_concept_tags(
+        "memory/2026-05-27-network.md",
+        "- Router VLAN DHCP firewall subnet Mikrotik configuration failed.",
+    ) == [
+        "network",
+        "router",
+        "vlan",
+        "2026-05-27-network.md",
+        "network.md",
+        "dhcp",
+        "firewall",
+        "subnet",
+    ]
+
+
+def test_concept_tags_match_openclaw_vocabulary_for_stop_words_and_duplicates():
+    assert promotion_module._derive_concept_tags(
+        "memory/2026-05-28-topic.md",
+        "- The user and assistant discussed memory memory 2026-05-26.md "
+        "1234 router s3 gateway backup router.",
+    ) == ["backup", "gateway", "router", "2026-05-28-topic.md", "topic.md", "discussed"]
+
+
+def test_concept_tags_match_openclaw_vocabulary_limit_order():
+    assert promotion_module._derive_concept_tags(
+        "memory/2026-05-30-compound.md",
+        "- puerta-de-enlace openai_embeddings qmd routeur gateway router vlan s3 "
+        "backups failover glacier network extra tokens",
+    ) == [
+        "backup",
+        "backups",
+        "embedding",
+        "embeddings",
+        "failover",
+        "gateway",
+        "glacier",
+        "network",
+    ]
+
+
 def test_active_short_term_lock_blocks_second_owner(tmp_path: Path):
     config = MemoryConfig(workspace_dir=tmp_path)
     now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))

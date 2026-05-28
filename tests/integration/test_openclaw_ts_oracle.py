@@ -172,6 +172,91 @@ def test_real_openclaw_oracle_records_short_term_recall_sequence():
     assert entry["recallDays"] == ["2026-05-26", "2026-05-27"]
 
 
+def test_real_openclaw_oracle_derives_concept_vocabulary_tags():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+    fixtures = [
+        (
+            "memory/2026-05-26.md",
+            "- User prefers to be addressed as Doruk.",
+            ["prefers", "addressed", "doruk"],
+        ),
+        (
+            "memory/2026-05-27-network.md",
+            "- Router VLAN DHCP firewall subnet Mikrotik configuration failed.",
+            [
+                "network",
+                "router",
+                "vlan",
+                "2026-05-27-network.md",
+                "network.md",
+                "dhcp",
+                "firewall",
+                "subnet",
+            ],
+        ),
+        (
+            "memory/2026-05-28-topic.md",
+            "- The user and assistant discussed memory memory 2026-05-26.md "
+            "1234 router s3 gateway backup router.",
+            ["backup", "gateway", "router", "2026-05-28-topic.md", "topic.md", "discussed"],
+        ),
+        (
+            "memory/2026-05-30-compound.md",
+            "- puerta-de-enlace openai_embeddings qmd routeur gateway router vlan s3 "
+            "backups failover glacier network extra tokens",
+            [
+                "backup",
+                "backups",
+                "embedding",
+                "embeddings",
+                "failover",
+                "gateway",
+                "glacier",
+                "network",
+            ],
+        ),
+    ]
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-concepts-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        recalls = []
+        for index, (relative_path, snippet, _) in enumerate(fixtures):
+            memory_file = workspace / relative_path
+            memory_file.parent.mkdir(parents=True, exist_ok=True)
+            memory_file.write_text(f"# Fixture\n\n{snippet}\n", encoding="utf-8")
+            recalls.append(
+                {
+                    "query": f"fixture {index}",
+                    "results": [
+                        {
+                            "source": "memory",
+                            "path": relative_path,
+                            "startLine": 3,
+                            "endLine": 3,
+                            "snippet": snippet,
+                            "score": 1,
+                        }
+                    ],
+                    "nowMs": 1779811200000 + index,
+                }
+            )
+        result = oracle.run(
+            {
+                "operation": "recordShortTermRecallSequence",
+                "workspaceDir": str(workspace),
+                "timezone": "Europe/Istanbul",
+                "recalls": recalls,
+            }
+        )
+
+    assert result["ok"] is True
+    recall_store = json.loads(result["files"]["memory/.dreams/short-term-recall.json"])
+    entries = recall_store["entries"]
+    for relative_path, _, expected_tags in fixtures:
+        entry = entries[f"memory:{relative_path}:3:3"]
+        assert entry["conceptTags"] == expected_tags
+
+
 def test_real_openclaw_oracle_ranks_short_term_promotion_candidate():
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
 

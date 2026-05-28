@@ -10,8 +10,10 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import secrets
 from typing import Any, Iterator
+import unicodedata
 
 from demo.memory_flush import ParsedFlushOutput
 from memory_core.config import MemoryConfig
@@ -40,6 +42,271 @@ PROMOTION_COMPONENT_WEIGHTS = {
 }
 DAY_MS = 24 * 60 * 60 * 1000
 PHASE_SIGNAL_DECAY_MS = 30 * DAY_MS
+MAX_CONCEPT_TAGS = 8
+
+
+def _normalize_lowercase_string(value: str) -> str:
+    return " ".join(str(value).strip().lower().split())
+
+
+_LANGUAGE_STOP_WORDS = {
+    "about",
+    "after",
+    "agent",
+    "again",
+    "also",
+    "assistant",
+    "because",
+    "before",
+    "being",
+    "between",
+    "build",
+    "called",
+    "could",
+    "daily",
+    "default",
+    "deploy",
+    "during",
+    "every",
+    "file",
+    "files",
+    "from",
+    "have",
+    "into",
+    "just",
+    "line",
+    "lines",
+    "long",
+    "main",
+    "make",
+    "memory",
+    "month",
+    "more",
+    "most",
+    "move",
+    "much",
+    "next",
+    "note",
+    "notes",
+    "over",
+    "part",
+    "past",
+    "port",
+    "same",
+    "score",
+    "search",
+    "session",
+    "sessions",
+    "short",
+    "should",
+    "since",
+    "some",
+    "subagent",
+    "system",
+    "than",
+    "that",
+    "their",
+    "there",
+    "these",
+    "they",
+    "this",
+    "through",
+    "today",
+    "user",
+    "using",
+    "with",
+    "work",
+    "workspace",
+    "year",
+    "and",
+    "are",
+    "for",
+    "its",
+    "our",
+    "the",
+    "then",
+    "were",
+    "you",
+    "your",
+    "al",
+    "con",
+    "como",
+    "de",
+    "del",
+    "el",
+    "en",
+    "es",
+    "la",
+    "las",
+    "los",
+    "para",
+    "por",
+    "que",
+    "se",
+    "sin",
+    "su",
+    "sus",
+    "una",
+    "uno",
+    "unos",
+    "unas",
+    "y",
+    "au",
+    "aux",
+    "avec",
+    "dans",
+    "des",
+    "du",
+    "est",
+    "et",
+    "le",
+    "les",
+    "ou",
+    "pour",
+    "qui",
+    "sans",
+    "ses",
+    "son",
+    "sur",
+    "une",
+    "un",
+    "auf",
+    "aus",
+    "bei",
+    "das",
+    "dem",
+    "den",
+    "der",
+    "die",
+    "ein",
+    "eine",
+    "einem",
+    "einen",
+    "einer",
+    "für",
+    "im",
+    "in",
+    "mit",
+    "nach",
+    "oder",
+    "ohne",
+    "über",
+    "und",
+    "von",
+    "zu",
+    "zum",
+    "zur",
+    "が",
+    "から",
+    "する",
+    "して",
+    "した",
+    "で",
+    "と",
+    "に",
+    "の",
+    "は",
+    "へ",
+    "まで",
+    "も",
+    "や",
+    "を",
+    "与",
+    "为",
+    "了",
+    "及",
+    "和",
+    "在",
+    "将",
+    "或",
+    "把",
+    "是",
+    "用",
+    "的",
+    "과",
+    "는",
+    "도",
+    "로",
+    "를",
+    "에",
+    "에서",
+    "와",
+    "은",
+    "으로",
+    "을",
+    "이",
+    "하다",
+    "한",
+    "할",
+    "해",
+    "했다",
+    "cjs",
+    "cpp",
+    "cts",
+    "jsx",
+    "json",
+    "md",
+    "mjs",
+    "mts",
+    "text",
+    "toml",
+    "ts",
+    "tsx",
+    "txt",
+    "yaml",
+    "yml",
+}
+_CONCEPT_STOP_WORDS = {_normalize_lowercase_string(word) for word in _LANGUAGE_STOP_WORDS}
+_PROTECTED_GLOSSARY = [
+    "backup",
+    "backups",
+    "embedding",
+    "embeddings",
+    "failover",
+    "gateway",
+    "glacier",
+    "gpt",
+    "kv",
+    "network",
+    "openai",
+    "qmd",
+    "router",
+    "s3",
+    "vlan",
+    "sauvegarde",
+    "routeur",
+    "passerelle",
+    "konfiguration",
+    "sicherung",
+    "überwachung",
+    "configuración",
+    "respaldo",
+    "enrutador",
+    "puerta-de-enlace",
+    "バックアップ",
+    "フェイルオーバー",
+    "ルーター",
+    "ネットワーク",
+    "ゲートウェイ",
+    "障害対応",
+    "路由器",
+    "备份",
+    "故障转移",
+    "网络",
+    "网关",
+    "라우터",
+    "백업",
+    "페일오버",
+    "네트워크",
+    "게이트웨이",
+    "장애대응",
+]
+_PROTECTED_GLOSSARY = [
+    _normalize_lowercase_string(unicodedata.normalize("NFKC", word))
+    for word in _PROTECTED_GLOSSARY
+]
+_COMPOUND_TOKEN_RE = re.compile(r"[^\W_]+(?:[._/-][^\W_]+)+", re.UNICODE)
+_SEGMENT_TOKEN_RE = re.compile(r"[^\W\d_]*[^\W_][^\W_]*(?:\.[^\W_]+)?", re.UNICODE)
 
 
 @dataclass(frozen=True)
@@ -970,37 +1237,130 @@ def _calculate_consolidation_component(recall_days: list[str]) -> float:
     return _clamp(0.55 * spacing + 0.45 * span)
 
 
-def _derive_concept_tags(path: str, snippet: str, limit: int = 6) -> list[str]:
-    stop_words = {
-        "the",
-        "and",
-        "for",
-        "from",
-        "that",
-        "this",
-        "with",
-        "user",
-        "users",
-        "their",
-        "they",
-        "them",
-    }
-    words = []
-    source = f"{Path(path).name} {snippet}".lower()
-    for raw in source.replace("_", " ").replace("-", " ").split():
-        token = "".join(char for char in raw if char.isalnum())
-        if (
-            len(token) < 3
-            or token.isdigit()
-            or token in words
-            or token in stop_words
-            or token.endswith("md")
-        ):
-            continue
-        words.append(token)
-        if len(words) >= limit:
+def _derive_concept_tags(path: str, snippet: str, limit: int = MAX_CONCEPT_TAGS) -> list[str]:
+    normalized_limit = max(0, int(limit)) if math.isfinite(float(limit)) else MAX_CONCEPT_TAGS
+    if normalized_limit == 0:
+        return []
+    source = f"{Path(path).name} {snippet}"
+    tags: list[str] = []
+    for raw_token in (
+        _collect_glossary_matches(source)
+        + _collect_compound_tokens(source)
+        + _collect_segment_tokens(source)
+    ):
+        _push_normalized_concept_tag(tags, raw_token, normalized_limit)
+        if len(tags) >= normalized_limit:
             break
-    return words
+    return tags
+
+
+def _collect_glossary_matches(source: str) -> list[str]:
+    normalized_source = _normalize_lowercase_string(unicodedata.normalize("NFKC", source))
+    return [entry for entry in _PROTECTED_GLOSSARY if entry in normalized_source]
+
+
+def _collect_compound_tokens(source: str) -> list[str]:
+    return _COMPOUND_TOKEN_RE.findall(source)
+
+
+def _collect_segment_tokens(source: str) -> list[str]:
+    return _SEGMENT_TOKEN_RE.findall(source)
+
+
+def _push_normalized_concept_tag(tags: list[str], raw_token: str, limit: int) -> None:
+    normalized = _normalize_concept_token(raw_token)
+    if not normalized or normalized in tags:
+        return
+    tags.append(normalized)
+    if len(tags) > limit:
+        del tags[limit:]
+
+
+def _normalize_concept_token(raw_token: str) -> str | None:
+    normalized = _normalize_lowercase_string(
+        _strip_non_alnum_edges(unicodedata.normalize("NFKC", raw_token)).replace("_", "-")
+    )
+    if not normalized or not any(char.isalnum() for char in normalized) or len(normalized) > 32:
+        return None
+    if (
+        normalized.isdigit()
+        or re.fullmatch(r"\d+\.[^\W_]+", normalized, re.UNICODE)
+        or re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized)
+        or re.fullmatch(r"\d{4}-\d{2}-\d{2}\.[^\W_]+", normalized, re.UNICODE)
+    ):
+        return None
+    script = _classify_concept_tag_script(normalized)
+    if len(normalized) < (2 if script == "cjk" else 3):
+        return None
+    if _is_kana_only_token(normalized) and len(normalized) < 3:
+        return None
+    if normalized in _CONCEPT_STOP_WORDS:
+        return None
+    return normalized
+
+
+def _strip_non_alnum_edges(value: str) -> str:
+    start = 0
+    end = len(value)
+    while start < end and not value[start].isalnum():
+        start += 1
+    while end > start and not value[end - 1].isalnum():
+        end -= 1
+    return value[start:end]
+
+
+def _classify_concept_tag_script(tag: str) -> str:
+    normalized = unicodedata.normalize("NFKC", tag)
+    has_latin = any(_is_latin(char) for char in normalized)
+    has_cjk = any(_is_cjk(char) for char in normalized)
+    if has_latin and has_cjk:
+        return "mixed"
+    if has_cjk:
+        return "cjk"
+    if has_latin:
+        return "latin"
+    return "other"
+
+
+def _is_latin(char: str) -> bool:
+    try:
+        return "LATIN" in unicodedata.name(char)
+    except ValueError:
+        return False
+
+
+def _is_cjk(char: str) -> bool:
+    codepoint = ord(char)
+    return (
+        0x4E00 <= codepoint <= 0x9FFF
+        or 0x3400 <= codepoint <= 0x4DBF
+        or 0x3040 <= codepoint <= 0x309F
+        or 0x30A0 <= codepoint <= 0x30FF
+        or 0xAC00 <= codepoint <= 0xD7AF
+    )
+
+
+def _is_kana_only_token(value: str) -> bool:
+    has_han_or_hangul = any(_is_han(char) or _is_hangul(char) for char in value)
+    has_kana = any(_is_hiragana(char) or _is_katakana(char) for char in value)
+    return not has_han_or_hangul and has_kana
+
+
+def _is_han(char: str) -> bool:
+    codepoint = ord(char)
+    return 0x4E00 <= codepoint <= 0x9FFF or 0x3400 <= codepoint <= 0x4DBF
+
+
+def _is_hiragana(char: str) -> bool:
+    return 0x3040 <= ord(char) <= 0x309F
+
+
+def _is_katakana(char: str) -> bool:
+    return 0x30A0 <= ord(char) <= 0x30FF
+
+
+def _is_hangul(char: str) -> bool:
+    return 0xAC00 <= ord(char) <= 0xD7AF
 
 
 def _hash(value: str) -> str:

@@ -735,6 +735,41 @@ def test_second_promotion_apply_reconciles_existing_marker_without_duplicate_lik
     assert recall_store["entries"][key]["promotedAt"] == "2026-05-08T12:00:00.000Z"
 
 
+def test_ranking_applies_max_age_gate_like_openclaw(tmp_path: Path):
+    config = MemoryConfig(workspace_dir=tmp_path)
+    recalled_at = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    ranked_at = recalled_at + 3 * 86_400_000
+    daily = tmp_path / "memory" / "2026-05-08.md"
+    daily.parent.mkdir(parents=True)
+    daily.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+    result = {
+        "path": "memory/2026-05-08.md",
+        "source": "memory",
+        "startLine": 3,
+        "endLine": 3,
+        "snippet": "- Move backups to S3 Glacier.",
+        "score": 1,
+    }
+    record_short_term_recalls(
+        config=config,
+        query="glacier",
+        results=[result],
+        now_ms=recalled_at,
+    )
+
+    candidates = rank_short_term_promotion_candidates(
+        config=config,
+        now_ms=ranked_at,
+        limit=5,
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+        max_age_days=2,
+    )
+
+    assert candidates == []
+
+
 def test_promotion_run_skips_candidate_when_live_daily_note_no_longer_contains_snippet(
     tmp_path: Path,
 ):

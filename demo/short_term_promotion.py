@@ -720,6 +720,7 @@ def run_short_term_promotion(
     min_score: float = DEFAULT_PROMOTION_MIN_SCORE,
     min_recall_count: int = DEFAULT_PROMOTION_MIN_RECALL_COUNT,
     min_unique_queries: int = DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+    max_age_days: int = -1,
 ) -> MemoryPromotionRun:
     with acquire_short_term_promotion_lock(config=config, now_ms=now_ms) as lock:
         if not lock.acquired:
@@ -747,6 +748,7 @@ def run_short_term_promotion(
             min_score=min_score,
             min_recall_count=min_recall_count,
             min_unique_queries=min_unique_queries,
+            max_age_days=max_age_days,
         )
 
 
@@ -760,6 +762,7 @@ def _run_short_term_promotion_unlocked(
     min_score: float = DEFAULT_PROMOTION_MIN_SCORE,
     min_recall_count: int = DEFAULT_PROMOTION_MIN_RECALL_COUNT,
     min_unique_queries: int = DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+    max_age_days: int = -1,
 ) -> MemoryPromotionRun:
     workspace = MemoryWorkspace(config.workspace_dir)
     target = "MEMORY.md"
@@ -771,6 +774,7 @@ def _run_short_term_promotion_unlocked(
         min_score=min_score,
         min_recall_count=min_recall_count,
         min_unique_queries=min_unique_queries,
+        max_age_days=max_age_days,
     )
     candidates = [
         _evaluation_to_candidate(evaluation)
@@ -841,6 +845,7 @@ def rank_short_term_promotion_candidates(
     min_score: float,
     min_recall_count: int,
     min_unique_queries: int,
+    max_age_days: int = -1,
 ) -> list[PromotionCandidate]:
     candidates = [
         _evaluation_to_candidate(evaluation)
@@ -850,6 +855,7 @@ def rank_short_term_promotion_candidates(
             min_score=min_score,
             min_recall_count=min_recall_count,
             min_unique_queries=min_unique_queries,
+            max_age_days=max_age_days,
         )
         if not evaluation.reasons
     ]
@@ -863,6 +869,7 @@ def evaluate_short_term_promotion_candidates(
     min_score: float,
     min_recall_count: int,
     min_unique_queries: int,
+    max_age_days: int = -1,
 ) -> list[PromotionEvaluation]:
     store = _read_store(config.workspace_dir / SHORT_TERM_STORE_RELATIVE_PATH, now_ms)
     phase_signals = _read_phase_signal_store(
@@ -908,6 +915,8 @@ def evaluate_short_term_promotion_candidates(
             reasons.append(f"signals {signal_count} < {min_recall_count}")
         if context_diversity < min_unique_queries:
             reasons.append(f"unique queries/days {context_diversity} < {min_unique_queries}")
+        if max_age_days >= 0 and age_days > max_age_days:
+            reasons.append(f"age {age_days:.3f} > {max_age_days}")
         evaluations.append(
             PromotionEvaluation(
                 key=key,

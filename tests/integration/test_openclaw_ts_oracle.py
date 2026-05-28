@@ -445,6 +445,67 @@ def test_real_openclaw_oracle_second_apply_reconciles_existing_marker_without_du
     assert memory_text.count("Move backups to S3 Glacier.") == 1
 
 
+def test_real_openclaw_oracle_ranking_applies_max_age_gate():
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-max-age-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        memory_file = workspace / "memory" / "2026-05-08.md"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+        result = {
+            "source": "memory",
+            "path": "memory/2026-05-08.md",
+            "startLine": 3,
+            "endLine": 3,
+            "snippet": "- Move backups to S3 Glacier.",
+            "score": 1,
+        }
+        oracle.run(
+            {
+                "operation": "recordShortTermRecalls",
+                "workspaceDir": str(workspace),
+                "query": "glacier",
+                "results": [result],
+                "nowMs": 1778241600000,
+                "timezone": "Europe/Istanbul",
+            }
+        )
+        ranked_without_gate = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1778500800000,
+                "timezone": "Europe/Istanbul",
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+                "maxAgeDays": -1,
+            }
+        )
+        ranked_with_gate = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1778500800000,
+                "timezone": "Europe/Istanbul",
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+                "maxAgeDays": 2,
+            }
+        )
+
+    assert ranked_without_gate["ok"] is True
+    assert len(ranked_without_gate["result"]["candidates"]) == 1
+    assert ranked_without_gate["result"]["candidates"][0]["ageDays"] == 3
+    assert ranked_with_gate["ok"] is True
+    assert ranked_with_gate["result"]["candidates"] == []
+
+
 def test_real_openclaw_oracle_reconciles_existing_promotion_marker():
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),

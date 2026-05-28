@@ -229,6 +229,8 @@ async function main() {
       minRecallCount: policy.minRecallCount,
       minUniqueQueries: policy.minUniqueQueries,
       maxAgeDays: policy.maxAgeDays,
+      memoryFileMaxChars:
+        typeof payload.memoryFileMaxChars === "number" ? payload.memoryFileMaxChars : undefined,
     });
     return {
       ok: true,

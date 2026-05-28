@@ -688,6 +688,73 @@ def test_promotion_run_parses_spaced_case_insensitive_marker_like_openclaw(tmp_p
     assert recall_store["entries"][key]["promotedAt"] == "2026-05-08T12:00:00.000Z"
 
 
+def test_promotion_run_compacts_oldest_promotion_section_when_memory_budget_exceeded(
+    tmp_path: Path,
+):
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    now = ms(datetime(2026, 4, 29, 10, 0, tzinfo=UTC))
+    daily = tmp_path / "memory" / "2026-04-29.md"
+    daily.parent.mkdir(parents=True)
+    daily.write_text(
+        "# 2026-04-29\n\nRotate the staging Postgres credentials before next deploy.\n",
+        encoding="utf-8",
+    )
+    filler = "x" * 600
+    seeded_memory = "\n".join(
+        [
+            "# Long-Term Memory",
+            "",
+            "User-authored note that must stay.",
+            "",
+            "## Promoted From Short-Term Memory (2026-04-10)",
+            "<!-- openclaw-memory-promotion:legacy-old -->",
+            f"- {filler}",
+            "",
+            "## Promoted From Short-Term Memory (2026-04-20)",
+            "<!-- openclaw-memory-promotion:legacy-newer -->",
+            f"- {filler}",
+            "",
+        ]
+    )
+    (tmp_path / "MEMORY.md").write_text(seeded_memory, encoding="utf-8")
+    record_short_term_recalls(
+        config=config,
+        query="rotate creds",
+        results=[
+            {
+                "path": "memory/2026-04-29.md",
+                "source": "memory",
+                "startLine": 3,
+                "endLine": 3,
+                "snippet": "Rotate the staging Postgres credentials before next deploy.",
+                "score": 0.96,
+            }
+        ],
+        now_ms=now,
+    )
+
+    run = run_short_term_promotion(
+        config=config,
+        store=fake_store(config),
+        now_ms=now,
+        timezone="Europe/Istanbul",
+        limit=5,
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+        memory_file_max_chars=1_400,
+    )
+    memory_text = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
+
+    assert run.parsed.should_write is True
+    assert "User-authored note that must stay." in memory_text
+    assert "(2026-04-10)" not in memory_text
+    assert "legacy-old" not in memory_text
+    assert "(2026-04-20)" in memory_text
+    assert "legacy-newer" in memory_text
+    assert "Rotate the staging Postgres credentials" in memory_text
+
+
 def test_first_promotion_write_bootstraps_long_term_memory_header_like_openclaw(
     tmp_path: Path,
 ):

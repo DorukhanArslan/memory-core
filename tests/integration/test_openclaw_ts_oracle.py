@@ -876,6 +876,94 @@ def test_real_openclaw_oracle_reconciles_spaced_case_insensitive_promotion_marke
     assert applied["files"]["MEMORY.md"].count("OPENCLAW-MEMORY-PROMOTION:") == 1
 
 
+def test_real_openclaw_oracle_compacts_oldest_promotion_section_when_memory_budget_exceeded():
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-memory-budget-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        memory_file = workspace / "memory" / "2026-04-29.md"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text(
+            "# 2026-04-29\n\nRotate the staging Postgres credentials before next deploy.\n",
+            encoding="utf-8",
+        )
+        filler = "x" * 600
+        seeded_memory = "\n".join(
+            [
+                "# Long-Term Memory",
+                "",
+                "User-authored note that must stay.",
+                "",
+                "## Promoted From Short-Term Memory (2026-04-10)",
+                "<!-- openclaw-memory-promotion:legacy-old -->",
+                f"- {filler}",
+                "",
+                "## Promoted From Short-Term Memory (2026-04-20)",
+                "<!-- openclaw-memory-promotion:legacy-newer -->",
+                f"- {filler}",
+                "",
+            ]
+        )
+        (workspace / "MEMORY.md").write_text(seeded_memory, encoding="utf-8")
+        result = {
+            "source": "memory",
+            "path": "memory/2026-04-29.md",
+            "startLine": 3,
+            "endLine": 3,
+            "snippet": "Rotate the staging Postgres credentials before next deploy.",
+            "score": 0.96,
+        }
+        oracle.run(
+            {
+                "operation": "recordShortTermRecalls",
+                "workspaceDir": str(workspace),
+                "query": "rotate creds",
+                "results": [result],
+                "nowMs": 1777456800000,
+                "timezone": "Europe/Istanbul",
+            }
+        )
+        ranked = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1777456800000,
+                "timezone": "Europe/Istanbul",
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+            }
+        )
+        applied = oracle.run(
+            {
+                "operation": "applyShortTermPromotions",
+                "workspaceDir": str(workspace),
+                "nowMs": 1777456800000,
+                "timezone": "Europe/Istanbul",
+                "candidates": ranked["result"]["candidates"],
+                "minScore": 0,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+                "memoryFileMaxChars": 1_400,
+            }
+        )
+
+    memory_text = applied["files"]["MEMORY.md"]
+    assert applied["ok"] is True
+    assert applied["result"]["applied"] == 1
+    assert applied["result"]["compactedSections"] == 1
+    assert applied["result"]["compactedDates"] == ["2026-04-10"]
+    assert "User-authored note that must stay." in memory_text
+    assert "(2026-04-10)" not in memory_text
+    assert "legacy-old" not in memory_text
+    assert "(2026-04-20)" in memory_text
+    assert "legacy-newer" in memory_text
+    assert "Rotate the staging Postgres credentials" in memory_text
+
+
 def test_real_openclaw_oracle_ranking_skips_promoted_at_entry():
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),

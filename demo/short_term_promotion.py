@@ -41,6 +41,11 @@ PROMOTION_COMPONENT_WEIGHTS = {
     "consolidation": 0.10,
     "conceptual": 0.06,
 }
+DEFAULT_MEMORY_FILE_MAX_CHARS = 10_000
+_MEMORY_WRITE_OVERHEAD_RESERVE = 21
+_PROMOTION_SECTION_HEADING_RE = re.compile(
+    r"^## Promoted From Short-Term Memory \(([^)]+)\)\s*$"
+)
 DAY_MS = 24 * 60 * 60 * 1000
 PHASE_SIGNAL_DECAY_MS = 30 * DAY_MS
 MAX_CONCEPT_TAGS = 8
@@ -722,6 +727,7 @@ def run_short_term_promotion(
     min_unique_queries: int = DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
     max_age_days: int = -1,
     recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
+    memory_file_max_chars: int = DEFAULT_MEMORY_FILE_MAX_CHARS,
 ) -> MemoryPromotionRun:
     with acquire_short_term_promotion_lock(config=config, now_ms=now_ms) as lock:
         if not lock.acquired:
@@ -751,6 +757,7 @@ def run_short_term_promotion(
             min_unique_queries=min_unique_queries,
             max_age_days=max_age_days,
             recency_half_life_days=recency_half_life_days,
+            memory_file_max_chars=memory_file_max_chars,
         )
 
 
@@ -766,6 +773,7 @@ def _run_short_term_promotion_unlocked(
     min_unique_queries: int = DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
     max_age_days: int = -1,
     recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
+    memory_file_max_chars: int = DEFAULT_MEMORY_FILE_MAX_CHARS,
 ) -> MemoryPromotionRun:
     workspace = MemoryWorkspace(config.workspace_dir)
     target = "MEMORY.md"
@@ -806,7 +814,7 @@ def _run_short_term_promotion_unlocked(
     if rehydrated_candidates:
         entry = _build_promotion_section(to_append, now_ms, timezone) if to_append else ""
         if to_append:
-            _append_to_memory(target_path, entry)
+            _append_to_memory(target_path, entry, memory_file_max_chars=memory_file_max_chars)
         _mark_promoted(
             config.workspace_dir / SHORT_TERM_STORE_RELATIVE_PATH, rehydrated_candidates, now_ms
         )
@@ -1236,14 +1244,93 @@ def _mark_promoted(path: Path, candidates: list[PromotionCandidate], now_ms: int
     _write_store(path, store)
 
 
-def _append_to_memory(path: Path, content: str) -> None:
+def _append_to_memory(
+    path: Path, content: str, memory_file_max_chars: int = DEFAULT_MEMORY_FILE_MAX_CHARS
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     before = _read_text_if_exists(path)
     if not before and path.name == "MEMORY.md":
         path.write_text(f"# Long-Term Memory\n\n{content}\n", encoding="utf-8")
         return
+    if path.name == "MEMORY.md":
+        before = _compact_memory_for_budget(
+            existing_memory=before,
+            new_section=content,
+            budget_chars=memory_file_max_chars,
+        )[0]
     separator = "" if not before or before.endswith("\n") else "\n"
     path.write_text(f"{before}{separator}{content.strip()}\n", encoding="utf-8")
+
+
+def _compact_memory_for_budget(
+    *, existing_memory: str, new_section: str, budget_chars: int
+) -> tuple[str, list[str]]:
+    if budget_chars <= 0:
+        return existing_memory, []
+    effective_budget = max(0, budget_chars - _MEMORY_WRITE_OVERHEAD_RESERVE)
+    if len(existing_memory) + len(new_section) <= effective_budget:
+        return existing_memory, []
+    blocks = _parse_memory_blocks(existing_memory)
+    promotion_entries = sorted(
+        (
+            (index, block["date"], len(block["text"]))
+            for index, block in enumerate(blocks)
+            if block["kind"] == "promotion"
+        ),
+        key=lambda item: item[1],
+    )
+    if not promotion_entries:
+        return existing_memory, []
+    dropped_indices = set()
+    dropped_dates = []
+    projected_size = len(existing_memory)
+    block_separator_cost = 1 if len(blocks) > 1 else 0
+    for index, date, length in promotion_entries:
+        if projected_size + len(new_section) <= effective_budget:
+            break
+        dropped_indices.add(index)
+        dropped_dates.append(date)
+        projected_size = max(0, projected_size - length - block_separator_cost)
+    if not dropped_indices:
+        return existing_memory, []
+    remaining = [block for index, block in enumerate(blocks) if index not in dropped_indices]
+    return "\n".join(block["text"] for block in remaining), dropped_dates
+
+
+def _parse_memory_blocks(content: str) -> list[dict[str, str]]:
+    if not content:
+        return []
+    blocks = []
+    current_lines = []
+    current_kind = "preserved"
+    current_date = ""
+
+    def flush() -> None:
+        nonlocal current_lines, current_kind, current_date
+        if not current_lines:
+            return
+        block = {"kind": current_kind, "text": "\n".join(current_lines)}
+        if current_kind == "promotion":
+            block["date"] = current_date
+        blocks.append(block)
+        current_lines = []
+        current_kind = "preserved"
+        current_date = ""
+
+    for line in content.splitlines():
+        if line.startswith("## "):
+            flush()
+            match = _PROMOTION_SECTION_HEADING_RE.match(line)
+            if match:
+                current_kind = "promotion"
+                current_date = match.group(1)
+            else:
+                current_kind = "preserved"
+            current_lines = [line]
+        else:
+            current_lines.append(line)
+    flush()
+    return blocks
 
 
 def _extract_promotion_markers(memory_text: str) -> list[str]:

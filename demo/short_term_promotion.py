@@ -1216,6 +1216,9 @@ def _mark_promoted(path: Path, candidates: list[PromotionCandidate], now_ms: int
 def _append_to_memory(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     before = _read_text_if_exists(path)
+    if not before and path.name == "MEMORY.md":
+        path.write_text(f"# Long-Term Memory\n\n{content}\n", encoding="utf-8")
+        return
     separator = "" if not before or before.endswith("\n") else "\n"
     path.write_text(f"{before}{separator}{content.strip()}\n", encoding="utf-8")
 

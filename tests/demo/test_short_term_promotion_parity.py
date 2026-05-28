@@ -644,6 +644,41 @@ def test_promotion_run_reconciles_existing_marker_without_duplicate_append(tmp_p
     assert recall_store["entries"][key]["promotedAt"] == "2026-05-08T12:00:00.000Z"
 
 
+def test_first_promotion_write_bootstraps_long_term_memory_header_like_openclaw(
+    tmp_path: Path,
+):
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    daily = tmp_path / "memory" / "2026-05-08.md"
+    daily.parent.mkdir(parents=True)
+    daily.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+    result = {
+        "path": "memory/2026-05-08.md",
+        "source": "memory",
+        "startLine": 3,
+        "endLine": 3,
+        "snippet": "- Move backups to S3 Glacier.",
+        "score": 1,
+    }
+    record_short_term_recalls(config=config, query="glacier", results=[result], now_ms=now)
+
+    run = run_short_term_promotion(
+        config=config,
+        store=fake_store(config),
+        now_ms=now,
+        timezone="Europe/Istanbul",
+        limit=5,
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+    )
+
+    assert run.parsed.should_write is True
+    assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8").startswith(
+        "# Long-Term Memory\n\n\n## Promoted From Short-Term Memory (2026-05-08)"
+    )
+
+
 def test_promotion_run_skips_candidate_when_live_daily_note_no_longer_contains_snippet(
     tmp_path: Path,
 ):

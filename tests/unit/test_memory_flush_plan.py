@@ -9,6 +9,7 @@ from memory_core.memory_flush import (
     SILENT_REPLY_TOKEN,
     UnsafeMemoryFlushTargetError,
     build_memory_flush_plan,
+    explain_memory_flush_trigger,
     has_already_flushed_for_current_compaction,
     should_force_memory_flush_by_transcript_size,
     should_run_memory_flush_trigger,
@@ -220,6 +221,82 @@ def test_should_run_memory_flush_trigger_blocks_runtime_skip_flags():
         force_flush_transcript_bytes=2_000,
         is_cli=True,
     )
+
+
+def test_explain_memory_flush_trigger_reports_token_threshold_reason():
+    decision = explain_memory_flush_trigger(
+        entry={"totalTokens": 85},
+        context_window_tokens=100,
+        reserve_tokens_floor=10,
+        soft_threshold_tokens=5,
+    )
+
+    assert decision.should_flush is True
+    assert decision.reason == "token_threshold"
+    assert decision.total_tokens == 85
+    assert decision.threshold == 85
+
+
+def test_explain_memory_flush_trigger_reports_transcript_size_reason():
+    decision = explain_memory_flush_trigger(
+        entry={"totalTokens": 1},
+        context_window_tokens=100_000,
+        reserve_tokens_floor=20_000,
+        soft_threshold_tokens=4_000,
+        transcript_byte_size=2_000,
+        force_flush_transcript_bytes=2_000,
+    )
+
+    assert decision.should_flush is True
+    assert decision.reason == "transcript_size"
+    assert decision.transcript_size_gate is True
+    assert decision.token_gate is False
+
+
+def test_explain_memory_flush_trigger_reports_same_cycle_duplicate():
+    decision = explain_memory_flush_trigger(
+        entry={
+            "totalTokens": 99_000,
+            "compactionCount": 1,
+            "memoryFlushCompactionCount": 1,
+        },
+        context_window_tokens=100_000,
+        reserve_tokens_floor=5_000,
+        soft_threshold_tokens=2_000,
+        transcript_byte_size=2_000,
+        force_flush_transcript_bytes=2_000,
+    )
+
+    assert decision.should_flush is False
+    assert decision.reason == "already_flushed"
+    assert decision.already_flushed is True
+
+
+def test_explain_memory_flush_trigger_reports_runtime_skip_reason():
+    decision = explain_memory_flush_trigger(
+        entry={"totalTokens": 99_000},
+        context_window_tokens=100_000,
+        reserve_tokens_floor=5_000,
+        soft_threshold_tokens=2_000,
+        memory_flush_writable=False,
+    )
+
+    assert decision.should_flush is False
+    assert decision.reason == "runtime_skip:not_writable"
+
+
+def test_explain_memory_flush_trigger_reports_under_threshold_reason():
+    decision = explain_memory_flush_trigger(
+        entry={"totalTokens": 10_000},
+        context_window_tokens=100_000,
+        reserve_tokens_floor=20_000,
+        soft_threshold_tokens=10_000,
+    )
+
+    assert decision.should_flush is False
+    assert decision.reason == "under_threshold"
+    assert decision.total_tokens == 10_000
+    assert decision.threshold == 70_000
 
 
 def test_validate_daily_memory_target_accepts_only_canonical_daily_file():

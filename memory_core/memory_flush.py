@@ -72,6 +72,17 @@ class MemoryFlushPlan:
     model: str | None = None
 
 
+@dataclass(frozen=True)
+class MemoryFlushTriggerDecision:
+    should_flush: bool
+    reason: str
+    token_gate: bool = False
+    transcript_size_gate: bool = False
+    already_flushed: bool = False
+    total_tokens: int | None = None
+    threshold: int | None = None
+
+
 def ensure_no_reply_hint(text: str) -> str:
     if SILENT_REPLY_TOKEN in text:
         return text
@@ -213,25 +224,97 @@ def should_run_memory_flush_trigger(
     is_heartbeat: bool = False,
     is_cli: bool = False,
 ) -> bool:
-    can_attempt_flush = memory_flush_writable and not is_heartbeat and not is_cli
-    if not can_attempt_flush:
-        return False
-    token_gate = should_run_memory_flush(
+    return explain_memory_flush_trigger(
+        entry=entry,
+        token_count=token_count,
+        context_window_tokens=context_window_tokens,
+        reserve_tokens_floor=reserve_tokens_floor,
+        soft_threshold_tokens=soft_threshold_tokens,
+        transcript_byte_size=transcript_byte_size,
+        force_flush_transcript_bytes=force_flush_transcript_bytes,
+        memory_flush_writable=memory_flush_writable,
+        is_heartbeat=is_heartbeat,
+        is_cli=is_cli,
+    ).should_flush
+
+
+def explain_memory_flush_trigger(
+    *,
+    entry: dict[str, Any] | None,
+    context_window_tokens: int,
+    reserve_tokens_floor: int,
+    soft_threshold_tokens: int,
+    token_count: int | float | None = None,
+    transcript_byte_size: int | float | None = None,
+    force_flush_transcript_bytes: int | float = DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES,
+    memory_flush_writable: bool = True,
+    is_heartbeat: bool = False,
+    is_cli: bool = False,
+) -> MemoryFlushTriggerDecision:
+    if not memory_flush_writable:
+        return MemoryFlushTriggerDecision(False, "runtime_skip:not_writable")
+    if is_heartbeat:
+        return MemoryFlushTriggerDecision(False, "runtime_skip:heartbeat")
+    if is_cli:
+        return MemoryFlushTriggerDecision(False, "runtime_skip:cli")
+    if entry is None:
+        return MemoryFlushTriggerDecision(False, "missing_entry")
+
+    state = _resolve_memory_flush_gate_state(
         entry=entry,
         token_count=token_count,
         context_window_tokens=context_window_tokens,
         reserve_tokens_floor=reserve_tokens_floor,
         soft_threshold_tokens=soft_threshold_tokens,
     )
-    force_by_transcript_size = (
-        should_force_memory_flush_by_transcript_size(
-            transcript_byte_size=transcript_byte_size,
-            force_flush_transcript_bytes=force_flush_transcript_bytes,
-        )
-        and entry is not None
-        and not has_already_flushed_for_current_compaction(entry)
+    total_tokens = state[1] if state else None
+    threshold = state[2] if state else _resolve_memory_flush_threshold(
+        context_window_tokens=context_window_tokens,
+        reserve_tokens_floor=reserve_tokens_floor,
+        soft_threshold_tokens=soft_threshold_tokens,
     )
-    return token_gate or force_by_transcript_size
+    already_flushed = has_already_flushed_for_current_compaction(entry)
+    transcript_size_gate = should_force_memory_flush_by_transcript_size(
+        transcript_byte_size=transcript_byte_size,
+        force_flush_transcript_bytes=force_flush_transcript_bytes,
+    )
+    token_gate = bool(state and total_tokens is not None and total_tokens >= threshold)
+
+    if already_flushed and (token_gate or transcript_size_gate):
+        return MemoryFlushTriggerDecision(
+            False,
+            "already_flushed",
+            token_gate=token_gate,
+            transcript_size_gate=transcript_size_gate,
+            already_flushed=True,
+            total_tokens=total_tokens,
+            threshold=threshold,
+        )
+    if token_gate:
+        return MemoryFlushTriggerDecision(
+            True,
+            "token_threshold",
+            token_gate=True,
+            transcript_size_gate=transcript_size_gate,
+            total_tokens=total_tokens,
+            threshold=threshold,
+        )
+    if transcript_size_gate:
+        return MemoryFlushTriggerDecision(
+            True,
+            "transcript_size",
+            transcript_size_gate=True,
+            total_tokens=total_tokens,
+            threshold=threshold,
+        )
+
+    reason = "under_threshold" if total_tokens is not None else "missing_tokens"
+    return MemoryFlushTriggerDecision(
+        False,
+        reason,
+        total_tokens=total_tokens,
+        threshold=threshold,
+    )
 
 
 def should_force_memory_flush_by_transcript_size(
@@ -271,13 +354,26 @@ def _resolve_memory_flush_gate_state(
     if total_tokens is None:
         return None
 
-    context_window = max(1, int(context_window_tokens))
-    reserve_tokens = max(0, int(reserve_tokens_floor))
-    soft_threshold = max(0, int(soft_threshold_tokens))
-    threshold = max(0, context_window - reserve_tokens - soft_threshold)
+    threshold = _resolve_memory_flush_threshold(
+        context_window_tokens=context_window_tokens,
+        reserve_tokens_floor=reserve_tokens_floor,
+        soft_threshold_tokens=soft_threshold_tokens,
+    )
     if threshold <= 0:
         return None
     return entry, total_tokens, threshold
+
+
+def _resolve_memory_flush_threshold(
+    *,
+    context_window_tokens: int,
+    reserve_tokens_floor: int,
+    soft_threshold_tokens: int,
+) -> int:
+    context_window = max(1, int(context_window_tokens))
+    reserve_tokens = max(0, int(reserve_tokens_floor))
+    soft_threshold = max(0, int(soft_threshold_tokens))
+    return max(0, context_window - reserve_tokens - soft_threshold)
 
 
 def _resolve_fresh_session_total_tokens(entry: dict[str, Any]) -> int | None:

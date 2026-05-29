@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from memory_core.config import MemoryConfig
 from memory_core.index.sqlite_store import SQLiteMemoryStore
-from memory_core.tools.citations import clamp_text, source_label
+from memory_core.tools.citations import citation_label, clamp_text, source_label
 
 
 def memory_search(
@@ -36,6 +36,7 @@ def memory_search(
             ],
             "provider": store.embeddings.provider_id,
             "model": store.embeddings.model,
+            "citations": config.citation_mode,
         }
     except Exception as exc:
         return {"results": [], "disabled": True, "error": str(exc)}
@@ -43,6 +44,10 @@ def memory_search(
 
 def _serialize_result(config: MemoryConfig, item) -> dict:
     snippet = clamp_text(item.snippet, max_chars=config.memory_get_max_chars)
+    citation = citation_label(item.path, item.start_line, item.end_line)
+    snippet_text = snippet.text
+    if config.citation_mode == "on":
+        snippet_text = f"{snippet.text.strip()}\n\nSource: {citation}"
     return {
         "corpus": item.source,
         "path": item.path,
@@ -51,9 +56,9 @@ def _serialize_result(config: MemoryConfig, item) -> dict:
         "score": item.score,
         "vectorScore": item.vector_score,
         "textScore": item.text_score,
-        "snippet": snippet.text,
+        "snippet": snippet_text,
         "source": item.source,
-        "citation": source_label(item.path, item.start_line),
+        "citation": source_label(item.path, item.start_line, item.end_line),
         "truncated": snippet.truncated,
         "originalChars": snippet.original_chars,
     }

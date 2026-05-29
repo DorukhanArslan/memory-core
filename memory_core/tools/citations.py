@@ -10,8 +10,13 @@ class ClampedText:
     original_chars: int
 
 
-def source_label(path: str, start_line: int) -> str:
-    return f"Source: {path}#{start_line}"
+def citation_label(path: str, start_line: int, end_line: int) -> str:
+    line_range = f"#L{start_line}" if start_line == end_line else f"#L{start_line}-L{end_line}"
+    return f"{path}{line_range}"
+
+
+def source_label(path: str, start_line: int, end_line: int | None = None) -> str:
+    return f"Source: {citation_label(path, start_line, end_line or start_line)}"
 
 
 def clamp_text(text: str, *, max_chars: int) -> ClampedText:

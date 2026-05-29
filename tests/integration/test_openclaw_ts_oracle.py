@@ -21,6 +21,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+class OpenClawFakeEmbeddingProvider(FakeEmbeddingProvider):
+    provider_id = "stem-fake"
+
+
 def test_real_openclaw_oracle_deep_policy():
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
 
@@ -363,7 +367,7 @@ def test_real_openclaw_oracle_memory_search_memory_corpus_matches_python_paths(
         vector_weight=0,
         text_weight=1,
     )
-    store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=8))
+    store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
     python_result = memory_search(
         cfg,
@@ -376,8 +380,29 @@ def test_real_openclaw_oracle_memory_search_memory_corpus_matches_python_paths(
 
     assert result["ok"] is True
     assert result["operation"] == "memorySearch"
-    assert [(item["corpus"], item["path"]) for item in result["result"]["results"]] == [
-        (item["corpus"], item["path"]) for item in python_result["results"]
+    assert result["result"]["provider"] == python_result["provider"]
+    assert result["result"]["model"] == python_result["model"]
+    assert result["result"]["citations"] == python_result["citations"]
+    assert [
+        {
+            "corpus": item["corpus"],
+            "source": item["source"],
+            "path": item["path"],
+            "startLine": item["startLine"],
+            "endLine": item["endLine"],
+            "snippet": item["snippet"],
+        }
+        for item in result["result"]["results"]
+    ] == [
+        {
+            "corpus": item["corpus"],
+            "source": item["source"],
+            "path": item["path"],
+            "startLine": item["startLine"],
+            "endLine": item["endLine"],
+            "snippet": item["snippet"],
+        }
+        for item in python_result["results"]
     ]
 
 

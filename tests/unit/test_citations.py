@@ -2,7 +2,7 @@ from memory_core.tools.citations import clamp_text, source_label
 
 
 def test_source_label_uses_path_and_start_line():
-    assert source_label("memory/2026-05-03.md", 7) == "Source: memory/2026-05-03.md#7"
+    assert source_label("memory/2026-05-03.md", 7) == "Source: memory/2026-05-03.md#L7"
 
 
 def test_clamp_text_reports_truncation():

@@ -45,7 +45,9 @@ def test_memory_search_returns_hybrid_results(tmp_path: Path):
     assert result["model"] == "fake-deterministic"
     assert result["results"][0]["path"] == "MEMORY.md"
     assert result["results"][0]["corpus"] == "memory"
-    assert result["results"][0]["citation"] == "Source: MEMORY.md#1"
+    assert result["citations"] == "on"
+    assert result["results"][0]["citation"] == "Source: MEMORY.md#L1"
+    assert result["results"][0]["snippet"].endswith("\n\nSource: MEMORY.md#L1")
 
 
 def test_memory_search_indexes_session_transcripts_by_default(tmp_path: Path):
@@ -104,10 +106,10 @@ def test_memory_search_clamps_snippets_and_reports_truncation(tmp_path: Path):
     result = memory_search(cfg, store, query="lemon pepper", max_results=1, min_score=0.0)
 
     first = result["results"][0]
-    assert first["snippet"] == "User likes"
+    assert first["snippet"] == "User likes\n\nSource: MEMORY.md#L1"
     assert first["truncated"] is True
     assert first["originalChars"] > 10
-    assert first["citation"] == "Source: MEMORY.md#1"
+    assert first["citation"] == "Source: MEMORY.md#L1"
 
 
 def test_temporal_decay_affects_store_search_order(tmp_path: Path):

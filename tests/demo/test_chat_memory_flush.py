@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from demo.chat_engine import ChatMessage, FlushModelOutput, FlushWriteCall
-from demo.memory_flush import parse_flush_output, run_memory_flush
+from demo.memory_flush import SILENT_REPLY_TOKEN, parse_flush_output, run_memory_flush
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
@@ -54,7 +54,7 @@ class DurableToolFlushEngine:
 
 
 def test_parse_flush_output_accepts_silent_token():
-    parsed = parse_flush_output("<NO_REPLY>", target="memory/2026-05-03.md")
+    parsed = parse_flush_output(SILENT_REPLY_TOKEN, target="memory/2026-05-03.md")
 
     assert parsed.should_write is False
     assert parsed.entry == ""

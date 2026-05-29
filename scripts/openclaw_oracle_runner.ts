@@ -151,6 +151,29 @@ async function main() {
     };
   }
 
+  if (payload.operation === "flushPlan") {
+    const flushPlan = await importFromRepo(repoPath, "extensions/memory-core/src/flush-plan.ts");
+    const plan = flushPlan.buildMemoryFlushPlan({
+      cfg: payload.config ?? {},
+      nowMs,
+    });
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: plan
+        ? {
+            softThresholdTokens: plan.softThresholdTokens,
+            forceFlushTranscriptBytes: plan.forceFlushTranscriptBytes,
+            reserveTokensFloor: plan.reserveTokensFloor,
+            relativePath: plan.relativePath,
+            prompt: plan.prompt,
+            systemPrompt: plan.systemPrompt,
+            model: plan.model ?? null,
+          }
+        : null,
+    };
+  }
+
   const promotion = await importFromRepo(
     repoPath,
     "extensions/memory-core/src/short-term-promotion.ts",

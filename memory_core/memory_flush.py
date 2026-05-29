@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import re
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-SILENT_REPLY_TOKEN = "<NO_REPLY>"
+SILENT_REPLY_TOKEN = "NO_REPLY"
 DEFAULT_MEMORY_FLUSH_SOFT_TOKENS = 4000
 DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES = 2 * 1024 * 1024
 DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR = 20_000
@@ -68,6 +69,7 @@ class MemoryFlushPlan:
     prompt: str
     system_prompt: str
     relative_path: str
+    model: str | None = None
 
 
 def ensure_no_reply_hint(text: str) -> str:
@@ -111,6 +113,7 @@ def build_memory_flush_plan(
     soft_threshold_tokens: int = DEFAULT_MEMORY_FLUSH_SOFT_TOKENS,
     force_flush_transcript_bytes: int = DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES,
     reserve_tokens_floor: int = DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR,
+    model: str | None = None,
 ) -> MemoryFlushPlan:
     del workspace_dir
 
@@ -136,11 +139,98 @@ def build_memory_flush_plan(
         prompt=append_current_time_line(prompt_base.replace("YYYY-MM-DD", date_stamp), time_line),
         system_prompt=system_prompt_base.replace("YYYY-MM-DD", date_stamp),
         relative_path=relative_path,
+        model=_optional_text(model),
+    )
+
+
+def build_memory_flush_plan_from_config(
+    *,
+    workspace_dir: object,
+    cfg: dict[str, Any] | None = None,
+    now_ms: int | None = None,
+) -> MemoryFlushPlan | None:
+    config = cfg or {}
+    defaults = _record(_record(config.get("agents")).get("defaults"))
+    compaction = _record(defaults.get("compaction"))
+    memory_flush = _record(compaction.get("memoryFlush"))
+    if memory_flush.get("enabled") is False:
+        return None
+    return build_memory_flush_plan(
+        workspace_dir=workspace_dir,
+        now_ms=now_ms,
+        timezone=_optional_text(defaults.get("userTimezone")) or "UTC",
+        prompt=_optional_text(memory_flush.get("prompt")),
+        system_prompt=_optional_text(memory_flush.get("systemPrompt")),
+        soft_threshold_tokens=_normalize_non_negative_int_or_default(
+            memory_flush.get("softThresholdTokens"), DEFAULT_MEMORY_FLUSH_SOFT_TOKENS
+        ),
+        force_flush_transcript_bytes=_parse_non_negative_byte_size_or_default(
+            memory_flush.get("forceFlushTranscriptBytes"),
+            DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES,
+        ),
+        reserve_tokens_floor=_normalize_non_negative_int_or_default(
+            compaction.get("reserveTokensFloor"), DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR
+        ),
+        model=_optional_text(memory_flush.get("model")),
     )
 
 
 def _normalize_non_negative_int(value: int) -> int:
     return max(0, int(value))
+
+
+def _normalize_non_negative_int_or_default(value: Any, default: int) -> int:
+    if not isinstance(value, int | float) or not _is_finite_number(value):
+        return default
+    return _normalize_non_negative_int(int(value))
+
+
+def _parse_non_negative_byte_size_or_default(value: Any, default: int) -> int:
+    parsed = _parse_non_negative_byte_size(value)
+    return default if parsed is None else parsed
+
+
+def _parse_non_negative_byte_size(value: Any) -> int | None:
+    if isinstance(value, int | float) and _is_finite_number(value):
+        parsed = int(value)
+        return parsed if parsed >= 0 else None
+    if not isinstance(value, str):
+        return None
+    match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)([a-zA-Z]+)?\s*", value)
+    if not match:
+        return None
+    number = float(match.group(1))
+    unit = (match.group(2) or "b").lower()
+    multipliers = {
+        "b": 1,
+        "kb": 1024,
+        "k": 1024,
+        "mb": 1024**2,
+        "m": 1024**2,
+        "gb": 1024**3,
+        "g": 1024**3,
+        "tb": 1024**4,
+        "t": 1024**4,
+    }
+    multiplier = multipliers.get(unit)
+    if multiplier is None:
+        return None
+    return round(number * multiplier)
+
+
+def _is_finite_number(value: int | float) -> bool:
+    return value == value and value not in (float("inf"), float("-inf"))
+
+
+def _record(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _optional_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 def _resolve_timezone(timezone: str) -> str:
@@ -165,7 +255,7 @@ def _format_current_time_line(now_ms: int, timezone: str) -> str:
     local = instant.astimezone(ZoneInfo(timezone))
     formatted_time = _format_user_time_24h(local)
     utc_time = instant.strftime("%Y-%m-%d %H:%M UTC")
-    return f"Current time: {formatted_time} ({timezone}) / {utc_time}"
+    return f"Current time: {formatted_time} ({timezone})\nReference UTC: {utc_time}"
 
 
 def _format_user_time_24h(local: datetime) -> str:

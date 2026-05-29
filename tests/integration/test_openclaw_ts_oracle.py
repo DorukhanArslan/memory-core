@@ -6,6 +6,7 @@ import tempfile
 import pytest
 
 from demo.openclaw_oracle import OpenClawOracle
+from memory_core.memory_flush import build_memory_flush_plan, build_memory_flush_plan_from_config
 
 
 pytestmark = pytest.mark.skipif(
@@ -72,6 +73,120 @@ def test_real_openclaw_oracle_deep_policy_uses_configured_values():
     assert result["result"]["minUniqueQueries"] == 2
     assert result["result"]["maxAgeDays"] == 14
     assert result["result"]["recencyHalfLifeDays"] == 10
+
+
+def test_real_openclaw_oracle_flush_plan_matches_python_defaults(tmp_path: Path):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    now_ms = 1777824000000
+    config = {
+        "agents": {
+            "defaults": {
+                "userTimezone": "Europe/Istanbul",
+                "timeFormat": "24",
+            }
+        }
+    }
+
+    result = oracle.run(
+        {
+            "operation": "flushPlan",
+            "config": config,
+            "nowMs": now_ms,
+        }
+    )
+    python_plan = build_memory_flush_plan(
+        workspace_dir=tmp_path,
+        now_ms=now_ms,
+        timezone="Europe/Istanbul",
+    )
+
+    assert result["ok"] is True
+    assert result["operation"] == "flushPlan"
+    assert result["result"] == {
+        "softThresholdTokens": python_plan.soft_threshold_tokens,
+        "forceFlushTranscriptBytes": python_plan.force_flush_transcript_bytes,
+        "reserveTokensFloor": python_plan.reserve_tokens_floor,
+        "relativePath": python_plan.relative_path,
+        "prompt": python_plan.prompt,
+        "systemPrompt": python_plan.system_prompt,
+        "model": None,
+    }
+
+
+def test_real_openclaw_oracle_flush_plan_supports_disabled_and_overrides():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    now_ms = 1777824000000
+
+    disabled = oracle.run(
+        {
+            "operation": "flushPlan",
+            "nowMs": now_ms,
+            "config": {
+                "agents": {
+                    "defaults": {
+                        "compaction": {
+                            "memoryFlush": {
+                                "enabled": False,
+                            }
+                        }
+                    }
+                }
+            },
+        }
+    )
+    configured_config = {
+        "agents": {
+            "defaults": {
+                "userTimezone": "Europe/Istanbul",
+                "timeFormat": "24",
+                "compaction": {
+                    "reserveTokensFloor": 123,
+                    "memoryFlush": {
+                        "softThresholdTokens": 456,
+                        "forceFlushTranscriptBytes": "3mb",
+                        "model": "flush-model",
+                        "prompt": "Custom prompt.",
+                        "systemPrompt": "Custom system.",
+                    },
+                },
+            }
+        }
+    }
+    configured = oracle.run(
+        {
+            "operation": "flushPlan",
+            "nowMs": now_ms,
+            "config": configured_config,
+        }
+    )
+    python_configured = build_memory_flush_plan_from_config(
+        workspace_dir=Path("/tmp"),
+        cfg=configured_config,
+        now_ms=now_ms,
+    )
+
+    assert disabled["ok"] is True
+    assert disabled["result"] is None
+    assert configured["ok"] is True
+    assert python_configured is not None
+    assert configured["result"]["softThresholdTokens"] == 456
+    assert configured["result"]["forceFlushTranscriptBytes"] == 3 * 1024 * 1024
+    assert configured["result"]["reserveTokensFloor"] == 123
+    assert configured["result"]["model"] == "flush-model"
+    assert configured["result"]["relativePath"] == "memory/2026-05-03.md"
+    assert "Custom prompt." in configured["result"]["prompt"]
+    assert "Custom system." in configured["result"]["systemPrompt"]
+    assert "Store durable memories only in memory/2026-05-03.md" in configured["result"]["prompt"]
+    assert "If no user-visible reply is needed, start with NO_REPLY." in configured["result"]["prompt"]
+    assert configured["result"] == {
+        "softThresholdTokens": python_configured.soft_threshold_tokens,
+        "forceFlushTranscriptBytes": python_configured.force_flush_transcript_bytes,
+        "reserveTokensFloor": python_configured.reserve_tokens_floor,
+        "relativePath": python_configured.relative_path,
+        "prompt": python_configured.prompt,
+        "systemPrompt": python_configured.system_prompt,
+        "model": python_configured.model,
+    }
 
 
 def test_real_openclaw_oracle_records_short_term_recall():

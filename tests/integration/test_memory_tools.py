@@ -3,6 +3,7 @@ from pathlib import Path
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.supplements import StaticMemoryCorpusSupplement
 from memory_core.tools.memory_get import memory_get
 from memory_core.tools.memory_search import memory_search
 from memory_core.workspace import MemoryWorkspace
@@ -155,6 +156,77 @@ def test_memory_search_corpus_memory_excludes_session_transcripts(tmp_path: Path
     )
 
     assert {item["corpus"] for item in result["results"]} == {"memory"}
+
+
+def test_memory_search_corpus_wiki_returns_supplement_results(tmp_path: Path):
+    cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+    wiki = StaticMemoryCorpusSupplement(
+        [
+            {"corpus": "wiki", "path": "w1.md", "score": 50, "snippet": "wiki 1"},
+            {"corpus": "wiki", "path": "w2.md", "score": 40, "snippet": "wiki 2"},
+        ]
+    )
+
+    result = memory_search(
+        cfg,
+        store,
+        query="alpha",
+        corpus="wiki",
+        max_results=5,
+        min_score=0,
+        supplements=[wiki],
+    )
+
+    assert [(item["corpus"], item["path"]) for item in result["results"]] == [
+        ("wiki", "w1.md"),
+        ("wiki", "w2.md"),
+    ]
+
+
+def test_memory_search_corpus_all_balances_memory_and_supplements(tmp_path: Path):
+    (tmp_path / "MEMORY.md").write_text(
+        "# Long-Term Memory\n\n- Memory result A mentions project alpha.",
+        encoding="utf-8",
+    )
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "memory.sqlite",
+        vector_weight=0,
+        text_weight=1,
+    )
+    store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+    wiki = StaticMemoryCorpusSupplement(
+        [
+            {"corpus": "wiki", "path": "w1.md", "score": 50, "snippet": "wiki 1"},
+            {"corpus": "wiki", "path": "w2.md", "score": 40, "snippet": "wiki 2"},
+            {"corpus": "wiki", "path": "w3.md", "score": 30, "snippet": "wiki 3"},
+            {"corpus": "wiki", "path": "w4.md", "score": 20, "snippet": "wiki 4"},
+            {"corpus": "wiki", "path": "w5.md", "score": 10, "snippet": "wiki 5"},
+        ]
+    )
+
+    result = memory_search(
+        cfg,
+        store,
+        query="alpha",
+        corpus="all",
+        max_results=5,
+        min_score=0,
+        supplements=[wiki],
+    )
+
+    paths_by_corpus = [(item["corpus"], item["path"]) for item in result["results"]]
+    assert ("memory", "MEMORY.md") in paths_by_corpus
+    assert [path for corpus, path in paths_by_corpus if corpus == "wiki"] == [
+        "w1.md",
+        "w2.md",
+        "w3.md",
+        "w4.md",
+    ]
+    assert len(paths_by_corpus) == 5
 
 
 def test_memory_search_clamps_snippets_and_reports_truncation(tmp_path: Path):

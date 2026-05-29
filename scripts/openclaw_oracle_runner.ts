@@ -48,6 +48,15 @@ type Payload = {
   contextWindowTokens?: number;
   reserveTokensFloor?: number;
   softThresholdTokens?: number;
+  reserveTokens?: number;
+  toolResultMaxChars?: number;
+  maxChars?: number;
+  text?: string;
+  systemPrompt?: string;
+  prompt?: string;
+  messages?: Array<Record<string, unknown>>;
+  unwindowedMessages?: Array<Record<string, unknown>>;
+  sessionEntries?: Array<Record<string, unknown>>;
 };
 
 type PromotionPolicy = {
@@ -254,6 +263,130 @@ async function main() {
         hasAlreadyFlushedForCurrentCompaction: entry
           ? memoryFlush.hasAlreadyFlushedForCurrentCompaction(entry)
           : false,
+      },
+    };
+  }
+
+  if (payload.operation === "toolResultReductionPotential") {
+    const truncation = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/tool-result-truncation.ts",
+    );
+    const result = truncation.estimateToolResultReductionPotential({
+      messages: payload.messages ?? [],
+      contextWindowTokens: payload.contextWindowTokens ?? 100_000,
+      maxCharsOverride: payload.toolResultMaxChars,
+    });
+    return {
+      ok: true,
+      operation: payload.operation,
+      result,
+    };
+  }
+
+  if (payload.operation === "truncateToolResultText") {
+    const truncation = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/tool-result-truncation.ts",
+    );
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        text: truncation.truncateToolResultText(
+          payload.text ?? "",
+          payload.maxChars ?? payload.toolResultMaxChars ?? 16_000,
+        ),
+      },
+    };
+  }
+
+  if (payload.operation === "truncateToolResultsInSession") {
+    const truncation = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/tool-result-truncation.ts",
+    );
+    const sessions = await importFromRepo(repoPath, "src/agents/sessions/index.ts");
+    const tmpDir = await fs.mkdtemp(path.join(process.cwd(), ".openclaw-oracle-session-"));
+    try {
+      const manager = sessions.SessionManager.create(tmpDir, tmpDir);
+      for (const entry of payload.sessionEntries ?? []) {
+        if (entry.type === "message" && isRecord(entry.message)) {
+          manager.appendMessage(entry.message);
+        }
+      }
+      const sessionFile = manager.getSessionFile();
+      if (!sessionFile) {
+        throw new Error("session file missing");
+      }
+      const result = await truncation.truncateOversizedToolResultsInSession({
+        sessionFile,
+        contextWindowTokens: payload.contextWindowTokens ?? 100_000,
+        maxCharsOverride: payload.maxChars ?? payload.toolResultMaxChars,
+      });
+      const afterManager = sessions.SessionManager.open(sessionFile);
+      const toolTexts = afterManager
+        .getBranch()
+        .filter((entry: Record<string, unknown>) => {
+          const message = entry.message as Record<string, unknown> | undefined;
+          return entry.type === "message" && message?.role === "toolResult";
+        })
+        .map((entry: Record<string, unknown>) => {
+          const message = entry.message as Record<string, unknown>;
+          const content = Array.isArray(message.content) ? message.content : [];
+          const textBlock = content.find(
+            (block: unknown) =>
+              isRecord(block) && block.type === "text" && typeof block.text === "string",
+          ) as { text?: string } | undefined;
+          return textBlock?.text ?? "";
+        });
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: {
+          truncated: result.truncated,
+          truncatedCount: result.truncatedCount,
+          reason: result.reason ?? null,
+          toolTexts,
+        },
+      };
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  if (payload.operation === "preemptiveCompaction") {
+    const preemptive = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/run/preemptive-compaction.ts",
+    );
+    const result = preemptive.shouldPreemptivelyCompactBeforePrompt({
+      messages: payload.messages ?? [],
+      unwindowedMessages: payload.unwindowedMessages,
+      systemPrompt: payload.systemPrompt,
+      prompt: payload.prompt ?? "",
+      contextTokenBudget: payload.contextWindowTokens ?? 100_000,
+      reserveTokens: payload.reserveTokens ?? 0,
+      toolResultMaxChars: payload.toolResultMaxChars,
+    });
+    return {
+      ok: true,
+      operation: payload.operation,
+      result,
+    };
+  }
+
+  if (payload.operation === "overflowErrorHelpers") {
+    const helpers = await importFromRepo(repoPath, "src/agents/embedded-agent-helpers.ts");
+    const text = payload.text ?? "";
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        isLikelyContextOverflowError: helpers.isLikelyContextOverflowError(text),
+        isCompactionFailureError: helpers.isCompactionFailureError(text),
+        extractObservedOverflowTokenCount:
+          helpers.extractObservedOverflowTokenCount(text) ?? null,
       },
     };
   }

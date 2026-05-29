@@ -12,6 +12,18 @@ from memory_core.memory_flush import (
     has_already_flushed_for_current_compaction,
     should_run_memory_flush,
 )
+from memory_core.preemptive_compaction import (
+    estimate_pre_prompt_tokens,
+    estimate_tool_result_reduction_potential,
+    should_preemptively_compact_before_prompt,
+    truncate_oversized_tool_results_in_session_file,
+    truncate_tool_result_text,
+)
+from memory_core.overflow_recovery import (
+    extract_observed_overflow_token_count,
+    is_compaction_failure_error,
+    is_likely_context_overflow_error,
+)
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
@@ -28,6 +40,31 @@ pytestmark = pytest.mark.skipif(
 
 class OpenClawFakeEmbeddingProvider(FakeEmbeddingProvider):
     provider_id = "stem-fake"
+
+
+def _assistant_history(text: str) -> dict:
+    return {"role": "assistant", "content": [{"type": "text", "text": text}], "timestamp": 1}
+
+
+def _tool_result(*texts: str) -> dict:
+    return {
+        "role": "toolResult",
+        "toolCallId": "call_1",
+        "toolName": "read",
+        "content": [{"type": "text", "text": text} for text in texts],
+        "isError": False,
+        "timestamp": 2,
+    }
+
+
+def _session_message(entry_id: str, parent_id: str | None, message: dict) -> dict:
+    return {
+        "type": "message",
+        "id": entry_id,
+        "parentId": parent_id,
+        "timestamp": "2026-05-30T00:00:00.000Z",
+        "message": message,
+    }
 
 
 def test_real_openclaw_oracle_deep_policy():
@@ -202,6 +239,279 @@ def test_real_openclaw_oracle_flush_plan_supports_disabled_and_overrides():
         "systemPrompt": python_configured.system_prompt,
         "model": python_configured.model,
     }
+
+
+def test_real_openclaw_oracle_preemptive_compaction_routes_match_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    medium = "alpha beta gamma delta epsilon " * 400
+    messages = [
+        _assistant_history("short history"),
+        _tool_result(medium, medium, medium, medium),
+    ]
+    reserve_tokens = 2_000
+    estimated = estimate_pre_prompt_tokens(
+        messages=messages,
+        system_prompt="sys",
+        prompt="hello",
+    )
+    context_budget = estimated - 200 + reserve_tokens
+
+    result = oracle.run(
+        {
+            "operation": "preemptiveCompaction",
+            "messages": messages,
+            "systemPrompt": "sys",
+            "prompt": "hello",
+            "contextWindowTokens": context_budget,
+            "reserveTokens": reserve_tokens,
+        }
+    )
+    python_result = should_preemptively_compact_before_prompt(
+        messages=messages,
+        system_prompt="sys",
+        prompt="hello",
+        context_token_budget=context_budget,
+        reserve_tokens=reserve_tokens,
+    )
+
+    assert result["ok"] is True
+    assert result["operation"] == "preemptiveCompaction"
+    assert result["result"] == {
+        "route": python_result.route,
+        "shouldCompact": python_result.should_compact,
+        "estimatedPromptTokens": python_result.estimated_prompt_tokens,
+        "pressureSource": python_result.pressure_source,
+        "promptBudgetBeforeReserve": python_result.prompt_budget_before_reserve,
+        "overflowTokens": python_result.overflow_tokens,
+        "toolResultReducibleChars": python_result.tool_result_reducible_chars,
+        "effectiveReserveTokens": python_result.effective_reserve_tokens,
+    }
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "context length exceeded",
+        '400 {"message":"prompt is too long: 277403 tokens > 200000 maximum"}',
+        "Invalid request: Your request exceeded model token limit: 262144 (requested: 291351)",
+        "input length and max_tokens exceed context limit (i.e 156321 + 48384 > 200000)",
+        "429 Too Many Requests: request exceeds rate limit",
+        "Model context window too small (minimum is 128k tokens)",
+    ],
+)
+def test_real_openclaw_oracle_overflow_error_helpers_match_python(message: str):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+    result = oracle.run({"operation": "overflowErrorHelpers", "text": message})
+
+    assert result["ok"] is True
+    assert result["operation"] == "overflowErrorHelpers"
+    assert result["result"] == {
+        "isLikelyContextOverflowError": is_likely_context_overflow_error(message),
+        "isCompactionFailureError": is_compaction_failure_error(message),
+        "extractObservedOverflowTokenCount": extract_observed_overflow_token_count(message),
+    }
+
+
+@pytest.mark.parametrize(
+    "payload,expected_route,expected_should_compact",
+    [
+        (
+            {
+                "messages": [_assistant_history("short history")],
+                "systemPrompt": "sys",
+                "prompt": "hello",
+                "contextWindowTokens": 10_000,
+                "reserveTokens": 1_000,
+            },
+            "fits",
+            False,
+        ),
+        (
+            {
+                "messages": [
+                    _assistant_history(
+                        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu "
+                        * 40
+                    )
+                ],
+                "systemPrompt": (
+                    "system guidance with multiple distinct words to avoid tokenizer "
+                    "overcompression "
+                    * 25
+                ),
+                "prompt": (
+                    "user request with distinct content asking for a detailed answer and more "
+                    "context "
+                    * 25
+                ),
+                "contextWindowTokens": 500,
+                "reserveTokens": 50,
+            },
+            "compact_only",
+            True,
+        ),
+        (
+            {
+                "messages": [_assistant_history("small assembled window")],
+                "unwindowedMessages": [
+                    _assistant_history(
+                        (
+                            "alpha beta gamma delta epsilon zeta eta theta iota kappa "
+                            "lambda mu "
+                        )
+                        * 160
+                    )
+                ],
+                "systemPrompt": "sys",
+                "prompt": "hello",
+                "contextWindowTokens": 500,
+                "reserveTokens": 50,
+            },
+            "compact_only",
+            True,
+        ),
+    ],
+)
+def test_real_openclaw_oracle_preemptive_compaction_additional_routes_match_python(
+    payload: dict,
+    expected_route: str,
+    expected_should_compact: bool,
+):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+    result = oracle.run({"operation": "preemptiveCompaction", **payload})
+    python_result = should_preemptively_compact_before_prompt(
+        messages=payload["messages"],
+        unwindowed_messages=payload.get("unwindowedMessages"),
+        system_prompt=payload.get("systemPrompt"),
+        prompt=payload["prompt"],
+        context_token_budget=payload["contextWindowTokens"],
+        reserve_tokens=payload["reserveTokens"],
+    )
+
+    assert result["ok"] is True
+    assert result["operation"] == "preemptiveCompaction"
+    assert result["result"] == {
+        "route": python_result.route,
+        "shouldCompact": python_result.should_compact,
+        "estimatedPromptTokens": python_result.estimated_prompt_tokens,
+        "pressureSource": python_result.pressure_source,
+        "promptBudgetBeforeReserve": python_result.prompt_budget_before_reserve,
+        "overflowTokens": python_result.overflow_tokens,
+        "toolResultReducibleChars": python_result.tool_result_reducible_chars,
+        "effectiveReserveTokens": python_result.effective_reserve_tokens,
+    }
+    assert result["result"]["route"] == expected_route
+    assert result["result"]["shouldCompact"] is expected_should_compact
+
+
+def test_real_openclaw_oracle_tool_result_reduction_potential_matches_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    oversized = "x" * 45_000
+    medium = "alpha beta gamma delta epsilon " * 500
+    messages = [
+        _assistant_history("short history"),
+        _tool_result(oversized),
+        _tool_result(medium),
+        _tool_result(medium),
+    ]
+
+    result = oracle.run(
+        {
+            "operation": "toolResultReductionPotential",
+            "messages": messages,
+            "contextWindowTokens": 128_000,
+        }
+    )
+    python_result = estimate_tool_result_reduction_potential(
+        messages=messages,
+        context_window_tokens=128_000,
+    )
+
+    assert result["ok"] is True
+    assert result["operation"] == "toolResultReductionPotential"
+    assert result["result"] == {
+        "maxChars": python_result.max_chars,
+        "aggregateBudgetChars": python_result.aggregate_budget_chars,
+        "toolResultCount": python_result.tool_result_count,
+        "totalToolResultChars": python_result.total_tool_result_chars,
+        "oversizedCount": python_result.oversized_count,
+        "oversizedReducibleChars": python_result.oversized_reducible_chars,
+        "aggregateReducibleChars": python_result.aggregate_reducible_chars,
+        "maxReducibleChars": python_result.max_reducible_chars,
+    }
+
+
+@pytest.mark.parametrize(
+    "text,max_chars",
+    [
+        ("normal line\n" * 1000, 5_000),
+        (
+            ("Line 1\n" * 500)
+            + ("data data data\n" * 500)
+            + "\nError: something failed\nStack trace: at foo.ts:42\n",
+            5_000,
+        ),
+    ],
+)
+def test_real_openclaw_oracle_truncate_tool_result_text_matches_python(
+    text: str,
+    max_chars: int,
+):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+    result = oracle.run(
+        {
+            "operation": "truncateToolResultText",
+            "text": text,
+            "maxChars": max_chars,
+        }
+    )
+    python_text = truncate_tool_result_text(text, max_chars)
+
+    assert result["ok"] is True
+    assert result["operation"] == "truncateToolResultText"
+    assert result["result"]["text"] == python_text
+
+
+def test_real_openclaw_oracle_truncate_tool_results_in_session_file_matches_python(
+    tmp_path: Path,
+):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    medium = "alpha beta gamma delta epsilon " * 800
+    entries = [
+        _session_message("u1", None, {"role": "user", "content": "hello"}),
+        _session_message("a1", "u1", _assistant_history("calling tools")),
+        _session_message("t1", "a1", _tool_result(medium)),
+        _session_message("t2", "t1", _tool_result(medium)),
+        _session_message("t3", "t2", _tool_result(medium)),
+    ]
+    session_file = tmp_path / "session.jsonl"
+    session_file.write_text(
+        "".join(f"{json.dumps(entry)}\n" for entry in entries),
+        encoding="utf-8",
+    )
+
+    result = oracle.run(
+        {
+            "operation": "truncateToolResultsInSession",
+            "sessionEntries": entries,
+            "contextWindowTokens": 128_000,
+            "maxChars": 120,
+        }
+    )
+    python_result = truncate_oversized_tool_results_in_session_file(
+        session_file,
+        context_window_tokens=128_000,
+        max_chars_override=120,
+    )
+
+    assert result["ok"] is True
+    assert result["operation"] == "truncateToolResultsInSession"
+    assert result["result"]["truncated"] is python_result.truncated
+    assert result["result"]["truncatedCount"] == python_result.truncated_count
+    assert result["result"]["toolTexts"] == list(python_result.tool_texts)
 
 
 @pytest.mark.parametrize(

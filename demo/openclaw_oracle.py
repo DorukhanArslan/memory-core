@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -61,7 +62,7 @@ class OpenClawOracle:
     def _run_subprocess(self, payload: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
         body = json.dumps({**payload, "repoPath": str(self.repo_path)})
         try:
-            completed = self._run_runner(["pnpm", "exec", "tsx", str(RUNNER_PATH)], body)
+            completed = self._run_runner(self._preferred_runner_command(), body)
         except FileNotFoundError:
             try:
                 completed = self._run_runner(self._npm_pnpm_runner_command(), body)
@@ -71,6 +72,8 @@ class OpenClawOracle:
                     "pnpm executable not found",
                     metadata,
                 )
+            except subprocess.TimeoutExpired:
+                return self._subprocess_error("oracle-timeout", "oracle runner timed out", metadata)
         except subprocess.TimeoutExpired:
             return self._subprocess_error("oracle-timeout", "oracle runner timed out", metadata)
         if completed.returncode != 0:
@@ -82,11 +85,13 @@ class OpenClawOracle:
         try:
             result = json.loads(completed.stdout)
         except json.JSONDecodeError as exc:
-            return self._subprocess_error(
-                "oracle-invalid-json",
-                f"oracle returned invalid JSON: {exc.msg}",
-                metadata,
-            )
+            result = self._structured_result(completed.stdout, metadata)
+            if result is None:
+                return self._subprocess_error(
+                    "oracle-invalid-json",
+                    f"oracle returned invalid JSON: {exc.msg}",
+                    metadata,
+                )
         if isinstance(result, dict):
             result.setdefault("metadata", metadata)
             return result
@@ -102,6 +107,14 @@ class OpenClawOracle:
             timeout=self.timeout_seconds,
             check=False,
         )
+
+    def _preferred_runner_command(self) -> list[str]:
+        if shutil.which("pnpm"):
+            return ["pnpm", "exec", "tsx", str(RUNNER_PATH)]
+        local_tsx = self.repo_path / "node_modules" / ".bin" / "tsx"
+        if local_tsx.exists():
+            return [str(local_tsx), str(RUNNER_PATH)]
+        return ["pnpm", "exec", "tsx", str(RUNNER_PATH)]
 
     def _npm_pnpm_runner_command(self) -> list[str]:
         return [
@@ -158,7 +171,18 @@ class OpenClawOracle:
         try:
             result = json.loads(stdout)
         except json.JSONDecodeError:
-            return None
+            result = None
+            for line in reversed(stdout.splitlines()):
+                line = line.strip()
+                if not line.startswith("{"):
+                    continue
+                try:
+                    result = json.loads(line)
+                    break
+                except json.JSONDecodeError:
+                    continue
+            if result is None:
+                return None
         if not isinstance(result, dict):
             return None
         result.setdefault("metadata", metadata)

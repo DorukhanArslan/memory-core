@@ -185,7 +185,20 @@ class SQLiteMemoryStore:
                 lambda_=self.config.mmr_lambda,
             )
             ranked = [by_key[str(item["id"])] for item in reranked]
-        return [item for item in ranked if item.score >= min_score][:max_results]
+
+        strict = [item for item in ranked if item.score >= min_score]
+        if strict or not keyword:
+            return strict[:max_results]
+
+        keyword_keys = {
+            f"{item.source}:{item.path}:{item.start_line}:{item.end_line}"
+            for item in keyword
+        }
+        return [
+            item
+            for item in ranked
+            if _mmr_key(item) in keyword_keys and item.score >= 0
+        ][:max_results]
 
 
 def _mmr_key(item: HybridResult) -> str:

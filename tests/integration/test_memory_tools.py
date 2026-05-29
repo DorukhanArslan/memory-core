@@ -50,6 +50,33 @@ def test_memory_search_returns_hybrid_results(tmp_path: Path):
     assert result["results"][0]["snippet"].endswith("\n\nSource: MEMORY.md#L1")
 
 
+def test_memory_search_preserves_keyword_hits_when_min_score_is_too_strict(
+    tmp_path: Path,
+):
+    (tmp_path / "MEMORY.md").write_text(
+        "Move backups to S3 Glacier cold storage.\n", encoding="utf-8"
+    )
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "memory.sqlite",
+        vector_weight=0,
+        text_weight=1,
+    )
+    store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+
+    result = memory_search(
+        cfg,
+        store,
+        query="glacier",
+        corpus="memory",
+        max_results=3,
+        min_score=1.1,
+    )
+
+    assert [item["path"] for item in result["results"]] == ["MEMORY.md"]
+
+
 def test_memory_search_indexes_session_transcripts_by_default(tmp_path: Path):
     (tmp_path / "MEMORY.md").write_text("User likes lemon pepper wings.\n", encoding="utf-8")
     session_dir = tmp_path / "memory" / ".dreams" / "session-corpus"

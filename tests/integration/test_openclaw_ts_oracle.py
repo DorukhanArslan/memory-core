@@ -406,6 +406,56 @@ def test_real_openclaw_oracle_memory_search_memory_corpus_matches_python_paths(
     ]
 
 
+def test_real_openclaw_oracle_memory_search_relaxes_min_score_for_keyword_hits(
+    tmp_path: Path,
+):
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+    (tmp_path / "MEMORY.md").write_text(
+        "# Long-Term Memory\n\n- Move backups to S3 Glacier cold storage.",
+        encoding="utf-8",
+    )
+
+    result = oracle.run(
+        {
+            "operation": "memorySearch",
+            "workspaceDir": str(tmp_path),
+            "query": "glacier",
+            "corpus": "memory",
+            "maxResults": 3,
+            "minScore": 1.1,
+        }
+    )
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "python-memory.sqlite",
+        vector_weight=0,
+        text_weight=1,
+    )
+    store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+    python_result = memory_search(
+        cfg,
+        store,
+        query="glacier",
+        corpus="memory",
+        max_results=3,
+        min_score=1.1,
+    )
+
+    assert result["ok"] is True
+    assert [
+        (item["corpus"], item["path"])
+        for item in result["result"]["results"]
+    ] == [
+        (item["corpus"], item["path"])
+        for item in python_result["results"]
+    ] == [("memory", "MEMORY.md")]
+    assert result["result"]["results"][0]["score"] < 1.1
+
+
 def test_real_openclaw_oracle_memory_search_sessions_corpus_reads_openclaw_transcripts(
     tmp_path: Path,
 ):

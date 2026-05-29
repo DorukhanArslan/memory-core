@@ -24,9 +24,7 @@ def chunk_markdown(
 ) -> list[MemoryChunk]:
     target = max(1, target_tokens)
     overlap = max(0, overlap_tokens)
-    line_tokens = [
-        (index + 1, line, line.split()) for index, line in enumerate(text.splitlines())
-    ]
+    line_tokens = [(index + 1, line, line.split()) for index, line in enumerate(text.split("\n"))]
     chunks: list[MemoryChunk] = []
     current: list[tuple[int, str, list[str]]] = []
     current_count = 0

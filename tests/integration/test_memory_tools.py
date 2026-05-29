@@ -14,9 +14,11 @@ def test_memory_get_reads_line_window(tmp_path: Path):
         MemoryConfig(workspace_dir=tmp_path), path="MEMORY.md", from_line=2, lines=1
     )
     assert result["path"] == "MEMORY.md"
-    assert result["text"] == "beta\n"
-    assert result["startLine"] == 2
-    assert result["endLine"] == 2
+    assert result["text"] == "beta\n\n[More content available. Use from=3 to continue.]"
+    assert result["from"] == 2
+    assert result["lines"] == 1
+    assert result["truncated"] is True
+    assert result["nextFrom"] == 3
 
 
 def test_memory_get_rejects_non_memory_workspace_file(tmp_path: Path):
@@ -26,7 +28,7 @@ def test_memory_get_rejects_non_memory_workspace_file(tmp_path: Path):
 
     assert result["disabled"] is True
     assert result["text"] == ""
-    assert "not an allowed memory file" in result["error"]
+    assert result["error"] == "path required"
 
 
 def test_memory_search_returns_hybrid_results(tmp_path: Path):

@@ -80,8 +80,7 @@ class MemoryWorkspace:
             return True
         if not normalized.startswith("memory/"):
             return False
-        name = normalized.removeprefix("memory/")
-        return "/" not in name and DATED_MEMORY_FILE_RE.match(name) is not None
+        return normalized.endswith(".md")
 
     def is_path_inside_root(self, path: Path) -> bool:
         return path == self.root or self.root in path.parents

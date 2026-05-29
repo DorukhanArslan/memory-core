@@ -7,6 +7,8 @@ import pytest
 
 from demo.openclaw_oracle import OpenClawOracle
 from memory_core.memory_flush import build_memory_flush_plan, build_memory_flush_plan_from_config
+from memory_core.config import MemoryConfig
+from memory_core.tools.memory_get import memory_get
 
 
 pytestmark = pytest.mark.skipif(
@@ -187,6 +189,140 @@ def test_real_openclaw_oracle_flush_plan_supports_disabled_and_overrides():
         "systemPrompt": python_configured.system_prompt,
         "model": python_configured.model,
     }
+
+
+def test_real_openclaw_oracle_memory_get_reads_line_window_like_python(tmp_path: Path):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    memory_file = tmp_path / "memory" / "2026-05-26.md"
+    memory_file.parent.mkdir(parents=True, exist_ok=True)
+    memory_file.write_text(
+        "\n".join(
+            [
+                "# 2026-05-26",
+                "",
+                "- User prefers to be addressed as Doruk.",
+                "- User prefers concise Turkish replies.",
+                "- User is porting OpenClaw memory-core to Python.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = oracle.run(
+        {
+            "operation": "memoryGet",
+            "workspaceDir": str(tmp_path),
+            "path": "memory/2026-05-26.md",
+            "from": 3,
+            "lines": 2,
+        }
+    )
+    python_result = memory_get(
+        MemoryConfig(workspace_dir=tmp_path),
+        path="memory/2026-05-26.md",
+        from_line=3,
+        lines=2,
+    )
+
+    assert result["ok"] is True
+    assert result["operation"] == "memoryGet"
+    assert result["result"] == python_result
+
+
+def test_real_openclaw_oracle_memory_get_reads_root_memory_like_python(tmp_path: Path):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    (tmp_path / "MEMORY.md").write_text(
+        "# Long-Term Memory\n\n- Doruk prefers Turkish replies.",
+        encoding="utf-8",
+    )
+
+    result = oracle.run(
+        {
+            "operation": "memoryGet",
+            "workspaceDir": str(tmp_path),
+            "path": "MEMORY.md",
+            "from": 3,
+            "lines": 1,
+        }
+    )
+    python_result = memory_get(
+        MemoryConfig(workspace_dir=tmp_path),
+        path="MEMORY.md",
+        from_line=3,
+        lines=1,
+    )
+
+    assert result["ok"] is True
+    assert result["operation"] == "memoryGet"
+    assert result["result"] == python_result
+
+
+def test_real_openclaw_oracle_memory_get_disabled_error_matches_python(tmp_path: Path):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    (tmp_path / "notes.txt").write_text("not memory\n", encoding="utf-8")
+
+    result = oracle.run(
+        {
+            "operation": "memoryGet",
+            "workspaceDir": str(tmp_path),
+            "path": "notes.txt",
+        }
+    )
+    python_result = memory_get(MemoryConfig(workspace_dir=tmp_path), path="notes.txt")
+
+    assert result["ok"] is True
+    assert result["operation"] == "memoryGet"
+    assert result["result"] == python_result
+
+
+def test_real_openclaw_oracle_memory_get_missing_file_matches_python(tmp_path: Path):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+    result = oracle.run(
+        {
+            "operation": "memoryGet",
+            "workspaceDir": str(tmp_path),
+            "path": "memory/2026-05-26.md",
+        }
+    )
+    python_result = memory_get(
+        MemoryConfig(workspace_dir=tmp_path),
+        path="memory/2026-05-26.md",
+    )
+
+    assert result["ok"] is True
+    assert result["operation"] == "memoryGet"
+    assert result["result"] == python_result
+
+
+def test_real_openclaw_oracle_memory_get_char_budget_matches_python(tmp_path: Path):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    memory_file = tmp_path / "memory" / "long.md"
+    memory_file.parent.mkdir(parents=True, exist_ok=True)
+    memory_file.write_text(
+        "\n".join([f"{index}: {'x' * 40}" for index in range(1, 8)]),
+        encoding="utf-8",
+    )
+    config = {"agents": {"defaults": {"contextLimits": {"memoryGetMaxChars": 90}}}}
+
+    result = oracle.run(
+        {
+            "operation": "memoryGet",
+            "workspaceDir": str(tmp_path),
+            "config": config,
+            "path": "memory/long.md",
+            "lines": 7,
+        }
+    )
+    python_result = memory_get(
+        MemoryConfig(workspace_dir=tmp_path, memory_get_max_chars=90),
+        path="memory/long.md",
+        lines=7,
+    )
+
+    assert result["ok"] is True
+    assert result["operation"] == "memoryGet"
+    assert result["result"] == python_result
 
 
 def test_real_openclaw_oracle_records_short_term_recall():

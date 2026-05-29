@@ -16,7 +16,7 @@ class MemoryConfig:
     embedding_model: str = "text-embedding-3-small"
     embedding_base_url: str = "https://api.openai.com/v1"
     citation_mode: str = "on"
-    memory_get_max_chars: int = 20_000
+    memory_get_max_chars: int = 12_000
     memory_get_default_lines: int = 120
     vector_weight: float = 0.5
     text_weight: float = 0.5

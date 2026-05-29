@@ -21,6 +21,8 @@ type Payload = {
   keys?: string[];
   phase?: "light" | "rem";
   path?: string;
+  from?: number;
+  lines?: number;
   snippet?: string;
   conceptLimit?: number;
   limit?: number;
@@ -29,6 +31,7 @@ type Payload = {
   minUniqueQueries?: number;
   maxAgeDays?: number;
   recencyHalfLifeDays?: number;
+  memoryFileMaxChars?: number;
 };
 
 type PromotionPolicy = {
@@ -171,6 +174,44 @@ async function main() {
             model: plan.model ?? null,
           }
         : null,
+    };
+  }
+
+  if (payload.operation === "memoryGet") {
+    const runtimeFiles = await importFromRepo(
+      repoPath,
+      "packages/memory-host-sdk/src/host/read-file.ts",
+    );
+    const baseConfig = payload.config ?? {};
+    const agents = isRecord(baseConfig.agents) ? baseConfig.agents : {};
+    const defaults = isRecord(agents.defaults) ? agents.defaults : {};
+    const cfg = {
+      ...baseConfig,
+      agents: {
+        ...agents,
+        defaults: {
+          ...defaults,
+          ...(payload.workspaceDir ? { workspace: payload.workspaceDir } : {}),
+        },
+      },
+    };
+    let result: unknown;
+    try {
+      result = await runtimeFiles.readAgentMemoryFile({
+        cfg,
+        agentId: "main",
+        relPath: payload.path ?? "",
+        from: payload.from,
+        lines: payload.lines,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      result = { path: payload.path ?? "", text: "", disabled: true, error: message };
+    }
+    return {
+      ok: true,
+      operation: payload.operation,
+      result,
     };
   }
 

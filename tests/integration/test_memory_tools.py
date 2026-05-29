@@ -95,6 +95,45 @@ def test_memory_search_indexes_session_transcripts_by_default(tmp_path: Path):
     } >= {("memory/.dreams/session-corpus/2026-05-07.md", "sessions")}
 
 
+def test_memory_search_indexes_openclaw_state_session_transcripts(tmp_path: Path):
+    sessions_dir = tmp_path / ".openclaw-state" / "agents" / "main" / "sessions"
+    sessions_dir.mkdir(parents=True)
+    (sessions_dir / "session-nebula.jsonl").write_text(
+        "\n".join(
+            [
+                '{"type":"session","id":"session-nebula"}',
+                '{"type":"message","message":{"role":"user","content":[{"type":"text","text":"What is Project Nebula?"}]}}',
+                '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"Project Nebula is ORBIT-10."}]}}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (sessions_dir / "sessions.json").write_text(
+        '{"agent:main:session-nebula":{"sessionFile":"session-nebula.jsonl"}}\n',
+        encoding="utf-8",
+    )
+    cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=8))
+    store.reindex(
+        MemoryWorkspace(tmp_path, openclaw_state_dir=tmp_path / ".openclaw-state")
+    )
+
+    result = memory_search(
+        cfg,
+        store,
+        query="project nebula orbit-10",
+        corpus="sessions",
+        max_results=3,
+        min_score=0.0,
+    )
+
+    first = result["results"][0]
+    assert first["path"] == "sessions/main/session-nebula.jsonl"
+    assert first["corpus"] == "sessions"
+    assert "Assistant: Project Nebula is ORBIT-10." in first["snippet"]
+
+
 def test_memory_search_corpus_memory_excludes_session_transcripts(tmp_path: Path):
     (tmp_path / "MEMORY.md").write_text("User likes lemon pepper wings.\n", encoding="utf-8")
     session_dir = tmp_path / "memory" / ".dreams" / "session-corpus"

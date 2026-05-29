@@ -37,6 +37,26 @@ def test_discovery_skips_dated_symlink_that_escapes_workspace(tmp_path: Path):
     ]
 
 
+def test_discovers_openclaw_state_session_transcripts(tmp_path: Path):
+    sessions_dir = tmp_path / ".openclaw-state" / "agents" / "main" / "sessions"
+    sessions_dir.mkdir(parents=True)
+    (sessions_dir / "session-nebula.jsonl").write_text(
+        '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"ORBIT-10"}]}}\n',
+        encoding="utf-8",
+    )
+    (sessions_dir / "sessions.json").write_text(
+        '{"agent:main:session-nebula":{"sessionFile":"session-nebula.jsonl"}}\n',
+        encoding="utf-8",
+    )
+    workspace = MemoryWorkspace(tmp_path, openclaw_state_dir=tmp_path / ".openclaw-state")
+
+    files = workspace.discover_session_transcript_files()
+
+    assert [(item.rel_path, item.source) for item in files] == [
+        ("sessions/main/session-nebula.jsonl", "sessions")
+    ]
+
+
 def test_safe_read_rejects_parent_escape(tmp_path: Path):
     workspace = MemoryWorkspace(tmp_path)
     with pytest.raises(UnsafeMemoryPathError):

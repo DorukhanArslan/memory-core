@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from memory_core.session_corpus import OpenClawSessionCorpus
+
 DATED_MEMORY_FILE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
 DAILY_MEMORY_PATH_RE = re.compile(r"^memory/\d{4}-\d{2}-\d{2}\.md$")
 SESSION_CORPUS_FILE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.(?:md|txt)$")
@@ -18,6 +20,7 @@ class MemoryFile:
     rel_path: str
     abs_path: Path
     source: str = "memory"
+    index_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -29,8 +32,10 @@ class MemoryReadResult:
 
 
 class MemoryWorkspace:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, *, openclaw_state_dir: Path | None = None, agent_id: str = "main"):
         self.root = root.resolve()
+        self.openclaw_state_dir = openclaw_state_dir.resolve() if openclaw_state_dir else None
+        self.agent_id = agent_id
 
     def discover_memory_files(self) -> list[MemoryFile]:
         files: list[MemoryFile] = []
@@ -66,6 +71,17 @@ class MemoryWorkspace:
                             source="sessions",
                         )
                     )
+        if self.openclaw_state_dir is not None:
+            corpus = OpenClawSessionCorpus(self.openclaw_state_dir, agent_id=self.agent_id)
+            files.extend(
+                MemoryFile(
+                    item.rel_path,
+                    item.abs_path,
+                    item.source,
+                    index_text=corpus.read_index_text(item),
+                )
+                for item in corpus.discover_files()
+            )
         return files
 
     def discover_indexable_files(self) -> list[MemoryFile]:

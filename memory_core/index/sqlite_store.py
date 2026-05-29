@@ -56,7 +56,7 @@ class SQLiteMemoryStore:
         files = workspace.discover_indexable_files()
         chunks: list[MemoryChunk] = []
         for file in files:
-            text = file.abs_path.read_text(encoding="utf-8")
+            text = file.index_text if file.index_text is not None else file.abs_path.read_text(encoding="utf-8")
             chunks.extend(
                 chunk_markdown(
                     file.rel_path,

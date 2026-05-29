@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import crypto from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -10,6 +11,8 @@ type Payload = {
   timezone?: string;
   config?: Record<string, unknown>;
   query?: string;
+  corpus?: "memory" | "sessions" | "wiki" | "all";
+  maxResults?: number;
   results?: unknown[];
   recalls?: Array<{
     query?: string;
@@ -46,6 +49,11 @@ type PromotionPolicy = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function deterministicEmbedding(text: string, dimensions = 8): number[] {
+  const digest = crypto.createHash("sha256").update(text).digest();
+  return Array.from({ length: dimensions }, (_, index) => digest[index % digest.length] / 255);
 }
 
 async function readStdin(): Promise<Payload> {
@@ -213,6 +221,105 @@ async function main() {
       operation: payload.operation,
       result,
     };
+  }
+
+  if (payload.operation === "memorySearch") {
+    const embeddingProviders = await importFromRepo(
+      repoPath,
+      "src/plugins/memory-embedding-providers.ts",
+    );
+    embeddingProviders.registerMemoryEmbeddingProvider({
+      id: "stem-fake",
+      defaultModel: "fake-deterministic",
+      create: async () => ({
+        provider: {
+          id: "stem-fake",
+          model: "fake-deterministic",
+          embedQuery: async (text: string) => deterministicEmbedding(`query:${text}`),
+          embedBatch: async (texts: string[]) =>
+            texts.map((text) => deterministicEmbedding(`document:${text}`)),
+        },
+      }),
+    });
+
+    const tools = await importFromRepo(repoPath, "extensions/memory-core/src/tools.ts");
+    const memoryIndex = await importFromRepo(
+      repoPath,
+      "extensions/memory-core/src/memory/index.ts",
+    );
+    const storePath = payload.workspaceDir
+      ? path.join(payload.workspaceDir, ".openclaw-memory-oracle.sqlite")
+      : undefined;
+    const baseConfig = payload.config ?? {};
+    const agents = isRecord(baseConfig.agents) ? baseConfig.agents : {};
+    const defaults = isRecord(agents.defaults) ? agents.defaults : {};
+    const defaultMemorySearch = isRecord(defaults.memorySearch) ? defaults.memorySearch : {};
+    const defaultQuery = isRecord(defaultMemorySearch.query) ? defaultMemorySearch.query : {};
+    const defaultHybrid = isRecord(defaultQuery.hybrid) ? defaultQuery.hybrid : {};
+    const defaultStore = isRecord(defaultMemorySearch.store) ? defaultMemorySearch.store : {};
+    const cfg = {
+      ...baseConfig,
+      memory: {
+        ...(isRecord(baseConfig.memory) ? baseConfig.memory : {}),
+        backend: "builtin",
+        citations: "on",
+      },
+      agents: {
+        ...agents,
+        defaults: {
+          ...defaults,
+          ...(payload.workspaceDir ? { workspace: payload.workspaceDir } : {}),
+          memorySearch: {
+            ...defaultMemorySearch,
+            provider: "stem-fake",
+            model: "fake-deterministic",
+            ...(storePath ? { store: { ...defaultStore, path: storePath } } : {}),
+            sync: {
+              ...(isRecord(defaultMemorySearch.sync) ? defaultMemorySearch.sync : {}),
+              watch: false,
+              onSessionStart: false,
+              onSearch: false,
+            },
+            query: {
+              ...defaultQuery,
+              minScore: payload.minScore ?? defaultQuery.minScore ?? 0,
+              maxResults: payload.maxResults ?? defaultQuery.maxResults ?? 5,
+              hybrid: {
+                ...defaultHybrid,
+                enabled: true,
+                vectorWeight: 0,
+                textWeight: 1,
+              },
+            },
+            cache: { enabled: false },
+          },
+        },
+        list: [{ id: "main", default: true }],
+      },
+    };
+    try {
+      const tool = tools.createMemorySearchTool({
+        config: cfg,
+        agentId: "main",
+        agentSessionKey: "agent:main:oracle",
+      });
+      if (!tool) {
+        throw new Error("memory_search tool missing");
+      }
+      const result = await tool.execute("memory_search_oracle", {
+        query: payload.query ?? "",
+        corpus: payload.corpus ?? "all",
+        maxResults: payload.maxResults,
+        minScore: payload.minScore,
+      });
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: result.details,
+      };
+    } finally {
+      await memoryIndex.closeAllMemorySearchManagers();
+    }
   }
 
   const promotion = await importFromRepo(

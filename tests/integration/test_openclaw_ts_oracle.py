@@ -8,7 +8,11 @@ import pytest
 from demo.openclaw_oracle import OpenClawOracle
 from memory_core.memory_flush import build_memory_flush_plan, build_memory_flush_plan_from_config
 from memory_core.config import MemoryConfig
+from memory_core.embeddings.base import FakeEmbeddingProvider
+from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.tools.memory_search import memory_search
 from memory_core.tools.memory_get import memory_get
+from memory_core.workspace import MemoryWorkspace
 
 
 pytestmark = pytest.mark.skipif(
@@ -323,6 +327,58 @@ def test_real_openclaw_oracle_memory_get_char_budget_matches_python(tmp_path: Pa
     assert result["ok"] is True
     assert result["operation"] == "memoryGet"
     assert result["result"] == python_result
+
+
+def test_real_openclaw_oracle_memory_search_memory_corpus_matches_python_paths(
+    tmp_path: Path,
+):
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+    (tmp_path / "MEMORY.md").write_text(
+        "# Long-Term Memory\n\n- Doruk prefers concise Turkish replies.",
+        encoding="utf-8",
+    )
+    memory_file = tmp_path / "memory" / "2026-05-26.md"
+    memory_file.parent.mkdir(parents=True, exist_ok=True)
+    memory_file.write_text(
+        "# 2026-05-26\n\n- Move backups to S3 Glacier cold storage.",
+        encoding="utf-8",
+    )
+
+    result = oracle.run(
+        {
+            "operation": "memorySearch",
+            "workspaceDir": str(tmp_path),
+            "query": "glacier",
+            "corpus": "memory",
+            "maxResults": 3,
+            "minScore": 0,
+        }
+    )
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "python-memory.sqlite",
+        vector_weight=0,
+        text_weight=1,
+    )
+    store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+    python_result = memory_search(
+        cfg,
+        store,
+        query="glacier",
+        corpus="memory",
+        max_results=3,
+        min_score=0,
+    )
+
+    assert result["ok"] is True
+    assert result["operation"] == "memorySearch"
+    assert [(item["corpus"], item["path"]) for item in result["result"]["results"]] == [
+        (item["corpus"], item["path"]) for item in python_result["results"]
+    ]
 
 
 def test_real_openclaw_oracle_records_short_term_recall():

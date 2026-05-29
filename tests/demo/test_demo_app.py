@@ -511,6 +511,58 @@ def test_chat_send_exposes_live_transcript_context_without_flush(monkeypatch):
     assert latest_turn["flush"] is None
 
 
+def test_chat_send_windows_live_transcript_and_reports_omitted_messages(monkeypatch):
+    class RecordingEngine(StubOpenAIEngine):
+        def __init__(self):
+            super().__init__()
+            self.message_batches = []
+
+        def complete(self, *, messages, memory_context, workspace_context=""):
+            self.message_batches.append([(message.role, message.content) for message in messages])
+            return super().complete(
+                messages=messages,
+                memory_context=memory_context,
+                workspace_context=workspace_context,
+            )
+
+    engine = RecordingEngine()
+    monkeypatch.setattr(demo_app, "DEMO_TRANSCRIPT_MESSAGE_WINDOW", 3)
+    monkeypatch.setattr(demo_app, "_chat_engine", lambda payload: engine)
+    monkeypatch.setattr(demo_app, "demo_store", fake_demo_store)
+    client = TestClient(app)
+    client.post("/api/chat/reset", json={})
+
+    for message in ("turn one", "turn two", "turn three"):
+        response = client.post(
+            "/api/chat/send",
+            json={
+                "message": message,
+                "engine": "openai",
+                "openai": {"apiKey": "request-key"},
+                "autoFlush": False,
+            },
+        )
+        assert response.status_code == 200
+
+    assert engine.message_batches[-1] == [
+        ("assistant", "stub response to turn one"),
+        ("user", "turn two"),
+        ("assistant", "stub response to turn two"),
+        ("user", "turn three"),
+    ]
+    latest_turn = response.json()["turns"][-1]
+    assert latest_turn["transcriptOmittedCount"] == 1
+    assert latest_turn["omittedTranscriptMessages"] == [
+        {"role": "user", "content": "turn one"},
+    ]
+    assert latest_turn["transcriptMessages"] == [
+        {"role": "assistant", "content": "stub response to turn one"},
+        {"role": "user", "content": "turn two"},
+        {"role": "assistant", "content": "stub response to turn two"},
+        {"role": "user", "content": "turn three"},
+    ]
+
+
 def test_chat_manual_flush_updates_latest_turn_and_memory_file(monkeypatch):
     monkeypatch.setattr(demo_app, "_chat_engine", lambda payload: StubOpenAIEngine())
     monkeypatch.setattr(demo_app, "demo_store", fake_demo_store)

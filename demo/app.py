@@ -61,6 +61,7 @@ PROJECT_ROOT = DEMO_ROOT.parent
 DEMO_WORKSPACE = Path(tempfile.gettempdir()) / "memory-core-lab-workspace"
 DEMO_TIMEZONE = "Europe/Istanbul"
 DEMO_NOW_MS = 1777824000000
+DEMO_TRANSCRIPT_MESSAGE_WINDOW = 40
 CHAT_STATE = ChatSessionState()
 PROMOTION_SWEEP: dict[str, Any] | None = None
 DREAMING_SWEEP: dict[str, Any] | None = None
@@ -260,10 +261,17 @@ def _local_date(now_ms: int):
     return datetime.fromtimestamp(now_ms / 1000, tz=UTC).astimezone(timezone).date()
 
 
-def _chat_messages(message: str) -> list[ChatMessage]:
-    messages = CHAT_STATE.transcript_messages()
-    messages.append(ChatMessage(role="user", content=message))
-    return messages
+def _chat_messages(message: str) -> tuple[list[ChatMessage], list[ChatMessage]]:
+    previous_messages = CHAT_STATE.transcript_messages()
+    if DEMO_TRANSCRIPT_MESSAGE_WINDOW <= 0:
+        visible_previous_messages: list[ChatMessage] = []
+        omitted_messages = previous_messages
+    else:
+        visible_previous_messages = previous_messages[-DEMO_TRANSCRIPT_MESSAGE_WINDOW:]
+        omitted_count = max(0, len(previous_messages) - len(visible_previous_messages))
+        omitted_messages = previous_messages[:omitted_count]
+    visible_messages = [*visible_previous_messages, ChatMessage(role="user", content=message)]
+    return visible_messages, omitted_messages
 
 
 def _now_ms() -> int:
@@ -568,7 +576,7 @@ def chat_send(payload: dict):
             now_ms=_now_ms(),
         )
         memory_context = _memory_context_from_results(chat_recall_results)
-        transcript_messages = _chat_messages(message)
+        transcript_messages, omitted_transcript_messages = _chat_messages(message)
         response = engine.complete(
             messages=transcript_messages,
             memory_context=memory_context,
@@ -581,6 +589,7 @@ def chat_send(payload: dict):
             assistant_response=response.content,
             memory_context=memory_context,
             transcript_messages=transcript_messages,
+            omitted_transcript_messages=omitted_transcript_messages,
         )
         if bool(payload.get("autoFlush", True)):
             turn.flush = _flush_latest_turn(engine, store)
@@ -769,7 +778,7 @@ def _chat_send_stream_events(payload: dict):
             now_ms=_now_ms(),
         )
         memory_context = _memory_context_from_results(chat_recall_results)
-        transcript_messages = _chat_messages(message)
+        transcript_messages, omitted_transcript_messages = _chat_messages(message)
         full_response = []
         for chunk in engine.stream_complete(
             messages=transcript_messages,
@@ -785,6 +794,7 @@ def _chat_send_stream_events(payload: dict):
             assistant_response="".join(full_response),
             memory_context=memory_context,
             transcript_messages=transcript_messages,
+            omitted_transcript_messages=omitted_transcript_messages,
         )
         if bool(payload.get("autoFlush", True)):
             turn.flush = _flush_latest_turn(engine, store)

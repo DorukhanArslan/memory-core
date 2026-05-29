@@ -400,14 +400,26 @@
 
       function transcriptNode(turn) {
         const messages = turn.transcriptMessages || [];
+        const omitted = turn.omittedTranscriptMessages || [];
         if (!messages.length) {
           return textBlock("No live transcript messages were sent with this turn.");
         }
-        const lines = messages.map((message, index) => {
+        const lines = [];
+        if (omitted.length) {
+          lines.push(`Not injected: ${omitted.length} older message${omitted.length === 1 ? "" : "s"}`);
+          for (const [index, message] of omitted.entries()) {
+            const role = message.role || "unknown";
+            const content = message.content || "";
+            lines.push(`  ${index + 1}. ${role}: ${content}`);
+          }
+          lines.push("");
+        }
+        lines.push("Injected:");
+        lines.push(...messages.map((message, index) => {
           const role = message.role || "unknown";
           const content = message.content || "";
           return `${index + 1}. ${role}: ${content}`;
-        });
+        }));
         return codeBlock(lines.join("\n"));
       }
 

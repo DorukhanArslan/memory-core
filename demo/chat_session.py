@@ -15,6 +15,7 @@ class ChatTurn:
     memory_context: list[str]
     assistant_response: str
     transcript_messages: list[ChatMessage] = field(default_factory=list)
+    omitted_transcript_messages: list[ChatMessage] = field(default_factory=list)
     flush: dict[str, Any] | None = None
     promotion: dict[str, Any] | None = None
 
@@ -30,6 +31,11 @@ class ChatTurn:
                 {"role": message.role, "content": message.content}
                 for message in self.transcript_messages
             ],
+            "omittedTranscriptMessages": [
+                {"role": message.role, "content": message.content}
+                for message in self.omitted_transcript_messages
+            ],
+            "transcriptOmittedCount": len(self.omitted_transcript_messages),
             "flush": self.flush,
             "promotion": self.promotion,
         }
@@ -49,6 +55,7 @@ class ChatSessionState:
         assistant_response: str,
         memory_context: list[str],
         transcript_messages: list[ChatMessage] | None = None,
+        omitted_transcript_messages: list[ChatMessage] | None = None,
         flush: dict[str, Any] | None = None,
         promotion: dict[str, Any] | None = None,
     ) -> ChatTurn:
@@ -60,6 +67,7 @@ class ChatSessionState:
             memory_context=memory_context,
             assistant_response=assistant_response,
             transcript_messages=transcript_messages or [],
+            omitted_transcript_messages=omitted_transcript_messages or [],
             flush=flush,
             promotion=promotion,
         )

@@ -175,6 +175,74 @@ def build_memory_flush_plan_from_config(
     )
 
 
+def should_run_memory_flush(
+    *,
+    entry: dict[str, Any] | None,
+    context_window_tokens: int,
+    reserve_tokens_floor: int,
+    soft_threshold_tokens: int,
+    token_count: int | float | None = None,
+) -> bool:
+    state = _resolve_memory_flush_gate_state(
+        entry=entry,
+        token_count=token_count,
+        context_window_tokens=context_window_tokens,
+        reserve_tokens_floor=reserve_tokens_floor,
+        soft_threshold_tokens=soft_threshold_tokens,
+    )
+    if state is None:
+        return False
+    resolved_entry, total_tokens, threshold = state
+    if total_tokens < threshold:
+        return False
+    if has_already_flushed_for_current_compaction(resolved_entry):
+        return False
+    return True
+
+
+def has_already_flushed_for_current_compaction(entry: dict[str, Any]) -> bool:
+    compaction_count = entry.get("compactionCount") or 0
+    last_flush_at = entry.get("memoryFlushCompactionCount")
+    return isinstance(last_flush_at, int | float) and int(last_flush_at) == int(compaction_count)
+
+
+def _resolve_memory_flush_gate_state(
+    *,
+    entry: dict[str, Any] | None,
+    token_count: int | float | None,
+    context_window_tokens: int,
+    reserve_tokens_floor: int,
+    soft_threshold_tokens: int,
+) -> tuple[dict[str, Any], int, int] | None:
+    if entry is None:
+        return None
+    total_tokens = _resolve_positive_token_count(token_count)
+    if total_tokens is None:
+        total_tokens = _resolve_fresh_session_total_tokens(entry)
+    if total_tokens is None:
+        return None
+
+    context_window = max(1, int(context_window_tokens))
+    reserve_tokens = max(0, int(reserve_tokens_floor))
+    soft_threshold = max(0, int(soft_threshold_tokens))
+    threshold = max(0, context_window - reserve_tokens - soft_threshold)
+    if threshold <= 0:
+        return None
+    return entry, total_tokens, threshold
+
+
+def _resolve_fresh_session_total_tokens(entry: dict[str, Any]) -> int | None:
+    if entry.get("totalTokensFresh") is False:
+        return None
+    return _resolve_positive_token_count(entry.get("totalTokens"))
+
+
+def _resolve_positive_token_count(value: Any) -> int | None:
+    if not isinstance(value, int | float) or not _is_finite_number(value) or value <= 0:
+        return None
+    return int(value)
+
+
 def _normalize_non_negative_int(value: int) -> int:
     return max(0, int(value))
 

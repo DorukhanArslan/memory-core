@@ -41,6 +41,11 @@ type Payload = {
   maxAgeDays?: number;
   recencyHalfLifeDays?: number;
   memoryFileMaxChars?: number;
+  entry?: Record<string, unknown>;
+  tokenCount?: number;
+  contextWindowTokens?: number;
+  reserveTokensFloor?: number;
+  softThresholdTokens?: number;
 };
 
 type PromotionPolicy = {
@@ -227,6 +232,27 @@ async function main() {
             model: plan.model ?? null,
           }
         : null,
+    };
+  }
+
+  if (payload.operation === "memoryFlushGate") {
+    const memoryFlush = await importFromRepo(repoPath, "src/auto-reply/reply/memory-flush.ts");
+    const entry = payload.entry ?? undefined;
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        shouldRunMemoryFlush: memoryFlush.shouldRunMemoryFlush({
+          entry,
+          tokenCount: payload.tokenCount,
+          contextWindowTokens: payload.contextWindowTokens ?? 100_000,
+          reserveTokensFloor: payload.reserveTokensFloor ?? 20_000,
+          softThresholdTokens: payload.softThresholdTokens ?? 4_000,
+        }),
+        hasAlreadyFlushedForCurrentCompaction: entry
+          ? memoryFlush.hasAlreadyFlushedForCurrentCompaction(entry)
+          : false,
+      },
     };
   }
 

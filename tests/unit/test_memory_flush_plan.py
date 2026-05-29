@@ -9,6 +9,8 @@ from memory_core.memory_flush import (
     SILENT_REPLY_TOKEN,
     UnsafeMemoryFlushTargetError,
     build_memory_flush_plan,
+    has_already_flushed_for_current_compaction,
+    should_run_memory_flush,
     validate_daily_memory_target,
 )
 
@@ -63,6 +65,73 @@ def test_build_memory_flush_plan_allows_reserve_floor_override(tmp_path: Path):
     )
 
     assert plan.reserve_tokens_floor == 123
+
+
+def test_should_run_memory_flush_matches_openclaw_threshold_boundary():
+    assert should_run_memory_flush(
+        entry={"totalTokens": 85},
+        context_window_tokens=100,
+        reserve_tokens_floor=10,
+        soft_threshold_tokens=5,
+    )
+
+
+def test_should_run_memory_flush_skips_under_threshold_and_missing_entry():
+    assert not should_run_memory_flush(
+        entry=None,
+        context_window_tokens=16_000,
+        reserve_tokens_floor=1_000,
+        soft_threshold_tokens=4_000,
+    )
+    assert not should_run_memory_flush(
+        entry={"totalTokens": 10_000},
+        context_window_tokens=100_000,
+        reserve_tokens_floor=20_000,
+        soft_threshold_tokens=10_000,
+    )
+
+
+def test_should_run_memory_flush_ignores_stale_cached_totals():
+    assert not should_run_memory_flush(
+        entry={"totalTokens": 96_000, "totalTokensFresh": False, "compactionCount": 1},
+        context_window_tokens=100_000,
+        reserve_tokens_floor=5_000,
+        soft_threshold_tokens=2_000,
+    )
+
+
+def test_should_run_memory_flush_uses_projected_token_count_over_stale_total():
+    assert should_run_memory_flush(
+        entry={"totalTokens": 10, "totalTokensFresh": False, "compactionCount": 1},
+        token_count=93_000,
+        context_window_tokens=100_000,
+        reserve_tokens_floor=5_000,
+        soft_threshold_tokens=2_000,
+    )
+
+
+def test_should_run_memory_flush_skips_current_compaction_cycle_duplicate():
+    assert not should_run_memory_flush(
+        entry={
+            "totalTokens": 90_000,
+            "compactionCount": 2,
+            "memoryFlushCompactionCount": 2,
+        },
+        context_window_tokens=100_000,
+        reserve_tokens_floor=5_000,
+        soft_threshold_tokens=2_000,
+    )
+
+
+def test_has_already_flushed_for_current_compaction_matches_openclaw():
+    assert has_already_flushed_for_current_compaction(
+        {"compactionCount": 3, "memoryFlushCompactionCount": 3}
+    )
+    assert not has_already_flushed_for_current_compaction(
+        {"compactionCount": 3, "memoryFlushCompactionCount": 2}
+    )
+    assert not has_already_flushed_for_current_compaction({"compactionCount": 1})
+    assert has_already_flushed_for_current_compaction({"memoryFlushCompactionCount": 0})
 
 
 def test_validate_daily_memory_target_accepts_only_canonical_daily_file():

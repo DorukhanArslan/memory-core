@@ -6,7 +6,12 @@ import tempfile
 import pytest
 
 from demo.openclaw_oracle import OpenClawOracle
-from memory_core.memory_flush import build_memory_flush_plan, build_memory_flush_plan_from_config
+from memory_core.memory_flush import (
+    build_memory_flush_plan,
+    build_memory_flush_plan_from_config,
+    has_already_flushed_for_current_compaction,
+    should_run_memory_flush,
+)
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
@@ -197,6 +202,84 @@ def test_real_openclaw_oracle_flush_plan_supports_disabled_and_overrides():
         "systemPrompt": python_configured.system_prompt,
         "model": python_configured.model,
     }
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "entry": {"totalTokens": 0},
+            "contextWindowTokens": 16_000,
+            "reserveTokensFloor": 20_000,
+            "softThresholdTokens": 4_000,
+        },
+        {
+            "entry": None,
+            "contextWindowTokens": 16_000,
+            "reserveTokensFloor": 1_000,
+            "softThresholdTokens": 4_000,
+        },
+        {
+            "entry": {"totalTokens": 10_000},
+            "contextWindowTokens": 100_000,
+            "reserveTokensFloor": 20_000,
+            "softThresholdTokens": 10_000,
+        },
+        {
+            "entry": {"totalTokens": 85},
+            "contextWindowTokens": 100,
+            "reserveTokensFloor": 10,
+            "softThresholdTokens": 5,
+        },
+        {
+            "entry": {
+                "totalTokens": 90_000,
+                "compactionCount": 2,
+                "memoryFlushCompactionCount": 2,
+            },
+            "contextWindowTokens": 100_000,
+            "reserveTokensFloor": 5_000,
+            "softThresholdTokens": 2_000,
+        },
+        {
+            "entry": {"totalTokens": 96_000, "compactionCount": 1},
+            "contextWindowTokens": 100_000,
+            "reserveTokensFloor": 5_000,
+            "softThresholdTokens": 2_000,
+        },
+        {
+            "entry": {"totalTokens": 96_000, "totalTokensFresh": False, "compactionCount": 1},
+            "contextWindowTokens": 100_000,
+            "reserveTokensFloor": 5_000,
+            "softThresholdTokens": 2_000,
+        },
+        {
+            "entry": {"totalTokens": 10, "totalTokensFresh": False, "compactionCount": 1},
+            "tokenCount": 93_000,
+            "contextWindowTokens": 100_000,
+            "reserveTokensFloor": 5_000,
+            "softThresholdTokens": 2_000,
+        },
+    ],
+)
+def test_real_openclaw_oracle_memory_flush_gate_matches_python(payload: dict):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+    result = oracle.run({"operation": "memoryFlushGate", **payload})
+    entry = payload.get("entry")
+
+    assert result["ok"] is True
+    assert result["operation"] == "memoryFlushGate"
+    assert result["result"]["shouldRunMemoryFlush"] is should_run_memory_flush(
+        entry=entry,
+        token_count=payload.get("tokenCount"),
+        context_window_tokens=payload["contextWindowTokens"],
+        reserve_tokens_floor=payload["reserveTokensFloor"],
+        soft_threshold_tokens=payload["softThresholdTokens"],
+    )
+    assert result["result"]["hasAlreadyFlushedForCurrentCompaction"] is (
+        has_already_flushed_for_current_compaction(entry) if entry else False
+    )
 
 
 def test_real_openclaw_oracle_memory_get_reads_line_window_like_python(tmp_path: Path):

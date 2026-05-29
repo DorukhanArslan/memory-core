@@ -200,6 +200,55 @@ def should_run_memory_flush(
     return True
 
 
+def should_run_memory_flush_trigger(
+    *,
+    entry: dict[str, Any] | None,
+    context_window_tokens: int,
+    reserve_tokens_floor: int,
+    soft_threshold_tokens: int,
+    token_count: int | float | None = None,
+    transcript_byte_size: int | float | None = None,
+    force_flush_transcript_bytes: int | float = DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES,
+    memory_flush_writable: bool = True,
+    is_heartbeat: bool = False,
+    is_cli: bool = False,
+) -> bool:
+    can_attempt_flush = memory_flush_writable and not is_heartbeat and not is_cli
+    if not can_attempt_flush:
+        return False
+    token_gate = should_run_memory_flush(
+        entry=entry,
+        token_count=token_count,
+        context_window_tokens=context_window_tokens,
+        reserve_tokens_floor=reserve_tokens_floor,
+        soft_threshold_tokens=soft_threshold_tokens,
+    )
+    force_by_transcript_size = (
+        should_force_memory_flush_by_transcript_size(
+            transcript_byte_size=transcript_byte_size,
+            force_flush_transcript_bytes=force_flush_transcript_bytes,
+        )
+        and entry is not None
+        and not has_already_flushed_for_current_compaction(entry)
+    )
+    return token_gate or force_by_transcript_size
+
+
+def should_force_memory_flush_by_transcript_size(
+    *,
+    transcript_byte_size: int | float | None,
+    force_flush_transcript_bytes: int | float,
+) -> bool:
+    return (
+        isinstance(transcript_byte_size, int | float)
+        and _is_finite_number(transcript_byte_size)
+        and isinstance(force_flush_transcript_bytes, int | float)
+        and _is_finite_number(force_flush_transcript_bytes)
+        and force_flush_transcript_bytes > 0
+        and transcript_byte_size >= force_flush_transcript_bytes
+    )
+
+
 def has_already_flushed_for_current_compaction(entry: dict[str, Any]) -> bool:
     compaction_count = entry.get("compactionCount") or 0
     last_flush_at = entry.get("memoryFlushCompactionCount")

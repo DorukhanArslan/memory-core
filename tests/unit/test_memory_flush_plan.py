@@ -10,6 +10,8 @@ from memory_core.memory_flush import (
     UnsafeMemoryFlushTargetError,
     build_memory_flush_plan,
     has_already_flushed_for_current_compaction,
+    should_force_memory_flush_by_transcript_size,
+    should_run_memory_flush_trigger,
     should_run_memory_flush,
     validate_daily_memory_target,
 )
@@ -132,6 +134,92 @@ def test_has_already_flushed_for_current_compaction_matches_openclaw():
     )
     assert not has_already_flushed_for_current_compaction({"compactionCount": 1})
     assert has_already_flushed_for_current_compaction({"memoryFlushCompactionCount": 0})
+
+
+def test_should_force_memory_flush_by_transcript_size_matches_openclaw_boundary():
+    assert not should_force_memory_flush_by_transcript_size(
+        transcript_byte_size=None,
+        force_flush_transcript_bytes=100,
+    )
+    assert not should_force_memory_flush_by_transcript_size(
+        transcript_byte_size=99,
+        force_flush_transcript_bytes=100,
+    )
+    assert should_force_memory_flush_by_transcript_size(
+        transcript_byte_size=100,
+        force_flush_transcript_bytes=100,
+    )
+    assert should_force_memory_flush_by_transcript_size(
+        transcript_byte_size=101,
+        force_flush_transcript_bytes=100,
+    )
+
+
+def test_should_force_memory_flush_by_transcript_size_requires_positive_threshold():
+    assert not should_force_memory_flush_by_transcript_size(
+        transcript_byte_size=100,
+        force_flush_transcript_bytes=0,
+    )
+    assert not should_force_memory_flush_by_transcript_size(
+        transcript_byte_size=100,
+        force_flush_transcript_bytes=-1,
+    )
+
+
+def test_should_run_memory_flush_trigger_allows_transcript_size_force_path():
+    assert should_run_memory_flush_trigger(
+        entry={"totalTokens": 1, "compactionCount": 1},
+        context_window_tokens=100_000,
+        reserve_tokens_floor=20_000,
+        soft_threshold_tokens=4_000,
+        transcript_byte_size=2_000,
+        force_flush_transcript_bytes=2_000,
+    )
+
+
+def test_should_run_memory_flush_trigger_blocks_force_path_after_same_cycle_flush():
+    assert not should_run_memory_flush_trigger(
+        entry={
+            "totalTokens": 1,
+            "compactionCount": 1,
+            "memoryFlushCompactionCount": 1,
+        },
+        context_window_tokens=100_000,
+        reserve_tokens_floor=20_000,
+        soft_threshold_tokens=4_000,
+        transcript_byte_size=2_000,
+        force_flush_transcript_bytes=2_000,
+    )
+
+
+def test_should_run_memory_flush_trigger_blocks_runtime_skip_flags():
+    assert not should_run_memory_flush_trigger(
+        entry={"totalTokens": 99_000},
+        context_window_tokens=100_000,
+        reserve_tokens_floor=5_000,
+        soft_threshold_tokens=2_000,
+        transcript_byte_size=2_000,
+        force_flush_transcript_bytes=2_000,
+        memory_flush_writable=False,
+    )
+    assert not should_run_memory_flush_trigger(
+        entry={"totalTokens": 99_000},
+        context_window_tokens=100_000,
+        reserve_tokens_floor=5_000,
+        soft_threshold_tokens=2_000,
+        transcript_byte_size=2_000,
+        force_flush_transcript_bytes=2_000,
+        is_heartbeat=True,
+    )
+    assert not should_run_memory_flush_trigger(
+        entry={"totalTokens": 99_000},
+        context_window_tokens=100_000,
+        reserve_tokens_floor=5_000,
+        soft_threshold_tokens=2_000,
+        transcript_byte_size=2_000,
+        force_flush_transcript_bytes=2_000,
+        is_cli=True,
+    )
 
 
 def test_validate_daily_memory_target_accepts_only_canonical_daily_file():

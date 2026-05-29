@@ -15,6 +15,7 @@ type Payload = {
   corpus?: "memory" | "sessions" | "wiki" | "all";
   maxResults?: number;
   results?: unknown[];
+  wikiResults?: unknown[];
   sessionTranscripts?: Array<{
     fileName?: string;
     entries?: unknown[];
@@ -121,6 +122,17 @@ async function writeSessionTranscriptFixtures(payload: Payload): Promise<void> {
     `${JSON.stringify(sessionStore, null, 2)}\n`,
     "utf-8",
   );
+}
+
+async function registerWikiCorpusFixture(repoPath: string, payload: Payload): Promise<void> {
+  if (!payload.wikiResults?.length) {
+    return;
+  }
+  const memoryState = await importFromRepo(repoPath, "src/plugins/memory-state.ts");
+  memoryState.registerMemoryCorpusSupplement("memory-wiki", {
+    search: async () => payload.wikiResults ?? [],
+    get: async () => null,
+  });
 }
 
 async function resolvePromotionPolicy(repoPath: string, payload: Payload): Promise<PromotionPolicy> {
@@ -261,6 +273,7 @@ async function main() {
       process.env.OPENCLAW_STATE_DIR = payload.stateDir;
     }
     await writeSessionTranscriptFixtures(payload);
+    await registerWikiCorpusFixture(repoPath, payload);
     const embeddingProviders = await importFromRepo(
       repoPath,
       "src/plugins/memory-embedding-providers.ts",

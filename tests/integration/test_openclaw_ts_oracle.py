@@ -483,6 +483,84 @@ def test_real_openclaw_oracle_memory_search_sessions_corpus_reads_openclaw_trans
     assert "Assistant: The current Project Nebula codename is ORBIT-10." in first["snippet"]
 
 
+def test_real_openclaw_oracle_memory_search_all_balances_memory_and_wiki(
+    tmp_path: Path,
+):
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+    (tmp_path / "MEMORY.md").write_text(
+        "# Long-Term Memory\n\n- Memory result A mentions project alpha.",
+        encoding="utf-8",
+    )
+
+    result = oracle.run(
+        {
+            "operation": "memorySearch",
+            "workspaceDir": str(tmp_path),
+            "query": "alpha",
+            "corpus": "all",
+            "maxResults": 5,
+            "minScore": 0,
+            "wikiResults": [
+                {
+                    "corpus": "wiki",
+                    "path": "w1.md",
+                    "title": "W1",
+                    "kind": "entity",
+                    "score": 50,
+                    "snippet": "wiki 1",
+                },
+                {
+                    "corpus": "wiki",
+                    "path": "w2.md",
+                    "title": "W2",
+                    "kind": "entity",
+                    "score": 40,
+                    "snippet": "wiki 2",
+                },
+                {
+                    "corpus": "wiki",
+                    "path": "w3.md",
+                    "title": "W3",
+                    "kind": "entity",
+                    "score": 30,
+                    "snippet": "wiki 3",
+                },
+                {
+                    "corpus": "wiki",
+                    "path": "w4.md",
+                    "title": "W4",
+                    "kind": "entity",
+                    "score": 20,
+                    "snippet": "wiki 4",
+                },
+                {
+                    "corpus": "wiki",
+                    "path": "w5.md",
+                    "title": "W5",
+                    "kind": "entity",
+                    "score": 10,
+                    "snippet": "wiki 5",
+                },
+            ],
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["operation"] == "memorySearch"
+    paths_by_corpus = [(item["corpus"], item["path"]) for item in result["result"]["results"]]
+    assert ("memory", "MEMORY.md") in paths_by_corpus
+    assert [path for corpus, path in paths_by_corpus if corpus == "wiki"] == [
+        "w1.md",
+        "w2.md",
+        "w3.md",
+        "w4.md",
+    ]
+    assert len(paths_by_corpus) == 5
+
+
 def test_real_openclaw_oracle_records_short_term_recall():
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
 

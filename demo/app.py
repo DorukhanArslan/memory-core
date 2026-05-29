@@ -22,6 +22,7 @@ from demo.chat_engine import (
     engine_status,
 )
 from demo.chat_session import ChatSessionState
+from demo.transcript_context import select_transcript_context
 from demo.dreaming import run_dreaming_sweep
 from demo.memory_flush import MemoryFlushRun, ParsedFlushOutput, run_memory_flush
 from demo.parity_trace import build_parity_trace
@@ -62,6 +63,7 @@ DEMO_WORKSPACE = Path(tempfile.gettempdir()) / "memory-core-lab-workspace"
 DEMO_TIMEZONE = "Europe/Istanbul"
 DEMO_NOW_MS = 1777824000000
 DEMO_TRANSCRIPT_MESSAGE_WINDOW = 40
+DEMO_TRANSCRIPT_CHAR_BUDGET = 24_000
 CHAT_STATE = ChatSessionState()
 PROMOTION_SWEEP: dict[str, Any] | None = None
 DREAMING_SWEEP: dict[str, Any] | None = None
@@ -271,7 +273,11 @@ def _chat_messages(message: str) -> tuple[list[ChatMessage], list[ChatMessage]]:
         omitted_count = max(0, len(previous_messages) - len(visible_previous_messages))
         omitted_messages = previous_messages[:omitted_count]
     visible_messages = [*visible_previous_messages, ChatMessage(role="user", content=message)]
-    return visible_messages, omitted_messages
+    budgeted_messages, budget_omitted_messages = select_transcript_context(
+        visible_messages,
+        max_chars=DEMO_TRANSCRIPT_CHAR_BUDGET,
+    )
+    return budgeted_messages, [*omitted_messages, *budget_omitted_messages]
 
 
 def _now_ms() -> int:

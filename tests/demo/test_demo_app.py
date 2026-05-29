@@ -563,6 +563,55 @@ def test_chat_send_windows_live_transcript_and_reports_omitted_messages(monkeypa
     ]
 
 
+def test_chat_send_applies_live_transcript_char_budget(monkeypatch):
+    class RecordingEngine(StubOpenAIEngine):
+        def __init__(self):
+            super().__init__()
+            self.message_batches = []
+
+        def complete(self, *, messages, memory_context, workspace_context=""):
+            self.message_batches.append([(message.role, message.content) for message in messages])
+            return super().complete(
+                messages=messages,
+                memory_context=memory_context,
+                workspace_context=workspace_context,
+            )
+
+    engine = RecordingEngine()
+    monkeypatch.setattr(demo_app, "DEMO_TRANSCRIPT_MESSAGE_WINDOW", 40)
+    monkeypatch.setattr(demo_app, "DEMO_TRANSCRIPT_CHAR_BUDGET", 55)
+    monkeypatch.setattr(demo_app, "_chat_engine", lambda payload: engine)
+    monkeypatch.setattr(demo_app, "demo_store", fake_demo_store)
+    client = TestClient(app)
+    client.post("/api/chat/reset", json={})
+
+    first = client.post(
+        "/api/chat/send",
+        json={
+            "message": "very long first turn that should fall out",
+            "engine": "openai",
+            "openai": {"apiKey": "request-key"},
+            "autoFlush": False,
+        },
+    )
+    second = client.post(
+        "/api/chat/send",
+        json={
+            "message": "short",
+            "engine": "openai",
+            "openai": {"apiKey": "request-key"},
+            "autoFlush": False,
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert engine.message_batches[-1] == [("user", "short")]
+    latest_turn = second.json()["turns"][-1]
+    assert latest_turn["transcriptOmittedCount"] == 2
+    assert latest_turn["transcriptMessages"] == [{"role": "user", "content": "short"}]
+
+
 def test_chat_manual_flush_updates_latest_turn_and_memory_file(monkeypatch):
     monkeypatch.setattr(demo_app, "_chat_engine", lambda payload: StubOpenAIEngine())
     monkeypatch.setattr(demo_app, "demo_store", fake_demo_store)

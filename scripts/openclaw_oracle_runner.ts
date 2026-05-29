@@ -7,6 +7,7 @@ type Payload = {
   repoPath: string;
   operation: string;
   workspaceDir?: string;
+  stateDir?: string;
   nowMs?: number;
   timezone?: string;
   config?: Record<string, unknown>;
@@ -14,6 +15,10 @@ type Payload = {
   corpus?: "memory" | "sessions" | "wiki" | "all";
   maxResults?: number;
   results?: unknown[];
+  sessionTranscripts?: Array<{
+    fileName?: string;
+    entries?: unknown[];
+  }>;
   recalls?: Array<{
     query?: string;
     results?: unknown[];
@@ -88,6 +93,34 @@ async function snapshotFiles(workspaceDir?: string): Promise<Record<string, stri
     }
   }
   return out;
+}
+
+async function writeSessionTranscriptFixtures(payload: Payload): Promise<void> {
+  if (!payload.stateDir || !payload.sessionTranscripts?.length) {
+    return;
+  }
+  const sessionsDir = path.join(payload.stateDir, "agents", "main", "sessions");
+  await fs.mkdir(sessionsDir, { recursive: true });
+  const sessionStore: Record<string, Record<string, unknown>> = {};
+  for (const transcript of payload.sessionTranscripts) {
+    const fileName = transcript.fileName?.trim() || "session-oracle.jsonl";
+    if (fileName.includes("/") || fileName.includes("\\") || !fileName.endsWith(".jsonl")) {
+      throw new Error(`invalid session transcript fixture name: ${fileName}`);
+    }
+    const lines = (transcript.entries ?? []).map((entry) => JSON.stringify(entry));
+    await fs.writeFile(path.join(sessionsDir, fileName), `${lines.join("\n")}\n`, "utf-8");
+    const sessionId = fileName.slice(0, -".jsonl".length);
+    sessionStore[`agent:main:${sessionId}`] = {
+      sessionId,
+      sessionFile: fileName,
+      updatedAt: Date.now(),
+    };
+  }
+  await fs.writeFile(
+    path.join(sessionsDir, "sessions.json"),
+    `${JSON.stringify(sessionStore, null, 2)}\n`,
+    "utf-8",
+  );
 }
 
 async function resolvePromotionPolicy(repoPath: string, payload: Payload): Promise<PromotionPolicy> {
@@ -224,6 +257,10 @@ async function main() {
   }
 
   if (payload.operation === "memorySearch") {
+    if (payload.stateDir) {
+      process.env.OPENCLAW_STATE_DIR = payload.stateDir;
+    }
+    await writeSessionTranscriptFixtures(payload);
     const embeddingProviders = await importFromRepo(
       repoPath,
       "src/plugins/memory-embedding-providers.ts",
@@ -297,11 +334,16 @@ async function main() {
         list: [{ id: "main", default: true }],
       },
     };
+    const firstSessionFileName = payload.sessionTranscripts?.[0]?.fileName?.trim();
+    const requesterSessionStem =
+      firstSessionFileName && firstSessionFileName.endsWith(".jsonl")
+        ? firstSessionFileName.slice(0, -".jsonl".length)
+        : "oracle";
     try {
       const tool = tools.createMemorySearchTool({
         config: cfg,
         agentId: "main",
-        agentSessionKey: "agent:main:oracle",
+        agentSessionKey: `agent:main:${requesterSessionStem}`,
       });
       if (!tool) {
         throw new Error("memory_search tool missing");

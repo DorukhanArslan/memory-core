@@ -406,6 +406,83 @@ def test_real_openclaw_oracle_memory_search_memory_corpus_matches_python_paths(
     ]
 
 
+def test_real_openclaw_oracle_memory_search_sessions_corpus_reads_openclaw_transcripts(
+    tmp_path: Path,
+):
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+
+    result = oracle.run(
+        {
+            "operation": "memorySearch",
+            "workspaceDir": str(tmp_path),
+            "stateDir": str(tmp_path / ".openclaw-state"),
+            "query": "project nebula orbit-10",
+            "corpus": "sessions",
+            "maxResults": 3,
+            "minScore": 0,
+            "config": {
+                "agents": {
+                    "defaults": {
+                        "memorySearch": {
+                            "sources": ["memory", "sessions"],
+                            "experimental": {"sessionMemory": True},
+                        }
+                    }
+                }
+            },
+            "sessionTranscripts": [
+                {
+                    "fileName": "session-nebula.jsonl",
+                    "entries": [
+                        {
+                            "type": "session",
+                            "id": "session-nebula",
+                            "timestamp": "2026-04-07T15:24:04.113Z",
+                        },
+                        {
+                            "type": "message",
+                            "message": {
+                                "role": "user",
+                                "timestamp": "2026-04-07T15:24:34.113Z",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": "What is the current Project Nebula codename?",
+                                    }
+                                ],
+                            },
+                        },
+                        {
+                            "type": "message",
+                            "message": {
+                                "role": "assistant",
+                                "timestamp": "2026-04-07T15:25:04.113Z",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": "The current Project Nebula codename is ORBIT-10.",
+                                    }
+                                ],
+                            },
+                        },
+                    ],
+                }
+            ],
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["operation"] == "memorySearch"
+    first = result["result"]["results"][0]
+    assert first["corpus"] == "sessions"
+    assert first["source"] == "sessions"
+    assert first["path"] == "sessions/main/session-nebula.jsonl"
+    assert "Assistant: The current Project Nebula codename is ORBIT-10." in first["snippet"]
+
+
 def test_real_openclaw_oracle_records_short_term_recall():
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
 

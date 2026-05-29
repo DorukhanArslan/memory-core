@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from memory_core.config import MemoryConfig
+from memory_core.supplements import MemoryCorpusSupplement
 from memory_core.workspace import MemoryWorkspace, UnsafeMemoryPathError
 
 
@@ -35,11 +36,23 @@ def memory_get(
     path: str,
     from_line: int | None = None,
     lines: int | None = None,
+    corpus: str = "memory",
+    supplements: list[MemoryCorpusSupplement] | None = None,
 ) -> dict:
     workspace = MemoryWorkspace(config.workspace_dir)
+    normalized_path = workspace.normalize_memory_path(path)
+    if corpus == "wiki":
+        return _memory_get_supplement(
+            config,
+            path=normalized_path,
+            from_line=from_line,
+            lines=lines,
+            corpus=corpus,
+            supplements=supplements or [],
+        )
     try:
         memory_path = workspace.resolve_memory_path(path)
-        rel_path = workspace.normalize_memory_path(path)
+        rel_path = normalized_path
         content = memory_path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return {"text": "", "path": workspace.normalize_memory_path(path)}
@@ -48,6 +61,56 @@ def memory_get(
     except Exception as exc:
         return {"path": path, "text": "", "disabled": True, "error": str(exc)}
 
+    return _memory_get_text(
+        config,
+        path=rel_path,
+        content=content,
+        from_line=from_line,
+        lines=lines,
+    )
+
+
+def _memory_get_supplement(
+    config: MemoryConfig,
+    *,
+    path: str,
+    from_line: int | None,
+    lines: int | None,
+    corpus: str,
+    supplements: list[MemoryCorpusSupplement],
+) -> dict:
+    result = None
+    for supplement in supplements:
+        result = supplement.get(path=path, corpus=corpus)
+        if result is not None:
+            break
+    if result is None:
+        return {
+            "path": path,
+            "text": "",
+            "disabled": True,
+            "error": "wiki corpus result not found",
+        }
+    content = result.get("content") or result.get("snippet") or ""
+    text_result = _memory_get_text(
+        config,
+        path=path,
+        content=str(content),
+        from_line=from_line,
+        lines=lines,
+    )
+    text_result["corpus"] = result.get("corpus", corpus)
+    return text_result
+
+
+def _memory_get_text(
+    config: MemoryConfig,
+    *,
+    path: str,
+    content: str,
+    from_line: int | None,
+    lines: int | None,
+) -> dict:
     file_lines = content.split("\n")
     start = max(1, from_line or 1)
     requested_count = max(1, lines if lines is not None else config.memory_get_default_lines)
@@ -68,14 +131,14 @@ def memory_get(
     if truncated and text:
         text = f"{text}{_continuation_notice(next_from=next_from, suggest_read_fallback=hard_truncated_single_line)}"
 
-    result = {
+    output = {
         "text": text,
-        "path": rel_path,
+        "path": path,
         "from": start,
         "lines": included_lines,
     }
     if truncated:
-        result["truncated"] = True
+        output["truncated"] = True
     if next_from is not None:
-        result["nextFrom"] = next_from
-    return result
+        output["nextFrom"] = next_from
+    return output

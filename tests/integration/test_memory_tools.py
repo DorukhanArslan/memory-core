@@ -32,6 +32,53 @@ def test_memory_get_rejects_non_memory_workspace_file(tmp_path: Path):
     assert result["error"] == "path required"
 
 
+def test_memory_get_reads_wiki_supplement_result(tmp_path: Path):
+    wiki = StaticMemoryCorpusSupplement(
+        [
+            {
+                "corpus": "wiki",
+                "path": "w1.md",
+                "content": "Project Nebula deployment rule.\nRequires security approval.\n",
+            }
+        ]
+    )
+
+    result = memory_get(
+        MemoryConfig(workspace_dir=tmp_path),
+        path="w1.md",
+        from_line=2,
+        lines=1,
+        corpus="wiki",
+        supplements=[wiki],
+    )
+
+    assert result == {
+        "path": "w1.md",
+        "text": "Requires security approval.\n\n[More content available. Use from=3 to continue.]",
+        "from": 2,
+        "lines": 1,
+        "corpus": "wiki",
+        "truncated": True,
+        "nextFrom": 3,
+    }
+
+
+def test_memory_get_wiki_supplement_missing_result(tmp_path: Path):
+    result = memory_get(
+        MemoryConfig(workspace_dir=tmp_path),
+        path="missing.md",
+        corpus="wiki",
+        supplements=[],
+    )
+
+    assert result == {
+        "path": "missing.md",
+        "text": "",
+        "disabled": True,
+        "error": "wiki corpus result not found",
+    }
+
+
 def test_memory_search_returns_hybrid_results(tmp_path: Path):
     (tmp_path / "MEMORY.md").write_text(
         "User likes lemon pepper wings.\n", encoding="utf-8"

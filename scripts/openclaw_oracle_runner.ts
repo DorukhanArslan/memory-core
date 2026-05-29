@@ -36,6 +36,8 @@ type Payload = {
   conceptLimit?: number;
   limit?: number;
   minScore?: number;
+  vectorWeight?: number;
+  textWeight?: number;
   minRecallCount?: number;
   minUniqueQueries?: number;
   maxAgeDays?: number;
@@ -363,8 +365,8 @@ async function main() {
               hybrid: {
                 ...defaultHybrid,
                 enabled: true,
-                vectorWeight: 0,
-                textWeight: 1,
+                vectorWeight: payload.vectorWeight ?? 0,
+                textWeight: payload.textWeight ?? 1,
               },
             },
             cache: { enabled: false },

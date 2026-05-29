@@ -620,6 +620,76 @@ def test_real_openclaw_oracle_memory_search_text_scores_and_line_ranges_match_py
     )
 
 
+def test_real_openclaw_oracle_memory_search_vector_scores_match_python(
+    tmp_path: Path,
+):
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+    (tmp_path / "MEMORY.md").write_text(
+        "# Long-Term Memory\n\n- Alpha preference exact note.\n",
+        encoding="utf-8",
+    )
+    memory_file = tmp_path / "memory" / "2026-05-26.md"
+    memory_file.parent.mkdir(parents=True, exist_ok=True)
+    memory_file.write_text(
+        "# 2026-05-26\n\n- Cooking reminder about paprika.\n",
+        encoding="utf-8",
+    )
+
+    result = oracle.run(
+        {
+            "operation": "memorySearch",
+            "workspaceDir": str(tmp_path),
+            "query": "alpha preference",
+            "corpus": "memory",
+            "maxResults": 5,
+            "minScore": 0,
+            "vectorWeight": 1,
+            "textWeight": 0,
+        }
+    )
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "python-memory.sqlite",
+        vector_weight=1,
+        text_weight=0,
+    )
+    store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+    python_result = memory_search(
+        cfg,
+        store,
+        query="alpha preference",
+        corpus="memory",
+        max_results=5,
+        min_score=0,
+    )
+
+    assert result["ok"] is True
+    openclaw_results = result["result"]["results"]
+    python_results = python_result["results"]
+    assert [item["path"] for item in openclaw_results] == [
+        item["path"] for item in python_results
+    ]
+    assert [item["score"] for item in openclaw_results] == pytest.approx(
+        [item["score"] for item in python_results],
+        rel=0,
+        abs=1e-6,
+    )
+    assert [item["vectorScore"] for item in openclaw_results] == pytest.approx(
+        [item["vectorScore"] for item in python_results],
+        rel=0,
+        abs=1e-6,
+    )
+    assert [item["score"] for item in openclaw_results] == pytest.approx(
+        [item["vectorScore"] for item in openclaw_results],
+        rel=0,
+        abs=1e-12,
+    )
+
+
 def test_real_openclaw_oracle_memory_search_sessions_corpus_reads_openclaw_transcripts(
     tmp_path: Path,
 ):

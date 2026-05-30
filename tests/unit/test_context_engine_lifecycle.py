@@ -1,4 +1,5 @@
 from memory_core.context_engine_lifecycle import (
+    OPENCLAW_COMPAT_BRANDING,
     assemble_context_engine_messages,
     build_context_engine_conversation_snapshot,
     strip_runtime_context_custom_messages,
@@ -12,12 +13,27 @@ def _message(role: str, text: str, timestamp: int) -> dict:
 def _runtime_context_message(text: str, timestamp: int) -> dict:
     return {
         "role": "custom",
-        "customType": "openclaw.runtime-context",
+        "customType": "memory_core.runtime-context",
         "content": text,
         "display": False,
-        "details": {"source": "openclaw-runtime-context"},
+        "details": {"source": "memory-core-runtime-context"},
         "timestamp": timestamp,
     }
+
+
+def test_strip_runtime_context_custom_messages_can_use_openclaw_compat_branding():
+    visible_user = _message("user", "visible ask", 1)
+    runtime_context = {
+        "role": "custom",
+        "customType": "openclaw.runtime-context",
+        "content": "hidden",
+        "timestamp": 2,
+    }
+
+    assert strip_runtime_context_custom_messages(
+        [visible_user, runtime_context],
+        branding=OPENCLAW_COMPAT_BRANDING,
+    ) == [visible_user]
 
 
 def test_strip_runtime_context_custom_messages_removes_hidden_runtime_context_only():

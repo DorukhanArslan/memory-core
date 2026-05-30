@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from memory_core.branding import OPENCLAW_COMPAT_BRANDING, MEMORY_CORE_BRANDING
 from memory_core.runtime_context_prompt import (
     OPENCLAW_NEXT_TURN_RUNTIME_CONTEXT_HEADER,
     OPENCLAW_RUNTIME_CONTEXT_NOTICE,
@@ -224,16 +225,18 @@ def _strip_internal_metadata_for_display(text: str) -> str:
 
 def _strip_internal_runtime_context(text: str) -> str:
     next_text = text
-    while True:
-        start = _find_delimited_token_index(next_text, "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>", 0)
-        if start == -1:
-            return next_text
-        end = _find_delimited_token_index(next_text, "<<<END_OPENCLAW_INTERNAL_CONTEXT>>>", start)
-        before = next_text[:start].rstrip()
-        if end == -1:
-            return before
-        after = next_text[end + len("<<<END_OPENCLAW_INTERNAL_CONTEXT>>>") :].lstrip()
-        next_text = f"{before}\n\n{after}" if before and after else f"{before}{after}"
+    for branding in (MEMORY_CORE_BRANDING, OPENCLAW_COMPAT_BRANDING):
+        while True:
+            start = _find_delimited_token_index(next_text, branding.runtime_context_begin, 0)
+            if start == -1:
+                break
+            end = _find_delimited_token_index(next_text, branding.runtime_context_end, start)
+            before = next_text[:start].rstrip()
+            if end == -1:
+                return before
+            after = next_text[end + len(branding.runtime_context_end) :].lstrip()
+            next_text = f"{before}\n\n{after}" if before and after else f"{before}{after}"
+    return next_text
 
 
 def _find_delimited_token_index(text: str, token: str, start: int) -> int:
@@ -252,10 +255,13 @@ def _strip_runtime_context_prompt_preface(text: str) -> str:
     while index < len(lines):
         line = lines[index]
         next_line = lines[index + 1] if index + 1 < len(lines) else ""
-        if (
-            line.strip() in {OPENCLAW_NEXT_TURN_RUNTIME_CONTEXT_HEADER, "OpenClaw runtime event."}
-            and next_line.strip() == OPENCLAW_RUNTIME_CONTEXT_NOTICE
-        ):
+        runtime_headers = {
+            MEMORY_CORE_BRANDING.next_turn_runtime_context_header,
+            MEMORY_CORE_BRANDING.runtime_event_header,
+            OPENCLAW_NEXT_TURN_RUNTIME_CONTEXT_HEADER,
+            OPENCLAW_COMPAT_BRANDING.runtime_event_header,
+        }
+        if line.strip() in runtime_headers and next_line.strip() == OPENCLAW_RUNTIME_CONTEXT_NOTICE:
             changed = True
             index += 2
             while index < len(lines) and not lines[index].strip():

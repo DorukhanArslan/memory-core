@@ -15,6 +15,7 @@ from memory_core.memory_flush import (
 from memory_core.history import get_history_limit_from_session_key, limit_history_turns
 from memory_core.replay_repair import repair_tool_use_result_pairing
 from memory_core.runtime_context_prompt import (
+    OPENCLAW_COMPAT_BRANDING,
     build_current_inbound_prompt,
     build_runtime_context_custom_message,
     resolve_runtime_context_prompt_parts,
@@ -2790,8 +2791,12 @@ def test_real_openclaw_oracle_runtime_context_prompt_helpers_match_python():
         effective_prompt=effective_prompt,
         transcript_prompt="visible ask",
         model_prompt=effective_prompt,
+        branding=OPENCLAW_COMPAT_BRANDING,
     )
-    python_custom_message = build_runtime_context_custom_message("secret runtime context")
+    python_custom_message = build_runtime_context_custom_message(
+        "secret runtime context",
+        branding=OPENCLAW_COMPAT_BRANDING,
+    )
 
     assert result["ok"] is True
     assert result["operation"] == "runtimeContextPrompt"
@@ -2841,10 +2846,14 @@ def test_real_openclaw_oracle_context_engine_lifecycle_strips_runtime_context():
     assert result["ok"] is True
     assert result["operation"] == "contextEngineLifecycle"
     assert result["result"] == {
-        "assembleMessages": assemble_context_engine_messages(messages),
+        "assembleMessages": assemble_context_engine_messages(
+            messages,
+            branding=OPENCLAW_COMPAT_BRANDING,
+        ),
         "conversationSnapshot": build_context_engine_conversation_snapshot(
             messages_snapshot=messages,
             pre_prompt_message_count=3,
+            branding=OPENCLAW_COMPAT_BRANDING,
         ),
     }
 

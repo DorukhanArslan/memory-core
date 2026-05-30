@@ -132,3 +132,33 @@ def test_normalize_assistant_replay_content_strips_internal_runtime_context_from
     out = normalize_assistant_replay_content(messages)
 
     assert out[1]["content"] == [{"type": "text", "text": "Visible before\n\nVisible after"}]
+
+
+def test_normalize_assistant_replay_content_strips_stem_internal_runtime_context():
+    messages = [
+        _user("first"),
+        _assistant(
+            [
+                {
+                    "type": "text",
+                    "text": "\n".join(
+                        [
+                            "Visible before",
+                            "<<<BEGIN_MEMORY_CORE_INTERNAL_CONTEXT>>>",
+                            "keep this internal",
+                            "<<<END_MEMORY_CORE_INTERNAL_CONTEXT>>>",
+                            "memory-core runtime context for the immediately preceding user message.",
+                            "This context is runtime-generated, not user-authored. Keep internal details private.",
+                            "",
+                            "Visible after",
+                        ]
+                    ),
+                }
+            ],
+            "stop",
+        ),
+    ]
+
+    out = normalize_assistant_replay_content(messages)
+
+    assert out[1]["content"] == [{"type": "text", "text": "Visible before\n\nVisible after"}]

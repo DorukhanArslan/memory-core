@@ -1,8 +1,30 @@
 from memory_core.runtime_context_prompt import (
+    OPENCLAW_COMPAT_BRANDING,
     build_current_inbound_prompt,
     build_runtime_context_custom_message,
     resolve_runtime_context_prompt_parts,
 )
+
+
+def test_default_runtime_context_branding_uses_memory_core_names():
+    message = build_runtime_context_custom_message("secret runtime context")
+
+    assert message is not None
+    assert message["customType"] == "memory_core.runtime-context"
+    assert message["details"] == {"source": "memory-core-runtime-context"}
+    assert "memory-core runtime context for the immediately preceding user message." in message["content"]
+
+
+def test_openclaw_compat_runtime_context_branding_preserves_upstream_names():
+    message = build_runtime_context_custom_message(
+        "secret runtime context",
+        branding=OPENCLAW_COMPAT_BRANDING,
+    )
+
+    assert message is not None
+    assert message["customType"] == "openclaw.runtime-context"
+    assert message["details"] == {"source": "openclaw-runtime-context"}
+    assert "OpenClaw runtime context for the immediately preceding user message." in message["content"]
 
 
 def test_resolve_runtime_context_prompt_parts_moves_hidden_context_out_of_visible_prompt():
@@ -10,9 +32,9 @@ def test_resolve_runtime_context_prompt_parts_moves_hidden_context_out_of_visibl
         [
             "visible ask",
             "",
-            "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>",
+            "<<<BEGIN_MEMORY_CORE_INTERNAL_CONTEXT>>>",
             "secret runtime context",
-            "<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+            "<<<END_MEMORY_CORE_INTERNAL_CONTEXT>>>",
         ]
     )
 
@@ -21,7 +43,7 @@ def test_resolve_runtime_context_prompt_parts_moves_hidden_context_out_of_visibl
         transcript_prompt="visible ask",
     ) == {
         "prompt": "visible ask",
-        "runtimeContext": "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nsecret runtime context\n<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+        "runtimeContext": "<<<BEGIN_MEMORY_CORE_INTERNAL_CONTEXT>>>\nsecret runtime context\n<<<END_MEMORY_CORE_INTERNAL_CONTEXT>>>",
     }
 
 
@@ -38,6 +60,7 @@ def test_resolve_runtime_context_prompt_parts_keeps_prompt_local_additions_in_mo
         effective_prompt=effective_prompt,
         transcript_prompt="visible ask",
         model_prompt=effective_prompt,
+        branding=OPENCLAW_COMPAT_BRANDING,
     ) == {
         "prompt": "visible ask",
         "modelPrompt": prompt,
@@ -50,12 +73,12 @@ def test_resolve_runtime_context_prompt_parts_uses_marker_prompt_for_runtime_onl
         effective_prompt="internal event",
         transcript_prompt="",
     ) == {
-        "prompt": "Continue the OpenClaw runtime event.",
+        "prompt": "Continue the memory-core runtime event.",
         "runtimeContext": "internal event",
         "runtimeOnly": True,
         "runtimeSystemContext": "\n".join(
             [
-                "OpenClaw runtime event.",
+                "memory-core runtime event.",
                 "This context is runtime-generated, not user-authored. Keep internal details private.",
                 "",
                 "internal event",
@@ -79,9 +102,9 @@ def test_build_runtime_context_custom_message_labels_context_and_hides_display()
 
     assert message is not None
     assert message["role"] == "custom"
-    assert message["customType"] == "openclaw.runtime-context"
+    assert message["customType"] == "memory_core.runtime-context"
     assert message["display"] is False
-    assert message["details"] == {"source": "openclaw-runtime-context"}
+    assert message["details"] == {"source": "memory-core-runtime-context"}
     assert "not user-authored" in message["content"]
     assert "secret runtime context" in message["content"]
     assert isinstance(message["timestamp"], int)

@@ -7,6 +7,7 @@ the upstream parity target for source-backed and oracle-backed behavior.
 """
 
 from memory_core.adapters.langgraph import LangGraphMemoryRecall, format_memory_context
+from memory_core.branding import MemoryBranding, OPENCLAW_COMPAT_BRANDING, MEMORY_CORE_BRANDING
 from memory_core.client import (
     DEFAULT_CHAT_SYSTEM_PROMPT,
     DEFAULT_MEMORY_MD_TEMPLATE,
@@ -69,7 +70,7 @@ from memory_core.replay_repair import (
     sanitize_tool_use_result_pairing,
 )
 from memory_core.runtime_context_prompt import (
-    OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE,
+    MEMORY_CORE_RUNTIME_CONTEXT_CUSTOM_TYPE,
     build_current_inbound_prompt,
     build_current_inbound_prompt_context_prefix,
     build_runtime_context_custom_message,
@@ -102,7 +103,10 @@ __all__ = [
     "DEFAULT_MEMORY_MD_TEMPLATE",
     "DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR",
     "LangGraphMemoryRecall",
-    "OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE",
+    "MemoryBranding",
+    "OPENCLAW_COMPAT_BRANDING",
+    "MEMORY_CORE_RUNTIME_CONTEXT_CUSTOM_TYPE",
+    "MEMORY_CORE_BRANDING",
     "MemoryCoreMemory",
     "STREAM_ERROR_FALLBACK_TEXT",
     "MemoryConfig",

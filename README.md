@@ -110,3 +110,16 @@ curl -s -X POST http://127.0.0.1:8000/api/chat/send \
 The demo and tests default to deterministic fake embeddings. To add a live
 provider flow, configure `OPENAI_API_KEY`, optional `OPENAI_BASE_URL`, and model
 `text-embedding-3-small`.
+
+Run the standalone example from another project directory:
+
+```bash
+cd /path/to/my-agent-app
+OPENAI_API_KEY=sk-... python -m examples.basic_usage
+```
+
+Run the opt-in live embedding smoke test:
+
+```bash
+OPENCLAW_MEMORY_LIVE_OPENAI=1 OPENAI_API_KEY=sk-... pytest tests/integration/test_openai_embedding_live.py -q
+```

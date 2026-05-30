@@ -6,6 +6,37 @@ Python port of OpenClaw core memory, pinned to upstream commit
 The first implementation slice covers `MEMORY.md`, `memory/YYYY-MM-DD.md`,
 `memory_search`, `memory_get`, hybrid search, citations, and a local FastAPI demo.
 
+## Python API
+
+The stable package surface is exported from `memory-core`:
+
+```python
+from pathlib import Path
+
+from memory_core import (
+    MemoryConfig,
+    MemoryWorkspace,
+    build_memory_flush_plan,
+    memory_get,
+    memory_search,
+)
+from memory_core.embeddings.base import FakeEmbeddingProvider
+from memory_core.index.sqlite_store import SQLiteMemoryStore
+
+workspace = MemoryWorkspace(Path("."))
+config = MemoryConfig(workspace_dir=workspace.root)
+store = SQLiteMemoryStore.in_memory(embedding_provider=FakeEmbeddingProvider())
+store.reindex(workspace)
+
+results = memory_search(config, store, query="preferred name", max_results=5)
+memory_file = memory_get(config, path="MEMORY.md", from_line=1, line_count=20)
+flush_plan = build_memory_flush_plan(workspace_dir=workspace.root)
+```
+
+Runtime-adapter helpers such as transcript replay cleanup, history windowing,
+runtime-context prompt splitting, and overflow recovery are also exported from
+the package root when host applications need OpenClaw-compatible behavior.
+
 ## Setup
 
 ```bash

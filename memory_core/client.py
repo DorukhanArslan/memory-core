@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from memory_core.adapters.langgraph import LangGraphMemoryRecall, format_memory_context
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.memory_flush import SILENT_REPLY_TOKEN, build_memory_flush_plan
 from memory_core.tools.memory_get import memory_get
 from memory_core.tools.memory_search import memory_search
 from memory_core.workspace import MemoryWorkspace
@@ -29,6 +31,21 @@ class MemoryChatTurn:
     memory_results: list[dict]
     memory_context: str
     messages: list[dict[str, str]]
+
+
+@dataclass(frozen=True)
+class MemoryRecordResult:
+    wrote: bool
+    path: str
+    text: str
+    raw_text: str
+
+
+@dataclass(frozen=True)
+class MemoryChatResult:
+    turn: MemoryChatTurn
+    assistant_message: str
+    flush_result: MemoryRecordResult
 
 
 @dataclass(frozen=True)
@@ -115,6 +132,99 @@ class MemoryCoreMemory:
             memory_results=memory_results,
             memory_context=memory_context,
             messages=messages,
+        )
+
+    def record_turn(
+        self,
+        user_message: str,
+        assistant_message: str,
+        *,
+        flush_llm: Callable[[list[dict[str, str]]], str],
+        now_ms: int | None = None,
+        timezone: str = "UTC",
+    ) -> MemoryRecordResult:
+        plan = build_memory_flush_plan(
+            workspace_dir=self.workspace.root,
+            now_ms=now_ms,
+            timezone=timezone,
+        )
+        flush_messages = [
+            {"role": "system", "content": plan.system_prompt},
+            {
+                "role": "user",
+                "content": (
+                    f"{plan.prompt}\n\n"
+                    "Recent turn transcript:\n"
+                    f"User: {user_message}\n"
+                    f"Assistant: {assistant_message}"
+                ),
+            },
+        ]
+        raw_text = flush_llm(flush_messages)
+        text = raw_text.strip()
+        if not text or text.startswith(SILENT_REPLY_TOKEN):
+            return MemoryRecordResult(
+                wrote=False,
+                path=plan.relative_path,
+                text="",
+                raw_text=raw_text,
+            )
+
+        self.workspace.append_daily_memory(plan.relative_path, text)
+        self.store.reindex(self.workspace)
+        return MemoryRecordResult(
+            wrote=True,
+            path=plan.relative_path,
+            text=text,
+            raw_text=raw_text,
+        )
+
+    def chat(
+        self,
+        user_message: str,
+        *,
+        llm: Callable[[list[dict[str, str]]], str],
+        flush_llm: Callable[[list[dict[str, str]]], str] | None = None,
+        system_prompt: str = DEFAULT_CHAT_SYSTEM_PROMPT,
+        max_results: int = 5,
+        min_score: float = 0.0,
+        corpus: str = "all",
+        auto_flush: bool = True,
+        now_ms: int | None = None,
+        timezone: str = "UTC",
+    ) -> MemoryChatResult:
+        turn = self.prepare_turn(
+            user_message,
+            system_prompt=system_prompt,
+            max_results=max_results,
+            min_score=min_score,
+            corpus=corpus,
+        )
+        assistant_message = llm(turn.messages)
+        if auto_flush:
+            flush_result = self.record_turn(
+                user_message,
+                assistant_message,
+                flush_llm=flush_llm or llm,
+                now_ms=now_ms,
+                timezone=timezone,
+            )
+        else:
+            plan = build_memory_flush_plan(
+                workspace_dir=self.workspace.root,
+                now_ms=now_ms,
+                timezone=timezone,
+            )
+            flush_result = MemoryRecordResult(
+                wrote=False,
+                path=plan.relative_path,
+                text="",
+                raw_text="",
+            )
+        return MemoryChatResult(
+            turn=turn,
+            assistant_message=assistant_message,
+            flush_result=flush_result,
         )
 
     def langgraph_recall(

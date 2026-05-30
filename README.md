@@ -131,6 +131,23 @@ response = llm.chat(turn.messages)
 memory recall and returns ready chat messages; durable write/flush remains a
 separate post-turn integration step.
 
+For a managed answer + flush cycle, use `chat()`:
+
+```python
+result = memory.chat(
+    "Bana Doruk diye hitap et.",
+    llm=llm.chat,
+)
+
+print(result.assistant_message)
+print(result.flush_result.path)
+```
+
+This mirrors OpenClaw's memory-flush shape at package level: after the answer,
+the package runs a separate memory-flush prompt and appends non-`NO_REPLY`
+output only to the canonical `memory/YYYY-MM-DD.md` file, then reindexes memory.
+It is still adapter/runtime glue, not a full OpenClaw agent runtime.
+
 Run the opt-in live embedding smoke test:
 
 ```bash

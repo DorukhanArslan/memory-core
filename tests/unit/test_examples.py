@@ -67,3 +67,25 @@ def test_chatbot_memory_prepares_messages_for_llm(tmp_path: Path):
     assert answer == "Doruk diye hitap edecegim."
     assert captured["messages"][1]["content"].startswith("Relevant memory:")
     assert "Doruk" in captured["messages"][1]["content"]
+
+
+def test_chatbot_memory_can_run_answer_and_flush(tmp_path: Path):
+    memory = MemoryCoreMemory.from_workspace(
+        tmp_path,
+        embedding_provider=FakeEmbeddingProvider(),
+    )
+
+    def fake_chat(messages):
+        if messages[0]["content"].startswith("Pre-compaction memory flush turn."):
+            return "- User prefers to be addressed as Doruk."
+        return "Tamam Doruk."
+
+    result = chatbot_memory.chat_with_memory(
+        memory,
+        "Bana Doruk diye hitap et.",
+        fake_chat,
+    )
+
+    assert result.assistant_message == "Tamam Doruk."
+    assert result.flush_result.wrote is True
+    assert "Doruk" in (tmp_path / result.flush_result.path).read_text(encoding="utf-8")

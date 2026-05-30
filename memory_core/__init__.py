@@ -9,7 +9,9 @@ from memory_core.adapters.langgraph import LangGraphMemoryRecall, format_memory_
 from memory_core.client import (
     DEFAULT_CHAT_SYSTEM_PROMPT,
     DEFAULT_MEMORY_MD_TEMPLATE,
+    MemoryChatResult,
     MemoryChatTurn,
+    MemoryRecordResult,
     MemoryCoreMemory,
     initialize_memory_core_workspace,
 )
@@ -106,10 +108,12 @@ __all__ = [
     "MemoryCorpusResult",
     "MemoryCorpusSupplement",
     "MemoryChatTurn",
+    "MemoryChatResult",
     "MemoryFile",
     "MemoryFlushPlan",
     "MemoryFlushTriggerDecision",
     "MemoryReadResult",
+    "MemoryRecordResult",
     "MemoryWorkspace",
     "OpenClawSessionCorpus",
     "OverflowClassification",

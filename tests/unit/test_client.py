@@ -154,3 +154,58 @@ def test_prepare_turn_omits_memory_message_when_no_results(tmp_path: Path):
         },
         {"role": "user", "content": "Yeni bir soru"},
     ]
+
+
+def test_chat_runs_answer_then_memory_flush_and_reindexes(tmp_path: Path):
+    memory = MemoryCoreMemory.from_workspace(
+        tmp_path,
+        embedding_provider=FakeEmbeddingProvider(),
+    )
+    calls = []
+
+    def fake_llm(messages):
+        calls.append(messages)
+        if messages[0]["content"].startswith("Pre-compaction memory flush turn."):
+            return "- User prefers to be addressed as Doruk."
+        return "Tamam Doruk."
+
+    result = memory.chat(
+        "Bana Doruk diye hitap et.",
+        llm=fake_llm,
+        now_ms=1777824000000,
+        timezone="Europe/Istanbul",
+    )
+
+    assert result.assistant_message == "Tamam Doruk."
+    assert result.flush_result.wrote is True
+    assert result.flush_result.path == "memory/2026-05-03.md"
+    assert (tmp_path / "memory" / "2026-05-03.md").read_text(encoding="utf-8") == (
+        "- User prefers to be addressed as Doruk.\n"
+    )
+    assert len(calls) == 2
+    assert calls[1][0]["role"] == "system"
+    assert "Pre-compaction memory flush turn." in calls[1][0]["content"]
+    assert "memory/2026-05-03.md" in calls[1][0]["content"]
+    assert calls[1][1]["role"] == "user"
+    assert "User: Bana Doruk diye hitap et." in calls[1][1]["content"]
+    assert "Assistant: Tamam Doruk." in calls[1][1]["content"]
+    assert memory.search("addressed as Doruk")["results"][0]["path"] == "memory/2026-05-03.md"
+
+
+def test_record_turn_skips_write_when_flush_model_returns_no_reply(tmp_path: Path):
+    memory = MemoryCoreMemory.from_workspace(
+        tmp_path,
+        embedding_provider=FakeEmbeddingProvider(),
+    )
+
+    result = memory.record_turn(
+        "Selam",
+        "Selam Doruk.",
+        flush_llm=lambda messages: "NO_REPLY",
+        now_ms=1777824000000,
+        timezone="Europe/Istanbul",
+    )
+
+    assert result.wrote is False
+    assert result.path == "memory/2026-05-03.md"
+    assert not (tmp_path / "memory" / "2026-05-03.md").exists()

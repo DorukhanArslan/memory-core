@@ -1,6 +1,9 @@
 from pathlib import Path
 
 import examples.basic_usage as basic_usage
+import examples.chatbot_memory as chatbot_memory
+from memory_core import MemoryCoreMemory
+from memory_core.embeddings.base import FakeEmbeddingProvider
 
 
 class _FakeProvider:
@@ -41,3 +44,26 @@ def test_basic_usage_requires_openai_api_key(tmp_path: Path, monkeypatch):
         assert "OPENAI_API_KEY" in str(exc)
     else:
         raise AssertionError("expected OPENAI_API_KEY error")
+
+
+def test_chatbot_memory_prepares_messages_for_llm(tmp_path: Path):
+    chatbot_memory.seed_demo_memory(tmp_path)
+    memory = MemoryCoreMemory.from_workspace(
+        tmp_path,
+        embedding_provider=FakeEmbeddingProvider(),
+    )
+    captured = {}
+
+    def fake_chat(messages):
+        captured["messages"] = messages
+        return "Doruk diye hitap edecegim."
+
+    answer = chatbot_memory.answer_with_memory(
+        memory,
+        "Bana nasil hitap edeceksin?",
+        fake_chat,
+    )
+
+    assert answer == "Doruk diye hitap edecegim."
+    assert captured["messages"][1]["content"].startswith("Relevant memory:")
+    assert "Doruk" in captured["messages"][1]["content"]

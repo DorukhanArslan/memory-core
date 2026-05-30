@@ -7,7 +7,9 @@ re-exported here when they are useful for host integrations.
 
 from memory_core.adapters.langgraph import LangGraphMemoryRecall, format_memory_context
 from memory_core.client import (
+    DEFAULT_CHAT_SYSTEM_PROMPT,
     DEFAULT_MEMORY_MD_TEMPLATE,
+    MemoryChatTurn,
     MemoryCoreMemory,
     initialize_memory_core_workspace,
 )
@@ -91,6 +93,7 @@ from memory_core.workspace import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "DEFAULT_CHAT_SYSTEM_PROMPT",
     "DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES",
     "DEFAULT_MEMORY_FLUSH_SOFT_TOKENS",
     "DEFAULT_MEMORY_MD_TEMPLATE",
@@ -102,6 +105,7 @@ __all__ = [
     "MemoryConfig",
     "MemoryCorpusResult",
     "MemoryCorpusSupplement",
+    "MemoryChatTurn",
     "MemoryFile",
     "MemoryFlushPlan",
     "MemoryFlushTriggerDecision",

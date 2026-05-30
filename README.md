@@ -23,6 +23,7 @@ memory = MemoryCoreMemory.from_workspace(
 
 results = memory.search("preferred name", max_results=5)
 memory_file = memory.get("MEMORY.md", from_line=1, lines=20)
+turn = memory.prepare_turn("Bana nasil hitap edeceksin?")
 recall_node = memory.langgraph_recall()
 flush_plan = build_memory_flush_plan(workspace_dir=memory.workspace.root)
 ```
@@ -117,6 +118,18 @@ Run the standalone example from another project directory:
 cd /path/to/my-agent-app
 OPENAI_API_KEY=sk-... python -m examples.basic_usage
 ```
+
+For chatbot integrations, let the package prepare recall-injected messages and
+pass them to your LLM client:
+
+```python
+turn = memory.prepare_turn("Bana nasil hitap edeceksin?")
+response = llm.chat(turn.messages)
+```
+
+`prepare_turn()` is adapter ergonomics, not OpenClaw runtime parity. It performs
+memory recall and returns ready chat messages; durable write/flush remains a
+separate post-turn integration step.
 
 Run the opt-in live embedding smoke test:
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from memory_core.adapters.langgraph import LangGraphMemoryRecall
+from memory_core.adapters.langgraph import LangGraphMemoryRecall, format_memory_context
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
@@ -17,6 +17,18 @@ Curated long-term memory for durable facts, preferences, decisions, and summarie
 
 Keep detailed daily notes in memory/YYYY-MM-DD.md.
 """
+
+DEFAULT_CHAT_SYSTEM_PROMPT = (
+    "Use relevant memory when it helps answer the user. Do not mention memory unless useful."
+)
+
+
+@dataclass(frozen=True)
+class MemoryChatTurn:
+    user_message: str
+    memory_results: list[dict]
+    memory_context: str
+    messages: list[dict[str, str]]
 
 
 @dataclass(frozen=True)
@@ -75,6 +87,34 @@ class MemoryCoreMemory:
             from_line=from_line,
             lines=lines,
             corpus=corpus,
+        )
+
+    def prepare_turn(
+        self,
+        user_message: str,
+        *,
+        system_prompt: str = DEFAULT_CHAT_SYSTEM_PROMPT,
+        max_results: int = 5,
+        min_score: float = 0.0,
+        corpus: str = "all",
+    ) -> MemoryChatTurn:
+        search_result = self.search(
+            user_message,
+            max_results=max_results,
+            min_score=min_score,
+            corpus=corpus,
+        )
+        memory_results = search_result.get("results", [])
+        memory_context = format_memory_context(memory_results)
+        messages = [{"role": "system", "content": system_prompt}]
+        if memory_context:
+            messages.append({"role": "system", "content": f"Relevant memory:\n{memory_context}"})
+        messages.append({"role": "user", "content": user_message})
+        return MemoryChatTurn(
+            user_message=user_message,
+            memory_results=memory_results,
+            memory_context=memory_context,
+            messages=messages,
         )
 
     def langgraph_recall(

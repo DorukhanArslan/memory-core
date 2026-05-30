@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from memory_core import MemoryCoreMemory
 from memory_core.embeddings.base import FakeEmbeddingProvider
 
@@ -66,11 +68,34 @@ def test_from_workspace_initialize_does_not_overwrite_existing_memory(tmp_path: 
     assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == "# Existing\n\n- Keep me.\n"
 
 
-def test_from_workspace_does_not_create_memory_files_by_default(tmp_path: Path):
+def test_from_workspace_creates_memory_files_by_default(tmp_path: Path):
     MemoryCoreMemory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
     )
 
+    assert (tmp_path / "MEMORY.md").exists()
+    assert (tmp_path / "memory").is_dir()
+
+
+def test_from_workspace_can_disable_initialization(tmp_path: Path):
+    MemoryCoreMemory.from_workspace(
+        tmp_path,
+        embedding_provider=FakeEmbeddingProvider(),
+        initialize=False,
+    )
+
     assert not (tmp_path / "MEMORY.md").exists()
     assert not (tmp_path / "memory").exists()
+
+
+def test_from_workspace_defaults_to_current_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.chdir(tmp_path)
+
+    memory = MemoryCoreMemory.from_workspace(
+        embedding_provider=FakeEmbeddingProvider(),
+    )
+
+    assert memory.workspace.root == tmp_path
+    assert (tmp_path / "MEMORY.md").exists()
+    assert (tmp_path / "memory").is_dir()

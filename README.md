@@ -11,8 +11,6 @@ The first implementation slice covers `MEMORY.md`, `memory/YYYY-MM-DD.md`,
 The stable package surface is exported from `memory-core`:
 
 ```python
-from pathlib import Path
-
 from memory_core import (
     MemoryCoreMemory,
     build_memory_flush_plan,
@@ -20,9 +18,7 @@ from memory_core import (
 from memory_core.embeddings.base import FakeEmbeddingProvider
 
 memory = MemoryCoreMemory.from_workspace(
-    Path("."),
     embedding_provider=FakeEmbeddingProvider(),
-    initialize=True,
 )
 
 results = memory.search("preferred name", max_results=5)
@@ -43,10 +39,12 @@ my-agent-app/
     main.sqlite
 ```
 
-`initialize=True` creates only the memory-core workspace surface when it is
-missing: `MEMORY.md`, `memory/`, and `.openclaw-memory/`. It does not create
-OpenClaw runtime/persona files such as `AGENTS.md`, `SOUL.md`, or `USER.md`, and
-it does not overwrite an existing `MEMORY.md`.
+By default, `MemoryCoreMemory.from_workspace(...)` uses the current working
+directory and creates only the memory-core workspace surface when it is missing:
+`MEMORY.md`, `memory/`, and `.openclaw-memory/`. It does not create OpenClaw
+runtime/persona files such as `AGENTS.md`, `SOUL.md`, or `USER.md`, and it does
+not overwrite an existing `MEMORY.md`. Pass `initialize=False` to disable file
+creation.
 
 Runtime-adapter helpers such as transcript replay cleanup, history windowing,
 runtime-context prompt splitting, and overflow recovery are also exported from

@@ -28,11 +28,11 @@ class MemoryCoreMemory:
     @classmethod
     def from_workspace(
         cls,
-        workspace_dir: str | Path,
+        workspace_dir: str | Path = ".",
         *,
         embedding_provider: EmbeddingProvider,
         config: MemoryConfig | None = None,
-        initialize: bool = False,
+        initialize: bool = True,
         reindex: bool = True,
     ) -> MemoryCoreMemory:
         workspace = MemoryWorkspace(Path(workspace_dir))

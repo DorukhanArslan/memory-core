@@ -4,6 +4,7 @@ import memory_core as memory
 def test_public_api_exports_core_memory_surface():
     expected = {
         "__version__",
+        "DEFAULT_MEMORY_MD_TEMPLATE",
         "MemoryConfig",
         "MemoryWorkspace",
         "MemoryFile",
@@ -29,6 +30,7 @@ def test_public_api_exports_core_memory_surface():
         "LangGraphMemoryRecall",
         "MemoryCoreMemory",
         "format_memory_context",
+        "initialize_memory_core_workspace",
     }
 
     assert expected.issubset(set(memory.__all__))

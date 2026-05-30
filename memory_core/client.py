@@ -11,6 +11,13 @@ from memory_core.tools.memory_get import memory_get
 from memory_core.tools.memory_search import memory_search
 from memory_core.workspace import MemoryWorkspace
 
+DEFAULT_MEMORY_MD_TEMPLATE = """# MEMORY.md
+
+Curated long-term memory for durable facts, preferences, decisions, and summaries.
+
+Keep detailed daily notes in memory/YYYY-MM-DD.md.
+"""
+
 
 @dataclass(frozen=True)
 class MemoryCoreMemory:
@@ -25,10 +32,13 @@ class MemoryCoreMemory:
         *,
         embedding_provider: EmbeddingProvider,
         config: MemoryConfig | None = None,
+        initialize: bool = False,
         reindex: bool = True,
     ) -> MemoryCoreMemory:
         workspace = MemoryWorkspace(Path(workspace_dir))
         resolved_config = config or MemoryConfig(workspace_dir=workspace.root)
+        if initialize:
+            initialize_memory_core_workspace(workspace.root)
         store = SQLiteMemoryStore(resolved_config, embedding_provider)
         if reindex:
             store.reindex(workspace)
@@ -89,3 +99,13 @@ class MemoryCoreMemory:
             min_score=min_score,
             corpus=corpus,
         )
+
+
+def initialize_memory_core_workspace(workspace_dir: str | Path) -> None:
+    root = Path(workspace_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "memory").mkdir(exist_ok=True)
+    (root / ".openclaw-memory").mkdir(exist_ok=True)
+    memory_path = root / "MEMORY.md"
+    if not memory_path.exists():
+        memory_path.write_text(DEFAULT_MEMORY_MD_TEMPLATE, encoding="utf-8")

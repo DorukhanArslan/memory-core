@@ -6,7 +6,11 @@ re-exported here when they are useful for host integrations.
 """
 
 from memory_core.adapters.langgraph import LangGraphMemoryRecall, format_memory_context
-from memory_core.client import MemoryCoreMemory
+from memory_core.client import (
+    DEFAULT_MEMORY_MD_TEMPLATE,
+    MemoryCoreMemory,
+    initialize_memory_core_workspace,
+)
 from memory_core.config import MemoryConfig
 from memory_core.context_engine_lifecycle import (
     assemble_context_engine_messages,
@@ -89,6 +93,7 @@ __version__ = "0.1.0"
 __all__ = [
     "DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES",
     "DEFAULT_MEMORY_FLUSH_SOFT_TOKENS",
+    "DEFAULT_MEMORY_MD_TEMPLATE",
     "DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR",
     "LangGraphMemoryRecall",
     "OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE",
@@ -132,6 +137,7 @@ __all__ = [
     "format_memory_context",
     "get_history_limit_from_session_key",
     "has_already_flushed_for_current_compaction",
+    "initialize_memory_core_workspace",
     "is_compaction_failure_error",
     "is_context_overflow_error",
     "is_likely_context_overflow_error",

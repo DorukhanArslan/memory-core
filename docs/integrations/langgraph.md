@@ -21,6 +21,7 @@ from memory_core.embeddings.base import FakeEmbeddingProvider
 memory = MemoryCoreMemory.from_workspace(
     Path("."),
     embedding_provider=FakeEmbeddingProvider(),
+    initialize=True,
 )
 recall_node = memory.langgraph_recall()
 
@@ -37,6 +38,9 @@ my-agent-app/
   .openclaw-memory/
     main.sqlite
 ```
+
+`initialize=True` is memory-core only. It creates `MEMORY.md`, `memory/`, and
+`.openclaw-memory/` if missing, while preserving existing files.
 
 Example output:
 

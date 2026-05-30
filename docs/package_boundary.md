@@ -13,6 +13,7 @@ Included:
 
 - `MemoryWorkspace` and `MemoryConfig`
 - `MemoryCoreMemory.from_workspace(...)`
+- `initialize_memory_core_workspace(...)`
 - `memory_search` and `memory_get`
 - Markdown memory files such as `MEMORY.md` and `memory/YYYY-MM-DD.md`
 - SQLite-backed indexing, hybrid search, MMR, temporal scoring, and citations

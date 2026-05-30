@@ -39,3 +39,38 @@ def test_from_workspace_can_build_langgraph_recall_node(tmp_path: Path):
     patch = memory.langgraph_recall()({"input": "Bana nasil hitap edeceksin?"})
 
     assert "Doruk" in patch["memory_context"]
+
+
+def test_from_workspace_initialize_creates_memory_core_files(tmp_path: Path):
+    memory = MemoryCoreMemory.from_workspace(
+        tmp_path,
+        embedding_provider=FakeEmbeddingProvider(),
+        initialize=True,
+    )
+
+    assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8").startswith("# MEMORY.md")
+    assert (tmp_path / "memory").is_dir()
+    assert (tmp_path / ".openclaw-memory").is_dir()
+    assert memory.store.path == tmp_path / ".openclaw-memory" / "main.sqlite"
+
+
+def test_from_workspace_initialize_does_not_overwrite_existing_memory(tmp_path: Path):
+    (tmp_path / "MEMORY.md").write_text("# Existing\n\n- Keep me.\n", encoding="utf-8")
+
+    MemoryCoreMemory.from_workspace(
+        tmp_path,
+        embedding_provider=FakeEmbeddingProvider(),
+        initialize=True,
+    )
+
+    assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == "# Existing\n\n- Keep me.\n"
+
+
+def test_from_workspace_does_not_create_memory_files_by_default(tmp_path: Path):
+    MemoryCoreMemory.from_workspace(
+        tmp_path,
+        embedding_provider=FakeEmbeddingProvider(),
+    )
+
+    assert not (tmp_path / "MEMORY.md").exists()
+    assert not (tmp_path / "memory").exists()

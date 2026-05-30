@@ -37,6 +37,11 @@ Runtime-adapter helpers such as transcript replay cleanup, history windowing,
 runtime-context prompt splitting, and overflow recovery are also exported from
 the package root when host applications need OpenClaw-compatible behavior.
 
+See [Package Boundary](docs/package_boundary.md) for what belongs to core
+memory, runtime adapters, demo code, and out-of-scope host runtime behavior.
+See [LangGraph Integration](docs/integrations/langgraph.md) for a minimal
+`state -> memory_context` adapter example.
+
 ## Setup
 
 ```bash

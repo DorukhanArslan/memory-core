@@ -5,6 +5,7 @@ parity helpers remain available from their modules and selected helpers are
 re-exported here when they are useful for host integrations.
 """
 
+from memory_core.adapters.langgraph import LangGraphMemoryRecall, format_memory_context
 from memory_core.config import MemoryConfig
 from memory_core.context_engine_lifecycle import (
     assemble_context_engine_messages,
@@ -88,6 +89,7 @@ __all__ = [
     "DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES",
     "DEFAULT_MEMORY_FLUSH_SOFT_TOKENS",
     "DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR",
+    "LangGraphMemoryRecall",
     "OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE",
     "STREAM_ERROR_FALLBACK_TEXT",
     "MemoryConfig",
@@ -125,6 +127,7 @@ __all__ = [
     "estimate_tool_result_reduction_potential",
     "explain_memory_flush_trigger",
     "extract_observed_overflow_token_count",
+    "format_memory_context",
     "get_history_limit_from_session_key",
     "has_already_flushed_for_current_compaction",
     "is_compaction_failure_error",

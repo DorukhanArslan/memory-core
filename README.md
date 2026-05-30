@@ -14,23 +14,32 @@ The stable package surface is exported from `memory-core`:
 from pathlib import Path
 
 from memory_core import (
-    MemoryConfig,
-    MemoryWorkspace,
+    MemoryCoreMemory,
     build_memory_flush_plan,
-    memory_get,
-    memory_search,
 )
 from memory_core.embeddings.base import FakeEmbeddingProvider
-from memory_core.index.sqlite_store import SQLiteMemoryStore
 
-workspace = MemoryWorkspace(Path("."))
-config = MemoryConfig(workspace_dir=workspace.root)
-store = SQLiteMemoryStore.in_memory(embedding_provider=FakeEmbeddingProvider())
-store.reindex(workspace)
+memory = MemoryCoreMemory.from_workspace(
+    Path("."),
+    embedding_provider=FakeEmbeddingProvider(),
+)
 
-results = memory_search(config, store, query="preferred name", max_results=5)
-memory_file = memory_get(config, path="MEMORY.md", from_line=1, line_count=20)
-flush_plan = build_memory_flush_plan(workspace_dir=workspace.root)
+results = memory.search("preferred name", max_results=5)
+memory_file = memory.get("MEMORY.md", from_line=1, lines=20)
+recall_node = memory.langgraph_recall()
+flush_plan = build_memory_flush_plan(workspace_dir=memory.workspace.root)
+```
+
+`MemoryCoreMemory.from_workspace(...)` reads memory files from the host
+application workspace, not from this package. For example:
+
+```text
+my-agent-app/
+  MEMORY.md
+  memory/
+    2026-05-30.md
+  .openclaw-memory/
+    main.sqlite
 ```
 
 Runtime-adapter helpers such as transcript replay cleanup, history windowing,

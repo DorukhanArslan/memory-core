@@ -12,6 +12,7 @@ Core memory is the reusable package surface that any agent runtime can call.
 Included:
 
 - `MemoryWorkspace` and `MemoryConfig`
+- `MemoryCoreMemory.from_workspace(...)`
 - `memory_search` and `memory_get`
 - Markdown memory files such as `MEMORY.md` and `memory/YYYY-MM-DD.md`
 - SQLite-backed indexing, hybrid search, MMR, temporal scoring, and citations

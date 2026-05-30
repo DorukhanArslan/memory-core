@@ -6,6 +6,7 @@ re-exported here when they are useful for host integrations.
 """
 
 from memory_core.adapters.langgraph import LangGraphMemoryRecall, format_memory_context
+from memory_core.client import MemoryCoreMemory
 from memory_core.config import MemoryConfig
 from memory_core.context_engine_lifecycle import (
     assemble_context_engine_messages,
@@ -91,6 +92,7 @@ __all__ = [
     "DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR",
     "LangGraphMemoryRecall",
     "OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE",
+    "MemoryCoreMemory",
     "STREAM_ERROR_FALLBACK_TEXT",
     "MemoryConfig",
     "MemoryCorpusResult",

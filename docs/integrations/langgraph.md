@@ -15,18 +15,27 @@ that do not depend on LangGraph.
 ```python
 from pathlib import Path
 
-from memory_core import LangGraphMemoryRecall, MemoryConfig, MemoryWorkspace
+from memory_core import MemoryCoreMemory
 from memory_core.embeddings.base import FakeEmbeddingProvider
-from memory_core.index.sqlite_store import SQLiteMemoryStore
 
-workspace = MemoryWorkspace(Path("."))
-config = MemoryConfig(workspace_dir=workspace.root)
-store = SQLiteMemoryStore.in_memory(embedding_provider=FakeEmbeddingProvider())
-store.reindex(workspace)
-
-recall_node = LangGraphMemoryRecall(config=config, store=store)
+memory = MemoryCoreMemory.from_workspace(
+    Path("."),
+    embedding_provider=FakeEmbeddingProvider(),
+)
+recall_node = memory.langgraph_recall()
 
 state_update = recall_node({"input": "Bana nasil hitap edeceksin?"})
+```
+
+The memory files live in the host application workspace:
+
+```text
+my-agent-app/
+  MEMORY.md
+  memory/
+    2026-05-30.md
+  .openclaw-memory/
+    main.sqlite
 ```
 
 Example output:

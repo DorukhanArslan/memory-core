@@ -27,6 +27,7 @@ def test_public_api_exports_core_memory_surface():
         "truncate_tool_result_text",
         "decide_provider_overflow_recovery",
         "LangGraphMemoryRecall",
+        "MemoryCoreMemory",
         "format_memory_context",
     }
 

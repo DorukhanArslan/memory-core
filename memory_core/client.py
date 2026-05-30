@@ -189,8 +189,7 @@ class MemoryCoreMemory:
         max_results: int = 5,
         min_score: float = 0.0,
         corpus: str = "all",
-        auto_flush: bool = True,
-        now_ms: int | None = None,
+        force_flush: bool = False,
         timezone: str = "UTC",
     ) -> MemoryChatResult:
         turn = self.prepare_turn(
@@ -201,18 +200,16 @@ class MemoryCoreMemory:
             corpus=corpus,
         )
         assistant_message = llm(turn.messages)
-        if auto_flush:
+        if force_flush:
             flush_result = self.record_turn(
                 user_message,
                 assistant_message,
                 flush_llm=flush_llm or llm,
-                now_ms=now_ms,
                 timezone=timezone,
             )
         else:
             plan = build_memory_flush_plan(
                 workspace_dir=self.workspace.root,
-                now_ms=now_ms,
                 timezone=timezone,
             )
             flush_result = MemoryRecordResult(

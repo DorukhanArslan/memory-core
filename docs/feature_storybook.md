@@ -31,6 +31,7 @@ Bana Doruk diye hitap et.
 result = memory.chat(
     "Bana Doruk diye hitap et.",
     llm=llm.chat,
+    force_flush=True,
 )
 ```
 
@@ -158,8 +159,8 @@ OpenClaw official flow:
 Python package flow:
 
 - `build_memory_flush_plan(...)` mirrors the OpenClaw flush plan.
-- `memory.chat(..., auto_flush=True)` always runs the flush step after the
-  answer unless disabled.
+- `memory.chat(..., force_flush=True)` runs an explicit package-level flush
+  step after the answer.
 - The package appends non-`NO_REPLY` flush output only to `memory/YYYY-MM-DD.md`.
 - Full OpenClaw runtime gates, session-store metadata, model fallback, sandbox
   checks, and transcript-size dedupe are not implemented here.

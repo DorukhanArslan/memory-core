@@ -35,15 +35,13 @@ def chat_with_memory(
     *,
     flush_chat: Callable[[list[dict[str, str]]], str] | None = None,
     system_prompt: str | None = None,
-    auto_flush: bool = True,
-    now_ms: int | None = None,
+    force_flush: bool = False,
     timezone: str = "UTC",
 ) -> MemoryChatResult:
     kwargs = {
         "llm": chat,
         "flush_llm": flush_chat,
-        "auto_flush": auto_flush,
-        "now_ms": now_ms,
+        "force_flush": force_flush,
         "timezone": timezone,
     }
     if system_prompt is not None:

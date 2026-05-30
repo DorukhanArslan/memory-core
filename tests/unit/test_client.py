@@ -156,7 +156,7 @@ def test_prepare_turn_omits_memory_message_when_no_results(tmp_path: Path):
     ]
 
 
-def test_chat_runs_answer_then_memory_flush_and_reindexes(tmp_path: Path):
+def test_chat_runs_answer_then_forced_memory_flush_and_reindexes(tmp_path: Path):
     memory = MemoryCoreMemory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
@@ -172,24 +172,24 @@ def test_chat_runs_answer_then_memory_flush_and_reindexes(tmp_path: Path):
     result = memory.chat(
         "Bana Doruk diye hitap et.",
         llm=fake_llm,
-        now_ms=1777824000000,
+        force_flush=True,
         timezone="Europe/Istanbul",
     )
 
     assert result.assistant_message == "Tamam Doruk."
     assert result.flush_result.wrote is True
-    assert result.flush_result.path == "memory/2026-05-03.md"
-    assert (tmp_path / "memory" / "2026-05-03.md").read_text(encoding="utf-8") == (
+    assert result.flush_result.path.startswith("memory/")
+    assert (tmp_path / result.flush_result.path).read_text(encoding="utf-8") == (
         "- User prefers to be addressed as Doruk.\n"
     )
     assert len(calls) == 2
     assert calls[1][0]["role"] == "system"
     assert "Pre-compaction memory flush turn." in calls[1][0]["content"]
-    assert "memory/2026-05-03.md" in calls[1][0]["content"]
+    assert result.flush_result.path in calls[1][0]["content"]
     assert calls[1][1]["role"] == "user"
     assert "User: Bana Doruk diye hitap et." in calls[1][1]["content"]
     assert "Assistant: Tamam Doruk." in calls[1][1]["content"]
-    assert memory.search("addressed as Doruk")["results"][0]["path"] == "memory/2026-05-03.md"
+    assert memory.search("addressed as Doruk")["results"][0]["path"] == result.flush_result.path
 
 
 def test_chat_can_use_separate_flush_model(tmp_path: Path):
@@ -212,7 +212,7 @@ def test_chat_can_use_separate_flush_model(tmp_path: Path):
         "Bana Doruk diye hitap et.",
         llm=answer_llm,
         flush_llm=flush_llm,
-        now_ms=1777824000000,
+        force_flush=True,
         timezone="Europe/Istanbul",
     )
 
@@ -226,7 +226,7 @@ def test_chat_can_use_separate_flush_model(tmp_path: Path):
     assert "Assistant: Tamam Doruk." in flush_calls[0][1]["content"]
 
 
-def test_chat_can_skip_automatic_flush(tmp_path: Path):
+def test_chat_does_not_flush_without_force_flush(tmp_path: Path):
     memory = MemoryCoreMemory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
@@ -237,17 +237,33 @@ def test_chat_can_skip_automatic_flush(tmp_path: Path):
         "Bana Doruk diye hitap et.",
         llm=lambda messages: "Tamam Doruk.",
         flush_llm=lambda messages: flush_calls.append(messages) or "- User prefers Doruk.",
-        auto_flush=False,
-        now_ms=1777824000000,
         timezone="Europe/Istanbul",
     )
 
     assert result.assistant_message == "Tamam Doruk."
     assert result.flush_result.wrote is False
-    assert result.flush_result.path == "memory/2026-05-03.md"
+    assert result.flush_result.path.startswith("memory/")
     assert result.flush_result.raw_text == ""
     assert flush_calls == []
-    assert not (tmp_path / "memory" / "2026-05-03.md").exists()
+    assert not any((tmp_path / "memory").glob("*.md"))
+
+
+def test_chat_does_not_expose_test_clock_control(tmp_path: Path):
+    memory = MemoryCoreMemory.from_workspace(
+        tmp_path,
+        embedding_provider=FakeEmbeddingProvider(),
+    )
+
+    try:
+        memory.chat(
+            "Bana Doruk diye hitap et.",
+            llm=lambda messages: "Tamam Doruk.",
+            now_ms=1777824000000,
+        )
+    except TypeError as exc:
+        assert "now_ms" in str(exc)
+    else:
+        raise AssertionError("chat should not expose now_ms")
 
 
 def test_record_turn_skips_write_when_flush_model_returns_no_reply(tmp_path: Path):

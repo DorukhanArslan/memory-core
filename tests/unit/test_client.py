@@ -192,6 +192,64 @@ def test_chat_runs_answer_then_memory_flush_and_reindexes(tmp_path: Path):
     assert memory.search("addressed as Doruk")["results"][0]["path"] == "memory/2026-05-03.md"
 
 
+def test_chat_can_use_separate_flush_model(tmp_path: Path):
+    memory = MemoryCoreMemory.from_workspace(
+        tmp_path,
+        embedding_provider=FakeEmbeddingProvider(),
+    )
+    answer_calls = []
+    flush_calls = []
+
+    def answer_llm(messages):
+        answer_calls.append(messages)
+        return "Tamam Doruk."
+
+    def flush_llm(messages):
+        flush_calls.append(messages)
+        return "- User prefers to be addressed as Doruk."
+
+    result = memory.chat(
+        "Bana Doruk diye hitap et.",
+        llm=answer_llm,
+        flush_llm=flush_llm,
+        now_ms=1777824000000,
+        timezone="Europe/Istanbul",
+    )
+
+    assert result.assistant_message == "Tamam Doruk."
+    assert result.flush_result.wrote is True
+    assert len(answer_calls) == 1
+    assert answer_calls[0][-1] == {"role": "user", "content": "Bana Doruk diye hitap et."}
+    assert len(flush_calls) == 1
+    assert flush_calls[0][0]["content"].startswith("Pre-compaction memory flush turn.")
+    assert "Recent turn transcript:" in flush_calls[0][1]["content"]
+    assert "Assistant: Tamam Doruk." in flush_calls[0][1]["content"]
+
+
+def test_chat_can_skip_automatic_flush(tmp_path: Path):
+    memory = MemoryCoreMemory.from_workspace(
+        tmp_path,
+        embedding_provider=FakeEmbeddingProvider(),
+    )
+    flush_calls = []
+
+    result = memory.chat(
+        "Bana Doruk diye hitap et.",
+        llm=lambda messages: "Tamam Doruk.",
+        flush_llm=lambda messages: flush_calls.append(messages) or "- User prefers Doruk.",
+        auto_flush=False,
+        now_ms=1777824000000,
+        timezone="Europe/Istanbul",
+    )
+
+    assert result.assistant_message == "Tamam Doruk."
+    assert result.flush_result.wrote is False
+    assert result.flush_result.path == "memory/2026-05-03.md"
+    assert result.flush_result.raw_text == ""
+    assert flush_calls == []
+    assert not (tmp_path / "memory" / "2026-05-03.md").exists()
+
+
 def test_record_turn_skips_write_when_flush_model_returns_no_reply(tmp_path: Path):
     memory = MemoryCoreMemory.from_workspace(
         tmp_path,

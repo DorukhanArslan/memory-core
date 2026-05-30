@@ -89,3 +89,26 @@ def test_chatbot_memory_can_run_answer_and_flush(tmp_path: Path):
     assert result.assistant_message == "Tamam Doruk."
     assert result.flush_result.wrote is True
     assert "Doruk" in (tmp_path / result.flush_result.path).read_text(encoding="utf-8")
+
+
+def test_chatbot_memory_exposes_flush_controls(tmp_path: Path):
+    memory = MemoryCoreMemory.from_workspace(
+        tmp_path,
+        embedding_provider=FakeEmbeddingProvider(),
+    )
+    flush_calls = []
+
+    result = chatbot_memory.chat_with_memory(
+        memory,
+        "Bana Doruk diye hitap et.",
+        lambda messages: "Tamam Doruk.",
+        flush_chat=lambda messages: flush_calls.append(messages) or "- User prefers Doruk.",
+        auto_flush=False,
+        now_ms=1777824000000,
+        timezone="Europe/Istanbul",
+    )
+
+    assert result.assistant_message == "Tamam Doruk."
+    assert result.flush_result.wrote is False
+    assert result.flush_result.path == "memory/2026-05-03.md"
+    assert flush_calls == []

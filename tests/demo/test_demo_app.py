@@ -250,12 +250,12 @@ def test_chat_state_endpoint_returns_engines_and_memory_files():
     assert payload["config"]["workspace"]
     assert payload["config"]["timezone"] == "Europe/Istanbul"
     assert payload["config"]["dailyMemoryPath"] == demo_app._demo_flush_plan().relative_path
-    assert payload["config"]["promotion"]["openclawDefaults"]["minRecallCount"] == 3
-    assert payload["config"]["promotion"]["openclawDefaults"]["minUniqueQueries"] == 3
-    assert payload["config"]["promotion"]["openclawDefaults"]["minScore"] == 0.8
-    assert payload["config"]["promotion"]["openclawDefaults"]["enabled"] is False
-    assert payload["config"]["promotion"]["openclawDefaults"]["limit"] == 10
-    assert payload["config"]["promotion"]["openclawDefaults"]["maxAgeDays"] == 30
+    assert payload["config"]["promotion"]["upstreamDefaults"]["minRecallCount"] == 3
+    assert payload["config"]["promotion"]["upstreamDefaults"]["minUniqueQueries"] == 3
+    assert payload["config"]["promotion"]["upstreamDefaults"]["minScore"] == 0.8
+    assert payload["config"]["promotion"]["upstreamDefaults"]["enabled"] is False
+    assert payload["config"]["promotion"]["upstreamDefaults"]["limit"] == 10
+    assert payload["config"]["promotion"]["upstreamDefaults"]["maxAgeDays"] == 30
     assert payload["turns"] == []
 
 
@@ -345,7 +345,7 @@ def test_chat_auto_context_loads_memory_today_and_yesterday_only(monkeypatch):
 
 
 def test_demo_store_uses_openai_embeddings_from_payload(monkeypatch):
-    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
 
     store = demo_app.demo_store(
         {
@@ -363,7 +363,7 @@ def test_demo_store_uses_openai_embeddings_from_payload(monkeypatch):
 
 
 def test_demo_store_requires_openai_embedding_key(monkeypatch):
-    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
 
     try:
         demo_app.demo_store({})
@@ -380,19 +380,19 @@ def test_load_env_defaults_reads_dotenv_without_overwriting_existing_values(
     env_path.write_text(
         "\n".join(
             [
-                "OPENCLAW_DEMO_OPENAI_API_KEY=file-key",
-                "OPENCLAW_DEMO_OPENAI_BASE_URL=https://from-file.example/v1",
+                "MEMORY_CORE_DEMO_OPENAI_API_KEY=file-key",
+                "MEMORY_CORE_DEMO_OPENAI_BASE_URL=https://from-file.example/v1",
             ]
         ),
         encoding="utf-8",
     )
-    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_API_KEY", raising=False)
-    monkeypatch.setenv("OPENCLAW_DEMO_OPENAI_BASE_URL", "https://existing.example/v1")
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL", "https://existing.example/v1")
 
     demo_app._load_env_defaults(env_path)
 
-    assert demo_app.os.environ["OPENCLAW_DEMO_OPENAI_API_KEY"] == "file-key"
-    assert demo_app.os.environ["OPENCLAW_DEMO_OPENAI_BASE_URL"] == "https://existing.example/v1"
+    assert demo_app.os.environ["MEMORY_CORE_DEMO_OPENAI_API_KEY"] == "file-key"
+    assert demo_app.os.environ["MEMORY_CORE_DEMO_OPENAI_BASE_URL"] == "https://existing.example/v1"
 
 
 def test_chat_send_runs_recall_and_returns_turn(monkeypatch):
@@ -994,9 +994,9 @@ def test_chat_send_stream_emits_deltas_and_final_state(monkeypatch):
 
 
 def test_chat_send_unconfigured_openai_returns_json_error(monkeypatch):
-    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_BASE_URL", raising=False)
-    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_MODEL", raising=False)
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_MODEL", raising=False)
     client = TestClient(app)
     client.post("/api/chat/reset", json={})
 

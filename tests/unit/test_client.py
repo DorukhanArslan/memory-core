@@ -22,7 +22,7 @@ def test_from_workspace_reads_host_memory_files(tmp_path: Path):
 
     assert memory.workspace.root == tmp_path
     assert memory.config.workspace_dir == tmp_path
-    assert memory.store.path == tmp_path / ".openclaw-memory" / "main.sqlite"
+    assert memory.store.path == tmp_path / ".memory-core" / "main.sqlite"
     assert result["results"][0]["path"] == "MEMORY.md"
     assert "Doruk" in result["results"][0]["snippet"]
 
@@ -54,8 +54,8 @@ def test_from_workspace_initialize_creates_memory_core_files(tmp_path: Path):
 
     assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8").startswith("# MEMORY.md")
     assert (tmp_path / "memory").is_dir()
-    assert (tmp_path / ".openclaw-memory").is_dir()
-    assert memory.store.path == tmp_path / ".openclaw-memory" / "main.sqlite"
+    assert (tmp_path / ".memory-core").is_dir()
+    assert memory.store.path == tmp_path / ".memory-core" / "main.sqlite"
 
 
 def test_from_workspace_initialize_does_not_overwrite_existing_memory(tmp_path: Path):

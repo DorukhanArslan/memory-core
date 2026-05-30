@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from memory_core.session_corpus import OpenClawSessionCorpus
+from memory_core.session_corpus import MemoryCoreSessionCorpus
 
 
 def test_openclaw_session_corpus_discovers_visible_session_transcripts(tmp_path: Path):
@@ -22,7 +22,7 @@ def test_openclaw_session_corpus_discovers_visible_session_transcripts(tmp_path:
         encoding="utf-8",
     )
 
-    corpus = OpenClawSessionCorpus(tmp_path / ".openclaw-state", agent_id="main")
+    corpus = MemoryCoreSessionCorpus(tmp_path / ".openclaw-state", agent_id="main")
 
     files = corpus.discover_files()
 
@@ -50,7 +50,7 @@ def test_openclaw_session_corpus_renders_chat_text_for_indexing(tmp_path: Path):
         '{"agent:main:session-nebula":{"sessionId":"session-nebula","sessionFile":"session-nebula.jsonl"}}\n',
         encoding="utf-8",
     )
-    corpus = OpenClawSessionCorpus(tmp_path / ".openclaw-state", agent_id="main")
+    corpus = MemoryCoreSessionCorpus(tmp_path / ".openclaw-state", agent_id="main")
 
     text = corpus.read_index_text(corpus.discover_files()[0])
 
@@ -69,6 +69,6 @@ def test_openclaw_session_corpus_ignores_unregistered_transcripts(tmp_path: Path
     )
     (sessions_dir / "sessions.json").write_text("{}\n", encoding="utf-8")
 
-    corpus = OpenClawSessionCorpus(tmp_path / ".openclaw-state", agent_id="main")
+    corpus = MemoryCoreSessionCorpus(tmp_path / ".openclaw-state", agent_id="main")
 
     assert corpus.discover_files() == []

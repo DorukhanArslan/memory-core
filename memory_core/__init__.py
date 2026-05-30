@@ -1,8 +1,9 @@
-"""Python port of OpenClaw core memory.
+"""memory-core public package surface.
 
 The package root exposes the stable, plug-and-play memory-core surface. Runtime
 parity helpers remain available from their modules and selected helpers are
-re-exported here when they are useful for host integrations.
+re-exported here when they are useful for host integrations. OpenClaw remains
+the upstream parity target for source-backed and oracle-backed behavior.
 """
 
 from memory_core.adapters.langgraph import LangGraphMemoryRecall, format_memory_context
@@ -76,7 +77,7 @@ from memory_core.runtime_context_prompt import (
     build_runtime_event_system_context,
     resolve_runtime_context_prompt_parts,
 )
-from memory_core.session_corpus import OpenClawSessionCorpus, SessionCorpusFile
+from memory_core.session_corpus import MemoryCoreSessionCorpus, SessionCorpusFile
 from memory_core.supplements import (
     MemoryCorpusResult,
     MemoryCorpusSupplement,
@@ -115,7 +116,7 @@ __all__ = [
     "MemoryReadResult",
     "MemoryRecordResult",
     "MemoryWorkspace",
-    "OpenClawSessionCorpus",
+    "MemoryCoreSessionCorpus",
     "OverflowClassification",
     "PreemptiveCompactionDecision",
     "ProviderOverflowRecoveryDecision",

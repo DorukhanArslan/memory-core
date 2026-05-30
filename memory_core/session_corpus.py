@@ -13,7 +13,7 @@ class SessionCorpusFile:
     source: str = "sessions"
 
 
-class OpenClawSessionCorpus:
+class MemoryCoreSessionCorpus:
     def __init__(self, state_dir: Path, *, agent_id: str = "main"):
         self.state_dir = state_dir.resolve()
         self.agent_id = agent_id

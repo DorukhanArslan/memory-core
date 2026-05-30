@@ -252,7 +252,7 @@ def initialize_memory_core_workspace(workspace_dir: str | Path) -> None:
     root = Path(workspace_dir)
     root.mkdir(parents=True, exist_ok=True)
     (root / "memory").mkdir(exist_ok=True)
-    (root / ".openclaw-memory").mkdir(exist_ok=True)
+    (root / ".memory-core").mkdir(exist_ok=True)
     memory_path = root / "MEMORY.md"
     if not memory_path.exists():
         memory_path.write_text(DEFAULT_MEMORY_MD_TEMPLATE, encoding="utf-8")

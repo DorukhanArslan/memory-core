@@ -21,9 +21,9 @@ class StubResponse:
 
 
 def test_openai_engine_is_unavailable_without_api_key_but_reports_defaults(monkeypatch):
-    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_BASE_URL", raising=False)
-    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_MODEL", raising=False)
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_MODEL", raising=False)
 
     status = engine_status()
 
@@ -36,9 +36,9 @@ def test_openai_engine_is_unavailable_without_api_key_but_reports_defaults(monke
 
 
 def test_openai_engine_status_uses_env_without_exposing_api_key(monkeypatch):
-    monkeypatch.setenv("OPENCLAW_DEMO_OPENAI_BASE_URL", "https://llm.example/v1")
-    monkeypatch.setenv("OPENCLAW_DEMO_OPENAI_API_KEY", "secret-key")
-    monkeypatch.setenv("OPENCLAW_DEMO_OPENAI_MODEL", "demo-model")
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL", "https://llm.example/v1")
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", "secret-key")
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_MODEL", "demo-model")
 
     status = engine_status()
 
@@ -52,9 +52,9 @@ def test_openai_engine_status_uses_env_without_exposing_api_key(monkeypatch):
 
 
 def test_openai_engine_from_config_uses_payload_key_and_defaults(monkeypatch):
-    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_BASE_URL", raising=False)
-    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("OPENCLAW_DEMO_OPENAI_MODEL", raising=False)
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_MODEL", raising=False)
 
     engine = OpenAICompatibleChatEngine.from_config(
         base_url=None,

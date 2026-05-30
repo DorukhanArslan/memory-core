@@ -8,9 +8,9 @@ from memory_core.embeddings.openai_compatible import OpenAICompatibleEmbeddingPr
 
 
 @pytest.mark.skipif(
-    os.environ.get("OPENCLAW_MEMORY_LIVE_OPENAI") != "1" or not os.environ.get("OPENAI_API_KEY"),
+    os.environ.get("MEMORY_CORE_LIVE_OPENAI") != "1" or not os.environ.get("OPENAI_API_KEY"),
     reason=(
-        "OPENCLAW_MEMORY_LIVE_OPENAI=1 and OPENAI_API_KEY are required for live "
+        "MEMORY_CORE_LIVE_OPENAI=1 and OPENAI_API_KEY are required for live "
         "OpenAI-compatible embedding smoke"
     ),
 )

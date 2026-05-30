@@ -132,7 +132,7 @@ def _json_error(message: str) -> JSONResponse:
 
 def _safe_exception_message(exc: Exception, secrets: tuple[str, ...] = ()) -> str:
     message = str(exc) or exc.__class__.__name__
-    for secret in (*secrets, os.getenv("OPENCLAW_DEMO_OPENAI_API_KEY") or ""):
+    for secret in (*secrets, os.getenv("MEMORY_CORE_DEMO_OPENAI_API_KEY") or ""):
         if secret:
             message = message.replace(secret, "[redacted]")
     return f"{exc.__class__.__name__}: {message}"
@@ -200,15 +200,15 @@ def _chat_engine(payload: dict[str, Any]) -> ChatEngine:
 def _embedding_provider(payload: dict[str, Any]) -> OpenAICompatibleEmbeddingProvider:
     openai_payload = _openai_payload(payload)
     api_key = _optional_text(openai_payload.get("apiKey")) or os.getenv(
-        "OPENCLAW_DEMO_OPENAI_API_KEY", ""
+        "MEMORY_CORE_DEMO_OPENAI_API_KEY", ""
     )
     if not api_key:
         raise DemoPayloadError("openai embeddings require an API key")
     return OpenAICompatibleEmbeddingProvider(
         base_url=_optional_text(openai_payload.get("baseUrl"))
-        or os.getenv("OPENCLAW_DEMO_OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        or os.getenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL", "https://api.openai.com/v1"),
         api_key=api_key,
-        model=os.getenv("OPENCLAW_DEMO_OPENAI_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL),
+        model=os.getenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL),
     )
 
 
@@ -349,7 +349,7 @@ def _state_payload() -> dict[str, Any]:
 
 def _promotion_config_payload() -> dict[str, Any]:
     return {
-        "openclawDefaults": {
+        "upstreamDefaults": {
             "enabled": DEFAULT_DEEP_DREAMING_ENABLED,
             "limit": DEFAULT_DEEP_DREAMING_LIMIT,
             "minScore": DEFAULT_PROMOTION_MIN_SCORE,

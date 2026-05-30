@@ -84,9 +84,9 @@ class OpenAICompatibleChatEngine:
 
     @classmethod
     def from_env(cls) -> OpenAICompatibleChatEngine | None:
-        base_url = os.getenv("OPENCLAW_DEMO_OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL
-        api_key = os.getenv("OPENCLAW_DEMO_OPENAI_API_KEY")
-        model = os.getenv("OPENCLAW_DEMO_OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
+        base_url = os.getenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL
+        api_key = os.getenv("MEMORY_CORE_DEMO_OPENAI_API_KEY")
+        model = os.getenv("MEMORY_CORE_DEMO_OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
         if not api_key:
             return None
         return cls(base_url=base_url, api_key=api_key, model=model)
@@ -99,15 +99,15 @@ class OpenAICompatibleChatEngine:
         api_key: str | None,
         model: str | None,
     ) -> OpenAICompatibleChatEngine | None:
-        resolved_api_key = (api_key or os.getenv("OPENCLAW_DEMO_OPENAI_API_KEY") or "").strip()
+        resolved_api_key = (api_key or os.getenv("MEMORY_CORE_DEMO_OPENAI_API_KEY") or "").strip()
         if not resolved_api_key:
             return None
         return cls(
             base_url=(
-                base_url or os.getenv("OPENCLAW_DEMO_OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL
+                base_url or os.getenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL
             ).strip(),
             api_key=resolved_api_key,
-            model=(model or os.getenv("OPENCLAW_DEMO_OPENAI_MODEL") or DEFAULT_OPENAI_MODEL).strip(),
+            model=(model or os.getenv("MEMORY_CORE_DEMO_OPENAI_MODEL") or DEFAULT_OPENAI_MODEL).strip(),
         )
 
     def complete(
@@ -323,7 +323,7 @@ def engine_status() -> dict:
     return {
         "openai": {
             "available": configured,
-            "model": os.getenv("OPENCLAW_DEMO_OPENAI_MODEL") or DEFAULT_OPENAI_MODEL,
-            "baseUrl": os.getenv("OPENCLAW_DEMO_OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL,
+            "model": os.getenv("MEMORY_CORE_DEMO_OPENAI_MODEL") or DEFAULT_OPENAI_MODEL,
+            "baseUrl": os.getenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL,
         },
     }

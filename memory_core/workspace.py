@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from memory_core.session_corpus import OpenClawSessionCorpus
+from memory_core.session_corpus import MemoryCoreSessionCorpus
 
 DATED_MEMORY_FILE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
 DAILY_MEMORY_PATH_RE = re.compile(r"^memory/\d{4}-\d{2}-\d{2}\.md$")
@@ -72,7 +72,7 @@ class MemoryWorkspace:
                         )
                     )
         if self.openclaw_state_dir is not None:
-            corpus = OpenClawSessionCorpus(self.openclaw_state_dir, agent_id=self.agent_id)
+            corpus = MemoryCoreSessionCorpus(self.openclaw_state_dir, agent_id=self.agent_id)
             files.extend(
                 MemoryFile(
                     item.rel_path,

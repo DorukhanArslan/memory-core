@@ -30,4 +30,4 @@ class MemoryConfig:
             return self.store_path
         if not SAFE_AGENT_ID_RE.match(self.agent_id):
             raise ValueError(f"agent_id is not filename-safe: {self.agent_id}")
-        return self.workspace_dir / ".openclaw-memory" / f"{self.agent_id}.sqlite"
+        return self.workspace_dir / ".memory-core" / f"{self.agent_id}.sqlite"

@@ -14,7 +14,7 @@ without the application manually assembling memory-injection or flush prompts.
 my-agent-app/
   MEMORY.md
   memory/
-  .openclaw-memory/main.sqlite
+  .memory-core/main.sqlite
 ```
 
 `MEMORY.md` may be empty or contain only the default template.

@@ -1,1 +1,1 @@
-"""FastAPI demo for the OpenClaw memory port."""
+"""FastAPI demo for memory-core."""

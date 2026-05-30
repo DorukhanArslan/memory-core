@@ -1,6 +1,7 @@
 # memory-core
 
-Python port of OpenClaw core memory, pinned to upstream commit
+`memory-core` is a Python memory core for LLM agents. It tracks OpenClaw
+memory-core behavior against upstream commit
 `7f6798094ce9486a8f463772f4535484aca73fe2`.
 
 The first implementation slice covers `MEMORY.md`, `memory/YYYY-MM-DD.md`,
@@ -36,13 +37,13 @@ my-agent-app/
   MEMORY.md
   memory/
     2026-05-30.md
-  .openclaw-memory/
+  .memory-core/
     main.sqlite
 ```
 
 By default, `MemoryCoreMemory.from_workspace(...)` uses the current working
 directory and creates only the memory-core workspace surface when it is missing:
-`MEMORY.md`, `memory/`, and `.openclaw-memory/`. It does not create OpenClaw
+`MEMORY.md`, `memory/`, and `.memory-core/`. It does not create OpenClaw
 runtime/persona files such as `AGENTS.md`, `SOUL.md`, or `USER.md`, and it does
 not overwrite an existing `MEMORY.md`. Pass `initialize=False` to disable file
 creation.
@@ -88,9 +89,9 @@ does not write it to disk. Defaults are `https://api.openai.com/v1` and
 `gpt-5.2`. You can also configure the backend with environment variables:
 
 ```bash
-export OPENCLAW_DEMO_OPENAI_BASE_URL="https://api.openai.com/v1"
-export OPENCLAW_DEMO_OPENAI_API_KEY="sk-demo-key"
-export OPENCLAW_DEMO_OPENAI_MODEL="gpt-5.2"
+export MEMORY_CORE_DEMO_OPENAI_BASE_URL="https://api.openai.com/v1"
+export MEMORY_CORE_DEMO_OPENAI_API_KEY="sk-demo-key"
+export MEMORY_CORE_DEMO_OPENAI_MODEL="gpt-5.2"
 ```
 
 Memory flush writes are restricted to `memory/YYYY-MM-DD.md`, matching
@@ -153,5 +154,5 @@ agent runtime.
 Run the opt-in live embedding smoke test:
 
 ```bash
-OPENCLAW_MEMORY_LIVE_OPENAI=1 OPENAI_API_KEY=sk-... pytest tests/integration/test_openai_embedding_live.py -q
+MEMORY_CORE_LIVE_OPENAI=1 OPENAI_API_KEY=sk-... pytest tests/integration/test_openai_embedding_live.py -q
 ```

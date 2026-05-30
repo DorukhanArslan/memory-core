@@ -31,12 +31,12 @@ my-agent-app/
   MEMORY.md
   memory/
     2026-05-30.md
-  .openclaw-memory/
+  .memory-core/
     main.sqlite
 ```
 
 Initialization is on by default and is memory-core only. It creates `MEMORY.md`,
-`memory/`, and `.openclaw-memory/` if missing, while preserving existing files.
+`memory/`, and `.memory-core/` if missing, while preserving existing files.
 Pass `initialize=False` to disable file creation.
 
 Example output:

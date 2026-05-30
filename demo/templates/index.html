@@ -804,10 +804,10 @@
 
       function renderConfig() {
         const promotion = state.config && state.config.promotion ? state.config.promotion : {};
-        const openclawDefaults = promotion.openclawDefaults || {};
+        const upstreamDefaults = promotion.upstreamDefaults || {};
         document.querySelector("#config").innerHTML = `<div class="panel-heading"><h2>Config</h2><span>Runtime state</span></div>
           <div class="kv-grid">
-            <div><strong>OpenClaw defaults</strong><span>enabled=${openclawDefaults.enabled ?? "?"}, limit=${openclawDefaults.limit ?? "?"}, score >= ${openclawDefaults.minScore ?? "?"}, signals >= ${openclawDefaults.minRecallCount ?? "?"}, unique queries/days >= ${openclawDefaults.minUniqueQueries ?? "?"}, max age ${openclawDefaults.maxAgeDays ?? "?"}d</span></div>
+            <div><strong>OpenClaw defaults</strong><span>enabled=${upstreamDefaults.enabled ?? "?"}, limit=${upstreamDefaults.limit ?? "?"}, score >= ${upstreamDefaults.minScore ?? "?"}, signals >= ${upstreamDefaults.minRecallCount ?? "?"}, unique queries/days >= ${upstreamDefaults.minUniqueQueries ?? "?"}, max age ${upstreamDefaults.maxAgeDays ?? "?"}d</span></div>
             <div><strong>Workspace bootstrap</strong><span>AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, USER.md, MEMORY.md</span></div>
           </div>
           <pre>${formatJson({

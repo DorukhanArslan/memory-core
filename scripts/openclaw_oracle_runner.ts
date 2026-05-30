@@ -52,6 +52,7 @@ type Payload = {
   toolResultMaxChars?: number;
   maxChars?: number;
   text?: string;
+  erroredAssistantResultPolicy?: "preserve" | "drop";
   systemPrompt?: string;
   prompt?: string;
   messages?: Array<Record<string, unknown>>;
@@ -71,6 +72,28 @@ type PromotionPolicy = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeRepairMessage(message: unknown): unknown {
+  if (!isRecord(message)) {
+    return message;
+  }
+  const out: Record<string, unknown> = { ...message };
+  if (typeof out.timestamp === "number" && Number.isFinite(out.timestamp)) {
+    out.timestamp = "__number__";
+  }
+  return out;
+}
+
+function normalizeTimestampedMessage(message: unknown): unknown {
+  if (!isRecord(message)) {
+    return message ?? null;
+  }
+  const out: Record<string, unknown> = { ...message };
+  if (typeof out.timestamp === "number" && Number.isFinite(out.timestamp)) {
+    out.timestamp = "__number__";
+  }
+  return out;
 }
 
 function deterministicEmbedding(text: string, dimensions = 8): number[] {
@@ -373,6 +396,137 @@ async function main() {
       ok: true,
       operation: payload.operation,
       result,
+    };
+  }
+
+  if (payload.operation === "historyLimit") {
+    const history = await importFromRepo(repoPath, "src/agents/embedded-agent-runner/history.ts");
+    const limits: Record<string, number | null> = {};
+    for (const key of payload.keys ?? []) {
+      limits[key] = history.getHistoryLimitFromSessionKey(key, payload.config ?? {}) ?? null;
+    }
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        limitedMessages: history.limitHistoryTurns(payload.messages ?? [], payload.limit),
+        limits,
+      },
+    };
+  }
+
+  if (payload.operation === "repairToolUseResultPairing") {
+    const repair = await importFromRepo(repoPath, "src/agents/session-transcript-repair.ts");
+    const result = repair.repairToolUseResultPairing(payload.messages ?? [], {
+      ...(payload.erroredAssistantResultPolicy
+        ? { erroredAssistantResultPolicy: payload.erroredAssistantResultPolicy }
+        : {}),
+      ...(typeof payload.text === "string" ? { missingToolResultText: payload.text } : {}),
+    });
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        messages: result.messages.map(normalizeRepairMessage),
+        added: result.added.map(normalizeRepairMessage),
+        droppedDuplicateCount: result.droppedDuplicateCount,
+        droppedOrphanCount: result.droppedOrphanCount,
+        moved: result.moved,
+      },
+    };
+  }
+
+  if (payload.operation === "runtimeContextPrompt") {
+    const runtimeContextPrompt = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/run/runtime-context-prompt.ts",
+    );
+    const runtimeContext = "secret runtime context";
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        parts: runtimeContextPrompt.resolveRuntimeContextPromptParts({
+          effectivePrompt: payload.prompt ?? "",
+          transcriptPrompt: payload.text,
+          modelPrompt: payload.systemPrompt,
+        }),
+        currentInboundPrompt: runtimeContextPrompt.buildCurrentInboundPrompt({
+          context: payload.entry,
+          prompt: "What do you mean hidden?",
+        }),
+        customMessage: normalizeTimestampedMessage(
+          runtimeContextPrompt.buildRuntimeContextCustomMessage(runtimeContext),
+        ),
+      },
+    };
+  }
+
+  if (payload.operation === "contextEngineLifecycle") {
+    const lifecycle = await importFromRepo(repoPath, "src/agents/harness/context-engine-lifecycle.ts");
+    let assembleMessages: unknown[] = [];
+    let snapshotParams: { messages?: unknown[]; prePromptMessageCount?: number } = {};
+    const contextEngine = {
+      info: { id: "oracle", name: "Oracle context engine" },
+      ingest: async () => ({ ingested: true }),
+      assemble: async (params: { messages?: unknown[] }) => {
+        assembleMessages = params.messages ?? [];
+        return { messages: params.messages ?? [], estimatedTokens: 0 };
+      },
+      afterTurn: async (params: { messages?: unknown[]; prePromptMessageCount?: number }) => {
+        snapshotParams = {
+          messages: params.messages ?? [],
+          prePromptMessageCount: params.prePromptMessageCount,
+        };
+      },
+      compact: async () => ({ ok: true, compacted: false }),
+    };
+    await lifecycle.assembleHarnessContextEngine({
+      contextEngine,
+      sessionId: "session-1",
+      sessionKey: "agent:main",
+      messages: payload.messages ?? [],
+      modelId: "gpt-test",
+    });
+    await lifecycle.finalizeHarnessContextEngineTurn({
+      contextEngine,
+      promptError: false,
+      aborted: false,
+      yieldAborted: false,
+      sessionIdUsed: "session-1",
+      sessionKey: "agent:main",
+      sessionFile: "sessions/main.jsonl",
+      messagesSnapshot: payload.messages ?? [],
+      prePromptMessageCount: payload.limit ?? 0,
+      tokenBudget: payload.contextWindowTokens,
+      runtimeContext: {},
+      runMaintenance: async () => undefined,
+      warn: () => {},
+    });
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        assembleMessages,
+        conversationSnapshot: {
+          messages: snapshotParams.messages ?? [],
+          prePromptMessageCount: snapshotParams.prePromptMessageCount ?? 0,
+        },
+      },
+    };
+  }
+
+  if (payload.operation === "normalizeAssistantReplayContent") {
+    const replayHistory = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/replay-history.ts",
+    );
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        messages: replayHistory.normalizeAssistantReplayContent(payload.messages ?? []),
+      },
     };
   }
 

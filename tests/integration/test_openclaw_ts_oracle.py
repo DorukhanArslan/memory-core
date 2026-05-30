@@ -12,6 +12,18 @@ from memory_core.memory_flush import (
     has_already_flushed_for_current_compaction,
     should_run_memory_flush,
 )
+from memory_core.history import get_history_limit_from_session_key, limit_history_turns
+from memory_core.replay_repair import repair_tool_use_result_pairing
+from memory_core.runtime_context_prompt import (
+    build_current_inbound_prompt,
+    build_runtime_context_custom_message,
+    resolve_runtime_context_prompt_parts,
+)
+from memory_core.context_engine_lifecycle import (
+    assemble_context_engine_messages,
+    build_context_engine_conversation_snapshot,
+)
+from memory_core.replay_history import normalize_assistant_replay_content
 from memory_core.preemptive_compaction import (
     estimate_pre_prompt_tokens,
     estimate_tool_result_reduction_potential,
@@ -65,6 +77,29 @@ def _session_message(entry_id: str, parent_id: str | None, message: dict) -> dic
         "timestamp": "2026-05-30T00:00:00.000Z",
         "message": message,
     }
+
+
+def _user_history(text: str) -> dict:
+    return {"role": "user", "content": [{"type": "text", "text": text}], "timestamp": 1}
+
+
+def _normalize_repair_messages(messages: list[dict]) -> list[dict]:
+    normalized = []
+    for message in messages:
+        item = dict(message)
+        if isinstance(item.get("timestamp"), int | float):
+            item["timestamp"] = "__number__"
+        normalized.append(item)
+    return normalized
+
+
+def _normalize_runtime_custom_message(message: dict | None) -> dict | None:
+    if message is None:
+        return None
+    normalized = dict(message)
+    if isinstance(normalized.get("timestamp"), int | float):
+        normalized["timestamp"] = "__number__"
+    return normalized
 
 
 def test_real_openclaw_oracle_deep_policy():
@@ -2594,3 +2629,267 @@ def test_real_openclaw_oracle_promotion_header_uses_dreaming_timezone():
     assert applied["ok"] is True
     assert applied["result"]["applied"] == 1
     assert "Promoted From Short-Term Memory (2026-04-01)" in applied["files"]["MEMORY.md"]
+
+
+def test_real_openclaw_oracle_history_limit_helpers_match_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    config = {
+        "channels": {
+            "telegram": {
+                "dmHistoryLimit": 15,
+                "dms": {
+                    "123": {"historyLimit": 5},
+                    "789": {"historyLimit": 0},
+                },
+            },
+            "slack": {"historyLimit": 10, "dmHistoryLimit": 20},
+        }
+    }
+    messages = [
+        _user_history("u1"),
+        _assistant_history("a1"),
+        _user_history("u2"),
+        _assistant_history("a2"),
+        _tool_result("tool after a2"),
+        _user_history("u3"),
+    ]
+
+    result = oracle.run(
+        {
+            "operation": "historyLimit",
+            "config": config,
+            "messages": messages,
+            "limit": 2,
+            "keys": [
+                "telegram:dm:123",
+                "telegram:dm:456",
+                "telegram:dm:789",
+                "agent:beta:slack:channel:c1",
+                "telegram:slash:123",
+                "unknown:dm:123",
+            ],
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["operation"] == "historyLimit"
+    assert result["result"]["limitedMessages"] == limit_history_turns(messages, 2)
+    assert result["result"]["limits"] == {
+        "telegram:dm:123": get_history_limit_from_session_key("telegram:dm:123", config),
+        "telegram:dm:456": get_history_limit_from_session_key("telegram:dm:456", config),
+        "telegram:dm:789": get_history_limit_from_session_key("telegram:dm:789", config),
+        "agent:beta:slack:channel:c1": get_history_limit_from_session_key(
+            "agent:beta:slack:channel:c1", config
+        ),
+        "telegram:slash:123": get_history_limit_from_session_key("telegram:slash:123", config),
+        "unknown:dm:123": get_history_limit_from_session_key("unknown:dm:123", config),
+    }
+
+
+def test_real_openclaw_oracle_repair_tool_use_result_pairing_matches_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    messages = [
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "toolCall", "id": "call_1", "name": "read", "arguments": {}},
+                {"type": "toolCall", "id": "call_2", "name": "exec", "arguments": {}},
+            ],
+        },
+        {"role": "user", "content": "this should come after tool results"},
+        {
+            "role": "toolResult",
+            "toolCallId": "call_2",
+            "toolName": "exec",
+            "content": [{"type": "text", "text": "ok"}],
+            "isError": False,
+        },
+    ]
+
+    result = oracle.run(
+        {
+            "operation": "repairToolUseResultPairing",
+            "messages": messages,
+            "text": "aborted",
+        }
+    )
+    python_result = repair_tool_use_result_pairing(messages, missing_tool_result_text="aborted")
+
+    assert result["ok"] is True
+    assert result["operation"] == "repairToolUseResultPairing"
+    assert result["result"] == {
+        "messages": _normalize_repair_messages(python_result.messages),
+        "added": _normalize_repair_messages(python_result.added),
+        "droppedDuplicateCount": python_result.dropped_duplicate_count,
+        "droppedOrphanCount": python_result.dropped_orphan_count,
+        "moved": python_result.moved,
+    }
+
+
+def test_real_openclaw_oracle_repair_tool_use_result_pairing_drops_aborted_results():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    messages = [
+        {
+            "role": "assistant",
+            "content": [{"type": "toolCall", "id": "call_aborted", "name": "exec", "arguments": {}}],
+            "stopReason": "aborted",
+        },
+        {
+            "role": "toolResult",
+            "toolCallId": "call_aborted",
+            "toolName": "exec",
+            "content": [{"type": "text", "text": "partial"}],
+            "isError": False,
+        },
+        {"role": "user", "content": "retry"},
+    ]
+
+    result = oracle.run(
+        {
+            "operation": "repairToolUseResultPairing",
+            "messages": messages,
+            "erroredAssistantResultPolicy": "drop",
+        }
+    )
+    python_result = repair_tool_use_result_pairing(
+        messages,
+        errored_assistant_result_policy="drop",
+    )
+
+    assert result["ok"] is True
+    assert result["result"] == {
+        "messages": _normalize_repair_messages(python_result.messages),
+        "added": _normalize_repair_messages(python_result.added),
+        "droppedDuplicateCount": python_result.dropped_duplicate_count,
+        "droppedOrphanCount": python_result.dropped_orphan_count,
+        "moved": python_result.moved,
+    }
+
+
+def test_real_openclaw_oracle_runtime_context_prompt_helpers_match_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    prompt = "\n\n".join(["runtime prefix", "visible ask", "retry instruction"])
+    effective_prompt = "\n\n".join(
+        [
+            prompt,
+            "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nsecret runtime context\n<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+        ]
+    )
+    current_context = {"text": "Current message:\n#34975 obviyus:", "promptJoiner": " "}
+
+    result = oracle.run(
+        {
+            "operation": "runtimeContextPrompt",
+            "prompt": effective_prompt,
+            "text": "visible ask",
+            "systemPrompt": effective_prompt,
+            "entry": current_context,
+        }
+    )
+    python_parts = resolve_runtime_context_prompt_parts(
+        effective_prompt=effective_prompt,
+        transcript_prompt="visible ask",
+        model_prompt=effective_prompt,
+    )
+    python_custom_message = build_runtime_context_custom_message("secret runtime context")
+
+    assert result["ok"] is True
+    assert result["operation"] == "runtimeContextPrompt"
+    assert result["result"] == {
+        "parts": python_parts,
+        "currentInboundPrompt": build_current_inbound_prompt(
+            context=current_context,
+            prompt="What do you mean hidden?",
+        ),
+        "customMessage": _normalize_runtime_custom_message(python_custom_message),
+    }
+
+
+def test_real_openclaw_oracle_context_engine_lifecycle_strips_runtime_context():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    messages = [
+        {"role": "user", "content": [{"type": "text", "text": "old ask"}], "timestamp": 1},
+        {
+            "role": "custom",
+            "customType": "openclaw.runtime-context",
+            "content": "old hidden",
+            "display": False,
+            "details": {"source": "openclaw-runtime-context"},
+            "timestamp": 2,
+        },
+        {"role": "assistant", "content": [{"type": "text", "text": "old answer"}], "timestamp": 3},
+        {"role": "user", "content": [{"type": "text", "text": "new ask"}], "timestamp": 4},
+        {
+            "role": "custom",
+            "customType": "openclaw.runtime-context",
+            "content": "new hidden",
+            "display": False,
+            "details": {"source": "openclaw-runtime-context"},
+            "timestamp": 5,
+        },
+        {"role": "assistant", "content": [{"type": "text", "text": "new answer"}], "timestamp": 6},
+    ]
+
+    result = oracle.run(
+        {
+            "operation": "contextEngineLifecycle",
+            "messages": messages,
+            "limit": 3,
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["operation"] == "contextEngineLifecycle"
+    assert result["result"] == {
+        "assembleMessages": assemble_context_engine_messages(messages),
+        "conversationSnapshot": build_context_engine_conversation_snapshot(
+            messages_snapshot=messages,
+            pre_prompt_message_count=3,
+        ),
+    }
+
+
+def test_real_openclaw_oracle_normalize_assistant_replay_content_matches_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    zero_usage = {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+    }
+    messages = [
+        {"role": "user", "content": "hello", "timestamp": 0},
+        {
+            "role": "assistant",
+            "content": [],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": zero_usage,
+            "stopReason": "error",
+            "timestamp": 0,
+        },
+        {"role": "user", "content": [{"type": "text", "text": "   "}], "timestamp": 0},
+        {
+            "role": "assistant",
+            "content": "plain string",
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": {"input": 1, "output": 1, "totalTokens": 2},
+            "stopReason": "stop",
+            "timestamp": 0,
+        },
+        {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "channel mirror"}],
+            "provider": "openclaw",
+            "model": "delivery-mirror",
+            "timestamp": 0,
+        },
+    ]
+
+    result = oracle.run({"operation": "normalizeAssistantReplayContent", "messages": messages})
+
+    assert result["ok"] is True
+    assert result["operation"] == "normalizeAssistantReplayContent"
+    assert result["result"]["messages"] == normalize_assistant_replay_content(messages)

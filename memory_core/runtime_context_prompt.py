@@ -5,22 +5,22 @@ import time
 from collections.abc import Mapping
 from typing import Any, Literal
 
-from memory_core.branding import (
-    MemoryBranding,
-    OPENCLAW_COMPAT_BRANDING,
-    MEMORY_CORE_BRANDING,
+from memory_core.runtime_identity import (
+    RuntimeIdentity,
+    OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+    MEMORY_CORE_RUNTIME_IDENTITY,
 )
 
-INTERNAL_RUNTIME_CONTEXT_BEGIN = MEMORY_CORE_BRANDING.runtime_context_begin
-INTERNAL_RUNTIME_CONTEXT_END = MEMORY_CORE_BRANDING.runtime_context_end
+INTERNAL_RUNTIME_CONTEXT_BEGIN = MEMORY_CORE_RUNTIME_IDENTITY.runtime_context_begin
+INTERNAL_RUNTIME_CONTEXT_END = MEMORY_CORE_RUNTIME_IDENTITY.runtime_context_end
 OPENCLAW_RUNTIME_CONTEXT_NOTICE = (
     "This context is runtime-generated, not user-authored. Keep internal details private."
 )
-OPENCLAW_NEXT_TURN_RUNTIME_CONTEXT_HEADER = OPENCLAW_COMPAT_BRANDING.next_turn_runtime_context_header
-OPENCLAW_RUNTIME_EVENT_HEADER = OPENCLAW_COMPAT_BRANDING.runtime_event_header
-OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE = OPENCLAW_COMPAT_BRANDING.runtime_context_custom_type
-OPENCLAW_RUNTIME_EVENT_USER_PROMPT = OPENCLAW_COMPAT_BRANDING.runtime_event_user_prompt
-MEMORY_CORE_RUNTIME_CONTEXT_CUSTOM_TYPE = MEMORY_CORE_BRANDING.runtime_context_custom_type
+OPENCLAW_NEXT_TURN_RUNTIME_CONTEXT_HEADER = OPENCLAW_COMPAT_RUNTIME_IDENTITY.next_turn_runtime_context_header
+OPENCLAW_RUNTIME_EVENT_HEADER = OPENCLAW_COMPAT_RUNTIME_IDENTITY.runtime_event_header
+OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE = OPENCLAW_COMPAT_RUNTIME_IDENTITY.runtime_context_custom_type
+OPENCLAW_RUNTIME_EVENT_USER_PROMPT = OPENCLAW_COMPAT_RUNTIME_IDENTITY.runtime_event_user_prompt
+MEMORY_CORE_RUNTIME_CONTEXT_CUSTOM_TYPE = MEMORY_CORE_RUNTIME_IDENTITY.runtime_context_custom_type
 
 EmptyTranscriptMode = Literal["model-prompt", "runtime-event"]
 
@@ -46,11 +46,11 @@ def resolve_runtime_context_prompt_parts(
     transcript_prompt: str | None = None,
     model_prompt: str | None = None,
     empty_transcript_mode: EmptyTranscriptMode | None = None,
-    branding: MemoryBranding = MEMORY_CORE_BRANDING,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> dict[str, Any]:
     should_extract_internal_runtime_context = transcript_prompt is not None
     extracted = (
-        _extract_internal_runtime_context(effective_prompt, branding=branding)
+        _extract_internal_runtime_context(effective_prompt, identity=identity)
         if should_extract_internal_runtime_context
         else {"text": effective_prompt}
     )
@@ -58,7 +58,7 @@ def resolve_runtime_context_prompt_parts(
         None
         if model_prompt is None
         else (
-            _extract_internal_runtime_context(model_prompt, branding=branding)
+            _extract_internal_runtime_context(model_prompt, identity=identity)
             if should_extract_internal_runtime_context
             else {"text": model_prompt}
         )
@@ -100,15 +100,15 @@ def resolve_runtime_context_prompt_parts(
     if not prompt.strip():
         if runtime_context:
             out = {
-                "prompt": branding.runtime_event_user_prompt,
+                "prompt": identity.runtime_event_user_prompt,
                 "runtimeContext": runtime_context,
                 "runtimeOnly": True,
                 "runtimeSystemContext": build_runtime_event_system_context(
                     runtime_context,
-                    branding=branding,
+                    identity=identity,
                 ),
             }
-            if model_prompt_text.strip() and model_prompt_text != branding.runtime_event_user_prompt:
+            if model_prompt_text.strip() and model_prompt_text != identity.runtime_event_user_prompt:
                 out["modelPrompt"] = model_prompt_text
             return out
         out = {"prompt": ""}
@@ -127,37 +127,37 @@ def resolve_runtime_context_prompt_parts(
 def build_runtime_context_system_context(
     runtime_context: str,
     *,
-    branding: MemoryBranding = MEMORY_CORE_BRANDING,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> str:
-    return _build_runtime_context_message_content(runtime_context, kind="next-turn", branding=branding)
+    return _build_runtime_context_message_content(runtime_context, kind="next-turn", identity=identity)
 
 
 def build_runtime_event_system_context(
     runtime_context: str,
     *,
-    branding: MemoryBranding = MEMORY_CORE_BRANDING,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> str:
     return _build_runtime_context_message_content(
         runtime_context,
         kind="runtime-event",
-        branding=branding,
+        identity=identity,
     )
 
 
 def build_runtime_context_custom_message(
     runtime_context: str | None,
     *,
-    branding: MemoryBranding = MEMORY_CORE_BRANDING,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> dict[str, Any] | None:
     trimmed = runtime_context.strip() if isinstance(runtime_context, str) else ""
     if not trimmed:
         return None
     return {
         "role": "custom",
-        "customType": branding.runtime_context_custom_type,
-        "content": build_runtime_context_system_context(trimmed, branding=branding),
+        "customType": identity.runtime_context_custom_type,
+        "content": build_runtime_context_system_context(trimmed, identity=identity),
         "display": False,
-        "details": {"source": branding.runtime_context_source},
+        "details": {"source": identity.runtime_context_source},
         "timestamp": int(time.time() * 1000),
     }
 
@@ -166,12 +166,12 @@ def _build_runtime_context_message_content(
     runtime_context: str,
     *,
     kind: Literal["next-turn", "runtime-event"],
-    branding: MemoryBranding,
+    identity: RuntimeIdentity,
 ) -> str:
     header = (
-        branding.runtime_event_header
+        identity.runtime_event_header
         if kind == "runtime-event"
-        else branding.next_turn_runtime_context_header
+        else identity.next_turn_runtime_context_header
     )
     return "\n".join([header, OPENCLAW_RUNTIME_CONTEXT_NOTICE, "", runtime_context])
 
@@ -188,12 +188,12 @@ def _remove_last_prompt_occurrence(text: str, prompt: str) -> str | None:
 def _extract_internal_runtime_context(
     text: str,
     *,
-    branding: MemoryBranding = MEMORY_CORE_BRANDING,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> dict[str, str]:
     extracted = _extract_delimited_blocks(
         text,
-        branding.runtime_context_begin,
-        branding.runtime_context_end,
+        identity.runtime_context_begin,
+        identity.runtime_context_end,
     )
     out = {"text": extracted["text"]}
     if extracted["blocks"]:

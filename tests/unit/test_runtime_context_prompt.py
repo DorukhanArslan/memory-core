@@ -1,12 +1,12 @@
 from memory_core.runtime_context_prompt import (
-    OPENCLAW_COMPAT_BRANDING,
+    OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     build_current_inbound_prompt,
     build_runtime_context_custom_message,
     resolve_runtime_context_prompt_parts,
 )
 
 
-def test_default_runtime_context_branding_uses_memory_core_names():
+def test_default_runtime_context_identity_uses_memory_core_names():
     message = build_runtime_context_custom_message("secret runtime context")
 
     assert message is not None
@@ -15,10 +15,10 @@ def test_default_runtime_context_branding_uses_memory_core_names():
     assert "memory-core runtime context for the immediately preceding user message." in message["content"]
 
 
-def test_openclaw_compat_runtime_context_branding_preserves_upstream_names():
+def test_openclaw_compat_runtime_context_identity_preserves_upstream_names():
     message = build_runtime_context_custom_message(
         "secret runtime context",
-        branding=OPENCLAW_COMPAT_BRANDING,
+        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     )
 
     assert message is not None
@@ -60,7 +60,7 @@ def test_resolve_runtime_context_prompt_parts_keeps_prompt_local_additions_in_mo
         effective_prompt=effective_prompt,
         transcript_prompt="visible ask",
         model_prompt=effective_prompt,
-        branding=OPENCLAW_COMPAT_BRANDING,
+        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     ) == {
         "prompt": "visible ask",
         "modelPrompt": prompt,

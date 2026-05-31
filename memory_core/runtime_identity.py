@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class MemoryBranding:
+class RuntimeIdentity:
     runtime_context_begin: str
     runtime_context_end: str
     runtime_context_custom_type: str
@@ -14,7 +14,7 @@ class MemoryBranding:
     runtime_event_user_prompt: str
 
 
-MEMORY_CORE_BRANDING = MemoryBranding(
+MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
     runtime_context_begin="<<<BEGIN_MEMORY_CORE_INTERNAL_CONTEXT>>>",
     runtime_context_end="<<<END_MEMORY_CORE_INTERNAL_CONTEXT>>>",
     runtime_context_custom_type="memory_core.runtime-context",
@@ -24,7 +24,7 @@ MEMORY_CORE_BRANDING = MemoryBranding(
     runtime_event_user_prompt="Continue the memory-core runtime event.",
 )
 
-OPENCLAW_COMPAT_BRANDING = MemoryBranding(
+OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
     runtime_context_begin="<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>",
     runtime_context_end="<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
     runtime_context_custom_type="openclaw.runtime-context",

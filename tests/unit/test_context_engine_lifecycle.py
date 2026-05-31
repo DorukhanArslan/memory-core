@@ -1,5 +1,5 @@
 from memory_core.context_engine_lifecycle import (
-    OPENCLAW_COMPAT_BRANDING,
+    OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     assemble_context_engine_messages,
     build_context_engine_conversation_snapshot,
     strip_runtime_context_custom_messages,
@@ -21,7 +21,7 @@ def _runtime_context_message(text: str, timestamp: int) -> dict:
     }
 
 
-def test_strip_runtime_context_custom_messages_can_use_openclaw_compat_branding():
+def test_strip_runtime_context_custom_messages_can_use_openclaw_compat_identity():
     visible_user = _message("user", "visible ask", 1)
     runtime_context = {
         "role": "custom",
@@ -32,7 +32,7 @@ def test_strip_runtime_context_custom_messages_can_use_openclaw_compat_branding(
 
     assert strip_runtime_context_custom_messages(
         [visible_user, runtime_context],
-        branding=OPENCLAW_COMPAT_BRANDING,
+        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     ) == [visible_user]
 
 

@@ -52,7 +52,7 @@ pytestmark = pytest.mark.skipif(
 
 
 class OpenClawFakeEmbeddingProvider(FakeEmbeddingProvider):
-    provider_id = "stem-fake"
+    provider_id = "memory-core-fake"
 
 
 def _assistant_history(text: str) -> dict:

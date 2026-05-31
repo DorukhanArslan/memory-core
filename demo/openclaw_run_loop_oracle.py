@@ -24,8 +24,8 @@ def run_overflow_run_loop_oracle(
             f"OpenClaw vitest binary missing; run pnpm install in {repo_path}"
         )
 
-    test_file = test_dir / "stem-overflow-run-loop.oracle.test.ts"
-    with tempfile.TemporaryDirectory(prefix="stem-openclaw-run-loop-oracle-") as tmp_dir:
+    test_file = test_dir / "memory-core-overflow-run-loop.oracle.test.ts"
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-run-loop-oracle-") as tmp_dir:
         output_path = Path(tmp_dir) / "result.json"
         test_file.write_text(_overflow_run_loop_oracle_test_source(), encoding="utf-8")
         try:
@@ -108,7 +108,7 @@ function record(name: string, result: Awaited<ReturnType<typeof runEmbeddedAgent
   });
 }
 
-describe("stem overflow run-loop oracle", () => {
+describe("memory-core overflow run-loop oracle", () => {
   beforeAll(async () => {
     ({ runEmbeddedAgent } = await loadRunOverflowCompactionHarness());
   });

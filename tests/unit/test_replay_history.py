@@ -134,7 +134,7 @@ def test_normalize_assistant_replay_content_strips_internal_runtime_context_from
     assert out[1]["content"] == [{"type": "text", "text": "Visible before\n\nVisible after"}]
 
 
-def test_normalize_assistant_replay_content_strips_stem_internal_runtime_context():
+def test_normalize_assistant_replay_content_strips_memory_core_internal_runtime_context():
     messages = [
         _user("first"),
         _assistant(

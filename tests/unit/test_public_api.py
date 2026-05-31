@@ -36,7 +36,7 @@ def test_public_api_exports_core_memory_surface():
         "MemoryChatResult",
         "MemoryChatTurn",
         "MemoryRecordResult",
-        "MemoryCoreMemory",
+        "Memory",
         "format_memory_context",
         "initialize_memory_core_workspace",
     }

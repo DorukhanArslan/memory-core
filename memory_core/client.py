@@ -49,7 +49,7 @@ class MemoryChatResult:
 
 
 @dataclass(frozen=True)
-class MemoryCoreMemory:
+class Memory:
     config: MemoryConfig
     workspace: MemoryWorkspace
     store: SQLiteMemoryStore
@@ -63,7 +63,7 @@ class MemoryCoreMemory:
         config: MemoryConfig | None = None,
         initialize: bool = True,
         reindex: bool = True,
-    ) -> MemoryCoreMemory:
+    ) -> Memory:
         workspace = MemoryWorkspace(Path(workspace_dir))
         resolved_config = config or MemoryConfig(workspace_dir=workspace.root)
         if initialize:

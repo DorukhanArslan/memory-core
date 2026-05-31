@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from memory_core import MemoryCoreMemory
+from memory_core import Memory
 from memory_core.embeddings.base import FakeEmbeddingProvider
 
 
@@ -12,7 +12,7 @@ def test_from_workspace_reads_host_memory_files(tmp_path: Path):
         encoding="utf-8",
     )
 
-    memory = MemoryCoreMemory.from_workspace(
+    memory = Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
         initialize=False,
@@ -34,7 +34,7 @@ def test_from_workspace_can_build_langgraph_recall_node(tmp_path: Path):
         encoding="utf-8",
     )
 
-    memory = MemoryCoreMemory.from_workspace(
+    memory = Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
         initialize=False,
@@ -46,7 +46,7 @@ def test_from_workspace_can_build_langgraph_recall_node(tmp_path: Path):
 
 
 def test_from_workspace_initialize_creates_memory_core_files(tmp_path: Path):
-    memory = MemoryCoreMemory.from_workspace(
+    memory = Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
         initialize=True,
@@ -61,7 +61,7 @@ def test_from_workspace_initialize_creates_memory_core_files(tmp_path: Path):
 def test_from_workspace_initialize_does_not_overwrite_existing_memory(tmp_path: Path):
     (tmp_path / "MEMORY.md").write_text("# Existing\n\n- Keep me.\n", encoding="utf-8")
 
-    MemoryCoreMemory.from_workspace(
+    Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
         initialize=True,
@@ -71,7 +71,7 @@ def test_from_workspace_initialize_does_not_overwrite_existing_memory(tmp_path: 
 
 
 def test_from_workspace_creates_memory_files_by_default(tmp_path: Path):
-    MemoryCoreMemory.from_workspace(
+    Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
     )
@@ -81,7 +81,7 @@ def test_from_workspace_creates_memory_files_by_default(tmp_path: Path):
 
 
 def test_from_workspace_can_disable_initialization(tmp_path: Path):
-    MemoryCoreMemory.from_workspace(
+    Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
         initialize=False,
@@ -94,7 +94,7 @@ def test_from_workspace_can_disable_initialization(tmp_path: Path):
 def test_from_workspace_defaults_to_current_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.chdir(tmp_path)
 
-    memory = MemoryCoreMemory.from_workspace(
+    memory = Memory.from_workspace(
         embedding_provider=FakeEmbeddingProvider(),
     )
 
@@ -108,7 +108,7 @@ def test_prepare_turn_injects_recalled_memory_into_chat_messages(tmp_path: Path)
         "# MEMORY.md\n\n- User prefers to be addressed as Doruk.\n",
         encoding="utf-8",
     )
-    memory = MemoryCoreMemory.from_workspace(
+    memory = Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
     )
@@ -134,7 +134,7 @@ def test_prepare_turn_injects_recalled_memory_into_chat_messages(tmp_path: Path)
 
 
 def test_prepare_turn_omits_memory_message_when_no_results(tmp_path: Path):
-    memory = MemoryCoreMemory.from_workspace(
+    memory = Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
         initialize=False,
@@ -157,7 +157,7 @@ def test_prepare_turn_omits_memory_message_when_no_results(tmp_path: Path):
 
 
 def test_chat_runs_answer_then_forced_memory_flush_and_reindexes(tmp_path: Path):
-    memory = MemoryCoreMemory.from_workspace(
+    memory = Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
     )
@@ -193,7 +193,7 @@ def test_chat_runs_answer_then_forced_memory_flush_and_reindexes(tmp_path: Path)
 
 
 def test_chat_can_use_separate_flush_model(tmp_path: Path):
-    memory = MemoryCoreMemory.from_workspace(
+    memory = Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
     )
@@ -227,7 +227,7 @@ def test_chat_can_use_separate_flush_model(tmp_path: Path):
 
 
 def test_chat_does_not_flush_without_force_flush(tmp_path: Path):
-    memory = MemoryCoreMemory.from_workspace(
+    memory = Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
     )
@@ -249,7 +249,7 @@ def test_chat_does_not_flush_without_force_flush(tmp_path: Path):
 
 
 def test_chat_does_not_expose_test_clock_control(tmp_path: Path):
-    memory = MemoryCoreMemory.from_workspace(
+    memory = Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
     )
@@ -267,7 +267,7 @@ def test_chat_does_not_expose_test_clock_control(tmp_path: Path):
 
 
 def test_record_turn_skips_write_when_flush_model_returns_no_reply(tmp_path: Path):
-    memory = MemoryCoreMemory.from_workspace(
+    memory = Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
     )

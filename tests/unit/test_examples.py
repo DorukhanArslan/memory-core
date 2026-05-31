@@ -2,7 +2,7 @@ from pathlib import Path
 
 import examples.basic_usage as basic_usage
 import examples.chatbot_memory as chatbot_memory
-from memory_core import MemoryCoreMemory
+from memory_core import Memory
 from memory_core.embeddings.base import FakeEmbeddingProvider
 
 
@@ -48,7 +48,7 @@ def test_basic_usage_requires_openai_api_key(tmp_path: Path, monkeypatch):
 
 def test_chatbot_memory_prepares_messages_for_llm(tmp_path: Path):
     chatbot_memory.seed_demo_memory(tmp_path)
-    memory = MemoryCoreMemory.from_workspace(
+    memory = Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
     )
@@ -70,7 +70,7 @@ def test_chatbot_memory_prepares_messages_for_llm(tmp_path: Path):
 
 
 def test_chatbot_memory_can_run_answer_and_flush(tmp_path: Path):
-    memory = MemoryCoreMemory.from_workspace(
+    memory = Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
     )
@@ -93,7 +93,7 @@ def test_chatbot_memory_can_run_answer_and_flush(tmp_path: Path):
 
 
 def test_chatbot_memory_exposes_force_flush_without_test_clock_controls(tmp_path: Path):
-    memory = MemoryCoreMemory.from_workspace(
+    memory = Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
     )
@@ -115,7 +115,7 @@ def test_chatbot_memory_exposes_force_flush_without_test_clock_controls(tmp_path
 
 
 def test_chatbot_memory_does_not_expose_test_clock_control(tmp_path: Path):
-    memory = MemoryCoreMemory.from_workspace(
+    memory = Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
     )

@@ -594,11 +594,11 @@ async function main() {
       "src/plugins/memory-embedding-providers.ts",
     );
     embeddingProviders.registerMemoryEmbeddingProvider({
-      id: "stem-fake",
+      id: "memory-core-fake",
       defaultModel: "fake-deterministic",
       create: async () => ({
         provider: {
-          id: "stem-fake",
+          id: "memory-core-fake",
           model: "fake-deterministic",
           embedQuery: async (text: string) => deterministicEmbedding(`query:${text}`),
           embedBatch: async (texts: string[]) =>
@@ -636,7 +636,7 @@ async function main() {
           ...(payload.workspaceDir ? { workspace: payload.workspaceDir } : {}),
           memorySearch: {
             ...defaultMemorySearch,
-            provider: "stem-fake",
+            provider: "memory-core-fake",
             model: "fake-deterministic",
             ...(storePath ? { store: { ...defaultStore, path: storePath } } : {}),
             sync: {
@@ -663,7 +663,7 @@ async function main() {
       },
     };
     const firstSessionFileName = payload.sessionTranscripts?.[0]?.fileName?.trim();
-    const requesterSessionStem =
+    const requesterSessionId =
       firstSessionFileName && firstSessionFileName.endsWith(".jsonl")
         ? firstSessionFileName.slice(0, -".jsonl".length)
         : "oracle";
@@ -671,7 +671,7 @@ async function main() {
       const tool = tools.createMemorySearchTool({
         config: cfg,
         agentId: "main",
-        agentSessionKey: `agent:main:${requesterSessionStem}`,
+        agentSessionKey: `agent:main:${requesterSessionId}`,
       });
       if (!tool) {
         throw new Error("memory_search tool missing");

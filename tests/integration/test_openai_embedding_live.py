@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from memory_core import MemoryCoreMemory
+from memory_core import Memory
 from memory_core.embeddings.openai_compatible import OpenAICompatibleEmbeddingProvider
 
 
@@ -25,7 +25,7 @@ def test_live_openai_embedding_provider_indexes_and_searches(tmp_path: Path):
         model=os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
     )
 
-    memory = MemoryCoreMemory.from_workspace(tmp_path, embedding_provider=provider)
+    memory = Memory.from_workspace(tmp_path, embedding_provider=provider)
     result = memory.search("preferred name", max_results=3)
 
     assert result["provider"] == "openai-compatible"

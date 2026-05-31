@@ -13,12 +13,12 @@ The stable package surface is exported from `memory-core`:
 
 ```python
 from memory_core import (
-    MemoryCoreMemory,
+    Memory,
     build_memory_flush_plan,
 )
 from memory_core.embeddings.base import FakeEmbeddingProvider
 
-memory = MemoryCoreMemory.from_workspace(
+memory = Memory.from_workspace(
     embedding_provider=FakeEmbeddingProvider(),
 )
 
@@ -29,7 +29,7 @@ recall_node = memory.langgraph_recall()
 flush_plan = build_memory_flush_plan(workspace_dir=memory.workspace.root)
 ```
 
-`MemoryCoreMemory.from_workspace(...)` reads memory files from the host
+`Memory.from_workspace(...)` reads memory files from the host
 application workspace, not from this package. For example:
 
 ```text
@@ -41,7 +41,7 @@ my-agent-app/
     main.sqlite
 ```
 
-By default, `MemoryCoreMemory.from_workspace(...)` uses the current working
+By default, `Memory.from_workspace(...)` uses the current working
 directory and creates only the memory-core workspace surface when it is missing:
 `MEMORY.md`, `memory/`, and `.memory-core/`. It does not create OpenClaw
 runtime/persona files such as `AGENTS.md`, `SOUL.md`, or `USER.md`, and it does

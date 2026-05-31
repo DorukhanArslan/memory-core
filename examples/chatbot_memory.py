@@ -3,11 +3,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from memory_core import MemoryChatResult, MemoryChatTurn, MemoryCoreMemory
+from memory_core import MemoryChatResult, MemoryChatTurn, Memory
 
 
 def prepare_chatbot_turn(
-    memory: MemoryCoreMemory,
+    memory: Memory,
     user_message: str,
     *,
     system_prompt: str | None = None,
@@ -18,7 +18,7 @@ def prepare_chatbot_turn(
 
 
 def answer_with_memory(
-    memory: MemoryCoreMemory,
+    memory: Memory,
     user_message: str,
     chat: Callable[[list[dict[str, str]]], str],
     *,
@@ -29,7 +29,7 @@ def answer_with_memory(
 
 
 def chat_with_memory(
-    memory: MemoryCoreMemory,
+    memory: Memory,
     user_message: str,
     chat: Callable[[list[dict[str, str]]], str],
     *,

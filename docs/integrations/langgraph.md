@@ -13,10 +13,10 @@ that do not depend on LangGraph.
 ## Minimal Flow
 
 ```python
-from memory_core import MemoryCoreMemory
+from memory_core import Memory
 from memory_core.embeddings.base import FakeEmbeddingProvider
 
-memory = MemoryCoreMemory.from_workspace(
+memory = Memory.from_workspace(
     embedding_provider=FakeEmbeddingProvider(),
 )
 recall_node = memory.langgraph_recall()

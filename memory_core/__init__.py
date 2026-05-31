@@ -14,7 +14,7 @@ from memory_core.client import (
     MemoryChatResult,
     MemoryChatTurn,
     MemoryRecordResult,
-    MemoryCoreMemory,
+    Memory,
     initialize_memory_core_workspace,
 )
 from memory_core.config import MemoryConfig
@@ -107,7 +107,7 @@ __all__ = [
     "OPENCLAW_COMPAT_BRANDING",
     "MEMORY_CORE_RUNTIME_CONTEXT_CUSTOM_TYPE",
     "MEMORY_CORE_BRANDING",
-    "MemoryCoreMemory",
+    "Memory",
     "STREAM_ERROR_FALLBACK_TEXT",
     "MemoryConfig",
     "MemoryCorpusResult",

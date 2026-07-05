@@ -392,7 +392,7 @@
         if (!transcript.length) {
           const empty = document.createElement("p");
           empty.className = "empty-state";
-          empty.textContent = "Stream a live task turn to observe SDK events, sentence chunks, workflow state, and latency.";
+          empty.textContent = "Stream a live task turn to observe SDK events, sentence chunks, workflow state, and latency. Uses the provider key from Lab controls when set; otherwise replies come from a scripted fallback.";
           log.append(empty);
           return;
         }
@@ -458,7 +458,12 @@
           const count = (payload.results || []).length;
           return ` · ${count} memory result${count === 1 ? "" : "s"}`;
         }
-        if (item.event === "provider_event" && payload.type) return ` · ${payload.type}`;
+        if (item.event === "provider_event") {
+          if (payload.type === "llm") {
+            return ` · llm ${payload.provider || "unknown"}${payload.model ? ` (${payload.model})` : ""}`;
+          }
+          if (payload.type) return ` · ${payload.type}`;
+        }
         return "";
       }
 
@@ -1191,7 +1196,8 @@
           body: JSON.stringify({
             sessionId: document.querySelector("#live-session-id").value.trim() || "demo_session",
             subjectId: document.querySelector("#live-subject-id").value.trim() || "demo_subject",
-            message: trimmed
+            message: trimmed,
+            openai: openAIConfig()
           })
         });
         if (!response.ok || !response.body) {
@@ -1250,7 +1256,8 @@
         try {
           const payload = await requestJson("/api/live-task/summary", {
             sessionId: document.querySelector("#live-session-id").value.trim() || "demo_session",
-            subjectId: document.querySelector("#live-subject-id").value.trim() || "demo_subject"
+            subjectId: document.querySelector("#live-subject-id").value.trim() || "demo_subject",
+            openai: openAIConfig()
           });
           state.liveTask = payload.state;
           liveTaskSummary = payload.summary;

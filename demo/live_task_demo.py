@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -78,6 +78,7 @@ class LiveTaskDemo:
         session_id: str,
         subject_id: str,
         user_utterance: str,
+        llm: Callable[[list[dict[str, str]]], Any] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
         self._bootstrap_identity()
@@ -106,9 +107,10 @@ class LiveTaskDemo:
         assistant_parts: list[str] = []
         completed_assistant_text = ""
         started_at = time.monotonic()
+        resolved_llm = llm or (lambda messages: _fake_live_task_stream(messages, next_state))
         async for event in memory.stream_live_turn(
             context,
-            llm=lambda messages: _fake_live_task_stream(messages, next_state),
+            llm=resolved_llm,
             identity=identity,
             trace_sink=trace_sink,
         ):
@@ -139,6 +141,7 @@ class LiveTaskDemo:
         session_id: str,
         subject_id: str,
         transcript: str | None = None,
+        summary_llm: Callable[[list[dict[str, str]]], str] | None = None,
     ) -> dict[str, Any]:
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
         memory = SubjectMemory.open(
@@ -147,10 +150,13 @@ class LiveTaskDemo:
             reindex=False,
         )
         transcript_text = transcript or _format_transcript(self._transcript)
+        resolved_summary_llm = summary_llm or (
+            lambda messages: _fake_summary_output(self._state, self._transcript)
+        )
         result = memory.record_session_summary(
             session_id=session_id,
             transcript=transcript_text,
-            summary_llm=lambda messages: _fake_summary_output(self._state, self._transcript),
+            summary_llm=resolved_summary_llm,
             timezone="Europe/Istanbul",
             trace_sink=JsonlTraceSink(self._trace_path(session_id)),
         )
@@ -240,6 +246,7 @@ async def _fake_live_task_stream(
     state: LiveTaskSessionState,
 ) -> AsyncIterator[str | dict[str, Any]]:
     del messages
+    yield {"type": "llm", "provider": "scripted", "model": "workflow-script"}
     yield {"type": "workflow_state", "state": asdict(state)}
     for chunk in _response_chunks(state):
         yield chunk

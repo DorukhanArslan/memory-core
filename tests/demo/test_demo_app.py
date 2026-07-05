@@ -317,6 +317,10 @@ def test_live_task_turn_stream_emits_latency_events():
     assert all("elapsed_ms" in event["data"] for event in live_events)
     assert live_events[-1]["event"] == "live_turn_completed"
     assert events[-1]["event"] == "live_task_state"
+    provider_payloads = [
+        event["data"]["data"] for event in events if event["event"] == "provider_event"
+    ]
+    assert {"type": "llm", "provider": "scripted", "model": "workflow-script"} in provider_payloads
 
 
 def test_live_task_summary_writes_subject_memory():

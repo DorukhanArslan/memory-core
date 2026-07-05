@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import iterate_in_threadpool
 from starlette.requests import Request
 
 from demo.chat_engine import (
@@ -237,6 +238,21 @@ def _optional_text(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _optional_live_task_engine(payload: dict[str, Any]) -> OpenAICompatibleChatEngine | None:
+    openai_payload = _openai_payload(payload)
+    return OpenAICompatibleChatEngine.from_config(
+        base_url=_optional_text(openai_payload.get("baseUrl")),
+        api_key=_optional_text(openai_payload.get("apiKey")),
+        model=_optional_text(openai_payload.get("model")),
+    )
+
+
+async def _live_task_engine_stream(engine: OpenAICompatibleChatEngine, messages: list[dict[str, str]]):
+    yield {"type": "llm", "provider": "openai", "model": engine.model}
+    async for chunk in iterate_in_threadpool(engine.raw_chat_stream(messages)):
+        yield chunk
 
 
 def _live_task_session_id(payload: dict[str, Any]) -> str:
@@ -671,10 +687,12 @@ def live_task_turn_stream(payload: dict[str, Any]):
 @app.post("/api/live-task/summary")
 def live_task_summary(payload: dict[str, Any]):
     try:
+        engine = _optional_live_task_engine(payload)
         summary = LIVE_TASK_DEMO.record_summary(
             session_id=_live_task_session_id(payload),
             subject_id=_live_task_subject_id(payload),
             transcript=_optional_text(payload.get("transcript")),
+            summary_llm=engine.raw_chat_text if engine is not None else None,
         )
         return {
             "summary": summary,
@@ -888,10 +906,17 @@ async def _live_task_turn_stream_events(payload: dict[str, Any]):
         message = str(payload.get("message", "")).strip()
         if not message:
             raise DemoPayloadError("message is required")
+        engine = _optional_live_task_engine(payload)
+        llm = (
+            (lambda messages: _live_task_engine_stream(engine, messages))
+            if engine is not None
+            else None
+        )
         async for event in LIVE_TASK_DEMO.stream_turn(
             session_id=_live_task_session_id(payload),
             subject_id=_live_task_subject_id(payload),
             user_utterance=message,
+            llm=llm,
         ):
             yield _sse(str(event["type"]), event)
         yield _sse("live_task_state", _serialize_live_task_state(LIVE_TASK_DEMO.state()))

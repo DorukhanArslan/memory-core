@@ -172,6 +172,14 @@ class OpenAICompatibleChatEngine:
             raw_text = content.strip() if isinstance(content, str) else ""
         return FlushModelOutput(raw_text=raw_text, raw=raw, writes=writes)
 
+    def raw_chat_text(self, messages: list[dict[str, str]]) -> str:
+        raw = self._chat(messages)
+        content = raw["choices"][0]["message"]["content"]
+        return content if isinstance(content, str) else ""
+
+    def raw_chat_stream(self, messages: list[dict[str, str]]) -> Iterator[str]:
+        return self._chat_stream(messages)
+
     def _chat(self, messages: list[dict], *, tools: list[dict] | None = None) -> dict:
         body: dict = {"model": self.model, "messages": messages}
         if tools:

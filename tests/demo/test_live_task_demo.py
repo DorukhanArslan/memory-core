@@ -81,6 +81,56 @@ def test_live_task_demo_transcript_records_assistant_text_once(tmp_path: Path):
     }
 
 
+def test_live_task_demo_stream_turn_uses_injected_llm(tmp_path: Path):
+    demo = LiveTaskDemo(workspace_dir=tmp_path)
+    demo.reset()
+
+    async def custom_llm(messages):
+        assert messages[0]["role"] == "system"
+        assert messages[-1] == {"role": "user", "content": "Doğum tarihim 12.04.1990"}
+        yield {"type": "llm", "provider": "openai", "model": "test-model"}
+        yield "Merhaba. "
+        yield "Size nasıl yardımcı olabilirim?"
+
+    async def collect():
+        return [
+            event
+            async for event in demo.stream_turn(
+                session_id="session_1",
+                subject_id="subject_1",
+                user_utterance="Doğum tarihim 12.04.1990",
+                llm=custom_llm,
+            )
+        ]
+
+    events = asyncio.run(collect())
+    deltas = [event["text"] for event in events if event["type"] == "text_delta"]
+    provider_payloads = [event["data"] for event in events if event["type"] == "provider_event"]
+
+    assert "".join(deltas) == "Merhaba. Size nasıl yardımcı olabilirim?"
+    assert {"type": "llm", "provider": "openai", "model": "test-model"} in provider_payloads
+    assert demo.state().transcript[-1] == {
+        "role": "assistant",
+        "content": "Merhaba. Size nasıl yardımcı olabilirim?",
+    }
+
+
+def test_live_task_demo_record_summary_uses_injected_llm(tmp_path: Path):
+    demo = LiveTaskDemo(workspace_dir=tmp_path)
+    demo.reset()
+
+    result = demo.record_summary(
+        session_id="session_1",
+        subject_id="subject_1",
+        summary_llm=lambda messages: json.dumps(
+            {"durable_facts": ["Özel kalıcı not"]}, ensure_ascii=False
+        ),
+    )
+
+    assert result["wrote"] is True
+    assert result["durable_facts"] == ["Özel kalıcı not"]
+
+
 def test_live_task_demo_records_structured_summary(tmp_path: Path):
     demo = LiveTaskDemo(workspace_dir=tmp_path)
     demo.reset()

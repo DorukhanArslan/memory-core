@@ -24,6 +24,13 @@ from memory_core.embeddings import (
     OpenAICompatibleEmbeddingProvider,
 )
 from memory_core.flags import FeatureFlags
+from memory_core.live import (
+    LiveIdentity,
+    LiveTurnContext,
+    LiveTurnEvent,
+    PreparedLiveTurn,
+    SubjectMemory,
+)
 from memory_core.context_engine_lifecycle import (
     assemble_context_engine_messages,
     build_context_engine_conversation_snapshot,
@@ -118,6 +125,11 @@ __all__ = [
     "MEMORY_CORE_RUNTIME_CONTEXT_CUSTOM_TYPE",
     "MEMORY_CORE_RUNTIME_IDENTITY",
     "Memory",
+    "LiveIdentity",
+    "LiveTurnContext",
+    "LiveTurnEvent",
+    "PreparedLiveTurn",
+    "SubjectMemory",
     "STREAM_ERROR_FALLBACK_TEXT",
     "MemoryConfig",
     "MemoryCorpusResult",

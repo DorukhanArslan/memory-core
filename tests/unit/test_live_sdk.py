@@ -261,6 +261,31 @@ def test_record_session_summary_traces_failure_before_reraising(tmp_path: Path):
     assert records[-1]["data"]["error"] == "summary provider down"
 
 
+def test_async_record_session_summary_accepts_awaitable_summary_llm(tmp_path: Path):
+    async def async_summary(messages):
+        return json.dumps({"preferences": ["Subject prefers SMS updates."]})
+
+    async def run_summary():
+        memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+        trace_sink = JsonlTraceSink(tmp_path / "trace" / "session_1.jsonl")
+        return await memory.async_record_session_summary(
+            session_id="session_1",
+            transcript="Subject asks for SMS updates.",
+            summary_llm=async_summary,
+            trace_sink=trace_sink,
+        )
+
+    result = asyncio.run(run_summary())
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "trace" / "session_1.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert result.wrote is True
+    assert result.preferences == ("Subject prefers SMS updates.",)
+    assert records[-1]["type"] == SESSION_SUMMARY_COMPLETED
+
+
 def test_prepare_live_turn_wraps_workflow_state_as_openclaw_runtime_context(tmp_path: Path):
     identity_dir = tmp_path / "identity"
     identity_dir.mkdir()

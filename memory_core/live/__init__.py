@@ -368,6 +368,69 @@ class SubjectMemory:
         timezone: str = "UTC",
         trace_sink: TraceSink | None = None,
     ) -> SessionSummaryResult:
+        plan, messages = self._prepare_session_summary_messages(
+            session_id=session_id,
+            transcript=transcript,
+            redactor=redactor,
+            now_ms=now_ms,
+            timezone=timezone,
+            trace_sink=trace_sink,
+        )
+        try:
+            raw_text = summary_llm(messages)
+            if inspect.isawaitable(raw_text):
+                raise TypeError("record_session_summary received an awaitable; use async_record_session_summary")
+            return self._finalize_session_summary(
+                raw_text=raw_text,
+                relative_path=plan.relative_path,
+                trace_sink=trace_sink,
+            )
+        except Exception as exc:
+            self._trace_session_summary_failed(session_id, exc, trace_sink)
+            raise
+
+    async def async_record_session_summary(
+        self,
+        *,
+        session_id: str,
+        transcript: str,
+        summary_llm: Callable[[list[dict[str, str]]], Any],
+        redactor: Callable[[str], str] | None = None,
+        now_ms: int | None = None,
+        timezone: str = "UTC",
+        trace_sink: TraceSink | None = None,
+    ) -> SessionSummaryResult:
+        plan, messages = self._prepare_session_summary_messages(
+            session_id=session_id,
+            transcript=transcript,
+            redactor=redactor,
+            now_ms=now_ms,
+            timezone=timezone,
+            trace_sink=trace_sink,
+        )
+        try:
+            raw_text = summary_llm(messages)
+            if inspect.isawaitable(raw_text):
+                raw_text = await raw_text
+            return self._finalize_session_summary(
+                raw_text=raw_text,
+                relative_path=plan.relative_path,
+                trace_sink=trace_sink,
+            )
+        except Exception as exc:
+            self._trace_session_summary_failed(session_id, exc, trace_sink)
+            raise
+
+    def _prepare_session_summary_messages(
+        self,
+        *,
+        session_id: str,
+        transcript: str,
+        redactor: Callable[[str], str] | None,
+        now_ms: int | None,
+        timezone: str,
+        trace_sink: TraceSink | None,
+    ):
         _record_trace_event(
             SESSION_SUMMARY_STARTED,
             trace_sink=trace_sink,
@@ -392,58 +455,67 @@ class SubjectMemory:
                 ),
             },
         ]
-        try:
-            raw_text = summary_llm(messages)
-            extraction = _parse_session_summary_output(raw_text)
-            text = extraction["memory_text"]
-            result = SessionSummaryResult(
-                wrote=False,
-                path=plan.relative_path,
-                text=text,
-                raw_text=raw_text,
-                durable_facts=extraction["durable_facts"],
-                preferences=extraction["preferences"],
-                follow_ups=extraction["follow_ups"],
-                admin_review_suggestions=extraction["admin_review_suggestions"],
-            )
-            if not text or text.startswith(SILENT_REPLY_TOKEN):
-                _record_trace_event(
-                    SESSION_SUMMARY_SKIPPED,
-                    trace_sink=trace_sink,
-                    data=_session_summary_trace_data(result),
-                )
-                return result
+        return plan, messages
 
-            self.memory.workspace.append_daily_memory(plan.relative_path, text)
-            self.memory.store.reindex(self.memory.workspace)
-            result = SessionSummaryResult(
-                wrote=True,
-                path=plan.relative_path,
-                text=text,
-                raw_text=raw_text,
-                durable_facts=extraction["durable_facts"],
-                preferences=extraction["preferences"],
-                follow_ups=extraction["follow_ups"],
-                admin_review_suggestions=extraction["admin_review_suggestions"],
-            )
+    def _finalize_session_summary(
+        self,
+        *,
+        raw_text: str,
+        relative_path: str,
+        trace_sink: TraceSink | None,
+    ) -> SessionSummaryResult:
+        extraction = _parse_session_summary_output(raw_text)
+        text = extraction["memory_text"]
+        result = SessionSummaryResult(
+            wrote=False,
+            path=relative_path,
+            text=text,
+            raw_text=raw_text,
+            durable_facts=extraction["durable_facts"],
+            preferences=extraction["preferences"],
+            follow_ups=extraction["follow_ups"],
+            admin_review_suggestions=extraction["admin_review_suggestions"],
+        )
+        if not text or text.startswith(SILENT_REPLY_TOKEN):
             _record_trace_event(
-                SESSION_SUMMARY_COMPLETED,
+                SESSION_SUMMARY_SKIPPED,
                 trace_sink=trace_sink,
                 data=_session_summary_trace_data(result),
             )
             return result
-        except Exception as exc:
-            _record_trace_event(
-                SESSION_SUMMARY_FAILED,
-                trace_sink=trace_sink,
-                data={
-                    "subject_id": self.subject_id,
-                    "session_id": session_id,
-                    "error_type": type(exc).__name__,
-                    "error": str(exc),
-                },
-            )
-            raise
+
+        self.memory.workspace.append_daily_memory(relative_path, text)
+        self.memory.store.reindex(self.memory.workspace)
+        result = SessionSummaryResult(
+            wrote=True,
+            path=relative_path,
+            text=text,
+            raw_text=raw_text,
+            durable_facts=extraction["durable_facts"],
+            preferences=extraction["preferences"],
+            follow_ups=extraction["follow_ups"],
+            admin_review_suggestions=extraction["admin_review_suggestions"],
+        )
+        _record_trace_event(
+            SESSION_SUMMARY_COMPLETED,
+            trace_sink=trace_sink,
+            data=_session_summary_trace_data(result),
+        )
+        return result
+
+    def _trace_session_summary_failed(
+        self, session_id: str, exc: Exception, trace_sink: TraceSink | None
+    ) -> None:
+        _record_trace_event(
+            SESSION_SUMMARY_FAILED,
+            trace_sink=trace_sink,
+            data={
+                "subject_id": self.subject_id,
+                "session_id": session_id,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            },
+        )
 
 
 def _validate_safe_id(value: str, *, label: str) -> str:

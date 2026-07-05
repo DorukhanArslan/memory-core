@@ -149,7 +149,7 @@ def test_live_streaming_example_emits_tts_sentences(tmp_path: Path):
 
 
 def test_live_streaming_example_records_session_summary(tmp_path: Path):
-    memory_path = live_streaming.record_session_summary(tmp_path)
+    memory_path = asyncio.run(live_streaming.record_session_summary(tmp_path))
 
     assert memory_path.startswith("memory/")
     memory_file = tmp_path / "subjects" / "subj_123" / memory_path

@@ -196,6 +196,17 @@ if result.wrote:
     trace_store.write({"memory_path": result.path})
 ```
 
+Async extractors can use the async variant:
+
+```python
+result = await memory.async_record_session_summary(
+    session_id="session_456",
+    transcript=full_transcript,
+    summary_llm=async_summary_llm,
+    trace_sink=trace_sink,
+)
+```
+
 `summary_llm` receives the OpenClaw-style memory flush messages. If it returns
 empty text or starts with `NO_REPLY`, nothing is written.
 

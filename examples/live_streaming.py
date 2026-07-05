@@ -15,7 +15,7 @@ async def fake_streaming_llm(messages: list[dict[str, str]]) -> AsyncIterator[st
     yield {"type": "tool_call", "name": "example.follow_up", "arguments": {"ok": True}}
 
 
-def fake_summary_llm(messages: list[dict[str, str]]) -> str:
+async def fake_summary_llm(messages: list[dict[str, str]]) -> str:
     transcript = messages[-1]["content"]
     if "aksam teslimat" in transcript.lower():
         return json.dumps(
@@ -70,13 +70,13 @@ async def run_live_turn(workspace_dir: str | Path, identity_dir: str | Path) -> 
     return tts_sentences
 
 
-def record_session_summary(workspace_dir: str | Path) -> str:
+async def record_session_summary(workspace_dir: str | Path) -> str:
     memory = SubjectMemory.open(
         workspace_dir=workspace_dir,
         subject_id="subj_123",
         reindex=False,
     )
-    result = memory.record_session_summary(
+    result = await memory.async_record_session_summary(
         session_id="session_456",
         transcript="User wants aksam teslimat. Card: 4111 1111 1111 1111",
         redactor=redact_sensitive_text,
@@ -108,7 +108,7 @@ async def main() -> None:
     for sentence in sentences:
         print(f"TTS: {sentence}")
 
-    memory_path = record_session_summary(workspace_dir)
+    memory_path = await record_session_summary(workspace_dir)
     if memory_path:
         print(f"Wrote memory: {memory_path}")
 

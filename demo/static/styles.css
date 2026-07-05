@@ -27,7 +27,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  overflow: hidden;
+  overflow: auto;
 }
 
 button,
@@ -116,10 +116,10 @@ label {
 
 .app-shell {
   display: grid;
-  grid-template-rows: auto minmax(380px, 1fr) minmax(180px, 0.35fr);
+  grid-template-rows: auto minmax(560px, auto) auto;
   gap: 12px;
   width: 100%;
-  height: 100dvh;
+  min-height: 100dvh;
   min-width: 0;
   padding: 12px;
 }
@@ -260,13 +260,58 @@ label {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.78fr) minmax(340px, 0.86fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.75fr);
   gap: 12px;
   min-height: 0;
 }
 
-.interaction-stack {
-  display: contents;
+.primary-workspace {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.mode-switch {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-muted);
+  padding: 4px;
+  margin-bottom: 10px;
+  overflow-x: auto;
+}
+
+.mode-tab {
+  min-height: 34px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.mode-tab:hover,
+.mode-tab.active {
+  border-color: var(--line-strong);
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.primary-panel,
+.inspector-panel {
+  display: none;
+}
+
+.primary-panel.active,
+.inspector-panel.active {
+  display: grid;
+}
+
+.primary-panel:not(.active),
+.inspector-panel:not(.active) {
+  display: none;
 }
 
 .chat-panel,
@@ -533,7 +578,6 @@ label {
 }
 
 .live-task-panel {
-  display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   min-width: 0;
@@ -587,7 +631,6 @@ label {
 }
 
 .live-event-row {
-  align-self: flex-start;
   max-width: 100%;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -597,6 +640,11 @@ label {
   font-size: 12px;
   line-height: 1.35;
   word-break: break-word;
+}
+
+.live-event-timeline {
+  display: grid;
+  gap: 8px;
 }
 
 .pipeline {
@@ -644,8 +692,8 @@ label {
 
 .tab-panels {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-height: 0;
+  grid-template-rows: auto minmax(280px, auto);
+  min-height: 320px;
 }
 
 .tabs {
@@ -769,10 +817,6 @@ label {
 }
 
 @media (max-width: 820px) {
-  body {
-    overflow: auto;
-  }
-
   .app-shell {
     height: auto;
     min-height: 100dvh;
@@ -781,17 +825,9 @@ label {
 
   .topbar,
   .workspace,
-  .interaction-stack,
   .file-list,
   .inspector-grid {
     grid-template-columns: 1fr;
-  }
-
-  .interaction-stack {
-    display: grid;
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
-    overflow: visible;
   }
 
   .toolbar {

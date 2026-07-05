@@ -53,9 +53,14 @@
         </details>
       </header>
 
-      <section class="workspace" aria-label="Chat memory workspace">
-        <section class="interaction-stack" aria-label="Interactive demos">
-          <section class="chat-panel" aria-label="Chat">
+      <section class="workspace" aria-label="Lab workspace">
+        <section class="primary-workspace" aria-label="Interactive demos">
+          <div class="mode-switch" role="tablist" aria-label="Demo mode">
+            <button id="mode-chat" class="mode-tab active" type="button" role="tab" aria-selected="true" data-mode="chat">Chat Memory</button>
+            <button id="mode-live" class="mode-tab" type="button" role="tab" aria-selected="false" data-mode="live">Live SDK Task</button>
+          </div>
+
+          <section id="chat-primary" class="chat-panel primary-panel active" aria-label="Chat">
             <div id="chat-log" class="chat-log" aria-live="polite"></div>
             <form id="chat-form" class="composer">
               <textarea id="chat-input" rows="3" placeholder="Type a chat turn to observe memory recall and flush behavior." aria-label="Chat message"></textarea>
@@ -63,7 +68,7 @@
             </form>
           </section>
 
-          <section class="live-task-panel" aria-label="Live SDK Task">
+          <section id="live-primary" class="live-task-panel primary-panel" aria-label="Live SDK Task">
             <div class="panel-heading">
               <h2>Live SDK Task</h2>
               <span id="live-task-step">verify_identity</span>
@@ -89,12 +94,20 @@
           </section>
         </section>
 
-        <aside id="memory-pipeline" class="pipeline" aria-label="Memory pipeline">
+        <aside id="memory-pipeline" class="pipeline inspector-panel active" aria-label="Memory pipeline">
           <div class="panel-heading">
             <h2>Memory Pipeline</h2>
             <span id="turn-count">0 turns</span>
           </div>
           <div id="pipeline-content" class="pipeline-content"></div>
+        </aside>
+
+        <aside id="live-observability" class="pipeline inspector-panel" aria-label="Live SDK observability">
+          <div class="panel-heading">
+            <h2>Live Observability</h2>
+            <span>events and latency</span>
+          </div>
+          <div id="live-observability-content" class="pipeline-content"></div>
         </aside>
       </section>
 
@@ -201,6 +214,8 @@
       };
       let streamingAssistantText = "";
       let liveStreamingAssistantText = "";
+      let activeMode = "chat";
+      let liveTaskEvents = [];
       let selectedDailyMemoryPath = "";
       const DEFAULT_OPENAI = {
         baseUrl: "https://api.openai.com/v1",
@@ -237,6 +252,8 @@
         renderConfig();
         renderEngineStatus();
         renderLiveTask();
+        renderLiveObservability();
+        renderModeLayout();
       }
 
       function renderChat() {
@@ -396,6 +413,7 @@
           Completed: workflow.completed === true,
           "Trace path": liveTask.tracePath || "",
         }));
+        renderLiveObservability();
       }
 
       function appendLiveTaskAssistant(text) {
@@ -414,12 +432,54 @@
       }
 
       function appendLiveTaskEvent(event, data) {
-        const log = document.querySelector("#live-task-log");
-        const row = document.createElement("div");
-        row.className = "live-event-row";
-        row.textContent = `${event} · ${data.elapsed_ms ?? "-"}ms${data.text ? ` · ${data.text}` : ""}`;
-        log.append(row);
-        log.scrollTop = log.scrollHeight;
+        liveTaskEvents.push({event, data});
+        if (liveTaskEvents.length > 80) liveTaskEvents = liveTaskEvents.slice(-80);
+        renderLiveObservability();
+      }
+
+      function renderLiveObservability() {
+        const panel = document.querySelector("#live-observability-content");
+        if (!panel) return;
+        panel.replaceChildren();
+        const liveTask = state.liveTask || {};
+        const workflow = liveTask.workflow || {};
+        panel.append(stepNode("Workflow State", kvGrid({
+          Step: workflow.current_step || "unknown",
+          Verified: workflow.verified === true,
+          "Requested slot": workflow.requested_slot || "",
+          Completed: workflow.completed === true,
+          "Trace path": liveTask.tracePath || "",
+        })));
+        const timeline = document.createElement("div");
+        timeline.className = "live-event-timeline";
+        if (!liveTaskEvents.length) {
+          timeline.append(textBlock("No live stream events yet."));
+        } else {
+          for (const item of liveTaskEvents) {
+            const row = document.createElement("div");
+            row.className = "live-event-row";
+            row.textContent = `${item.event} · ${item.data.elapsed_ms ?? "-"}ms${item.data.text ? ` · ${item.data.text}` : ""}`;
+            timeline.append(row);
+          }
+        }
+        panel.append(stepNode("Event Timeline", timeline));
+      }
+
+      function renderModeLayout() {
+        document.querySelectorAll(".mode-tab").forEach((button) => {
+          const active = button.dataset.mode === activeMode;
+          button.classList.toggle("active", active);
+          button.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        document.querySelector("#chat-primary").classList.toggle("active", activeMode === "chat");
+        document.querySelector("#live-primary").classList.toggle("active", activeMode === "live");
+        document.querySelector("#memory-pipeline").classList.toggle("active", activeMode === "chat");
+        document.querySelector("#live-observability").classList.toggle("active", activeMode === "live");
+      }
+
+      function setActiveMode(mode) {
+        activeMode = mode;
+        renderModeLayout();
       }
 
       function renderPipeline() {
@@ -993,6 +1053,9 @@
         }
       });
 
+      document.querySelector("#mode-chat").onclick = () => setActiveMode("chat");
+      document.querySelector("#mode-live").onclick = () => setActiveMode("live");
+
       async function sendStreamingMessage(message) {
         const trimmed = message.trim();
         if (!trimmed) return;
@@ -1067,6 +1130,7 @@
       async function sendLiveTaskMessage(message) {
         const trimmed = message.trim();
         if (!trimmed) return;
+        setActiveMode("live");
         const log = document.querySelector("#live-task-log");
         liveStreamingAssistantText = "";
         const existing = document.querySelector("#streaming-live-task-assistant");
@@ -1123,7 +1187,10 @@
           sessionId: document.querySelector("#live-session-id").value.trim() || "demo_session",
           subjectId: document.querySelector("#live-subject-id").value.trim() || "demo_subject"
         });
+        liveTaskEvents = [];
+        setActiveMode("live");
         renderLiveTask();
+        renderLiveObservability();
       };
 
       document.querySelector("#live-task-summary").onclick = async () => {

@@ -131,7 +131,14 @@ def test_demo_home_loads():
     assert "/api/live-task/turn-stream" in response.text
     assert "/api/live-task/reset" in response.text
     assert "/api/live-task/summary" in response.text
+    assert "mode-switch" in response.text
+    assert "mode-chat" in response.text
+    assert "mode-live" in response.text
+    assert "primary-panel active" in response.text
+    assert "live-observability" in response.text
+    assert "renderModeLayout" in response.text
     assert "renderLiveTask" in response.text
+    assert "interaction-stack" not in response.text
     assert 'textContent += text' not in response.text
     assert "Fake</option>" not in response.text
     assert 'id="auto-flush" type="checkbox" checked' in response.text
@@ -181,8 +188,11 @@ def test_demo_css_uses_full_screen_layout():
 
     assert response.status_code == 200
     assert "color-scheme: dark" in response.text
-    assert "height: 100dvh" in response.text
-    assert "grid-template-rows: auto minmax(380px, 1fr) minmax(180px, 0.35fr)" in response.text
+    assert "overflow: auto" in response.text
+    assert "min-height: 100dvh" in response.text
+    assert "grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.75fr)" in response.text
+    assert ".primary-panel.active" in response.text
+    assert ".inspector-panel.active" in response.text
     assert ".tab-panels" in response.text
     assert ".controls-panel" in response.text
     assert ".controls-panel[open] summary::before" in response.text

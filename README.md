@@ -13,10 +13,10 @@ The stable package surface is exported from `memory-core`:
 
 ```python
 from memory_core import (
+    FakeEmbeddingProvider,
     Memory,
     build_memory_flush_plan,
 )
-from memory_core.embeddings.base import FakeEmbeddingProvider
 
 memory = Memory.from_workspace(
     embedding_provider=FakeEmbeddingProvider(),
@@ -52,6 +52,11 @@ Runtime-adapter helpers such as transcript replay cleanup, history windowing,
 runtime-context prompt splitting, and overflow recovery are also exported from
 the package root when host applications need OpenClaw-compatible behavior.
 
+Optional capabilities (vector search, MMR, temporal decay) are controlled by
+`FeatureFlags`; `FeatureFlags(vector_search=False)` gives a deterministic
+FTS-only mode that needs no embedding provider. See
+[Feature Flags](docs/feature_flags.md).
+
 See [Package Boundary](docs/package_boundary.md) for what belongs to core
 memory, runtime adapters, demo code, and out-of-scope host runtime behavior.
 See [LangGraph Integration](docs/integrations/langgraph.md) for a minimal
@@ -70,6 +75,19 @@ pip install -e ".[dev]"
 ```bash
 pytest -v
 ruff check .
+```
+
+OpenClaw TypeScript oracle tests are skipped unless `OPENCLAW_ORACLE_REPO`
+points to an OpenClaw checkout with installed dependencies. The oracle needs
+Node.js >= 22.13 (pnpm 11 and OpenClaw both use the `node:sqlite` builtin), and
+`pnpm install --ignore-scripts` is enough for the runner. Note the first run
+compiles TypeScript on demand; cold-cache runs can hit the 20s per-operation
+oracle timeout and report spurious failures, so re-run once warm.
+
+```bash
+git clone https://github.com/openclaw/openclaw /tmp/openclaw-upstream
+(cd /tmp/openclaw-upstream && pnpm install --ignore-scripts --frozen-lockfile)
+OPENCLAW_ORACLE_REPO=/tmp/openclaw-upstream pytest tests/integration -v
 ```
 
 ## Run Demo

@@ -7,7 +7,7 @@ from memory_core.parity.upstream import (
 
 def test_upstream_commit_is_pinned():
     assert UPSTREAM_COMMIT == "7f6798094ce9486a8f463772f4535484aca73fe2"
-    assert LATEST_INSPECTED_COMMIT == "8c7f226401131164a450ee14e13c581eaf489993"
+    assert LATEST_INSPECTED_COMMIT == "4c42815348ae336bf18e16ab049b6dbe0e4b8223"
 
 
 def test_referenced_upstream_sources_are_recorded():

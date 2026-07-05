@@ -21,15 +21,15 @@
           <div class="toolbar memory-controls" aria-label="Engine and memory controls">
             <label>
               Provider key
-              <input id="api-key" type="password" autocomplete="off" placeholder="sk-..." aria-label="Provider API key">
+              <input id="api-key" type="password" autocomplete="off" placeholder="sk-or-..." aria-label="Provider API key">
             </label>
             <label>
               Endpoint URL
-              <input id="base-url" value="https://api.openai.com/v1" aria-label="Provider endpoint URL">
+              <input id="base-url" value="https://openrouter.ai/api/v1" aria-label="Provider endpoint URL">
             </label>
             <label>
               Model name
-              <input id="model" value="gpt-5.2" aria-label="Model name">
+              <input id="model" value="openai/gpt-4o-mini" aria-label="Model name">
             </label>
             <span id="engine-status" class="engine-status" aria-live="polite">Engine status loading</span>
             <label class="toggle">
@@ -219,9 +219,11 @@
       let liveTaskSummary = null;
       let selectedDailyMemoryPath = "";
       const DEFAULT_OPENAI = {
-        baseUrl: "https://api.openai.com/v1",
-        model: "gpt-5.2"
+        baseUrl: "https://openrouter.ai/api/v1",
+        model: "openai/gpt-4o-mini"
       };
+      const LEGACY_OPENAI_BASE_URLS = ["https://api.openai.com/v1"];
+      const LEGACY_OPENAI_MODELS = ["gpt-5.5", "gpt-5.2"];
 
       async function requestJson(url, body = {}, method = "POST") {
         const options = {method, headers: {"Content-Type": "application/json"}};
@@ -1033,8 +1035,12 @@
         const model = sessionStorage.getItem("memory-core-demo-model");
         const apiKey = sessionStorage.getItem("memory-core-demo-api-key");
         const envAvailable = state.engines && state.engines.openai && state.engines.openai.available === true;
-        if (baseUrl) document.querySelector("#base-url").value = baseUrl;
-        if (model) document.querySelector("#model").value = model === "gpt-5.5" ? DEFAULT_OPENAI.model : model;
+        if (baseUrl) {
+          document.querySelector("#base-url").value = LEGACY_OPENAI_BASE_URLS.includes(baseUrl) ? DEFAULT_OPENAI.baseUrl : baseUrl;
+        }
+        if (model) {
+          document.querySelector("#model").value = LEGACY_OPENAI_MODELS.includes(model) ? DEFAULT_OPENAI.model : model;
+        }
         if (envAvailable) {
           sessionStorage.removeItem("memory-core-demo-api-key");
           document.querySelector("#api-key").value = "";

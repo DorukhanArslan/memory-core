@@ -65,7 +65,8 @@ def test_openai_engine_from_config_uses_payload_key_and_defaults(monkeypatch):
     assert engine is not None
     assert engine.base_url == DEFAULT_OPENAI_BASE_URL
     assert engine.api_key == "request-key"
-    assert engine.model == DEFAULT_OPENAI_MODEL == "gpt-5.2"
+    assert engine.model == DEFAULT_OPENAI_MODEL == "openai/gpt-4o-mini"
+    assert engine.base_url == "https://openrouter.ai/api/v1"
 
 
 def test_openai_engine_complete_posts_openai_compatible_chat_request(monkeypatch):

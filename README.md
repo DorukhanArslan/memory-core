@@ -104,16 +104,23 @@ memory lab. Enter an OpenAI-compatible API key, send a message, inspect memory
 recall, run a manual memory flush, or enable auto flush to write durable
 memories while chatting.
 
-The chat demo uses only the OpenAI-compatible engine. The browser keeps the API
-key in session storage and sends it with each chat/flush request; the backend
-does not write it to disk. Defaults are `https://api.openai.com/v1` and
-`gpt-5.2`. You can also configure the backend with environment variables:
+The demo uses any OpenAI-compatible engine and defaults to OpenRouter
+(`https://openrouter.ai/api/v1`, `openai/gpt-4o-mini`). The browser keeps the
+API key in session storage and sends it with each chat/flush request; the
+backend does not write it to disk. You can also configure the backend with
+environment variables or a gitignored `.env` file in the repo root (loaded at
+startup, existing environment values win):
 
 ```bash
-export MEMORY_CORE_DEMO_OPENAI_BASE_URL="https://api.openai.com/v1"
-export MEMORY_CORE_DEMO_OPENAI_API_KEY="sk-demo-key"
-export MEMORY_CORE_DEMO_OPENAI_MODEL="gpt-5.2"
+export MEMORY_CORE_DEMO_OPENAI_BASE_URL="https://openrouter.ai/api/v1"
+export MEMORY_CORE_DEMO_OPENAI_API_KEY="sk-or-..."
+export MEMORY_CORE_DEMO_OPENAI_MODEL="openai/gpt-4o-mini"
 ```
+
+OpenRouter does not serve an `/embeddings` endpoint, so the demo falls back to
+deterministic local embeddings when the base URL points at OpenRouter. To use
+real embeddings, point `MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL` and
+`MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY` at an embeddings-capable provider.
 
 Memory flush writes are restricted to `memory/YYYY-MM-DD.md`, matching
 OpenClaw pre-compaction memory flush behavior. The demo appends to the canonical

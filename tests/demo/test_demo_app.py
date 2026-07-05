@@ -87,7 +87,8 @@ def test_demo_home_loads():
     assert "Lab controls" in response.text
     assert "Provider key" in response.text
     assert "Provider endpoint URL" in response.text
-    assert "gpt-5.2" in response.text
+    assert "openai/gpt-4o-mini" in response.text
+    assert "https://openrouter.ai/api/v1" in response.text
     assert "Tool Inspector" in response.text
     assert "Workspace Files" in response.text
     assert "workspaceBootstrapNode" in response.text
@@ -297,7 +298,8 @@ def test_live_task_reset_and_state_endpoints():
     assert payload["tracePath"].endswith("session_demo.jsonl")
 
 
-def test_live_task_turn_stream_emits_latency_events():
+def test_live_task_turn_stream_emits_latency_events(monkeypatch):
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
     client = TestClient(app)
     client.post("/api/live-task/reset", json={"sessionId": "session_demo", "subjectId": "subject_demo"})
 
@@ -323,7 +325,8 @@ def test_live_task_turn_stream_emits_latency_events():
     assert {"type": "llm", "provider": "scripted", "model": "workflow-script"} in provider_payloads
 
 
-def test_live_task_summary_writes_subject_memory():
+def test_live_task_summary_writes_subject_memory(monkeypatch):
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
     client = TestClient(app)
     client.post("/api/live-task/reset", json={"sessionId": "session_demo", "subjectId": "subject_demo"})
     for message in ("Doğum tarihim 12.04.1990", "Yarın saat 15:00 uygun olur", "Evet onaylıyorum"):
@@ -462,6 +465,9 @@ def test_demo_store_uses_openai_embeddings_from_payload(monkeypatch):
 
 def test_demo_store_requires_openai_embedding_key(monkeypatch):
     monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY", raising=False)
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL", raising=False)
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL", "https://api.openai.com/v1")
 
     try:
         demo_app.demo_store({})
@@ -469,6 +475,17 @@ def test_demo_store_requires_openai_embedding_key(monkeypatch):
         assert "openai embeddings require an API key" in str(exc)
     else:
         raise AssertionError("expected DemoPayloadError")
+
+
+def test_demo_store_falls_back_to_fake_embeddings_for_openrouter(monkeypatch):
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY", raising=False)
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL", raising=False)
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
+
+    store = demo_app.demo_store({})
+
+    assert store.embeddings.provider_id == "fake"
 
 
 def test_load_env_defaults_reads_dotenv_without_overwriting_existing_values(

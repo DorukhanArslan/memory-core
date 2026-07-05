@@ -56,6 +56,7 @@ from demo.workspace_context import (
     workspace_file_contents,
 )
 from memory_core.config import MemoryConfig
+from memory_core.embeddings.base import EmbeddingProvider, FakeEmbeddingProvider
 from memory_core.embeddings.openai_compatible import OpenAICompatibleEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.memory_flush import MemoryFlushPlan, build_memory_flush_plan
@@ -206,16 +207,24 @@ def _chat_engine(payload: dict[str, Any]) -> ChatEngine:
     return engine
 
 
-def _embedding_provider(payload: dict[str, Any]) -> OpenAICompatibleEmbeddingProvider:
+def _embedding_provider(payload: dict[str, Any]) -> EmbeddingProvider:
     openai_payload = _openai_payload(payload)
-    api_key = _optional_text(openai_payload.get("apiKey")) or os.getenv(
-        "MEMORY_CORE_DEMO_OPENAI_API_KEY", ""
+    base_url = os.getenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL") or (
+        _optional_text(openai_payload.get("baseUrl"))
+        or os.getenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL", "https://api.openai.com/v1")
     )
+    api_key = os.getenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY") or (
+        _optional_text(openai_payload.get("apiKey"))
+        or os.getenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", "")
+    )
+    if "openrouter.ai" in base_url:
+        # OpenRouter does not serve an /embeddings endpoint; fall back to
+        # deterministic local embeddings so search and reindex keep working.
+        return FakeEmbeddingProvider()
     if not api_key:
         raise DemoPayloadError("openai embeddings require an API key")
     return OpenAICompatibleEmbeddingProvider(
-        base_url=_optional_text(openai_payload.get("baseUrl"))
-        or os.getenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        base_url=base_url,
         api_key=api_key,
         model=os.getenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL),
     )

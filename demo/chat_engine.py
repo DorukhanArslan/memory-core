@@ -8,8 +8,8 @@ from typing import Protocol
 
 import httpx
 
-DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
-DEFAULT_OPENAI_MODEL = "gpt-5.2"
+DEFAULT_OPENAI_BASE_URL = "https://openrouter.ai/api/v1"
+DEFAULT_OPENAI_MODEL = "openai/gpt-4o-mini"
 
 
 @dataclass(frozen=True)
@@ -180,6 +180,16 @@ class OpenAICompatibleChatEngine:
     def raw_chat_stream(self, messages: list[dict[str, str]]) -> Iterator[str]:
         return self._chat_stream(messages)
 
+    def _headers(self) -> dict[str, str]:
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        if "openrouter.ai" in self.base_url:
+            headers["HTTP-Referer"] = "http://localhost:8000"
+            headers["X-Title"] = "memory-core Lab"
+        return headers
+
     def _chat(self, messages: list[dict], *, tools: list[dict] | None = None) -> dict:
         body: dict = {"model": self.model, "messages": messages}
         if tools:
@@ -187,10 +197,7 @@ class OpenAICompatibleChatEngine:
             body["tool_choice"] = "auto"
         response = httpx.post(
             f"{self.base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
+            headers=self._headers(),
             json=body,
             timeout=self.timeout,
         )
@@ -201,10 +208,7 @@ class OpenAICompatibleChatEngine:
         with httpx.stream(
             "POST",
             f"{self.base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
+            headers=self._headers(),
             json={"model": self.model, "messages": messages, "stream": True},
             timeout=self.timeout,
         ) as response:

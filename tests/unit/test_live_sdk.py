@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 from memory_core.live import (
+    JsonlTraceSink,
     LiveIdentity,
     LiveTurnContext,
     LiveTurnEvent,
@@ -123,3 +125,36 @@ def test_stream_live_turn_emits_sentence_events_for_tts(tmp_path: Path):
     assert events[-1].data["assistant_text"] == (
         "Tabii, yardımcı olayım. Önce kimliğinizi doğrulayalım."
     )
+
+
+def test_stream_live_turn_writes_append_only_trace_events(tmp_path: Path):
+    async def llm_stream(messages):
+        for chunk in ["Tamam."]:
+            yield chunk
+
+    async def collect_events() -> list[LiveTurnEvent]:
+        memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+        trace_sink = JsonlTraceSink(tmp_path / "trace" / "session_1.jsonl")
+        events: list[LiveTurnEvent] = []
+        async for event in memory.stream_live_turn(
+            LiveTurnContext(
+                subject_id="subj_123",
+                session_id="session_1",
+                user_utterance="Selam.",
+                workflow_state={"workflow_id": "greeting"},
+            ),
+            llm=llm_stream,
+            trace_sink=trace_sink,
+        ):
+            events.append(event)
+        return events
+
+    events = asyncio.run(collect_events())
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "trace" / "session_1.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert [record["type"] for record in records] == [event.type for event in events]
+    assert records[0]["data"] == {"subject_id": "subj_123", "session_id": "session_1"}
+    assert records[-1]["data"]["assistant_text"] == "Tamam."

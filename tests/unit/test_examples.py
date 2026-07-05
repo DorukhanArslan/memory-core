@@ -145,6 +145,7 @@ def test_live_streaming_example_emits_tts_sentences(tmp_path: Path):
         "Tabii, yardimci olayim.",
         "Once kimliginizi dogrulayalim.",
     ]
+    assert (tmp_path / "trace" / "session_456.jsonl").exists()
 
 
 def test_live_streaming_example_records_session_summary(tmp_path: Path):

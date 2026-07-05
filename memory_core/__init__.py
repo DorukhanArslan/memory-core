@@ -25,11 +25,13 @@ from memory_core.embeddings import (
 )
 from memory_core.flags import FeatureFlags
 from memory_core.live import (
+    JsonlTraceSink,
     LiveIdentity,
     LiveTurnContext,
     LiveTurnEvent,
     PreparedLiveTurn,
     SubjectMemory,
+    TraceSink,
 )
 from memory_core.context_engine_lifecycle import (
     assemble_context_engine_messages,
@@ -125,11 +127,13 @@ __all__ = [
     "MEMORY_CORE_RUNTIME_CONTEXT_CUSTOM_TYPE",
     "MEMORY_CORE_RUNTIME_IDENTITY",
     "Memory",
+    "JsonlTraceSink",
     "LiveIdentity",
     "LiveTurnContext",
     "LiveTurnEvent",
     "PreparedLiveTurn",
     "SubjectMemory",
+    "TraceSink",
     "STREAM_ERROR_FALLBACK_TEXT",
     "MemoryConfig",
     "MemoryCorpusResult",

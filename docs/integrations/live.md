@@ -48,13 +48,14 @@ subject.
 ## Streaming Turn
 
 ```python
-from memory_core import LiveIdentity, LiveTurnContext, SubjectMemory
+from memory_core import JsonlTraceSink, LiveIdentity, LiveTurnContext, SubjectMemory
 
 identity = LiveIdentity.from_dir("./identity")
 memory = SubjectMemory.open(
     workspace_dir="./memory-core-state",
     subject_id="subj_123",
 )
+trace_sink = JsonlTraceSink("./memory-core-state/trace/session_456.jsonl")
 
 context = LiveTurnContext(
     subject_id="subj_123",
@@ -76,13 +77,12 @@ async for event in memory.stream_live_turn(
     identity=identity,
     llm=streaming_llm,
     openclaw_compatible=True,
+    trace_sink=trace_sink,
 ):
     if event.type == "text_delta":
         live_transcript.append(event.text)
     elif event.type == "sentence":
         tts_queue.put_nowait(event.text)
-    elif event.type == "prompt_assembled":
-        trace_store.write(event.data)
 ```
 
 `llm` is a host-supplied callable. It receives the assembled chat messages and
@@ -106,6 +106,19 @@ UI, logs, and transcript buffers.
 The host still owns workflow state transitions and tool calls. Put active
 workflow state into `LiveTurnContext.workflow_state`; the SDK places it inside
 runtime context rather than durable memory.
+
+## Trace Sink
+
+Pass `trace_sink=` when you want the SDK to persist the same events it yields.
+`JsonlTraceSink` writes one JSON object per event:
+
+```json
+{"type":"sentence","text":"Tabii, yardimci olayim.","data":{}}
+```
+
+This is intentionally append-only and generic. Production hosts can implement
+the `TraceSink` protocol to write events into their own audit log, database, or
+message bus.
 
 ## Post-Session Summary
 

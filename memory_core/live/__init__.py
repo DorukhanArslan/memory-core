@@ -3,9 +3,10 @@ from __future__ import annotations
 from collections.abc import AsyncIterable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 import inspect
+import json
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, Protocol
 
 from memory_core.client import Memory, MemoryRecordResult
 from memory_core.config import MemoryConfig
@@ -74,6 +75,29 @@ class LiveTurnEvent:
     type: str
     text: str = ""
     data: dict[str, Any] | None = None
+
+
+class TraceSink(Protocol):
+    def record(self, event: LiveTurnEvent) -> None:
+        """Persist a live turn event."""
+
+
+@dataclass(frozen=True)
+class JsonlTraceSink:
+    path: Path
+
+    def __init__(self, path: str | Path):
+        object.__setattr__(self, "path", Path(path))
+
+    def record(self, event: LiveTurnEvent) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "type": event.type,
+            "text": event.text,
+            "data": event.data or {},
+        }
+        with self.path.open("a", encoding="utf-8") as handle:
+            handle.write(f"{json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}\n")
 
 
 class SubjectMemory:
@@ -162,13 +186,12 @@ class SubjectMemory:
         max_results: int = 5,
         min_score: float = 0.0,
         corpus: str = "all",
+        trace_sink: TraceSink | None = None,
     ) -> AsyncIterable[LiveTurnEvent]:
-        yield LiveTurnEvent(
+        yield _record_trace_event(
             "live_turn_started",
-            data={
-                "subject_id": context.subject_id,
-                "session_id": context.session_id,
-            },
+            trace_sink=trace_sink,
+            data={"subject_id": context.subject_id, "session_id": context.session_id},
         )
         prepared = self.prepare_live_turn(
             context,
@@ -178,12 +201,14 @@ class SubjectMemory:
             min_score=min_score,
             corpus=corpus,
         )
-        yield LiveTurnEvent(
+        yield _record_trace_event(
             "memory_recall_completed",
+            trace_sink=trace_sink,
             data={"results": prepared.memory_results, "memory_context": prepared.memory_context},
         )
-        yield LiveTurnEvent(
+        yield _record_trace_event(
             "prompt_assembled",
+            trace_sink=trace_sink,
             data={"trace_context": prepared.trace_context, "runtime_context": prepared.runtime_context},
         )
 
@@ -195,17 +220,18 @@ class SubjectMemory:
                 continue
             assistant_parts.append(text)
             sentence_buffer += text
-            yield LiveTurnEvent("text_delta", text=text)
+            yield _record_trace_event("text_delta", trace_sink=trace_sink, text=text)
             sentences, sentence_buffer = _pop_complete_sentences(sentence_buffer)
             for sentence in sentences:
-                yield LiveTurnEvent("sentence", text=sentence)
+                yield _record_trace_event("sentence", trace_sink=trace_sink, text=sentence)
 
         remainder = sentence_buffer.strip()
         if remainder:
-            yield LiveTurnEvent("sentence", text=remainder)
+            yield _record_trace_event("sentence", trace_sink=trace_sink, text=remainder)
         assistant_text = "".join(assistant_parts).strip()
-        yield LiveTurnEvent(
+        yield _record_trace_event(
             "live_turn_completed",
+            trace_sink=trace_sink,
             data={
                 "assistant_text": assistant_text,
                 "trace_context": prepared.trace_context,
@@ -236,6 +262,19 @@ def _validate_safe_id(value: str, *, label: str) -> str:
     if not SAFE_ID_RE.fullmatch(value):
         raise ValueError(f"{label} is not filesystem-safe: {value}")
     return value
+
+
+def _record_trace_event(
+    event_type: str,
+    *,
+    trace_sink: TraceSink | None,
+    text: str = "",
+    data: dict[str, Any] | None = None,
+) -> LiveTurnEvent:
+    event = LiveTurnEvent(event_type, text=text, data=data)
+    if trace_sink is not None:
+        trace_sink.record(event)
+    return event
 
 
 def _validate_context_subject(expected: str, actual: str) -> None:
@@ -326,8 +365,10 @@ def _pop_complete_sentences(buffer: str) -> tuple[list[str], str]:
 
 
 __all__ = [
+    "JsonlTraceSink",
     "LiveIdentity",
     "SubjectMemory",
+    "TraceSink",
     "LiveTurnContext",
     "LiveTurnEvent",
     "PreparedLiveTurn",

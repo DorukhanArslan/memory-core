@@ -41,11 +41,13 @@ def test_public_api_exports_core_memory_surface():
         "MemoryChatTurn",
         "MemoryRecordResult",
         "Memory",
+        "JsonlTraceSink",
         "LiveIdentity",
         "LiveTurnContext",
         "LiveTurnEvent",
         "PreparedLiveTurn",
         "SubjectMemory",
+        "TraceSink",
         "format_memory_context",
         "initialize_memory_core_workspace",
     }

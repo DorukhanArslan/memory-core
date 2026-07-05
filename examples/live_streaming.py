@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from memory_core import LiveIdentity, LiveTurnContext, SubjectMemory
+from memory_core import JsonlTraceSink, LiveIdentity, LiveTurnContext, SubjectMemory
 
 
 async def fake_streaming_llm(messages: list[dict[str, str]]) -> AsyncIterator[str]:
@@ -26,11 +26,13 @@ def redact_sensitive_text(text: str) -> str:
 
 async def run_live_turn(workspace_dir: str | Path, identity_dir: str | Path) -> list[str]:
     identity = LiveIdentity.from_dir(identity_dir)
+    workspace = Path(workspace_dir)
     memory = SubjectMemory.open(
-        workspace_dir=workspace_dir,
+        workspace_dir=workspace,
         subject_id="subj_123",
         reindex=False,
     )
+    trace_sink = JsonlTraceSink(workspace / "trace" / "session_456.jsonl")
     context = LiveTurnContext(
         subject_id="subj_123",
         session_id="session_456",
@@ -52,6 +54,7 @@ async def run_live_turn(workspace_dir: str | Path, identity_dir: str | Path) -> 
         identity=identity,
         llm=fake_streaming_llm,
         openclaw_compatible=True,
+        trace_sink=trace_sink,
     ):
         if event.type == "sentence":
             tts_sentences.append(event.text)

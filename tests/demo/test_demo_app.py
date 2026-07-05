@@ -322,21 +322,23 @@ def test_live_task_turn_stream_emits_latency_events():
 def test_live_task_summary_writes_subject_memory():
     client = TestClient(app)
     client.post("/api/live-task/reset", json={"sessionId": "session_demo", "subjectId": "subject_demo"})
+    for message in ("Doğum tarihim 12.04.1990", "Yarın saat 15:00 uygun olur", "Evet onaylıyorum"):
+        client.post(
+            "/api/live-task/turn-stream",
+            json={"sessionId": "session_demo", "subjectId": "subject_demo", "message": message},
+        )
 
     response = client.post(
         "/api/live-task/summary",
-        json={
-            "sessionId": "session_demo",
-            "subjectId": "subject_demo",
-            "transcript": "User completed an appointment reschedule.",
-        },
+        json={"sessionId": "session_demo", "subjectId": "subject_demo"},
     )
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["summary"]["wrote"] is True
+    assert any("Yarın saat 15:00" in fact for fact in payload["summary"]["durable_facts"])
     assert payload["summary"]["follow_ups"] == [
-        "Confirm appointment change with the scheduling system."
+        "Randevu değişikliğini takvim sisteminde doğrula."
     ]
     assert payload["state"]["workflow"]["session_id"] == "session_demo"
 

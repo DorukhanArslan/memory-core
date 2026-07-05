@@ -12,7 +12,6 @@ from memory_core.live import (
     LIVE_TURN_COMPLETED,
     LiveIdentityStore,
     LiveTurnContext,
-    LiveTurnEvent,
     SubjectMemory,
     TEXT_DELTA,
 )
@@ -151,7 +150,7 @@ class LiveTaskDemo:
         result = memory.record_session_summary(
             session_id=session_id,
             transcript=transcript_text,
-            summary_llm=_fake_summary_llm,
+            summary_llm=lambda messages: _fake_summary_output(self._state, self._transcript),
             timezone="Europe/Istanbul",
             trace_sink=JsonlTraceSink(self._trace_path(session_id)),
         )
@@ -258,13 +257,32 @@ def _response_chunks(state: LiveTaskSessionState) -> tuple[str, ...]:
     return ("Devam edebiliriz.",)
 
 
-def _fake_summary_llm(messages: list[dict[str, str]]) -> str:
-    del messages
+def _fake_summary_output(
+    state: LiveTaskSessionState,
+    transcript: list[dict[str, str]],
+) -> str:
+    durable_facts: list[str] = []
+    follow_ups: list[str] = []
+    identity_proof = next(
+        (
+            item["content"].strip()
+            for item in transcript
+            if item["role"] == "user" and _looks_like_identity_proof(item["content"].casefold())
+        ),
+        None,
+    )
+    if state.verified and identity_proof:
+        durable_facts.append(f"Kimlik doğrulama bilgisi: {identity_proof}")
+    if state.requested_slot:
+        durable_facts.append(f"Randevu talebi: {state.requested_slot}")
+    if state.completed:
+        durable_facts.append("Randevu değişikliği onaylandı ve tamamlandı.")
+        follow_ups.append("Randevu değişikliğini takvim sisteminde doğrula.")
+    if not durable_facts:
+        durable_facts.append("Randevu değişikliği görüşmesi başladı ancak tamamlanmadı.")
     return json.dumps(
-        {
-            "durable_facts": ["Subject completed an appointment reschedule flow."],
-            "follow_ups": ["Confirm appointment change with the scheduling system."],
-        }
+        {"durable_facts": durable_facts, "follow_ups": follow_ups},
+        ensure_ascii=False,
     )
 
 

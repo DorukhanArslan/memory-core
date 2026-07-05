@@ -85,16 +85,40 @@ def test_live_task_demo_records_structured_summary(tmp_path: Path):
     demo = LiveTaskDemo(workspace_dir=tmp_path)
     demo.reset()
 
-    result = demo.record_summary(
-        session_id="session_1",
-        subject_id="subject_1",
-        transcript="User verified identity and moved appointment to tomorrow at 15:00.",
-    )
+    async def run_flow():
+        for utterance in (
+            "Doğum tarihim 12.04.1990",
+            "Yarın saat 15:00 uygun olur",
+            "Evet onaylıyorum",
+        ):
+            async for _ in demo.stream_turn(
+                session_id="session_1",
+                subject_id="subject_1",
+                user_utterance=utterance,
+            ):
+                pass
+
+    asyncio.run(run_flow())
+    result = demo.record_summary(session_id="session_1", subject_id="subject_1")
 
     memory_path = tmp_path / "subjects" / "subject_1" / result["path"]
+    memory_text = memory_path.read_text(encoding="utf-8")
     assert result["wrote"] is True
-    assert result["follow_ups"] == ["Confirm appointment change with the scheduling system."]
-    assert "appointment" in memory_path.read_text(encoding="utf-8")
+    assert any("Doğum tarihim 12.04.1990" in fact for fact in result["durable_facts"])
+    assert any("Yarın saat 15:00" in fact for fact in result["durable_facts"])
+    assert result["follow_ups"] == ["Randevu değişikliğini takvim sisteminde doğrula."]
+    assert "Randevu talebi" in memory_text
+
+
+def test_live_task_demo_summary_without_turns_records_incomplete_flow(tmp_path: Path):
+    demo = LiveTaskDemo(workspace_dir=tmp_path)
+    demo.reset()
+
+    result = demo.record_summary(session_id="session_1", subject_id="subject_1")
+
+    assert result["wrote"] is True
+    assert result["durable_facts"] == ["Randevu değişikliği görüşmesi başladı ancak tamamlanmadı."]
+    assert result["follow_ups"] == []
 
 
 def test_latency_event_payload_preserves_event_data():

@@ -216,6 +216,7 @@
       let liveStreamingAssistantText = "";
       let activeMode = "chat";
       let liveTaskEvents = [];
+      let liveTaskSummary = null;
       let selectedDailyMemoryPath = "";
       const DEFAULT_OPENAI = {
         baseUrl: "https://api.openai.com/v1",
@@ -399,6 +400,7 @@
           const role = message.role === "user" ? "user" : "assistant";
           log.append(messageNode(role, role === "user" ? `Live turn ${Math.floor(index / 2) + 1}` : "Live assistant", message.content));
         }
+        log.scrollTop = log.scrollHeight;
       }
 
       function renderLiveTaskState(liveTask) {
@@ -433,8 +435,31 @@
 
       function appendLiveTaskEvent(event, data) {
         liveTaskEvents.push({event, data});
-        if (liveTaskEvents.length > 80) liveTaskEvents = liveTaskEvents.slice(-80);
+        if (liveTaskEvents.length > 120) liveTaskEvents = liveTaskEvents.slice(-120);
         renderLiveObservability();
+      }
+
+      function appendLiveTaskError(message) {
+        const log = document.querySelector("#live-task-log");
+        const empty = log.querySelector(".empty-state");
+        if (empty) empty.remove();
+        const note = document.createElement("p");
+        note.className = "error-note";
+        note.textContent = message;
+        log.append(note);
+        log.scrollTop = log.scrollHeight;
+      }
+
+      function liveEventDetail(item) {
+        const data = item.data || {};
+        if (data.text) return ` · ${data.text}`;
+        const payload = data.data || {};
+        if (item.event === "memory_recall_completed") {
+          const count = (payload.results || []).length;
+          return ` · ${count} memory result${count === 1 ? "" : "s"}`;
+        }
+        if (item.event === "provider_event" && payload.type) return ` · ${payload.type}`;
+        return "";
       }
 
       function renderLiveObservability() {
@@ -450,6 +475,16 @@
           Completed: workflow.completed === true,
           "Trace path": liveTask.tracePath || "",
         })));
+        if (liveTaskSummary) {
+          const summaryNode = document.createElement("div");
+          summaryNode.className = "stacked-detail";
+          summaryNode.append(kvGrid({
+            Wrote: liveTaskSummary.wrote === true,
+            Path: liveTaskSummary.path || "",
+          }));
+          summaryNode.append(codeBlock(liveTaskSummary.text || "(empty)"));
+          panel.append(stepNode("Session Summary", summaryNode));
+        }
         const timeline = document.createElement("div");
         timeline.className = "live-event-timeline";
         if (!liveTaskEvents.length) {
@@ -458,11 +493,17 @@
           for (const item of liveTaskEvents) {
             const row = document.createElement("div");
             row.className = "live-event-row";
-            row.textContent = `${item.event} · ${item.data.elapsed_ms ?? "-"}ms${item.data.text ? ` · ${item.data.text}` : ""}`;
+            if (item.event === "user_turn") {
+              row.classList.add("live-event-turn");
+              row.textContent = `user turn · ${item.data.text || ""}`;
+            } else {
+              row.textContent = `${item.event} · ${item.data.elapsed_ms ?? "-"}ms${liveEventDetail(item)}`;
+            }
             timeline.append(row);
           }
         }
         panel.append(stepNode("Event Timeline", timeline));
+        timeline.scrollTop = timeline.scrollHeight;
       }
 
       function renderModeLayout() {
@@ -1118,12 +1159,16 @@
 
       async function submitLiveTaskInput() {
         const input = document.querySelector("#live-task-input");
+        const streamButton = document.querySelector("#live-task-stream");
+        if (streamButton.disabled) return;
+        streamButton.disabled = true;
         try {
           await sendLiveTaskMessage(input.value);
           input.value = "";
         } catch (error) {
-          showOutput({error: error.message});
-          activateTab("tool-inspector");
+          appendLiveTaskError(error.message);
+        } finally {
+          streamButton.disabled = false;
         }
       }
 
@@ -1138,6 +1183,8 @@
         const empty = log.querySelector(".empty-state");
         if (empty) empty.remove();
         log.append(messageNode("user", "Live user", trimmed));
+        log.scrollTop = log.scrollHeight;
+        appendLiveTaskEvent("user_turn", {text: trimmed});
         const response = await fetch("/api/live-task/turn-stream", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
@@ -1172,37 +1219,54 @@
         const data = JSON.parse(dataLine.replace("data: ", ""));
         if (event === "text_delta") {
           appendLiveTaskAssistant(data.text || "");
-        } else if (event === "sentence" || event === "provider_event" || event === "live_turn_completed") {
-          appendLiveTaskEvent(event, data);
         } else if (event === "live_task_state") {
           state.liveTask = data;
-          renderLiveTaskState(data);
+          liveStreamingAssistantText = "";
+          renderLiveTask();
         } else if (event === "error") {
           throw new Error(data.error || "Live task stream failed");
+        } else {
+          appendLiveTaskEvent(event, data);
         }
       }
 
       document.querySelector("#live-task-reset").onclick = async () => {
-        state.liveTask = await requestJson("/api/live-task/reset", {
-          sessionId: document.querySelector("#live-session-id").value.trim() || "demo_session",
-          subjectId: document.querySelector("#live-subject-id").value.trim() || "demo_subject"
-        });
-        liveTaskEvents = [];
-        setActiveMode("live");
-        renderLiveTask();
-        renderLiveObservability();
+        try {
+          state.liveTask = await requestJson("/api/live-task/reset", {
+            sessionId: document.querySelector("#live-session-id").value.trim() || "demo_session",
+            subjectId: document.querySelector("#live-subject-id").value.trim() || "demo_subject"
+          });
+          liveTaskEvents = [];
+          liveTaskSummary = null;
+          setActiveMode("live");
+          renderLiveTask();
+          renderLiveObservability();
+        } catch (error) {
+          appendLiveTaskError(error.message);
+        }
       };
 
       document.querySelector("#live-task-summary").onclick = async () => {
-        const payload = await requestJson("/api/live-task/summary", {
-          sessionId: document.querySelector("#live-session-id").value.trim() || "demo_session",
-          subjectId: document.querySelector("#live-subject-id").value.trim() || "demo_subject"
-        });
-        state.liveTask = payload.state;
-        showOutput(payload.summary);
-        activateTab("tool-inspector");
-        renderLiveTaskState(payload.state);
+        try {
+          const payload = await requestJson("/api/live-task/summary", {
+            sessionId: document.querySelector("#live-session-id").value.trim() || "demo_session",
+            subjectId: document.querySelector("#live-subject-id").value.trim() || "demo_subject"
+          });
+          state.liveTask = payload.state;
+          liveTaskSummary = payload.summary;
+          setActiveMode("live");
+          renderLiveTask();
+        } catch (error) {
+          appendLiveTaskError(error.message);
+        }
       };
+
+      document.querySelector("#live-task-input").addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          document.querySelector("#live-task-form").requestSubmit();
+        }
+      });
 
       document.querySelector("#manual-flush").onclick = async () => {
         try {

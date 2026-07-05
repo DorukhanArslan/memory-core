@@ -646,9 +646,29 @@ label {
   word-break: break-word;
 }
 
+.live-event-turn {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
 .live-event-timeline {
   display: grid;
+  align-content: start;
   gap: 8px;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.error-note {
+  margin: 0;
+  align-self: stretch;
+  border: 1px solid #7f1d1d;
+  border-radius: 6px;
+  background: #2a1215;
+  padding: 8px 10px;
+  color: #fca5a5;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .pipeline {

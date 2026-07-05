@@ -19,7 +19,9 @@ WORKSPACE_FILE_ORDER = (
     "IDENTITY.md",
     "USER.md",
 )
-BOOTSTRAP_MAX_CHARS = 12_000
+# OpenClaw HEAD defaults: per-file 20_000 (raised from 12_000 upstream on
+# 2026-06-01), total 60_000. See src/agents/embedded-agent-helpers/bootstrap.ts.
+BOOTSTRAP_MAX_CHARS = 20_000
 BOOTSTRAP_TOTAL_MAX_CHARS = 60_000
 
 DEFAULT_WORKSPACE_FILES = OrderedDict(

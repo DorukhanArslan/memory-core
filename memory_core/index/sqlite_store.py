@@ -13,6 +13,7 @@ from memory_core.index.hybrid import (
     HybridVectorResult,
     merge_hybrid_results,
 )
+from memory_core.index.keywords import extract_keywords
 from memory_core.index.mmr import mmr_rerank
 from memory_core.index.temporal_decay import (
     TemporalDecayConfig,
@@ -20,6 +21,10 @@ from memory_core.index.temporal_decay import (
 )
 from memory_core.index.vector import cosine_similarity
 from memory_core.workspace import MemoryWorkspace
+
+# OpenClaw caps per-keyword FTS fallback probes so long conversational queries
+# cannot fan out into unbounded sqlite work (memory-core manager.ts).
+KEYWORD_FALLBACK_SEARCH_TERM_LIMIT = 6
 
 
 class SQLiteMemoryStore:
@@ -145,7 +150,7 @@ class SQLiteMemoryStore:
 
             keyword: list[HybridKeywordResult] = []
             if self.flags.text_search:
-                keyword = self._query_keyword_hits(db, query, source_filter)
+                keyword = self._query_keyword_hits_with_fallback(db, query, source_filter)
 
         if not self.flags.text_search:
             # Vector-only mode mirrors OpenClaw's non-hybrid path: raw vector
@@ -226,7 +231,7 @@ class SQLiteMemoryStore:
         # full text score (no text-weight scaling), temporal decay still
         # applies, and an empty strict pass relaxes the min-score to 0.
         with self.connect() as db:
-            keyword = self._query_keyword_hits(db, query, source_filter)
+            keyword = self._query_keyword_hits_with_fallback(db, query, source_filter)
         results = [
             HybridResult(
                 path=item.path,
@@ -253,6 +258,33 @@ class SQLiteMemoryStore:
         if strict:
             return strict[:max_results]
         return [item for item in ranked if item.score >= 0][:max_results]
+
+    def _query_keyword_hits_with_fallback(
+        self,
+        db: sqlite3.Connection,
+        query: str,
+        source_filter: _SourceFilter,
+    ) -> list[HybridKeywordResult]:
+        full_query_hits = self._query_keyword_hits(db, query, source_filter)
+        if full_query_hits:
+            return full_query_hits
+
+        # OpenClaw broadens recall for conversational queries when the exact
+        # AND query is too strict: probe each extracted keyword separately
+        # (capped), then dedupe preferring the higher text score. Upstream
+        # additionally tie-breaks equal text scores by a boosted lexical score;
+        # memory-core keeps raw FTS text scores by design (see
+        # _search_keyword_only), so the text-score preference is the only
+        # ranking signal here.
+        fallback_terms = [term for term in extract_keywords(query) if term != query]
+        fallback_terms = fallback_terms[:KEYWORD_FALLBACK_SEARCH_TERM_LIMIT]
+        if not fallback_terms:
+            return []
+
+        result_sets = [
+            self._query_keyword_hits(db, term, source_filter) for term in fallback_terms
+        ]
+        return _merge_keyword_search_hits(result_sets)
 
     def _query_keyword_hits(
         self,
@@ -285,6 +317,18 @@ class SQLiteMemoryStore:
                 (fts_query, *source_filter.params),
             )
         ]
+
+
+def _merge_keyword_search_hits(
+    result_sets: list[list[HybridKeywordResult]],
+) -> list[HybridKeywordResult]:
+    merged: dict[str, HybridKeywordResult] = {}
+    for results in result_sets:
+        for result in results:
+            existing = merged.get(result.id)
+            if existing is None or result.text_score > existing.text_score:
+                merged[result.id] = result
+    return sorted(merged.values(), key=lambda item: item.text_score, reverse=True)
 
 
 def _mmr_key(item: HybridResult) -> str:

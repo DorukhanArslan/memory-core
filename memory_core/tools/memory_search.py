@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from memory_core.config import MemoryConfig
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.supplements import MemoryCorpusResult, MemoryCorpusSupplement, sort_corpus_results
@@ -24,6 +26,21 @@ def memory_search(
     }
     if corpus not in sources_by_corpus:
         return {"results": [], "disabled": True, "error": f"unsupported corpus: {corpus}"}
+
+    # OpenClaw's memory_search tool strictly validates params before running
+    # (readStringParam / readPositiveIntegerParam / readFiniteNumberParam) and
+    # searches with the trimmed query.
+    if not isinstance(query, str) or not query.strip():
+        return {"results": [], "disabled": True, "error": "query required"}
+    query = query.strip()
+    if isinstance(max_results, bool) or not isinstance(max_results, int) or max_results <= 0:
+        return {"results": [], "disabled": True, "error": "maxResults must be a positive integer"}
+    if (
+        isinstance(min_score, bool)
+        or not isinstance(min_score, (int, float))
+        or not math.isfinite(min_score)
+    ):
+        return {"results": [], "disabled": True, "error": "minScore must be a finite number"}
 
     try:
         memory_results = []

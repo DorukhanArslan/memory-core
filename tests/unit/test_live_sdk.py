@@ -120,6 +120,46 @@ def test_subject_memory_uses_separate_workspace_per_subject(tmp_path: Path):
     assert not (tmp_path / "memory" / "2026-09-04.md").exists()
 
 
+def test_subject_memory_can_use_custom_namespace(tmp_path: Path):
+    memory = SubjectMemory.open(
+        workspace_dir=tmp_path,
+        subject_id="subj_123",
+        namespace="accounts",
+        reindex=False,
+    )
+
+    result = memory.record_session_summary(
+        session_id="session_1",
+        transcript="User wants evening delivery.",
+        summary_llm=lambda messages: "- Subject prefers evening delivery.",
+        now_ms=1_788_526_800_000,
+        timezone="Europe/Istanbul",
+    )
+
+    assert result.wrote is True
+    assert (tmp_path / "accounts" / "subj_123" / result.path).exists()
+
+
+def test_subject_memory_can_use_custom_path_builder(tmp_path: Path):
+    memory = SubjectMemory.open(
+        workspace_dir=tmp_path,
+        subject_id="subj_123",
+        subject_path_builder=lambda root, subject_id: root / "tenants" / "default" / subject_id,
+        reindex=False,
+    )
+
+    result = memory.record_session_summary(
+        session_id="session_1",
+        transcript="User wants evening delivery.",
+        summary_llm=lambda messages: "- Subject prefers evening delivery.",
+        now_ms=1_788_526_800_000,
+        timezone="Europe/Istanbul",
+    )
+
+    assert result.wrote is True
+    assert (tmp_path / "tenants" / "default" / "subj_123" / result.path).exists()
+
+
 def test_record_session_summary_writes_only_durable_structured_entries(tmp_path: Path):
     memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
     trace_sink = JsonlTraceSink(tmp_path / "trace" / "session_1.jsonl")

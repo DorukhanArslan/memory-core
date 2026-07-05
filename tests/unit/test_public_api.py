@@ -62,6 +62,7 @@ def test_public_api_exports_core_memory_surface():
         "SESSION_SUMMARY_STARTED",
         "SessionSummaryResult",
         "SubjectMemory",
+        "SubjectPathBuilder",
         "TEXT_DELTA",
         "TraceSink",
         "UnknownIdentityFilePolicy",

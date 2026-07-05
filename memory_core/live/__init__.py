@@ -56,6 +56,7 @@ LiveTurnEventType = Literal[
     "session_summary_failed",
 ]
 UnknownIdentityFilePolicy = Literal["ignore", "error"]
+SubjectPathBuilder = Callable[[Path, str], Path]
 
 
 class IdentityLoadError(ValueError):
@@ -203,13 +204,20 @@ class SubjectMemory:
         *,
         workspace_dir: str | Path,
         subject_id: str,
+        namespace: str = "subjects",
+        subject_path_builder: SubjectPathBuilder | None = None,
         embedding_provider: EmbeddingProvider | None = None,
         config: MemoryConfig | None = None,
         initialize: bool = True,
         reindex: bool = True,
     ) -> "SubjectMemory":
         safe_subject_id = _validate_safe_id(subject_id, label="subject_id")
-        workspace = Path(workspace_dir) / "subjects" / safe_subject_id
+        workspace = _resolve_subject_workspace(
+            Path(workspace_dir),
+            safe_subject_id,
+            namespace=namespace,
+            subject_path_builder=subject_path_builder,
+        )
         resolved_config = config or MemoryConfig(
             workspace_dir=workspace,
             flags=None if embedding_provider is not None else FeatureFlags(vector_search=False),
@@ -444,6 +452,25 @@ def _validate_safe_id(value: str, *, label: str) -> str:
     return value
 
 
+def _resolve_subject_workspace(
+    root: Path,
+    subject_id: str,
+    *,
+    namespace: str,
+    subject_path_builder: SubjectPathBuilder | None,
+) -> Path:
+    if subject_path_builder is not None:
+        workspace = subject_path_builder(root, subject_id)
+    else:
+        safe_namespace = _validate_safe_id(namespace, label="namespace")
+        workspace = root / safe_namespace / subject_id
+    resolved_root = root.resolve()
+    resolved_workspace = Path(workspace).resolve()
+    if resolved_workspace != resolved_root and resolved_root not in resolved_workspace.parents:
+        raise ValueError(f"subject workspace escapes root: {workspace}")
+    return Path(workspace)
+
+
 def _validate_required_identity_files(root: Path, required_files: Iterable[str]) -> None:
     missing = [
         filename
@@ -675,6 +702,7 @@ __all__ = [
     "SESSION_SUMMARY_STARTED",
     "SessionSummaryResult",
     "SubjectMemory",
+    "SubjectPathBuilder",
     "TEXT_DELTA",
     "TraceSink",
     "LiveTurnContext",

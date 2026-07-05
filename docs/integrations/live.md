@@ -68,6 +68,23 @@ memory-core-state/
 user, customer, account, device, patient, lead, or another durable memory
 subject.
 
+The default namespace is `subjects/<subject_id>`. Hosts can choose another
+namespace or provide a path builder:
+
+```python
+memory = SubjectMemory.open(
+    workspace_dir="./memory-core-state",
+    subject_id="subj_123",
+    namespace="accounts",
+)
+
+memory = SubjectMemory.open(
+    workspace_dir="./memory-core-state",
+    subject_id="subj_123",
+    subject_path_builder=lambda root, subject_id: root / "tenants" / "default" / subject_id,
+)
+```
+
 ## Streaming Turn
 
 ```python

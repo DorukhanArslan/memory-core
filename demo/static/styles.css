@@ -201,7 +201,7 @@ label {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(190px, 1.1fr) minmax(210px, 1fr) minmax(130px, 0.7fr) minmax(220px, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
   align-items: end;
   border-top: 1px solid var(--line);
@@ -261,8 +261,10 @@ label {
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.75fr);
+  grid-auto-rows: minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
+  max-height: calc(100dvh - 24px);
 }
 
 .primary-workspace {
@@ -342,7 +344,9 @@ label {
 }
 
 .message {
-  width: min(84%, 720px);
+  width: fit-content;
+  min-width: 120px;
+  max-width: min(84%, 720px);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
@@ -586,14 +590,14 @@ label {
 
 .live-task-controls {
   display: grid;
-  grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) auto auto;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 8px;
   align-items: end;
   margin-bottom: 10px;
 }
 
 .live-task-state {
-  max-height: 74px;
+  max-height: 168px;
   margin-bottom: 10px;
   overflow: auto;
 }
@@ -830,8 +834,17 @@ label {
     grid-template-columns: 1fr;
   }
 
+  .workspace {
+    grid-auto-rows: auto;
+    max-height: none;
+  }
+
   .toolbar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pipeline-content {
+    max-height: 520px;
   }
 
   .chat-panel,

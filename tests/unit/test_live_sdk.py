@@ -5,11 +5,13 @@ import json
 from pathlib import Path
 
 from memory_core.live import (
+    IdentityLoadError,
     JsonlTraceSink,
     LIVE_TURN_COMPLETED,
     LIVE_TURN_FAILED,
     LIVE_TURN_STARTED,
     LiveIdentity,
+    LiveIdentityStore,
     LiveTurnContext,
     LiveTurnEvent,
     PROVIDER_EVENT,
@@ -40,6 +42,63 @@ def test_identity_loader_reads_known_files_in_prompt_order(tmp_path: Path):
             "## Style\nSpeak briefly.",
         ]
     )
+
+
+def test_identity_loader_enforces_required_files(tmp_path: Path):
+    identity_dir = tmp_path / "identity"
+    identity_dir.mkdir()
+    (identity_dir / "AGENT.md").write_text("You are a support voice agent.", encoding="utf-8")
+
+    try:
+        LiveIdentity.from_dir(identity_dir, required_files=["AGENT.md", "POLICY.md"])
+    except IdentityLoadError as exc:
+        assert "POLICY.md" in str(exc)
+    else:
+        raise AssertionError("expected missing required identity file error")
+
+
+def test_identity_loader_can_reject_unknown_markdown_files(tmp_path: Path):
+    identity_dir = tmp_path / "identity"
+    identity_dir.mkdir()
+    (identity_dir / "AGENT.md").write_text("You are a support voice agent.", encoding="utf-8")
+    (identity_dir / "RANDOM.md").write_text("Unexpected.", encoding="utf-8")
+
+    try:
+        LiveIdentity.from_dir(identity_dir, unknown_files="error")
+    except IdentityLoadError as exc:
+        assert "RANDOM.md" in str(exc)
+    else:
+        raise AssertionError("expected unknown identity file error")
+
+
+def test_identity_loader_truncates_sections_deterministically(tmp_path: Path):
+    identity_dir = tmp_path / "identity"
+    identity_dir.mkdir()
+    (identity_dir / "AGENT.md").write_text("A" * 200, encoding="utf-8")
+
+    identity = LiveIdentity.from_dir(identity_dir, max_chars_per_file=32)
+
+    section = identity.to_prompt_section()
+    assert "## Agent Identity" in section
+    assert "[truncated]" in section
+    assert len(identity.sections[0][1]) <= 32
+
+
+def test_identity_store_caches_until_reload(tmp_path: Path):
+    identity_dir = tmp_path / "identity"
+    identity_dir.mkdir()
+    path = identity_dir / "AGENT.md"
+    path.write_text("First identity.", encoding="utf-8")
+    store = LiveIdentityStore(identity_dir)
+
+    first = store.load()
+    path.write_text("Second identity.", encoding="utf-8")
+    cached = store.load()
+    reloaded = store.reload()
+
+    assert first.to_prompt_section() == cached.to_prompt_section()
+    assert "First identity." in cached.to_prompt_section()
+    assert "Second identity." in reloaded.to_prompt_section()
 
 
 def test_subject_memory_uses_separate_workspace_per_subject(tmp_path: Path):

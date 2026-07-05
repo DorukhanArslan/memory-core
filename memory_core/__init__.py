@@ -25,11 +25,13 @@ from memory_core.embeddings import (
 )
 from memory_core.flags import FeatureFlags
 from memory_core.live import (
+    IdentityLoadError,
     JsonlTraceSink,
     LIVE_TURN_COMPLETED,
     LIVE_TURN_FAILED,
     LIVE_TURN_STARTED,
     LiveIdentity,
+    LiveIdentityStore,
     LiveTurnEventType,
     LiveTurnContext,
     LiveTurnEvent,
@@ -46,6 +48,7 @@ from memory_core.live import (
     SubjectMemory,
     TEXT_DELTA,
     TraceSink,
+    UnknownIdentityFilePolicy,
 )
 from memory_core.context_engine_lifecycle import (
     assemble_context_engine_messages,
@@ -141,11 +144,13 @@ __all__ = [
     "MEMORY_CORE_RUNTIME_CONTEXT_CUSTOM_TYPE",
     "MEMORY_CORE_RUNTIME_IDENTITY",
     "Memory",
+    "IdentityLoadError",
     "JsonlTraceSink",
     "LIVE_TURN_COMPLETED",
     "LIVE_TURN_FAILED",
     "LIVE_TURN_STARTED",
     "LiveIdentity",
+    "LiveIdentityStore",
     "LiveTurnEventType",
     "LiveTurnContext",
     "LiveTurnEvent",
@@ -162,6 +167,7 @@ __all__ = [
     "SubjectMemory",
     "TEXT_DELTA",
     "TraceSink",
+    "UnknownIdentityFilePolicy",
     "STREAM_ERROR_FALLBACK_TEXT",
     "MemoryConfig",
     "MemoryCorpusResult",

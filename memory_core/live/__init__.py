@@ -26,6 +26,7 @@ IDENTITY_FILE_ORDER = (
     ("ESCALATION.md", "Escalation"),
     ("STYLE.md", "Style"),
 )
+IDENTITY_FILE_NAMES = frozenset(filename for filename, _title in IDENTITY_FILE_ORDER)
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 SENTENCE_RE = re.compile(r"(.+?[.!?…])(?:\s+|$)", re.DOTALL)
 LIVE_TURN_STARTED = "live_turn_started"
@@ -54,6 +55,11 @@ LiveTurnEventType = Literal[
     "session_summary_skipped",
     "session_summary_failed",
 ]
+UnknownIdentityFilePolicy = Literal["ignore", "error"]
+
+
+class IdentityLoadError(ValueError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -61,8 +67,17 @@ class LiveIdentity:
     sections: tuple[tuple[str, str], ...]
 
     @classmethod
-    def from_dir(cls, identity_dir: str | Path) -> "LiveIdentity":
+    def from_dir(
+        cls,
+        identity_dir: str | Path,
+        *,
+        required_files: Iterable[str] = (),
+        max_chars_per_file: int | None = None,
+        unknown_files: UnknownIdentityFilePolicy = "ignore",
+    ) -> "LiveIdentity":
         root = Path(identity_dir)
+        _validate_required_identity_files(root, required_files)
+        _validate_unknown_identity_files(root, unknown_files)
         sections: list[tuple[str, str]] = []
         for filename, title in IDENTITY_FILE_ORDER:
             path = root / filename
@@ -70,11 +85,49 @@ class LiveIdentity:
                 continue
             text = path.read_text(encoding="utf-8").strip()
             if text:
+                text = _truncate_identity_text(text, max_chars_per_file)
                 sections.append((title, text))
         return cls(tuple(sections))
 
     def to_prompt_section(self) -> str:
         return "\n\n".join(f"## {title}\n{text}" for title, text in self.sections)
+
+
+@dataclass
+class LiveIdentityStore:
+    identity_dir: Path
+    required_files: tuple[str, ...] = ()
+    max_chars_per_file: int | None = None
+    unknown_files: UnknownIdentityFilePolicy = "ignore"
+    _cached: LiveIdentity | None = None
+
+    def __init__(
+        self,
+        identity_dir: str | Path,
+        *,
+        required_files: Iterable[str] = (),
+        max_chars_per_file: int | None = None,
+        unknown_files: UnknownIdentityFilePolicy = "ignore",
+    ):
+        self.identity_dir = Path(identity_dir)
+        self.required_files = tuple(required_files)
+        self.max_chars_per_file = max_chars_per_file
+        self.unknown_files = unknown_files
+        self._cached = None
+
+    def load(self) -> LiveIdentity:
+        if self._cached is None:
+            self._cached = self.reload()
+        return self._cached
+
+    def reload(self) -> LiveIdentity:
+        self._cached = LiveIdentity.from_dir(
+            self.identity_dir,
+            required_files=self.required_files,
+            max_chars_per_file=self.max_chars_per_file,
+            unknown_files=self.unknown_files,
+        )
+        return self._cached
 
 
 @dataclass(frozen=True)
@@ -391,6 +444,35 @@ def _validate_safe_id(value: str, *, label: str) -> str:
     return value
 
 
+def _validate_required_identity_files(root: Path, required_files: Iterable[str]) -> None:
+    missing = [
+        filename
+        for filename in required_files
+        if filename not in IDENTITY_FILE_NAMES or not (root / filename).is_file()
+    ]
+    if missing:
+        raise IdentityLoadError(f"missing required identity files: {', '.join(sorted(missing))}")
+
+
+def _validate_unknown_identity_files(root: Path, policy: UnknownIdentityFilePolicy) -> None:
+    if policy == "ignore" or not root.is_dir():
+        return
+    if policy != "error":
+        raise IdentityLoadError(f"unknown identity file policy: {policy}")
+    unknown = sorted(path.name for path in root.glob("*.md") if path.name not in IDENTITY_FILE_NAMES)
+    if unknown:
+        raise IdentityLoadError(f"unknown identity files: {', '.join(unknown)}")
+
+
+def _truncate_identity_text(text: str, max_chars: int | None) -> str:
+    if max_chars is None or max_chars <= 0 or len(text) <= max_chars:
+        return text
+    suffix = "\n\n[truncated]"
+    if max_chars <= len(suffix):
+        return text[:max_chars]
+    return f"{text[: max_chars - len(suffix)].rstrip()}{suffix}"
+
+
 def _record_trace_event(
     event_type: LiveTurnEventType,
     *,
@@ -575,11 +657,13 @@ def _pop_complete_sentences(buffer: str) -> tuple[list[str], str]:
 
 
 __all__ = [
+    "IdentityLoadError",
     "JsonlTraceSink",
     "LIVE_TURN_COMPLETED",
     "LIVE_TURN_FAILED",
     "LIVE_TURN_STARTED",
     "LiveIdentity",
+    "LiveIdentityStore",
     "LiveTurnEventType",
     "MEMORY_RECALL_COMPLETED",
     "PROMPT_ASSEMBLED",

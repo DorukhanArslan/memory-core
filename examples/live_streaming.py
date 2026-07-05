@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 import json
 from pathlib import Path
 
-from memory_core import JsonlTraceSink, LiveIdentity, LiveTurnContext, SubjectMemory
+from memory_core import JsonlTraceSink, LiveIdentityStore, LiveTurnContext, SubjectMemory
 
 
 async def fake_streaming_llm(messages: list[dict[str, str]]) -> AsyncIterator[str]:
@@ -32,7 +32,7 @@ def redact_sensitive_text(text: str) -> str:
 
 
 async def run_live_turn(workspace_dir: str | Path, identity_dir: str | Path) -> list[str]:
-    identity = LiveIdentity.from_dir(identity_dir)
+    identity = LiveIdentityStore(identity_dir, required_files=["AGENT.md"]).load()
     workspace = Path(workspace_dir)
     memory = SubjectMemory.open(
         workspace_dir=workspace,

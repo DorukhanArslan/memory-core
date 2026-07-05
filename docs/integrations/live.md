@@ -28,6 +28,29 @@ identity/
   STYLE.md
 ```
 
+Loader hardening options:
+
+```python
+identity = LiveIdentity.from_dir(
+    "./identity",
+    required_files=["AGENT.md", "POLICY.md"],
+    max_chars_per_file=20_000,
+    unknown_files="error",
+)
+```
+
+Use `LiveIdentityStore` when a host runtime wants stable cached identity during
+a session and explicit reloads after admin changes:
+
+```python
+identity_store = LiveIdentityStore("./identity", required_files=["AGENT.md"])
+identity = identity_store.load()
+identity = identity_store.reload()
+```
+
+The SDK never writes identity files. Suggested policy or identity changes should
+go through host-side review.
+
 Durable memory is scoped by `subject_id`:
 
 ```text

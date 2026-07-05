@@ -141,6 +141,8 @@ def test_demo_home_loads():
     assert "renderLiveTask" in response.text
     assert "Subject Memory" in response.text
     assert "subjectMemoryFiles" in response.text
+    assert "Identity (Injected)" in response.text
+    assert "identityFiles" in response.text
     assert "interaction-stack" not in response.text
     assert 'textContent += text' not in response.text
     assert "Fake</option>" not in response.text
@@ -299,6 +301,10 @@ def test_live_task_reset_and_state_endpoints():
     assert payload["transcript"] == []
     assert payload["tracePath"].endswith("session_demo.jsonl")
     assert isinstance(payload["subjectMemoryFiles"], dict)
+    assert "AGENT.md" in payload["identityFiles"]
+    assert "POLICY.md" in payload["identityFiles"]
+    assert "STYLE.md" in payload["identityFiles"]
+    assert "ESCALATION.md" in payload["identityFiles"]
 
 
 def test_live_task_turn_stream_emits_latency_events(monkeypatch):

@@ -808,6 +808,7 @@ def _pop_complete_sentences(buffer: str) -> tuple[list[str], str]:
 
 
 __all__ = [
+    "IDENTITY_FILE_ORDER",
     "IdentityLoadError",
     "JsonlTraceSink",
     "LIVE_TURN_COMPLETED",

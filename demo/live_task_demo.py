@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from memory_core.live import (
+    IDENTITY_FILE_ORDER,
     JsonlTraceSink,
     LIVE_TURN_COMPLETED,
     LiveIdentityStore,
@@ -40,6 +41,7 @@ class LiveTaskDemoState:
     workspace: str
     trace_path: str
     subject_memory_files: dict[str, str]
+    identity_files: dict[str, str]
 
 
 class LiveTaskDemo:
@@ -72,7 +74,16 @@ class LiveTaskDemo:
             workspace=str(self.workspace_dir),
             trace_path=str(self._trace_path(self._state.session_id)),
             subject_memory_files=self._subject_memory_files(self._state.subject_id),
+            identity_files=self._identity_files(),
         )
+
+    def _identity_files(self) -> dict[str, str]:
+        files: dict[str, str] = {}
+        for filename, _title in IDENTITY_FILE_ORDER:
+            path = self.identity_dir / filename
+            if path.is_file():
+                files[filename] = path.read_text(encoding="utf-8")
+        return files
 
     def _subject_memory_files(self, subject_id: str) -> dict[str, str]:
         if not subject_id or any(part in subject_id for part in ("/", "\\", "..")):

@@ -452,6 +452,22 @@
         log.scrollTop = log.scrollHeight;
       }
 
+      function identityFilesNode(liveTask) {
+        const files = liveTask.identityFiles || {};
+        const paths = Object.keys(files);
+        const container = document.createElement("div");
+        container.className = "stacked-detail";
+        container.append(textBlock("These live identity files are injected into every live turn system prompt, in this order. They are separate from the chat workspace files (AGENTS.md, SOUL.md, IDENTITY.md, USER.md), which do not affect this mode."));
+        if (!paths.length) {
+          container.append(textBlock("No identity files bootstrapped yet. Send a turn or press Reset."));
+          return container;
+        }
+        for (const path of paths) {
+          container.append(sectionBlock(`identity/${path}`, codeBlock(files[path] || "(empty)")));
+        }
+        return container;
+      }
+
       function subjectMemoryNode(liveTask) {
         const files = liveTask.subjectMemoryFiles || {};
         const paths = Object.keys(files);
@@ -507,6 +523,7 @@
           summaryNode.append(codeBlock(liveTaskSummary.text || "(empty)"));
           panel.append(stepNode("Session Summary", summaryNode));
         }
+        panel.append(stepNode("Identity (Injected)", identityFilesNode(liveTask)));
         panel.append(stepNode("Subject Memory", subjectMemoryNode(liveTask)));
         const timeline = document.createElement("div");
         timeline.className = "live-event-timeline";

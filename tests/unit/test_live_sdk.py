@@ -10,6 +10,7 @@ from memory_core.live import (
     LIVE_TURN_COMPLETED,
     LIVE_TURN_FAILED,
     LIVE_TURN_STARTED,
+    LiveSDKConfig,
     LiveIdentity,
     LiveIdentityStore,
     LiveTurnContext,
@@ -482,3 +483,31 @@ def test_stream_live_turn_passes_through_provider_events(tmp_path: Path):
     ]
     assert any(event.type == TEXT_DELTA for event in events)
     assert any(record["type"] == PROVIDER_EVENT for record in records)
+
+
+def test_stream_live_turn_accepts_sdk_config_defaults(tmp_path: Path):
+    async def llm_stream(messages):
+        assert "BEGIN_OPENCLAW_INTERNAL_CONTEXT" in messages[0]["content"]
+        yield "Tamam."
+
+    async def collect_events() -> list[LiveTurnEvent]:
+        memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+        trace_sink = JsonlTraceSink(tmp_path / "trace" / "session_1.jsonl")
+        config = LiveSDKConfig(openclaw_compatible=True, trace_sink=trace_sink)
+        events: list[LiveTurnEvent] = []
+        async for event in memory.stream_live_turn(
+            LiveTurnContext(
+                subject_id="subj_123",
+                session_id="session_1",
+                user_utterance="Selam.",
+            ),
+            llm=llm_stream,
+            config=config,
+        ):
+            events.append(event)
+        return events
+
+    events = asyncio.run(collect_events())
+
+    assert events[-1].type == LIVE_TURN_COMPLETED
+    assert (tmp_path / "trace" / "session_1.jsonl").exists()

@@ -56,6 +56,7 @@ LiveTurnEventType = Literal[
     "session_summary_failed",
 ]
 UnknownIdentityFilePolicy = Literal["ignore", "error"]
+SentenceBoundaryPolicy = Literal["punctuation"]
 SubjectPathBuilder = Callable[[Path, str], Path]
 
 
@@ -176,6 +177,16 @@ class TraceSink(Protocol):
 
 
 @dataclass(frozen=True)
+class LiveSDKConfig:
+    openclaw_compatible: bool = False
+    max_results: int = 5
+    min_score: float = 0.0
+    corpus: str = "all"
+    sentence_boundary_policy: SentenceBoundaryPolicy = "punctuation"
+    trace_sink: TraceSink | None = None
+
+
+@dataclass(frozen=True)
 class JsonlTraceSink:
     path: Path
 
@@ -282,33 +293,43 @@ class SubjectMemory:
         *,
         llm: Callable[[list[dict[str, str]]], AsyncIterable[str] | Any],
         identity: LiveIdentity | None = None,
-        openclaw_compatible: bool = False,
-        max_results: int = 5,
-        min_score: float = 0.0,
-        corpus: str = "all",
+        config: LiveSDKConfig | None = None,
+        openclaw_compatible: bool | None = None,
+        max_results: int | None = None,
+        min_score: float | None = None,
+        corpus: str | None = None,
         trace_sink: TraceSink | None = None,
     ) -> AsyncIterable[LiveTurnEvent]:
+        resolved_config = _resolve_live_sdk_config(
+            config=config,
+            openclaw_compatible=openclaw_compatible,
+            max_results=max_results,
+            min_score=min_score,
+            corpus=corpus,
+            trace_sink=trace_sink,
+        )
+        _validate_sentence_boundary_policy(resolved_config.sentence_boundary_policy)
         yield _record_trace_event(
             LIVE_TURN_STARTED,
-            trace_sink=trace_sink,
+            trace_sink=resolved_config.trace_sink,
             data={"subject_id": context.subject_id, "session_id": context.session_id},
         )
         prepared = self.prepare_live_turn(
             context,
             identity=identity,
-            openclaw_compatible=openclaw_compatible,
-            max_results=max_results,
-            min_score=min_score,
-            corpus=corpus,
+            openclaw_compatible=resolved_config.openclaw_compatible,
+            max_results=resolved_config.max_results,
+            min_score=resolved_config.min_score,
+            corpus=resolved_config.corpus,
         )
         yield _record_trace_event(
             MEMORY_RECALL_COMPLETED,
-            trace_sink=trace_sink,
+            trace_sink=resolved_config.trace_sink,
             data={"results": prepared.memory_results, "memory_context": prepared.memory_context},
         )
         yield _record_trace_event(
             PROMPT_ASSEMBLED,
-            trace_sink=trace_sink,
+            trace_sink=resolved_config.trace_sink,
             data={"trace_context": prepared.trace_context, "runtime_context": prepared.runtime_context},
         )
 
@@ -319,7 +340,7 @@ class SubjectMemory:
                 if _is_provider_event_chunk(chunk):
                     yield _record_trace_event(
                         PROVIDER_EVENT,
-                        trace_sink=trace_sink,
+                        trace_sink=resolved_config.trace_sink,
                         data=dict(chunk),
                     )
                     continue
@@ -328,18 +349,22 @@ class SubjectMemory:
                     continue
                 assistant_parts.append(text)
                 sentence_buffer += text
-                yield _record_trace_event(TEXT_DELTA, trace_sink=trace_sink, text=text)
+                yield _record_trace_event(TEXT_DELTA, trace_sink=resolved_config.trace_sink, text=text)
                 sentences, sentence_buffer = _pop_complete_sentences(sentence_buffer)
                 for sentence in sentences:
-                    yield _record_trace_event(SENTENCE, trace_sink=trace_sink, text=sentence)
+                    yield _record_trace_event(
+                        SENTENCE, trace_sink=resolved_config.trace_sink, text=sentence
+                    )
 
             remainder = sentence_buffer.strip()
             if remainder:
-                yield _record_trace_event(SENTENCE, trace_sink=trace_sink, text=remainder)
+                yield _record_trace_event(
+                    SENTENCE, trace_sink=resolved_config.trace_sink, text=remainder
+                )
             assistant_text = "".join(assistant_parts).strip()
             yield _record_trace_event(
                 LIVE_TURN_COMPLETED,
-                trace_sink=trace_sink,
+                trace_sink=resolved_config.trace_sink,
                 data={
                     "assistant_text": assistant_text,
                     "trace_context": prepared.trace_context,
@@ -348,7 +373,7 @@ class SubjectMemory:
         except Exception as exc:
             _record_trace_event(
                 LIVE_TURN_FAILED,
-                trace_sink=trace_sink,
+                trace_sink=resolved_config.trace_sink,
                 data={
                     "error_type": type(exc).__name__,
                     "error": str(exc),
@@ -522,6 +547,33 @@ def _validate_safe_id(value: str, *, label: str) -> str:
     if not SAFE_ID_RE.fullmatch(value):
         raise ValueError(f"{label} is not filesystem-safe: {value}")
     return value
+
+
+def _resolve_live_sdk_config(
+    *,
+    config: LiveSDKConfig | None,
+    openclaw_compatible: bool | None,
+    max_results: int | None,
+    min_score: float | None,
+    corpus: str | None,
+    trace_sink: TraceSink | None,
+) -> LiveSDKConfig:
+    base = config or LiveSDKConfig()
+    return LiveSDKConfig(
+        openclaw_compatible=(
+            base.openclaw_compatible if openclaw_compatible is None else openclaw_compatible
+        ),
+        max_results=base.max_results if max_results is None else max_results,
+        min_score=base.min_score if min_score is None else min_score,
+        corpus=base.corpus if corpus is None else corpus,
+        sentence_boundary_policy=base.sentence_boundary_policy,
+        trace_sink=base.trace_sink if trace_sink is None else trace_sink,
+    )
+
+
+def _validate_sentence_boundary_policy(policy: str) -> None:
+    if policy != "punctuation":
+        raise ValueError(f"unsupported sentence boundary policy: {policy}")
 
 
 def _resolve_subject_workspace(
@@ -763,6 +815,7 @@ __all__ = [
     "LIVE_TURN_STARTED",
     "LiveIdentity",
     "LiveIdentityStore",
+    "LiveSDKConfig",
     "LiveTurnEventType",
     "MEMORY_RECALL_COMPLETED",
     "PROMPT_ASSEMBLED",
@@ -773,6 +826,7 @@ __all__ = [
     "SESSION_SUMMARY_SKIPPED",
     "SESSION_SUMMARY_STARTED",
     "SessionSummaryResult",
+    "SentenceBoundaryPolicy",
     "SubjectMemory",
     "SubjectPathBuilder",
     "TEXT_DELTA",

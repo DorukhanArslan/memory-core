@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 import json
 from pathlib import Path
 
-from memory_core import JsonlTraceSink, LiveIdentityStore, LiveTurnContext, SubjectMemory
+from memory_core import JsonlTraceSink, LiveIdentityStore, LiveSDKConfig, LiveTurnContext, SubjectMemory
 
 
 async def fake_streaming_llm(messages: list[dict[str, str]]) -> AsyncIterator[str]:
@@ -40,6 +40,7 @@ async def run_live_turn(workspace_dir: str | Path, identity_dir: str | Path) -> 
         reindex=False,
     )
     trace_sink = JsonlTraceSink(workspace / "trace" / "session_456.jsonl")
+    live_config = LiveSDKConfig(openclaw_compatible=True, trace_sink=trace_sink)
     context = LiveTurnContext(
         subject_id="subj_123",
         session_id="session_456",
@@ -60,8 +61,7 @@ async def run_live_turn(workspace_dir: str | Path, identity_dir: str | Path) -> 
         context,
         identity=identity,
         llm=fake_streaming_llm,
-        openclaw_compatible=True,
-        trace_sink=trace_sink,
+        config=live_config,
     ):
         if event.type == "sentence":
             tts_sentences.append(event.text)

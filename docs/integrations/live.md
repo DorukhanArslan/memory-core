@@ -88,7 +88,7 @@ memory = SubjectMemory.open(
 ## Streaming Turn
 
 ```python
-from memory_core import JsonlTraceSink, LiveIdentity, LiveTurnContext, SubjectMemory
+from memory_core import JsonlTraceSink, LiveIdentity, LiveSDKConfig, LiveTurnContext, SubjectMemory
 
 identity = LiveIdentity.from_dir("./identity")
 memory = SubjectMemory.open(
@@ -96,6 +96,10 @@ memory = SubjectMemory.open(
     subject_id="subj_123",
 )
 trace_sink = JsonlTraceSink("./memory-core-state/trace/session_456.jsonl")
+live_config = LiveSDKConfig(
+    openclaw_compatible=True,
+    trace_sink=trace_sink,
+)
 
 context = LiveTurnContext(
     subject_id="subj_123",
@@ -116,8 +120,7 @@ async for event in memory.stream_live_turn(
     context,
     identity=identity,
     llm=streaming_llm,
-    openclaw_compatible=True,
-    trace_sink=trace_sink,
+    config=live_config,
 ):
     if event.type == "text_delta":
         live_transcript.append(event.text)

@@ -31,6 +31,7 @@ LIVE_TURN_STARTED = "live_turn_started"
 MEMORY_RECALL_COMPLETED = "memory_recall_completed"
 PROMPT_ASSEMBLED = "prompt_assembled"
 TEXT_DELTA = "text_delta"
+PROVIDER_EVENT = "provider_event"
 SENTENCE = "sentence"
 LIVE_TURN_COMPLETED = "live_turn_completed"
 LIVE_TURN_FAILED = "live_turn_failed"
@@ -39,6 +40,7 @@ LiveTurnEventType = Literal[
     "memory_recall_completed",
     "prompt_assembled",
     "text_delta",
+    "provider_event",
     "sentence",
     "live_turn_completed",
     "live_turn_failed",
@@ -232,6 +234,13 @@ class SubjectMemory:
         sentence_buffer = ""
         try:
             async for chunk in _aiter_stream(llm(prepared.messages)):
+                if _is_provider_event_chunk(chunk):
+                    yield _record_trace_event(
+                        PROVIDER_EVENT,
+                        trace_sink=trace_sink,
+                        data=dict(chunk),
+                    )
+                    continue
                 text = _coerce_text_delta(chunk)
                 if not text:
                     continue
@@ -381,6 +390,10 @@ def _coerce_text_delta(chunk: Any) -> str:
     return ""
 
 
+def _is_provider_event_chunk(chunk: Any) -> bool:
+    return isinstance(chunk, Mapping) and bool(chunk.get("type")) and not _coerce_text_delta(chunk)
+
+
 def _pop_complete_sentences(buffer: str) -> tuple[list[str], str]:
     sentences: list[str] = []
     cursor = 0
@@ -401,6 +414,7 @@ __all__ = [
     "LiveTurnEventType",
     "MEMORY_RECALL_COMPLETED",
     "PROMPT_ASSEMBLED",
+    "PROVIDER_EVENT",
     "SENTENCE",
     "SubjectMemory",
     "TEXT_DELTA",

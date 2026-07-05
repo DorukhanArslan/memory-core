@@ -11,6 +11,7 @@ async def fake_streaming_llm(messages: list[dict[str, str]]) -> AsyncIterator[st
     assert any("Active workflow" in message["content"] for message in messages)
     for chunk in ("Tabii, ", "yardimci olayim. ", "Once kimliginizi dogrulayalim."):
         yield chunk
+    yield {"type": "tool_call", "name": "example.follow_up", "arguments": {"ok": True}}
 
 
 def fake_summary_llm(messages: list[dict[str, str]]) -> str:
@@ -58,6 +59,8 @@ async def run_live_turn(workspace_dir: str | Path, identity_dir: str | Path) -> 
     ):
         if event.type == "sentence":
             tts_sentences.append(event.text)
+        elif event.type == "provider_event":
+            pass
     return tts_sentences
 
 

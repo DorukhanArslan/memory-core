@@ -51,6 +51,7 @@ def test_public_api_exports_core_memory_surface():
         "LiveTurnEvent",
         "MEMORY_RECALL_COMPLETED",
         "PROMPT_ASSEMBLED",
+        "PROVIDER_EVENT",
         "PreparedLiveTurn",
         "SENTENCE",
         "SubjectMemory",

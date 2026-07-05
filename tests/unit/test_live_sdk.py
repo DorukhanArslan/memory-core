@@ -12,6 +12,7 @@ from memory_core.live import (
     LiveIdentity,
     LiveTurnContext,
     LiveTurnEvent,
+    PROVIDER_EVENT,
     SENTENCE,
     SubjectMemory,
     TEXT_DELTA,
@@ -168,6 +169,7 @@ def test_stream_live_turn_writes_append_only_trace_events(tmp_path: Path):
 def test_live_event_type_constants_are_exported():
     assert LIVE_TURN_STARTED == "live_turn_started"
     assert TEXT_DELTA == "text_delta"
+    assert PROVIDER_EVENT == "provider_event"
     assert SENTENCE == "sentence"
     assert LIVE_TURN_COMPLETED == "live_turn_completed"
     assert LIVE_TURN_FAILED == "live_turn_failed"
@@ -209,3 +211,41 @@ def test_stream_live_turn_traces_failure_before_reraising(tmp_path: Path):
         "error": "provider disconnected",
         "assistant_text": "Basladim.",
     }
+
+
+def test_stream_live_turn_passes_through_provider_events(tmp_path: Path):
+    async def provider_stream(messages):
+        yield {"type": "tool_call", "name": "lookup_order", "arguments": {"id": "ord_1"}}
+        yield {"delta": "Siparisinizi kontrol ediyorum."}
+
+    async def collect_events() -> list[LiveTurnEvent]:
+        memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+        trace_sink = JsonlTraceSink(tmp_path / "trace" / "session_1.jsonl")
+        events: list[LiveTurnEvent] = []
+        async for event in memory.stream_live_turn(
+            LiveTurnContext(
+                subject_id="subj_123",
+                session_id="session_1",
+                user_utterance="Siparisim nerede?",
+            ),
+            llm=provider_stream,
+            trace_sink=trace_sink,
+        ):
+            events.append(event)
+        return events
+
+    events = asyncio.run(collect_events())
+    provider_events = [event for event in events if event.type == PROVIDER_EVENT]
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "trace" / "session_1.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert provider_events == [
+        LiveTurnEvent(
+            PROVIDER_EVENT,
+            data={"type": "tool_call", "name": "lookup_order", "arguments": {"id": "ord_1"}},
+        )
+    ]
+    assert any(event.type == TEXT_DELTA for event in events)
+    assert any(record["type"] == PROVIDER_EVENT for record in records)

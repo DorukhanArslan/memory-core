@@ -98,12 +98,17 @@ Current event types:
 - `memory_recall_completed`
 - `prompt_assembled`
 - `text_delta`
+- `provider_event`
 - `sentence`
 - `live_turn_completed`
 - `live_turn_failed`
 
 `sentence` events are designed for TTS. `text_delta` events are useful for live
 UI, logs, and transcript buffers.
+
+`provider_event` passes through non-text provider chunks such as tool-call or
+function-call deltas. The SDK does not execute tools or mutate workflow state;
+the host runtime consumes these events and decides what to do.
 
 If the host-supplied LLM stream raises, the SDK records `live_turn_failed` to
 the trace sink with `error_type`, `error`, and partial `assistant_text`, then

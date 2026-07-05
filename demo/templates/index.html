@@ -54,12 +54,39 @@
       </header>
 
       <section class="workspace" aria-label="Chat memory workspace">
-        <section class="chat-panel" aria-label="Chat">
-          <div id="chat-log" class="chat-log" aria-live="polite"></div>
-          <form id="chat-form" class="composer">
-            <textarea id="chat-input" rows="3" placeholder="Type a chat turn to observe memory recall and flush behavior." aria-label="Chat message"></textarea>
-            <button type="submit">Send</button>
-          </form>
+        <section class="interaction-stack" aria-label="Interactive demos">
+          <section class="chat-panel" aria-label="Chat">
+            <div id="chat-log" class="chat-log" aria-live="polite"></div>
+            <form id="chat-form" class="composer">
+              <textarea id="chat-input" rows="3" placeholder="Type a chat turn to observe memory recall and flush behavior." aria-label="Chat message"></textarea>
+              <button type="submit">Send</button>
+            </form>
+          </section>
+
+          <section class="live-task-panel" aria-label="Live SDK Task">
+            <div class="panel-heading">
+              <h2>Live SDK Task</h2>
+              <span id="live-task-step">verify_identity</span>
+            </div>
+            <div class="live-task-controls">
+              <label>
+                Session
+                <input id="live-session-id" value="demo_session" aria-label="Live task session id">
+              </label>
+              <label>
+                Subject
+                <input id="live-subject-id" value="demo_subject" aria-label="Live task subject id">
+              </label>
+              <button id="live-task-reset" type="button">Reset</button>
+              <button id="live-task-summary" type="button">Summary</button>
+            </div>
+            <div id="live-task-state" class="live-task-state"></div>
+            <div id="live-task-log" class="live-task-log" aria-live="polite"></div>
+            <form id="live-task-form" class="composer">
+              <textarea id="live-task-input" rows="2" placeholder="Try: Doğum tarihim 12.04.1990" aria-label="Live task message"></textarea>
+              <button id="live-task-stream" type="submit">Stream</button>
+            </form>
+          </section>
         </section>
 
         <aside id="memory-pipeline" class="pipeline" aria-label="Memory pipeline">
@@ -169,9 +196,11 @@
         workspaceFiles: [],
         workspaceFileContents: {},
         engines: {},
-        config: {}
+        config: {},
+        liveTask: null
       };
       let streamingAssistantText = "";
+      let liveStreamingAssistantText = "";
       let selectedDailyMemoryPath = "";
       const DEFAULT_OPENAI = {
         baseUrl: "https://api.openai.com/v1",
@@ -207,6 +236,7 @@
         renderWorkspaceFiles();
         renderConfig();
         renderEngineStatus();
+        renderLiveTask();
       }
 
       function renderChat() {
@@ -329,6 +359,66 @@
         streamingAssistantText += text;
         const body = node.querySelector(".markdown-body");
         renderMarkdown(body, streamingAssistantText);
+        log.scrollTop = log.scrollHeight;
+      }
+
+      function renderLiveTask() {
+        const liveTask = state.liveTask || {};
+        const workflow = liveTask.workflow || {};
+        document.querySelector("#live-session-id").value = workflow.session_id || document.querySelector("#live-session-id").value || "demo_session";
+        document.querySelector("#live-subject-id").value = workflow.subject_id || document.querySelector("#live-subject-id").value || "demo_subject";
+        renderLiveTaskState(liveTask);
+        const log = document.querySelector("#live-task-log");
+        log.replaceChildren();
+        const transcript = liveTask.transcript || [];
+        if (!transcript.length) {
+          const empty = document.createElement("p");
+          empty.className = "empty-state";
+          empty.textContent = "Stream a live task turn to observe SDK events, sentence chunks, workflow state, and latency.";
+          log.append(empty);
+          return;
+        }
+        for (const [index, message] of transcript.entries()) {
+          const role = message.role === "user" ? "user" : "assistant";
+          log.append(messageNode(role, role === "user" ? `Live turn ${Math.floor(index / 2) + 1}` : "Live assistant", message.content));
+        }
+      }
+
+      function renderLiveTaskState(liveTask) {
+        const workflow = liveTask.workflow || {};
+        document.querySelector("#live-task-step").textContent = workflow.current_step || "unknown";
+        const panel = document.querySelector("#live-task-state");
+        panel.replaceChildren();
+        panel.append(kvGrid({
+          Step: workflow.current_step || "unknown",
+          Verified: workflow.verified === true,
+          "Requested slot": workflow.requested_slot || "",
+          Completed: workflow.completed === true,
+          "Trace path": liveTask.tracePath || "",
+        }));
+      }
+
+      function appendLiveTaskAssistant(text) {
+        const log = document.querySelector("#live-task-log");
+        const empty = log.querySelector(".empty-state");
+        if (empty) empty.remove();
+        let node = document.querySelector("#streaming-live-task-assistant");
+        if (!node) {
+          node = messageNode("assistant", "Live assistant", "");
+          node.id = "streaming-live-task-assistant";
+          log.append(node);
+        }
+        liveStreamingAssistantText += text;
+        renderMarkdown(node.querySelector(".markdown-body"), liveStreamingAssistantText);
+        log.scrollTop = log.scrollHeight;
+      }
+
+      function appendLiveTaskEvent(event, data) {
+        const log = document.querySelector("#live-task-log");
+        const row = document.createElement("div");
+        row.className = "live-event-row";
+        row.textContent = `${event} · ${data.elapsed_ms ?? "-"}ms${data.text ? ` · ${data.text}` : ""}`;
+        log.append(row);
         log.scrollTop = log.scrollHeight;
       }
 
@@ -952,6 +1042,100 @@
           throw new Error(data.error || "Streaming chat failed");
         }
       }
+
+      document.querySelector("#live-task-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await submitLiveTaskInput();
+      });
+
+      document.querySelector("#live-task-stream").onclick = async (event) => {
+        event.preventDefault();
+        await submitLiveTaskInput();
+      };
+
+      async function submitLiveTaskInput() {
+        const input = document.querySelector("#live-task-input");
+        try {
+          await sendLiveTaskMessage(input.value);
+          input.value = "";
+        } catch (error) {
+          showOutput({error: error.message});
+          activateTab("tool-inspector");
+        }
+      }
+
+      async function sendLiveTaskMessage(message) {
+        const trimmed = message.trim();
+        if (!trimmed) return;
+        const log = document.querySelector("#live-task-log");
+        liveStreamingAssistantText = "";
+        const existing = document.querySelector("#streaming-live-task-assistant");
+        if (existing) existing.remove();
+        const empty = log.querySelector(".empty-state");
+        if (empty) empty.remove();
+        log.append(messageNode("user", "Live user", trimmed));
+        const response = await fetch("/api/live-task/turn-stream", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            sessionId: document.querySelector("#live-session-id").value.trim() || "demo_session",
+            subjectId: document.querySelector("#live-subject-id").value.trim() || "demo_subject",
+            message: trimmed
+          })
+        });
+        if (!response.ok || !response.body) {
+          throw new Error(response.statusText || "Live task stream failed");
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const {value, done} = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, {stream: true});
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+          for (const part of parts) handleLiveTaskSseEvent(part);
+        }
+        if (buffer.trim()) handleLiveTaskSseEvent(buffer);
+      }
+
+      function handleLiveTaskSseEvent(block) {
+        const eventLine = block.split("\n").find((line) => line.startsWith("event: "));
+        const dataLine = block.split("\n").find((line) => line.startsWith("data: "));
+        if (!eventLine || !dataLine) return;
+        const event = eventLine.replace("event: ", "").trim();
+        const data = JSON.parse(dataLine.replace("data: ", ""));
+        if (event === "text_delta") {
+          appendLiveTaskAssistant(data.text || "");
+        } else if (event === "sentence" || event === "provider_event" || event === "live_turn_completed") {
+          appendLiveTaskEvent(event, data);
+        } else if (event === "live_task_state") {
+          state.liveTask = data;
+          renderLiveTaskState(data);
+        } else if (event === "error") {
+          throw new Error(data.error || "Live task stream failed");
+        }
+      }
+
+      document.querySelector("#live-task-reset").onclick = async () => {
+        state.liveTask = await requestJson("/api/live-task/reset", {
+          sessionId: document.querySelector("#live-session-id").value.trim() || "demo_session",
+          subjectId: document.querySelector("#live-subject-id").value.trim() || "demo_subject"
+        });
+        renderLiveTask();
+      };
+
+      document.querySelector("#live-task-summary").onclick = async () => {
+        const payload = await requestJson("/api/live-task/summary", {
+          sessionId: document.querySelector("#live-session-id").value.trim() || "demo_session",
+          subjectId: document.querySelector("#live-subject-id").value.trim() || "demo_subject"
+        });
+        state.liveTask = payload.state;
+        showOutput(payload.summary);
+        activateTab("tool-inspector");
+        renderLiveTaskState(payload.state);
+      };
 
       document.querySelector("#manual-flush").onclick = async () => {
         try {

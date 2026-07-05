@@ -126,6 +126,12 @@ def test_demo_home_loads():
     assert "OpenClaw defaults" in response.text
     assert "streamingAssistantText" in response.text
     assert "renderMarkdown(body, streamingAssistantText)" in response.text
+    assert "Live SDK Task" in response.text
+    assert "live-task-form" in response.text
+    assert "/api/live-task/turn-stream" in response.text
+    assert "/api/live-task/reset" in response.text
+    assert "/api/live-task/summary" in response.text
+    assert "renderLiveTask" in response.text
     assert 'textContent += text' not in response.text
     assert "Fake</option>" not in response.text
     assert 'id="auto-flush" type="checkbox" checked' in response.text
@@ -176,7 +182,7 @@ def test_demo_css_uses_full_screen_layout():
     assert response.status_code == 200
     assert "color-scheme: dark" in response.text
     assert "height: 100dvh" in response.text
-    assert "grid-template-rows: auto minmax(0, 1fr) minmax(260px, 0.45fr)" in response.text
+    assert "grid-template-rows: auto minmax(380px, 1fr) minmax(180px, 0.35fr)" in response.text
     assert ".tab-panels" in response.text
     assert ".controls-panel" in response.text
     assert ".controls-panel[open] summary::before" in response.text
@@ -257,6 +263,8 @@ def test_chat_state_endpoint_returns_engines_and_memory_files():
     assert payload["config"]["promotion"]["upstreamDefaults"]["enabled"] is False
     assert payload["config"]["promotion"]["upstreamDefaults"]["limit"] == 10
     assert payload["config"]["promotion"]["upstreamDefaults"]["maxAgeDays"] == 30
+    assert payload["liveTask"]["workflow"]["current_step"] == "verify_identity"
+    assert payload["liveTask"]["tracePath"].endswith(".jsonl")
     assert payload["turns"] == []
 
 

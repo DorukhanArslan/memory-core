@@ -116,7 +116,7 @@ label {
 
 .app-shell {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) minmax(260px, 0.45fr);
+  grid-template-rows: auto minmax(380px, 1fr) minmax(180px, 0.35fr);
   gap: 12px;
   width: 100%;
   height: 100dvh;
@@ -126,6 +126,7 @@ label {
 
 .topbar,
 .chat-panel,
+.live-task-panel,
 .pipeline,
 .tab-panel {
   border: 1px solid var(--line);
@@ -259,12 +260,17 @@ label {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.9fr);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.78fr) minmax(340px, 0.86fr);
   gap: 12px;
   min-height: 0;
 }
 
+.interaction-stack {
+  display: contents;
+}
+
 .chat-panel,
+.live-task-panel,
 .pipeline {
   min-height: 0;
 }
@@ -511,14 +517,86 @@ label {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
+  min-width: 0;
   border-top: 1px solid var(--line);
   background: var(--panel-muted);
   padding: 12px;
 }
 
+.composer textarea {
+  min-width: 0;
+}
+
 .composer button {
   align-self: end;
   min-width: 82px;
+}
+
+.live-task-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 12px;
+}
+
+.live-task-controls {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) auto auto;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+.live-task-state {
+  max-height: 74px;
+  margin-bottom: 10px;
+  overflow: auto;
+}
+
+.live-task-log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 0 10px;
+}
+
+.live-task-panel .composer {
+  grid-template-columns: 1fr;
+  gap: 7px;
+  padding: 8px;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.live-task-panel .composer textarea,
+.live-task-panel .composer button {
+  max-width: 100%;
+}
+
+.live-task-panel .composer textarea {
+  min-height: 42px;
+  height: 42px;
+}
+
+.live-task-panel .composer button {
+  width: 100%;
+}
+
+.live-event-row {
+  align-self: flex-start;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-muted);
+  padding: 6px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .pipeline {
@@ -703,9 +781,17 @@ label {
 
   .topbar,
   .workspace,
+  .interaction-stack,
   .file-list,
   .inspector-grid {
     grid-template-columns: 1fr;
+  }
+
+  .interaction-stack {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    overflow: visible;
   }
 
   .toolbar {
@@ -713,6 +799,7 @@ label {
   }
 
   .chat-panel,
+  .live-task-panel,
   .pipeline {
     min-height: auto;
   }
@@ -729,6 +816,7 @@ label {
 
   .topbar,
   .chat-panel,
+  .live-task-panel,
   .pipeline,
   .tab-panel {
     border-left: 0;
@@ -737,12 +825,14 @@ label {
 
   .toolbar,
   .composer,
+  .live-task-controls,
   .daily-memory-controls {
     grid-template-columns: 1fr;
   }
 
   .toolbar button,
   .composer button,
+  .live-task-controls button,
   .daily-memory-controls button {
     width: 100%;
   }

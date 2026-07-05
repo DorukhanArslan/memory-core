@@ -361,6 +361,7 @@ def _state_payload() -> dict[str, Any]:
             "dreamingSweep": DREAMING_SWEEP,
             "memoryAudit": MEMORY_AUDIT,
             "memoryRepair": MEMORY_REPAIR,
+            "liveTask": _serialize_live_task_state(LIVE_TASK_DEMO.state()),
             "config": {
                 "workspace": str(config.workspace_dir),
                 "timezone": DEMO_TIMEZONE,

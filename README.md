@@ -61,6 +61,9 @@ See [Package Boundary](docs/package_boundary.md) for what belongs to core
 memory, runtime adapters, demo code, and out-of-scope host runtime behavior.
 See [LangGraph Integration](docs/integrations/langgraph.md) for a minimal
 `state -> memory_context` adapter example.
+See [Live SDK Integration](docs/integrations/live.md) for streaming turn
+assembly, sentence-level TTS events, subject-scoped memory, and post-session
+summary writes.
 
 ## Setup
 

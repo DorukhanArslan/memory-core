@@ -1,7 +1,9 @@
+import asyncio
 from pathlib import Path
 
 import examples.basic_usage as basic_usage
 import examples.chatbot_memory as chatbot_memory
+import examples.live_streaming as live_streaming
 from memory_core import Memory
 from memory_core.embeddings.base import FakeEmbeddingProvider
 
@@ -131,3 +133,23 @@ def test_chatbot_memory_does_not_expose_test_clock_control(tmp_path: Path):
         assert "now_ms" in str(exc)
     else:
         raise AssertionError("chat_with_memory should not expose now_ms")
+
+
+def test_live_streaming_example_emits_tts_sentences(tmp_path: Path):
+    identity_dir = tmp_path / "identity"
+    live_streaming.seed_identity(identity_dir)
+
+    sentences = asyncio.run(live_streaming.run_live_turn(tmp_path, identity_dir))
+
+    assert sentences == [
+        "Tabii, yardimci olayim.",
+        "Once kimliginizi dogrulayalim.",
+    ]
+
+
+def test_live_streaming_example_records_session_summary(tmp_path: Path):
+    memory_path = live_streaming.record_session_summary(tmp_path)
+
+    assert memory_path.startswith("memory/")
+    memory_file = tmp_path / "subjects" / "subj_123" / memory_path
+    assert "evening delivery" in memory_file.read_text(encoding="utf-8")

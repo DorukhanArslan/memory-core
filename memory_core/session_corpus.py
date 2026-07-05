@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from memory_core.transcript_tree import select_session_transcript_leaf_controlled_path
+
 
 @dataclass(frozen=True)
 class SessionCorpusFile:
@@ -41,8 +43,13 @@ class MemoryCoreSessionCorpus:
         return files
 
     def read_index_text(self, file: SessionCorpusFile) -> str:
+        entries = _read_jsonl(file.abs_path)
+        # OpenClaw readers resolve the active leaf path once navigation
+        # controls exist; legacy transcripts keep flat file-order rendering
+        # (src/agents/cli-runner/session-history.ts).
+        selected = select_session_transcript_leaf_controlled_path(entries)
         lines: list[str] = []
-        for entry in _read_jsonl(file.abs_path):
+        for entry in entries if selected is None else selected:
             message = entry.get("message") if isinstance(entry, dict) else None
             if not isinstance(message, dict):
                 continue

@@ -6,14 +6,20 @@ from memory_core.memory_flush import (
     DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR,
     DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES,
     DEFAULT_MEMORY_FLUSH_SOFT_TOKENS,
+    MAX_FLUSH_ERROR_LENGTH,
+    MAX_FLUSH_FAILURES,
     SILENT_REPLY_TOKEN,
     UnsafeMemoryFlushTargetError,
     build_memory_flush_plan,
     explain_memory_flush_trigger,
+    followup_uses_cli_runtime,
     has_already_flushed_for_current_compaction,
+    record_memory_flush_failure,
+    record_memory_flush_success,
     should_force_memory_flush_by_transcript_size,
     should_run_memory_flush_trigger,
     should_run_memory_flush,
+    truncate_memory_flush_error_message,
     validate_daily_memory_target,
 )
 
@@ -297,6 +303,156 @@ def test_explain_memory_flush_trigger_reports_under_threshold_reason():
     assert decision.reason == "under_threshold"
     assert decision.total_tokens == 10_000
     assert decision.threshold == 70_000
+
+
+# Flush failure exhaustion: OpenClaw commit 4e84d0eaa5,
+# src/auto-reply/reply/agent-runner-memory.ts:77-79 (constants) and
+# 1432-1533 (success reset / failure persistence / exhaustion suppression).
+
+
+def test_max_flush_failure_constants_match_openclaw():
+    assert MAX_FLUSH_FAILURES == 3
+    assert MAX_FLUSH_ERROR_LENGTH == 200
+
+
+def test_truncate_memory_flush_error_message_matches_openclaw_boundary():
+    exact = "e" * MAX_FLUSH_ERROR_LENGTH
+    assert truncate_memory_flush_error_message(exact) == exact
+
+    over = "e" * (MAX_FLUSH_ERROR_LENGTH + 50)
+    truncated = truncate_memory_flush_error_message(over)
+    assert len(truncated) == MAX_FLUSH_ERROR_LENGTH
+    assert truncated == "e" * (MAX_FLUSH_ERROR_LENGTH - 1) + "…"
+
+    assert truncate_memory_flush_error_message(RuntimeError("  boom  ")) == "boom"
+
+
+def test_record_memory_flush_failure_persists_failure_fields():
+    outcome = record_memory_flush_failure(
+        {"totalTokens": 90_000, "compactionCount": 2},
+        now_ms=1_777_824_000_000,
+        error=RuntimeError("flush run failed"),
+    )
+
+    assert outcome.failure_count == 1
+    assert outcome.exhausted is False
+    assert outcome.entry["memoryFlushFailureCount"] == 1
+    assert outcome.entry["memoryFlushLastFailedAt"] == 1_777_824_000_000
+    assert outcome.entry["memoryFlushLastFailureError"] == "flush run failed"
+    # Below MAX_FLUSH_FAILURES the duplicate guard must stay open for retries.
+    assert "memoryFlushAt" not in outcome.entry
+    assert "memoryFlushCompactionCount" not in outcome.entry
+    assert not has_already_flushed_for_current_compaction(outcome.entry)
+
+
+def test_record_memory_flush_failure_exhausts_after_three_consecutive_failures():
+    entry = {"totalTokens": 99_000, "compactionCount": 2}
+    for attempt in range(1, MAX_FLUSH_FAILURES + 1):
+        outcome = record_memory_flush_failure(
+            entry, now_ms=1_777_824_000_000 + attempt, error=f"failure {attempt}"
+        )
+        entry = outcome.entry
+        assert outcome.failure_count == attempt
+        assert outcome.exhausted is (attempt == MAX_FLUSH_FAILURES)
+
+    # Exhaustion stamps memoryFlushAt + memoryFlushCompactionCount so the
+    # same-compaction duplicate guard suppresses retries.
+    assert entry["memoryFlushAt"] == 1_777_824_000_000 + MAX_FLUSH_FAILURES
+    assert entry["memoryFlushCompactionCount"] == 2
+    assert has_already_flushed_for_current_compaction(entry)
+    decision = explain_memory_flush_trigger(
+        entry=entry,
+        context_window_tokens=100_000,
+        reserve_tokens_floor=5_000,
+        soft_threshold_tokens=2_000,
+    )
+    assert decision.should_flush is False
+    assert decision.reason == "already_flushed"
+
+
+def test_flush_retries_resume_after_next_compaction_increments_count():
+    entry = {"totalTokens": 99_000, "compactionCount": 2}
+    for attempt in range(MAX_FLUSH_FAILURES):
+        entry = record_memory_flush_failure(
+            entry, now_ms=1_777_824_000_000 + attempt, error="boom"
+        ).entry
+    assert has_already_flushed_for_current_compaction(entry)
+
+    next_cycle = {**entry, "compactionCount": 3}
+
+    assert not has_already_flushed_for_current_compaction(next_cycle)
+    assert should_run_memory_flush(
+        entry=next_cycle,
+        context_window_tokens=100_000,
+        reserve_tokens_floor=5_000,
+        soft_threshold_tokens=2_000,
+    )
+
+
+def test_record_memory_flush_success_resets_failure_fields():
+    entry = {
+        "totalTokens": 90_000,
+        "compactionCount": 4,
+        "memoryFlushFailureCount": 2,
+        "memoryFlushLastFailedAt": 1_777_823_000_000,
+        "memoryFlushLastFailureError": "boom",
+    }
+
+    updated = record_memory_flush_success(entry, now_ms=1_777_824_000_000)
+
+    assert updated["memoryFlushAt"] == 1_777_824_000_000
+    assert updated["memoryFlushCompactionCount"] == 4
+    assert updated["memoryFlushFailureCount"] == 0
+    # Cleared fields are persisted as undefined upstream, i.e. dropped keys.
+    assert "memoryFlushLastFailedAt" not in updated
+    assert "memoryFlushLastFailureError" not in updated
+    assert has_already_flushed_for_current_compaction(updated)
+
+
+def test_record_memory_flush_success_honors_explicit_flushed_compaction_count():
+    updated = record_memory_flush_success(
+        {"compactionCount": 7},
+        now_ms=1_777_824_000_000,
+        flushed_compaction_count=6,
+    )
+
+    assert updated["memoryFlushCompactionCount"] == 6
+
+
+# CLI runtime skip: followupUsesCliRuntime treats both CLI providers and
+# session-pinned CLI runtime aliases as CLI runs
+# (src/auto-reply/reply/agent-runner-memory.ts:263-278).
+
+
+def test_followup_uses_cli_runtime_for_direct_cli_provider():
+    assert followup_uses_cli_runtime(
+        provider="claude-cli",
+        cli_providers=("claude-cli",),
+    )
+    assert not followup_uses_cli_runtime(
+        provider="anthropic",
+        cli_providers=("claude-cli",),
+    )
+
+
+def test_followup_uses_cli_runtime_for_session_pinned_runtime_alias():
+    assert followup_uses_cli_runtime(
+        provider="openai",
+        session_entry={"agentRuntimeOverride": " Codex "},
+        cli_runtime_bindings=(("openai", "codex"),),
+    )
+    # An alias bound to a different provider does not flag this followup.
+    assert not followup_uses_cli_runtime(
+        provider="anthropic",
+        session_entry={"agentRuntimeOverride": "codex"},
+        cli_runtime_bindings=(("openai", "codex"),),
+    )
+    # No pinned runtime override means no alias-based skip.
+    assert not followup_uses_cli_runtime(
+        provider="openai",
+        session_entry={},
+        cli_runtime_bindings=(("openai", "codex"),),
+    )
 
 
 def test_validate_daily_memory_target_accepts_only_canonical_daily_file():

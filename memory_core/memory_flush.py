@@ -13,6 +13,8 @@ SILENT_REPLY_TOKEN = "NO_REPLY"
 DEFAULT_MEMORY_FLUSH_SOFT_TOKENS = 4000
 DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES = 2 * 1024 * 1024
 DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR = 20_000
+MAX_FLUSH_FAILURES = 3
+MAX_FLUSH_ERROR_LENGTH = 200
 
 MEMORY_FLUSH_TARGET_HINT = (
     "Store durable memories only in memory/YYYY-MM-DD.md (create memory/ if needed)."
@@ -70,6 +72,14 @@ class MemoryFlushPlan:
     system_prompt: str
     relative_path: str
     model: str | None = None
+
+
+@dataclass(frozen=True)
+class MemoryFlushFailureOutcome:
+    entry: dict[str, Any]
+    failure_count: int
+    exhausted: bool
+    error: str
 
 
 @dataclass(frozen=True)
@@ -330,6 +340,97 @@ def should_force_memory_flush_by_transcript_size(
         and force_flush_transcript_bytes > 0
         and transcript_byte_size >= force_flush_transcript_bytes
     )
+
+
+def truncate_memory_flush_error_message(error: object) -> str:
+    message = str(error).strip() or str(error)
+    if len(message) > MAX_FLUSH_ERROR_LENGTH:
+        return f"{message[: MAX_FLUSH_ERROR_LENGTH - 1]}…"
+    return message
+
+
+def record_memory_flush_success(
+    entry: dict[str, Any],
+    *,
+    now_ms: int,
+    flushed_compaction_count: int | None = None,
+) -> dict[str, Any]:
+    """Persist a successful flush: stamp the duplicate guard, reset failure state."""
+    resolved_count = (
+        flushed_compaction_count
+        if flushed_compaction_count is not None
+        else int(entry.get("compactionCount") or 0)
+    )
+    next_entry = dict(entry)
+    next_entry["memoryFlushAt"] = now_ms
+    next_entry["memoryFlushCompactionCount"] = resolved_count
+    next_entry["memoryFlushFailureCount"] = 0
+    next_entry.pop("memoryFlushLastFailedAt", None)
+    next_entry.pop("memoryFlushLastFailureError", None)
+    return next_entry
+
+
+def record_memory_flush_failure(
+    entry: dict[str, Any],
+    *,
+    now_ms: int,
+    error: object,
+) -> MemoryFlushFailureOutcome:
+    """Persist one flush failure; exhaust after MAX_FLUSH_FAILURES consecutive failures.
+
+    Exhaustion writes memoryFlushAt + memoryFlushCompactionCount so the
+    same-compaction duplicate guard suppresses retries until the next
+    compaction increments compactionCount.
+    """
+    truncated_error = truncate_memory_flush_error_message(error)
+    previous_count = entry.get("memoryFlushFailureCount")
+    if not isinstance(previous_count, int | float) or not _is_finite_number(previous_count):
+        previous_count = 0
+    failure_count = max(0, int(previous_count)) + 1
+    next_entry = dict(entry)
+    next_entry["memoryFlushFailureCount"] = failure_count
+    next_entry["memoryFlushLastFailedAt"] = now_ms
+    next_entry["memoryFlushLastFailureError"] = truncated_error
+    exhausted = failure_count >= MAX_FLUSH_FAILURES
+    if exhausted:
+        next_entry["memoryFlushAt"] = now_ms
+        next_entry["memoryFlushCompactionCount"] = int(next_entry.get("compactionCount") or 0)
+    return MemoryFlushFailureOutcome(
+        entry=next_entry,
+        failure_count=failure_count,
+        exhausted=exhausted,
+        error=truncated_error,
+    )
+
+
+def followup_uses_cli_runtime(
+    *,
+    provider: str | None,
+    session_entry: dict[str, Any] | None = None,
+    cli_providers: tuple[str, ...] | list[str] | set[str] = (),
+    cli_runtime_bindings: tuple[tuple[str, str], ...] | list[tuple[str, str]] = (),
+) -> bool:
+    """Model OpenClaw's followupUsesCliRuntime CLI skip flag.
+
+    A followup uses a CLI runtime when its provider is itself a CLI backend, or
+    when the session entry pins a CLI runtime alias registered for that
+    provider via agentRuntimeOverride.
+    """
+    provider_id = _normalize_provider_id(provider)
+    if provider_id and any(_normalize_provider_id(item) == provider_id for item in cli_providers):
+        return True
+    runtime = _normalize_provider_id((session_entry or {}).get("agentRuntimeOverride"))
+    if not provider_id or not runtime:
+        return False
+    return any(
+        _normalize_provider_id(bound_provider) == provider_id
+        and _normalize_provider_id(bound_runtime) == runtime
+        for bound_provider, bound_runtime in cli_runtime_bindings
+    )
+
+
+def _normalize_provider_id(value: Any) -> str:
+    return value.strip().lower() if isinstance(value, str) else ""
 
 
 def has_already_flushed_for_current_compaction(entry: dict[str, Any]) -> bool:

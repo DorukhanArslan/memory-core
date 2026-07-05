@@ -108,6 +108,7 @@ class FakeOracle:
                         "enabled": True,
                         "limit": 7,
                         "recencyHalfLifeDays": 10,
+                        "maxPromotedSnippetTokens": 160,
                     },
                 }
             return {
@@ -121,6 +122,7 @@ class FakeOracle:
                     "enabled": False,
                     "limit": 10,
                     "recencyHalfLifeDays": 14,
+                    "maxPromotedSnippetTokens": 160,
                 },
             }
         if payload["operation"] == "recordShortTermRecalls":
@@ -257,6 +259,7 @@ def test_build_configured_deep_policy_trace_matches_openclaw_config():
         "enabled": True,
         "limit": 7,
         "recencyHalfLifeDays": 10,
+        "maxPromotedSnippetTokens": 160,
     }
     assert trace["openclaw"]["values"] == trace["python"]["values"]
 

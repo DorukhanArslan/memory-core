@@ -72,6 +72,10 @@ class ProviderOverflowRecoveryDecision:
     suppress_next_user_message_persistence: bool
     next_prompt_override: str | None
     tokens_for_compaction: int | None
+    # Mirrors run.ts: the post-compaction truncation on the compact_then_truncate
+    # route and the failed-compaction overflow fallback exempt trailing fresh
+    # tool results from aggregate reduction.
+    protect_trailing_tool_results: bool = False
     error_kind: str | None = None
     user_visible_error_text: str | None = None
 
@@ -300,6 +304,7 @@ def decide_provider_overflow_recovery(
             should_retry=True,
             should_compact=False,
             should_truncate_tool_results=preflight_route == "compact_then_truncate",
+            protect_trailing_tool_results=preflight_route == "compact_then_truncate",
             next_overflow_compaction_attempts=overflow_compaction_attempts,
             continue_from_current_transcript=continue_from_transcript,
             suppress_next_user_message_persistence=suppress,
@@ -313,6 +318,7 @@ def decide_provider_overflow_recovery(
             should_retry=False,
             should_compact=False,
             should_truncate_tool_results=True,
+            protect_trailing_tool_results=preflight_route == "compact_then_truncate",
             next_overflow_compaction_attempts=overflow_compaction_attempts,
             continue_from_current_transcript=False,
             suppress_next_user_message_persistence=False,

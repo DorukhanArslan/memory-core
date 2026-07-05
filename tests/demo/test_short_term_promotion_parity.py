@@ -92,7 +92,7 @@ def test_concept_tags_match_openclaw_vocabulary_for_stable_snippets_and_paths():
     assert promotion_module._derive_concept_tags(
         "memory/2026-04-03.md",
         "Move backups to S3 Glacier and sync QMD router notes.",
-    ) == ["backup", "backups", "glacier", "qmd", "router", "sync"]
+    ) == ["backup", "backups", "glacier", "qmd", "router", "s3", "sync"]
 
 
 def test_concept_tags_match_openclaw_vocabulary_for_multilingual_short_term_fixture():

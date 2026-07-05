@@ -4,7 +4,10 @@ from pathlib import Path
 import pytest
 
 from demo.openclaw_run_loop_oracle import run_overflow_run_loop_oracle
-from memory_core.overflow_recovery import MAX_OVERFLOW_COMPACTION_ATTEMPTS
+from memory_core.overflow_recovery import (
+    MAX_OVERFLOW_COMPACTION_ATTEMPTS,
+    decide_provider_overflow_recovery,
+)
 
 
 pytestmark = pytest.mark.skipif(
@@ -37,6 +40,15 @@ def test_real_openclaw_run_loop_overflow_recovery_scenarios():
         "errorKind": None,
         "payloadIsError": None,
     }
+    fallback_decision = decide_provider_overflow_recovery(
+        error_text="request_too_large: Request size exceeds model context window",
+        overflow_compaction_attempts=1,
+        attempt_compaction_count=0,
+        compaction_attempted=True,
+        compaction_succeeded=False,
+        has_oversized_tool_results=True,
+    )
+    assert fallback_decision.action == "truncate_tool_results"
     assert scenarios["failed_compaction_uses_tool_truncation_fallback"] == {
         "name": "failed_compaction_uses_tool_truncation_fallback",
         "attemptCalls": 2,
@@ -44,7 +56,20 @@ def test_real_openclaw_run_loop_overflow_recovery_scenarios():
         "truncateCalls": 1,
         "errorKind": None,
         "payloadIsError": None,
+        # run.ts:2937 only protects trailing tool results on the
+        # compact_then_truncate preflight route; this scenario has none.
+        "truncateProtectTrailing": fallback_decision.protect_trailing_tool_results,
     }
+    post_compaction_decision = decide_provider_overflow_recovery(
+        error_text="Context overflow: prompt too large for the model (precheck).",
+        overflow_compaction_attempts=1,
+        attempt_compaction_count=0,
+        preflight_route="compact_then_truncate",
+        compaction_attempted=True,
+        compaction_succeeded=True,
+    )
+    assert post_compaction_decision.action == "retry_after_compaction"
+    assert post_compaction_decision.should_truncate_tool_results is True
     assert scenarios["compact_then_truncate_runs_after_compaction"] == {
         "name": "compact_then_truncate_runs_after_compaction",
         "attemptCalls": 2,
@@ -52,6 +77,9 @@ def test_real_openclaw_run_loop_overflow_recovery_scenarios():
         "truncateCalls": 1,
         "errorKind": None,
         "payloadIsError": None,
+        # run.ts:2873 sets protectTrailingToolResults on the post-compaction
+        # truncation of the compact_then_truncate route.
+        "truncateProtectTrailing": post_compaction_decision.protect_trailing_tool_results,
     }
     assert scenarios["assistant_error_overflow_compacts_and_retries"] == {
         "name": "assistant_error_overflow_compacts_and_retries",

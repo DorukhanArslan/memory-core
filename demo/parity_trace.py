@@ -10,6 +10,7 @@ from demo.short_term_promotion import (
     DEFAULT_DEEP_DREAMING_ENABLED,
     DEFAULT_DEEP_DREAMING_LIMIT,
     DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS,
+    DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
     DEFAULT_PROMOTION_MIN_RECALL_COUNT,
     DEFAULT_PROMOTION_MIN_SCORE,
     DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
@@ -176,6 +177,10 @@ def _python_deep_policy_values(config: dict[str, Any]) -> dict[str, Any]:
         "recencyHalfLifeDays": _non_negative_int(
             deep.get("recencyHalfLifeDays"), DEFAULT_RECENCY_HALF_LIFE_DAYS
         ),
+        "maxPromotedSnippetTokens": _positive_int(
+            deep.get("maxPromotedSnippetTokens"),
+            DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
+        ),
     }
 
 
@@ -199,6 +204,7 @@ def _select_deep_policy_values(values: dict[str, Any]) -> dict[str, Any]:
         "enabled": values.get("enabled"),
         "limit": values.get("limit"),
         "recencyHalfLifeDays": values.get("recencyHalfLifeDays"),
+        "maxPromotedSnippetTokens": values.get("maxPromotedSnippetTokens"),
     }
 
 

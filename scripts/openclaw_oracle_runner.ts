@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -43,6 +44,7 @@ type Payload = {
   maxAgeDays?: number;
   recencyHalfLifeDays?: number;
   memoryFileMaxChars?: number;
+  maxPromotedSnippetTokens?: number;
   entry?: Record<string, unknown>;
   tokenCount?: number;
   contextWindowTokens?: number;
@@ -51,6 +53,8 @@ type Payload = {
   reserveTokens?: number;
   toolResultMaxChars?: number;
   maxChars?: number;
+  aggregateMaxChars?: number;
+  protectTrailingToolResults?: boolean;
   text?: string;
   erroredAssistantResultPolicy?: "preserve" | "drop";
   systemPrompt?: string;
@@ -68,6 +72,7 @@ type PromotionPolicy = {
   minUniqueQueries?: number;
   maxAgeDays?: number;
   recencyHalfLifeDays?: number;
+  maxPromotedSnippetTokens?: number;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -112,6 +117,91 @@ async function readStdin(): Promise<Payload> {
 async function importFromRepo(repoPath: string, relativePath: string) {
   const fullPath = path.join(repoPath, relativePath);
   return await import(pathToFileURL(fullPath).href);
+}
+
+const SHORT_TERM_RECALL_JSON = path.join("memory", ".dreams", "short-term-recall.json");
+const SHORT_TERM_PHASE_SIGNAL_JSON = path.join("memory", ".dreams", "phase-signals.json");
+
+type PromotionStateModule = {
+  __testing: {
+    readRecallStore: (workspaceDir: string, nowIso: string) => Promise<Record<string, unknown>>;
+    readPhaseSignalStore: (
+      workspaceDir: string,
+      nowIso: string,
+    ) => Promise<Record<string, unknown>>;
+    writeRawRecallStore: (workspaceDir: string, raw: unknown) => Promise<void>;
+    writeRawPhaseSignalStore: (workspaceDir: string, raw: unknown) => Promise<void>;
+  };
+};
+
+async function readJsonFixture(filePath: string): Promise<unknown | undefined> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(filePath, "utf-8");
+  } catch {
+    return undefined;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // Unreadable stores behave like missing stores upstream.
+    return undefined;
+  }
+}
+
+async function seedPromotionStateFromWorkspace(
+  promotion: PromotionStateModule,
+  workspaceDir?: string,
+): Promise<void> {
+  if (!workspaceDir) {
+    return;
+  }
+  const recallRaw = await readJsonFixture(path.join(workspaceDir, SHORT_TERM_RECALL_JSON));
+  if (recallRaw !== undefined) {
+    await promotion.__testing.writeRawRecallStore(workspaceDir, recallRaw);
+  }
+  const phaseRaw = await readJsonFixture(path.join(workspaceDir, SHORT_TERM_PHASE_SIGNAL_JSON));
+  if (phaseRaw !== undefined) {
+    await promotion.__testing.writeRawPhaseSignalStore(workspaceDir, phaseRaw);
+  }
+}
+
+function withSortedEntries(store: Record<string, unknown>): Record<string, unknown> {
+  const entries = isRecord(store.entries) ? store.entries : {};
+  return {
+    ...store,
+    entries: Object.fromEntries(
+      Object.entries(entries).toSorted(([a], [b]) => a.localeCompare(b)),
+    ),
+  };
+}
+
+async function exportPromotionStateToWorkspace(
+  promotion: PromotionStateModule,
+  workspaceDir: string | undefined,
+  nowMs: number,
+): Promise<void> {
+  if (!workspaceDir) {
+    return;
+  }
+  const nowIso = new Date(nowMs).toISOString();
+  const [recallStore, phaseStore] = await Promise.all([
+    promotion.__testing.readRecallStore(workspaceDir, nowIso),
+    promotion.__testing.readPhaseSignalStore(workspaceDir, nowIso),
+  ]);
+  await fs.mkdir(path.join(workspaceDir, "memory", ".dreams"), { recursive: true });
+  await Promise.all([
+    fs.writeFile(
+      path.join(workspaceDir, SHORT_TERM_RECALL_JSON),
+      `${JSON.stringify(withSortedEntries(recallStore), null, 2)}\n`,
+      "utf-8",
+    ),
+    fs.writeFile(
+      path.join(workspaceDir, SHORT_TERM_PHASE_SIGNAL_JSON),
+      `${JSON.stringify(withSortedEntries(phaseStore), null, 2)}\n`,
+      "utf-8",
+    ),
+  ]);
 }
 
 async function snapshotFiles(workspaceDir?: string): Promise<Record<string, string>> {
@@ -191,6 +281,8 @@ async function resolvePromotionPolicy(repoPath: string, payload: Payload): Promi
     minUniqueQueries: payload.minUniqueQueries ?? resolved.minUniqueQueries,
     maxAgeDays: payload.maxAgeDays ?? resolved.maxAgeDays,
     recencyHalfLifeDays: payload.recencyHalfLifeDays ?? resolved.recencyHalfLifeDays,
+    maxPromotedSnippetTokens:
+      payload.maxPromotedSnippetTokens ?? resolved.maxPromotedSnippetTokens,
   };
 }
 
@@ -224,6 +316,7 @@ async function main() {
         minUniqueQueries: resolved.minUniqueQueries,
         recencyHalfLifeDays: resolved.recencyHalfLifeDays,
         maxAgeDays: resolved.maxAgeDays,
+        maxPromotedSnippetTokens: resolved.maxPromotedSnippetTokens,
       },
     };
   }
@@ -299,6 +392,7 @@ async function main() {
       messages: payload.messages ?? [],
       contextWindowTokens: payload.contextWindowTokens ?? 100_000,
       maxCharsOverride: payload.toolResultMaxChars,
+      aggregateMaxCharsOverride: payload.aggregateMaxChars,
     });
     return {
       ok: true,
@@ -346,23 +440,31 @@ async function main() {
         sessionFile,
         contextWindowTokens: payload.contextWindowTokens ?? 100_000,
         maxCharsOverride: payload.maxChars ?? payload.toolResultMaxChars,
+        aggregateMaxCharsOverride: payload.aggregateMaxChars,
+        protectTrailingToolResults: payload.protectTrailingToolResults,
       });
       const afterManager = sessions.SessionManager.open(sessionFile);
-      const toolTexts = afterManager
+      const toolResultMessages = afterManager
         .getBranch()
         .filter((entry: Record<string, unknown>) => {
           const message = entry.message as Record<string, unknown> | undefined;
           return entry.type === "message" && message?.role === "toolResult";
         })
-        .map((entry: Record<string, unknown>) => {
-          const message = entry.message as Record<string, unknown>;
-          const content = Array.isArray(message.content) ? message.content : [];
-          const textBlock = content.find(
-            (block: unknown) =>
-              isRecord(block) && block.type === "text" && typeof block.text === "string",
-          ) as { text?: string } | undefined;
-          return textBlock?.text ?? "";
-        });
+        .map((entry: Record<string, unknown>) => entry.message as Record<string, unknown>);
+      const findTextBlock = (message: Record<string, unknown>) => {
+        const content = Array.isArray(message.content) ? message.content : [];
+        return content.find(
+          (block: unknown) =>
+            isRecord(block) &&
+            (block.type === "text" || block.type === "toolResult") &&
+            typeof block.text === "string",
+        ) as { text?: string; content?: unknown } | undefined;
+      };
+      const toolTexts = toolResultMessages.map((message) => findTextBlock(message)?.text ?? "");
+      const toolContents = toolResultMessages.map((message) => {
+        const blockContent = findTextBlock(message)?.content;
+        return typeof blockContent === "string" ? blockContent : null;
+      });
       return {
         ok: true,
         operation: payload.operation,
@@ -371,6 +473,7 @@ async function main() {
           truncatedCount: result.truncatedCount,
           reason: result.reason ?? null,
           toolTexts,
+          toolContents,
         },
       };
     } finally {
@@ -584,10 +687,18 @@ async function main() {
   }
 
   if (payload.operation === "memorySearch") {
-    if (payload.stateDir) {
-      process.env.OPENCLAW_STATE_DIR = payload.stateDir;
-    }
-    await writeSessionTranscriptFixtures(payload);
+    // OpenClaw HEAD ignores agents.defaults.memorySearch.store.path: the index
+    // always lives at <stateDir>/agents/<agentId>/agent/openclaw-agent.sqlite
+    // (resolveOpenClawAgentSqlitePath). Point OPENCLAW_STATE_DIR at a
+    // per-invocation directory before importing repo modules so fixtures never
+    // share an index with each other or with the real user state dir.
+    const stateDir =
+      payload.stateDir ??
+      (payload.workspaceDir
+        ? path.join(payload.workspaceDir, ".openclaw-state")
+        : await fs.mkdtemp(path.join(process.cwd(), ".openclaw-oracle-state-")));
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    await writeSessionTranscriptFixtures({ ...payload, stateDir });
     await registerWikiCorpusFixture(repoPath, payload);
     const embeddingProviders = await importFromRepo(
       repoPath,
@@ -612,16 +723,12 @@ async function main() {
       repoPath,
       "extensions/memory-core/src/memory/index.ts",
     );
-    const storePath = payload.workspaceDir
-      ? path.join(payload.workspaceDir, ".openclaw-memory-oracle.sqlite")
-      : undefined;
     const baseConfig = payload.config ?? {};
     const agents = isRecord(baseConfig.agents) ? baseConfig.agents : {};
     const defaults = isRecord(agents.defaults) ? agents.defaults : {};
     const defaultMemorySearch = isRecord(defaults.memorySearch) ? defaults.memorySearch : {};
     const defaultQuery = isRecord(defaultMemorySearch.query) ? defaultMemorySearch.query : {};
     const defaultHybrid = isRecord(defaultQuery.hybrid) ? defaultQuery.hybrid : {};
-    const defaultStore = isRecord(defaultMemorySearch.store) ? defaultMemorySearch.store : {};
     const cfg = {
       ...baseConfig,
       memory: {
@@ -638,7 +745,6 @@ async function main() {
             ...defaultMemorySearch,
             provider: "memory-core-fake",
             model: "fake-deterministic",
-            ...(storePath ? { store: { ...defaultStore, path: storePath } } : {}),
             sync: {
               ...(isRecord(defaultMemorySearch.sync) ? defaultMemorySearch.sync : {}),
               watch: false,
@@ -692,73 +798,105 @@ async function main() {
     }
   }
 
+  const promotionOperations = new Set([
+    "recordShortTermRecalls",
+    "recordShortTermRecallSequence",
+    "recordDreamingPhaseSignals",
+    "rankShortTermPromotionCandidates",
+    "applyShortTermPromotions",
+  ]);
+  if (!promotionOperations.has(payload.operation)) {
+    throw new Error(`unsupported operation: ${payload.operation}`);
+  }
+
+  // OpenClaw HEAD stores recall/phase-signal/lock state in SQLite-backed plugin
+  // state instead of memory/.dreams/*.json. Every oracle invocation is a fresh
+  // process, so the workspace JSON files remain the durable fixture contract:
+  // seed plugin state from them before the operation and export plugin state
+  // back to them afterwards. Fixtures can therefore keep reading and editing
+  // the JSON files between invocations.
+  const promotionStateDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "openclaw-oracle-dream-state-"),
+  );
+  process.env.OPENCLAW_STATE_DIR = promotionStateDir;
+  const dreamingState = await importFromRepo(
+    repoPath,
+    "extensions/memory-core/src/dreaming-state.ts",
+  );
+  await dreamingState.configureMemoryCoreDreamingStateForTests();
   const promotion = await importFromRepo(
     repoPath,
     "extensions/memory-core/src/short-term-promotion.ts",
   );
 
-  if (payload.operation === "recordShortTermRecalls") {
-    await promotion.recordShortTermRecalls({
-      workspaceDir: payload.workspaceDir,
-      query: payload.query ?? "",
-      results: payload.results ?? [],
-      nowMs,
-      timezone,
-    });
-    return {
-      ok: true,
-      operation: payload.operation,
-      files: await snapshotFiles(payload.workspaceDir),
+  try {
+    await seedPromotionStateFromWorkspace(promotion, payload.workspaceDir);
+    const snapshotPromotionFiles = async () => {
+      await exportPromotionStateToWorkspace(promotion, payload.workspaceDir, nowMs);
+      return snapshotFiles(payload.workspaceDir);
     };
-  }
 
-  if (payload.operation === "recordShortTermRecallSequence") {
-    for (const recall of payload.recalls ?? []) {
+    if (payload.operation === "recordShortTermRecalls") {
       await promotion.recordShortTermRecalls({
         workspaceDir: payload.workspaceDir,
-        query: recall.query ?? "",
-        results: recall.results ?? [],
-        nowMs: Number.isFinite(recall.nowMs) ? Number(recall.nowMs) : nowMs,
-        timezone: recall.timezone ?? timezone,
+        query: payload.query ?? "",
+        results: payload.results ?? [],
+        nowMs,
+        timezone,
       });
+      return {
+        ok: true,
+        operation: payload.operation,
+        files: await snapshotPromotionFiles(),
+      };
     }
-    return {
-      ok: true,
-      operation: payload.operation,
-      files: await snapshotFiles(payload.workspaceDir),
-    };
-  }
 
-  if (payload.operation === "recordDreamingPhaseSignals") {
-    await promotion.recordDreamingPhaseSignals({
-      workspaceDir: payload.workspaceDir,
-      phase: payload.phase ?? "light",
-      keys: payload.keys ?? [],
-      nowMs,
-    });
-    return {
-      ok: true,
-      operation: payload.operation,
-      files: await snapshotFiles(payload.workspaceDir),
-    };
-  }
+    if (payload.operation === "recordShortTermRecallSequence") {
+      for (const recall of payload.recalls ?? []) {
+        await promotion.recordShortTermRecalls({
+          workspaceDir: payload.workspaceDir,
+          query: recall.query ?? "",
+          results: recall.results ?? [],
+          nowMs: Number.isFinite(recall.nowMs) ? Number(recall.nowMs) : nowMs,
+          timezone: recall.timezone ?? timezone,
+        });
+      }
+      return {
+        ok: true,
+        operation: payload.operation,
+        files: await snapshotPromotionFiles(),
+      };
+    }
 
-  if (payload.operation === "rankShortTermPromotionCandidates") {
-    const policy = await resolvePromotionPolicy(repoPath, payload);
-    const candidates = await promotion.rankShortTermPromotionCandidates({
-      workspaceDir: payload.workspaceDir,
-      nowMs,
-      limit: policy.limit,
-      minScore: policy.minScore,
-      minRecallCount: policy.minRecallCount,
-      minUniqueQueries: policy.minUniqueQueries,
-      maxAgeDays: policy.maxAgeDays,
-      recencyHalfLifeDays: policy.recencyHalfLifeDays,
-    });
-    return { ok: true, operation: payload.operation, result: { candidates } };
-  }
+    if (payload.operation === "recordDreamingPhaseSignals") {
+      await promotion.recordDreamingPhaseSignals({
+        workspaceDir: payload.workspaceDir,
+        phase: payload.phase ?? "light",
+        keys: payload.keys ?? [],
+        nowMs,
+      });
+      return {
+        ok: true,
+        operation: payload.operation,
+        files: await snapshotPromotionFiles(),
+      };
+    }
 
-  if (payload.operation === "applyShortTermPromotions") {
+    if (payload.operation === "rankShortTermPromotionCandidates") {
+      const policy = await resolvePromotionPolicy(repoPath, payload);
+      const candidates = await promotion.rankShortTermPromotionCandidates({
+        workspaceDir: payload.workspaceDir,
+        nowMs,
+        limit: policy.limit,
+        minScore: policy.minScore,
+        minRecallCount: policy.minRecallCount,
+        minUniqueQueries: policy.minUniqueQueries,
+        maxAgeDays: policy.maxAgeDays,
+        recencyHalfLifeDays: policy.recencyHalfLifeDays,
+      });
+      return { ok: true, operation: payload.operation, result: { candidates } };
+    }
+
     const policy = await resolvePromotionPolicy(repoPath, payload);
     const result = await promotion.applyShortTermPromotions({
       workspaceDir: payload.workspaceDir,
@@ -772,16 +910,17 @@ async function main() {
       maxAgeDays: policy.maxAgeDays,
       memoryFileMaxChars:
         typeof payload.memoryFileMaxChars === "number" ? payload.memoryFileMaxChars : undefined,
+      maxPromotedSnippetTokens: policy.maxPromotedSnippetTokens,
     });
     return {
       ok: true,
       operation: payload.operation,
       result,
-      files: await snapshotFiles(payload.workspaceDir),
+      files: await snapshotPromotionFiles(),
     };
+  } finally {
+    await fs.rm(promotionStateDir, { recursive: true, force: true }).catch(() => {});
   }
-
-  throw new Error(`unsupported operation: ${payload.operation}`);
 }
 
 main()

@@ -29,6 +29,10 @@ PROMOTION_MARKER_PREFIX = "openclaw-memory-promotion:"
 DEFAULT_DEEP_DREAMING_ENABLED = False
 DEFAULT_DEEP_DREAMING_LIMIT = 10
 DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS = 30
+DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS = 160
+_PROMOTED_SNIPPET_CHARS_PER_TOKEN_ESTIMATE = 4
+SHORT_TERM_RECALL_MAX_ENTRIES = 512
+SHORT_TERM_RECALL_MAX_SNIPPET_CHARS = 800
 DEFAULT_PROMOTION_MIN_SCORE = 0.8
 DEFAULT_PROMOTION_MIN_RECALL_COUNT = 3
 DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES = 3
@@ -318,7 +322,24 @@ _DREAMING_TRANSCRIPT_PROMPT_LINE_RE = re.compile(
     r"Write a dream diary entry from these memory fragments:?",
     re.IGNORECASE,
 )
+_RAW_SESSION_METADATA_RE = re.compile(
+    r"\bSession Key\b.{0,260}\bSession ID\b|\bSession ID\b.{0,260}\bSession Key\b",
+    re.IGNORECASE,
+)
+_RAW_CONVERSATION_SUMMARY_RE = re.compile(
+    r"^(?:[-*+]\s*)?Conversation Summary:", re.IGNORECASE
+)
+_RAW_TRANSCRIPT_TURN_RE = re.compile(r"^(?:[-*+]\s*)?(?:user|assistant):\s", re.IGNORECASE)
+_MEMORY_FLUSH_PROMPT_RE = re.compile(
+    r"Save important context from this session to the daily memory file\.\s*STRICT RULES:",
+    re.IGNORECASE,
+)
+_PROMOTION_SCORE_METADATA_RE = re.compile(
+    r"\[\s*score=\d+(?:\.\d+)?\s+recalls=\d+\s+avg=\d+(?:\.\d+)?\s+source=memory/",
+    re.IGNORECASE,
+)
 _DREAMING_DIFF_PREFIX_RE = re.compile(r"@@\s*-\d+(?:,\d+)?\s+[-*+]\s+", re.IGNORECASE)
+_PROMOTION_LIST_MARKER_RE = re.compile(r"^(?:\d+\.\s+|[-*+]\s+)")
 
 
 @dataclass(frozen=True)
@@ -599,11 +620,12 @@ def record_short_term_recalls(
         touched = True
         start_line = _int(result.get("startLine"), 1)
         score = _clamp(float(result.get("score") or 0))
-        for line_number, snippet in _candidate_lines(
+        for line_number, raw_snippet in _candidate_lines(
             raw=str(result.get("snippet") or ""), start_line=start_line
         ):
-            if _is_contaminated_dreaming_snippet(snippet):
+            if _is_contaminated_dreaming_snippet(raw_snippet):
                 continue
+            snippet = _truncate_short_term_snippet(raw_snippet)
             key = f"memory:{path}:{line_number}:{line_number}"
             entry = store["entries"].get(key)
             if entry is None:
@@ -728,6 +750,7 @@ def run_short_term_promotion(
     max_age_days: int = -1,
     recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
     memory_file_max_chars: int = DEFAULT_MEMORY_FILE_MAX_CHARS,
+    max_promoted_snippet_tokens: int = DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
 ) -> MemoryPromotionRun:
     with acquire_short_term_promotion_lock(config=config, now_ms=now_ms) as lock:
         if not lock.acquired:
@@ -758,6 +781,7 @@ def run_short_term_promotion(
             max_age_days=max_age_days,
             recency_half_life_days=recency_half_life_days,
             memory_file_max_chars=memory_file_max_chars,
+            max_promoted_snippet_tokens=max_promoted_snippet_tokens,
         )
 
 
@@ -774,6 +798,7 @@ def _run_short_term_promotion_unlocked(
     max_age_days: int = -1,
     recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
     memory_file_max_chars: int = DEFAULT_MEMORY_FILE_MAX_CHARS,
+    max_promoted_snippet_tokens: int = DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
 ) -> MemoryPromotionRun:
     workspace = MemoryWorkspace(config.workspace_dir)
     target = "MEMORY.md"
@@ -812,7 +837,13 @@ def _run_short_term_promotion_unlocked(
     indexed_files = 0
     reindex_error = None
     if rehydrated_candidates:
-        entry = _build_promotion_section(to_append, now_ms, timezone) if to_append else ""
+        entry = (
+            _build_promotion_section(
+                to_append, now_ms, timezone, max_promoted_snippet_tokens
+            )
+            if to_append
+            else ""
+        )
         if to_append:
             _append_to_memory(target_path, entry, memory_file_max_chars=memory_file_max_chars)
         _mark_promoted(
@@ -1041,14 +1072,21 @@ def _phase_signal_boost(entry: Any) -> float:
 
 
 def _build_promotion_section(
-    candidates: list[PromotionCandidate], now_ms: int, timezone: str
+    candidates: list[PromotionCandidate],
+    now_ms: int,
+    timezone: str,
+    max_promoted_snippet_tokens: int = DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
 ) -> str:
     section_date = _format_memory_dreaming_day(now_ms, timezone)
     lines = ["", f"## Promoted From Short-Term Memory ({section_date})", ""]
     for candidate in candidates:
         source = f"{candidate.path}:{candidate.start_line}-{candidate.end_line}"
         lines.append(f"<!-- {PROMOTION_MARKER_PREFIX}{candidate.key} -->")
-        snippet = candidate.snippet.replace("- ", "", 1) if candidate.snippet.startswith("- ") else candidate.snippet
+        # Cap only the visible MEMORY.md text; the recall store keeps the full
+        # rehydrated snippet for ranking and provenance.
+        snippet = _format_promoted_snippet_for_memory(
+            candidate.snippet, max_promoted_snippet_tokens
+        )
         lines.append(
             "- "
             + snippet
@@ -1059,6 +1097,44 @@ def _build_promotion_section(
         )
     lines.append("")
     return "\n".join(lines)
+
+
+def _resolve_promoted_snippet_char_limit(max_tokens: int) -> int:
+    try:
+        token_limit = math.floor(float(max_tokens))
+    except (TypeError, ValueError):
+        token_limit = DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS
+    if not math.isfinite(float(max_tokens)) or token_limit < 0:
+        token_limit = DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS
+    # Inexpensive display-size guard, not a tokenizer contract.
+    return token_limit * _PROMOTED_SNIPPET_CHARS_PER_TOKEN_ESTIMATE
+
+
+def _truncate_promoted_snippet(snippet: str, max_tokens: int) -> str:
+    limit = _resolve_promoted_snippet_char_limit(max_tokens)
+    if limit == 0 or len(snippet) <= limit:
+        return snippet
+    hard_limit = snippet[:limit]
+    sentence_boundary = max(
+        hard_limit.rfind(". "),
+        hard_limit.rfind("! "),
+        hard_limit.rfind("? "),
+    )
+    word_boundary = hard_limit.rfind(" ")
+    if sentence_boundary >= math.floor(limit * 0.55):
+        cut_at = sentence_boundary + 1
+    elif word_boundary >= math.floor(limit * 0.65):
+        cut_at = word_boundary
+    else:
+        cut_at = limit
+    return f"{hard_limit[:cut_at].rstrip()}..."
+
+
+def _format_promoted_snippet_for_memory(raw_snippet: str, max_tokens: int) -> str:
+    normalized = re.sub(
+        r"^[-*+] +", "", _normalize_snippet(raw_snippet or "(no snippet captured)")
+    ).strip()
+    return _truncate_promoted_snippet(normalized or "(no snippet captured)", max_tokens)
 
 
 def _format_memory_dreaming_day(now_ms: int, timezone: str | None = None) -> str:
@@ -1219,7 +1295,61 @@ def _release_short_term_promotion_lock(lock_path: Path, owner_token: str) -> Non
             pass
 
 
+def _truncate_short_term_snippet(snippet: str) -> str:
+    if len(snippet) <= SHORT_TERM_RECALL_MAX_SNIPPET_CHARS:
+        return snippet
+    return snippet[:SHORT_TERM_RECALL_MAX_SNIPPET_CHARS].rstrip()
+
+
+def _entry_total_signal_count(entry: dict[str, Any]) -> int:
+    return (
+        max(0, _int(entry.get("recallCount"), 0))
+        + max(0, _int(entry.get("dailyCount"), 0))
+        + max(0, _int(entry.get("groundedCount"), 0))
+    )
+
+
+def _store_timestamp_ms(value: Any) -> float:
+    if not isinstance(value, str) or not value:
+        return float("-inf")
+    parsed = _parse_ms(value, -1)
+    return float(parsed) if parsed >= 0 else float("-inf")
+
+
+def _retention_sort_key(item: tuple[str, dict[str, Any]]) -> tuple[Any, ...]:
+    key, entry = item
+    return (
+        -_store_timestamp_ms(entry.get("lastRecalledAt")),
+        -_entry_total_signal_count(entry),
+        -float(entry.get("totalScore") or 0),
+        -float(entry.get("maxScore") or 0),
+        -_store_timestamp_ms(entry.get("promotedAt")),
+        key,
+    )
+
+
+def _enforce_short_term_recall_store_retention(store: dict[str, Any]) -> int:
+    entries = store.get("entries")
+    if not isinstance(entries, dict) or len(entries) <= SHORT_TERM_RECALL_MAX_ENTRIES:
+        return 0
+    valid = [(key, entry) for key, entry in entries.items() if isinstance(entry, dict)]
+    retained = sorted(valid, key=_retention_sort_key)[:SHORT_TERM_RECALL_MAX_ENTRIES]
+    store["entries"] = dict(sorted(retained, key=lambda item: item[0]))
+    return len(entries) - len(store["entries"])
+
+
+def _enforce_short_term_recall_snippet_cap(store: dict[str, Any]) -> None:
+    entries = store.get("entries")
+    if not isinstance(entries, dict):
+        return
+    for entry in entries.values():
+        if isinstance(entry, dict) and isinstance(entry.get("snippet"), str):
+            entry["snippet"] = _truncate_short_term_snippet(entry["snippet"])
+
+
 def _write_store(path: Path, store: dict[str, Any]) -> None:
+    _enforce_short_term_recall_snippet_cap(store)
+    _enforce_short_term_recall_store_retention(store)
     _write_json_atomic(path, store)
 
 
@@ -1239,6 +1369,11 @@ def _mark_promoted(path: Path, candidates: list[PromotionCandidate], now_ms: int
     for candidate in candidates:
         entry = store["entries"].get(candidate.key)
         if isinstance(entry, dict):
+            # The store keeps the full rehydrated snippet and relocated range;
+            # only the MEMORY.md presentation is token-capped.
+            entry["startLine"] = candidate.start_line
+            entry["endLine"] = candidate.end_line
+            entry["snippet"] = candidate.snippet
             entry["promotedAt"] = now_iso
     store["updatedAt"] = now_iso
     _write_store(path, store)
@@ -1457,11 +1592,14 @@ def _line_range_overlaps_dreaming_fence(
     safe_end = max(safe_start, min(end_line, len(lines)))
     inside_fence = False
     for index, line in enumerate(lines[:safe_end], start=1):
-        if _DREAMING_FENCE_START_RE.search(line):
-            inside_fence = True
-            continue
-        if _DREAMING_FENCE_END_RE.search(line):
-            inside_fence = False
+        is_start = bool(_DREAMING_FENCE_START_RE.search(line))
+        is_end = bool(_DREAMING_FENCE_END_RE.search(line))
+        if is_start or is_end:
+            # The marker line itself is managed-block content: a relocated range
+            # that includes it would leak the marker text into MEMORY.md.
+            if safe_start <= index <= safe_end:
+                return True
+            inside_fence = is_start
             continue
         if inside_fence and safe_start <= index <= safe_end:
             return True
@@ -1531,6 +1669,14 @@ def _is_contaminated_dreaming_snippet(raw: str) -> bool:
         return True
     if _DREAMING_TRANSCRIPT_PROMPT_LINE_RE.search(snippet):
         return True
+    if (
+        _RAW_SESSION_METADATA_RE.search(snippet)
+        or _RAW_CONVERSATION_SUMMARY_RE.match(snippet)
+        or _RAW_TRANSCRIPT_TURN_RE.match(snippet)
+        or _MEMORY_FLUSH_PROMPT_RE.search(snippet)
+        or _PROMOTION_SCORE_METADATA_RE.search(snippet)
+    ):
+        return True
     return (
         _has_dreaming_narrative_lead(snippet)
         and re.search(r"\bconfidence:\s*\d", snippet, re.IGNORECASE) is not None
@@ -1592,20 +1738,62 @@ def _derive_concept_tags(path: str, snippet: str, limit: int = MAX_CONCEPT_TAGS)
         return []
     source = f"{Path(path).name} {snippet}"
     tags: list[str] = []
-    for raw_token in (
-        _collect_glossary_matches(source)
-        + _collect_compound_tokens(source)
-        + _collect_segment_tokens(source)
-    ):
+    for raw_token in _collect_glossary_matches(source):
+        _push_normalized_concept_tag(tags, raw_token, normalized_limit, from_glossary=True)
+        if len(tags) >= normalized_limit:
+            return tags
+    for raw_token in _collect_compound_tokens(source) + _collect_segment_tokens(source):
         _push_normalized_concept_tag(tags, raw_token, normalized_limit)
         if len(tags) >= normalized_limit:
             break
     return tags
 
 
+def _minimum_token_length_for_script(script: str) -> int:
+    return 2 if script == "cjk" else 3
+
+
+def _includes_standalone_term(source: str, entry: str) -> bool:
+    start = source.find(entry)
+    while start != -1:
+        before = source[start - 1] if start > 0 else ""
+        after_index = start + len(entry)
+        after = source[after_index] if after_index < len(source) else ""
+        if (not before or not before.isalnum()) and (not after or not after.isalnum()):
+            return True
+        start = source.find(entry, start + 1)
+    return False
+
+
+def _glossary_entry_requires_whole_word(entry: str) -> bool:
+    return len(entry) < _minimum_token_length_for_script(_classify_concept_tag_script(entry))
+
+
+_GLOSSARY_WHOLE_WORD: dict[str, bool] = {}
+
+
+def _glossary_whole_word(entry: str) -> bool:
+    if not _GLOSSARY_WHOLE_WORD:
+        _GLOSSARY_WHOLE_WORD.update(
+            {word: _glossary_entry_requires_whole_word(word) for word in _PROTECTED_GLOSSARY}
+        )
+    return _GLOSSARY_WHOLE_WORD[entry]
+
+
 def _collect_glossary_matches(source: str) -> list[str]:
     normalized_source = _normalize_lowercase_string(unicodedata.normalize("NFKC", source))
-    return [entry for entry in _PROTECTED_GLOSSARY if entry in normalized_source]
+    matches = []
+    for entry in _PROTECTED_GLOSSARY:
+        # Short glossary entries (e.g. "kv", "s3") bypass the min-length gate,
+        # so they must match as standalone terms rather than inside longer words.
+        present = (
+            _includes_standalone_term(normalized_source, entry)
+            if _glossary_whole_word(entry)
+            else entry in normalized_source
+        )
+        if present:
+            matches.append(entry)
+    return matches
 
 
 def _collect_compound_tokens(source: str) -> list[str]:
@@ -1616,8 +1804,10 @@ def _collect_segment_tokens(source: str) -> list[str]:
     return _SEGMENT_TOKEN_RE.findall(source)
 
 
-def _push_normalized_concept_tag(tags: list[str], raw_token: str, limit: int) -> None:
-    normalized = _normalize_concept_token(raw_token)
+def _push_normalized_concept_tag(
+    tags: list[str], raw_token: str, limit: int, from_glossary: bool = False
+) -> None:
+    normalized = _normalize_concept_token(raw_token, from_glossary=from_glossary)
     if not normalized or normalized in tags:
         return
     tags.append(normalized)
@@ -1625,7 +1815,7 @@ def _push_normalized_concept_tag(tags: list[str], raw_token: str, limit: int) ->
         del tags[limit:]
 
 
-def _normalize_concept_token(raw_token: str) -> str | None:
+def _normalize_concept_token(raw_token: str, from_glossary: bool = False) -> str | None:
     normalized = _normalize_lowercase_string(
         _strip_non_alnum_edges(unicodedata.normalize("NFKC", raw_token)).replace("_", "-")
     )
@@ -1639,7 +1829,9 @@ def _normalize_concept_token(raw_token: str) -> str | None:
     ):
         return None
     script = _classify_concept_tag_script(normalized)
-    if len(normalized) < (2 if script == "cjk" else 3):
+    # Glossary entries are an explicit allowlist of short technical terms
+    # (e.g. "kv", "s3"); they bypass the per-script minimum length gate.
+    if not from_glossary and len(normalized) < _minimum_token_length_for_script(script):
         return None
     if _is_kana_only_token(normalized) and len(normalized) < 3:
         return None

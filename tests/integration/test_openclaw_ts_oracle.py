@@ -117,6 +117,7 @@ def test_real_openclaw_oracle_deep_policy():
     assert result["result"]["enabled"] is False
     assert result["result"]["limit"] == 10
     assert result["result"]["recencyHalfLifeDays"] == 14
+    assert result["result"]["maxPromotedSnippetTokens"] == 160
 
 
 def test_real_openclaw_oracle_deep_policy_uses_configured_values():
@@ -161,6 +162,7 @@ def test_real_openclaw_oracle_deep_policy_uses_configured_values():
     assert result["result"]["minUniqueQueries"] == 2
     assert result["result"]["maxAgeDays"] == 14
     assert result["result"]["recencyHalfLifeDays"] == 10
+    assert result["result"]["maxPromotedSnippetTokens"] == 160
 
 
 def test_real_openclaw_oracle_flush_plan_matches_python_defaults(tmp_path: Path):
@@ -1409,7 +1411,7 @@ def test_real_openclaw_oracle_derives_concept_vocabulary_tags():
         (
             "memory/2026-04-03.md",
             "Move backups to S3 Glacier and sync QMD router notes.",
-            ["backup", "backups", "glacier", "qmd", "router", "sync"],
+            ["backup", "backups", "glacier", "qmd", "router", "s3", "sync"],
         ),
         (
             "memory/2026-04-06.md",

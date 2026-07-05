@@ -92,6 +92,9 @@ function record(name: string, result: Awaited<ReturnType<typeof runEmbeddedAgent
   );
   const secondSuppressesUserPersistence =
     secondAttempt?.suppressNextUserMessagePersistence === true;
+  const firstTruncateCall = mockedTruncateOversizedToolResultsInSession.mock.calls[0]?.[0] as
+    | { protectTrailingToolResults?: unknown }
+    | undefined;
   scenarios.push({
     name,
     attemptCalls: mockedRunEmbeddedAttempt.mock.calls.length,
@@ -99,6 +102,9 @@ function record(name: string, result: Awaited<ReturnType<typeof runEmbeddedAgent
     truncateCalls: mockedTruncateOversizedToolResultsInSession.mock.calls.length,
     errorKind: result.meta.error?.kind ?? null,
     payloadIsError: result.payloads?.[0]?.isError ?? null,
+    ...(firstTruncateCall
+      ? { truncateProtectTrailing: firstTruncateCall.protectTrailingToolResults === true }
+      : {}),
     ...(secondPromptIncludesContinuation || secondSuppressesUserPersistence
       ? {
           secondPromptIncludesContinuation,

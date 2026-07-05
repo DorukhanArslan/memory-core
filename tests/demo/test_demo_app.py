@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from pathlib import Path
+import json
 
 from fastapi.testclient import TestClient
 
@@ -257,6 +258,79 @@ def test_chat_state_endpoint_returns_engines_and_memory_files():
     assert payload["config"]["promotion"]["upstreamDefaults"]["limit"] == 10
     assert payload["config"]["promotion"]["upstreamDefaults"]["maxAgeDays"] == 30
     assert payload["turns"] == []
+
+
+def test_live_task_reset_and_state_endpoints():
+    client = TestClient(app)
+
+    reset_response = client.post(
+        "/api/live-task/reset",
+        json={"sessionId": "session_demo", "subjectId": "subject_demo"},
+    )
+    state_response = client.get("/api/live-task/state")
+
+    assert reset_response.status_code == 200
+    assert state_response.status_code == 200
+    payload = state_response.json()
+    assert payload["workflow"]["session_id"] == "session_demo"
+    assert payload["workflow"]["subject_id"] == "subject_demo"
+    assert payload["workflow"]["current_step"] == "verify_identity"
+    assert payload["transcript"] == []
+    assert payload["tracePath"].endswith("session_demo.jsonl")
+
+
+def test_live_task_turn_stream_emits_latency_events():
+    client = TestClient(app)
+    client.post("/api/live-task/reset", json={"sessionId": "session_demo", "subjectId": "subject_demo"})
+
+    response = client.post(
+        "/api/live-task/turn-stream",
+        json={
+            "sessionId": "session_demo",
+            "subjectId": "subject_demo",
+            "message": "Doğum tarihim 12.04.1990",
+        },
+    )
+
+    assert response.status_code == 200
+    events = _parse_sse(response.text)
+    assert any(event["event"] == "sentence" for event in events)
+    live_events = [event for event in events if event["event"] not in {"error", "live_task_state"}]
+    assert all("elapsed_ms" in event["data"] for event in live_events)
+    assert live_events[-1]["event"] == "live_turn_completed"
+    assert events[-1]["event"] == "live_task_state"
+
+
+def test_live_task_summary_writes_subject_memory():
+    client = TestClient(app)
+    client.post("/api/live-task/reset", json={"sessionId": "session_demo", "subjectId": "subject_demo"})
+
+    response = client.post(
+        "/api/live-task/summary",
+        json={
+            "sessionId": "session_demo",
+            "subjectId": "subject_demo",
+            "transcript": "User completed an appointment reschedule.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["wrote"] is True
+    assert payload["summary"]["follow_ups"] == [
+        "Confirm appointment change with the scheduling system."
+    ]
+    assert payload["state"]["workflow"]["session_id"] == "session_demo"
+
+
+def _parse_sse(body: str):
+    events = []
+    for raw_event in body.strip().split("\n\n"):
+        lines = raw_event.splitlines()
+        event_name = lines[0].removeprefix("event: ")
+        data = json.loads(lines[1].removeprefix("data: "))
+        events.append({"event": event_name, "data": data})
+    return events
 
 
 def test_chat_state_uses_current_timezone_date_for_daily_memory(monkeypatch):

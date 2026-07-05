@@ -22,6 +22,12 @@ from demo.chat_engine import (
     engine_status,
 )
 from demo.chat_session import ChatSessionState
+from demo.live_task_demo import (
+    DEFAULT_LIVE_TASK_SESSION_ID,
+    DEFAULT_LIVE_TASK_SUBJECT_ID,
+    LiveTaskDemo,
+    LiveTaskDemoState,
+)
 from demo.transcript_context import select_transcript_context
 from demo.dreaming import run_dreaming_sweep
 from demo.memory_flush import MemoryFlushRun, ParsedFlushOutput, run_memory_flush
@@ -60,11 +66,13 @@ from memory_core.workspace import MemoryWorkspace
 DEMO_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = DEMO_ROOT.parent
 DEMO_WORKSPACE = Path(tempfile.gettempdir()) / "memory-core-lab-workspace"
+LIVE_TASK_DEMO_WORKSPACE = Path(tempfile.gettempdir()) / "memory-core-live-task-demo-workspace"
 DEMO_TIMEZONE = "Europe/Istanbul"
 DEMO_NOW_MS = 1777824000000
 DEMO_TRANSCRIPT_MESSAGE_WINDOW = 40
 DEMO_TRANSCRIPT_CHAR_BUDGET = 24_000
 CHAT_STATE = ChatSessionState()
+LIVE_TASK_DEMO = LiveTaskDemo(workspace_dir=LIVE_TASK_DEMO_WORKSPACE)
 PROMOTION_SWEEP: dict[str, Any] | None = None
 DREAMING_SWEEP: dict[str, Any] | None = None
 MEMORY_AUDIT: dict[str, Any] | None = None
@@ -229,6 +237,23 @@ def _optional_text(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _live_task_session_id(payload: dict[str, Any]) -> str:
+    return _optional_text(payload.get("sessionId")) or DEFAULT_LIVE_TASK_SESSION_ID
+
+
+def _live_task_subject_id(payload: dict[str, Any]) -> str:
+    return _optional_text(payload.get("subjectId")) or DEFAULT_LIVE_TASK_SUBJECT_ID
+
+
+def _serialize_live_task_state(state: LiveTaskDemoState) -> dict[str, Any]:
+    return {
+        "workflow": state.workflow,
+        "transcript": state.transcript,
+        "workspace": state.workspace,
+        "tracePath": state.trace_path,
+    }
 
 
 def _memory_context_from_results(results: list[dict[str, Any]]) -> list[str]:
@@ -617,6 +642,47 @@ def chat_send_stream(payload: dict):
     )
 
 
+@app.post("/api/live-task/reset")
+def live_task_reset(payload: dict[str, Any] | None = None):
+    payload = payload or {}
+    return _serialize_live_task_state(
+        LIVE_TASK_DEMO.reset(
+            session_id=_live_task_session_id(payload),
+            subject_id=_live_task_subject_id(payload),
+        )
+    )
+
+
+@app.get("/api/live-task/state")
+def live_task_state():
+    return _serialize_live_task_state(LIVE_TASK_DEMO.state())
+
+
+@app.post("/api/live-task/turn-stream")
+def live_task_turn_stream(payload: dict[str, Any]):
+    return StreamingResponse(
+        _live_task_turn_stream_events(payload),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.post("/api/live-task/summary")
+def live_task_summary(payload: dict[str, Any]):
+    try:
+        summary = LIVE_TASK_DEMO.record_summary(
+            session_id=_live_task_session_id(payload),
+            subject_id=_live_task_subject_id(payload),
+            transcript=_optional_text(payload.get("transcript")),
+        )
+        return {
+            "summary": summary,
+            "state": _serialize_live_task_state(LIVE_TASK_DEMO.state()),
+        }
+    except Exception as exc:
+        return _json_error(f"live task summary failed: {_safe_exception_message(exc)}")
+
+
 @app.post("/api/chat/flush")
 def chat_flush(payload: dict):
     try:
@@ -814,6 +880,24 @@ def _chat_send_stream_events(payload: dict):
             "error",
             {"error": f"chat send failed: {_safe_exception_message(exc, (_payload_api_key(payload),))}"},
         )
+
+
+async def _live_task_turn_stream_events(payload: dict[str, Any]):
+    try:
+        message = str(payload.get("message", "")).strip()
+        if not message:
+            raise DemoPayloadError("message is required")
+        async for event in LIVE_TASK_DEMO.stream_turn(
+            session_id=_live_task_session_id(payload),
+            subject_id=_live_task_subject_id(payload),
+            user_utterance=message,
+        ):
+            yield _sse(str(event["type"]), event)
+        yield _sse("live_task_state", _serialize_live_task_state(LIVE_TASK_DEMO.state()))
+    except DemoPayloadError as exc:
+        yield _sse("error", {"error": str(exc)})
+    except Exception as exc:
+        yield _sse("error", {"error": f"live task turn failed: {_safe_exception_message(exc)}"})
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:

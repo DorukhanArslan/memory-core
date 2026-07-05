@@ -57,6 +57,30 @@ def test_live_task_demo_bootstraps_identity_and_streams_sentence_events(tmp_path
     assert (tmp_path / "trace" / "live-task" / "session_1.jsonl").exists()
 
 
+def test_live_task_demo_transcript_records_assistant_text_once(tmp_path: Path):
+    demo = LiveTaskDemo(workspace_dir=tmp_path)
+    demo.reset()
+
+    async def collect():
+        return [
+            event
+            async for event in demo.stream_turn(
+                session_id="session_1",
+                subject_id="subject_1",
+                user_utterance="Doğum tarihim 12.04.1990",
+            )
+        ]
+
+    events = asyncio.run(collect())
+    completed = [event for event in events if event["type"] == LIVE_TURN_COMPLETED][0]
+    transcript = demo.state().transcript
+
+    assert transcript[-1] == {
+        "role": "assistant",
+        "content": completed["data"]["assistant_text"],
+    }
+
+
 def test_live_task_demo_records_structured_summary(tmp_path: Path):
     demo = LiveTaskDemo(workspace_dir=tmp_path)
     demo.reset()

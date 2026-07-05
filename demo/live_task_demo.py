@@ -9,10 +9,12 @@ from typing import Any
 
 from memory_core.live import (
     JsonlTraceSink,
+    LIVE_TURN_COMPLETED,
     LiveIdentityStore,
     LiveTurnContext,
     LiveTurnEvent,
     SubjectMemory,
+    TEXT_DELTA,
 )
 
 
@@ -103,6 +105,7 @@ class LiveTaskDemo:
             workflow_state=asdict(next_state),
         )
         assistant_parts: list[str] = []
+        completed_assistant_text = ""
         started_at = time.monotonic()
         async for event in memory.stream_live_turn(
             context,
@@ -110,8 +113,10 @@ class LiveTaskDemo:
             identity=identity,
             trace_sink=trace_sink,
         ):
-            if event.text:
+            if event.type == TEXT_DELTA and event.text:
                 assistant_parts.append(event.text)
+            if event.type == LIVE_TURN_COMPLETED and event.data:
+                completed_assistant_text = str(event.data.get("assistant_text") or "")
             yield latency_event_payload(
                 event_type=event.type,
                 text=event.text,
@@ -122,7 +127,12 @@ class LiveTaskDemo:
 
         self._state = next_state
         self._transcript.append({"role": "user", "content": user_utterance})
-        self._transcript.append({"role": "assistant", "content": "".join(assistant_parts).strip()})
+        self._transcript.append(
+            {
+                "role": "assistant",
+                "content": completed_assistant_text or "".join(assistant_parts).strip(),
+            }
+        )
 
     def record_summary(
         self,

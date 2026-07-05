@@ -229,6 +229,41 @@ memory. `admin_review_suggestions` are returned on `SessionSummaryResult` and
 included in trace events, but are never written to identity or durable memory by
 the SDK.
 
+## Demo Environment
+
+The FastAPI demo app exposes a generic live task simulator for local latency and
+integration checks:
+
+```bash
+uvicorn demo.app:app --reload
+```
+
+Endpoints:
+
+- `POST /api/live-task/reset`
+- `GET /api/live-task/state`
+- `POST /api/live-task/turn-stream`
+- `POST /api/live-task/summary`
+
+Example streaming payload:
+
+```json
+{
+  "sessionId": "session_demo",
+  "subjectId": "subject_demo",
+  "message": "Doğum tarihim 12.04.1990"
+}
+```
+
+`/api/live-task/turn-stream` returns SSE events named after the live SDK event
+types. Each live event payload includes `elapsed_ms`, so the same client path can
+later compare fake-provider latency with real inference latency. The final
+`live_task_state` event returns serialized workflow state and transcript.
+
+The demo task is appointment rescheduling. It verifies identity, collects a new
+time, asks for confirmation, emits sentence events for TTS-style chunking, and
+writes post-session summaries through `SubjectMemory.record_session_summary`.
+
 ## OpenClaw Compatibility
 
 `openclaw_compatible=True` uses OpenClaw runtime-context markers when assembling

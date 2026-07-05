@@ -6,7 +6,7 @@ import inspect
 import json
 from pathlib import Path
 import re
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from memory_core.client import Memory, MemoryRecordResult
 from memory_core.config import MemoryConfig
@@ -27,6 +27,22 @@ IDENTITY_FILE_ORDER = (
 )
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 SENTENCE_RE = re.compile(r"(.+?[.!?…])(?:\s+|$)", re.DOTALL)
+LIVE_TURN_STARTED = "live_turn_started"
+MEMORY_RECALL_COMPLETED = "memory_recall_completed"
+PROMPT_ASSEMBLED = "prompt_assembled"
+TEXT_DELTA = "text_delta"
+SENTENCE = "sentence"
+LIVE_TURN_COMPLETED = "live_turn_completed"
+LIVE_TURN_FAILED = "live_turn_failed"
+LiveTurnEventType = Literal[
+    "live_turn_started",
+    "memory_recall_completed",
+    "prompt_assembled",
+    "text_delta",
+    "sentence",
+    "live_turn_completed",
+    "live_turn_failed",
+]
 
 
 @dataclass(frozen=True)
@@ -72,7 +88,7 @@ class PreparedLiveTurn:
 
 @dataclass(frozen=True)
 class LiveTurnEvent:
-    type: str
+    type: LiveTurnEventType
     text: str = ""
     data: dict[str, Any] | None = None
 
@@ -189,7 +205,7 @@ class SubjectMemory:
         trace_sink: TraceSink | None = None,
     ) -> AsyncIterable[LiveTurnEvent]:
         yield _record_trace_event(
-            "live_turn_started",
+            LIVE_TURN_STARTED,
             trace_sink=trace_sink,
             data={"subject_id": context.subject_id, "session_id": context.session_id},
         )
@@ -202,41 +218,53 @@ class SubjectMemory:
             corpus=corpus,
         )
         yield _record_trace_event(
-            "memory_recall_completed",
+            MEMORY_RECALL_COMPLETED,
             trace_sink=trace_sink,
             data={"results": prepared.memory_results, "memory_context": prepared.memory_context},
         )
         yield _record_trace_event(
-            "prompt_assembled",
+            PROMPT_ASSEMBLED,
             trace_sink=trace_sink,
             data={"trace_context": prepared.trace_context, "runtime_context": prepared.runtime_context},
         )
 
         assistant_parts: list[str] = []
         sentence_buffer = ""
-        async for chunk in _aiter_stream(llm(prepared.messages)):
-            text = _coerce_text_delta(chunk)
-            if not text:
-                continue
-            assistant_parts.append(text)
-            sentence_buffer += text
-            yield _record_trace_event("text_delta", trace_sink=trace_sink, text=text)
-            sentences, sentence_buffer = _pop_complete_sentences(sentence_buffer)
-            for sentence in sentences:
-                yield _record_trace_event("sentence", trace_sink=trace_sink, text=sentence)
+        try:
+            async for chunk in _aiter_stream(llm(prepared.messages)):
+                text = _coerce_text_delta(chunk)
+                if not text:
+                    continue
+                assistant_parts.append(text)
+                sentence_buffer += text
+                yield _record_trace_event(TEXT_DELTA, trace_sink=trace_sink, text=text)
+                sentences, sentence_buffer = _pop_complete_sentences(sentence_buffer)
+                for sentence in sentences:
+                    yield _record_trace_event(SENTENCE, trace_sink=trace_sink, text=sentence)
 
-        remainder = sentence_buffer.strip()
-        if remainder:
-            yield _record_trace_event("sentence", trace_sink=trace_sink, text=remainder)
-        assistant_text = "".join(assistant_parts).strip()
-        yield _record_trace_event(
-            "live_turn_completed",
-            trace_sink=trace_sink,
-            data={
-                "assistant_text": assistant_text,
-                "trace_context": prepared.trace_context,
-            },
-        )
+            remainder = sentence_buffer.strip()
+            if remainder:
+                yield _record_trace_event(SENTENCE, trace_sink=trace_sink, text=remainder)
+            assistant_text = "".join(assistant_parts).strip()
+            yield _record_trace_event(
+                LIVE_TURN_COMPLETED,
+                trace_sink=trace_sink,
+                data={
+                    "assistant_text": assistant_text,
+                    "trace_context": prepared.trace_context,
+                },
+            )
+        except Exception as exc:
+            _record_trace_event(
+                LIVE_TURN_FAILED,
+                trace_sink=trace_sink,
+                data={
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "assistant_text": "".join(assistant_parts).strip(),
+                },
+            )
+            raise
 
     def record_session_summary(
         self,
@@ -265,7 +293,7 @@ def _validate_safe_id(value: str, *, label: str) -> str:
 
 
 def _record_trace_event(
-    event_type: str,
+    event_type: LiveTurnEventType,
     *,
     trace_sink: TraceSink | None,
     text: str = "",
@@ -366,8 +394,16 @@ def _pop_complete_sentences(buffer: str) -> tuple[list[str], str]:
 
 __all__ = [
     "JsonlTraceSink",
+    "LIVE_TURN_COMPLETED",
+    "LIVE_TURN_FAILED",
+    "LIVE_TURN_STARTED",
     "LiveIdentity",
+    "LiveTurnEventType",
+    "MEMORY_RECALL_COMPLETED",
+    "PROMPT_ASSEMBLED",
+    "SENTENCE",
     "SubjectMemory",
+    "TEXT_DELTA",
     "TraceSink",
     "LiveTurnContext",
     "LiveTurnEvent",

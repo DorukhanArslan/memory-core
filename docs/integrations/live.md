@@ -91,7 +91,8 @@ returns an async iterable of text chunks, or dictionaries containing `text`,
 
 ## Event Contract
 
-The first SDK slice emits string-typed events:
+The SDK exports event-name constants and a `LiveTurnEventType` literal alias.
+Current event types:
 
 - `live_turn_started`
 - `memory_recall_completed`
@@ -99,9 +100,15 @@ The first SDK slice emits string-typed events:
 - `text_delta`
 - `sentence`
 - `live_turn_completed`
+- `live_turn_failed`
 
 `sentence` events are designed for TTS. `text_delta` events are useful for live
 UI, logs, and transcript buffers.
+
+If the host-supplied LLM stream raises, the SDK records `live_turn_failed` to
+the trace sink with `error_type`, `error`, and partial `assistant_text`, then
+re-raises the original exception so the host runtime can apply its retry or
+fallback policy.
 
 The host still owns workflow state transitions and tool calls. Put active
 workflow state into `LiveTurnContext.workflow_state`; the SDK places it inside

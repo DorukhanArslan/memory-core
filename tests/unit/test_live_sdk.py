@@ -6,10 +6,15 @@ from pathlib import Path
 
 from memory_core.live import (
     JsonlTraceSink,
+    LIVE_TURN_COMPLETED,
+    LIVE_TURN_FAILED,
+    LIVE_TURN_STARTED,
     LiveIdentity,
     LiveTurnContext,
     LiveTurnEvent,
+    SENTENCE,
     SubjectMemory,
+    TEXT_DELTA,
 )
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 
@@ -158,3 +163,49 @@ def test_stream_live_turn_writes_append_only_trace_events(tmp_path: Path):
     assert [record["type"] for record in records] == [event.type for event in events]
     assert records[0]["data"] == {"subject_id": "subj_123", "session_id": "session_1"}
     assert records[-1]["data"]["assistant_text"] == "Tamam."
+
+
+def test_live_event_type_constants_are_exported():
+    assert LIVE_TURN_STARTED == "live_turn_started"
+    assert TEXT_DELTA == "text_delta"
+    assert SENTENCE == "sentence"
+    assert LIVE_TURN_COMPLETED == "live_turn_completed"
+    assert LIVE_TURN_FAILED == "live_turn_failed"
+
+
+def test_stream_live_turn_traces_failure_before_reraising(tmp_path: Path):
+    async def failing_stream(messages):
+        yield "Basladim. "
+        raise RuntimeError("provider disconnected")
+
+    async def collect_until_failure() -> None:
+        memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+        trace_sink = JsonlTraceSink(tmp_path / "trace" / "session_1.jsonl")
+        async for _event in memory.stream_live_turn(
+            LiveTurnContext(
+                subject_id="subj_123",
+                session_id="session_1",
+                user_utterance="Selam.",
+            ),
+            llm=failing_stream,
+            trace_sink=trace_sink,
+        ):
+            pass
+
+    try:
+        asyncio.run(collect_until_failure())
+    except RuntimeError as exc:
+        assert "provider disconnected" in str(exc)
+    else:
+        raise AssertionError("expected stream failure to be re-raised")
+
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "trace" / "session_1.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert records[-1]["type"] == LIVE_TURN_FAILED
+    assert records[-1]["data"] == {
+        "error_type": "RuntimeError",
+        "error": "provider disconnected",
+        "assistant_text": "Basladim.",
+    }

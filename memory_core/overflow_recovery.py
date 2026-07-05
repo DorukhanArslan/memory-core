@@ -30,6 +30,10 @@ _RATE_LIMIT_HINT_RE = re.compile(
     r"tokens per day",
     re.I,
 )
+_CONFIGURED_CONTEXT_SIZE_OVERFLOW_RE = re.compile(
+    r"prompt has [\d,]+ tokens?, but the configured context size is [\d,]+ tokens?",
+    re.I,
+)
 _OBSERVED_OVERFLOW_TOKEN_PATTERNS = (
     re.compile(r"prompt is too long:\s*([\d,]+)\s+tokens\s*>\s*[\d,]+\s+maximum", re.I),
     re.compile(
@@ -123,6 +127,7 @@ def is_context_overflow_error(error_message: str | None) -> bool:
     )
     return (
         "request_too_large" in lower
+        or bool(_CONFIGURED_CONTEXT_SIZE_OVERFLOW_RE.search(error_message))
         or ("invalid_argument" in lower and "maximum number of tokens" in lower)
         or "request exceeds the maximum size" in lower
         or "context length exceeded" in lower

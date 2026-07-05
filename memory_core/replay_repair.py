@@ -255,6 +255,9 @@ def _normalize_optional_string(value: Any) -> str | None:
     return normalized or None
 
 
+SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY = "openclawSyntheticMissingToolResult"
+
+
 def _make_missing_tool_result(
     *,
     tool_call_id: str,
@@ -272,6 +275,7 @@ def _make_missing_tool_result(
                 or "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair.",
             }
         ],
+        "details": {SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY: True},
         "isError": True,
         "timestamp": int(time.time() * 1000),
     }

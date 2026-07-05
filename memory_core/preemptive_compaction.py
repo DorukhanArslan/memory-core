@@ -29,6 +29,10 @@ XL_CONTEXT_TOOL_RESULT_TOKENS = 200_000
 MIN_KEEP_CHARS = 2_000
 RECOVERY_MIN_KEEP_CHARS = 0
 MIDDLE_OMISSION_MARKER = "\n\n⚠️ [... middle content omitted — showing head and tail ...]\n\n"
+# Aggregate truncation shares the 0.5 history-pressure invariant used by
+# OpenClaw safeguard compaction; see tool-result-truncation.ts.
+PROMPT_TOOL_RESULT_AGGREGATE_CAP_MULTIPLIER = 4
+AGGREGATE_TOOL_RESULT_CONTEXT_SHARE = 0.5
 
 
 @dataclass(frozen=True)
@@ -496,14 +500,50 @@ def _tool_result_replacement_texts(
     return replacements
 
 
+def resolve_live_tool_result_aggregate_max_chars(
+    *,
+    context_window_tokens: int,
+    per_result_max_chars: int,
+) -> int:
+    per_result = max(1, int(per_result_max_chars))
+    window = max(1, int(context_window_tokens)) if context_window_tokens > 0 else 1
+    context_share_chars = int(window * 4 * AGGREGATE_TOOL_RESULT_CONTEXT_SHARE)
+    return max(per_result * PROMPT_TOOL_RESULT_AGGREGATE_CAP_MULTIPLIER, context_share_chars)
+
+
+def _recovery_aggregate_tool_result_chars(
+    context_window_tokens: int,
+    max_chars_override: int | None = None,
+    aggregate_max_chars_override: int | None = None,
+) -> int:
+    if aggregate_max_chars_override is not None:
+        return max(1, aggregate_max_chars_override)
+    return max(
+        1,
+        resolve_live_tool_result_aggregate_max_chars(
+            context_window_tokens=context_window_tokens,
+            per_result_max_chars=(
+                max_chars_override
+                if max_chars_override is not None
+                else calculate_max_tool_result_chars(context_window_tokens)
+            ),
+        ),
+    )
+
+
 def estimate_tool_result_reduction_potential(
     *,
     messages: list[dict[str, Any]],
     context_window_tokens: int,
     max_chars_override: int | None = None,
+    aggregate_max_chars_override: int | None = None,
 ) -> ToolResultReductionPotential:
     max_chars = max(1, max_chars_override or calculate_max_tool_result_chars(context_window_tokens))
-    aggregate_budget_chars = max(1, max_chars)
+    aggregate_budget_chars = _recovery_aggregate_tool_result_chars(
+        context_window_tokens,
+        max_chars,
+        aggregate_max_chars_override,
+    )
     text_lengths = [
         get_tool_result_text_length(message)
         for message in messages
@@ -616,7 +656,10 @@ def truncate_oversized_tool_results_in_session_file(
         return SessionToolResultTruncationResult(False, 0, "empty session")
 
     max_chars = max(1, max_chars_override or calculate_max_tool_result_chars(context_window_tokens))
-    aggregate_budget_chars = max(1, max_chars)
+    aggregate_budget_chars = _recovery_aggregate_tool_result_chars(
+        context_window_tokens,
+        max_chars,
+    )
     tool_entries: list[tuple[int, dict[str, Any], dict[str, Any], str]] = []
     for branch_index, entry in enumerate(branch):
         message = entry.get("message")

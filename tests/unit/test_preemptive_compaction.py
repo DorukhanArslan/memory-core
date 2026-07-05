@@ -122,7 +122,7 @@ def test_preemptive_compaction_uses_larger_unwindowed_transcript_estimate():
 
 
 def test_preemptive_compaction_routes_to_compact_then_truncate_when_tools_cannot_cover_overflow():
-    medium = "alpha beta gamma delta epsilon " * 220
+    medium = "alpha beta gamma delta epsilon " * 800
     long_history = "old discussion with substantial retained context and decisions " * 5000
     verbose_system = "system guidance " * 800
     verbose_prompt = "current user prompt " * 800
@@ -161,11 +161,22 @@ def test_tool_result_reduction_counts_oversized_and_aggregate_recovery_together(
         messages=messages,
         context_window_tokens=128_000,
     )
-
+    # OpenClaw aggregate budget: max(perResultMax * 4, contextWindowTokens * 4 * 0.5).
+    assert potential.aggregate_budget_chars == 256_000
     assert potential.oversized_reducible_chars > 0
-    assert potential.aggregate_reducible_chars > 0
-    assert potential.max_reducible_chars == (
-        potential.oversized_reducible_chars + potential.aggregate_reducible_chars
+    assert potential.aggregate_reducible_chars == 0
+
+    constrained = estimate_tool_result_reduction_potential(
+        messages=messages,
+        context_window_tokens=128_000,
+        aggregate_max_chars_override=20_000,
+    )
+
+    assert constrained.aggregate_budget_chars == 20_000
+    assert constrained.oversized_reducible_chars > 0
+    assert constrained.aggregate_reducible_chars > 0
+    assert constrained.max_reducible_chars == (
+        constrained.oversized_reducible_chars + constrained.aggregate_reducible_chars
     )
 
 
@@ -216,5 +227,5 @@ def test_truncate_oversized_tool_results_in_session_file_appends_rewritten_branc
     assert result.truncated_count > 0
     assert result.reason is None
     assert len(session_file.read_text(encoding="utf-8").splitlines()) > len(entries)
-    assert sum(len(text) for text in result.tool_texts) <= 120
+    assert all(len(text) <= 120 for text in result.tool_texts)
     assert any("truncated" in text for text in result.tool_texts)

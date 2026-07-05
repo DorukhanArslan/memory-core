@@ -4,6 +4,7 @@ from memory_core.overflow_recovery import (
     decide_provider_overflow_recovery,
     extract_observed_overflow_token_count,
     is_compaction_failure_error,
+    is_context_overflow_error,
     is_likely_context_overflow_error,
 )
 
@@ -13,6 +14,15 @@ def test_likely_context_overflow_classifier_matches_openclaw_examples():
     assert is_likely_context_overflow_error("Prompt too large for this model")
     assert not is_likely_context_overflow_error("429 Too Many Requests: request exceeds rate limit")
     assert not is_likely_context_overflow_error("Model context window too small (minimum is 128k tokens)")
+
+
+def test_strict_overflow_matches_configured_context_size_error():
+    assert is_context_overflow_error(
+        "the prompt has 250,000 tokens, but the configured context size is 200,000 tokens"
+    )
+    assert not is_context_overflow_error(
+        "the configured context size is 200,000 tokens for this deployment"
+    )
 
 
 def test_observed_overflow_token_count_extracts_provider_counts():

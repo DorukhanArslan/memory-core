@@ -19,19 +19,34 @@ _SUPPORTED_PROVIDER_IDS = {
 
 
 def limit_history_turns(messages: list[dict[str, Any]], limit: int | None) -> list[dict[str, Any]]:
-    """Keep the last N user turns and following messages, matching OpenClaw history.ts."""
+    """Keep the last N user turns and following messages, matching OpenClaw history.ts.
+
+    Leading non-conversation messages (e.g. compactionSummary, branchSummary)
+    are always preserved, since they carry summarized pre-compaction context
+    that history limiting must not drop.
+    """
 
     if not limit or limit <= 0 or not messages:
         return messages
 
+    conversation_start = 0
+    while conversation_start < len(messages):
+        if messages[conversation_start].get("role") in {"user", "assistant"}:
+            break
+        conversation_start += 1
+
+    tail = messages[conversation_start:]
+    if not tail:
+        return messages
+
     user_count = 0
-    last_user_index = len(messages)
-    for index in range(len(messages) - 1, -1, -1):
-        if messages[index].get("role") != "user":
+    last_user_index = len(tail)
+    for index in range(len(tail) - 1, -1, -1):
+        if tail[index].get("role") != "user":
             continue
         user_count += 1
         if user_count > limit:
-            return messages[last_user_index:]
+            return messages[:conversation_start] + tail[last_user_index:]
         last_user_index = index
     return messages
 

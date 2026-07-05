@@ -18,6 +18,27 @@ def test_limit_history_turns_keeps_last_n_user_turns_with_assistant_responses():
     assert limit_history_turns(messages, 2) == messages[2:]
 
 
+def test_limit_history_turns_preserves_leading_compaction_summary():
+    messages = [
+        _message("compactionSummary", "summary of earlier turns"),
+        _message("branchSummary", "side branch"),
+        _message("user", "u1"),
+        _message("assistant", "a1"),
+        _message("user", "u2"),
+        _message("assistant", "a2"),
+    ]
+
+    limited = limit_history_turns(messages, 1)
+
+    assert limited == messages[:2] + messages[4:]
+
+
+def test_limit_history_turns_returns_all_when_only_leading_summaries():
+    messages = [_message("compactionSummary", "summary")]
+
+    assert limit_history_turns(messages, 1) == messages
+
+
 def test_limit_history_turns_disabled_for_missing_zero_or_negative_limits():
     messages = [_message("user", "u1"), _message("assistant", "a1")]
 

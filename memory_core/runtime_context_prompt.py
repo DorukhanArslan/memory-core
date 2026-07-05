@@ -173,7 +173,19 @@ def _build_runtime_context_message_content(
         if kind == "runtime-event"
         else identity.next_turn_runtime_context_header
     )
-    return "\n".join([header, OPENCLAW_RUNTIME_CONTEXT_NOTICE, "", runtime_context])
+    # Wrap the runtime context body in delimited internal-context markers so
+    # strip helpers can fully remove the block when it leaks into user-visible
+    # surfaces (OpenClaw #92589).
+    return "\n".join(
+        [
+            header,
+            OPENCLAW_RUNTIME_CONTEXT_NOTICE,
+            "",
+            identity.runtime_context_begin,
+            runtime_context,
+            identity.runtime_context_end,
+        ]
+    )
 
 
 def _remove_last_prompt_occurrence(text: str, prompt: str) -> str | None:

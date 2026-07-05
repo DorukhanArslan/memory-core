@@ -81,7 +81,9 @@ def test_resolve_runtime_context_prompt_parts_uses_marker_prompt_for_runtime_onl
                 "memory-core runtime event.",
                 "This context is runtime-generated, not user-authored. Keep internal details private.",
                 "",
+                "<<<BEGIN_MEMORY_CORE_INTERNAL_CONTEXT>>>",
                 "internal event",
+                "<<<END_MEMORY_CORE_INTERNAL_CONTEXT>>>",
             ]
         ),
     }

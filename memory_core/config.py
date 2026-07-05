@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from memory_core.flags import FeatureFlags
+
 SAFE_AGENT_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
@@ -24,6 +26,16 @@ class MemoryConfig:
     mmr_lambda: float = 0.7
     temporal_decay_enabled: bool = False
     temporal_decay_half_life_days: float = 30.0
+    flags: FeatureFlags | None = None
+
+    def effective_flags(self) -> FeatureFlags:
+        """Resolve feature flags; explicit `flags` wins over legacy booleans."""
+        if self.flags is not None:
+            return self.flags
+        return FeatureFlags(
+            mmr=self.mmr_enabled,
+            temporal_decay=self.temporal_decay_enabled,
+        )
 
     def resolved_store_path(self) -> Path:
         if self.store_path is not None:

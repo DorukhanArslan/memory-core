@@ -49,10 +49,13 @@ def memory_search(
             max_results=max_results,
             balance_corpora=corpus == "all",
         )
+        # OpenClaw reports FTS-only mode as provider "none" / model "fts-only"
+        # when no embedding provider is configured.
+        embeddings = store.embeddings
         return {
             "results": results,
-            "provider": store.embeddings.provider_id,
-            "model": store.embeddings.model,
+            "provider": embeddings.provider_id if embeddings is not None else "none",
+            "model": embeddings.model if embeddings is not None else "fts-only",
             "citations": config.citation_mode,
         }
     except Exception as exc:

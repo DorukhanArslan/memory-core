@@ -59,7 +59,7 @@ class Memory:
         cls,
         workspace_dir: str | Path = ".",
         *,
-        embedding_provider: EmbeddingProvider,
+        embedding_provider: EmbeddingProvider | None = None,
         config: MemoryConfig | None = None,
         initialize: bool = True,
         reindex: bool = True,

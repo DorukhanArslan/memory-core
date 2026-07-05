@@ -18,6 +18,12 @@ from memory_core.client import (
     initialize_memory_core_workspace,
 )
 from memory_core.config import MemoryConfig
+from memory_core.embeddings import (
+    EmbeddingProvider,
+    FakeEmbeddingProvider,
+    OpenAICompatibleEmbeddingProvider,
+)
+from memory_core.flags import FeatureFlags
 from memory_core.context_engine_lifecycle import (
     assemble_context_engine_messages,
     build_context_engine_conversation_snapshot,
@@ -102,7 +108,11 @@ __all__ = [
     "DEFAULT_MEMORY_FLUSH_SOFT_TOKENS",
     "DEFAULT_MEMORY_MD_TEMPLATE",
     "DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR",
+    "EmbeddingProvider",
+    "FakeEmbeddingProvider",
+    "FeatureFlags",
     "LangGraphMemoryRecall",
+    "OpenAICompatibleEmbeddingProvider",
     "RuntimeIdentity",
     "OPENCLAW_COMPAT_RUNTIME_IDENTITY",
     "MEMORY_CORE_RUNTIME_CONTEXT_CUSTOM_TYPE",

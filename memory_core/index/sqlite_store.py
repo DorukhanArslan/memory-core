@@ -23,8 +23,15 @@ from memory_core.workspace import MemoryWorkspace
 
 
 class SQLiteMemoryStore:
-    def __init__(self, config: MemoryConfig, embeddings: EmbeddingProvider):
+    def __init__(self, config: MemoryConfig, embeddings: EmbeddingProvider | None):
         self.config = config
+        self.flags = config.effective_flags()
+        if self.flags.vector_search and embeddings is None:
+            raise ValueError(
+                "vector_search is enabled but no embedding provider was given; "
+                "pass an embedding provider or disable it via "
+                "FeatureFlags(vector_search=False) for FTS-only mode"
+            )
         self.embeddings = embeddings
         self.path = config.resolved_store_path()
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -65,9 +72,10 @@ class SQLiteMemoryStore:
                 )
             )
 
-        embeddings = (
-            self.embeddings.embed_documents([chunk.text for chunk in chunks]) if chunks else []
-        )
+        if self.flags.vector_search and chunks:
+            embeddings = self.embeddings.embed_documents([chunk.text for chunk in chunks])
+        else:
+            embeddings = [[] for _ in chunks]
 
         with self.connect() as db:
             db.execute("DELETE FROM chunks")
@@ -105,9 +113,18 @@ class SQLiteMemoryStore:
         min_score: float = 0.0,
         sources: set[str] | None = None,
     ) -> list[HybridResult]:
+        source_filter = _source_filter_clause(sources)
+
+        if not self.flags.vector_search:
+            return self._search_keyword_only(
+                query,
+                max_results=max_results,
+                min_score=min_score,
+                source_filter=source_filter,
+            )
+
         query_embedding = self.embeddings.embed_query(query)
         with self.connect() as db:
-            source_filter = _source_filter_clause(sources)
             rows = db.execute(
                 "SELECT id, path, start_line, end_line, source, text, embedding FROM chunks"
                 + source_filter.sql,
@@ -127,30 +144,27 @@ class SQLiteMemoryStore:
             ]
 
             keyword: list[HybridKeywordResult] = []
-            fts_query = build_fts_query(query)
-            if fts_query:
-                for row in db.execute(
-                    """
-                    SELECT c.id, c.path, c.start_line, c.end_line, c.source, c.text,
-                           bm25(chunks_fts) AS rank
-                    FROM chunks_fts
-                    JOIN chunks c ON c.id = chunks_fts.id
-                    WHERE chunks_fts MATCH ?""" + source_filter.and_sql + """
-                    ORDER BY rank
-                    """,
-                    (fts_query, *source_filter.params),
-                ):
-                    keyword.append(
-                        HybridKeywordResult(
-                            id=row[0],
-                            path=row[1],
-                            start_line=row[2],
-                            end_line=row[3],
-                            source=row[4],
-                            snippet=row[5],
-                            text_score=bm25_rank_to_score(float(row[6])),
-                        )
-                    )
+            if self.flags.text_search:
+                keyword = self._query_keyword_hits(db, query, source_filter)
+
+        if not self.flags.text_search:
+            # Vector-only mode mirrors OpenClaw's non-hybrid path: raw vector
+            # scores, strict min-score filter, no keyword relaxation.
+            ranked_vector = sorted(vector, key=lambda item: item.vector_score, reverse=True)
+            return [
+                HybridResult(
+                    path=item.path,
+                    start_line=item.start_line,
+                    end_line=item.end_line,
+                    score=item.vector_score,
+                    vector_score=item.vector_score,
+                    text_score=0.0,
+                    snippet=item.snippet,
+                    source=item.source,
+                )
+                for item in ranked_vector
+                if item.vector_score >= min_score
+            ][:max_results]
 
         merged = merge_hybrid_results(
             vector=vector,
@@ -161,13 +175,13 @@ class SQLiteMemoryStore:
         decayed = apply_temporal_decay_to_hybrid_results(
             merged,
             temporal_decay=TemporalDecayConfig(
-                enabled=self.config.temporal_decay_enabled,
+                enabled=self.flags.temporal_decay,
                 half_life_days=self.config.temporal_decay_half_life_days,
             ),
             workspace_dir=str(self.config.workspace_dir),
         )
         ranked = sorted(decayed, key=lambda item: item.score, reverse=True)
-        if self.config.mmr_enabled:
+        if self.flags.mmr:
             by_key = {
                 _mmr_key(item): item
                 for item in ranked
@@ -199,6 +213,78 @@ class SQLiteMemoryStore:
             for item in ranked
             if _mmr_key(item) in keyword_keys and item.score >= 0
         ][:max_results]
+
+    def _search_keyword_only(
+        self,
+        query: str,
+        *,
+        max_results: int,
+        min_score: float,
+        source_filter: _SourceFilter,
+    ) -> list[HybridResult]:
+        # OpenClaw FTS-only mode ("provider: none"): keyword hits keep their
+        # full text score (no text-weight scaling), temporal decay still
+        # applies, and an empty strict pass relaxes the min-score to 0.
+        with self.connect() as db:
+            keyword = self._query_keyword_hits(db, query, source_filter)
+        results = [
+            HybridResult(
+                path=item.path,
+                start_line=item.start_line,
+                end_line=item.end_line,
+                score=item.text_score,
+                vector_score=0.0,
+                text_score=item.text_score,
+                snippet=item.snippet,
+                source=item.source,
+            )
+            for item in keyword
+        ]
+        decayed = apply_temporal_decay_to_hybrid_results(
+            results,
+            temporal_decay=TemporalDecayConfig(
+                enabled=self.flags.temporal_decay,
+                half_life_days=self.config.temporal_decay_half_life_days,
+            ),
+            workspace_dir=str(self.config.workspace_dir),
+        )
+        ranked = sorted(decayed, key=lambda item: item.score, reverse=True)
+        strict = [item for item in ranked if item.score >= min_score]
+        if strict:
+            return strict[:max_results]
+        return [item for item in ranked if item.score >= 0][:max_results]
+
+    def _query_keyword_hits(
+        self,
+        db: sqlite3.Connection,
+        query: str,
+        source_filter: _SourceFilter,
+    ) -> list[HybridKeywordResult]:
+        fts_query = build_fts_query(query)
+        if not fts_query:
+            return []
+        return [
+            HybridKeywordResult(
+                id=row[0],
+                path=row[1],
+                start_line=row[2],
+                end_line=row[3],
+                source=row[4],
+                snippet=row[5],
+                text_score=bm25_rank_to_score(float(row[6])),
+            )
+            for row in db.execute(
+                """
+                SELECT c.id, c.path, c.start_line, c.end_line, c.source, c.text,
+                       bm25(chunks_fts) AS rank
+                FROM chunks_fts
+                JOIN chunks c ON c.id = chunks_fts.id
+                WHERE chunks_fts MATCH ?""" + source_filter.and_sql + """
+                ORDER BY rank
+                """,
+                (fts_query, *source_filter.params),
+            )
+        ]
 
 
 def _mmr_key(item: HybridResult) -> str:

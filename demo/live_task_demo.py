@@ -39,6 +39,7 @@ class LiveTaskDemoState:
     transcript: list[dict[str, str]]
     workspace: str
     trace_path: str
+    subject_memory_files: dict[str, str]
 
 
 class LiveTaskDemo:
@@ -70,7 +71,22 @@ class LiveTaskDemo:
             transcript=list(self._transcript),
             workspace=str(self.workspace_dir),
             trace_path=str(self._trace_path(self._state.session_id)),
+            subject_memory_files=self._subject_memory_files(self._state.subject_id),
         )
+
+    def _subject_memory_files(self, subject_id: str) -> dict[str, str]:
+        if not subject_id or any(part in subject_id for part in ("/", "\\", "..")):
+            return {}
+        subject_dir = self.workspace_dir / "subjects" / subject_id
+        files: dict[str, str] = {}
+        memory_md = subject_dir / "MEMORY.md"
+        if memory_md.is_file():
+            files["MEMORY.md"] = memory_md.read_text(encoding="utf-8")
+        daily_dir = subject_dir / "memory"
+        if daily_dir.is_dir():
+            for path in sorted(daily_dir.glob("*.md"), reverse=True):
+                files[f"memory/{path.name}"] = path.read_text(encoding="utf-8")
+        return files
 
     async def stream_turn(
         self,

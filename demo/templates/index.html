@@ -452,13 +452,28 @@
         log.scrollTop = log.scrollHeight;
       }
 
+      function subjectMemoryNode(liveTask) {
+        const files = liveTask.subjectMemoryFiles || {};
+        const paths = Object.keys(files);
+        if (!paths.length) {
+          return textBlock("No subject memory files yet. Live turns only recall memory; use Summary to extract durable facts into the subject's daily memory file.");
+        }
+        const container = document.createElement("div");
+        container.className = "stacked-detail";
+        for (const path of paths) {
+          container.append(sectionBlock(path, codeBlock(files[path] || "(empty)")));
+        }
+        return container;
+      }
+
       function liveEventDetail(item) {
         const data = item.data || {};
         if (data.text) return ` · ${data.text}`;
         const payload = data.data || {};
         if (item.event === "memory_recall_completed") {
-          const count = (payload.results || []).length;
-          return ` · ${count} memory result${count === 1 ? "" : "s"}`;
+          const results = payload.results || [];
+          const paths = [...new Set(results.map((result) => result.path).filter(Boolean))].slice(0, 3);
+          return ` · ${results.length} memory result${results.length === 1 ? "" : "s"}${paths.length ? ` (${paths.join(", ")})` : ""}`;
         }
         if (item.event === "provider_event") {
           if (payload.type === "llm") {
@@ -492,6 +507,7 @@
           summaryNode.append(codeBlock(liveTaskSummary.text || "(empty)"));
           panel.append(stepNode("Session Summary", summaryNode));
         }
+        panel.append(stepNode("Subject Memory", subjectMemoryNode(liveTask)));
         const timeline = document.createElement("div");
         timeline.className = "live-event-timeline";
         if (!liveTaskEvents.length) {

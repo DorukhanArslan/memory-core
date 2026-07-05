@@ -139,6 +139,8 @@ def test_demo_home_loads():
     assert "live-observability" in response.text
     assert "renderModeLayout" in response.text
     assert "renderLiveTask" in response.text
+    assert "Subject Memory" in response.text
+    assert "subjectMemoryFiles" in response.text
     assert "interaction-stack" not in response.text
     assert 'textContent += text' not in response.text
     assert "Fake</option>" not in response.text
@@ -296,6 +298,7 @@ def test_live_task_reset_and_state_endpoints():
     assert payload["workflow"]["current_step"] == "verify_identity"
     assert payload["transcript"] == []
     assert payload["tracePath"].endswith("session_demo.jsonl")
+    assert isinstance(payload["subjectMemoryFiles"], dict)
 
 
 def test_live_task_turn_stream_emits_latency_events(monkeypatch):

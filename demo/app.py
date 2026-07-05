@@ -278,6 +278,7 @@ def _serialize_live_task_state(state: LiveTaskDemoState) -> dict[str, Any]:
         "transcript": state.transcript,
         "workspace": state.workspace,
         "tracePath": state.trace_path,
+        "subjectMemoryFiles": state.subject_memory_files,
     }
 
 

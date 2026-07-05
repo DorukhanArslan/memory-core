@@ -159,6 +159,9 @@ def test_live_task_demo_records_structured_summary(tmp_path: Path):
     assert result["follow_ups"] == ["Randevu değişikliğini takvim sisteminde doğrula."]
     assert "Randevu talebi" in memory_text
 
+    subject_memory_files = demo.state().subject_memory_files
+    assert "Randevu talebi" in subject_memory_files[result["path"]]
+
 
 def test_live_task_demo_summary_without_turns_records_incomplete_flow(tmp_path: Path):
     demo = LiveTaskDemo(workspace_dir=tmp_path)

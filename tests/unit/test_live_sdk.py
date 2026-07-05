@@ -14,6 +14,10 @@ from memory_core.live import (
     LiveTurnEvent,
     PROVIDER_EVENT,
     SENTENCE,
+    SESSION_SUMMARY_COMPLETED,
+    SESSION_SUMMARY_FAILED,
+    SESSION_SUMMARY_SKIPPED,
+    SESSION_SUMMARY_STARTED,
     SubjectMemory,
     TEXT_DELTA,
 )
@@ -55,6 +59,107 @@ def test_subject_memory_uses_separate_workspace_per_subject(tmp_path: Path):
         tmp_path / "subjects" / "subj_123" / "memory" / "2026-09-04.md"
     ).read_text(encoding="utf-8") == "- Subject prefers evening delivery.\n"
     assert not (tmp_path / "memory" / "2026-09-04.md").exists()
+
+
+def test_record_session_summary_writes_only_durable_structured_entries(tmp_path: Path):
+    memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+    trace_sink = JsonlTraceSink(tmp_path / "trace" / "session_1.jsonl")
+
+    result = memory.record_session_summary(
+        session_id="session_1",
+        transcript="Transcript with durable preference.",
+        summary_llm=lambda messages: json.dumps(
+            {
+                "durable_facts": ["Subject moved to the premium plan."],
+                "preferences": ["Subject prefers evening delivery."],
+                "follow_ups": ["Send updated invoice."],
+                "admin_review_suggestions": ["Consider changing the global refund policy."],
+            }
+        ),
+        now_ms=1_788_526_800_000,
+        timezone="Europe/Istanbul",
+        trace_sink=trace_sink,
+    )
+
+    memory_text = (
+        tmp_path / "subjects" / "subj_123" / "memory" / "2026-09-04.md"
+    ).read_text(encoding="utf-8")
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "trace" / "session_1.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert result.wrote is True
+    assert result.path == "memory/2026-09-04.md"
+    assert result.durable_facts == ("Subject moved to the premium plan.",)
+    assert result.preferences == ("Subject prefers evening delivery.",)
+    assert result.follow_ups == ("Send updated invoice.",)
+    assert result.admin_review_suggestions == ("Consider changing the global refund policy.",)
+    assert "Subject moved to the premium plan." in memory_text
+    assert "Subject prefers evening delivery." in memory_text
+    assert "Send updated invoice." in memory_text
+    assert "global refund policy" not in memory_text
+    assert [record["type"] for record in records] == [
+        SESSION_SUMMARY_STARTED,
+        SESSION_SUMMARY_COMPLETED,
+    ]
+    assert records[-1]["data"]["admin_review_suggestions"] == [
+        "Consider changing the global refund policy."
+    ]
+
+
+def test_record_session_summary_traces_skip_when_only_admin_suggestions(tmp_path: Path):
+    memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+    trace_sink = JsonlTraceSink(tmp_path / "trace" / "session_1.jsonl")
+
+    result = memory.record_session_summary(
+        session_id="session_1",
+        transcript="Transcript with policy idea only.",
+        summary_llm=lambda messages: json.dumps(
+            {"admin_review_suggestions": ["Tighten escalation policy."]}
+        ),
+        trace_sink=trace_sink,
+    )
+
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "trace" / "session_1.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert result.wrote is False
+    assert result.admin_review_suggestions == ("Tighten escalation policy.",)
+    assert not list((tmp_path / "subjects" / "subj_123" / "memory").glob("*.md"))
+    assert [record["type"] for record in records] == [
+        SESSION_SUMMARY_STARTED,
+        SESSION_SUMMARY_SKIPPED,
+    ]
+
+
+def test_record_session_summary_traces_failure_before_reraising(tmp_path: Path):
+    memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+    trace_sink = JsonlTraceSink(tmp_path / "trace" / "session_1.jsonl")
+
+    def failing_summary(messages):
+        raise RuntimeError("summary provider down")
+
+    try:
+        memory.record_session_summary(
+            session_id="session_1",
+            transcript="Transcript.",
+            summary_llm=failing_summary,
+            trace_sink=trace_sink,
+        )
+    except RuntimeError as exc:
+        assert "summary provider down" in str(exc)
+    else:
+        raise AssertionError("expected summary failure to be re-raised")
+
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "trace" / "session_1.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert records[-1]["type"] == SESSION_SUMMARY_FAILED
+    assert records[-1]["data"]["error"] == "summary provider down"
 
 
 def test_prepare_live_turn_wraps_workflow_state_as_openclaw_runtime_context(tmp_path: Path):
@@ -173,6 +278,10 @@ def test_live_event_type_constants_are_exported():
     assert SENTENCE == "sentence"
     assert LIVE_TURN_COMPLETED == "live_turn_completed"
     assert LIVE_TURN_FAILED == "live_turn_failed"
+    assert SESSION_SUMMARY_STARTED == "session_summary_started"
+    assert SESSION_SUMMARY_COMPLETED == "session_summary_completed"
+    assert SESSION_SUMMARY_SKIPPED == "session_summary_skipped"
+    assert SESSION_SUMMARY_FAILED == "session_summary_failed"
 
 
 def test_stream_live_turn_traces_failure_before_reraising(tmp_path: Path):

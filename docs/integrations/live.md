@@ -102,6 +102,10 @@ Current event types:
 - `sentence`
 - `live_turn_completed`
 - `live_turn_failed`
+- `session_summary_started`
+- `session_summary_completed`
+- `session_summary_skipped`
+- `session_summary_failed`
 
 `sentence` events are designed for TTS. `text_delta` events are useful for live
 UI, logs, and transcript buffers.
@@ -145,6 +149,7 @@ result = memory.record_session_summary(
     redactor=redact_sensitive_text,
     summary_llm=summary_llm,
     timezone="Europe/Istanbul",
+    trace_sink=trace_sink,
 )
 
 if result.wrote:
@@ -153,6 +158,22 @@ if result.wrote:
 
 `summary_llm` receives the OpenClaw-style memory flush messages. If it returns
 empty text or starts with `NO_REPLY`, nothing is written.
+
+For safer extraction, `summary_llm` may return JSON:
+
+```json
+{
+  "durable_facts": ["Subject moved to the premium plan."],
+  "preferences": ["Subject prefers evening delivery."],
+  "follow_ups": ["Send updated invoice."],
+  "admin_review_suggestions": ["Consider changing escalation policy."]
+}
+```
+
+Only `durable_facts`, `preferences`, and `follow_ups` are appended to subject
+memory. `admin_review_suggestions` are returned on `SessionSummaryResult` and
+included in trace events, but are never written to identity or durable memory by
+the SDK.
 
 ## OpenClaw Compatibility
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+import json
 from pathlib import Path
 
 from memory_core import JsonlTraceSink, LiveIdentity, LiveTurnContext, SubjectMemory
@@ -17,7 +18,12 @@ async def fake_streaming_llm(messages: list[dict[str, str]]) -> AsyncIterator[st
 def fake_summary_llm(messages: list[dict[str, str]]) -> str:
     transcript = messages[-1]["content"]
     if "aksam teslimat" in transcript.lower():
-        return "- Subject prefers evening delivery."
+        return json.dumps(
+            {
+                "preferences": ["Subject prefers evening delivery."],
+                "admin_review_suggestions": ["Review delivery preference wording."],
+            }
+        )
     return "NO_REPLY"
 
 

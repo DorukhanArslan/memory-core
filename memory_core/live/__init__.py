@@ -8,10 +8,11 @@ from pathlib import Path
 import re
 from typing import Any, Literal, Protocol
 
-from memory_core.client import Memory, MemoryRecordResult
+from memory_core.client import Memory
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.flags import FeatureFlags
+from memory_core.memory_flush import SILENT_REPLY_TOKEN, build_memory_flush_plan
 from memory_core.runtime_context_prompt import build_runtime_context_system_context
 from memory_core.runtime_identity import (
     OPENCLAW_COMPAT_RUNTIME_IDENTITY,
@@ -35,6 +36,10 @@ PROVIDER_EVENT = "provider_event"
 SENTENCE = "sentence"
 LIVE_TURN_COMPLETED = "live_turn_completed"
 LIVE_TURN_FAILED = "live_turn_failed"
+SESSION_SUMMARY_STARTED = "session_summary_started"
+SESSION_SUMMARY_COMPLETED = "session_summary_completed"
+SESSION_SUMMARY_SKIPPED = "session_summary_skipped"
+SESSION_SUMMARY_FAILED = "session_summary_failed"
 LiveTurnEventType = Literal[
     "live_turn_started",
     "memory_recall_completed",
@@ -44,6 +49,10 @@ LiveTurnEventType = Literal[
     "sentence",
     "live_turn_completed",
     "live_turn_failed",
+    "session_summary_started",
+    "session_summary_completed",
+    "session_summary_skipped",
+    "session_summary_failed",
 ]
 
 
@@ -93,6 +102,18 @@ class LiveTurnEvent:
     type: LiveTurnEventType
     text: str = ""
     data: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class SessionSummaryResult:
+    wrote: bool
+    path: str
+    text: str
+    raw_text: str
+    durable_facts: tuple[str, ...] = ()
+    preferences: tuple[str, ...] = ()
+    follow_ups: tuple[str, ...] = ()
+    admin_review_suggestions: tuple[str, ...] = ()
 
 
 class TraceSink(Protocol):
@@ -284,15 +305,84 @@ class SubjectMemory:
         redactor: Callable[[str], str] | None = None,
         now_ms: int | None = None,
         timezone: str = "UTC",
-    ) -> MemoryRecordResult:
+        trace_sink: TraceSink | None = None,
+    ) -> SessionSummaryResult:
+        _record_trace_event(
+            SESSION_SUMMARY_STARTED,
+            trace_sink=trace_sink,
+            data={"subject_id": self.subject_id, "session_id": session_id},
+        )
         redacted_transcript = redactor(transcript) if redactor is not None else transcript
-        return self.memory.record_turn(
-            f"Session memory extraction for session {session_id}.",
-            redacted_transcript,
-            flush_llm=summary_llm,
+        plan = build_memory_flush_plan(
+            workspace_dir=self.memory.workspace.root,
             now_ms=now_ms,
             timezone=timezone,
         )
+        messages = [
+            {"role": "system", "content": plan.system_prompt},
+            {
+                "role": "user",
+                "content": (
+                    f"{plan.prompt}\n\n"
+                    f"Session memory extraction for session {session_id}.\n"
+                    "Extract only durable facts, preferences, and follow-ups. "
+                    "Return admin/policy suggestions separately if using JSON.\n\n"
+                    f"Session transcript:\n{redacted_transcript}"
+                ),
+            },
+        ]
+        try:
+            raw_text = summary_llm(messages)
+            extraction = _parse_session_summary_output(raw_text)
+            text = extraction["memory_text"]
+            result = SessionSummaryResult(
+                wrote=False,
+                path=plan.relative_path,
+                text=text,
+                raw_text=raw_text,
+                durable_facts=extraction["durable_facts"],
+                preferences=extraction["preferences"],
+                follow_ups=extraction["follow_ups"],
+                admin_review_suggestions=extraction["admin_review_suggestions"],
+            )
+            if not text or text.startswith(SILENT_REPLY_TOKEN):
+                _record_trace_event(
+                    SESSION_SUMMARY_SKIPPED,
+                    trace_sink=trace_sink,
+                    data=_session_summary_trace_data(result),
+                )
+                return result
+
+            self.memory.workspace.append_daily_memory(plan.relative_path, text)
+            self.memory.store.reindex(self.memory.workspace)
+            result = SessionSummaryResult(
+                wrote=True,
+                path=plan.relative_path,
+                text=text,
+                raw_text=raw_text,
+                durable_facts=extraction["durable_facts"],
+                preferences=extraction["preferences"],
+                follow_ups=extraction["follow_ups"],
+                admin_review_suggestions=extraction["admin_review_suggestions"],
+            )
+            _record_trace_event(
+                SESSION_SUMMARY_COMPLETED,
+                trace_sink=trace_sink,
+                data=_session_summary_trace_data(result),
+            )
+            return result
+        except Exception as exc:
+            _record_trace_event(
+                SESSION_SUMMARY_FAILED,
+                trace_sink=trace_sink,
+                data={
+                    "subject_id": self.subject_id,
+                    "session_id": session_id,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                },
+            )
+            raise
 
 
 def _validate_safe_id(value: str, *, label: str) -> str:
@@ -312,6 +402,85 @@ def _record_trace_event(
     if trace_sink is not None:
         trace_sink.record(event)
     return event
+
+
+def _session_summary_trace_data(result: SessionSummaryResult) -> dict[str, Any]:
+    return {
+        "wrote": result.wrote,
+        "path": result.path,
+        "durable_facts": list(result.durable_facts),
+        "preferences": list(result.preferences),
+        "follow_ups": list(result.follow_ups),
+        "admin_review_suggestions": list(result.admin_review_suggestions),
+    }
+
+
+def _parse_session_summary_output(raw_text: str) -> dict[str, Any]:
+    text = raw_text.strip()
+    if not text or text.startswith(SILENT_REPLY_TOKEN):
+        return _session_summary_payload(memory_text="", raw_text=raw_text)
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return _session_summary_payload(memory_text=text, raw_text=raw_text)
+    if not isinstance(payload, dict):
+        return _session_summary_payload(memory_text=text, raw_text=raw_text)
+
+    durable_facts = _string_tuple(payload.get("durable_facts"))
+    preferences = _string_tuple(payload.get("preferences"))
+    follow_ups = _string_tuple(payload.get("follow_ups"))
+    admin_review_suggestions = _string_tuple(payload.get("admin_review_suggestions"))
+    memory_text = _format_structured_session_memory(
+        durable_facts=durable_facts,
+        preferences=preferences,
+        follow_ups=follow_ups,
+    )
+    return {
+        "memory_text": memory_text,
+        "durable_facts": durable_facts,
+        "preferences": preferences,
+        "follow_ups": follow_ups,
+        "admin_review_suggestions": admin_review_suggestions,
+    }
+
+
+def _session_summary_payload(*, memory_text: str, raw_text: str) -> dict[str, Any]:
+    return {
+        "memory_text": memory_text,
+        "durable_facts": (),
+        "preferences": (),
+        "follow_ups": (),
+        "admin_review_suggestions": (),
+    }
+
+
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        stripped = value.strip()
+        return (stripped,) if stripped else ()
+    if not isinstance(value, list | tuple):
+        return ()
+    items = []
+    for item in value:
+        if isinstance(item, str) and item.strip():
+            items.append(item.strip())
+    return tuple(items)
+
+
+def _format_structured_session_memory(
+    *,
+    durable_facts: tuple[str, ...],
+    preferences: tuple[str, ...],
+    follow_ups: tuple[str, ...],
+) -> str:
+    lines: list[str] = []
+    for fact in durable_facts:
+        lines.append(f"- {fact}")
+    for preference in preferences:
+        lines.append(f"- Preference: {preference}")
+    for follow_up in follow_ups:
+        lines.append(f"- Follow-up: {follow_up}")
+    return "\n".join(lines)
 
 
 def _validate_context_subject(expected: str, actual: str) -> None:
@@ -416,6 +585,11 @@ __all__ = [
     "PROMPT_ASSEMBLED",
     "PROVIDER_EVENT",
     "SENTENCE",
+    "SESSION_SUMMARY_COMPLETED",
+    "SESSION_SUMMARY_FAILED",
+    "SESSION_SUMMARY_SKIPPED",
+    "SESSION_SUMMARY_STARTED",
+    "SessionSummaryResult",
     "SubjectMemory",
     "TEXT_DELTA",
     "TraceSink",

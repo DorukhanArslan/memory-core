@@ -136,10 +136,9 @@ def test_chatbot_memory_does_not_expose_test_clock_control(tmp_path: Path):
 
 
 def test_live_streaming_example_emits_tts_sentences(tmp_path: Path):
-    identity_dir = tmp_path / "identity"
-    live_streaming.seed_identity(identity_dir)
+    live_streaming.seed_identity(tmp_path)
 
-    sentences = asyncio.run(live_streaming.run_live_turn(tmp_path, identity_dir))
+    sentences = asyncio.run(live_streaming.run_live_turn(tmp_path))
 
     assert sentences == [
         "Tabii, yardimci olayim.",

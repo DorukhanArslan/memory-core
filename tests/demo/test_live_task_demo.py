@@ -49,7 +49,8 @@ def test_live_task_demo_bootstraps_identity_and_streams_sentence_events(tmp_path
     events = asyncio.run(collect())
     sentences = [event for event in events if event["type"] == SENTENCE]
 
-    assert (tmp_path / "identity" / "AGENT.md").exists()
+    assert (tmp_path / "AGENTS.md").exists()
+    assert "appointment_reschedule" in (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
     assert sentences
     assert "elapsed_ms" in events[0]
     assert events[-1]["type"] == LIVE_TURN_COMPLETED

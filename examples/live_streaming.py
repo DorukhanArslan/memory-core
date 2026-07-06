@@ -21,7 +21,6 @@ async def fake_summary_llm(messages: list[dict[str, str]]) -> str:
         return json.dumps(
             {
                 "preferences": ["Subject prefers evening delivery."],
-                "admin_review_suggestions": ["Review delivery preference wording."],
             }
         )
     return "NO_REPLY"
@@ -31,9 +30,9 @@ def redact_sensitive_text(text: str) -> str:
     return text.replace("4111 1111 1111 1111", "[redacted-card]")
 
 
-async def run_live_turn(workspace_dir: str | Path, identity_dir: str | Path) -> list[str]:
-    identity = LiveIdentityStore(identity_dir, required_files=["AGENT.md"]).load()
+async def run_live_turn(workspace_dir: str | Path) -> list[str]:
     workspace = Path(workspace_dir)
+    identity = LiveIdentityStore(workspace, required_files=["AGENTS.md"]).load()
     memory = SubjectMemory.open(
         workspace_dir=workspace,
         subject_id="subj_123",
@@ -86,25 +85,28 @@ async def record_session_summary(workspace_dir: str | Path) -> str:
     return result.path if result.wrote else ""
 
 
-def seed_identity(identity_dir: str | Path) -> None:
-    root = Path(identity_dir)
+def seed_identity(workspace_dir: str | Path) -> None:
+    root = Path(workspace_dir)
     root.mkdir(parents=True, exist_ok=True)
-    (root / "AGENT.md").write_text(
-        "You are a concise live support agent.",
+    (root / "AGENTS.md").write_text(
+        "You are a concise live support agent. Verify identity before changing account data.",
         encoding="utf-8",
     )
-    (root / "POLICY.md").write_text(
-        "Verify identity before changing account data.",
+    (root / "SOUL.md").write_text(
+        "Use short, clear turns suitable for text-to-speech.",
+        encoding="utf-8",
+    )
+    (root / "TOOLS.md").write_text(
+        "Tool calls are owned by the host runtime.",
         encoding="utf-8",
     )
 
 
 async def main() -> None:
     workspace_dir = Path(".memory-core-live-example")
-    identity_dir = workspace_dir / "identity"
-    seed_identity(identity_dir)
+    seed_identity(workspace_dir)
 
-    sentences = await run_live_turn(workspace_dir, identity_dir)
+    sentences = await run_live_turn(workspace_dir)
     for sentence in sentences:
         print(f"TTS: {sentence}")
 

@@ -20,11 +20,14 @@ from memory_core.runtime_identity import (
 )
 
 IDENTITY_FILE_ORDER = (
-    ("AGENT.md", "Agent Identity"),
-    ("COMPANY.md", "Company"),
-    ("POLICY.md", "Policy"),
-    ("ESCALATION.md", "Escalation"),
-    ("STYLE.md", "Style"),
+    ("AGENTS.md", "Operating Instructions"),
+    ("SOUL.md", "Soul"),
+    ("TOOLS.md", "Tools"),
+    ("IDENTITY.md", "Identity"),
+    ("USER.md", "User"),
+    ("HEARTBEAT.md", "Heartbeat"),
+    ("BOOTSTRAP.md", "Bootstrap"),
+    ("MEMORY.md", "Memory"),
 )
 IDENTITY_FILE_NAMES = frozenset(filename for filename, _title in IDENTITY_FILE_ORDER)
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
@@ -168,7 +171,6 @@ class SessionSummaryResult:
     durable_facts: tuple[str, ...] = ()
     preferences: tuple[str, ...] = ()
     follow_ups: tuple[str, ...] = ()
-    admin_review_suggestions: tuple[str, ...] = ()
 
 
 class TraceSink(Protocol):
@@ -475,7 +477,7 @@ class SubjectMemory:
                     f"{plan.prompt}\n\n"
                     f"Session memory extraction for session {session_id}.\n"
                     "Extract only durable facts, preferences, and follow-ups. "
-                    "Return admin/policy suggestions separately if using JSON.\n\n"
+                    "Return only durable memory facts, preferences, and follow-ups when using JSON.\n\n"
                     f"Session transcript:\n{redacted_transcript}"
                 ),
             },
@@ -499,7 +501,6 @@ class SubjectMemory:
             durable_facts=extraction["durable_facts"],
             preferences=extraction["preferences"],
             follow_ups=extraction["follow_ups"],
-            admin_review_suggestions=extraction["admin_review_suggestions"],
         )
         if not text or text.startswith(SILENT_REPLY_TOKEN):
             _record_trace_event(
@@ -519,7 +520,6 @@ class SubjectMemory:
             durable_facts=extraction["durable_facts"],
             preferences=extraction["preferences"],
             follow_ups=extraction["follow_ups"],
-            admin_review_suggestions=extraction["admin_review_suggestions"],
         )
         _record_trace_event(
             SESSION_SUMMARY_COMPLETED,
@@ -602,7 +602,7 @@ def _validate_required_identity_files(root: Path, required_files: Iterable[str])
         if filename not in IDENTITY_FILE_NAMES or not (root / filename).is_file()
     ]
     if missing:
-        raise IdentityLoadError(f"missing required identity files: {', '.join(sorted(missing))}")
+        raise IdentityLoadError(f"missing required workspace files: {', '.join(sorted(missing))}")
 
 
 def _validate_unknown_identity_files(root: Path, policy: UnknownIdentityFilePolicy) -> None:
@@ -612,7 +612,7 @@ def _validate_unknown_identity_files(root: Path, policy: UnknownIdentityFilePoli
         raise IdentityLoadError(f"unknown identity file policy: {policy}")
     unknown = sorted(path.name for path in root.glob("*.md") if path.name not in IDENTITY_FILE_NAMES)
     if unknown:
-        raise IdentityLoadError(f"unknown identity files: {', '.join(unknown)}")
+        raise IdentityLoadError(f"unknown workspace files: {', '.join(unknown)}")
 
 
 def _truncate_identity_text(text: str, max_chars: int | None) -> str:
@@ -644,7 +644,6 @@ def _session_summary_trace_data(result: SessionSummaryResult) -> dict[str, Any]:
         "durable_facts": list(result.durable_facts),
         "preferences": list(result.preferences),
         "follow_ups": list(result.follow_ups),
-        "admin_review_suggestions": list(result.admin_review_suggestions),
     }
 
 
@@ -662,7 +661,6 @@ def _parse_session_summary_output(raw_text: str) -> dict[str, Any]:
     durable_facts = _string_tuple(payload.get("durable_facts"))
     preferences = _string_tuple(payload.get("preferences"))
     follow_ups = _string_tuple(payload.get("follow_ups"))
-    admin_review_suggestions = _string_tuple(payload.get("admin_review_suggestions"))
     memory_text = _format_structured_session_memory(
         durable_facts=durable_facts,
         preferences=preferences,
@@ -673,7 +671,6 @@ def _parse_session_summary_output(raw_text: str) -> dict[str, Any]:
         "durable_facts": durable_facts,
         "preferences": preferences,
         "follow_ups": follow_ups,
-        "admin_review_suggestions": admin_review_suggestions,
     }
 
 
@@ -683,7 +680,6 @@ def _session_summary_payload(*, memory_text: str, raw_text: str) -> dict[str, An
         "durable_facts": (),
         "preferences": (),
         "follow_ups": (),
-        "admin_review_suggestions": (),
     }
 
 

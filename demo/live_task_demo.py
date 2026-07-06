@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from demo.workspace_context import ensure_workspace_bootstrap_files
 from memory_core.live import (
     IDENTITY_FILE_ORDER,
     JsonlTraceSink,
@@ -47,7 +48,6 @@ class LiveTaskDemoState:
 class LiveTaskDemo:
     def __init__(self, *, workspace_dir: str | Path):
         self.workspace_dir = Path(workspace_dir)
-        self.identity_dir = self.workspace_dir / "identity"
         self.trace_dir = self.workspace_dir / "trace" / "live-task"
         self._state = LiveTaskSessionState(
             session_id=DEFAULT_LIVE_TASK_SESSION_ID,
@@ -62,7 +62,7 @@ class LiveTaskDemo:
         subject_id: str = DEFAULT_LIVE_TASK_SUBJECT_ID,
     ) -> LiveTaskDemoState:
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
-        self._bootstrap_identity()
+        self._bootstrap_workspace()
         self._state = LiveTaskSessionState(session_id=session_id, subject_id=subject_id)
         self._transcript = []
         return self.state()
@@ -80,7 +80,7 @@ class LiveTaskDemo:
     def _identity_files(self) -> dict[str, str]:
         files: dict[str, str] = {}
         for filename, _title in IDENTITY_FILE_ORDER:
-            path = self.identity_dir / filename
+            path = self.workspace_dir / filename
             if path.is_file():
                 files[filename] = path.read_text(encoding="utf-8")
         return files
@@ -108,7 +108,7 @@ class LiveTaskDemo:
         llm: Callable[[list[dict[str, str]]], Any] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
-        self._bootstrap_identity()
+        self._bootstrap_workspace()
         if self._state.session_id != session_id or self._state.subject_id != subject_id:
             self._state = LiveTaskSessionState(session_id=session_id, subject_id=subject_id)
             self._transcript = []
@@ -120,8 +120,8 @@ class LiveTaskDemo:
             reindex=False,
         )
         identity = LiveIdentityStore(
-            self.identity_dir,
-            required_files=("AGENT.md", "POLICY.md", "STYLE.md"),
+            self.workspace_dir,
+            required_files=("AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md", "USER.md"),
         ).load()
         trace_sink = JsonlTraceSink(self._trace_path(session_id))
         context = LiveTurnContext(
@@ -195,29 +195,18 @@ class LiveTaskDemo:
             "durable_facts": list(result.durable_facts),
             "preferences": list(result.preferences),
             "follow_ups": list(result.follow_ups),
-            "admin_review_suggestions": list(result.admin_review_suggestions),
         }
 
-    def _bootstrap_identity(self) -> None:
-        self.identity_dir.mkdir(parents=True, exist_ok=True)
-        defaults = {
-            "AGENT.md": (
-                "You are a live task agent for appointment changes. "
-                "Keep replies concise and suitable for text-to-speech."
-            ),
-            "POLICY.md": (
-                "Verify the subject before changing an appointment. "
-                "Do not confirm a change until the subject explicitly approves it."
-            ),
-            "STYLE.md": "Use short sentences. Ask for one missing item at a time.",
-            "ESCALATION.md": (
-                "Escalate if identity cannot be verified or the requested appointment is unclear."
-            ),
-        }
-        for filename, content in defaults.items():
-            path = self.identity_dir / filename
-            if not path.exists():
-                path.write_text(content + "\n", encoding="utf-8")
+    def _bootstrap_workspace(self) -> None:
+        ensure_workspace_bootstrap_files(self.workspace_dir)
+        agents_path = self.workspace_dir / "AGENTS.md"
+        existing = agents_path.read_text(encoding="utf-8") if agents_path.exists() else ""
+        if "appointment_reschedule" not in existing:
+            prefix = existing.rstrip()
+            agents_path.write_text(
+                f"{prefix}\n\n{_live_task_agents_md()}".lstrip(),
+                encoding="utf-8",
+            )
 
     def _trace_path(self, session_id: str) -> Path:
         return self.trace_dir / f"{session_id}.jsonl"
@@ -289,6 +278,17 @@ def _response_chunks(state: LiveTaskSessionState) -> tuple[str, ...]:
     if state.current_step == "completed":
         return ("Randevu değişikliğini onayladım. ", "Kayıt güncellenecek.")
     return ("Devam edebiliriz.",)
+
+
+def _live_task_agents_md() -> str:
+    return """## Live Task Demo: appointment_reschedule
+
+- Handle appointment change requests in short turns suitable for text-to-speech.
+- Verify the subject before changing an appointment.
+- Do not confirm a change until the subject explicitly approves it.
+- Ask for one missing item at a time.
+- If identity cannot be verified or the requested appointment is unclear, stop and ask for human help.
+"""
 
 
 def _fake_summary_output(

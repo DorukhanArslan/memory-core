@@ -30,17 +30,17 @@ from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 def test_identity_loader_reads_known_files_in_prompt_order(tmp_path: Path):
     identity_dir = tmp_path / "identity"
     identity_dir.mkdir()
-    (identity_dir / "STYLE.md").write_text("Speak briefly.", encoding="utf-8")
-    (identity_dir / "POLICY.md").write_text("Verify identity first.", encoding="utf-8")
-    (identity_dir / "AGENT.md").write_text("You are a support voice agent.", encoding="utf-8")
+    (identity_dir / "USER.md").write_text("Subject profile.", encoding="utf-8")
+    (identity_dir / "SOUL.md").write_text("Speak briefly.", encoding="utf-8")
+    (identity_dir / "AGENTS.md").write_text("You are a support voice agent.", encoding="utf-8")
 
     identity = LiveIdentity.from_dir(identity_dir)
 
     assert identity.to_prompt_section() == "\n\n".join(
         [
-            "## Agent Identity\nYou are a support voice agent.",
-            "## Policy\nVerify identity first.",
-            "## Style\nSpeak briefly.",
+            "## Operating Instructions\nYou are a support voice agent.",
+            "## Soul\nSpeak briefly.",
+            "## User\nSubject profile.",
         ]
     )
 
@@ -48,12 +48,12 @@ def test_identity_loader_reads_known_files_in_prompt_order(tmp_path: Path):
 def test_identity_loader_enforces_required_files(tmp_path: Path):
     identity_dir = tmp_path / "identity"
     identity_dir.mkdir()
-    (identity_dir / "AGENT.md").write_text("You are a support voice agent.", encoding="utf-8")
+    (identity_dir / "AGENTS.md").write_text("You are a support voice agent.", encoding="utf-8")
 
     try:
-        LiveIdentity.from_dir(identity_dir, required_files=["AGENT.md", "POLICY.md"])
+        LiveIdentity.from_dir(identity_dir, required_files=["AGENTS.md", "SOUL.md"])
     except IdentityLoadError as exc:
-        assert "POLICY.md" in str(exc)
+        assert "SOUL.md" in str(exc)
     else:
         raise AssertionError("expected missing required identity file error")
 
@@ -61,7 +61,7 @@ def test_identity_loader_enforces_required_files(tmp_path: Path):
 def test_identity_loader_can_reject_unknown_markdown_files(tmp_path: Path):
     identity_dir = tmp_path / "identity"
     identity_dir.mkdir()
-    (identity_dir / "AGENT.md").write_text("You are a support voice agent.", encoding="utf-8")
+    (identity_dir / "AGENTS.md").write_text("You are a support voice agent.", encoding="utf-8")
     (identity_dir / "RANDOM.md").write_text("Unexpected.", encoding="utf-8")
 
     try:
@@ -75,12 +75,12 @@ def test_identity_loader_can_reject_unknown_markdown_files(tmp_path: Path):
 def test_identity_loader_truncates_sections_deterministically(tmp_path: Path):
     identity_dir = tmp_path / "identity"
     identity_dir.mkdir()
-    (identity_dir / "AGENT.md").write_text("A" * 200, encoding="utf-8")
+    (identity_dir / "AGENTS.md").write_text("A" * 200, encoding="utf-8")
 
     identity = LiveIdentity.from_dir(identity_dir, max_chars_per_file=32)
 
     section = identity.to_prompt_section()
-    assert "## Agent Identity" in section
+    assert "## Operating Instructions" in section
     assert "[truncated]" in section
     assert len(identity.sections[0][1]) <= 32
 
@@ -88,7 +88,7 @@ def test_identity_loader_truncates_sections_deterministically(tmp_path: Path):
 def test_identity_store_caches_until_reload(tmp_path: Path):
     identity_dir = tmp_path / "identity"
     identity_dir.mkdir()
-    path = identity_dir / "AGENT.md"
+    path = identity_dir / "AGENTS.md"
     path.write_text("First identity.", encoding="utf-8")
     store = LiveIdentityStore(identity_dir)
 
@@ -173,7 +173,7 @@ def test_record_session_summary_writes_only_durable_structured_entries(tmp_path:
                 "durable_facts": ["Subject moved to the premium plan."],
                 "preferences": ["Subject prefers evening delivery."],
                 "follow_ups": ["Send updated invoice."],
-                "admin_review_suggestions": ["Consider changing the global refund policy."],
+                "policy_suggestions": ["Consider changing the global refund policy."],
             }
         ),
         now_ms=1_788_526_800_000,
@@ -194,7 +194,6 @@ def test_record_session_summary_writes_only_durable_structured_entries(tmp_path:
     assert result.durable_facts == ("Subject moved to the premium plan.",)
     assert result.preferences == ("Subject prefers evening delivery.",)
     assert result.follow_ups == ("Send updated invoice.",)
-    assert result.admin_review_suggestions == ("Consider changing the global refund policy.",)
     assert "Subject moved to the premium plan." in memory_text
     assert "Subject prefers evening delivery." in memory_text
     assert "Send updated invoice." in memory_text
@@ -203,12 +202,9 @@ def test_record_session_summary_writes_only_durable_structured_entries(tmp_path:
         SESSION_SUMMARY_STARTED,
         SESSION_SUMMARY_COMPLETED,
     ]
-    assert records[-1]["data"]["admin_review_suggestions"] == [
-        "Consider changing the global refund policy."
-    ]
 
 
-def test_record_session_summary_traces_skip_when_only_admin_suggestions(tmp_path: Path):
+def test_record_session_summary_ignores_unknown_structured_fields(tmp_path: Path):
     memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
     trace_sink = JsonlTraceSink(tmp_path / "trace" / "session_1.jsonl")
 
@@ -216,7 +212,7 @@ def test_record_session_summary_traces_skip_when_only_admin_suggestions(tmp_path
         session_id="session_1",
         transcript="Transcript with policy idea only.",
         summary_llm=lambda messages: json.dumps(
-            {"admin_review_suggestions": ["Tighten escalation policy."]}
+            {"policy_suggestions": ["Tighten escalation policy."]}
         ),
         trace_sink=trace_sink,
     )
@@ -227,7 +223,6 @@ def test_record_session_summary_traces_skip_when_only_admin_suggestions(tmp_path
     ]
 
     assert result.wrote is False
-    assert result.admin_review_suggestions == ("Tighten escalation policy.",)
     assert not list((tmp_path / "subjects" / "subj_123" / "memory").glob("*.md"))
     assert [record["type"] for record in records] == [
         SESSION_SUMMARY_STARTED,
@@ -290,7 +285,7 @@ def test_async_record_session_summary_accepts_awaitable_summary_llm(tmp_path: Pa
 def test_prepare_live_turn_wraps_workflow_state_as_openclaw_runtime_context(tmp_path: Path):
     identity_dir = tmp_path / "identity"
     identity_dir.mkdir()
-    (identity_dir / "AGENT.md").write_text("You are a voice support agent.", encoding="utf-8")
+    (identity_dir / "AGENTS.md").write_text("You are a voice support agent.", encoding="utf-8")
     identity = LiveIdentity.from_dir(identity_dir)
     memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
 

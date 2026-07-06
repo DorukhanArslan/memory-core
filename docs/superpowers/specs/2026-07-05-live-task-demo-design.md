@@ -20,7 +20,7 @@ Post-call summary is exposed through `/api/live-task/summary`. It writes only du
 
 ## API
 
-- `POST /api/live-task/reset`: reset the live task demo state and seed identity files.
+- `POST /api/live-task/reset`: reset the live task demo state and seed OpenClaw workspace files.
 - `GET /api/live-task/state`: return workflow state, transcript, trace path, and workspace paths.
 - `POST /api/live-task/turn-stream`: stream live turn events as SSE.
 - `POST /api/live-task/summary`: write a post-session summary to subject memory.

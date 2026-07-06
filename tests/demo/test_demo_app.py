@@ -141,7 +141,8 @@ def test_demo_home_loads():
     assert "renderLiveTask" in response.text
     assert "Subject Memory" in response.text
     assert "subjectMemoryFiles" in response.text
-    assert "Identity (Injected)" in response.text
+    assert "Workspace Files (Injected)" in response.text
+    assert "workspaceInjectedFiles" in response.text
     assert "identityFiles" in response.text
     assert "interaction-stack" not in response.text
     assert 'textContent += text' not in response.text
@@ -259,6 +260,8 @@ def test_chat_state_endpoint_returns_engines_and_memory_files():
         "TOOLS.md",
         "IDENTITY.md",
         "USER.md",
+        "HEARTBEAT.md",
+        "BOOTSTRAP.md",
     ]
     assert "workspaceFileContents" in payload
     assert "Operating Instructions" in payload["workspaceFileContents"]["AGENTS.md"]
@@ -301,10 +304,13 @@ def test_live_task_reset_and_state_endpoints():
     assert payload["transcript"] == []
     assert payload["tracePath"].endswith("session_demo.jsonl")
     assert isinstance(payload["subjectMemoryFiles"], dict)
-    assert "AGENT.md" in payload["identityFiles"]
-    assert "POLICY.md" in payload["identityFiles"]
-    assert "STYLE.md" in payload["identityFiles"]
-    assert "ESCALATION.md" in payload["identityFiles"]
+    assert "AGENTS.md" in payload["workspaceInjectedFiles"]
+    assert "SOUL.md" in payload["workspaceInjectedFiles"]
+    assert "TOOLS.md" in payload["workspaceInjectedFiles"]
+    assert "IDENTITY.md" in payload["workspaceInjectedFiles"]
+    assert "USER.md" in payload["workspaceInjectedFiles"]
+    assert "HEARTBEAT.md" in payload["workspaceInjectedFiles"]
+    assert "BOOTSTRAP.md" in payload["workspaceInjectedFiles"]
 
 
 def test_live_task_turn_stream_emits_latency_events(monkeypatch):

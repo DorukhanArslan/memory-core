@@ -10,6 +10,8 @@ BOOTSTRAP_FILE_ORDER = (
     "TOOLS.md",
     "IDENTITY.md",
     "USER.md",
+    "HEARTBEAT.md",
+    "BOOTSTRAP.md",
     "MEMORY.md",
 )
 WORKSPACE_FILE_ORDER = (
@@ -18,6 +20,8 @@ WORKSPACE_FILE_ORDER = (
     "TOOLS.md",
     "IDENTITY.md",
     "USER.md",
+    "HEARTBEAT.md",
+    "BOOTSTRAP.md",
 )
 # OpenClaw HEAD defaults: per-file 20_000 (raised from 12_000 upstream on
 # 2026-06-01), total 60_000. See src/agents/embedded-agent-helpers/bootstrap.ts.
@@ -63,13 +67,28 @@ Emoji: none
 
 No stable user facts have been curated yet.
 """,
+        "HEARTBEAT.md": """# HEARTBEAT.md - Continuity Check
+
+Before acting, re-read the workspace files that define current identity, user context, tools, and memory.
+""",
+        "BOOTSTRAP.md": """# BOOTSTRAP.md - First Run
+
+Use this file only for first-run workspace configuration. Once identity is configured, it may be removed.
+""",
     }
 )
 
 
 def ensure_workspace_bootstrap_files(workspace_dir: Path) -> None:
     workspace_dir.mkdir(parents=True, exist_ok=True)
+    brand_new_workspace = not any(
+        (workspace_dir / rel_path).exists()
+        for rel_path in DEFAULT_WORKSPACE_FILES
+        if rel_path != "BOOTSTRAP.md"
+    )
     for rel_path, content in DEFAULT_WORKSPACE_FILES.items():
+        if rel_path == "BOOTSTRAP.md" and not brand_new_workspace:
+            continue
         path = workspace_dir / rel_path
         if not path.exists():
             path.write_text(content, encoding="utf-8")

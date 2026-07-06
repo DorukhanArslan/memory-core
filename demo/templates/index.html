@@ -453,17 +453,17 @@
       }
 
       function identityFilesNode(liveTask) {
-        const files = liveTask.identityFiles || {};
+        const files = liveTask.workspaceInjectedFiles || liveTask.identityFiles || {};
         const paths = Object.keys(files);
         const container = document.createElement("div");
         container.className = "stacked-detail";
-        container.append(textBlock("These live identity files are injected into every live turn system prompt, in this order. They are separate from the chat workspace files (AGENTS.md, SOUL.md, IDENTITY.md, USER.md), which do not affect this mode."));
+        container.append(textBlock("These OpenClaw workspace files are injected into every live turn system prompt in canonical order. Chat and live modes read the same workspace root."));
         if (!paths.length) {
-          container.append(textBlock("No identity files bootstrapped yet. Send a turn or press Reset."));
+          container.append(textBlock("No workspace files bootstrapped yet. Send a turn or press Reset."));
           return container;
         }
         for (const path of paths) {
-          container.append(sectionBlock(`identity/${path}`, codeBlock(files[path] || "(empty)")));
+          container.append(sectionBlock(path, codeBlock(files[path] || "(empty)")));
         }
         return container;
       }
@@ -523,7 +523,7 @@
           summaryNode.append(codeBlock(liveTaskSummary.text || "(empty)"));
           panel.append(stepNode("Session Summary", summaryNode));
         }
-        panel.append(stepNode("Identity (Injected)", identityFilesNode(liveTask)));
+        panel.append(stepNode("Workspace Files (Injected)", identityFilesNode(liveTask)));
         panel.append(stepNode("Subject Memory", subjectMemoryNode(liveTask)));
         const timeline = document.createElement("div");
         timeline.className = "live-event-timeline";
@@ -943,7 +943,7 @@
         const wrap = document.createElement("div");
         wrap.className = "stacked-detail";
         wrap.append(kvGrid({
-          "Injected order": "AGENTS.md -> SOUL.md -> TOOLS.md -> IDENTITY.md -> USER.md -> MEMORY.md",
+          "Injected order": "AGENTS.md -> SOUL.md -> TOOLS.md -> IDENTITY.md -> USER.md -> HEARTBEAT.md -> BOOTSTRAP.md -> MEMORY.md",
           "Daily memory": "Not injected by default; searched/read on demand",
           "Missing files": "Represented as missing-file markers",
         }));
@@ -1039,7 +1039,7 @@
         document.querySelector("#config").innerHTML = `<div class="panel-heading"><h2>Config</h2><span>Runtime state</span></div>
           <div class="kv-grid">
             <div><strong>OpenClaw defaults</strong><span>enabled=${upstreamDefaults.enabled ?? "?"}, limit=${upstreamDefaults.limit ?? "?"}, score >= ${upstreamDefaults.minScore ?? "?"}, signals >= ${upstreamDefaults.minRecallCount ?? "?"}, unique queries/days >= ${upstreamDefaults.minUniqueQueries ?? "?"}, max age ${upstreamDefaults.maxAgeDays ?? "?"}d</span></div>
-            <div><strong>Workspace bootstrap</strong><span>AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, USER.md, MEMORY.md</span></div>
+            <div><strong>Workspace bootstrap</strong><span>AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, USER.md, HEARTBEAT.md, BOOTSTRAP.md, MEMORY.md</span></div>
           </div>
           <pre>${formatJson({
           engines: state.engines,

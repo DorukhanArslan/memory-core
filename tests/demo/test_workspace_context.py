@@ -17,7 +17,15 @@ def test_workspace_bootstrap_files_are_seeded_without_overwriting(tmp_path):
     assert (tmp_path / "IDENTITY.md").is_file()
     assert (tmp_path / "USER.md").is_file()
     assert (tmp_path / "TOOLS.md").is_file()
+    assert (tmp_path / "HEARTBEAT.md").is_file()
+    assert not (tmp_path / "BOOTSTRAP.md").exists()
     assert (tmp_path / "SOUL.md").read_text(encoding="utf-8") == "# Custom Soul\n"
+
+
+def test_workspace_bootstrap_creates_bootstrap_for_brand_new_workspace(tmp_path):
+    ensure_workspace_bootstrap_files(tmp_path)
+
+    assert (tmp_path / "BOOTSTRAP.md").is_file()
 
 
 def test_workspace_context_injects_bootstrap_before_memory(tmp_path):
@@ -31,7 +39,9 @@ def test_workspace_context_injects_bootstrap_before_memory(tmp_path):
     assert context.index("### SOUL.md") < context.index("### TOOLS.md")
     assert context.index("### TOOLS.md") < context.index("### IDENTITY.md")
     assert context.index("### IDENTITY.md") < context.index("### USER.md")
-    assert context.index("### USER.md") < context.index("### MEMORY.md")
+    assert context.index("### USER.md") < context.index("### HEARTBEAT.md")
+    assert context.index("### HEARTBEAT.md") < context.index("### BOOTSTRAP.md")
+    assert context.index("### BOOTSTRAP.md") < context.index("### MEMORY.md")
     assert "### memory/" not in context
 
 
@@ -59,6 +69,8 @@ def test_workspace_context_matches_golden_snapshot(tmp_path):
         "### TOOLS.md\n# T\n\n\n"
         "### IDENTITY.md\n# I\n\n\n"
         "### USER.md\n# U\n\n\n"
+        "### HEARTBEAT.md\n# H\n\n\n"
+        "### BOOTSTRAP.md\n# B\n\n\n"
         "### MEMORY.md\n# M\n"
     )
 
@@ -94,4 +106,6 @@ def test_workspace_file_contents_excludes_memory_md(tmp_path):
     contents = workspace_file_contents(tmp_path)
 
     assert "AGENTS.md" in contents
+    assert "HEARTBEAT.md" in contents
+    assert "BOOTSTRAP.md" in contents
     assert "MEMORY.md" not in contents

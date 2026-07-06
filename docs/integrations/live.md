@@ -1,7 +1,8 @@
 # Live SDK Integration
 
 `memory_core.live` is adapter-only glue for low-latency host runtimes. It keeps
-workflow state, identity, streaming output, and durable subject memory separate.
+workflow state, streaming output, and durable subject memory separate while
+reading the same OpenClaw-compatible workspace files as the rest of the runtime.
 
 Use it when the host application already owns:
 
@@ -14,42 +15,45 @@ The SDK prepares OpenClaw-compatible prompt context, runs memory recall for a
 single subject namespace, wraps a streaming LLM callable, emits sentence-ready
 events for TTS, and writes post-session summaries to daily memory files.
 
-## Files
+## Workspace Files
 
-Identity files are static or admin-managed. The SDK reads known files in a
-deterministic order and never writes to them:
+The SDK reads known OpenClaw workspace files in deterministic order:
 
 ```text
-identity/
-  AGENT.md
-  COMPANY.md
-  POLICY.md
-  ESCALATION.md
-  STYLE.md
+workspace/
+  AGENTS.md
+  SOUL.md
+  TOOLS.md
+  IDENTITY.md
+  USER.md
+  HEARTBEAT.md
+  BOOTSTRAP.md
+  MEMORY.md
 ```
 
 Loader hardening options:
 
 ```python
 identity = LiveIdentity.from_dir(
-    "./identity",
-    required_files=["AGENT.md", "POLICY.md"],
+    "./workspace",
+    required_files=["AGENTS.md", "SOUL.md"],
     max_chars_per_file=20_000,
     unknown_files="error",
 )
 ```
 
-Use `LiveIdentityStore` when a host runtime wants stable cached identity during
-a session and explicit reloads after admin changes:
+Use `LiveIdentityStore` when a host runtime wants stable cached workspace
+instructions during a session and explicit reloads after file changes:
 
 ```python
-identity_store = LiveIdentityStore("./identity", required_files=["AGENT.md"])
+identity_store = LiveIdentityStore("./workspace", required_files=["AGENTS.md"])
 identity = identity_store.load()
 identity = identity_store.reload()
 ```
 
-The SDK never writes identity files. Suggested policy or identity changes should
-go through host-side review.
+The loader itself only reads files. Whether an agent can update workspace files
+is controlled by the host runtime's normal file/tool policy, matching OpenClaw's
+workspace-first model.
 
 Durable memory is scoped by `subject_id`:
 
@@ -219,15 +223,12 @@ For safer extraction, `summary_llm` may return JSON:
 {
   "durable_facts": ["Subject moved to the premium plan."],
   "preferences": ["Subject prefers evening delivery."],
-  "follow_ups": ["Send updated invoice."],
-  "admin_review_suggestions": ["Consider changing escalation policy."]
+  "follow_ups": ["Send updated invoice."]
 }
 ```
 
 Only `durable_facts`, `preferences`, and `follow_ups` are appended to subject
-memory. `admin_review_suggestions` are returned on `SessionSummaryResult` and
-included in trace events, but are never written to identity or durable memory by
-the SDK.
+memory.
 
 ## Demo Environment
 

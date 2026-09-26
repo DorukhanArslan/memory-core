@@ -4,7 +4,7 @@ import { h, icon, replace, fmtMs, fmtTime, fmtRelMin } from '../ui/dom.js';
 import { t } from '../i18n/index.js';
 import { store, refresh, loadHeartbeat, providerBody, chatKeyState } from '../store.js';
 import { api, postStream } from '../api.js';
-import { chip, btn, toggle, emptyState, failCard, skeleton, honesty } from '../ui/kit.js';
+import { chip, btn, toggle, emptyState, failCard, skeleton, honesty, apiErrorCard, howItWorks } from '../ui/kit.js';
 import { openDialog, toast } from '../ui/overlay.js';
 import { promptPre } from '../inspector/common.js';
 import { toolCard } from './chat.js';
@@ -24,6 +24,7 @@ export async function runHeartbeat({ fromChat = false } = {}) {
   d.hbRunning = run;
   refresh('center', 'inspector');
   let final = null; let error = null;
+  d.hbLastError = null;
   try {
     await postStream('/api/lab/heartbeat/run', { lightContext: store.ui.hbLightContext ?? undefined, ...providerBody() }, {
       onEvent: ({ event, data }) => {
@@ -45,7 +46,7 @@ export async function runHeartbeat({ fromChat = false } = {}) {
   await loadHeartbeat();
   if (final?.id !== undefined) store.ui.hbSelected = final.id;
   refresh('center', 'inspector', 'status');
-  if (error) toast(error.missing ? t('state.waitsFor', { m: error.module }) : `${t('hb.runFailed')}: ${error.error || ''}`, { tone: error.missing ? 'info' : 'danger' });
+  if (error && (fromChat || store.ui.view !== 'heartbeat')) toast(error.missing ? t('state.waitsFor', { m: error.module }) : `${t('hb.runFailed')}: ${error.error || ''}`, { tone: error.missing ? 'info' : 'danger' });
   else if (fromChat || store.ui.view !== 'heartbeat') {
     const r = final || run;
     const msg = r.skipped ? t('hb.toastSkipped', { r: r.skipped }) : r.decision?.delivered ? t('hb.toastDelivered') : t('hb.toastAck');
@@ -142,6 +143,12 @@ export function renderHeartbeat(body) {
     : h('div', { class: 'muted pad' }, t('hb.noTasks'));
   const latest = running || hb.runs?.find((r) => r.id === u.hbSelected) || hb.runs?.[0] || null;
   const noKey = chatKeyState() === 'none';
+  // The preflight (skip decisions) runs without a key; only a run that would call the model answers
+  // no_api_key (docs/lab.md › /heartbeat/run), so the button stays enabled and the reason is text.
+  const pre = hb.preflight || {};
+  const preChip = pre.skipReason ? chip({ label: `${t('hb.preflight')}: ${pre.skipReason} · ${t('hb.noModelCall')}`, tone: 'neutral', ic: 'minus', testid: 'hb-preflight' })
+    : (pre.dueTasks || []).length ? chip({ label: `${t('hb.preflight')}: ${t('hb.preflightDue', { n: pre.dueTasks.length })}`, tone: 'accent', ic: 'dot', title: pre.dueTasks.join(', '), testid: 'hb-preflight' }) : null;
+  const lastErr = d.hbLastError && !d.hbRunning ? d.hbLastError : null;
   replace(body, strip,
     viewHead(t('view.heartbeat'), 'heart-pulse', [
       chip({ label: `HEARTBEAT.md: ${fileState.label}`, tone: fileState.tone, onClick: () => store.actions.openFile('HEARTBEAT.md'), testid: 'hb-file-state' }),
@@ -150,7 +157,7 @@ export function renderHeartbeat(body) {
       ppState ? chip({ label: `PROACTIVE_PREFERENCES.md: ${ppState}`, tone: 'ext', ic: 'puzzle', onClick: () => store.actions.openFile('PROACTIVE_PREFERENCES.md') }) : null,
     ].filter(Boolean)),
     h('div', { class: 'view-scroll' },
-      hb.memoryTools === false ? honesty(t('hb.noMemoryTools'), 'warn', 'alert-triangle', { testid: 'hb-no-tools' }) : null,
+      howItWorks('heartbeat'),
       h('div', { class: 'hb-bar' },
         h('div', { class: 'vclock', 'data-testid': 'virtual-clock' },
           h('span', { class: 'vclock-k' }, icon('clock', 14), t('hb.virtualClock')),
@@ -161,8 +168,11 @@ export function renderHeartbeat(body) {
           h('span', { class: 'chip chip-xs tone-warn', 'data-tip': t('hb.clockTip') }, 'demo-only')),
         h('div', { class: 'hb-run-group' },
           toggle({ checked: u.hbLightContext ?? !!hb.lightContext, onChange: (v) => { u.hbLightContext = v; refresh('center'); }, label: 'lightContext' }),
-          btn(running ? t('hb.running') : t('hb.runNow'), { kind: 'primary', ic: 'play', onClick: () => runHeartbeat(), busy: !!running, disabled: noKey, title: noKey ? t('composer.noKey') : null, target: 'hb-run', testid: 'hb-run-btn' }))),
-      card(t('hb.tasks'), [taskTable, hb.unparsedCount ? h('div', { class: 'muted small' }, t('hb.unparsed', { n: hb.unparsedCount })) : null], { ic: 'layers', right: h('span', { class: 'muted small mono' }, 'parse_heartbeat_tasks · is_task_due') }),
+          btn(running ? t('hb.running') : t('hb.runNow'), { kind: 'primary', ic: 'play', onClick: () => runHeartbeat(), busy: !!running, target: 'hb-run', testid: 'hb-run-btn' }))),
+      preChip || noKey ? h('div', { class: 'hb-pre' }, preChip, noKey ? h('span', { class: 'muted small', 'data-testid': 'hb-nokey' }, t('hb.noKeyNote')) : null) : null,
+      lastErr ? h('div', { class: 'stack-tight', 'data-testid': 'hb-error' }, apiErrorCard({ code: lastErr.code, message: lastErr.error || lastErr.message || '', body: lastErr }, { title: t('hb.runFailed') }),
+        lastErr.code === 'no_api_key' ? btn(t('act.goSettings'), { size: 'sm', kind: 'ghost', onClick: () => store.actions.openSettings('chat') }) : null) : null,
+      card(t('hb.tasks'), [taskTable, hb.unparsedTaskEntries ? h('div', { class: 'muted small', 'data-tip': hb.labels?.unparsed || null, 'data-testid': 'hb-unparsed' }, t('hb.unparsed', { n: hb.unparsedTaskEntries })) : null], { ic: 'layers', right: h('span', { class: 'muted small mono' }, 'parse_heartbeat_tasks · is_task_due') }),
       latest ? runCard(latest, !!running) : emptyState({ title: t('hb.noRuns'), text: file.exists ? t('hb.noRunsText') : t('hb.fileMissingText'), level: 3 }),
       historyCard(hb.runs || []),
       stripCard()));

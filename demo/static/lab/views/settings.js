@@ -5,7 +5,7 @@ import { h, icon, replace, fmtN, copyText } from '../ui/dom.js';
 import { t } from '../i18n/index.js';
 import { store, refresh, loadSettings, loadState, loadFiles, loadIndex, setPageKey, setRemember, chatKeyState, refreshAll } from '../store.js';
 import { api } from '../api.js';
-import { chip, btn, iconBtn, segmented, toggle, failCard, skeleton, honesty } from '../ui/kit.js';
+import { chip, btn, iconBtn, segmented, toggle, failCard, skeleton, honesty, flagLabel, flagTip } from '../ui/kit.js';
 import { toast, confirmDialog } from '../ui/overlay.js';
 import { viewHead } from './heartbeat.js';
 
@@ -113,7 +113,7 @@ export function renderSettings(body) {
   const flags = Object.entries(s.flags || {});
   const curationFlags = flags.filter(([k]) => /curat/i.test(k));
   const otherFlags = flags.filter(([k]) => !/curat/i.test(k));
-  const flagRow = ([k, f]) => row(f.label || k, toggle({ checked: !!f.on, onChange: (v) => putSettings({ flags: { [k]: { on: v } } }), label: k, testid: `settings-flag-${k}` }), f.extension ? t('settings.extensionFlag') : null);
+  const flagRow = ([k, f]) => row(h('span', { 'data-tip': flagTip(k, f) }, flagLabel(k, f)), toggle({ checked: !!f.on, onChange: (v) => putSettings({ flags: { [k]: { on: v } } }), label: k, testid: `settings-flag-${k}` }), f.extension ? t('settings.extensionFlag') : null);
   const bud = s.budgets || {};
   const defaults = bud.defaults || bud.upstreamDefaults || null;
   const budTag = defaults ? (defaults.maxChars !== bud.maxChars || defaults.totalMaxChars !== bud.totalMaxChars ? chip({ label: t('settings.testValue'), tone: 'warn', cls: 'chip-xs' }) : chip({ label: t('settings.upstreamDefault', { a: fmtN(defaults.maxChars), b: fmtN(defaults.totalMaxChars) }), tone: 'neutral', cls: 'chip-xs' })) : null;
@@ -134,7 +134,8 @@ export function renderSettings(body) {
         row(t('settings.baseUrl'), textInput('set-emb-url', s.embedding?.baseUrl, (v) => putSettings({ embedding: { baseUrl: v || null } })), null, { forId: 'set-emb-url' }),
         row(t('settings.model'), textInput('set-emb-model', s.embedding?.model, (v) => putSettings({ embedding: { model: v || null } })), null, { forId: 'set-emb-model' }),
         row(t('settings.apiKey'), keyField('set-emb-key', 'embedding'), null, { forId: 'set-emb-key' }),
-        row(t('settings.result'), h('span', { class: 'inline-group' }, s.embedding?.mode === 'fts-only' ? chip({ label: `${t('search.ftsOnly')}${s.embedding.reason ? `: ${s.embedding.reason}` : ''}`, tone: 'warn', ic: 'alert-triangle' }) : chip({ label: `${t('search.hybrid')} · ${s.embedding?.model || '—'}`, tone: 'info', ic: 'layers' })), t('settings.noFakeEmbeddings')),
+        row(t('settings.result'), h('span', { class: 'inline-group' }, s.embedding?.mode === 'fts-only' ? chip({ label: t('search.ftsOnly'), title: s.embedding.reason || null, tone: 'warn', ic: 'alert-triangle' }) : chip({ label: `${t('search.hybrid')} · ${s.embedding?.model || '—'}`, tone: 'info', ic: 'layers' }),
+          s.embedding?.mode === 'fts-only' && s.embedding.reason ? h('span', { class: 'muted small srow-reason' }, s.embedding.reason) : null), t('settings.noFakeEmbeddings')),
         row('', checkLine('embedding')),
       ], { ic: 'layers' }),
       group('layout', t('settings.layout'), [
@@ -149,7 +150,8 @@ export function renderSettings(body) {
         row('contextInjection', segmented({ options: ['always', 'continuation-skip', 'never'].map((x) => ({ value: x, label: x })), value: s.contextInjection, onChange: (v) => putSettings({ contextInjection: v }), aria: 'contextInjection', size: 'sm' })),
       ], { ic: 'prompt' }),
       group('flush', 'Flush', [
-        row(t('flush.mode'), segmented({ options: [{ value: 'threshold', label: t('settings.flushThreshold') }, { value: 'per_turn', label: t('settings.flushPerTurn') }], value: s.flush?.mode, onChange: (v) => putSettings({ flush: { mode: v } }), aria: t('flush.mode'), size: 'sm' }), t('settings.flushHelp')),
+        // D1: the flush follows the upstream trigger only; the mode is read-only (PUT rejects others).
+        row(t('flush.mode'), chip({ label: s.flush?.mode === 'threshold' || !s.flush?.mode ? t('settings.flushThreshold') : String(s.flush.mode), tone: 'neutral', ic: 'check', testid: 'settings-flush-mode' }), t('settings.flushHelp')),
         row(t('settings.contextWindow'), h('span', { class: 'inline-group' }, numberInput('set-window', s.flush?.contextWindowTokens, (v) => putSettings({ flush: { contextWindowTokens: v } }), { step: 500 }),
           fl?.threshold !== undefined ? h('span', { class: 'muted mono small' }, `→ ${t('flush.threshold')} ${fl.threshold === null ? '—' : fmtN(fl.threshold)} token`) : null), t('settings.contextWindowHelp'), { forId: 'set-window' }),
       ], { ic: 'minus' }),

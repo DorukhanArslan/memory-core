@@ -1,15 +1,18 @@
 // ui/kit.js: chips, badges, buttons, segmented controls, switches, JSON disclosure,
 // empty / skeleton / honesty / "henüz yok" / error cards. Every status carries an icon and text.
 import { h, icon, fmtN, copyText } from './dom.js';
-import { t } from '../i18n/index.js';
+import { t, has } from '../i18n/index.js';
 import { toast } from './overlay.js';
+import { store } from '../store.js';
 
 /* ---------- chips and badges ---------- */
 export function chip({ label, tone = 'neutral', ic = null, onClick = null, aria = null, testid = null, ext = false, title = null, dot = null, cls = '', target = null }) {
   const Tag = onClick ? 'button' : 'span';
+  // A long label may be cut with an ellipsis (max-width: 100%); its full text stays in the tooltip.
+  const tip = title || (typeof label === 'string' && label.length > 36 ? label : null);
   return h(Tag, {
     class: ['chip', `tone-${tone}`, onClick ? 'is-button' : '', cls], type: onClick ? 'button' : null,
-    'aria-label': aria, 'data-testid': testid, 'data-tip': title, 'data-target': target, onclick: onClick,
+    'aria-label': aria, 'data-testid': testid, 'data-tip': tip, 'data-target': target, onclick: onClick,
   },
   dot ? h('span', { class: `dot dot-${dot}`, 'aria-hidden': 'true' }) : null,
   ic ? icon(ic, 12) : null,
@@ -94,10 +97,11 @@ export function jsonDisclosure(value, { title = 'JSON', open = false } = {}) {
   if (open) build();
   d.addEventListener('toggle', () => { if (d.open) build(); });
   d.append(
-    h('summary', null, icon('chevron-right', 12, 'json-chev'), h('span', { class: 'json-title' }, title), h('span', { class: 'json-meta' }, `${type} · ${fmtN(text.length)} ${t('unit.chars')}`),
-      h('button', { type: 'button', class: 'json-copy', 'aria-label': t('act.copy'), 'data-tip': t('act.copy'), onclick: (e) => { e.preventDefault(); copyText(text).then(() => toast(t('toast.copied'), { tone: 'ok' })); } }, icon('copy', 12))),
+    h('summary', null, icon('chevron-right', 12, 'json-chev'), h('span', { class: 'json-title' }, title), h('span', { class: 'json-meta' }, `${type} · ${fmtN(text.length)} ${t('unit.chars')}`)),
     pre);
-  return d;
+  // No interactive content inside <summary>: the copy button is a sibling over the summary row.
+  return h('div', { class: 'json-box' }, d,
+    h('button', { type: 'button', class: 'json-copy', 'aria-label': `${t('act.copy')}: ${title}`, 'data-tip': t('act.copy'), onclick: () => copyText(text).then(() => toast(t('toast.copied'), { tone: 'ok' })) }, icon('copy', 12)));
 }
 function highlightJson(text) {
   const frag = document.createDocumentFragment();
@@ -144,7 +148,40 @@ export function apiErrorCard(err, { title = null, onRetry = null } = {}) {
     onRetry ? h('div', { class: 'error-actions' }, btn(t('act.retry'), { size: 'sm', ic: 'rotate-ccw', onClick: onRetry })) : null,
     err?.body ? jsonDisclosure(err.body, { title: t('act.details') }) : null);
 }
-/** Renders the right card for a failed load: "henüz yok" for module_missing, otherwise the error. */
+/** 404 not_found from the backend: the file is not on disk (never created, or deleted). */
+export function notFoundCard(err, { path = null } = {}) {
+  return h('div', { class: 'missing-card', role: 'status', 'data-testid': 'not-found' },
+    h('span', { class: 'chip tone-neutral chip-xs' }, icon('minus', 10), t('state.notFound')),
+    h('span', { class: 'missing-text' }, t('state.notFoundText', { p: path || err?.body?.path || '—' })),
+    err?.code ? h('span', { class: 'muted small mono' }, `404 ${err.code}`) : null);
+}
+/**
+ * Renders the right card for a failed load: "henüz yok" only for module_missing (or an unknown
+ * route), "dosya yok / silindi" for not_found, otherwise the error card.
+ */
 export function failCard(err, opts = {}) {
-  return err?.missing ? missingCard(err, opts) : apiErrorCard(err, opts);
+  if (err?.missing) return missingCard(err, opts);
+  if (err?.code === 'not_found') return notFoundCard(err, opts);
+  return apiErrorCard(err, opts);
+}
+
+/* ---------- feature flags: short translated label, backend label and id in the tooltip ---------- */
+export const flagLabel = (id, f) => (has(`flag.${id}`) ? t(`flag.${id}`) : f?.label || id);
+export const flagTip = (id, f) => [id, f?.label].filter(Boolean).join(' · ');
+
+/* ---------- "Nasıl çalışır?" (DESIGN §10 D6): short, collapsed per-view explanations ----------
+ * Wording comes from docs/lab.md and docs/*.md only (the removed /memory-system page is not a
+ * source for numbers); the source line names the doc. Open state is kept per view for the session. */
+const HOW = { chat: 7, heartbeat: 4, consolidation: 5, live: 4, parity: 4, memory: 4 };
+export function howItWorks(id) {
+  const n = HOW[id] || 0;
+  const key = id === 'parity' ? 'parity.how' : `how.${id}`; // the parity surface keeps its own ids
+  const open = store.ui.howOpen?.has(id);
+  const d = h('details', { class: 'how', 'data-how': id, 'data-testid': `how-${id}` },
+    h('summary', null, icon('help', 12), h('span', { class: 'how-title' }, t('how.title'))),
+    h('ul', { class: 'how-list' }, Array.from({ length: n }, (_, i) => h('li', null, t(`${key}.${i + 1}`)))),
+    h('p', { class: 'how-src' }, `${t('how.source')}: `, h('span', { class: 'mono' }, t(`${key}.src`))));
+  if (open) d.open = true;
+  d.addEventListener('toggle', () => { const set = store.ui.howOpen || (store.ui.howOpen = new Set()); if (d.open) set.add(id); else set.delete(id); });
+  return d;
 }

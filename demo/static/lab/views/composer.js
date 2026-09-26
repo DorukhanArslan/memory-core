@@ -21,7 +21,7 @@ let slashIndex = 0;
 
 export function composerEl() { if (!dock) build(); return dock; }
 function build() {
-  input = h('textarea', { id: 'composer-input', class: 'composer-input', rows: '1', 'aria-label': t('composer.label'), 'aria-describedby': 'composer-hint', 'data-testid': 'composer-input', spellcheck: 'false' });
+  input = h('textarea', { id: 'composer-input', class: 'composer-input', rows: '1', role: 'combobox', 'aria-autocomplete': 'list', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', 'aria-label': t('composer.label'), 'aria-describedby': 'composer-hint', 'data-testid': 'composer-input', spellcheck: 'false' });
   kindBtn = h('button', { type: 'button', class: 'kind-chip', 'aria-haspopup': 'menu', 'data-testid': 'composer-kind', onclick: (e) => openMenu(e.currentTarget, SESSION_KINDS.map((k) => ({ label: k, checked: store.ui.composerKind === k, onSelect: () => { store.ui.composerKind = k; updateComposer(); } }))) });
   sendBtn = h('button', { type: 'button', class: 'send-btn', 'data-testid': 'composer-send', onclick: () => (store.stream ? store.actions.stopStream() : submit()) });
   slashEl = h('div', { class: 'slash-menu', role: 'listbox', id: 'slash-menu', 'data-testid': 'slash-menu', hidden: true });
@@ -38,6 +38,9 @@ function onKey(e) {
     const items = [...slashEl.querySelectorAll('.slash-item')];
     if (e.key === 'ArrowDown') { e.preventDefault(); slashIndex = (slashIndex + 1) % items.length; paintSlash(items); return; }
     if (e.key === 'ArrowUp') { e.preventDefault(); slashIndex = (slashIndex - 1 + items.length) % items.length; paintSlash(items); return; }
+    // Enter on a complete command name runs it; Tab (or Enter on a partial name) completes it.
+    const exact = SLASH.some((x) => trFold(x.cmd) === trFold(input.value.trim()));
+    if (e.key === 'Enter' && !e.shiftKey && exact) { e.preventDefault(); slashEl.hidden = true; input.setAttribute('aria-expanded', 'false'); if (!store.stream) submit(); return; }
     if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && items.length && !input.value.includes(' '))) {
       e.preventDefault(); const it = items[slashIndex];
       if (it) { input.value = `${it.dataset.cmd} `; autosize(); updateSlash(); }
@@ -94,7 +97,13 @@ export function composerInsert(text, { send = false, kind = null } = {}) {
   input.focus();
   if (send) submit();
 }
-export function focusComposer() { input?.focus(); }
+/** Focuses the composer; without a key (composer hidden) the no-key notice's settings button. */
+export function focusComposer() {
+  if (row && !row.hidden) { input.focus(); return true; }
+  const b = noKeyEl && !noKeyEl.hidden ? noKeyEl.querySelector('button') : null;
+  if (b) { b.focus(); return true; }
+  return false;
+}
 async function submit() {
   const raw = input.value.trim();
   if (!raw || store.stream) return;

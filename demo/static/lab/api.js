@@ -2,14 +2,16 @@
 // Lab contract (DESIGN §4). Keys only ever travel in request bodies, never in URLs.
 //
 // Error model: every non-2xx response becomes an ApiError {status, code, message, module, body}.
-// `missing` is true for 501 {code:"module_missing"} and for a 404 on an /api/lab/* path (the
-// endpoint has not landed yet); views render both as a "henüz yok" state and never fake data.
+// `missing` is true only for 501 / {code:"module_missing"} and for a 404 without a JSON code on
+// an /api/lab/* path (no such route). The real backend answers 404 with codes such as
+// `not_found` (file absent or deleted) and `no_baseline` (no snapshot for that diff baseline);
+// those are real answers, rendered as such, never as "henüz yok".
 
 export class ApiError extends Error {
   constructor({ status = 0, code = null, message = '', module = null, body = null, path = '' }) {
     super(message || code || `HTTP ${status}`);
     this.status = status; this.code = code; this.module = module; this.body = body; this.path = path;
-    this.missing = code === 'module_missing' || (status === 404 && path.startsWith('/api/lab/')) || status === 501;
+    this.missing = code === 'module_missing' || status === 501 || (status === 404 && !code && path.startsWith('/api/lab/'));
   }
 }
 

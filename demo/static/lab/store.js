@@ -1,7 +1,7 @@
 // store.js: app state, render scheduling, loaders over the Lab API and the LabEvent reducer.
 // Nothing here computes memory behaviour: every value shown comes from a backend payload.
 import { api, ApiError } from './api.js';
-import { lsGet, lsSet, ssGet, ssSet } from './ui/dom.js';
+import { lsGet, lsSet, ssGet, ssSet, captureState, restoreState } from './ui/dom.js';
 
 const saved = lsGet('lab.ui', {});
 const EVENT_RING = 1000;
@@ -17,6 +17,10 @@ export const store = {
     detailErr: new Map(),
     events: [],
     lastEventId: 0,
+    // Events up to the first snapshot's lastEventId are replayed history: they fill the timeline
+    // but never mark a file as "changed in this turn" (null until that snapshot answers).
+    replayCutoff: null,
+    preSnapChanges: [],
     fileCache: new Map(),
     changed: new Set(),
     changedLines: new Map(),
@@ -47,6 +51,7 @@ export const store = {
     compare: false,
     openSections: new Set(saved.openSections || ['notices', 'budget', 'stable', 'dynamic', 'recall', 'tools']),
     openFolds: new Set(),
+    howOpen: new Set(),
     explorerOrder: saved.explorerOrder || 'prompt',
     showHidden: false,
     expanded: new Set(saved.expanded || ['memory', 'memory/daily', 'memory/session']),
@@ -85,6 +90,8 @@ export const store = {
 const renderers = new Map();
 const dirty = new Set();
 let scheduled = false;
+// Region -> root element; focus, <details> state and inner scroll survive each rebuild.
+const REGION_ROOT = { top: 'topbar', rail: 'rail', status: 'statusbar', mobile: 'mobile-nav', explorer: 'explorer', center: 'center', inspector: 'inspector' };
 export function registerRenderer(region, fn) { renderers.set(region, fn); }
 export function refresh(...regions) {
   for (const r of regions.length ? regions : [...renderers.keys()]) dirty.add(r);
@@ -93,8 +100,17 @@ export function refresh(...regions) {
   requestAnimationFrame(() => {
     scheduled = false;
     const list = [...dirty]; dirty.clear();
-    for (const r of list) { const fn = renderers.get(r); if (fn) { try { fn(); } catch (err) { console.error(`render ${r}`, err); } } }
+    for (const r of list) renderNow(r);
   });
+}
+/** Rebuilds one region now, keeping focus, <details> state and inner scroll. */
+export function renderNow(r) {
+  const fn = renderers.get(r); if (!fn) return;
+  dirty.delete(r);
+  const root = document.getElementById(REGION_ROOT[r] || '');
+  const kept = root ? captureState(root) : null;
+  try { fn(); } catch (err) { console.error(`render ${r}`, err); }
+  if (kept) { try { restoreState(root, kept); } catch (err) { console.error(`restore ${r}`, err); } }
 }
 export function persistUi() {
   const u = store.ui;
@@ -122,6 +138,11 @@ export async function loadState() {
   const snap = await guard(() => api.get('/api/lab/state', { sessionKind: 'main' }), (e) => { d.snapErr = e; });
   if (snap) {
     d.snap = snap; d.snapErr = null;
+    if (d.replayCutoff === null && typeof snap.lastEventId === 'number') {
+      d.replayCutoff = snap.lastEventId;
+      for (const x of d.preSnapChanges) if (x.id > d.replayCutoff) d.changed.add(x.path);
+      d.preSnapChanges = [];
+    }
     if (Array.isArray(snap.turns)) mergeTurns(snap.turns, { replace: true });
     if (typeof snap.lastEventId === 'number' && snap.lastEventId > d.lastEventId) d.lastEventId = snap.lastEventId;
     if (snap.index) d.index = { ...(d.index || {}), ...snap.index };
@@ -246,6 +267,23 @@ export function onLabEvents(fn) { subs.add(fn); return () => subs.delete(fn); }
 function emit(evs) { for (const fn of subs) { try { fn(evs); } catch (err) { console.error(err); } } }
 
 const FILE_EVENTS = new Set(['file.changed', 'file.saved', 'bootstrap.file_deleted', 'curation.written', 'flush.written', 'session_memory.written']);
+/** Bus event types the chat log shows as system rows (views/chat.js). */
+export const SYS_TYPES = new Set(['session.new', 'heartbeat.decided', 'settings.changed', 'workspace.reset', 'bootstrap.seeded', 'bootstrap.completed']);
+// Events that invalidate the Diff tab list and the prompt preview (inspector/diff.js, inspector/prompt.js).
+const DIFF_EVENT = /^(file\.|bootstrap\.file_deleted|curation\.|flush\.written|session_memory\.|promotion\.|dreaming\.|workspace\.reset|chat\.turn\.completed|live\.)/;
+const PROMPT_EVENT = /^(file\.|bootstrap\.|settings\.changed|curation\.|flush\.written|session_memory\.|workspace\.reset)/;
+/** Only the regions whose output depends on this event are rebuilt (loaders refresh their own). */
+function regionsFor(type) {
+  const u = store.ui; const r = new Set(['status']);
+  if (FILE_EVENTS.has(type) || PROMPT_EVENT.test(type)) r.add('explorer');
+  if (u.view === 'chat' && u.centerTab === 'view' && SYS_TYPES.has(type)) r.add('center');
+  if (/^chat\.turn\./.test(type) || type === 'provider.check') r.add('top');
+  const tab = u.inspectorTab;
+  if (tab === 'timeline' || (u.view === 'live' && type.startsWith('live.'))) r.add('inspector');
+  else if (tab === 'diff' && DIFF_EVENT.test(type)) r.add('inspector');
+  else if (tab === 'prompt' && PROMPT_EVENT.test(type)) r.add('inspector');
+  return [...r];
+}
 let pending = [];
 // Dedupe on id + type + ts: a restarted server may reuse ids, so the id alone is not enough.
 const seen = new Set();
@@ -261,14 +299,17 @@ export function ingestEvent(ev) {
   if (d.events.length > EVENT_RING) for (const old of d.events.splice(0, d.events.length - EVENT_RING)) seen.delete(evKey(old));
   const type = String(ev.type);
   const data = ev.data || {};
+  const live = typeof ev.id === 'number' && d.replayCutoff !== null && ev.id > d.replayCutoff;
+  if (type === 'lab.resync') { d.changed.clear(); later('state', loadState, 50); later('files', loadFiles, 80); later('index', loadIndex, 80); }
+  if (live && (type === 'chat.turn.started' || type === 'workspace.reset')) d.changed.clear();
   if (FILE_EVENTS.has(type) && data.path) {
-    d.changed.add(data.path);
+    if (live) d.changed.add(data.path);
+    else if (d.replayCutoff === null && typeof ev.id === 'number') d.preSnapChanges.push({ path: data.path, id: ev.id });
     const cached = d.fileCache.get(data.path);
     if (cached) cached.stale = true;
     later('files', loadFiles, 150);
     later(`file:${data.path}`, () => reloadOpenFile(data.path), 160);
   }
-  if (type === 'chat.turn.started') d.changed.clear();
   if (type === 'chat.turn.completed' || type === 'chat.turn.failed') { if (!store.stream) later('state', loadState, 200); }
   if (type === 'index.reindexed' || type.startsWith('search.')) later('index', loadIndex, 150);
   if (type === 'settings.changed' || type === 'provider.check') later('settings', loadSettings, 100);
@@ -277,7 +318,7 @@ export function ingestEvent(ev) {
   if (/^(promotion|dreaming|audit|repair|curation)\./.test(type)) { if (d.consolidation || store.ui.view === 'consolidation') later('cons', loadConsolidation, 200); }
   pending.push(ev);
   later('emit', () => { const evs = pending; pending = []; emit(evs); }, 30);
-  refresh('status', 'inspector', 'center', 'explorer', 'top');
+  refresh(...regionsFor(type));
 }
 /** A clean open file reloads on change; a dirty one keeps its draft and shows the conflict banner. */
 async function reloadOpenFile(path) {

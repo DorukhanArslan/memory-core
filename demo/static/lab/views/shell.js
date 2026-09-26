@@ -37,8 +37,10 @@ export function modelHealth() {
     const e = evs[i];
     if (e.type === 'chat.turn.completed') return 'ok';
     if (e.type === 'chat.turn.failed') return 'error';
-    if (e.type === 'provider.check' && (e.data?.which || e.data?.kind || 'chat') === 'chat') return e.data?.ok ? 'ok' : 'error';
+    if (e.type === 'provider.check' && e.data?.target === 'chat') return e.data?.ok ? 'ok' : 'error';
   }
+  const last = store.data.settings?.chat?.lastCheck;
+  if (last && typeof last.ok === 'boolean') return last.ok ? 'ok' : 'error';
   return 'untested';
 }
 export function cooldownLeft() {
@@ -64,13 +66,13 @@ function statusChips() {
     const dot = ks === 'none' ? 'grey' : health === 'error' ? 'danger' : health === 'ok' ? 'ok' : 'warn';
     const src = ks === 'page' ? t('settings.keyPage') : ks === 'env' ? '.env (MEMORY_CORE_DEMO_OPENAI_API_KEY)' : t('settings.keyNone');
     const healthText = { ok: t('top.lastCallOk'), error: t('top.lastCallError'), untested: t('top.untested') }[health];
-    list.push(chip({ label: ks === 'none' ? t('top.noKey') : (s.chat.model || '—'), dot, tone: dot === 'danger' ? 'danger' : 'neutral', onClick: () => store.actions.openSettings('chat'), title: `${t('top.chatModel')}: ${s.chat.model || '—'} · ${t('settings.keySource')}: ${src} · ${healthText}`, aria: `${t('top.chatModel')} ${s.chat.model || ''}, ${healthText}`, testid: 'chip-model', cls: 'chip-mono' }));
+    const state = ks === 'none' ? t('top.noKey') : healthText;
+    list.push(chip({ label: s.chat.model || '—', dot, tone: dot === 'danger' ? 'danger' : 'neutral', onClick: () => store.actions.openSettings('chat'), title: `${t('top.chatModel')}: ${s.chat.model || '—'} · ${t('settings.keySource')}: ${src} · ${state}`, aria: `${t('top.chatModel')} ${s.chat.model || ''}, ${state}`, testid: 'chip-model', cls: 'chip-mono' }));
   }
   if (s?.embedding) {
     const fts = s.embedding.mode === 'fts-only';
     list.push(chip({ label: fts ? t('search.ftsOnly') : `${t('search.hybrid')} · ${s.embedding.model || '—'}`, tone: fts ? 'warn' : 'info', ic: fts ? 'alert-triangle' : 'layers', onClick: () => store.actions.openSettings('embedding'), title: fts ? (s.embedding.reason || t('search.noEmbedder')) : t('search.hybridTip'), testid: 'chip-embedding' }));
   }
-  if (s?.flush?.mode === 'per_turn') list.push(chip({ label: t('top.flushPerTurn'), tone: 'warn', ic: 'alert-triangle', onClick: () => store.actions.openSettings('flush'), title: t('top.flushPerTurnTip'), testid: 'chip-flush-mode' }));
   const cd = cooldownLeft();
   if (cd) list.push(chip({ label: `${t('search.cooldown')} ${cd} ${t('unit.sec')}`, tone: 'warn', ic: 'clock', testid: 'chip-cooldown', title: store.data.index?.cooldown?.error || '' }));
   return list;
@@ -103,7 +105,7 @@ function openStatusPopover(anchor) {
     { heading: t('top.status') },
     d.snap?.bootstrap ? { label: `bootstrap: ${d.snap.bootstrap.status === 'pending' ? t('state.pending') : t('state.complete')}`, ic: 'check', onSelect: () => store.actions.openInspector('prompt') } : null,
     layoutLabel() ? { label: `${t('settings.layout')}: ${layoutLabel()}`, ic: 'layers', onSelect: () => store.actions.openSettings('layout') } : null,
-    s?.chat ? { label: `${t('top.chatModel')}: ${chatKeyState() === 'none' ? t('top.noKey') : s.chat.model}`, ic: 'key', onSelect: () => store.actions.openSettings('chat') } : null,
+    s?.chat ? { label: `${t('top.chatModel')}: ${s.chat.model || '—'}${chatKeyState() === 'none' ? ` · ${t('top.noKey')}` : ''}`, ic: 'key', onSelect: () => store.actions.openSettings('chat') } : null,
     s?.embedding ? { label: s.embedding.mode === 'fts-only' ? t('search.ftsOnly') : `${t('search.hybrid')} · ${s.embedding.model}`, ic: 'search', onSelect: () => store.actions.openSettings('embedding') } : null,
     f ? { label: `flush ${f.threshold ? `${fmtN(f.totalTokens)} / ${fmtN(f.threshold)}` : '—'}`, ic: 'minus', onSelect: () => store.actions.openInspector('prompt') } : null,
     '-',
@@ -176,13 +178,16 @@ function renderStatus() {
   const identity = idx?.identity;
   const idTone = { valid: 'ok', mismatched: 'danger', missing: 'warn' }[identity?.status] || 'grey';
   const offset = d.snap?.clock?.offsetMs || d.heartbeat?.clock?.offsetMs || 0;
+  // FlushDecision of the snapshot (docs/lab.md): the meter between turns, all numbers from the server.
   const flushTip = fm ? [
-    `${t('flush.formula')}: ${fm.f.contextWindowTokens ? fmtN(fm.f.contextWindowTokens) : '—'} − ${fmtN(fm.f.reserveFloorTokens ?? 20000)} − ${fmtN(fm.f.softThresholdTokens ?? 4000)} = ${thr0(fm.thr)}`,
-    `${t('flush.lastReason')}: ${fm.f.lastReason || '—'}`,
-    fm.f.mode ? `${t('flush.mode')}: ${fm.f.mode === 'per_turn' ? t('settings.flushPerTurn') : t('settings.flushThreshold')}` : null,
+    `${t('flush.formula')}: ${thr0(fm.f.contextWindowTokens)} − ${thr0(fm.f.reserveTokensFloor)} − ${thr0(fm.f.softThresholdTokens)} = ${thr0(fm.thr)}`,
+    `${t('flush.reason')}: ${fm.f.reason || '—'}`,
+    fm.f.tokenSource ? `${t('flush.tokenSource')}: ${fm.f.tokenSource}` : null,
+    `${t('flush.mode')}: ${t('settings.flushThreshold')}`,
+    fm.f.note || null,
   ].filter(Boolean).join('\n') : t('state.notYet');
   replace(el,
-    idx ? h('button', { type: 'button', class: 'sb-item', onclick: () => store.actions.openInspector('memory'), 'data-tip': t('status.lastReindex') }, icon('database', 12), `${t('status.index')} ${fmtN(idx.files)} ${t('unit.files')} · ${fmtN(idx.chunks)} ${t('unit.chunks')} · ${fmtTime(idx.lastReindexAt)}`)
+    idx ? h('button', { type: 'button', class: 'sb-item sb-shrink', onclick: () => store.actions.openInspector('memory'), 'data-tip': t('status.lastReindex') }, icon('database', 12), h('span', { class: 'sb-text' }, `${t('status.index')} ${fmtN(idx.files)} ${t('unit.files')} · ${fmtN(idx.chunks)} ${t('unit.chunks')} · ${fmtTime(idx.lastReindexAt)}`))
       : h('span', { class: 'sb-item' }, icon('database', 12), `${t('status.index')} ${d.indexErr?.missing ? t('state.notYet') : '—'}`),
     h('span', { class: 'sb-sep', 'aria-hidden': 'true' }),
     h('button', { type: 'button', class: 'sb-item', 'data-tip': `${identity?.reason || ''}\n${t('memory.identityNotFile')}`.trim(), 'data-testid': 'index-identity', onclick: () => store.actions.openInspector('memory') }, h('span', { class: `dot dot-${idTone}`, 'aria-hidden': 'true' }), `${t('memory.identity')}: ${identity?.status ? t(`identity.${identity.status}`) : '—'}`),
@@ -190,11 +195,11 @@ function renderStatus() {
     h('button', { type: 'button', class: ['sb-item', fm?.over ? 'is-over' : ''], 'data-tip': flushTip, 'data-testid': 'flush-meter', onclick: () => { u.openSections.add('flush'); store.actions.openInspector('prompt'); } },
       'flush', h('span', { class: ['sb-meter', fm?.over ? 'is-over' : fm && fm.pct >= 85 ? 'is-near' : ''], role: 'meter', 'aria-label': t('flush.gate'), 'aria-valuemin': '0', 'aria-valuemax': String(fm?.thr || 0), 'aria-valuenow': String(fm?.f.totalTokens || 0) }, h('span', { style: { '--p': `${Math.min(100, fm?.pct || 0)}%` } })),
       fm && fm.thr ? `${fmtN(fm.f.totalTokens)}/${fmtN(fm.thr)}` : '—',
-      fm?.over ? h('span', { class: 'sb-over' }, fm.f.flushedThisCycle ? t('flush.overFlushed', { n: fm.f.cycle ?? '?' }) : t('flush.over')) : null),
+      fm?.over || fm?.f.alreadyFlushed ? h('span', { class: 'sb-over' }, fm.f.alreadyFlushed ? t('flush.overFlushed', { n: fm.f.compactionCount ?? '—' }) : t('flush.over')) : null),
     h('span', { class: 'sb-sep', 'aria-hidden': 'true' }),
     h('span', { class: 'sb-item', 'data-testid': 'events-status', 'data-tip': t('status.eventsTip') }, h('span', { class: ['dot', `dot-${connDot}`, conn.state === 'open' ? 'is-live' : ''], 'aria-hidden': 'true' }), `${connLabel} · ${fmtN(d.events.length)}`),
     sc ? h('span', { class: 'sb-sep', 'aria-hidden': 'true' }) : null,
-    sc ? h('button', { type: 'button', class: 'sb-item tone-text-accent', onclick: () => store.actions.focusScenario() }, icon('flask', 12), `${sc.id} · ${t('scenario.step')} ${Math.min(sc.step + 1, sc.def.steps.length)}/${sc.def.steps.length}`) : null,
+    sc ? h('button', { type: 'button', class: 'sb-item sb-shrink tone-text-accent', onclick: () => store.actions.focusScenario() }, icon('flask', 12), h('span', { class: 'sb-text' }, `${sc.id} · ${t('scenario.step')} ${Math.min(sc.step + 1, sc.def.steps.length)}/${sc.def.steps.length}`)) : null,
     h('span', { class: 'sb-spacer' }),
     offset ? h('span', { class: 'sb-item tone-text-warn', 'data-tip': t('hb.clockTip') }, icon('clock', 12), `${t('hb.virtual')} +${Math.round(offset / 60000)} ${t('unit.min')}`) : null,
     h('span', { class: 'sb-item', 'data-tip': 'Europe/Istanbul' }, `${fmtTime(Date.now(), { seconds: false })} ${t('status.tz')}`));

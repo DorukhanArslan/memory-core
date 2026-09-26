@@ -5,7 +5,7 @@ import { h, icon, replace, fmtN, basename } from '../ui/dom.js';
 import { t } from '../i18n/index.js';
 import { store, refresh, loadLive, providerBody } from '../store.js';
 import { api, postStream } from '../api.js';
-import { chip, btn, honesty, jsonDisclosure, emptyState, failCard, skeleton } from '../ui/kit.js';
+import { chip, btn, honesty, jsonDisclosure, emptyState, failCard, skeleton, howItWorks } from '../ui/kit.js';
 import { toast } from '../ui/overlay.js';
 import { viewHead, card } from './heartbeat.js';
 
@@ -86,22 +86,28 @@ export function renderLive(body) {
   const wf = st?.workflow || {};
   const steps = Array.isArray(wf.steps) ? wf.steps : STEPS;
   const idx = steps.indexOf(wf.current_step);
-  const scripted = L.engine?.provider === 'scripted';
-  const idInput = (key, label) => h('label', { class: 'mini-field' }, h('span', { class: 'muted' }, label),
-    h('input', { class: 'input mono', value: u[key], 'aria-label': label, 'data-testid': `live-${label.toLowerCase()}`, onchange: (e) => { u[key] = e.target.value.trim(); } }));
+  // The engine of the next turn: the last streamed turn's, else the state's engine {mode, model}
+  // (which resolves the .env key only). A page key or "ignore .env key" makes that guess wrong,
+  // so the view then waits for the first turn.
+  const pageOverride = !!store.keys.chat || !!store.keys.ignoreEnvKey;
+  const engine = L.engine || (!pageOverride && st?.engine ? { provider: st.engine.mode === 'scripted' ? 'scripted' : st.engine.mode, model: st.engine.model, fromState: true } : null);
+  const scripted = engine?.provider === 'scripted';
+  const idInput = (key, label, testid) => h('label', { class: 'mini-field' }, h('span', { class: 'muted' }, label),
+    h('input', { class: 'input mono', value: u[key], 'aria-label': label, 'data-testid': testid, onchange: (e) => { u[key] = e.target.value.trim(); } }));
   inputEl = h('input', { class: 'input', placeholder: t('live.placeholder'), 'aria-label': t('live.inputLabel'), value: u.liveInput, 'data-testid': 'live-input', oninput: (e) => { u.liveInput = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); liveSend(); } } });
   const transcript = st?.transcript || [];
   const streamed = L.turns;
   replace(body, strip,
     viewHead(t('live.title'), 'waveform', [
-      L.engine ? (scripted ? chip({ label: `SCRIPTED · ${L.engine.model || 'workflow-script'}`, tone: 'warn', ic: 'alert-triangle', title: t('live.scriptedTip'), testid: 'engine-chip' }) : chip({ label: `${t('live.realModel')}: ${L.engine.model || '—'}`, tone: 'ok', ic: 'check', testid: 'engine-chip' })) : chip({ label: t('live.engineUnknown'), tone: 'neutral', ic: 'circle' }),
+      engine ? (scripted ? chip({ label: `SCRIPTED · ${engine.model || '—'}`, tone: 'warn', ic: 'alert-triangle', title: t('live.scriptedTip'), testid: 'engine-chip' }) : chip({ label: `${t('live.realModel')}: ${engine.model || '—'}`, tone: 'ok', ic: 'check', title: engine.fromState ? t('live.engineFromState') : null, testid: 'engine-chip' })) : st ? chip({ label: t('live.engineUnknown'), tone: 'neutral', ic: 'circle', testid: 'engine-chip' }) : null,
       chip({ label: 'adapter-only · memory_core.live', tone: 'neutral' }),
     ]),
     h('div', { class: 'view-scroll' },
+      howItWorks('live'),
       scripted ? h('div', { class: 'honesty tone-warn', role: 'status', 'data-testid': 'scripted-banner' }, icon('alert-triangle', 12), h('span', null, t('live.scriptedBanner'))) : null,
       honesty(t('live.stepMachineNote'), 'info', 'info'),
       h('div', { class: 'live-controls' },
-        idInput('liveSession', 'Session'), idInput('liveSubject', 'Subject'),
+        idInput('liveSession', t('live.session'), 'live-session'), idInput('liveSubject', t('live.subject'), 'live-subject'),
         btn(t('live.reset'), { size: 'sm', ic: 'rotate-ccw', target: 'live-reset', onClick: reset, testid: 'live-reset' }),
         btn(t('live.summary'), { size: 'sm', ic: 'file-text', target: 'live-summary', busy: !!L.summarizing, disabled: !transcript.length && !streamed.length, onClick: summary, testid: 'live-summary' })),
       L.err ? failCard(L.err, { onRetry: () => loadLive() }) : !st ? skeleton(3) : null,

@@ -5,7 +5,7 @@ import { h, icon, replace, fmtN, fmtTime, fmtScore } from '../ui/dom.js';
 import { t, has } from '../i18n/index.js';
 import { store, refresh, loadConsolidation, loadFiles, providerBody } from '../store.js';
 import { api } from '../api.js';
-import { chip, btn, segmented, emptyState, failCard, skeleton, jsonDisclosure } from '../ui/kit.js';
+import { chip, btn, segmented, emptyState, failCard, skeleton, jsonDisclosure, howItWorks, flagLabel, flagTip } from '../ui/kit.js';
 import { toast, confirmDialog } from '../ui/overlay.js';
 import { parseUnified, diffView } from '../ui/diff.js';
 import { viewHead } from './heartbeat.js';
@@ -87,13 +87,16 @@ export function renderConsolidation(body) {
       : emptyState({ title: t('cons.noCurated'), level: 4 }));
   const cands = c.candidates || [];
   const right = h('div', { class: 'col' },
-    h('div', { class: 'col-head' }, h('h3', { class: 'col-title' }, t('cons.scored')), labels.scored ? h('span', { class: 'chip chip-xs tone-neutral', 'data-testid': 'cons-scored-label' }, labels.scored) : null),
+    h('div', { class: 'col-head' }, h('h3', { class: 'col-title' }, t('cons.scored'))),
+    // labels.scored is built from docs/parity_matrix.md rows: a long line, so a wrapping note.
+    labels.scored ? h('p', { class: 'col-note', 'data-testid': 'cons-scored-label' }, labels.scored) : null,
     h('div', { class: 'gates' },
       gates.minScore !== undefined ? chip({ label: t('cons.gate.score', { v: fmtScore(gates.minScore, 2) }), tone: 'neutral', cls: 'chip-xs' }) : null,
       gates.minRecallCount !== undefined ? chip({ label: t('cons.gate.recall', { v: gates.minRecallCount }), tone: 'neutral', cls: 'chip-xs' }) : null,
       gates.minUniqueQueries !== undefined ? chip({ label: t('cons.gate.unique', { v: gates.minUniqueQueries }), tone: 'neutral', cls: 'chip-xs' }) : null,
       gates.limit !== undefined ? chip({ label: t('cons.gate.limit', { v: gates.limit }), tone: 'neutral', cls: 'chip-xs' }) : null,
-      gates.maxAgeDays !== undefined ? chip({ label: t('cons.gate.age', { v: gates.maxAgeDays }), tone: 'neutral', cls: 'chip-xs' }) : null),
+      typeof gates.maxAgeDays === 'number' ? chip({ label: t('cons.gate.age', { v: gates.maxAgeDays }), tone: 'neutral', cls: 'chip-xs' })
+        : gates.maxAgeDays === null ? chip({ label: t('cons.gate.noAge'), tone: 'neutral', cls: 'chip-xs', title: typeof gates.deepPolicyDefaults?.maxAgeDays === 'number' ? t('cons.gate.deepAgeTip', { v: gates.deepPolicyDefaults.maxAgeDays }) : null, testid: 'cons-gate-age' }) : null),
     h('div', { class: 'legend' }, COMP_ORDER.filter((k) => weights[k] !== undefined || (k === 'phaseBoost' && cands.some((x) => x.components?.phaseBoost !== undefined))).map((k, i) => h('span', { class: 'legend-item' }, h('span', { class: 'bswatch', style: { '--c': `var(--seg-${i + 1})` } }), `${compLabel(k)}${weights[k] !== undefined ? ` ${fmtScore(weights[k], 2)}` : ''}`))),
     c.shortTerm ? h('div', { class: 'st-stats muted small' }, t('cons.shortTerm', { a: fmtN(c.shortTerm.entries), b: fmtN(c.shortTerm.promoted) }), ' · ', h('span', { class: 'mono' }, c.shortTerm.storePath || '')) : null,
     h('div', { class: 'actions-row' },
@@ -116,8 +119,9 @@ export function renderConsolidation(body) {
     (d.consResults || []).map(resultCard),
     c.audit ? jsonDisclosure(c.audit, { title: 'audit' }) : null);
   replace(body, strip,
-    viewHead(t('view.consolidation'), 'merge', curationFlags.map(([k, f]) => chip({ label: `${f.label || k}: ${f.on ? t('state.on') : t('state.off')}`, tone: f.on ? 'ok' : 'neutral', ext: !!f.extension, onClick: () => store.actions.openSettings('curation'), title: k }))),
+    viewHead(t('view.consolidation'), 'merge', curationFlags.map(([k, f]) => chip({ label: `${flagLabel(k, f)}: ${f.on ? t('state.on') : t('state.off')}`, tone: f.on ? 'ok' : 'neutral', ext: !!f.extension, onClick: () => store.actions.openSettings('curation'), title: flagTip(k, f) }))),
     h('div', { class: 'view-scroll' },
+      howItWorks('consolidation'),
       h('div', { class: 'cons-switch' }, segmented({ options: [{ value: 'curated', label: t('cons.curatedShort') }, { value: 'scored', label: t('cons.scoredShort') }], value: u.consolidationPane, onChange: (v) => { u.consolidationPane = v; refresh('center'); }, aria: t('cons.pane'), size: 'sm' })),
       h('div', { class: ['cons-grid', `show-${u.consolidationPane}`] }, left, right),
       h('div', { class: 'insp-foot muted' }, icon('info', 12), t('cons.footer'))));

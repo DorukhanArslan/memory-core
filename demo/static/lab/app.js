@@ -1,9 +1,9 @@
 // app.js: boot, center router, the action registry, keyboard shortcuts (single-key ones can be
 // switched off, WCAG 2.1.4), theme/language/motion/density, pane resizers, the explorer drawer
 // and the inspector bottom sheet (detents 50% / 92%, velocity-aware dismiss).
-import { h, replace, isTyping, clamp, prefersReducedMotion, basename } from './ui/dom.js';
+import { h, replace, isTyping, clamp, prefersReducedMotion } from './ui/dom.js';
 import { setLang, t } from './i18n/index.js';
-import { store, refresh, registerRenderer, persistUi, setView, refreshAll, loadFiles, loadFile, loadIndex, loadState, ingestEvent, loadParity } from './store.js';
+import { store, refresh, renderNow, registerRenderer, persistUi, setView, refreshAll, loadFiles, loadFile, loadIndex, loadState, ingestEvent, loadParity } from './store.js';
 import { api } from './api.js';
 import { connectEvents } from './events.js';
 import { initTooltips, toast, closeTop, topLayerOpen, confirmDialog, announce, openDialog, pulse } from './ui/overlay.js';
@@ -30,26 +30,21 @@ const layoutMode = () => (mq.compact.matches ? 'compact' : mq.stacked.matches ? 
 
 /* ---------- center router ---------- */
 const VIEW_RENDER = { chat: renderChat, heartbeat: renderHeartbeat, consolidation: renderConsolidation, live: renderLive, parity: renderParity, settings: renderSettings, scenarios: renderScenarios };
+// Focus, open <details> and inner scroll are kept by the refresh loop (store.js, ui/dom.js).
 function renderCenter() {
   const el = document.getElementById('center');
   const u = store.ui;
-  const active = document.activeElement;
-  const sel = active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT') ? [active.selectionStart, active.selectionEnd] : null;
-  const body = h('div', { class: 'view-body', 'data-view': u.centerTab === 'view' ? u.view : 'file' });
+  const body = h('div', { class: 'view-body', 'data-view': u.centerTab === 'view' ? u.view : `file:${u.centerTab}` });
   replace(el, tabStrip(), body);
   if (u.centerTab !== 'view') renderEditor(body, u.centerTab);
   else (VIEW_RENDER[u.view] || renderChat)(body);
-  if (active && active.isConnected && document.activeElement !== active && el.contains(active)) {
-    active.focus({ preventScroll: true });
-    if (sel) try { active.setSelectionRange(sel[0], sel[1]); } catch { /* not a text input */ }
-  }
 }
 registerRenderer('center', renderCenter);
 
 /* ---------- actions ---------- */
 const A = store.actions;
 Object.assign(A, {
-  renderCenterNow: renderCenter,
+  renderCenterNow: () => renderNow('center'),
   syncShell: () => syncShell(),
   setView: (v) => { setView(v); if (v === 'parity') loadParity(); },
   openFile(path, lineA = null, lineB = null) {
@@ -96,7 +91,12 @@ Object.assign(A, {
     if (mode === 'stacked' || mode === 'compact') { if (u.sheet.open) A.closeSheet(); else A.openSheet(); return; }
     u.inspectorCollapsed = !u.inspectorCollapsed; syncShell(); refresh('center', 'inspector', 'rail');
   },
-  openSheet() { const u = store.ui; u.sheet.open = true; u.sheet.detent = u.sheet.detent || 0.5; syncShell(); refresh('inspector', 'mobile'); },
+  openSheet() {
+    const u = store.ui; const was = u.sheet.open;
+    u.sheet.open = true; u.sheet.detent = u.sheet.detent || 0.5; syncShell(); refresh('inspector', 'mobile');
+    // Focus moves into the sheet (its heading) when it opens.
+    if (!was) requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector('#inspector .insp-head .turn-picker, #inspector .insp-head .insp-title')?.focus()));
+  },
   closeSheet() { const u = store.ui; u.sheet.open = false; syncShell(); refresh('mobile'); },
   openPalette, openShortcuts,
   async runTurn(text, kind, opts) { const r = await chatRunTurn(text, kind, opts); notify(r ? 'chat.turn.completed' : 'chat.turn.failed'); return r; },
@@ -233,8 +233,10 @@ document.addEventListener('keydown', (e) => {
   const u = store.ui; const mod = e.metaKey || e.ctrlKey; const typing = isTyping(e.target);
   if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); if (!topLayerOpen()) openPalette(); return; }
   if (e.key === 'Escape') {
-    if (store.stream) { e.preventDefault(); stopStream(); return; }
+    // The top layer (palette, menu, save sheet, dialog) closes first; a running turn stops only
+    // when no overlay is open.
     if (topLayerOpen()) { e.preventDefault(); closeTop(); return; }
+    if (store.stream) { e.preventDefault(); stopStream(); return; }
     if (u.drawer) { u.drawer = false; syncShell(); refresh('rail'); return; }
     if (u.sheet.open) { A.closeSheet(); return; }
     return;
@@ -252,7 +254,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.key === 'g') { gPending = Date.now(); return; }
-  if (e.key === '/') { e.preventDefault(); if (u.view !== 'chat' || u.centerTab !== 'view') { A.setView('chat'); requestAnimationFrame(() => requestAnimationFrame(focusComposer)); } else focusComposer(); return; }
+  if (e.key === '/') { e.preventDefault(); goToContent(); return; }
   if (e.key === '?') { e.preventDefault(); openShortcuts(); return; }
   if (e.key === '[' || e.key === ']') {
     const tabs = ['prompt', 'memory', 'timeline', 'diff']; const i = tabs.indexOf(u.inspectorTab);
@@ -266,6 +268,19 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+/* ---------- skip link and '/': the composer, else the no-key notice, else the center ---------- */
+function goToContent() {
+  const u = store.ui;
+  const land = () => {
+    if (focusComposer()) return;
+    const c = document.getElementById('center');
+    const head = c.querySelector('.vh-name');
+    const target = head || c;
+    target.setAttribute('tabindex', '-1'); target.focus();
+  };
+  if (u.view !== 'chat' || u.centerTab !== 'view') { A.setView('chat'); requestAnimationFrame(() => requestAnimationFrame(land)); } else land();
+}
+
 /* ---------- boot ---------- */
 function boot() {
   setLang(store.ui.lang);
@@ -275,7 +290,7 @@ function boot() {
   initSheet();
   syncShell();
   refresh();
-  document.querySelector('.skip-link')?.addEventListener('click', (e) => { e.preventDefault(); A.setView('chat'); requestAnimationFrame(() => requestAnimationFrame(focusComposer)); });
+  document.querySelector('.skip-link')?.addEventListener('click', (e) => { e.preventDefault(); goToContent(); });
   refreshAll();
   connectEvents({
     onEvent: (ev) => {
@@ -284,6 +299,7 @@ function boot() {
     },
     onStatus: (st) => { store.conn = st; refresh('status'); },
     onReconnect: () => { refreshAll(); },
+    lastEventId: () => store.data.lastEventId,
   });
   // status clock and the cooldown countdown
   let lastMinute = -1;
@@ -295,6 +311,5 @@ function boot() {
   window.addEventListener('lab:saved', () => notify('file.saved'));
   window.addEventListener('lab:local', (e) => notify(String(e.detail)));
   document.getElementById('boot-fallback')?.remove();
-  window.__lab = { store, refresh, actions: A, basename };
 }
 boot();

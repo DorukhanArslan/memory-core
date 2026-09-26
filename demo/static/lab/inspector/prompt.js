@@ -213,7 +213,8 @@ export function promptTab(turn, { ctx = 'turn' } = {}) {
         const b = h('div', { class: 'stack-tight' }, h('div', { class: 'kv' },
           kvRow(t('flush.decision'), dd.shouldRun ? t('flush.ran') : t('flush.notRan')), kvRow(t('flush.reason'), h('span', { class: 'mono' }, dd.reason || '—')),
           dd.threshold !== undefined ? kvRow('token', `${fmtN(dd.totalTokens)} / ${fmtN(dd.threshold)}`) : null,
-          fl.order ? kvRow(t('flush.order'), fl.order === 'before_turn' ? t('flush.beforeTurn') : t('flush.afterTurn')) : null));
+          dd.tokenSource ? kvRow(t('flush.tokenSource'), h('span', { class: 'mono' }, dd.tokenSource)) : null,
+          kvRow(t('flush.order'), t('flush.beforeTurn'))));
         if (pv.flush) b.append(kvRow(t('flush.target'), h('span', { class: 'mono' }, pv.flush.target)), h('div', { class: 'muted small' }, 'prompt'), promptPre(pv.flush.prompt));
         if (fl.run) b.append(jsonDisclosure(fl.run, { title: 'flush run' }));
         return b;

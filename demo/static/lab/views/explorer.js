@@ -60,27 +60,33 @@ function rowMenu(anchor, e) {
   openMenu(anchor, [
     { label: t('act.open'), ic: 'file-text', onSelect: () => store.actions.openFile(e.path) },
     { label: t('act.copyPath'), ic: 'copy', onSelect: () => copyText(root ? `${root}/${e.path}` : e.path).then(() => toast(t('toast.pathCopied'), { tone: 'ok' })) },
-    { label: t('act.viewDiff'), ic: 'diff', onSelect: () => { store.ui.diffBase = 'session'; store.actions.openInspector('diff'); } },
+    { label: t('act.viewDiff'), ic: 'diff', onSelect: () => { store.ui.diffBase = 'reset'; store.actions.openInspector('diff'); } },
     isMemoryPath(e.path) ? { label: t('act.memoryGet'), ic: 'database', onSelect: () => store.actions.memoryGet(e.path) } : null,
     { label: t('act.searchFile'), ic: 'search', onSelect: () => store.actions.searchMemory(basename(e.path).replace(/\.md$/, '')) },
   ]);
 }
-function folderRow(id, label, { level = 1, meta = null, count = null, tone = null } = {}) {
+function folderRow(id, label, { level = 1, meta = null, count = null, tone = null, tip = null } = {}) {
   const open = store.ui.expanded.has(id);
   return h('div', {
     class: 'tree-row tree-folder', role: 'treeitem', 'aria-level': String(level), 'aria-expanded': String(open), tabindex: '-1', 'data-folder': id,
     style: { '--level': String(level) }, onclick: () => toggleFolder(id),
   }, h('span', { class: 'tree-idx', 'aria-hidden': 'true' }), icon(open ? 'chevron-down' : 'chevron-right', 12, 'tree-chev'), icon(open ? 'folder-open' : 'folder', 14, 'tree-ic'),
-  h('span', { class: 'tree-name' }, label), meta ? h('span', { class: ['tree-meta', tone ? `tone-${tone}` : ''] }, meta) : null, count !== null ? h('span', { class: 'tree-size' }, String(count)) : null);
+  h('span', { class: 'tree-name' }, label), meta ? h('span', { class: ['tree-meta', tone ? `tone-${tone}` : ''], 'data-tip': tip }, meta) : null, count !== null ? h('span', { class: 'tree-size' }, String(count)) : null);
 }
 function toggleFolder(id) { const ex = store.ui.expanded; if (ex.has(id)) ex.delete(id); else ex.add(id); persistUi(); refresh('explorer'); }
 
-function groupFiles(files) {
-  const g = { root: [], daily: [], session: [], other: [], hidden: [], ext: new Map(), hiddenDirs: [] };
+/**
+ * Groups FileEntry[] into the tree. Folder entries (kind "folder") carry the folder's own meta:
+ * `memory` (note "indexed, not injected") heads the memory section; `user/` and `workspace/`
+ * are extension folders only when their badges say "extension" (else "outside_layout", hidden).
+ */
+export function groupFiles(files) {
+  const g = { root: [], daily: [], session: [], other: [], hidden: [], ext: new Map(), hiddenDirs: [], memoryEntry: null };
   for (const e of files) {
     const p = e.path;
     if (e.kind === 'folder') {
       const dir = p.replace(/\/$/, '');
+      if (dir === 'memory') { g.memoryEntry = e; continue; }
       if (!g.ext.has(dir)) g.ext.set(dir, { entry: e, files: [] }); else g.ext.get(dir).entry = e;
       continue;
     }
@@ -98,7 +104,7 @@ function groupFiles(files) {
   }
   const byDateDesc = (a, b) => (a.path < b.path ? 1 : -1);
   g.daily.sort(byDateDesc); g.session.sort(byDateDesc); g.other.sort((a, b) => (a.path > b.path ? 1 : -1));
-  for (const [dir, v] of g.ext) if (v.entry && (v.entry.badges || []).includes('outside_layout')) g.hiddenDirs.push(dir);
+  for (const [dir, v] of g.ext) if (!(v.entry?.badges || v.files[0]?.badges || []).includes('extension')) g.hiddenDirs.push(dir);
   return g;
 }
 
@@ -135,8 +141,8 @@ function renderExplorer() {
   const rows = [];
   rootSorted.forEach((e) => rows.push(fileRow(e, { idx: e[idxKey] && !(e.badges || []).includes('outside_layout') ? e[idxKey] : null })));
   const memCount = g.daily.length + g.session.length + g.other.length;
-  rows.push(folderRow('memory', 'memory/', { meta: t('explorer.memoryMeta'), count: memCount }));
-  if (u.expanded.has('memory')) {
+  if (g.memoryEntry || memCount) rows.push(folderRow('memory', 'memory/', { meta: t('explorer.memoryMeta'), tip: g.memoryEntry?.note || null, count: memCount }));
+  if ((g.memoryEntry || memCount) && u.expanded.has('memory')) {
     rows.push(folderRow('memory/daily', t('explorer.daily'), { level: 2, count: g.daily.length }));
     if (u.expanded.has('memory/daily')) g.daily.forEach((e) => rows.push(fileRow(e, { level: 3 })));
     rows.push(folderRow('memory/session', t('explorer.session'), { level: 2, count: g.session.length }));
@@ -149,7 +155,7 @@ function renderExplorer() {
   }
   for (const [dir, v] of g.ext) {
     if (g.hiddenDirs.includes(dir)) continue;
-    rows.push(folderRow(dir, `${dir}/`, { meta: t('explorer.extMeta'), tone: 'ext', count: v.files.length }));
+    rows.push(folderRow(dir, `${dir}/`, { meta: t('explorer.extMeta'), tip: v.entry?.note || null, tone: 'ext', count: v.files.length }));
     if (u.expanded.has(dir)) v.files.forEach((e) => rows.push(fileRow(e, { level: 2 })));
   }
   const tree = h('div', { class: 'tree', role: 'tree', 'aria-label': t('explorer.title') }, rows);

@@ -1,6 +1,6 @@
 // ui/overlay.js: tooltips (delayed first, instant after), toasts, dialogs with a focus trap,
 // confirm dialogs, origin-aware menus, live-region announcements and the one-shot "Göster" pulse.
-import { h, icon, clear, prefersReducedMotion } from './dom.js';
+import { h, icon, clear, prefersReducedMotion, focusHandle } from './dom.js';
 import { t } from '../i18n/index.js';
 
 const layer = () => document.getElementById('layer-root');
@@ -85,7 +85,7 @@ const stack = [];
 export function topLayerOpen() { return stack.length > 0; }
 export function closeTop() { const top = stack[stack.length - 1]; if (top) { top.close(); return true; } return false; }
 export function openDialog({ title, body, actions = [], role = 'dialog', cls = '', testid = null, initialFocus = null, onClose = null, label = null, noHeader = false }) {
-  const trigger = document.activeElement;
+  const trigger = focusHandle(document.activeElement);
   const titleId = `dlg-${Math.random().toString(36).slice(2, 8)}`;
   const scrim = h('div', { class: 'scrim', onclick: () => close() });
   const panel = h('div', { class: ['dialog', cls], role, 'aria-modal': 'true', 'aria-labelledby': noHeader ? null : titleId, 'aria-label': noHeader ? (label || title) : null, 'data-testid': testid, tabindex: '-1' },
@@ -113,7 +113,7 @@ export function openDialog({ title, body, actions = [], role = 'dialog', cls = '
     wrap.classList.remove('is-open'); wrap.classList.add('is-leaving');
     setTimeout(() => wrap.remove(), prefersReducedMotion() || cls.includes('palette') ? 0 : 120);
     if (onClose) onClose();
-    if (trigger && trigger.focus && document.contains(trigger)) trigger.focus();
+    const back = trigger(); if (back?.focus) back.focus();
   }
   return { close, panel };
 }
@@ -132,6 +132,7 @@ export function openMenu(anchor, items, { align = 'start', testid = 'menu' } = {
   const menu = h('div', { class: 'menu', role: 'menu', 'data-testid': testid });
   const entry = { close };
   const btns = [];
+  const anchorNow = focusHandle(anchor);
   for (const it of items) {
     if (!it) continue;
     if (it === '-') { menu.append(h('div', { class: 'menu-sep', role: 'separator' })); continue; }
@@ -174,7 +175,7 @@ export function openMenu(anchor, items, { align = 'start', testid = 'menu' } = {
     document.removeEventListener('pointerdown', outside, true);
     setTimeout(() => menu.remove(), prefersReducedMotion() ? 0 : 100);
     const i = stack.indexOf(entry); if (i >= 0) stack.splice(i, 1);
-    if (anchor.isConnected) anchor.focus?.();
+    const back = anchorNow(); back?.setAttribute('aria-expanded', 'false'); back?.focus?.();
   }
   return close;
 }

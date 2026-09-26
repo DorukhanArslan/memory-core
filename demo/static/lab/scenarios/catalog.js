@@ -13,8 +13,9 @@ import {
   hbTask, hbDelivered, hbSkipped, hbUserHas, hbUserLacks, hbReplyMatches, hbReplyLacks, stripSequence,
   candidate, candidateGatesConsistent, auditClean,
   liveStep, liveOrder, businessAction, liveSummaryWrote, proofAbsentFromSummary,
-  keyState, turnErrorCode, turnErrorMatches, errorRedacted, providerCheck,
+  turnErrorCode, turnErrorMatches, errorRedacted, providerCheck,
 } from './checks.js';
+import { sourceNames } from '../ui/diff.js';
 
 const SESSION_FILE = /^memory\/\d{4}-\d{2}-\d{2}-[a-z0-9-]+\.md$/;
 const BOOTSTRAP_FILES = ['AGENTS.md', 'SOUL.md', 'TOOLS.md', 'IDENTITY.md', 'USER.md', 'HEARTBEAT.md', 'PROACTIVE_PREFERENCES.md'];
@@ -25,8 +26,12 @@ const curationUserFlagOff = (ctx) => {
   return entry && entry[1].on === false ? 'scn.blockedUserCuration' : null;
 };
 const needsKey = (ctx) => (ctx.keyState === 'none' ? 'scn.blockedNoKey' : null);
-const hbNoTools = (ctx) => (ctx.heartbeat?.memoryTools === false ? 'scn.blockedHbNoTools' : null);
 const needsHybrid = (ctx) => (ctx.settings?.embedding?.mode === 'fts-only' ? 'scn.blockedFtsOnly' : null);
+const fileOf = (ctx, path) => (ctx.files || []).find((e) => e.path === path) || null;
+// The seed holds no MEMORY.md (docs/lab.md › workspace/reset seeded); a check that needs it is blocked.
+const needsMemoryMd = (ctx) => (fileOf(ctx, 'MEMORY.md')?.exists ? null : 'scn.blockedNoMemoryMd');
+// An empty PROACTIVE_PREFERENCES.md is excluded in both layouts, so a layout check would prove nothing.
+const needsProactive = (ctx) => { const e = fileOf(ctx, 'PROACTIVE_PREFERENCES.md'); return e?.exists && e.chars > 0 && !(e.badges || []).includes('empty') ? null : 'scn.blockedProactiveEmpty'; };
 
 export const SCENARIOS = [
   {
@@ -131,7 +136,7 @@ export const SCENARIOS = [
       { act: 'edit', path: 'AGENTS.md', fixture: true, waitFor: 'file.saved', label: 'scn.S07.l1', expect: 'scn.S07.e1',
         checks: [auto('promptHas(stable,/^\\[Policy digest from AGENTS\\.md\\]$/m)', promptHas('main', 'stable', /^\[Policy digest from AGENTS\.md\]$/m), ['prompt:main']), auto('warningLine(/AGENTS\\.md was truncated/)', warningLine(/AGENTS\.md was truncated/), ['prompt:main'])] },
       { act: 'setting', apply: { settings: { budgets: { totalMaxChars: 12000 } } }, label: 'scn.S07.l2', expect: 'scn.S07.e2',
-        checks: [auto('sum(injectedChars) ≤ 12000', totalInjectedAtMost(12000), ['prompt:main']), auto('excluded: max/total', (ctx) => excludedFor(/total|toplam/i)(ctx) || (ctx.prompts.main?.files || []).some((f) => f.truncated && f.cause === 'max/total'), ['prompt:main'])] },
+        checks: [auto('sum(injectedChars) ≤ 12000', totalInjectedAtMost(12000), ['prompt:main']), auto('excluded: max/total', (ctx) => excludedFor(/total|toplam/i)(ctx) || (ctx.prompts.main?.budget?.files || []).some((f) => (f.causes || []).includes('max/total')), ['prompt:main'])] },
       { act: 'revert', paths: ['SOUL.md', 'AGENTS.md'], restore: ['budgets.totalMaxChars'], label: 'scn.S07.l3', expect: 'scn.S07.e3',
         checks: [auto('noBadge(truncated)', noTruncation('main'), ['prompt:main'])] },
     ],
@@ -151,26 +156,28 @@ export const SCENARIOS = [
         checks: [auto('promptFiles(equals,[AGENTS.md,TOOLS.md],{kind:subagent})', promptFiles('equals', ['AGENTS.md', 'TOOLS.md'], 'subagent'), ['prompt:subagent'])] },
       { act: 'look', tab: 'prompt', promptKind: 'cron', label: 'scn.S08.l2', expect: 'scn.S08.e2',
         checks: [auto('promptFiles(excludes,[MEMORY.md,HEARTBEAT.md],{kind:cron})', promptFiles('excludes', ['MEMORY.md', 'HEARTBEAT.md'], 'cron'), ['prompt:cron']), auto('promptFiles(includes,[AGENTS.md,TOOLS.md,SOUL.md,IDENTITY.md,USER.md],{kind:cron})', promptFiles('includes', ['AGENTS.md', 'TOOLS.md', 'SOUL.md', 'IDENTITY.md', 'USER.md'], 'cron'), ['prompt:cron'])] },
-      { act: 'look', tab: 'prompt', promptKind: 'group', label: 'scn.S08.l3', expect: 'scn.S08.e3',
+      { act: 'look', tab: 'prompt', promptKind: 'group', label: 'scn.S08.l3', expect: 'scn.S08.e3', blockedIf: needsMemoryMd,
         checks: [auto('promptFiles(includes,[MEMORY.md],{kind:group})', promptFiles('includes', ['MEMORY.md'], 'group'), ['prompt:group'])] },
       { act: 'send', kind: 'subagent', text: 'Sana nasıl cevap vermemi istediğimi biliyor musun?', waitFor: 'chat.turn.completed|chat.turn.failed', expect: 'scn.S08.e4', blockedIf: needsKey,
         checks: [auto('turn kind = subagent', turnKind('subagent'), ['turn']), auto('turnPromptFiles(excludes,[USER.md,MEMORY.md])', turnPromptFilesExclude(['USER.md', 'MEMORY.md']), ['turn']), manual('scn.S08.m4')] },
-      { act: 'setting', apply: { settings: { layout: 'pin' } }, label: 'scn.S08.l5', expect: 'scn.S08.e5',
+      { act: 'setting', apply: { settings: { layout: 'pin' } }, label: 'scn.S08.l5', expect: 'scn.S08.e5', blockedIf: needsProactive,
         checks: [auto('promptFiles(excludes,[PROACTIVE_PREFERENCES.md],{layout:pin})', promptFiles('excludes', ['PROACTIVE_PREFERENCES.md'], 'main'), ['prompt:main'])] },
     ],
   },
   {
-    id: 'S09', minutes: 6, view: 'heartbeat', tags: ['upstream-uyumlu', 'demo-only: sanal saat', 'model'], requires: ['anahtar'], setup: { reset: 'seeded' }, blockedIf: needsKey,
+    // Keyless: the preflight answers skip decisions without a model (steps 1, 6, 7); steps that need
+    // a model reply, or a task state only a model run records (step 3), are blocked per step.
+    id: 'S09', minutes: 6, view: 'heartbeat', tags: ['upstream-uyumlu', 'demo-only: sanal saat', 'model'], requires: ['anahtar (2.-5. adım)'], setup: { reset: 'seeded' },
     steps: [
       { act: 'edit', path: 'HEARTBEAT.md', append: 'tasks:\n  - name: gunluk-takip\n    interval: 30m\n    prompt: Bugünün günlük notunda açık bir takip maddesi var mı kontrol et. Yoksa yalnızca HEARTBEAT_OK yaz.', waitFor: 'file.saved', label: 'scn.S09.l0', expect: 'scn.S09.e0',
         checks: [auto('heartbeatTasks({name:gunluk-takip,due})', hbTask('gunluk-takip', (x) => x.due || x.lastRunMs === null || x.lastRunMs === undefined), ['heartbeat'])] },
-      { act: 'press', view: 'heartbeat', target: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l1', expect: 'scn.S09.e1', blockedIf: hbNoTools,
+      { act: 'press', view: 'heartbeat', target: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l1', expect: 'scn.S09.e1', blockedIf: needsKey,
         checks: [auto('promptHas(heartbeatUser,/^Run the following periodic tasks/)', hbUserHas(/^Run the following periodic tasks/), ['hbRun']), auto('event(flush.decided,{reason:runtime_skip:heartbeat})', event('flush.decided', (d) => d.reason === 'runtime_skip:heartbeat')), model('heartbeatDelivered(false)', hbDelivered(false), ['hbRun'])] },
-      { act: 'press', view: 'heartbeat', target: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l2', expect: 'scn.S09.e2',
+      { act: 'press', view: 'heartbeat', target: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l2', expect: 'scn.S09.e2', blockedIf: needsKey,
         checks: [auto('heartbeatSkipped(no-tasks-due)', hbSkipped('no-tasks-due'), ['hbRun']), auto('noEvent(heartbeat.llm)', noEvent('heartbeat.llm'))] },
-      { act: 'send', text: 'Yarın 09:00\'da tedarikçiye fatura gönderilecek; bunu bugünün notuna takip maddesi olarak yaz.', waitFor: 'chat.turn.completed|chat.turn.failed', expect: 'scn.S09.e3',
+      { act: 'send', text: 'Yarın 09:00\'da tedarikçiye fatura gönderilecek; bunu bugünün notuna takip maddesi olarak yaz.', waitFor: 'chat.turn.completed|chat.turn.failed', expect: 'scn.S09.e3', blockedIf: needsKey,
         checks: [auto('fileChanged(daily(bugün))', fileChanged(daily()), TURN)] },
-      { act: 'press', view: 'heartbeat', target: 'hb-clock30', then: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l4', expect: 'scn.S09.e4', blockedIf: hbNoTools,
+      { act: 'press', view: 'heartbeat', target: 'hb-clock30', then: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l4', expect: 'scn.S09.e4', blockedIf: needsKey,
         checks: [model('heartbeatDelivered(true)', hbDelivered(true), ['hbRun']), auto('delivered → heartbeat notice row', (ctx) => !ctx.hbRun?.decision?.delivered || (ctx.events || []).some((e) => e.type === 'heartbeat.decided' && e.data?.delivered), ['hbRun'])] },
       { act: 'strip', inputs: ['HEARTBEAT_OK', '**HEARTBEAT_OK**.', 'All good. HEARTBEAT_OK', 'Alert: disk full'], view: 'heartbeat', target: 'hb-strip', label: 'scn.S09.l5', expect: 'scn.S09.e5',
         checks: [auto('strip → [skip,skip,skip,deliver]', stripSequence(['HEARTBEAT_OK', '**HEARTBEAT_OK**.', 'All good. HEARTBEAT_OK', 'Alert: disk full'], ['skip', 'skip', 'skip', 'deliver']), ['strip'])] },
@@ -185,7 +192,7 @@ export const SCENARIOS = [
         checks: [auto('badge(PROACTIVE_PREFERENCES.md,injected)', badge('PROACTIVE_PREFERENCES.md', 'injected'), ['files']), auto('promptOrder([USER.md,PROACTIVE_PREFERENCES.md,TOOLS.md],{kind:heartbeat})', promptOrder(['USER.md', 'PROACTIVE_PREFERENCES.md', 'TOOLS.md'], 'heartbeat'), ['prompt:heartbeat'])] },
       { act: 'send', text: 'Bugünün notuna takip maddesi ekle: cuma 11:00 ekip toplantısı.', waitFor: 'chat.turn.completed|chat.turn.failed', expect: 'scn.S10.e1',
         checks: [auto('fileChanged(daily(bugün))', fileChanged(daily()), TURN)] },
-      { act: 'press', view: 'heartbeat', target: 'hb-clock30', then: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S10.l2', expect: 'scn.S10.e2', blockedIf: hbNoTools,
+      { act: 'press', view: 'heartbeat', target: 'hb-clock30', then: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S10.l2', expect: 'scn.S10.e2',
         checks: [model('heartbeatDelivered(true)', hbDelivered(true), ['hbRun']), model('replyMatches(/fatura/i)', hbReplyMatches(/fatura/i), ['hbRun']), model('replyLacks(/toplantı/i)', hbReplyLacks(/toplantı/i), ['hbRun'])] },
       { act: 'look', view: 'heartbeat', target: 'hb-compare', label: 'scn.S10.l3', expect: 'scn.S10.e3', checks: [manual('scn.S10.m3')] },
       { act: 'setting', apply: { settings: { layout: 'pin' } }, label: 'scn.S10.l4', expect: 'scn.S10.e4',
@@ -203,9 +210,9 @@ export const SCENARIOS = [
         checks: [observe('flush', (ctx) => `${ctx.turn?.flush?.decision?.reason || '—'} · ${ctx.snap?.flush?.totalTokens ?? '—'}/${ctx.snap?.flush?.threshold ?? '—'}`, ['turn', 'snap'])] },
       { act: 'send', text: "Yarın sabah 08:00'de yük testi var, sonuçları akşam paylaşacağız.", waitFor: 'chat.turn.completed|chat.turn.failed', expect: 'scn.S11.e3',
         checks: [auto('scenario: flush.decided reason ∈ [token_threshold, transcript_size]', (ctx) => (ctx.scenarioEvents || []).some((e) => e.type === 'flush.decided' && ['token_threshold', 'transcript_size'].includes(e.data?.reason))),
-          auto('scenario: fileChanged(daily(bugün),{source:flush})', (ctx) => (ctx.scenarioDiff || []).some((d) => d.path === `memory/${ctx.today}.md` && (d.sources || []).includes('flush')), ['scenarioDiff']),
-          auto('onlyFileBySource(daily(bugün), flush)', (ctx) => { const list = (ctx.scenarioDiff || []).filter((d) => (d.sources || []).includes('flush')); return list.length === 1 && list[0].path === `memory/${ctx.today}.md`; }, ['scenarioDiff']),
-          auto('fileUnchanged(bootstrap ∪ MEMORY.md,{source:flush})', (ctx) => !(ctx.scenarioDiff || []).some((d) => [...BOOTSTRAP_FILES, 'MEMORY.md'].includes(d.path) && (d.sources || []).includes('flush')), ['scenarioDiff'])] },
+          auto('scenario: fileChanged(daily(bugün),{source:flush})', (ctx) => (ctx.scenarioDiff || []).some((d) => d.path === `memory/${ctx.today}.md` && sourceNames(d).includes('flush')), ['scenarioDiff']),
+          auto('onlyFileBySource(daily(bugün), flush)', (ctx) => { const list = (ctx.scenarioDiff || []).filter((d) => sourceNames(d).includes('flush')); return list.length === 1 && list[0].path === `memory/${ctx.today}.md`; }, ['scenarioDiff']),
+          auto('fileUnchanged(bootstrap ∪ MEMORY.md,{source:flush})', (ctx) => !(ctx.scenarioDiff || []).some((d) => [...BOOTSTRAP_FILES, 'MEMORY.md'].includes(d.path) && sourceNames(d).includes('flush')), ['scenarioDiff'])] },
       { act: 'look', tab: 'prompt', label: 'scn.S11.l4', expect: 'scn.S11.e4',
         checks: [auto('flush prompt has NO_REPLY', (ctx) => /NO_REPLY/.test(ctx.flushTurn?.prompt?.flush?.prompt || ''), ['flushTurn']), auto('flushTarget(/^memory\\/\\d{4}-\\d{2}-\\d{2}\\.md$/)', (ctx) => /^memory\/\d{4}-\d{2}-\d{2}\.md$/.test(ctx.flushTurn?.flush?.run?.target || ctx.flushTurn?.prompt?.flush?.target || ''), ['flushTurn'])] },
       { act: 'cmd', text: '/flush', waitFor: 'flush.decided|flush.no_write|flush.written', expect: 'scn.S11.e5', labels: [{ tone: 'warn', text: 'scn.S11.forced' }],
@@ -232,7 +239,6 @@ export const SCENARIOS = [
   },
   {
     id: 'S13', minutes: 4, view: 'live', tags: ['adapter-only', 'scripted (anahtarsız)'], requires: [],
-    labels: [{ tone: 'warn', text: 'scn.S13.gap' }],
     steps: [
       { act: 'press', view: 'live', target: 'live-reset', waitFor: 'live.reset', label: 'scn.S13.l0', expect: 'scn.S13.e0', checks: [auto('liveStep(verify_identity)', liveStep('verify_identity'), ['live'])] },
       { act: 'send', live: true, text: 'Merhaba, randevumu değiştirmek istiyorum.', waitFor: 'live.turn', expect: 'scn.S13.e1',
@@ -241,19 +247,19 @@ export const SCENARIOS = [
         checks: [auto('liveStep(collect_new_time)', liveStep('collect_new_time'), ['live'])] },
       { act: 'send', live: true, text: 'Yarın saat 14:30 olabilir mi?', waitFor: 'live.turn', expect: 'scn.S13.e3', checks: [auto('liveStep(confirm_change)', liveStep('confirm_change'), ['live'])] },
       { act: 'send', live: true, text: 'Evet, onaylıyorum.', waitFor: 'live.turn', expect: 'scn.S13.e4', checks: [auto('liveStep(completed)', liveStep('completed'), ['live']), auto('businessAction(appointment_rescheduled)', businessAction('appointment_rescheduled'), ['live'])] },
-      { act: 'press', view: 'live', target: 'live-summary', waitFor: 'live.summary|live.session_summary_completed|live.session_summary_skipped', label: 'scn.S13.l5', expect: 'scn.S13.e5',
-        checks: [auto('summary wrote to subject daily file', liveSummaryWrote(), ['live']), auto('bus: eventOrder([live.session_summary_started,live.session_summary_completed])', (ctx) => eventOrder(['live.session_summary_started', 'live.session_summary_completed'])(ctx) || (ctx.live?.summary?.wrote === true && !(ctx.events || []).some((e) => String(e.type).startsWith('live.'))), ['live'])] },
-      { act: 'look', view: 'live', label: 'scn.S13.l6', expect: 'scn.S13.e6', labels: [{ tone: 'warn', text: 'scn.S13.gapShort' }],
-        checks: [auto('textAbsent(subjectDaily, proof@3)', proofAbsentFromSummary(3), ['live'], { gap: true })] },
+      { act: 'press', view: 'live', target: 'live-summary', waitFor: 'live.summary|live.session_summary', label: 'scn.S13.l5', expect: 'scn.S13.e5',
+        checks: [auto('summary wrote to subject daily file', liveSummaryWrote(), ['live']), auto('bus: event(live.session_summary)', event('live.session_summary'))] },
+      { act: 'look', view: 'live', label: 'scn.S13.l6', expect: 'scn.S13.e6',
+        checks: [auto('textAbsent(subjectDaily, proof@3)', proofAbsentFromSummary(3), ['live'])] },
     ],
   },
   {
     id: 'S14', minutes: 5, view: 'chat', tags: ['upstream-uyumlu', 'demo'], requires: [],
     steps: [
       { act: 'setting', apply: { page: { suspendKeys: true } }, label: 'scn.S14.l0', expect: 'scn.S14.e0',
-        checks: [auto('model dot grey (keyState none)', keyState('none'))] },
+        checks: [auto('chip(model, grey dot)', (ctx) => ctx.modelChip?.grey === true)] },
       { act: 'send', live: true, text: 'Merhaba', waitFor: 'live.turn', expect: 'scn.S14.e1',
-        checks: [auto('liveEngine(scripted)', (ctx) => ctx.live?.engine?.provider === 'scripted', ['live'])] },
+        checks: [auto('liveEngine(scripted)', (ctx) => ctx.live?.engine?.provider === 'scripted', ['live']), observe('state engine.mode', (ctx) => ctx.live?.state?.engine?.mode || '—', ['live'])] },
       { act: 'setting', apply: { page: { restoreKeys: true }, settings: { chat: { baseUrl: 'http://127.0.0.1:9/v1' } } }, label: 'scn.S14.l2', expect: 'scn.S14.e2', checks: [] },
       { act: 'send', text: 'Merhaba', waitFor: 'chat.turn.failed|chat.turn.completed', expect: 'scn.S14.e3', blockedIf: needsKey,
         checks: [auto('errorShown(/chat send failed/)', turnErrorMatches(/chat send failed/)), auto('error.redacted (server-side)', errorRedacted()), auto('elapsed ≤ 10000 ms', (ctx) => (ctx.turnMs ?? Infinity) <= 10000, ['turn'])] },

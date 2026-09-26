@@ -8,6 +8,7 @@ that can be read statically.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -171,3 +172,150 @@ def test_i18n_dictionaries_share_their_ids() -> None:
         if module.parent.name != "i18n":
             used.update(re.findall(r"\bt\('([^']+)'", module.read_text(encoding="utf-8")))
     assert used <= tr, sorted(used - tr)
+
+
+def test_diff_row_sources_are_read_only_through_the_normaliser() -> None:
+    """/api/lab/diff rows carry ``sources[]`` as objects; only ui/diff.js unpacks them."""
+    for module in LAB_MODULES:
+        rel = module.relative_to(LAB_ROOT).as_posix()
+        for line in module.read_text(encoding="utf-8").splitlines():
+            if re.search(r"\.sources\b", line):
+                assert rel == "ui/diff.js" and "row?.sources" in line, f"{rel}: {line.strip()[:80]}"
+
+
+# --- contract: fields the Lab modules read exist in the real backend payloads ---------------
+
+
+@pytest.fixture
+def lab_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    from demo.app import create_app
+    from demo.lab_runtime import LabRuntime
+
+    for name in ("MEMORY_CORE_DEMO_OPENAI_API_KEY", "MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY"):
+        monkeypatch.setenv(name, "")
+    return TestClient(create_app(LabRuntime(tmp_path)))
+
+
+def test_contract_diff_sources_are_objects_with_a_source_name(lab_client: TestClient) -> None:
+    lab_client.post("/api/lab/workspace/reset", json={"mode": "fresh"})
+    identity = lab_client.get("/api/lab/file", params={"path": "IDENTITY.md"}).json()
+    lab_client.put(
+        "/api/lab/file",
+        json={"path": "IDENTITY.md", "content": identity["content"] + "\n", "baseSha256": identity["sha256"]},
+    )
+
+    rows = {row["path"]: row for row in lab_client.get("/api/lab/diff", params={"since": "reset"}).json()}
+
+    # scenarios/checks.js fileDeleted(BOOTSTRAP.md, {source: lifecycle}) reads these fields.
+    deleted = rows["BOOTSTRAP.md"]
+    assert deleted["status"] == "deleted"
+    assert isinstance(deleted["sources"][0], dict)
+    assert {"source", "turnId", "ts", "eventId", "status"} <= set(deleted["sources"][0])
+    assert "lifecycle" in [s["source"] for s in deleted["sources"]]
+    assert {"path", "status", "diff", "added", "removed", "hidden"} <= set(rows["IDENTITY.md"])
+
+
+def test_contract_parity_rows_and_commands(lab_client: TestClient) -> None:
+    # views/parity.js reads these MatrixRow fields, `commands[]` and the results file keys.
+    payload = lab_client.get("/api/lab/parity").json()
+
+    assert {"pin", "oracleRepo", "node", "resultsPath", "results", "matrix", "commands"} <= set(payload)
+    assert payload["commands"] and all(isinstance(cmd, str) for cmd in payload["commands"])
+    row = payload["matrix"][0]
+    assert set(row) == {"area", "openclawSource", "pythonSource", "oracleOperation", "status", "knownGaps", "nextTest", "priority"}
+    assert isinstance(row["knownGaps"], str)
+    assert {row["status"] for row in payload["matrix"]} <= {"match", "partial", "mismatch", "missing", "out of scope"}
+    source = (LAB_ROOT / "views" / "parity.js").read_text(encoding="utf-8")
+    for field in ("knownGaps", "oracleOperation", "byEvidence", "byArea", "evidenceKinds", "commands"):
+        assert field in source, field
+    for stale in ("m.evidence", "m.gaps", "'python_ts'", "x.comparison"):
+        assert stale not in source, stale
+
+
+def test_contract_file_entries_for_folders(lab_client: TestClient) -> None:
+    # views/explorer.js groupFiles(): the memory folder entry heads the memory section; user/
+    # and workspace/ are extension folders only when their badges say so.
+    lab_client.post("/api/lab/workspace/reset", json={"mode": "seeded"})
+    entries = lab_client.get("/api/lab/files").json()
+    folders = {e["path"]: e for e in entries if e["kind"] == "folder"}
+
+    assert folders["memory"]["badges"] == []
+    assert folders["memory"]["note"] == "indexed, not injected"
+    for name in ("user", "workspace"):
+        if name in folders:
+            assert folders[name]["badges"] in (["extension"], ["outside_layout"])
+    source = (LAB_ROOT / "views" / "explorer.js").read_text(encoding="utf-8")
+    assert "dir === 'memory'" in source
+
+
+def test_no_debug_global_exposes_the_store() -> None:
+    # store.keys holds page API keys; nothing may hang the store or the actions on window.
+    for module in LAB_MODULES:
+        source = module.read_text(encoding="utf-8")
+        assert "window.__" not in source, module.name
+        assert "globalThis." not in source, module.name
+
+
+def test_event_stream_reads_default_messages_only() -> None:
+    # /api/lab/events frames carry no `event:` line (docs/lab.md), so per-type listeners get nothing.
+    source = (LAB_ROOT / "events.js").read_text(encoding="utf-8")
+    assert "es.onmessage = handle" in source
+    assert "addEventListener(" not in source
+    store = (LAB_ROOT / "store.js").read_text(encoding="utf-8")
+    assert "lab.resync" in store and "replayCutoff" in store
+
+
+def test_settings_offer_no_per_turn_flush(lab_client: TestClient) -> None:
+    # D1 removed the per-turn demo flush; the backend reports mode threshold and rejects others.
+    assert lab_client.get("/api/lab/settings").json()["flush"]["mode"] == "threshold"
+    assert lab_client.put("/api/lab/settings", json={"flush": {"mode": "per_turn"}}).status_code == 400
+    for module in LAB_MODULES:
+        assert "per_turn" not in module.read_text(encoding="utf-8"), module.name
+    snapshot = lab_client.get("/api/lab/state").json()["flush"]
+    shell = (LAB_ROOT / "views" / "shell.js").read_text(encoding="utf-8")
+    for field in ("reserveTokensFloor", "softThresholdTokens", "contextWindowTokens", "alreadyFlushed", "compactionCount", "reason"):
+        assert field in snapshot, field
+        assert field in shell, field
+
+
+def test_contract_heartbeat_fields(lab_client: TestClient) -> None:
+    # views/heartbeat.js reads the unparsed count, its label and the keyless preflight.
+    hb = lab_client.get("/api/lab/heartbeat").json()
+    for field in ("unparsedTaskEntries", "preflight", "labels", "file", "tasks", "runs"):
+        assert field in hb, field
+    assert {"skipReason", "dueTasks"} <= set(hb["preflight"])
+    source = (LAB_ROOT / "views" / "heartbeat.js").read_text(encoding="utf-8")
+    assert "unparsedTaskEntries" in source and "unparsedCount" not in source
+    assert "memoryTools" not in source
+    assert "disabled: noKey" not in source
+
+
+def test_how_it_works_disclosures_have_both_languages() -> None:
+    # D6: one collapsed "Nasıl çalışır?" per view; every bullet id exists in TR and EN.
+    kit = (LAB_ROOT / "ui" / "kit.js").read_text(encoding="utf-8")
+    counts = dict(re.findall(r"(\w+): (\d+)", re.search(r"const HOW = \{([^}]*)\}", kit).group(1)))
+    assert set(counts) == {"chat", "heartbeat", "consolidation", "live", "parity", "memory"}
+    tr = (LAB_ROOT / "i18n" / "tr.js").read_text(encoding="utf-8")
+    en = (LAB_ROOT / "i18n" / "en.js").read_text(encoding="utf-8")
+    for view, n in counts.items():
+        prefix = "parity.how" if view == "parity" else f"how.{view}"
+        for key in [f"{prefix}.{i}" for i in range(1, int(n) + 1)] + [f"{prefix}.src"]:
+            assert f"'{key}':" in tr and f"'{key}':" in en, key
+    for module in ("views/chat.js", "views/heartbeat.js", "views/consolidation.js", "views/live.js", "views/parity.js", "inspector/memory.js"):
+        assert "howItWorks(" in (LAB_ROOT / module).read_text(encoding="utf-8"), module
+
+
+def test_contract_live_state_engine_and_provider_check_target(lab_client: TestClient) -> None:
+    # views/live.js seeds the engine chip from state.engine; checks.js matches provider.check on target.
+    state = lab_client.get("/api/live-task/state").json()
+    assert state["engine"]["mode"] in ("llm", "scripted") and "model" in state["engine"]
+    assert "identityFiles" not in state and "workspaceInjectedFiles" in state
+    start = lab_client.get("/api/lab/state").json()["lastEventId"]
+    result = lab_client.post("/api/lab/provider/check", json={"embedding": {}}).json()
+    assert result["target"] == "embedding"
+    body = lab_client.get("/api/lab/events", params={"once": "true"}, headers={"Last-Event-ID": str(start)}).text
+    events = [json.loads(line[6:]) for line in body.splitlines() if line.startswith("data: ")]
+    check = [e for e in events if e["type"] == "provider.check"][-1]
+    assert check["data"]["target"] == "embedding"
+    assert "e.data?.target === which" in (LAB_ROOT / "scenarios" / "checks.js").read_text(encoding="utf-8")
+    assert "st.engine.mode" in (LAB_ROOT / "views" / "live.js").read_text(encoding="utf-8")

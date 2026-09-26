@@ -5,7 +5,7 @@ import { highlightWords } from '../ui/dom.js';
 import { t } from '../i18n/index.js';
 import { store, refresh, providerBody, loadIndex } from '../store.js';
 import { api } from '../api.js';
-import { chip, btn, segmented, jsonDisclosure, emptyState, failCard, skeleton, honesty } from '../ui/kit.js';
+import { chip, btn, segmented, jsonDisclosure, emptyState, failCard, skeleton, honesty, howItWorks } from '../ui/kit.js';
 import { selectEl } from './common.js';
 import { cooldownLeft } from '../views/shell.js';
 
@@ -42,7 +42,7 @@ function formula(r, weights) {
 }
 /** Legs the search ran with, from the payload: provider none / model fts-only means no vector leg. */
 export function legsOf(res) {
-  const ftsOnly = res?.provider === 'none' || res?.model === 'fts-only';
+  const ftsOnly = res?.provider === 'none' || res?.model === 'fts-only' || res?.embeddings?.mode === 'fts-only';
   const mode = res?.mode || res?.request?.mode;
   return { vector: !ftsOnly && mode !== 'text', text: mode !== 'vector' };
 }
@@ -71,10 +71,11 @@ export function memoryTab(turn) {
   const fts = s?.embedding?.mode === 'fts-only' || idx?.embeddings?.mode === 'fts-only';
   const cd = cooldownLeft();
   const wrap = h('div', { class: 'memory-tab' });
+  wrap.append(howItWorks('memory'));
   const identity = idx?.identity;
   wrap.append(h('div', { class: 'status-strip' },
     idx ? chip({ label: `${t('memory.identity')}: ${identity?.status ? t(`identity.${identity.status}`) : '—'}`, tone: { valid: 'ok', mismatched: 'danger', missing: 'warn' }[identity?.status] || 'neutral', ic: identity?.status === 'valid' ? 'check' : 'alert-triangle', title: `${identity?.reason || ''}\n${t('memory.identityNotFile')}`.trim(), testid: 'index-identity' }) : null,
-    s?.embedding || idx?.embeddings ? chip({ label: fts ? `${t('search.ftsOnly')}${s?.embedding?.reason ? `: ${s.embedding.reason}` : ''}` : `${t('search.hybrid')} · ${s?.embedding?.model || idx?.embeddings?.model || '—'}`, tone: fts ? 'warn' : 'info', ic: 'layers' }) : null,
+    s?.embedding || idx?.embeddings ? chip({ label: fts ? t('search.ftsOnly') : `${t('search.hybrid')} · ${s?.embedding?.model || idx?.embeddings?.model || '—'}`, title: fts ? (s?.embedding?.reason || idx?.embeddings?.reason || t('search.noEmbedder')) : null, tone: fts ? 'warn' : 'info', ic: 'layers', testid: 'memory-embedding' }) : null,
     idx ? chip({ label: `${fmtN(idx.chunks)} ${t('unit.chunks')} · ${fmtTime(idx.lastReindexAt)}`, tone: 'neutral', ic: 'database' }) : null,
     cd ? chip({ label: `${t('search.cooldown')} ${cd} ${t('unit.sec')}`, tone: 'warn', ic: 'clock', testid: 'chip-cooldown', title: idx?.cooldown?.error || '' }) : null,
     idx?.deadlineMs ? chip({ label: `${t('search.deadline')} ${fmtMs(idx.deadlineMs)}`, tone: 'neutral', ic: 'clock' }) : null,
@@ -126,7 +127,8 @@ export function memoryTab(turn) {
     const rows = res.results || [];
     wrap.append(h('div', { class: 'result-meta muted', 'data-testid': 'search-meta' },
       `${rows.length} ${t('search.results')} · ${t(`search.mode.${res.mode || res.request?.mode || 'text'}`)}${res.provider ? ` · ${res.provider}/${res.model}` : ''} · ${fmtMs(res.ms ?? res.clientMs)}`));
-    if (!rows.length) wrap.append(emptyState({ title: t('search.noMatch'), text: t('search.noMatchText'), testid: 'empty-memory', level: 4 }));
+    const hint = [Number(res.request?.minScore) > 0 ? t('search.noMatchMin') : null, res.embeddings?.mode === 'fts-only' || res.provider === 'none' ? t('search.noMatchFts') : null].filter(Boolean).join(' ');
+    if (!rows.length) wrap.append(emptyState({ title: t('search.noMatch'), text: hint || null, testid: 'empty-memory', level: 4 }));
     rows.forEach((r, i) => wrap.append(resultRow(r, i + 1, { terms: wordTokens(res.request?.query || ''), minScore: res.request?.minScore, weights: res.weights || null, legs: legsOf(res) })));
     if (!res.matchedTermsSupported && rows.length) wrap.append(honesty(t('search.highlightNote'), 'neutral', 'info'));
     wrap.append(jsonDisclosure(res, { title: 'memory_search' }));

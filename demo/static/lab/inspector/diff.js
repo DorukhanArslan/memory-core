@@ -6,7 +6,7 @@ import { store, refresh, loadFiles, loadState } from '../store.js';
 import { api } from '../api.js';
 import { segmented, iconBtn, emptyState, skeleton, failCard } from '../ui/kit.js';
 import { confirmDialog, toast } from '../ui/overlay.js';
-import { parseUnified, diffView } from '../ui/diff.js';
+import { parseUnified, diffView, sourceNames, sourceEntries } from '../ui/diff.js';
 
 const cache = new Map();
 const FILE_EVENT = /^(file\.|bootstrap\.file_deleted|curation\.|flush\.written|session_memory\.|promotion\.|dreaming\.|workspace\.reset|chat\.turn\.completed|live\.)/;
@@ -37,9 +37,11 @@ export async function fetchDiff(since) {
   await e.promise;
   return e;
 }
+/** Baseline name for the Diff tab. Without a turn or a scenario mark it falls back to `reset`,
+ *  the baseline every workspace reset records (a `session` baseline exists only after /new). */
 export function sinceFor(base, turn) {
-  if (base === 'turn') return turn && typeof turn.id === 'number' ? `turn:${turn.id}` : 'session';
-  if (base === 'mark') return store.ui.scenario?.markId ? `mark:${store.ui.scenario.markId}` : 'session';
+  if (base === 'turn') return turn && typeof turn.id === 'number' ? `turn:${turn.id}` : 'reset';
+  if (base === 'mark') return store.ui.scenario?.markId ? `mark:${store.ui.scenario.markId}` : 'reset';
   return base;
 }
 
@@ -47,8 +49,8 @@ export function diffTab(turn, { ctx = 'turn' } = {}) {
   const u = store.ui;
   const defaultBase = ctx === 'turn' ? 'turn' : 'reset';
   let base = u.diffBase || defaultBase;
-  if (base === 'mark' && !u.scenario?.markId) base = 'session';
-  if (base === 'turn' && ctx !== 'turn') base = 'reset';
+  if (base === 'mark' && !u.scenario?.markId) base = 'reset';
+  if (base === 'turn' && (ctx !== 'turn' || !turn || typeof turn.id !== 'number')) base = 'reset';
   const since = sinceFor(base, turn);
   const wrap = h('div', { class: 'diff-tab' });
   wrap.append(h('div', { class: 'controls-row' }, segmented({
@@ -62,11 +64,13 @@ export function diffTab(turn, { ctx = 'turn' } = {}) {
   })));
   const entry = diffFor(since);
   if (entry.loading && !entry.list) { wrap.append(skeleton(3)); return wrap; }
+  if (entry.err?.code === 'no_baseline') { wrap.append(emptyState({ title: t('diff.noBaseline'), text: t('diff.noBaselineText', { s: since }), testid: 'diff-no-baseline', ic: 'diff', level: 4 })); return wrap; }
   if (entry.err) { wrap.append(failCard(entry.err, { title: t('diff.loadFailed') })); return wrap; }
   const list = entry.list || [];
   if (!list.length) { wrap.append(emptyState({ title: t('diff.empty'), testid: 'empty-diff', ic: 'diff', level: 4 })); return wrap; }
   for (const d of list) {
-    const sources = d.sources || (d.source ? [d.source] : []);
+    const sources = sourceNames(d);
+    const turnsBySource = (src) => [...new Set(sourceEntries(d).filter((x) => x.source === src && x.turnId !== null && x.turnId !== undefined).map((x) => `#${x.turnId}`))].join(', ');
     const status = d.status === 'modified' || d.status === 'changed' ? 'modified' : d.status;
     wrap.append(h('article', { class: 'dcard', 'data-testid': 'diff-card', 'data-path': d.path },
       h('div', { class: 'dcard-head' },
@@ -74,7 +78,7 @@ export function diffTab(turn, { ctx = 'turn' } = {}) {
         h('button', { type: 'button', class: 'dcard-path mono', onclick: () => (status !== 'deleted' ? store.actions.openFile(d.path) : null), disabled: status === 'deleted' }, d.path),
         h('span', { class: 'num tone-text-ok' }, `+${d.added ?? 0}`), h('span', { class: 'num tone-text-danger' }, `−${d.removed ?? 0}`),
         h('span', { class: 'spacer' }),
-        sources.map((src) => h('span', { class: ['chip', 'chip-xs', `tone-${SOURCE_TONE[src] || 'neutral'}`] }, sourceLabel(src))),
+        sources.map((src) => h('span', { class: ['chip', 'chip-xs', `tone-${SOURCE_TONE[src] || 'neutral'}`], 'data-tip': turnsBySource(src) || null, 'data-testid': 'diff-source' }, sourceLabel(src))),
         iconBtn('rotate-ccw', t('diff.revert'), () => revert(d, since), { size: 'xs' })),
       status === 'deleted' ? h('div', { class: 'muted pad small' }, t('diff.deletedBy', { s: sources.map(sourceLabel).join(', ') || '—' })) : null,
       d.diff ? diffView(parseUnified(d.diff), { maxLines: 200 }) : null));

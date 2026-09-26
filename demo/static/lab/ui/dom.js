@@ -189,3 +189,71 @@ export function isTyping(target) {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
 }
 export function escapeRegExp(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+/* ---------- re-render preservation: focus, <details> state and inner scroll ----------
+ * Regions are rebuilt with replace(); before a rebuild the renderer loop records where focus
+ * was, which <details> were open or closed and how far inner scroll containers were scrolled,
+ * keyed by a DOM path of stable attributes (else the index among same-tag siblings). After the
+ * rebuild the same path is looked up again, so an unrelated LabEvent never sends focus to <body>
+ * or collapses a disclosure (WCAG 2.4.3). */
+const KEY_ATTRS = ['id', 'data-view', 'data-key', 'data-path', 'data-folder', 'data-turn', 'data-target', 'data-cmd', 'data-value', 'data-how'];
+const SCROLLERS = '.view-scroll, .pane-scroll, .table-wrap, .json-pre, .parity-tests, .code, .hb-history';
+function segment(el) {
+  for (const a of KEY_ATTRS) { const v = el.getAttribute(a); if (v) return { tag: el.tagName, attr: a, value: v }; }
+  const same = [...el.parentElement.children].filter((c) => c.tagName === el.tagName);
+  const tid = el.getAttribute('data-testid');
+  if (tid) return { tag: el.tagName, tid, n: same.filter((c) => c.getAttribute('data-testid') === tid).indexOf(el) };
+  return { tag: el.tagName, n: same.indexOf(el) };
+}
+export function pathKey(root, el) {
+  const segs = [];
+  let n = el;
+  while (n && n !== root) { if (!n.parentElement) return null; segs.unshift(segment(n)); n = n.parentElement; }
+  return n === root ? segs : null;
+}
+export function resolvePath(root, segs) {
+  if (!segs) return null;
+  let cur = root;
+  for (const s of segs) {
+    const kids = [...cur.children].filter((c) => c.tagName === s.tag);
+    const next = s.attr ? kids.find((c) => c.getAttribute(s.attr) === s.value) : s.tid ? kids.filter((c) => c.getAttribute('data-testid') === s.tid)[s.n] : kids[s.n];
+    if (!next) return null;
+    cur = next;
+  }
+  return cur;
+}
+const fingerprint = (el) => [el.tagName, el.getAttribute('data-testid') || '', el.getAttribute('aria-label') || '', (el.textContent || '').trim().slice(0, 60)].join('|');
+function byFingerprint(root, fp) {
+  const hits = [...root.querySelectorAll('button, input, textarea, select, a[href], [tabindex]')].filter((x) => fingerprint(x) === fp);
+  return hits.length === 1 ? hits[0] : null;
+}
+export function captureState(root) {
+  const st = { active: null, details: [], scroll: [] };
+  const a = document.activeElement;
+  if (a && a !== document.body && root.contains(a)) {
+    const text = a.tagName === 'INPUT' || a.tagName === 'TEXTAREA';
+    st.active = { el: a, path: pathKey(root, a), fp: fingerprint(a), sel: text && typeof a.selectionStart === 'number' ? [a.selectionStart, a.selectionEnd, a.selectionDirection || 'none'] : null, top: a.scrollTop };
+  }
+  for (const d of root.querySelectorAll('details')) { const p = pathKey(root, d); if (p) st.details.push({ p, open: d.open }); }
+  for (const el of root.querySelectorAll(SCROLLERS)) if (el.scrollTop || el.scrollLeft) { const p = pathKey(root, el); if (p) st.scroll.push({ p, top: el.scrollTop, left: el.scrollLeft }); }
+  return st;
+}
+export function restoreState(root, st) {
+  for (const d of st.details) { const el = resolvePath(root, d.p); if (el && el.tagName === 'DETAILS' && el.open !== d.open) el.open = d.open; }
+  for (const s of st.scroll) { const el = resolvePath(root, s.p); if (el) { el.scrollTop = s.top; el.scrollLeft = s.left; } }
+  const a = st.active;
+  if (!a) return;
+  const cur = document.activeElement;
+  if (cur && cur !== document.body && cur.isConnected) return; // the renderer placed focus itself
+  const el = (a.el.isConnected && root.contains(a.el) ? a.el : null) || resolvePath(root, a.path) || byFingerprint(root, a.fp);
+  if (!el || el.closest('[inert], [hidden]')) return;
+  el.focus({ preventScroll: true });
+  if (a.sel && document.activeElement === el) { try { el.setSelectionRange(a.sel[0], a.sel[1], a.sel[2]); } catch { /* not a text input */ } el.scrollTop = a.top; }
+}
+const REGION_IDS = ['topbar', 'rail', 'statusbar', 'mobile-nav', 'explorer', 'center', 'inspector'];
+/** A getter for `el` that survives a region rebuild (menus and dialogs return focus through it). */
+export function focusHandle(el) {
+  const root = el ? REGION_IDS.map((id) => document.getElementById(id)).find((r) => r && r.contains(el)) : null;
+  const path = root ? pathKey(root, el) : null; const fp = el ? fingerprint(el) : '';
+  return () => (el?.isConnected ? el : root ? resolvePath(root, path) || byFingerprint(root, fp) : null);
+}

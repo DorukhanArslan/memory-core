@@ -37,9 +37,11 @@ export async function fetchDiff(since) {
   await e.promise;
   return e;
 }
+/** Baseline name for the Diff tab. Without a turn or a scenario mark it falls back to `reset`,
+ *  the baseline every workspace reset records (a `session` baseline exists only after /new). */
 export function sinceFor(base, turn) {
-  if (base === 'turn') return turn && typeof turn.id === 'number' ? `turn:${turn.id}` : 'session';
-  if (base === 'mark') return store.ui.scenario?.markId ? `mark:${store.ui.scenario.markId}` : 'session';
+  if (base === 'turn') return turn && typeof turn.id === 'number' ? `turn:${turn.id}` : 'reset';
+  if (base === 'mark') return store.ui.scenario?.markId ? `mark:${store.ui.scenario.markId}` : 'reset';
   return base;
 }
 
@@ -47,8 +49,8 @@ export function diffTab(turn, { ctx = 'turn' } = {}) {
   const u = store.ui;
   const defaultBase = ctx === 'turn' ? 'turn' : 'reset';
   let base = u.diffBase || defaultBase;
-  if (base === 'mark' && !u.scenario?.markId) base = 'session';
-  if (base === 'turn' && ctx !== 'turn') base = 'reset';
+  if (base === 'mark' && !u.scenario?.markId) base = 'reset';
+  if (base === 'turn' && (ctx !== 'turn' || !turn || typeof turn.id !== 'number')) base = 'reset';
   const since = sinceFor(base, turn);
   const wrap = h('div', { class: 'diff-tab' });
   wrap.append(h('div', { class: 'controls-row' }, segmented({
@@ -62,6 +64,7 @@ export function diffTab(turn, { ctx = 'turn' } = {}) {
   })));
   const entry = diffFor(since);
   if (entry.loading && !entry.list) { wrap.append(skeleton(3)); return wrap; }
+  if (entry.err?.code === 'no_baseline') { wrap.append(emptyState({ title: t('diff.noBaseline'), text: t('diff.noBaselineText', { s: since }), testid: 'diff-no-baseline', ic: 'diff', level: 4 })); return wrap; }
   if (entry.err) { wrap.append(failCard(entry.err, { title: t('diff.loadFailed') })); return wrap; }
   const list = entry.list || [];
   if (!list.length) { wrap.append(emptyState({ title: t('diff.empty'), testid: 'empty-diff', ic: 'diff', level: 4 })); return wrap; }

@@ -144,7 +144,19 @@ export function apiErrorCard(err, { title = null, onRetry = null } = {}) {
     onRetry ? h('div', { class: 'error-actions' }, btn(t('act.retry'), { size: 'sm', ic: 'rotate-ccw', onClick: onRetry })) : null,
     err?.body ? jsonDisclosure(err.body, { title: t('act.details') }) : null);
 }
-/** Renders the right card for a failed load: "henüz yok" for module_missing, otherwise the error. */
+/** 404 not_found from the backend: the file is not on disk (never created, or deleted). */
+export function notFoundCard(err, { path = null } = {}) {
+  return h('div', { class: 'missing-card', role: 'status', 'data-testid': 'not-found' },
+    h('span', { class: 'chip tone-neutral chip-xs' }, icon('minus', 10), t('state.notFound')),
+    h('span', { class: 'missing-text' }, t('state.notFoundText', { p: path || err?.body?.path || '—' })),
+    err?.code ? h('span', { class: 'muted small mono' }, `404 ${err.code}`) : null);
+}
+/**
+ * Renders the right card for a failed load: "henüz yok" only for module_missing (or an unknown
+ * route), "dosya yok / silindi" for not_found, otherwise the error card.
+ */
 export function failCard(err, opts = {}) {
-  return err?.missing ? missingCard(err, opts) : apiErrorCard(err, opts);
+  if (err?.missing) return missingCard(err, opts);
+  if (err?.code === 'not_found') return notFoundCard(err, opts);
+  return apiErrorCard(err, opts);
 }

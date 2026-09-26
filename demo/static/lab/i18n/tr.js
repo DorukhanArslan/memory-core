@@ -297,4 +297,9 @@ export const TR = {
   'scn.S14.l7': 'Embedding URL’yi geri al → Bağlantıyı sına', 'scn.S14.e7': 'Yeşil; soğuma bitince arama çalışır.',
   // scenario tags
   'tag.uzantı': 'uzantı', 'tag.model': 'model', 'tag.upstream-uyumlu': 'upstream-uyumlu', 'tag.demo-only': 'demo-only',
+  // 404 answers (not_found, no_baseline)
+  'state.notFound': 'dosya yok',
+  'state.notFoundText': '{p} diskte yok: hiç oluşturulmadı ya da silindi.',
+  'diff.noBaseline': 'Bu taban için kayıt yok',
+  'diff.noBaselineText': 'Sunucu {s} tabanı için anlık görüntü tutmuyor.',
 };

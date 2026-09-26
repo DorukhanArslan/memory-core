@@ -279,4 +279,9 @@ export const EN = {
   'scn.S14.l6': 'Search again within 60 s', 'scn.S14.e6': 'The same error without a provider request: search.cooldown in Timeline, no embedding.request.',
   'scn.S14.l7': 'Restore the embedding URL → Test connection', 'scn.S14.e7': 'Green; search works once the cooldown ends.',
   'tag.uzantı': 'extension', 'tag.model': 'model', 'tag.upstream-uyumlu': 'upstream-compatible', 'tag.demo-only': 'demo-only',
+  // 404 answers (not_found, no_baseline)
+  'state.notFound': 'no file',
+  'state.notFoundText': '{p} is not on disk: never created, or deleted.',
+  'diff.noBaseline': 'No record for this baseline',
+  'diff.noBaselineText': 'The server holds no snapshot for the {s} baseline.',
 };

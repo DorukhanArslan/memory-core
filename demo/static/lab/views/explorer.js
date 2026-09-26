@@ -60,7 +60,7 @@ function rowMenu(anchor, e) {
   openMenu(anchor, [
     { label: t('act.open'), ic: 'file-text', onSelect: () => store.actions.openFile(e.path) },
     { label: t('act.copyPath'), ic: 'copy', onSelect: () => copyText(root ? `${root}/${e.path}` : e.path).then(() => toast(t('toast.pathCopied'), { tone: 'ok' })) },
-    { label: t('act.viewDiff'), ic: 'diff', onSelect: () => { store.ui.diffBase = 'session'; store.actions.openInspector('diff'); } },
+    { label: t('act.viewDiff'), ic: 'diff', onSelect: () => { store.ui.diffBase = 'reset'; store.actions.openInspector('diff'); } },
     isMemoryPath(e.path) ? { label: t('act.memoryGet'), ic: 'database', onSelect: () => store.actions.memoryGet(e.path) } : null,
     { label: t('act.searchFile'), ic: 'search', onSelect: () => store.actions.searchMemory(basename(e.path).replace(/\.md$/, '')) },
   ]);

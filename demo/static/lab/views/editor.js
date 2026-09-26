@@ -68,7 +68,7 @@ export function renderEditor(body, path) {
   const file = d.fileCache.get(path);
   if (!file) { replace(body, skeleton(8)); loadFile(path); return; }
   if (file.err) {
-    replace(body, h('div', { class: 'editor-missing' }, failCard(file.err, { title: t('editor.readFailed', { p: path }), onRetry: () => loadFile(path, { force: true }) }), btn(t('editor.closeTabBtn'), { size: 'sm', kind: 'ghost', onClick: () => store.actions.closeTab(path) })));
+    replace(body, h('div', { class: 'editor-missing' }, failCard(file.err, { title: t('editor.readFailed', { p: path }), path, onRetry: () => loadFile(path, { force: true }) }), btn(t('editor.closeTabBtn'), { size: 'sm', kind: 'ghost', onClick: () => store.actions.closeTab(path) })));
     return;
   }
   const entry = fileEntry(path);

@@ -114,6 +114,37 @@ def test_live_task_demo_keeps_root_memory_out_of_live_prompts(tmp_path: Path):
     assert "MEMORY.md" not in demo.state().identity_files
 
 
+def test_live_task_prompt_names_what_each_workflow_step_needs(tmp_path: Path):
+    # The model words the replies, so it must ask for what the step machine accepts:
+    # a live gpt-6-luna turn asked for a full name while verify_identity waits for a date.
+    demo = LiveTaskDemo(workspace_dir=tmp_path)
+    demo.reset()
+    seen: list[str] = []
+
+    async def capturing_llm(messages):
+        seen.append(messages[0]["content"])
+        yield "Tamam."
+
+    async def collect():
+        return [
+            event
+            async for event in demo.stream_turn(
+                session_id="session_1",
+                subject_id="subject_1",
+                user_utterance="Merhaba",
+                llm=capturing_llm,
+            )
+        ]
+
+    asyncio.run(collect())
+
+    assert "Bootstrap Pending" not in seen[0]
+    assert not (tmp_path / "BOOTSTRAP.md").exists()
+    assert "verify_identity: date of birth" in seen[0]
+    assert "never ask again once verified is true" in seen[0]
+    assert "current_step: verify_identity" in seen[0]
+
+
 def test_live_task_demo_transcript_records_assistant_text_once(tmp_path: Path):
     demo = LiveTaskDemo(workspace_dir=tmp_path)
     demo.reset()

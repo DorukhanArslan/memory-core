@@ -232,13 +232,17 @@ class LiveTaskDemo:
     def _bootstrap_workspace(self) -> None:
         """Seed the live workspace and append the task's AGENTS.md section once.
 
-        Seeding uses the Lab templates (``ensure_workspace_bootstrap_files``).
+        Seeding uses the Lab templates (``ensure_workspace_bootstrap_files``) plus an
+        empty ``memory/``, like the Lab's ``seeded`` reset: a live task runs in a set-up
+        workspace, so the setup evidence keeps BOOTSTRAP.md (and its "follow it before
+        replying normally" notice) out of every live prompt.
         The ``## Live Task Demo: appointment_reschedule`` section holds the
         demo's own task rules; it is appended to AGENTS.md only while no line
         of the file equals that heading, so resets and turns never duplicate
         it, and a hand-edited section is left alone. Demo-only, no upstream
         equivalent.
         """
+        (self.workspace_dir / "memory").mkdir(parents=True, exist_ok=True)
         ensure_workspace_bootstrap_files(self.workspace_dir)
         agents_path = self.workspace_dir / "AGENTS.md"
         existing = agents_path.read_text(encoding="utf-8") if agents_path.exists() else ""
@@ -329,6 +333,9 @@ def _live_task_agents_md() -> str:
 - Verify the subject before changing an appointment.
 - Do not confirm a change until the subject explicitly approves it.
 - Ask for one missing item at a time.
+- The workflow state in the runtime context is authoritative: ask only for what its
+  current_step needs (verify_identity: date of birth; collect_new_time: the new day and
+  time; confirm_change: an explicit yes or no), and never ask again once verified is true.
 - If identity cannot be verified or the requested appointment is unclear, stop and ask for human help.
 """
 

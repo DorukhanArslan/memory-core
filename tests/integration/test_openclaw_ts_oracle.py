@@ -6115,3 +6115,96 @@ def test_real_openclaw_oracle_session_memory_hook_matches_python(tmp_path: Path,
     for index, scenario in enumerate(scenarios):
         python = _python_session_hook_scenario(scenario, tmp_path / f"workspace-{index}")
         assert python == result["result"]["scenarios"][index], (index, scenario)
+
+
+def test_real_openclaw_oracle_memory_search_finds_session_memory_files(tmp_path: Path):
+    # Files written by save_session_memory (checked byte for byte against the
+    # real hook above) are indexed by upstream's recursive listMemoryFiles walk
+    # and searched like any other memory/**/*.md file.
+    from memory_core.session_memory import save_session_memory
+
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+    (tmp_path / "MEMORY.md").write_text("# Long-Term Memory\n\n- Weekly review.\n", encoding="utf-8")
+    MemoryWorkspace(tmp_path).append_daily_memory(
+        "memory/2026-09-26.md", "- The zephyrquartz review needs a room."
+    )
+    now_ms = 1790433000000  # 2026-09-26T14:30:00Z
+    timestamped = save_session_memory(
+        tmp_path,
+        session_key="agent:main:main",
+        session_id="session-one",
+        messages=[
+            {"role": "user", "content": "Book the zephyrquartz review for Friday."},
+            {"role": "assistant", "content": "Booked the zephyrquartz review for Friday."},
+        ],
+        now_ms=now_ms,
+    )
+    slugged = save_session_memory(
+        tmp_path,
+        session_key="agent:main:main",
+        session_id="session-two",
+        messages=[{"role": "user", "content": "Move the zephyrquartz review to May."}],
+        now_ms=now_ms,
+        slug_generator=lambda prompt: "review-move",
+    )
+    assert (timestamped.rel_path, slugged.rel_path) == (
+        "memory/2026-09-26-1430.md",
+        "memory/2026-09-26-review-move.md",
+    )
+
+    result = oracle.run(
+        {
+            "operation": "memorySearch",
+            "workspaceDir": str(tmp_path),
+            "query": "zephyrquartz review",
+            "corpus": "memory",
+            "maxResults": 5,
+            "minScore": 0,
+        }
+    )
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "python-memory.sqlite",
+        vector_weight=0,
+        text_weight=1,
+    )
+    store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+    python_result = memory_search(
+        cfg,
+        store,
+        query="zephyrquartz review",
+        corpus="memory",
+        max_results=5,
+        min_score=0,
+    )
+
+    assert result["ok"] is True, result
+    openclaw_results = result["result"]["results"]
+    python_results = python_result["results"]
+
+    def shape(items):
+        return [
+            {
+                "source": item["source"],
+                "path": item["path"],
+                "startLine": item["startLine"],
+                "endLine": item["endLine"],
+                "snippet": item["snippet"],
+            }
+            for item in items
+        ]
+
+    assert shape(openclaw_results) == shape(python_results)
+    assert sorted(item["path"] for item in python_results) == [
+        "MEMORY.md",
+        "memory/2026-09-26-1430.md",
+        "memory/2026-09-26-review-move.md",
+        "memory/2026-09-26.md",
+    ]
+    assert [item["score"] for item in openclaw_results] == pytest.approx(
+        [item["score"] for item in python_results], rel=0, abs=1e-12
+    )

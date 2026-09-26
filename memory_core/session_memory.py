@@ -53,10 +53,12 @@ instead of ``process.env.TZ``; the session key written as given (no
 agent re-keying); errors raised to the caller instead of logged; a name is
 taken by any directory entry. Not ported: the background write queue, the
 agent/workspace resolution from OpenClaw config, and the 15 s model timeout
-(the host's generator owns it). memory-core's memory index reads only canonical
-``memory/YYYY-MM-DD.md`` files, so these files reach the next session through
-``memory_core.bootstrap.build_startup_context`` (up to four slugged files per day),
-not through ``memory_search``.
+(the host's generator owns it). The files reach the next session through
+``memory_core.bootstrap.build_startup_context`` (up to four slugged files per day)
+and, once the host reindexes, through ``memory_search`` and ``memory_get``:
+discovery walks every ``memory/**/*.md`` like upstream ``listMemoryFiles``,
+and temporal decay treats these undated names as evergreen
+(``isEvergreenMemoryPath``).
 """
 
 from __future__ import annotations

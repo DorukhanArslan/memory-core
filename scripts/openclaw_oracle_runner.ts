@@ -1372,6 +1372,27 @@ async function main() {
     }
   }
 
+  if (payload.operation === "memoryBudgetCompaction") {
+    // extensions/memory-core/src/memory-budget.ts compactMemoryForBudget (its private
+    // parseMemoryBlocks decides which blocks are promotion sections) and
+    // DEFAULT_MEMORY_FILE_MAX_CHARS.
+    const budget = await importFromRepo(repoPath, "extensions/memory-core/src/memory-budget.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        defaultMemoryFileMaxChars: budget.DEFAULT_MEMORY_FILE_MAX_CHARS,
+        cases: (payload.cases ?? []).map((item) =>
+          budget.compactMemoryForBudget({
+            existingMemory: String(item.existingMemory ?? ""),
+            newSection: String(item.newSection ?? ""),
+            budgetChars: Number(item.budgetChars),
+          }),
+        ),
+      },
+    };
+  }
+
   const promotionOperations = new Set([
     "recordShortTermRecalls",
     "recordShortTermRecallSequence",

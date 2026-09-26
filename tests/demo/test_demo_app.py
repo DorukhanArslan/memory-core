@@ -476,6 +476,40 @@ def test_live_task_rejects_a_session_id_that_would_leave_the_trace_dir(monkeypat
     assert not list(demo_app.LIVE_TASK_DEMO.workspace_dir.rglob("escaped.jsonl"))
 
 
+def test_live_task_turn_failure_redacts_the_request_key(monkeypatch):
+    # stream_live_turn yields live_turn_failed with str(exc); the Lab redacts it first.
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
+    key = "sk-request-scoped-key-123"
+
+    class FailingEngine:
+        model = "test-model"
+
+        def raw_chat_stream(self, messages):
+            del messages
+            raise RuntimeError(f"401 Unauthorized: invalid api key {key}")
+            yield ""
+
+    monkeypatch.setattr(demo_app, "_optional_live_task_engine", lambda payload: FailingEngine())
+    client = TestClient(app)
+    client.post("/api/live-task/reset", json={"sessionId": "session_demo", "subjectId": "subject_demo"})
+
+    response = client.post(
+        "/api/live-task/turn-stream",
+        json={
+            "sessionId": "session_demo",
+            "subjectId": "subject_demo",
+            "message": "Merhaba",
+            "openai": {"apiKey": key},
+        },
+    )
+
+    events = _parse_sse(response.text)
+    failed = [event for event in events if event["event"] == "live_turn_failed"]
+    assert failed and "[redacted]" in failed[0]["data"]["data"]["error"]
+    assert events[-1]["event"] == "error"
+    assert key not in response.text
+
+
 def test_live_task_summary_writes_subject_memory(monkeypatch):
     monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
     client = TestClient(app)

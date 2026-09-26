@@ -62,6 +62,7 @@ from memory_core.consolidation import run_dreaming_sweep as run_consolidation_dr
 from memory_core.embeddings.base import EmbeddingProvider, FakeEmbeddingProvider
 from memory_core.embeddings.openai_compatible import OpenAICompatibleEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.live import LIVE_TURN_FAILED
 from memory_core.memory_flush import MemoryFlushPlan, build_memory_flush_plan
 from memory_core.prompt_section import build_prompt_section
 from memory_core.tools.memory_get import memory_get
@@ -145,10 +146,14 @@ def _json_error(message: str) -> JSONResponse:
 
 def _safe_exception_message(exc: Exception, secrets: tuple[str, ...] = ()) -> str:
     message = str(exc) or exc.__class__.__name__
+    return f"{exc.__class__.__name__}: {_redact_secrets(message, secrets)}"
+
+
+def _redact_secrets(message: str, secrets: tuple[str, ...] = ()) -> str:
     for secret in (*secrets, os.getenv("MEMORY_CORE_DEMO_OPENAI_API_KEY") or ""):
         if secret:
             message = message.replace(secret, "[redacted]")
-    return f"{exc.__class__.__name__}: {message}"
+    return message
 
 
 def _required_int(payload: dict, key: str, default: int) -> int:
@@ -717,7 +722,10 @@ def live_task_summary(payload: dict[str, Any]):
             "state": _serialize_live_task_state(LIVE_TASK_DEMO.state()),
         }
     except Exception as exc:
-        return _json_error(f"live task summary failed: {_safe_exception_message(exc)}")
+        return _json_error(
+            f"live task summary failed: "
+            f"{_safe_exception_message(exc, (_payload_api_key(payload),))}"
+        )
 
 
 @app.post("/api/chat/flush")
@@ -927,6 +935,7 @@ def _chat_send_stream_events(payload: dict):
 
 
 async def _live_task_turn_stream_events(payload: dict[str, Any]):
+    secrets = (_payload_api_key(payload),)
     try:
         message = str(payload.get("message", "")).strip()
         if not message:
@@ -943,12 +952,18 @@ async def _live_task_turn_stream_events(payload: dict[str, Any]):
             user_utterance=message,
             llm=llm,
         ):
+            if event["type"] == LIVE_TURN_FAILED and event["data"].get("error"):
+                # The SDK yields str(exc) unredacted; the browser must not see a key.
+                error = _redact_secrets(event["data"]["error"], secrets)
+                event = {**event, "data": {**event["data"], "error": error}}
             yield _sse(str(event["type"]), event)
         yield _sse("live_task_state", _serialize_live_task_state(LIVE_TASK_DEMO.state()))
     except DemoPayloadError as exc:
         yield _sse("error", {"error": str(exc)})
     except Exception as exc:
-        yield _sse("error", {"error": f"live task turn failed: {_safe_exception_message(exc)}"})
+        yield _sse(
+            "error", {"error": f"live task turn failed: {_safe_exception_message(exc, secrets)}"}
+        )
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:

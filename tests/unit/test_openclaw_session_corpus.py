@@ -1,6 +1,8 @@
+import json
 from pathlib import Path
 
 from memory_core.session_corpus import MemoryCoreSessionCorpus
+from memory_core.transcript_tree import select_session_transcript_leaf_controlled_path
 
 
 def test_openclaw_session_corpus_discovers_visible_session_transcripts(tmp_path: Path):
@@ -60,12 +62,14 @@ def test_openclaw_session_corpus_renders_chat_text_for_indexing(tmp_path: Path):
     )
 
 
-def test_openclaw_session_corpus_resolves_active_leaf_path(tmp_path: Path):
-    """Leaf-controlled transcripts index only the active branch.
+def test_openclaw_session_corpus_indexes_all_branches_in_file_order(tmp_path: Path):
+    """Leaf-controlled transcripts still index every message row in file order.
 
-    Mirrors OpenClaw reader behavior after upstream commit 1a002c2d9d:
-    selectSessionTranscriptLeafControlledPath(entries) ?? entries
-    (src/agents/cli-runner/session-history.ts, transcript-tree.ts).
+    Mirrors OpenClaw memory ingestion
+    (packages/memory-host-sdk/src/host/session-files.ts buildSessionEntry), which
+    never calls the transcript-tree helpers. The active-branch view stays
+    available to readers through memory_core.transcript_tree
+    (src/agents/cli-runner/session-history.ts reader pattern).
     """
     sessions_dir = tmp_path / ".openclaw-state" / "agents" / "main" / "sessions"
     sessions_dir.mkdir(parents=True)
@@ -88,15 +92,22 @@ def test_openclaw_session_corpus_resolves_active_leaf_path(tmp_path: Path):
     )
     corpus = MemoryCoreSessionCorpus(tmp_path / ".openclaw-state", agent_id="main")
 
-    text = corpus.read_index_text(corpus.discover_files()[0])
+    file = corpus.discover_files()[0]
+
+    text = corpus.read_index_text(file)
 
     assert text == (
         "User: Keep me\n"
+        "Assistant: Abandoned branch reply\n"
         "Assistant: Active branch reply\n"
     )
+    entries = [json.loads(line) for line in file.abs_path.read_text(encoding="utf-8").splitlines()]
+    active = select_session_transcript_leaf_controlled_path(entries)
+    assert active is not None
+    assert [entry["id"] for entry in active] == ["m1", "m3"]
 
 
-def test_openclaw_session_corpus_excludes_side_append_entries_from_active_path(tmp_path: Path):
+def test_openclaw_session_corpus_indexes_side_append_entries_in_file_order(tmp_path: Path):
     sessions_dir = tmp_path / ".openclaw-state" / "agents" / "main" / "sessions"
     sessions_dir.mkdir(parents=True)
     (sessions_dir / "session-side.jsonl").write_text(
@@ -121,6 +132,7 @@ def test_openclaw_session_corpus_excludes_side_append_entries_from_active_path(t
 
     assert text == (
         "User: Visible question\n"
+        "Assistant: Side branch note\n"
         "Assistant: Visible answer\n"
     )
 

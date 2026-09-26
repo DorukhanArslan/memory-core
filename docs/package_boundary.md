@@ -39,6 +39,17 @@ Included:
   its own write path, never through the daily-flush target, and after the host
   reindexes, `memory_search` finds it like any `memory/**/*.md`; an LLM slug needs a
   host-supplied generator, and a host redactor can map each stored line
+- heartbeat turn helpers (`prepare_heartbeat_turn`, `HeartbeatTurn`,
+  `strip_heartbeat_token`, `build_heartbeat_section_lines`,
+  `resolve_heartbeat_prompt_for_system_prompt`, `resolve_heartbeat_interval_ms`,
+  `HEARTBEAT_PROMPT`, `HEARTBEAT_TOKEN`; the rest stays in `memory_core.heartbeat`).
+  Heartbeat itself is a runtime feature: the host schedules the turns and
+  delivers replies. The helpers are in core only because heartbeat turns change
+  memory-core behaviour: the session corpus drops heartbeat prompt rows and
+  `HEARTBEAT_OK` replies, which works only when the host writes the same prompt
+  and token; memory flush skips heartbeat runs; and `HEARTBEAT.md` is one of the
+  pin's bootstrap files. Evidence: the "Heartbeat turn inputs and reply
+  handling" row in `docs/parity_matrix.md`
 - replay cleanup, history windowing, tool-use repair, and overflow helpers when
   those behaviors are required to preserve OpenClaw-compatible prompt assembly
 

@@ -18,6 +18,11 @@ Included:
 - Markdown memory files such as `MEMORY.md` and `memory/YYYY-MM-DD.md`
 - SQLite-backed indexing, hybrid search, MMR, temporal scoring, and citations
 - flush planning and daily-memory target validation
+- MEMORY.md budget compaction (`memory_core.memory_budget`)
+- curated memory writes (`MemoryCurator`, `Memory.curator()`): a memory-core
+  extension, not OpenClaw parity, behind `FeatureFlags.curated_memory_writes`;
+  the host decides which operations to offer (`CurationPolicy`) and passes
+  `memory_flush=True` during flush runs
 - replay cleanup, history windowing, tool-use repair, and overflow helpers when
   those behaviors are required to preserve OpenClaw-compatible prompt assembly
 

@@ -4471,3 +4471,113 @@ def test_real_openclaw_oracle_memory_budget_compaction_matches_python():
             {"compacted": compacted.compacted, "droppedDates": list(compacted.dropped_dates)}
         )
     assert result["result"]["cases"] == python_cases
+
+
+# --- curated MEMORY.md writes next to the real promotion pipeline -----------------------
+
+
+def test_real_openclaw_oracle_promotion_and_curated_writes_leave_each_other_intact():
+    # memory_core.curation is an extension; this checks it against the real
+    # applyShortTermPromotions (short-term-promotion.ts) on one MEMORY.md, both ways.
+    from memory_core.curation import CurationError, MemoryCurator
+    from memory_core.memory_budget import parse_memory_blocks
+
+    def promotion_blocks(text: str) -> list[str]:
+        return [block.text for block in parse_memory_blocks(text) if block.kind == "promotion"]
+
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+    promotion_payload = {
+        "nowMs": 1779811200000,
+        "timezone": "Europe/Istanbul",
+        "minScore": 0,
+        "minRecallCount": 0,
+        "minUniqueQueries": 0,
+    }
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-curation-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        memory_file = workspace / "memory" / "2026-05-08.md"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+        curator = MemoryCurator(workspace)
+        curator.add_memory_entry("My Notes", "Important user content I do not want dropped.")
+        curator.add_memory_entry("My Reflections", "My own notes.")
+        curated = (workspace / "MEMORY.md").read_text(encoding="utf-8")
+
+        oracle.run(
+            {
+                "operation": "recordShortTermRecalls",
+                "workspaceDir": str(workspace),
+                "query": "glacier",
+                "results": [
+                    {
+                        "source": "memory",
+                        "path": "memory/2026-05-08.md",
+                        "startLine": 3,
+                        "endLine": 3,
+                        "snippet": "- Move backups to S3 Glacier.",
+                        "score": 1,
+                    }
+                ],
+                "nowMs": 1779811200000,
+                "timezone": "Europe/Istanbul",
+            }
+        )
+        ranked = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                **promotion_payload,
+            }
+        )
+        first = oracle.run(
+            {
+                "operation": "applyShortTermPromotions",
+                "workspaceDir": str(workspace),
+                "candidates": ranked["result"]["candidates"],
+                **promotion_payload,
+            }
+        )
+        promoted = first["files"]["MEMORY.md"]
+        blocks = promotion_blocks(promoted)
+        promoted_line = next(
+            line for line in promoted.splitlines() if line.startswith("- Move backups")
+        )
+
+        curator.add_memory_entry("My Notes", "Some content.")
+        curator.replace_memory_entry("My own notes.", "My own notes, revised.")
+        curator.add_memory_entry("Decisions", "Lots of user content here.")
+        with pytest.raises(CurationError, match="memory promotion section"):
+            curator.remove_memory_entry(promoted_line[2:])
+        edited = (workspace / "MEMORY.md").read_text(encoding="utf-8")
+
+        recall_path = workspace / "memory" / ".dreams" / "short-term-recall.json"
+        recall_store = json.loads(recall_path.read_text(encoding="utf-8"))
+        del recall_store["entries"]["memory:memory/2026-05-08.md:3:3"]["promotedAt"]
+        recall_path.write_text(json.dumps(recall_store, indent=2) + "\n", encoding="utf-8")
+        second = oracle.run(
+            {
+                "operation": "applyShortTermPromotions",
+                "workspaceDir": str(workspace),
+                "candidates": ranked["result"]["candidates"],
+                **promotion_payload,
+            }
+        )
+
+    assert first["ok"] is True, first
+    assert first["result"]["appended"] == 1
+    # Upstream appends after the curated sections and keeps them byte for byte.
+    assert promoted.startswith(curated)
+    assert len(blocks) == 1
+    # Curated edits leave the upstream-written promotion section byte-identical.
+    assert promotion_blocks(edited) == blocks
+    assert "- Some content.\n" in edited
+    assert "- My own notes, revised.\n" in edited
+    assert edited.endswith("\n## Decisions\n\n- Lots of user content here.\n")
+    # Upstream still recognises its marker in the curated file and adds nothing.
+    assert second["ok"] is True, second
+    assert second["result"]["appended"] == 0
+    assert second["result"]["reconciledExisting"] == 1
+    assert second["files"]["MEMORY.md"] == edited

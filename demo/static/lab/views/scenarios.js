@@ -15,6 +15,8 @@ const kindTag = (k) => t(`scn.kind.${k}`);
 const title = (d) => t(`scn.${d.id}.title`);
 const goal = (d) => t(`scn.${d.id}.goal`);
 const tagLabel = (x) => (has(`tag.${x}`) ? t(`tag.${x}`) : x);
+/** Manual and model check labels are i18n ids (scn.*); auto labels are check expressions. */
+export const checkLabel = (label) => (String(label).startsWith('scn.') ? t(label) : String(label));
 const tagTone = (x) => (/uzantı/.test(x) ? 'ext' : /demo|scripted|D2/.test(x) ? 'warn' : /model/.test(x) ? 'info' : 'neutral');
 
 function instruction(step) {
@@ -39,9 +41,9 @@ export function scenarioStrip() {
   const res = s.stepResults[s.step];
   const checks = step.checks.map((c, i) => {
     const r = res?.[i] || { status: c.kind === 'manual' ? 'manual' : 'pending' };
-    const content = [icon(CHECK_IC[r.status] || 'dot', 12), h('span', { class: 'ck-label mono', 'data-tip': c.label }, c.label.startsWith('scn.') ? t(c.label) : c.label), r.value ? h('span', { class: 'ck-val' }, r.value) : null, h('span', { class: ['ck-kind', `k-${c.kind}`] }, kindTag(c.kind)), c.gap ? h('span', { class: 'chip chip-xs tone-warn' }, t('scn.knownGap')) : null, r.status === 'blocked' ? h('span', { class: 'chip chip-xs tone-neutral' }, t('scn.status.blocked')) : null];
+    const content = [icon(CHECK_IC[r.status] || 'dot', 12), h('span', { class: 'ck-label mono', 'data-tip': checkLabel(c.label) }, checkLabel(c.label)), r.value ? h('span', { class: 'ck-val' }, r.value) : null, h('span', { class: ['ck-kind', `k-${c.kind}`] }, kindTag(c.kind)), c.gap ? h('span', { class: 'chip chip-xs tone-warn' }, t('scn.knownGap')) : null, r.status === 'blocked' ? h('span', { class: 'chip chip-xs tone-neutral' }, t('scn.status.blocked')) : null];
     if (c.kind === 'manual') return h('label', { class: ['check', `is-${r.status}`], 'data-testid': `check-${i}` }, h('input', { type: 'checkbox', checked: !!s.manual[`${s.step}:${i}`], onchange: (e) => setManual(i, e.target.checked) }), ...content);
-    return h('div', { class: ['check', `is-${r.status}`], 'data-testid': `check-${i}`, role: 'status', 'aria-label': `${c.label}: ${t(`scn.check.${r.status}`)}` }, ...content);
+    return h('div', { class: ['check', `is-${r.status}`], 'data-testid': `check-${i}`, role: 'status', 'aria-label': `${checkLabel(c.label)}: ${t(`scn.check.${r.status}`)}` }, ...content);
   });
   const passed = res && res.every((r, i) => step.checks[i].kind !== 'auto' || r.status === 'pass' || r.status === 'gap');
   const n = def.steps.length; const cur = Math.min(s.step + 1, n);
@@ -64,14 +66,14 @@ export function scenarioStrip() {
 export function resultCard(def, r, { inStrip = false } = {}) {
   const st = STATUS[r.status] || STATUS.none;
   const md = () => [`### ${def.id} · ${title(def)}`, `${t(`scn.status.${r.status}`)} · ${kindTag('auto')} ${r.auto?.[0]}/${r.auto?.[1]} · model ${r.model?.[0]}/${r.model?.[1]} · ${kindTag('manual')} ${r.manual?.[0]}/${r.manual?.[1]} · ${fmtMs(r.ms || 0)}`, '',
-    ...(r.detail || []).map((x) => `- [${x.status === 'pass' ? 'x' : ' '}] ${t('scenario.step')} ${x.step} · ${kindTag(x.kind)} · \`${x.label}\`${x.value ? ` → ${x.value}` : ''} (${x.status})`)].join('\n');
+    ...(r.detail || []).map((x) => `- [${x.status === 'pass' ? 'x' : ' '}] ${t('scenario.step')} ${x.step} · ${kindTag(x.kind)} · \`${checkLabel(x.label)}\`${x.value ? ` → ${x.value}` : ''} (${x.status})`)].join('\n');
   const count = (k, pair) => (!pair || !pair[1] ? null : h('span', { class: ['rc-count', pair[0] === pair[1] ? 'is-ok' : 'is-bad'] }, h('span', { class: 'muted' }, k), h('b', { class: 'num' }, `${pair[0]}/${pair[1]}`)));
   return h('article', { class: ['result-card', `tone-${st.tone}`], 'data-testid': 'scenario-result' },
     h('div', { class: 'rc-head' }, icon(st.ic, 16), h('h2', { class: 'rc-title' }, `${def.id} · ${t(`scn.status.${r.status}`)}`), h('span', { class: 'muted' }, title(def)), h('span', { class: 'spacer' }),
       btn(t('scn.copyMd'), { size: 'xs', kind: 'ghost', ic: 'copy', onClick: () => copyText(md()).then(() => toast(t('toast.copied'), { tone: 'ok' })) }),
       inStrip ? btn(t('act.close'), { size: 'xs', kind: 'ghost', onClick: () => closeResult() }) : null),
     h('div', { class: 'rc-counts' }, count(kindTag('auto'), r.auto), count('model', r.model), count(kindTag('manual'), r.manual), r.blocked ? h('span', { class: 'muted small' }, t('scn.blockedCount', { n: r.blocked })) : null, h('span', { class: 'muted num' }, fmtMs(r.ms || 0)), r.note ? h('span', { class: 'chip chip-xs tone-warn' }, t(r.note)) : null),
-    r.detail ? h('ul', { class: 'rc-list' }, r.detail.map((x) => h('li', { class: `is-${x.status}` }, icon(CHECK_IC[x.status] || 'dot', 12), h('span', { class: 'muted num' }, `${x.step}`), h('span', { class: 'mono' }, x.label), x.value ? h('span', { class: 'ck-val' }, x.value) : null, h('span', { class: ['ck-kind', `k-${x.kind}`] }, kindTag(x.kind))))) : null,
+    r.detail ? h('ul', { class: 'rc-list' }, r.detail.map((x) => h('li', { class: `is-${x.status}` }, icon(CHECK_IC[x.status] || 'dot', 12), h('span', { class: 'muted num' }, `${x.step}`), h('span', { class: 'mono' }, checkLabel(x.label)), x.value ? h('span', { class: 'ck-val' }, x.value) : null, h('span', { class: ['ck-kind', `k-${x.kind}`] }, kindTag(x.kind))))) : null,
     inStrip && sc()?.queue?.length ? h('div', { class: 'muted small' }, t('scn.nextInRun', { id: sc().queue[0] })) : null);
 }
 

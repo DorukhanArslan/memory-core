@@ -13,7 +13,7 @@ import {
   hbTask, hbDelivered, hbSkipped, hbUserHas, hbUserLacks, hbReplyMatches, hbReplyLacks, stripSequence,
   candidate, candidateGatesConsistent, auditClean,
   liveStep, liveOrder, businessAction, liveSummaryWrote, proofAbsentFromSummary,
-  keyState, turnErrorCode, turnErrorMatches, errorRedacted, providerCheck,
+  turnErrorCode, turnErrorMatches, errorRedacted, providerCheck,
 } from './checks.js';
 import { sourceNames } from '../ui/diff.js';
 
@@ -28,6 +28,11 @@ const curationUserFlagOff = (ctx) => {
 const needsKey = (ctx) => (ctx.keyState === 'none' ? 'scn.blockedNoKey' : null);
 const hbNoTools = (ctx) => (ctx.heartbeat?.memoryTools === false ? 'scn.blockedHbNoTools' : null);
 const needsHybrid = (ctx) => (ctx.settings?.embedding?.mode === 'fts-only' ? 'scn.blockedFtsOnly' : null);
+const fileOf = (ctx, path) => (ctx.files || []).find((e) => e.path === path) || null;
+// The seed holds no MEMORY.md (docs/lab.md › workspace/reset seeded); a check that needs it is blocked.
+const needsMemoryMd = (ctx) => (fileOf(ctx, 'MEMORY.md')?.exists ? null : 'scn.blockedNoMemoryMd');
+// An empty PROACTIVE_PREFERENCES.md is excluded in both layouts, so a layout check would prove nothing.
+const needsProactive = (ctx) => { const e = fileOf(ctx, 'PROACTIVE_PREFERENCES.md'); return e?.exists && e.chars > 0 && !(e.badges || []).includes('empty') ? null : 'scn.blockedProactiveEmpty'; };
 
 export const SCENARIOS = [
   {
@@ -132,7 +137,7 @@ export const SCENARIOS = [
       { act: 'edit', path: 'AGENTS.md', fixture: true, waitFor: 'file.saved', label: 'scn.S07.l1', expect: 'scn.S07.e1',
         checks: [auto('promptHas(stable,/^\\[Policy digest from AGENTS\\.md\\]$/m)', promptHas('main', 'stable', /^\[Policy digest from AGENTS\.md\]$/m), ['prompt:main']), auto('warningLine(/AGENTS\\.md was truncated/)', warningLine(/AGENTS\.md was truncated/), ['prompt:main'])] },
       { act: 'setting', apply: { settings: { budgets: { totalMaxChars: 12000 } } }, label: 'scn.S07.l2', expect: 'scn.S07.e2',
-        checks: [auto('sum(injectedChars) ≤ 12000', totalInjectedAtMost(12000), ['prompt:main']), auto('excluded: max/total', (ctx) => excludedFor(/total|toplam/i)(ctx) || (ctx.prompts.main?.files || []).some((f) => f.truncated && f.cause === 'max/total'), ['prompt:main'])] },
+        checks: [auto('sum(injectedChars) ≤ 12000', totalInjectedAtMost(12000), ['prompt:main']), auto('excluded: max/total', (ctx) => excludedFor(/total|toplam/i)(ctx) || (ctx.prompts.main?.budget?.files || []).some((f) => (f.causes || []).includes('max/total')), ['prompt:main'])] },
       { act: 'revert', paths: ['SOUL.md', 'AGENTS.md'], restore: ['budgets.totalMaxChars'], label: 'scn.S07.l3', expect: 'scn.S07.e3',
         checks: [auto('noBadge(truncated)', noTruncation('main'), ['prompt:main'])] },
     ],
@@ -152,11 +157,11 @@ export const SCENARIOS = [
         checks: [auto('promptFiles(equals,[AGENTS.md,TOOLS.md],{kind:subagent})', promptFiles('equals', ['AGENTS.md', 'TOOLS.md'], 'subagent'), ['prompt:subagent'])] },
       { act: 'look', tab: 'prompt', promptKind: 'cron', label: 'scn.S08.l2', expect: 'scn.S08.e2',
         checks: [auto('promptFiles(excludes,[MEMORY.md,HEARTBEAT.md],{kind:cron})', promptFiles('excludes', ['MEMORY.md', 'HEARTBEAT.md'], 'cron'), ['prompt:cron']), auto('promptFiles(includes,[AGENTS.md,TOOLS.md,SOUL.md,IDENTITY.md,USER.md],{kind:cron})', promptFiles('includes', ['AGENTS.md', 'TOOLS.md', 'SOUL.md', 'IDENTITY.md', 'USER.md'], 'cron'), ['prompt:cron'])] },
-      { act: 'look', tab: 'prompt', promptKind: 'group', label: 'scn.S08.l3', expect: 'scn.S08.e3',
+      { act: 'look', tab: 'prompt', promptKind: 'group', label: 'scn.S08.l3', expect: 'scn.S08.e3', blockedIf: needsMemoryMd,
         checks: [auto('promptFiles(includes,[MEMORY.md],{kind:group})', promptFiles('includes', ['MEMORY.md'], 'group'), ['prompt:group'])] },
       { act: 'send', kind: 'subagent', text: 'Sana nasıl cevap vermemi istediğimi biliyor musun?', waitFor: 'chat.turn.completed|chat.turn.failed', expect: 'scn.S08.e4', blockedIf: needsKey,
         checks: [auto('turn kind = subagent', turnKind('subagent'), ['turn']), auto('turnPromptFiles(excludes,[USER.md,MEMORY.md])', turnPromptFilesExclude(['USER.md', 'MEMORY.md']), ['turn']), manual('scn.S08.m4')] },
-      { act: 'setting', apply: { settings: { layout: 'pin' } }, label: 'scn.S08.l5', expect: 'scn.S08.e5',
+      { act: 'setting', apply: { settings: { layout: 'pin' } }, label: 'scn.S08.l5', expect: 'scn.S08.e5', blockedIf: needsProactive,
         checks: [auto('promptFiles(excludes,[PROACTIVE_PREFERENCES.md],{layout:pin})', promptFiles('excludes', ['PROACTIVE_PREFERENCES.md'], 'main'), ['prompt:main'])] },
     ],
   },
@@ -233,7 +238,6 @@ export const SCENARIOS = [
   },
   {
     id: 'S13', minutes: 4, view: 'live', tags: ['adapter-only', 'scripted (anahtarsız)'], requires: [],
-    labels: [{ tone: 'warn', text: 'scn.S13.gap' }],
     steps: [
       { act: 'press', view: 'live', target: 'live-reset', waitFor: 'live.reset', label: 'scn.S13.l0', expect: 'scn.S13.e0', checks: [auto('liveStep(verify_identity)', liveStep('verify_identity'), ['live'])] },
       { act: 'send', live: true, text: 'Merhaba, randevumu değiştirmek istiyorum.', waitFor: 'live.turn', expect: 'scn.S13.e1',
@@ -242,17 +246,17 @@ export const SCENARIOS = [
         checks: [auto('liveStep(collect_new_time)', liveStep('collect_new_time'), ['live'])] },
       { act: 'send', live: true, text: 'Yarın saat 14:30 olabilir mi?', waitFor: 'live.turn', expect: 'scn.S13.e3', checks: [auto('liveStep(confirm_change)', liveStep('confirm_change'), ['live'])] },
       { act: 'send', live: true, text: 'Evet, onaylıyorum.', waitFor: 'live.turn', expect: 'scn.S13.e4', checks: [auto('liveStep(completed)', liveStep('completed'), ['live']), auto('businessAction(appointment_rescheduled)', businessAction('appointment_rescheduled'), ['live'])] },
-      { act: 'press', view: 'live', target: 'live-summary', waitFor: 'live.summary|live.session_summary_completed|live.session_summary_skipped', label: 'scn.S13.l5', expect: 'scn.S13.e5',
-        checks: [auto('summary wrote to subject daily file', liveSummaryWrote(), ['live']), auto('bus: eventOrder([live.session_summary_started,live.session_summary_completed])', (ctx) => eventOrder(['live.session_summary_started', 'live.session_summary_completed'])(ctx) || (ctx.live?.summary?.wrote === true && !(ctx.events || []).some((e) => String(e.type).startsWith('live.'))), ['live'])] },
-      { act: 'look', view: 'live', label: 'scn.S13.l6', expect: 'scn.S13.e6', labels: [{ tone: 'warn', text: 'scn.S13.gapShort' }],
-        checks: [auto('textAbsent(subjectDaily, proof@3)', proofAbsentFromSummary(3), ['live'], { gap: true })] },
+      { act: 'press', view: 'live', target: 'live-summary', waitFor: 'live.summary|live.session_summary', label: 'scn.S13.l5', expect: 'scn.S13.e5',
+        checks: [auto('summary wrote to subject daily file', liveSummaryWrote(), ['live']), auto('bus: event(live.session_summary)', event('live.session_summary'))] },
+      { act: 'look', view: 'live', label: 'scn.S13.l6', expect: 'scn.S13.e6',
+        checks: [auto('textAbsent(subjectDaily, proof@3)', proofAbsentFromSummary(3), ['live'])] },
     ],
   },
   {
     id: 'S14', minutes: 5, view: 'chat', tags: ['upstream-uyumlu', 'demo'], requires: [],
     steps: [
       { act: 'setting', apply: { page: { suspendKeys: true } }, label: 'scn.S14.l0', expect: 'scn.S14.e0',
-        checks: [auto('model dot grey (keyState none)', keyState('none'))] },
+        checks: [auto('chip(model, grey dot)', (ctx) => ctx.modelChip?.grey === true)] },
       { act: 'send', live: true, text: 'Merhaba', waitFor: 'live.turn', expect: 'scn.S14.e1',
         checks: [auto('liveEngine(scripted)', (ctx) => ctx.live?.engine?.provider === 'scripted', ['live'])] },
       { act: 'setting', apply: { page: { restoreKeys: true }, settings: { chat: { baseUrl: 'http://127.0.0.1:9/v1' } } }, label: 'scn.S14.l2', expect: 'scn.S14.e2', checks: [] },

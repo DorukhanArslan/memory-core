@@ -78,12 +78,22 @@ async function beginStep(i) {
   if (s.blocked) s.stepResults[i] = step.checks.map(() => ({ status: 'blocked' }));
   refresh('center', 'status', 'inspector');
 }
-export function nextStep() {
-  const s = sc(); if (!s) return;
-  if (!s.captured[s.step]) s.captured[s.step] = { diff: s.lastDiff || [], sent: s.sent || '' };
+/** The server diff since a step's mark, read when the step ends: what later steps compare with. */
+async function stepDiff(markId) {
+  if (!markId) return null;
+  try { const r = await api.get('/api/lab/diff', { since: `mark:${markId}` }); return Array.isArray(r) ? r : (r?.files || []); } catch { return null; }
+}
+export async function nextStep() {
+  const s = sc(); if (!s || s.advancing) return;
+  s.advancing = true; s.autoAdvance = null;
+  const i = s.step;
+  const diff = await stepDiff(s.markId);
+  if (sc() !== s || s.step !== i) { s.advancing = false; return; }
+  s.captured[i] = { diff: diff ?? s.captured[i]?.diff ?? [], sent: s.sent || s.captured[i]?.sent || '' };
   s.sent = '';
-  if (s.step + 1 >= s.def.steps.length) { finish(); return; }
-  beginStep(s.step + 1);
+  s.advancing = false;
+  if (i + 1 >= s.def.steps.length) { finish(); return; }
+  beginStep(i + 1);
 }
 export async function stopScenario() {
   const s = sc(); if (!s) return;
@@ -210,7 +220,7 @@ export function setManual(i, checked) {
 /* ---------- evaluation over real payloads ---------- */
 async function baseCtx() {
   const d = store.data;
-  return { today: d.snap?.today, now: Date.now(), keyState: chatKeyState(), settings: d.settings, snap: d.snap, heartbeat: d.heartbeat, index: d.index };
+  return { today: d.snap?.today, now: Date.now(), keyState: chatKeyState(), settings: d.settings, snap: d.snap, heartbeat: d.heartbeat, index: d.index, files: d.files };
 }
 async function gather(s, step) {
   const d = store.data;
@@ -218,7 +228,8 @@ async function gather(s, step) {
   for (const c of step.checks) for (const n of c.needs || []) { if (typeof n === 'string') needs.add(n); else if (n.file) fileSpecs.push(n.file); }
   const wm = s.wm;
   if (needs.has('snap') || needs.has('turn')) await loadState();
-  const ctx = { ...(await baseCtx()), captured: s.captured, prompts: {}, fileText: {}, strip: s.strip };
+  const chipEl = document.querySelector('[data-testid="chip-model"]');
+  const ctx = { ...(await baseCtx()), captured: s.captured, prompts: {}, fileText: {}, strip: s.strip, modelChip: chipEl ? { grey: !!chipEl.querySelector('.dot-grey'), label: chipEl.textContent } : null };
   ctx.events = d.events.filter((e) => typeof e.id === 'number' ? e.id > wm.eventId : (!e.local && (e.ts ?? 0) >= wm.ts));
   ctx.scenarioEvents = d.events.filter((e) => typeof e.id === 'number' ? e.id > s.startWm.eventId : (!e.local && (e.ts ?? 0) >= s.startWm.ts));
   // server diff since the step mark (always: it also becomes the step's captured reference)
@@ -233,7 +244,10 @@ async function gather(s, step) {
   }
   const newTurns = d.turns.filter((x) => !wm.turnIds.has(x.id) && typeof x.id === 'number');
   if (needs.has('turn') || needs.has('prevTurn')) {
-    const last = newTurns[newTurns.length - 1] || null;
+    // A step that sends reads its own turn; a look step reads the latest turn of the scenario.
+    const own = step.act === 'send' || step.act === 'cmd';
+    const pool = own ? newTurns : d.turns.filter((x) => !s.startWm.turnIds.has(x.id) && typeof x.id === 'number');
+    const last = pool[pool.length - 1] || null;
     ctx.turn = last ? await loadTurn(last.id, { force: true }) : null;
     if (ctx.turn) ctx.turnMs = ctx.turn.ms;
     const all = d.turns.filter((x) => typeof x.id === 'number');
@@ -273,12 +287,16 @@ async function gather(s, step) {
   return ctx;
 }
 export async function evaluate() {
-  const s = sc(); if (!s || s.step < 0 || s.finished || s.evaluating) return;
-  const step = s.def.steps[s.step];
+  const s = sc(); if (!s || s.step < 0 || s.finished) return;
+  // A request while an evaluation runs is queued: the running one may have read stale state.
+  if (s.evaluating) { s.reEvaluate = true; return; }
+  const i = s.step;
+  const step = s.def.steps[i];
   if (s.blocked) { refresh('center'); return; }
-  s.evaluating = true; refresh('center');
+  s.evaluating = true; s.reEvaluate = false; refresh('center');
   let ctx;
   try { ctx = await gather(s, step); } catch (err) { console.error('scenario gather', err); s.evaluating = false; refresh('center'); return; }
+  if (sc() !== s || s.step !== i) { s.evaluating = false; return; } // the step moved on meanwhile
   const res = step.checks.map((c, i) => {
     if (c.kind === 'manual') return { status: s.manual[`${s.step}:${i}`] ? 'pass' : 'manual' };
     if (c.kind === 'observe') { let v = '—'; try { v = String(c.fn(ctx)); } catch { v = '—'; } return { status: 'observe', value: v }; }
@@ -286,15 +304,16 @@ export async function evaluate() {
     try { ok = !!c.fn(ctx); } catch (err) { console.warn('check', c.label, err); ok = false; }
     return { status: ok ? 'pass' : c.gap ? 'gap' : 'fail' };
   });
-  if (sc() !== s) return;
-  s.stepResults[s.step] = res;
-  s.captured[s.step] = { diff: ctx.diff, sent: s.sent || s.captured[s.step]?.sent || '' };
+  if (sc() !== s || s.step !== i) { s.evaluating = false; return; }
+  s.stepResults[i] = res;
+  s.captured[i] = { diff: ctx.diff, sent: s.sent || s.captured[i]?.sent || '' };
   s.evaluating = false;
-  const autoOk = res.every((r, i) => step.checks[i].kind !== 'auto' || r.status === 'pass' || r.status === 'gap');
-  pushLocal('senaryo.checked', `${s.id} ${t('scenario.step')} ${s.step + 1}: ${res.filter((r) => r.status === 'pass').length}/${res.length}`, { results: res.map((r) => r.status) });
+  if (s.reEvaluate) { s.reEvaluate = false; refresh('center'); evaluate(); return; }
+  const autoOk = res.every((r, j) => step.checks[j].kind !== 'auto' || r.status === 'pass' || r.status === 'gap');
+  pushLocal('senaryo.checked', `${s.id} ${t('scenario.step')} ${i + 1}: ${res.filter((r) => r.status === 'pass').length}/${res.length}`, { results: res.map((r) => r.status) });
   if (autoOk && step.checks.some((c) => c.kind === 'auto')) {
     const token = {}; s.autoAdvance = token;
-    setTimeout(() => { if (sc() === s && s.autoAdvance === token) nextStep(); }, 600);
+    setTimeout(() => { if (sc() === s && s.step === i && s.autoAdvance === token) nextStep(); }, 600);
   }
   refresh('center', 'status');
 }
@@ -315,6 +334,8 @@ onLabEvents((evs) => {
   const s = sc(); if (!s || s.step < 0 || s.finished || s.blocked) return;
   const step = s.def.steps[s.step];
   if (!step.waitFor) return;
+  // While this tab streams a chat turn, its own completion notify() evaluates once the turn is merged.
+  if (store.stream && /chat\.turn/.test(step.waitFor)) return;
   const re = new RegExp(`^(${step.waitFor})$`);
   if (evs.some((e) => re.test(e.type))) setTimeout(evaluate, 350);
 });

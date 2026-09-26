@@ -130,7 +130,7 @@ export const searchTop = (spec, rank = 1) => (ctx) => rows(ctx)[rank - 1]?.path 
 /** memory_search citations read `Source: path#Lx` or `Source: path#Lx-Ly` (memory_core/tools/citations.py). */
 export const citationsFormat = () => (ctx) => rows(ctx).length > 0 && rows(ctx).every((r) => /^Source: \S+#L\d+(?:-L\d+)?$/.test(r.citation || ''));
 /** The vector leg is off: every row has no vector score, or the payload itself reports provider none / fts-only. */
-export const allVectorOff = () => (ctx) => rows(ctx).length > 0 && (ctx.search.provider === 'none' || ctx.search.model === 'fts-only' || rows(ctx).every((r) => r.vectorScore === null || r.vectorScore === undefined));
+export const allVectorOff = () => (ctx) => rows(ctx).length > 0 && (ctx.search.provider === 'none' || ctx.search.model === 'fts-only' || ctx.search.embeddings?.mode === 'fts-only' || rows(ctx).every((r) => r.vectorScore === null || r.vectorScore === undefined));
 export const hybridScores = (wv, wt, tol) => (ctx) => rows(ctx).length > 0 && rows(ctx).every((r) => typeof r.vectorScore === 'number' && typeof r.textScore === 'number' && Math.abs(r.score - (wv * r.vectorScore + wt * r.textScore)) <= tol);
 export const allScoresAtLeast = (x) => (ctx) => !!ctx.search && !ctx.search.error && rows(ctx).every((r) => r.score >= x);
 export const rowsAtMost = (n) => (ctx) => !!ctx.search && !ctx.search.error && rows(ctx).length <= n;
@@ -168,9 +168,9 @@ export const proofAbsentFromSummary = (step) => (ctx) => {
 };
 
 /* ---------- provider and errors ---------- */
-export const keyState = (v) => (ctx) => ctx.keyState === v;
 export const turnErrorCode = (code) => (ctx) => ctx.lastError?.code === code || (ctx.events || []).some((e) => e.type === 'chat.turn.failed' && e.data?.code === code);
 export const turnErrorMatches = (re) => (ctx) => re.test(String(ctx.lastError?.error || '')) || (ctx.events || []).some((e) => e.type === 'chat.turn.failed' && re.test(String(e.data?.error || e.data?.message || '')));
 /** Redaction is asserted server-side: the failure carries `redacted: true` (critique #5). */
 export const errorRedacted = () => (ctx) => ctx.lastError?.redacted === true || (ctx.events || []).some((e) => e.type === 'chat.turn.failed' && e.data?.redacted === true);
-export const providerCheck = (which, ok) => (ctx) => (ctx.events || []).some((e) => e.type === 'provider.check' && (e.data?.which || e.data?.kind || 'chat') === which && !!e.data?.ok === ok);
+/** provider.check bus events carry {target: chat|embedding, ok, latencyMs, error} (demo/lab_settings.py). */
+export const providerCheck = (which, ok) => (ctx) => (ctx.events || []).some((e) => e.type === 'provider.check' && e.data?.target === which && !!e.data?.ok === ok);

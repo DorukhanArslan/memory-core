@@ -279,12 +279,12 @@ export const TR = {
   'scn.S12.l3': 'Konsolidasyon › Terfi taraması', 'scn.S12.e3': 'Kapıyı geçen aday MEMORY.md’ye terfi bloğu yazar (kaynak terfi); geçmeyenin gerekçesi görünür.',
   'scn.S12.e4': 'Hemen “MEMORY.md +1 · uzantı”; kapı yok.', 'scn.S12.l5': 'Konsolidasyon › Denetle', 'scn.S12.e5': 'Sorun yok.',
   'scn.S13.title': 'Canlı SDK görevi: randevu erteleme', 'scn.S13.goal': 'Cümle akışı, gecikme ölçümü, adım makinesi, özetin konu belleğine yazılması ve kimlik kanıtının özete sızmaması denetlensin.',
-  'scn.S13.gap': 'bilinen açık: özet kimlik kanıtını saklıyor', 'scn.S13.gapShort': 'bilinen açık', 'scn.S13.synthetic': 'sentetik test verisi',
-  'scn.S13.l0': 'Canlı görev › Sıfırla', 'scn.S13.e0': 'Adım verify_identity. Motor ilk turda belli olur (gerçek model ya da SCRIPTED).',
+'scn.S13.synthetic': 'sentetik test verisi',
+  'scn.S13.l0': 'Canlı görev › Sıfırla', 'scn.S13.e0': 'Adım verify_identity. Motor chip’i sunucunun engine.mode alanını gösterir (gerçek model ya da SCRIPTED).',
   'scn.S13.e1': 'Adım aynı kalır. Cümleler ayrı satırlarda ms ile gelir. Gecikme şeridi: ilk token / ilk cümle / toplam.',
   'scn.S13.e2': 'Senaryo metni doğum tarihi ister; sentetik bir tarih verilir → collect_new_time.', 'scn.S13.e3': 'confirm_change; requested_slot dolu.',
   'scn.S13.e4': 'completed; business_action.type = appointment_rescheduled.', 'scn.S13.l5': 'Özet', 'scn.S13.e5': 'Konu günlük dosyasına maddeler eklenir (Denetçi › Diff).',
-  'scn.S13.l6': 'Güvenlik kontrolü', 'scn.S13.e6': 'Özet 3. adımdaki kimlik kanıtını içermemeli. Bugün beklenen: kalır (bilinen açık).',
+  'scn.S13.l6': 'Güvenlik kontrolü', 'scn.S13.e6': 'Özet 3. adımdaki kimlik kanıtını içermemeli: sunucu kanıtı [kimlik bilgisi gizlendi] olarak saklar.',
   'scn.S14.title': 'Hata yolları', 'scn.S14.goal': 'Anahtarsız çalışma, ölü uç nokta, embedding hatası ve arama soğuması görünür ve sızıntısız olsun.',
   'scn.S14.l0': 'Anahtarları bu sekmede askıya al (sunucu anahtarı da kullanılmaz)', 'scn.S14.e0': 'Üst çubukta gri model noktası; sohbet kutusu yerine anahtar uyarısı.',
   'scn.S14.e1': 'Canlı görevde SCRIPTED · workflow-script bandı.',
@@ -328,4 +328,7 @@ export const TR = {
   'parity.matrixCaption': 'docs/parity_matrix.md satırları',
   'parity.resultsPath': 'Beklenen yol:',
   'parity.noGitHead': 'checkout var, .git yok',
+  // scenario blocks (real seed)
+  'scn.blockedNoMemoryMd': 'MEMORY.md yok (tohum MEMORY.md içermez)',
+  'scn.blockedProactiveEmpty': 'PROACTIVE_PREFERENCES.md boş: iki düzende de dışarıda, adım bir şey ölçmez',
 };

@@ -262,12 +262,12 @@ export const EN = {
   'scn.S12.l3': 'Consolidation › Promotion sweep', 'scn.S12.e3': 'A candidate past the gates writes a promotion block to MEMORY.md (source promotion); a gated one shows its reason.',
   'scn.S12.e4': 'Immediately “MEMORY.md +1 · extension”; no gate.', 'scn.S12.l5': 'Consolidation › Audit', 'scn.S12.e5': 'No issues.',
   'scn.S13.title': 'Live SDK task: reschedule an appointment', 'scn.S13.goal': 'Check sentence streaming, latency, the step machine, the summary written to subject memory, and that the identity proof does not leak into the summary.',
-  'scn.S13.gap': 'known gap: the summary keeps the identity proof', 'scn.S13.gapShort': 'known gap', 'scn.S13.synthetic': 'synthetic test data',
-  'scn.S13.l0': 'Live task › Reset', 'scn.S13.e0': 'Step verify_identity. The engine shows after the first turn (real model or SCRIPTED).',
+'scn.S13.synthetic': 'synthetic test data',
+  'scn.S13.l0': 'Live task › Reset', 'scn.S13.e0': 'Step verify_identity. The engine chip shows the server’s engine.mode (real model or SCRIPTED).',
   'scn.S13.e1': 'The step stays. Sentences arrive on their own lines with ms. Latency strip: first token / first sentence / total.',
   'scn.S13.e2': 'The script asks for a birth date; a synthetic date is given → collect_new_time.', 'scn.S13.e3': 'confirm_change; requested_slot set.',
   'scn.S13.e4': 'completed; business_action.type = appointment_rescheduled.', 'scn.S13.l5': 'Summary', 'scn.S13.e5': 'Bullets are appended to the subject daily file (Inspector › Diff).',
-  'scn.S13.l6': 'Safety check', 'scn.S13.e6': 'The summary must not contain the identity proof from step 3. Expected today: it stays (known gap).',
+  'scn.S13.l6': 'Safety check', 'scn.S13.e6': 'The summary must not contain the identity proof from step 3: the server stores it as [kimlik bilgisi gizlendi].',
   'scn.S14.title': 'Error paths', 'scn.S14.goal': 'No key, a dead endpoint, an embedding error and the search cooldown are visible and leak nothing.',
   'scn.S14.l0': 'Suspend the keys in this tab (the server key is not used either)', 'scn.S14.e0': 'Grey model dot in the top bar; a key notice replaces the composer.',
   'scn.S14.e1': 'The live task shows the SCRIPTED · workflow-script banner.',
@@ -310,4 +310,7 @@ export const EN = {
   'parity.matrixCaption': 'docs/parity_matrix.md rows',
   'parity.resultsPath': 'Expected path:',
   'parity.noGitHead': 'checkout present, no .git',
+  // scenario blocks (real seed)
+  'scn.blockedNoMemoryMd': 'no MEMORY.md (the seed has none)',
+  'scn.blockedProactiveEmpty': 'PROACTIVE_PREFERENCES.md is empty: excluded in both layouts, the step measures nothing',
 };

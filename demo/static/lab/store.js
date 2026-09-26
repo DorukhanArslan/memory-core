@@ -247,15 +247,18 @@ function emit(evs) { for (const fn of subs) { try { fn(evs); } catch (err) { con
 
 const FILE_EVENTS = new Set(['file.changed', 'file.saved', 'bootstrap.file_deleted', 'curation.written', 'flush.written', 'session_memory.written']);
 let pending = [];
+// Dedupe on id + type + ts: a restarted server may reuse ids, so the id alone is not enough.
+const seen = new Set();
+const evKey = (ev) => `${ev.id}|${ev.type}|${ev.ts}`;
 export function ingestEvent(ev) {
   const d = store.data;
   if (!ev || ev.type === undefined) return;
-  if (typeof ev.id === 'number') {
-    if (d.events.length && ev.id <= d.events[d.events.length - 1].id && d.events.some((x) => x.id === ev.id)) return;
-    if (ev.id > d.lastEventId) d.lastEventId = ev.id;
-  }
+  const key = evKey(ev);
+  if (seen.has(key)) return;
+  seen.add(key);
+  if (typeof ev.id === 'number' && ev.id > d.lastEventId) d.lastEventId = ev.id;
   d.events.push(ev);
-  if (d.events.length > EVENT_RING) d.events.splice(0, d.events.length - EVENT_RING);
+  if (d.events.length > EVENT_RING) for (const old of d.events.splice(0, d.events.length - EVENT_RING)) seen.delete(evKey(old));
   const type = String(ev.type);
   const data = ev.data || {};
   if (FILE_EVENTS.has(type) && data.path) {

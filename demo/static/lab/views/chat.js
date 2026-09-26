@@ -110,7 +110,7 @@ async function sessionNew(command, text) {
   try {
     res = await api.post('/api/lab/session/new', { command, text: text || undefined, sessionKind: store.ui.composerKind, ...providerBody() });
   } catch (err) {
-    pushLocalRow({ kind: 'error', text: err.missing ? t('state.waitsFor', { m: err.module || err.path }) : `${command}: ${err.message}`, missing: err.missing });
+    pushLocalRow({ kind: err.missing ? 'missing' : 'error', text: err.missing ? t('state.waitsFor', { m: err.module || err.path }) : `${command}: ${err.message}` });
     refresh('center');
     return null;
   }
@@ -132,7 +132,7 @@ async function forceFlush() {
     const wrote = res?.flush?.parsed?.shouldWrite ?? res?.wrote;
     pushLocalRow({ kind: 'flush', text: t(wrote ? 'chat.flushWrote' : 'chat.flushNoWrite', { r: reason }), payload: res });
   } catch (err) {
-    pushLocalRow({ kind: 'error', text: err.missing ? t('state.waitsFor', { m: err.module || err.path }) : `/flush: ${err.message}`, missing: err.missing, payload: err.body });
+    pushLocalRow({ kind: err.missing ? 'missing' : 'error', text: err.missing ? t('state.waitsFor', { m: err.module || err.path }) : `/flush: ${err.message}`, payload: err.body });
   }
   await Promise.all([loadState(), loadFiles()]);
   refresh('center');
@@ -182,18 +182,21 @@ export function toolCard(tc, { onExpand = null } = {}) {
 
 /* ---------- chips ---------- */
 const animated = new Set();
+// A flush chip is a write only when the server says so (source/family); a decision chip is neutral.
+const isFlushSkip = (c) => c.type === 'flush' && (c.source === 'skip' || c.family === 'neutral' || c.wrote === false);
 function chipTone(c) {
   if (c.refused) return 'warn';
   if (c.tone) return c.tone;
   if (c.type === 'recall' && !c.count) return 'neutral';
-  if (c.type === 'flush' && c.source === 'skip') return 'neutral';
+  if (isFlushSkip(c)) return 'neutral';
   return CHIP_TONE[c.type] || 'neutral';
 }
+const chipIcon = (c) => (c.refused ? 'alert-triangle' : isFlushSkip(c) ? 'minus' : CHIP_IC[c.type]);
 function turnChips(turn) {
   const entering = !animated.has(turn.id); animated.add(turn.id);
   const row = h('div', { class: ['chip-row', entering ? 'is-entering' : ''], role: 'group', 'aria-label': t('chat.chipsAria'), 'data-testid': 'chip-row' });
   (turn.chips || []).forEach((c, i) => {
-    const el = chip({ label: c.label, tone: chipTone(c), ic: c.refused ? 'alert-triangle' : CHIP_IC[c.type], ext: !!c.extension, aria: c.aria || c.label, testid: `chip-${c.type}`, title: c.detail || null, onClick: () => chipClick(turn, c) });
+    const el = chip({ label: c.label, tone: chipTone(c), ic: chipIcon(c), ext: !!c.extension, aria: c.aria || c.label, testid: `chip-${c.type}`, title: c.detail || null, onClick: () => chipClick(turn, c) });
     el.style.setProperty('--i', String(Math.min(i, 5)));
     el.tabIndex = i === 0 ? 0 : -1;
     row.append(el);
@@ -265,7 +268,10 @@ function errorCard(turn) {
 const SYS_TYPES = new Set(['session.new', 'heartbeat.decided', 'settings.changed', 'workspace.reset', 'bootstrap.seeded', 'bootstrap.completed']);
 function systemRows() {
   const rows = [];
-  for (const e of store.data.events) {
+  const evs = store.data.events;
+  let from = 0;
+  for (let i = evs.length - 1; i >= 0; i--) if (evs[i].type === 'workspace.reset' || evs[i].type === 'bootstrap.seeded') { from = i; break; }
+  for (const e of evs.slice(from)) {
     if (!SYS_TYPES.has(e.type)) continue;
     if (e.type === 'heartbeat.decided' && !e.data?.delivered) continue;
     rows.push({ ts: e.ts, kind: e.type, text: e.summary, data: e.data || {} });
@@ -293,13 +299,14 @@ function systemRow(item) {
     'bootstrap.seeded': { ic: 'rotate-ccw', title: t('chat.workspaceReset'), tone: 'neutral' },
     'local.flush': { ic: 'minus', title: t('chat.flushRow'), tone: 'neutral' },
     'local.error': { ic: 'alert-octagon', title: t('state.error'), tone: 'danger' },
+    'local.missing': { ic: 'minus', title: t('state.notYet'), tone: 'neutral' },
   }[item.kind] || { ic: 'info', title: item.kind, tone: 'neutral' };
-  const text = item.kind === 'heartbeat.decided' ? (item.data.text || item.text) : item.text;
+  let text = item.kind === 'heartbeat.decided' ? (item.data.text || item.text) : item.text;
+  if (text && text.startsWith(map.title)) text = text.slice(map.title.length).replace(/^[\s:·-]+/, '');
   return h('div', { class: ['sysrow', `sysrow-${item.kind.replace(/\W/g, '-')}`], role: 'note', 'data-testid': 'system-row' },
     h('span', { class: ['sys-ic', `tone-${map.tone}`], 'aria-hidden': 'true' }, icon(map.ic, 12)),
     h('span', { class: 'sys-title' }, map.title), h('span', { class: 'sys-time' }, time),
     text ? h('span', { class: 'sys-text' }, text) : null,
-    item.missing ? h('span', { class: 'chip tone-neutral chip-xs' }, t('state.notYet')) : null,
     item.kind === 'heartbeat.decided' ? btn(t('view.heartbeat'), { size: 'xs', kind: 'ghost', onClick: () => store.actions.setView('heartbeat') }) : null,
     item.payload ? jsonDisclosure(item.payload, { title: 'payload' }) : null);
 }
@@ -331,8 +338,12 @@ function scrollLog() {
   if (stackedMq.matches) { const se = document.scrollingElement; se.scrollTop = se.scrollHeight; } else logEl.scrollTop = logEl.scrollHeight;
 }
 export function renderChat(body) {
-  const d = store.data; const u = store.ui;
-  const prevTop = logEl?.scrollTop ?? null;
+  const d = store.data;
+  // Stick to the bottom when the previous log was at (or near) its end, or when there was none.
+  const old = logEl && logEl.isConnected ? logEl : null;
+  const se = document.scrollingElement;
+  const wasBottom = !old || (stackedMq.matches ? se.scrollHeight - se.scrollTop - window.innerHeight < 80 : old.scrollHeight - old.scrollTop - old.clientHeight < 40);
+  const prevTop = old ? old.scrollTop : null;
   logEl = h('div', { class: 'chat-log', role: 'log', 'aria-label': t('view.chat'), 'aria-live': 'off', 'data-testid': 'chat-log' });
   logEl.addEventListener('scroll', () => { stickBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40; });
   const turns = [...d.turns, ...(d.localTurns || [])];
@@ -355,7 +366,7 @@ export function renderChat(body) {
   replace(body, store.actions.scenarioStrip?.() || null, chatHeader(), logEl, composerEl());
   updateComposer();
   if (st) paintStepper();
-  requestAnimationFrame(() => { if (stickBottom || st || prevTop === null) { stickBottom = true; scrollLog(); } else logEl.scrollTop = prevTop; });
+  requestAnimationFrame(() => { if (wasBottom || st) { stickBottom = true; scrollLog(); } else if (prevTop !== null && !stackedMq.matches) logEl.scrollTop = prevTop; });
 }
 
 export function focusTurnRelative(delta) {

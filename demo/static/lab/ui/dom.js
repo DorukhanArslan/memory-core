@@ -74,7 +74,7 @@ export function fmtScore(x, digits = 3) {
 export function fmtMs(ms) {
   if (ms === null || ms === undefined || Number.isNaN(Number(ms))) return '—';
   if (ms < 1000) return `${Math.round(ms)} ms`;
-  const s = (ms / 1000).toLocaleString(locale(), { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+  const s = (ms / 1000).toLocaleString(locale(), { maximumFractionDigits: 1, minimumFractionDigits: 0 });
   return `${s} ${LANG === 'tr' ? 'sn' : 's'}`;
 }
 const fmtCache = new Map();

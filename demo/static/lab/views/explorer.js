@@ -6,6 +6,7 @@ import { store, refresh, registerRenderer, persistUi, loadFiles } from '../store
 import { badge, badgeLabel, iconBtn, segmented, skeleton, failCard, emptyState, btn } from '../ui/kit.js';
 import { openMenu, toast } from '../ui/overlay.js';
 import { layoutLabel } from './shell.js';
+import { previewFor } from '../inspector/prompt.js';
 
 const BADGE_ORDER = ['pending', 'missing', 'truncated', 'outside_layout', 'dynamic', 'injected', 'empty', 'excluded', 'absent', 'session', 'today', 'yesterday', 'extension'];
 export const isMemoryPath = (p) => p === 'MEMORY.md' || p.startsWith('memory/');
@@ -153,13 +154,17 @@ function renderExplorer() {
   }
   const tree = h('div', { class: 'tree', role: 'tree', 'aria-label': t('explorer.title') }, rows);
   initTreeKeys(tree);
-  // footer: injected budget (numbers from FileEntry badges and truncation; caps from settings)
-  const injected = g.root.filter((e) => (e.badges || []).includes('injected'));
-  const total = injected.reduce((a, e) => a + injectedChars(e), 0);
-  const cap = d.settings?.budgets?.totalMaxChars ?? null;
-  const truncCount = g.root.filter((e) => (e.badges || []).includes('truncated')).length;
+  // footer: the injected budget of the current preview (same numbers as Prompt › Bütçe);
+  // until the preview answers, the FileEntry badges and truncation give an approximate sum.
+  const pv = previewFor(u.promptKind).pv;
+  const segs = pv ? (pv.files || []).map((f) => ({ name: f.name, chars: f.chars || 0, truncated: !!f.truncated }))
+    : g.root.filter((e) => (e.badges || []).includes('injected')).map((e) => ({ name: e.path, chars: injectedChars(e), truncated: (e.badges || []).includes('truncated') }));
+  const total = segs.reduce((a, x) => a + x.chars, 0);
+  const cap = pv?.budget?.totalMaxChars ?? d.settings?.budgets?.totalMaxChars ?? null;
+  const truncCount = segs.filter((x) => x.truncated).length;
+  const injected = segs;
   const bar = h('button', { type: 'button', class: 'budget-mini', 'data-testid': 'budget-meter', 'aria-label': t('explorer.budgetAria', { a: fmtN(total), b: cap ? fmtN(cap) : '—' }), onclick: () => { u.openSections.add('budget'); store.actions.openInspector('prompt'); } },
-    h('span', { class: 'budget-track' }, injected.map((e, i) => h('span', { class: ['budget-seg', (e.badges || []).includes('truncated') ? 'is-truncated' : ''], style: { '--w': `${cap ? (injectedChars(e) / cap) * 100 : 0}%`, '--c': `var(--seg-${(i % 8) + 1})` }, 'data-tip': `${e.path} · ${fmtN(injectedChars(e))}` }))));
+    h('span', { class: 'budget-track' }, segs.map((x, i) => h('span', { class: ['budget-seg', x.truncated ? 'is-truncated' : ''], style: { '--w': `${cap ? (x.chars / cap) * 100 : 0}%`, '--c': `var(--seg-${(i % 8) + 1})` }, 'data-tip': `${x.name} · ${fmtN(x.chars)}` }))));
   replace(el, head, rootRow,
     g.hiddenDirs.length ? h('div', { class: 'tree-note' }, icon('eye', 12), t('explorer.hiddenDirs', { d: g.hiddenDirs.map((x) => `${x}/`).join(', ') })) : null,
     h('div', { class: 'pane-scroll' }, tree),

@@ -320,12 +320,11 @@
   .tone-accent { --tc: var(--accent); } .tone-ext { --tc: var(--ext); } .tone-neutral { --tc: var(--text-2); }
 
   .chip {
-    --tc: var(--text-2);
     display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border-radius: var(--r-1); flex: none; max-width: 100%;
     font: 500 var(--t-sm)/1 var(--font-ui); white-space: nowrap;
-    color: color-mix(in srgb, var(--tc) 78%, var(--text-1));
-    background: color-mix(in srgb, var(--tc) var(--tint-mix), var(--tint-base));
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tc) 20%, transparent);
+    color: color-mix(in srgb, var(--tc, var(--text-2)) 78%, var(--text-1));
+    background: color-mix(in srgb, var(--tc, var(--text-2)) var(--tint-mix), var(--tint-base));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tc, var(--text-2)) 20%, transparent);
     transition: background-color var(--dur-2) ease, transform var(--dur-1) var(--ease-out), box-shadow var(--dur-2) ease;
   }
   .chip.tone-neutral { color: var(--text-2); background: var(--bg-2); box-shadow: inset 0 0 0 1px var(--line-1); }
@@ -343,10 +342,9 @@
   .chip-path .chip-label { font-family: var(--font-mono); font-size: 11.5px; }
   
   .badge {
-    --tc: var(--text-2);
     display: inline-flex; align-items: center; gap: 3px; height: 16px; padding: 0 4px; border-radius: 3px; flex: none;
     font: 500 10.5px/1 var(--font-ui); letter-spacing: 0.01em; white-space: nowrap;
-    color: color-mix(in srgb, var(--tc) 80%, var(--text-1)); background: color-mix(in srgb, var(--tc) var(--tint-mix), var(--tint-base));
+    color: color-mix(in srgb, var(--tc, var(--text-2)) 80%, var(--text-1)); background: color-mix(in srgb, var(--tc, var(--text-2)) var(--tint-mix), var(--tint-base));
   }
   .badge.tone-neutral { color: var(--text-3); background: var(--bg-2); box-shadow: inset 0 0 0 1px var(--line-1); }
 
@@ -1101,7 +1099,8 @@
   .error-card.is-flat { margin: 6px 0; }
   .pad-x { padding: 8px var(--s-3); }
   .nowrap, .td-state { white-space: nowrap; }
-  .td-state { min-width: 128px; }
+  .td-state { min-width: 150px; }
+  .table td.td-clip { max-width: 0; width: 100%; }
   .badge-more { margin-left: 2px; padding-left: 3px; border-left: 1px solid color-mix(in srgb, currentColor 30%, transparent); font-weight: 600; }
   .root-row { width: calc(100% - 16px); text-align: left; cursor: copy; }
   .root-row:hover { color: var(--text-1); }

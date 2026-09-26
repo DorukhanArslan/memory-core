@@ -128,12 +128,15 @@ the package contract.
 
 Demo-only responsibilities:
 
-- browser controls
-- chat lab UI
-- OpenAI-compatible demo provider form
-- side-by-side inspectors
-- manual flush, promote, dreaming, audit and repair buttons (they call
-  `memory_core.consolidation`; the demo keeps only serializers)
+- browser controls, the chat lab UI and its inspectors
+- the host side of a turn: provider resolution (keys request-scoped or from
+  the environment, never stored), the tool loop that dispatches the package's
+  `memory_search`/`memory_get` adapters and `MemoryCurator.dispatch`, the
+  pre-turn flush decision inputs, sessions, the event log and file snapshots
+  (`demo/lab_*.py`, docs/lab.md)
+- manual flush, promote, dreaming, audit and repair actions (they call
+  `memory_core.consolidation` and `memory_core.memory_flush`; the demo keeps only
+  serializers)
 
 Do not copy demo internals into production integrations. Production hosts should
 depend on the package API and adapter layer.

@@ -1,0 +1,163 @@
+# memory-core Lab (backend)
+
+The Lab is a FastAPI app (`demo/`) over the `memory-core` package. It holds what a
+host holds (paths, settings, sessions, provider keys, an event log, file
+snapshots) and calls the package for every memory decision. The UI talks only to
+`/api/lab/*` and the kept `/api/*` endpoints below. Design: DESIGN §4 (API
+contract), §8 and §10 of the Lab v2 design.
+
+## Run it
+
+```bash
+.venv/bin/python -m uvicorn demo.app:app --port 8000   # Doruk's server
+.venv/bin/python -m uvicorn demo.app:app --port 8010   # agent preview (.claude/launch.json "memory-core-demo")
+```
+
+Run from the checkout whose code you want (the launch config runs the repo root).
+Python changes need a restart (no `--reload` on :8000). State is in process memory;
+the workspaces are in the system temp dir:
+
+| Workspace | Path | Used by |
+|---|---|---|
+| Lab | `$TMPDIR/memory-core-lab-workspace` (renamed from the legacy name, D3) | chat, files, heartbeat, consolidation |
+| Live task | `$TMPDIR/memory-core-live-task-demo-workspace` | `/api/live-task/*` |
+
+Environment (read-only; `.env` in the repo root is loaded at startup, names
+already set win; nothing is ever written back):
+
+| Name | Default | Meaning |
+|---|---|---|
+| `MEMORY_CORE_DEMO_OPENAI_BASE_URL` | `https://openrouter.ai/api/v1` | chat endpoint |
+| `MEMORY_CORE_DEMO_OPENAI_API_KEY` | none | chat key (or `openai.apiKey` per request) |
+| `MEMORY_CORE_DEMO_OPENAI_MODEL` | `openai/gpt-6-luna` | chat model |
+| `MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL` | the chat URL | embeddings endpoint |
+| `MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY` | none | embeddings key (or `embedding.apiKey`) |
+| `MEMORY_CORE_DEMO_OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | embeddings model |
+| `MEMORY_CORE_LAB_PARITY_RESULTS` | `$TMPDIR/memory-core-lab/parity-results.json` | parity results file |
+| `OPENCLAW_ORACLE_REPO` | `/tmp/openclaw-upstream` | oracle checkout shown in the parity view |
+
+Default model (D4, Q10): the newest OpenAI GPT chat model in OpenRouter's public
+model list (`GET https://openrouter.ai/api/v1/models`, no auth), checked
+**2026-09-26**: `openai/gpt-6-luna`, created 2026-09-22T18:13:06Z. Rule: newest
+`created` among `openai/gpt-*` ids with tool support, without a `:variant` suffix
+and without a `-pro` serving variant (`openai/gpt-6-luna-pro` is listed five
+seconds later as the same model with reasoning mode pro). Recorded in
+`demo/chat_engine.py` as `DEFAULT_OPENAI_MODEL` / `DEFAULT_OPENAI_MODEL_SOURCE`.
+
+## What is real, what is not
+
+| Surface | Label | Notes |
+|---|---|---|
+| Chat model | real | OpenAI-compatible streaming with tool calls. No key: `400 no_api_key`, no fake model. |
+| `engine: "scripted"` | scripted | Explicit per request only. Fixed text, no model call, no tool call, no flush turn. |
+| Tool loop | host (Lab) | `memory_search`, `memory_get` (upstream definitions), curation tools; ≤ 6 tool rounds + 1 final round without tools. |
+| Curated writes | extension (Q16, D5) | `MemoryCurator`; per-target flags `curation.memory_md`, `curation.user_md`, `curation.daily_note`, `curation.proactive_preferences`, master flag `curated_memory_writes`. |
+| Flush decision | upstream order (D1) | `explain_memory_flush_trigger` before the main run. Token counts: provider usage, else a chars/4 estimate (labelled). |
+| Compaction | known gap | The Lab never compacts, so after one flush a session reports `already_flushed` until `/new`. |
+| Auto-recall | demo-only | `memory_search` on the user message; only MEMORY.md and today's/yesterday's daily file reach the prompt. Off for subagent/cron and reset turns. |
+| Transcript window | demo-only | Last 40 messages, 24,000 chars. |
+| Embeddings | Q9 | Real endpoint → hybrid; otherwise FTS-only (`fts-only`) and no embedder is built. Never fake vectors. |
+| Session-memory file | upstream (D2) | Raw recent `role: text` lines, no redactor, labelled. |
+| Heartbeat | runtime-only port | No scheduler; the virtual clock (demo-only) shifts due checks only. |
+| Promotion/dreaming | package | Manual sweeps; the view's evidence label is read from `docs/parity_matrix.md`. |
+| Live task | adapter-only | Real model when a request or `.env` key resolves, else scripted replies; summaries redact the identity proof. |
+
+## Endpoints
+
+Errors are JSON `{error, code?, ...}` with a 4xx/5xx status; SSE streams end
+with `error` or `done`/`turn_done`. Every message that can carry provider text is
+checked against the configured keys (`redacted: true`). Ids (`sessionId`,
+`subjectId`, `writeId`, mark ids) must match `^[A-Za-z0-9_-]{1,64}$`.
+
+### `/api/lab/*`
+
+| Method · path | Request | Response |
+|---|---|---|
+| GET `/state` | `?sessionKind=main` | LabSnapshot: `workspace`, `liveWorkspace`, `pin`, `today`, `yesterday`, `clock`, `identityName`, `bootstrap {status, mode, pendingFile, bootstrapSeededAt, setupCompletedAt}`, `session`, `sessions`, `index`, `flush` (meter), `layoutOrder`, `memoryFiles`, `turns`, `lastEventId` |
+| GET `/events` | `Last-Event-ID` header (or `?lastEventId=`), `?once=true` replays and ends | SSE of LabEvent `{id, ts, type, category, summary, turnId?, data}`; frames have no `event:` line; `lab.resync` when the gap is older than the 1,000-event ring; `: ping` every 15 s |
+| GET `/files` | `?sessionKind=&layout=` | FileEntry[] (badges from `build_workspace_context`) |
+| GET `/file` | `?path=` | `{path, content, sha256, chars, bytes, mtimeMs, writable, readOnlyReason?}` |
+| PUT `/file` | `{path, content, baseSha256}` | `{path, sha256, diff, events[]}`; `409 {code:"conflict", current}`; `403 read_only` |
+| POST `/file/diff-preview` | `{path, content}` | `{path, diff, charsBefore, charsAfter, budget}` |
+| GET `/diff` | `?since=turn:<id>\|session\|reset\|mark:<id>` | `[{path, status, diff, added, removed, hidden, sources[]}]` |
+| POST `/diff/mark` | — | `{markId}` |
+| POST `/diff/revert` | `{path, since, baseSha256?}` | PUT-file shape |
+| POST `/workspace/reset` | `{mode:"seeded"\|"fresh", keepMemory?}` | LabSnapshot |
+| POST `/prompt/preview` | `{sessionKind, runKind?, contextMode?, lightContext?, contextInjection?, includeHeartbeat?, maxChars?, totalMaxChars?, layout?}` | PromptView |
+| GET `/turns/{id}` | — | TurnDetail |
+| POST `/chat/stream` | `{message, sessionKind, reset?, engine?, openai?, embedding?}` | SSE: `turn_started`, `stage`, `flush`, `recall`, `prompt`, `tool_call`, `tool_result`, `curation`, `assistant_delta`, `turn_done {turn, detail}`, `error` |
+| POST `/session/new` | `{command:"new"\|"reset", text?, sessionKind}` | `{sessionId, sessionKey, bare, sessionMemory, startup, resetPrompt}` |
+| GET `/index/status` | — | `{files, chunks, lastReindexAt, mode, identity, embeddings, cooldown, deadlineMs, cooldownMs, stale}` |
+| GET `/heartbeat` | — | `{file, every, everyMs, ackMaxChars, lightContext, tasks[], unparsedTaskEntries, preflight, clock, runs[], proactivePreferences, sessionKey, labels}` |
+| POST `/heartbeat/run` | `{lightContext?, openai?}` | SSE: `flush`, `skipped`, `prompt`, `tool_call`, `tool_result`, `curation`, `assistant_delta`, `decision`, `done {run}`, `error` |
+| POST `/heartbeat/strip` | `{text, ackMaxChars?}` | `{shouldSkip, text, didStrip}` |
+| POST `/clock` | `{offsetMs}` or `{reset:true}` | `{nowMs, offsetMs}` |
+| GET `/consolidation` | — | `{curated[], shortTerm, candidates[], gates, weights, lastPromotion, lastDreaming, audit, repair, labels, flags}` |
+| POST `/curation/revert` | `{writeId}` | PUT-file shape; `409` when the file changed since the write |
+| GET `/parity` | — | `{pin, oracleRepo, node, resultsPath, results, matrix[], commands[]}` |
+| GET · PUT `/settings` | partial Settings (never a key) | Settings |
+| POST `/provider/check` | `{openai}` or `{embedding}` | `{ok, target, latencyMs, model?, error?, redacted?}` |
+
+### Kept `/api/*`
+
+| Method · path | Notes |
+|---|---|
+| POST `/api/seed` | `workspace/reset` in `seeded` mode |
+| POST `/api/reindex` | `{mode?}`; full reindex of that mode's index |
+| POST `/api/search` | `{query, maxResults?, minScore?, corpus?, mode?}`; `mode` hybrid, vector or text; adds `mode`, `flags`, `identity`, `cooldown`, `ms`, `embeddings`; param errors are `400 tool_input_error` with the verbatim tool payload; FTS-only answers `400 fts_only` for hybrid/vector |
+| POST `/api/get` | `memory_get` |
+| POST `/api/prompt-preview` | `build_prompt_section` |
+| POST `/api/parity/trace` | `build_parity_trace` (5 steps: promotion/dreaming chain only) |
+| POST `/api/chat/flush` | `/flush`: forced flush turn (`lab_forced`); still `already_flushed` in the same compaction cycle |
+| POST `/api/memory/promote`, GET `/api/memory/audit`, POST `/api/memory/repair`, POST `/api/dreaming/run` | consolidation sweeps; emit `promotion.swept`, `audit.completed`, `repair.completed`, `dreaming.swept` |
+| POST `/api/live-task/reset`, GET `/api/live-task/state`, POST `/api/live-task/turn-stream`, POST `/api/live-task/summary` | `LiveTaskDemo` over `memory_core.live`; events mirrored to the bus as `live.<type>` |
+
+Removed: `/memory-system` (D6), `/api/chat/state`, `/api/chat/reset`,
+`/api/chat/send`, `/api/chat/send-stream`.
+
+## A chat turn
+
+Stages, in the order the `stage` events stream them:
+
+1. `ensure`: `initialize_agent_workspace` with the Lab templates (upstream runs it
+   on every reply; a configured profile deletes BOOTSTRAP.md here).
+2. `compaction`: skipped, the Lab never compacts.
+3. `flush_decision`: `explain_memory_flush_trigger` for the session entry, the
+   incoming prompt's estimate and the context window (setting, else 200,000).
+4. `flush`: when triggered, the flush turn (write tool on today's daily file only;
+   bootstrap files read-only), then `record_memory_flush_success`/`failure`.
+5. `reindex`, 6. `recall` (demo-only auto-recall), 7. `prompt`
+   (`build_workspace_context` for the session kind; no generic `read` tool),
+8. `stream` (tool loop), 9. `persist` (transcript, token snapshot, seen truncation
+   signatures).
+
+A kind change is its own session (`lab:<kind>:<id>`, empty transcript). Subagent
+and cron get upstream's minimal prompt (no `## Memory Recall`, no auto-recall).
+
+`/new` and `/reset` (`POST /api/lab/session/new`) run the session-memory hook
+(`save_session_memory` → `memory/<date>-<HHMM>.md`), start a new session and,
+when bare, store the reset prompt (`resolve_bare_session_reset_prompt_state`, the
+upstream text) plus `build_startup_context` when the bootstrap mode is `none`. The
+client then streams the reset turn with `{reset: true}`; the model gets
+`[startup context, reset prompt]` and the transcript keeps `[memory-core session new]`.
+
+## Parity results
+
+```bash
+TMPDIR=<scratch> PYTHONDONTWRITEBYTECODE=1 MEMORY_CORE_DEMO_OPENAI_API_KEY= MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY= \
+OPENCLAW_ORACLE_REPO=/tmp/openclaw-upstream .venv/bin/python -m pytest -q -p no:cacheprovider \
+  tests/integration/test_openclaw_ts_oracle.py tests/integration/test_memory_tools.py \
+  --junitxml=<scratch>/memory-core-lab/oracle.xml
+.venv/bin/python -m demo.parity_results <scratch>/memory-core-lab/oracle.xml --out <scratch>/memory-core-lab/parity-results.json
+```
+
+`demo/parity_results.py` maps each test to an area and classifies its evidence
+statically from the test source: `python_eq_ts` (oracle and memory-core in the same
+test), `ts_literal` (oracle only, Python two-hop), `python_eq_source` (Python
+constants against the upstream source text), `python_literal` (no oracle).
+
+## Tests
+
+`tests/demo/test_demo_app.py` covers the contract offline with stub engines and a
+test-only embedding stand-in; `tests/demo/test_lab_shell.py` (frontend-owned)
+covers the shell markup.

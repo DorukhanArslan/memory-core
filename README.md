@@ -96,51 +96,59 @@ git clone https://github.com/openclaw/openclaw /tmp/openclaw-upstream
 OPENCLAW_ORACLE_REPO=/tmp/openclaw-upstream pytest tests/integration -v
 ```
 
-## Run Demo
+## Run the Lab
+
+The Lab is a FastAPI app over the package (`demo/`); it adds no memory logic of
+its own. Run it from the repo root:
 
 ```bash
-python -m uvicorn demo.app:app --port 8000
+.venv/bin/python -m uvicorn demo.app:app --port 8000
 ```
 
-Open <http://127.0.0.1:8000>. The first screen is an OpenClaw-style chat
-memory lab. Enter an OpenAI-compatible API key, send a message, inspect memory
-recall, run a manual memory flush, or enable auto flush to write durable
-memories while chatting.
+Open <http://127.0.0.1:8000>. Agent previews use port 8010 (`.claude/launch.json`
+entry `memory-core-demo`). The Lab workspace lives in the system temp directory
+(`memory-core-lab-workspace`; the live task uses `memory-core-live-task-demo-workspace`),
+never in the repo tree.
 
-The demo uses any OpenAI-compatible engine and defaults to OpenRouter
-(`https://openrouter.ai/api/v1`, `openai/gpt-4o-mini`). The browser keeps the
-API key in session storage and sends it with each chat/flush request; the
-backend does not write it to disk. You can also configure the backend with
-environment variables or a gitignored `.env` file in the repo root (loaded at
-startup, existing environment values win):
+Configure the chat model with environment variables or a gitignored `.env` in the
+repo root (loaded at startup; names already set win). A key can also be sent per
+request from the UI; the backend never stores or returns it:
 
 ```bash
-export MEMORY_CORE_DEMO_OPENAI_BASE_URL="https://openrouter.ai/api/v1"
-export MEMORY_CORE_DEMO_OPENAI_API_KEY="sk-or-..."
-export MEMORY_CORE_DEMO_OPENAI_MODEL="openai/gpt-4o-mini"
+export MEMORY_CORE_DEMO_OPENAI_BASE_URL="https://openrouter.ai/api/v1"   # default
+export MEMORY_CORE_DEMO_OPENAI_API_KEY="<your key>"
+export MEMORY_CORE_DEMO_OPENAI_MODEL="openai/gpt-6-luna"                # default (D4)
 ```
 
-OpenRouter does not serve an `/embeddings` endpoint, so the demo falls back to
-deterministic local embeddings when the base URL points at OpenRouter. To use
-real embeddings, point `MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL` and
-`MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY` at an embeddings-capable provider.
+The default model is the newest OpenAI GPT chat model in OpenRouter's public model
+list, checked on 2026-09-26 (`demo/chat_engine.py` `DEFAULT_OPENAI_MODEL_SOURCE`).
+Without a key the chat fails with `no_api_key`; there is no fake chat model. A
+request can ask for the labelled `scripted` engine, which runs the pipeline but
+calls no model and no tool.
 
-Memory flush writes are restricted to `memory/YYYY-MM-DD.md`, matching
-OpenClaw pre-compaction memory flush behavior. The demo appends to the canonical
-daily file and rejects timestamped variants or other write targets.
+Embeddings: OpenRouter serves no `/embeddings` endpoint, so by default the Lab
+searches FTS-only (`yalnız FTS`) and never builds an embedder. For hybrid search
+point `MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL` and
+`MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY` (optional `_MODEL`, default
+`text-embedding-3-small`) at an embeddings endpoint.
 
-Smoke test the chat lab endpoints:
+Every chat turn runs a host tool loop: the model gets `memory_search`,
+`memory_get` and the curation tools, the flush is decided before the turn like
+upstream, and every file change shows up with its source. Endpoints, modes and
+what is scripted or real: [docs/lab.md](docs/lab.md).
+
+Smoke test:
 
 ```bash
-curl -s http://127.0.0.1:8000/api/chat/state
-curl -s -X POST http://127.0.0.1:8000/api/chat/send \
+curl -s http://127.0.0.1:8000/api/lab/state
+curl -s -N -X POST http://127.0.0.1:8000/api/lab/chat/stream \
   -H 'Content-Type: application/json' \
-  -d '{"message":"Ben teknik cevapları Türkçe tercih ediyorum.","engine":"openai","openai":{"apiKey":"sk-demo-key","model":"gpt-5.2"},"autoFlush":true}'
+  -d '{"message":"Ben teknik cevapları Türkçe tercih ediyorum.","sessionKind":"main"}'
 ```
 
 ## Live OpenAI-Compatible Embeddings
 
-The demo and tests default to deterministic fake embeddings. To add a live
+Tests use deterministic fake embeddings; the Lab never does. To add a live
 provider flow, configure `OPENAI_API_KEY`, optional `OPENAI_BASE_URL`, and model
 `text-embedding-3-small`.
 
@@ -148,7 +156,7 @@ Run the standalone example from another project directory:
 
 ```bash
 cd /path/to/my-agent-app
-OPENAI_API_KEY=sk-... python -m examples.basic_usage
+OPENAI_API_KEY=<your key> python -m examples.basic_usage
 ```
 
 For chatbot integrations, let the package prepare recall-injected messages and
@@ -185,5 +193,5 @@ agent runtime.
 Run the opt-in live embedding smoke test:
 
 ```bash
-MEMORY_CORE_LIVE_OPENAI=1 OPENAI_API_KEY=sk-... pytest tests/integration/test_openai_embedding_live.py -q
+MEMORY_CORE_LIVE_OPENAI=1 OPENAI_API_KEY=<your key> pytest tests/integration/test_openai_embedding_live.py -q
 ```

@@ -494,7 +494,11 @@ later compare fake-provider latency with real inference latency. The final
 The demo task is appointment rescheduling. It verifies identity, collects a new
 time, asks for confirmation, emits sentence events for TTS-style chunking, and
 writes post-session summaries through `SubjectMemory.record_session_summary`.
-Without a provider key the replies are scripted.
+Without a provider key (request or `.env`) the replies are scripted; the state
+payload's `engine` says which one a turn uses. Summaries pass a host redactor
+that replaces the utterance which verified the subject with
+`[kimlik bilgisi gizlendi]`, so identity data never reaches subject memory, and
+the SDK sanitizer skips replies that are neither JSON nor `- ` lines.
 
 The live task uses its own workspace (`memory-core-live-task-demo-workspace` in the
 system temp dir), separate from the chat workspace. It is seeded with the Lab

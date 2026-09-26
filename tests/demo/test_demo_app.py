@@ -7,8 +7,8 @@ keys from ``.env`` (the env names are blanked), deterministic stub engines.
 from __future__ import annotations
 
 import json
-import os
 import re
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -102,7 +102,8 @@ def test_module_app_uses_the_renamed_temp_workspace():
     lab = demo_app.app.state.lab
 
     assert lab.root.name == LAB_WORKSPACE_DIRNAME == "memory-core-lab-workspace"
-    assert lab.root.parent == Path(os.environ.get("TMPDIR", "/tmp")).resolve() or lab.root.is_absolute()
+    assert lab.root.parent == Path(tempfile.gettempdir())
+    assert lab.live_root.name == "memory-core-live-task-demo-workspace"
     assert "memory-core" not in str(lab.root)
 
 
@@ -1734,3 +1735,74 @@ def test_live_task_turn_failure_redacts_the_request_key(client, monkeypatch):
     assert failed and "[redacted]" in failed[0]["data"]["data"]["error"]
     assert key not in response.text
     assert key not in client.get("/api/lab/events", params={"once": "true"}).text
+
+
+# --- no key value in any response, error or event --------------------------------------------
+
+
+def test_no_key_value_leaks_into_any_response_or_event(client, lab, embeddings, monkeypatch):
+    import demo.lab_kept_api as kept
+
+    env_chat = "env-chat-secret-000111"
+    env_embedding = "env-embedding-secret-000222"
+    request_chat = "request-chat-secret-000333"
+    request_embedding = "request-embedding-secret-000444"
+    secrets = (env_chat, env_embedding, request_chat, request_embedding)
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", env_chat)
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY", env_embedding)
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL", "https://embeddings.example/v1")
+
+    class LeakyEngine(StubEngine):
+        def stream_chat(self, messages, *, tools=None):
+            raise RuntimeError(f"upstream said: bad keys {env_chat} {request_chat}")
+            yield  # pragma: no cover
+
+        def check(self):
+            raise RuntimeError(f"401 for {request_chat}")
+
+    class LeakyLive:
+        model = "m"
+
+        def raw_chat_stream(self, messages):
+            raise RuntimeError(f"live failure {env_chat}")
+            yield ""  # pragma: no cover
+
+        def raw_chat_text(self, messages):
+            raise RuntimeError(f"summary failure {request_chat}")
+
+    use_engine(monkeypatch, LeakyEngine([]))
+    monkeypatch.setattr(kept, "live_engine", lambda lab, payload: LeakyLive())
+    embeddings.error = f"embedding failure {env_embedding} {request_embedding}"
+    keys = {"openai": {"apiKey": request_chat}, "embedding": {"apiKey": request_embedding}}
+    bodies = []
+
+    def call(method, path, **kwargs):
+        response = getattr(client, method)(path, **kwargs)
+        bodies.append(response.text)
+        return response
+
+    call("get", "/api/lab/state")
+    (lab.root / "memory" / f"{lab.today()}.md").write_text("- note\n", encoding="utf-8")
+    call("post", "/api/lab/chat/stream", json={"message": "Merhaba", **keys})
+    call("post", "/api/search", json={"query": "note", "mode": "hybrid", **keys})
+    call("post", "/api/reindex", json={"mode": "hybrid", **keys})
+    call("get", "/api/lab/index/status")
+    call("get", "/api/lab/settings")
+    call("post", "/api/lab/provider/check", json={"openai": {"apiKey": request_chat}})
+    call("post", "/api/lab/provider/check", json={"embedding": {"apiKey": request_embedding}})
+    call("put", "/api/lab/settings", json={"chat": {"apiKey": request_chat}})
+    call("post", "/api/lab/heartbeat/run", json=keys)
+    call("post", "/api/chat/flush", json={"forced": True, **keys})
+    call("post", "/api/live-task/reset", json={})
+    call("post", "/api/live-task/turn-stream", json={"message": "Merhaba", **keys})
+    call("post", "/api/live-task/summary", json=keys)
+    call("post", "/api/memory/promote", json=keys)
+    call("post", "/api/dreaming/run", json={"phase": "deep", **keys})
+    call("get", "/api/lab/consolidation")
+    call("get", "/api/lab/turns/1")
+    call("get", "/api/lab/events", params={"once": "true"})
+
+    for body in bodies:
+        for secret in secrets:
+            assert secret not in body
+    assert any("[redacted]" in body for body in bodies)

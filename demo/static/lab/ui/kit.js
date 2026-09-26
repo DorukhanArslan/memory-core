@@ -7,9 +7,11 @@ import { toast } from './overlay.js';
 /* ---------- chips and badges ---------- */
 export function chip({ label, tone = 'neutral', ic = null, onClick = null, aria = null, testid = null, ext = false, title = null, dot = null, cls = '', target = null }) {
   const Tag = onClick ? 'button' : 'span';
+  // A long label may be cut with an ellipsis (max-width: 100%); its full text stays in the tooltip.
+  const tip = title || (typeof label === 'string' && label.length > 36 ? label : null);
   return h(Tag, {
     class: ['chip', `tone-${tone}`, onClick ? 'is-button' : '', cls], type: onClick ? 'button' : null,
-    'aria-label': aria, 'data-testid': testid, 'data-tip': title, 'data-target': target, onclick: onClick,
+    'aria-label': aria, 'data-testid': testid, 'data-tip': tip, 'data-target': target, onclick: onClick,
   },
   dot ? h('span', { class: `dot dot-${dot}`, 'aria-hidden': 'true' }) : null,
   ic ? icon(ic, 12) : null,

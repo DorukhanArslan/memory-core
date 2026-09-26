@@ -74,7 +74,7 @@ export function memoryTab(turn) {
   const identity = idx?.identity;
   wrap.append(h('div', { class: 'status-strip' },
     idx ? chip({ label: `${t('memory.identity')}: ${identity?.status ? t(`identity.${identity.status}`) : '—'}`, tone: { valid: 'ok', mismatched: 'danger', missing: 'warn' }[identity?.status] || 'neutral', ic: identity?.status === 'valid' ? 'check' : 'alert-triangle', title: `${identity?.reason || ''}\n${t('memory.identityNotFile')}`.trim(), testid: 'index-identity' }) : null,
-    s?.embedding || idx?.embeddings ? chip({ label: fts ? `${t('search.ftsOnly')}${s?.embedding?.reason ? `: ${s.embedding.reason}` : ''}` : `${t('search.hybrid')} · ${s?.embedding?.model || idx?.embeddings?.model || '—'}`, tone: fts ? 'warn' : 'info', ic: 'layers' }) : null,
+    s?.embedding || idx?.embeddings ? chip({ label: fts ? t('search.ftsOnly') : `${t('search.hybrid')} · ${s?.embedding?.model || idx?.embeddings?.model || '—'}`, title: fts ? (s?.embedding?.reason || idx?.embeddings?.reason || t('search.noEmbedder')) : null, tone: fts ? 'warn' : 'info', ic: 'layers', testid: 'memory-embedding' }) : null,
     idx ? chip({ label: `${fmtN(idx.chunks)} ${t('unit.chunks')} · ${fmtTime(idx.lastReindexAt)}`, tone: 'neutral', ic: 'database' }) : null,
     cd ? chip({ label: `${t('search.cooldown')} ${cd} ${t('unit.sec')}`, tone: 'warn', ic: 'clock', testid: 'chip-cooldown', title: idx?.cooldown?.error || '' }) : null,
     idx?.deadlineMs ? chip({ label: `${t('search.deadline')} ${fmtMs(idx.deadlineMs)}`, tone: 'neutral', ic: 'clock' }) : null,

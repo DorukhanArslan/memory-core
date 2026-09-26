@@ -134,7 +134,8 @@ export function renderSettings(body) {
         row(t('settings.baseUrl'), textInput('set-emb-url', s.embedding?.baseUrl, (v) => putSettings({ embedding: { baseUrl: v || null } })), null, { forId: 'set-emb-url' }),
         row(t('settings.model'), textInput('set-emb-model', s.embedding?.model, (v) => putSettings({ embedding: { model: v || null } })), null, { forId: 'set-emb-model' }),
         row(t('settings.apiKey'), keyField('set-emb-key', 'embedding'), null, { forId: 'set-emb-key' }),
-        row(t('settings.result'), h('span', { class: 'inline-group' }, s.embedding?.mode === 'fts-only' ? chip({ label: `${t('search.ftsOnly')}${s.embedding.reason ? `: ${s.embedding.reason}` : ''}`, tone: 'warn', ic: 'alert-triangle' }) : chip({ label: `${t('search.hybrid')} · ${s.embedding?.model || '—'}`, tone: 'info', ic: 'layers' })), t('settings.noFakeEmbeddings')),
+        row(t('settings.result'), h('span', { class: 'inline-group' }, s.embedding?.mode === 'fts-only' ? chip({ label: t('search.ftsOnly'), title: s.embedding.reason || null, tone: 'warn', ic: 'alert-triangle' }) : chip({ label: `${t('search.hybrid')} · ${s.embedding?.model || '—'}`, tone: 'info', ic: 'layers' }),
+          s.embedding?.mode === 'fts-only' && s.embedding.reason ? h('span', { class: 'muted small srow-reason' }, s.embedding.reason) : null), t('settings.noFakeEmbeddings')),
         row('', checkLine('embedding')),
       ], { ic: 'layers' }),
       group('layout', t('settings.layout'), [

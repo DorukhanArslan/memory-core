@@ -87,7 +87,9 @@ export function renderConsolidation(body) {
       : emptyState({ title: t('cons.noCurated'), level: 4 }));
   const cands = c.candidates || [];
   const right = h('div', { class: 'col' },
-    h('div', { class: 'col-head' }, h('h3', { class: 'col-title' }, t('cons.scored')), labels.scored ? h('span', { class: 'chip chip-xs tone-neutral', 'data-testid': 'cons-scored-label' }, labels.scored) : null),
+    h('div', { class: 'col-head' }, h('h3', { class: 'col-title' }, t('cons.scored'))),
+    // labels.scored is built from docs/parity_matrix.md rows: a long line, so a wrapping note.
+    labels.scored ? h('p', { class: 'col-note', 'data-testid': 'cons-scored-label' }, labels.scored) : null,
     h('div', { class: 'gates' },
       gates.minScore !== undefined ? chip({ label: t('cons.gate.score', { v: fmtScore(gates.minScore, 2) }), tone: 'neutral', cls: 'chip-xs' }) : null,
       gates.minRecallCount !== undefined ? chip({ label: t('cons.gate.recall', { v: gates.minRecallCount }), tone: 'neutral', cls: 'chip-xs' }) : null,

@@ -8,8 +8,9 @@ Port of ``extensions/memory-core/src/memory-budget.ts`` at OpenClaw pin
 A MEMORY.md file splits into blocks at every line that starts with ``## ``.
 A block whose heading matches ``## Promoted From Short-Term Memory (DATE)``
 belongs to the promotion pipeline; every other block (the file header, user
-or agent sections) is preserved unconditionally. ``memory_core.curation`` uses the
-same block parser to keep promotion sections read-only.
+or agent sections) is preserved unconditionally. ``memory_core.curation``
+(developed on its own branch, not in this tree yet) is meant to reuse this
+block parser to keep promotion sections read-only.
 
 JavaScript semantics kept: lengths are UTF-16 code units (``String.length``),
 lines split on ``/\\r?\\n/`` and blocks rejoin with ``\\n``, heading whitespace

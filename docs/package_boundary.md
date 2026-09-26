@@ -47,9 +47,10 @@ Three paths change memory files; none of them uses keyword triggers.
   dreaming is off by default (`DEFAULT_DEEP_DREAMING_ENABLED = False`). A host
   records hits with `record_short_term_recalls` and calls
   `run_short_term_promotion` or `run_dreaming_sweep` when it chooses.
-- The two MEMORY.md writers share one block model
-  (`memory_core.memory_budget.parse_memory_blocks`): budget compaction only drops
-  the oldest promotion sections, never other blocks.
+- Budget compaction uses one block model
+  (`memory_core.memory_budget.parse_memory_blocks`) and only drops the oldest
+  promotion sections, never other blocks. `memory_core.curation` is meant to reuse
+  it once that branch lands; in this tree it has no second writer.
 - Promotion markers use the runtime identity's prefix
   (`memory-core-memory-promotion:` by default, `openclaw-memory-promotion:` under
   `OPENCLAW_COMPAT_RUNTIME_IDENTITY`); both prefixes are read (decision Q22).

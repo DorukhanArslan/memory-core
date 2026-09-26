@@ -174,3 +174,68 @@ def test_resolve_heartbeat_prompts():
         + heartbeat.HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS
     )
     assert heartbeat.resolve_heartbeat_prompt_for_response_tool(custom) == custom
+
+
+def _strip(text, **kwargs):
+    result = heartbeat.strip_heartbeat_token(text, **kwargs)
+    return (result.should_skip, result.text, result.did_strip)
+
+
+def test_strip_heartbeat_token_skips_empty_and_token_only_replies():
+    assert _strip(None, mode="heartbeat") == (True, "", False)
+    assert _strip("  ", mode="heartbeat") == (True, "", False)
+    assert _strip("HEARTBEAT_OK", mode="heartbeat") == (True, "", True)
+    assert _strip("HEARTBEAT_OK 🦞", mode="heartbeat") == (True, "", True)
+
+
+def test_strip_heartbeat_token_heartbeat_mode_ack_limit():
+    assert _strip("ALERT HEARTBEAT_OK", mode="heartbeat") == (True, "", True)
+    long = "A" * (heartbeat.DEFAULT_HEARTBEAT_ACK_MAX_CHARS + 1)
+    assert _strip(f"{long} HEARTBEAT_OK", mode="heartbeat") == (False, long, True)
+    assert _strip("ALERT HEARTBEAT_OK", mode="heartbeat", max_ack_chars=0) == (
+        False,
+        "ALERT",
+        True,
+    )
+    assert _strip("ALERT HEARTBEAT_OK", mode="heartbeat", max_ack_chars=" 5 ") == (True, "", True)
+    assert _strip("ALERT HEARTBEAT_OK", mode="heartbeat", max_ack_chars="") == (
+        False,
+        "ALERT",
+        True,
+    )
+
+
+def test_strip_heartbeat_token_counts_utf16_units():
+    # Each 🦞 is two UTF-16 units, as in JavaScript String.length.
+    assert _strip("🦞🦞 HEARTBEAT_OK", mode="heartbeat", max_ack_chars=3) == (False, "🦞🦞", True)
+    assert _strip("🦞🦞 HEARTBEAT_OK", mode="heartbeat", max_ack_chars=4) == (True, "", True)
+    assert _strip("x HEARTBEAT_OK🦞🦞", mode="message") == (False, "x🦞🦞", True)
+    assert _strip("x HEARTBEAT_OK🦞🦞🦞", mode="message") == (
+        False,
+        "x HEARTBEAT_OK🦞🦞🦞",
+        False,
+    )
+
+
+def test_strip_heartbeat_token_message_mode_edges_and_wrappers():
+    assert _strip("HEARTBEAT_OK hello", mode="message") == (False, "hello", True)
+    assert _strip("hello HEARTBEAT_OK") == (False, "hello", True)
+    assert _strip("hello HEARTBEAT_OK there", mode="message") == (
+        False,
+        "hello HEARTBEAT_OK there",
+        False,
+    )
+    assert _strip("<b>HEARTBEAT_OK</b>", mode="heartbeat") == (True, "", True)
+    assert _strip("**HEARTBEAT_OK**", mode="heartbeat") == (True, "", True)
+    assert _strip("<code>HEARTBEAT_OK</code> all good", mode="message") == (
+        False,
+        "all good",
+        True,
+    )
+    assert _strip("I should not respond HEARTBEAT_OK.", mode="message") == (
+        False,
+        "I should not respond.",
+        True,
+    )
+    assert _strip("All clear. HEARTBEAT_OK", mode="message") == (False, "All clear.", True)
+    assert _strip("Alert: disk full", mode="heartbeat") == (False, "Alert: disk full", False)

@@ -25,7 +25,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from memory_core.bootstrap._js import JS_SPACE_CLASS, js_trim, js_trim_start
+from memory_core.bootstrap._js import JS_SPACE_CLASS, js_trim, js_trim_end, js_trim_start
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY
 
 # src/auto-reply/tokens.ts:5
@@ -313,3 +313,164 @@ def is_task_due(last_run_ms: float | None, interval: str, now_ms: float) -> bool
     except ValueError:
         return False
     return now_ms - last_run_ms >= interval_ms
+
+
+# --- reply handling -------------------------------------------------------------------------
+
+StripHeartbeatMode = Literal["heartbeat", "message"]
+
+
+@dataclass(frozen=True)
+class HeartbeatStripResult:
+    """Result of :func:`strip_heartbeat_token`.
+
+    ``should_skip`` means the reply carries nothing to deliver (empty, a bare
+    acknowledgement, or in heartbeat mode a remainder of at most the ack limit).
+    """
+
+    should_skip: bool
+    text: str
+    did_strip: bool
+
+
+# JavaScript regexes without the u flag work on UTF-16 code units, so the text
+# is processed with astral characters split into surrogate pairs.
+_TOKEN_AT_END_RE = re.compile(re.escape(HEARTBEAT_TOKEN) + "[^A-Za-z0-9_]{0,4}\\Z")
+_HTML_TAG_RE = re.compile("<[^>]*>")
+_NBSP_ENTITY_RE = re.compile("&[nN][bB][sS][pP];")
+_LEADING_MARKUP_RE = re.compile("^[*`~_]+")
+_TRAILING_MARKUP_RE = re.compile("[*`~_]+\\Z")
+_JS_WHITESPACE_RUN_RE = re.compile(f"[{_S}]+")
+_DECIMAL_NUMBER_RE = re.compile(
+    "^[+-]?(?:Infinity|[0-9]+\\.?[0-9]*(?:[eE][+-]?[0-9]+)?|\\.[0-9]+(?:[eE][+-]?[0-9]+)?)\\Z"
+)
+_NON_DECIMAL_NUMBER_RE = re.compile("^0(?:[xX][0-9a-fA-F]+|[oO][0-7]+|[bB][01]+)\\Z")
+
+
+def _to_utf16_units(value: str) -> str:
+    if value.isascii():
+        return value
+    out: list[str] = []
+    for char in value:
+        code = ord(char)
+        if code > 0xFFFF:
+            code -= 0x10000
+            out.append(chr(0xD800 + (code >> 10)))
+            out.append(chr(0xDC00 + (code & 0x3FF)))
+        else:
+            out.append(char)
+    return "".join(out)
+
+
+def _from_utf16_units(value: str) -> str:
+    if value.isascii():
+        return value
+    return value.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "surrogatepass")
+
+
+def _js_string_to_number(value: str) -> float:
+    """``Number(string)`` (ECMAScript StringToNumber)."""
+    trimmed = js_trim(value)
+    if not trimmed:
+        return 0.0
+    if _DECIMAL_NUMBER_RE.match(trimmed):
+        return float(trimmed)
+    if _NON_DECIMAL_NUMBER_RE.match(trimmed):
+        base = {"x": 16, "o": 8, "b": 2}[trimmed[1].lower()]
+        return float(int(trimmed[2:], base))
+    return math.nan
+
+
+def _resolve_max_ack_chars(value: object) -> float:
+    # heartbeat.ts:200-208: strings go through Number(); anything that is not a
+    # finite number falls back to the default; negatives clamp to 0.
+    parsed = _js_string_to_number(value) if isinstance(value, str) else value
+    if (
+        isinstance(parsed, (int, float))
+        and not isinstance(parsed, bool)
+        and math.isfinite(parsed)
+    ):
+        return max(0, parsed)
+    return DEFAULT_HEARTBEAT_ACK_MAX_CHARS
+
+
+def _strip_token_at_edges(raw: str) -> tuple[str, bool]:
+    # heartbeat.ts:138-184, on UTF-16 units.
+    text = js_trim(raw)
+    if not text:
+        return "", False
+    if HEARTBEAT_TOKEN not in text:
+        return text, False
+    did_strip = False
+    changed = True
+    while changed:
+        changed = False
+        current = js_trim(text)
+        if current.startswith(HEARTBEAT_TOKEN):
+            text = js_trim_start(current[len(HEARTBEAT_TOKEN) :])
+            did_strip = True
+            changed = True
+            continue
+        if _TOKEN_AT_END_RE.search(current):
+            index = current.rfind(HEARTBEAT_TOKEN)
+            before = js_trim_end(current[:index])
+            if not before:
+                text = ""
+            else:
+                after = js_trim_start(current[index + len(HEARTBEAT_TOKEN) :])
+                text = js_trim_end(f"{before}{after}")
+            did_strip = True
+            changed = True
+    return js_trim(_JS_WHITESPACE_RUN_RE.sub(" ", text)), did_strip
+
+
+def _strip_markup(text: str) -> str:
+    text = _HTML_TAG_RE.sub(" ", text)
+    text = _NBSP_ENTITY_RE.sub(" ", text)
+    text = _LEADING_MARKUP_RE.sub("", text, count=1)
+    return _TRAILING_MARKUP_RE.sub("", text, count=1)
+
+
+def strip_heartbeat_token(
+    raw: str | None,
+    *,
+    mode: StripHeartbeatMode = "message",
+    max_ack_chars: int | float | str | None = None,
+) -> HeartbeatStripResult:
+    """Strip ``HEARTBEAT_OK`` acknowledgements (port of ``stripHeartbeatToken``,
+    ``src/auto-reply/heartbeat.ts:186-248``).
+
+    The token is removed at the start or end of the reply (with up to four
+    trailing non-word characters), also inside ``<b>``/``**``-style wrappers;
+    a token in the middle is left alone. In ``heartbeat`` mode a remainder of
+    at most ``max_ack_chars`` UTF-16 units (default 300) is still skipped, so a
+    heartbeat reply is delivered only when it carries a real alert. Heartbeat
+    replies use ``mode="heartbeat"`` with the configured ``ackMaxChars``
+    (``src/infra/heartbeat-runner.ts:862-874``).
+    """
+    if not raw:
+        return HeartbeatStripResult(True, "", False)
+    trimmed = js_trim(_to_utf16_units(raw))
+    if not trimmed:
+        return HeartbeatStripResult(True, "", False)
+    ack_limit = _resolve_max_ack_chars(max_ack_chars)
+
+    trimmed_normalized = _strip_markup(trimmed)
+    if HEARTBEAT_TOKEN not in trimmed and HEARTBEAT_TOKEN not in trimmed_normalized:
+        return HeartbeatStripResult(False, _from_utf16_units(trimmed), False)
+
+    original_text, original_stripped = _strip_token_at_edges(trimmed)
+    normalized_text, normalized_stripped = _strip_token_at_edges(trimmed_normalized)
+    if original_stripped and original_text:
+        picked_text, picked_stripped = original_text, original_stripped
+    else:
+        picked_text, picked_stripped = normalized_text, normalized_stripped
+    if not picked_stripped:
+        return HeartbeatStripResult(False, _from_utf16_units(trimmed), False)
+    if not picked_text:
+        return HeartbeatStripResult(True, "", True)
+
+    rest = js_trim(picked_text)
+    if mode == "heartbeat" and len(rest) <= ack_limit:
+        return HeartbeatStripResult(True, "", True)
+    return HeartbeatStripResult(False, _from_utf16_units(rest), True)

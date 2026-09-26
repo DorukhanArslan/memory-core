@@ -3940,3 +3940,78 @@ def test_real_openclaw_oracle_heartbeat_prompt_config_matches_python():
         }
         for text in HEARTBEAT_PROMPT_CONFIG_CASES
     ]
+
+
+_LONG_ACK = "A" * (heartbeat_module.DEFAULT_HEARTBEAT_ACK_MAX_CHARS + 1)
+HEARTBEAT_STRIP_CASES = [
+    {"text": None, "mode": "heartbeat"},
+    {"text": "  ", "mode": "heartbeat"},
+    {"text": "HEARTBEAT_OK", "mode": "heartbeat"},
+    {"text": "HEARTBEAT_OK 🦞", "mode": "heartbeat"},
+    {"text": "🦞 HEARTBEAT_OK", "mode": "heartbeat"},
+    {"text": "HEARTBEAT_OK🦞🦞", "mode": "message"},
+    {"text": "HEARTBEAT_OK🦞🦞🦞", "mode": "message"},
+    {"text": "x HEARTBEAT_OK🦞🦞", "mode": "message"},
+    {"text": "x HEARTBEAT_OK🦞🦞🦞", "mode": "message"},
+    {"text": "ALERT HEARTBEAT_OK", "mode": "heartbeat"},
+    {"text": f"{_LONG_ACK} HEARTBEAT_OK", "mode": "heartbeat"},
+    {"text": "HEARTBEAT_OK hello", "mode": "message"},
+    {"text": "hello HEARTBEAT_OK"},
+    {"text": "hello HEARTBEAT_OK there", "mode": "message"},
+    {"text": "<b>HEARTBEAT_OK</b>", "mode": "heartbeat"},
+    {"text": "**HEARTBEAT_OK**", "mode": "heartbeat"},
+    {"text": "**HEARTBEAT_OK**.", "mode": "heartbeat"},
+    {"text": "<code>HEARTBEAT_OK</code> all good", "mode": "message"},
+    {"text": "&NBSP;HEARTBEAT_OK&nbsp;", "mode": "message"},
+    {"text": "&nbſp;HEARTBEAT_OK", "mode": "message"},
+    {"text": "HEARTBEAT_OK.", "mode": "heartbeat"},
+    {"text": "HEARTBEAT_OK!!!", "mode": "heartbeat"},
+    {"text": "HEARTBEAT_OK---", "mode": "heartbeat"},
+    {"text": "HEARTBEAT_OK-----", "mode": "message"},
+    {"text": "I should not respond HEARTBEAT_OK.", "mode": "message"},
+    {
+        "text": "There is nothing todo, so i should respond with HEARTBEAT_OK !!!",
+        "mode": "heartbeat",
+    },
+    {"text": "All clear. HEARTBEAT_OK", "mode": "message"},
+    {"text": "All good. HEARTBEAT_OK", "mode": "heartbeat"},
+    {"text": "Alert: disk full", "mode": "heartbeat"},
+    {"text": "You have 3 unread urgent emails. HEARTBEAT_OK", "mode": "heartbeat"},
+    {"text": "Status HEARTBEAT_OK due to watchdog failure", "mode": "heartbeat"},
+    {"text": "HEARTBEAT_OK HEARTBEAT_OK\n\n  done", "mode": "message"},
+    {"text": "ALERT HEARTBEAT_OK", "mode": "heartbeat", "maxAckChars": 0},
+    {"text": "ALERT HEARTBEAT_OK", "mode": "heartbeat", "maxAckChars": 5},
+    {"text": "ALERT HEARTBEAT_OK", "mode": "heartbeat", "maxAckChars": 4.5},
+    {"text": "ALERT HEARTBEAT_OK", "mode": "heartbeat", "maxAckChars": -3},
+    {"text": "ALERT HEARTBEAT_OK", "mode": "heartbeat", "maxAckChars": "4"},
+    {"text": "ALERT HEARTBEAT_OK", "mode": "heartbeat", "maxAckChars": " 5 "},
+    {"text": "ALERT HEARTBEAT_OK", "mode": "heartbeat", "maxAckChars": ""},
+    {"text": "ALERT HEARTBEAT_OK", "mode": "heartbeat", "maxAckChars": "abc"},
+    {"text": "ALERT HEARTBEAT_OK", "mode": "heartbeat", "maxAckChars": "0x10"},
+    {"text": "ALERT HEARTBEAT_OK", "mode": "heartbeat", "maxAckChars": "5e-1"},
+    {"text": "ALERT HEARTBEAT_OK", "mode": "heartbeat", "maxAckChars": "Infinity"},
+    {"text": "ALERT HEARTBEAT_OK", "mode": "heartbeat", "maxAckChars": True},
+    {"text": "🦞🦞 HEARTBEAT_OK", "mode": "heartbeat", "maxAckChars": 3},
+    {"text": "🦞🦞 HEARTBEAT_OK", "mode": "heartbeat", "maxAckChars": 4},
+]
+
+
+def _python_strip_case(case: dict) -> dict:
+    kwargs = {}
+    if "mode" in case:
+        kwargs["mode"] = case["mode"]
+    if "maxAckChars" in case:
+        kwargs["max_ack_chars"] = case["maxAckChars"]
+    stripped = heartbeat_module.strip_heartbeat_token(case["text"], **kwargs)
+    return {
+        "shouldSkip": stripped.should_skip,
+        "text": stripped.text,
+        "didStrip": stripped.did_strip,
+    }
+
+
+def test_real_openclaw_oracle_strip_heartbeat_token_matches_python():
+    result = _oracle().run({"operation": "stripHeartbeatToken", "cases": HEARTBEAT_STRIP_CASES})
+
+    assert result["ok"] is True, result
+    assert result["result"] == [_python_strip_case(case) for case in HEARTBEAT_STRIP_CASES]

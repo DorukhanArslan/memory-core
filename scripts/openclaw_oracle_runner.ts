@@ -1188,6 +1188,21 @@ async function main() {
     };
   }
 
+  if (payload.operation === "stripHeartbeatToken") {
+    // src/auto-reply/heartbeat.ts stripHeartbeatToken; text null stands for undefined.
+    const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map((item) =>
+        heartbeat.stripHeartbeatToken(item.text ?? undefined, {
+          ...("mode" in item ? { mode: item.mode } : {}),
+          ...("maxAckChars" in item ? { maxAckChars: item.maxAckChars } : {}),
+        }),
+      ),
+    };
+  }
+
   const promotionOperations = new Set([
     "recordShortTermRecalls",
     "recordShortTermRecallSequence",

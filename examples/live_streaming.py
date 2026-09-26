@@ -45,7 +45,7 @@ async def run_live_turn(workspace_dir: str | Path) -> list[str]:
         subject_id="subj_123",
         reindex=False,
     )
-    trace_sink = JsonlTraceSink(workspace / "trace" / "session_456.jsonl")
+    trace_sink = JsonlTraceSink.for_session(workspace / "trace", "session_456")
     live_config = LiveSDKConfig(openclaw_compatible=True, trace_sink=trace_sink)
     context = LiveTurnContext(
         subject_id="subj_123",

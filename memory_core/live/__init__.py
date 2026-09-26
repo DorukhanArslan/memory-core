@@ -322,6 +322,16 @@ class JsonlTraceSink:
     def __init__(self, path: str | Path):
         object.__setattr__(self, "path", Path(path))
 
+    @classmethod
+    def for_session(cls, trace_dir: str | Path, session_id: str) -> "JsonlTraceSink":
+        """Trace sink at ``<trace_dir>/<session_id>.jsonl``.
+
+        ``session_id`` must pass the ``subject_id`` rule (``SAFE_ID_RE``, not
+        only dots), so it cannot leave ``trace_dir``; otherwise ``ValueError``.
+        """
+        safe_session_id = _validate_safe_id(session_id, label="session_id")
+        return cls(Path(trace_dir) / f"{safe_session_id}.jsonl")
+
     def record(self, event: LiveTurnEvent) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
@@ -398,6 +408,7 @@ class SubjectMemory:
         min_score: float = 0.0,
         corpus: str = "all",
     ) -> PreparedLiveTurn:
+        _validate_safe_id(context.session_id, label="session_id")
         _validate_context_subject(self.subject_id, context.subject_id)
         memory_search = self.memory.search(
             context.user_utterance,
@@ -455,7 +466,12 @@ class SubjectMemory:
         ``assistant_text``; the next iteration step re-raises the original
         exception. A consumer that stops iterating at ``live_turn_failed``
         closes the stream without the re-raise.
+
+        An unsafe ``context.session_id`` (see :meth:`JsonlTraceSink.for_session`)
+        raises ``ValueError`` before any event is yielded or recorded, because
+        hosts name trace files after it.
         """
+        _validate_safe_id(context.session_id, label="session_id")
         resolved_config = _resolve_live_sdk_config(
             config=config,
             openclaw_compatible=openclaw_compatible,
@@ -617,6 +633,8 @@ class SubjectMemory:
         timezone: str,
         trace_sink: TraceSink | None,
     ):
+        # Before the first trace write: hosts name trace files after session_id.
+        _validate_safe_id(session_id, label="session_id")
         _record_trace_event(
             SESSION_SUMMARY_STARTED,
             trace_sink=trace_sink,
@@ -695,7 +713,10 @@ class SubjectMemory:
 
 
 def _validate_safe_id(value: str, *, label: str) -> str:
-    if not SAFE_ID_RE.fullmatch(value):
+    # SAFE_ID_RE admits "." and "..", which name the directory itself or its
+    # parent once joined into a path; upstream's SAFE_SESSION_ID_RE
+    # (src/config/sessions/paths.ts) excludes them with a leading [a-z0-9].
+    if not SAFE_ID_RE.fullmatch(value) or not value.strip("."):
         raise ValueError(f"{label} is not filesystem-safe: {value}")
     return value
 

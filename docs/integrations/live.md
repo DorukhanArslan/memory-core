@@ -149,6 +149,14 @@ memory-core-state/
 user, customer, account, device, patient, lead, or another durable memory
 subject.
 
+`subject_id` and `session_id` must be filesystem-safe: letters, digits, `_`,
+`.` and `-` only (`SAFE_ID_RE`), and not only dots (`.` and `..` would name the
+namespace directory or the root). `SubjectMemory.open` rejects an unsafe
+`subject_id`. `prepare_live_turn`, `stream_live_turn` and
+`record_session_summary` reject an unsafe `session_id` with `ValueError` before
+any event is yielded or recorded, because hosts name trace files after it
+(`../../x` would otherwise write outside the trace directory).
+
 The default namespace is `subjects/<subject_id>`. Hosts can choose another
 namespace or provide a path builder:
 
@@ -191,7 +199,7 @@ memory = SubjectMemory.open(
     workspace_dir="./memory-core-state",
     subject_id="subj_123",
 )
-trace_sink = JsonlTraceSink("./memory-core-state/trace/session_456.jsonl")
+trace_sink = JsonlTraceSink.for_session("./memory-core-state/trace", "session_456")
 live_config = LiveSDKConfig(
     openclaw_compatible=True,
     trace_sink=trace_sink,
@@ -285,6 +293,10 @@ to observe the `session_summary_*` events at all; they are trace-only.
 ```json
 {"type":"sentence","text":"Tabii, yardimci olayim.","data":{}}
 ```
+
+`JsonlTraceSink.for_session(trace_dir, session_id)` builds
+`<trace_dir>/<session_id>.jsonl` and applies the same `session_id` check, so a
+host never joins an unchecked id into a path itself.
 
 This is intentionally append-only and generic. Production hosts can implement
 the `TraceSink` protocol to write events into their own audit log, database, or

@@ -1289,6 +1289,7 @@ def test_real_openclaw_oracle_memory_search_all_balances_memory_and_wiki(
 # resolvePromotionPolicy: deep-dreaming defaults, overridden by the payload's explicit values.
 # Python ranks and applies in one call (run_short_term_promotion) where the runner passes ranked
 # candidates to applyShortTermPromotions; the fixtures rank and apply with identical gates.
+# Apply runs under OPENCLAW_COMPAT_RUNTIME_IDENTITY so markers carry upstream's prefix.
 
 _POLICY_FIELDS = {
     "limit": "limit",
@@ -1375,6 +1376,7 @@ class _PythonPromotion:
             max_age_days=policy.max_age_days,
             recency_half_life_days=policy.recency_half_life_days,
             max_promoted_snippet_tokens=policy.max_promoted_snippet_tokens,
+            identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
             **extra,
         )
 

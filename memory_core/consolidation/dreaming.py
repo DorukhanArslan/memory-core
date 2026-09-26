@@ -33,6 +33,7 @@ from memory_core.consolidation.promotion import (
 )
 from memory_core.consolidation.recall import record_short_term_phase_signals
 from memory_core.consolidation.store import SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 
 DREAMING_PHASES = frozenset({"light", "rem", "deep"})
 DREAMS_FILE_NAME = "DREAMS.md"
@@ -68,13 +69,15 @@ def run_dreaming_sweep(
     now_ms: int,
     timezone: str,
     limit: int = 5,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> DreamingSweepResult:
     """Run one dreaming phase over the workspace's recall store.
 
     ``phase`` is ``"light"``, ``"rem"`` or ``"deep"`` (anything else raises
     ``ValueError``). Up to ``limit`` candidates are ranked without gates; the
     deep phase promotes with the default gates and the same ``limit``.
-    ``files_changed`` lists workspace-relative paths the sweep wrote.
+    ``files_changed`` lists workspace-relative paths the sweep wrote;
+    ``identity`` picks the promotion marker prefix of the deep phase.
     """
     if phase not in DREAMING_PHASES:
         raise ValueError(f"unsupported dreaming phase: {phase}")
@@ -119,6 +122,7 @@ def run_dreaming_sweep(
             now_ms=now_ms,
             timezone=timezone,
             limit=limit,
+            identity=identity,
         )
         if promotion.parsed.should_write:
             files_changed.append(promotion.target)

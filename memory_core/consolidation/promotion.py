@@ -67,6 +67,7 @@ from memory_core.consolidation.store import (
     write_recall_store,
 )
 from memory_core.memory_budget import DEFAULT_MEMORY_FILE_MAX_CHARS, compact_memory_for_budget
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.workspace import MemoryWorkspace
 
 PROMOTION_TARGET = "MEMORY.md"
@@ -192,6 +193,7 @@ def run_short_term_promotion(
     recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
     memory_file_max_chars: int = DEFAULT_MEMORY_FILE_MAX_CHARS,
     max_promoted_snippet_tokens: int = DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> MemoryPromotionRun:
     """Promote the top gated recall entries into ``MEMORY.md`` and reindex.
 
@@ -204,6 +206,11 @@ def run_short_term_promotion(
     ``memory_file_max_chars``, mark every rehydrated entry ``promotedAt`` and
     reindex ``store`` when MEMORY.md changed. A held lock returns a
     ``"promotion locked"`` no-op result.
+
+    New markers use ``identity.promotion_marker_prefix`` (the neutral
+    ``memory-core-memory-promotion:`` by default; pass
+    ``OPENCLAW_COMPAT_RUNTIME_IDENTITY`` for upstream's bytes); existing
+    markers of either prefix reconcile.
     """
     with acquire_short_term_promotion_lock(config=config, now_ms=now_ms) as lock:
         if not lock.acquired:
@@ -234,6 +241,7 @@ def run_short_term_promotion(
             recency_half_life_days=recency_half_life_days,
             memory_file_max_chars=memory_file_max_chars,
             max_promoted_snippet_tokens=max_promoted_snippet_tokens,
+            identity=identity,
         )
 
 
@@ -378,6 +386,7 @@ def _run_short_term_promotion_unlocked(
     recency_half_life_days: float,
     memory_file_max_chars: int,
     max_promoted_snippet_tokens: int,
+    identity: RuntimeIdentity,
 ) -> MemoryPromotionRun:
     workspace = MemoryWorkspace(config.workspace_dir)
     target = PROMOTION_TARGET
@@ -417,7 +426,9 @@ def _run_short_term_promotion_unlocked(
     compacted_dates: tuple[str, ...] = ()
     if rehydrated_candidates:
         entry = (
-            _build_promotion_section(to_append, now_ms, timezone, max_promoted_snippet_tokens)
+            _build_promotion_section(
+                to_append, now_ms, timezone, max_promoted_snippet_tokens, identity
+            )
             if to_append
             else ""
         )
@@ -566,12 +577,13 @@ def _build_promotion_section(
     now_ms: int,
     timezone: str,
     max_promoted_snippet_tokens: int = DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> str:
     section_date = format_memory_dreaming_day(now_ms, timezone)
     lines = ["", f"## {PROMOTION_SECTION_TITLE} ({section_date})", ""]
     for candidate in candidates:
         source = f"{candidate.path}:{candidate.start_line}-{candidate.end_line}"
-        lines.append(format_promotion_marker(candidate.key))
+        lines.append(format_promotion_marker(candidate.key, identity))
         # Cap only the visible MEMORY.md text; the recall store keeps the full
         # rehydrated snippet for ranking and provenance.
         snippet = _format_promoted_snippet_for_memory(

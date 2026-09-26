@@ -37,7 +37,9 @@ from memory_core.consolidation.dreaming import (
     serialize_promotion_run,
 )
 from memory_core.consolidation.markers import (
-    PROMOTION_MARKER_PREFIX,
+    OPENCLAW_PROMOTION_MARKER_PREFIX,
+    PROMOTION_MARKER_PREFIXES,
+    MEMORY_CORE_PROMOTION_MARKER_PREFIX,
     extract_promotion_markers,
     format_promotion_marker,
 )
@@ -100,7 +102,9 @@ __all__ = [
     "MAX_CONCEPT_TAGS",
     "MemoryPromotionRun",
     "PROMOTION_COMPONENT_WEIGHTS",
-    "PROMOTION_MARKER_PREFIX",
+    "OPENCLAW_PROMOTION_MARKER_PREFIX",
+    "PROMOTION_MARKER_PREFIXES",
+    "MEMORY_CORE_PROMOTION_MARKER_PREFIX",
     "PromotionCandidate",
     "PromotionEvaluation",
     "PromotionWriteOutcome",

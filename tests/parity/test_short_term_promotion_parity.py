@@ -21,6 +21,7 @@ from memory_core.consolidation import (
     run_short_term_promotion,
 )
 from memory_core.embeddings.base import FakeEmbeddingProvider
+from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 
 
@@ -923,6 +924,7 @@ def test_second_promotion_apply_reconciles_existing_marker_without_duplicate_lik
         min_score=0,
         min_recall_count=0,
         min_unique_queries=0,
+        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     )
     memory_after_first = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
     recall_path = tmp_path / "memory" / ".dreams" / "short-term-recall.json"
@@ -940,6 +942,7 @@ def test_second_promotion_apply_reconciles_existing_marker_without_duplicate_lik
         min_score=0,
         min_recall_count=0,
         min_unique_queries=0,
+        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     )
 
     assert first.parsed.should_write is True
@@ -1250,6 +1253,7 @@ def _promote_ungated(config: MemoryConfig, now_ms: int, **kwargs):
         min_score=0,
         min_recall_count=0,
         min_unique_queries=0,
+        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
         **kwargs,
     )
 

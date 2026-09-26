@@ -22,6 +22,11 @@ class RuntimeIdentity:
     bootstrap_truncation_limits_line: str = (
         "If unintentional, raise the per-file and/or total bootstrap character limits."
     )
+    # Prefix of the `<!-- <prefix><recall key> -->` marker written above each promoted
+    # MEMORY.md entry (OpenClaw extensions/memory-core/src/short-term-promotion.ts:52
+    # PROMOTION_MARKER_PREFIX). memory_core.consolidation reads every known prefix and writes
+    # this one.
+    promotion_marker_prefix: str = "memory-core-memory-promotion:"
 
 
 MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -38,6 +43,7 @@ MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
     bootstrap_truncation_limits_line=(
         "If unintentional, raise the per-file and/or total bootstrap character limits."
     ),
+    promotion_marker_prefix="memory-core-memory-promotion:",
 )
 
 OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -55,4 +61,5 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
         "If unintentional, raise agents.defaults.bootstrapMaxChars and/or "
         "agents.defaults.bootstrapTotalMaxChars."
     ),
+    promotion_marker_prefix="openclaw-memory-promotion:",
 )

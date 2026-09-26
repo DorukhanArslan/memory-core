@@ -1,6 +1,8 @@
+import dataclasses
 import os
 from pathlib import Path
 import json
+import shutil
 import tempfile
 import re
 
@@ -39,6 +41,15 @@ from memory_core.overflow_recovery import (
     is_likely_context_overflow_error,
 )
 from memory_core.config import MemoryConfig
+from memory_core.consolidation import (
+    MemoryPromotionRun,
+    PromotionCandidate,
+    derive_concept_tags,
+    rank_short_term_promotion_candidates,
+    record_short_term_recalls,
+    resolve_deep_dreaming_policy,
+    run_short_term_promotion,
+)
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.tools.memory_search import memory_search
@@ -119,40 +130,38 @@ def test_real_openclaw_oracle_deep_policy():
     assert result["result"]["limit"] == 10
     assert result["result"]["recencyHalfLifeDays"] == 14
     assert result["result"]["maxPromotedSnippetTokens"] == 160
+    assert result["result"] == resolve_deep_dreaming_policy({}).as_dict()
 
 
 def test_real_openclaw_oracle_deep_policy_uses_configured_values():
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
 
-    result = oracle.run(
-        {
-            "operation": "deepPolicy",
-            "config": {
-                "plugins": {
-                    "entries": {
-                        "memory-core": {
-                            "config": {
-                                "dreaming": {
+    config = {
+        "plugins": {
+            "entries": {
+                "memory-core": {
+                    "config": {
+                        "dreaming": {
+                            "enabled": True,
+                            "phases": {
+                                "deep": {
                                     "enabled": True,
-                                    "phases": {
-                                        "deep": {
-                                            "enabled": True,
-                                            "limit": 7,
-                                            "minScore": 0.72,
-                                            "minRecallCount": 4,
-                                            "minUniqueQueries": 2,
-                                            "maxAgeDays": 14,
-                                            "recencyHalfLifeDays": 10,
-                                        }
-                                    },
+                                    "limit": 7,
+                                    "minScore": 0.72,
+                                    "minRecallCount": 4,
+                                    "minUniqueQueries": 2,
+                                    "maxAgeDays": 14,
+                                    "recencyHalfLifeDays": 10,
                                 }
-                            }
+                            },
                         }
                     }
                 }
-            },
+            }
         }
-    )
+    }
+
+    result = oracle.run({"operation": "deepPolicy", "config": config})
 
     assert result["ok"] is True
     assert result["operation"] == "deepPolicy"
@@ -164,6 +173,7 @@ def test_real_openclaw_oracle_deep_policy_uses_configured_values():
     assert result["result"]["maxAgeDays"] == 14
     assert result["result"]["recencyHalfLifeDays"] == 10
     assert result["result"]["maxPromotedSnippetTokens"] == 160
+    assert result["result"] == resolve_deep_dreaming_policy(config).as_dict()
 
 
 def test_real_openclaw_oracle_flush_plan_matches_python_defaults(tmp_path: Path):
@@ -1272,7 +1282,198 @@ def test_real_openclaw_oracle_memory_search_all_balances_memory_and_wiki(
     assert len(paths_by_corpus) == 5
 
 
-def test_real_openclaw_oracle_records_short_term_recall():
+# --- Python side of the promotion fixtures (memory_core.consolidation) ---------------------------
+#
+# Each promotion test below replays its oracle inputs on a copy of the seeded workspace through
+# memory_core.consolidation and asserts Python == TS. The policy mirrors the runner's
+# resolvePromotionPolicy: deep-dreaming defaults, overridden by the payload's explicit values.
+# Python ranks and applies in one call (run_short_term_promotion) where the runner passes ranked
+# candidates to applyShortTermPromotions; the fixtures rank and apply with identical gates.
+
+_POLICY_FIELDS = {
+    "limit": "limit",
+    "minScore": "min_score",
+    "minRecallCount": "min_recall_count",
+    "minUniqueQueries": "min_unique_queries",
+    "maxAgeDays": "max_age_days",
+    "recencyHalfLifeDays": "recency_half_life_days",
+    "maxPromotedSnippetTokens": "max_promoted_snippet_tokens",
+}
+# Candidate fields both sides expose. Python candidates carry no recallDays, source or
+# first/lastRecalledAt; those are compared through the recall store instead.
+_CANDIDATE_FIELDS = (
+    "key",
+    "path",
+    "startLine",
+    "endLine",
+    "snippet",
+    "recallCount",
+    "dailyCount",
+    "groundedCount",
+    "signalCount",
+    "avgScore",
+    "maxScore",
+    "uniqueQueries",
+    "ageDays",
+    "score",
+    "conceptTags",
+    "components",
+)
+_RECALL_STORE = "memory/.dreams/short-term-recall.json"
+
+
+class _PythonPromotion:
+    """Replays promotion oracle operations on a Python workspace."""
+
+    def __init__(self, workspace: Path):
+        self.workspace = workspace
+        self.config = MemoryConfig(
+            workspace_dir=workspace, store_path=workspace.parent / f"{workspace.name}.sqlite"
+        )
+
+    @classmethod
+    def copy_of(cls, seeded: Path, target: Path) -> "_PythonPromotion":
+        """Copy the seeded oracle workspace to ``target`` before any operation runs."""
+        shutil.copytree(seeded, target)
+        return cls(target)
+
+    def record(self, query: str, results: list[dict], now_ms: int) -> None:
+        record_short_term_recalls(config=self.config, query=query, results=results, now_ms=now_ms)
+
+    def record_sequence(self, recalls: list[dict]) -> None:
+        for recall in recalls:
+            self.record(recall["query"], recall["results"], recall["nowMs"])
+
+    def rank(self, now_ms: int, **payload) -> list[dict]:
+        policy = _runner_policy(payload)
+        candidates = rank_short_term_promotion_candidates(
+            config=self.config,
+            now_ms=now_ms,
+            limit=policy.limit,
+            min_score=policy.min_score,
+            min_recall_count=policy.min_recall_count,
+            min_unique_queries=policy.min_unique_queries,
+            max_age_days=policy.max_age_days,
+            recency_half_life_days=policy.recency_half_life_days,
+        )
+        return [_python_candidate_view(candidate) for candidate in candidates]
+
+    def apply(
+        self, now_ms: int, timezone: str, memory_file_max_chars: int | None = None, **payload
+    ) -> MemoryPromotionRun:
+        policy = _runner_policy(payload)
+        extra = {} if memory_file_max_chars is None else {"memory_file_max_chars": memory_file_max_chars}
+        return run_short_term_promotion(
+            config=self.config,
+            store=SQLiteMemoryStore(self.config, FakeEmbeddingProvider(dimensions=8)),
+            now_ms=now_ms,
+            timezone=timezone,
+            limit=policy.limit,
+            min_score=policy.min_score,
+            min_recall_count=policy.min_recall_count,
+            min_unique_queries=policy.min_unique_queries,
+            max_age_days=policy.max_age_days,
+            recency_half_life_days=policy.recency_half_life_days,
+            max_promoted_snippet_tokens=policy.max_promoted_snippet_tokens,
+            **extra,
+        )
+
+    def memory_text(self) -> str:
+        path = self.workspace / "MEMORY.md"
+        return path.read_text(encoding="utf-8") if path.exists() else ""
+
+    def recall_entries(self) -> dict:
+        path = self.workspace / _RECALL_STORE
+        return json.loads(path.read_text(encoding="utf-8"))["entries"] if path.exists() else {}
+
+    def edit_recall_store(self, edit) -> None:
+        path = self.workspace / _RECALL_STORE
+        store = json.loads(path.read_text(encoding="utf-8"))
+        edit(store)
+        path.write_text(json.dumps(store, indent=2) + "\n", encoding="utf-8")
+
+
+def _runner_policy(payload: dict):
+    overrides = {_POLICY_FIELDS[key]: value for key, value in payload.items()}
+    return dataclasses.replace(resolve_deep_dreaming_policy({}), **overrides)
+
+
+def _ulp_tolerant(value):
+    """Wrap every float in ``value`` for a 1e-12 relative comparison.
+
+    V8's fdlibm ``Math.exp``/``Math.log1p`` and the platform libm behind ``math.exp``/``math.log1p``
+    can differ in the last ulp (recency at 7 days, half-life 14: TS 0.7071067811865475, Python
+    0.7071067811865476), so candidate floats match to rounding, not bit for bit.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        return pytest.approx(value, rel=1e-12, abs=1e-15)
+    if isinstance(value, dict):
+        return {key: _ulp_tolerant(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_ulp_tolerant(item) for item in value]
+    return value
+
+
+def _python_candidate_view(candidate: PromotionCandidate) -> dict:
+    view = {
+        "key": candidate.key,
+        "path": candidate.path,
+        "startLine": candidate.start_line,
+        "endLine": candidate.end_line,
+        "snippet": candidate.snippet,
+        "recallCount": candidate.recall_count,
+        "dailyCount": candidate.daily_count,
+        "groundedCount": candidate.grounded_count,
+        "signalCount": candidate.signal_count,
+        "avgScore": candidate.avg_score,
+        "maxScore": candidate.max_score,
+        "uniqueQueries": candidate.unique_queries,
+        "ageDays": candidate.age_days,
+        "score": candidate.score,
+        "conceptTags": list(candidate.concept_tags),
+        # Upstream folds the phase boost into the score without listing it as a component.
+        "components": {
+            key: value for key, value in candidate.components.items() if key != "phaseBoost"
+        },
+    }
+    assert tuple(view) == _CANDIDATE_FIELDS
+    return _ulp_tolerant(view)
+
+
+def _ts_candidate_views(result: dict) -> list[dict]:
+    return [
+        {field: candidate[field] for field in _CANDIDATE_FIELDS}
+        for candidate in result["result"]["candidates"]
+    ]
+
+
+def _ts_recall_entries(result: dict) -> dict:
+    return json.loads(result["files"][_RECALL_STORE])["entries"]
+
+
+def _assert_apply_matches(ts: dict, python: MemoryPromotionRun, python_side: _PythonPromotion):
+    assert python_side.memory_text() == ts["files"]["MEMORY.md"]
+    assert python_side.recall_entries() == _ts_recall_entries(ts)
+    assert {
+        "applied": len(python.applied_candidates),
+        "appended": python.appended,
+        "reconciledExisting": python.reconciled_existing,
+        "compactedSections": len(python.compacted_dates),
+        "compactedDates": list(python.compacted_dates),
+        "appliedKeys": [candidate.key for candidate in python.applied_candidates],
+    } == {
+        "applied": ts["result"]["applied"],
+        "appended": ts["result"]["appended"],
+        "reconciledExisting": ts["result"]["reconciledExisting"],
+        "compactedSections": ts["result"]["compactedSections"],
+        "compactedDates": ts["result"]["compactedDates"],
+        "appliedKeys": [candidate["key"] for candidate in ts["result"]["appliedCandidates"]],
+    }
+
+
+def test_real_openclaw_oracle_records_short_term_recall(tmp_path: Path):
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
 
     with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-integration-") as tmp_dir:
@@ -1283,6 +1484,7 @@ def test_real_openclaw_oracle_records_short_term_recall():
             "# 2026-05-26\n\n- User prefers to be addressed as dodo.\n",
             encoding="utf-8",
         )
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         result = oracle.run(
             {
                 "operation": "recordShortTermRecalls",
@@ -1308,9 +1510,24 @@ def test_real_openclaw_oracle_records_short_term_recall():
     recall_store = result["files"]["memory/.dreams/short-term-recall.json"]
     assert "User prefers to be addressed as dodo." in recall_store
     assert '"recallCount": 1' in recall_store
+    python_side.record(
+        "address preference",
+        [
+            {
+                "source": "memory",
+                "path": "memory/2026-05-26.md",
+                "startLine": 3,
+                "endLine": 3,
+                "snippet": "- User prefers to be addressed as dodo.",
+                "score": 1,
+            }
+        ],
+        1779811200000,
+    )
+    assert python_side.recall_entries() == _ts_recall_entries(result)
 
 
-def test_real_openclaw_oracle_records_short_term_recall_sequence():
+def test_real_openclaw_oracle_records_short_term_recall_sequence(tmp_path: Path):
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
 
     with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-sequence-") as tmp_dir:
@@ -1321,6 +1538,7 @@ def test_real_openclaw_oracle_records_short_term_recall_sequence():
             "# 2026-05-26\n\n- User prefers to be addressed as dodo.\n",
             encoding="utf-8",
         )
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         base_result = {
             "source": "memory",
             "path": "memory/2026-05-26.md",
@@ -1329,35 +1547,37 @@ def test_real_openclaw_oracle_records_short_term_recall_sequence():
             "snippet": "- User prefers to be addressed as dodo.",
             "score": 1,
         }
+        recalls = [
+            {
+                "query": "address preference",
+                "results": [base_result],
+                "nowMs": 1779811200000,
+            },
+            {
+                "query": "preferred name",
+                "results": [
+                    base_result,
+                    {
+                        "source": "workspace",
+                        "path": "notes.md",
+                        "startLine": 1,
+                        "endLine": 1,
+                        "snippet": "Ignore this non-memory result.",
+                        "score": 1,
+                    },
+                ],
+                "nowMs": 1779897600000,
+            },
+        ]
         result = oracle.run(
             {
                 "operation": "recordShortTermRecallSequence",
                 "workspaceDir": str(workspace),
                 "timezone": "Europe/Istanbul",
-                "recalls": [
-                    {
-                        "query": "address preference",
-                        "results": [base_result],
-                        "nowMs": 1779811200000,
-                    },
-                    {
-                        "query": "preferred name",
-                        "results": [
-                            base_result,
-                            {
-                                "source": "workspace",
-                                "path": "notes.md",
-                                "startLine": 1,
-                                "endLine": 1,
-                                "snippet": "Ignore this non-memory result.",
-                                "score": 1,
-                            },
-                        ],
-                        "nowMs": 1779897600000,
-                    },
-                ],
+                "recalls": recalls,
             }
         )
+        python_side.record_sequence(recalls)
 
     assert result["ok"] is True
     assert result["operation"] == "recordShortTermRecallSequence"
@@ -1368,6 +1588,7 @@ def test_real_openclaw_oracle_records_short_term_recall_sequence():
     assert entry["recallCount"] == 2
     assert entry["queryHashes"] == ["aa5368a7c7bd", "1da206d81a95"]
     assert entry["recallDays"] == ["2026-05-26", "2026-05-27"]
+    assert python_side.recall_entries() == entries
 
 
 def test_real_openclaw_oracle_derives_concept_vocabulary_tags():
@@ -1432,9 +1653,10 @@ def test_real_openclaw_oracle_derives_concept_vocabulary_tags():
 
         assert result["ok"] is True
         assert result["result"]["conceptTags"] == expected_tags
+        assert derive_concept_tags(relative_path, snippet) == result["result"]["conceptTags"]
 
 
-def test_real_openclaw_oracle_ranks_short_term_promotion_candidate():
+def test_real_openclaw_oracle_ranks_short_term_promotion_candidate(tmp_path: Path):
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
 
     with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-ranking-") as tmp_dir:
@@ -1445,6 +1667,7 @@ def test_real_openclaw_oracle_ranks_short_term_promotion_candidate():
             "# 2026-05-26\n\n- User prefers to be addressed as dodo.\n",
             encoding="utf-8",
         )
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         base_result = {
             "source": "memory",
             "path": "memory/2026-05-26.md",
@@ -1460,21 +1683,23 @@ def test_real_openclaw_oracle_ranks_short_term_promotion_candidate():
             "name preference",
             "how to address user",
         ]
+        recalls = [
+            {
+                "query": query,
+                "results": [base_result],
+                "nowMs": 1779811200000 + index * 86_400_000,
+            }
+            for index, query in enumerate(queries)
+        ]
         oracle.run(
             {
                 "operation": "recordShortTermRecallSequence",
                 "workspaceDir": str(workspace),
                 "timezone": "Europe/Istanbul",
-                "recalls": [
-                    {
-                        "query": query,
-                        "results": [base_result],
-                        "nowMs": 1779811200000 + index * 86_400_000,
-                    }
-                    for index, query in enumerate(queries)
-                ],
+                "recalls": recalls,
             }
         )
+        python_side.record_sequence(recalls)
         result = oracle.run(
             {
                 "operation": "rankShortTermPromotionCandidates",
@@ -1498,9 +1723,10 @@ def test_real_openclaw_oracle_ranks_short_term_promotion_candidate():
     assert candidate["components"]["recency"] == 1
     assert candidate["components"]["consolidation"] == pytest.approx(0.8071428571428572)
     assert candidate["components"]["conceptual"] == 0.5
+    assert python_side.rank(1779811200000 + 4 * 86_400_000) == _ts_candidate_views(result)
 
 
-def test_real_openclaw_oracle_first_promotion_write_bootstraps_memory_header():
+def test_real_openclaw_oracle_first_promotion_write_bootstraps_memory_header(tmp_path: Path):
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=60,
@@ -1511,6 +1737,7 @@ def test_real_openclaw_oracle_first_promotion_write_bootstraps_memory_header():
         memory_file = workspace / "memory" / "2026-05-08.md"
         memory_file.parent.mkdir(parents=True, exist_ok=True)
         memory_file.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         result = {
             "source": "memory",
             "path": "memory/2026-05-08.md",
@@ -1559,9 +1786,14 @@ def test_real_openclaw_oracle_first_promotion_write_bootstraps_memory_header():
     assert applied["files"]["MEMORY.md"].startswith(
         "# Long-Term Memory\n\n\n## Promoted From Short-Term Memory (2026-05-26)"
     )
+    gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+    python_side.record("glacier", [result], 1779811200000)
+    assert python_side.rank(1779811200000, **gates) == _ts_candidate_views(ranked)
+    python_run = python_side.apply(1779811200000, "Europe/Istanbul", **gates)
+    _assert_apply_matches(applied, python_run, python_side)
 
 
-def test_real_openclaw_oracle_second_apply_reconciles_existing_marker_without_duplicate():
+def test_real_openclaw_oracle_second_apply_reconciles_existing_marker_without_duplicate(tmp_path: Path):
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=60,
@@ -1572,6 +1804,7 @@ def test_real_openclaw_oracle_second_apply_reconciles_existing_marker_without_du
         memory_file = workspace / "memory" / "2026-05-08.md"
         memory_file.parent.mkdir(parents=True, exist_ok=True)
         memory_file.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         result = {
             "source": "memory",
             "path": "memory/2026-05-08.md",
@@ -1641,9 +1874,16 @@ def test_real_openclaw_oracle_second_apply_reconciles_existing_marker_without_du
     memory_text = second["files"]["MEMORY.md"]
     assert memory_text.count("openclaw-memory-promotion:") == 1
     assert memory_text.count("Move backups to S3 Glacier.") == 1
+    gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+    python_side.record("glacier", [result], 1779811200000)
+    python_first = python_side.apply(1779811200000, "Europe/Istanbul", **gates)
+    _assert_apply_matches(first, python_first, python_side)
+    python_side.edit_recall_store(lambda store: store["entries"][key].pop("promotedAt"))
+    python_second = python_side.apply(1779811200000, "Europe/Istanbul", **gates)
+    _assert_apply_matches(second, python_second, python_side)
 
 
-def test_real_openclaw_oracle_ranking_applies_max_age_gate():
+def test_real_openclaw_oracle_ranking_applies_max_age_gate(tmp_path: Path):
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=60,
@@ -1654,6 +1894,7 @@ def test_real_openclaw_oracle_ranking_applies_max_age_gate():
         memory_file = workspace / "memory" / "2026-05-08.md"
         memory_file.parent.mkdir(parents=True, exist_ok=True)
         memory_file.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         result = {
             "source": "memory",
             "path": "memory/2026-05-08.md",
@@ -1702,9 +1943,15 @@ def test_real_openclaw_oracle_ranking_applies_max_age_gate():
     assert ranked_without_gate["result"]["candidates"][0]["ageDays"] == 3
     assert ranked_with_gate["ok"] is True
     assert ranked_with_gate["result"]["candidates"] == []
+    gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+    python_side.record("glacier", [result], 1778241600000)
+    assert python_side.rank(1778500800000, **gates, maxAgeDays=-1) == _ts_candidate_views(
+        ranked_without_gate
+    )
+    assert python_side.rank(1778500800000, **gates, maxAgeDays=2) == []
 
 
-def test_real_openclaw_oracle_ranking_uses_recency_half_life_days():
+def test_real_openclaw_oracle_ranking_uses_recency_half_life_days(tmp_path: Path):
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=60,
@@ -1715,6 +1962,7 @@ def test_real_openclaw_oracle_ranking_uses_recency_half_life_days():
         memory_file = workspace / "memory" / "2026-05-08.md"
         memory_file.parent.mkdir(parents=True, exist_ok=True)
         memory_file.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         result = {
             "source": "memory",
             "path": "memory/2026-05-08.md",
@@ -1766,9 +2014,15 @@ def test_real_openclaw_oracle_ranking_uses_recency_half_life_days():
     assert half_life_candidate["ageDays"] == 7
     assert half_life_candidate["components"]["recency"] == pytest.approx(0.5)
     assert half_life_candidate["score"] < default_candidate["score"]
+    gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+    python_side.record("glacier", [result], 1778241600000)
+    assert python_side.rank(1778846400000, **gates) == _ts_candidate_views(ranked_default)
+    assert python_side.rank(1778846400000, **gates, recencyHalfLifeDays=7) == _ts_candidate_views(
+        ranked_half_life_7
+    )
 
 
-def test_real_openclaw_oracle_ranking_applies_score_recall_unique_query_and_limit_gates():
+def test_real_openclaw_oracle_ranking_applies_score_recall_unique_query_and_limit_gates(tmp_path: Path):
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=60,
@@ -1785,6 +2039,7 @@ def test_real_openclaw_oracle_ranking_applies_score_recall_unique_query_and_limi
             "- Weak promotion candidate for notes.\n",
             encoding="utf-8",
         )
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         strong = {
             "source": "memory",
             "path": "memory/2026-05-08.md",
@@ -1809,30 +2064,32 @@ def test_real_openclaw_oracle_ranking_applies_score_recall_unique_query_and_limi
             "snippet": "- Weak promotion candidate for notes.",
             "score": 0.8,
         }
+        recalls = [
+            {
+                "query": "backup policy",
+                "results": [strong, medium, weak],
+                "nowMs": 1778241600000,
+            },
+            {
+                "query": "backup retention",
+                "results": [strong, medium],
+                "nowMs": 1778241600001,
+            },
+            {
+                "query": "backup restore",
+                "results": [strong],
+                "nowMs": 1778241600002,
+            },
+        ]
         oracle.run(
             {
                 "operation": "recordShortTermRecallSequence",
                 "workspaceDir": str(workspace),
                 "timezone": "Europe/Istanbul",
-                "recalls": [
-                    {
-                        "query": "backup policy",
-                        "results": [strong, medium, weak],
-                        "nowMs": 1778241600000,
-                    },
-                    {
-                        "query": "backup retention",
-                        "results": [strong, medium],
-                        "nowMs": 1778241600001,
-                    },
-                    {
-                        "query": "backup restore",
-                        "results": [strong],
-                        "nowMs": 1778241600002,
-                    },
-                ],
+                "recalls": recalls,
             }
         )
+        python_side.record_sequence(recalls)
         baseline = oracle.run(
             {
                 "operation": "rankShortTermPromotionCandidates",
@@ -1917,9 +2174,26 @@ def test_real_openclaw_oracle_ranking_applies_score_recall_unique_query_and_limi
         "memory:memory/2026-05-08.md:3:3"
     ]
     assert above_top_score["result"]["candidates"] == []
+    now_ms = 1778241600002
+    for ts_result, payload in (
+        (baseline, {"limit": 10, "minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}),
+        (min_recall, {"limit": 10, "minScore": 0, "minRecallCount": 2, "minUniqueQueries": 0}),
+        (unique_queries, {"limit": 10, "minScore": 0, "minRecallCount": 0, "minUniqueQueries": 3}),
+        (limited, {"limit": 1, "minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}),
+        (
+            above_top_score,
+            {
+                "limit": 10,
+                "minScore": top_score + 0.001,
+                "minRecallCount": 0,
+                "minUniqueQueries": 0,
+            },
+        ),
+    ):
+        assert python_side.rank(now_ms, **payload) == _ts_candidate_views(ts_result)
 
 
-def test_real_openclaw_oracle_reconciles_existing_promotion_marker():
+def test_real_openclaw_oracle_reconciles_existing_promotion_marker(tmp_path: Path):
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=60,
@@ -1939,6 +2213,7 @@ def test_real_openclaw_oracle_reconciles_existing_promotion_marker():
             "source=memory/2026-05-08.md:3-3]\n",
             encoding="utf-8",
         )
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         base_result = {
             "source": "memory",
             "path": "memory/2026-05-08.md",
@@ -1947,27 +2222,28 @@ def test_real_openclaw_oracle_reconciles_existing_promotion_marker():
             "snippet": "- Move backups to S3 Glacier.",
             "score": 1,
         }
+        recalls = [
+            {
+                "query": query,
+                "results": [base_result],
+                "nowMs": 1779811200000 + index,
+            }
+            for index, query in enumerate(
+                (
+                    "backup policy",
+                    "glacier backup",
+                    "s3 retention",
+                    "cold storage",
+                    "backup notes",
+                )
+            )
+        ]
         oracle.run(
             {
                 "operation": "recordShortTermRecallSequence",
                 "workspaceDir": str(workspace),
                 "timezone": "Europe/Istanbul",
-                "recalls": [
-                    {
-                        "query": query,
-                        "results": [base_result],
-                        "nowMs": 1779811200000 + index,
-                    }
-                    for index, query in enumerate(
-                        (
-                            "backup policy",
-                            "glacier backup",
-                            "s3 retention",
-                            "cold storage",
-                            "backup notes",
-                        )
-                    )
-                ],
+                "recalls": recalls,
             }
         )
         ranked = oracle.run(
@@ -2002,9 +2278,14 @@ def test_real_openclaw_oracle_reconciles_existing_promotion_marker():
     assert applied["result"]["reconciledExisting"] == 1
     recall_store = json.loads(applied["files"]["memory/.dreams/short-term-recall.json"])
     assert recall_store["entries"][key]["promotedAt"] == "2026-05-26T16:00:00.000Z"
+    gates = {"minScore": 0, "minRecallCount": 1, "minUniqueQueries": 1}
+    python_side.record_sequence(recalls)
+    assert python_side.rank(1779811200000, **gates) == _ts_candidate_views(ranked)
+    python_run = python_side.apply(1779811200000, "Europe/Istanbul", **gates)
+    _assert_apply_matches(applied, python_run, python_side)
 
 
-def test_real_openclaw_oracle_reconciles_spaced_case_insensitive_promotion_marker():
+def test_real_openclaw_oracle_reconciles_spaced_case_insensitive_promotion_marker(tmp_path: Path):
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=60,
@@ -2024,6 +2305,7 @@ def test_real_openclaw_oracle_reconciles_spaced_case_insensitive_promotion_marke
             "source=memory/2026-05-08.md:3-3]\n",
             encoding="utf-8",
         )
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         result = {
             "source": "memory",
             "path": "memory/2026-05-08.md",
@@ -2072,9 +2354,14 @@ def test_real_openclaw_oracle_reconciles_spaced_case_insensitive_promotion_marke
     assert applied["result"]["reconciledExisting"] == 1
     assert applied["files"]["MEMORY.md"].count("openclaw-memory-promotion:") == 0
     assert applied["files"]["MEMORY.md"].count("OPENCLAW-MEMORY-PROMOTION:") == 1
+    gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+    python_side.record("glacier", [result], 1779811200000)
+    assert python_side.rank(1779811200000, **gates) == _ts_candidate_views(ranked)
+    python_run = python_side.apply(1779811200000, "Europe/Istanbul", **gates)
+    _assert_apply_matches(applied, python_run, python_side)
 
 
-def test_real_openclaw_oracle_compacts_oldest_promotion_section_when_memory_budget_exceeded():
+def test_real_openclaw_oracle_compacts_oldest_promotion_section_when_memory_budget_exceeded(tmp_path: Path):
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=60,
@@ -2106,6 +2393,7 @@ def test_real_openclaw_oracle_compacts_oldest_promotion_section_when_memory_budg
             ]
         )
         (workspace / "MEMORY.md").write_text(seeded_memory, encoding="utf-8")
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         result = {
             "source": "memory",
             "path": "memory/2026-04-29.md",
@@ -2160,9 +2448,16 @@ def test_real_openclaw_oracle_compacts_oldest_promotion_section_when_memory_budg
     assert "(2026-04-20)" in memory_text
     assert "legacy-newer" in memory_text
     assert "Rotate the staging Postgres credentials" in memory_text
+    gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+    python_side.record('rotate creds', [result], 1777456800000)
+    assert python_side.rank(1777456800000, **gates) == _ts_candidate_views(ranked)
+    python_run = python_side.apply(
+        1777456800000, "Europe/Istanbul", memory_file_max_chars=1_400, **gates
+    )
+    _assert_apply_matches(applied, python_run, python_side)
 
 
-def test_real_openclaw_oracle_leaves_memory_unchanged_before_append_when_budget_fits():
+def test_real_openclaw_oracle_leaves_memory_unchanged_before_append_when_budget_fits(tmp_path: Path):
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=60,
@@ -2178,6 +2473,7 @@ def test_real_openclaw_oracle_leaves_memory_unchanged_before_append_when_budget_
         )
         seeded_memory = "# Long-Term Memory\n\nSome small existing content.\n"
         (workspace / "MEMORY.md").write_text(seeded_memory, encoding="utf-8")
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         result = {
             "source": "memory",
             "path": "memory/2026-04-29.md",
@@ -2228,9 +2524,16 @@ def test_real_openclaw_oracle_leaves_memory_unchanged_before_append_when_budget_
     assert memory_text.startswith(seeded_memory)
     assert "Some small existing content." in memory_text
     assert "A short snippet that fits comfortably." in memory_text
+    gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+    python_side.record('tiny note', [result], 1777456800000)
+    assert python_side.rank(1777456800000, **gates) == _ts_candidate_views(ranked)
+    python_run = python_side.apply(
+        1777456800000, "Europe/Istanbul", memory_file_max_chars=10_000, **gates
+    )
+    _assert_apply_matches(applied, python_run, python_side)
 
 
-def test_real_openclaw_oracle_drops_all_old_promotion_sections_when_budget_cannot_fit_otherwise():
+def test_real_openclaw_oracle_drops_all_old_promotion_sections_when_budget_cannot_fit_otherwise(tmp_path: Path):
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=60,
@@ -2256,6 +2559,7 @@ def test_real_openclaw_oracle_drops_all_old_promotion_sections_when_budget_canno
             ]
         )
         (workspace / "MEMORY.md").write_text(seeded_memory, encoding="utf-8")
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         result = {
             "source": "memory",
             "path": "memory/2026-04-29.md",
@@ -2309,9 +2613,16 @@ def test_real_openclaw_oracle_drops_all_old_promotion_sections_when_budget_canno
     assert "legacy-middle" not in memory_text
     assert "legacy-newer" not in memory_text
     assert "Fresh material still gets written." in memory_text
+    gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+    python_side.record('fresh material', [result], 1777456800000)
+    assert python_side.rank(1777456800000, **gates) == _ts_candidate_views(ranked)
+    python_run = python_side.apply(
+        1777456800000, "Europe/Istanbul", memory_file_max_chars=700, **gates
+    )
+    _assert_apply_matches(applied, python_run, python_side)
 
 
-def test_real_openclaw_oracle_ranking_skips_promoted_at_entry():
+def test_real_openclaw_oracle_ranking_skips_promoted_at_entry(tmp_path: Path):
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=60,
@@ -2322,6 +2633,7 @@ def test_real_openclaw_oracle_ranking_skips_promoted_at_entry():
         memory_file = workspace / "memory" / "2026-05-08.md"
         memory_file.parent.mkdir(parents=True, exist_ok=True)
         memory_file.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         base_result = {
             "source": "memory",
             "path": "memory/2026-05-08.md",
@@ -2330,27 +2642,28 @@ def test_real_openclaw_oracle_ranking_skips_promoted_at_entry():
             "snippet": "- Move backups to S3 Glacier.",
             "score": 1,
         }
+        recalls = [
+            {
+                "query": query,
+                "results": [base_result],
+                "nowMs": 1779811200000 + index,
+            }
+            for index, query in enumerate(
+                (
+                    "backup policy",
+                    "glacier backup",
+                    "s3 retention",
+                    "cold storage",
+                    "backup notes",
+                )
+            )
+        ]
         oracle.run(
             {
                 "operation": "recordShortTermRecallSequence",
                 "workspaceDir": str(workspace),
                 "timezone": "Europe/Istanbul",
-                "recalls": [
-                    {
-                        "query": query,
-                        "results": [base_result],
-                        "nowMs": 1779811200000 + index,
-                    }
-                    for index, query in enumerate(
-                        (
-                            "backup policy",
-                            "glacier backup",
-                            "s3 retention",
-                            "cold storage",
-                            "backup notes",
-                        )
-                    )
-                ],
+                "recalls": recalls,
             }
         )
         recall_path = workspace / "memory" / ".dreams" / "short-term-recall.json"
@@ -2372,9 +2685,17 @@ def test_real_openclaw_oracle_ranking_skips_promoted_at_entry():
 
     assert ranked["ok"] is True
     assert ranked["result"]["candidates"] == []
+    python_side.record_sequence(recalls)
+
+    def mark_promoted(store: dict) -> None:
+        store["entries"][key]["promotedAt"] = "2026-05-08T12:00:00.000Z"
+
+    python_side.edit_recall_store(mark_promoted)
+    gates = {"minScore": 0, "minRecallCount": 1, "minUniqueQueries": 1}
+    assert python_side.rank(1779811200000, **gates) == []
 
 
-def test_real_openclaw_oracle_ignores_contaminated_dreaming_snippets():
+def test_real_openclaw_oracle_ignores_contaminated_dreaming_snippets(tmp_path: Path):
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=60,
@@ -2386,6 +2707,7 @@ def test_real_openclaw_oracle_ignores_contaminated_dreaming_snippets():
     )
     with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-contaminated-") as tmp_dir:
         workspace = Path(tmp_dir)
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         recorded = oracle.run(
             {
                 "operation": "recordShortTermRecalls",
@@ -2406,6 +2728,21 @@ def test_real_openclaw_oracle_ignores_contaminated_dreaming_snippets():
             }
         )
         store_path = workspace / "memory" / ".dreams" / "short-term-recall.json"
+        python_side.record(
+            "action preference",
+            [
+                {
+                    "source": "memory",
+                    "path": "memory/2026-04-03.md",
+                    "startLine": 1,
+                    "endLine": 1,
+                    "snippet": contaminated_snippet,
+                    "score": 0.92,
+                }
+            ],
+            1779811200000,
+        )
+        assert python_side.recall_entries() == _ts_recall_entries(recorded)
         store_path.parent.mkdir(parents=True, exist_ok=True)
         store_path.write_text(
             json.dumps(
@@ -2440,6 +2777,7 @@ def test_real_openclaw_oracle_ignores_contaminated_dreaming_snippets():
             ),
             encoding="utf-8",
         )
+        shutil.copyfile(store_path, python_side.workspace / _RECALL_STORE)
         ranked = oracle.run(
             {
                 "operation": "rankShortTermPromotionCandidates",
@@ -2457,9 +2795,11 @@ def test_real_openclaw_oracle_ignores_contaminated_dreaming_snippets():
     assert recall_store["entries"] == {}
     assert ranked["ok"] is True
     assert ranked["result"]["candidates"] == []
+    gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+    assert python_side.rank(1779811200000, **gates) == []
 
 
-def test_real_openclaw_oracle_keeps_candidate_like_daily_memory_evidence():
+def test_real_openclaw_oracle_keeps_candidate_like_daily_memory_evidence(tmp_path: Path):
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=60,
@@ -2468,6 +2808,7 @@ def test_real_openclaw_oracle_keeps_candidate_like_daily_memory_evidence():
     snippet = "Candidate: move backups weekly. confidence: 0.76 evidence: memory/2026-04-08.md:1-1"
     with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-clean-candidate-") as tmp_dir:
         workspace = Path(tmp_dir)
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         result = {
             "source": "memory",
             "path": "memory/2026-04-08.md",
@@ -2476,21 +2817,20 @@ def test_real_openclaw_oracle_keeps_candidate_like_daily_memory_evidence():
             "snippet": snippet,
             "score": 1,
         }
+        recalls = [
+            {
+                "query": query,
+                "results": [result],
+                "nowMs": 1779811200000 + index,
+            }
+            for index, query in enumerate(("backup candidate", "weekly backups", "backup evidence"))
+        ]
         oracle.run(
             {
                 "operation": "recordShortTermRecallSequence",
                 "workspaceDir": str(workspace),
                 "timezone": "Europe/Istanbul",
-                "recalls": [
-                    {
-                        "query": query,
-                        "results": [result],
-                        "nowMs": 1779811200000 + index,
-                    }
-                    for index, query in enumerate(
-                        ("backup candidate", "weekly backups", "backup evidence")
-                    )
-                ],
+                "recalls": recalls,
             }
         )
         ranked = oracle.run(
@@ -2510,9 +2850,12 @@ def test_real_openclaw_oracle_keeps_candidate_like_daily_memory_evidence():
     assert len(candidates) == 1
     assert candidates[0]["key"] == "memory:memory/2026-04-08.md:1:1"
     assert candidates[0]["snippet"] == snippet
+    python_side.record_sequence(recalls)
+    gates = {"minScore": 0, "minRecallCount": 1, "minUniqueQueries": 1}
+    assert python_side.rank(1779811200000, **gates) == _ts_candidate_views(ranked)
 
 
-def test_real_openclaw_oracle_apply_skips_candidate_when_live_note_no_longer_contains_snippet():
+def test_real_openclaw_oracle_apply_skips_candidate_when_live_note_no_longer_contains_snippet(tmp_path: Path):
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=60,
@@ -2523,6 +2866,7 @@ def test_real_openclaw_oracle_apply_skips_candidate_when_live_note_no_longer_con
         memory_file = workspace / "memory" / "2026-05-08.md"
         memory_file.parent.mkdir(parents=True, exist_ok=True)
         memory_file.write_text("# 2026-05-08\n\n- Different note content now.\n", encoding="utf-8")
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         result = {
             "source": "memory",
             "path": "memory/2026-05-08.md",
@@ -2572,9 +2916,14 @@ def test_real_openclaw_oracle_apply_skips_candidate_when_live_note_no_longer_con
     assert applied["files"]["MEMORY.md"] == ""
     recall_store = json.loads(applied["files"]["memory/.dreams/short-term-recall.json"])
     assert "promotedAt" not in recall_store["entries"]["memory:memory/2026-05-08.md:3:3"]
+    gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+    python_side.record("glacier", [result], 1779811200000)
+    assert python_side.rank(1779811200000, **gates) == _ts_candidate_views(ranked)
+    python_run = python_side.apply(1779811200000, "Europe/Istanbul", **gates)
+    _assert_apply_matches(applied, python_run, python_side)
 
 
-def test_real_openclaw_oracle_promotion_header_uses_dreaming_timezone():
+def test_real_openclaw_oracle_promotion_header_uses_dreaming_timezone(tmp_path: Path):
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=60,
@@ -2588,6 +2937,7 @@ def test_real_openclaw_oracle_promotion_header_uses_dreaming_timezone():
             "# 2026-04-01\n\n- Cross-midnight router maintenance window.\n",
             encoding="utf-8",
         )
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
         result = {
             "source": "memory",
             "path": "memory/2026-04-01.md",
@@ -2633,6 +2983,11 @@ def test_real_openclaw_oracle_promotion_header_uses_dreaming_timezone():
     assert applied["ok"] is True
     assert applied["result"]["applied"] == 1
     assert "Promoted From Short-Term Memory (2026-04-01)" in applied["files"]["MEMORY.md"]
+    gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+    python_side.record("router window", [result], 1775086200000)
+    assert python_side.rank(1775111400000, **gates) == _ts_candidate_views(ranked)
+    python_run = python_side.apply(1775111400000, "America/Los_Angeles", **gates)
+    _assert_apply_matches(applied, python_run, python_side)
 
 
 def test_real_openclaw_oracle_history_limit_helpers_match_python():

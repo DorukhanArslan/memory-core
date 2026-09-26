@@ -50,11 +50,21 @@ Safety rules shared by every operation:
 
 ``after_write`` is called with the ``CurationResult`` of every write that
 changed a file, typically to reindex the memory store.
+
+For model tool calls, ``MemoryCurator.tool_definitions()`` returns
+provider-neutral specs (``name``, ``description``, JSON-schema
+``parameters``; wrap them in the host's tool format) for the operations on
+offer, and ``MemoryCurator.dispatch(name, arguments)`` runs one call. Input
+problems come back as ``{"status": "error", "tool", "error"}`` payloads, the
+shape upstream's tool adapter gives a thrown ``ToolInputError``
+(``src/agents/agent-tool-definition-adapter.ts:250-259``); a call to a tool
+that is not on offer raises ``CurationUnavailableError`` instead.
 """
 
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import re
 import secrets
@@ -153,6 +163,89 @@ class CurationResult:
         if self.chars is not None:
             payload["chars"] = self.chars
         return payload
+
+
+def to_tool_error(tool: str, message: str) -> dict:
+    """Model-facing tool error in the ``ToolInputError`` payload shape."""
+    return {"status": "error", "tool": tool, "error": message}
+
+
+_ONE_LINE = "One line, without the leading '- '."
+_SECTION_FILTER = "Section heading, only needed when the entry appears in several sections."
+
+
+def _tool_specs(user_cap: int | None) -> dict[str, tuple[str, dict, tuple[str, ...]]]:
+    user_limit = f" USER.md is limited to {user_cap} characters." if user_cap else ""
+    return {
+        ADD_MEMORY_ENTRY: (
+            "Add one entry to a MEMORY.md section. MEMORY.md keeps durable facts, decisions "
+            "and current state. A missing section is created at the end of the file; "
+            "sections written by memory promotion are read-only.",
+            {
+                "section": {
+                    "type": "string",
+                    "description": "Section heading text, without the leading '## '.",
+                },
+                "text": {"type": "string", "description": f"The entry. {_ONE_LINE}"},
+            },
+            ("section", "text"),
+        ),
+        REPLACE_MEMORY_ENTRY: (
+            "Rewrite one MEMORY.md entry whose fact changed, instead of adding an entry "
+            "that contradicts it.",
+            {
+                "old": {
+                    "type": "string",
+                    "description": "Current entry text exactly as in MEMORY.md, without '- '.",
+                },
+                "new": {"type": "string", "description": f"Updated entry. {_ONE_LINE}"},
+                "section": {"type": "string", "description": _SECTION_FILTER},
+            },
+            ("old", "new"),
+        ),
+        REMOVE_MEMORY_ENTRY: (
+            "Delete one MEMORY.md entry that is wrong or no longer true.",
+            {
+                "entry": {
+                    "type": "string",
+                    "description": "Entry text exactly as in MEMORY.md, without '- '.",
+                },
+                "section": {"type": "string", "description": _SECTION_FILTER},
+            },
+            ("entry",),
+        ),
+        UPSERT_USER_DIRECTIVE: (
+            "Record in USER.md a preference or standing instruction the user stated or "
+            "confirmed. When it replaces an earlier directive, pass that directive as "
+            f"supersede: the old entry stays, marked superseded.{user_limit}",
+            {
+                "text": {"type": "string", "description": f"The directive. {_ONE_LINE}"},
+                "supersede": {
+                    "type": "string",
+                    "description": "Text of the active directive this one replaces.",
+                },
+                "observed": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "description": "Date the user said it, YYYY-MM-DD. Defaults to today.",
+                },
+            },
+            ("text",),
+        ),
+        SET_PROACTIVE_PREFERENCES: (
+            "Replace PROACTIVE_PREFERENCES.md: when and how you may act or reach out "
+            "without being asked. Send the whole file; empty text clears it. Record only "
+            "what the user stated or confirmed.",
+            {"text": {"type": "string", "description": "Full new file content (Markdown)."}},
+            ("text",),
+        ),
+        APPEND_DAILY_NOTE: (
+            "Append a note to today's daily log (memory/YYYY-MM-DD.md): what happened "
+            "today and the context worth keeping.",
+            {"text": {"type": "string", "description": "Note to append (Markdown)."}},
+            ("text",),
+        ),
+    }
 
 
 def curatable_files(layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT) -> dict[str, frozenset[str]]:
@@ -602,6 +695,35 @@ def proactive_preferences_text(text: str) -> str:
 # --- curator -------------------------------------------------------------------
 
 
+def _parse_arguments(arguments: Mapping[str, object] | str | None) -> dict:
+    if arguments is None:
+        return {}
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments) if arguments.strip() else {}
+        except json.JSONDecodeError as exc:
+            raise CurationError("arguments must be a JSON object") from exc
+    if not isinstance(arguments, Mapping):
+        raise CurationError("arguments must be a JSON object")
+    return dict(arguments)
+
+
+def _required_arg(args: dict, key: str, *, allow_blank: bool = False) -> str:
+    value = args.get(key)
+    if not isinstance(value, str) or (not allow_blank and not value.strip()):
+        raise CurationError(f"{key} required")
+    return value
+
+
+def _optional_arg(args: dict, key: str) -> str | None:
+    value = args.get(key)
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    if not isinstance(value, str):
+        raise CurationError(f"{key} must be a string")
+    return value
+
+
 def _is_plain_file_name(name: str) -> bool:
     return (
         bool(name)
@@ -662,6 +784,96 @@ class MemoryCurator:
         if not self.flags.curated_memory_writes or memory_flush:
             return ()
         return tuple(op for op in CURATION_OPERATIONS if self.policy.files_for(op))
+
+    def tool_definitions(self, *, memory_flush: bool = False) -> list[dict]:
+        """``{"name", "description", "parameters"}`` specs for the offered operations."""
+        specs = _tool_specs(self.policy.file_caps.get(USER_FILENAME))
+        definitions = []
+        for operation in self.available_operations(memory_flush=memory_flush):
+            description, properties, required = specs[operation]
+            definitions.append(
+                {
+                    "name": operation,
+                    "description": description,
+                    "parameters": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": list(required),
+                        "additionalProperties": False,
+                    },
+                }
+            )
+        return definitions
+
+    def dispatch(
+        self,
+        name: str,
+        arguments: Mapping[str, object] | str | None = None,
+        *,
+        memory_flush: bool = False,
+    ) -> dict:
+        """Run one tool call; ``arguments`` is a mapping or its JSON text.
+
+        Returns the result payload, or a tool-error payload for bad input and
+        refused writes. Raises ``CurationUnavailableError`` for a tool that is
+        not on offer (unknown name, flag off, memory flush, policy). Blank
+        optional arguments count as absent.
+        """
+        if name not in CURATION_OPERATIONS:
+            raise CurationUnavailableError(f"unknown curation tool: {name}")
+        self._require(name, self._target_for(name), memory_flush=memory_flush)
+        try:
+            args = _parse_arguments(arguments)
+            result = self._dispatch_call(name, args, memory_flush=memory_flush)
+        except CurationUnavailableError:
+            raise
+        except CurationError as exc:
+            return to_tool_error(name, str(exc))
+        except OSError as exc:
+            return to_tool_error(name, f"write failed: {exc.strerror or exc}")
+        return result.to_tool_result()
+
+    def _dispatch_call(self, name: str, args: dict, *, memory_flush: bool) -> CurationResult:
+        if name == ADD_MEMORY_ENTRY:
+            return self.add_memory_entry(
+                _required_arg(args, "section"),
+                _required_arg(args, "text"),
+                memory_flush=memory_flush,
+            )
+        if name == REPLACE_MEMORY_ENTRY:
+            return self.replace_memory_entry(
+                _required_arg(args, "old"),
+                _required_arg(args, "new"),
+                section=_optional_arg(args, "section"),
+                memory_flush=memory_flush,
+            )
+        if name == REMOVE_MEMORY_ENTRY:
+            return self.remove_memory_entry(
+                _required_arg(args, "entry"),
+                section=_optional_arg(args, "section"),
+                memory_flush=memory_flush,
+            )
+        if name == UPSERT_USER_DIRECTIVE:
+            return self.upsert_user_directive(
+                _required_arg(args, "text"),
+                observed=_optional_arg(args, "observed"),
+                supersede=_optional_arg(args, "supersede"),
+                memory_flush=memory_flush,
+            )
+        if name == SET_PROACTIVE_PREFERENCES:
+            return self.set_proactive_preferences(
+                _required_arg(args, "text", allow_blank=True), memory_flush=memory_flush
+            )
+        return self.append_daily_note(_required_arg(args, "text"), memory_flush=memory_flush)
+
+    def _target_for(self, operation: str) -> str:
+        if operation in MEMORY_ENTRY_OPERATIONS:
+            return self.layout.memory_file
+        return {
+            UPSERT_USER_DIRECTIVE: USER_FILENAME,
+            SET_PROACTIVE_PREFERENCES: PROACTIVE_PREFERENCES_FILENAME,
+            APPEND_DAILY_NOTE: DAILY_NOTE_TARGET,
+        }[operation]
 
     def _require(self, operation: str, target: str, *, memory_flush: bool) -> None:
         if not self.flags.curated_memory_writes:

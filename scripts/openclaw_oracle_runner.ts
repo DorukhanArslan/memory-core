@@ -1203,6 +1203,132 @@ async function main() {
     };
   }
 
+  if (payload.operation === "heartbeatRunPrompt") {
+    // src/infra/heartbeat-runner.ts runHeartbeatOnce on workspaces written by the Python side:
+    // target "none" (no channel delivery, no commitments), messages.visibleReplies pins the
+    // heartbeat_respond choice, and getReplyFromConfig captures the model input and answers
+    // HEARTBEAT_OK. The Body ends with appendCronStyleCurrentTimeLine's line, returned as
+    // timeLine from the real resolveCronStyleNow. HOME and OPENCLAW_STATE_DIR are sandboxed.
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-heartbeat-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    await fs.mkdir(process.env.HOME, { recursive: true });
+    try {
+      const runner = await importFromRepo(repoPath, "src/infra/heartbeat-runner.ts");
+      const sessions = await importFromRepo(repoPath, "src/config/sessions.ts");
+      const currentTime = await importFromRepo(repoPath, "src/agents/current-time.ts");
+      const results = [];
+      let index = 0;
+      for (const scenario of payload.cases ?? []) {
+        index += 1;
+        const scenarioNowMs = Number(scenario.nowMs);
+        const storePath = path.join(sandbox, `sessions-${index}.json`);
+        const cfg = {
+          agents: {
+            defaults: {
+              workspace: scenario.workspaceDir,
+              userTimezone: "UTC",
+              heartbeat: {
+                every: "5m",
+                target: "none",
+                ...(typeof scenario.prompt === "string" ? { prompt: scenario.prompt } : {}),
+              },
+            },
+          },
+          messages: { visibleReplies: scenario.useResponseTool ? "message_tool" : "automatic" },
+          session: { store: storePath },
+        };
+        const sessionKey = sessions.resolveMainSessionKey(cfg);
+        await fs.writeFile(
+          storePath,
+          JSON.stringify({
+            [sessionKey]: {
+              sessionId: `sid-${index}`,
+              updatedAt: scenarioNowMs - 3_600_000,
+              ...(scenario.taskState ? { heartbeatTaskState: scenario.taskState } : {}),
+            },
+          }),
+        );
+        const calls: Array<{ ctx: Record<string, unknown>; opts: Record<string, unknown> }> = [];
+        const res = await runner.runHeartbeatOnce({
+          cfg,
+          ...(scenario.source ? { source: scenario.source } : {}),
+          ...(scenario.intent ? { intent: scenario.intent } : {}),
+          ...(scenario.reason ? { reason: scenario.reason } : {}),
+          deps: {
+            getQueueSize: () => 0,
+            nowMs: () => scenarioNowMs,
+            getReplyFromConfig: async (ctx: Record<string, unknown>, opts: Record<string, unknown>) => {
+              calls.push({ ctx, opts });
+              return { text: "HEARTBEAT_OK" };
+            },
+          },
+        });
+        const store = JSON.parse(await fs.readFile(storePath, "utf-8"));
+        results.push({
+          status: res.status,
+          reason: res.status === "skipped" ? res.reason : null,
+          body: calls[0]?.ctx?.Body ?? null,
+          isHeartbeat: calls[0]?.opts?.isHeartbeat ?? null,
+          timeLine: currentTime.resolveCronStyleNow(cfg, scenarioNowMs).timeLine,
+          taskState: store[sessionKey]?.heartbeatTaskState ?? null,
+        });
+      }
+      return { ok: true, operation: payload.operation, result: results };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  if (payload.operation === "heartbeatSystemSection") {
+    // shouldInjectHeartbeatPrompt (attempt.prompt-helpers.ts) + resolveHeartbeatPromptForSystemPrompt
+    // (heartbeat-system-prompt.ts) for the default agent, then the "## Heartbeats" block cut from
+    // the real buildAgentSystemPrompt (up to "## Runtime").
+    const helpers = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/run/attempt.prompt-helpers.ts",
+    );
+    const heartbeatSystemPrompt = await importFromRepo(repoPath, "src/agents/heartbeat-system-prompt.ts");
+    const systemPrompt = await importFromRepo(repoPath, "src/agents/system-prompt.ts");
+    const result = (payload.cases ?? []).map((item) => {
+      const config = {
+        agents: {
+          defaults: {
+            heartbeat: {
+              ...("every" in item ? { every: item.every } : {}),
+              ...("includeSystemPromptSection" in item
+                ? { includeSystemPromptSection: item.includeSystemPromptSection }
+                : {}),
+              ...("prompt" in item ? { prompt: item.prompt } : {}),
+            },
+          },
+        },
+      };
+      const inject = helpers.shouldInjectHeartbeatPrompt({
+        config,
+        isDefaultAgent: true,
+        trigger: item.trigger,
+        bootstrapContextRunKind: item.runKind,
+      });
+      const heartbeatPrompt = inject
+        ? heartbeatSystemPrompt.resolveHeartbeatPromptForSystemPrompt({ config })
+        : undefined;
+      const prompt: string = systemPrompt.buildAgentSystemPrompt({
+        workspaceDir: "/w",
+        heartbeatPrompt: "sectionPrompt" in item ? (item.sectionPrompt ?? undefined) : heartbeatPrompt,
+        promptMode: item.promptMode,
+        silentReplyPromptMode: "none",
+      });
+      const start = prompt.indexOf("## Heartbeats\n");
+      const end = start === -1 ? -1 : prompt.indexOf("## Runtime", start);
+      return {
+        heartbeatPrompt: heartbeatPrompt ?? null,
+        section: start === -1 ? null : prompt.slice(start, end),
+      };
+    });
+    return { ok: true, operation: payload.operation, result };
+  }
+
   const promotionOperations = new Set([
     "recordShortTermRecalls",
     "recordShortTermRecallSequence",

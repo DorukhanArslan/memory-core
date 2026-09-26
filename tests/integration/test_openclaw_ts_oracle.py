@@ -4015,3 +4015,141 @@ def test_real_openclaw_oracle_strip_heartbeat_token_matches_python():
 
     assert result["ok"] is True, result
     assert result["result"] == [_python_strip_case(case) for case in HEARTBEAT_STRIP_CASES]
+
+
+# HEARTBEAT.md states of runHeartbeatFileScenario (heartbeat-runner.returns-default-unset.test.ts).
+HEARTBEAT_FILE_STATES = {
+    "empty": "# HEARTBEAT.md\n\n## Tasks\n\n",
+    "legacy-comment-only": (
+        "# Keep this file empty (or with only comments) to skip heartbeat API calls.\n\n"
+        "# Add tasks below when you want the agent to check something periodically.\n"
+    ),
+    "fenced-empty": (
+        "# HEARTBEAT.md Template\n\n```markdown\n# Keep this file empty (or with only comments) "
+        "to skip heartbeat API calls.\n\n# Add tasks below when you want the agent to check "
+        "something periodically.\n```\n"
+    ),
+    "actionable": "# HEARTBEAT.md\n\n- Check server logs\n- Review pending PRs\n",
+    "fenced-actionable": (
+        "```markdown\n# Keep this file empty when you want to skip.\n\n- Check server logs\n```\n"
+    ),
+    "tasks-context": HEARTBEAT_TASKS_CONTEXT_FILE,
+    "tasks-context-crlf": HEARTBEAT_TASKS_CONTEXT_FILE.replace("\n", "\r\n"),
+    "unindented-tasks": HEARTBEAT_UNINDENTED_TASKS_FILE,
+    "constructor-task": (
+        "tasks:\n  - name: constructor\n    interval: 5m\n    prompt: Check urgent inbox items\n"
+    ),
+    "directive-only": "Check the server logs",
+}
+_HB_NOW_MS = 1_790_416_800_000  # 2026-09-26T10:00:00Z
+HEARTBEAT_RUN_SCENARIOS = [
+    {"file": "tasks-context"},
+    {"file": "tasks-context-crlf", "taskState": {"inbox": _HB_NOW_MS - 60_000}},
+    {"file": "unindented-tasks", "taskState": {"inbox": _HB_NOW_MS - 60_000, "stale": 1}},
+    {
+        "file": "unindented-tasks",
+        "taskState": {"inbox": _HB_NOW_MS - 60_000, "calendar": _HB_NOW_MS - 1},
+    },
+    {"file": "tasks-context", "useResponseTool": True},
+    {"file": "empty"},
+    {"file": "legacy-comment-only"},
+    {"file": "fenced-empty"},
+    {"file": "actionable"},
+    {"file": "fenced-actionable"},
+    {"file": "actionable", "useResponseTool": True},
+    {"file": "actionable", "prompt": "Check the handoff queue."},
+    {"file": "actionable", "prompt": "Read heartbeat.md and check the handoff queue."},
+    {"file": "actionable", "prompt": "Check the handoff queue.", "useResponseTool": True},
+    {"file": "directive-only", "prompt": "Check the server logs"},
+    {"file": None},
+    {"file": "read-error"},
+    {"file": "empty", "source": "hook", "intent": "immediate", "reason": "wake"},
+    {"file": "actionable", "source": "hook", "intent": "immediate", "reason": "wake"},
+    {"file": "constructor-task"},
+    {"file": "constructor-task", "taskState": {}},
+]
+
+
+def _write_heartbeat_workspace(root: Path, file_state: str | None) -> None:
+    root.mkdir(parents=True)
+    if file_state == "read-error":
+        (root / "HEARTBEAT.md").mkdir()
+    elif file_state is not None:
+        (root / "HEARTBEAT.md").write_bytes(HEARTBEAT_FILE_STATES[file_state].encode("utf-8"))
+
+
+def test_real_openclaw_oracle_heartbeat_run_prompt_matches_python(tmp_path: Path):
+    cases = []
+    for index, scenario in enumerate(HEARTBEAT_RUN_SCENARIOS):
+        workspace = tmp_path / f"ws-{index}"
+        _write_heartbeat_workspace(workspace, scenario["file"])
+        case = {key: value for key, value in scenario.items() if key != "file"}
+        cases.append({**case, "workspaceDir": str(workspace), "nowMs": _HB_NOW_MS})
+
+    result = _oracle().run({"operation": "heartbeatRunPrompt", "cases": cases})
+
+    assert result["ok"] is True, result
+    assert len(result["result"]) == len(cases)
+    for case, observed in zip(cases, result["result"], strict=True):
+        turn = heartbeat_module.prepare_heartbeat_turn(
+            case["workspaceDir"],
+            now_ms=case["nowMs"],
+            task_state=case.get("taskState"),
+            prompt=case.get("prompt"),
+            use_response_tool=case.get("useResponseTool", False),
+            bypass_file_gates=case.get("reason") == "wake",
+        )
+        if turn.skip_reason is not None:
+            assert observed["status"] == "skipped", (case, observed)
+            assert observed["reason"] == turn.skip_reason, case
+            assert observed["body"] is None
+            assert observed["taskState"] == case.get("taskState"), case
+            continue
+        assert observed["status"] == "ran", (case, observed)
+        assert observed["isHeartbeat"] is True
+        assert observed["body"] == f"{turn.prompt}\n{observed['timeLine']}", case
+        assert observed["taskState"] == turn.next_task_state(case.get("taskState")), case
+
+
+HEARTBEAT_SYSTEM_SECTION_CASES = [
+    {"trigger": "heartbeat"},
+    {"trigger": "heartbeat", "prompt": "Check the handoff queue."},
+    {"trigger": "user"},
+    {},
+    {"trigger": "cron"},
+    {"trigger": "heartbeat", "runKind": "commitment-only"},
+    {"trigger": "heartbeat", "runKind": "heartbeat"},
+    {"trigger": "heartbeat", "every": "0m"},
+    {"trigger": "heartbeat", "every": "oops"},
+    {"trigger": "heartbeat", "every": ""},
+    {"trigger": "heartbeat", "every": "5"},
+    {"trigger": "heartbeat", "includeSystemPromptSection": False},
+    {"trigger": "heartbeat", "includeSystemPromptSection": True},
+    {"trigger": "heartbeat", "promptMode": "minimal"},
+    {"trigger": "heartbeat", "promptMode": "none"},
+    {"trigger": "user", "sectionPrompt": "   "},
+    {"trigger": "user", "sectionPrompt": "Check the handoff queue."},
+]
+
+
+def test_real_openclaw_oracle_heartbeat_system_section_matches_python():
+    result = _oracle().run(
+        {"operation": "heartbeatSystemSection", "cases": HEARTBEAT_SYSTEM_SECTION_CASES}
+    )
+
+    assert result["ok"] is True, result
+    for case, observed in zip(HEARTBEAT_SYSTEM_SECTION_CASES, result["result"], strict=True):
+        resolved = heartbeat_module.resolve_heartbeat_prompt_for_system_prompt(
+            trigger=case.get("trigger"),
+            run_kind=case.get("runKind"),
+            every=case.get("every"),
+            include_system_prompt_section=case.get("includeSystemPromptSection"),
+            prompt=case.get("prompt"),
+        )
+        assert observed["heartbeatPrompt"] == resolved, case
+        lines = heartbeat_module.build_heartbeat_section_lines(
+            case["sectionPrompt"] if "sectionPrompt" in case else resolved,
+            is_minimal=case.get("promptMode") in ("minimal", "none"),
+        )
+        expected = "\n".join(line for line in lines if line) + "\n" if lines else None
+        assert observed["section"] == expected, case

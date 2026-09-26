@@ -160,6 +160,15 @@ def test_client_defaults_come_from_the_settings_endpoint() -> None:
         assert "localStorage.setItem('lab.key" not in source, module.name
 
 
+def test_ui_copy_carries_no_internal_decision_ids() -> None:
+    # Decision ids such as Q9 or D5 belong to the project notes, not to what the Lab shows.
+    for module in LAB_MODULES:
+        for line in module.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith("//"):
+                continue
+            assert not re.search(r"\((?:Q|D)\d+\b", line), f"{module.name}: {line.strip()[:80]}"
+
+
 def test_i18n_dictionaries_share_their_ids() -> None:
     def ids(name: str) -> set[str]:
         return set(re.findall(r"'([a-zA-Z][\w.-]*(?:\.[\w-]+)+)':", (LAB_ROOT / "i18n" / name).read_text(encoding="utf-8")))

@@ -2904,3 +2904,812 @@ def test_real_openclaw_oracle_normalize_assistant_replay_content_matches_python(
     assert result["ok"] is True
     assert result["operation"] == "normalizeAssistantReplayContent"
     assert result["result"]["messages"] == normalize_assistant_replay_content(messages)
+
+
+# --- workspace bootstrap (memory_core.bootstrap) -------------------------------------------------
+
+from memory_core.bootstrap import (  # noqa: E402
+    OPENCLAW_PIN_LAYOUT,
+    WorkspaceBootstrapFile,
+    analyze_bootstrap_budget,
+    append_bootstrap_prompt_warning,
+    build_bootstrap_context_files,
+    build_bootstrap_injection_stats,
+    build_bootstrap_prompt_section_lines,
+    build_bootstrap_prompt_warning,
+    build_bootstrap_prompt_warning_notice,
+    build_startup_context,
+    bootstrap_status,
+    filter_bootstrap_files,
+    filter_bootstrap_files_for_session,
+    initialize_agent_workspace,
+    is_workspace_setup_completed,
+    load_workspace_bootstrap_files,
+    render_project_context,
+    render_workspace_files_injected,
+)
+from memory_core.bootstrap.budget import ContextFile  # noqa: E402
+
+UPSTREAM_TEMPLATE_PATHS = {
+    "AGENTS.md": "docs/reference/templates/AGENTS.md",
+    "SOUL.md": "docs/reference/templates/SOUL.md",
+    "TOOLS.md": "docs/reference/templates/TOOLS.md",
+    "IDENTITY.md": "docs/reference/templates/IDENTITY.md",
+    "USER.md": "docs/reference/templates/USER.md",
+    "HEARTBEAT.md": "src/agents/templates/HEARTBEAT.md",
+    "BOOTSTRAP.md": "docs/reference/templates/BOOTSTRAP.md",
+}
+
+
+def _oracle() -> OpenClawOracle:
+    return OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+
+def _upstream_templates() -> dict[str, str]:
+    # Test-only: the oracle's own template files stand in for host-supplied templates so the
+    # seeding comparison uses identical inputs. Nothing here reaches memory-core defaults.
+    repo = Path(os.environ["OPENCLAW_ORACLE_REPO"])
+    return {
+        name: (repo / relative).read_bytes().decode("utf-8")
+        for name, relative in UPSTREAM_TEMPLATE_PATHS.items()
+    }
+
+
+def _bootstrap_file_payload(file: WorkspaceBootstrapFile) -> dict:
+    payload = {"name": file.name, "path": file.path, "missing": file.missing}
+    if not file.missing and file.content is not None:
+        payload["content"] = file.content
+    return payload
+
+
+def _context_file_payload(file: ContextFile) -> dict:
+    return {"path": file.path, "content": file.content}
+
+
+def _stat_payload(stat) -> dict:
+    return {
+        "name": stat.name,
+        "path": stat.path,
+        "missing": stat.missing,
+        "rawChars": stat.raw_chars,
+        "injectedChars": stat.injected_chars,
+        "truncated": stat.truncated,
+    }
+
+
+def _python_bootstrap_context_report(
+    files: list[WorkspaceBootstrapFile],
+    *,
+    max_chars: int,
+    total_max_chars: int | None,
+    warning_mode: str = "always",
+    seen_signatures: list[str] | None = None,
+) -> dict:
+    built = build_bootstrap_context_files(files, max_chars=max_chars, total_max_chars=total_max_chars)
+    stats = build_bootstrap_injection_stats(files, built.files)
+    analysis = analyze_bootstrap_budget(
+        stats,
+        bootstrap_max_chars=max_chars,
+        bootstrap_total_max_chars=total_max_chars if total_max_chars is not None else 60_000,
+    )
+    warning = build_bootstrap_prompt_warning(
+        analysis, mode=warning_mode, seen_signatures=seen_signatures
+    )
+    return {
+        "contextFiles": [_context_file_payload(file) for file in built.files],
+        "warnings": list(built.warnings),
+        "stats": [_stat_payload(stat) for stat in stats],
+        "analysis": {
+            "files": [
+                {**_stat_payload(file), "nearLimit": file.near_limit, "causes": list(file.causes)}
+                for file in analysis.files
+            ],
+            "totalNearLimit": analysis.total_near_limit,
+            "hasTruncation": analysis.has_truncation,
+            "totals": {
+                "rawChars": analysis.raw_chars,
+                "injectedChars": analysis.injected_chars,
+                "truncatedChars": analysis.truncated_chars,
+                "bootstrapMaxChars": analysis.bootstrap_max_chars,
+                "bootstrapTotalMaxChars": analysis.bootstrap_total_max_chars,
+                "nearLimitRatio": analysis.near_limit_ratio,
+            },
+        },
+        "promptWarning": {
+            "signature": warning.signature,
+            "warningShown": warning.warning_shown,
+            "lines": list(warning.lines),
+            "warningSignaturesSeen": list(warning.warning_signatures_seen),
+        },
+        "notice": build_bootstrap_prompt_warning_notice(warning.lines),
+        "appended": append_bootstrap_prompt_warning("Prompt body", warning.lines),
+    }
+
+
+def _agents_policy_fixture() -> str:
+    lines = ["# AGENTS.md - Workspace rules", ""]
+    for index in range(60):
+        lines.append(f"Prose paragraph {index} about the day, ünïcödé 記憶 and 😀 emoji filler text.")
+        if index % 7 == 0:
+            lines.append(f"- You must read scoped AGENTS.md files before subtree edits ({index}).")
+        if index % 11 == 0:
+            lines.append(f"## Section {index}")
+        if index % 13 == 0:
+            lines.append(f"  2) Never commit secrets; run the test command before push #{index}.")
+        if index % 17 == 0:
+            lines.append("Security:   credential   handling\tIS required " + "long " * 70)
+    lines.append("COMMİT with dotted İ is not an ASCII keyword; ſecurity folds to security.")
+    lines.append("final line")
+    return "\n".join(lines) + "\n\n"
+
+
+BOOTSTRAP_CONTEXT_CASES = [
+    pytest.param(
+        [
+            {"name": "SOUL.md", "path": "/w/SOUL.md", "content": "\n".join(
+                f"line {i} " + "x" * 40 for i in range(400)
+            )},
+            {"name": "USER.md", "path": "/w/USER.md", "missing": True},
+            {"name": "TOOLS.md", "path": "/w/TOOLS.md", "content": "short\n"},
+        ],
+        300,
+        700,
+        id="probe-head-tail",
+    ),
+    pytest.param(
+        [{"name": "SOUL.md", "path": "/w/SOUL.md", "content": "\n".join(
+            f"line {i} " + "x" * 40 for i in range(400)
+        )}],
+        80,
+        700,
+        id="compact-marker",
+    ),
+    pytest.param(
+        [{"name": "AGENTS.md", "path": "/w/AGENTS.md", "content": _agents_policy_fixture()}],
+        900,
+        None,
+        id="agents-policy-digest",
+    ),
+    pytest.param(
+        [{"name": "agents.md", "path": "/w/agents.md", "content": _agents_policy_fixture()}],
+        150,
+        2000,
+        id="agents-digest-tight",
+    ),
+    pytest.param(
+        [
+            {"name": "SOUL.md", "path": "/w/SOUL.md", "content": "😀" * 500},
+            {"name": "IDENTITY.md", "path": "/w/IDENTITY.md", "content": "記憶と🧠" * 200},
+            {"name": "USER.md", "path": "/w/USER.md", "content": "Doruk ğüşiöçİ " * 120},
+        ],
+        301,
+        5000,
+        id="surrogate-split-cjk-turkish",
+    ),
+    pytest.param(
+        [
+            {"name": "AGENTS.md", "path": "/w/AGENTS.md", "content": "a" * 150},
+            {"name": "SOUL.md", "path": "/w/SOUL.md", "content": "b" * 150},
+            {"name": "TOOLS.md", "path": "/w/TOOLS.md", "missing": True},
+            {"name": "USER.md", "path": "/w/USER.md", "content": "c" * 30},
+            {"name": "MEMORY.md", "path": "/w/MEMORY.md", "content": "d" * 30},
+        ],
+        150,
+        330,
+        id="total-budget-exhaustion",
+    ),
+    pytest.param(
+        [
+            {"name": "AGENTS.md", "path": "/w/AGENTS.md", "content": "a" * 20},
+            {"name": "SOUL.md", "path": "/w/SOUL.md", "missing": True},
+            {"name": "USER.md", "path": "/w/USER.md", "missing": True},
+        ],
+        20,
+        40,
+        id="missing-marker-clamp-then-break",
+    ),
+    pytest.param(
+        [
+            {"name": "SOUL.md", "path": "   ", "content": "no path"},
+            {"name": "USER.md", "path": "  /w/USER.md  ", "content": "tail spaces\u00a0\u3000\ufeff \u2028\n"},
+            {"name": "TOOLS.md", "path": "/w/TOOLS.md", "content": "keeps NEL\u0085"},
+            {"name": "IDENTITY.md", "path": "/w/IDENTITY.md", "content": " \n\t "},
+        ],
+        200,
+        None,
+        id="paths-and-js-whitespace",
+    ),
+    pytest.param(
+        [
+            {"name": "SOUL.md", "path": f"/w/agent-{index}/SOUL.md", "content": "s" * (400 + index)}
+            for index in range(5)
+        ],
+        256,
+        60_000,
+        id="duplicate-names-report",
+    ),
+]
+
+
+@pytest.mark.parametrize(("files", "max_chars", "total_max_chars"), BOOTSTRAP_CONTEXT_CASES)
+def test_real_openclaw_oracle_bootstrap_context_files_match_python(files, max_chars, total_max_chars):
+    payload = {
+        "operation": "bootstrapContextFiles",
+        "bootstrapFiles": files,
+        "maxChars": max_chars,
+    }
+    if total_max_chars is not None:
+        payload["totalMaxChars"] = total_max_chars
+
+    result = _oracle().run(payload)
+
+    assert result["ok"] is True, result
+    python_files = [
+        WorkspaceBootstrapFile(
+            name=file["name"],
+            path=file["path"],
+            content=file.get("content"),
+            missing=file.get("missing", False),
+        )
+        for file in files
+    ]
+    assert result["result"] == _python_bootstrap_context_report(
+        python_files, max_chars=max_chars, total_max_chars=total_max_chars
+    )
+
+
+def test_real_openclaw_oracle_bootstrap_warning_once_mode_matches_python():
+    files = [
+        {"name": "AGENTS.md", "path": "/w/AGENTS.md", "content": _agents_policy_fixture()},
+        {"name": "SOUL.md", "path": "/w/SOUL.md", "content": "é" * 3000},
+    ]
+    python_files = [WorkspaceBootstrapFile(f["name"], f["path"], f["content"]) for f in files]
+    first = _oracle().run(
+        {"operation": "bootstrapContextFiles", "bootstrapFiles": files, "maxChars": 1000}
+    )
+    assert first["ok"] is True, first
+    signature = first["result"]["promptWarning"]["signature"]
+    assert signature == _python_bootstrap_context_report(
+        python_files, max_chars=1000, total_max_chars=None
+    )["promptWarning"]["signature"]
+
+    second = _oracle().run(
+        {
+            "operation": "bootstrapContextFiles",
+            "bootstrapFiles": files,
+            "maxChars": 1000,
+            "warningMode": "once",
+            "seenSignatures": [signature, "  ", signature],
+        }
+    )
+
+    assert second["ok"] is True, second
+    assert second["result"]["promptWarning"]["warningShown"] is False
+    assert second["result"] == _python_bootstrap_context_report(
+        python_files,
+        max_chars=1000,
+        total_max_chars=None,
+        warning_mode="once",
+        seen_signatures=[signature, "  ", signature],
+    )
+
+
+def _session_kind_for_key(session_key: str) -> str:
+    rest = session_key.split(":", 2)[2].lower()
+    if rest.startswith("subagent:"):
+        return "subagent"
+    if rest.startswith("cron:"):
+        return "cron"
+    return "main"
+
+
+def _write_bootstrap_workspace(root: Path, files: dict[str, str | bytes]) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    for relative, content in files.items():
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content if isinstance(content, bytes) else content.encode("utf-8"))
+
+
+BOOTSTRAP_SESSION_KEYS = [
+    "agent:main:main",
+    "agent:main:subagent:helper-1",
+    "agent:main:cron:nightly",
+    "agent:main:telegram:group:42",
+    "agent:main:discord:channel:general",
+]
+BOOTSTRAP_RUNS = [
+    {"sessionKey": "agent:main:main"},
+    {"sessionKey": "agent:main:telegram:group:42"},
+    {"sessionKey": "agent:main:subagent:helper-1"},
+    {"sessionKey": "agent:main:cron:nightly", "runKind": "cron"},
+    {"sessionKey": "agent:main:main", "runKind": "heartbeat"},
+    {"sessionKey": "agent:main:main", "contextMode": "lightweight", "runKind": "heartbeat"},
+    {"sessionKey": "agent:main:main", "contextMode": "lightweight", "runKind": "default"},
+    {"sessionKey": "agent:main:main", "runKind": "commitment-only"},
+]
+
+
+def _full_workspace_files() -> dict[str, str | bytes]:
+    return {
+        "AGENTS.md": "# Rules\r\n- Never push.\r\n\r\n\r\n",
+        "SOUL.md": "Calm, direct. 🧠\n",
+        "TOOLS.md": "## Tools\n- rg\n",
+        "IDENTITY.md": "Name: memory-core\nEmoji: 🧠\n",
+        "USER.md": "Doruk; prefers Türkçe. ğüşİ\n",
+        "HEARTBEAT.md": "# Keep empty\n\n- check inbox\n",
+        "BOOTSTRAP.md": "Run the ritual.\n",
+        "MEMORY.md": "- Decision: 記憶 stays local.\n",
+        "memory/2026-09-26.md": "daily note\n",
+        "extra/NOTES.md": "not a bootstrap file\n",
+    }
+
+
+def _python_workspace_bootstrap_result(root: Path, keys: list[str], runs: list[dict]) -> dict:
+    loaded = load_workspace_bootstrap_files(root, OPENCLAW_PIN_LAYOUT)
+    setup_completed = is_workspace_setup_completed(root)
+    python_runs = []
+    for run in runs:
+        files = filter_bootstrap_files(
+            loaded,
+            root=root,
+            layout=OPENCLAW_PIN_LAYOUT,
+            session_kind=_session_kind_for_key(run["sessionKey"]),
+            setup_completed=setup_completed,
+            context_mode=run.get("contextMode", "full"),
+            run_kind=run.get("runKind", "default"),
+            include_heartbeat=True,
+        )
+        built = build_bootstrap_context_files(files, max_chars=20_000, total_max_chars=60_000)
+        python_runs.append(
+            {
+                "run": run,
+                "bootstrapFiles": [_bootstrap_file_payload(file) for file in files],
+                "contextFiles": [_context_file_payload(file) for file in built.files],
+                "warnings": list(built.warnings),
+            }
+        )
+    return {
+        "loaded": [_bootstrap_file_payload(file) for file in loaded],
+        "bySessionKey": {
+            key: [
+                _bootstrap_file_payload(file)
+                for file in filter_bootstrap_files_for_session(
+                    loaded, _session_kind_for_key(key), OPENCLAW_PIN_LAYOUT
+                )
+            ]
+            for key in keys
+        },
+        "runs": python_runs,
+        "setupCompleted": setup_completed,
+        "bootstrapStatus": bootstrap_status(root, OPENCLAW_PIN_LAYOUT),
+    }
+
+
+def _workspace_scenario_full(root: Path) -> None:
+    _write_bootstrap_workspace(root, _full_workspace_files())
+
+
+def _workspace_scenario_missing_and_lowercase_memory(root: Path) -> None:
+    files = _full_workspace_files()
+    for name in ("SOUL.md", "MEMORY.md", "BOOTSTRAP.md"):
+        files.pop(name)
+    files["memory.md"] = "legacy lowercase memory\n"
+    _write_bootstrap_workspace(root, files)
+
+
+def _workspace_scenario_completed_setup(root: Path) -> None:
+    _write_bootstrap_workspace(root, _full_workspace_files())
+    (root / "openclaw-workspace-state.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "bootstrapSeededAt": "2026-09-01T00:00:00.000Z",
+                "setupCompletedAt": "2026-09-02T00:00:00.000Z",
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _workspace_scenario_guarded_reads(root: Path) -> None:
+    files = _full_workspace_files()
+    files["TOOLS.md"] = b"t" * (2 * 1024 * 1024 + 1)
+    files.pop("IDENTITY.md")
+    files.pop("USER.md")
+    files["SOUL.md"] = b"bad utf8 \xff\xfe tail \xe2\x82\n"
+    _write_bootstrap_workspace(root, files)
+    outside = root.parent / f"{root.name}-outside.md"
+    outside.write_text("outside secret\n", encoding="utf-8")
+    (root / "IDENTITY.md").symlink_to(outside)
+    os.link(root / "HEARTBEAT.md", root / "USER.md")
+
+
+WORKSPACE_BOOTSTRAP_SCENARIOS = [
+    pytest.param(_workspace_scenario_full, id="all-files"),
+    pytest.param(_workspace_scenario_missing_and_lowercase_memory, id="missing-lowercase-memory"),
+    pytest.param(_workspace_scenario_completed_setup, id="setup-completed-drops-bootstrap"),
+    pytest.param(_workspace_scenario_guarded_reads, id="guarded-reads"),
+]
+
+
+@pytest.mark.parametrize("scenario", WORKSPACE_BOOTSTRAP_SCENARIOS)
+def test_real_openclaw_oracle_workspace_bootstrap_files_match_python(tmp_path: Path, scenario):
+    root = tmp_path / "workspace"
+    scenario(root)
+
+    result = _oracle().run(
+        {
+            "operation": "workspaceBootstrapFiles",
+            "workspaceDir": str(root),
+            "keys": BOOTSTRAP_SESSION_KEYS,
+            "runs": BOOTSTRAP_RUNS,
+        }
+    )
+
+    assert result["ok"] is True, result
+    assert result["result"] == _python_workspace_bootstrap_result(
+        root, BOOTSTRAP_SESSION_KEYS, BOOTSTRAP_RUNS
+    )
+
+
+HEARTBEAT_PROMPT_BLOCK = (
+    "Default heartbeat prompt:\n`Read HEARTBEAT.md if it exists (workspace context). Follow it "
+    "strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, "
+    "reply HEARTBEAT_OK.`"
+)
+RENDER_CONTEXT_FILES = [
+    {"path": "/w/extra/NOTES.md", "content": "extra notes"},
+    {"path": "/w/MEMORY.md", "content": "- 記憶\n\n\n\n- two"},
+    {"path": "/w/HEARTBEAT.md", "content": f"tasks\n\n\n{HEARTBEAT_PROMPT_BLOCK}\n\n\nafter"},
+    {"path": "/w/Zeta.md", "content": "zeta"},
+    {"path": "/w/TOOLS.md", "content": "tools"},
+    {"path": "/w/BOOTSTRAP.md", "content": "ritual 🧠"},
+    {"path": "/w/alpha.md", "content": "alpha"},
+    {"path": "/w/USER.md", "content": "Doruk ğüş"},
+    {"path": "/w/IDENTITY.md", "content": ""},
+    {"path": "/w/SOUL.md", "content": "calm\n\nwarm"},
+    {"path": "/w/AGENTS.md", "content": "rules"},
+    {"path": "/w/nested/AGENTS.md", "content": "nested rules"},
+]
+PROJECT_CONTEXT_RENDER_CASES = [
+    pytest.param(RENDER_CONTEXT_FILES, "full", "[Bootstrap truncation warning]\nnotice", id="all-full"),
+    pytest.param(
+        [file for file in RENDER_CONTEXT_FILES if "BOOTSTRAP" not in file["path"]],
+        "full",
+        None,
+        id="full-without-bootstrap-file",
+    ),
+    pytest.param(
+        [{"path": "/w/HEARTBEAT.md", "content": "only heartbeat"}], "limited", None, id="dynamic-only"
+    ),
+    pytest.param([], "none", "  ", id="empty"),
+    pytest.param(
+        [{"path": "/w/SOUL.md", "content": "soul"}, {"path": "  ", "content": "blank path"}],
+        None,
+        None,
+        id="soul-only",
+    ),
+]
+
+
+@pytest.mark.parametrize(("files", "mode", "notice"), PROJECT_CONTEXT_RENDER_CASES)
+def test_real_openclaw_oracle_project_context_render_matches_python(files, mode, notice):
+    payload = {"operation": "projectContextRender", "contextFiles": files}
+    if mode is not None:
+        payload["bootstrapMode"] = mode
+    if notice is not None:
+        payload["bootstrapTruncationNotice"] = notice
+
+    result = _oracle().run(payload)
+
+    assert result["ok"] is True, result
+    context_files = [ContextFile(file["path"], file["content"]) for file in files]
+    stable, dynamic = render_project_context(context_files, OPENCLAW_PIN_LAYOUT)
+    sections = build_bootstrap_prompt_section_lines(
+        mode, truncation_notice=notice, context_files=context_files, layout=OPENCLAW_PIN_LAYOUT
+    )
+    assert result["result"] == {
+        "stable": stable,
+        "dynamic": dynamic,
+        "workspaceFiles": render_workspace_files_injected(OPENCLAW_COMPAT_RUNTIME_IDENTITY),
+        "bootstrapSections": sections,
+        "bootstrapPendingInPrompt": "## Bootstrap Pending" in sections,
+    }
+
+
+def _python_tree_snapshot(root: Path) -> dict[str, str | None]:
+    skip = {"openclaw-workspace-state.json", ".openclaw", ".memory-core", ".git"}
+    out: dict[str, str | None] = {}
+
+    def walk(relative: str) -> None:
+        for entry in os.scandir(root / relative if relative else root):
+            if not relative and entry.name in skip:
+                continue
+            rel = f"{relative}/{entry.name}" if relative else entry.name
+            if entry.is_dir(follow_symlinks=False):
+                out[f"{rel}/"] = None
+                walk(rel)
+            else:
+                out[rel] = (root / rel).read_bytes().decode("utf-8", errors="replace")
+
+    walk("")
+    return dict(sorted(out.items()))
+
+
+def _normalize_state(raw: str | None) -> dict | None:
+    if raw is None:
+        return None
+    parsed = json.loads(raw)
+    return {
+        key: "__iso__"
+        if isinstance(value, str)
+        and len(value) == 24
+        and value[4] == "-"
+        and value[10] == "T"
+        and value.endswith("Z")
+        else value
+        for key, value in parsed.items()
+    }
+
+
+def _python_lifecycle_snapshots(root: Path, steps: list[dict]) -> list[dict]:
+    templates = _upstream_templates()
+    snapshots = []
+    for step in steps:
+        target = root / step["path"] if step.get("path") else root
+        if step["op"] == "write":
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(step.get("content", "").encode("utf-8"))
+            continue
+        if step["op"] == "remove":
+            if target.is_dir():
+                import shutil
+
+                shutil.rmtree(target)
+            elif target.exists():
+                target.unlink()
+            continue
+        if step["op"] == "mkdir":
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        initialize_agent_workspace(
+            root,
+            layout=OPENCLAW_PIN_LAYOUT,
+            templates=templates,
+            skip_optional=step.get("skipOptional") or False,
+        )
+        state_path = root / ".memory-core" / "workspace-state.json"
+        snapshots.append(
+            {
+                "tree": _python_tree_snapshot(root),
+                "state": _normalize_state(
+                    state_path.read_text(encoding="utf-8") if state_path.exists() else None
+                ),
+                "status": bootstrap_status(root, OPENCLAW_PIN_LAYOUT),
+                "setupCompleted": is_workspace_setup_completed(root),
+            }
+        )
+    return snapshots
+
+
+LIFECYCLE_SCENARIOS = [
+    pytest.param(
+        [
+            {"op": "ensure"},
+            {"op": "ensure"},
+            {"op": "write", "path": "USER.md", "content": "Name: Doruk\n"},
+            {"op": "ensure"},
+            {"op": "remove", "path": "SOUL.md"},
+            {"op": "remove", "path": "AGENTS.md"},
+            {"op": "ensure"},
+        ],
+        id="fresh-seed-then-reconcile-deletes-bootstrap",
+    ),
+    pytest.param(
+        [
+            {"op": "ensure", "skipOptional": ["SOUL.md", "HEARTBEAT.md"]},
+            {"op": "remove", "path": "BOOTSTRAP.md"},
+            {"op": "ensure"},
+        ],
+        id="skip-optional-then-agent-deletes-bootstrap",
+    ),
+    pytest.param(
+        [{"op": "mkdir", "path": "memory"}, {"op": "ensure"}],
+        id="memory-dir-counts-as-configured",
+    ),
+    pytest.param(
+        [{"op": "write", "path": "MEMORY.md", "content": "- fact\n"}, {"op": "ensure"}],
+        id="memory-file-counts-as-configured",
+    ),
+    pytest.param(
+        [{"op": "write", "path": "skills/demo/SKILL.md", "content": "# skill\n"}, {"op": "ensure"}],
+        id="workspace-skill-counts-as-configured",
+    ),
+    pytest.param(
+        [{"op": "mkdir", "path": ".git"}, {"op": "ensure"}],
+        id="git-dir-counts-as-configured",
+    ),
+    pytest.param(
+        [{"op": "write", "path": "IDENTITY.md", "content": "Name: memory-core 🧠\n"}, {"op": "ensure"}],
+        id="customized-identity-counts-as-configured",
+    ),
+    pytest.param(
+        [
+            {
+                "op": "write",
+                "path": ".openclaw/workspace-state.json",
+                "content": '{"onboardingCompletedAt": "2026-01-02T03:04:05.006Z"}',
+            },
+            {"op": "ensure"},
+            {"op": "ensure"},
+        ],
+        id="legacy-onboarding-state-migrates",
+    ),
+    pytest.param(
+        [
+            {"op": "write", "path": "BOOTSTRAP.md", "content": "host ritual\n"},
+            {"op": "ensure"},
+            {"op": "write", "path": "SOUL.md", "content": "custom soul\n"},
+            {"op": "ensure"},
+        ],
+        id="existing-bootstrap-marked-then-reconciled",
+    ),
+    pytest.param(
+        [
+            {"op": "write", "path": "openclaw-workspace-state.json", "content": "not json"},
+            {"op": "ensure"},
+        ],
+        id="corrupt-state-file",
+    ),
+]
+
+
+@pytest.mark.parametrize("steps", LIFECYCLE_SCENARIOS)
+def test_real_openclaw_oracle_workspace_lifecycle_matches_python(tmp_path: Path, steps):
+    ts_root = tmp_path / "ts" / "workspace"
+    py_root = tmp_path / "py" / "workspace"
+    ts_root.parent.mkdir(parents=True)
+    py_root.parent.mkdir(parents=True)
+
+    result = _oracle().run(
+        {"operation": "workspaceLifecycle", "workspaceDir": str(ts_root), "steps": steps}
+    )
+
+    assert result["ok"] is True, result
+    python_snapshots = _python_lifecycle_snapshots(py_root, steps)
+    # Each runtime keeps the setup state in its own file (openclaw-workspace-state.json vs
+    # .memory-core/workspace-state.json); snapshots compare the parsed states.
+    assert result["result"]["snapshots"] == python_snapshots
+
+
+def _write_daily(root: Path, name: str, content: str | bytes, mtime: int | None = None) -> None:
+    path = root / "memory" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content if isinstance(content, bytes) else content.encode("utf-8"))
+    if mtime is not None:
+        os.utime(path, (mtime, mtime))
+
+
+def _startup_scenario_istanbul(root: Path) -> None:
+    _write_daily(root, "2026-09-27.md", "Bugün: Doruk ```code``` notu 🧠\n" * 3)
+    _write_daily(root, "2026-09-26.md", "  \n\t\n")
+    _write_daily(root, "2026-09-26-1430.md", "slug 1430\n", mtime=1_790_000_000)
+    _write_daily(root, "2026-09-26-api-design.md", "api design\n", mtime=1_790_000_500)
+    _write_daily(root, "2026-09-26-zeta.md", "zeta same mtime\n", mtime=1_790_000_500)
+    _write_daily(root, "2026-09-26-alpha.md", "alpha same mtime\n", mtime=1_790_000_500)
+    _write_daily(root, "2026-09-26-ü[x].md", "odd label\n", mtime=1_790_000_100)
+    _write_daily(root, "2026-09-26-oldest.md", "oldest\n", mtime=1_700_000_000)
+    _write_daily(root, "2026-09-25.md", "too old for the window\n")
+
+
+def _startup_scenario_caps(root: Path) -> None:
+    _write_daily(root, "2026-09-26.md", ("記憶 line with emoji 😀 " * 40 + "\n") * 5)
+    _write_daily(root, "2026-09-25.md", "x" * 5000)
+    _write_daily(root, "2026-09-27.md", "utc day entry\n")
+    _write_daily(root, "2026-09-25-big.md", b"b" * 20_000)
+
+
+STARTUP_CONTEXT_CASES = [
+    pytest.param(_startup_scenario_istanbul, 1_790_458_200_000, "Europe/Istanbul", None, id="istanbul"),
+    pytest.param(
+        _startup_scenario_caps,
+        1_790_474_400_000,
+        "America/Los_Angeles",
+        None,
+        id="los-angeles-utc-day-and-caps",
+    ),
+    pytest.param(
+        _startup_scenario_caps,
+        1_790_474_400_000,
+        "America/Los_Angeles",
+        {"dailyMemoryDays": 3, "maxFileChars": 700, "maxTotalChars": 900, "maxFileBytes": 6000},
+        id="custom-limits",
+    ),
+    pytest.param(lambda root: root.mkdir(parents=True), 1_790_458_200_000, "UTC", None, id="empty"),
+]
+
+
+@pytest.mark.parametrize(("scenario", "now_ms", "timezone_name", "limits"), STARTUP_CONTEXT_CASES)
+def test_real_openclaw_oracle_startup_context_matches_python(
+    tmp_path: Path, scenario, now_ms, timezone_name, limits
+):
+    root = tmp_path / "workspace"
+    scenario(root)
+    payload = {
+        "operation": "startupContext",
+        "workspaceDir": str(root),
+        "nowMs": now_ms,
+        "timezone": timezone_name,
+    }
+    if limits:
+        payload["startupContext"] = limits
+
+    result = _oracle().run(payload)
+
+    assert result["ok"] is True, result
+    kwargs = {}
+    if limits:
+        kwargs = {
+            "daily_memory_days": limits["dailyMemoryDays"],
+            "max_file_chars": limits["maxFileChars"],
+            "max_total_chars": limits["maxTotalChars"],
+            "max_file_bytes": limits["maxFileBytes"],
+        }
+    assert result["result"]["prelude"] == build_startup_context(
+        root, now_ms=now_ms, timezone=timezone_name, **kwargs
+    )
+
+
+def _upstream_source(relative: str) -> str:
+    return (Path(os.environ["OPENCLAW_ORACLE_REPO"]) / relative).read_text(encoding="utf-8")
+
+
+def _upstream_numeric_constants(source: str) -> dict[str, float]:
+    import re
+
+    constants: dict[str, float] = {}
+    for match in re.finditer(
+        r"^(?:export )?const ([A-Z0-9_]+) = ([0-9_.]+(?: \* [0-9_.]+)*);", source, re.MULTILINE
+    ):
+        value = 1.0
+        for factor in match.group(2).split(" * "):
+            value *= float(factor.replace("_", ""))
+        constants[match.group(1)] = value
+    return constants
+
+
+def test_bootstrap_constants_and_keyword_sets_equal_upstream_source():
+    # Set-equality check (AGENTS.md › Parity rules): constants and the AGENTS.md digest keyword
+    # lists are extracted from the pinned TS source, not retyped.
+    import re
+
+    from memory_core.bootstrap import budget, files, startup
+
+    bootstrap_source = _upstream_source("src/agents/embedded-agent-helpers/bootstrap.ts")
+    keyword_sets = [
+        match.split("|")
+        for match in re.findall(r"/\\b\(\?:([^)]*)\)\\b/iu", bootstrap_source)
+    ]
+    assert [
+        [keyword.replace("\\.", ".") for keyword in keywords] for keywords in keyword_sets
+    ] == [list(budget._POLICY_KEYWORDS), list(budget._HIGH_PRIORITY_KEYWORDS)]
+
+    expected_numbers = {
+        **_upstream_numeric_constants(bootstrap_source),
+        **_upstream_numeric_constants(_upstream_source("src/agents/bootstrap-budget.ts")),
+        **_upstream_numeric_constants(_upstream_source("src/auto-reply/reply/startup-context.ts")),
+    }
+    workspace_numbers = _upstream_numeric_constants(_upstream_source("src/agents/workspace.ts"))
+    expected_numbers["MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES"] = workspace_numbers[
+        "MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES"
+    ]
+    python_numbers = {
+        name: float(getattr(module, name))
+        for module in (budget, files, startup)
+        for name in dir(module)
+        if name in expected_numbers
+    }
+    assert python_numbers == expected_numbers

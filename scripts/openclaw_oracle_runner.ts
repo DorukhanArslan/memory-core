@@ -62,7 +62,71 @@ type Payload = {
   messages?: Array<Record<string, unknown>>;
   unwindowedMessages?: Array<Record<string, unknown>>;
   sessionEntries?: Array<Record<string, unknown>>;
+  bootstrapFiles?: Array<{ name?: string; path?: string; content?: string; missing?: boolean }>;
+  contextFiles?: Array<{ path: string; content: string }>;
+  totalMaxChars?: number;
+  warningMode?: "off" | "once" | "always";
+  seenSignatures?: string[];
+  bootstrapMode?: "full" | "limited" | "none";
+  bootstrapTruncationNotice?: string;
+  runs?: Array<{
+    sessionKey?: string;
+    contextMode?: "full" | "lightweight";
+    runKind?: "default" | "heartbeat" | "cron" | "commitment-only";
+  }>;
+  steps?: Array<{
+    op: "write" | "remove" | "mkdir" | "ensure";
+    path?: string;
+    content?: string;
+    skipOptional?: string[];
+  }>;
+  startupContext?: Record<string, unknown>;
 };
+
+const WORKSPACE_STATE_SNAPSHOT_SKIP = new Set([
+  "openclaw-workspace-state.json",
+  ".openclaw",
+  ".memory-core",
+  ".git",
+]);
+
+async function snapshotWorkspaceTree(workspaceDir: string): Promise<Record<string, string | null>> {
+  // Relative path -> file content (null for directories), skipping state files
+  // whose location intentionally differs between OpenClaw and memory-core.
+  const out: Record<string, string | null> = {};
+  const walk = async (relativeDir: string) => {
+    const entries = await fs.readdir(path.join(workspaceDir, relativeDir), { withFileTypes: true });
+    for (const entry of entries) {
+      if (!relativeDir && WORKSPACE_STATE_SNAPSHOT_SKIP.has(entry.name)) {
+        continue;
+      }
+      const rel = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        out[`${rel}/`] = null;
+        await walk(rel);
+      } else {
+        out[rel] = await fs.readFile(path.join(workspaceDir, rel), "utf-8");
+      }
+    }
+  };
+  await walk("");
+  return Object.fromEntries(Object.entries(out).toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
+
+function normalizeSetupStateTimestamps(raw: string | null): Record<string, unknown> | null {
+  if (raw === null) {
+    return null;
+  }
+  const parsed = JSON.parse(raw) as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    out[key] =
+      typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)
+        ? "__iso__"
+        : value;
+  }
+  return out;
+}
 
 type PromotionPolicy = {
   enabled?: boolean;
@@ -796,6 +860,239 @@ async function main() {
     } finally {
       await memoryIndex.closeAllMemorySearchManagers();
     }
+  }
+
+  if (payload.operation === "bootstrapContextFiles") {
+    // src/agents/embedded-agent-helpers/bootstrap.ts buildBootstrapContextFiles plus the
+    // src/agents/bootstrap-budget.ts report built from the same files (attempt.ts:1466-1488).
+    const bootstrap = await importFromRepo(repoPath, "src/agents/embedded-agent-helpers/bootstrap.ts");
+    const budget = await importFromRepo(repoPath, "src/agents/bootstrap-budget.ts");
+    const warnings: string[] = [];
+    const bootstrapFiles = (payload.bootstrapFiles ?? []).map((file) => ({
+      name: file.name ?? "",
+      path: file.path ?? "",
+      ...(typeof file.content === "string" ? { content: file.content } : {}),
+      missing: file.missing === true,
+    }));
+    const maxChars = payload.maxChars ?? bootstrap.DEFAULT_BOOTSTRAP_MAX_CHARS;
+    const contextFiles = bootstrap.buildBootstrapContextFiles(bootstrapFiles, {
+      warn: (message: string) => warnings.push(message),
+      maxChars,
+      ...(typeof payload.totalMaxChars === "number" ? { totalMaxChars: payload.totalMaxChars } : {}),
+    });
+    const totalMaxChars = payload.totalMaxChars ?? bootstrap.DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS;
+    const stats = budget.buildBootstrapInjectionStats({ bootstrapFiles, injectedFiles: contextFiles });
+    const analysis = budget.analyzeBootstrapBudget({
+      files: stats,
+      bootstrapMaxChars: maxChars,
+      bootstrapTotalMaxChars: totalMaxChars,
+    });
+    const promptWarning = budget.buildBootstrapPromptWarning({
+      analysis,
+      mode: payload.warningMode ?? "always",
+      seenSignatures: payload.seenSignatures,
+    });
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        contextFiles,
+        warnings,
+        stats,
+        analysis: {
+          files: analysis.files,
+          totalNearLimit: analysis.totalNearLimit,
+          hasTruncation: analysis.hasTruncation,
+          totals: analysis.totals,
+        },
+        promptWarning: {
+          signature: promptWarning.signature ?? null,
+          warningShown: promptWarning.warningShown,
+          lines: promptWarning.lines,
+          warningSignaturesSeen: promptWarning.warningSignaturesSeen,
+        },
+        notice: budget.buildBootstrapPromptWarningNotice(promptWarning.lines) ?? null,
+        appended: budget.appendBootstrapPromptWarning("Prompt body", promptWarning.lines),
+      },
+    };
+  }
+
+  if (payload.operation === "workspaceBootstrapFiles") {
+    // src/agents/workspace.ts loadWorkspaceBootstrapFiles/filterBootstrapFilesForSession and
+    // src/agents/bootstrap-files.ts resolveBootstrapFilesForRun/resolveBootstrapContextForRun
+    // on a fixture workspace written by the Python side (no config, no hooks registered).
+    if (!payload.workspaceDir) {
+      throw new Error("workspaceDir is required");
+    }
+    process.env.OPENCLAW_STATE_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-bootstrap-state-"));
+    const workspace = await importFromRepo(repoPath, "src/agents/workspace.ts");
+    const bootstrapFilesModule = await importFromRepo(repoPath, "src/agents/bootstrap-files.ts");
+    const loaded = await workspace.loadWorkspaceBootstrapFiles(payload.workspaceDir);
+    const bySessionKey: Record<string, unknown[]> = {};
+    for (const key of payload.keys ?? []) {
+      bySessionKey[key] = workspace.filterBootstrapFilesForSession(loaded, key);
+    }
+    const runs = [];
+    for (const run of payload.runs ?? []) {
+      const warnings: string[] = [];
+      const resolved = await bootstrapFilesModule.resolveBootstrapContextForRun({
+        workspaceDir: payload.workspaceDir,
+        sessionKey: run.sessionKey,
+        contextMode: run.contextMode,
+        runKind: run.runKind,
+        warn: (message: string) => warnings.push(message),
+      });
+      runs.push({
+        run,
+        bootstrapFiles: resolved.bootstrapFiles,
+        contextFiles: resolved.contextFiles,
+        warnings,
+      });
+    }
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        loaded,
+        bySessionKey,
+        runs,
+        setupCompleted: await workspace.isWorkspaceSetupCompleted(payload.workspaceDir),
+        bootstrapStatus: await workspace.resolveWorkspaceBootstrapStatus(payload.workspaceDir),
+      },
+    };
+  }
+
+  if (payload.operation === "projectContextRender") {
+    // src/agents/system-prompt.ts buildAgentSystemPrompt: the Project Context blocks are cut
+    // from the real prompt around SYSTEM_PROMPT_CACHE_BOUNDARY; bootstrap sections come from
+    // the exported buildAgentBootstrapSystemPromptSections.
+    const systemPrompt = await importFromRepo(repoPath, "src/agents/system-prompt.ts");
+    const boundaryModule = await importFromRepo(
+      repoPath,
+      "packages/ai/src/utils/system-prompt-cache-boundary.ts",
+    );
+    const boundary: string = boundaryModule.SYSTEM_PROMPT_CACHE_BOUNDARY;
+    const contextFiles = payload.contextFiles ?? [];
+    const prompt: string = systemPrompt.buildAgentSystemPrompt({
+      workspaceDir: payload.workspaceDir ?? "/w",
+      contextFiles,
+      bootstrapMode: payload.bootstrapMode,
+      bootstrapTruncationNotice: payload.bootstrapTruncationNotice,
+      silentReplyPromptMode: "none",
+    });
+    const boundaryIndex = prompt.indexOf(boundary);
+    if (boundaryIndex === -1) {
+      throw new Error("cache boundary missing from system prompt");
+    }
+    const stablePart = prompt.slice(0, boundaryIndex);
+    const stableStart = stablePart.indexOf("\n# Project Context\n");
+    const stable =
+      stableStart === -1 ? "" : stablePart.slice(stableStart + 1).replace(/\n$/, "");
+    const dynamicPart = prompt.slice(boundaryIndex + boundary.length);
+    const approvalIndex = dynamicPart.indexOf("\nIf exec returns approval-pending");
+    const dynamicCandidate = (approvalIndex === -1 ? dynamicPart : dynamicPart.slice(0, approvalIndex)).replace(/^\n/, "");
+    const dynamic = dynamicCandidate.startsWith("# ") ? dynamicCandidate : "";
+    const workspaceHeading = "## Workspace Files (injected)\n";
+    const workspaceIndex = prompt.indexOf(workspaceHeading);
+    const workspaceLineEnd = prompt.indexOf("\n", workspaceIndex + workspaceHeading.length);
+    const pendingIndex = prompt.indexOf("## Bootstrap Pending\n");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        stable,
+        dynamic,
+        workspaceFiles:
+          workspaceIndex === -1 ? null : prompt.slice(workspaceIndex, workspaceLineEnd),
+        bootstrapSections: systemPrompt.buildAgentBootstrapSystemPromptSections({
+          bootstrapMode: payload.bootstrapMode,
+          bootstrapTruncationNotice: payload.bootstrapTruncationNotice,
+          contextFiles,
+        }),
+        bootstrapPendingInPrompt: pendingIndex !== -1,
+      },
+    };
+  }
+
+  if (payload.operation === "workspaceLifecycle") {
+    // src/agents/workspace.ts ensureAgentWorkspace + resolveWorkspaceBootstrapStatus over a
+    // scripted sequence of file edits. Each ensure gets a fresh state dir so no attestation is
+    // ever "recent" (memory-core does not port attestations), HOME points at a temp dir, and PATH
+    // is emptied so git is unavailable (memory-core does not port git init).
+    if (!payload.workspaceDir) {
+      throw new Error("workspaceDir is required");
+    }
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-lifecycle-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.PATH = "";
+    await fs.mkdir(process.env.HOME, { recursive: true });
+    const workspace = await importFromRepo(repoPath, "src/agents/workspace.ts");
+    const snapshots = [];
+    try {
+      let stepIndex = 0;
+      for (const step of payload.steps ?? []) {
+        stepIndex += 1;
+        const target = step.path ? path.join(payload.workspaceDir, step.path) : payload.workspaceDir;
+        if (step.op === "write") {
+          await fs.mkdir(path.dirname(target), { recursive: true });
+          await fs.writeFile(target, step.content ?? "", "utf-8");
+          continue;
+        }
+        if (step.op === "remove") {
+          await fs.rm(target, { recursive: true, force: true });
+          continue;
+        }
+        if (step.op === "mkdir") {
+          await fs.mkdir(target, { recursive: true });
+          continue;
+        }
+        process.env.OPENCLAW_STATE_DIR = path.join(sandbox, `state-${stepIndex}`);
+        await workspace.ensureAgentWorkspace({
+          dir: payload.workspaceDir,
+          ensureBootstrapFiles: true,
+          skipOptionalBootstrapFiles: step.skipOptional,
+        });
+        let stateRaw: string | null = null;
+        try {
+          stateRaw = await fs.readFile(
+            path.join(payload.workspaceDir, "openclaw-workspace-state.json"),
+            "utf-8",
+          );
+        } catch {
+          stateRaw = null;
+        }
+        snapshots.push({
+          tree: await snapshotWorkspaceTree(payload.workspaceDir),
+          state: normalizeSetupStateTimestamps(stateRaw),
+          status: await workspace.resolveWorkspaceBootstrapStatus(payload.workspaceDir),
+          setupCompleted: await workspace.isWorkspaceSetupCompleted(payload.workspaceDir),
+        });
+      }
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+    return { ok: true, operation: payload.operation, result: { snapshots } };
+  }
+
+  if (payload.operation === "startupContext") {
+    // src/auto-reply/reply/startup-context.ts buildSessionStartupContextPrelude.
+    if (!payload.workspaceDir) {
+      throw new Error("workspaceDir is required");
+    }
+    const startup = await importFromRepo(repoPath, "src/auto-reply/reply/startup-context.ts");
+    const prelude = await startup.buildSessionStartupContextPrelude({
+      workspaceDir: payload.workspaceDir,
+      nowMs,
+      cfg: {
+        agents: {
+          defaults: {
+            userTimezone: timezone,
+            ...(payload.startupContext ? { startupContext: payload.startupContext } : {}),
+          },
+        },
+      },
+    });
+    return { ok: true, operation: payload.operation, result: { prelude: prelude ?? null } };
   }
 
   const promotionOperations = new Set([

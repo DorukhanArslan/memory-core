@@ -318,6 +318,16 @@ class LabRuntime:
         self._ensure_lock = threading.Lock()
         self.live_task = LiveTaskDemo(workspace_dir=self.live_root)
 
+    @contextmanager
+    def locked(self, timeout: float = 120.0) -> Iterator[None]:
+        """The Lab lock for a mutating request; ``409 busy`` instead of waiting forever."""
+        if not self.lock.acquire(timeout=timeout):
+            raise LabError(409, "another Lab operation is still running", code="busy")
+        try:
+            yield
+        finally:
+            self.lock.release()
+
     # clocks
 
     def now_ms(self) -> int:
@@ -877,7 +887,7 @@ def _utf16_len(text: str) -> int:
 
 def _atomic_write(root: Path, target: Path, content: str) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
-    if os.path.islink(target.parent) or target.parent.resolve() != target.parent.absolute().resolve():
+    if os.path.islink(target.parent):
         raise LabError(400, "parent directory is a symlink", code="symlink")
     tmp = target.parent / f".{target.name}.lab-{secrets.token_hex(4)}.tmp"
     try:

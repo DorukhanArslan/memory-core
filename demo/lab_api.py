@@ -145,7 +145,7 @@ def build_router(lab: LabRuntime) -> APIRouter:
     @router.put("/file")
     def write_file(payload: dict = Body(...)):
         lab.ensure_exists()
-        with lab.lock:
+        with lab.locked():
             return lab.write_file(payload.get("path"), payload.get("content"), payload.get("baseSha256"))
 
     @router.post("/file/diff-preview")
@@ -191,7 +191,7 @@ def build_router(lab: LabRuntime) -> APIRouter:
         baseline, _ = lab.baseline_for(str(payload.get("since") or ""))
         current = lab.read_file(path)["sha256"] if target.is_file() else None
         base = payload.get("baseSha256", current)
-        with lab.lock:
+        with lab.locked():
             if path in baseline:
                 text = baseline[path].text
                 if text is None:
@@ -202,7 +202,7 @@ def build_router(lab: LabRuntime) -> APIRouter:
     @router.post("/workspace/reset")
     def workspace_reset(payload: dict = Body(default={})):
         mode = str(payload.get("mode") or "seeded")
-        with lab.lock:
+        with lab.locked():
             lab.reset_workspace(mode, keep_memory=bool(payload.get("keepMemory", False)))
         return lab_snapshot(lab)
 
@@ -250,7 +250,7 @@ def build_router(lab: LabRuntime) -> APIRouter:
 
     @router.put("/settings")
     def settings_put(payload: dict = Body(...)):
-        with lab.lock:
+        with lab.locked():
             return update_settings(lab, payload)
 
     @router.post("/provider/check")
@@ -302,7 +302,7 @@ def build_router(lab: LabRuntime) -> APIRouter:
         if command not in ("new", "reset"):
             raise LabError(400, "command must be 'new' or 'reset'", code="invalid_command")
         kind = str(payload.get("sessionKind") or "main")
-        with lab.lock:
+        with lab.locked():
             return start_new_session(lab, kind=kind, command=command, text=optional_text(payload.get("text")))
 
     @router.post("/curation/revert")
@@ -326,7 +326,7 @@ def build_router(lab: LabRuntime) -> APIRouter:
                 code="conflict",
                 current={"sha256": current_sha, "content": current["content"]} if current else None,
             )
-        with lab.lock:
+        with lab.locked():
             if write.get("before") is None:
                 result = lab.write_file(path, None, current_sha, source="curation_revert", delete=True,
                                         enforce_flag=False)

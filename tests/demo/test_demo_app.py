@@ -104,7 +104,6 @@ def test_module_app_uses_the_renamed_temp_workspace():
     assert lab.root.name == LAB_WORKSPACE_DIRNAME == "memory-core-lab-workspace"
     assert lab.root.parent == Path(tempfile.gettempdir())
     assert lab.live_root.name == "memory-core-live-task-demo-workspace"
-    assert "memory-core" not in str(lab.root)
 
 
 def test_endpoint_calls_never_create_a_repo_demo_workspace(client):

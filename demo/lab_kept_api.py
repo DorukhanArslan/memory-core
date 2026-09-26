@@ -62,7 +62,7 @@ def build_kept_router(lab: LabRuntime) -> APIRouter:
 
     @router.post("/seed")
     def seed():
-        with lab.lock:
+        with lab.locked():
             lab.reset_workspace("seeded")
         return {"ok": True}
 
@@ -122,7 +122,7 @@ def build_kept_router(lab: LabRuntime) -> APIRouter:
     @router.post("/memory/promote")
     def memory_promote(payload: dict = Body(default={})):
         lab.ensure_exists()
-        with lab.lock:
+        with lab.locked():
             return run_promotion(lab, payload)
 
     @router.get("/memory/audit")
@@ -134,13 +134,13 @@ def build_kept_router(lab: LabRuntime) -> APIRouter:
     def memory_repair(payload: dict | None = Body(default=None)):
         del payload
         lab.ensure_exists()
-        with lab.lock:
+        with lab.locked():
             return run_repair(lab)
 
     @router.post("/dreaming/run")
     def dreaming_run(payload: dict = Body(default={})):
         lab.ensure_exists()
-        with lab.lock:
+        with lab.locked():
             return run_dreaming(lab, payload)
 
     @router.post("/chat/flush")
@@ -167,7 +167,7 @@ def build_kept_router(lab: LabRuntime) -> APIRouter:
         lab.bus.emit("flush.decided", summary="flush kararı: lab_forced (/flush)", data=decision)
         embedding = lab.resolve_embedding(payload)
         store = lab.store(embedding)
-        with lab.lock:
+        with lab.locked():
             run = run_flush_turn(
                 lab, session, engine, store, turn_id=None, reason=LAB_FORCED_REASON,
                 secrets=lab.secret_values(payload),

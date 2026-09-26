@@ -99,7 +99,7 @@ _COMPOSITE_DURATION_TOKEN_RE = re.compile(r"([0-9]+(?:\.[0-9]+)?)(ms|s|m|h|d)")
 
 _S = JS_SPACE_CLASS
 # `$` without the m flag is end of input (\Z); `.` excludes JS line terminators.
-_SINGLE_LINE_HTML_COMMENT_RE = re.compile("^<!--[^\n\r  ]*-->\\Z")
+_SINGLE_LINE_HTML_COMMENT_RE = re.compile("^<!--[^\n\r\u2028\u2029]*-->\\Z")
 _ATX_HEADING_RE = re.compile(f"^#+(?:[{_S}]|\\Z)")
 _EMPTY_LIST_ITEM_RE = re.compile(f"^[-*+][{_S}]*(?:\\[[{_S}Xx]?\\][{_S}]*)?\\Z")
 _FENCE_MARKER_RE = re.compile("^```[A-Za-z0-9_-]*\\Z")

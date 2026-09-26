@@ -120,6 +120,7 @@ def test_add_keeps_crlf_line_endings():
         ("My Notes", "one\ntwo", "text must be a single line"),
         ("My Notes", "one two", "text must be a single line"),
         ("My Notes", "<!-- openclaw-memory-promotion:x --> y", "memory promotion marker"),
+        ("My Notes", "<!-- Memory-Core-Memory-Promotion:x --> y", "memory promotion marker"),
         ("My Notes", "bad\x00byte", "NUL"),
         ("My Notes", "lone \ud800 surrogate", "valid Unicode"),
         ("", "delta", "section required"),
@@ -183,6 +184,14 @@ def test_promotion_entries_and_stray_markers_are_read_only():
         remove_memory_entry_text(stray, "<!-- openclaw-memory-promotion:k -->")
     assert remove_memory_entry_text(stray, "gamma") == (
         "## My Notes\n<!-- openclaw-memory-promotion:k -->\n"
+    )
+    neutral = "## My Notes\n<!--memory-core-memory-promotion:k -->\n- gamma\n"
+    with pytest.raises(CurationError, match="promotion"):
+        remove_memory_entry_text(neutral, "<!--memory-core-memory-promotion:k -->")
+    with pytest.raises(CurationError, match="promotion"):
+        add_memory_entry_text(neutral, "<!-- memory-core-memory-promotion:k -->", "delta")
+    assert remove_memory_entry_text(neutral, "gamma") == (
+        "## My Notes\n<!--memory-core-memory-promotion:k -->\n"
     )
 
 

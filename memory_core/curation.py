@@ -13,8 +13,8 @@ extension accepted as Q16 (on by default, gated by
   one line and keep every other byte of the file. Sections written by the
   promotion pipeline (``## Promoted From Short-Term Memory (DATE)`` blocks as
   parsed by ``memory_core.memory_budget.parse_memory_blocks``, the oracle-backed
-  port of upstream ``parseMemoryBlocks``) and any line carrying an
-  ``openclaw-memory-promotion:`` marker are read-only.
+  port of upstream ``parseMemoryBlocks``) and any line carrying a promotion
+  marker (either prefix, ``memory_core.consolidation.markers``) are read-only.
 - USER.md: ``upsert_user_directive(text, observed, supersede)`` writes one
   directive as ``<!-- observed: YYYY-MM-DD | status: active -->``, a blank
   line and ``- text``. With ``supersede`` the old active directive is marked
@@ -105,6 +105,7 @@ from memory_core.bootstrap import (
 )
 from memory_core.bootstrap._js import js_trim_end, utf16_len
 from memory_core.bootstrap.layout import PROACTIVE_PREFERENCES_FILENAME, USER_FILENAME
+from memory_core.consolidation.markers import contains_promotion_marker
 from memory_core.flags import FeatureFlags
 from memory_core.memory_budget import PROMOTION_SECTION_HEADING_RE, parse_memory_blocks
 from memory_core.memory_flush import SILENT_REPLY_TOKEN
@@ -130,8 +131,6 @@ DAILY_NOTE_TARGET = "memory/YYYY-MM-DD.md"
 # Project rule for USER.md (memory-core extension; upstream has no USER.md cap).
 USER_FILE_MAX_CHARS = 4_000
 
-# short-term-promotion.ts:2389 marker scan (/<!--\s*openclaw-memory-promotion:/i).
-_PROMOTION_MARKER_RE = re.compile(r"<!--\s*openclaw-memory-promotion:", re.IGNORECASE)
 _LIST_MARKER_RE = re.compile(r"^(?:[-*+]|\d+[.)])(?:\s+|$)")
 _LINE_PREFIX_RE = re.compile(r"^(\s*)((?:[-*+]|\d+[.)])\s+)?")
 _DIRECTIVE_MARKER_RE = re.compile(
@@ -426,7 +425,7 @@ def _clean_line(value: object, name: str) -> str:
     text = _LIST_MARKER_RE.sub("", text, count=1).strip()
     if not text:
         raise CurationError(f"{name} required")
-    if _PROMOTION_MARKER_RE.search(text):
+    if contains_promotion_marker(text):
         raise CurationError(f"{name} must not contain a memory promotion marker")
     return text
 
@@ -441,7 +440,7 @@ def _clean_section(value: object, name: str = "section") -> str:
         raise CurationError(f"{name} required")
     if title.startswith("#"):
         raise CurationError(f"{name} must be a heading title without '#' marks")
-    if PROMOTION_SECTION_HEADING_RE.match(f"## {title}") or _PROMOTION_MARKER_RE.search(title):
+    if PROMOTION_SECTION_HEADING_RE.match(f"## {title}") or contains_promotion_marker(title):
         raise CurationError(f"{name} is managed by memory promotion and is read-only")
     return title
 
@@ -481,7 +480,9 @@ def _entry_text(body: str) -> str | None:
 
 
 def _is_protected(block: _Block, body: str) -> bool:
-    return block.promotion or _PROMOTION_MARKER_RE.search(body) is not None
+    # Marker scan of short-term-promotion.ts:2389 (/<!--\s*openclaw-memory-promotion:/i),
+    # widened to both prefixes the promotion pipeline reads (decision Q22).
+    return block.promotion or contains_promotion_marker(body)
 
 
 def _find_memory_entry(

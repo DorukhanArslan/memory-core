@@ -83,10 +83,12 @@ Four paths change memory files; none of them uses keyword triggers.
 - Promotion and curation share one block model
   (`memory_core.memory_budget.parse_memory_blocks`): budget compaction only drops
   the oldest promotion sections, never other blocks, and `memory_core.curation`
-  treats the same promotion sections as read-only.
+  treats the same promotion sections, and any line carrying a promotion
+  marker, as read-only.
 - Promotion markers use the runtime identity's prefix
   (`memory-core-memory-promotion:` by default, `openclaw-memory-promotion:` under
-  `OPENCLAW_COMPAT_RUNTIME_IDENTITY`); both prefixes are read (decision Q22).
+  `OPENCLAW_COMPAT_RUNTIME_IDENTITY`); both prefixes are read, by promotion
+  and by curation (`memory_core.consolidation.markers`, decision Q22).
 - Live subjects: `memory_core.live.SubjectConsolidation` runs the same pipeline in
   one `subjects/<id>/` workspace behind `FeatureFlags.subject_promotion` (off
   by default, decision Q16).

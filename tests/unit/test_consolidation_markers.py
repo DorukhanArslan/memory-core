@@ -202,3 +202,38 @@ def test_deep_dreaming_passes_the_identity_to_promotion(tmp_path: Path):
     assert sweep.promotion is not None and sweep.promotion.appended == 1
     memory = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
     assert f"<!-- openclaw-memory-promotion:{KEY_ONE} -->" in memory
+
+
+def test_curated_edits_leave_a_neutral_promotion_section_and_its_markers_intact(tmp_path: Path):
+    # Promotion (default identity) and curation share memory_core.memory_budget's block
+    # parser and read both marker prefixes, so a neutral-prefix section stays read-only.
+    import pytest
+
+    from memory_core.curation import CurationError, MemoryCurator
+    from memory_core.memory_budget import parse_memory_blocks
+
+    config = _workspace(tmp_path)
+    _recall(config, 3, "- Move backups to S3 Glacier.")
+    assert _promote(config).appended == 1
+    memory_path = tmp_path / "MEMORY.md"
+    promoted = memory_path.read_text(encoding="utf-8")
+    marker = f"<!-- memory-core-memory-promotion:{KEY_ONE} -->"
+    promoted_line = next(
+        line for line in promoted.splitlines() if line.startswith("- Move backups")
+    )
+
+    def promotion_blocks(text: str) -> list[str]:
+        return [block.text for block in parse_memory_blocks(text) if block.kind == "promotion"]
+
+    curator = MemoryCurator(tmp_path)
+    curator.add_memory_entry("Decisions", "Keep the VPN key rotation monthly.")
+    for entry in (marker, promoted_line[2:]):
+        with pytest.raises(CurationError, match="promotion"):
+            curator.remove_memory_entry(entry)
+    with pytest.raises(CurationError, match="promotion"):
+        curator.add_memory_entry("Decisions", f"{marker} forged")
+
+    curated = memory_path.read_text(encoding="utf-8")
+    assert promotion_blocks(curated) == promotion_blocks(promoted)
+    assert "- Keep the VPN key rotation monthly." in curated
+    assert extract_promotion_markers(curated) == [KEY_ONE]

@@ -533,7 +533,7 @@ def test_parity_results_split_python_eq_ts_from_ts_literal(tmp_path):
     results = build_parity_results(junit, commit="abc123", generated_at="2026-09-26T00:00:00Z")
 
     assert results["commit"] == "abc123"
-    assert results["pin"].startswith("4c42815348")
+    assert results["pin"].startswith("eb377ac59e6")
     assert results["totals"] == {"passed": 2, "failed": 1, "skipped": 1}
     by_area = {area["area"]: area for area in results["byArea"]}
     assert by_area["flush"]["evidence"] == {"python_eq_ts": {"passed": 1, "failed": 0, "skipped": 0}}

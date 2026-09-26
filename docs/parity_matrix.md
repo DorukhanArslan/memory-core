@@ -2,9 +2,10 @@
 
 Reference target:
 
-- OpenClaw checkout in `/tmp/openclaw-upstream` (env `OPENCLAW_ORACLE_REPO`): `4c42815348ae336bf18e16ab049b6dbe0e4b8223` (2026-07-05 HEAD).
-- `memory_core/parity/upstream.py` records the original source-port commit (`7f679809…`) and the latest inspected commit (`4c428153…`).
-- Full drift audit 8c7f2264 (2026-05-26) → 4c428153 (2026-07-05) performed 2026-07-05; per-row impacts are folded into `Known gaps` below.
+- OpenClaw release tag `v2026.9.6` = `eb377ac59e6c9fd6c7705028034812becf00271b` (tag commit 2026-09-22), the oracle target since 2026-09-27. Point `OPENCLAW_ORACLE_REPO` at a checkout of that commit with its pnpm deps installed; it needs Node `>=24.16.0 <25` or `>=26.1.0` (its SQLite guard refuses Node 25). The tag sits on a release branch, not on upstream main.
+- Previous oracle target: `4c42815348ae336bf18e16ab049b6dbe0e4b8223` (2026-07-05 HEAD audit), used until 2026-09-26. Python behaviour that is not yet re-ported to the tag was ported at that pin; rows say so, and their tests are `xfail(strict=True)` with a "pending port to v2026.9.6" reason until stage 2 lands (plan: `docs/upstream_port_v2026_9_6.md`).
+- `memory_core/parity/upstream.py` records the original source-port commit (`7f679809…`), the latest inspected commit (`eb377ac5…`, tag `v2026.9.6`) and the earlier inspected commits (`8c7f2264…`, `b008989b…`, `4c428153…`).
+- Full drift audit 8c7f2264 (2026-05-26) → 4c428153 (2026-07-05) performed 2026-07-05; per-row impacts are folded into `Known gaps` below. Re-pin 4c428153 → v2026.9.6: see the audit note at the end.
 
 Purpose:
 

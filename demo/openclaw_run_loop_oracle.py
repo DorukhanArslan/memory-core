@@ -11,8 +11,13 @@ class OpenClawRunLoopOracleError(RuntimeError):
     pass
 
 
+# The upstream Vitest harness needs 150-210 s on this machine (162 s idle and 204 s at load
+# average 7 on 2026-09-26), so 180 s timed out under load; 600 s leaves headroom.
+RUN_LOOP_ORACLE_TIMEOUT_SECONDS = 600.0
+
+
 def run_overflow_run_loop_oracle(
-    *, repo_path: Path, timeout_seconds: float = 180.0
+    *, repo_path: Path, timeout_seconds: float = RUN_LOOP_ORACLE_TIMEOUT_SECONDS
 ) -> dict[str, Any]:
     repo_path = repo_path.resolve()
     test_dir = repo_path / "src" / "agents" / "embedded-agent-runner"

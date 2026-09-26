@@ -23,6 +23,11 @@ Included:
   extension, not OpenClaw parity, behind `FeatureFlags.curated_memory_writes`;
   the host decides which operations to offer (`CurationPolicy`) and passes
   `memory_flush=True` during flush runs
+- the session-memory hook for `/new` and `/reset` (`save_session_memory`,
+  `memory_core.session_memory`): the host calls it with the ending session's
+  transcript file or messages; it writes a new `memory/<date>-<slug>.md` through
+  its own write path, never through the daily-flush target; an LLM slug needs a
+  host-supplied generator, and a host redactor can map each stored line
 - replay cleanup, history windowing, tool-use repair, and overflow helpers when
   those behaviors are required to preserve OpenClaw-compatible prompt assembly
 

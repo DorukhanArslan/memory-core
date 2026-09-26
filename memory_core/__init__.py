@@ -153,6 +153,11 @@ from memory_core.runtime_context_prompt import (
     resolve_runtime_context_prompt_parts,
 )
 from memory_core.session_corpus import MemoryCoreSessionCorpus, SessionCorpusFile
+from memory_core.session_memory import (
+    SessionMemoryResult,
+    is_session_memory_trigger,
+    save_session_memory,
+)
 from memory_core.supplements import (
     MemoryCorpusResult,
     MemoryCorpusSupplement,
@@ -256,6 +261,9 @@ __all__ = [
     "MemoryRecordResult",
     "MemoryWorkspace",
     "MemoryCoreSessionCorpus",
+    "SessionMemoryResult",
+    "is_session_memory_trigger",
+    "save_session_memory",
     "OverflowClassification",
     "PreemptiveCompactionDecision",
     "ProviderOverflowRecoveryDecision",

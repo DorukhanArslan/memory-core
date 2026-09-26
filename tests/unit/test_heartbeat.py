@@ -446,3 +446,54 @@ def test_build_heartbeat_section_lines():
     assert heartbeat.build_heartbeat_section_lines(None) == []
     assert heartbeat.build_heartbeat_section_lines("   ") == []
     assert heartbeat.build_heartbeat_section_lines("x", is_minimal=True) == []
+
+
+def test_is_heartbeat_user_message_matches_heartbeat_prompts():
+    hinted = (
+        f"{heartbeat.HEARTBEAT_PROMPT}\nWhen reading HEARTBEAT.md, use workspace file "
+        "/tmp/HEARTBEAT.md (exact case). Do not read docs/heartbeat.md."
+    )
+    assert heartbeat.is_heartbeat_user_message(
+        {"role": "user", "content": hinted}, heartbeat.HEARTBEAT_PROMPT
+    )
+    assert heartbeat.is_heartbeat_user_message(
+        {
+            "role": "user",
+            "content": "Run the following periodic tasks (only those due based on their "
+            "intervals):\n\n- email-check: Check for urgent unread emails\n\nAfter completing "
+            "all due tasks, reply HEARTBEAT_OK.",
+        }
+    )
+    assert heartbeat.is_heartbeat_user_message(
+        {"role": "user", "content": heartbeat.HEARTBEAT_RESPONSE_TOOL_PROMPT}
+    )
+    custom = heartbeat.resolve_heartbeat_prompt_for_response_tool("Check the handoff queue.")
+    assert heartbeat.is_heartbeat_user_message(
+        {"role": "user", "content": f"{custom}\n\nUse workspace notes only."},
+        "Check the handoff queue.",
+    )
+
+
+def test_is_heartbeat_user_message_ignores_quoted_or_non_user_mentions():
+    assert not heartbeat.is_heartbeat_user_message(
+        {"role": "user", "content": "Please reply HEARTBEAT_OK so I can test something."}
+    )
+    assert not heartbeat.is_heartbeat_user_message({"role": "assistant", "content": "HEARTBEAT_OK"})
+
+
+def test_is_heartbeat_user_message_transcript_row_follows_runtime_identity():
+    memory_core_row = {"role": "user", "content": "[memory-core heartbeat poll]"}
+    compat_row = {"role": "user", "content": "[OpenClaw heartbeat poll]"}
+    assert heartbeat.is_heartbeat_user_message(memory_core_row)
+    assert not heartbeat.is_heartbeat_user_message(compat_row)
+    assert heartbeat.is_heartbeat_user_message(
+        compat_row, runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY
+    )
+    hinted_row = {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": heartbeat.MESSAGE_TOOL_DELIVERY_HINTS[0]},
+            {"type": "input_text", "text": "\n\n[memory-core heartbeat poll]"},
+        ],
+    }
+    assert heartbeat.is_heartbeat_user_message(hinted_row)

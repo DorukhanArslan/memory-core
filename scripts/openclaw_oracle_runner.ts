@@ -1329,6 +1329,49 @@ async function main() {
     return { ok: true, operation: payload.operation, result };
   }
 
+  if (payload.operation === "heartbeatSessionFilter") {
+    // src/auto-reply/heartbeat-filter.ts isHeartbeatUserMessage over message cases, and
+    // packages/memory-host-sdk/src/host/session-files.ts buildSessionEntry (whose
+    // sanitizeSessionText drops heartbeat rows) over transcript fixtures in a sandboxed
+    // OPENCLAW_STATE_DIR.
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-heartbeat-corpus-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    await fs.mkdir(process.env.HOME, { recursive: true });
+    try {
+      const filter = await importFromRepo(repoPath, "src/auto-reply/heartbeat-filter.ts");
+      const hints = await importFromRepo(repoPath, "src/plugin-sdk/message-tool-delivery-hints.ts");
+      const sessionFiles = await importFromRepo(
+        repoPath,
+        "packages/memory-host-sdk/src/host/session-files.ts",
+      );
+      const messages = (payload.cases ?? []).map((item) =>
+        filter.isHeartbeatUserMessage(item.message, item.heartbeatPrompt ?? undefined),
+      );
+      const sessionsDir = path.join(process.env.OPENCLAW_STATE_DIR, "agents", "main", "sessions");
+      await fs.mkdir(sessionsDir, { recursive: true });
+      const entries = [];
+      for (const transcript of payload.sessionTranscripts ?? []) {
+        const fileName = transcript.fileName?.trim() || "session-oracle.jsonl";
+        if (fileName.includes("/") || fileName.includes("\\") || !fileName.endsWith(".jsonl")) {
+          throw new Error(`invalid session transcript fixture name: ${fileName}`);
+        }
+        const absPath = path.join(sessionsDir, fileName);
+        const lines = (transcript.entries ?? []).map((entry) => JSON.stringify(entry));
+        await fs.writeFile(absPath, `${lines.join("\n")}\n`, "utf-8");
+        const entry = await sessionFiles.buildSessionEntry(absPath);
+        entries.push(entry ? { content: entry.content, lineMap: entry.lineMap } : null);
+      }
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: { messages, entries, deliveryHints: [...hints.MESSAGE_TOOL_DELIVERY_HINTS] },
+      };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
   const promotionOperations = new Set([
     "recordShortTermRecalls",
     "recordShortTermRecallSequence",

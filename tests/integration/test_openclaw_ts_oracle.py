@@ -4153,3 +4153,170 @@ def test_real_openclaw_oracle_heartbeat_system_section_matches_python():
         )
         expected = "\n".join(line for line in lines if line) + "\n" if lines else None
         assert observed["section"] == expected, case
+
+
+# Rows from heartbeat-filter.test.ts, extensions/memory-core/src/dreaming-phases.test.ts
+# ("drops archive, cron, and heartbeat chatter") and the existing session corpus fixtures.
+_HB_PATH_HINT_PROMPT = (
+    f"{heartbeat_module.HEARTBEAT_PROMPT}\nWhen reading HEARTBEAT.md, use workspace file "
+    "/tmp/HEARTBEAT.md (exact case). Do not read docs/heartbeat.md."
+)
+_HB_TASK_PROMPT = (
+    "Run the following periodic tasks (only those due based on their intervals):\n\n"
+    "- email-check: Check for urgent unread emails\n\nAfter completing all due tasks, reply "
+    "HEARTBEAT_OK."
+)
+_HB_COMPAT_TRANSCRIPT = "[OpenClaw heartbeat poll]"
+HEARTBEAT_USER_MESSAGE_CASES = [
+    {
+        "message": {"role": "user", "content": _HB_PATH_HINT_PROMPT},
+        "heartbeatPrompt": heartbeat_module.HEARTBEAT_PROMPT,
+    },
+    {
+        "message": {"role": "user", "content": " ".join(_HB_PATH_HINT_PROMPT.split("\n"))},
+        "heartbeatPrompt": heartbeat_module.HEARTBEAT_PROMPT,
+    },
+    {"message": {"role": "user", "content": _HB_TASK_PROMPT}},
+    {"message": {"role": "user", "content": _HB_COMPAT_TRANSCRIPT}},
+    {"message": {"role": "user", "content": "[memory-core heartbeat poll]"}},
+    {"message": {"role": "user", "content": heartbeat_module.HEARTBEAT_RESPONSE_TOOL_PROMPT}},
+    {
+        "message": {
+            "role": "user",
+            "content": heartbeat_module.resolve_heartbeat_prompt_for_response_tool(
+                "Check the handoff queue."
+            )
+            + "\n\nUse workspace notes only.",
+        },
+        "heartbeatPrompt": "Check the handoff queue.",
+    },
+    {
+        "message": {"role": "user", "content": "Check the handoff queue.\nmore"},
+        "heartbeatPrompt": "  Check the handoff queue.  ",
+    },
+    {"message": {"role": "user", "content": "Check the handoff queue."}, "heartbeatPrompt": "  "},
+    {"message": {"role": "user", "content": "Please reply HEARTBEAT_OK so I can test something."}},
+    {"message": {"role": "assistant", "content": "HEARTBEAT_OK"}},
+    {"message": {"role": "user", "content": "   "}},
+    {
+        "message": {
+            "role": "user",
+            "content": [
+                None,
+                {"type": "text", "text": "[OpenClaw "},
+                {"type": "image", "text": "ignored"},
+                {"type": "output_text", "text": "heartbeat poll]"},
+            ],
+        }
+    },
+    {
+        "message": {
+            "role": "user",
+            "content": (
+                f"{heartbeat_module.MESSAGE_TOOL_DELIVERY_HINTS[0]}\n\n{_HB_COMPAT_TRANSCRIPT}"
+            ),
+        }
+    },
+    {
+        "message": {
+            "role": "user",
+            "content": (
+                f"{heartbeat_module.MESSAGE_TOOL_DELIVERY_HINTS[3]} {_HB_COMPAT_TRANSCRIPT}"
+            ),
+        }
+    },
+]
+
+
+def _hb_row(role: str, content, index: int) -> dict:
+    return {
+        "type": "message",
+        "message": {
+            "role": role,
+            "timestamp": f"2026-04-16T18:{index:02d}:00.000Z",
+            "content": content,
+        },
+    }
+
+
+HEARTBEAT_CORPUS_ROWS = [
+    ("user", heartbeat_module.HEARTBEAT_PROMPT),
+    ("assistant", "HEARTBEAT_OK"),
+    ("user", "What is Project Nebula?"),
+    ("assistant", "Project Nebula is ORBIT-10."),
+    ("user", _HB_COMPAT_TRANSCRIPT),
+    ("assistant", [{"type": "text", "text": " HEARTBEAT_OK "}]),
+    ("user", _HB_TASK_PROMPT),
+    ("user", heartbeat_module.HEARTBEAT_RESPONSE_TOOL_PROMPT),
+    ("user", [{"type": "text", "text": heartbeat_module.HEARTBEAT_PROMPT}]),
+    ("user", f"{heartbeat_module.MESSAGE_TOOL_DELIVERY_HINTS[0]}\n\n{_HB_COMPAT_TRANSCRIPT}"),
+    ("assistant", "**HEARTBEAT_OK**"),
+    ("user", "Please reply HEARTBEAT_OK so I can test something."),
+    ("user", "[memory-core heartbeat poll]"),
+    ("assistant", "HEARTBEAT_OK HEARTBEAT_OK"),
+]
+
+
+def test_real_openclaw_oracle_heartbeat_session_filter_matches_python(tmp_path: Path):
+    from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY as compat
+    from memory_core.session_corpus import MemoryCoreSessionCorpus
+
+    transcripts = [
+        {
+            "fileName": "session-heartbeat.jsonl",
+            "entries": [
+                _hb_row(role, content, index)
+                for index, (role, content) in enumerate(HEARTBEAT_CORPUS_ROWS)
+            ],
+        },
+        {
+            "fileName": "session-heartbeat-hint.jsonl",
+            "entries": [_hb_row("user", _HB_PATH_HINT_PROMPT, 0)],
+        },
+    ]
+    state_dir = tmp_path / "state"
+    sessions_dir = state_dir / "agents" / "main" / "sessions"
+    sessions_dir.mkdir(parents=True)
+    store = {}
+    for transcript in transcripts:
+        (sessions_dir / transcript["fileName"]).write_text(
+            "".join(json.dumps(entry) + "\n" for entry in transcript["entries"]),
+            encoding="utf-8",
+        )
+        session_id = transcript["fileName"][: -len(".jsonl")]
+        store[f"agent:main:{session_id}"] = {
+            "sessionId": session_id,
+            "sessionFile": transcript["fileName"],
+        }
+    (sessions_dir / "sessions.json").write_text(json.dumps(store), encoding="utf-8")
+
+    result = _oracle().run(
+        {
+            "operation": "heartbeatSessionFilter",
+            "cases": HEARTBEAT_USER_MESSAGE_CASES,
+            "sessionTranscripts": transcripts,
+        }
+    )
+
+    assert result["ok"] is True, result
+    assert result["result"]["deliveryHints"] == list(heartbeat_module.MESSAGE_TOOL_DELIVERY_HINTS)
+    assert result["result"]["messages"] == [
+        heartbeat_module.is_heartbeat_user_message(
+            case["message"], case.get("heartbeatPrompt"), runtime_identity=compat
+        )
+        for case in HEARTBEAT_USER_MESSAGE_CASES
+    ]
+    corpus = MemoryCoreSessionCorpus(state_dir, runtime_identity=compat)
+    files = {item.abs_path.name: item for item in corpus.discover_files()}
+    heartbeat_entry, hint_entry = result["result"]["entries"]
+    assert corpus.read_index_text(files["session-heartbeat.jsonl"]) == (
+        heartbeat_entry["content"] + "\n"
+    )
+    assert heartbeat_entry["lineMap"] == [3, 4, 11, 12, 13, 14]
+    # A prompt followed by the path hint survives upstream's normalised check too; upstream
+    # indexes the normalised one-line text, memory-core the raw text (documented gap).
+    assert hint_entry["lineMap"] == [1]
+    assert hint_entry["content"] == "User: " + " ".join(_HB_PATH_HINT_PROMPT.split("\n"))
+    assert corpus.read_index_text(files["session-heartbeat-hint.jsonl"]) == (
+        f"User: {_HB_PATH_HINT_PROMPT}\n"
+    )

@@ -261,11 +261,20 @@ class LiveIdentityStore:
 
 @dataclass(frozen=True)
 class LiveTurnContext:
+    """Host input for one live turn.
+
+    ``transcript_window``, ``host_context`` (host-owned facts about the subject
+    or session, such as an account record or device state), ``workflow_state``
+    and ``trace_events`` are rendered as marker-wrapped runtime context
+    (``## Transcript window``, ``## Host context``, ``## Active workflow``,
+    ``## Recent trace``); none of them is written to memory.
+    """
+
     subject_id: str
     session_id: str
     user_utterance: str
     transcript_window: str | Iterable[str] | None = None
-    crm_context: Mapping[str, Any] | str | None = None
+    host_context: Mapping[str, Any] | str | None = None
     workflow_state: Mapping[str, Any] | None = None
     trace_events: Iterable[Mapping[str, Any]] | None = None
 
@@ -1036,7 +1045,7 @@ def _build_runtime_context(context: LiveTurnContext) -> str:
     sections = [
         ("Session", {"subject_id": context.subject_id, "session_id": context.session_id}),
         ("Transcript window", _coerce_context_text(context.transcript_window)),
-        ("CRM context", context.crm_context),
+        ("Host context", context.host_context),
         ("Active workflow", context.workflow_state),
         ("Recent trace", list(context.trace_events or [])),
     ]

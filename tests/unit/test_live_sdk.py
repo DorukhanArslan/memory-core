@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import fields
 import json
 import os
 from pathlib import Path
@@ -674,6 +675,41 @@ def test_prepare_live_turn_wraps_workflow_state_as_openclaw_runtime_context(tmp_
         "role": "user",
         "content": "Adresimi değiştirmek istiyorum.",
     }
+
+
+def test_prepare_live_turn_renders_host_context_as_runtime_context(tmp_path: Path):
+    memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+
+    prepared = memory.prepare_live_turn(
+        LiveTurnContext(
+            subject_id="subj_123",
+            session_id="session_1",
+            user_utterance="Siparisim nerede?",
+            host_context={"plan": "premium", "open_orders": ["ord_1", "ord_2"]},
+        )
+    )
+    text_context = memory.prepare_live_turn(
+        LiveTurnContext(
+            subject_id="subj_123",
+            session_id="session_1",
+            user_utterance="Selam.",
+            host_context="Device: kiosk 4",
+        )
+    )
+
+    assert "## Host context\nplan: premium\nopen_orders: [ord_1, ord_2]" in (
+        prepared.runtime_context
+    )
+    assert "## Host context\nDevice: kiosk 4" in text_context.runtime_context
+    assert [field.name for field in fields(LiveTurnContext)] == [
+        "subject_id",
+        "session_id",
+        "user_utterance",
+        "transcript_window",
+        "host_context",
+        "workflow_state",
+        "trace_events",
+    ]
 
 
 def test_prepare_live_turn_places_workspace_files_before_recall(tmp_path: Path):

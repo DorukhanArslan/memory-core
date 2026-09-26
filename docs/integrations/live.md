@@ -213,6 +213,7 @@ context = LiveTurnContext(
         "User: Merhaba.",
         "Assistant: Size nasil yardimci olabilirim?",
     ],
+    host_context={"plan": "premium", "preferred_channel": "sms"},
     workflow_state={
         "workflow_id": "address_change",
         "current_step": "verify_identity",
@@ -231,6 +232,13 @@ async for event in memory.stream_live_turn(
     elif event.type == "sentence":
         tts_queue.put_nowait(event.text)
 ```
+
+`LiveTurnContext` carries the host's input for the turn. Besides
+`user_utterance`, the optional `transcript_window`, `host_context` (host-owned
+facts about the subject or session, such as an account record or device state;
+a mapping or text), `workflow_state` and `trace_events` are rendered into the
+marker-wrapped runtime context as `## Transcript window`, `## Host context`,
+`## Active workflow` and `## Recent trace`. None of them is written to memory.
 
 `llm` is a host-supplied callable. It receives the assembled chat messages and
 returns an async iterable of text chunks, or dictionaries containing `text`,

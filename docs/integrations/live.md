@@ -242,6 +242,12 @@ a mapping or text), `workflow_state` and `trace_events` are rendered into the
 marker-wrapped runtime context as `## Transcript window`, `## Host context`,
 `## Active workflow` and `## Recent trace`. None of them is written to memory.
 
+Breaking change (commit `5655077`, 2026-09-26): `host_context` replaced the
+field left over from the removed live prototype, and its section heading became
+`## Host context`. There is no alias (the package is unreleased,
+0.1.0): passing the old keyword raises `TypeError`, and a host that matched the
+old heading in its own prompt handling must match `## Host context`.
+
 `llm` is a host-supplied callable. It receives the assembled chat messages and
 returns an async iterable of text chunks, or dictionaries containing `text`,
 `delta`, or `content`.

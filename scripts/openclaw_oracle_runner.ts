@@ -81,6 +81,8 @@ type Payload = {
     skipOptional?: string[];
   }>;
   startupContext?: Record<string, unknown>;
+  texts?: Array<string | null>;
+  cases?: Array<Record<string, any>>;
 };
 
 const WORKSPACE_STATE_SNAPSHOT_SKIP = new Set([
@@ -1093,6 +1095,97 @@ async function main() {
       },
     });
     return { ok: true, operation: payload.operation, result: { prelude: prelude ?? null } };
+  }
+
+  if (payload.operation === "heartbeatConstants") {
+    // src/auto-reply/heartbeat.ts:16-25 and src/auto-reply/tokens.ts:5 exports.
+    const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
+    const tokens = await importFromRepo(repoPath, "src/auto-reply/tokens.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        HEARTBEAT_TOKEN: tokens.HEARTBEAT_TOKEN,
+        HEARTBEAT_PROMPT: heartbeat.HEARTBEAT_PROMPT,
+        HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS: heartbeat.HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS,
+        HEARTBEAT_RESPONSE_TOOL_PROMPT: heartbeat.HEARTBEAT_RESPONSE_TOOL_PROMPT,
+        HEARTBEAT_TRANSCRIPT_PROMPT: heartbeat.HEARTBEAT_TRANSCRIPT_PROMPT,
+        DEFAULT_HEARTBEAT_EVERY: heartbeat.DEFAULT_HEARTBEAT_EVERY,
+        DEFAULT_HEARTBEAT_ACK_MAX_CHARS: heartbeat.DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
+      },
+    };
+  }
+
+  if (payload.operation === "heartbeatContentEffectivelyEmpty") {
+    // src/auto-reply/heartbeat.ts isHeartbeatContentEffectivelyEmpty; null stands for undefined.
+    const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.texts ?? []).map((text) =>
+        heartbeat.isHeartbeatContentEffectivelyEmpty(text ?? undefined),
+      ),
+    };
+  }
+
+  if (payload.operation === "parseHeartbeatTasks") {
+    // src/auto-reply/heartbeat.ts parseHeartbeatTasks.
+    const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.texts ?? []).map((text) => heartbeat.parseHeartbeatTasks(text ?? "")),
+    };
+  }
+
+  if (payload.operation === "heartbeatTaskDue") {
+    // src/auto-reply/heartbeat.ts isTaskDue, src/cli/parse-duration.ts parseDurationMs and
+    // src/infra/heartbeat-summary.ts resolveHeartbeatIntervalMs. Case kinds: "due"
+    // (lastRunMs absent = undefined), "duration" (ms or the thrown message), "interval"
+    // (every absent = unset heartbeat config).
+    const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
+    const duration = await importFromRepo(repoPath, "src/cli/parse-duration.ts");
+    const summary = await importFromRepo(repoPath, "src/infra/heartbeat-summary.ts");
+    const result = (payload.cases ?? []).map((item) => {
+      if (item.kind === "due") {
+        return heartbeat.isTaskDue(item.lastRunMs, item.interval, item.nowMs);
+      }
+      if (item.kind === "duration") {
+        try {
+          return {
+            ms: duration.parseDurationMs(
+              item.raw,
+              item.defaultUnit ? { defaultUnit: item.defaultUnit } : undefined,
+            ),
+          };
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : String(error) };
+        }
+      }
+      if (item.kind === "interval") {
+        return summary.resolveHeartbeatIntervalMs(
+          {},
+          undefined,
+          "every" in item ? { every: item.every } : undefined,
+        );
+      }
+      throw new Error(`unknown heartbeatTaskDue case kind: ${String(item.kind)}`);
+    });
+    return { ok: true, operation: payload.operation, result };
+  }
+
+  if (payload.operation === "heartbeatPromptConfig") {
+    // src/auto-reply/heartbeat.ts resolveHeartbeatPrompt / resolveHeartbeatPromptForResponseTool;
+    // null stands for an unset prompt.
+    const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.texts ?? []).map((text) => ({
+        prompt: heartbeat.resolveHeartbeatPrompt(text ?? undefined),
+        responseToolPrompt: heartbeat.resolveHeartbeatPromptForResponseTool(text ?? undefined),
+      })),
+    };
   }
 
   const promotionOperations = new Set([

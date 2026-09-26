@@ -3713,3 +3713,230 @@ def test_bootstrap_constants_and_keyword_sets_equal_upstream_source():
         if name in expected_numbers
     }
     assert python_numbers == expected_numbers
+
+
+# --- heartbeat (memory_core.heartbeat) -----------------------------------------------------------
+
+from memory_core import heartbeat as heartbeat_module  # noqa: E402
+
+# Inputs come from upstream tests at the pin: src/auto-reply/heartbeat.test.ts,
+# src/infra/heartbeat-runner.returns-default-unset.test.ts, src/cli/cli-utils.test.ts and the
+# parseHeartbeatTasks doc comment (src/auto-reply/heartbeat.ts:250-258); whitespace and CRLF
+# variants only re-encode those inputs.
+HEARTBEAT_TASKS_CONTEXT_FILE = """# Keep this header
+
+Remember escalation policy.
+
+tasks:
+  - name: inbox
+    interval: 5m
+    prompt: Check urgent inbox items
+
+  - name: calendar
+    interval: 5m
+    prompt: Check calendar changes
+
+Some global directive after tasks.
+
+- Keep this top-level directive too.
+"""
+HEARTBEAT_UNINDENTED_TASKS_FILE = """# Keep this header
+
+tasks:
+- name: inbox
+  interval: 5m
+  prompt: Check urgent inbox items
+
+- name: calendar
+  interval: 5m
+  prompt: Check calendar changes
+
+- Keep this top-level directive after tasks.
+"""
+HEARTBEAT_EMPTY_CONTENT_CASES = [
+    None,
+    "",
+    "   ",
+    "\n\n\n",
+    "  \n  \n  ",
+    "\t\t",
+    " ﻿",
+    "# HEARTBEAT.md",
+    "# HEARTBEAT.md\n",
+    "# HEARTBEAT.md\n\n",
+    "# HEARTBEAT.md\r\n\r\n",
+    "# HEARTBEAT.md\n\n## Tasks\n\n",
+    "# Header\n# Another comment",
+    "## Subheader\n### Another",
+    "#TODO",
+    "<!-- Heartbeat template; comments-only content prevents scheduled heartbeat API calls. -->",
+    "<!--\nHeartbeat template.\nKeep this comment-only file quiet.\n-->",
+    "<!--\ntasks:\n  - name: inbox\n    interval: 30m\n    prompt: Check inbox\n-->",
+    "<!-- One --> <!-- Two -->",
+    "<!-- One -->\n# Header",
+    "Reminder <!-- not scaffolding -->",
+    "<!-- runtime template note -->",
+    "<!-- runtime template note -->\n\n# HEARTBEAT.md\n",
+    "# HEARTBEAT.md\n\nKeep this file empty unless you want a tiny checklist. Keep it small.\n    ",
+    "# HEARTBEAT.md Template\n\n```markdown\n# Keep this file empty (or with only comments) to skip "
+    "heartbeat API calls.\n\n# Add tasks below when you want the agent to check something "
+    "periodically.\n```\n",
+    "```markdown\n# Keep this file empty when you want to skip.\n\n- Check email\n```\n",
+    "```markdown\nKeep this file empty unless you want a tiny checklist.\n```\n",
+    "# Keep this file empty (or with only comments) to skip heartbeat API calls.\n\n"
+    "# Add tasks below when you want the agent to check something periodically.\n",
+    "# HEARTBEAT.md\n\n\n",
+    "- Check email",
+    "# HEARTBEAT.md\n- Task 1",
+    "Remind me to call mom",
+    "# HEARTBEAT.md\n\n- Task 1\n- Task 2\n",
+    "# HEARTBEAT.md\n## Tasks\nCheck the server logs\n",
+    "# HEARTBEAT.md\n## Section 1\n### Subsection\n",
+    "- [ ]\n* [x]\n+ [X]\n- ",
+    HEARTBEAT_TASKS_CONTEXT_FILE,
+]
+HEARTBEAT_TASK_FILES = [
+    "tasks:\n  - name: email-check\n    interval: 30m\n    prompt: Check for urgent emails\n"
+    "interval: should-not-bleed\n",
+    "<!--\ntasks:\n  - name: inbox\n    interval: 30m\n    prompt: Check inbox\n-->\n",
+    'tasks:\n  - name: email-check\n    interval: 30m\n    prompt: "Check for urgent unread emails"\n',
+    "tasks:\r\n  - name: 'email-check'\r\n    interval: '30m'\r\n    prompt: Check for urgent "
+    "unread emails\r\n",
+    "tasks:\n\t- name: inbox\n\t  interval: 5m\n\t  prompt: Check inbox\n",
+    "tasks:\n  - name: inbox\n    prompt: Check inbox\n  - name: calendar\n    interval: 5m\n",
+    HEARTBEAT_TASKS_CONTEXT_FILE,
+    HEARTBEAT_UNINDENTED_TASKS_FILE,
+    "",
+]
+HEARTBEAT_DUE_CASES = [
+    {"kind": "due", "interval": "30m", "nowMs": 1_000},
+    {"kind": "due", "lastRunMs": 0, "interval": "5m", "nowMs": 300_000},
+    {"kind": "due", "lastRunMs": 1, "interval": "5m", "nowMs": 300_000},
+    {"kind": "due", "lastRunMs": 0, "interval": "5", "nowMs": 300_000},
+    {"kind": "due", "lastRunMs": 0, "interval": "1h30m", "nowMs": 5_400_000},
+    {"kind": "due", "lastRunMs": 0, "interval": "oops", "nowMs": 10**12},
+    {"kind": "due", "lastRunMs": 0, "interval": "", "nowMs": 10**12},
+]
+HEARTBEAT_DURATION_CASES = [
+    {"kind": "duration", "raw": raw}
+    for raw in (
+        "10000",
+        "10s",
+        "1m",
+        "2h",
+        "2d",
+        "0.5s",
+        "1h30m",
+        "2m500ms",
+        "1h30",
+        "1h-30m",
+        "9007199254740993ms",
+        "9007199254740990ms10ms",
+        "",
+        "   ",
+        " 10S ",
+        "0.0005s",
+    )
+] + [{"kind": "duration", "raw": raw, "defaultUnit": "m"} for raw in ("5", "0.5", "30m")]
+HEARTBEAT_INTERVAL_CASES = [
+    {"kind": "interval"},
+    {"kind": "interval", "every": "0m"},
+    {"kind": "interval", "every": "oops"},
+    {"kind": "interval", "every": "5m"},
+    {"kind": "interval", "every": "5"},
+    {"kind": "interval", "every": "2h"},
+    {"kind": "interval", "every": ""},
+    {"kind": "interval", "every": "  "},
+]
+HEARTBEAT_PROMPT_CONFIG_CASES = [
+    None,
+    "",
+    "   ",
+    "Check the deployment queue and only interrupt the user for blockers.",
+    "  Check the handoff queue.  ",
+    heartbeat_module.HEARTBEAT_RESPONSE_TOOL_PROMPT,
+]
+
+
+def _python_heartbeat_due_case(case: dict):
+    if case["kind"] == "due":
+        return heartbeat_module.is_task_due(case.get("lastRunMs"), case["interval"], case["nowMs"])
+    if case["kind"] == "duration":
+        try:
+            return {
+                "ms": heartbeat_module.parse_duration_ms(
+                    case["raw"], default_unit=case.get("defaultUnit")
+                )
+            }
+        except ValueError as error:
+            return {"error": str(error)}
+    return heartbeat_module.resolve_heartbeat_interval_ms(case.get("every"))
+
+
+def test_real_openclaw_oracle_heartbeat_constants_match_python():
+    from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY as compat
+
+    result = _oracle().run({"operation": "heartbeatConstants"})
+
+    assert result["ok"] is True, result
+    assert result["result"] == {
+        "HEARTBEAT_TOKEN": heartbeat_module.HEARTBEAT_TOKEN,
+        "HEARTBEAT_PROMPT": heartbeat_module.HEARTBEAT_PROMPT,
+        "HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS": heartbeat_module.HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS,
+        "HEARTBEAT_RESPONSE_TOOL_PROMPT": heartbeat_module.HEARTBEAT_RESPONSE_TOOL_PROMPT,
+        "HEARTBEAT_TRANSCRIPT_PROMPT": compat.heartbeat_transcript_prompt,
+        "DEFAULT_HEARTBEAT_EVERY": heartbeat_module.DEFAULT_HEARTBEAT_EVERY,
+        "DEFAULT_HEARTBEAT_ACK_MAX_CHARS": heartbeat_module.DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
+    }
+
+
+def test_real_openclaw_oracle_heartbeat_content_effectively_empty_matches_python():
+    template = (
+        Path(os.environ["OPENCLAW_ORACLE_REPO"]) / "src/agents/templates/HEARTBEAT.md"
+    ).read_bytes().decode("utf-8")
+    texts = [*HEARTBEAT_EMPTY_CONTENT_CASES, template]
+
+    result = _oracle().run({"operation": "heartbeatContentEffectivelyEmpty", "texts": texts})
+
+    assert result["ok"] is True, result
+    assert result["result"] == [
+        heartbeat_module.is_heartbeat_content_effectively_empty(text) for text in texts
+    ]
+    assert result["result"][-1] is True
+
+
+def test_real_openclaw_oracle_parse_heartbeat_tasks_matches_python():
+    result = _oracle().run({"operation": "parseHeartbeatTasks", "texts": HEARTBEAT_TASK_FILES})
+
+    assert result["ok"] is True, result
+    assert result["result"] == [
+        [
+            {"name": task.name, "interval": task.interval, "prompt": task.prompt}
+            for task in heartbeat_module.parse_heartbeat_tasks(text)
+        ]
+        for text in HEARTBEAT_TASK_FILES
+    ]
+
+
+def test_real_openclaw_oracle_heartbeat_task_due_and_durations_match_python():
+    cases = [*HEARTBEAT_DUE_CASES, *HEARTBEAT_DURATION_CASES, *HEARTBEAT_INTERVAL_CASES]
+
+    result = _oracle().run({"operation": "heartbeatTaskDue", "cases": cases})
+
+    assert result["ok"] is True, result
+    assert result["result"] == [_python_heartbeat_due_case(case) for case in cases]
+
+
+def test_real_openclaw_oracle_heartbeat_prompt_config_matches_python():
+    result = _oracle().run(
+        {"operation": "heartbeatPromptConfig", "texts": HEARTBEAT_PROMPT_CONFIG_CASES}
+    )
+
+    assert result["ok"] is True, result
+    assert result["result"] == [
+        {
+            "prompt": heartbeat_module.resolve_heartbeat_prompt(text),
+            "responseToolPrompt": heartbeat_module.resolve_heartbeat_prompt_for_response_tool(text),
+        }
+        for text in HEARTBEAT_PROMPT_CONFIG_CASES
+    ]

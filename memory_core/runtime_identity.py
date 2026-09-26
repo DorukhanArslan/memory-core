@@ -17,6 +17,10 @@ class RuntimeIdentity:
     workspace_files_injected_line: str = (
         "These user-editable files are loaded by memory-core and included below in Project Context."
     )
+    # Transcript row recorded for a heartbeat turn instead of the full heartbeat
+    # prompt (OpenClaw src/auto-reply/heartbeat.ts:23 HEARTBEAT_TRANSCRIPT_PROMPT,
+    # written by src/auto-reply/reply/prompt-prelude.ts:231-232).
+    heartbeat_transcript_prompt: str = "[memory-core heartbeat poll]"
 
 
 MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -30,6 +34,7 @@ MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
     workspace_files_injected_line=(
         "These user-editable files are loaded by memory-core and included below in Project Context."
     ),
+    heartbeat_transcript_prompt="[memory-core heartbeat poll]",
 )
 
 OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -43,4 +48,5 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
     workspace_files_injected_line=(
         "These user-editable files are loaded by OpenClaw and included below in Project Context."
     ),
+    heartbeat_transcript_prompt="[OpenClaw heartbeat poll]",
 )

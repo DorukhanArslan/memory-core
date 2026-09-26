@@ -267,7 +267,7 @@
   .tree-row:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
   .tree-row.is-missing .tree-name { color: var(--text-3); }
   .tree-row.is-outside .tree-name { color: var(--text-3); font-style: italic; }
-  .tree-idx { width: 12px; flex: none; text-align: right; font: 500 10px/1 var(--font-mono); color: var(--text-3); opacity: .8; }
+  .tree-idx { width: 12px; flex: none; text-align: right; font: 500 10px/1 var(--font-mono); color: var(--text-3); }
   .tree-ic { color: var(--text-3); }
   .tree-row.is-selected .tree-ic { color: var(--accent); }
   .tree-chev { color: var(--text-3); margin-right: -2px; }
@@ -511,7 +511,7 @@
   .turn-no { font: 600 11.5px/1 var(--font-mono); color: var(--text-2); }
   .turn-meta { font-family: var(--font-mono); font-size: 11px; }
   .turn-engine { font: 500 10.5px/1 var(--font-mono); padding: 3px 5px; border-radius: 3px; color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
-  .turn .btn-xs { opacity: .75; }
+  .turn .btn-xs { color: var(--text-2); }
   .turn:hover .btn-xs, .turn:focus-within .btn-xs { opacity: 1; }
   .kind-tag { font: 500 10.5px/1 var(--font-mono); padding: 3px 5px; border-radius: 3px; color: var(--text-2); background: var(--bg-2); box-shadow: inset 0 0 0 1px var(--line-1); }
   .kind-tag[data-kind="group"] { color: var(--info); } .kind-tag[data-kind="subagent"] { color: var(--ext); } .kind-tag[data-kind="cron"] { color: var(--warn); } .kind-tag[data-kind="heartbeat"] { color: var(--kind-heartbeat); }
@@ -702,7 +702,7 @@
   .diff { font: var(--m-sm)/var(--lh-m-sm) var(--font-mono); border-radius: var(--r-2); overflow: auto; background: var(--bg-inset); border: 1px solid var(--line-1); }
   .diff-hunk { padding: 3px 10px; color: var(--info); background: color-mix(in srgb, var(--info) 7%, transparent); border-bottom: 1px solid var(--line-1); font-size: 11px; }
   .diff-line { display: grid; grid-template-columns: 34px 34px 14px minmax(0, 1fr); }
-  .diff-line .dg { text-align: right; padding-right: 6px; color: var(--text-3); opacity: .6; font-size: 10.5px; user-select: none; }
+  .diff-line .dg { text-align: right; padding-right: 6px; color: var(--text-3); background: var(--bg-inset); font-size: 10.5px; user-select: none; }
   .diff-line .dm { color: var(--text-3); user-select: none; }
   .diff-line .dt { white-space: pre-wrap; word-break: break-word; padding-right: 10px; max-width: 90ch; }
   .diff-line.is-add { background: var(--diff-add); } .diff-line.is-add .dm { color: var(--ok); }

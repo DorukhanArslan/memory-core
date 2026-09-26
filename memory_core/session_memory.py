@@ -31,21 +31,56 @@ error replies (``is_error_slug_payload`` with ``parseApiErrorPayload`` and
 normalizes the reply (``normalize_session_memory_slug``). memory-core never calls a
 model itself; without a generator the slug is the timestamp.
 
+The hook (``handler.ts``): ``save_session_memory`` is what the host calls
+on ``/new`` or ``/reset`` (``is_session_memory_trigger``). It resolves the
+ending session's transcript like upstream, keeps the last 15 lines
+(``message_count``, ``hooks.internal.entries["session-memory"].messages``),
+stamps the local time (``format_local_session_timestamp``: ``YYYY-MM-DD``,
+``HH:MM:SS``, the ICU ``en-US`` short zone name, slug ``HHMM``) and writes a
+new ``memory/<date>-<slug>.md`` (``-2``, ``-3``... on a name clash) with the
+verbatim entry of ``build_session_memory_entry``. The write has its own path:
+the file is always new (never appended to, overwritten or written through a
+symlink) and ``memory/`` must stay inside the workspace. The daily-flush
+validator (``MemoryWorkspace.append_daily_memory``) keeps rejecting these
+names.
+
 The stored lines are the raw recent conversation, like upstream (its
-``## Conversation Summary`` is not an LLM summary).
+``## Conversation Summary`` is not an LLM summary); the optional ``redactor``
+(deviation by choice, default off) maps each line before it is written.
+
+Deviations, each named at its code site: an explicit IANA zone (default UTC)
+instead of ``process.env.TZ``; the session key written as given (no
+agent re-keying); errors raised to the caller instead of logged; a name is
+taken by any directory entry. Not ported: the background write queue, the
+agent/workspace resolution from OpenClaw config, and the 15 s model timeout
+(the host's generator owns it). memory-core's memory index reads only canonical
+``memory/YYYY-MM-DD.md`` files, so these files reach the next session through
+``memory_core.bootstrap.build_startup_context`` (up to four slugged files per day),
+not through ``memory_search``.
 """
 
 from __future__ import annotations
 
+import contextlib
+import errno
 import json
 import math
 import os
 import posixpath
 import re
+import secrets
+import time
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
+from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from memory_core.bootstrap._js import JS_SPACE_CLASS, js_trim, utf16_slice
+from memory_core._intl_zone_names import en_us_short_time_zone_name
+from memory_core.bootstrap._js import JS_SPACE_CLASS, js_trim, js_utf8_encode, utf16_slice
+from memory_core.workspace import UnsafeMemoryPathError
 
 DEFAULT_SESSION_MEMORY_MESSAGE_COUNT = 15
 
@@ -633,3 +668,331 @@ def generate_session_memory_slug(session_content: str, generator: SlugGenerator)
     if is_error_slug_payload(payload):
         return None
     return normalize_session_memory_slug(text)
+
+
+# --- the hook (handler.ts) -----------------------------------------------------------------
+
+SESSION_MEMORY_EVENT_TYPE = "command"
+SESSION_MEMORY_ACTIONS = ("new", "reset")
+# Names this module writes: memory/YYYY-MM-DD-<slug>.md with a timestamp (HHMM) or
+# normalized LLM slug and an optional -N suffix. The daily-flush validator
+# (memory_core.workspace.DAILY_MEMORY_PATH_RE) keeps rejecting these names.
+SESSION_MEMORY_FILE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\.md\Z", re.ASCII)
+_EPOCH = datetime(1970, 1, 1, tzinfo=dt_timezone.utc)
+# Filesystems without hard links: create the file in place instead.
+_NO_HARD_LINK_ERRNOS = frozenset(
+    code
+    for code in (
+        getattr(errno, name, None)
+        for name in ("EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EMLINK", "EXDEV")
+    )
+    if code is not None
+)
+
+
+def is_session_memory_trigger(event_type: str, action: str) -> bool:
+    """The hook's gate (handler.ts:300-313): ``command`` events for ``/new`` and ``/reset``."""
+    return event_type == SESSION_MEMORY_EVENT_TYPE and action in SESSION_MEMORY_ACTIONS
+
+
+def resolve_session_memory_message_count(value: object) -> int | float:
+    """``hooks.internal.entries["session-memory"].messages`` rule (handler.ts:207-212).
+
+    A positive number is used as given (fractions truncate in the slice,
+    infinity keeps every line); anything else is 15.
+    """
+    if isinstance(value, int | float) and not isinstance(value, bool) and value > 0:
+        return value
+    return DEFAULT_SESSION_MEMORY_MESSAGE_COUNT
+
+
+@dataclass(frozen=True)
+class SessionTimestamp:
+    """``formatLocalSessionTimestamp`` result: ``YYYY-MM-DD``, ``HH:MM:SS``, ``HHMM``."""
+
+    date: str
+    time: str
+    time_slug: str
+    time_zone_name: str | None
+
+
+def _resolve_timezone(timezone: str) -> tuple[str, ZoneInfo]:
+    name = js_trim(timezone) if isinstance(timezone, str) else ""
+    try:
+        return name, ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ValueError(f"unknown timezone: {timezone!r}") from exc
+
+
+def format_local_session_timestamp(
+    now_ms: int | float, timezone: str = "UTC"
+) -> SessionTimestamp:
+    """Port of ``formatLocalSessionTimestamp`` (handler.ts:31-86).
+
+    Upstream formats with ``Intl.DateTimeFormat("en-US")`` in ``process.env.TZ``
+    (h23, short zone name). Deviation: the zone is an explicit IANA name
+    (default UTC) and an unknown zone raises, where upstream falls back to the
+    host zone. The zone name follows ICU's ``en-US`` short names
+    (``memory_core._intl_zone_names``): ``UTC``, ``EST``, ``GMT+3``.
+    """
+    zone_name, zone = _resolve_timezone(timezone)
+    if isinstance(now_ms, bool) or not isinstance(now_ms, int | float) or not math.isfinite(now_ms):
+        raise ValueError(f"invalid timestamp: {now_ms!r}")
+    try:
+        local = (_EPOCH + timedelta(milliseconds=math.trunc(now_ms))).astimezone(zone)
+    except OverflowError as exc:
+        raise ValueError(f"invalid timestamp: {now_ms!r}") from exc
+    hour, minute = f"{local.hour:02d}", f"{local.minute:02d}"
+    return SessionTimestamp(
+        date=f"{local.year}-{local.month:02d}-{local.day:02d}",
+        time=f"{hour}:{minute}:{local.second:02d}",
+        time_slug=f"{hour}{minute}",
+        time_zone_name=en_us_short_time_zone_name(zone_name, local),
+    )
+
+
+def resolve_available_memory_filename(
+    memory_dir: str | os.PathLike[str], date_str: str, slug: str
+) -> str:
+    """Port of ``resolveAvailableMemoryFilename`` (handler.ts:88-108).
+
+    ``<date>-<slug>.md``, then ``-2``, ``-3``... while the name is taken.
+    Deviation (stricter): any directory entry takes the name, a dangling
+    symlink included; upstream's ``fs.access`` follows symlinks, so it treats a
+    dangling one as free and its write then replaces the link.
+    """
+    basename = f"{date_str}-{slug}"
+    suffix = 1
+    while True:
+        filename = f"{basename}.md" if suffix == 1 else f"{basename}-{suffix}.md"
+        if not os.path.lexists(os.path.join(os.fspath(memory_dir), filename)):
+            return filename
+        suffix += 1
+
+
+def build_session_memory_entry(
+    *,
+    timestamp: SessionTimestamp,
+    session_key: str,
+    session_id: str | None,
+    source: str | None,
+    session_content: str | None,
+) -> str:
+    """The Markdown entry of the hook (handler.ts:252-277), verbatim.
+
+    The ``## Conversation Summary`` block is present only with content; the
+    entry ends with a newline.
+    """
+    time_zone_suffix = f" {timestamp.time_zone_name}" if timestamp.time_zone_name else ""
+    parts = [
+        f"# Session: {timestamp.date} {timestamp.time}{time_zone_suffix}",
+        "",
+        f"- **Session Key**: {session_key}",
+        f"- **Session ID**: {session_id or 'unknown'}",
+        f"- **Source**: {source or 'unknown'}",
+        "",
+    ]
+    if session_content:
+        parts.extend(["## Conversation Summary", "", session_content, ""])
+    return "\n".join(parts)
+
+
+@dataclass(frozen=True)
+class SessionMemoryResult:
+    """What ``save_session_memory`` wrote."""
+
+    path: Path
+    rel_path: str
+    slug: str
+    llm_slug: bool
+    session_file: str | None
+    session_content: str | None
+    entry: str
+
+
+def _memory_dir(workspace_dir: str) -> Path:
+    root = Path(workspace_dir)
+    memory_dir = root / "memory"
+    os.makedirs(memory_dir, exist_ok=True)
+    resolved_root = root.resolve()
+    resolved = memory_dir.resolve()
+    if resolved != resolved_root and resolved_root not in resolved.parents:
+        raise UnsafeMemoryPathError("memory directory escapes the workspace")
+    if not resolved.is_dir():
+        raise UnsafeMemoryPathError("memory path is not a directory")
+    return resolved
+
+
+def _fsync_directory(directory: Path) -> None:
+    with contextlib.suppress(OSError):
+        fd = os.open(directory, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+
+_EXCLUSIVE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+
+
+def _create_exclusive(path: Path, data: bytes) -> bool:
+    try:
+        fd = os.open(path, _EXCLUSIVE_FLAGS, 0o666)
+    except FileExistsError:
+        return False
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+    return True
+
+
+def _publish_new_file(memory_dir: Path, filename: str, data: bytes) -> bool:
+    """Write ``memory_dir/filename`` only if no entry has that name; ``False`` if taken.
+
+    The content goes to a temporary file first and is published with a hard
+    link, which fails instead of replacing an existing entry, so a complete
+    file appears atomically and nothing is ever overwritten or followed.
+    """
+    temporary = memory_dir / f".{filename}.{secrets.token_hex(6)}.tmp"
+    if not _create_exclusive(temporary, data):
+        raise FileExistsError(temporary)
+    try:
+        try:
+            os.link(temporary, memory_dir / filename)
+        except FileExistsError:
+            return False
+        except OSError as exc:
+            if exc.errno not in _NO_HARD_LINK_ERRNOS:
+                raise
+            if not _create_exclusive(memory_dir / filename, data):
+                return False
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(temporary)
+    _fsync_directory(memory_dir)
+    return True
+
+
+def _write_session_memory_file(memory_dir: Path, date_str: str, slug: str, entry: str) -> str:
+    data = js_utf8_encode(entry)
+    while True:
+        filename = resolve_available_memory_filename(memory_dir, date_str, slug)
+        if SESSION_MEMORY_FILE_RE.match(filename) is None:
+            raise UnsafeMemoryPathError(f"not a session memory file name: memory/{filename}")
+        if _publish_new_file(memory_dir, filename, data):
+            return filename
+
+
+def _resolve_session_file(
+    workspace_dir: str, session_file: str | None, session_id: str | None
+) -> str | None:
+    """Session file recovery of the handler (handler.ts:170-200)."""
+    if session_file and ".reset." not in session_file:
+        return session_file
+    sessions_dirs: list[str] = []
+    if session_file:
+        sessions_dirs.append(_node_dirname(session_file))
+    sessions_dirs.append(_node_join(workspace_dir, "sessions"))
+    for sessions_dir in dict.fromkeys(sessions_dirs):
+        recovered = find_previous_session_file(
+            sessions_dir, current_session_file=session_file, session_id=session_id
+        )
+        if recovered:
+            return recovered
+    return session_file
+
+
+def save_session_memory(
+    workspace_dir: str | os.PathLike[str],
+    *,
+    session_key: str,
+    session_id: str | None = None,
+    session_file: str | os.PathLike[str] | None = None,
+    messages: Iterable[object] | None = None,
+    source: str | None = None,
+    now_ms: int | float | None = None,
+    timezone: str = "UTC",
+    message_count: object = DEFAULT_SESSION_MEMORY_MESSAGE_COUNT,
+    slug_generator: SlugGenerator | None = None,
+    redactor: Callable[[str], str] | None = None,
+) -> SessionMemoryResult:
+    """Port of the session-memory hook's save (``saveSessionMemoryNow``, handler.ts:136-297).
+
+    Call it when the host handles ``/new`` or ``/reset``
+    (``is_session_memory_trigger``), with the session that is ending: its
+    ``session_file`` (recovered like upstream when missing or rotated to
+    ``.reset.``, looking next to it and in ``<workspace>/sessions``) or its
+    ``messages``. Writes a new ``memory/<date>-<slug>.md`` with the heading,
+    session key, id and source, and the last ``message_count`` conversation
+    lines. The slug is the local ``HHMM`` unless ``slug_generator`` (off by
+    default, upstream ``llmSlug``) yields one.
+
+    ``session_key`` is written as given; upstream shows it re-keyed to the
+    agent that owns the workspace (``resolveDisplaySessionKey``), which needs
+    OpenClaw's agent config, so the host passes the key it wants shown.
+
+    Deviation by choice: ``redactor`` (default ``None`` = upstream behaviour)
+    maps each selected ``role: text`` line before it is written or sent to the
+    slug generator; a line it maps to blank is dropped. Without it the file
+    holds the raw recent lines, like upstream.
+
+    Upstream runs the save in the background and logs failures; here errors
+    propagate to the caller (``ValueError`` for an unknown zone or timestamp,
+    ``UnsafeMemoryPathError`` for a ``memory/`` outside the workspace,
+    ``OSError`` from the filesystem). Generator failures still fall back to the
+    timestamp slug.
+    """
+    if session_file is not None and messages is not None:
+        raise ValueError("pass session_file or messages, not both")
+    if not isinstance(session_key, str):
+        raise TypeError("session_key must be a string")
+    count = resolve_session_memory_message_count(message_count)
+    timestamp = format_local_session_timestamp(
+        time.time_ns() // 1_000_000 if now_ms is None else now_ms, timezone
+    )
+    root = os.fspath(workspace_dir)
+    memory_dir = _memory_dir(root)
+
+    resolved_file: str | None = None
+    if messages is not None:
+        lines: list[str] | None = _recent_session_lines(list(messages), count)
+    else:
+        resolved_file = _resolve_session_file(
+            root, os.fspath(session_file) if session_file else None, session_id
+        )
+        lines = (
+            _recent_session_lines_with_reset_fallback(resolved_file, count)
+            if resolved_file
+            else None
+        )
+    if redactor is not None and lines:
+        redacted = [redactor(line) for line in lines]
+        if not all(isinstance(line, str) for line in redacted):
+            raise TypeError("redactor must return a string")
+        lines = [line for line in redacted if js_trim(line)]
+    session_content = "\n".join(lines) if lines else None
+
+    llm_slug = (
+        generate_session_memory_slug(session_content, slug_generator)
+        if session_content and slug_generator is not None
+        else None
+    )
+    slug = llm_slug or timestamp.time_slug
+    entry = build_session_memory_entry(
+        timestamp=timestamp,
+        session_key=session_key,
+        session_id=session_id,
+        source=source,
+        session_content=session_content,
+    )
+    filename = _write_session_memory_file(memory_dir, timestamp.date, slug, entry)
+    return SessionMemoryResult(
+        path=memory_dir / filename,
+        rel_path=f"memory/{filename}",
+        slug=slug,
+        llm_slug=llm_slug is not None,
+        session_file=resolved_file,
+        session_content=session_content,
+        entry=entry,
+    )

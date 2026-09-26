@@ -84,6 +84,7 @@ type Payload = {
   startupContext?: Record<string, unknown>;
   texts?: Array<string | null>;
   cases?: Array<Record<string, any>>;
+  scenarios?: Array<Record<string, any>>;
 };
 
 const WORKSPACE_STATE_SNAPSHOT_SKIP = new Set([
@@ -1518,6 +1519,8 @@ async function main() {
     const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-session-slug-"));
     process.env.HOME = path.join(sandbox, "home");
     process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    // Logging only: keeps stdout JSON-only and the shared /tmp/openclaw log untouched.
+    process.env.OPENCLAW_LOG_LEVEL = "silent";
     try {
       const slugGenerator = await importFromRepo(repoPath, "src/hooks/llm-slug-generator.ts");
       const errorFormat = await importFromRepo(repoPath, "src/shared/assistant-error-format.ts");
@@ -1537,6 +1540,100 @@ async function main() {
       }));
       return { ok: true, operation: payload.operation, result: { cases, errorHelpers } };
     } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  if (payload.operation === "sessionMemoryHook") {
+    // src/hooks/bundled/session-memory/handler.ts default export (the /new and /reset
+    // hook) plus flushSessionMemoryWritesForTest, with events from
+    // src/hooks/internal-hooks.ts createInternalHookEvent. Each scenario gets its own
+    // workspace (context.workspaceDir) seeded with `files`, then runs its events in
+    // order: process.env.TZ = event.timezone, event.timestamp = new Date(event.nowMs),
+    // hooks.internal.entries["session-memory"] from `messages`/`llmSlug`, and
+    // previousSessionEntry.sessionFile relative to the workspace. With llmSlug the real
+    // generateSlugViaLLM runs against the embedded-agent stub, which returns
+    // `slugReply`. The result is the memory/ tree and the slug prompts per scenario.
+    installEmbeddedAgentStub();
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-session-hook-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    // Logging only: keeps stdout JSON-only and the shared /tmp/openclaw log untouched.
+    process.env.OPENCLAW_LOG_LEVEL = "silent";
+    delete process.env.OPENCLAW_TEST_FAST;
+    delete process.env.VITEST;
+    delete process.env.NODE_ENV;
+    const originalTz = process.env.TZ;
+    try {
+      const handler = await importFromRepo(repoPath, "src/hooks/bundled/session-memory/handler.ts");
+      const internalHooks = await importFromRepo(repoPath, "src/hooks/internal-hooks.ts");
+      const scenarios = [];
+      for (const [index, scenario] of (payload.scenarios ?? []).entries()) {
+        const workspaceDir = path.join(sandbox, `workspace-${index}`);
+        await fs.mkdir(workspaceDir, { recursive: true });
+        for (const [relative, content] of Object.entries(scenario.files ?? {})) {
+          if (path.isAbsolute(relative) || relative.split("/").includes("..")) {
+            throw new Error(`invalid session hook fixture path: ${relative}`);
+          }
+          await fs.mkdir(path.dirname(path.join(workspaceDir, relative)), { recursive: true });
+          await fs.writeFile(path.join(workspaceDir, relative), String(content), "utf-8");
+        }
+        const prompts: string[] = [];
+        for (const event of (scenario.events ?? []) as Array<Record<string, any>>) {
+          process.env.TZ = String(event.timezone);
+          const hookConfig: Record<string, unknown> = {};
+          if ("messages" in event) {
+            hookConfig.messages = event.messages;
+          }
+          if (event.llmSlug) {
+            hookConfig.llmSlug = true;
+          }
+          const previous = isRecord(event.previousSessionEntry)
+            ? {
+                ...event.previousSessionEntry,
+                ...(typeof event.previousSessionEntry.sessionFile === "string"
+                  ? { sessionFile: path.join(workspaceDir, event.previousSessionEntry.sessionFile) }
+                  : {}),
+              }
+            : undefined;
+          const hookEvent = internalHooks.createInternalHookEvent(
+            event.type ?? "command",
+            event.action ?? "new",
+            event.sessionKey ?? "agent:main:main",
+            {
+              workspaceDir,
+              ...(Object.keys(hookConfig).length > 0
+                ? { cfg: { hooks: { internal: { entries: { "session-memory": hookConfig } } } } }
+                : {}),
+              ...(previous ? { previousSessionEntry: previous } : {}),
+              ...(event.commandSource ? { commandSource: event.commandSource } : {}),
+            },
+          );
+          hookEvent.timestamp = new Date(Number(event.nowMs));
+          setEmbeddedAgentStubReply(event.slugReply ?? null, prompts);
+          await handler.default(hookEvent);
+          await handler.flushSessionMemoryWritesForTest();
+        }
+        const memoryDir = path.join(workspaceDir, "memory");
+        let memory: Record<string, string> | null = null;
+        try {
+          const names = (await fs.readdir(memoryDir)).toSorted();
+          memory = {};
+          for (const name of names) {
+            memory[name] = await fs.readFile(path.join(memoryDir, name), "utf-8");
+          }
+        } catch {
+          memory = null;
+        }
+        scenarios.push({ memory, prompts });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios } };
+    } finally {
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
       await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
     }
   }

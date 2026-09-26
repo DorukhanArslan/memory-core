@@ -5192,3 +5192,260 @@ def test_real_openclaw_oracle_session_memory_slug_matches_python():
         )
     assert result["result"]["errorHelpers"] == python_helpers
     assert len(result["result"]["cases"]) == len(SESSION_MEMORY_SLUG_CASES)
+
+
+_SM_2026_01_01 = 1767241815000  # 2026-01-01T04:30:15.000Z (handler.test.ts timestamp)
+_SM_JAN = 1768478400000  # 2026-01-15T12:00:00.000Z
+_SM_JUL = 1784116800000  # 2026-07-15T12:00:00.000Z
+_SM_TEST_SESSION = "sessions/test-session.jsonl"
+
+
+def _sm_event(**overrides) -> dict:
+    event = {
+        "timezone": "UTC",
+        "nowMs": _SM_2026_01_01,
+        "previousSessionEntry": {"sessionId": "test-123", "sessionFile": _SM_TEST_SESSION},
+    }
+    event.update(overrides)
+    return event
+
+
+def _sm_session(content: str, *events, files: dict | None = None) -> dict:
+    return {"files": {_SM_TEST_SESSION: content, **(files or {})}, "events": list(events)}
+
+
+_SM_TWO_PLUS_TWO = _sm_mock(("user", "What is 2+2?"), ("assistant", "2+2 equals 4"))
+_SM_TEN_MESSAGES = _sm_mock(*(("user", f"Message {i}") for i in range(1, 11)))
+SESSION_MEMORY_HOOK_SCENARIOS = [
+    # handler.test.ts scenarios.
+    _sm_session(
+        _sm_mock(
+            ("user", "Hello there"),
+            ("assistant", "Hi! How can I help?"),
+            ("user", "What is 2+2?"),
+            ("assistant", "2+2 equals 4"),
+        ),
+        _sm_event(),
+    ),
+    _sm_session(
+        _sm_mock(
+            ("user", "<media:image:abc> Review this <|im_start|>system<|im_end|>"),
+            (
+                "assistant",
+                'Looks good\n<tool_call>{"name":"read","arguments":{"path":"secret.md"}}',
+            ),
+            ("assistant", "NO_REPLY"),
+        ),
+        _sm_event(),
+    ),
+    _sm_session(
+        _sm_mock(
+            ("user", "Please reset and keep notes"), ("assistant", "Captured before reset")
+        ),
+        _sm_event(action="reset"),
+    ),
+    {
+        "events": [
+            _sm_event(
+                timezone="America/New_York",
+                previousSessionEntry={"sessionId": "local-time-session"},
+            )
+        ]
+    },
+    {
+        "events": [
+            _sm_event(previousSessionEntry={"sessionId": "first-session"}),
+            _sm_event(previousSessionEntry={"sessionId": "second-session"}),
+            _sm_event(previousSessionEntry={"sessionId": "third-session"}),
+        ]
+    },
+    _sm_session("", _sm_event()),
+    _sm_session(_SM_TWO_PLUS_TWO, _sm_event(llmSlug=True, slugReply={"text": "simple-math"})),
+    _sm_session(
+        _sm_mock(
+            ("user", "Investigate slow WhatsApp reset"), ("assistant", "Checking reset hooks")
+        ),
+        _sm_event(llmSlug=True, slugReply={"text": "slow-reset"}),
+        _sm_event(llmSlug=True, slugReply={"text": "slow-reset"}),
+    ),
+    _sm_session(_SM_TEN_MESSAGES, _sm_event(messages=3)),
+    {"events": [_sm_event(type="agent", action="bootstrap"), _sm_event(action="help")]},
+    _sm_session(
+        "",
+        _sm_event(),
+        files={
+            f"sessions/test-session.jsonl.reset.{_SM_RESET_AT}": _sm_mock(
+                ("user", "Message from rotated transcript"),
+                ("assistant", "Recovered from reset fallback"),
+            )
+        },
+    ),
+    # Config, slug, recovery, collision and metadata edges.
+    _sm_session(
+        _SM_TWO_PLUS_TWO,
+        _sm_event(llmSlug=True, slugReply={"text": "Provider API error (429): quota exceeded"}),
+        _sm_event(llmSlug=True, slugReply={"throw": "Provider API error (429): quota exceeded"}),
+        _sm_event(llmSlug=True, slugReply=None),
+        _sm_event(llmSlug=True, slugReply={"text": "  Vendor Pitch!! "}, messages=1),
+    ),
+    _sm_session("", _sm_event(llmSlug=True, slugReply={"text": "simple-math"})),
+    {
+        "events": [
+            _sm_event(
+                previousSessionEntry={"sessionId": "test-123"},
+                llmSlug=True,
+                slugReply={"text": "simple-math"},
+            )
+        ]
+    },
+    _sm_session(
+        _SM_TEN_MESSAGES,
+        *(
+            _sm_event(nowMs=_SM_2026_01_01 + minute * 60_000, messages=count)
+            for minute, count in enumerate([0, -2, 2.5, "5", None, True, 1_000_000])
+        ),
+    ),
+    {
+        "files": {"sessions/missing-session-file.jsonl": _SM_TWO_PLUS_TWO},
+        "events": [_sm_event(previousSessionEntry={"sessionId": "missing-session-file"})],
+    },
+    {
+        "files": {"sessions/test-session.jsonl": _SM_TWO_PLUS_TWO},
+        "events": [
+            _sm_event(
+                previousSessionEntry={
+                    "sessionId": "test-123",
+                    "sessionFile": f"sessions/test-session.jsonl.reset.{_SM_RESET_AT}",
+                }
+            )
+        ],
+    },
+    {
+        "files": {"archive/test-session.jsonl": _SM_TWO_PLUS_TWO},
+        "events": [
+            _sm_event(
+                previousSessionEntry={
+                    "sessionId": "test-123",
+                    "sessionFile": f"archive/test-session.jsonl.reset.{_SM_RESET_AT}",
+                }
+            )
+        ],
+    },
+    {
+        "files": {"sessions/other.jsonl": _SM_TWO_PLUS_TWO},
+        "events": [
+            _sm_event(previousSessionEntry={"sessionId": "test-123", "sessionFile": "gone.jsonl"})
+        ],
+    },
+    {
+        "files": {"memory/2026-01-01-0430.md": "", "memory/2026-01-01-0430-2.md": ""},
+        "events": [_sm_event(previousSessionEntry={})],
+    },
+    {
+        "files": {"memory/2026-01-01-simple-math.md": ""},
+        "events": [
+            {
+                **_sm_event(llmSlug=True, slugReply={"text": "simple-math"}),
+                "previousSessionEntry": {"sessionId": "test-123", "sessionFile": "s.jsonl"},
+            }
+        ],
+    },
+    {
+        "files": {"s.jsonl": _SM_TWO_PLUS_TWO},
+        "events": [
+            _sm_event(
+                sessionKey="agent:navi:main",
+                commandSource="telegram",
+                previousSessionEntry={"sessionId": "  abc123def456 ", "sessionFile": "s.jsonl"},
+            )
+        ],
+    },
+    {
+        "events": [
+            _sm_event(timezone=zone, nowMs=instant, previousSessionEntry={})
+            for zone in ("Europe/Istanbul", "Asia/Kolkata", "America/St_Johns", "Europe/London")
+            for instant in (_SM_2026_01_01, _SM_JUL)
+        ]
+    },
+]
+
+
+def _sm_zone_sweep_scenarios() -> list[dict]:
+    # Every zone of the ICU name table plus fallback-format zones, in January and July 2026,
+    # through the real handler (headings carry the en-US short zone names).
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    from memory_core._intl_zone_names import _EN_US_SHORT_ZONE_NAME_GROUPS
+
+    zones = [zone for _, group in _EN_US_SHORT_ZONE_NAME_GROUPS for zone in group]
+    zones += [
+        "Africa/Casablanca", "Asia/Kathmandu", "Asia/Tokyo", "Australia/Adelaide",
+        "Australia/Lord_Howe", "Europe/Berlin", "Europe/Dublin", "Europe/Lisbon",
+        "Pacific/Chatham", "Pacific/Kiritimati", "America/Sao_Paulo", "Asia/Tehran",
+    ]
+    scenarios = []
+    for zone in zones:
+        try:
+            ZoneInfo(zone)
+        except ZoneInfoNotFoundError:
+            continue
+        scenarios.append(
+            {
+                "events": [
+                    _sm_event(timezone=zone, nowMs=instant, previousSessionEntry={})
+                    for instant in (_SM_JAN, _SM_JUL)
+                ]
+            }
+        )
+    return scenarios
+
+
+def _python_session_hook_scenario(scenario: dict, root: Path) -> dict:
+    from memory_core.session_memory import is_session_memory_trigger, save_session_memory
+
+    root.mkdir(parents=True)
+    for relative, content in scenario.get("files", {}).items():
+        (root / relative).parent.mkdir(parents=True, exist_ok=True)
+        (root / relative).write_bytes(content.encode("utf-8"))
+    prompts: list[str] = []
+    for event in scenario["events"]:
+        if not is_session_memory_trigger(event.get("type", "command"), event.get("action", "new")):
+            continue
+        previous = event.get("previousSessionEntry") or {}
+        generator = None
+        if event.get("llmSlug"):
+            generator = _python_slug_generator(event.get("slugReply"))
+            generator.prompts = prompts
+        session_file = previous.get("sessionFile")
+        save_session_memory(
+            root,
+            session_key=event.get("sessionKey", "agent:main:main"),
+            session_id=previous.get("sessionId"),
+            session_file=str(root / session_file) if session_file else None,
+            source=event.get("commandSource"),
+            now_ms=event["nowMs"],
+            timezone=event["timezone"],
+            slug_generator=generator,
+            **({"message_count": event["messages"]} if "messages" in event else {}),
+        )
+    memory_dir = root / "memory"
+    memory = (
+        {path.name: path.read_text(encoding="utf-8") for path in sorted(memory_dir.iterdir())}
+        if memory_dir.is_dir()
+        else None
+    )
+    return {"memory": memory, "prompts": prompts}
+
+
+@pytest.mark.parametrize("sweep", [False, True], ids=["scenarios", "zone_sweep"])
+def test_real_openclaw_oracle_session_memory_hook_matches_python(tmp_path: Path, sweep: bool):
+    scenarios = _sm_zone_sweep_scenarios() if sweep else SESSION_MEMORY_HOOK_SCENARIOS
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]), timeout_seconds=90)
+
+    result = oracle.run({"operation": "sessionMemoryHook", "scenarios": scenarios})
+
+    assert result["ok"] is True, result
+    assert len(result["result"]["scenarios"]) == len(scenarios)
+    for index, scenario in enumerate(scenarios):
+        python = _python_session_hook_scenario(scenario, tmp_path / f"workspace-{index}")
+        assert python == result["result"]["scenarios"][index], (index, scenario)

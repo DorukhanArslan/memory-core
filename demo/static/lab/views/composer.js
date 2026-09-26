@@ -94,7 +94,13 @@ export function composerInsert(text, { send = false, kind = null } = {}) {
   input.focus();
   if (send) submit();
 }
-export function focusComposer() { input?.focus(); }
+/** Focuses the composer; without a key (composer hidden) the no-key notice's settings button. */
+export function focusComposer() {
+  if (row && !row.hidden) { input.focus(); return true; }
+  const b = noKeyEl && !noKeyEl.hidden ? noKeyEl.querySelector('button') : null;
+  if (b) { b.focus(); return true; }
+  return false;
+}
 async function submit() {
   const raw = input.value.trim();
   if (!raw || store.stream) return;

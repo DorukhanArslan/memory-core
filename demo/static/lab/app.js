@@ -228,8 +228,10 @@ document.addEventListener('keydown', (e) => {
   const u = store.ui; const mod = e.metaKey || e.ctrlKey; const typing = isTyping(e.target);
   if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); if (!topLayerOpen()) openPalette(); return; }
   if (e.key === 'Escape') {
-    if (store.stream) { e.preventDefault(); stopStream(); return; }
+    // The top layer (palette, menu, save sheet, dialog) closes first; a running turn stops only
+    // when no overlay is open.
     if (topLayerOpen()) { e.preventDefault(); closeTop(); return; }
+    if (store.stream) { e.preventDefault(); stopStream(); return; }
     if (u.drawer) { u.drawer = false; syncShell(); refresh('rail'); return; }
     if (u.sheet.open) { A.closeSheet(); return; }
     return;
@@ -247,7 +249,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.key === 'g') { gPending = Date.now(); return; }
-  if (e.key === '/') { e.preventDefault(); if (u.view !== 'chat' || u.centerTab !== 'view') { A.setView('chat'); requestAnimationFrame(() => requestAnimationFrame(focusComposer)); } else focusComposer(); return; }
+  if (e.key === '/') { e.preventDefault(); goToContent(); return; }
   if (e.key === '?') { e.preventDefault(); openShortcuts(); return; }
   if (e.key === '[' || e.key === ']') {
     const tabs = ['prompt', 'memory', 'timeline', 'diff']; const i = tabs.indexOf(u.inspectorTab);
@@ -261,6 +263,19 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+/* ---------- skip link and '/': the composer, else the no-key notice, else the center ---------- */
+function goToContent() {
+  const u = store.ui;
+  const land = () => {
+    if (focusComposer()) return;
+    const c = document.getElementById('center');
+    const head = c.querySelector('.vh-name');
+    const target = head || c;
+    target.setAttribute('tabindex', '-1'); target.focus();
+  };
+  if (u.view !== 'chat' || u.centerTab !== 'view') { A.setView('chat'); requestAnimationFrame(() => requestAnimationFrame(land)); } else land();
+}
+
 /* ---------- boot ---------- */
 function boot() {
   setLang(store.ui.lang);
@@ -270,7 +285,7 @@ function boot() {
   initSheet();
   syncShell();
   refresh();
-  document.querySelector('.skip-link')?.addEventListener('click', (e) => { e.preventDefault(); A.setView('chat'); requestAnimationFrame(() => requestAnimationFrame(focusComposer)); });
+  document.querySelector('.skip-link')?.addEventListener('click', (e) => { e.preventDefault(); goToContent(); });
   refreshAll();
   connectEvents({
     onEvent: (ev) => {

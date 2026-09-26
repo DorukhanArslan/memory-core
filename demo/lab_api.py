@@ -21,6 +21,7 @@ from fastapi.responses import StreamingResponse
 from demo.chat_engine import ChatEngine, OpenAICompatibleChatEngine, ScriptedChatEngine
 from demo.lab_chat import chat_turn_frames
 from demo.lab_events import parse_last_event_id, stream_lab_events, unified_diff
+from demo.lab_flush import flush_meter
 from demo.lab_prompt import PromptOptions, file_entries, lab_workspace_context
 from demo.lab_runtime import (
     LAB_TIMEZONE,
@@ -76,6 +77,7 @@ def lab_snapshot(lab: LabRuntime, *, kind: str = "main") -> dict[str, Any]:
         "session": session.public(),
         "sessions": {name: item.public() for name, item in lab.sessions.items()},
         "index": dict(lab.index_status),
+        "flush": flush_meter(lab, session),
         "layoutOrder": workspace_layout_summary(layout),
         "memoryFiles": [file.rel_path for file in workspace.discover_memory_files()],
         "turns": lab.turn_summaries(),

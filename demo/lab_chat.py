@@ -24,6 +24,7 @@ import httpx
 
 from demo.chat_engine import ChatEngine, ChatMessage
 from demo.lab_events import diff_snapshots, sse_frame
+from demo.lab_flush import flush_decision, run_flush_turn, update_token_snapshot
 from demo.lab_prompt import PromptOptions, lab_workspace_context, prompt_view
 from demo.lab_runtime import (
     MINIMAL_PROMPT_KINDS,
@@ -288,6 +289,37 @@ def _run_turn(
         mode = lab.default_search_mode(embedding)
         config = lab.config(mode=mode)
         store = lab.store(embedding, mode=mode)
+        user_content = message
+
+        # D1: upstream order is preflight compaction, memory flush, then the main run.
+        yield turn.skip("compaction", "Lab compaction yok (bilinen açık)")
+        yield turn.start("flush_decision")
+        decision = flush_decision(lab, session, user_content, is_heartbeat=kind == "heartbeat")
+        detail["flush"] = {"decision": decision}
+        lab.bus.emit(
+            "flush.decided",
+            summary=f"flush kararı: {decision['reason']} ({decision['totalTokens']}/{decision['threshold']})",
+            data=decision,
+            turn_id=turn.id,
+        )
+        yield sse_frame({"turnId": turn.id, "decision": decision}, event="flush")
+        yield turn.finish(detail=decision["reason"])
+        if not decision["shouldRun"]:
+            yield turn.skip("flush", decision["reason"])
+        elif scripted:
+            yield turn.skip("flush", "scripted: flush turn needs a model")
+        else:
+            yield turn.start("flush")
+            flush_run = run_flush_turn(
+                lab, session, engine, store, turn_id=turn.id, reason=decision["reason"], secrets=secrets
+            )
+            detail["flush"]["run"] = flush_run
+            yield sse_frame({"turnId": turn.id, "decision": decision, "run": flush_run}, event="flush")
+            yield turn.finish(
+                status="fail" if flush_run.get("error") else "ok",
+                detail="günlük dosyaya yazdı" if flush_run.get("wrote") else "yazım yok",
+            )
+
         yield turn.start("reindex")
         index = lab.reindex(store, turn_id=turn.id)
         yield turn.finish(detail=f"{index['indexedFiles']} dosya · {index['chunks']} parça · {mode}")
@@ -321,7 +353,6 @@ def _run_turn(
             build_prompt_section(set(tool_names), citations_mode=config.citation_mode)
             if kind not in MINIMAL_PROMPT_KINDS else []
         )
-        user_content = message
         sent, omitted = _transcript_window(session, user_content)
         messages = assemble_messages(
             system_sections=["\n".join(memory_section), wc.prompt_text],
@@ -344,7 +375,16 @@ def _run_turn(
                                "label": "demo-only"},
                 "messages": messages,
                 "startup": None,
-                "flush": None,
+                "flush": (
+                    {
+                        "prompt": detail["flush"]["run"]["prompt"],
+                        "systemPrompt": detail["flush"]["run"]["systemPrompt"],
+                        "target": detail["flush"]["run"]["target"],
+                        "decision": decision,
+                    }
+                    if detail["flush"].get("run")
+                    else None
+                ),
             },
         )
         detail["prompt"] = view
@@ -428,4 +468,5 @@ def _persist(lab: LabRuntime, session: LabSession, turn: TurnState, wc, user_con
     session.seen_truncation_signatures = list(wc.prompt_warning.warning_signatures_seen)
     if wc.record_completed_bootstrap_turn:
         session.completed_bootstrap_turn = True
+    update_token_snapshot(session, outcome.usage, messages=outcome.messages, output_text=outcome.text)
     del lab

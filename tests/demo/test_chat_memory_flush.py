@@ -10,23 +10,16 @@ from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 
 
-class DurableFlushEngine:
-    name = "durable"
+class JsonEnvelopeFlushEngine:
+    """The removed Lab JSON envelope: text only, so it must write nothing."""
 
-    def complete(self, *, messages, memory_context):
-        raise NotImplementedError
+    name = "json-envelope"
 
     def flush(self, *, system_prompt, prompt, transcript, target):
         del system_prompt, prompt
-        content = transcript[-1].content
         return FlushModelOutput(
             raw_text=json.dumps(
-                {
-                    "shouldWrite": True,
-                    "target": target,
-                    "entry": f"- {content}",
-                    "reason": "Durable test memory.",
-                },
+                {"shouldWrite": True, "target": target, "entry": f"- {transcript[-1].content}"},
                 ensure_ascii=False,
             )
         )
@@ -34,9 +27,6 @@ class DurableFlushEngine:
 
 class DurableToolFlushEngine:
     name = "durable-tool"
-
-    def complete(self, *, messages, memory_context):
-        raise NotImplementedError
 
     def flush(self, *, system_prompt, prompt, transcript, target):
         del system_prompt, prompt, transcript
@@ -60,52 +50,37 @@ def test_parse_flush_output_accepts_silent_token():
     assert parsed.entry == ""
 
 
-def test_parse_flush_output_rejects_target_mismatch():
-    parsed = parse_flush_output(
-        '{"shouldWrite": true, "target": "MEMORY.md", "entry": "- bad", "reason": "bad"}',
-        target="memory/2026-05-03.md",
-    )
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"shouldWrite": true, "target": "memory/2026-05-03.md", "entry": "- x", "reason": "r"}',
+        "I saved the preference.",
+    ],
+)
+def test_parse_flush_output_never_writes_text(text: str):
+    parsed = parse_flush_output(text, target="memory/2026-05-03.md")
 
     assert parsed.should_write is False
-    assert parsed.error
+    assert parsed.entry == ""
+    assert parsed.reason == "text reply without a write tool call"
 
 
-@pytest.mark.parametrize("flag", ["false", 1])
-def test_parse_flush_output_rejects_non_boolean_should_write(flag: object):
-    parsed = parse_flush_output(
-        json.dumps(
-            {
-                "shouldWrite": flag,
-                "target": "memory/2026-05-03.md",
-                "entry": "- should not write",
-                "reason": "malformed",
-            }
-        ),
-        target="memory/2026-05-03.md",
-    )
-
-    assert parsed.should_write is False
-    assert parsed.error
-
-
-def test_run_memory_flush_appends_reindexes_and_returns_diff(tmp_path: Path):
+def test_run_memory_flush_ignores_a_json_text_reply(tmp_path: Path):
     cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
     store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=16))
 
     result = run_memory_flush(
         config=cfg,
         store=store,
-        engine=DurableFlushEngine(),
+        engine=JsonEnvelopeFlushEngine(),
         transcript=[ChatMessage(role="user", content="Ben teknik cevapları Türkçe tercih ediyorum.")],
         now_ms=1777824000000,
         timezone="Europe/Istanbul",
     )
 
-    assert result.parsed.should_write is True
-    assert result.target == "memory/2026-05-03.md"
-    assert "+- Ben teknik cevapları Türkçe tercih ediyorum." in result.diff
-    assert (tmp_path / "memory" / "2026-05-03.md").exists()
-    assert store.count_chunks() > 0
+    assert result.parsed.should_write is False
+    assert result.diff == ""
+    assert not (tmp_path / "memory" / "2026-05-03.md").exists()
 
 
 def test_run_memory_flush_appends_openclaw_style_write_tool_call(tmp_path: Path):
@@ -143,19 +118,17 @@ def test_run_memory_flush_returns_written_state_when_reindex_fails(tmp_path: Pat
     result = run_memory_flush(
         config=cfg,
         store=FailingReindexStore(),
-        engine=DurableFlushEngine(),
-        transcript=[ChatMessage(role="user", content="Ben teknik cevapları Türkçe tercih ediyorum.")],
+        engine=DurableToolFlushEngine(),
+        transcript=[ChatMessage(role="user", content="iş, kovuldum")],
         now_ms=1777824000000,
         timezone="Europe/Istanbul",
     )
 
     daily_file = tmp_path / "memory" / "2026-05-03.md"
     assert daily_file.exists()
-    assert "- Ben teknik cevapları Türkçe tercih ediyorum." in daily_file.read_text(
-        encoding="utf-8"
-    )
+    assert "- User was fired from work." in daily_file.read_text(encoding="utf-8")
     assert result.parsed.should_write is True
-    assert "+- Ben teknik cevapları Türkçe tercih ediyorum." in result.diff
+    assert "+- User was fired from work." in result.diff
     assert result.indexed_files == 0
     assert result.reindex_error
     assert "index broke" in result.reindex_error
@@ -164,31 +137,10 @@ def test_run_memory_flush_returns_written_state_when_reindex_fails(tmp_path: Pat
 class BadTargetEngine:
     name = "bad"
 
-    def complete(self, *, messages, memory_context):
-        raise NotImplementedError
-
     def flush(self, *, system_prompt, prompt, transcript, target):
         return FlushModelOutput(
-            raw_text='{"shouldWrite": true, "target": "MEMORY.md", "entry": "- bad", "reason": "bad"}'
-        )
-
-
-class MalformedShouldWriteEngine:
-    name = "malformed"
-
-    def complete(self, *, messages, memory_context):
-        raise NotImplementedError
-
-    def flush(self, *, system_prompt, prompt, transcript, target):
-        return FlushModelOutput(
-            raw_text=json.dumps(
-                {
-                    "shouldWrite": "false",
-                    "target": target,
-                    "entry": "- should not write",
-                    "reason": "malformed",
-                }
-            )
+            raw_text="write(MEMORY.md)",
+            writes=(FlushWriteCall(path="MEMORY.md", content="- bad", call_id="call_1"),),
         )
 
 
@@ -208,23 +160,3 @@ def test_run_memory_flush_writes_nothing_on_invalid_target(tmp_path: Path):
     assert result.parsed.should_write is False
     assert result.parsed.error
     assert not (tmp_path / "MEMORY.md").exists()
-
-
-def test_run_memory_flush_writes_nothing_on_malformed_should_write(tmp_path: Path):
-    cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
-    store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=16))
-
-    result = run_memory_flush(
-        config=cfg,
-        store=store,
-        engine=MalformedShouldWriteEngine(),
-        transcript=[ChatMessage(role="user", content="malformed write flag")],
-        now_ms=1777824000000,
-        timezone="Europe/Istanbul",
-    )
-
-    assert result.parsed.should_write is False
-    assert result.parsed.error
-    assert result.indexed_files == 0
-    assert result.chunks == 0
-    assert not (tmp_path / "memory" / "2026-05-03.md").exists()

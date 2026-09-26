@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import difflib
-import json
 from pathlib import Path
 from typing import Protocol
 
@@ -46,83 +45,17 @@ class MemoryFlushRun:
 
 
 def parse_flush_output(raw_text: str, *, target: str) -> ParsedFlushOutput:
+    """A flush reply without a write tool call writes nothing.
+
+    Upstream's flush turn writes only through the ``write`` tool, whose target
+    is the daily file; ``NO_REPLY`` is the silent answer. Any other text is a
+    reply, never an entry (the Lab's old JSON envelope is gone).
+    """
     text = raw_text.strip()
-    if text.startswith(SILENT_REPLY_TOKEN):
-        return ParsedFlushOutput(
-            should_write=False,
-            target=target,
-            entry="",
-            reason="silent reply",
-        )
-
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError as exc:
-        return ParsedFlushOutput(
-            should_write=False,
-            target=target,
-            entry="",
-            reason="invalid JSON",
-            error=f"invalid JSON flush output: {exc.msg}",
-        )
-
-    if not isinstance(payload, dict):
-        return ParsedFlushOutput(
-            should_write=False,
-            target=target,
-            entry="",
-            reason="invalid payload",
-            error="flush output must be a JSON object",
-        )
-
-    output_target = _string_field(payload, "target") or target
-    reason = _string_field(payload, "reason")
-    entry = _string_field(payload, "entry")
-
-    write_flag = payload.get("shouldWrite", payload.get("should_write", False))
-    if not isinstance(write_flag, bool):
-        return ParsedFlushOutput(
-            should_write=False,
-            target=output_target,
-            entry="",
-            reason=reason,
-            error="flush output shouldWrite must be a boolean",
-        )
-    should_write = write_flag is True
-
-    if output_target != target:
-        return ParsedFlushOutput(
-            should_write=False,
-            target=output_target,
-            entry="",
-            reason=reason,
-            error=f"flush target mismatch: expected {target}, got {output_target}",
-        )
-
-    validation_error = _validate_memory_write_target(output_target)
-    if validation_error:
-        return ParsedFlushOutput(
-            should_write=False,
-            target=output_target,
-            entry="",
-            reason=reason,
-            error=validation_error,
-        )
-
-    if should_write and not entry.strip():
-        return ParsedFlushOutput(
-            should_write=False,
-            target=output_target,
-            entry="",
-            reason=reason,
-            error="flush output requested a write with an empty entry",
-        )
-
+    if not text or text.startswith(SILENT_REPLY_TOKEN):
+        return ParsedFlushOutput(should_write=False, target=target, entry="", reason="silent reply")
     return ParsedFlushOutput(
-        should_write=should_write,
-        target=output_target,
-        entry=entry if should_write else "",
-        reason=reason,
+        should_write=False, target=target, entry="", reason="text reply without a write tool call"
     )
 
 
@@ -217,18 +150,11 @@ def parse_flush_tool_writes(writes: object, *, target: str) -> ParsedFlushOutput
 
 
 def _validate_memory_write_target(target: str) -> str | None:
-    if target == "MEMORY.md":
-        return None
     try:
         validate_daily_memory_target(target)
     except UnsafeMemoryFlushTargetError as exc:
         return str(exc)
     return None
-
-
-def _string_field(payload: dict, name: str) -> str:
-    value = payload.get(name)
-    return value if isinstance(value, str) else ""
 
 
 def _read_text_if_exists(path: Path) -> str:

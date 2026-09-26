@@ -334,6 +334,8 @@ def diff_snapshots(before: Snapshot, after: Snapshot) -> list[dict[str, Any]]:
                 "added": added,
                 "removed": removed,
                 "binary": binary,
+                # Stores under dot-directories (memory/.dreams/) are demo-only state.
+                "hidden": any(part.startswith(".") for part in path.split("/")),
                 "sha256Before": old.sha256 if old is not None else None,
                 "sha256After": new.sha256 if new is not None else None,
             }

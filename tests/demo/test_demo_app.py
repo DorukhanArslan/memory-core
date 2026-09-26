@@ -722,7 +722,10 @@ def test_tool_loop_dispatches_curation_and_memory_tools(client, lab, monkeypatch
     }
     assert "- Always answer briefly, in bullet points." in (lab.root / "USER.md").read_text(encoding="utf-8")
     detail = frames_of(frames, "turn_done")[0]["detail"]
-    assert [stage["name"] for stage in detail["stages"]] == ["ensure", "reindex", "recall", "prompt", "stream", "persist"]
+    assert [stage["name"] for stage in detail["stages"]] == [
+        "ensure", "compaction", "flush_decision", "flush", "reindex", "recall", "prompt", "stream", "persist",
+    ]
+    assert detail["stages"][1] == {"name": "compaction", "status": "skip", "ms": 0, "detail": "Lab compaction yok (bilinen açık)"}
     assert detail["curation"][0]["kind"] == "user_directive"
     assert detail["curation"][0]["flag"] == "curated_memory_writes"
     assert "before" not in detail["curation"][0]
@@ -855,3 +858,126 @@ def test_chat_provider_errors_are_redacted_and_recorded(client, lab, monkeypatch
     assert {"type": "error", "label": "hata: stream"} in detail["chips"]
     assert "chat.turn.failed" in event_types(client)
     assert secret not in client.get("/api/lab/events", params={"once": "true"}).text
+
+
+# --- flush before the turn (D1) ----------------------------------------------------------
+
+
+def daily_write(text):
+    from demo.chat_engine import FlushModelOutput, FlushWriteCall
+
+    def output(target):
+        return FlushModelOutput(raw_text=f"write({target})", writes=(FlushWriteCall(path=target, content=text, call_id="f1"),))
+
+    return output
+
+
+def test_flush_runs_before_the_main_turn_once_per_compaction_cycle(client, lab, monkeypatch):
+    lab.settings.context_window_tokens = 26_000  # threshold 26,000 - 20,000 - 4,000 = 2,000
+    engine = use_engine(monkeypatch, StubEngine(
+        [("Bir.", []), ("İki.", []), ("Üç.", [])],
+        usage={"promptTokens": 1_990, "completionTokens": 40, "totalTokens": 2_030},
+        flush_output=daily_write("- Redis 7.2 staging upgrade done."),
+    ))
+    client.get("/api/lab/state")
+    before = {name: (lab.root / name).read_text(encoding="utf-8") for name in ("AGENTS.md", "SOUL.md", "USER.md")}
+
+    first = send(client, "Bugün staging ortamında Redis'i 7.2 sürümüne yükselttik.")
+    second = send(client, "CI süresi 14 dakikadan 9 dakikaya indi.")
+    third = send(client, "Yarın yük testi var.")
+
+    decisions = [frames_of(frames, "flush")[0]["decision"] for frames in (first, second, third)]
+    assert [item["reason"] for item in decisions] == ["missing_tokens", "token_threshold", "already_flushed"]
+    assert decisions[1]["threshold"] == 2_000
+    assert decisions[1]["totalTokens"] == 1_990 + 40 + decisions[1]["promptTokenEstimate"]
+    assert decisions[1]["tokenSource"] == "provider usage"
+    assert len(engine.flush_calls) == 1
+    flush_call = engine.flush_calls[0]
+    assert flush_call["target"] == f"memory/{lab.today()}.md"
+    assert "NO_REPLY" in flush_call["prompt"] and "read-only" in flush_call["system_prompt"]
+    order = [frame["event"] for frame in second if frame["event"] in {"flush", "assistant_delta"}]
+    assert order == ["flush", "flush", "assistant_delta"]
+    detail = frames_of(second, "turn_done")[0]["detail"]
+    stages = {stage["name"]: stage for stage in detail["stages"]}
+    assert stages["flush"]["status"] == "ok"
+    assert detail["flush"]["run"]["wrote"] is True
+    assert detail["prompt"]["flush"]["target"] == f"memory/{lab.today()}.md"
+    assert {"type": "flush", "label": "flush → günlük", "target": f"memory/{lab.today()}.md", "source": "flush"} in detail["chips"]
+    visible = [(diff["path"], diff["source"]) for diff in detail["diffs"] if not diff["hidden"]]
+    assert visible == [(f"memory/{lab.today()}.md", "flush")]
+    assert ("memory/.dreams/short-term-recall.json", "recall") in [
+        (diff["path"], diff["source"]) for diff in detail["diffs"] if diff["hidden"]
+    ]
+    assert (lab.root / "memory" / f"{lab.today()}.md").read_text(encoding="utf-8").rstrip().endswith("- Redis 7.2 staging upgrade done.")
+    assert {name: (lab.root / name).read_text(encoding="utf-8") for name in before} == before
+    assert not (lab.root / "MEMORY.md").exists()
+    third_stages = {stage["name"]: stage for stage in frames_of(third, "turn_done")[0]["detail"]["stages"]}
+    assert third_stages["flush"] == {"name": "flush", "status": "skip", "ms": 0, "detail": "already_flushed"}
+    snapshot = client.get("/api/lab/state").json()["flush"]
+    assert snapshot["alreadyFlushed"] is True and snapshot["note"].startswith("Lab never compacts")
+    types = event_types(client)
+    assert types.index("flush.decided") < types.index("flush.written")
+
+
+def test_flush_writes_only_the_daily_file(client, lab, monkeypatch):
+    from demo.chat_engine import FlushModelOutput, FlushWriteCall
+
+    lab.settings.context_window_tokens = 26_000
+    use_engine(monkeypatch, StubEngine(
+        [("Bir.", []), ("İki.", [])],
+        usage={"promptTokens": 5_000, "completionTokens": 10, "totalTokens": 5_010},
+        flush_output=lambda target: FlushModelOutput(
+            raw_text="write(MEMORY.md)", writes=(FlushWriteCall(path="MEMORY.md", content="- nope", call_id="f1"),)
+        ),
+    ))
+
+    send(client, "bir")
+    frames = send(client, "iki")
+
+    run = frames_of(frames, "turn_done")[0]["detail"]["flush"]["run"]
+    assert run["wrote"] is False and run["parsed"]["error"]
+    assert not (lab.root / "MEMORY.md").exists()
+    assert "flush.no_write" in event_types(client)
+
+
+def test_flush_decision_without_usage_is_labelled_an_estimate(client, lab, monkeypatch):
+    use_engine(monkeypatch, StubEngine([("Bir.", []), ("İki.", [])], usage={}))
+
+    send(client, "bir")
+    frames = send(client, "iki")
+
+    decision = frames_of(frames, "flush")[0]["decision"]
+    assert decision["reason"] == "under_threshold"
+    assert decision["tokenSource"].startswith("estimate (chars/4")
+    assert decision["contextWindowTokens"] == 200_000
+    assert decision["contextWindowSource"] == "upstream DEFAULT_CONTEXT_TOKENS"
+
+
+def test_heartbeat_kind_skips_the_flush(client, monkeypatch):
+    use_engine(monkeypatch, StubEngine([("ok", [])]))
+
+    frames = send(client, "HEARTBEAT", sessionKind="heartbeat")
+
+    assert frames_of(frames, "flush")[0]["decision"]["reason"] == "runtime_skip:heartbeat"
+
+
+def test_manual_flush_is_forced_once_per_cycle(client, lab, monkeypatch):
+    use_engine(monkeypatch, StubEngine([("Bir.", [])], flush_output=daily_write("- Manual flush note.")))
+    send(client, "Not: yük testi yarın.")
+
+    first = client.post("/api/chat/flush", json={"forced": True}).json()
+    second = client.post("/api/chat/flush", json={"forced": True}).json()
+
+    assert first["decision"]["reason"] == "lab_forced"
+    assert first["decision"]["trigger"]["reason"] in {"under_threshold", "missing_tokens"}
+    assert first["flush"]["parsed"]["shouldWrite"] is True and first["flush"]["wrote"] is True
+    assert second["decision"] == {**second["decision"], "shouldRun": False, "reason": "already_flushed"}
+    assert second["flush"] is None
+    assert (lab.root / "memory" / f"{lab.today()}.md").read_text(encoding="utf-8").count("Manual flush note") == 1
+
+
+def test_manual_flush_needs_a_model(client):
+    response = client.post("/api/chat/flush", json={"forced": True})
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "no_api_key"

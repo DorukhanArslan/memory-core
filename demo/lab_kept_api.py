@@ -16,6 +16,7 @@ from starlette.concurrency import iterate_in_threadpool
 from demo.chat_engine import OpenAICompatibleChatEngine
 from demo.lab_consolidation import run_audit, run_dreaming, run_promotion, run_repair
 from demo.lab_events import sse_frame
+from demo.lab_flush import LAB_FORCED_REASON, flush_decision, forced_flush_blocked, run_flush_turn
 from demo.lab_runtime import (
     LabError,
     LabRuntime,
@@ -138,6 +139,37 @@ def build_kept_router(lab: LabRuntime) -> APIRouter:
         lab.ensure_exists()
         with lab.lock:
             return run_dreaming(lab, payload)
+
+    @router.post("/chat/flush")
+    def chat_flush(payload: dict = Body(default={})):
+        """``/flush``: run the flush turn now (Lab action, reason ``lab_forced``).
+
+        It skips only the token gate: like upstream's forced-by-size path it still
+        honours the same-compaction guard, so a second ``/flush`` reports
+        ``already_flushed`` and writes nothing.
+        """
+        from demo.lab_api import resolve_chat_engine
+
+        lab.ensure_exists()
+        session = lab.session(str(payload.get("sessionKind") or "main"))
+        engine = resolve_chat_engine(lab, payload)
+        if getattr(engine, "provider", "") == "scripted":
+            raise LabError(400, "the flush turn needs a model; the scripted engine has none", code="no_api_key")
+        trigger = flush_decision(lab, session, None)
+        if forced_flush_blocked(session):
+            decision = {"shouldRun": False, "reason": "already_flushed", "trigger": trigger}
+            lab.bus.emit("flush.decided", summary="flush kararı: already_flushed (/flush)", data=decision)
+            return {"decision": decision, "flush": None, "entry": session.flush_entry}
+        decision = {"shouldRun": True, "reason": LAB_FORCED_REASON, "trigger": trigger}
+        lab.bus.emit("flush.decided", summary="flush kararı: lab_forced (/flush)", data=decision)
+        embedding = lab.resolve_embedding(payload)
+        store = lab.store(embedding)
+        with lab.lock:
+            run = run_flush_turn(
+                lab, session, engine, store, turn_id=None, reason=LAB_FORCED_REASON,
+                secrets=lab.secret_values(payload),
+            )
+        return {"decision": decision, "flush": run, "entry": session.flush_entry}
 
     _add_live_task_routes(router, lab)
     return router

@@ -4,6 +4,7 @@ import { h, icon, fmtN, fmtMs, fmtTime, trFold } from '../ui/dom.js';
 import { t, has } from '../i18n/index.js';
 import { store, refresh } from '../store.js';
 import { toggle, jsonDisclosure, emptyState } from '../ui/kit.js';
+import { sourceLabel } from './diff.js';
 
 export const CATS = ['sohbet', 'bellek', 'dosya', 'flush', 'bootstrap', 'heartbeat', 'konsolidasyon', 'canlı', 'ayar', 'senaryo', 'hata'];
 const VIEW_CATS = { heartbeat: ['heartbeat'], consolidation: ['konsolidasyon'], live: ['canlı'] };
@@ -11,6 +12,12 @@ const WINDOW = 300;
 let windowSize = WINDOW;
 let tm = null;
 export const catLabel = (c) => (has(`cat.${c}`) ? t(`cat.${c}`) : c);
+/** file.changed summaries arrive in English ("AGENTS.md added (reset)"); rebuild them from data. */
+function eventSummary(e) {
+  const d = e.data || {};
+  if (e.type === 'file.changed' && d.path && has(`diff.status.${d.status}`)) return `${d.path} · ${t(`diff.status.${d.status}`)}${d.source ? ` (${sourceLabel(d.source)})` : ''}`;
+  return e.summary || e.type;
+}
 
 export function timelineTab(turn, { ctx = 'turn' } = {}) {
   const tl = store.ui.timeline;
@@ -39,9 +46,9 @@ export function timelineTab(turn, { ctx = 'turn' } = {}) {
     const key = e.id ?? `${e.ts}-${e.type}`;
     const open = tl.expanded.has(key);
     list.append(h('div', { class: ['ev', `cat-${e.category || 'x'}`, open ? 'is-open' : '', turn && e.turnId === turn.id ? 'is-turn' : ''], role: 'listitem', 'data-testid': 'event-row', 'data-type': e.type },
-      h('button', { type: 'button', class: 'ev-head', 'aria-expanded': String(open), 'aria-label': `${fmtTime(e.ts)} ${catLabel(e.category)} ${e.type} ${e.summary || ''}`, onclick: () => { if (open) tl.expanded.delete(key); else tl.expanded.add(key); tl.stick = false; refresh('inspector'); } },
+      h('button', { type: 'button', class: 'ev-head', 'aria-expanded': String(open), 'aria-label': `${fmtTime(e.ts)} ${catLabel(e.category)} ${e.type} ${eventSummary(e)}`, onclick: () => { if (open) tl.expanded.delete(key); else tl.expanded.add(key); tl.stick = false; refresh('inspector'); } },
         h('span', { class: 'ev-time mono' }, fmtTime(e.ts, { ms: true })),
-        h('span', { class: 'ev-main' }, h('span', { class: 'ev-sum' }, e.summary || e.type), h('span', { class: 'ev-type mono' }, `${catLabel(e.category)} · ${e.type}`)),
+        h('span', { class: 'ev-main' }, h('span', { class: 'ev-sum', 'data-tip': e.summary && e.summary !== eventSummary(e) ? e.summary : null }, eventSummary(e)), h('span', { class: 'ev-type mono' }, `${catLabel(e.category)} · ${e.type}`)),
         e.data?.ms !== undefined ? h('span', { class: 'ev-ms num' }, fmtMs(e.data.ms)) : null),
       open ? h('div', { class: 'ev-body' }, jsonDisclosure({ id: e.id, ts: e.ts, type: e.type, category: e.category, turnId: e.turnId, data: e.data }, { title: 'payload', open: true })) : null));
   }

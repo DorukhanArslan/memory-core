@@ -1,7 +1,7 @@
 // ui/kit.js: chips, badges, buttons, segmented controls, switches, JSON disclosure,
 // empty / skeleton / honesty / "henüz yok" / error cards. Every status carries an icon and text.
 import { h, icon, fmtN, copyText } from './dom.js';
-import { t } from '../i18n/index.js';
+import { t, has } from '../i18n/index.js';
 import { toast } from './overlay.js';
 import { store } from '../store.js';
 
@@ -97,10 +97,11 @@ export function jsonDisclosure(value, { title = 'JSON', open = false } = {}) {
   if (open) build();
   d.addEventListener('toggle', () => { if (d.open) build(); });
   d.append(
-    h('summary', null, icon('chevron-right', 12, 'json-chev'), h('span', { class: 'json-title' }, title), h('span', { class: 'json-meta' }, `${type} · ${fmtN(text.length)} ${t('unit.chars')}`),
-      h('button', { type: 'button', class: 'json-copy', 'aria-label': t('act.copy'), 'data-tip': t('act.copy'), onclick: (e) => { e.preventDefault(); copyText(text).then(() => toast(t('toast.copied'), { tone: 'ok' })); } }, icon('copy', 12))),
+    h('summary', null, icon('chevron-right', 12, 'json-chev'), h('span', { class: 'json-title' }, title), h('span', { class: 'json-meta' }, `${type} · ${fmtN(text.length)} ${t('unit.chars')}`)),
     pre);
-  return d;
+  // No interactive content inside <summary>: the copy button is a sibling over the summary row.
+  return h('div', { class: 'json-box' }, d,
+    h('button', { type: 'button', class: 'json-copy', 'aria-label': `${t('act.copy')}: ${title}`, 'data-tip': t('act.copy'), onclick: () => copyText(text).then(() => toast(t('toast.copied'), { tone: 'ok' })) }, icon('copy', 12)));
 }
 function highlightJson(text) {
   const frag = document.createDocumentFragment();
@@ -163,6 +164,10 @@ export function failCard(err, opts = {}) {
   if (err?.code === 'not_found') return notFoundCard(err, opts);
   return apiErrorCard(err, opts);
 }
+
+/* ---------- feature flags: short translated label, backend label and id in the tooltip ---------- */
+export const flagLabel = (id, f) => (has(`flag.${id}`) ? t(`flag.${id}`) : f?.label || id);
+export const flagTip = (id, f) => [id, f?.label].filter(Boolean).join(' · ');
 
 /* ---------- "Nasıl çalışır?" (DESIGN §10 D6): short, collapsed per-view explanations ----------
  * Wording comes from docs/lab.md and docs/*.md only (the removed /memory-system page is not a

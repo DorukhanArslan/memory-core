@@ -37,8 +37,10 @@ export function modelHealth() {
     const e = evs[i];
     if (e.type === 'chat.turn.completed') return 'ok';
     if (e.type === 'chat.turn.failed') return 'error';
-    if (e.type === 'provider.check' && (e.data?.which || e.data?.kind || 'chat') === 'chat') return e.data?.ok ? 'ok' : 'error';
+    if (e.type === 'provider.check' && e.data?.target === 'chat') return e.data?.ok ? 'ok' : 'error';
   }
+  const last = store.data.settings?.chat?.lastCheck;
+  if (last && typeof last.ok === 'boolean') return last.ok ? 'ok' : 'error';
   return 'untested';
 }
 export function cooldownLeft() {
@@ -64,7 +66,8 @@ function statusChips() {
     const dot = ks === 'none' ? 'grey' : health === 'error' ? 'danger' : health === 'ok' ? 'ok' : 'warn';
     const src = ks === 'page' ? t('settings.keyPage') : ks === 'env' ? '.env (MEMORY_CORE_DEMO_OPENAI_API_KEY)' : t('settings.keyNone');
     const healthText = { ok: t('top.lastCallOk'), error: t('top.lastCallError'), untested: t('top.untested') }[health];
-    list.push(chip({ label: ks === 'none' ? t('top.noKey') : (s.chat.model || '—'), dot, tone: dot === 'danger' ? 'danger' : 'neutral', onClick: () => store.actions.openSettings('chat'), title: `${t('top.chatModel')}: ${s.chat.model || '—'} · ${t('settings.keySource')}: ${src} · ${healthText}`, aria: `${t('top.chatModel')} ${s.chat.model || ''}, ${healthText}`, testid: 'chip-model', cls: 'chip-mono' }));
+    const state = ks === 'none' ? t('top.noKey') : healthText;
+    list.push(chip({ label: s.chat.model || '—', dot, tone: dot === 'danger' ? 'danger' : 'neutral', onClick: () => store.actions.openSettings('chat'), title: `${t('top.chatModel')}: ${s.chat.model || '—'} · ${t('settings.keySource')}: ${src} · ${state}`, aria: `${t('top.chatModel')} ${s.chat.model || ''}, ${state}`, testid: 'chip-model', cls: 'chip-mono' }));
   }
   if (s?.embedding) {
     const fts = s.embedding.mode === 'fts-only';
@@ -102,7 +105,7 @@ function openStatusPopover(anchor) {
     { heading: t('top.status') },
     d.snap?.bootstrap ? { label: `bootstrap: ${d.snap.bootstrap.status === 'pending' ? t('state.pending') : t('state.complete')}`, ic: 'check', onSelect: () => store.actions.openInspector('prompt') } : null,
     layoutLabel() ? { label: `${t('settings.layout')}: ${layoutLabel()}`, ic: 'layers', onSelect: () => store.actions.openSettings('layout') } : null,
-    s?.chat ? { label: `${t('top.chatModel')}: ${chatKeyState() === 'none' ? t('top.noKey') : s.chat.model}`, ic: 'key', onSelect: () => store.actions.openSettings('chat') } : null,
+    s?.chat ? { label: `${t('top.chatModel')}: ${s.chat.model || '—'}${chatKeyState() === 'none' ? ` · ${t('top.noKey')}` : ''}`, ic: 'key', onSelect: () => store.actions.openSettings('chat') } : null,
     s?.embedding ? { label: s.embedding.mode === 'fts-only' ? t('search.ftsOnly') : `${t('search.hybrid')} · ${s.embedding.model}`, ic: 'search', onSelect: () => store.actions.openSettings('embedding') } : null,
     f ? { label: `flush ${f.threshold ? `${fmtN(f.totalTokens)} / ${fmtN(f.threshold)}` : '—'}`, ic: 'minus', onSelect: () => store.actions.openInspector('prompt') } : null,
     '-',

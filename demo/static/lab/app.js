@@ -91,7 +91,12 @@ Object.assign(A, {
     if (mode === 'stacked' || mode === 'compact') { if (u.sheet.open) A.closeSheet(); else A.openSheet(); return; }
     u.inspectorCollapsed = !u.inspectorCollapsed; syncShell(); refresh('center', 'inspector', 'rail');
   },
-  openSheet() { const u = store.ui; u.sheet.open = true; u.sheet.detent = u.sheet.detent || 0.5; syncShell(); refresh('inspector', 'mobile'); },
+  openSheet() {
+    const u = store.ui; const was = u.sheet.open;
+    u.sheet.open = true; u.sheet.detent = u.sheet.detent || 0.5; syncShell(); refresh('inspector', 'mobile');
+    // Focus moves into the sheet (its heading) when it opens.
+    if (!was) requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector('#inspector .insp-head .turn-picker, #inspector .insp-head .insp-title')?.focus()));
+  },
   closeSheet() { const u = store.ui; u.sheet.open = false; syncShell(); refresh('mobile'); },
   openPalette, openShortcuts,
   async runTurn(text, kind, opts) { const r = await chatRunTurn(text, kind, opts); notify(r ? 'chat.turn.completed' : 'chat.turn.failed'); return r; },

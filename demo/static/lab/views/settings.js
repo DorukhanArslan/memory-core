@@ -5,7 +5,7 @@ import { h, icon, replace, fmtN, copyText } from '../ui/dom.js';
 import { t } from '../i18n/index.js';
 import { store, refresh, loadSettings, loadState, loadFiles, loadIndex, setPageKey, setRemember, chatKeyState, refreshAll } from '../store.js';
 import { api } from '../api.js';
-import { chip, btn, iconBtn, segmented, toggle, failCard, skeleton, honesty } from '../ui/kit.js';
+import { chip, btn, iconBtn, segmented, toggle, failCard, skeleton, honesty, flagLabel, flagTip } from '../ui/kit.js';
 import { toast, confirmDialog } from '../ui/overlay.js';
 import { viewHead } from './heartbeat.js';
 
@@ -113,7 +113,7 @@ export function renderSettings(body) {
   const flags = Object.entries(s.flags || {});
   const curationFlags = flags.filter(([k]) => /curat/i.test(k));
   const otherFlags = flags.filter(([k]) => !/curat/i.test(k));
-  const flagRow = ([k, f]) => row(f.label || k, toggle({ checked: !!f.on, onChange: (v) => putSettings({ flags: { [k]: { on: v } } }), label: k, testid: `settings-flag-${k}` }), f.extension ? t('settings.extensionFlag') : null);
+  const flagRow = ([k, f]) => row(h('span', { 'data-tip': flagTip(k, f) }, flagLabel(k, f)), toggle({ checked: !!f.on, onChange: (v) => putSettings({ flags: { [k]: { on: v } } }), label: k, testid: `settings-flag-${k}` }), f.extension ? t('settings.extensionFlag') : null);
   const bud = s.budgets || {};
   const defaults = bud.defaults || bud.upstreamDefaults || null;
   const budTag = defaults ? (defaults.maxChars !== bud.maxChars || defaults.totalMaxChars !== bud.totalMaxChars ? chip({ label: t('settings.testValue'), tone: 'warn', cls: 'chip-xs' }) : chip({ label: t('settings.upstreamDefault', { a: fmtN(defaults.maxChars), b: fmtN(defaults.totalMaxChars) }), tone: 'neutral', cls: 'chip-xs' })) : null;

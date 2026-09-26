@@ -42,7 +42,7 @@ function formula(r, weights) {
 }
 /** Legs the search ran with, from the payload: provider none / model fts-only means no vector leg. */
 export function legsOf(res) {
-  const ftsOnly = res?.provider === 'none' || res?.model === 'fts-only';
+  const ftsOnly = res?.provider === 'none' || res?.model === 'fts-only' || res?.embeddings?.mode === 'fts-only';
   const mode = res?.mode || res?.request?.mode;
   return { vector: !ftsOnly && mode !== 'text', text: mode !== 'vector' };
 }
@@ -127,7 +127,8 @@ export function memoryTab(turn) {
     const rows = res.results || [];
     wrap.append(h('div', { class: 'result-meta muted', 'data-testid': 'search-meta' },
       `${rows.length} ${t('search.results')} · ${t(`search.mode.${res.mode || res.request?.mode || 'text'}`)}${res.provider ? ` · ${res.provider}/${res.model}` : ''} · ${fmtMs(res.ms ?? res.clientMs)}`));
-    if (!rows.length) wrap.append(emptyState({ title: t('search.noMatch'), text: t('search.noMatchText'), testid: 'empty-memory', level: 4 }));
+    const hint = [Number(res.request?.minScore) > 0 ? t('search.noMatchMin') : null, res.embeddings?.mode === 'fts-only' || res.provider === 'none' ? t('search.noMatchFts') : null].filter(Boolean).join(' ');
+    if (!rows.length) wrap.append(emptyState({ title: t('search.noMatch'), text: hint || null, testid: 'empty-memory', level: 4 }));
     rows.forEach((r, i) => wrap.append(resultRow(r, i + 1, { terms: wordTokens(res.request?.query || ''), minScore: res.request?.minScore, weights: res.weights || null, legs: legsOf(res) })));
     if (!res.matchedTermsSupported && rows.length) wrap.append(honesty(t('search.highlightNote'), 'neutral', 'info'));
     wrap.append(jsonDisclosure(res, { title: 'memory_search' }));

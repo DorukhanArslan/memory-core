@@ -41,7 +41,7 @@ function renderInspector() {
       h('span', null, turn ? `${t('inspector.turn')} #${turn.id}` : t('inspector.noTurn')), turn?.sessionKind ? h('span', { class: 'kind-tag', 'data-kind': turn.sessionKind }, turn.sessionKind) : null, icon('chevron-down', 12));
   } else {
     const label = { live: t('view.live'), heartbeat: t('inspector.hbContext'), consolidation: t('view.consolidation') }[ctx];
-    title = h('h2', { class: 'insp-title' }, icon({ live: 'waveform', heartbeat: 'heart-pulse', consolidation: 'merge' }[ctx], 14), label);
+    title = h('h2', { class: 'insp-title', tabindex: '-1' }, icon({ live: 'waveform', heartbeat: 'heart-pulse', consolidation: 'merge' }[ctx], 14), label);
   }
   const header = h('div', { class: 'insp-head' },
     h('div', { class: 'insp-row' },

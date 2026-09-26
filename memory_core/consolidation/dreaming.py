@@ -25,6 +25,7 @@ from typing import Any
 
 from memory_core.bootstrap._js import js_to_well_formed
 from memory_core.config import MemoryConfig
+from memory_core.consolidation.policy import DeepDreamingPolicy
 from memory_core.consolidation.promotion import (
     MemoryPromotionRun,
     PromotionCandidate,
@@ -49,6 +50,8 @@ class DreamingSweepResult:
     phase_signals_recorded: int
     files_changed: tuple[str, ...]
     promotion: MemoryPromotionRun | None = None
+    # "disabled" when a deep sweep got a policy with enabled=False (nothing promoted).
+    skip_reason: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """JSON-ready summary (camelCase keys) used by the Lab state payload."""
@@ -59,6 +62,7 @@ class DreamingSweepResult:
             "phaseSignalsRecorded": self.phase_signals_recorded,
             "filesChanged": list(self.files_changed),
             "promotion": serialize_promotion_run(self.promotion) if self.promotion else None,
+            "skipReason": self.skip_reason,
         }
 
 
@@ -71,14 +75,21 @@ def run_dreaming_sweep(
     timezone: str,
     limit: int = 5,
     identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+    policy: DeepDreamingPolicy | None = None,
 ) -> DreamingSweepResult:
     """Run one dreaming phase over the workspace's recall store.
 
     ``phase`` is ``"light"``, ``"rem"`` or ``"deep"`` (anything else raises
-    ``ValueError``). Up to ``limit`` candidates are ranked without gates; the
-    deep phase promotes with the default gates and the same ``limit``.
-    ``files_changed`` lists workspace-relative paths the sweep wrote;
-    ``identity`` picks the promotion marker prefix of the deep phase.
+    ``ValueError``). Up to ``limit`` candidates are ranked without gates.
+    Without ``policy`` the deep phase promotes with the default gates, the same
+    ``limit`` and no age gate. With a resolved ``policy``
+    (:func:`resolve_deep_dreaming_policy`) it behaves like the pin's deep phase
+    (``dreaming.ts`` runShortTermDreamingPromotion): nothing is promoted when
+    ``policy.enabled`` is false (``skip_reason="disabled"``), otherwise the
+    policy's limit, gates, ``max_age_days``, ``recency_half_life_days`` and
+    ``max_promoted_snippet_tokens`` apply. ``files_changed`` lists
+    workspace-relative paths the sweep wrote; ``identity`` picks the promotion
+    marker prefix of the deep phase.
     """
     if phase not in DREAMING_PHASES:
         raise ValueError(f"unsupported dreaming phase: {phase}")
@@ -116,14 +127,28 @@ def run_dreaming_sweep(
         )
         files_changed.append(DREAMS_FILE_NAME)
 
-    if phase == "deep":
+    skip_reason = None
+    if phase == "deep" and policy is not None and not policy.enabled:
+        skip_reason = "disabled"
+    elif phase == "deep":
+        gates: dict[str, Any] = {"limit": limit}
+        if policy is not None:
+            gates = {
+                "limit": policy.limit,
+                "min_score": policy.min_score,
+                "min_recall_count": policy.min_recall_count,
+                "min_unique_queries": policy.min_unique_queries,
+                "max_age_days": policy.max_age_days,
+                "recency_half_life_days": policy.recency_half_life_days,
+                "max_promoted_snippet_tokens": policy.max_promoted_snippet_tokens,
+            }
         promotion = run_short_term_promotion(
             config=config,
             store=store,
             now_ms=now_ms,
             timezone=timezone,
-            limit=limit,
             identity=identity,
+            **gates,
         )
         if promotion.parsed.should_write:
             files_changed.append(promotion.target)
@@ -134,6 +159,7 @@ def run_dreaming_sweep(
         phase_signals_recorded=phase_signals_recorded,
         files_changed=tuple(files_changed),
         promotion=promotion,
+        skip_reason=skip_reason,
     )
 
 

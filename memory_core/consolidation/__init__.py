@@ -16,9 +16,12 @@ pin 4c42815348. It is the package's scored consolidation mode:
 3. :func:`audit_short_term_promotion_artifacts` and
    :func:`repair_short_term_promotion_artifacts` inspect and fix the stores.
 
-Nothing here runs on its own: there is no scheduler, and dreaming is off by
-default (:data:`DEFAULT_DEEP_DREAMING_ENABLED`). The module knows no web
-framework, UI or LLM. Evidence per behaviour lives in docs/parity_matrix.md.
+Nothing here runs on its own: there is no scheduler. Dreaming is off by
+default (:data:`DEFAULT_DEEP_DREAMING_ENABLED`): a deep sweep given a
+resolved :class:`DeepDreamingPolicy` promotes nothing unless the policy
+enables it; a call without a policy runs whenever the host makes it. The
+module knows no web framework, UI or LLM. Evidence per behaviour lives in
+docs/parity_matrix.md.
 """
 
 from memory_core.consolidation.audit import (

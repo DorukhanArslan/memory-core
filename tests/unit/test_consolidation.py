@@ -160,6 +160,7 @@ def test_typed_results_serialize_with_upstream_keys(tmp_path: Path):
         "phaseSignalsRecorded": 0,
         "filesChanged": [],
         "promotion": None,
+        "skipReason": None,
     }
     assert repair.as_dict() == {
         "changed": False,
@@ -187,3 +188,46 @@ def test_snippet_caps_count_utf16_code_units(tmp_path: Path):
     record_short_term_recalls(config=config, query="a", results=[hit], now_ms=0)
     stored = (tmp_path / "memory" / ".dreams" / "short-term-recall.json").read_text("utf-8")
     assert '"snippet": "' + "a" * 799 + '\\ud83e"' in stored
+
+
+def _seed_recalled_daily(tmp_path: Path, now: int) -> MemoryConfig:
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    daily = tmp_path / "memory" / "2026-05-08.md"
+    daily.parent.mkdir(parents=True)
+    daily.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+    hit = {
+        "path": "memory/2026-05-08.md",
+        "startLine": 3,
+        "snippet": "- Move backups to S3 Glacier.",
+        "score": 1,
+    }
+    record_short_term_recalls(config=config, query="glacier", results=[hit], now_ms=now)
+    return config
+
+
+def test_deep_sweep_applies_a_resolved_policy(tmp_path: Path):
+    # dreaming.ts runShortTermDreamingPromotion: a disabled config promotes nothing;
+    # an enabled one ranks and applies with its own limit, gates and age window.
+    now = _ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    config = _seed_recalled_daily(tmp_path, now)
+    store = SQLiteMemoryStore(config, FakeEmbeddingProvider(dimensions=8))
+    deep = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+
+    def sweep(dreaming: dict) -> consolidation.DreamingSweepResult:
+        policy = resolve_deep_dreaming_policy({"dreaming": {**dreaming, "phases": {"deep": deep}}})
+        return run_dreaming_sweep(
+            config=config, store=store, phase="deep", now_ms=now, timezone="UTC", policy=policy
+        )
+
+    disabled = sweep({})
+    assert (disabled.skip_reason, disabled.promotion, disabled.files_changed) == (
+        "disabled",
+        None,
+        (),
+    )
+    assert not (tmp_path / "MEMORY.md").exists()
+
+    enabled = sweep({"enabled": True})
+    assert enabled.skip_reason is None
+    assert enabled.files_changed == ("MEMORY.md",)
+    assert "Move backups to S3 Glacier." in (tmp_path / "MEMORY.md").read_text(encoding="utf-8")

@@ -23,11 +23,12 @@ from typing import TYPE_CHECKING, Any
 
 from memory_core.consolidation import (
     DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
-    DEFAULT_MEMORY_FILE_MAX_CHARS,
     DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT,
     DEFAULT_DEEP_DREAMING_MIN_SCORE,
     DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES,
+    DEFAULT_MEMORY_FILE_MAX_CHARS,
     DEFAULT_RECENCY_HALF_LIFE_DAYS,
+    DeepDreamingPolicy,
     DreamingSweepResult,
     MemoryPromotionRun,
     ShortTermAuditSummary,
@@ -120,12 +121,19 @@ class SubjectConsolidation:
         )
 
     def dream(
-        self, phase: str, *, now_ms: int, timezone: str = "UTC", limit: int = 5
+        self,
+        phase: str,
+        *,
+        now_ms: int,
+        timezone: str = "UTC",
+        limit: int = 5,
+        policy: DeepDreamingPolicy | None = None,
     ) -> DreamingSweepResult:
         """Run one ``light``, ``rem`` or ``deep`` sweep over the subject's recall store.
 
-        Same behaviour as :func:`memory_core.consolidation.run_dreaming_sweep`; a deep
-        sweep that promotes reindexes the subject's store.
+        Same behaviour as :func:`memory_core.consolidation.run_dreaming_sweep`,
+        ``policy`` included; a deep sweep that promotes reindexes the subject's
+        store.
         """
         self._require_enabled()
         return run_dreaming_sweep(
@@ -136,6 +144,7 @@ class SubjectConsolidation:
             timezone=timezone,
             limit=limit,
             identity=self.identity,
+            policy=policy,
         )
 
     def audit(self, *, now_ms: int) -> ShortTermAuditSummary:

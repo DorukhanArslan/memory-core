@@ -2,7 +2,7 @@
 // a context the runner assembles from real API payloads (diffs, files, prompt views, turn
 // details, search, heartbeat, consolidation, live-task state and LabEvents). No key patterns,
 // no dates, no line numbers are hardcoded; step-captured references resolve at run time.
-import { parseUnified } from '../ui/diff.js';
+import { parseUnified, sourceNames } from '../ui/diff.js';
 import { splitFileSections } from '../inspector/common.js';
 
 /* ---------- check constructors ---------- */
@@ -28,7 +28,6 @@ export const addedAt = (step, path) => (ctx) => {
 };
 
 /* ---------- helpers ---------- */
-const sourcesOf = (d) => d.sources || (d.source ? [d.source] : []);
 const diffFor = (ctx, p) => (ctx.diff || []).find((d) => d.path === p);
 function sectionText(pv, section) {
   if (!pv) return '';
@@ -44,13 +43,13 @@ const fileNames = (pv) => (pv?.files || []).map((f) => f.name);
 const test = (re, s) => (re instanceof RegExp ? re.test(s) : String(s).includes(String(re)));
 
 /* ---------- files and diffs (step window = since the step's diff mark) ---------- */
-export const fileChanged = (spec, { source = null } = {}) => (ctx) => { const p = resolve(spec, ctx); const d = diffFor(ctx, p); return !!d && d.status !== 'deleted' && (!source || sourcesOf(d).includes(source)); };
+export const fileChanged = (spec, { source = null } = {}) => (ctx) => { const p = resolve(spec, ctx); const d = diffFor(ctx, p); return !!d && d.status !== 'deleted' && (!source || sourceNames(d).includes(source)); };
 export const anyFileChanged = (specs, o = {}) => (ctx) => resolveAll(specs, ctx).some((p) => fileChanged(p, o)(ctx));
-export const fileUnchanged = (specs, { source = null } = {}) => (ctx) => { const ps = resolveAll(specs, ctx); return !(ctx.diff || []).some((d) => ps.includes(d.path) && (!source || sourcesOf(d).includes(source))); };
-export const onlyFileBySource = (spec, source) => (ctx) => { const p = resolve(spec, ctx); const list = (ctx.diff || []).filter((d) => sourcesOf(d).includes(source)); return list.length === 1 && list[0].path === p; };
+export const fileUnchanged = (specs, { source = null } = {}) => (ctx) => { const ps = resolveAll(specs, ctx); return !(ctx.diff || []).some((d) => ps.includes(d.path) && (!source || sourceNames(d).includes(source))); };
+export const onlyFileBySource = (spec, source) => (ctx) => { const p = resolve(spec, ctx); const list = (ctx.diff || []).filter((d) => sourceNames(d).includes(source)); return list.length === 1 && list[0].path === p; };
 export const fileAdded = (re) => (ctx) => (ctx.diff || []).some((d) => d.status === 'added' && re.test(d.path));
 export const noFileAdded = (except = []) => (ctx) => { const ok = resolveAll(except, ctx); return !(ctx.diff || []).some((d) => d.status === 'added' && !ok.includes(d.path)); };
-export const fileDeleted = (path, { source = null } = {}) => (ctx) => (ctx.diff || []).some((d) => d.path === path && d.status === 'deleted' && (!source || sourcesOf(d).includes(source)));
+export const fileDeleted = (path, { source = null } = {}) => (ctx) => (ctx.diff || []).some((d) => d.path === path && d.status === 'deleted' && (!source || sourceNames(d).includes(source)));
 export const fileMatches = (spec, re) => (ctx) => { const p = resolve(spec, ctx); return !!p && test(re, ctx.fileText[p] ?? ''); };
 /** Append-only: the step's diff for the file removes nothing and adds only after the existing lines. */
 export const appendOnly = (spec) => (ctx) => {

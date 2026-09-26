@@ -6,7 +6,7 @@ import { store, refresh, loadFiles, loadState } from '../store.js';
 import { api } from '../api.js';
 import { segmented, iconBtn, emptyState, skeleton, failCard } from '../ui/kit.js';
 import { confirmDialog, toast } from '../ui/overlay.js';
-import { parseUnified, diffView } from '../ui/diff.js';
+import { parseUnified, diffView, sourceNames, sourceEntries } from '../ui/diff.js';
 
 const cache = new Map();
 const FILE_EVENT = /^(file\.|bootstrap\.file_deleted|curation\.|flush\.written|session_memory\.|promotion\.|dreaming\.|workspace\.reset|chat\.turn\.completed|live\.)/;
@@ -66,7 +66,8 @@ export function diffTab(turn, { ctx = 'turn' } = {}) {
   const list = entry.list || [];
   if (!list.length) { wrap.append(emptyState({ title: t('diff.empty'), testid: 'empty-diff', ic: 'diff', level: 4 })); return wrap; }
   for (const d of list) {
-    const sources = d.sources || (d.source ? [d.source] : []);
+    const sources = sourceNames(d);
+    const turnsBySource = (src) => [...new Set(sourceEntries(d).filter((x) => x.source === src && x.turnId !== null && x.turnId !== undefined).map((x) => `#${x.turnId}`))].join(', ');
     const status = d.status === 'modified' || d.status === 'changed' ? 'modified' : d.status;
     wrap.append(h('article', { class: 'dcard', 'data-testid': 'diff-card', 'data-path': d.path },
       h('div', { class: 'dcard-head' },
@@ -74,7 +75,7 @@ export function diffTab(turn, { ctx = 'turn' } = {}) {
         h('button', { type: 'button', class: 'dcard-path mono', onclick: () => (status !== 'deleted' ? store.actions.openFile(d.path) : null), disabled: status === 'deleted' }, d.path),
         h('span', { class: 'num tone-text-ok' }, `+${d.added ?? 0}`), h('span', { class: 'num tone-text-danger' }, `−${d.removed ?? 0}`),
         h('span', { class: 'spacer' }),
-        sources.map((src) => h('span', { class: ['chip', 'chip-xs', `tone-${SOURCE_TONE[src] || 'neutral'}`] }, sourceLabel(src))),
+        sources.map((src) => h('span', { class: ['chip', 'chip-xs', `tone-${SOURCE_TONE[src] || 'neutral'}`], 'data-tip': turnsBySource(src) || null, 'data-testid': 'diff-source' }, sourceLabel(src))),
         iconBtn('rotate-ccw', t('diff.revert'), () => revert(d, since), { size: 'xs' })),
       status === 'deleted' ? h('div', { class: 'muted pad small' }, t('diff.deletedBy', { s: sources.map(sourceLabel).join(', ') || '—' })) : null,
       d.diff ? diffView(parseUnified(d.diff), { maxLines: 200 }) : null));

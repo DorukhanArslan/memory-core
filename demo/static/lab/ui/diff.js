@@ -3,6 +3,18 @@
 import { h } from './dom.js';
 import { t } from '../i18n/index.js';
 
+/**
+ * Sources of a /api/lab/diff row as objects {source, turnId, ts, eventId, status}: the server
+ * sends `sources[]` as objects (docs/lab.md › GET /diff); a bare string is accepted too.
+ * Every reader of a diff row's sources goes through sourceEntries() or sourceNames().
+ */
+export function sourceEntries(row) {
+  const list = row?.sources || (row?.source ? [row.source] : []);
+  return list.map((s) => (s && typeof s === 'object' ? s : { source: s })).filter((s) => s.source);
+}
+/** Distinct source names of a diff row (curation, flush, lifecycle, editor, …). */
+export function sourceNames(row) { return [...new Set(sourceEntries(row).map((s) => s.source))]; }
+
 /** LCS line diff with common prefix/suffix trimming. ops: {t:'='|'+'|'-', text, na?, nb?}. */
 export function lineDiff(a, b) {
   if (a === null || a === undefined) return String(b ?? '').split('\n').map((text, i) => ({ t: '+', text, nb: i + 1 }));

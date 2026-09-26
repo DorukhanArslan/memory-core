@@ -171,3 +171,44 @@ def test_i18n_dictionaries_share_their_ids() -> None:
         if module.parent.name != "i18n":
             used.update(re.findall(r"\bt\('([^']+)'", module.read_text(encoding="utf-8")))
     assert used <= tr, sorted(used - tr)
+
+
+def test_diff_row_sources_are_read_only_through_the_normaliser() -> None:
+    """/api/lab/diff rows carry ``sources[]`` as objects; only ui/diff.js unpacks them."""
+    for module in LAB_MODULES:
+        rel = module.relative_to(LAB_ROOT).as_posix()
+        for line in module.read_text(encoding="utf-8").splitlines():
+            if re.search(r"\.sources\b", line):
+                assert rel == "ui/diff.js" and "row?.sources" in line, f"{rel}: {line.strip()[:80]}"
+
+
+# --- contract: fields the Lab modules read exist in the real backend payloads ---------------
+
+
+@pytest.fixture
+def lab_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    from demo.app import create_app
+    from demo.lab_runtime import LabRuntime
+
+    for name in ("MEMORY_CORE_DEMO_OPENAI_API_KEY", "MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY"):
+        monkeypatch.setenv(name, "")
+    return TestClient(create_app(LabRuntime(tmp_path)))
+
+
+def test_contract_diff_sources_are_objects_with_a_source_name(lab_client: TestClient) -> None:
+    lab_client.post("/api/lab/workspace/reset", json={"mode": "fresh"})
+    identity = lab_client.get("/api/lab/file", params={"path": "IDENTITY.md"}).json()
+    lab_client.put(
+        "/api/lab/file",
+        json={"path": "IDENTITY.md", "content": identity["content"] + "\n", "baseSha256": identity["sha256"]},
+    )
+
+    rows = {row["path"]: row for row in lab_client.get("/api/lab/diff", params={"since": "reset"}).json()}
+
+    # scenarios/checks.js fileDeleted(BOOTSTRAP.md, {source: lifecycle}) reads these fields.
+    deleted = rows["BOOTSTRAP.md"]
+    assert deleted["status"] == "deleted"
+    assert isinstance(deleted["sources"][0], dict)
+    assert {"source", "turnId", "ts", "eventId", "status"} <= set(deleted["sources"][0])
+    assert "lifecycle" in [s["source"] for s in deleted["sources"]]
+    assert {"path", "status", "diff", "added", "removed", "hidden"} <= set(rows["IDENTITY.md"])

@@ -15,6 +15,7 @@ import {
   liveStep, liveOrder, businessAction, liveSummaryWrote, proofAbsentFromSummary,
   keyState, turnErrorCode, turnErrorMatches, errorRedacted, providerCheck,
 } from './checks.js';
+import { sourceNames } from '../ui/diff.js';
 
 const SESSION_FILE = /^memory\/\d{4}-\d{2}-\d{2}-[a-z0-9-]+\.md$/;
 const BOOTSTRAP_FILES = ['AGENTS.md', 'SOUL.md', 'TOOLS.md', 'IDENTITY.md', 'USER.md', 'HEARTBEAT.md', 'PROACTIVE_PREFERENCES.md'];
@@ -203,9 +204,9 @@ export const SCENARIOS = [
         checks: [observe('flush', (ctx) => `${ctx.turn?.flush?.decision?.reason || '—'} · ${ctx.snap?.flush?.totalTokens ?? '—'}/${ctx.snap?.flush?.threshold ?? '—'}`, ['turn', 'snap'])] },
       { act: 'send', text: "Yarın sabah 08:00'de yük testi var, sonuçları akşam paylaşacağız.", waitFor: 'chat.turn.completed|chat.turn.failed', expect: 'scn.S11.e3',
         checks: [auto('scenario: flush.decided reason ∈ [token_threshold, transcript_size]', (ctx) => (ctx.scenarioEvents || []).some((e) => e.type === 'flush.decided' && ['token_threshold', 'transcript_size'].includes(e.data?.reason))),
-          auto('scenario: fileChanged(daily(bugün),{source:flush})', (ctx) => (ctx.scenarioDiff || []).some((d) => d.path === `memory/${ctx.today}.md` && (d.sources || []).includes('flush')), ['scenarioDiff']),
-          auto('onlyFileBySource(daily(bugün), flush)', (ctx) => { const list = (ctx.scenarioDiff || []).filter((d) => (d.sources || []).includes('flush')); return list.length === 1 && list[0].path === `memory/${ctx.today}.md`; }, ['scenarioDiff']),
-          auto('fileUnchanged(bootstrap ∪ MEMORY.md,{source:flush})', (ctx) => !(ctx.scenarioDiff || []).some((d) => [...BOOTSTRAP_FILES, 'MEMORY.md'].includes(d.path) && (d.sources || []).includes('flush')), ['scenarioDiff'])] },
+          auto('scenario: fileChanged(daily(bugün),{source:flush})', (ctx) => (ctx.scenarioDiff || []).some((d) => d.path === `memory/${ctx.today}.md` && sourceNames(d).includes('flush')), ['scenarioDiff']),
+          auto('onlyFileBySource(daily(bugün), flush)', (ctx) => { const list = (ctx.scenarioDiff || []).filter((d) => sourceNames(d).includes('flush')); return list.length === 1 && list[0].path === `memory/${ctx.today}.md`; }, ['scenarioDiff']),
+          auto('fileUnchanged(bootstrap ∪ MEMORY.md,{source:flush})', (ctx) => !(ctx.scenarioDiff || []).some((d) => [...BOOTSTRAP_FILES, 'MEMORY.md'].includes(d.path) && sourceNames(d).includes('flush')), ['scenarioDiff'])] },
       { act: 'look', tab: 'prompt', label: 'scn.S11.l4', expect: 'scn.S11.e4',
         checks: [auto('flush prompt has NO_REPLY', (ctx) => /NO_REPLY/.test(ctx.flushTurn?.prompt?.flush?.prompt || ''), ['flushTurn']), auto('flushTarget(/^memory\\/\\d{4}-\\d{2}-\\d{2}\\.md$/)', (ctx) => /^memory\/\d{4}-\d{2}-\d{2}\.md$/.test(ctx.flushTurn?.flush?.run?.target || ctx.flushTurn?.prompt?.flush?.target || ''), ['flushTurn'])] },
       { act: 'cmd', text: '/flush', waitFor: 'flush.decided|flush.no_write|flush.written', expect: 'scn.S11.e5', labels: [{ tone: 'warn', text: 'scn.S11.forced' }],

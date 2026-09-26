@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "memory-core-demo",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["-m", "uvicorn", "demo.app:app", "--port", "8010"],
+      "port": 8010,
+      "autoPort": false
+    }
+  ]
+}

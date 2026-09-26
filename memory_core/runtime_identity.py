@@ -17,6 +17,17 @@ class RuntimeIdentity:
     workspace_files_injected_line: str = (
         "These user-editable files are loaded by memory-core and included below in Project Context."
     )
+    # memory_search unavailable guidance when the failure reason names a
+    # missing SQLite runtime (OpenClaw extensions/memory-core/src/tools.shared.ts
+    # buildMemorySearchUnavailableResult names its Node runtime).
+    memory_search_sqlite_unavailable_warning: str = (
+        "Memory search is unavailable because this memory-core Python runtime does not provide "
+        "SQLite support."
+    )
+    memory_search_sqlite_unavailable_action: str = (
+        "Run memory-core with a Python build that includes the sqlite3 module, then retry "
+        "memory_search."
+    )
 
 
 MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -30,6 +41,14 @@ MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
     workspace_files_injected_line=(
         "These user-editable files are loaded by memory-core and included below in Project Context."
     ),
+    memory_search_sqlite_unavailable_warning=(
+        "Memory search is unavailable because this memory-core Python runtime does not provide "
+        "SQLite support."
+    ),
+    memory_search_sqlite_unavailable_action=(
+        "Run memory-core with a Python build that includes the sqlite3 module, then retry "
+        "memory_search."
+    ),
 )
 
 OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -42,5 +61,12 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
     runtime_event_user_prompt="Continue the OpenClaw runtime event.",
     workspace_files_injected_line=(
         "These user-editable files are loaded by OpenClaw and included below in Project Context."
+    ),
+    memory_search_sqlite_unavailable_warning=(
+        "Memory search is unavailable because this OpenClaw Node runtime does not provide "
+        "SQLite support."
+    ),
+    memory_search_sqlite_unavailable_action=(
+        "Run OpenClaw with a Node runtime that includes node:sqlite, then retry memory_search."
     ),
 )

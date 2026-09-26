@@ -12,6 +12,7 @@ Port of OpenClaw's built-in tool helpers:
 - ``src/agents/agent-tool-definition-adapter.ts``: a thrown tool error reaches
   the model as ``{"status": "error", "tool": <name>, "error": <message>}``
   (``buildToolExecutionErrorResult`` with ``describeToolExecutionError``).
+- ``src/infra/errors.ts``: ``formatErrorMessage`` (cause chain, no redaction).
 
 Values follow JavaScript semantics: ``True``/``False`` are not numbers,
 strings are trimmed with the ECMAScript whitespace set, and numeric strings
@@ -71,6 +72,43 @@ def to_tool_error(error: BaseException, *, tool: str) -> dict[str, str]:
     if not message.strip():
         message = type(error).__name__
     return {"status": "error", "tool": tool, "error": message}
+
+
+def format_error_message(error: object) -> str:
+    """``formatErrorMessage`` (``src/infra/errors.ts:69-111``) without redaction.
+
+    An exception reads as its message (its type name when blank), followed by
+    each explicit ``raise ... from`` cause message and string/number ``code``
+    as `` | <text>``, skipping repeats. Upstream then runs a best-effort token
+    redaction (``redactSensitiveText``); memory-core does not port it, so hosts
+    whose provider errors can carry secrets should redact tool results.
+    """
+    if isinstance(error, BaseException):
+        formatted = str(error) or type(error).__name__
+        seen: set[int] = {id(error)}
+        seen_messages = {formatted}
+
+        def append(message: str) -> None:
+            nonlocal formatted
+            if not message or message in seen_messages:
+                return
+            formatted += f" | {message}"
+            seen_messages.add(message)
+
+        cause = error.__cause__
+        while cause is not None and id(cause) not in seen:
+            seen.add(id(cause))
+            append(str(cause))
+            code = getattr(cause, "code", None)
+            if isinstance(code, str):
+                append(code)
+            elif isinstance(code, int | float) and not isinstance(code, bool):
+                append(str(code))
+            cause = cause.__cause__
+        return formatted
+    if isinstance(error, str):
+        return error
+    return str(error)
 
 
 def as_tool_params_record(params: object) -> Mapping[str, Any]:

@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import json
 import tempfile
+import threading
 
 import pytest
 
@@ -42,7 +43,12 @@ from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.flags import FeatureFlags
 from memory_core.tools.common import MemoryToolInputError
-from memory_core.tools.memory_search import execute_memory_search_tool, memory_search
+import memory_core.tools.memory_search as memory_search_module
+from memory_core.tools.memory_search import (
+    build_memory_search_unavailable_result,
+    execute_memory_search_tool,
+    memory_search,
+)
 from memory_core.tools.memory_get import memory_get
 from memory_core.workspace import MemoryWorkspace
 
@@ -1521,6 +1527,199 @@ def test_real_openclaw_oracle_memory_search_param_coercion_matches_python(
         (item["corpus"], item["path"], item["startLine"], item["endLine"])
         for item in python_result["results"]
     ]
+
+
+MEMORY_SEARCH_UNAVAILABLE_CASES = [
+    {"error": None},
+    {"error": ""},
+    {"error": "   "},
+    {"error": "  boom  "},
+    {"error": "﻿Monthly QUOTA reached　"},
+    {"error": "HTTP 429 Too Many Requests"},
+    {"error": "insufficient_quota"},
+    {"error": "Error: missing node:sqlite"},
+    {"error": "No such built-in module: node:sqlite"},
+    {"error": "no such builtin module: node:sqlite"},
+    {"error": "quota exceeded and missing node:sqlite"},
+    {"error": "index metadata is missing", "warning": "custom warning", "action": "custom action"},
+    {"error": None, "warning": "only a warning"},
+]
+
+
+def test_real_openclaw_oracle_memory_search_unavailable_result_matches_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+    result = oracle.run(
+        {"operation": "memorySearchUnavailableResult", "unavailableCases": MEMORY_SEARCH_UNAVAILABLE_CASES}
+    )
+    compat = [
+        build_memory_search_unavailable_result(
+            case["error"],
+            warning=case.get("warning"),
+            action=case.get("action"),
+            runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+        )
+        for case in MEMORY_SEARCH_UNAVAILABLE_CASES
+    ]
+    default = [
+        build_memory_search_unavailable_result(
+            case["error"], warning=case.get("warning"), action=case.get("action")
+        )
+        for case in MEMORY_SEARCH_UNAVAILABLE_CASES
+    ]
+
+    assert result["ok"] is True
+    assert result["operation"] == "memorySearchUnavailableResult"
+    assert result["result"] == compat
+    # The default identity only renames the runtime in the SQLite guidance.
+    differing = [index for index, item in enumerate(default) if item != compat[index]]
+    assert differing == [7, 8, 9]
+    assert "OpenClaw" not in json.dumps(default)
+
+
+class _ScriptedEmbeddingProvider(OpenClawFakeEmbeddingProvider):
+    def __init__(self):
+        super().__init__(dimensions=8)
+        self.behavior = "ok"
+        self.calls = 0
+        self.release = threading.Event()
+
+    def embed_query(self, text: str) -> list[float]:
+        self.calls += 1
+        if self.behavior.startswith("throw:"):
+            raise RuntimeError(self.behavior.removeprefix("throw:"))
+        if self.behavior == "hang":
+            # Abandoned by the deadline; released when the test ends.
+            self.release.wait(30)
+        return super().embed_query(text)
+
+
+class _ScriptedWikiSupplement:
+    def __init__(self, results: list[dict]):
+        self.results = results
+        self.behavior = "ok"
+
+    def search(self, *, query: str, max_results: int, corpus: str) -> list[dict]:
+        del query, corpus
+        if self.behavior.startswith("throw:"):
+            raise RuntimeError(self.behavior.removeprefix("throw:"))
+        return self.results[: max(1, max_results)]
+
+    def get(self, *, path: str, corpus: str):
+        del path, corpus
+        return None
+
+
+def _glacier(corpus: str | None = None) -> dict:
+    return {"query": "glacier", **({"corpus": corpus} if corpus else {})}
+
+
+# tools.ts:402-702: cooldown read/record, corpus=wiki bypass, corpus=all
+# supplement-only fallback, the phase rule for recording, deadline timeout.
+MEMORY_SEARCH_TOOL_SEQUENCE = [
+    {"rawParams": _glacier("memory"), "embedQuery": "throw:provider exploded"},
+    {"rawParams": _glacier("memory")},
+    {"rawParams": _glacier("wiki")},
+    {"rawParams": _glacier("all")},
+    {"rawParams": _glacier()},
+    {"rawParams": _glacier("memory"), "advanceMs": 60_001},
+    {"rawParams": _glacier("memory"), "embedQuery": "hang", "deadlineFireMs": 300},
+    {"rawParams": _glacier("sessions")},
+    {"rawParams": _glacier("all"), "advanceMs": 60_001, "supplement": "throw:wiki down"},
+    {"rawParams": _glacier("memory")},
+    {"rawParams": _glacier("wiki"), "supplement": "throw:wiki down"},
+    {"rawParams": _glacier("memory")},
+    {"rawParams": _glacier("all"), "embedQuery": "throw:insufficient_quota: out of credits"},
+    {"rawParams": _glacier("memory")},
+    {"rawParams": _glacier("all")},
+    # A 1 s margin on each side absorbs the real time the TS side spends
+    # between steps (its Date.now keeps running).
+    {"rawParams": _glacier("memory"), "advanceMs": 59_000},
+    {"rawParams": _glacier("memory"), "advanceMs": 1_001},
+]
+
+
+def _normalize_memory_search_step(step: dict) -> dict:
+    result = step["result"]
+    normalized = {
+        key: value
+        for key, value in result.items()
+        if key not in {"results", "debug", "fallback", "mode"}
+    }
+    normalized["results"] = [(item.get("corpus"), item["path"]) for item in result["results"]]
+    if result.get("unavailable"):
+        normalized["debug"] = result["debug"]
+    return {"result": normalized, "embedQueryCalls": step["embedQueryCalls"]}
+
+
+def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=120,
+    )
+    (tmp_path / "MEMORY.md").write_text(
+        "# Long-Term Memory\n\n- Glacier storage keeps backups cold.", encoding="utf-8"
+    )
+    wiki_results = [
+        {"corpus": "wiki", "path": "w1.md", "title": "W1", "kind": "entity", "score": 5,
+         "snippet": "glacier wiki"},
+    ]
+
+    result = oracle.run(
+        {
+            "operation": "memorySearchToolSequence",
+            "workspaceDir": str(tmp_path),
+            "wikiResults": wiki_results,
+            "searchSteps": MEMORY_SEARCH_TOOL_SEQUENCE,
+        }
+    )
+
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "python-memory.sqlite",
+        vector_weight=0,
+        text_weight=1,
+    )
+    provider = _ScriptedEmbeddingProvider()
+    wiki = _ScriptedWikiSupplement(wiki_results)
+    store = SQLiteMemoryStore(cfg, provider)
+    store.reindex(MemoryWorkspace(tmp_path))
+    clock = {"offset": 0.0, "deadline": None}
+    monkeypatch.setattr(
+        memory_search_module, "_now_ms", lambda: 1_000_000.0 + clock["offset"]
+    )
+    monkeypatch.setattr(
+        memory_search_module,
+        "_deadline_seconds",
+        lambda ms: (clock["deadline"] if clock["deadline"] is not None else ms) / 1000,
+    )
+    python_steps = []
+    try:
+        for step in MEMORY_SEARCH_TOOL_SEQUENCE:
+            clock["offset"] += step.get("advanceMs", 0)
+            clock["deadline"] = step.get("deadlineFireMs")
+            provider.behavior = step.get("embedQuery", "ok")
+            wiki.behavior = step.get("supplement", "ok")
+            calls_before = provider.calls
+            python_steps.append(
+                {
+                    "result": execute_memory_search_tool(
+                        cfg, store, step["rawParams"], supplements=[wiki]
+                    ),
+                    "embedQueryCalls": provider.calls - calls_before,
+                }
+            )
+    finally:
+        provider.release.set()
+
+    assert result["ok"] is True, result.get("error")
+    assert result["operation"] == "memorySearchToolSequence"
+    assert [_normalize_memory_search_step(step) for step in result["result"]] == [
+        _normalize_memory_search_step(step) for step in python_steps
+    ]
+    assert python_steps[6]["result"]["error"] == "memory_search timed out after 15s"
 
 def test_real_openclaw_oracle_records_short_term_recall():
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))

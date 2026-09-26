@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
+from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.index.chunking import MemoryChunk, chunk_markdown
@@ -55,6 +58,19 @@ class SQLiteMemoryStore:
 
     def connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path)
+
+    @contextmanager
+    def _search_connection(self, signal: CancellationSignal | None) -> Iterator[sqlite3.Connection]:
+        # A read-only connection the caller's signal can interrupt from another
+        # thread (sqlite3 interrupt), closed when the search ends.
+        db = self.connect()
+        remove_listener = signal.add_listener(db.interrupt) if signal is not None else None
+        try:
+            yield db
+        finally:
+            if remove_listener is not None:
+                remove_listener()
+            db.close()
 
     def _init_schema(self) -> None:
         with self.connect() as db:
@@ -128,8 +144,17 @@ class SQLiteMemoryStore:
         max_results: int = 5,
         min_score: float = 0.0,
         sources: set[str] | None = None,
+        signal: CancellationSignal | None = None,
     ) -> list[HybridResult]:
+        """Search the index; ``signal`` aborts it at the next checkpoint.
+
+        Checkpoints mirror where OpenClaw's manager honours the tool's
+        AbortSignal (``memory/manager.ts`` search, ``embedQueryWithRetry``):
+        before and after the query embedding and between FTS probes; an abort
+        also interrupts the open SQLite statement.
+        """
         source_filter = _source_filter_clause(sources)
+        _checkpoint(signal)
 
         if not self.flags.vector_search:
             return self._search_keyword_only(
@@ -137,10 +162,12 @@ class SQLiteMemoryStore:
                 max_results=max_results,
                 min_score=min_score,
                 source_filter=source_filter,
+                signal=signal,
             )
 
         query_embedding = self.embeddings.embed_query(query)
-        with self.connect() as db:
+        _checkpoint(signal)
+        with self._search_connection(signal) as db:
             rows = db.execute(
                 "SELECT id, path, start_line, end_line, source, text, embedding FROM chunks"
                 + source_filter.sql,
@@ -161,7 +188,10 @@ class SQLiteMemoryStore:
 
             keyword: list[HybridKeywordResult] = []
             if self.flags.text_search:
-                keyword = self._query_keyword_hits_with_fallback(db, query, source_filter)
+                keyword = self._query_keyword_hits_with_fallback(
+                    db, query, source_filter, signal
+                )
+        _checkpoint(signal)
 
         if not self.flags.text_search:
             # Vector-only mode mirrors OpenClaw's non-hybrid path: raw vector
@@ -237,12 +267,14 @@ class SQLiteMemoryStore:
         max_results: int,
         min_score: float,
         source_filter: _SourceFilter,
+        signal: CancellationSignal | None = None,
     ) -> list[HybridResult]:
         # OpenClaw FTS-only mode ("provider: none"): keyword hits keep their
         # full text score (no text-weight scaling), temporal decay still
         # applies, and an empty strict pass relaxes the min-score to 0.
-        with self.connect() as db:
-            keyword = self._query_keyword_hits_with_fallback(db, query, source_filter)
+        with self._search_connection(signal) as db:
+            keyword = self._query_keyword_hits_with_fallback(db, query, source_filter, signal)
+        _checkpoint(signal)
         results = [
             HybridResult(
                 path=item.path,
@@ -275,6 +307,7 @@ class SQLiteMemoryStore:
         db: sqlite3.Connection,
         query: str,
         source_filter: _SourceFilter,
+        signal: CancellationSignal | None = None,
     ) -> list[HybridKeywordResult]:
         full_query_hits = self._query_keyword_hits(db, query, source_filter)
         if full_query_hits:
@@ -292,9 +325,10 @@ class SQLiteMemoryStore:
         if not fallback_terms:
             return []
 
-        result_sets = [
-            self._query_keyword_hits(db, term, source_filter) for term in fallback_terms
-        ]
+        result_sets = []
+        for term in fallback_terms:
+            _checkpoint(signal)
+            result_sets.append(self._query_keyword_hits(db, term, source_filter))
         return _merge_keyword_search_hits(result_sets)
 
     def _query_keyword_hits(
@@ -328,6 +362,11 @@ class SQLiteMemoryStore:
                 (fts_query, *source_filter.params),
             )
         ]
+
+
+def _checkpoint(signal: CancellationSignal | None) -> None:
+    if signal is not None:
+        signal.throw_if_aborted()
 
 
 def _merge_keyword_search_hits(

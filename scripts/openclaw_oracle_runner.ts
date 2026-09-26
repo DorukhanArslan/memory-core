@@ -16,6 +16,14 @@ type Payload = {
   corpus?: "memory" | "sessions" | "wiki" | "all";
   maxResults?: number;
   rawParams?: unknown;
+  unavailableCases?: Array<{ error?: string | null; warning?: string; action?: string }>;
+  searchSteps?: Array<{
+    rawParams: unknown;
+    embedQuery?: string;
+    supplement?: string;
+    advanceMs?: number;
+    deadlineFireMs?: number;
+  }>;
   results?: unknown[];
   wikiResults?: unknown[];
   sessionTranscripts?: Array<{
@@ -327,6 +335,57 @@ async function registerWikiCorpusFixture(repoPath: string, payload: Payload): Pr
     search: async () => payload.wikiResults ?? [],
     get: async () => null,
   });
+}
+
+function buildMemorySearchOracleConfig(payload: Payload): Record<string, unknown> {
+  // Builtin memory backend with the fake embedding provider, no watchers and
+  // no embedding cache; hybrid weights and query limits come from the payload.
+  const baseConfig = payload.config ?? {};
+  const agents = isRecord(baseConfig.agents) ? baseConfig.agents : {};
+  const defaults = isRecord(agents.defaults) ? agents.defaults : {};
+  const defaultMemorySearch = isRecord(defaults.memorySearch) ? defaults.memorySearch : {};
+  const defaultQuery = isRecord(defaultMemorySearch.query) ? defaultMemorySearch.query : {};
+  const defaultHybrid = isRecord(defaultQuery.hybrid) ? defaultQuery.hybrid : {};
+  const cfg = {
+    ...baseConfig,
+    memory: {
+      ...(isRecord(baseConfig.memory) ? baseConfig.memory : {}),
+      backend: "builtin",
+      citations: "on",
+    },
+    agents: {
+      ...agents,
+      defaults: {
+        ...defaults,
+        ...(payload.workspaceDir ? { workspace: payload.workspaceDir } : {}),
+        memorySearch: {
+          ...defaultMemorySearch,
+          provider: "memory-core-fake",
+          model: "fake-deterministic",
+          sync: {
+            ...(isRecord(defaultMemorySearch.sync) ? defaultMemorySearch.sync : {}),
+            watch: false,
+            onSessionStart: false,
+            onSearch: false,
+          },
+          query: {
+            ...defaultQuery,
+            minScore: payload.minScore ?? defaultQuery.minScore ?? 0,
+            maxResults: payload.maxResults ?? defaultQuery.maxResults ?? 5,
+            hybrid: {
+              ...defaultHybrid,
+              enabled: true,
+              vectorWeight: payload.vectorWeight ?? 0,
+              textWeight: payload.textWeight ?? 1,
+            },
+          },
+          cache: { enabled: false },
+        },
+      },
+      list: [{ id: "main", default: true }],
+    },
+  };
+  return cfg;
 }
 
 async function resolvePromotionPolicy(repoPath: string, payload: Payload): Promise<PromotionPolicy> {
@@ -805,51 +864,7 @@ async function main() {
       repoPath,
       "extensions/memory-core/src/memory/index.ts",
     );
-    const baseConfig = payload.config ?? {};
-    const agents = isRecord(baseConfig.agents) ? baseConfig.agents : {};
-    const defaults = isRecord(agents.defaults) ? agents.defaults : {};
-    const defaultMemorySearch = isRecord(defaults.memorySearch) ? defaults.memorySearch : {};
-    const defaultQuery = isRecord(defaultMemorySearch.query) ? defaultMemorySearch.query : {};
-    const defaultHybrid = isRecord(defaultQuery.hybrid) ? defaultQuery.hybrid : {};
-    const cfg = {
-      ...baseConfig,
-      memory: {
-        ...(isRecord(baseConfig.memory) ? baseConfig.memory : {}),
-        backend: "builtin",
-        citations: "on",
-      },
-      agents: {
-        ...agents,
-        defaults: {
-          ...defaults,
-          ...(payload.workspaceDir ? { workspace: payload.workspaceDir } : {}),
-          memorySearch: {
-            ...defaultMemorySearch,
-            provider: "memory-core-fake",
-            model: "fake-deterministic",
-            sync: {
-              ...(isRecord(defaultMemorySearch.sync) ? defaultMemorySearch.sync : {}),
-              watch: false,
-              onSessionStart: false,
-              onSearch: false,
-            },
-            query: {
-              ...defaultQuery,
-              minScore: payload.minScore ?? defaultQuery.minScore ?? 0,
-              maxResults: payload.maxResults ?? defaultQuery.maxResults ?? 5,
-              hybrid: {
-                ...defaultHybrid,
-                enabled: true,
-                vectorWeight: payload.vectorWeight ?? 0,
-                textWeight: payload.textWeight ?? 1,
-              },
-            },
-            cache: { enabled: false },
-          },
-        },
-        list: [{ id: "main", default: true }],
-      },
-    };
+    const cfg = buildMemorySearchOracleConfig(payload);
     const firstSessionFileName = payload.sessionTranscripts?.[0]?.fileName?.trim();
     const requesterSessionId =
       firstSessionFileName && firstSessionFileName.endsWith(".jsonl")
@@ -894,6 +909,123 @@ async function main() {
         operation: payload.operation,
         result: result.details,
       };
+    } finally {
+      await memoryIndex.closeAllMemorySearchManagers();
+    }
+  }
+
+  if (payload.operation === "memorySearchUnavailableResult") {
+    // extensions/memory-core/src/tools.shared.ts buildMemorySearchUnavailableResult;
+    // a null error stands for undefined.
+    const shared = await importFromRepo(repoPath, "extensions/memory-core/src/tools.shared.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.unavailableCases ?? []).map((entry) =>
+        shared.buildMemorySearchUnavailableResult(
+          entry.error ?? undefined,
+          entry.warning !== undefined || entry.action !== undefined
+            ? { warning: entry.warning, action: entry.action }
+            : undefined,
+        ),
+      ),
+    };
+  }
+
+  if (payload.operation === "memorySearchToolSequence") {
+    // One process and one memory_search tool, so tools.ts's process-wide
+    // cooldown Map carries across steps. Each step scripts the fake provider's
+    // embedQuery ("ok", "throw:<message>", "hang" until aborted) and the wiki
+    // supplement ("ok", "throw:<message>"). Date.now is offset by `advanceMs`
+    // to reach cooldown expiry, and a step's `deadlineFireMs` makes the 15 s
+    // deadline timer fire after that many real ms (the deadline code and its
+    // message are untouched).
+    if (!payload.workspaceDir) {
+      throw new Error("workspaceDir is required");
+    }
+    process.env.OPENCLAW_STATE_DIR = payload.stateDir ?? path.join(payload.workspaceDir, ".openclaw-state");
+    let clockOffsetMs = 0;
+    const realNow = Date.now.bind(Date);
+    Date.now = () => realNow() + clockOffsetMs;
+    const realSetTimeout = globalThis.setTimeout;
+    let deadlineFireMs: number | undefined;
+    globalThis.setTimeout = ((handler: (...args: unknown[]) => void, timeout?: number, ...args: unknown[]) =>
+      realSetTimeout(
+        handler,
+        timeout === 15_000 && deadlineFireMs !== undefined ? deadlineFireMs : timeout,
+        ...args,
+      )) as typeof setTimeout;
+
+    let embedQueryBehavior = "ok";
+    let supplementBehavior = "ok";
+    let embedQueryCalls = 0;
+    const memoryState = await importFromRepo(repoPath, "src/plugins/memory-state.ts");
+    memoryState.registerMemoryCorpusSupplement("memory-wiki", {
+      search: async () => {
+        if (supplementBehavior.startsWith("throw:")) {
+          throw new Error(supplementBehavior.slice("throw:".length));
+        }
+        return payload.wikiResults ?? [];
+      },
+      get: async () => null,
+    });
+    const embeddingProviders = await importFromRepo(
+      repoPath,
+      "src/plugins/memory-embedding-providers.ts",
+    );
+    embeddingProviders.registerMemoryEmbeddingProvider({
+      id: "memory-core-fake",
+      defaultModel: "fake-deterministic",
+      create: async () => ({
+        provider: {
+          id: "memory-core-fake",
+          model: "fake-deterministic",
+          embedQuery: async (text: string, options?: { signal?: AbortSignal }) => {
+            embedQueryCalls += 1;
+            if (embedQueryBehavior.startsWith("throw:")) {
+              throw new Error(embedQueryBehavior.slice("throw:".length));
+            }
+            if (embedQueryBehavior === "hang") {
+              return await new Promise<number[]>((_, reject) => {
+                options?.signal?.addEventListener(
+                  "abort",
+                  () => reject(options.signal?.reason ?? new Error("aborted")),
+                  { once: true },
+                );
+              });
+            }
+            return deterministicEmbedding(`query:${text}`);
+          },
+          embedBatch: async (texts: string[]) =>
+            texts.map((text) => deterministicEmbedding(`document:${text}`)),
+        },
+      }),
+    });
+    const tools = await importFromRepo(repoPath, "extensions/memory-core/src/tools.ts");
+    const memoryIndex = await importFromRepo(
+      repoPath,
+      "extensions/memory-core/src/memory/index.ts",
+    );
+    try {
+      const tool = tools.createMemorySearchTool({
+        config: buildMemorySearchOracleConfig(payload),
+        agentId: "main",
+        agentSessionKey: "agent:main:oracle",
+      });
+      if (!tool) {
+        throw new Error("memory_search tool missing");
+      }
+      const steps: unknown[] = [];
+      for (const step of payload.searchSteps ?? []) {
+        clockOffsetMs += step.advanceMs ?? 0;
+        embedQueryBehavior = step.embedQuery ?? "ok";
+        supplementBehavior = step.supplement ?? "ok";
+        deadlineFireMs = step.deadlineFireMs;
+        const callsBefore = embedQueryCalls;
+        const result = await tool.execute("memory_search_oracle", step.rawParams);
+        steps.push({ result: result.details, embedQueryCalls: embedQueryCalls - callsBefore });
+      }
+      return { ok: true, operation: payload.operation, result: steps };
     } finally {
       await memoryIndex.closeAllMemorySearchManagers();
     }

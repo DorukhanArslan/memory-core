@@ -11,27 +11,48 @@ into ``{"status": "error", "tool": "memory_search", "error": ...}`` with
 ``memory|wiki|all|sessions`` in ``tools.shared.ts`` is enforced by the agent
 loop's argument validation, which the host owns). An omitted or unknown corpus
 searches every indexed source and skips supplements, as upstream.
+
+The search runs under a 15 s deadline in a worker thread. On timeout the
+caller gets the unavailable result at once and the worker's
+:class:`~memory_core.cancellation.CancellationSignal` is aborted, which interrupts
+the open SQLite statement and stops the store at its next checkpoint; the
+abandoned worker only reads, so nothing is left half-written. A timeout or an
+error puts ``agent_id ?? agent_session_key ?? "default"`` on a process-wide
+60 s cooldown during which memory is not searched (``corpus=wiki`` never
+reads or records it; ``corpus=all`` still searches supplements).
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import math
+import re
+import threading
+import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from memory_core.bootstrap._js import js_trim
+from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
 from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.supplements import MemoryCorpusResult, MemoryCorpusSupplement, sort_corpus_results
 from memory_core.tools.citations import citation_label, clamp_text, source_label
 from memory_core.tools.common import (
     MemoryToolInputError,
     as_tool_params_record,
+    format_error_message,
     read_finite_number_param,
     read_positive_integer_param,
     read_string_param,
 )
 
 MEMORY_SEARCH_TOOL_NAME = "memory_search"
+
+# tools.ts:49-50.
+MEMORY_SEARCH_TOOL_TIMEOUT_MS = 15_000
+MEMORY_SEARCH_TOOL_COOLDOWN_MS = 60_000
 
 # Used when the caller omits maxResults/minScore. Upstream falls back to the
 # agent's memorySearch.query config (6 / 0.35, src/agents/memory-search.ts);
@@ -40,6 +61,159 @@ DEFAULT_MEMORY_SEARCH_MAX_RESULTS = 5
 DEFAULT_MEMORY_SEARCH_MIN_SCORE = 0.0
 # tools.ts: `Math.max(1, maxResults ?? 10)` caps the merged memory+supplement list.
 MEMORY_SEARCH_MERGE_DEFAULT_MAX_RESULTS = 10
+
+# tools.shared.ts buildMemorySearchUnavailableResult (verbatim).
+MEMORY_SEARCH_UNAVAILABLE_REASON = "memory search unavailable"
+MEMORY_SEARCH_QUOTA_WARNING = (
+    "Memory search is unavailable because the embedding provider quota is exhausted."
+)
+MEMORY_SEARCH_QUOTA_ACTION = "Top up or switch embedding provider, then retry memory_search."
+MEMORY_SEARCH_PROVIDER_ERROR_WARNING = (
+    "Memory search is unavailable due to an embedding/provider error."
+)
+MEMORY_SEARCH_PROVIDER_ERROR_ACTION = (
+    "Check embedding provider configuration and retry memory_search."
+)
+_QUOTA_ERROR_RE = re.compile(r"insufficient_quota|quota|429")
+_MISSING_SQLITE_RE = re.compile(r"missing node:sqlite|no such built-?in module: node:sqlite")
+
+
+def build_memory_search_unavailable_result(
+    error: str | None,
+    *,
+    warning: str | None = None,
+    action: str | None = None,
+    runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+) -> dict:
+    """``buildMemorySearchUnavailableResult`` (tools.shared.ts:112-152).
+
+    The warning/action pair is picked from the lower-cased reason (quota,
+    missing SQLite runtime, anything else) unless overridden. The SQLite pair
+    names the runtime, so it comes from ``runtime_identity``.
+    """
+    reason = js_trim(error if error is not None else MEMORY_SEARCH_UNAVAILABLE_REASON)
+    reason = reason or MEMORY_SEARCH_UNAVAILABLE_REASON
+    normalized_reason = reason.lower()
+    is_quota_error = _QUOTA_ERROR_RE.search(normalized_reason) is not None
+    is_missing_sqlite = _MISSING_SQLITE_RE.search(normalized_reason) is not None
+    if warning is None:
+        if is_quota_error:
+            warning = MEMORY_SEARCH_QUOTA_WARNING
+        elif is_missing_sqlite:
+            warning = runtime_identity.memory_search_sqlite_unavailable_warning
+        else:
+            warning = MEMORY_SEARCH_PROVIDER_ERROR_WARNING
+    if action is None:
+        if is_quota_error:
+            action = MEMORY_SEARCH_QUOTA_ACTION
+        elif is_missing_sqlite:
+            action = runtime_identity.memory_search_sqlite_unavailable_action
+        else:
+            action = MEMORY_SEARCH_PROVIDER_ERROR_ACTION
+    return {
+        "results": [],
+        "disabled": True,
+        "unavailable": True,
+        "error": reason,
+        "warning": warning,
+        "action": action,
+        "debug": {"warning": warning, "action": action, "error": reason},
+    }
+
+
+# Process-wide cooldowns (tools.ts:52 memorySearchToolCooldowns).
+_cooldowns: dict[str, tuple[float, str]] = {}
+_cooldowns_lock = threading.Lock()
+
+
+def _now_ms() -> float:
+    # Monotonic clock (upstream reads Date.now()); tests replace it.
+    return time.monotonic() * 1000
+
+
+def resolve_memory_search_tool_cooldown_key(
+    *, agent_id: str | None, agent_session_key: str | None
+) -> str:
+    """tools.ts:76-81: ``agentId ?? agentSessionKey ?? "default"``."""
+    if agent_id is not None:
+        return agent_id
+    if agent_session_key is not None:
+        return agent_session_key
+    return "default"
+
+
+def read_memory_search_tool_cooldown(key: str) -> str | None:
+    """The cooldown error for ``key``, dropping it once expired (tools.ts:83-93)."""
+    with _cooldowns_lock:
+        entry = _cooldowns.get(key)
+        if entry is None:
+            return None
+        until, error = entry
+        if until <= _now_ms():
+            del _cooldowns[key]
+            return None
+        return error
+
+
+def record_memory_search_tool_cooldown(key: str, error: str) -> None:
+    """tools.ts:95-100: pause memory search for ``key`` for 60 s."""
+    with _cooldowns_lock:
+        _cooldowns[key] = (_now_ms() + MEMORY_SEARCH_TOOL_COOLDOWN_MS, error)
+
+
+def reset_memory_search_tool_cooldowns() -> None:
+    """``testing.resetMemorySearchToolCooldowns`` (tools.ts:102-106)."""
+    with _cooldowns_lock:
+        _cooldowns.clear()
+
+
+def _js_round(value: float) -> int:
+    # Math.round: halves round towards +infinity.
+    return math.floor(value + 0.5)
+
+
+def _deadline_seconds(timeout_ms: int) -> float:
+    # How long the caller waits; tests shorten it without changing the message.
+    return timeout_ms / 1000
+
+
+@dataclass(frozen=True)
+class _DeadlineOutcome:
+    status: str
+    value: dict | None = None
+    error: str | None = None
+
+
+def _run_with_deadline(
+    *, timeout_ms: int, run: Callable[[CancellationSignal], dict]
+) -> _DeadlineOutcome:
+    """``runMemorySearchToolWithDeadline`` (tools.ts:126-166) on a worker thread.
+
+    Works from any thread and inside a running event loop (no signals, no
+    loop access). On timeout the result is settled first, then the signal is
+    aborted, so an abort-aware store cannot replace the stable timeout error.
+    """
+    timeout_message = f"memory_search timed out after {_js_round(timeout_ms / 1000)}s"
+    signal = CancellationSignal()
+    done = threading.Event()
+    box: dict[str, Any] = {}
+
+    def worker() -> None:
+        try:
+            box["value"] = run(signal)
+        except BaseException as error:  # reported to the caller as unavailable
+            box["error"] = error
+        finally:
+            done.set()
+
+    threading.Thread(target=worker, name="memory-core-memory-search", daemon=True).start()
+    if not done.wait(_deadline_seconds(timeout_ms)):
+        outcome = _DeadlineOutcome(status="unavailable", error=timeout_message)
+        signal.abort(timeout_message)
+        return outcome
+    if "error" in box:
+        return _DeadlineOutcome(status="unavailable", error=format_error_message(box["error"]))
+    return _DeadlineOutcome(status="ok", value=box["value"])
 
 
 @dataclass(frozen=True)
@@ -82,10 +256,24 @@ def execute_memory_search_tool(
     params: Mapping[str, Any] | None,
     *,
     supplements: list[MemoryCorpusSupplement] | None = None,
+    agent_session_key: str | None = None,
+    runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> dict:
-    """Run ``memory_search`` on raw tool-call params (the model's arguments)."""
+    """Run ``memory_search`` on raw tool-call params (the model's arguments).
+
+    The cooldown key is ``config.agent_id`` (upstream's resolved session agent
+    id), falling back to ``agent_session_key`` and then ``"default"``. Stores
+    that share an ``agent_id`` in one process share the cooldown.
+    """
     parsed = read_memory_search_params(params)
-    return _run_memory_search(config, store, parsed, supplements=supplements or [])
+    return _run_memory_search_tool(
+        config,
+        store,
+        parsed,
+        supplements=supplements or [],
+        agent_session_key=agent_session_key,
+        runtime_identity=runtime_identity,
+    )
 
 
 def memory_search(
@@ -97,6 +285,8 @@ def memory_search(
     min_score: float | None = DEFAULT_MEMORY_SEARCH_MIN_SCORE,
     corpus: str | None = "all",
     supplements: list[MemoryCorpusSupplement] | None = None,
+    agent_session_key: str | None = None,
+    runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> dict:
     """Python-call form of the tool; ``None`` for a param means "omitted"."""
     return execute_memory_search_tool(
@@ -104,6 +294,8 @@ def memory_search(
         store,
         {"query": query, "maxResults": max_results, "minScore": min_score, "corpus": corpus},
         supplements=supplements,
+        agent_session_key=agent_session_key,
+        runtime_identity=runtime_identity,
     )
 
 
@@ -115,41 +307,90 @@ def _memory_sources_for_corpus(corpus: str | None) -> set[str] | None:
     return None
 
 
-def _run_memory_search(
+class _PhaseTracker:
+    """Which phase ran or failed when the deadline fired (tools.ts:424-441)."""
+
+    def __init__(self) -> None:
+        self.active: str | None = None
+        self.failed: str | None = None
+
+    def run(self, phase: str, task: Callable[[], Any]) -> Any:
+        self.active = phase
+        try:
+            return task()
+        except BaseException:
+            self.failed = phase
+            raise
+        finally:
+            if self.active == phase:
+                self.active = None
+
+
+def _run_memory_search_tool(
     config: MemoryConfig,
     store: SQLiteMemoryStore,
     params: MemorySearchParams,
     *,
     supplements: list[MemoryCorpusSupplement],
+    agent_session_key: str | None,
+    runtime_identity: RuntimeIdentity,
 ) -> dict:
     requested_corpus = params.corpus
-    should_query_supplements = requested_corpus in {"wiki", "all"}
-    should_query_memory = requested_corpus != "wiki"
-    try:
-        memory_results = []
-        if should_query_memory:
-            sources = _memory_sources_for_corpus(requested_corpus)
-            hits = store.search(
-                params.query,
-                max_results=(
-                    params.max_results
-                    if params.max_results is not None
-                    else DEFAULT_MEMORY_SEARCH_MAX_RESULTS
-                ),
-                min_score=(
-                    params.min_score
-                    if params.min_score is not None
-                    else DEFAULT_MEMORY_SEARCH_MIN_SCORE
-                ),
-                sources=sources,
+    cooldown_key = resolve_memory_search_tool_cooldown_key(
+        agent_id=config.agent_id, agent_session_key=agent_session_key
+    )
+    cooldown_error = (
+        None if requested_corpus == "wiki" else read_memory_search_tool_cooldown(cooldown_key)
+    )
+    phases = _PhaseTracker()
+
+    def run(signal: CancellationSignal) -> dict:
+        should_query_supplements = requested_corpus in {"wiki", "all"}
+        should_query_memory = requested_corpus != "wiki" and cooldown_error is None
+        if cooldown_error is not None and not should_query_supplements:
+            return build_memory_search_unavailable_result(
+                cooldown_error, runtime_identity=runtime_identity
             )
-            memory_results = [_serialize_result(config, item) for item in hits]
+
+        response: dict[str, Any] = {}
+        memory_results: list[dict] = []
+        if should_query_memory:
+
+            def search_memory() -> None:
+                hits = store.search(
+                    params.query,
+                    max_results=(
+                        params.max_results
+                        if params.max_results is not None
+                        else DEFAULT_MEMORY_SEARCH_MAX_RESULTS
+                    ),
+                    min_score=(
+                        params.min_score
+                        if params.min_score is not None
+                        else DEFAULT_MEMORY_SEARCH_MIN_SCORE
+                    ),
+                    sources=_memory_sources_for_corpus(requested_corpus),
+                    signal=signal,
+                )
+                memory_results.extend(_serialize_result(config, item) for item in hits)
+                # OpenClaw reports FTS-only mode as provider "none" / model
+                # "fts-only" when no embedding provider is configured.
+                embeddings = store.embeddings
+                response["provider"] = (
+                    embeddings.provider_id if embeddings is not None else "none"
+                )
+                response["model"] = embeddings.model if embeddings is not None else "fts-only"
+
+            phases.run("memory", search_memory)
         supplement_results = (
-            _search_supplements(
-                supplements,
-                query=params.query,
-                max_results=params.max_results,
-                corpus=requested_corpus,
+            phases.run(
+                "supplement",
+                lambda: _search_supplements(
+                    supplements,
+                    query=params.query,
+                    max_results=params.max_results,
+                    corpus=requested_corpus,
+                ),
             )
             if should_query_supplements
             else []
@@ -165,17 +406,21 @@ def _run_memory_search(
             ),
             balance_corpora=requested_corpus == "all",
         )
-        # OpenClaw reports FTS-only mode as provider "none" / model "fts-only"
-        # when no embedding provider is configured.
-        embeddings = store.embeddings
-        return {
-            "results": results,
-            "provider": embeddings.provider_id if embeddings is not None else "none",
-            "model": embeddings.model if embeddings is not None else "fts-only",
-            "citations": config.citation_mode,
-        }
-    except Exception as exc:
-        return {"results": [], "disabled": True, "error": str(exc)}
+        # provider/model stay unset when memory was not searched (tools.ts:677-685).
+        return {"results": results, **response, "citations": config.citation_mode}
+
+    outcome = _run_with_deadline(timeout_ms=MEMORY_SEARCH_TOOL_TIMEOUT_MS, run=run)
+    if outcome.status == "unavailable":
+        unavailable_phase = phases.failed or phases.active
+        should_record_cooldown = requested_corpus != "wiki" and (
+            requested_corpus != "all" or unavailable_phase == "memory"
+        )
+        if should_record_cooldown:
+            record_memory_search_tool_cooldown(cooldown_key, outcome.error or "")
+        return build_memory_search_unavailable_result(
+            outcome.error, runtime_identity=runtime_identity
+        )
+    return outcome.value or {}
 
 
 def _search_supplements(

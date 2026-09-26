@@ -187,7 +187,7 @@ function renderStatus() {
     fm.f.note || null,
   ].filter(Boolean).join('\n') : t('state.notYet');
   replace(el,
-    idx ? h('button', { type: 'button', class: 'sb-item', onclick: () => store.actions.openInspector('memory'), 'data-tip': t('status.lastReindex') }, icon('database', 12), `${t('status.index')} ${fmtN(idx.files)} ${t('unit.files')} · ${fmtN(idx.chunks)} ${t('unit.chunks')} · ${fmtTime(idx.lastReindexAt)}`)
+    idx ? h('button', { type: 'button', class: 'sb-item sb-shrink', onclick: () => store.actions.openInspector('memory'), 'data-tip': t('status.lastReindex') }, icon('database', 12), h('span', { class: 'sb-text' }, `${t('status.index')} ${fmtN(idx.files)} ${t('unit.files')} · ${fmtN(idx.chunks)} ${t('unit.chunks')} · ${fmtTime(idx.lastReindexAt)}`))
       : h('span', { class: 'sb-item' }, icon('database', 12), `${t('status.index')} ${d.indexErr?.missing ? t('state.notYet') : '—'}`),
     h('span', { class: 'sb-sep', 'aria-hidden': 'true' }),
     h('button', { type: 'button', class: 'sb-item', 'data-tip': `${identity?.reason || ''}\n${t('memory.identityNotFile')}`.trim(), 'data-testid': 'index-identity', onclick: () => store.actions.openInspector('memory') }, h('span', { class: `dot dot-${idTone}`, 'aria-hidden': 'true' }), `${t('memory.identity')}: ${identity?.status ? t(`identity.${identity.status}`) : '—'}`),
@@ -199,7 +199,7 @@ function renderStatus() {
     h('span', { class: 'sb-sep', 'aria-hidden': 'true' }),
     h('span', { class: 'sb-item', 'data-testid': 'events-status', 'data-tip': t('status.eventsTip') }, h('span', { class: ['dot', `dot-${connDot}`, conn.state === 'open' ? 'is-live' : ''], 'aria-hidden': 'true' }), `${connLabel} · ${fmtN(d.events.length)}`),
     sc ? h('span', { class: 'sb-sep', 'aria-hidden': 'true' }) : null,
-    sc ? h('button', { type: 'button', class: 'sb-item tone-text-accent', onclick: () => store.actions.focusScenario() }, icon('flask', 12), `${sc.id} · ${t('scenario.step')} ${Math.min(sc.step + 1, sc.def.steps.length)}/${sc.def.steps.length}`) : null,
+    sc ? h('button', { type: 'button', class: 'sb-item sb-shrink tone-text-accent', onclick: () => store.actions.focusScenario() }, icon('flask', 12), h('span', { class: 'sb-text' }, `${sc.id} · ${t('scenario.step')} ${Math.min(sc.step + 1, sc.def.steps.length)}/${sc.def.steps.length}`)) : null,
     h('span', { class: 'sb-spacer' }),
     offset ? h('span', { class: 'sb-item tone-text-warn', 'data-tip': t('hb.clockTip') }, icon('clock', 12), `${t('hb.virtual')} +${Math.round(offset / 60000)} ${t('unit.min')}`) : null,
     h('span', { class: 'sb-item', 'data-tip': 'Europe/Istanbul' }, `${fmtTime(Date.now(), { seconds: false })} ${t('status.tz')}`));

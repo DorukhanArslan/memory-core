@@ -227,7 +227,9 @@
   .statusbar { display: flex; align-items: center; gap: var(--s-2); padding: 0 var(--s-3); border-top: 1px solid var(--line-1); background: var(--bg-0); color: var(--text-3); font-size: var(--t-xs); line-height: var(--lh-xs); font-weight: 500; letter-spacing: 0.01em; white-space: nowrap; overflow: hidden; }
   .sb-item { display: inline-flex; align-items: center; gap: 5px; color: inherit; height: 20px; padding: 0 4px; border-radius: var(--r-1); }
   button.sb-item:hover { color: var(--text-1); background: var(--bg-2); }
-  .sb-sep { width: 1px; height: 12px; background: var(--line-1); }
+  .sb-sep { width: 1px; height: 12px; background: var(--line-1); flex: none; }
+  .sb-item.sb-shrink { min-width: 0; flex: 0 1 auto; }
+  .sb-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .sb-spacer { flex: 1; }
   .sb-meter { width: 44px; height: 4px; border-radius: 2px; background: var(--bg-3); overflow: hidden; display: inline-block; }
   .sb-meter > span { display: block; height: 100%; width: var(--p); background: var(--accent); border-radius: 2px; }

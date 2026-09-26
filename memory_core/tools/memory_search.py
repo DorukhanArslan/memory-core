@@ -1,11 +1,91 @@
+"""The ``memory_search`` tool (OpenClaw ``extensions/memory-core/src/tools.ts``).
+
+``createMemorySearchTool`` reads its params before any search work
+(``readStringParam`` / ``readPositiveIntegerParam`` / ``readFiniteNumberParam``,
+``src/agents/tools/common.ts``). Invalid input raises
+:class:`~memory_core.tools.common.MemoryToolInputError`; a host tool loop turns it
+into ``{"status": "error", "tool": "memory_search", "error": ...}`` with
+``to_tool_error()``.
+
+``corpus`` has no enum check in the tool itself (the schema enum
+``memory|wiki|all|sessions`` in ``tools.shared.ts`` is enforced by the agent
+loop's argument validation, which the host owns). An omitted or unknown corpus
+searches every indexed source and skips supplements, as upstream.
+"""
+
 from __future__ import annotations
 
-import math
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any
 
 from memory_core.config import MemoryConfig
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.supplements import MemoryCorpusResult, MemoryCorpusSupplement, sort_corpus_results
 from memory_core.tools.citations import citation_label, clamp_text, source_label
+from memory_core.tools.common import (
+    MemoryToolInputError,
+    as_tool_params_record,
+    read_finite_number_param,
+    read_positive_integer_param,
+    read_string_param,
+)
+
+MEMORY_SEARCH_TOOL_NAME = "memory_search"
+
+# Used when the caller omits maxResults/minScore. Upstream falls back to the
+# agent's memorySearch.query config (6 / 0.35, src/agents/memory-search.ts);
+# memory-core keeps its facade defaults (documented deviation).
+DEFAULT_MEMORY_SEARCH_MAX_RESULTS = 5
+DEFAULT_MEMORY_SEARCH_MIN_SCORE = 0.0
+# tools.ts: `Math.max(1, maxResults ?? 10)` caps the merged memory+supplement list.
+MEMORY_SEARCH_MERGE_DEFAULT_MAX_RESULTS = 10
+
+
+@dataclass(frozen=True)
+class MemorySearchParams:
+    """Validated ``memory_search`` params; ``None`` means the caller omitted it."""
+
+    query: str
+    max_results: int | None
+    min_score: float | None
+    corpus: str | None
+
+
+def read_memory_search_params(params: object) -> MemorySearchParams:
+    """Read tool-call params exactly like ``createMemorySearchTool`` (tools.ts:402-412).
+
+    Accepts camelCase keys and their snake_case aliases (``max_results``,
+    ``min_score``) and strict numeric strings (``"5"``, ``"0.3"``). Raises
+    :class:`MemoryToolInputError` with the upstream message on invalid input.
+    """
+    raw = as_tool_params_record(params)
+    try:
+        query = read_string_param(raw, "query", required=True)
+        max_results = read_positive_integer_param(raw, "maxResults")
+        min_score = read_finite_number_param(raw, "minScore")
+        corpus = read_string_param(raw, "corpus")
+    except MemoryToolInputError as error:
+        error.tool = MEMORY_SEARCH_TOOL_NAME
+        raise
+    return MemorySearchParams(
+        query=query,
+        max_results=max_results,
+        min_score=min_score,
+        corpus=corpus,
+    )
+
+
+def execute_memory_search_tool(
+    config: MemoryConfig,
+    store: SQLiteMemoryStore,
+    params: Mapping[str, Any] | None,
+    *,
+    supplements: list[MemoryCorpusSupplement] | None = None,
+) -> dict:
+    """Run ``memory_search`` on raw tool-call params (the model's arguments)."""
+    parsed = read_memory_search_params(params)
+    return _run_memory_search(config, store, parsed, supplements=supplements or [])
 
 
 def memory_search(
@@ -13,58 +93,77 @@ def memory_search(
     store: SQLiteMemoryStore,
     *,
     query: str,
-    max_results: int = 5,
-    min_score: float = 0.0,
-    corpus: str = "all",
+    max_results: int | None = DEFAULT_MEMORY_SEARCH_MAX_RESULTS,
+    min_score: float | None = DEFAULT_MEMORY_SEARCH_MIN_SCORE,
+    corpus: str | None = "all",
     supplements: list[MemoryCorpusSupplement] | None = None,
 ) -> dict:
-    sources_by_corpus = {
-        "all": {"memory", "sessions"},
-        "memory": {"memory"},
-        "sessions": {"sessions"},
-        "wiki": set(),
-    }
-    if corpus not in sources_by_corpus:
-        return {"results": [], "disabled": True, "error": f"unsupported corpus: {corpus}"}
+    """Python-call form of the tool; ``None`` for a param means "omitted"."""
+    return execute_memory_search_tool(
+        config,
+        store,
+        {"query": query, "maxResults": max_results, "minScore": min_score, "corpus": corpus},
+        supplements=supplements,
+    )
 
-    # OpenClaw's memory_search tool strictly validates params before running
-    # (readStringParam / readPositiveIntegerParam / readFiniteNumberParam) and
-    # searches with the trimmed query.
-    if not isinstance(query, str) or not query.strip():
-        return {"results": [], "disabled": True, "error": "query required"}
-    query = query.strip()
-    if isinstance(max_results, bool) or not isinstance(max_results, int) or max_results <= 0:
-        return {"results": [], "disabled": True, "error": "maxResults must be a positive integer"}
-    if (
-        isinstance(min_score, bool)
-        or not isinstance(min_score, (int, float))
-        or not math.isfinite(min_score)
-    ):
-        return {"results": [], "disabled": True, "error": "minScore must be a finite number"}
 
+def _memory_sources_for_corpus(corpus: str | None) -> set[str] | None:
+    if corpus == "sessions":
+        return {"sessions"}
+    if corpus == "memory":
+        return {"memory"}
+    return None
+
+
+def _run_memory_search(
+    config: MemoryConfig,
+    store: SQLiteMemoryStore,
+    params: MemorySearchParams,
+    *,
+    supplements: list[MemoryCorpusSupplement],
+) -> dict:
+    requested_corpus = params.corpus
+    should_query_supplements = requested_corpus in {"wiki", "all"}
+    should_query_memory = requested_corpus != "wiki"
     try:
         memory_results = []
-        if corpus != "wiki":
-            memory_results = [
-                _serialize_result(config, item)
-                for item in store.search(
-                    query,
-                    max_results=max_results,
-                    min_score=min_score,
-                    sources=sources_by_corpus[corpus],
-                )
-            ]
-        supplement_results = _search_supplements(
-            supplements or [],
-            query=query,
-            max_results=max_results,
-            corpus=corpus,
+        if should_query_memory:
+            sources = _memory_sources_for_corpus(requested_corpus)
+            hits = store.search(
+                params.query,
+                max_results=(
+                    params.max_results
+                    if params.max_results is not None
+                    else DEFAULT_MEMORY_SEARCH_MAX_RESULTS
+                ),
+                min_score=(
+                    params.min_score
+                    if params.min_score is not None
+                    else DEFAULT_MEMORY_SEARCH_MIN_SCORE
+                ),
+                sources=sources,
+            )
+            memory_results = [_serialize_result(config, item) for item in hits]
+        supplement_results = (
+            _search_supplements(
+                supplements,
+                query=params.query,
+                max_results=params.max_results,
+                corpus=requested_corpus,
+            )
+            if should_query_supplements
+            else []
         )
         results = _merge_corpus_results(
             memory_results=memory_results,
             supplement_results=supplement_results,
-            max_results=max_results,
-            balance_corpora=corpus == "all",
+            max_results=max(
+                1,
+                params.max_results
+                if params.max_results is not None
+                else MEMORY_SEARCH_MERGE_DEFAULT_MAX_RESULTS,
+            ),
+            balance_corpora=requested_corpus == "all",
         )
         # OpenClaw reports FTS-only mode as provider "none" / model "fts-only"
         # when no embedding provider is configured.
@@ -83,17 +182,17 @@ def _search_supplements(
     supplements: list[MemoryCorpusSupplement],
     *,
     query: str,
-    max_results: int,
-    corpus: str,
+    max_results: int | None,
+    corpus: str | None,
 ) -> list[MemoryCorpusResult]:
+    # tools.shared.ts searchMemoryCorpusSupplements.
     if corpus in {"memory", "sessions"}:
         return []
+    limit = max(1, max_results if max_results is not None else MEMORY_SEARCH_MERGE_DEFAULT_MAX_RESULTS)
     results: list[MemoryCorpusResult] = []
     for supplement in supplements:
-        results.extend(supplement.search(query=query, max_results=max_results, corpus=corpus))
-    return sort_corpus_results(results)[:max(1, max_results)]
-
-
+        results.extend(supplement.search(query=query, max_results=limit, corpus=corpus or ""))
+    return sort_corpus_results(results)[:limit]
 def _merge_corpus_results(
     *,
     memory_results: list[dict],

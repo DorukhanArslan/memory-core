@@ -40,7 +40,9 @@ from memory_core.overflow_recovery import (
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
-from memory_core.tools.memory_search import memory_search
+from memory_core.flags import FeatureFlags
+from memory_core.tools.common import MemoryToolInputError
+from memory_core.tools.memory_search import execute_memory_search_tool, memory_search
 from memory_core.tools.memory_get import memory_get
 from memory_core.workspace import MemoryWorkspace
 
@@ -1409,6 +1411,116 @@ def test_real_openclaw_oracle_memory_search_all_balances_memory_and_wiki(
     ]
     assert len(paths_by_corpus) == 5
 
+
+
+# createMemorySearchTool reads params before any search (tools.ts:402-412) with
+# readStringParam / readPositiveIntegerParam / readFiniteNumberParam
+# (src/agents/tools/common.ts); raw params go through the real
+# toToolDefinitions wrapper, so each case yields the payload the model sees.
+MEMORY_SEARCH_PARAM_ERROR_CASES = {
+    "empty-params": {},
+    "blank-query": {"query": "   "},
+    "non-string-query": {"query": 5},
+    "query-checked-first": {"maxResults": 0, "minScore": "bad"},
+    "max-results-zero": {"query": "x", "maxResults": 0},
+    "max-results-fraction": {"query": "x", "maxResults": 2.5},
+    "max-results-fraction-string": {"query": "x", "maxResults": "2.5"},
+    "max-results-word": {"query": "x", "maxResults": "abc"},
+    "max-results-hex": {"query": "x", "maxResults": "0x10"},
+    "max-results-empty-string": {"query": "x", "maxResults": ""},
+    "max-results-boolean": {"query": "x", "maxResults": True},
+    "max-results-array": {"query": "x", "maxResults": [3]},
+    "max-results-unsafe-integer": {"query": "x", "maxResults": 9007199254740992},
+    "max-results-snake-alias": {"query": "x", "max_results": -1},
+    "max-results-before-min-score": {"query": "x", "maxResults": 0, "minScore": "bad"},
+    "min-score-word": {"query": "x", "minScore": "abc"},
+    "min-score-boolean": {"query": "x", "minScore": False},
+    "min-score-overflow": {"query": "x", "min_score": "1e400"},
+}
+
+
+@pytest.mark.parametrize("case", sorted(MEMORY_SEARCH_PARAM_ERROR_CASES))
+def test_real_openclaw_oracle_memory_search_param_errors_match_python(tmp_path: Path, case: str):
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+    raw_params = MEMORY_SEARCH_PARAM_ERROR_CASES[case]
+
+    result = oracle.run(
+        {"operation": "memorySearch", "workspaceDir": str(tmp_path), "rawParams": raw_params}
+    )
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "python-memory.sqlite",
+        flags=FeatureFlags(vector_search=False),
+    )
+    store = SQLiteMemoryStore(cfg, None)
+    with pytest.raises(MemoryToolInputError) as raised:
+        execute_memory_search_tool(cfg, store, raw_params)
+
+    assert result["ok"] is True
+    assert result["operation"] == "memorySearch"
+    assert raised.value.status == 400
+    assert raised.value.to_tool_error() == result["result"]
+
+
+MEMORY_SEARCH_PARAM_ACCEPTED_CASES = {
+    "numeric-strings": {"query": "glacier", "maxResults": "1", "minScore": "0", "corpus": "memory"},
+    "scientific-string": {"query": "glacier", "maxResults": "1e0", "corpus": "memory"},
+    "snake-case-aliases": {
+        "query": " glacier ",
+        "max_results": 1,
+        "min_score": 0,
+        "corpus": " memory ",
+    },
+    "camel-case-wins": {"query": "glacier", "maxResults": 2, "max_results": 1},
+    "null-camel-case-hides-alias": {"query": "glacier", "maxResults": None, "max_results": 1},
+    "unknown-corpus-searches-all-sources": {"query": "glacier", "maxResults": 1, "corpus": "MEMORY"},
+    "integral-float": {"query": "glacier", "maxResults": 1.0, "minScore": -0.5},
+}
+
+
+@pytest.mark.parametrize("case", sorted(MEMORY_SEARCH_PARAM_ACCEPTED_CASES))
+def test_real_openclaw_oracle_memory_search_param_coercion_matches_python(
+    tmp_path: Path, case: str
+):
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+    (tmp_path / "MEMORY.md").write_text(
+        "# Long-Term Memory\n\n- Glacier storage keeps backups cold.",
+        encoding="utf-8",
+    )
+    memory_file = tmp_path / "memory" / "2026-05-26.md"
+    memory_file.parent.mkdir(parents=True, exist_ok=True)
+    memory_file.write_text("# 2026-05-26\n\n- Move glacier backups weekly.", encoding="utf-8")
+    raw_params = MEMORY_SEARCH_PARAM_ACCEPTED_CASES[case]
+
+    result = oracle.run(
+        {"operation": "memorySearch", "workspaceDir": str(tmp_path), "rawParams": raw_params}
+    )
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "python-memory.sqlite",
+        vector_weight=0,
+        text_weight=1,
+    )
+    store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+    python_result = execute_memory_search_tool(cfg, store, raw_params)
+
+    assert result["ok"] is True
+    assert result["operation"] == "memorySearch"
+    assert result["result"].get("disabled") is None
+    assert [
+        (item["corpus"], item["path"], item["startLine"], item["endLine"])
+        for item in result["result"]["results"]
+    ] == [
+        (item["corpus"], item["path"], item["startLine"], item["endLine"])
+        for item in python_result["results"]
+    ]
 
 def test_real_openclaw_oracle_records_short_term_recall():
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))

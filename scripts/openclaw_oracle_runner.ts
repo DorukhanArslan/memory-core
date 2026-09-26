@@ -15,6 +15,7 @@ type Payload = {
   query?: string;
   corpus?: "memory" | "sessions" | "wiki" | "all";
   maxResults?: number;
+  rawParams?: unknown;
   results?: unknown[];
   wikiResults?: unknown[];
   sessionTranscripts?: Array<{
@@ -862,6 +863,25 @@ async function main() {
       });
       if (!tool) {
         throw new Error("memory_search tool missing");
+      }
+      if (payload.rawParams !== undefined) {
+        // Raw model arguments go through the real tool-definition adapter, so a
+        // thrown ToolInputError comes back serialized exactly as the model sees
+        // it (agent-tool-definition-adapter.ts buildToolExecutionErrorResult).
+        const adapter = await importFromRepo(repoPath, "src/agents/agent-tool-definition-adapter.ts");
+        const [definition] = adapter.toToolDefinitions([tool]);
+        const wrapped = await definition.execute(
+          "memory_search_oracle",
+          payload.rawParams,
+          undefined,
+          undefined,
+          undefined,
+        );
+        return {
+          ok: true,
+          operation: payload.operation,
+          result: wrapped.details,
+        };
       }
       const result = await tool.execute("memory_search_oracle", {
         query: payload.query ?? "",

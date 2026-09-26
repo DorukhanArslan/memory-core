@@ -20,7 +20,8 @@ class _Store:
         assert query == "Bana nasil hitap edeceksin?"
         assert max_results == self.max_results
         assert min_score == self.min_score
-        assert sources == {"memory", "sessions"}
+        # corpus="all" passes no source filter (tools.ts: searchSources undefined).
+        assert sources is None
         return [
             type(
                 "SearchResult",

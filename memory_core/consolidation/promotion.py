@@ -58,7 +58,10 @@ from memory_core.consolidation.policy import (
     DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES,
     DEFAULT_RECENCY_HALF_LIFE_DAYS,
 )
-from memory_core.consolidation.recall import is_contaminated_dreaming_snippet
+from memory_core.consolidation.recall import (
+    is_contaminated_dreaming_snippet,
+    is_workspace_contained_path,
+)
 from memory_core.consolidation.store import (
     acquire_short_term_promotion_lock,
     phase_signal_store_path,
@@ -709,6 +712,10 @@ def _resolve_short_term_source_path_candidates(
     seen = set()
     resolved = []
     for relative_path in basenames:
+        # memory-core hardening (no upstream check): never rehydrate from a file outside
+        # the workspace, e.g. a stored ``memory/../../<other subject>/...`` path.
+        if not is_workspace_contained_path(workspace_dir, relative_path):
+            continue
         source_path = (workspace_dir / relative_path).resolve()
         if source_path in seen:
             continue

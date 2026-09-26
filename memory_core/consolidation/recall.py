@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from memory_core.config import MemoryConfig
@@ -65,6 +66,21 @@ _PROMOTION_SCORE_METADATA_RE = re.compile(
 _DREAMING_DIFF_PREFIX_RE = re.compile(r"@@\s*-\d+(?:,\d+)?\s+[-*+]\s+", re.IGNORECASE)
 
 
+def is_workspace_contained_path(workspace_dir: Path, relative_path: str) -> bool:
+    """True when ``relative_path`` has no ``..`` segment and resolves inside ``workspace_dir``.
+
+    memory-core hardening without an upstream counterpart (upstream's
+    ``isShortTermMemoryPath`` accepts ``memory/../..`` paths and rehydration
+    resolves them as given): a hit path must not reach another subject's or the
+    agent's workspace (``SubjectConsolidation``, decision Q16).
+    """
+    normalized = relative_path.replace("\\", "/")
+    if ".." in normalized.split("/") or PurePosixPath(normalized).is_absolute():
+        return False
+    root = workspace_dir.resolve()
+    return (root / normalized).resolve().is_relative_to(root)
+
+
 def record_short_term_recalls(
     *,
     config: MemoryConfig,
@@ -75,7 +91,9 @@ def record_short_term_recalls(
 ) -> int:
     """Record ``memory_search`` hits as short-term recall signals.
 
-    Only hits whose ``path`` is ``memory/*.md`` count. Each non-heading line of
+    Only hits whose ``path`` is ``memory/*.md`` inside the workspace count (a
+    ``..`` segment or a path resolving outside ``config.workspace_dir`` is
+    skipped, a memory-core hardening). Each non-heading line of
     a hit's snippet becomes the entry ``memory:<path>:<line>:<line>``; its
     ``recallCount`` (or ``dailyCount`` when ``signal_type == "daily"``),
     scores, query hashes (max 32), recall days (max 16) and concept tags are
@@ -91,6 +109,8 @@ def record_short_term_recalls(
     for result in results:
         path = str(result.get("path") or "")
         if not path.startswith("memory/") or not path.endswith(".md"):
+            continue
+        if not is_workspace_contained_path(config.workspace_dir, path):
             continue
         touched = True
         start_line = to_int(result.get("startLine"), 1)

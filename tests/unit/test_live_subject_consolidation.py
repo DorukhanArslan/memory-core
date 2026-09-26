@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -126,3 +127,53 @@ def test_flags_and_a_shared_config_cannot_be_combined(tmp_path: Path):
             config=MemoryConfig(workspace_dir=tmp_path),
             flags=FeatureFlags(vector_search=False, subject_promotion=True),
         )
+
+
+def test_subject_promotion_never_reads_another_subject_through_a_hit_path(tmp_path: Path):
+    # memory-core hardening (no upstream check): a `..` hit path must not reach bob's notes.
+    alice = _enabled(tmp_path, "alice")
+    bob = _open(tmp_path, "bob")
+    secret = "- B secret: account PIN hint is blue."
+    (bob.memory.config.workspace_dir / DAILY).write_text(
+        f"# 2026-05-26\n\n{secret}\n", encoding="utf-8"
+    )
+    escape = f"memory/../../bob/{DAILY}"
+    hit = {"path": escape, "startLine": 3, "endLine": 3, "snippet": secret, "score": 1}
+    consolidation = SubjectConsolidation(alice)
+    alice_dir = alice.memory.config.workspace_dir
+
+    assert consolidation.record_recalls("pin hint", [hit], now_ms=NOW_MS) == 0
+
+    # A store written before the check still cannot rehydrate from bob's file.
+    store_path = alice_dir / "memory" / ".dreams" / "short-term-recall.json"
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    key = f"memory:{escape}:3:3"
+    entry = {
+        "key": key,
+        "path": escape,
+        "startLine": 3,
+        "endLine": 3,
+        "source": "memory",
+        "snippet": secret,
+        "recallCount": 5,
+        "dailyCount": 0,
+        "groundedCount": 0,
+        "totalScore": 5.0,
+        "maxScore": 1.0,
+        "firstRecalledAt": "2026-05-26T16:00:00.000Z",
+        "lastRecalledAt": "2026-05-26T16:00:00.000Z",
+        "queryHashes": ["a", "b", "c", "d", "e"],
+        "recallDays": ["2026-05-26"],
+        "conceptTags": [],
+    }
+    store_path.write_text(
+        json.dumps({"version": 1, "updatedAt": entry["lastRecalledAt"], "entries": {key: entry}}),
+        encoding="utf-8",
+    )
+    run = consolidation.promote(
+        now_ms=NOW_MS, min_score=0, min_recall_count=0, min_unique_queries=0
+    )
+
+    assert [evaluation.key for evaluation in run.evaluated_candidates] == [key]
+    assert run.appended == 0
+    assert "PIN hint" not in (alice_dir / "MEMORY.md").read_text(encoding="utf-8")

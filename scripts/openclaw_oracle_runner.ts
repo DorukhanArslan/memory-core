@@ -219,19 +219,29 @@ async function importFromRepo(repoPath: string, relativePath: string) {
   return await import(pathToFileURL(fullPath).href);
 }
 
+// extensions/memory-core/src/test-helpers.ts: at v2026.9.6 the SQLite-backed dreaming and
+// short-term state store is configured by configureMemoryCoreDreamingStateForTests (moved out
+// of dreaming-state.ts), and the raw store readers/writers the pin exposed as
+// short-term-promotion.ts `__testing` are `shortTermTestState`. Memory indexing reads flush
+// provenance from that store too (memory/test-runtime-mocks.ts), so memory search ops configure
+// it as upstream's manager tests do. It must run after OPENCLAW_STATE_DIR is set.
+async function loadMemoryCoreTestHelpers(repoPath: string) {
+  return await importFromRepo(repoPath, "extensions/memory-core/src/test-helpers.ts");
+}
+
+async function configureDreamingStateForOracle(repoPath: string): Promise<void> {
+  const helpers = await loadMemoryCoreTestHelpers(repoPath);
+  await helpers.configureMemoryCoreDreamingStateForTests();
+}
+
 const SHORT_TERM_RECALL_JSON = path.join("memory", ".dreams", "short-term-recall.json");
 const SHORT_TERM_PHASE_SIGNAL_JSON = path.join("memory", ".dreams", "phase-signals.json");
 
 type PromotionStateModule = {
-  __testing: {
-    readRecallStore: (workspaceDir: string, nowIso: string) => Promise<Record<string, unknown>>;
-    readPhaseSignalStore: (
-      workspaceDir: string,
-      nowIso: string,
-    ) => Promise<Record<string, unknown>>;
-    writeRawRecallStore: (workspaceDir: string, raw: unknown) => Promise<void>;
-    writeRawPhaseSignalStore: (workspaceDir: string, raw: unknown) => Promise<void>;
-  };
+  readRecallStore: (workspaceDir: string, nowIso: string) => Promise<Record<string, unknown>>;
+  readPhaseSignalStore: (workspaceDir: string, nowIso: string) => Promise<Record<string, unknown>>;
+  writeRawRecallStore: (workspaceDir: string, raw: unknown) => Promise<void>;
+  writeRawPhaseSignalStore: (workspaceDir: string, raw: unknown) => Promise<void>;
 };
 
 async function readJsonFixture(filePath: string): Promise<unknown | undefined> {
@@ -250,7 +260,7 @@ async function readJsonFixture(filePath: string): Promise<unknown | undefined> {
 }
 
 async function seedPromotionStateFromWorkspace(
-  promotion: PromotionStateModule,
+  promotionState: PromotionStateModule,
   workspaceDir?: string,
 ): Promise<void> {
   if (!workspaceDir) {
@@ -258,11 +268,11 @@ async function seedPromotionStateFromWorkspace(
   }
   const recallRaw = await readJsonFixture(path.join(workspaceDir, SHORT_TERM_RECALL_JSON));
   if (recallRaw !== undefined) {
-    await promotion.__testing.writeRawRecallStore(workspaceDir, recallRaw);
+    await promotionState.writeRawRecallStore(workspaceDir, recallRaw);
   }
   const phaseRaw = await readJsonFixture(path.join(workspaceDir, SHORT_TERM_PHASE_SIGNAL_JSON));
   if (phaseRaw !== undefined) {
-    await promotion.__testing.writeRawPhaseSignalStore(workspaceDir, phaseRaw);
+    await promotionState.writeRawPhaseSignalStore(workspaceDir, phaseRaw);
   }
 }
 
@@ -277,7 +287,7 @@ function withSortedEntries(store: Record<string, unknown>): Record<string, unkno
 }
 
 async function exportPromotionStateToWorkspace(
-  promotion: PromotionStateModule,
+  promotionState: PromotionStateModule,
   workspaceDir: string | undefined,
   nowMs: number,
 ): Promise<void> {
@@ -286,8 +296,8 @@ async function exportPromotionStateToWorkspace(
   }
   const nowIso = new Date(nowMs).toISOString();
   const [recallStore, phaseStore] = await Promise.all([
-    promotion.__testing.readRecallStore(workspaceDir, nowIso),
-    promotion.__testing.readPhaseSignalStore(workspaceDir, nowIso),
+    promotionState.readRecallStore(workspaceDir, nowIso),
+    promotionState.readPhaseSignalStore(workspaceDir, nowIso),
   ]);
   await fs.mkdir(path.join(workspaceDir, "memory", ".dreams"), { recursive: true });
   await Promise.all([
@@ -365,54 +375,90 @@ async function registerWikiCorpusFixture(repoPath: string, payload: Payload): Pr
 }
 
 function buildMemorySearchOracleConfig(payload: Payload): Record<string, unknown> {
-  // Builtin memory backend with the fake embedding provider, no watchers and
-  // no embedding cache; hybrid weights and query limits come from the payload.
+  // Builtin memory backend with the fake embedding provider and no embedding cache. At
+  // v2026.9.6 memory search reads `memory.search` (src/agents/memory-search.ts
+  // resolveMemorySearchIndexConfig; `agents.defaults.memorySearch` is a legacy key that
+  // doctor migrates), and hybrid weights, MMR, temporal decay, chunking and sync are fixed
+  // defaults (#111382), so the payload's vectorWeight/textWeight have no upstream knob.
+  // plugins.enabled=false follows the upstream isolateMemoryManagerTestConfig.
   const baseConfig = payload.config ?? {};
+  const memory = isRecord(baseConfig.memory) ? baseConfig.memory : {};
+  const search = isRecord(memory.search) ? memory.search : {};
+  const query = isRecord(search.query) ? search.query : {};
   const agents = isRecord(baseConfig.agents) ? baseConfig.agents : {};
   const defaults = isRecord(agents.defaults) ? agents.defaults : {};
-  const defaultMemorySearch = isRecord(defaults.memorySearch) ? defaults.memorySearch : {};
-  const defaultQuery = isRecord(defaultMemorySearch.query) ? defaultMemorySearch.query : {};
-  const defaultHybrid = isRecord(defaultQuery.hybrid) ? defaultQuery.hybrid : {};
-  const cfg = {
+  const plugins = isRecord(baseConfig.plugins) ? baseConfig.plugins : {};
+  return {
     ...baseConfig,
+    plugins: { ...plugins, enabled: plugins.enabled ?? false },
     memory: {
-      ...(isRecord(baseConfig.memory) ? baseConfig.memory : {}),
+      ...memory,
       backend: "builtin",
       citations: "on",
+      search: {
+        ...search,
+        provider: "memory-core-fake",
+        model: payload.embeddingModel ?? "fake-deterministic",
+        query: {
+          ...query,
+          minScore: payload.minScore ?? query.minScore ?? 0,
+          maxResults: payload.maxResults ?? query.maxResults ?? 5,
+        },
+        cache: { enabled: false },
+      },
     },
     agents: {
       ...agents,
       defaults: {
         ...defaults,
         ...(payload.workspaceDir ? { workspace: payload.workspaceDir } : {}),
-        memorySearch: {
-          ...defaultMemorySearch,
-          provider: "memory-core-fake",
-          model: payload.embeddingModel ?? "fake-deterministic",
-          sync: {
-            ...(isRecord(defaultMemorySearch.sync) ? defaultMemorySearch.sync : {}),
-            watch: false,
-            onSessionStart: false,
-            onSearch: false,
-          },
-          query: {
-            ...defaultQuery,
-            minScore: payload.minScore ?? defaultQuery.minScore ?? 0,
-            maxResults: payload.maxResults ?? defaultQuery.maxResults ?? 5,
-            hybrid: {
-              ...defaultHybrid,
-              enabled: true,
-              vectorWeight: payload.vectorWeight ?? 0,
-              textWeight: payload.textWeight ?? 1,
-            },
-          },
-          cache: { enabled: false },
-        },
       },
       list: [{ id: "main", default: true }],
     },
   };
-  return cfg;
+}
+
+function embeddingInputText(input: unknown): string {
+  // src/plugins/embedding-provider-types.ts EmbeddingInput: a string or {text, parts?}.
+  return typeof input === "string" ? input : isRecord(input) ? String(input.text ?? "") : "";
+}
+
+async function registerFakeEmbeddingProvider(
+  repoPath: string,
+  params: {
+    model: string;
+    embedQuery?: (text: string, options?: { signal?: AbortSignal }) => Promise<number[]>;
+  },
+): Promise<void> {
+  // v2026.9.6 removed the memory-specific registerMemoryEmbeddingProvider (compat code
+  // deprecated-memory-embedding-provider-api, src/plugins/compat/registry-records.ts); memory
+  // search resolves adapters from the generic registry (src/plugins/embedding-providers.ts
+  // registerEmbeddingProvider, the export upstream tests use through
+  // plugin-sdk/plugin-test-runtime). Providers expose embed(input, {inputType}) instead of
+  // embedQuery; manager-embedding-ops.ts passes inputType "query" for queries and "document"
+  // for indexed chunks, which keeps the query:/document: split of the Python fake provider.
+  const registry = await importFromRepo(repoPath, "src/plugins/embedding-providers.ts");
+  registry.registerEmbeddingProvider({
+    id: "memory-core-fake",
+    defaultModel: params.model,
+    create: async () => ({
+      provider: {
+        id: "memory-core-fake",
+        model: params.model,
+        embed: async (input: unknown, options?: { signal?: AbortSignal; inputType?: string }) => {
+          const text = embeddingInputText(input);
+          if (options?.inputType === "query") {
+            return params.embedQuery
+              ? await params.embedQuery(text, options)
+              : deterministicEmbedding(`query:${text}`);
+          }
+          return deterministicEmbedding(`document:${text}`);
+        },
+        embedBatch: async (inputs: unknown[]) =>
+          inputs.map((input) => deterministicEmbedding(`document:${embeddingInputText(input)}`)),
+      },
+    }),
+  });
 }
 
 async function resolvePromotionPolicy(repoPath: string, payload: Payload): Promise<PromotionPolicy> {
@@ -967,24 +1013,10 @@ async function main() {
     process.env.OPENCLAW_STATE_DIR = stateDir;
     await writeSessionTranscriptFixtures({ ...payload, stateDir });
     await registerWikiCorpusFixture(repoPath, payload);
-    const embeddingProviders = await importFromRepo(
-      repoPath,
-      "src/plugins/memory-embedding-providers.ts",
-    );
-    const embeddingModel = payload.embeddingModel ?? "fake-deterministic";
-    embeddingProviders.registerMemoryEmbeddingProvider({
-      id: "memory-core-fake",
-      defaultModel: embeddingModel,
-      create: async () => ({
-        provider: {
-          id: "memory-core-fake",
-          model: embeddingModel,
-          embedQuery: async (text: string) => deterministicEmbedding(`query:${text}`),
-          embedBatch: async (texts: string[]) =>
-            texts.map((text) => deterministicEmbedding(`document:${text}`)),
-        },
-      }),
+    await registerFakeEmbeddingProvider(repoPath, {
+      model: payload.embeddingModel ?? "fake-deterministic",
     });
+    await configureDreamingStateForOracle(repoPath);
 
     const tools = await importFromRepo(repoPath, "extensions/memory-core/src/tools.ts");
     const memoryIndex = await importFromRepo(
@@ -1095,13 +1127,19 @@ async function main() {
     // cooldown Map carries across steps. Each step scripts the fake provider's
     // embedQuery ("ok", "throw:<message>", "hang" until aborted) and the wiki
     // supplement ("ok", "throw:<message>"). Date.now is offset by `advanceMs`
-    // to reach cooldown expiry, and a step's `deadlineFireMs` makes the 15 s
-    // deadline timer fire after that many real ms (the deadline code and its
-    // message are untouched).
+    // to reach cooldown expiry, and a step's `deadlineFireMs` makes the search
+    // deadline timer (DEFAULT_MEMORY_SEARCH_TIMEOUT_MS, read from the real
+    // memory/search-deadline.ts: 30 s at v2026.9.6, 15 s at 4c428153) fire after
+    // that many real ms (the deadline code and its message are untouched).
     if (!payload.workspaceDir) {
       throw new Error("workspaceDir is required");
     }
     process.env.OPENCLAW_STATE_DIR = payload.stateDir ?? path.join(payload.workspaceDir, ".openclaw-state");
+    const searchDeadline = await importFromRepo(
+      repoPath,
+      "extensions/memory-core/src/memory/search-deadline.ts",
+    );
+    const deadlineTimeoutMs: number = searchDeadline.DEFAULT_MEMORY_SEARCH_TIMEOUT_MS;
     let clockOffsetMs = 0;
     const realNow = Date.now.bind(Date);
     Date.now = () => realNow() + clockOffsetMs;
@@ -1110,7 +1148,7 @@ async function main() {
     globalThis.setTimeout = ((handler: (...args: unknown[]) => void, timeout?: number, ...args: unknown[]) =>
       realSetTimeout(
         handler,
-        timeout === 15_000 && deadlineFireMs !== undefined ? deadlineFireMs : timeout,
+        timeout === deadlineTimeoutMs && deadlineFireMs !== undefined ? deadlineFireMs : timeout,
         ...args,
       )) as typeof setTimeout;
 
@@ -1127,38 +1165,26 @@ async function main() {
       },
       get: async () => null,
     });
-    const embeddingProviders = await importFromRepo(
-      repoPath,
-      "src/plugins/memory-embedding-providers.ts",
-    );
-    embeddingProviders.registerMemoryEmbeddingProvider({
-      id: "memory-core-fake",
-      defaultModel: "fake-deterministic",
-      create: async () => ({
-        provider: {
-          id: "memory-core-fake",
-          model: "fake-deterministic",
-          embedQuery: async (text: string, options?: { signal?: AbortSignal }) => {
-            embedQueryCalls += 1;
-            if (embedQueryBehavior.startsWith("throw:")) {
-              throw new Error(embedQueryBehavior.slice("throw:".length));
-            }
-            if (embedQueryBehavior === "hang") {
-              return await new Promise<number[]>((_, reject) => {
-                options?.signal?.addEventListener(
-                  "abort",
-                  () => reject(options.signal?.reason ?? new Error("aborted")),
-                  { once: true },
-                );
-              });
-            }
-            return deterministicEmbedding(`query:${text}`);
-          },
-          embedBatch: async (texts: string[]) =>
-            texts.map((text) => deterministicEmbedding(`document:${text}`)),
-        },
-      }),
+    await registerFakeEmbeddingProvider(repoPath, {
+      model: "fake-deterministic",
+      embedQuery: async (text: string, options?: { signal?: AbortSignal }) => {
+        embedQueryCalls += 1;
+        if (embedQueryBehavior.startsWith("throw:")) {
+          throw new Error(embedQueryBehavior.slice("throw:".length));
+        }
+        if (embedQueryBehavior === "hang") {
+          return await new Promise<number[]>((_, reject) => {
+            options?.signal?.addEventListener(
+              "abort",
+              () => reject(options.signal?.reason ?? new Error("aborted")),
+              { once: true },
+            );
+          });
+        }
+        return deterministicEmbedding(`query:${text}`);
+      },
     });
+    await configureDreamingStateForOracle(repoPath);
     const tools = await importFromRepo(repoPath, "extensions/memory-core/src/tools.ts");
     const memoryIndex = await importFromRepo(
       repoPath,
@@ -1942,20 +1968,18 @@ async function main() {
     path.join(os.tmpdir(), "openclaw-oracle-dream-state-"),
   );
   process.env.OPENCLAW_STATE_DIR = promotionStateDir;
-  const dreamingState = await importFromRepo(
-    repoPath,
-    "extensions/memory-core/src/dreaming-state.ts",
-  );
-  await dreamingState.configureMemoryCoreDreamingStateForTests();
+  const testHelpers = await loadMemoryCoreTestHelpers(repoPath);
+  await testHelpers.configureMemoryCoreDreamingStateForTests();
+  const promotionState = testHelpers.shortTermTestState as PromotionStateModule;
   const promotion = await importFromRepo(
     repoPath,
     "extensions/memory-core/src/short-term-promotion.ts",
   );
 
   try {
-    await seedPromotionStateFromWorkspace(promotion, payload.workspaceDir);
+    await seedPromotionStateFromWorkspace(promotionState, payload.workspaceDir);
     const snapshotPromotionFiles = async () => {
-      await exportPromotionStateToWorkspace(promotion, payload.workspaceDir, nowMs);
+      await exportPromotionStateToWorkspace(promotionState, payload.workspaceDir, nowMs);
       return snapshotFiles(payload.workspaceDir);
     };
 
@@ -2046,12 +2070,17 @@ async function main() {
   }
 }
 
+// v2026.9.6 keeps SQLite handles, workers and timers alive after an operation, so the runner
+// exits explicitly once its JSON line is flushed instead of waiting for an empty event loop.
+function writeAndExit(body: string, exitCode: number): void {
+  process.stdout.write(body, () => process.exit(exitCode));
+}
+
 main()
   .then((result) => {
-    process.stdout.write(JSON.stringify(result));
+    writeAndExit(JSON.stringify(result), 0);
   })
   .catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
-    process.stdout.write(JSON.stringify({ ok: false, error: { code: "runner-error", message } }));
-    process.exitCode = 1;
+    writeAndExit(JSON.stringify({ ok: false, error: { code: "runner-error", message } }), 1);
   });

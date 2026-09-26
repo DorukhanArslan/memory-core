@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import EmbeddingProvider
@@ -27,18 +28,28 @@ from memory_core.workspace import MemoryWorkspace
 KEYWORD_FALLBACK_SEARCH_TERM_LIMIT = 6
 
 
+def validate_store_config(config: MemoryConfig, embeddings: EmbeddingProvider | None) -> Path:
+    """Check everything that makes store construction raise, without side effects.
+
+    Fail closed per the FeatureFlags contract: vector search with no embedding
+    provider raises instead of silently falling back to FTS-only. Returns the
+    resolved store path.
+    """
+    if config.effective_flags().vector_search and embeddings is None:
+        raise ValueError(
+            "vector_search is enabled but no embedding provider was given; "
+            "pass an embedding provider or disable it via "
+            "FeatureFlags(vector_search=False) for FTS-only mode"
+        )
+    return config.resolved_store_path()
+
+
 class SQLiteMemoryStore:
     def __init__(self, config: MemoryConfig, embeddings: EmbeddingProvider | None):
+        self.path = validate_store_config(config, embeddings)
         self.config = config
         self.flags = config.effective_flags()
-        if self.flags.vector_search and embeddings is None:
-            raise ValueError(
-                "vector_search is enabled but no embedding provider was given; "
-                "pass an embedding provider or disable it via "
-                "FeatureFlags(vector_search=False) for FTS-only mode"
-            )
         self.embeddings = embeddings
-        self.path = config.resolved_store_path()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 

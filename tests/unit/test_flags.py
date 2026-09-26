@@ -101,6 +101,38 @@ def test_vector_search_enabled_requires_embedding_provider(tmp_path):
         Memory.from_workspace(tmp_path)
 
 
+def test_missing_embedding_provider_raises_before_creating_any_file(tmp_path):
+    workspace = tmp_path / "fresh"
+
+    with pytest.raises(ValueError, match="vector_search is enabled"):
+        Memory.from_workspace(workspace)
+
+    assert not workspace.exists()
+
+
+def test_missing_embedding_provider_leaves_existing_workspace_untouched(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("rules\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="vector_search is enabled"):
+        Memory.from_workspace(tmp_path)
+
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["AGENTS.md"]
+
+
+def test_unsafe_agent_id_raises_before_creating_any_file(tmp_path):
+    workspace = tmp_path / "fresh"
+    config = MemoryConfig(
+        workspace_dir=workspace,
+        agent_id="../outside",
+        flags=FeatureFlags(vector_search=False),
+    )
+
+    with pytest.raises(ValueError, match="agent_id is not filename-safe"):
+        Memory.from_workspace(workspace, config=config)
+
+    assert not workspace.exists()
+
+
 def test_text_search_disabled_uses_vector_only_scores(tmp_path):
     _seed_workspace(tmp_path)
     config = MemoryConfig(workspace_dir=tmp_path, flags=FeatureFlags(text_search=False))

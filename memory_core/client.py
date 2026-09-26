@@ -7,7 +7,7 @@ from typing import Callable
 from memory_core.adapters.langgraph import LangGraphMemoryRecall, format_memory_context
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import EmbeddingProvider
-from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.index.sqlite_store import SQLiteMemoryStore, validate_store_config
 from memory_core.memory_flush import SILENT_REPLY_TOKEN, build_memory_flush_plan
 from memory_core.tools.memory_get import memory_get
 from memory_core.tools.memory_search import memory_search
@@ -66,6 +66,9 @@ class Memory:
     ) -> Memory:
         workspace = MemoryWorkspace(Path(workspace_dir))
         resolved_config = config or MemoryConfig(workspace_dir=workspace.root)
+        # Raise on an invalid provider/flag/agent-id combination before any
+        # directory or MEMORY.md is created.
+        validate_store_config(resolved_config, embedding_provider)
         if initialize:
             initialize_memory_core_workspace(workspace.root)
         store = SQLiteMemoryStore(resolved_config, embedding_provider)

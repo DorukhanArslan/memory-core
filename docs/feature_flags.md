@@ -41,6 +41,9 @@ At least one of `vector_search` / `text_search` must stay enabled;
   explicit configuration errors; OpenClaw's runtime fallback chain
   (fallback provider activation, keyword-only degradation on embedding
   outage) is host-runtime behavior and out of package scope.
+- `Memory.from_workspace()` runs the same check (plus the `agent_id` store-path
+  check) before it creates anything, so a call that raises leaves no
+  `MEMORY.md`, `memory/` or `.memory-core/` behind.
 
 ## Parity notes
 

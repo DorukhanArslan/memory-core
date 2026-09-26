@@ -212,3 +212,20 @@ def test_contract_diff_sources_are_objects_with_a_source_name(lab_client: TestCl
     assert {"source", "turnId", "ts", "eventId", "status"} <= set(deleted["sources"][0])
     assert "lifecycle" in [s["source"] for s in deleted["sources"]]
     assert {"path", "status", "diff", "added", "removed", "hidden"} <= set(rows["IDENTITY.md"])
+
+
+def test_contract_parity_rows_and_commands(lab_client: TestClient) -> None:
+    # views/parity.js reads these MatrixRow fields, `commands[]` and the results file keys.
+    payload = lab_client.get("/api/lab/parity").json()
+
+    assert {"pin", "oracleRepo", "node", "resultsPath", "results", "matrix", "commands"} <= set(payload)
+    assert payload["commands"] and all(isinstance(cmd, str) for cmd in payload["commands"])
+    row = payload["matrix"][0]
+    assert set(row) == {"area", "openclawSource", "pythonSource", "oracleOperation", "status", "knownGaps", "nextTest", "priority"}
+    assert isinstance(row["knownGaps"], str)
+    assert {row["status"] for row in payload["matrix"]} <= {"match", "partial", "mismatch", "missing", "out of scope"}
+    source = (LAB_ROOT / "views" / "parity.js").read_text(encoding="utf-8")
+    for field in ("knownGaps", "oracleOperation", "byEvidence", "byArea", "evidenceKinds", "commands"):
+        assert field in source, field
+    for stale in ("m.evidence", "m.gaps", "'python_ts'", "x.comparison"):
+        assert stale not in source, stale

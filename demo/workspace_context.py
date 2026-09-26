@@ -123,11 +123,13 @@ def workspace_layout_summary(layout: WorkspaceLayout = DEMO_WORKSPACE_LAYOUT) ->
 def build_workspace_prompt(
     workspace_dir: Path, *, layout: WorkspaceLayout = DEMO_WORKSPACE_LAYOUT
 ) -> str:
-    """The injected workspace text of a main-session chat turn (upstream format).
+    """The injected workspace text of a main-session turn (upstream format).
 
-    Lab chat turns send the model no tools (only the flush turn gets a write
-    tool), so the run has no ``read`` access to the workspace, like upstream's
-    ``bootstrapHasFileAccess`` for a tool-less run (attempt.ts:1370).
+    The Lab model gets memory and curation tools but no generic ``read`` tool,
+    so the run has no ``read`` access to the workspace (upstream's
+    ``bootstrapHasFileAccess``, attempt.ts:1370). Lab turns build their context
+    per session kind in :mod:`demo.lab_prompt`; this helper stays for tests and
+    scripts that want the main-session text.
     """
     return build_workspace_context(
         workspace_dir, layout=layout, has_bootstrap_file_access=False

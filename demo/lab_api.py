@@ -22,7 +22,15 @@ from demo.chat_engine import ChatEngine, OpenAICompatibleChatEngine, ScriptedCha
 from demo.lab_chat import chat_turn_frames
 from demo.lab_events import parse_last_event_id, stream_lab_events, unified_diff
 from demo.lab_flush import flush_meter
-from demo.lab_prompt import PromptOptions, file_entries, lab_workspace_context
+from demo.lab_prompt import (
+    PromptOptions,
+    file_entries,
+    lab_workspace_context,
+    prompt_options,
+    prompt_view,
+)
+from demo.lab_runtime import MINIMAL_PROMPT_KINDS
+from demo.lab_tools import lab_curator
 from demo.lab_runtime import (
     LAB_TIMEZONE,
     LabError,
@@ -39,6 +47,10 @@ from demo.parity_results import (
 )
 from demo.workspace_context import workspace_layout_summary
 from memory_core.bootstrap import trim_bootstrap_content
+from memory_core.heartbeat import build_heartbeat_section_lines, resolve_heartbeat_prompt_for_system_prompt
+from memory_core.prompt_section import build_prompt_section
+from memory_core.tools.memory_get import MEMORY_GET_TOOL_NAME
+from memory_core.tools.memory_search import MEMORY_SEARCH_TOOL_NAME
 from memory_core.bootstrap._js import utf16_len
 from memory_core.parity.upstream import LATEST_INSPECTED_COMMIT
 from memory_core.workspace import MemoryWorkspace
@@ -190,6 +202,15 @@ def build_router(lab: LabRuntime) -> APIRouter:
             raise LabError(404, f"turn {turn_id} not found", code="not_found")
         return detail
 
+    @router.post("/prompt/preview")
+    def prompt_preview(payload: dict = Body(default={})):
+        """PromptView of the current disk state for a session kind (nothing is sent)."""
+        lab.ensure_exists()
+        options = prompt_options(payload)
+        session = lab.sessions.get(options.kind)
+        wc = lab_workspace_context(lab, options, session=session)
+        return prompt_view(lab, options, wc, extras=preview_extras(lab, options.kind))
+
     @router.post("/chat/stream")
     def chat_stream(payload: dict = Body(...)):
         lab.ensure_exists()
@@ -257,6 +278,35 @@ def build_router(lab: LabRuntime) -> APIRouter:
         }
 
     return router
+
+
+def offered_tool_names(lab: LabRuntime) -> list[str]:
+    names = [MEMORY_SEARCH_TOOL_NAME, MEMORY_GET_TOOL_NAME]
+    names.extend(definition["name"] for definition in lab_curator(lab).tool_definitions())
+    return names
+
+
+def preview_extras(lab: LabRuntime, kind: str) -> dict[str, Any]:
+    tools = offered_tool_names(lab)
+    minimal = kind in MINIMAL_PROMPT_KINDS
+    memory_section = [] if minimal else build_prompt_section(set(tools), citations_mode="on")
+    heartbeat_section = (
+        build_heartbeat_section_lines(
+            resolve_heartbeat_prompt_for_system_prompt(trigger="heartbeat", every=lab.settings.heartbeat_every),
+            is_minimal=minimal,
+        )
+        if kind == "heartbeat"
+        else []
+    )
+    return {
+        "preview": True,
+        "banner": "Önizleme: diskteki güncel durum, gönderilmedi",
+        "tools": sorted(tools),
+        "recall": {"lines": [], "memoryRecallSection": memory_section, "label": "demo-only"},
+        "heartbeatSection": heartbeat_section,
+        "startup": None,
+        "flush": None,
+    }
 
 
 def resolve_chat_engine(lab: LabRuntime, payload: dict[str, Any]) -> ChatEngine:

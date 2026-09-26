@@ -981,3 +981,142 @@ def test_manual_flush_needs_a_model(client):
 
     assert response.status_code == 400
     assert response.json()["code"] == "no_api_key"
+
+
+# --- prompt inspector: session kinds, bootstrap mode, truncation ---------------------------
+
+
+def preview(client, **payload):
+    response = client.post("/api/lab/prompt/preview", json=payload)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def names(view):
+    return [file["name"] for file in view["files"]]
+
+
+def test_prompt_preview_follows_the_upstream_session_filters(client, lab):
+    client.get("/api/lab/state")
+    (lab.root / "MEMORY.md").write_text("# Memory\n\n- fact\n", encoding="utf-8")
+    (lab.root / "PROACTIVE_PREFERENCES.md").write_text("# PROACTIVE_PREFERENCES.md\n\n- ask first\n", encoding="utf-8")
+
+    main = preview(client, sessionKind="main")
+    subagent = preview(client, sessionKind="subagent")
+    cron = preview(client, sessionKind="cron")
+    group = preview(client, sessionKind="group")
+    pin = preview(client, sessionKind="main", layout="pin")
+
+    assert names(main) == [
+        "AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "PROACTIVE_PREFERENCES.md", "TOOLS.md", "MEMORY.md", "HEARTBEAT.md",
+    ]
+    assert [file["section"] for file in main["files"]][-1] == "dynamic"
+    assert main["dynamicText"].startswith("# Dynamic Project Context")
+    assert main["stableText"].startswith("# Project Context")
+    assert main["recall"]["memoryRecallSection"][0] == "## Memory Recall"
+    assert main["preview"] is True and "upsert_user_directive" in main["tools"]
+    assert names(subagent) == ["AGENTS.md", "TOOLS.md"]
+    assert {item["name"]: item["reason"] for item in subagent["excluded"]}["USER.md"] == "subagent: yalnız AGENTS.md, TOOLS.md"
+    assert subagent["recall"]["memoryRecallSection"] == []
+    assert names(cron) == ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "PROACTIVE_PREFERENCES.md", "TOOLS.md"]
+    assert "MEMORY.md" in names(group)
+    assert "PROACTIVE_PREFERENCES.md" not in names(pin)
+    assert pin["layout"] == "pin"
+
+
+def test_prompt_preview_shows_the_pending_bootstrap_only_where_upstream_does(client, lab):
+    client.post("/api/lab/workspace/reset", json={"mode": "fresh"})
+
+    main = preview(client, sessionKind="main")
+    heartbeat = preview(client, sessionKind="heartbeat")
+    cron = preview(client, sessionKind="cron")
+
+    assert main["bootstrapStatus"] == "pending"
+    assert main["bootstrapMode"] == "full"
+    assert "hook-content" in main["bootstrapModeReason"]
+    assert main["bootstrapText"].startswith("## Bootstrap Pending")
+    assert "BOOTSTRAP.md" in names(main)
+    assert main["workspaceNotes"] == ["Reminder: commit your changes in this workspace after edits."]
+    for view in (heartbeat, cron):
+        assert view["bootstrapMode"] == "none"
+        assert "BOOTSTRAP.md" not in names(view)
+        assert {item["name"]: item["reason"] for item in view["excluded"]}.get("BOOTSTRAP.md") in {
+            "bootstrap modu none", "cron: yalnız AGENTS.md, IDENTITY.md, PROACTIVE_PREFERENCES.md, SOUL.md, TOOLS.md, USER.md",
+        }
+    assert heartbeat["heartbeatSection"][0] == "## Heartbeats"
+
+
+def test_prompt_preview_reports_truncation_and_the_total_budget(client, lab):
+    client.get("/api/lab/state")
+    (lab.root / "SOUL.md").write_text("# SOUL.md\n\n" + "Be direct and precise. " * 1_200, encoding="utf-8")
+    (lab.root / "AGENTS.md").write_text("# AGENTS.md\n\n" + "- You must never skip validation.\n" * 800, encoding="utf-8")
+
+    view = preview(client, sessionKind="main")
+    tight = preview(client, sessionKind="main", totalMaxChars=12_000)
+
+    soul = next(file for file in view["files"] if file["name"] == "SOUL.md")
+    assert soul["truncated"] is True and soul["chars"] <= 20_000
+    assert "[...truncated, read SOUL.md for full content...]" in view["stableText"]
+    assert "[Policy digest from AGENTS.md]" in view["stableText"]
+    assert view["truncationWarningLines"][0].startswith("SOUL.md: ") or view["truncationWarningLines"][0].startswith("AGENTS.md: ")
+    assert "AGENTS.md was truncated; read the full AGENTS.md before relying on scoped policy." in view["truncationWarningLines"]
+    assert view["truncationNotice"] and "[Bootstrap truncation warning]" in view["bootstrapText"]
+    assert tight["budget"]["injectedChars"] <= 12_000
+    assert "toplam bütçe doldu" in {item["reason"] for item in tight["excluded"]}
+    entries = {entry["path"]: entry for entry in client.get("/api/lab/files").json()}
+    assert entries["SOUL.md"]["truncation"]["cause"] == "max/file"
+    assert entries["SOUL.md"]["truncation"]["warningLine"].startswith("SOUL.md: ")
+
+
+def test_truncation_warning_once_mode_is_kept_per_session(client, lab, monkeypatch):
+    client.get("/api/lab/state")
+    (lab.root / "SOUL.md").write_text("x" * 25_000, encoding="utf-8")
+    lab.settings.warning_mode = "once"
+    use_engine(monkeypatch, StubEngine([("bir", []), ("iki", [])]))
+
+    first = frames_of(send(client, "bir"), "turn_done")[0]["detail"]
+    second = frames_of(send(client, "iki"), "turn_done")[0]["detail"]
+
+    assert first["prompt"]["truncationWarning"]["shown"] is True
+    assert any(chip["type"] == "truncation" for chip in first["chips"])
+    assert second["prompt"]["truncationWarning"]["shown"] is False
+    assert second["prompt"]["truncationWarningLines"] == []
+    assert not any(chip["type"] == "truncation" for chip in second["chips"])
+
+
+def test_context_injection_never_skips_the_files(client):
+    client.get("/api/lab/state")
+
+    view = preview(client, sessionKind="main", contextInjection="never")
+
+    assert view["injectionSkipped"] is True
+    assert view["files"] == []
+    reasons = {item["name"]: item["reason"] for item in view["excluded"]}
+    assert reasons.pop("BOOTSTRAP.md") == "bootstrap tamamlandı"
+    assert set(reasons.values()) == {"contextInjection: enjeksiyon atlandı"}
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{"sessionKind": "boss"}, {"runKind": "x"}, {"contextMode": "tiny"}, {"contextInjection": "sometimes"},
+     {"maxChars": 0}, {"totalMaxChars": "many"}, {"layout": "other"}],
+)
+def test_prompt_preview_validates_its_options(client, payload):
+    client.get("/api/lab/state")
+
+    assert client.post("/api/lab/prompt/preview", json=payload).status_code == 400
+
+
+def test_chat_turn_prompt_matches_the_messages_sent(client, lab, monkeypatch):
+    engine = use_engine(monkeypatch, StubEngine([("tamam", [])]))
+
+    detail = frames_of(send(client, "Merhaba", sessionKind="subagent"), "turn_done")[0]["detail"]
+
+    sent = engine.calls[0]["messages"]
+    assert detail["prompt"]["messages"] == sent
+    assert sent[0]["role"] == "system" and "## Memory Recall" not in sent[0]["content"]
+    assert sent[-1] == {"role": "user", "content": "Merhaba"}
+    assert names(detail["prompt"]) == ["AGENTS.md", "TOOLS.md"]
+    assert detail["sessionKey"].startswith("lab:subagent:")
+    assert detail["recall"] is None
+    assert {stage["name"]: stage["status"] for stage in detail["stages"]}["recall"] == "skip"

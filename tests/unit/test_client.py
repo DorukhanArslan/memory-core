@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from memory_core import Memory
+from memory_core import Memory, MemoryToolInputError
 from memory_core.embeddings.base import FakeEmbeddingProvider
 
 
@@ -324,3 +324,28 @@ def test_reindex_skips_a_file_that_vanished_after_discovery(tmp_path: Path, monk
 
     assert memory.store.reindex(memory.workspace) == 1
     assert [item["path"] for item in memory.search("glacier")["results"]] == ["MEMORY.md"]
+
+
+def test_blank_queries_raise_through_the_facade(tmp_path: Path):
+    # Pinned on purpose (docs/memory_search_tool.md, "Blank queries"): the facade
+    # keeps upstream's `query required` ToolInputError instead of the old
+    # disabled payload; changing it is an open decision.
+    (tmp_path / "MEMORY.md").write_text("- Cobalt router lives in the rack.\n", encoding="utf-8")
+    memory = Memory.from_workspace(tmp_path, embedding_provider=FakeEmbeddingProvider())
+
+    for call in (
+        lambda: memory.search(""),
+        lambda: memory.search(" \n\t"),
+        lambda: memory.prepare_turn("  "),
+    ):
+        with pytest.raises(MemoryToolInputError, match="^query required$") as raised:
+            call()
+        assert raised.value.to_tool_error() == {
+            "status": "error",
+            "tool": "memory_search",
+            "error": "query required",
+        }
+    assert memory.langgraph_recall()({"input": "  "}) == {
+        "memory_context": "",
+        "memory_results": [],
+    }

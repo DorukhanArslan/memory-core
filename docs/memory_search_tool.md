@@ -66,6 +66,18 @@ except MemoryToolInputError as error:
 # {"status": "error", "tool": "memory_search", "error": "maxResults must be a positive integer"}
 ```
 
+### Blank queries
+
+`memory_search` and the facade raise as well, so the change reaches every caller
+built on them: `Memory.search("")`, `Memory.prepare_turn("  ")` and
+`SubjectMemory.prepare_live_turn` with a blank `user_utterance` (a silent ASR
+turn, for example) raise `MemoryToolInputError("query required")`. Before this
+contract port they returned `{"results": [], "disabled": True, "error": "query
+required"}` and recall injected nothing. `LangGraphMemoryRecall` still skips a
+query that is empty after `str.strip()`. Hosts that can pass blank input must
+skip recall for it or catch the error. `tests/unit/test_client.py` pins this;
+whether the facade should return an empty recall instead is an open decision.
+
 ### Corpus
 
 The tool has no corpus enum check. Upstream enforces the schema enum

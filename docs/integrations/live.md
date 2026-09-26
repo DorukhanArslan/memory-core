@@ -136,6 +136,12 @@ async for event in memory.stream_live_turn(
 returns an async iterable of text chunks, or dictionaries containing `text`,
 `delta`, or `content`.
 
+A blank `user_utterance` (empty or whitespace only, such as a silent ASR turn)
+makes `prepare_live_turn` raise `MemoryToolInputError("query required")` from the
+memory search; `stream_live_turn` raises it after its `live_turn_started` event,
+with no `live_turn_failed` event. Skip the turn or catch the error
+(`docs/memory_search_tool.md`, "Blank queries").
+
 ## Event Contract
 
 The SDK exports event-name constants and a `LiveTurnEventType` literal alias.

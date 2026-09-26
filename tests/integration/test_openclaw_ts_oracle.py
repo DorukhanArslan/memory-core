@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import json
 import tempfile
+import re
 
 import pytest
 
@@ -2928,6 +2929,7 @@ from memory_core.bootstrap import (  # noqa: E402
     render_project_context,
     render_workspace_files_injected,
 )
+from memory_core.bootstrap._js import js_to_well_formed  # noqa: E402
 from memory_core.bootstrap.budget import ContextFile  # noqa: E402
 
 UPSTREAM_TEMPLATE_PATHS = {
@@ -3612,6 +3614,11 @@ def _startup_scenario_caps(root: Path) -> None:
     _write_daily(root, "2026-09-25-big.md", b"b" * 20_000)
 
 
+def _startup_scenario_emoji_at_file_cap(root: Path) -> None:
+    # The 1,200-unit per-file cut (startup-context.ts:97) splits the emoji's surrogate pair.
+    _write_daily(root, "2026-09-26.md", "a" * 1199 + "😀" + "tail\n")
+
+
 STARTUP_CONTEXT_CASES = [
     pytest.param(_startup_scenario_istanbul, 1_790_458_200_000, "Europe/Istanbul", None, id="istanbul"),
     pytest.param(
@@ -3629,6 +3636,9 @@ STARTUP_CONTEXT_CASES = [
         id="custom-limits",
     ),
     pytest.param(lambda root: root.mkdir(parents=True), 1_790_458_200_000, "UTC", None, id="empty"),
+    pytest.param(
+        _startup_scenario_emoji_at_file_cap, 1_790_458_200_000, "UTC", None, id="emoji-at-file-cap"
+    ),
 ]
 
 
@@ -3658,9 +3668,13 @@ def test_real_openclaw_oracle_startup_context_matches_python(
             "max_total_chars": limits["maxTotalChars"],
             "max_file_bytes": limits["maxFileBytes"],
         }
-    assert result["result"]["prelude"] == build_startup_context(
-        root, now_ms=now_ms, timezone=timezone_name, **kwargs
-    )
+    ts_prelude = result["result"]["prelude"]
+    if scenario is _startup_scenario_emoji_at_file_cap:
+        assert re.search("[\ud800-\udfff]", ts_prelude)
+    # Transport-boundary deviation: memory-core returns the prelude well-formed
+    # (String.prototype.toWellFormed), upstream returns the lone surrogate.
+    expected = js_to_well_formed(ts_prelude) if ts_prelude is not None else None
+    assert expected == build_startup_context(root, now_ms=now_ms, timezone=timezone_name, **kwargs)
 
 
 def _upstream_source(relative: str) -> str:

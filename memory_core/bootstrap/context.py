@@ -7,6 +7,13 @@ apply the per-file/total budget, drop BOOTSTRAP.md unless the bootstrap mode is
 ``full``, build the truncation report, and render Project Context. The host
 places ``stable_text`` in the cacheable system prompt and ``dynamic_text``
 below its cache boundary.
+
+Deviation (transport boundary): the rendered files and texts are passed
+through ``String.prototype.toWellFormed`` semantics, so a surrogate pair that
+upstream's plain head/tail slice splits reaches the host as U+FFFD instead of
+a lone surrogate. The UTF-16 lengths and the budget analysis are unchanged;
+the lower-level :func:`~memory_core.bootstrap.budget.build_bootstrap_context_files`
+stays byte-exact.
 """
 
 from __future__ import annotations
@@ -15,7 +22,7 @@ import os
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from memory_core.bootstrap._js import js_trim
+from memory_core.bootstrap._js import js_to_well_formed, js_trim
 from memory_core.bootstrap.budget import (
     DEFAULT_BOOTSTRAP_MAX_CHARS,
     DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
@@ -217,8 +224,15 @@ def build_workspace_context(
         if any(file.name == layout.bootstrap_file and not file.missing for file in bootstrap_files)
         else ()
     )
+    # Transport boundary (deviation): budgeting above is byte-exact and may leave
+    # a lone surrogate where a head/tail slice split a pair (bootstrap.ts:356-357).
+    # Node writes such a string as UTF-8 with U+FFFD; Python cannot encode it at
+    # all, so every host-facing string is made well-formed here.
     shown_files = [
-        ContextFile(display_path(file.path, root, path_style), file.content)
+        ContextFile(
+            js_to_well_formed(display_path(file.path, root, path_style)),
+            js_to_well_formed(file.content),
+        )
         for file in context_files
     ]
     stable_text, dynamic_text = render_project_context(shown_files, layout)

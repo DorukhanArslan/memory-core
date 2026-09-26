@@ -125,3 +125,17 @@ def test_should_apply_startup_context():
     assert should_apply_startup_context("reset", enabled=False) is False
     assert should_apply_startup_context("reset", apply_on=["new"]) is False
     assert should_apply_startup_context("reset", apply_on=[]) is True
+
+
+def test_startup_context_is_well_formed_when_the_file_cap_splits_an_emoji(tmp_path):
+    import re
+
+    # The 1,200-unit cut lands between the two halves of the emoji.
+    _daily(tmp_path, "2026-09-26.md", "a" * 1199 + "😀" + "tail\n")
+
+    prelude = build_startup_context(tmp_path, now_ms=LATE_UTC_MS, timezone="UTC")
+
+    assert prelude is not None
+    assert re.search("[\ud800-\udfff]", prelude) is None
+    assert "a" * 1199 + "�\n...[truncated]..." in prelude
+    prelude.encode("utf-8")

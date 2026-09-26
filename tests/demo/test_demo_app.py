@@ -335,6 +335,19 @@ def test_chat_state_endpoint_returns_engines_and_memory_files():
     assert payload["turns"] == []
 
 
+def test_chat_state_endpoint_encodes_a_truncated_all_emoji_workspace_file():
+    client = TestClient(app)
+    client.post("/api/chat/reset", json={})
+    (demo_app.DEMO_WORKSPACE / "SOUL.md").write_text("😀" * 15_000, encoding="utf-8")
+    try:
+        response = client.get("/api/chat/state")
+
+        assert response.status_code == 200
+        assert "�" in response.json()["workspaceContext"]
+    finally:
+        client.post("/api/chat/reset", json={})
+
+
 def test_live_task_reset_and_state_endpoints():
     client = TestClient(app)
 

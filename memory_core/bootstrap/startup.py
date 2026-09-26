@@ -8,8 +8,11 @@ are still read for upstream compatibility, although memory-core itself only writ
 canonical names. Upstream prepends this only when the run's bootstrap mode is
 ``none`` (``session-reset-prompt.ts:89-93``); that decision stays with the host.
 
-Deviation: the timezone is an explicit argument (default UTC) and an unknown
-zone raises, where upstream falls back to the host timezone.
+Deviations: the timezone is an explicit argument (default UTC) and an unknown
+zone raises, where upstream falls back to the host timezone. The prelude is
+returned well-formed (``String.prototype.toWellFormed``): the 1,200-unit cut
+(startup-context.ts:97) can split a surrogate pair, which Node writes as U+FFFD
+and Python cannot encode, so a lone surrogate becomes U+FFFD.
 """
 
 from __future__ import annotations
@@ -24,7 +27,13 @@ from functools import cmp_to_key
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from memory_core.bootstrap._js import js_trim, locale_compare, utf16_len, utf16_slice
+from memory_core.bootstrap._js import (
+    js_to_well_formed,
+    js_trim,
+    locale_compare,
+    utf16_len,
+    utf16_slice,
+)
 from memory_core.bootstrap.files import read_workspace_file_guarded
 
 STARTUP_MEMORY_FILE_MAX_BYTES = 16_384
@@ -253,4 +262,4 @@ def build_startup_context(
             break
         sections.append(block)
         used += utf16_len(block)
-    return "\n".join([*STARTUP_CONTEXT_PRELUDE_LINES, "", *sections])
+    return js_to_well_formed("\n".join([*STARTUP_CONTEXT_PRELUDE_LINES, "", *sections]))

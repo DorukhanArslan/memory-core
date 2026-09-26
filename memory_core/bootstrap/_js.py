@@ -8,7 +8,9 @@ helpers instead of ``len()``/``str.strip()``.
 
 Lone surrogates are representable in Python ``str`` values; a UTF-16 slice that
 splits a surrogate pair returns a string with a lone surrogate, exactly like
-JavaScript's plain ``slice``.
+JavaScript's plain ``slice``. Such strings cannot be UTF-8 encoded in Python
+(``str.encode``, ``json.dumps(ensure_ascii=False)``), so host-facing text passes
+through :func:`js_to_well_formed` at the transport boundary.
 """
 
 from __future__ import annotations
@@ -87,6 +89,19 @@ def utf16_slice(value: str, start: int, end: int | None = None) -> str:
 _LONE_SURROGATE_RE = re.compile("[\\ud800-\\udfff]")
 
 
+def js_to_well_formed(value: str) -> str:
+    """``String.prototype.toWellFormed``: every lone surrogate becomes U+FFFD.
+
+    Adjacent surrogate code points join into one character first. The UTF-16
+    length is unchanged, and the UTF-8 bytes equal what Node writes for the
+    original string (``Buffer.from(text, "utf-8")``).
+    """
+    if value.isascii():
+        return value
+    joined = _from_units(_units(value))
+    return _LONE_SURROGATE_RE.sub("\ufffd", joined)
+
+
 def js_utf8_encode(value: str) -> bytes:
     """UTF-8 bytes as Node writes a string (``fs.writeFile(path, text, "utf-8")``).
 
@@ -95,8 +110,7 @@ def js_utf8_encode(value: str) -> bytes:
     """
     if value.isascii():
         return value.encode("ascii")
-    joined = _from_units(_units(value))
-    return _LONE_SURROGATE_RE.sub("\ufffd", joined).encode("utf-8")
+    return js_to_well_formed(value).encode("utf-8")
 
 
 def js_json_stringify(value: object, *, indent: int | None = None) -> str:

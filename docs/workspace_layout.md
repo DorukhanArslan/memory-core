@@ -99,6 +99,15 @@ their boundary.
 `build_startup_context` ports the bare `/new` / `/reset` daily-memory prelude;
 the host passes the timezone (default UTC).
 
+Upstream's head/tail slices (and the 1,200-unit startup cut) are plain UTF-16
+slices that can split a surrogate pair. `build_bootstrap_context_files` keeps
+that byte-exact, but every string `build_workspace_context` and
+`build_startup_context` hand to the host is well-formed: a lone surrogate
+becomes U+FFFD (`String.prototype.toWellFormed`). Node writes the same UTF-8
+bytes for the upstream string; Python could not encode it at all
+(`str.encode`, `json.dumps(ensure_ascii=False)`), so this is a transport-boundary
+deviation, not a content change.
+
 ## Consumers
 
 - `memory_core.live.LiveIdentity` renders a live subject prompt through

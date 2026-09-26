@@ -284,3 +284,43 @@ def test_exclude_files_drops_files_before_budgeting(tmp_path):
         name for name in MEMORY_CORE_WORKSPACE_LAYOUT.load_order if name != "MEMORY.md"
     ]
     assert _paths(single.files) == ["AGENTS.md"]
+
+
+def _has_lone_surrogate(text: str) -> bool:
+    import re
+
+    return re.search("[\ud800-\udfff]", text) is not None
+
+
+def test_workspace_context_host_strings_are_well_formed_after_a_surrogate_split(tmp_path: Path):
+    from memory_core.bootstrap import build_bootstrap_context_files
+    from memory_core.bootstrap._js import js_to_well_formed
+    from memory_core.live import LiveIdentity
+
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "SOUL.md").write_text("😀" * 15_000, encoding="utf-8")  # 30,000 UTF-16 units
+
+    raw = build_bootstrap_context_files(load_workspace_bootstrap_files(root, OPENCLAW_PIN_LAYOUT))
+    raw_soul = next(file for file in raw.files if file.path.endswith("SOUL.md")).content
+    context = build_workspace_context(root, layout=OPENCLAW_PIN_LAYOUT, path_style="relative")
+    soul = dict((file.path, file.content) for file in context.files)["SOUL.md"]
+    identity = LiveIdentity.from_dir(root, layout=OPENCLAW_PIN_LAYOUT)
+
+    # The budget stays byte-exact (upstream's plain slice splits the pair)...
+    assert _has_lone_surrogate(raw_soul)
+    # ...and the host-facing strings carry U+FFFD instead, with the same length.
+    assert soul == js_to_well_formed(raw_soul)
+    assert "�" in soul and len(soul.encode("utf-16-le")) == len(
+        raw_soul.encode("utf-16-le", "surrogatepass")
+    )
+    for text in (
+        context.prompt_text,
+        context.stable_text,
+        context.dynamic_text,
+        context.bootstrap_text,
+        identity.to_prompt_section(),
+        *(content for _, content in identity.sections),
+    ):
+        assert not _has_lone_surrogate(text)
+        text.encode("utf-8")

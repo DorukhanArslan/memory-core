@@ -86,6 +86,8 @@ from memory_core.bootstrap import (
     WorkspaceLayout,
     build_bootstrap_context_files,
     build_bootstrap_injection_stats,
+    filter_completed_bootstrap_file,
+    is_workspace_setup_completed,
     load_workspace_bootstrap_files,
 )
 from memory_core.bootstrap._js import js_trim_end, utf16_len
@@ -1036,7 +1038,10 @@ class MemoryCurator:
             if os.path.lexists(path):
                 raise CurationError(f"{name} resolves to another file in the workspace")
             return None
-        info = os.lstat(path)
+        try:
+            info = os.lstat(path)
+        except FileNotFoundError:
+            return None
         if stat.S_ISLNK(info.st_mode):
             raise CurationError(f"{name} is a symlink; curated writes never follow symlinks")
         if not stat.S_ISREG(info.st_mode):
@@ -1103,6 +1108,13 @@ class MemoryCurator:
                 )
             elif file_name in loaded:
                 files.append(loaded[file_name])
+        # A completed setup drops BOOTSTRAP.md before injection (bootstrap-files.ts:256-281).
+        files = filter_completed_bootstrap_file(
+            files,
+            setup_completed=is_workspace_setup_completed(self.root),
+            root=self.root,
+            layout=self.layout,
+        )
         injected = build_bootstrap_context_files(
             files,
             max_chars=self.policy.max_file_chars,

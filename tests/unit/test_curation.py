@@ -8,7 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from memory_core.bootstrap import DEFAULT_WORKSPACE_LAYOUT, OPENCLAW_PIN_LAYOUT, WorkspaceLayout
+from memory_core.bootstrap import (
+    DEFAULT_WORKSPACE_LAYOUT,
+    OPENCLAW_PIN_LAYOUT,
+    WorkspaceLayout,
+    initialize_agent_workspace,
+    is_workspace_setup_completed,
+)
 from memory_core.curation import (
     ADD_MEMORY_ENTRY,
     APPEND_DAILY_NOTE,
@@ -711,3 +717,17 @@ def test_user_and_proactive_files_obey_the_same_file_safety(tmp_path):
         curator.set_proactive_preferences("alpha")
     assert outside.read_text(encoding="utf-8") == ""
     assert UPSERT_USER_DIRECTIVE in curator.available_operations()
+
+
+def test_budget_check_skips_bootstrap_md_once_setup_is_complete(tmp_path):
+    (tmp_path / "BOOTSTRAP.md").write_text("b" * 900, encoding="utf-8")
+    _write_memory(tmp_path, "## My Notes\n- gamma\n")
+    policy = CurationPolicy.for_layout(max_file_chars=1_000, total_max_chars=1_000)
+    curator = _curator(tmp_path, policy=policy)
+    with pytest.raises(CurationError, match="workspace context budget"):
+        curator.add_memory_entry("My Notes", "d" * 150)
+
+    initialize_agent_workspace(tmp_path, templates={})
+    (tmp_path / "BOOTSTRAP.md").write_text("b" * 900, encoding="utf-8")
+    assert is_workspace_setup_completed(tmp_path)
+    assert curator.add_memory_entry("My Notes", "d" * 150).action == "added"

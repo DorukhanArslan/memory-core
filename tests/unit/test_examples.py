@@ -9,6 +9,9 @@ from memory_core.embeddings.base import FakeEmbeddingProvider
 
 
 class _FakeProvider:
+    # Stands in for OpenAICompatibleEmbeddingProvider (EmbeddingProvider protocol).
+    provider_id = "openai-compatible"
+
     def __init__(self, *, api_key, base_url, model):
         self.api_key = api_key
         self.base_url = base_url

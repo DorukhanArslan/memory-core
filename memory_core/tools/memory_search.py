@@ -20,6 +20,10 @@ abandoned worker only reads, so nothing is left half-written. A timeout or an
 error puts ``agent_id ?? agent_session_key ?? "default"`` on a process-wide
 60 s cooldown during which memory is not searched (``corpus=wiki`` never
 reads or records it; ``corpus=all`` still searches supplements).
+
+An index whose stored identity is missing or no longer matches the store's
+provider/model/settings returns the paused result (no cooldown) until
+``SQLiteMemoryStore.reindex`` writes fresh metadata.
 """
 
 from __future__ import annotations
@@ -74,6 +78,13 @@ MEMORY_SEARCH_PROVIDER_ERROR_WARNING = (
 MEMORY_SEARCH_PROVIDER_ERROR_ACTION = (
     "Check embedding provider configuration and retry memory_search."
 )
+# tools.ts:168-188 (the action names the runtime's reindex command, so it
+# comes from RuntimeIdentity).
+PAUSED_MEMORY_INDEX_WARNING = (
+    "Tell the user: memory search is paused because the memory index was built with a "
+    "different embedding provider/model/settings."
+)
+PAUSED_MEMORY_INDEX_REASON = "memory index identity is missing or mismatched"
 _QUOTA_ERROR_RE = re.compile(r"insufficient_quota|quota|429")
 _MISSING_SQLITE_RE = re.compile(r"missing node:sqlite|no such built-?in module: node:sqlite")
 
@@ -119,6 +130,28 @@ def build_memory_search_unavailable_result(
         "action": action,
         "debug": {"warning": warning, "action": action, "error": reason},
     }
+
+
+def resolve_paused_memory_index_identity_reason(identity: Mapping[str, Any]) -> str | None:
+    """``resolvePausedMemoryIndexIdentityReason`` (tools.ts:173-181)."""
+    if identity.get("status") not in {"mismatched", "missing"}:
+        return None
+    reason = identity.get("reason")
+    if isinstance(reason, str) and js_trim(reason):
+        return js_trim(reason)
+    return PAUSED_MEMORY_INDEX_REASON
+
+
+def build_paused_memory_index_unavailable_result(
+    reason: str, *, runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY
+) -> dict:
+    """``buildPausedMemoryIndexUnavailableResult`` (tools.ts:183-188)."""
+    return build_memory_search_unavailable_result(
+        reason,
+        warning=PAUSED_MEMORY_INDEX_WARNING,
+        action=runtime_identity.memory_search_paused_action,
+        runtime_identity=runtime_identity,
+    )
 
 
 # Process-wide cooldowns (tools.ts:52 memorySearchToolCooldowns).
@@ -354,6 +387,7 @@ def _run_memory_search_tool(
 
         response: dict[str, Any] = {}
         memory_results: list[dict] = []
+        paused: dict[str, str | None] = {"reason": None}
         if should_query_memory:
 
             def search_memory() -> None:
@@ -372,6 +406,14 @@ def _run_memory_search_tool(
                     sources=_memory_sources_for_corpus(requested_corpus),
                     signal=signal,
                 )
+                # tools.ts:563-568: a missing or mismatched index identity pauses
+                # search (no cooldown). Upstream's empty-result forced sync retry
+                # has no counterpart: memory-core reindexes only when the host asks.
+                paused["reason"] = resolve_paused_memory_index_identity_reason(
+                    store.index_identity()
+                )
+                if paused["reason"] is not None:
+                    return
                 memory_results.extend(_serialize_result(config, item) for item in hits)
                 # OpenClaw reports FTS-only mode as provider "none" / model
                 # "fts-only" when no embedding provider is configured.
@@ -382,6 +424,10 @@ def _run_memory_search_tool(
                 response["model"] = embeddings.model if embeddings is not None else "fts-only"
 
             phases.run("memory", search_memory)
+            if paused["reason"] is not None:
+                return build_paused_memory_index_unavailable_result(
+                    paused["reason"], runtime_identity=runtime_identity
+                )
         supplement_results = (
             phases.run(
                 "supplement",

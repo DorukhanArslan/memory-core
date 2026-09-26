@@ -16,6 +16,13 @@ type Payload = {
   corpus?: "memory" | "sessions" | "wiki" | "all";
   maxResults?: number;
   rawParams?: unknown;
+  embeddingModel?: string;
+  identity?: {
+    states?: Array<Record<string, unknown>>;
+    providerIdentities?: Array<Record<string, unknown>>;
+    sources?: string[][];
+    scopes?: Array<Record<string, unknown>>;
+  };
   unavailableCases?: Array<{ error?: string | null; warning?: string; action?: string }>;
   searchSteps?: Array<{
     rawParams: unknown;
@@ -361,7 +368,7 @@ function buildMemorySearchOracleConfig(payload: Payload): Record<string, unknown
         memorySearch: {
           ...defaultMemorySearch,
           provider: "memory-core-fake",
-          model: "fake-deterministic",
+          model: payload.embeddingModel ?? "fake-deterministic",
           sync: {
             ...(isRecord(defaultMemorySearch.sync) ? defaultMemorySearch.sync : {}),
             watch: false,
@@ -845,13 +852,14 @@ async function main() {
       repoPath,
       "src/plugins/memory-embedding-providers.ts",
     );
+    const embeddingModel = payload.embeddingModel ?? "fake-deterministic";
     embeddingProviders.registerMemoryEmbeddingProvider({
       id: "memory-core-fake",
-      defaultModel: "fake-deterministic",
+      defaultModel: embeddingModel,
       create: async () => ({
         provider: {
           id: "memory-core-fake",
-          model: "fake-deterministic",
+          model: embeddingModel,
           embedQuery: async (text: string) => deterministicEmbedding(`query:${text}`),
           embedBatch: async (texts: string[]) =>
             texts.map((text) => deterministicEmbedding(`document:${text}`)),
@@ -912,6 +920,37 @@ async function main() {
     } finally {
       await memoryIndex.closeAllMemorySearchManagers();
     }
+  }
+
+  if (payload.operation === "memoryIndexIdentity") {
+    // extensions/memory-core/src/memory/manager-reindex-state.ts pure exports.
+    const reindexState = await importFromRepo(
+      repoPath,
+      "extensions/memory-core/src/memory/manager-reindex-state.ts",
+    );
+    const identity = payload.identity ?? {};
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        states: (identity.states ?? []).map((params) =>
+          reindexState.resolveMemoryIndexIdentityState(params),
+        ),
+        providerIdentities: (identity.providerIdentities ?? []).map((params) =>
+          reindexState.resolveMemoryIndexProviderIdentities(params),
+        ),
+        sources: (identity.sources ?? []).map((sources) =>
+          reindexState.resolveConfiguredSourcesForMeta(sources),
+        ),
+        scopes: (identity.scopes ?? []).map((multimodal) =>
+          reindexState.resolveConfiguredScopeHash({
+            workspaceDir: payload.workspaceDir ?? os.tmpdir(),
+            extraPaths: [],
+            multimodal,
+          }),
+        ),
+      },
+    };
   }
 
   if (payload.operation === "memorySearchUnavailableResult") {

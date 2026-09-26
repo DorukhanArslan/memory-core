@@ -40,6 +40,12 @@ from memory_core.overflow_recovery import (
 )
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
+from memory_core.index.identity import (
+    resolve_configured_scope_hash,
+    resolve_configured_sources_for_meta,
+    resolve_memory_index_identity_state,
+    resolve_memory_index_provider_identities,
+)
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.flags import FeatureFlags
 from memory_core.tools.common import MemoryToolInputError
@@ -1720,6 +1726,216 @@ def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
         _normalize_memory_search_step(step) for step in python_steps
     ]
     assert python_steps[6]["result"]["error"] == "memory_search timed out after 15s"
+
+
+_IDENTITY_KEY = "k" * 64
+_IDENTITY_SCOPE = "s" * 64
+_IDENTITY_META = {
+    "model": "m1",
+    "provider": "p1",
+    "providerKey": _IDENTITY_KEY,
+    "sources": ["memory", "sessions"],
+    "scopeHash": _IDENTITY_SCOPE,
+    "chunkTokens": 400,
+    "chunkOverlap": 80,
+    "vectorDims": 8,
+    "ftsTokenizer": "unicode61",
+}
+_IDENTITY_PARAMS = {
+    "meta": _IDENTITY_META,
+    "provider": {"id": "p1", "model": "m1"},
+    "providerKey": _IDENTITY_KEY,
+    "configuredSources": ["memory", "sessions"],
+    "configuredScopeHash": _IDENTITY_SCOPE,
+    "chunkTokens": 400,
+    "chunkOverlap": 80,
+    "vectorReady": True,
+    "hasIndexedChunks": True,
+    "ftsTokenizer": "unicode61",
+}
+
+
+def _identity_case(*, drop_meta: tuple[str, ...] = (), drop: tuple[str, ...] = (), meta=None, **params):
+    base_meta = {key: value for key, value in _IDENTITY_META.items() if key not in drop_meta}
+    case = {key: value for key, value in _IDENTITY_PARAMS.items() if key not in drop}
+    case["meta"] = base_meta if meta is None else meta
+    case.update(params)
+    return case
+
+
+MEMORY_INDEX_IDENTITY_STATE_CASES = {
+    "valid": _identity_case(),
+    "missing-meta": _identity_case(meta=False),
+    "model-changed": _identity_case(meta={**_IDENTITY_META, "model": "m0"}),
+    "provider-to-fts-only": _identity_case(provider=None),
+    "provider-trimmed-model": _identity_case(provider={"id": "p1", "model": "  m1  "}),
+    "provider-changed": _identity_case(provider={"id": "p2", "model": "m1"}),
+    "provider-key-changed": _identity_case(providerKey="other"),
+    "provider-key-unknown": _identity_case(providerKey="other", providerKeyKnown=False),
+    "provider-key-both-undefined": _identity_case(drop_meta=("providerKey",), drop=("providerKey",)),
+    "provider-key-via-alias": _identity_case(
+        provider={"id": "p1", "model": "m2"},
+        providerAliases=[{"model": "m1", "providerKey": _IDENTITY_KEY}],
+    ),
+    "legacy-meta-without-sources": _identity_case(drop_meta=("sources",)),
+    "meta-sources-normalized": _identity_case(
+        meta={**_IDENTITY_META, "sources": ["sessions", "memory", "memory", "bogus"]}
+    ),
+    "sources-changed": _identity_case(configuredSources=["memory"]),
+    "scope-changed": _identity_case(configuredScopeHash="other"),
+    "legacy-meta-without-scope": _identity_case(drop_meta=("scopeHash",)),
+    "chunk-tokens-changed": _identity_case(chunkTokens=512),
+    "chunk-overlap-string": _identity_case(meta={**_IDENTITY_META, "chunkOverlap": "80"}),
+    "vector-dims-missing": _identity_case(drop_meta=("vectorDims",)),
+    "vector-dims-zero": _identity_case(meta={**_IDENTITY_META, "vectorDims": 0}),
+    "vector-dims-missing-no-chunks": _identity_case(drop_meta=("vectorDims",), hasIndexedChunks=False),
+    "vector-dims-missing-fts-only": _identity_case(
+        drop_meta=("vectorDims",), meta=None, vectorReady=False
+    ),
+    "tokenizer-defaulted": _identity_case(drop_meta=("ftsTokenizer",)),
+    "tokenizer-changed": _identity_case(ftsTokenizer="trigram"),
+    "empty-meta-object": _identity_case(meta={}),
+    "null-model": _identity_case(meta={**_IDENTITY_META, "model": None}),
+    "provider-missing-in-meta": _identity_case(drop_meta=("provider",)),
+}
+
+MEMORY_INDEX_PROVIDER_IDENTITY_CASES = [
+    {"provider": None},
+    {"provider": None, "aliases": [{"model": "ignored", "cacheKeyData": {"a": 1}}]},
+    {"provider": {"id": "fake", "model": "fake-deterministic"}},
+    {
+        "provider": {"id": "openai-compatible", "model": "text-embedding-3-small"},
+        "cacheKeyData": {
+            "provider": "openai-compatible",
+            "baseUrl": "https://api.example.test/v1",
+            "model": "text-embedding-3-small",
+        },
+    },
+    {
+        "provider": {"id": "p", "model": "m"},
+        "cacheKeyData": {"provider": "p", "model": "m", "note": "ünïcode ✓"},
+        "aliases": [
+            {"model": "m-alias", "cacheKeyData": {"provider": "p", "model": "m-alias"}},
+            {"model": "", "cacheKeyData": {"provider": "p"}},
+            {"model": "m", "cacheKeyData": {"provider": "p", "model": "m", "note": "ünïcode ✓"}},
+        ],
+    },
+]
+
+MEMORY_INDEX_SOURCES_CASES = [["sessions", "memory"], [], ["bogus"], ["memory", "memory"]]
+MEMORY_INDEX_SCOPE_CASES = [
+    {"enabled": False, "modalities": [], "maxFileBytes": 10 * 1024 * 1024},
+    {"enabled": True, "modalities": ["image", "audio"], "maxFileBytes": 5},
+]
+
+
+def _python_identity_state(case: dict) -> dict:
+    return resolve_memory_index_identity_state(
+        meta=case["meta"],
+        provider=case.get("provider"),
+        provider_key=case.get("providerKey"),
+        provider_aliases=case.get("providerAliases", ()),
+        provider_key_known=case.get("providerKeyKnown"),
+        configured_sources=case["configuredSources"],
+        configured_scope_hash=case["configuredScopeHash"],
+        chunk_tokens=case["chunkTokens"],
+        chunk_overlap=case["chunkOverlap"],
+        vector_ready=case["vectorReady"],
+        has_indexed_chunks=case.get("hasIndexedChunks"),
+        fts_tokenizer=case["ftsTokenizer"],
+    )
+
+
+def test_real_openclaw_oracle_memory_index_identity_matches_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    names = sorted(MEMORY_INDEX_IDENTITY_STATE_CASES)
+
+    result = oracle.run(
+        {
+            "operation": "memoryIndexIdentity",
+            "identity": {
+                "states": [MEMORY_INDEX_IDENTITY_STATE_CASES[name] for name in names],
+                "providerIdentities": MEMORY_INDEX_PROVIDER_IDENTITY_CASES,
+                "sources": MEMORY_INDEX_SOURCES_CASES,
+                "scopes": MEMORY_INDEX_SCOPE_CASES,
+            },
+        }
+    )
+
+    assert result["ok"] is True, result.get("error")
+    assert result["operation"] == "memoryIndexIdentity"
+    assert dict(zip(names, result["result"]["states"], strict=True)) == {
+        name: _python_identity_state(MEMORY_INDEX_IDENTITY_STATE_CASES[name]) for name in names
+    }
+    assert result["result"]["providerIdentities"] == [
+        resolve_memory_index_provider_identities(
+            case["provider"],
+            cache_key_data=case.get("cacheKeyData"),
+            aliases=case.get("aliases", ()),
+        )
+        for case in MEMORY_INDEX_PROVIDER_IDENTITY_CASES
+    ]
+    assert result["result"]["sources"] == [
+        resolve_configured_sources_for_meta(case) for case in MEMORY_INDEX_SOURCES_CASES
+    ]
+    assert result["result"]["scopes"] == [
+        resolve_configured_scope_hash(
+            multimodal_enabled=case["enabled"],
+            modalities=case["modalities"],
+            max_file_bytes=case["maxFileBytes"],
+        )
+        for case in MEMORY_INDEX_SCOPE_CASES
+    ]
+    # The store records the upstream default scope (no extraPaths, multimodal off).
+    assert result["result"]["scopes"][0] == resolve_configured_scope_hash()
+
+
+class _OtherModelEmbeddingProvider(OpenClawFakeEmbeddingProvider):
+    model = "fake-other"
+
+
+def test_real_openclaw_oracle_memory_search_pauses_on_index_model_change(tmp_path: Path):
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+    (tmp_path / "MEMORY.md").write_text(
+        "# Long-Term Memory\n\n- Glacier storage keeps backups cold.", encoding="utf-8"
+    )
+    payload = {"operation": "memorySearch", "workspaceDir": str(tmp_path), "query": "glacier",
+               "corpus": "all"}
+
+    built = oracle.run(payload)
+    paused = oracle.run({**payload, "embeddingModel": "fake-other"})
+
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "python-memory.sqlite",
+        vector_weight=0,
+        text_weight=1,
+    )
+    SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8)).reindex(
+        MemoryWorkspace(tmp_path)
+    )
+    reopened = SQLiteMemoryStore(cfg, _OtherModelEmbeddingProvider(dimensions=8))
+    python_paused = memory_search(
+        cfg,
+        reopened,
+        query="glacier",
+        corpus="all",
+        runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+    )
+
+    assert built["ok"] is True and paused["ok"] is True
+    assert [item["path"] for item in built["result"]["results"]] == ["MEMORY.md"]
+    assert paused["result"] == python_paused
+    assert python_paused["error"] == (
+        "index was built for model fake-deterministic, expected fake-other"
+    )
+    assert memory_search(cfg, reopened, query="glacier")["action"] == (
+        "Tell the user to run: SQLiteMemoryStore.index_identity() or "
+        "SQLiteMemoryStore.reindex(workspace)."
+    )
 
 def test_real_openclaw_oracle_records_short_term_recall():
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))

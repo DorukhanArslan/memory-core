@@ -28,6 +28,12 @@ class RuntimeIdentity:
         "Run memory-core with a Python build that includes the sqlite3 module, then retry "
         "memory_search."
     )
+    # memory_search paused-index action (OpenClaw extensions/memory-core/src/tools.ts
+    # PAUSED_MEMORY_INDEX_ACTION names its CLI; memory-core names its store API).
+    memory_search_paused_action: str = (
+        "Tell the user to run: SQLiteMemoryStore.index_identity() or "
+        "SQLiteMemoryStore.reindex(workspace)."
+    )
 
 
 MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -49,6 +55,10 @@ MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
         "Run memory-core with a Python build that includes the sqlite3 module, then retry "
         "memory_search."
     ),
+    memory_search_paused_action=(
+        "Tell the user to run: SQLiteMemoryStore.index_identity() or "
+        "SQLiteMemoryStore.reindex(workspace)."
+    ),
 )
 
 OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -68,5 +78,8 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
     ),
     memory_search_sqlite_unavailable_action=(
         "Run OpenClaw with a Node runtime that includes node:sqlite, then retry memory_search."
+    ),
+    memory_search_paused_action=(
+        "Tell the user to run: openclaw memory status --index or openclaw memory index --force."
     ),
 )

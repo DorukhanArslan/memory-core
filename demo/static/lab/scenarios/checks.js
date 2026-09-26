@@ -130,7 +130,8 @@ const rows = (ctx) => ctx.search?.results || [];
 export const searchTop = (spec, rank = 1) => (ctx) => rows(ctx)[rank - 1]?.path === resolve(spec, ctx);
 /** memory_search citations read `Source: path#Lx` or `Source: path#Lx-Ly` (memory_core/tools/citations.py). */
 export const citationsFormat = () => (ctx) => rows(ctx).length > 0 && rows(ctx).every((r) => /^Source: \S+#L\d+(?:-L\d+)?$/.test(r.citation || ''));
-export const allVectorOff = () => (ctx) => rows(ctx).length > 0 && rows(ctx).every((r) => r.vectorScore === null || r.vectorScore === undefined);
+/** The vector leg is off: every row has no vector score, or the payload itself reports provider none / fts-only. */
+export const allVectorOff = () => (ctx) => rows(ctx).length > 0 && (ctx.search.provider === 'none' || ctx.search.model === 'fts-only' || rows(ctx).every((r) => r.vectorScore === null || r.vectorScore === undefined));
 export const hybridScores = (wv, wt, tol) => (ctx) => rows(ctx).length > 0 && rows(ctx).every((r) => typeof r.vectorScore === 'number' && typeof r.textScore === 'number' && Math.abs(r.score - (wv * r.vectorScore + wt * r.textScore)) <= tol);
 export const allScoresAtLeast = (x) => (ctx) => !!ctx.search && !ctx.search.error && rows(ctx).every((r) => r.score >= x);
 export const rowsAtMost = (n) => (ctx) => !!ctx.search && !ctx.search.error && rows(ctx).length <= n;

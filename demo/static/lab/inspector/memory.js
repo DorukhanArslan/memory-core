@@ -40,8 +40,16 @@ function formula(r, weights) {
   if (weights) return `${fmtScore(weights.vector, 1)} × ${fmtScore(r.vectorScore)} + ${fmtScore(weights.text, 1)} × ${fmtScore(r.textScore)} = ${fmtScore(r.score)}`;
   return `v ${fmtScore(r.vectorScore)} · t ${fmtScore(r.textScore)} → ${fmtScore(r.score)}`;
 }
-export function resultRow(r, rank, { terms = [], used = null, filtered = null, compact = false, minScore = null, weights = null } = {}) {
+/** Legs the search ran with, from the payload: provider none / model fts-only means no vector leg. */
+export function legsOf(res) {
+  const ftsOnly = res?.provider === 'none' || res?.model === 'fts-only';
+  const mode = res?.mode || res?.request?.mode;
+  return { vector: !ftsOnly && mode !== 'text', text: mode !== 'vector' };
+}
+export function resultRow(r, rank, { terms = [], used = null, filtered = null, compact = false, minScore = null, weights = null, legs = null } = {}) {
   const words = r.matchedTerms || terms;
+  const vScore = legs && !legs.vector ? null : r.vectorScore;
+  const tScore = legs && !legs.text ? null : r.textScore;
   return h('div', { class: ['result', used ? 'is-used' : '', filtered ? 'is-filtered' : ''], 'data-testid': 'search-result' },
     h('span', { class: 'r-rank num' }, String(rank)),
     h('div', { class: 'r-main' },
@@ -51,8 +59,8 @@ export function resultRow(r, rank, { terms = [], used = null, filtered = null, c
         filtered ? h('span', { class: 'chip chip-xs tone-neutral', 'data-tip': filtered }, icon('minus', 10), t('search.filtered')) : null,
         r.corpus && r.corpus !== 'memory' ? h('span', { class: 'chip chip-xs tone-neutral' }, r.corpus) : null,
         h('span', { class: 'spacer' }),
-        h('span', { class: 'r-score num', 'data-tip': formula(r, weights) }, fmtScore(r.score))),
-      compact ? null : h('div', { class: 'r-bars' }, scoreBar('v', r.vectorScore), scoreBar('t', r.textScore),
+        h('span', { class: 'r-score num', 'data-tip': formula({ ...r, vectorScore: vScore, textScore: tScore }, weights) }, fmtScore(r.score))),
+      compact ? null : h('div', { class: 'r-bars' }, scoreBar('v', vScore), scoreBar('t', tScore),
         minScore ? h('span', { class: 'r-gate', style: { '--x': `${Math.min(100, minScore * 100)}%` }, 'data-tip': `minScore ${fmtScore(minScore, 2)}` }) : null),
       h('div', { class: 'r-snippet' }, highlightWords(String(r.snippet || '').replace(/\n+/g, ' '), words))));
 }
@@ -119,7 +127,7 @@ export function memoryTab(turn) {
     wrap.append(h('div', { class: 'result-meta muted', 'data-testid': 'search-meta' },
       `${rows.length} ${t('search.results')} · ${t(`search.mode.${res.mode || res.request?.mode || 'text'}`)}${res.provider ? ` · ${res.provider}/${res.model}` : ''} · ${fmtMs(res.ms ?? res.clientMs)}`));
     if (!rows.length) wrap.append(emptyState({ title: t('search.noMatch'), text: t('search.noMatchText'), testid: 'empty-memory', level: 4 }));
-    rows.forEach((r, i) => wrap.append(resultRow(r, i + 1, { terms: wordTokens(res.request?.query || ''), minScore: res.request?.minScore, weights: res.weights || null })));
+    rows.forEach((r, i) => wrap.append(resultRow(r, i + 1, { terms: wordTokens(res.request?.query || ''), minScore: res.request?.minScore, weights: res.weights || null, legs: legsOf(res) })));
     if (!res.matchedTermsSupported && rows.length) wrap.append(honesty(t('search.highlightNote'), 'neutral', 'info'));
     wrap.append(jsonDisclosure(res, { title: 'memory_search' }));
   }

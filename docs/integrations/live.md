@@ -440,6 +440,19 @@ Recall stores, promoted `MEMORY.md` sections and `DREAMS.md` stay under
 that `memory_search` appends, like upstream recall tracking. Nothing runs on a
 schedule; the host decides when to promote or dream.
 
+Promotion markers: `SubjectConsolidation(memory)` writes the neutral
+`<!-- memory-core-memory-promotion:<key> -->` marker whatever
+`LiveSDKConfig.openclaw_compatible` says (the live config switches only the
+runtime-context markers). A host in compatibility mode passes
+`SubjectConsolidation(memory, identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY)` to
+write upstream's `openclaw-memory-promotion:` prefix. Compatibility is one
+way: memory-core reads both prefixes, but OpenClaw's `extractPromotionMarkers` and
+`isContaminatedDreamingSnippet` match only its own. OpenClaw run on a
+`MEMORY.md` with neutral markers would promote the same lines again, and it
+does not treat a recalled snippet that holds only a neutral marker as
+scaffolding, so a workspace that OpenClaw also promotes into must use the
+compat identity.
+
 ## Demo Environment
 
 The FastAPI demo app exposes a generic live task simulator for local latency and

@@ -355,7 +355,17 @@ def _collect_compound_tokens(source: str) -> list[str]:
 
 
 def _collect_segment_tokens(source: str) -> list[str]:
-    return _SEGMENT_TOKEN_RE.findall(source)
+    # Approximates Intl.Segmenter("und", {granularity: "word"}) word-like segments. A "."
+    # keeps a word together only between two letters or two digits (UAX #29 WB6/7, WB11/12):
+    # "0.76" and "e.g" stay whole, "26.md" (from a dated file name) splits into "26" and "md".
+    tokens: list[str] = []
+    for token in _SEGMENT_TOKEN_RE.findall(source):
+        head, dot, tail = token.partition(".")
+        if dot and head[-1].isdigit() != tail[0].isdigit():
+            tokens.extend((head, tail))
+        else:
+            tokens.append(token)
+    return tokens
 
 
 def _push_normalized_concept_tag(
@@ -377,7 +387,6 @@ def _normalize_concept_token(raw_token: str, from_glossary: bool = False) -> str
         return None
     if (
         normalized.isdigit()
-        or re.fullmatch(r"\d+\.[^\W_]+", normalized, re.UNICODE)
         or re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized)
         or re.fullmatch(r"\d{4}-\d{2}-\d{2}\.[^\W_]+", normalized, re.UNICODE)
     ):

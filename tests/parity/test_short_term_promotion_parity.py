@@ -1214,3 +1214,116 @@ def test_promotion_header_uses_dreaming_timezone_like_openclaw(tmp_path: Path):
     assert "Promoted From Short-Term Memory (2026-04-01)" in (
         tmp_path / "MEMORY.md"
     ).read_text(encoding="utf-8")
+
+
+# Literals below are the pin 4c42815348 outputs of the same inputs (applyShortTermPromotions,
+# deriveConceptTags), recorded from the oracle on 2026-09-26.
+
+
+def _record_glacier(config: MemoryConfig, now_ms: int) -> None:
+    daily = config.workspace_dir / "memory" / "2026-05-08.md"
+    daily.parent.mkdir(parents=True, exist_ok=True)
+    daily.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+    record_short_term_recalls(
+        config=config,
+        query="glacier",
+        results=[
+            {
+                "source": "memory",
+                "path": "memory/2026-05-08.md",
+                "startLine": 3,
+                "endLine": 3,
+                "snippet": "- Move backups to S3 Glacier.",
+                "score": 1,
+            }
+        ],
+        now_ms=now_ms,
+    )
+
+
+def _promote_ungated(config: MemoryConfig, now_ms: int, **kwargs):
+    return run_short_term_promotion(
+        config=config,
+        store=fake_store(config),
+        now_ms=now_ms,
+        timezone="Europe/Istanbul",
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+        **kwargs,
+    )
+
+
+_GLACIER_SECTION = (
+    "\n## Promoted From Short-Term Memory (2026-05-26)\n\n"
+    "<!-- openclaw-memory-promotion:memory:memory/2026-05-08.md:3:3 -->\n"
+    "- Move backups to S3 Glacier. [score=0.609 recalls=1 avg=1.000 "
+    "source=memory/2026-05-08.md:3-3]\n"
+)
+
+
+def test_first_promotion_write_matches_openclaw_bytes(tmp_path: Path):
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    now = 1779811200000
+    _record_glacier(config, now)
+
+    _promote_ungated(config, now)
+
+    assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == (
+        "# Long-Term Memory\n\n" + _GLACIER_SECTION
+    )
+
+
+def test_promotion_section_follows_existing_memory_after_a_blank_line_like_openclaw(
+    tmp_path: Path,
+):
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    now = 1779811200000
+    (tmp_path / "MEMORY.md").write_text("# Long-Term Memory\n\nKeep this.", encoding="utf-8")
+    _record_glacier(config, now)
+
+    _promote_ungated(config, now)
+
+    assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == (
+        "# Long-Term Memory\n\nKeep this.\n" + _GLACIER_SECTION
+    )
+
+
+def test_promotion_restores_header_when_budget_drops_every_old_section_like_openclaw(
+    tmp_path: Path,
+):
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    now = 1779811200000
+    (tmp_path / "MEMORY.md").write_text(
+        "## Promoted From Short-Term Memory (2026-04-10)\n"
+        "<!-- openclaw-memory-promotion:legacy-old -->\n"
+        f"- {'x' * 600}",
+        encoding="utf-8",
+    )
+    _record_glacier(config, now)
+
+    run = _promote_ungated(config, now, memory_file_max_chars=400)
+
+    assert run.compacted_dates == ("2026-04-10",)
+    assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == (
+        "# Long-Term Memory\n\n" + _GLACIER_SECTION
+    )
+
+
+def test_concept_tags_keep_decimal_tokens_and_split_dated_file_names_like_openclaw():
+    assert concepts_module.derive_concept_tags(
+        "memory/2026-04-08.md",
+        "Candidate: move backups weekly. confidence: 0.76 evidence: memory/2026-04-08.md:1-1",
+    ) == [
+        "backup",
+        "backups",
+        "0.76",
+        "memory/2026-04-08.md",
+        "1-1",
+        "candidate",
+        "weekly",
+        "confidence",
+    ]
+    assert concepts_module.derive_concept_tags(
+        "memory/2026-05-26.md", "- User prefers to be addressed as dodo."
+    ) == ["prefers", "addressed", "dodo"]

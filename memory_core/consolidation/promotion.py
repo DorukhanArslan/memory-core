@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from memory_core.bootstrap._js import js_trim
 from memory_core.config import MemoryConfig
 from memory_core.consolidation._util import (
     DAY_MS,
@@ -157,6 +158,10 @@ class MemoryPromotionRun:
     ``parsed`` holds the write outcome (field name kept from the demo flush
     result it mirrors); ``diff`` is a unified diff of MEMORY.md;
     ``evaluated_candidates`` lists every live entry with its gate reasons.
+    ``applied_candidates``, ``appended``, ``reconciled_existing`` and
+    ``compacted_dates`` mirror upstream ``ApplyShortTermPromotionsResult``
+    (``applied`` is ``len(applied_candidates)``, ``compactedSections`` is
+    ``len(compacted_dates)``).
     """
 
     target: str
@@ -167,6 +172,10 @@ class MemoryPromotionRun:
     chunks: int
     evaluated_candidates: list[PromotionEvaluation]
     reindex_error: str | None = None
+    applied_candidates: tuple[PromotionCandidate, ...] = ()
+    appended: int = 0
+    reconciled_existing: int = 0
+    compacted_dates: tuple[str, ...] = ()
 
 
 def run_short_term_promotion(
@@ -405,6 +414,7 @@ def _run_short_term_promotion_unlocked(
     )
     indexed_files = 0
     reindex_error = None
+    compacted_dates: tuple[str, ...] = ()
     if rehydrated_candidates:
         entry = (
             _build_promotion_section(to_append, now_ms, timezone, max_promoted_snippet_tokens)
@@ -412,7 +422,9 @@ def _run_short_term_promotion_unlocked(
             else ""
         )
         if to_append:
-            _append_to_memory(target_path, entry, memory_file_max_chars=memory_file_max_chars)
+            compacted_dates = _append_to_memory(
+                target_path, entry, memory_file_max_chars=memory_file_max_chars
+            )
         _mark_promoted(recall_store_path(config.workspace_dir), rehydrated_candidates, now_ms)
         if to_append:
             try:
@@ -442,6 +454,10 @@ def _run_short_term_promotion_unlocked(
         chunks=store.count_chunks(),
         evaluated_candidates=evaluations,
         reindex_error=reindex_error,
+        applied_candidates=tuple(rehydrated_candidates),
+        appended=len(to_append),
+        reconciled_existing=len(rehydrated_candidates) - len(to_append),
+        compacted_dates=compacted_dates,
     )
 
 
@@ -510,10 +526,12 @@ def _candidate_components(
 
 
 def _candidate_score(components: dict[str, float]) -> float:
-    weighted = sum(
-        PROMOTION_COMPONENT_WEIGHTS[key] * float(components.get(key) or 0)
-        for key in PROMOTION_COMPONENT_WEIGHTS
-    )
+    # Left-to-right float addition like the upstream expression
+    # (short-term-promotion.ts rankShortTermPromotionCandidates). Python 3.12's
+    # built-in sum() compensates rounding and can differ in the last ulp.
+    weighted = 0.0
+    for key, weight in PROMOTION_COMPONENT_WEIGHTS.items():
+        weighted += weight * float(components.get(key) or 0)
     return clamp_score(weighted + float(components.get("phaseBoost") or 0))
 
 
@@ -626,21 +644,30 @@ def _mark_promoted(path: Path, candidates: list[PromotionCandidate], now_ms: int
 
 
 def _append_to_memory(
-    path: Path, content: str, memory_file_max_chars: int = DEFAULT_MEMORY_FILE_MAX_CHARS
-) -> None:
+    path: Path, section: str, memory_file_max_chars: int = DEFAULT_MEMORY_FILE_MAX_CHARS
+) -> tuple[str, ...]:
+    """Write ``section`` below the budget-compacted MEMORY.md; returns dropped section dates.
+
+    Mirrors the write in upstream ``applyShortTermPromotions``: older promotion
+    sections are dropped until the file fits ``memory_file_max_chars``, an
+    empty (or whitespace-only) result gets the ``# Long-Term Memory`` header,
+    and the section (which starts with a blank line) follows the kept text.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    before = read_text_if_exists(path)
-    if not before and path.name == PROMOTION_TARGET:
-        path.write_text(f"{LONG_TERM_MEMORY_HEADER}\n\n{content}\n", encoding="utf-8")
-        return
-    if path.name == PROMOTION_TARGET:
-        before = compact_memory_for_budget(
-            existing_memory=before,
-            new_section=content,
-            budget_chars=memory_file_max_chars,
-        ).compacted
-    separator = "" if not before or before.endswith("\n") else "\n"
-    path.write_text(f"{before}{separator}{content.strip()}\n", encoding="utf-8")
+    existing = read_text_if_exists(path)
+    budget_chars = (
+        max(0, math.floor(memory_file_max_chars))
+        if isinstance(memory_file_max_chars, int | float) and math.isfinite(memory_file_max_chars)
+        else DEFAULT_MEMORY_FILE_MAX_CHARS
+    )
+    compaction = compact_memory_for_budget(
+        existing_memory=existing, new_section=section, budget_chars=budget_chars
+    )
+    base = compaction.compacted
+    header = "" if js_trim(base) else f"{LONG_TERM_MEMORY_HEADER}\n\n"
+    base_with_newline = base if not base or base.endswith("\n") else f"{base}\n"
+    path.write_text(f"{header}{base_with_newline}{section}", encoding="utf-8")
+    return compaction.dropped_dates
 
 
 def _normalize_memory_path(raw_path: str) -> str:

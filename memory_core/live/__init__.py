@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterable, Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import inspect
 import json
 from pathlib import Path
@@ -349,9 +349,14 @@ class SubjectMemory:
         reindex: bool = True,
         flags: FeatureFlags | None = None,
     ) -> "SubjectMemory":
-        # ``flags`` replaces the default flags of the subject's own config (FTS-only
-        # without a provider); pass it instead of a shared ``config`` to keep the
-        # config's workspace the subject's directory.
+        """Open (and by default initialize and reindex) one subject's memory.
+
+        ``flags`` replaces the default flags of the subject's own config
+        (FTS-only without a provider). ``config`` may be shared by every
+        subject: its settings are kept, but its paths are rebased onto the
+        subject directory (:func:`_rebase_config_onto_subject`), so subjects
+        never share an index or read each other's files.
+        """
         if flags is not None and config is not None:
             raise ValueError("pass flags inside config, or flags without config")
         safe_subject_id = _validate_safe_id(subject_id, label="subject_id")
@@ -361,11 +366,16 @@ class SubjectMemory:
             namespace=namespace,
             subject_path_builder=subject_path_builder,
         )
-        default_flags = None if embedding_provider is not None else FeatureFlags(vector_search=False)
-        resolved_config = config or MemoryConfig(
-            workspace_dir=workspace,
-            flags=flags if flags is not None else default_flags,
-        )
+        if config is not None:
+            resolved_config = _rebase_config_onto_subject(config, workspace)
+        else:
+            default_flags = (
+                None if embedding_provider is not None else FeatureFlags(vector_search=False)
+            )
+            resolved_config = MemoryConfig(
+                workspace_dir=workspace,
+                flags=flags if flags is not None else default_flags,
+            )
         memory = Memory.from_workspace(
             workspace,
             embedding_provider=embedding_provider,
@@ -724,6 +734,32 @@ def _resolve_subject_workspace(
     if resolved_workspace != resolved_root and resolved_root not in resolved_workspace.parents:
         raise ValueError(f"subject workspace escapes root: {workspace}")
     return Path(workspace)
+
+
+def _rebase_config_onto_subject(config: MemoryConfig, workspace: Path) -> MemoryConfig:
+    """Point a (possibly shared) config at one subject's workspace.
+
+    ``workspace_dir`` becomes the subject directory, so ``memory_get`` and the
+    consolidation stores resolve there. ``store_path``: ``None`` resolves to
+    ``<subject>/.memory-core/<agent_id>.sqlite``; a path inside the subject
+    directory is kept; a path inside ``config.workspace_dir`` keeps its
+    relative location under the subject directory; any other path raises
+    ``ValueError``, because one index file would then serve every subject and
+    each reindex would delete the other subjects' chunks.
+    """
+    store_path = config.store_path
+    if store_path is not None:
+        resolved_store = Path(store_path).resolve()
+        subject_root = workspace.resolve()
+        config_root = Path(config.workspace_dir).resolve()
+        if subject_root not in resolved_store.parents:
+            if config_root not in resolved_store.parents:
+                raise ValueError(
+                    "config.store_path is outside both config.workspace_dir and the subject "
+                    f"workspace, so every subject would share it: {store_path}"
+                )
+            store_path = workspace / resolved_store.relative_to(config_root)
+    return replace(config, workspace_dir=workspace, store_path=store_path)
 
 
 def _validate_required_identity_files(

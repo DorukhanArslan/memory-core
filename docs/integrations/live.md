@@ -166,6 +166,21 @@ memory = SubjectMemory.open(
 )
 ```
 
+One `MemoryConfig` can be shared by every subject (`config=shared_config`). Its
+settings (flags, weights, `agent_id`, limits) are kept, but its paths are
+rebased onto the subject directory: `workspace_dir` becomes
+`subjects/<subject_id>/`, and `store_path` is resolved like this:
+
+| `store_path` in the shared config | Index used by subject `subj_123` |
+|---|---|
+| `None` | `subjects/subj_123/.memory-core/<agent_id>.sqlite` |
+| inside the subject directory | kept as given |
+| inside `config.workspace_dir` (for example `<root>/index/live.sqlite`) | same relative path under the subject (`subjects/subj_123/index/live.sqlite`) |
+| anywhere else | `ValueError`: one index would serve every subject |
+
+Without the rebase, every subject shared `<root>/.memory-core/main.sqlite`, each
+reindex deleted the other subjects' chunks, and `memory_get` read from the root.
+
 ## Streaming Turn
 
 ```python

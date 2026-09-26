@@ -11,6 +11,8 @@ from memory_core.bootstrap import (
     initialize_agent_workspace,
     trim_bootstrap_content,
 )
+from memory_core.config import MemoryConfig
+from memory_core.flags import FeatureFlags
 from memory_core.live import (
     IDENTITY_FILE_ORDER,
     IdentityLoadError,
@@ -338,6 +340,71 @@ def test_subject_memory_can_use_custom_path_builder(tmp_path: Path):
 
     assert result.wrote is True
     assert (tmp_path / "tenants" / "default" / "subj_123" / result.path).exists()
+
+
+def test_subject_memory_rebases_a_shared_config_onto_each_subject(tmp_path: Path):
+    # One MemoryConfig reused for every subject used to point all of them at
+    # root/.memory-core/main.sqlite: reindexing one subject deleted the other's chunks,
+    # and memory_get read from the root instead of the subject directory.
+    shared = MemoryConfig(workspace_dir=tmp_path, flags=FeatureFlags(vector_search=False))
+    alice = SubjectMemory.open(
+        workspace_dir=tmp_path, subject_id="alice", config=shared, reindex=False
+    )
+    bob = SubjectMemory.open(workspace_dir=tmp_path, subject_id="bob", config=shared, reindex=False)
+    alice.memory.workspace.append_daily_memory("memory/2026-09-04.md", "- Alice prefers tulips.")
+    bob.memory.workspace.append_daily_memory("memory/2026-09-04.md", "- Bob prefers orchids.")
+
+    alice.memory.store.reindex(alice.memory.workspace)
+    bob.memory.store.reindex(bob.memory.workspace)
+
+    def paths(memory: SubjectMemory, query: str) -> list[str]:
+        return [hit["path"] for hit in memory.memory.search(query)["results"]]
+
+    assert shared.workspace_dir == tmp_path
+    assert alice.memory.config.workspace_dir == tmp_path / "subjects" / "alice"
+    assert bob.memory.config.resolved_store_path() == (
+        tmp_path / "subjects" / "bob" / ".memory-core" / "main.sqlite"
+    )
+    assert not (tmp_path / ".memory-core").exists()
+    assert paths(alice, "tulips") == ["memory/2026-09-04.md"]
+    assert paths(alice, "orchids") == []
+    assert paths(bob, "orchids") == ["memory/2026-09-04.md"]
+    assert paths(bob, "tulips") == []
+    assert "Alice prefers tulips." in alice.memory.get("memory/2026-09-04.md")["text"]
+    assert "Bob prefers orchids." in bob.memory.get("memory/2026-09-04.md")["text"]
+
+
+def test_subject_memory_rebases_or_rejects_a_shared_store_path(tmp_path: Path):
+    flags = FeatureFlags(vector_search=False)
+    inside_root = MemoryConfig(
+        workspace_dir=tmp_path, store_path=tmp_path / "index" / "live.sqlite", flags=flags
+    )
+    alice = SubjectMemory.open(
+        workspace_dir=tmp_path, subject_id="alice", config=inside_root, reindex=False
+    )
+    assert alice.memory.config.resolved_store_path() == (
+        tmp_path / "subjects" / "alice" / "index" / "live.sqlite"
+    )
+
+    own_store = tmp_path / "subjects" / "bob" / "custom.sqlite"
+    bob = SubjectMemory.open(
+        workspace_dir=tmp_path,
+        subject_id="bob",
+        config=MemoryConfig(workspace_dir=tmp_path, store_path=own_store, flags=flags),
+        reindex=False,
+    )
+    assert bob.memory.config.resolved_store_path() == own_store
+
+    outside = MemoryConfig(
+        workspace_dir=tmp_path / "state", store_path=tmp_path / "shared.sqlite", flags=flags
+    )
+    try:
+        SubjectMemory.open(workspace_dir=tmp_path / "state", subject_id="carol", config=outside)
+    except ValueError as exc:
+        assert "store_path" in str(exc)
+    else:
+        raise AssertionError("expected a store_path outside the workspace to be rejected")
+    assert not (tmp_path / "state" / "subjects" / "carol").exists()
 
 
 def test_record_session_summary_writes_only_durable_structured_entries(tmp_path: Path):

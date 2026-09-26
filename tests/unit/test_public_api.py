@@ -135,3 +135,20 @@ def test_public_api_exports_workspace_bootstrap_surface(tmp_path):
     assert result.bootstrap_status == "pending"
     context = memory.build_workspace_context(tmp_path / "ws")
     assert context.files == ()
+
+
+def test_public_api_exports_heartbeat_helpers():
+    expected = {
+        "HEARTBEAT_PROMPT",
+        "HEARTBEAT_TOKEN",
+        "HeartbeatTurn",
+        "build_heartbeat_section_lines",
+        "prepare_heartbeat_turn",
+        "resolve_heartbeat_interval_ms",
+        "resolve_heartbeat_prompt_for_system_prompt",
+        "strip_heartbeat_token",
+    }
+
+    assert expected.issubset(set(memory.__all__))
+    for name in expected:
+        assert hasattr(memory, name)

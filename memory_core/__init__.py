@@ -41,6 +41,16 @@ from memory_core.embeddings import (
     OpenAICompatibleEmbeddingProvider,
 )
 from memory_core.flags import FeatureFlags
+from memory_core.heartbeat import (
+    HEARTBEAT_PROMPT,
+    HEARTBEAT_TOKEN,
+    HeartbeatTurn,
+    build_heartbeat_section_lines,
+    prepare_heartbeat_turn,
+    resolve_heartbeat_interval_ms,
+    resolve_heartbeat_prompt_for_system_prompt,
+    strip_heartbeat_token,
+)
 from memory_core.live import (
     IdentityLoadError,
     JsonlTraceSink,
@@ -177,6 +187,14 @@ __all__ = [
     "EmbeddingProvider",
     "FakeEmbeddingProvider",
     "FeatureFlags",
+    "HEARTBEAT_PROMPT",
+    "HEARTBEAT_TOKEN",
+    "HeartbeatTurn",
+    "build_heartbeat_section_lines",
+    "prepare_heartbeat_turn",
+    "resolve_heartbeat_interval_ms",
+    "resolve_heartbeat_prompt_for_system_prompt",
+    "strip_heartbeat_token",
     "LangGraphMemoryRecall",
     "OpenAICompatibleEmbeddingProvider",
     "RuntimeIdentity",

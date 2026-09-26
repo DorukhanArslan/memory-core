@@ -27,6 +27,7 @@ from memory_core.consolidation import (
     MemoryPromotionRun,
     PromotionEvaluation,
     audit_short_term_promotion_artifacts,
+    evaluate_short_term_promotion_candidates,
     repair_short_term_promotion_artifacts,
     run_dreaming_sweep,
     run_short_term_promotion,
@@ -150,6 +151,67 @@ def promotion_gates() -> dict[str, Any]:
 
 def promotion_weights() -> dict[str, float]:
     return dict(PROMOTION_COMPONENT_WEIGHTS)
+
+
+def _matrix_label(prefixes: tuple[str, ...]) -> str:
+    from demo.parity_results import parse_parity_matrix
+
+    rows = [row for row in parse_parity_matrix() if row["area"].startswith(prefixes)]
+    statuses = "; ".join(f"{row['area']}: {row['status']}" for row in rows)
+    return f"paket (memory_core.consolidation) · {statuses}" if statuses else "paket (memory_core.consolidation)"
+
+
+def consolidation_view(lab: LabRuntime) -> dict[str, Any]:
+    """GET /api/lab/consolidation: curated writes beside scored promotion."""
+    config = lab.config()
+    now = lab.now_ms()
+    evaluations = evaluate_short_term_promotion_candidates(
+        config=config,
+        now_ms=now,
+        min_score=DEFAULT_DEEP_DREAMING_MIN_SCORE,
+        min_recall_count=DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT,
+        min_unique_queries=DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES,
+    )
+    candidates = []
+    selected = 0
+    for evaluation in evaluations:
+        passes = not evaluation.reasons and selected < LAB_PROMOTION_LIMIT
+        if passes:
+            selected += 1
+        item = serialize_evaluation(evaluation, selected=passes)
+        if not evaluation.reasons and not passes:
+            item["selected"] = False
+            item["reasons"] = [f"limit {LAB_PROMOTION_LIMIT} reached"]
+        candidates.append(item)
+    audit = audit_short_term_promotion_artifacts(config=config, now_ms=now)
+    return {
+        "curated": [
+            {key: value for key, value in write.items() if key != "before"}
+            for write in lab.curated_writes
+        ],
+        "shortTerm": {
+            "entries": audit.entry_count,
+            "promoted": audit.promoted_entry_count,
+            "storePath": SHORT_TERM_STORE_RELATIVE_PATH,
+            "exists": audit.exists,
+        },
+        "candidates": candidates,
+        "gates": promotion_gates(),
+        "weights": promotion_weights(),
+        "lastPromotion": lab.consolidation_results.get("promotion"),
+        "lastDreaming": lab.consolidation_results.get("dreaming"),
+        "audit": lab.consolidation_results.get("audit"),
+        "repair": lab.consolidation_results.get("repair"),
+        "labels": {
+            "curated": "uzantı (Q16, D5): turda anında yazar, kapı yok",
+            "scored": _matrix_label(("Promotion", "Apply short-term", "Deep dreaming", "Recall tracking")),
+        },
+        "flags": {
+            name: lab.settings.flags.get(name, True)
+            for name in ("curated_memory_writes", "curation.memory_md", "curation.user_md",
+                         "curation.daily_note", "curation.proactive_preferences")
+        },
+    }
 
 
 def run_promotion(lab: LabRuntime, payload: dict[str, Any]) -> dict[str, Any]:

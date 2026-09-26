@@ -1486,3 +1486,79 @@ def test_search_contract_errors_are_verbatim(client, payload, message):
     body = response.json()
     assert body["error"] == message and body["code"] == "tool_input_error"
     assert body["toolError"] == {"status": "error", "tool": "memory_search", "error": message}
+
+
+# --- consolidation --------------------------------------------------------------------------
+
+
+def test_consolidation_view_lists_candidates_gates_and_curated_writes(client, lab, monkeypatch):
+    seed_notes(client, lab)
+    use_engine(monkeypatch, StubEngine([
+        ("", [tool_call("c1", "add_memory_entry", {"section": "Decisions", "text": "SQLite for payments."})]),
+        ("ok", []), ("ok", []), ("ok", []),
+    ]))
+    send(client, "Karar: SQLite.")
+    for question in ("perşembe toplantı", "sürüm toplantısı ne zaman", "haftalık sürüm perşembe"):
+        send(client, question)
+
+    view = client.get("/api/lab/consolidation").json()
+
+    assert view["curated"][0]["path"] == "MEMORY.md" and "before" not in view["curated"][0]
+    assert view["gates"]["minScore"] == 0.8 and view["gates"]["minRecallCount"] == 3
+    assert view["gates"]["minUniqueQueries"] == 3 and view["gates"]["limit"] == 5
+    assert view["weights"] == {"frequency": 0.24, "relevance": 0.30, "diversity": 0.15, "recency": 0.15,
+                               "consolidation": 0.10, "conceptual": 0.06}
+    assert view["shortTerm"]["entries"] >= 1
+    candidate = view["candidates"][0]
+    assert set(candidate["components"]) >= {"frequency", "relevance", "phaseBoost"}
+    assert set(candidate["gates"]) == {"score", "recall", "unique", "age"}
+    assert candidate["selected"] is (not candidate["reasons"])
+    assert view["labels"]["scored"].startswith("paket (memory_core.consolidation)")
+    assert "Promotion gates: match" in view["labels"]["scored"]
+
+
+def test_promotion_dreaming_audit_and_repair_emit_events(client, lab):
+    seed_notes(client, lab)
+
+    promote = client.post("/api/memory/promote", json={}).json()
+    dream = client.post("/api/dreaming/run", json={"phase": "light"}).json()
+    audit = client.get("/api/memory/audit").json()
+    repair = client.post("/api/memory/repair", json={}).json()
+    bad_phase = client.post("/api/dreaming/run", json={"phase": "nap"})
+
+    assert promote["promotion"]["target"] == "MEMORY.md"
+    assert promote["promotion"]["parsed"]["shouldWrite"] is False
+    assert dream["dreamingSweep"]["phase"] == "light"
+    assert audit["memoryAudit"]["issues"] == [] or isinstance(audit["memoryAudit"]["issues"], list)
+    assert "memoryRepair" in repair and "memoryAudit" in repair
+    assert bad_phase.status_code == 400
+    assert {"promotion.swept", "dreaming.swept", "audit.completed", "repair.completed"} <= set(event_types(client))
+    view = client.get("/api/lab/consolidation").json()
+    assert view["lastPromotion"]["target"] == "MEMORY.md" and view["lastDreaming"]["phase"] == "light"
+
+
+def test_promotion_writes_gated_recalls_into_memory_md_with_source_promotion(client, lab, monkeypatch):
+    from memory_core.consolidation import record_short_term_recalls
+
+    client.get("/api/lab/state")
+    daily = lab.root / "memory" / "2026-05-03.md"
+    daily.write_text("# 2026-05-03\n\n- User was fired from work.\n", encoding="utf-8")
+    base_ms = 1_777_824_000_000
+    for offset, query in enumerate(["job loss", "fired from work", "work situation", "career event", "employment status"]):
+        record_short_term_recalls(
+            config=lab.config(),
+            query=query,
+            results=[{"source": "memory", "path": "memory/2026-05-03.md", "startLine": 3, "endLine": 3,
+                      "snippet": "- User was fired from work.", "score": 1}],
+            now_ms=base_ms + offset * 86_400_000,
+        )
+    monkeypatch.setattr(lab, "now_ms", lambda: base_ms + 4 * 86_400_000)
+
+    promotion = client.post("/api/memory/promote", json={}).json()["promotion"]
+
+    assert promotion["parsed"]["shouldWrite"] is True
+    assert promotion["evaluatedCandidates"][0]["reasons"] == []
+    assert promotion["evaluatedCandidates"][0]["selected"] is True
+    assert "User was fired from work." in (lab.root / "MEMORY.md").read_text(encoding="utf-8")
+    changes = {change["path"]: change for change in client.get("/api/lab/diff", params={"since": "reset"}).json()}
+    assert changes["MEMORY.md"]["sources"][0]["source"] == "promotion"

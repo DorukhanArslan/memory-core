@@ -21,6 +21,7 @@ from fastapi.responses import StreamingResponse
 
 from demo.chat_engine import ChatEngine, OpenAICompatibleChatEngine, ScriptedChatEngine
 from demo.lab_chat import chat_turn_frames
+from demo.lab_consolidation import consolidation_view
 from demo.lab_events import parse_last_event_id, stream_lab_events, unified_diff
 from demo.lab_flush import flush_meter
 from demo.lab_heartbeat import heartbeat_run_frames, heartbeat_state, set_clock, strip_payload
@@ -241,6 +242,11 @@ def build_router(lab: LabRuntime) -> APIRouter:
             media_type="text/event-stream",
             headers=SSE_HEADERS,
         )
+
+    @router.get("/consolidation")
+    def consolidation():
+        lab.ensure_exists()
+        return consolidation_view(lab)
 
     @router.get("/index/status")
     def index_status_route():

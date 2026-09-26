@@ -253,11 +253,6 @@ def _tool_specs(user_cap: int | None) -> dict[str, tuple[str, dict, tuple[str, .
                     "type": "string",
                     "description": "Text of the active directive this one replaces.",
                 },
-                "observed": {
-                    "type": "string",
-                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-                    "description": "Date the user said it, YYYY-MM-DD. Defaults to today.",
-                },
             },
             ("text",),
         ),
@@ -894,9 +889,11 @@ class MemoryCurator:
                 memory_flush=memory_flush,
             )
         if name == UPSERT_USER_DIRECTIVE:
+            # The observed date is the host's today, never the model's: a model has no
+            # reliable clock (a 2026-09-26 Lab turn stamped 2026-07-15). Hosts that import
+            # older directives call upsert_user_directive(observed=...) directly.
             return self.upsert_user_directive(
                 _required_arg(args, "text", tool=name),
-                observed=_optional_arg(args, "observed", tool=name),
                 supersede=_optional_arg(args, "supersede", tool=name),
                 memory_flush=memory_flush,
             )

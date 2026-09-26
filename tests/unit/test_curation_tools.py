@@ -101,6 +101,20 @@ def test_dispatch_runs_calls_from_json_or_mappings(tmp_path, curator):
     assert "chars" not in note
 
 
+def test_directive_tool_stamps_the_host_date_not_the_model_date(curator, tmp_path):
+    upsert = curator.tool_definitions()[CURATION_OPERATIONS.index("upsert_user_directive")]
+    assert "observed" not in upsert["parameters"]["properties"]
+
+    result = curator.dispatch(
+        "upsert_user_directive", {"text": "Prefer delta.", "observed": "2026-07-15"}
+    )
+
+    assert result["action"] == "added"
+    assert (tmp_path / "USER.md").read_text(encoding="utf-8") == (
+        "<!-- observed: 2026-09-25 | status: active -->\n\n- Prefer delta.\n"
+    )
+
+
 @pytest.mark.parametrize(
     ("name", "arguments", "message"),
     [
@@ -117,7 +131,6 @@ def test_dispatch_runs_calls_from_json_or_mappings(tmp_path, curator):
             {"entry": "alpha [score=0.960 recalls=3 avg=0.920 source=memory/2026-04-09.md:3-3]"},
             "memory promotion section",
         ),
-        ("upsert_user_directive", {"text": "Prefer delta.", "observed": "26.09.2026"}, "YYYY-MM-DD"),
         (SET_PROACTIVE_PREFERENCES, {}, "text required"),
         ("append_daily_note", None, "text required"),
     ],

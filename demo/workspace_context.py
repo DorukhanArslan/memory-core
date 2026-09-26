@@ -1,36 +1,32 @@
+"""Lab adapter over :mod:`memory_core.bootstrap` (demo-only).
+
+The Lab keeps its own seed texts below (project-authored, not OpenClaw template
+wording) and passes them to ``initialize_agent_workspace`` as host templates.
+Seeding, the BOOTSTRAP.md lifecycle, the per-file/total budget and the Project
+Context rendering all come from the package, so the chat prompt uses the
+upstream render format and order. Nothing here is a second implementation.
+"""
+
 from __future__ import annotations
 
-from collections import OrderedDict
 from pathlib import Path
 
-
-BOOTSTRAP_FILE_ORDER = (
-    "AGENTS.md",
-    "SOUL.md",
-    "TOOLS.md",
-    "IDENTITY.md",
-    "USER.md",
-    "HEARTBEAT.md",
-    "BOOTSTRAP.md",
-    "MEMORY.md",
+from memory_core.bootstrap import (
+    DEFAULT_WORKSPACE_LAYOUT,
+    ContextFile,
+    WorkspaceInitResult,
+    WorkspaceLayout,
+    build_workspace_context,
+    initialize_agent_workspace,
 )
-WORKSPACE_FILE_ORDER = (
-    "AGENTS.md",
-    "SOUL.md",
-    "TOOLS.md",
-    "IDENTITY.md",
-    "USER.md",
-    "HEARTBEAT.md",
-    "BOOTSTRAP.md",
-)
-# OpenClaw HEAD defaults: per-file 20_000 (raised from 12_000 upstream on
-# 2026-06-01), total 60_000. See src/agents/embedded-agent-helpers/bootstrap.ts.
-BOOTSTRAP_MAX_CHARS = 20_000
-BOOTSTRAP_TOTAL_MAX_CHARS = 60_000
+from memory_core.bootstrap.render import prepare_context_files
 
-DEFAULT_WORKSPACE_FILES = OrderedDict(
-    {
-        "AGENTS.md": """# AGENTS.md - Operating Instructions
+DEMO_WORKSPACE_LAYOUT = DEFAULT_WORKSPACE_LAYOUT
+
+# Lab seed texts (project-authored). PROACTIVE_PREFERENCES.md has no Lab text
+# and is seeded empty, so it is not injected until someone writes to it.
+DEMO_WORKSPACE_TEMPLATES = {
+    "AGENTS.md": """# AGENTS.md - Operating Instructions
 
 You are memory-core, a private workspace agent.
 
@@ -40,7 +36,7 @@ You are memory-core, a private workspace agent.
 - Keep detailed daily notes in `memory/YYYY-MM-DD.md`.
 - Keep curated long-term summaries in `MEMORY.md`.
 """,
-        "SOUL.md": """# SOUL.md - Persona and Tone
+    "SOUL.md": """# SOUL.md - Persona and Tone
 
 Be direct, practical, and technically precise.
 
@@ -49,7 +45,7 @@ Be direct, practical, and technically precise.
 - Prefer concise answers unless the user asks for detail.
 - Call out weak assumptions early.
 """,
-        "TOOLS.md": """# TOOLS.md - Local Tool Conventions
+    "TOOLS.md": """# TOOLS.md - Local Tool Conventions
 
 This file is guidance, not an access-control list.
 
@@ -57,73 +53,75 @@ This file is guidance, not an access-control list.
 - Do not store secrets in memory.
 - Prefer narrow file reads over loading broad history.
 """,
-        "IDENTITY.md": """# IDENTITY.md - Agent Identity
+    "IDENTITY.md": """# IDENTITY.md - Agent Identity
 
 Name: memory-core
 Vibe: pragmatic memory lab assistant
 Emoji: none
 """,
-        "USER.md": """# USER.md - User Profile
+    "USER.md": """# USER.md - User Profile
 
 No stable user facts have been curated yet.
 """,
-        "HEARTBEAT.md": """# HEARTBEAT.md - Continuity Check
+    "HEARTBEAT.md": """# HEARTBEAT.md - Continuity Check
 
 Before acting, re-read the workspace files that define current identity, user context, tools, and memory.
 """,
-        "BOOTSTRAP.md": """# BOOTSTRAP.md - First Run
+    "BOOTSTRAP.md": """# BOOTSTRAP.md - First Run
 
 Use this file only for first-run workspace configuration. Once identity is configured, it may be removed.
 """,
-    }
-)
+}
 
 
-def ensure_workspace_bootstrap_files(workspace_dir: Path) -> None:
-    workspace_dir.mkdir(parents=True, exist_ok=True)
-    brand_new_workspace = not any(
-        (workspace_dir / rel_path).exists()
-        for rel_path in DEFAULT_WORKSPACE_FILES
-        if rel_path != "BOOTSTRAP.md"
+def ensure_workspace_bootstrap_files(
+    workspace_dir: Path, *, layout: WorkspaceLayout = DEMO_WORKSPACE_LAYOUT
+) -> WorkspaceInitResult:
+    """Seed missing layout files from the Lab templates and run the lifecycle.
+
+    Upstream semantics (``ensureAgentWorkspace``): existing files are never
+    overwritten, BOOTSTRAP.md is written only for a workspace without setup
+    evidence (``memory/``, ``MEMORY.md``, a skill, or a changed SOUL/IDENTITY/
+    USER file), and it is deleted once such evidence appears.
+    """
+    return initialize_agent_workspace(
+        workspace_dir, layout=layout, templates=DEMO_WORKSPACE_TEMPLATES
     )
-    for rel_path, content in DEFAULT_WORKSPACE_FILES.items():
-        if rel_path == "BOOTSTRAP.md" and not brand_new_workspace:
-            continue
-        path = workspace_dir / rel_path
-        if not path.exists():
-            path.write_text(content, encoding="utf-8")
 
 
-def workspace_file_contents(workspace_dir: Path) -> dict[str, str]:
+def workspace_file_names(layout: WorkspaceLayout = DEMO_WORKSPACE_LAYOUT) -> list[str]:
+    """Layout files the Lab lists, in load order; MEMORY.md is listed as a memory file."""
+    return [name for name in layout.load_order if name != layout.memory_file]
+
+
+def workspace_file_contents(
+    workspace_dir: Path, *, layout: WorkspaceLayout = DEMO_WORKSPACE_LAYOUT
+) -> dict[str, str]:
     contents: dict[str, str] = {}
-    for rel_path in WORKSPACE_FILE_ORDER:
+    for rel_path in workspace_file_names(layout):
         path = workspace_dir / rel_path
         contents[rel_path] = path.read_text(encoding="utf-8") if path.is_file() else ""
     return contents
 
 
-def build_workspace_context(workspace_dir: Path) -> str:
-    remaining = BOOTSTRAP_TOTAL_MAX_CHARS
-    sections = ["## Workspace Files (injected)"]
-    for rel_path in BOOTSTRAP_FILE_ORDER:
-        path = workspace_dir / rel_path
-        if not path.is_file():
-            text = f"[MISSING] Expected at: {path}"
-        else:
-            text = path.read_text(encoding="utf-8")
-        injected, remaining = _truncate_for_bootstrap(text, remaining)
-        sections.append(f"### {rel_path}\n{injected}")
-        if remaining <= 0:
-            sections.append("[workspace bootstrap total limit reached]")
-            break
-    return "\n\n".join(sections)
+def injected_file_order(layout: WorkspaceLayout = DEMO_WORKSPACE_LAYOUT) -> list[str]:
+    """Project Context order of the layout's files; dynamic files (HEARTBEAT.md) last."""
+    prepared = prepare_context_files(
+        (ContextFile(name, "") for name in layout.load_order), layout
+    )
+    return [file.path for file in (*prepared.stable, *prepared.dynamic)]
 
 
-def _truncate_for_bootstrap(text: str, remaining_total: int) -> tuple[str, int]:
-    limit = max(0, min(BOOTSTRAP_MAX_CHARS, remaining_total))
-    if len(text) <= limit:
-        return text, remaining_total - len(text)
-    marker = "\n[truncated workspace bootstrap file]"
-    if limit <= len(marker):
-        return marker[:limit], 0
-    return text[: limit - len(marker)] + marker, remaining_total - limit
+def workspace_layout_summary(layout: WorkspaceLayout = DEMO_WORKSPACE_LAYOUT) -> dict[str, object]:
+    return {
+        "name": layout.name,
+        "loadOrder": list(layout.load_order),
+        "injectedOrder": injected_file_order(layout),
+    }
+
+
+def build_workspace_prompt(
+    workspace_dir: Path, *, layout: WorkspaceLayout = DEMO_WORKSPACE_LAYOUT
+) -> str:
+    """The injected workspace text of a main-session chat turn (upstream format)."""
+    return build_workspace_context(workspace_dir, layout=layout).prompt_text

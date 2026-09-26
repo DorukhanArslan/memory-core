@@ -208,6 +208,7 @@
         memoryFileContents: {},
         workspaceFiles: [],
         workspaceFileContents: {},
+        workspaceLayout: {},
         engines: {},
         config: {},
         liveTask: null
@@ -457,7 +458,7 @@
         const paths = Object.keys(files);
         const container = document.createElement("div");
         container.className = "stacked-detail";
-        container.append(textBlock("These OpenClaw workspace files are injected into every live turn system prompt in canonical order. Chat and live modes read the same workspace root."));
+        container.append(textBlock("These workspace files are injected into every live turn system prompt, in Project Context order, as the live SDK renders them. Live mode reads its own workspace root, separate from the chat workspace, and does not inject the root MEMORY.md into subject prompts."));
         if (!paths.length) {
           container.append(textBlock("No workspace files bootstrapped yet. Send a turn or press Reset."));
           return container;
@@ -942,10 +943,14 @@
       function workspaceBootstrapNode() {
         const wrap = document.createElement("div");
         wrap.className = "stacked-detail";
+        const layout = state.workspaceLayout || {};
         wrap.append(kvGrid({
-          "Injected order": "AGENTS.md -> SOUL.md -> TOOLS.md -> IDENTITY.md -> USER.md -> HEARTBEAT.md -> BOOTSTRAP.md -> MEMORY.md",
+          Layout: layout.name || "unknown",
+          "Injected order": (layout.injectedOrder || []).join(" -> ") || "unknown",
+          "Budget order": (layout.loadOrder || []).join(" -> ") || "unknown",
+          "BOOTSTRAP.md": "Injected only while bootstrap is pending; removed once memory or a changed profile file exists",
           "Daily memory": "Not injected by default; searched/read on demand",
-          "Missing files": "Represented as missing-file markers",
+          "Missing files": "Missing-file marker; a missing MEMORY.md and empty files are skipped",
         }));
         return wrap;
       }

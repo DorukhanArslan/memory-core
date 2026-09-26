@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from demo.live_task_demo import (
+    LIVE_TASK_AGENTS_SECTION_HEADING,
     LiveTaskDemo,
     LiveTaskSessionState,
     advance_appointment_workflow,
@@ -56,6 +57,61 @@ def test_live_task_demo_bootstraps_identity_and_streams_sentence_events(tmp_path
     assert events[-1]["type"] == LIVE_TURN_COMPLETED
     assert demo.state().workflow["current_step"] == "collect_new_time"
     assert (tmp_path / "trace" / "live-task" / "session_1.jsonl").exists()
+
+
+def test_live_task_demo_appends_its_agents_section_once(tmp_path: Path):
+    demo = LiveTaskDemo(workspace_dir=tmp_path)
+    demo.reset()
+    demo.reset()
+
+    async def collect():
+        return [
+            event
+            async for event in demo.stream_turn(
+                session_id="session_1",
+                subject_id="subject_1",
+                user_utterance="Doğum tarihim 12.04.1990",
+            )
+        ]
+
+    asyncio.run(collect())
+    agents = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    edited = agents.replace("Ask for one missing item at a time.", "Ask one thing per turn.")
+    (tmp_path / "AGENTS.md").write_text(edited, encoding="utf-8")
+    demo.reset()
+
+    assert agents.count(LIVE_TASK_AGENTS_SECTION_HEADING) == 1
+    assert agents.startswith("# AGENTS.md - Operating Instructions")
+    assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8") == edited
+
+
+def test_live_task_demo_keeps_root_memory_out_of_live_prompts(tmp_path: Path):
+    demo = LiveTaskDemo(workspace_dir=tmp_path)
+    demo.reset()
+    (tmp_path / "MEMORY.md").write_text("Operator-only long-term note.", encoding="utf-8")
+    seen: list[str] = []
+
+    async def capturing_llm(messages):
+        seen.append(messages[0]["content"])
+        yield "Tamam."
+
+    async def collect():
+        return [
+            event
+            async for event in demo.stream_turn(
+                session_id="session_1",
+                subject_id="subject_1",
+                user_utterance="Merhaba",
+                llm=capturing_llm,
+            )
+        ]
+
+    asyncio.run(collect())
+
+    assert "Operator-only long-term note." not in seen[0]
+    assert "# Project Context\n" in seen[0]
+    assert LIVE_TASK_AGENTS_SECTION_HEADING in seen[0]
+    assert "MEMORY.md" not in demo.state().identity_files
 
 
 def test_live_task_demo_transcript_records_assistant_text_once(tmp_path: Path):

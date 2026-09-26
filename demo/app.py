@@ -50,10 +50,11 @@ from demo.short_term_promotion import (
     run_short_term_promotion,
 )
 from demo.workspace_context import (
-    DEFAULT_WORKSPACE_FILES,
+    build_workspace_prompt,
     ensure_workspace_bootstrap_files,
-    build_workspace_context,
     workspace_file_contents,
+    workspace_file_names,
+    workspace_layout_summary,
 )
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import EmbeddingProvider, FakeEmbeddingProvider
@@ -365,11 +366,11 @@ def _memory_file_contents(paths: list[str]) -> dict[str, str]:
 
 
 def _workspace_files() -> list[str]:
-    return list(DEFAULT_WORKSPACE_FILES)
+    return workspace_file_names()
 
 
 def _workspace_context() -> str:
-    return build_workspace_context(demo_config().workspace_dir)
+    return build_workspace_prompt(demo_config().workspace_dir)
 
 
 def _state_payload() -> dict[str, Any]:
@@ -385,6 +386,7 @@ def _state_payload() -> dict[str, Any]:
             "workspaceFiles": _workspace_files(),
             "workspaceFileContents": workspace_file_contents(config.workspace_dir),
             "workspaceContext": _workspace_context(),
+            "workspaceLayout": workspace_layout_summary(),
             "promotionSweep": PROMOTION_SWEEP,
             "dreamingSweep": DREAMING_SWEEP,
             "memoryAudit": MEMORY_AUDIT,

@@ -9,7 +9,6 @@ from typing import Any
 
 from demo.workspace_context import ensure_workspace_bootstrap_files
 from memory_core.live import (
-    IDENTITY_FILE_ORDER,
     JsonlTraceSink,
     LIVE_TURN_COMPLETED,
     LiveIdentityStore,
@@ -21,6 +20,8 @@ from memory_core.live import (
 
 DEFAULT_LIVE_TASK_SESSION_ID = "demo_session"
 DEFAULT_LIVE_TASK_SUBJECT_ID = "demo_subject"
+LIVE_TASK_REQUIRED_FILES = ("AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md", "USER.md")
+LIVE_TASK_AGENTS_SECTION_HEADING = "## Live Task Demo: appointment_reschedule"
 
 
 @dataclass(frozen=True)
@@ -78,12 +79,14 @@ class LiveTaskDemo:
         )
 
     def _identity_files(self) -> dict[str, str]:
-        files: dict[str, str] = {}
-        for filename, _title in IDENTITY_FILE_ORDER:
-            path = self.workspace_dir / filename
-            if path.is_file():
-                files[filename] = path.read_text(encoding="utf-8")
-        return files
+        """What a live turn injects: file name -> injected text, in Project Context order."""
+        if not self.workspace_dir.is_dir():
+            return {}
+        identity = self._identity_store().load()
+        return {Path(path).name: content for path, content in identity.sections}
+
+    def _identity_store(self) -> LiveIdentityStore:
+        return LiveIdentityStore(self.workspace_dir, required_files=LIVE_TASK_REQUIRED_FILES)
 
     def _subject_memory_files(self, subject_id: str) -> dict[str, str]:
         if not subject_id or any(part in subject_id for part in ("/", "\\", "..")):
@@ -119,10 +122,7 @@ class LiveTaskDemo:
             subject_id=subject_id,
             reindex=False,
         )
-        identity = LiveIdentityStore(
-            self.workspace_dir,
-            required_files=("AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md", "USER.md"),
-        ).load()
+        identity = self._identity_store().load()
         trace_sink = JsonlTraceSink(self._trace_path(session_id))
         context = LiveTurnContext(
             subject_id=subject_id,
@@ -198,15 +198,25 @@ class LiveTaskDemo:
         }
 
     def _bootstrap_workspace(self) -> None:
+        """Seed the live workspace and append the task's AGENTS.md section once.
+
+        Seeding uses the Lab templates (``ensure_workspace_bootstrap_files``).
+        The ``## Live Task Demo: appointment_reschedule`` section holds the
+        demo's own task rules; it is appended to AGENTS.md only while no line
+        of the file equals that heading, so resets and turns never duplicate
+        it, and a hand-edited section is left alone. Demo-only, no upstream
+        equivalent.
+        """
         ensure_workspace_bootstrap_files(self.workspace_dir)
         agents_path = self.workspace_dir / "AGENTS.md"
         existing = agents_path.read_text(encoding="utf-8") if agents_path.exists() else ""
-        if "appointment_reschedule" not in existing:
-            prefix = existing.rstrip()
-            agents_path.write_text(
-                f"{prefix}\n\n{_live_task_agents_md()}".lstrip(),
-                encoding="utf-8",
-            )
+        if any(line.strip() == LIVE_TASK_AGENTS_SECTION_HEADING for line in existing.splitlines()):
+            return
+        prefix = existing.rstrip()
+        agents_path.write_text(
+            f"{prefix}\n\n{_live_task_agents_md()}".lstrip(),
+            encoding="utf-8",
+        )
 
     def _trace_path(self, session_id: str) -> Path:
         return self.trace_dir / f"{session_id}.jsonl"
@@ -281,7 +291,7 @@ def _response_chunks(state: LiveTaskSessionState) -> tuple[str, ...]:
 
 
 def _live_task_agents_md() -> str:
-    return """## Live Task Demo: appointment_reschedule
+    return f"""{LIVE_TASK_AGENTS_SECTION_HEADING}
 
 - Handle appointment change requests in short turns suitable for text-to-speech.
 - Verify the subject before changing an appointment.

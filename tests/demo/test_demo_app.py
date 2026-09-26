@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 import json
+import os
 
 from fastapi.testclient import TestClient
 
@@ -144,6 +145,14 @@ def test_demo_home_loads():
     assert "Workspace Files (Injected)" in response.text
     assert "workspaceInjectedFiles" in response.text
     assert "identityFiles" in response.text
+    assert '"Injected order": (layout.injectedOrder || []).join(" -> ")' in response.text
+    assert '"Budget order": (layout.loadOrder || []).join(" -> ")' in response.text
+    assert "Injected only while bootstrap is pending" in response.text
+    assert "a missing MEMORY.md and empty files are skipped" in response.text
+    assert "Live mode reads its own workspace root, separate from the chat workspace" in response.text
+    assert "does not inject the root MEMORY.md into subject prompts" in response.text
+    assert "Chat and live modes read the same workspace root" not in response.text
+    assert "These OpenClaw workspace files" not in response.text
     assert "interaction-stack" not in response.text
     assert 'textContent += text' not in response.text
     assert "Fake</option>" not in response.text
@@ -260,15 +269,55 @@ def test_chat_state_endpoint_returns_engines_and_memory_files():
         "TOOLS.md",
         "IDENTITY.md",
         "USER.md",
+        "PROACTIVE_PREFERENCES.md",
         "HEARTBEAT.md",
         "BOOTSTRAP.md",
     ]
     assert "workspaceFileContents" in payload
     assert "Operating Instructions" in payload["workspaceFileContents"]["AGENTS.md"]
     assert "Persona and Tone" in payload["workspaceFileContents"]["SOUL.md"]
-    assert "Workspace Files (injected)" in payload["workspaceContext"]
-    assert "### AGENTS.md" in payload["workspaceContext"]
-    assert "### MEMORY.md" in payload["workspaceContext"]
+    # The seed creates memory/ and MEMORY.md: setup counts as complete, so no
+    # BOOTSTRAP.md is written and no Bootstrap Pending section is injected.
+    assert payload["workspaceFileContents"]["BOOTSTRAP.md"] == ""
+    workspace_root = os.path.abspath(demo_app.DEMO_WORKSPACE)
+    context = payload["workspaceContext"]
+    assert context.startswith(
+        "## Workspace Files (injected)\n"
+        "These user-editable files are loaded by memory-core and included below in Project Context.\n"
+        "# Project Context\n"
+    )
+    assert f"## {workspace_root}/AGENTS.md\n# AGENTS.md - Operating Instructions" in context
+    assert f"## {workspace_root}/MEMORY.md\n# MEMORY.md - Long-Term Memory" in context
+    assert context.index(f"## {workspace_root}/USER.md") < context.index(
+        f"## {workspace_root}/TOOLS.md"
+    )
+    assert "# Dynamic Project Context" in context
+    assert "Bootstrap Pending" not in context
+    assert payload["workspaceLayout"] == {
+        "name": "memory-core",
+        "loadOrder": [
+            "AGENTS.md",
+            "SOUL.md",
+            "TOOLS.md",
+            "IDENTITY.md",
+            "USER.md",
+            "PROACTIVE_PREFERENCES.md",
+            "HEARTBEAT.md",
+            "BOOTSTRAP.md",
+            "MEMORY.md",
+        ],
+        "injectedOrder": [
+            "AGENTS.md",
+            "SOUL.md",
+            "IDENTITY.md",
+            "USER.md",
+            "PROACTIVE_PREFERENCES.md",
+            "TOOLS.md",
+            "BOOTSTRAP.md",
+            "MEMORY.md",
+            "HEARTBEAT.md",
+        ],
+    }
     assert "MEMORY.md" in payload["memoryFileContents"]
     assert "Long-Term Memory" in payload["memoryFileContents"]["MEMORY.md"]
     assert "OpenClaw" not in payload["memoryFileContents"]["MEMORY.md"]
@@ -310,7 +359,20 @@ def test_live_task_reset_and_state_endpoints():
     assert "IDENTITY.md" in payload["workspaceInjectedFiles"]
     assert "USER.md" in payload["workspaceInjectedFiles"]
     assert "HEARTBEAT.md" in payload["workspaceInjectedFiles"]
+    # The live workspace has no memory/ or MEMORY.md at its root, so its
+    # BOOTSTRAP.md stays pending and is injected like upstream's full mode.
     assert "BOOTSTRAP.md" in payload["workspaceInjectedFiles"]
+    assert "MEMORY.md" not in payload["workspaceInjectedFiles"]
+    assert "PROACTIVE_PREFERENCES.md" not in payload["workspaceInjectedFiles"]
+    assert list(payload["workspaceInjectedFiles"])[:4] == [
+        "AGENTS.md",
+        "SOUL.md",
+        "IDENTITY.md",
+        "USER.md",
+    ]
+    assert payload["workspaceInjectedFiles"]["AGENTS.md"].count(
+        "## Live Task Demo: appointment_reschedule"
+    ) == 1
 
 
 def test_live_task_turn_stream_emits_latency_events(monkeypatch):
@@ -551,8 +613,9 @@ def test_chat_send_runs_recall_and_returns_turn(monkeypatch):
     assert payload["turns"][0]["assistantResponse"]
     assert payload["turns"][0]["flush"] is None
     assert engine.workspace_contexts
-    assert "### AGENTS.md" in engine.workspace_contexts[-1]
-    assert "### MEMORY.md" in engine.workspace_contexts[-1]
+    workspace_root = os.path.abspath(demo_app.DEMO_WORKSPACE)
+    assert f"## {workspace_root}/AGENTS.md" in engine.workspace_contexts[-1]
+    assert f"## {workspace_root}/MEMORY.md" in engine.workspace_contexts[-1]
 
 
 def test_chat_send_writes_indexable_session_transcript(monkeypatch):

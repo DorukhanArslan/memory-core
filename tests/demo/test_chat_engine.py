@@ -92,7 +92,7 @@ def test_openai_engine_complete_posts_openai_compatible_chat_request(monkeypatch
     response = engine.complete(
         messages=[ChatMessage(role="user", content="Kısa yanıt verir misin?")],
         memory_context=["MEMORY.md#1: User prefers Turkish."],
-        workspace_context="## Workspace Files (injected)\n\n### AGENTS.md\nUse Turkish.",
+        workspace_context="# Project Context\n## /w/AGENTS.md\nUse Turkish.",
     )
 
     assert response.role == "assistant"
@@ -112,7 +112,7 @@ def test_openai_engine_complete_posts_openai_compatible_chat_request(monkeypatch
         },
         {
             "role": "system",
-            "content": "## Workspace Files (injected)\n\n### AGENTS.md\nUse Turkish.",
+            "content": "# Project Context\n## /w/AGENTS.md\nUse Turkish.",
         },
         {
             "role": "system",

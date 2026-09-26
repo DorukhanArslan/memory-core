@@ -3,6 +3,7 @@
 import { h, icon, fmtN, copyText } from './dom.js';
 import { t } from '../i18n/index.js';
 import { toast } from './overlay.js';
+import { store } from '../store.js';
 
 /* ---------- chips and badges ---------- */
 export function chip({ label, tone = 'neutral', ic = null, onClick = null, aria = null, testid = null, ext = false, title = null, dot = null, cls = '', target = null }) {
@@ -161,4 +162,21 @@ export function failCard(err, opts = {}) {
   if (err?.missing) return missingCard(err, opts);
   if (err?.code === 'not_found') return notFoundCard(err, opts);
   return apiErrorCard(err, opts);
+}
+
+/* ---------- "Nasıl çalışır?" (DESIGN §10 D6): short, collapsed per-view explanations ----------
+ * Wording comes from docs/lab.md and docs/*.md only (the removed /memory-system page is not a
+ * source for numbers); the source line names the doc. Open state is kept per view for the session. */
+const HOW = { chat: 7, heartbeat: 4, consolidation: 5, live: 4, parity: 4, memory: 4 };
+export function howItWorks(id) {
+  const n = HOW[id] || 0;
+  const key = id === 'parity' ? 'parity.how' : `how.${id}`; // the parity surface keeps its own ids
+  const open = store.ui.howOpen?.has(id);
+  const d = h('details', { class: 'how', 'data-how': id, 'data-testid': `how-${id}` },
+    h('summary', null, icon('help', 12), h('span', { class: 'how-title' }, t('how.title'))),
+    h('ul', { class: 'how-list' }, Array.from({ length: n }, (_, i) => h('li', null, t(`${key}.${i + 1}`)))),
+    h('p', { class: 'how-src' }, `${t('how.source')}: `, h('span', { class: 'mono' }, t(`${key}.src`))));
+  if (open) d.open = true;
+  d.addEventListener('toggle', () => { const set = store.ui.howOpen || (store.ui.howOpen = new Set()); if (d.open) set.add(id); else set.delete(id); });
+  return d;
 }

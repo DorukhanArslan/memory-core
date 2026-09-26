@@ -5,7 +5,7 @@ import { h, icon, replace, fmtMs, fmtTime } from '../ui/dom.js';
 import { t, has } from '../i18n/index.js';
 import { store, refresh, mergeTurns, providerBody, loadState, loadFiles, loadIndex, chatKeyState, loadTurn, SYS_TYPES } from '../store.js';
 import { api, postStream } from '../api.js';
-import { chip, btn, iconBtn, jsonDisclosure, emptyState, honesty, missingCard } from '../ui/kit.js';
+import { chip, btn, iconBtn, jsonDisclosure, emptyState, honesty, missingCard, howItWorks } from '../ui/kit.js';
 import { openMenu, announce, toast } from '../ui/overlay.js';
 import { markdown } from '../ui/markdown.js';
 import { composerEl, updateComposer, SESSION_KINDS } from './composer.js';
@@ -370,7 +370,7 @@ export function renderChat(body) {
       h('div', { class: 'msg msg-asst' }, h('span', { class: 'role role-asst' }, identityName()), h('div', { class: 'msg-text' }, h('span', { class: 'stream-text' }, st.text), h('span', { class: 'caret', 'aria-hidden': 'true' }))),
       h('div', { class: 'stepper', role: 'list', 'aria-label': t('chat.stages'), 'data-testid': 'stage-stepper' })));
   }
-  replace(body, store.actions.scenarioStrip?.() || null, chatHeader(), logEl, composerEl());
+  replace(body, store.actions.scenarioStrip?.() || null, chatHeader(), h('div', { class: 'how-bar' }, howItWorks('chat')), logEl, composerEl());
   updateComposer();
   if (st) paintStepper();
   requestAnimationFrame(() => { if (wasBottom || st) { stickBottom = true; scrollLog(); } else if (prevTop !== null && !stackedMq.matches) logEl.scrollTop = prevTop; });

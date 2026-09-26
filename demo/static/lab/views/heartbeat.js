@@ -4,7 +4,7 @@ import { h, icon, replace, fmtMs, fmtTime, fmtRelMin } from '../ui/dom.js';
 import { t } from '../i18n/index.js';
 import { store, refresh, loadHeartbeat, providerBody, chatKeyState } from '../store.js';
 import { api, postStream } from '../api.js';
-import { chip, btn, toggle, emptyState, failCard, skeleton, honesty, apiErrorCard } from '../ui/kit.js';
+import { chip, btn, toggle, emptyState, failCard, skeleton, honesty, apiErrorCard, howItWorks } from '../ui/kit.js';
 import { openDialog, toast } from '../ui/overlay.js';
 import { promptPre } from '../inspector/common.js';
 import { toolCard } from './chat.js';
@@ -157,6 +157,7 @@ export function renderHeartbeat(body) {
       ppState ? chip({ label: `PROACTIVE_PREFERENCES.md: ${ppState}`, tone: 'ext', ic: 'puzzle', onClick: () => store.actions.openFile('PROACTIVE_PREFERENCES.md') }) : null,
     ].filter(Boolean)),
     h('div', { class: 'view-scroll' },
+      howItWorks('heartbeat'),
       h('div', { class: 'hb-bar' },
         h('div', { class: 'vclock', 'data-testid': 'virtual-clock' },
           h('span', { class: 'vclock-k' }, icon('clock', 14), t('hb.virtualClock')),

@@ -5,7 +5,7 @@ import { h, icon, replace, fmtN, fmtTime, fmtScore } from '../ui/dom.js';
 import { t, has } from '../i18n/index.js';
 import { store, refresh, loadConsolidation, loadFiles, providerBody } from '../store.js';
 import { api } from '../api.js';
-import { chip, btn, segmented, emptyState, failCard, skeleton, jsonDisclosure } from '../ui/kit.js';
+import { chip, btn, segmented, emptyState, failCard, skeleton, jsonDisclosure, howItWorks } from '../ui/kit.js';
 import { toast, confirmDialog } from '../ui/overlay.js';
 import { parseUnified, diffView } from '../ui/diff.js';
 import { viewHead } from './heartbeat.js';
@@ -120,6 +120,7 @@ export function renderConsolidation(body) {
   replace(body, strip,
     viewHead(t('view.consolidation'), 'merge', curationFlags.map(([k, f]) => chip({ label: `${f.label || k}: ${f.on ? t('state.on') : t('state.off')}`, tone: f.on ? 'ok' : 'neutral', ext: !!f.extension, onClick: () => store.actions.openSettings('curation'), title: k }))),
     h('div', { class: 'view-scroll' },
+      howItWorks('consolidation'),
       h('div', { class: 'cons-switch' }, segmented({ options: [{ value: 'curated', label: t('cons.curatedShort') }, { value: 'scored', label: t('cons.scoredShort') }], value: u.consolidationPane, onChange: (v) => { u.consolidationPane = v; refresh('center'); }, aria: t('cons.pane'), size: 'sm' })),
       h('div', { class: ['cons-grid', `show-${u.consolidationPane}`] }, left, right),
       h('div', { class: 'insp-foot muted' }, icon('info', 12), t('cons.footer'))));

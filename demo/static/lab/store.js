@@ -51,6 +51,7 @@ export const store = {
     compare: false,
     openSections: new Set(saved.openSections || ['notices', 'budget', 'stable', 'dynamic', 'recall', 'tools']),
     openFolds: new Set(),
+    howOpen: new Set(),
     explorerOrder: saved.explorerOrder || 'prompt',
     showHidden: false,
     expanded: new Set(saved.expanded || ['memory', 'memory/daily', 'memory/session']),

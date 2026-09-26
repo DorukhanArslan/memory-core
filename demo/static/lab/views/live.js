@@ -5,7 +5,7 @@ import { h, icon, replace, fmtN, basename } from '../ui/dom.js';
 import { t } from '../i18n/index.js';
 import { store, refresh, loadLive, providerBody } from '../store.js';
 import { api, postStream } from '../api.js';
-import { chip, btn, honesty, jsonDisclosure, emptyState, failCard, skeleton } from '../ui/kit.js';
+import { chip, btn, honesty, jsonDisclosure, emptyState, failCard, skeleton, howItWorks } from '../ui/kit.js';
 import { toast } from '../ui/overlay.js';
 import { viewHead, card } from './heartbeat.js';
 
@@ -98,6 +98,7 @@ export function renderLive(body) {
       chip({ label: 'adapter-only · memory_core.live', tone: 'neutral' }),
     ]),
     h('div', { class: 'view-scroll' },
+      howItWorks('live'),
       scripted ? h('div', { class: 'honesty tone-warn', role: 'status', 'data-testid': 'scripted-banner' }, icon('alert-triangle', 12), h('span', null, t('live.scriptedBanner'))) : null,
       honesty(t('live.stepMachineNote'), 'info', 'info'),
       h('div', { class: 'live-controls' },

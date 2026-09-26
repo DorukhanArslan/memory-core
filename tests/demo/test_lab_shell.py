@@ -287,3 +287,18 @@ def test_contract_heartbeat_fields(lab_client: TestClient) -> None:
     assert "unparsedTaskEntries" in source and "unparsedCount" not in source
     assert "memoryTools" not in source
     assert "disabled: noKey" not in source
+
+
+def test_how_it_works_disclosures_have_both_languages() -> None:
+    # D6: one collapsed "Nasıl çalışır?" per view; every bullet id exists in TR and EN.
+    kit = (LAB_ROOT / "ui" / "kit.js").read_text(encoding="utf-8")
+    counts = dict(re.findall(r"(\w+): (\d+)", re.search(r"const HOW = \{([^}]*)\}", kit).group(1)))
+    assert set(counts) == {"chat", "heartbeat", "consolidation", "live", "parity", "memory"}
+    tr = (LAB_ROOT / "i18n" / "tr.js").read_text(encoding="utf-8")
+    en = (LAB_ROOT / "i18n" / "en.js").read_text(encoding="utf-8")
+    for view, n in counts.items():
+        prefix = "parity.how" if view == "parity" else f"how.{view}"
+        for key in [f"{prefix}.{i}" for i in range(1, int(n) + 1)] + [f"{prefix}.src"]:
+            assert f"'{key}':" in tr and f"'{key}':" in en, key
+    for module in ("views/chat.js", "views/heartbeat.js", "views/consolidation.js", "views/live.js", "views/parity.js", "inspector/memory.js"):
+        assert "howItWorks(" in (LAB_ROOT / module).read_text(encoding="utf-8"), module

@@ -5,7 +5,7 @@ import { highlightWords } from '../ui/dom.js';
 import { t } from '../i18n/index.js';
 import { store, refresh, providerBody, loadIndex } from '../store.js';
 import { api } from '../api.js';
-import { chip, btn, segmented, jsonDisclosure, emptyState, failCard, skeleton, honesty } from '../ui/kit.js';
+import { chip, btn, segmented, jsonDisclosure, emptyState, failCard, skeleton, honesty, howItWorks } from '../ui/kit.js';
 import { selectEl } from './common.js';
 import { cooldownLeft } from '../views/shell.js';
 
@@ -71,6 +71,7 @@ export function memoryTab(turn) {
   const fts = s?.embedding?.mode === 'fts-only' || idx?.embeddings?.mode === 'fts-only';
   const cd = cooldownLeft();
   const wrap = h('div', { class: 'memory-tab' });
+  wrap.append(howItWorks('memory'));
   const identity = idx?.identity;
   wrap.append(h('div', { class: 'status-strip' },
     idx ? chip({ label: `${t('memory.identity')}: ${identity?.status ? t(`identity.${identity.status}`) : '—'}`, tone: { valid: 'ok', mismatched: 'danger', missing: 'warn' }[identity?.status] || 'neutral', ic: identity?.status === 'valid' ? 'check' : 'alert-triangle', title: `${identity?.reason || ''}\n${t('memory.identityNotFile')}`.trim(), testid: 'index-identity' }) : null,

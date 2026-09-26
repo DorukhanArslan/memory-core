@@ -8,7 +8,7 @@ import { h, replace, fmtN, fmtScore, copyText } from '../ui/dom.js';
 import { t, has } from '../i18n/index.js';
 import { store, loadParity, refresh } from '../store.js';
 import { api } from '../api.js';
-import { chip, btn, iconBtn, jsonDisclosure, failCard, skeleton, honesty } from '../ui/kit.js';
+import { chip, btn, iconBtn, jsonDisclosure, failCard, skeleton, honesty, howItWorks } from '../ui/kit.js';
 import { toast } from '../ui/overlay.js';
 import { viewHead, card } from './heartbeat.js';
 
@@ -118,6 +118,7 @@ export function renderParity(body) {
       chip({ label: p.node?.version ? `node ${p.node.version}` : t('parity.noNode'), tone: p.node?.version ? 'neutral' : 'warn', cls: 'chip-mono', title: p.node?.path || null }),
     ].filter(Boolean)),
     h('div', { class: 'view-scroll' },
+      howItWorks('parity'),
       r ? resultsBlock(p, r) : card(t('parity.noResults'), [
         h('p', { class: 'muted' }, t('parity.noResultsText')),
         p.resultsPath ? h('div', { class: 'muted small' }, t('parity.resultsPath'), ' ', h('code', { class: 'mono' }, p.resultsPath)) : null,

@@ -1658,3 +1658,79 @@ def test_provider_check_redacts_the_key_and_records_the_status(client, monkeypat
     embedding = client.post("/api/lab/provider/check", json={"embedding": {}}).json()
     assert embedding == {**embedding, "ok": False, "mode": "fts-only", "target": "embedding"}
     assert "provider.check" in event_types(client)
+
+
+# --- live SDK task ------------------------------------------------------------------------------
+
+
+def live_turn(client, message, **ids):
+    response = client.post("/api/live-task/turn-stream", json={"sessionId": "demo_session", "subjectId": "demo_subject", "message": message, **ids})
+    assert response.status_code == 200
+    return parse_sse(response.text)
+
+
+def test_live_task_scripted_flow_reports_its_engine_and_redacts_the_summary(client, lab):
+    state = client.post("/api/live-task/reset", json={}).json()
+    assert state["engine"] == {"mode": "scripted", "keySource": "none", "model": "workflow-script"}
+    assert state["workflow"]["current_step"] == "verify_identity"
+    assert "identityFiles" not in state
+    assert state["workspace"] == str(lab.live_root) != str(lab.root)
+
+    first = live_turn(client, "Merhaba, randevumu değiştirmek istiyorum.")
+    types = [frame["event"] for frame in first]
+    for expected in ("live_turn_started", "memory_recall_completed", "prompt_assembled", "text_delta", "sentence", "live_turn_completed"):
+        assert expected in types
+    assert types[-1] == "live_task_state"
+    provider = [frame["data"]["data"] for frame in first if frame["event"] == "provider_event"]
+    assert {"type": "llm", "provider": "scripted", "model": "workflow-script"} in provider
+    for message in ("Kimlik doğrulaması için müşteri numaram 4821.", "Yarın saat 14:30 olabilir mi?", "Evet, onaylıyorum."):
+        live_turn(client, message)
+    final = client.get("/api/live-task/state").json()
+    assert final["workflow"]["current_step"] == "completed"
+    assert final["workflow"]["business_action"]["type"] == "appointment_rescheduled"
+
+    summary = client.post("/api/live-task/summary", json={}).json()["summary"]
+
+    assert summary["wrote"] is True and summary["redacted"] is True
+    daily = lab.live_root / "subjects" / "demo_subject" / summary["path"]
+    assert "4821" not in daily.read_text(encoding="utf-8")
+    assert "[kimlik bilgisi gizlendi]" in daily.read_text(encoding="utf-8")
+    bus_types = event_types(client)
+    assert "live.sentence" in bus_types and "live.session_summary" in bus_types
+
+
+def test_live_task_state_reports_the_env_key_engine(client, monkeypatch):
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", "env-live-key-value")
+
+    body = client.get("/api/live-task/state").text
+
+    assert json.loads(body)["engine"]["mode"] == "llm"
+    assert "env-live-key-value" not in body
+
+
+def test_live_task_turn_failure_redacts_the_request_key(client, monkeypatch):
+    import demo.lab_kept_api as kept
+
+    key = "request-scoped-live-key-123"
+
+    class FailingEngine:
+        model = "test-model"
+
+        def raw_chat_stream(self, messages):
+            del messages
+            raise RuntimeError(f"401 Unauthorized: invalid api key {key}")
+            yield ""  # pragma: no cover
+
+    monkeypatch.setattr(kept, "live_engine", lambda lab, payload: FailingEngine())
+    client.post("/api/live-task/reset", json={})
+
+    response = client.post(
+        "/api/live-task/turn-stream",
+        json={"message": "Merhaba", "openai": {"apiKey": key}},
+    )
+
+    frames = parse_sse(response.text)
+    failed = [frame for frame in frames if frame["event"] == "live_turn_failed"]
+    assert failed and "[redacted]" in failed[0]["data"]["data"]["error"]
+    assert key not in response.text
+    assert key not in client.get("/api/lab/events", params={"once": "true"}).text

@@ -20,6 +20,9 @@ from memory_core.live import (
 
 DEFAULT_LIVE_TASK_SESSION_ID = "demo_session"
 DEFAULT_LIVE_TASK_SUBJECT_ID = "demo_subject"
+# Replaces the utterance that verified the subject before a summary is built, so
+# identity data (a birth date, a customer number) never reaches subject memory.
+REDACTED_IDENTITY_PROOF = "[kimlik bilgisi gizlendi]"
 LIVE_TASK_REQUIRED_FILES = ("AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md", "USER.md")
 LIVE_TASK_AGENTS_SECTION_HEADING = "## Live Task Demo: appointment_reschedule"
 
@@ -55,6 +58,14 @@ class LiveTaskDemo:
             subject_id=DEFAULT_LIVE_TASK_SUBJECT_ID,
         )
         self._transcript: list[dict[str, str]] = []
+        self._identity_proofs: list[str] = []
+
+    def redact(self, text: str) -> str:
+        """Host redactor for summaries: the identity-proof utterances become a placeholder."""
+        for proof in sorted(self._identity_proofs, key=len, reverse=True):
+            if proof:
+                text = text.replace(proof, REDACTED_IDENTITY_PROOF)
+        return text
 
     def reset(
         self,
@@ -66,6 +77,7 @@ class LiveTaskDemo:
         self._bootstrap_workspace()
         self._state = LiveTaskSessionState(session_id=session_id, subject_id=subject_id)
         self._transcript = []
+        self._identity_proofs = []
         return self.state()
 
     def state(self) -> LiveTaskDemoState:
@@ -125,8 +137,11 @@ class LiveTaskDemo:
         if self._state.session_id != session_id or self._state.subject_id != subject_id:
             self._state = LiveTaskSessionState(session_id=session_id, subject_id=subject_id)
             self._transcript = []
+            self._identity_proofs = []
 
         next_state = advance_appointment_workflow(self._state, user_utterance)
+        if next_state.verified and not self._state.verified:
+            self._identity_proofs.append(user_utterance.strip())
         memory = SubjectMemory.open(
             workspace_dir=self.workspace_dir,
             subject_id=subject_id,
@@ -186,13 +201,19 @@ class LiveTaskDemo:
             reindex=False,
         )
         transcript_text = transcript or _format_transcript(self._transcript)
+        redacted_transcript = [
+            {**item, "content": self.redact(item["content"])} for item in self._transcript
+        ]
         resolved_summary_llm = summary_llm or (
-            lambda messages: _fake_summary_output(self._state, self._transcript)
+            lambda messages: _fake_summary_output(self._state, redacted_transcript)
         )
+        # The SDK redacts the transcript before the model sees it and sanitizes the
+        # reply (JSON object or "- " lines only; anything else is skipped, not stored).
         result = memory.record_session_summary(
             session_id=session_id,
             transcript=transcript_text,
             summary_llm=resolved_summary_llm,
+            redactor=self.redact,
             timezone="Europe/Istanbul",
             trace_sink=JsonlTraceSink.for_session(self.trace_dir, session_id),
         )
@@ -204,6 +225,8 @@ class LiveTaskDemo:
             "durable_facts": list(result.durable_facts),
             "preferences": list(result.preferences),
             "follow_ups": list(result.follow_ups),
+            "skip_reason": result.skip_reason,
+            "redacted": bool(self._identity_proofs),
         }
 
     def _bootstrap_workspace(self) -> None:

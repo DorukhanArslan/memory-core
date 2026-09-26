@@ -82,6 +82,15 @@ def test_shell_route_sets_the_content_security_policy(client):
     assert "frame-ancestors 'none'" in SHELL_CONTENT_SECURITY_POLICY
 
 
+def test_shell_and_static_assets_must_be_revalidated(client):
+    # A rebuilt Lab must never run against a stylesheet or module the browser cached earlier.
+    for path in ("/", "/static/styles.css", "/static/lab/app.js"):
+        response = client.get(path)
+
+        assert response.status_code == 200, path
+        assert response.headers["cache-control"] == "no-cache", path
+
+
 @pytest.mark.parametrize(
     ("method", "path"),
     [

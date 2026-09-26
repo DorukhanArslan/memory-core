@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
+from starlette.responses import Response
 
 from demo.lab_api import build_router
 from demo.lab_kept_api import build_kept_router
@@ -32,6 +33,15 @@ SHELL_CONTENT_SECURITY_POLICY = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
     "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 )
+
+
+class RevalidatedStaticFiles(StaticFiles):
+    """Static files the browser must revalidate, so a rebuilt Lab never runs stale CSS or JS."""
+
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 def load_env_defaults(path: Path = PROJECT_ROOT / ".env") -> None:
@@ -53,7 +63,7 @@ def create_app(lab: LabRuntime | None = None) -> FastAPI:
     lab = lab if lab is not None else LabRuntime()
     app = FastAPI(title="memory-core Lab")
     app.state.lab = lab
-    app.mount("/static", StaticFiles(directory=DEMO_ROOT / "static"), name="static")
+    app.mount("/static", RevalidatedStaticFiles(directory=DEMO_ROOT / "static"), name="static")
     templates = Jinja2Templates(directory=DEMO_ROOT / "templates")
 
     @app.exception_handler(LabError)
@@ -79,6 +89,7 @@ def create_app(lab: LabRuntime | None = None) -> FastAPI:
         response.headers["Content-Security-Policy"] = SHELL_CONTENT_SECURITY_POLICY
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Cache-Control"] = "no-cache"
         return response
 
     app.include_router(build_router(lab))

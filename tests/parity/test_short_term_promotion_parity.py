@@ -1331,3 +1331,43 @@ def test_concept_tags_keep_decimal_tokens_and_split_dated_file_names_like_opencl
     assert concepts_module.derive_concept_tags(
         "memory/2026-05-26.md", "- User prefers to be addressed as dodo."
     ) == ["prefers", "addressed", "dodo"]
+
+
+def test_promotion_metadata_rounds_ties_up_like_openclaw_to_fixed(tmp_path: Path):
+    # buildPromotionSection formats score/avg with toFixed(3) (short-term-promotion.ts:2326),
+    # which rounds an exact tie up: avg (1 + 0.125) / 2 = 0.5625 is written as 0.563.
+    # Literal taken from the pin (test_real_openclaw_oracle_promotion_metadata_rounds_ties...).
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    daily = tmp_path / "memory" / "2026-05-08.md"
+    daily.parent.mkdir(parents=True)
+    daily.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+    hit = {
+        "path": "memory/2026-05-08.md",
+        "source": "memory",
+        "startLine": 3,
+        "endLine": 3,
+        "snippet": "- Move backups to S3 Glacier.",
+    }
+    for query, score in (("glacier", 1), ("backups", 0.125)):
+        record_short_term_recalls(
+            config=config, query=query, results=[{**hit, "score": score}], now_ms=now
+        )
+
+    run_short_term_promotion(
+        config=config,
+        store=fake_store(config),
+        now_ms=now,
+        timezone="UTC",
+        min_score=0,
+        min_recall_count=0,
+        min_unique_queries=0,
+        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+    )
+
+    assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == (
+        "# Long-Term Memory\n\n\n## Promoted From Short-Term Memory (2026-05-08)\n\n"
+        "<!-- openclaw-memory-promotion:memory:memory/2026-05-08.md:3:3 -->\n"
+        "- Move backups to S3 Glacier. [score=0.549 recalls=2 avg=0.563 "
+        "source=memory/2026-05-08.md:3-3]\n"
+    )

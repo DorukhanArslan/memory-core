@@ -38,6 +38,7 @@ from memory_core.consolidation._util import (
     clamp_score,
     exception_message,
     iso_ms,
+    js_to_fixed,
     normalize_snippet,
     parse_day_ms,
     parse_ms,
@@ -593,8 +594,9 @@ def _build_promotion_section(
             "- "
             + snippet
             + (
-                f" [score={candidate.score:.3f} recalls={candidate.recall_count} "
-                f"avg={candidate.avg_score:.3f} source={source}]"
+                # short-term-promotion.ts:2326 formats both with toFixed(3).
+                f" [score={js_to_fixed(candidate.score, 3)} recalls={candidate.recall_count} "
+                f"avg={js_to_fixed(candidate.avg_score, 3)} source={source}]"
             )
         )
     lines.append("")

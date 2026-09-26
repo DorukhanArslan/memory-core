@@ -3022,6 +3022,88 @@ def test_real_openclaw_oracle_promotion_header_uses_dreaming_timezone(tmp_path: 
     _assert_apply_matches(applied, python_run, python_side)
 
 
+def _run_promotion_fixture(
+    oracle: OpenClawOracle,
+    tmp_path: Path,
+    daily: str,
+    recalls: list[dict],
+    now_ms: int,
+) -> tuple[dict, dict, _PythonPromotion]:
+    """Record ``recalls`` on both sides of a one-note workspace, then rank and apply ungated."""
+    gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-promotion-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        memory_file = workspace / "memory" / "2026-05-08.md"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text(daily, encoding="utf-8")
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
+        for recall in recalls:
+            recorded = oracle.run(
+                {
+                    "operation": "recordShortTermRecalls",
+                    "workspaceDir": str(workspace),
+                    "query": recall["query"],
+                    "results": recall["results"],
+                    "nowMs": recall["nowMs"],
+                    "timezone": "UTC",
+                }
+            )
+            assert recorded["ok"] is True
+        ranked = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": now_ms,
+                "timezone": "UTC",
+                **gates,
+            }
+        )
+        applied = oracle.run(
+            {
+                "operation": "applyShortTermPromotions",
+                "workspaceDir": str(workspace),
+                "nowMs": now_ms,
+                "timezone": "UTC",
+                "candidates": ranked["result"]["candidates"],
+                **gates,
+            }
+        )
+    python_side.record_sequence(recalls)
+    assert python_side.rank(now_ms, **gates) == _ts_candidate_views(ranked)
+    return ranked, applied, python_side
+
+
+def test_real_openclaw_oracle_promotion_metadata_rounds_ties_like_to_fixed(tmp_path: Path):
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+    now_ms = 1778241600000  # 2026-05-08T12:00:00Z
+    hit = {
+        "source": "memory",
+        "path": "memory/2026-05-08.md",
+        "startLine": 3,
+        "endLine": 3,
+        "snippet": "- Move backups to S3 Glacier.",
+    }
+    # avgScore is exactly (1 + 0.125) / 2 = 0.5625: toFixed(3) gives 0.563, :.3f gives 0.562.
+    recalls = [
+        {"query": "glacier", "results": [{**hit, "score": 1}], "nowMs": now_ms},
+        {"query": "backups", "results": [{**hit, "score": 0.125}], "nowMs": now_ms},
+    ]
+
+    ranked, applied, python_side = _run_promotion_fixture(
+        oracle, tmp_path, "# 2026-05-08\n\n- Move backups to S3 Glacier.\n", recalls, now_ms
+    )
+
+    assert ranked["result"]["candidates"][0]["avgScore"] == 0.5625
+    assert applied["ok"] is True
+    assert "avg=0.563 " in applied["files"]["MEMORY.md"]
+    gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+    python_run = python_side.apply(now_ms, "UTC", **gates)
+    _assert_apply_matches(applied, python_run, python_side)
+
+
 def test_real_openclaw_oracle_history_limit_helpers_match_python():
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
     config = {

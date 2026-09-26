@@ -15,6 +15,7 @@ import math
 import os
 import secrets
 from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,22 @@ def clamp_score(value: float) -> float:
     if not math.isfinite(value):
         return 0.0
     return max(0.0, min(1.0, value))
+
+
+def js_to_fixed(value: float, digits: int) -> str:
+    """JavaScript ``Number.prototype.toFixed`` for finite ``|value| < 1e21``.
+
+    toFixed rounds the exact binary value and picks the larger ``n`` on a tie
+    (half away from zero after the sign is split off), where Python's ``:.Nf``
+    rounds ties to even: ``(0.5625).toFixed(3)`` is ``"0.563"``, ``f"{0.5625:.3f}"``
+    is ``"0.562"``. ``Decimal(float)`` is exact, so quantizing it half-up matches.
+    """
+    if not math.isfinite(value):
+        return "NaN" if math.isnan(value) else ("Infinity" if value > 0 else "-Infinity")
+    if value == 0:
+        value = 0.0  # (-0).toFixed(3) is "0.000"
+    quantum = Decimal(1).scaleb(-digits)
+    return str(Decimal(value).quantize(quantum, rounding=ROUND_HALF_UP))
 
 
 def iso_ms(now_ms: int) -> str:

@@ -14,7 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from demo.short_term_promotion import (  # noqa: E402
+from memory_core.config import MemoryConfig  # noqa: E402
+from memory_core.consolidation import (  # noqa: E402
     DEFAULT_PROMOTION_MIN_RECALL_COUNT,
     DEFAULT_PROMOTION_MIN_SCORE,
     DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
@@ -22,7 +23,6 @@ from demo.short_term_promotion import (  # noqa: E402
     record_daily_memory_flush,
     record_short_term_recalls,
 )
-from memory_core.config import MemoryConfig  # noqa: E402
 
 
 NOW_MS = int(datetime(2026, 5, 8, 12, 0, tzinfo=UTC).timestamp() * 1000)

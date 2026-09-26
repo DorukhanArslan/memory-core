@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 import demo.app as demo_app
 from demo.chat_engine import ChatResponse, FlushModelOutput
-from demo.short_term_promotion import (
+from memory_core.consolidation import (
     record_daily_memory_flush,
     record_short_term_recalls,
     run_short_term_promotion,

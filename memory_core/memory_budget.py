@@ -17,7 +17,7 @@ is ECMAScript ``\\s``, and dates sort with ``localeCompare`` via
 ``memory_core.bootstrap._js.locale_compare`` (exact for printable ASCII, which
 covers ``YYYY-MM-DD`` dates; other characters are approximated).
 
-``demo/short_term_promotion.py`` still carries its own copy of this logic.
+``memory_core.consolidation.promotion`` delegates its promotion-write compaction here.
 """
 
 from __future__ import annotations

@@ -5,8 +5,10 @@ import json
 import os
 from pathlib import Path
 
-import demo.short_term_promotion as promotion_module
-from demo.short_term_promotion import (
+import memory_core.consolidation.concepts as concepts_module
+import memory_core.consolidation.store as store_module
+from memory_core.config import MemoryConfig
+from memory_core.consolidation import (
     SHORT_TERM_LOCK_RELATIVE_PATH,
     SHORT_TERM_LOCK_STALE_MS,
     SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH,
@@ -18,7 +20,6 @@ from demo.short_term_promotion import (
     repair_short_term_promotion_artifacts,
     run_short_term_promotion,
 )
-from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 
@@ -35,15 +36,15 @@ def test_lock_constants_match_openclaw_paths():
     assert SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH.as_posix() == "memory/.dreams/phase-signals.json"
     assert SHORT_TERM_LOCK_RELATIVE_PATH.as_posix() == "memory/.dreams/short-term-promotion.lock"
     assert SHORT_TERM_LOCK_STALE_MS == 60_000
-    assert not hasattr(promotion_module, "SHORT_TERM_LOCK_GUARD_RELATIVE_PATH")
+    assert not hasattr(store_module, "SHORT_TERM_LOCK_GUARD_RELATIVE_PATH")
     assert (
-        promotion_module._SHORT_TERM_LOCK_GUARD_RELATIVE_PATH.as_posix()
+        store_module._SHORT_TERM_LOCK_GUARD_RELATIVE_PATH.as_posix()
         == "memory/.dreams/short-term-promotion.lock.guard"
     )
 
 
 def test_concept_tags_match_openclaw_vocabulary_for_european_languages():
-    assert promotion_module._derive_concept_tags(
+    assert concepts_module.derive_concept_tags(
         "memory/2026-04-04.md",
         "Configuración de gateway, configuration du routeur, Sicherung und Überwachung Glacier.",
     ) == [
@@ -58,7 +59,7 @@ def test_concept_tags_match_openclaw_vocabulary_for_european_languages():
 
 
 def test_concept_tags_match_openclaw_vocabulary_for_cjk_protected_terms():
-    assert promotion_module._derive_concept_tags(
+    assert concepts_module.derive_concept_tags(
         "memory/2026-04-04.md",
         "障害対応ルーター設定とバックアップ確認。路由器备份与网关同步。라우터 백업 페일오버 점검.",
     ) == [
@@ -74,7 +75,7 @@ def test_concept_tags_match_openclaw_vocabulary_for_cjk_protected_terms():
 
 
 def test_concept_tags_match_openclaw_vocabulary_for_chat_scaffolding_stop_words():
-    tags = promotion_module._derive_concept_tags(
+    tags = concepts_module.derive_concept_tags(
         "memory/.dreams/session-corpus/2026-04-16.txt",
         "Assistant: the system should remind you about the Ollama provider setup in your workspace.",
     )
@@ -89,14 +90,14 @@ def test_concept_tags_match_openclaw_vocabulary_for_chat_scaffolding_stop_words(
 
 
 def test_concept_tags_match_openclaw_vocabulary_for_stable_snippets_and_paths():
-    assert promotion_module._derive_concept_tags(
+    assert concepts_module.derive_concept_tags(
         "memory/2026-04-03.md",
         "Move backups to S3 Glacier and sync QMD router notes.",
     ) == ["backup", "backups", "glacier", "qmd", "router", "s3", "sync"]
 
 
 def test_concept_tags_match_openclaw_vocabulary_for_multilingual_short_term_fixture():
-    assert promotion_module._derive_concept_tags(
+    assert concepts_module.derive_concept_tags(
         "memory/2026-04-03.md",
         "Configuración du routeur et sauvegarde Glacier.",
     ) == ["glacier", "sauvegarde", "routeur", "configuración"]
@@ -176,7 +177,7 @@ def test_changed_stale_lock_is_not_unlinked_during_steal(tmp_path: Path, monkeyp
         )
         return True
 
-    monkeypatch.setattr(promotion_module, "_lock_is_stale", replace_with_fresh_lock)
+    monkeypatch.setattr(store_module, "_lock_is_stale", replace_with_fresh_lock)
 
     with acquire_short_term_promotion_lock(config, now) as lock:
         assert lock.acquired is False
@@ -292,9 +293,9 @@ def test_repair_removes_invalid_entries_and_stale_lock(tmp_path: Path):
         now_ms=ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC)),
     )
 
-    assert result["removedInvalidEntries"] == 2
-    assert result["rewroteStore"] is True
-    assert result["removedStaleLock"] is True
+    assert result.removed_invalid_entries == 2
+    assert result.rewrote_store is True
+    assert result.removed_stale_lock is True
     payload = json.loads((dreams / "short-term-recall.json").read_text(encoding="utf-8"))
     assert payload["updatedAt"] == "2026-05-08T12:00:00.000Z"
     assert isinstance(payload["entries"], dict)

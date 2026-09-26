@@ -30,25 +30,8 @@ from demo.live_task_demo import (
     LiveTaskDemoState,
 )
 from demo.transcript_context import select_transcript_context
-from demo.dreaming import run_dreaming_sweep
 from demo.memory_flush import MemoryFlushRun, ParsedFlushOutput, run_memory_flush
 from demo.parity_trace import build_parity_trace
-from demo.short_term_promotion import (
-    DEFAULT_DEEP_DREAMING_ENABLED,
-    DEFAULT_DEEP_DREAMING_LIMIT,
-    DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS,
-    DEFAULT_PROMOTION_MIN_RECALL_COUNT,
-    DEFAULT_PROMOTION_MIN_SCORE,
-    DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
-    MemoryPromotionRun,
-    SHORT_TERM_LOCK_RELATIVE_PATH,
-    SHORT_TERM_STORE_RELATIVE_PATH,
-    audit_short_term_promotion_artifacts,
-    record_daily_memory_flush,
-    record_short_term_recalls,
-    repair_short_term_promotion_artifacts,
-    run_short_term_promotion,
-)
 from demo.workspace_context import (
     build_workspace_prompt,
     ensure_workspace_bootstrap_files,
@@ -57,6 +40,24 @@ from demo.workspace_context import (
     workspace_layout_summary,
 )
 from memory_core.config import MemoryConfig
+from memory_core.consolidation import (
+    DEFAULT_DEEP_DREAMING_ENABLED,
+    DEFAULT_DEEP_DREAMING_LIMIT,
+    DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS,
+    DEFAULT_PROMOTION_MIN_RECALL_COUNT,
+    DEFAULT_PROMOTION_MIN_SCORE,
+    DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+    SHORT_TERM_LOCK_RELATIVE_PATH,
+    SHORT_TERM_STORE_RELATIVE_PATH,
+    MemoryPromotionRun,
+    PromotionWriteOutcome,
+    audit_short_term_promotion_artifacts,
+    record_daily_memory_flush,
+    record_short_term_recalls,
+    repair_short_term_promotion_artifacts,
+    run_short_term_promotion,
+)
+from memory_core.consolidation import run_dreaming_sweep as run_consolidation_dreaming_sweep
 from memory_core.embeddings.base import EmbeddingProvider, FakeEmbeddingProvider
 from memory_core.embeddings.openai_compatible import OpenAICompatibleEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
@@ -490,7 +491,7 @@ def _serialize_audit(audit: Any) -> dict[str, Any]:
     }
 
 
-def _serialize_parsed_flush(parsed: ParsedFlushOutput) -> dict[str, Any]:
+def _serialize_parsed_flush(parsed: ParsedFlushOutput | PromotionWriteOutcome) -> dict[str, Any]:
     return {
         "shouldWrite": parsed.should_write,
         "target": parsed.target,
@@ -764,7 +765,7 @@ def memory_repair(payload: dict | None = None):
     try:
         MEMORY_REPAIR = repair_short_term_promotion_artifacts(
             config=demo_config(), now_ms=_now_ms()
-        )
+        ).as_dict()
         MEMORY_AUDIT = _serialize_audit(
             audit_short_term_promotion_artifacts(config=demo_config(), now_ms=_now_ms())
         )
@@ -818,6 +819,11 @@ def _flush_latest_turn(engine: ChatEngine, store: SQLiteMemoryStore) -> dict[str
             timezone=DEMO_TIMEZONE,
         )
     )
+
+
+def run_dreaming_sweep(**kwargs: Any) -> dict[str, Any]:
+    # Thin adapter: the package sweep, serialized for the Lab state payload.
+    return run_consolidation_dreaming_sweep(**kwargs).as_dict()
 
 
 def _promote_short_term(store: SQLiteMemoryStore) -> dict[str, Any]:

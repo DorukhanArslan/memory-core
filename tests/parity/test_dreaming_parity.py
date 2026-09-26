@@ -3,13 +3,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from demo.dreaming import run_dreaming_sweep
-from demo.short_term_promotion import (
+from memory_core.config import MemoryConfig
+from memory_core.consolidation import (
     SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH,
     record_daily_memory_flush,
     record_short_term_recalls,
+    run_dreaming_sweep,
 )
-from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 
@@ -77,8 +77,8 @@ def test_light_dreaming_records_phase_signal(tmp_path: Path):
         timezone="Europe/Istanbul",
     )
 
-    assert run["phase"] == "light"
-    assert run["phaseSignalsRecorded"] == 1
+    assert run.phase == "light"
+    assert run.phase_signals_recorded == 1
     assert (tmp_path / SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH).exists()
 
 
@@ -96,7 +96,7 @@ def test_rem_dreaming_writes_dreams_md(tmp_path: Path):
     )
 
     dreams = tmp_path / "DREAMS.md"
-    assert run["phase"] == "rem"
+    assert run.phase == "rem"
     assert dreams.exists()
     assert "Dreaming sweep" in dreams.read_text(encoding="utf-8")
 
@@ -123,8 +123,8 @@ def test_deep_dreaming_runs_promotion(tmp_path: Path):
         timezone="Europe/Istanbul",
     )
 
-    assert run["phase"] == "deep"
-    assert run["promotion"]["parsed"]["shouldWrite"] is True
+    assert run.phase == "deep"
+    assert run.promotion.parsed.should_write is True
     assert "lowercase answers" in (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
 
 
@@ -179,8 +179,8 @@ def test_deep_dreaming_keeps_durable_user_preference_behind_openclaw_score_gate(
         timezone="Europe/Istanbul",
     )
 
-    assert run["phase"] == "deep"
-    assert run["promotion"]["parsed"]["shouldWrite"] is False
+    assert run.phase == "deep"
+    assert run.promotion.parsed.should_write is False
     assert "Kudret" not in memory.read_text(encoding="utf-8")
 
 
@@ -227,8 +227,8 @@ def test_deep_dreaming_rejects_three_signal_durable_preference_like_openclaw(tmp
         timezone="Europe/Istanbul",
     )
 
-    assert run["phase"] == "deep"
-    assert run["promotion"]["parsed"]["shouldWrite"] is False
+    assert run.phase == "deep"
+    assert run.promotion.parsed.should_write is False
     assert "Kudret" not in memory.read_text(encoding="utf-8")
 
 
@@ -247,6 +247,6 @@ def test_deep_dreaming_does_not_promote_single_weak_recall(tmp_path: Path):
         timezone="Europe/Istanbul",
     )
 
-    assert run["phase"] == "deep"
-    assert run["promotion"]["parsed"]["shouldWrite"] is False
+    assert run.phase == "deep"
+    assert run.promotion.parsed.should_write is False
     assert memory.read_text(encoding="utf-8") == "# MEMORY.md\n"

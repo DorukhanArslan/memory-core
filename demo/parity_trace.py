@@ -6,20 +6,16 @@ from pathlib import Path
 from typing import Any
 
 from demo.openclaw_oracle import OpenClawOracle
-from demo.short_term_promotion import (
-    DEFAULT_DEEP_DREAMING_ENABLED,
-    DEFAULT_DEEP_DREAMING_LIMIT,
-    DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS,
-    DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
+from memory_core.config import MemoryConfig
+from memory_core.consolidation import (
     DEFAULT_PROMOTION_MIN_RECALL_COUNT,
     DEFAULT_PROMOTION_MIN_SCORE,
     DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
-    DEFAULT_RECENCY_HALF_LIFE_DAYS,
     SHORT_TERM_STORE_RELATIVE_PATH,
     rank_short_term_promotion_candidates,
     record_short_term_recalls,
+    resolve_deep_dreaming_policy,
 )
-from memory_core.config import MemoryConfig
 
 DEEP_POLICY_CONDITION = (
     "score >= minScore && signals >= minRecallCount && "
@@ -94,7 +90,7 @@ def diff_values(python_values: dict[str, Any], openclaw_values: dict[str, Any]) 
 
 def build_deep_policy_trace(oracle: OpenClawOracle | Any | None = None) -> dict[str, Any]:
     oracle = oracle or OpenClawOracle()
-    python_values = _python_deep_policy_values({})
+    python_values = resolve_deep_dreaming_policy({}).as_dict()
     try:
         oracle_result = oracle.run({"operation": "deepPolicy", "config": {}})
     except Exception as exc:
@@ -124,7 +120,7 @@ def build_deep_policy_trace(oracle: OpenClawOracle | Any | None = None) -> dict[
 
 def build_configured_deep_policy_trace(oracle: OpenClawOracle | Any | None = None) -> dict[str, Any]:
     oracle = oracle or OpenClawOracle()
-    python_values = _python_deep_policy_values(CONFIGURED_DEEP_POLICY_CONFIG)
+    python_values = resolve_deep_dreaming_policy(CONFIGURED_DEEP_POLICY_CONFIG).as_dict()
     try:
         oracle_result = oracle.run(
             {"operation": "deepPolicy", "config": CONFIGURED_DEEP_POLICY_CONFIG}
@@ -154,43 +150,6 @@ def build_configured_deep_policy_trace(oracle: OpenClawOracle | Any | None = Non
     }
 
 
-def _python_deep_policy_values(config: dict[str, Any]) -> dict[str, Any]:
-    plugin_config = _memory_core_plugin_config(config)
-    dreaming = _as_dict(plugin_config.get("dreaming"))
-    phases = _as_dict(dreaming.get("phases"))
-    deep = _as_dict(phases.get("deep"))
-    dreaming_enabled = _bool(dreaming.get("enabled"), DEFAULT_DEEP_DREAMING_ENABLED)
-    deep_enabled = _bool(deep.get("enabled"), True)
-    return {
-        "minScore": _float(deep.get("minScore"), DEFAULT_PROMOTION_MIN_SCORE),
-        "minRecallCount": _non_negative_int(
-            deep.get("minRecallCount"), DEFAULT_PROMOTION_MIN_RECALL_COUNT
-        ),
-        "minUniqueQueries": _non_negative_int(
-            deep.get("minUniqueQueries"), DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES
-        ),
-        "maxAgeDays": _positive_int(
-            deep.get("maxAgeDays"), DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS
-        ),
-        "enabled": dreaming_enabled and deep_enabled,
-        "limit": _non_negative_int(deep.get("limit"), DEFAULT_DEEP_DREAMING_LIMIT),
-        "recencyHalfLifeDays": _non_negative_int(
-            deep.get("recencyHalfLifeDays"), DEFAULT_RECENCY_HALF_LIFE_DAYS
-        ),
-        "maxPromotedSnippetTokens": _positive_int(
-            deep.get("maxPromotedSnippetTokens"),
-            DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
-        ),
-    }
-
-
-def _memory_core_plugin_config(config: dict[str, Any]) -> dict[str, Any]:
-    plugins = _as_dict(config.get("plugins"))
-    entries = _as_dict(plugins.get("entries"))
-    memory_core = _as_dict(entries.get("memory-core"))
-    return _as_dict(memory_core.get("config")) or config
-
-
 def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
@@ -206,46 +165,6 @@ def _select_deep_policy_values(values: dict[str, Any]) -> dict[str, Any]:
         "recencyHalfLifeDays": values.get("recencyHalfLifeDays"),
         "maxPromotedSnippetTokens": values.get("maxPromotedSnippetTokens"),
     }
-
-
-def _bool(value: Any, fallback: bool) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized == "true":
-            return True
-        if normalized == "false":
-            return False
-    return fallback
-
-
-def _non_negative_int(value: Any, fallback: int) -> int:
-    try:
-        number = int(float(value))
-    except (TypeError, ValueError):
-        return fallback
-    return number if number >= 0 else fallback
-
-
-def _positive_int(value: Any, fallback: int) -> int:
-    try:
-        number = int(float(value))
-    except (TypeError, ValueError):
-        return fallback
-    return number if number > 0 else fallback
-
-
-def _float(value: Any, fallback: float) -> float:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return fallback
-    if number < 0:
-        return 0.0
-    if number > 1:
-        return 1.0
-    return number
 
 
 def _deep_policy_error_trace(

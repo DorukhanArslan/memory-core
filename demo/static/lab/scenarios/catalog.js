@@ -54,7 +54,7 @@ export const SCENARIOS = [
       { act: 'send', text: 'Karar: ödeme servisinde PostgreSQL yerine SQLite kullanıyoruz, çünkü servis tek kiracılı. Bunu uzun vadeli belleğe al.', waitFor: 'chat.turn.completed|chat.turn.failed', expect: 'scn.S02.e0',
         checks: [auto('fileChanged(MEMORY.md,{source:curation})', fileChanged('MEMORY.md', { source: 'curation' }), TURN), auto('fileUnchanged([USER.md])', fileUnchanged(['USER.md']), TURN), model('fileMatches(MEMORY.md,/SQLite/)', fileMatches('MEMORY.md', /SQLite/), [{ file: 'MEMORY.md' }])] },
       { act: 'send', text: "Bugün müşteri demosunu 16:00'ya aldık, bunu bugünün notuna yaz.", waitFor: 'chat.turn.completed|chat.turn.failed', expect: 'scn.S02.e1',
-        checks: [auto('fileChanged(daily(bugün))', fileChanged(daily()), TURN), auto('appendOnly(daily(bugün))', appendOnly(daily()), TURN), auto('fileUnchanged([MEMORY.md,USER.md])', fileUnchanged(['MEMORY.md', 'USER.md']), TURN), auto('fileAdded: yok', noFileAdded(), TURN)] },
+        checks: [auto('fileChanged(daily(bugün))', fileChanged(daily()), TURN), auto('appendOnly(daily(bugün))', appendOnly(daily()), TURN), auto('fileUnchanged([MEMORY.md,USER.md])', fileUnchanged(['MEMORY.md', 'USER.md']), TURN), auto('fileAdded: yalnız daily(bugün)', noFileAdded([daily()]), TURN)] },
       { act: 'look', tab: 'memory', search: { query: 'müşteri demosu', mode: 'text', minScore: 0, maxResults: 5 }, label: 'scn.S02.l2', expect: 'scn.S02.e2',
         checks: [model('searchTop(daily(bugün),1)', searchTop(daily(), 1), ['search']), auto('citationsFormat()', citationsFormat(), ['search'])] },
     ],

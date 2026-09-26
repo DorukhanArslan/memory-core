@@ -50,7 +50,7 @@ export async function startScenario(id, { queue = null } = {}) {
   }
   const begin = async () => {
     const startMark = await mark();
-    store.ui.scenario = { id, def, step: -1, startedAt: Date.now(), startMark, startWm: watermarks(), stepResults: def.steps.map(() => null), captured: [], manual: {}, queue, collapsed: false, finished: null, saved: {}, savedKeys: null, strip: {} };
+    store.ui.scenario = { id, def, step: -1, startedAt: Date.now(), startMark, startWm: watermarks(), stepResults: def.steps.map(() => null), captured: [], manual: {}, queue, collapsed: false, finished: null, saved: {}, savedKeys: null, strip: {}, savedUi: { promptKind: store.ui.promptKind, promptMode: store.ui.promptMode, compare: store.ui.compare } };
     pushLocal('senaryo.started', `${id} ${t('scn.started')}`, { id });
     await beginStep(0);
   };
@@ -136,6 +136,7 @@ async function restorePaths(s, paths) {
 }
 async function restore(s) {
   await restorePaths(s, Object.keys(s.saved));
+  if (s.savedUi) { Object.assign(store.ui, s.savedUi); s.savedUi = null; store.actions.loadFiles?.(); }
   if (s.savedKeys) { Object.assign(store.keys, s.savedKeys); s.savedKeys = null; refresh('top', 'center'); }
 }
 
@@ -244,8 +245,9 @@ async function gather(s, step) {
     ctx.flushTurn = null;
     for (const tr of scTurns.reverse()) { const det = await loadTurn(tr.id); if (det?.flush?.decision?.shouldRun) { ctx.flushTurn = det; break; } }
   }
-  const localTurns = (d.localTurns || []).slice(wm.localTurns);
-  ctx.lastError = localTurns.reverse().find((x) => x.error)?.error || null;
+  const localTurns = (d.localTurns || []).slice(wm.localTurns).reverse();
+  ctx.lastError = localTurns.find((x) => x.error)?.error || null;
+  if (ctx.turnMs === undefined && localTurns.length) ctx.turnMs = localTurns[0].ms;
   const rows = (d.localRows || []).slice(wm.localRows).filter((r) => r.kind === 'session');
   ctx.sessionNew = rows.length ? rows[rows.length - 1] : null;
   if (needs.has('search')) {

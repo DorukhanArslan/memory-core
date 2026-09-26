@@ -49,7 +49,7 @@ export const anyFileChanged = (specs, o = {}) => (ctx) => resolveAll(specs, ctx)
 export const fileUnchanged = (specs, { source = null } = {}) => (ctx) => { const ps = resolveAll(specs, ctx); return !(ctx.diff || []).some((d) => ps.includes(d.path) && (!source || sourcesOf(d).includes(source))); };
 export const onlyFileBySource = (spec, source) => (ctx) => { const p = resolve(spec, ctx); const list = (ctx.diff || []).filter((d) => sourcesOf(d).includes(source)); return list.length === 1 && list[0].path === p; };
 export const fileAdded = (re) => (ctx) => (ctx.diff || []).some((d) => d.status === 'added' && re.test(d.path));
-export const noFileAdded = () => (ctx) => !(ctx.diff || []).some((d) => d.status === 'added');
+export const noFileAdded = (except = []) => (ctx) => { const ok = resolveAll(except, ctx); return !(ctx.diff || []).some((d) => d.status === 'added' && !ok.includes(d.path)); };
 export const fileDeleted = (path, { source = null } = {}) => (ctx) => (ctx.diff || []).some((d) => d.path === path && d.status === 'deleted' && (!source || sourcesOf(d).includes(source)));
 export const fileMatches = (spec, re) => (ctx) => { const p = resolve(spec, ctx); return !!p && test(re, ctx.fileText[p] ?? ''); };
 /** Append-only: the step's diff for the file removes nothing and adds only after the existing lines. */

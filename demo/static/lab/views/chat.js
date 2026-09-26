@@ -114,7 +114,7 @@ async function sessionNew(command, text) {
     refresh('center');
     return null;
   }
-  pushLocalRow({ kind: 'session', command, text, sessionMemory: res?.sessionMemory?.path || null, startup: res?.startup || null, sessionId: res?.sessionId });
+  pushLocalRow({ kind: 'session', command, text, sessionMemory: res?.sessionMemory?.path || null, startup: res?.startup || null, sessionId: res?.sessionId, sessionKey: res?.sessionKey || null });
   await Promise.all([loadState(), loadFiles()]);
   if (!text) {
     // Bare /new or /reset: the reset turn streams separately; a 501 shows "henüz yok: reset istemi".
@@ -245,7 +245,8 @@ function turnBlock(turn) {
       turn.engine?.model ? h('span', { class: 'turn-engine-real mono', 'data-tip': `${turn.engine.provider || ''} · ${turn.engine.model}` }, turn.engine.model) : null,
       h('span', { class: 'spacer' }),
       turn.local ? null : btn(t('chat.inspect'), { size: 'xs', kind: 'ghost', ic: 'layers', cls: 'btn-compact', onClick: () => { u.follow = false; u.pinnedTurn = turn.id; store.actions.openInspector(u.inspectorTab || 'prompt'); refresh('center'); }, title: t('chat.inspectTip') })),
-    turn.user ? h('div', { class: 'msg msg-user' }, h('span', { class: 'role' }, t('chat.you')), h('div', { class: 'msg-text' }, turn.user))
+    // A reset turn stores `[memory-core session new]` as its user text; it renders as the system row.
+    turn.user && !turn.reset ? h('div', { class: 'msg msg-user' }, h('span', { class: 'role' }, t('chat.you')), h('div', { class: 'msg-text' }, turn.user))
       : h('div', { class: 'msg msg-sys' }, h('span', { class: 'role' }, t('chat.system')), h('div', { class: 'msg-text muted' }, t('chat.resetTurnNote'))),
     tools.length ? h('div', { class: 'msg msg-tools' }, h('span', { class: 'role' }, t('tool.title', { n: tools.length })), h('div', { class: 'tool-list' }, tools.map((tc) => toolCard(tc, { onExpand: () => loadTurn(turn.id) })))) : null,
     failed ? errorCard(turn) : h('div', { class: 'msg msg-asst' }, h('span', { class: 'role role-asst' }, identityName()), h('div', { class: 'msg-text' }, markdown(turn.assistant || '', { onCite: (p, a, b) => store.actions.openFile(p, a, b) }))),
@@ -261,18 +262,22 @@ function errorCard(turn) {
       e.redacted ? h('span', { class: 'chip tone-ok chip-xs', 'data-tip': t('chat.redactedTip') }, icon('check', 10), t('chat.redacted')) : null),
     h('div', { class: 'error-msg' }, String(e.error || e.message || '—')),
     h('div', { class: 'error-actions' },
-      turn.user ? btn(t('act.retry'), { size: 'sm', ic: 'rotate-ccw', onClick: () => runTurn(turn.user, turn.sessionKind || 'main') }) : null,
+      turn.user && !turn.reset ? btn(t('act.retry'), { size: 'sm', ic: 'rotate-ccw', onClick: () => runTurn(turn.user, turn.sessionKind || 'main') }) : null,
       /no_api_key|provider|network|http_/.test(code || '') ? btn(t('act.goSettings'), { size: 'sm', kind: 'ghost', onClick: () => store.actions.openSettings('chat') }) : null),
     jsonDisclosure(e, { title: t('act.details') }));
 }
 function systemRows() {
   const rows = [];
   const evs = store.data.events;
+  // One divider per /new: this tab's own row (it carries the session-memory path and the startup
+  // files from the response) replaces the bus session.new event with the same sessionKey.
+  const localKeys = new Set((store.data.localRows || []).filter((r) => r.kind === 'session' && r.sessionKey).map((r) => r.sessionKey));
   let from = 0;
   for (let i = evs.length - 1; i >= 0; i--) if (evs[i].type === 'workspace.reset' || evs[i].type === 'bootstrap.seeded') { from = i; break; }
   for (const e of evs.slice(from)) {
     if (!SYS_TYPES.has(e.type)) continue;
     if (e.type === 'heartbeat.decided' && !e.data?.delivered) continue;
+    if (e.type === 'session.new' && localKeys.has(e.data?.sessionKey)) continue;
     rows.push({ ts: e.ts, kind: e.type, text: e.summary, data: e.data || {} });
   }
   for (const r of store.data.localRows || []) rows.push({ ...r, kind: `local.${r.kind}` });
@@ -283,7 +288,7 @@ function systemRow(item) {
   if (item.kind === 'session.new' || item.kind === 'local.session') {
     const d = item.data || item;
     const mem = d.sessionMemory?.path || d.sessionMemory || d.path || null;
-    return h('div', { class: 'sysrow sysrow-session', role: 'separator', 'data-testid': 'system-row' },
+    return h('div', { class: 'sysrow sysrow-session', role: 'group', 'aria-label': t('chat.newSession'), 'data-testid': 'system-row' },
       h('span', { class: 'sys-line', 'aria-hidden': 'true' }),
       h('span', { class: 'sys-body' }, icon('plus', 12), h('b', null, t('chat.newSession')), ` · ${time}${d.command ? ` · /${d.command}${d.text ? ` ${d.text}` : ''}` : ''}`,
         mem ? chip({ label: t('chip.sessionMemory'), tone: 'accent', ic: 'plus', onClick: () => store.actions.openFile(mem), title: mem, testid: 'chip-session_memory' }) : null,
@@ -301,7 +306,9 @@ function systemRow(item) {
     'local.missing': { ic: 'minus', title: t('state.notYet'), tone: 'neutral' },
   }[item.kind] || { ic: 'info', title: item.kind, tone: 'neutral' };
   let text = item.kind === 'heartbeat.decided' ? (item.data.text || item.text) : item.text;
-  if (text && text.startsWith(map.title)) text = text.slice(map.title.length).replace(/^[\s:·-]+/, '');
+  // The server summary often repeats the row title in lower case ("çalışma alanı sıfırlandı (seeded)").
+  const fold = (x) => String(x).toLocaleLowerCase('tr');
+  if (text && fold(text).startsWith(fold(map.title))) text = text.slice(map.title.length).replace(/^[\s:·-]+/, '');
   return h('div', { class: ['sysrow', `sysrow-${item.kind.replace(/\W/g, '-')}`], role: 'note', 'data-testid': 'system-row' },
     h('span', { class: ['sys-ic', `tone-${map.tone}`], 'aria-hidden': 'true' }, icon(map.ic, 12)),
     h('span', { class: 'sys-title' }, map.title), h('span', { class: 'sys-time' }, time),

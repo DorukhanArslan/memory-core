@@ -135,7 +135,6 @@ export const TR = {
   'hb.selectRun': 'Çalıştırma #{n} seç', 'hb.compare': 'Karşılaştır', 'hb.compareTitle': 'Heartbeat karşılaştırma', 'hb.parser': 'Yanıt ayrıştırıcı', 'hb.parserOnly': 'yalnız ayrıştırıcı (model yok)',
   'hb.replyText': 'Yanıt metni', 'hb.parse': 'Ayrıştır', 'hb.skip': 'atla', 'hb.deliver': 'teslim et', 'hb.runFailed': 'Heartbeat başarısız',
   'hb.toastSkipped': 'Heartbeat atlandı: {r}', 'hb.toastDelivered': 'Heartbeat: uyarı teslim edildi', 'hb.toastAck': 'Heartbeat: HEARTBEAT_OK · teslim edilmedi',
-  'hb.noMemoryTools': 'Heartbeat modeline bellek araçları verilmiyor: günlük notu göremez. Günlük notu yargılayan adımlar engelli sayılır.',
   'hb.noTools': 'Bu çalıştırmada araç çağrısı yok.', 'hb.previewKind': 'Project Context · heartbeat türü (önizleme)',
   // consolidation
   'cons.curated': 'Küratörlü yazımlar', 'cons.scored': 'Skorlu terfi', 'cons.curatedShort': 'Küratörlü', 'cons.scoredShort': 'Skorlu', 'cons.pane': 'Bölüm',
@@ -213,7 +212,7 @@ export const TR = {
   'scn.autoNext': 'sonraki adım 0,6 sn', 'scn.evaluating': 'kontrol ediliyor', 'scn.progress': 'adım {a}/{b}', 'scn.stripAria': 'Senaryo {id}', 'scn.copyMd': 'Markdown olarak kopyala',
   'scn.blockedCount': '{n} kontrol engelli', 'scn.knownGap': 'bilinen açık', 'scn.someBlocked': 'bazı adımlar engelli', 'scn.nextInRun': 'Tam tur: sıradaki {id}',
   'scn.alreadyRunning': 'Önce çalışan senaryoyu bitir ya da durdur.', 'scn.started': 'başladı', 'scn.stopped': 'durduruldu', 'scn.setupTitle': '{id} kurulumu', 'scn.setupConfirm': 'Kur ve başlat',
-  'scn.blockedNoKey': 'model anahtarı yok', 'scn.blockedUserCuration': 'USER.md direktif küratörlüğü kapalı', 'scn.blockedHbNoTools': 'heartbeat modeli günlük notu göremez', 'scn.blockedFtsOnly': 'yalnız FTS: embedding sağlayıcı yok',
+  'scn.blockedNoKey': 'model anahtarı yok', 'scn.blockedUserCuration': 'USER.md direktif küratörlüğü kapalı','scn.blockedFtsOnly': 'yalnız FTS: embedding sağlayıcı yok',
   'scn.S01.title': 'Tercih öğret → USER.md direktifi', 'scn.S01.goal': "Kalıcı bir tercih USER.md'ye direktif olarak yazılsın, eski tercihi geçersiz kılsın ve sonraki turun prompt'unda görünsün.",
   'scn.S01.e0': 'Önce karşıt bir tercih yazılır: USER.md’ye küratörlük kaynaklı bir direktif eklenir.',
   'scn.S01.e1': 'Tur altında “USER.md +1 · uzantı” çipi. Eski direktif “status: superseded” olur. MEMORY.md küratörlükle değişmez.',
@@ -332,4 +331,8 @@ export const TR = {
   'scn.blockedProactiveEmpty': 'PROACTIVE_PREFERENCES.md boş: iki düzende de dışarıda, adım bir şey ölçmez',
   // flush meter (FlushDecision)
   'flush.tokenSource': 'token kaynağı',
+  // heartbeat preflight (keyless)
+  'hb.preflight': 'ön kontrol',
+  'hb.preflightDue': '{n} görev vadeli',
+  'hb.noKeyNote': 'Anahtar yok: ön kontrol yine çalışır ve atlama kararlarını gösterir; model çağrısı gereken bir çalıştırma no_api_key ile biter.',
 };

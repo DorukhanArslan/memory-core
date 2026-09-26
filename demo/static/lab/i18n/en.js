@@ -124,7 +124,6 @@ export const EN = {
   'hb.selectRun': 'Select run #{n}', 'hb.compare': 'Compare', 'hb.compareTitle': 'Heartbeat comparison', 'hb.parser': 'Reply parser', 'hb.parserOnly': 'parser only (no model)',
   'hb.replyText': 'Reply text', 'hb.parse': 'Parse', 'hb.skip': 'skip', 'hb.deliver': 'deliver', 'hb.runFailed': 'Heartbeat failed',
   'hb.toastSkipped': 'Heartbeat skipped: {r}', 'hb.toastDelivered': 'Heartbeat: alert delivered', 'hb.toastAck': 'Heartbeat: HEARTBEAT_OK · not delivered',
-  'hb.noMemoryTools': 'The heartbeat model gets no memory tools: it cannot see the daily note. Steps that judge the daily note count as blocked.',
   'hb.noTools': 'No tool calls in this run.', 'hb.previewKind': 'Project Context · heartbeat kind (preview)',
   'cons.curated': 'Curated writes', 'cons.scored': 'Scored promotion', 'cons.curatedShort': 'Curated', 'cons.scoredShort': 'Scored', 'cons.pane': 'Section',
   'cons.noCurated': 'No curated writes yet.', 'cons.revertTitle': 'Revert the curated write?', 'cons.revertLine': '{p} returns to its state before this write.', 'cons.revertConflict': '409: {p} changed since that write; revert from Diff.',
@@ -196,7 +195,7 @@ export const EN = {
   'scn.autoNext': 'next step in 0.6 s', 'scn.evaluating': 'checking', 'scn.progress': 'step {a}/{b}', 'scn.stripAria': 'Scenario {id}', 'scn.copyMd': 'Copy as Markdown',
   'scn.blockedCount': '{n} checks blocked', 'scn.knownGap': 'known gap', 'scn.someBlocked': 'some steps blocked', 'scn.nextInRun': 'Full run: next {id}',
   'scn.alreadyRunning': 'Finish or stop the running scenario first.', 'scn.started': 'started', 'scn.stopped': 'stopped', 'scn.setupTitle': '{id} setup', 'scn.setupConfirm': 'Set up and start',
-  'scn.blockedNoKey': 'no model key', 'scn.blockedUserCuration': 'USER.md directive curation is off', 'scn.blockedHbNoTools': 'the heartbeat model cannot see the daily note', 'scn.blockedFtsOnly': 'FTS only: no embedding provider',
+  'scn.blockedNoKey': 'no model key', 'scn.blockedUserCuration': 'USER.md directive curation is off','scn.blockedFtsOnly': 'FTS only: no embedding provider',
   'scn.S01.title': 'Teach a preference → USER.md directive', 'scn.S01.goal': "A lasting preference is written to USER.md as a directive, supersedes the old one and shows up in the next turn's prompt.",
   'scn.S01.e0': 'First an opposite preference is written: a curation-sourced directive lands in USER.md.',
   'scn.S01.e1': 'A “USER.md +1 · extension” chip under the turn. The old directive becomes “status: superseded”. MEMORY.md is not changed by curation.',
@@ -314,4 +313,8 @@ export const EN = {
   'scn.blockedProactiveEmpty': 'PROACTIVE_PREFERENCES.md is empty: excluded in both layouts, the step measures nothing',
   // flush meter (FlushDecision)
   'flush.tokenSource': 'token source',
+  // heartbeat preflight (keyless)
+  'hb.preflight': 'preflight',
+  'hb.preflightDue': '{n} tasks due',
+  'hb.noKeyNote': 'No key: the preflight still runs and shows skip decisions; a run that needs a model call ends with no_api_key.',
 };

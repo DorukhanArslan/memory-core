@@ -26,7 +26,6 @@ const curationUserFlagOff = (ctx) => {
   return entry && entry[1].on === false ? 'scn.blockedUserCuration' : null;
 };
 const needsKey = (ctx) => (ctx.keyState === 'none' ? 'scn.blockedNoKey' : null);
-const hbNoTools = (ctx) => (ctx.heartbeat?.memoryTools === false ? 'scn.blockedHbNoTools' : null);
 const needsHybrid = (ctx) => (ctx.settings?.embedding?.mode === 'fts-only' ? 'scn.blockedFtsOnly' : null);
 const fileOf = (ctx, path) => (ctx.files || []).find((e) => e.path === path) || null;
 // The seed holds no MEMORY.md (docs/lab.md › workspace/reset seeded); a check that needs it is blocked.
@@ -166,17 +165,19 @@ export const SCENARIOS = [
     ],
   },
   {
-    id: 'S09', minutes: 6, view: 'heartbeat', tags: ['upstream-uyumlu', 'demo-only: sanal saat', 'model'], requires: ['anahtar'], setup: { reset: 'seeded' }, blockedIf: needsKey,
+    // Keyless: the preflight answers skip decisions without a model (steps 1, 6, 7); steps that need
+    // a model reply, or a task state only a model run records (step 3), are blocked per step.
+    id: 'S09', minutes: 6, view: 'heartbeat', tags: ['upstream-uyumlu', 'demo-only: sanal saat', 'model'], requires: ['anahtar (2.-5. adım)'], setup: { reset: 'seeded' },
     steps: [
       { act: 'edit', path: 'HEARTBEAT.md', append: 'tasks:\n  - name: gunluk-takip\n    interval: 30m\n    prompt: Bugünün günlük notunda açık bir takip maddesi var mı kontrol et. Yoksa yalnızca HEARTBEAT_OK yaz.', waitFor: 'file.saved', label: 'scn.S09.l0', expect: 'scn.S09.e0',
         checks: [auto('heartbeatTasks({name:gunluk-takip,due})', hbTask('gunluk-takip', (x) => x.due || x.lastRunMs === null || x.lastRunMs === undefined), ['heartbeat'])] },
-      { act: 'press', view: 'heartbeat', target: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l1', expect: 'scn.S09.e1', blockedIf: hbNoTools,
+      { act: 'press', view: 'heartbeat', target: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l1', expect: 'scn.S09.e1', blockedIf: needsKey,
         checks: [auto('promptHas(heartbeatUser,/^Run the following periodic tasks/)', hbUserHas(/^Run the following periodic tasks/), ['hbRun']), auto('event(flush.decided,{reason:runtime_skip:heartbeat})', event('flush.decided', (d) => d.reason === 'runtime_skip:heartbeat')), model('heartbeatDelivered(false)', hbDelivered(false), ['hbRun'])] },
-      { act: 'press', view: 'heartbeat', target: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l2', expect: 'scn.S09.e2',
+      { act: 'press', view: 'heartbeat', target: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l2', expect: 'scn.S09.e2', blockedIf: needsKey,
         checks: [auto('heartbeatSkipped(no-tasks-due)', hbSkipped('no-tasks-due'), ['hbRun']), auto('noEvent(heartbeat.llm)', noEvent('heartbeat.llm'))] },
-      { act: 'send', text: 'Yarın 09:00\'da tedarikçiye fatura gönderilecek; bunu bugünün notuna takip maddesi olarak yaz.', waitFor: 'chat.turn.completed|chat.turn.failed', expect: 'scn.S09.e3',
+      { act: 'send', text: 'Yarın 09:00\'da tedarikçiye fatura gönderilecek; bunu bugünün notuna takip maddesi olarak yaz.', waitFor: 'chat.turn.completed|chat.turn.failed', expect: 'scn.S09.e3', blockedIf: needsKey,
         checks: [auto('fileChanged(daily(bugün))', fileChanged(daily()), TURN)] },
-      { act: 'press', view: 'heartbeat', target: 'hb-clock30', then: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l4', expect: 'scn.S09.e4', blockedIf: hbNoTools,
+      { act: 'press', view: 'heartbeat', target: 'hb-clock30', then: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l4', expect: 'scn.S09.e4', blockedIf: needsKey,
         checks: [model('heartbeatDelivered(true)', hbDelivered(true), ['hbRun']), auto('delivered → heartbeat notice row', (ctx) => !ctx.hbRun?.decision?.delivered || (ctx.events || []).some((e) => e.type === 'heartbeat.decided' && e.data?.delivered), ['hbRun'])] },
       { act: 'strip', inputs: ['HEARTBEAT_OK', '**HEARTBEAT_OK**.', 'All good. HEARTBEAT_OK', 'Alert: disk full'], view: 'heartbeat', target: 'hb-strip', label: 'scn.S09.l5', expect: 'scn.S09.e5',
         checks: [auto('strip → [skip,skip,skip,deliver]', stripSequence(['HEARTBEAT_OK', '**HEARTBEAT_OK**.', 'All good. HEARTBEAT_OK', 'Alert: disk full'], ['skip', 'skip', 'skip', 'deliver']), ['strip'])] },
@@ -191,7 +192,7 @@ export const SCENARIOS = [
         checks: [auto('badge(PROACTIVE_PREFERENCES.md,injected)', badge('PROACTIVE_PREFERENCES.md', 'injected'), ['files']), auto('promptOrder([USER.md,PROACTIVE_PREFERENCES.md,TOOLS.md],{kind:heartbeat})', promptOrder(['USER.md', 'PROACTIVE_PREFERENCES.md', 'TOOLS.md'], 'heartbeat'), ['prompt:heartbeat'])] },
       { act: 'send', text: 'Bugünün notuna takip maddesi ekle: cuma 11:00 ekip toplantısı.', waitFor: 'chat.turn.completed|chat.turn.failed', expect: 'scn.S10.e1',
         checks: [auto('fileChanged(daily(bugün))', fileChanged(daily()), TURN)] },
-      { act: 'press', view: 'heartbeat', target: 'hb-clock30', then: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S10.l2', expect: 'scn.S10.e2', blockedIf: hbNoTools,
+      { act: 'press', view: 'heartbeat', target: 'hb-clock30', then: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S10.l2', expect: 'scn.S10.e2',
         checks: [model('heartbeatDelivered(true)', hbDelivered(true), ['hbRun']), model('replyMatches(/fatura/i)', hbReplyMatches(/fatura/i), ['hbRun']), model('replyLacks(/toplantı/i)', hbReplyLacks(/toplantı/i), ['hbRun'])] },
       { act: 'look', view: 'heartbeat', target: 'hb-compare', label: 'scn.S10.l3', expect: 'scn.S10.e3', checks: [manual('scn.S10.m3')] },
       { act: 'setting', apply: { settings: { layout: 'pin' } }, label: 'scn.S10.l4', expect: 'scn.S10.e4',

@@ -275,3 +275,15 @@ def test_settings_offer_no_per_turn_flush(lab_client: TestClient) -> None:
     for field in ("reserveTokensFloor", "softThresholdTokens", "contextWindowTokens", "alreadyFlushed", "compactionCount", "reason"):
         assert field in snapshot, field
         assert field in shell, field
+
+
+def test_contract_heartbeat_fields(lab_client: TestClient) -> None:
+    # views/heartbeat.js reads the unparsed count, its label and the keyless preflight.
+    hb = lab_client.get("/api/lab/heartbeat").json()
+    for field in ("unparsedTaskEntries", "preflight", "labels", "file", "tasks", "runs"):
+        assert field in hb, field
+    assert {"skipReason", "dueTasks"} <= set(hb["preflight"])
+    source = (LAB_ROOT / "views" / "heartbeat.js").read_text(encoding="utf-8")
+    assert "unparsedTaskEntries" in source and "unparsedCount" not in source
+    assert "memoryTools" not in source
+    assert "disabled: noKey" not in source

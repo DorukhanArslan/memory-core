@@ -842,6 +842,7 @@
 /* ------------------------------------------------------------------ */
 @layer views {
   .hb-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .hb-pre { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; min-width: 0; }
   .vclock { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 8px; border-radius: var(--r-3); background: var(--bg-2); box-shadow: inset 0 0 0 1px var(--line-1); }
   .vclock-k { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); font-size: var(--t-sm); }
   .vclock-v { font: 600 15px var(--font-mono); margin-right: 4px; }

@@ -157,3 +157,30 @@ def test_public_api_exports_scored_consolidation_surface():
     for name in expected:
         assert hasattr(memory, name)
     assert memory.FeatureFlags().subject_promotion is False
+
+
+def test_import_memory_core_works_without_fcntl(tmp_path):
+    # fcntl is POSIX-only; the promotion guard imports it lazily (plug-and-play on Windows).
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = (
+        "import sys\n"
+        "sys.modules['fcntl'] = None\n"
+        "sys.modules['msvcrt'] = None\n"
+        "import memory_core\n"
+        "from memory_core.consolidation import acquire_short_term_promotion_lock\n"
+        f"config = memory_core.MemoryConfig(workspace_dir={str(tmp_path)!r})\n"
+        "with acquire_short_term_promotion_lock(config, 0) as lock:\n"
+        "    assert lock.acquired\n"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        cwd=Path(memory.__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert completed.returncode == 0, completed.stderr

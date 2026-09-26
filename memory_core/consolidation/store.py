@@ -14,11 +14,10 @@ the oracle runner bridges them into the pin's plugin state. The retention caps
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import secrets
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -296,14 +295,46 @@ def _read_short_term_lock_snapshot(lock_path: Path) -> _ShortTermLockSnapshot | 
 
 @contextmanager
 def _short_term_promotion_guard(lock_path: Path) -> Iterator[None]:
+    """Serialise lock steal/release: ``flock`` on POSIX, ``msvcrt.locking`` on Windows.
+
+    Imported lazily so ``import memory_core`` works where ``fcntl`` is missing; with
+    neither module the ``O_EXCL`` lock file alone guards the promotion.
+    """
     guard_path = lock_path.with_name(_SHORT_TERM_LOCK_GUARD_RELATIVE_PATH.name)
     guard_path.parent.mkdir(parents=True, exist_ok=True)
     with guard_path.open("a+b") as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        release = _lock_guard_file(handle)
         try:
             yield
         finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            release()
+
+
+def _lock_guard_file(handle: Any) -> Callable[[], None]:
+    try:
+        import fcntl
+    except ImportError:
+        fcntl = None
+    if fcntl is not None:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        return lambda: fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    try:
+        import msvcrt  # type: ignore[import-not-found]
+    except ImportError:
+        return lambda: None
+    handle.seek(0)
+    while True:
+        try:
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            break
+        except OSError:  # LK_LOCK gives up after ~10 s; keep waiting like flock.
+            continue
+
+    def release() -> None:
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
+    return release
 
 
 def _unlink_matching_short_term_lock(lock_path: Path, snapshot: _ShortTermLockSnapshot) -> bool:

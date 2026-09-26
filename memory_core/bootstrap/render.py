@@ -207,6 +207,26 @@ def render_workspace_files_injected(identity: RuntimeIdentity = MEMORY_CORE_RUNT
     return "\n".join(workspace_files_injected_lines(identity))
 
 
+def render_workspace_prompt(
+    *,
+    bootstrap_text: str = "",
+    workspace_files_text: str = "",
+    stable_text: str = "",
+    dynamic_text: str = "",
+) -> str:
+    """Join the workspace parts of the system prompt in upstream order.
+
+    ``buildAgentSystemPrompt`` (system-prompt.ts:1230-1278) emits the bootstrap
+    sections, the ``## Workspace Files (injected)`` lines, the stable
+    ``# Project Context`` block, the cache boundary and then the dynamic block,
+    joined with ``lines.filter(Boolean).join("\\n")``. Sections memory-core does
+    not render (output directives, reasoning format, ``## Silent Replies``) and
+    the cache boundary marker are left out, so this is the upstream order and
+    line format of the workspace parts only, not a whole system prompt.
+    """
+    return join_prompt_lines((bootstrap_text, workspace_files_text, stable_text, dynamic_text))
+
+
 def build_bootstrap_system_context_lines(
     bootstrap_mode: BootstrapMode | None, *, bootstrap_in_context: bool
 ) -> list[str]:

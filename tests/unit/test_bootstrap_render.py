@@ -13,6 +13,7 @@ from memory_core.bootstrap import (
     render_bootstrap_prompt_sections,
     render_project_context,
     render_workspace_files_injected,
+    render_workspace_prompt,
     sort_context_files,
 )
 from memory_core.bootstrap.render import DEFAULT_HEARTBEAT_PROMPT_CONTEXT_BLOCK
@@ -222,3 +223,64 @@ def test_memory_core_extra_dirs_are_never_injected_or_indexed(tmp_path):
     assert [file.content for file in context.files] == ["root rules"]
     assert "per-user" not in context.stable_text
     assert indexed == []
+
+
+def test_prompt_text_joins_workspace_parts_in_upstream_order(tmp_path):
+    initialize_agent_workspace(
+        tmp_path,
+        templates={
+            "AGENTS.md": "# Rules\n",
+            "HEARTBEAT.md": "- check\n",
+            "BOOTSTRAP.md": "Ask the name.\n",
+        },
+    )
+
+    context = build_workspace_context(tmp_path, path_style="relative")
+    prompt = context.prompt_text
+
+    # system-prompt.ts: bootstrap sections, Workspace Files lines, stable block,
+    # (cache boundary), dynamic block; blank lines vanish.
+    assert prompt == "\n".join(
+        [
+            context.bootstrap_text,
+            context.workspace_files_text,
+            context.stable_text,
+            context.dynamic_text,
+        ]
+    )
+    markers = [
+        "## Bootstrap Pending\nBOOTSTRAP.md is included below in Project Context",
+        "## Workspace Files (injected)\nThese user-editable files are loaded by memory-core",
+        "# Project Context\nThe following project context files have been loaded:",
+        "## AGENTS.md\n# Rules",
+        "## BOOTSTRAP.md\nAsk the name.",
+        "# Dynamic Project Context\n",
+        "## HEARTBEAT.md\n- check",
+    ]
+    positions = [prompt.index(marker) for marker in markers]
+    assert positions == sorted(positions)
+    assert "\n\n" not in prompt
+    assert render_workspace_prompt(stable_text="# Project Context\nx") == "# Project Context\nx"
+    assert render_workspace_prompt() == ""
+
+
+def test_exclude_files_drops_files_before_budgeting(tmp_path):
+    initialize_agent_workspace(tmp_path, templates={"AGENTS.md": "rules"}, seed_bootstrap=False)
+    (tmp_path / "MEMORY.md").write_text("m" * 500, encoding="utf-8")
+
+    kept = build_workspace_context(tmp_path, max_chars=100, path_style="relative")
+    excluded = build_workspace_context(
+        tmp_path, max_chars=100, path_style="relative", exclude_files=("MEMORY.md",)
+    )
+    single = build_workspace_context(tmp_path, path_style="relative", exclude_files="MEMORY.md")
+
+    assert _paths(kept.files) == ["AGENTS.md", "MEMORY.md"]
+    assert kept.truncated is True
+    assert _paths(excluded.files) == ["AGENTS.md"]
+    assert excluded.warnings == ()
+    assert excluded.truncated is False
+    assert "MEMORY.md" not in excluded.stable_text
+    assert [file.name for file in excluded.bootstrap_files] == [
+        name for name in MEMORY_CORE_WORKSPACE_LAYOUT.load_order if name != "MEMORY.md"
+    ]
+    assert _paths(single.files) == ["AGENTS.md"]

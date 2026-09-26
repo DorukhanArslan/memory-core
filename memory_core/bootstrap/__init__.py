@@ -10,11 +10,9 @@ Typical host flow::
 
     initialize_agent_workspace(root, templates=host_templates)
     context = build_workspace_context(root, session_kind="main")
-    system_prompt = "\\n".join(
-        part for part in (context.bootstrap_text, context.workspace_files_text,
-                          context.stable_text) if part
-    )
-    dynamic_suffix = context.dynamic_text  # below the prompt cache boundary
+    system_prompt = context.prompt_text  # no prompt cache boundary
+    # With a cache boundary: bootstrap_text, workspace_files_text and
+    # stable_text above it (render_workspace_prompt), dynamic_text below it.
 """
 
 from memory_core.bootstrap.budget import (
@@ -74,6 +72,7 @@ from memory_core.bootstrap.render import (
     render_bootstrap_prompt_sections,
     render_project_context,
     render_workspace_files_injected,
+    render_workspace_prompt,
     sort_context_files,
 )
 from memory_core.bootstrap.startup import build_startup_context, should_apply_startup_context
@@ -124,6 +123,7 @@ __all__ = [
     "render_bootstrap_prompt_sections",
     "render_project_context",
     "render_workspace_files_injected",
+    "render_workspace_prompt",
     "resolve_bootstrap_mode",
     "resolve_context_injection",
     "should_apply_startup_context",

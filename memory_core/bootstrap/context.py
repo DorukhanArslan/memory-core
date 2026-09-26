@@ -54,6 +54,7 @@ from memory_core.bootstrap.render import (
     render_bootstrap_prompt_sections,
     render_project_context,
     render_workspace_files_injected,
+    render_workspace_prompt,
     sort_context_files,
 )
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
@@ -91,6 +92,22 @@ class WorkspaceContext:
     record_completed_bootstrap_turn: bool
     workspace_notes: tuple[str, ...]
 
+    @property
+    def prompt_text(self) -> str:
+        """Bootstrap sections, Workspace Files lines, stable and dynamic Project Context.
+
+        One string in upstream order (see
+        :func:`~memory_core.bootstrap.render.render_workspace_prompt`) for hosts
+        without a prompt cache boundary; hosts with one place ``dynamic_text``
+        below it instead.
+        """
+        return render_workspace_prompt(
+            bootstrap_text=self.bootstrap_text,
+            workspace_files_text=self.workspace_files_text,
+            stable_text=self.stable_text,
+            dynamic_text=self.dynamic_text,
+        )
+
 
 def _default_run_kind(session_kind: SessionKind | None) -> BootstrapContextRunKind:
     if session_kind == "heartbeat":
@@ -108,6 +125,7 @@ def build_workspace_context(
     run_kind: BootstrapContextRunKind | None = None,
     context_mode: BootstrapContextMode = "full",
     include_heartbeat: bool = True,
+    exclude_files: Iterable[str] = (),
     context_injection: ContextInjectionMode = "always",
     has_completed_bootstrap_turn: bool = False,
     bootstrap_mode: BootstrapMode | None = None,
@@ -127,6 +145,12 @@ def build_workspace_context(
     access: ``full`` for a pending workspace on a primary interactive run,
     otherwise ``none``. ``path_style="absolute"`` renders upstream's absolute
     paths, ``"relative"`` renders root-relative POSIX paths.
+
+    ``exclude_files`` names basenames the host keeps out of this turn (host
+    policy, no upstream equivalent). They are dropped after the session and run
+    filters and before budgeting, so they consume no budget and raise no
+    truncation warning; ``memory_core.live`` uses it to keep the agent's MEMORY.md
+    out of subject prompts.
     """
     effective_run_kind = run_kind or _default_run_kind(session_kind)
     status = resolve_bootstrap_status(root, layout)
@@ -142,6 +166,9 @@ def build_workspace_context(
         run_kind=effective_run_kind,
         include_heartbeat=include_heartbeat,
     )
+    excluded = frozenset((exclude_files,) if isinstance(exclude_files, str) else exclude_files)
+    if excluded:
+        filtered = [file for file in filtered if file.name not in excluded]
     if bootstrap_mode is None:
         hook_like_bootstrap = any(
             file.name == layout.bootstrap_file

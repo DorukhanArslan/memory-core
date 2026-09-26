@@ -129,6 +129,42 @@ def test_identity_loader_enforces_required_files(tmp_path: Path):
         raise AssertionError("expected missing required identity file error")
 
 
+def _assert_required_file_rejected(identity_dir: Path, name: str) -> None:
+    try:
+        LiveIdentity.from_dir(identity_dir, required_files=[name])
+    except IdentityLoadError as exc:
+        assert name in str(exc)
+    else:
+        raise AssertionError(f"expected {name} to fail the required-file check")
+
+
+def test_identity_loader_rejects_required_files_the_guarded_read_refuses(tmp_path: Path):
+    # Present on disk but rendered as "[MISSING]" by the guarded read: the
+    # required-file check fails closed instead of injecting the marker.
+    hardlinked = tmp_path / "hardlinked"
+    hardlinked.mkdir()
+    (hardlinked / "AGENTS.md").write_text("rules", encoding="utf-8")
+    os.link(hardlinked / "AGENTS.md", tmp_path / "AGENTS-link.md")
+    _assert_required_file_rejected(hardlinked, "AGENTS.md")
+
+    oversized = tmp_path / "oversized"
+    oversized.mkdir()
+    (oversized / "SOUL.md").write_bytes(b"s" * (2 * 1024 * 1024 + 1))
+    _assert_required_file_rejected(oversized, "SOUL.md")
+
+    escaping = tmp_path / "escaping"
+    escaping.mkdir()
+    (tmp_path / "outside.md").write_text("outside", encoding="utf-8")
+    (escaping / "USER.md").symlink_to(tmp_path / "outside.md")
+    _assert_required_file_rejected(escaping, "USER.md")
+
+    accepted = tmp_path / "accepted"
+    accepted.mkdir()
+    (accepted / "AGENTS.md").write_text("rules", encoding="utf-8")
+    identity = LiveIdentity.from_dir(accepted, required_files=["AGENTS.md"], path_style="relative")
+    assert dict(identity.sections)["AGENTS.md"] == "rules"
+
+
 def test_identity_loader_can_reject_unknown_markdown_files(tmp_path: Path):
     identity_dir = tmp_path / "identity"
     identity_dir.mkdir()

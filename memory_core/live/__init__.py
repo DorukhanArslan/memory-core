@@ -16,6 +16,7 @@ from memory_core.bootstrap import (
     ContextFile,
     WorkspaceLayout,
     build_workspace_context,
+    load_workspace_bootstrap_files,
     render_project_context,
     render_workspace_files_injected,
     render_workspace_prompt,
@@ -690,12 +691,17 @@ def _resolve_subject_workspace(
 def _validate_required_identity_files(
     root: Path, required_files: Iterable[str], layout: WorkspaceLayout
 ) -> None:
+    # Fail closed against the loader itself: a file the guarded read rejects
+    # (hard link, over 2 MiB, symlink out of the root) would render as a
+    # "[MISSING]" marker, so it does not satisfy a required file either.
+    required = tuple(required_files)
+    if not required:
+        return
     names = frozenset(layout.load_order)
-    missing = [
-        filename
-        for filename in required_files
-        if filename not in names or not (root / filename).is_file()
-    ]
+    loaded = {
+        file.name for file in load_workspace_bootstrap_files(root, layout) if not file.missing
+    }
+    missing = [filename for filename in required if filename not in names or filename not in loaded]
     if missing:
         raise IdentityLoadError(f"missing required workspace files: {', '.join(sorted(missing))}")
 

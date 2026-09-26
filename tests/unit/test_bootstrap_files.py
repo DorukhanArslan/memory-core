@@ -233,3 +233,37 @@ def test_context_injection_modes():
     assert heartbeat.skip_injection is False
     with pytest.raises(ValueError):
         resolve_context_injection("sometimes", bootstrap_mode="none")
+
+
+def test_guarded_read_accepts_exactly_the_byte_cap(tmp_path):
+    from memory_core.bootstrap.files import (
+        MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES,
+        read_workspace_file_guarded,
+    )
+
+    at_cap = _write(tmp_path, "AGENTS.md", b"a" * MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES)
+    over_cap = _write(tmp_path, "SOUL.md", b"s" * (MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES + 1))
+
+    assert len(read_workspace_file_guarded(at_cap, tmp_path)) == MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES
+    assert read_workspace_file_guarded(over_cap, tmp_path) is None
+
+
+def test_dedupe_reports_blank_paths_like_sanitize_bootstrap_files(tmp_path):
+    from memory_core.bootstrap.files import dedupe_bootstrap_files
+
+    warnings: list[str] = []
+    files = [
+        WorkspaceBootstrapFile("SOUL.md", "  ", "no path"),
+        WorkspaceBootstrapFile("AGENTS.md", "AGENTS.md", "rules"),
+        WorkspaceBootstrapFile("AGENTS.md", str(tmp_path / "AGENTS.md"), "duplicate"),
+    ]
+
+    kept = dedupe_bootstrap_files(files, tmp_path, warn=warnings.append)
+
+    assert [file.content for file in kept] == ["rules"]
+    # bootstrap-files.ts:180-185, verbatim.
+    assert warnings == [
+        'skipping bootstrap file "SOUL.md" — missing or invalid "path" field '
+        '(hook may have used "filePath" instead)'
+    ]
+    assert dedupe_bootstrap_files(files, tmp_path) == kept

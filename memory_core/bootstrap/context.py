@@ -74,8 +74,9 @@ class WorkspaceContext:
 
     ``files`` are the injected context files in render order (paths in the
     requested ``path_style``); ``bootstrap_files`` are the filtered raw files
-    before budgeting. ``warnings`` are the budget warnings of
-    ``buildBootstrapContextFiles``; ``truncation_warning_lines`` and
+    before budgeting. ``warnings`` are the warnings of the
+    ``resolveBootstrapFilesForRun`` path dedupe and of
+    ``buildBootstrapContextFiles``, in that order; ``truncation_warning_lines`` and
     ``truncation_notice`` follow ``bootstrap-budget.ts``. ``bootstrap_text``
     holds ``## Bootstrap Pending`` and ``## Bootstrap Context Notice`` when
     they apply. ``record_completed_bootstrap_turn`` asks the host to remember a
@@ -181,6 +182,7 @@ def build_workspace_context(
     status = resolve_bootstrap_status(root, layout)
     setup_completed = is_workspace_setup_completed(root)
     loaded = load_workspace_bootstrap_files(root, layout)
+    filter_warnings: list[str] = []
     filtered = filter_bootstrap_files(
         loaded,
         root=root,
@@ -190,6 +192,7 @@ def build_workspace_context(
         context_mode=context_mode,
         run_kind=effective_run_kind,
         include_heartbeat=include_heartbeat,
+        warn=filter_warnings.append,
     )
     excluded = frozenset((exclude_files,) if isinstance(exclude_files, str) else exclude_files)
     if excluded:
@@ -270,7 +273,7 @@ def build_workspace_context(
         ),
         files=tuple(sort_context_files(shown_files, layout)),
         bootstrap_files=tuple(bootstrap_files),
-        warnings=budgeted.warnings,
+        warnings=(*filter_warnings, *budgeted.warnings),
         truncated=analysis.has_truncation,
         truncation_warning_lines=prompt_warning.lines,
         truncation_notice=notice,

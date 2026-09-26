@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import os
 import stat
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -250,15 +250,27 @@ def filter_heartbeat_bootstrap_file(
 
 
 def dedupe_bootstrap_files(
-    files: Iterable[WorkspaceBootstrapFile], root: str | os.PathLike[str]
+    files: Iterable[WorkspaceBootstrapFile],
+    root: str | os.PathLike[str],
+    *,
+    warn: Callable[[str], None] | None = None,
 ) -> list[WorkspaceBootstrapFile]:
-    """Port of ``sanitizeBootstrapFiles`` path dedupe (bootstrap-files.ts:170-199)."""
+    """Port of ``sanitizeBootstrapFiles`` path dedupe (bootstrap-files.ts:170-199).
+
+    A file with a blank path is dropped after upstream's warning, passed to
+    ``warn`` when given.
+    """
     display_root = _display_root(root)
     seen: set[str] = set()
     result: list[WorkspaceBootstrapFile] = []
     for file in files:
         path_value = js_trim(file.path) if isinstance(file.path, str) else ""
         if not path_value:
+            if warn is not None:
+                warn(
+                    f'skipping bootstrap file "{file.name}" — missing or invalid "path" field '
+                    '(hook may have used "filePath" instead)'
+                )
             continue
         resolved = _resolve_under_root(path_value, display_root)
         key = os.path.normpath(os.path.relpath(resolved, display_root))
@@ -279,8 +291,12 @@ def filter_bootstrap_files(
     context_mode: BootstrapContextMode = "full",
     run_kind: BootstrapContextRunKind = "default",
     include_heartbeat: bool = True,
+    warn: Callable[[str], None] | None = None,
 ) -> list[WorkspaceBootstrapFile]:
-    """The ``resolveBootstrapFilesForRun`` filter chain, in upstream order."""
+    """The ``resolveBootstrapFilesForRun`` filter chain, in upstream order.
+
+    ``warn`` receives the path-dedupe warnings, like upstream's ``warn`` option.
+    """
     filtered = filter_bootstrap_files_for_session(files, session_kind, layout)
     filtered = filter_completed_bootstrap_file(
         filtered, setup_completed=setup_completed, root=root, layout=layout
@@ -291,7 +307,7 @@ def filter_bootstrap_files(
     filtered = filter_heartbeat_bootstrap_file(
         filtered, run_kind=run_kind, include_heartbeat=include_heartbeat, layout=layout
     )
-    return dedupe_bootstrap_files(filtered, root)
+    return dedupe_bootstrap_files(filtered, root, warn=warn)
 
 
 def is_heartbeat_lifecycle_run_kind(run_kind: BootstrapContextRunKind | None) -> bool:

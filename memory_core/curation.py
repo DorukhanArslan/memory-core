@@ -805,7 +805,7 @@ class MemoryCurator:
             if extra:
                 raise ValueError(
                     f"policy allows {', '.join(extra)} for {operation}, "
-                    f"which layout {layout.name!r} does not provide"
+                    "which the workspace layout does not provide"
                 )
 
     # availability

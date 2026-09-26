@@ -318,8 +318,10 @@ def test_curator_refuses_files_outside_the_root_in_policy_or_layout(tmp_path):
 
     with pytest.raises(ValueError, match="plain names"):
         MemoryCurator(tmp_path, layout=escaping)
-    with pytest.raises(ValueError, match="does not provide"):
+    with pytest.raises(ValueError, match="does not provide") as missing_file:
         MemoryCurator(tmp_path, policy=CurationPolicy(allowed_files={ADD_MEMORY_ENTRY: {"USER.md"}}))
+    # host-visible text never carries the layout's internal name
+    assert DEFAULT_WORKSPACE_LAYOUT.name not in str(missing_file.value)
     with pytest.raises(ValueError, match="unknown curation operations"):
         CurationPolicy(allowed_files={"write": {"MEMORY.md"}})
     with pytest.raises(ValueError, match="collections of file names"):

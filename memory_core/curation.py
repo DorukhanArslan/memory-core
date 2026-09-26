@@ -15,6 +15,18 @@ extension accepted as Q16 (on by default, gated by
   parsed by ``memory_core.memory_budget.parse_memory_blocks``, the oracle-backed
   port of upstream ``parseMemoryBlocks``) and any line carrying an
   ``openclaw-memory-promotion:`` marker are read-only.
+- USER.md: ``upsert_user_directive(text, observed, supersede)`` writes one
+  directive as ``<!-- observed: YYYY-MM-DD | status: active -->``, a blank
+  line and ``- text``. With ``supersede`` the old active directive is marked
+  ``status: superseded`` and kept, and its replacement goes right after it.
+  USER.md is capped at 4000 chars (``USER_FILE_MAX_CHARS``).
+- PROACTIVE_PREFERENCES.md (layouts that provide it): when and how the agent
+  may act or reach out unprompted. ``set_proactive_preferences(text)``
+  replaces the whole file; empty text clears it.
+- ``append_daily_note(text)`` delegates to
+  ``MemoryWorkspace.append_daily_memory`` for today's
+  ``memory/YYYY-MM-DD.md`` (host clock and timezone); empty or ``NO_REPLY``
+  text writes nothing.
 
 Safety rules shared by every operation:
 
@@ -47,10 +59,13 @@ import os
 import re
 import secrets
 import stat
+import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from memory_core.bootstrap import (
     DEFAULT_BOOTSTRAP_MAX_CHARS,
@@ -64,19 +79,40 @@ from memory_core.bootstrap import (
     load_workspace_bootstrap_files,
 )
 from memory_core.bootstrap._js import js_trim_end, utf16_len
+from memory_core.bootstrap.layout import PROACTIVE_PREFERENCES_FILENAME, USER_FILENAME
 from memory_core.flags import FeatureFlags
 from memory_core.memory_budget import PROMOTION_SECTION_HEADING_RE, parse_memory_blocks
+from memory_core.memory_flush import SILENT_REPLY_TOKEN
+from memory_core.workspace import MemoryWorkspace, UnsafeMemoryPathError
 
 ADD_MEMORY_ENTRY = "add_memory_entry"
 REPLACE_MEMORY_ENTRY = "replace_memory_entry"
 REMOVE_MEMORY_ENTRY = "remove_memory_entry"
+UPSERT_USER_DIRECTIVE = "upsert_user_directive"
+SET_PROACTIVE_PREFERENCES = "set_proactive_preferences"
+APPEND_DAILY_NOTE = "append_daily_note"
 MEMORY_ENTRY_OPERATIONS = (ADD_MEMORY_ENTRY, REPLACE_MEMORY_ENTRY, REMOVE_MEMORY_ENTRY)
-CURATION_OPERATIONS = MEMORY_ENTRY_OPERATIONS
+CURATION_OPERATIONS = (
+    *MEMORY_ENTRY_OPERATIONS,
+    UPSERT_USER_DIRECTIVE,
+    SET_PROACTIVE_PREFERENCES,
+    APPEND_DAILY_NOTE,
+)
+# Policy entry for append_daily_note: today's canonical daily file.
+DAILY_NOTE_TARGET = "memory/YYYY-MM-DD.md"
+# Project rule for USER.md (memory-core extension; upstream has no USER.md cap).
+USER_FILE_MAX_CHARS = 4_000
 
 # short-term-promotion.ts:2389 marker scan (/<!--\s*openclaw-memory-promotion:/i).
 _PROMOTION_MARKER_RE = re.compile(r"<!--\s*openclaw-memory-promotion:", re.IGNORECASE)
 _LIST_MARKER_RE = re.compile(r"^(?:[-*+]|\d+[.)])(?:\s+|$)")
 _LINE_PREFIX_RE = re.compile(r"^(\s*)((?:[-*+]|\d+[.)])\s+)?")
+_DIRECTIVE_MARKER_RE = re.compile(
+    r"^<!--\s*observed:\s*(\d{4}-\d{2}-\d{2})\s*\|\s*status:\s*(active|superseded)\s*-->$"
+)
+_DIRECTIVE_STATUS_RE = re.compile(r"(status:\s*)active")
+_TRAILING_COMMENT_RE = re.compile(r"\s*<!--(?:(?!-->).)*-->\s*$")
+_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 class CurationError(ValueError):
@@ -95,9 +131,10 @@ class CurationConflictError(CurationError):
 class CurationResult:
     """Outcome of one curated operation.
 
-    ``action`` is one of added, replaced, removed or unchanged. ``chars`` is
-    the file's UTF-16 length (trailing whitespace trimmed, as the bootstrap
-    budget counts it) after the operation.
+    ``action`` is one of added, replaced, removed, superseded, set, cleared,
+    appended, skipped or unchanged. ``chars`` is the file's UTF-16 length
+    (trailing whitespace trimmed, as the bootstrap budget counts it) after the
+    operation; daily notes leave it unset.
     """
 
     operation: str
@@ -120,10 +157,15 @@ class CurationResult:
 
 def curatable_files(layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT) -> dict[str, frozenset[str]]:
     """The widest file set each operation may write under ``layout``."""
-    memory = (
-        frozenset({layout.memory_file}) if layout.memory_file in layout.load_order else frozenset()
-    )
-    return {operation: memory for operation in MEMORY_ENTRY_OPERATIONS}
+
+    def provided(name: str) -> frozenset[str]:
+        return frozenset({name}) if name in layout.load_order else frozenset()
+
+    files = {operation: provided(layout.memory_file) for operation in MEMORY_ENTRY_OPERATIONS}
+    files[UPSERT_USER_DIRECTIVE] = provided(USER_FILENAME)
+    files[SET_PROACTIVE_PREFERENCES] = provided(PROACTIVE_PREFERENCES_FILENAME)
+    files[APPEND_DAILY_NOTE] = frozenset({DAILY_NOTE_TARGET})
+    return files
 
 
 @dataclass(frozen=True)
@@ -134,13 +176,15 @@ class CurationPolicy:
     files is not offered. The curator refuses a policy that allows a file the
     layout does not provide. ``max_file_chars`` and ``total_max_chars`` are the
     bootstrap budget the host injects with; ``file_caps`` adds stricter
-    per-file caps.
+    per-file caps (default: USER.md at ``USER_FILE_MAX_CHARS``).
     """
 
     allowed_files: Mapping[str, Iterable[str]]
     max_file_chars: int = DEFAULT_BOOTSTRAP_MAX_CHARS
     total_max_chars: int = DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS
-    file_caps: Mapping[str, int] = field(default_factory=dict)
+    file_caps: Mapping[str, int] = field(
+        default_factory=lambda: {USER_FILENAME: USER_FILE_MAX_CHARS}
+    )
 
     def __post_init__(self) -> None:
         unknown = sorted(set(self.allowed_files) - set(CURATION_OPERATIONS))
@@ -166,7 +210,9 @@ class CurationPolicy:
     def for_layout(
         cls, layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT, **overrides
     ) -> CurationPolicy:
-        """Allow every operation the layout supports."""
+        """Allow every operation the layout supports; ``file_caps`` extend the defaults."""
+        if "file_caps" in overrides:
+            overrides["file_caps"] = {USER_FILENAME: USER_FILE_MAX_CHARS, **overrides["file_caps"]}
         return cls(allowed_files=curatable_files(layout), **overrides)
 
     def files_for(self, operation: str) -> frozenset[str]:
@@ -416,6 +462,143 @@ def remove_memory_entry_text(content: str, entry: str, *, section: str | None = 
     return _ensure_trailing_newline(_join_lines(lines), newline)
 
 
+# --- USER.md -------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class UserDirective:
+    """One USER.md directive: marker comment, blank line(s), ``- text``.
+
+    ``marker_line`` and ``directive_line`` are 0-based line indexes.
+    """
+
+    observed: str
+    status: str
+    text: str
+    marker_line: int
+    directive_line: int
+
+
+def _parse_directives(lines: list[_Line]) -> list[UserDirective]:
+    directives: list[UserDirective] = []
+    index = 0
+    while index < len(lines):
+        match = _DIRECTIVE_MARKER_RE.match(lines[index].body.strip())
+        if match:
+            bullet = index + 1
+            while bullet < len(lines) and not lines[bullet].body.strip():
+                bullet += 1
+            body = lines[bullet].body.strip() if bullet < len(lines) else ""
+            if body.startswith("- "):
+                directives.append(
+                    UserDirective(match.group(1), match.group(2), body[2:].strip(), index, bullet)
+                )
+                index = bullet + 1
+                continue
+        index += 1
+    return directives
+
+
+def parse_user_directives(content: str) -> list[UserDirective]:
+    """Directives of a USER.md text, in file order; malformed entries are skipped."""
+    return _parse_directives(_split_lines(content))
+
+
+def _same_directive(existing: str, query: str) -> bool:
+    # A trailing HTML comment is an annotation, not part of the directive.
+    return query == existing or query == _TRAILING_COMMENT_RE.sub("", existing).strip()
+
+
+def _clean_date(value: object, name: str) -> str:
+    text = value.strip() if isinstance(value, str) else ""
+    try:
+        if not _DATE_RE.fullmatch(text):
+            raise ValueError(text)
+        datetime.strptime(text, "%Y-%m-%d")
+    except ValueError as exc:
+        raise CurationError(f"{name} must be a YYYY-MM-DD date") from exc
+    return text
+
+
+def _insert_directive(
+    lines: list[_Line], after: int | None, observed: str, text: str, newline: str
+) -> None:
+    if after is None:
+        if lines:
+            _terminate(lines, len(lines) - 1, newline)
+            if lines[-1].body.strip():
+                lines.append(_Line("", newline))
+        index, line_newline = len(lines), newline
+    else:
+        line_newline = lines[after].ending or newline
+        _terminate(lines, after, line_newline)
+        index = after + 1
+        lines.insert(index, _Line("", line_newline))
+        index += 1
+    lines[index:index] = [
+        _Line(f"<!-- observed: {observed} | status: active -->", line_newline),
+        _Line("", line_newline),
+        _Line(f"- {text}", line_newline),
+    ]
+
+
+def upsert_user_directive_text(
+    content: str, text: str, *, observed: str, supersede: str | None = None
+) -> tuple[str, str]:
+    """Add or supersede a USER.md directive; returns ``(content, action)``.
+
+    Without ``supersede`` the directive goes after the last existing directive
+    (or at the end of the file) unless an identical active one exists
+    (``unchanged``). With ``supersede`` the matching active directive is marked
+    superseded in place and the new one is inserted right after it.
+    """
+    directive = _clean_line(text, "text")
+    day = _clean_date(observed, "observed")
+    old = _clean_line(supersede, "supersede") if supersede is not None else None
+    lines = _split_lines(content)
+    newline = _file_newline(lines)
+    directives = _parse_directives(lines)
+    active_same = [
+        item for item in directives if item.status == "active" and _same_directive(item.text, directive)
+    ]
+    if old is None:
+        if active_same:
+            return content, "unchanged"
+        _insert_directive(
+            lines, directives[-1].directive_line if directives else None, day, directive, newline
+        )
+        return _ensure_trailing_newline(_join_lines(lines), newline), "added"
+
+    if old == directive:
+        raise CurationError("supersede must name a different directive than text")
+    matches = [item for item in directives if _same_directive(item.text, old)]
+    targets = [item for item in matches if item.status == "active"]
+    if not targets:
+        if matches:
+            raise CurationError("that directive is already superseded")
+        raise CurationError("no active directive in USER.md matches supersede")
+    if len(targets) > 1:
+        raise CurationError(f"supersede matches {len(targets)} active directives in USER.md")
+    if active_same:
+        raise CurationError("an active directive with this text already exists in USER.md")
+    target = targets[0]
+    marker = lines[target.marker_line]
+    lines[target.marker_line] = _Line(
+        _DIRECTIVE_STATUS_RE.sub(r"\1superseded", marker.body, count=1), marker.ending
+    )
+    _insert_directive(lines, target.directive_line, day, directive, newline)
+    return _ensure_trailing_newline(_join_lines(lines), newline), "superseded"
+
+
+# --- PROACTIVE_PREFERENCES.md ---------------------------------------------------------
+
+
+def proactive_preferences_text(text: str) -> str:
+    """Normalise a full PROACTIVE_PREFERENCES.md body: LF endings, one trailing newline."""
+    body = js_trim_end(_check_text(text, "text").replace("\r\n", "\n"))
+    return f"{body}\n" if body else ""
+
+
 # --- curator -------------------------------------------------------------------
 
 
@@ -434,7 +617,9 @@ class MemoryCurator:
 
     ``flags`` defaults to ``FeatureFlags()`` (curation on). ``policy`` defaults
     to ``CurationPolicy.for_layout(layout)``. ``after_write`` runs after each
-    write that changed a file.
+    write that changed a file. ``timezone`` (IANA name, default UTC like the
+    rest of the package) and ``now_ms`` (epoch-milliseconds clock) decide
+    "today" for daily notes and default ``observed`` dates.
     """
 
     def __init__(
@@ -445,16 +630,23 @@ class MemoryCurator:
         policy: CurationPolicy | None = None,
         flags: FeatureFlags | None = None,
         after_write: Callable[[CurationResult], None] | None = None,
+        timezone: str = "UTC",
+        now_ms: Callable[[], int] | None = None,
     ) -> None:
         self.root = Path(workspace_dir).resolve()
         self.layout = layout
         self.policy = policy if policy is not None else CurationPolicy.for_layout(layout)
         self.flags = flags if flags is not None else FeatureFlags()
         self.after_write = after_write
+        try:
+            self._zone = ZoneInfo(timezone)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(f"unknown timezone: {timezone!r}") from exc
+        self._now_ms = now_ms or (lambda: time.time_ns() // 1_000_000)
         widest = curatable_files(layout)
         for operation in CURATION_OPERATIONS:
             for name in self.policy.files_for(operation):
-                if not _is_plain_file_name(name):
+                if name != DAILY_NOTE_TARGET and not _is_plain_file_name(name):
                     raise ValueError(f"curated files must be plain names in the root: {name!r}")
             extra = sorted(self.policy.files_for(operation) - widest[operation])
             if extra:
@@ -522,6 +714,75 @@ class MemoryCurator:
             require_existing=True,
         )
 
+    # USER.md, PROACTIVE_PREFERENCES.md and daily notes
+
+    def upsert_user_directive(
+        self,
+        text: str,
+        *,
+        observed: str | None = None,
+        supersede: str | None = None,
+        memory_flush: bool = False,
+    ) -> CurationResult:
+        """Record a directive in USER.md; ``observed`` defaults to today."""
+
+        def edit(content: str) -> tuple[str, str]:
+            day = observed if observed is not None else self.today()
+            return upsert_user_directive_text(content, text, observed=day, supersede=supersede)
+
+        return self._edit(UPSERT_USER_DIRECTIVE, USER_FILENAME, edit, memory_flush=memory_flush)
+
+    def set_proactive_preferences(self, text: str, *, memory_flush: bool = False) -> CurationResult:
+        """Replace PROACTIVE_PREFERENCES.md; empty text clears it."""
+
+        def edit(content: str) -> tuple[str, str]:
+            body = proactive_preferences_text(text)
+            return body, "set" if body else "cleared"
+
+        return self._edit(
+            SET_PROACTIVE_PREFERENCES,
+            PROACTIVE_PREFERENCES_FILENAME,
+            edit,
+            memory_flush=memory_flush,
+        )
+
+    def append_daily_note(
+        self, text: str, *, date: str | None = None, memory_flush: bool = False
+    ) -> CurationResult:
+        """Append to ``memory/<date>.md`` (default today) via ``append_daily_memory``."""
+        self._require(APPEND_DAILY_NOTE, DAILY_NOTE_TARGET, memory_flush=memory_flush)
+        raw = _check_text(text, "text")
+        day = _clean_date(date, "date") if date is not None else self.today()
+        rel_path = f"memory/{day}.md"
+        stripped = raw.strip()
+        if not stripped or stripped.startswith(SILENT_REPLY_TOKEN):
+            return CurationResult(APPEND_DAILY_NOTE, rel_path, "skipped", False)
+        memory_dir = self.root / "memory"
+        if memory_dir.is_symlink():
+            raise CurationError("memory/ is a symlink; curated writes never follow symlinks")
+        if os.path.lexists(memory_dir) and not memory_dir.is_dir():
+            raise CurationError("memory is not a directory")
+        daily = memory_dir / f"{day}.md"
+        if os.path.lexists(daily) and not daily.is_symlink():
+            info = os.lstat(daily)
+            if not stat.S_ISREG(info.st_mode):
+                raise CurationError(f"{rel_path} is not a regular file")
+            if info.st_nlink > 1:
+                raise CurationError(f"{rel_path} has more than one hard link")
+        try:
+            MemoryWorkspace(self.root).append_daily_memory(rel_path, raw)
+        except UnsafeMemoryPathError as exc:
+            raise CurationError(str(exc)) from exc
+        result = CurationResult(APPEND_DAILY_NOTE, rel_path, "appended", True)
+        if self.after_write is not None:
+            self.after_write(result)
+        return result
+
+    def today(self) -> str:
+        """Today's ``YYYY-MM-DD`` in the curator's timezone."""
+        instant = datetime.fromtimestamp(self._now_ms() / 1000, tz=UTC)
+        return instant.astimezone(self._zone).strftime("%Y-%m-%d")
+
     # shared write path
 
     def _edit(
@@ -539,7 +800,7 @@ class MemoryCurator:
             raise CurationError(f"{name} does not exist")
         updated, action = edit(before or "")
         chars = utf16_len(js_trim_end(updated))
-        if before is not None and updated == before:
+        if updated == (before or ""):
             return CurationResult(operation, name, "unchanged", False, chars)
         self._check_caps(name, before, updated)
         self._write_target(name, before, updated)

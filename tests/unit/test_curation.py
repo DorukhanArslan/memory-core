@@ -11,17 +11,22 @@ import pytest
 from memory_core.bootstrap import DEFAULT_WORKSPACE_LAYOUT, OPENCLAW_PIN_LAYOUT, WorkspaceLayout
 from memory_core.curation import (
     ADD_MEMORY_ENTRY,
+    APPEND_DAILY_NOTE,
     CURATION_OPERATIONS,
-    REMOVE_MEMORY_ENTRY,
-    REPLACE_MEMORY_ENTRY,
+    SET_PROACTIVE_PREFERENCES,
+    UPSERT_USER_DIRECTIVE,
     CurationConflictError,
     CurationError,
     CurationPolicy,
     CurationUnavailableError,
     MemoryCurator,
+    UserDirective,
     add_memory_entry_text,
+    parse_user_directives,
+    proactive_preferences_text,
     remove_memory_entry_text,
     replace_memory_entry_text,
+    upsert_user_directive_text,
 )
 from memory_core.flags import FeatureFlags
 from memory_core.memory_budget import parse_memory_blocks
@@ -368,10 +373,14 @@ def test_flag_off_offers_nothing_and_calls_raise_without_side_effects(tmp_path):
         lambda: curator.add_memory_entry("My Notes", "delta"),
         lambda: curator.replace_memory_entry("gamma", "delta"),
         lambda: curator.remove_memory_entry("gamma"),
+        lambda: curator.upsert_user_directive("Prefer alpha.", observed="2026-09-26"),
+        lambda: curator.set_proactive_preferences("alpha"),
+        lambda: curator.append_daily_note("alpha", date="2026-09-26"),
     ):
         with pytest.raises(CurationUnavailableError, match="disabled"):
             call()
     assert path.read_text(encoding="utf-8") == MEMORY_WITH_PROMOTIONS
+    assert sorted(os.listdir(tmp_path)) == ["MEMORY.md"]
     assert calls == []
     assert FeatureFlags().curated_memory_writes is True
 
@@ -381,25 +390,39 @@ def test_memory_flush_runs_never_curate(tmp_path):
     curator = _curator(tmp_path)
 
     assert curator.available_operations(memory_flush=True) == ()
-    with pytest.raises(CurationUnavailableError, match="memory flush"):
-        curator.add_memory_entry("My Notes", "delta", memory_flush=True)
+    for call in (
+        lambda: curator.add_memory_entry("My Notes", "delta", memory_flush=True),
+        lambda: curator.upsert_user_directive("Prefer alpha.", memory_flush=True),
+        lambda: curator.set_proactive_preferences("alpha", memory_flush=True),
+        lambda: curator.append_daily_note("alpha", memory_flush=True),
+    ):
+        with pytest.raises(CurationUnavailableError, match="memory flush"):
+            call()
     assert path.read_text(encoding="utf-8") == MEMORY_WITH_PROMOTIONS
+    assert sorted(os.listdir(tmp_path)) == ["MEMORY.md"]
 
 
 def test_policy_can_withdraw_operations(tmp_path):
     _write_memory(tmp_path)
     curator = _curator(tmp_path, policy=CurationPolicy.for_layout().without(ADD_MEMORY_ENTRY))
 
-    assert curator.available_operations() == (REPLACE_MEMORY_ENTRY, REMOVE_MEMORY_ENTRY)
+    assert curator.available_operations() == tuple(
+        op for op in CURATION_OPERATIONS if op != ADD_MEMORY_ENTRY
+    )
     with pytest.raises(CurationUnavailableError, match="may not write MEMORY.md"):
         curator.add_memory_entry("My Notes", "delta")
     assert _curator(tmp_path).available_operations() == CURATION_OPERATIONS
 
 
-def test_pin_layout_allows_memory_entries(tmp_path):
+def test_pin_layout_offers_everything_but_proactive_preferences(tmp_path):
     curator = _curator(tmp_path, layout=OPENCLAW_PIN_LAYOUT)
 
-    assert curator.available_operations() == CURATION_OPERATIONS
+    assert curator.available_operations() == tuple(
+        op for op in CURATION_OPERATIONS if op != SET_PROACTIVE_PREFERENCES
+    )
+    with pytest.raises(CurationUnavailableError, match="may not write PROACTIVE_PREFERENCES.md"):
+        curator.set_proactive_preferences("alpha")
+    assert not (tmp_path / "PROACTIVE_PREFERENCES.md").exists()
 
 
 def test_a_concurrent_change_aborts_the_write(tmp_path, monkeypatch):
@@ -419,3 +442,272 @@ def test_a_concurrent_change_aborts_the_write(tmp_path, monkeypatch):
         curator.add_memory_entry("My Notes", "delta")
     assert path.read_text(encoding="utf-8").endswith("- promoted meanwhile\n")
     assert sorted(os.listdir(tmp_path)) == ["MEMORY.md"]
+
+
+# --- USER.md directives ----------------------------------------------------------
+
+USER_MD = (
+    "# USER.md\n"
+    "\n"
+    "## Directives\n"
+    "\n"
+    "<!-- observed: 2026-05-27 | status: active -->\n"
+    "\n"
+    "- Always alpha.\n"
+    "\n"
+    "<!-- observed: 2026-05-03 | status: active -->\n"
+    "\n"
+    "- Prefer beta. <!-- see MEMORY.md -->\n"
+    "\n"
+    "<!-- observed: 2026-05-26 | status: superseded -->\n"
+    "\n"
+    "- Never gamma.\n"
+    "\n"
+    "## Notes\n"
+    "\n"
+    "Free text stays.\n"
+)
+
+
+def test_parse_user_directives_reads_markers_and_bullets():
+    assert parse_user_directives(USER_MD) == [
+        UserDirective("2026-05-27", "active", "Always alpha.", 4, 6),
+        UserDirective("2026-05-03", "active", "Prefer beta. <!-- see MEMORY.md -->", 8, 10),
+        UserDirective("2026-05-26", "superseded", "Never gamma.", 12, 14),
+    ]
+    assert parse_user_directives("<!-- observed: 2026-05-27 | status: active -->\nno bullet\n") == []
+
+
+def test_upsert_adds_after_the_last_directive():
+    updated, action = upsert_user_directive_text(USER_MD, "Prefer delta.", observed="2026-09-26")
+
+    assert action == "added"
+    assert updated == USER_MD.replace(
+        "- Never gamma.\n",
+        "- Never gamma.\n\n<!-- observed: 2026-09-26 | status: active -->\n\n- Prefer delta.\n",
+        1,
+    )
+
+
+def test_upsert_is_idempotent_for_an_active_directive():
+    for text in ("Always alpha.", "- Always alpha.", "Prefer beta."):
+        assert upsert_user_directive_text(USER_MD, text, observed="2026-09-26") == (
+            USER_MD,
+            "unchanged",
+        )
+    # A superseded directive is not active: stating it again records it anew.
+    updated, action = upsert_user_directive_text(USER_MD, "Never gamma.", observed="2026-09-26")
+    assert action == "added"
+    assert updated.count("- Never gamma.") == 2
+
+
+def test_supersede_keeps_the_old_entry_next_to_its_replacement():
+    updated, action = upsert_user_directive_text(
+        USER_MD, "Always alpha, briefly.", observed="2026-09-26", supersede="Always alpha."
+    )
+
+    assert action == "superseded"
+    assert updated == USER_MD.replace(
+        "<!-- observed: 2026-05-27 | status: active -->\n\n- Always alpha.\n",
+        "<!-- observed: 2026-05-27 | status: superseded -->\n\n- Always alpha.\n"
+        "\n<!-- observed: 2026-09-26 | status: active -->\n\n- Always alpha, briefly.\n",
+        1,
+    )
+    directives = parse_user_directives(updated)
+    assert [(item.text, item.status) for item in directives[:2]] == [
+        ("Always alpha.", "superseded"),
+        ("Always alpha, briefly.", "active"),
+    ]
+    assert directives[1].marker_line == directives[0].directive_line + 2
+
+
+@pytest.mark.parametrize(
+    ("text", "supersede", "message"),
+    [
+        ("Prefer delta.", "Prefer epsilon.", "no active directive in USER.md matches supersede"),
+        ("Prefer delta.", "Never gamma.", "already superseded"),
+        ("Always alpha.", "Always alpha.", "different directive"),
+        ("Always alpha.", "Prefer beta.", "active directive with this text already exists"),
+    ],
+)
+def test_supersede_errors(text, supersede, message):
+    with pytest.raises(CurationError, match=message):
+        upsert_user_directive_text(USER_MD, text, observed="2026-09-26", supersede=supersede)
+
+
+def test_supersede_refuses_ambiguous_active_duplicates():
+    doubled = USER_MD + "\n<!-- observed: 2026-06-01 | status: active -->\n\n- Always alpha.\n"
+
+    with pytest.raises(CurationError, match="matches 2 active directives"):
+        upsert_user_directive_text(
+            doubled, "Always alpha, briefly.", observed="2026-09-26", supersede="Always alpha."
+        )
+
+
+def test_upsert_into_empty_or_directive_free_text_and_crlf():
+    assert upsert_user_directive_text("", "Prefer delta.", observed="2026-09-26") == (
+        "<!-- observed: 2026-09-26 | status: active -->\n\n- Prefer delta.\n",
+        "added",
+    )
+    assert upsert_user_directive_text("# USER.md", "Prefer delta.", observed="2026-09-26")[0] == (
+        "# USER.md\n\n<!-- observed: 2026-09-26 | status: active -->\n\n- Prefer delta.\n"
+    )
+    crlf = USER_MD.replace("\n", "\r\n")
+    updated, _ = upsert_user_directive_text(
+        crlf, "Always alpha, briefly.", observed="2026-09-26", supersede="Always alpha."
+    )
+    assert "\n" not in updated.replace("\r\n", "")
+    assert updated.replace("\r\n", "\n") == upsert_user_directive_text(
+        USER_MD, "Always alpha, briefly.", observed="2026-09-26", supersede="Always alpha."
+    )[0]
+
+
+@pytest.mark.parametrize("observed", ["2026-9-26", "2026-02-30", "yesterday", ""])
+def test_upsert_rejects_bad_observed_dates(observed):
+    with pytest.raises(CurationError, match="observed must be a YYYY-MM-DD date"):
+        upsert_user_directive_text(USER_MD, "Prefer delta.", observed=observed)
+
+
+def test_curator_upsert_uses_the_host_clock_and_timezone(tmp_path):
+    # 2026-09-25 22:30 UTC is 2026-09-26 01:30 in Istanbul.
+    curator = _curator(tmp_path, timezone="Europe/Istanbul", now_ms=lambda: 1790375400000)
+
+    result = curator.upsert_user_directive("Prefer delta.")
+
+    assert (result.path, result.action, result.changed) == ("USER.md", "added", True)
+    assert (tmp_path / "USER.md").read_text(encoding="utf-8") == (
+        "<!-- observed: 2026-09-26 | status: active -->\n\n- Prefer delta.\n"
+    )
+    assert _curator(tmp_path, now_ms=lambda: 1790375400000).today() == "2026-09-25"
+    with pytest.raises(ValueError, match="unknown timezone"):
+        _curator(tmp_path, timezone="Mars/Olympus")
+
+
+def test_user_md_cap_refuses_growth_past_4000_chars(tmp_path):
+    filler = "x" * (4_000 - len(USER_MD) - 10)
+    content = USER_MD + filler + "\n"
+    (tmp_path / "USER.md").write_text(content, encoding="utf-8")
+    curator = _curator(tmp_path)
+
+    with pytest.raises(CurationError, match=r"USER.md would be \d+ chars, over its 4000-char cap"):
+        curator.upsert_user_directive("Prefer delta.", observed="2026-09-26")
+    with pytest.raises(CurationError, match="4000-char cap"):
+        curator.upsert_user_directive(
+            "Always alpha, briefly.", observed="2026-09-26", supersede="Always alpha."
+        )
+    assert (tmp_path / "USER.md").read_text(encoding="utf-8") == content
+    assert curator.upsert_user_directive("Always alpha.").action == "unchanged"
+
+
+# --- PROACTIVE_PREFERENCES.md ------------------------------------------------------
+
+
+def test_proactive_preferences_text_normalises_endings():
+    assert proactive_preferences_text("alpha\r\nbeta  \n\n\n") == "alpha\nbeta\n"
+    assert proactive_preferences_text("  \n") == ""
+    with pytest.raises(CurationError, match="text required"):
+        proactive_preferences_text(None)
+
+
+def test_curator_sets_and_clears_proactive_preferences(tmp_path):
+    curator = _curator(tmp_path)
+    path = tmp_path / "PROACTIVE_PREFERENCES.md"
+
+    assert curator.set_proactive_preferences("").action == "unchanged"
+    assert not path.exists()
+    assert curator.set_proactive_preferences("alpha\r\nbeta").action == "set"
+    assert path.read_bytes() == b"alpha\nbeta\n"
+    assert curator.set_proactive_preferences("alpha\nbeta\n").action == "unchanged"
+    cleared = curator.set_proactive_preferences("")
+    assert (cleared.action, cleared.chars) == ("cleared", 0)
+    assert path.read_bytes() == b""
+
+
+def test_proactive_preferences_are_bounded(tmp_path):
+    bounded = _curator(tmp_path, policy=CurationPolicy.for_layout(max_file_chars=100))
+    with pytest.raises(CurationError, match="over the 100-char context limit per file"):
+        bounded.set_proactive_preferences("a" * 101)
+
+    capped = CurationPolicy.for_layout(file_caps={"PROACTIVE_PREFERENCES.md": 10})
+    assert dict(capped.file_caps) == {"USER.md": 4_000, "PROACTIVE_PREFERENCES.md": 10}
+    with pytest.raises(CurationError, match="over its 10-char cap"):
+        _curator(tmp_path, policy=capped).set_proactive_preferences("a" * 11)
+    assert not (tmp_path / "PROACTIVE_PREFERENCES.md").exists()
+
+
+# --- daily notes ----------------------------------------------------------------------
+
+
+def test_daily_note_appends_through_the_canonical_append(tmp_path):
+    results = []
+    curator = _curator(
+        tmp_path,
+        timezone="Europe/Istanbul",
+        now_ms=lambda: 1790375400000,
+        after_write=results.append,
+    )
+
+    first = curator.append_daily_note("alpha\n")
+    second = curator.append_daily_note("beta")
+
+    assert (first.operation, first.path, first.action) == (
+        APPEND_DAILY_NOTE,
+        "memory/2026-09-26.md",
+        "appended",
+    )
+    assert results == [first, second]
+    assert (tmp_path / "memory" / "2026-09-26.md").read_text(encoding="utf-8") == "alpha\nbeta\n"
+    assert curator.append_daily_note("gamma", date="2026-09-25").path == "memory/2026-09-25.md"
+
+
+def test_daily_note_skips_empty_and_silent_text(tmp_path):
+    curator = _curator(tmp_path, now_ms=lambda: 1790375400000)
+
+    for text in ("", "  \n", "NO_REPLY", "NO_REPLY nothing to keep"):
+        result = curator.append_daily_note(text)
+        assert (result.action, result.changed) == ("skipped", False)
+    assert not (tmp_path / "memory").exists()
+    with pytest.raises(CurationError, match="date must be a YYYY-MM-DD date"):
+        curator.append_daily_note("alpha", date="../2026-09-26")
+
+
+def test_daily_note_refuses_symlinks_and_hard_links(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "memory").symlink_to(outside, target_is_directory=True)
+    curator = _curator(root, now_ms=lambda: 1790375400000)
+    with pytest.raises(CurationError, match="memory/ is a symlink"):
+        curator.append_daily_note("alpha")
+    (root / "memory").unlink()
+
+    (root / "memory").mkdir()
+    target = outside / "notes.md"
+    target.write_text("", encoding="utf-8")
+    (root / "memory" / "2026-09-25.md").symlink_to(target)
+    with pytest.raises(CurationError, match="symlink"):
+        curator.append_daily_note("alpha")
+    (root / "memory" / "2026-09-25.md").unlink()
+
+    os.link(target, root / "memory" / "2026-09-25.md")
+    with pytest.raises(CurationError, match="more than one hard link"):
+        curator.append_daily_note("alpha")
+    assert target.read_text(encoding="utf-8") == ""
+
+
+def test_user_and_proactive_files_obey_the_same_file_safety(tmp_path):
+    outside = tmp_path / "outside.md"
+    outside.write_text("", encoding="utf-8")
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "USER.md").symlink_to(outside)
+    (root / "PROACTIVE_PREFERENCES.md").symlink_to(outside)
+    curator = _curator(root)
+
+    with pytest.raises(CurationError, match="symlink"):
+        curator.upsert_user_directive("Prefer delta.", observed="2026-09-26")
+    with pytest.raises(CurationError, match="symlink"):
+        curator.set_proactive_preferences("alpha")
+    assert outside.read_text(encoding="utf-8") == ""
+    assert UPSERT_USER_DIRECTIVE in curator.available_operations()

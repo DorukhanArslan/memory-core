@@ -1,22 +1,14 @@
 // events.js: the global Lab event stream (GET /api/lab/events, SSE).
-// The browser's own reconnect resends Last-Event-ID; if the stream closes for good we
-// recreate it with a 1/2/5/10 s backoff and ask the store to refetch /api/lab/state, since a
-// fresh EventSource cannot resume. A 501/404 on the stream shows as "henüz yok".
+// Frames carry no `event:` line: every LabEvent arrives as a default `message` whose JSON has the
+// `type` (docs/lab.md › GET /events), so only onmessage is read. The browser's own reconnect
+// resends Last-Event-ID; when the stream closes for good it is recreated with a 1/2/5/10 s backoff
+// and `?lastEventId=` (a fresh EventSource cannot resume on its own), and the store refetches state.
+// A `lab.resync` frame (gap older than the 1,000-event ring) reaches onEvent like any other event.
 
 const PATH = '/api/lab/events';
 const BACKOFF = [1000, 2000, 5000, 10000];
-// Named frames are accepted too, in case the server sets `event: <type>` (DESIGN §4.3 taxonomy).
-const KNOWN_TYPES = [
-  'chat.turn.started', 'chat.turn.completed', 'chat.turn.failed', 'index.reindexed', 'recall.completed', 'prompt.assembled',
-  'curation.written', 'curation.refused', 'curation.reverted', 'flush.decided', 'flush.written', 'flush.no_write', 'session.new', 'session_memory.written', 'startup_context.loaded',
-  'bootstrap.seeded', 'bootstrap.completed', 'bootstrap.file_deleted', 'file.saved', 'file.changed',
-  'search.completed', 'search.unavailable', 'search.cooldown', 'embedding.request',
-  'heartbeat.skipped', 'heartbeat.run', 'heartbeat.llm', 'heartbeat.decided', 'clock.changed',
-  'promotion.swept', 'dreaming.swept', 'audit.completed', 'repair.completed',
-  'settings.changed', 'provider.check', 'workspace.reset', 'error', 'lab',
-];
 
-export function connectEvents({ onEvent, onStatus, onReconnect }) {
+export function connectEvents({ onEvent, onStatus, onReconnect, lastEventId = () => 0 }) {
   let es = null; let attempt = 0; let everOpened = false; let timer = null; let stopped = false;
 
   const emit = (state) => onStatus?.({ state, attempt });
@@ -25,7 +17,6 @@ export function connectEvents({ onEvent, onStatus, onReconnect }) {
     try { data = JSON.parse(msg.data); } catch { return; }
     if (!data || typeof data !== 'object') return;
     if (data.id === undefined && msg.lastEventId) data.id = Number(msg.lastEventId);
-    if (!data.type && msg.type && msg.type !== 'message') data.type = msg.type;
     onEvent?.(data);
   };
 
@@ -42,14 +33,14 @@ export function connectEvents({ onEvent, onStatus, onReconnect }) {
     if (stopped) return;
     clearTimeout(timer);
     emit(everOpened ? 'retrying' : 'connecting');
-    es = new EventSource(PATH);
+    const since = everOpened ? Number(lastEventId()) || 0 : 0;
+    es = new EventSource(since ? `${PATH}?lastEventId=${since}` : PATH);
     es.onopen = () => {
       const wasReconnect = everOpened || attempt > 0;
       everOpened = true; attempt = 0; emit('open');
       if (wasReconnect) onReconnect?.();
     };
     es.onmessage = handle;
-    for (const type of KNOWN_TYPES) es.addEventListener(type, handle);
     es.onerror = async () => {
       if (!es) return;
       if (es.readyState === EventSource.CONNECTING) { attempt += 1; emit('retrying'); return; }

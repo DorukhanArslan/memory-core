@@ -1,7 +1,7 @@
 // app.js: boot, center router, the action registry, keyboard shortcuts (single-key ones can be
 // switched off, WCAG 2.1.4), theme/language/motion/density, pane resizers, the explorer drawer
 // and the inspector bottom sheet (detents 50% / 92%, velocity-aware dismiss).
-import { h, replace, isTyping, clamp, prefersReducedMotion, basename } from './ui/dom.js';
+import { h, replace, isTyping, clamp, prefersReducedMotion } from './ui/dom.js';
 import { setLang, t } from './i18n/index.js';
 import { store, refresh, renderNow, registerRenderer, persistUi, setView, refreshAll, loadFiles, loadFile, loadIndex, loadState, ingestEvent, loadParity } from './store.js';
 import { api } from './api.js';
@@ -279,6 +279,7 @@ function boot() {
     },
     onStatus: (st) => { store.conn = st; refresh('status'); },
     onReconnect: () => { refreshAll(); },
+    lastEventId: () => store.data.lastEventId,
   });
   // status clock and the cooldown countdown
   let lastMinute = -1;
@@ -290,6 +291,5 @@ function boot() {
   window.addEventListener('lab:saved', () => notify('file.saved'));
   window.addEventListener('lab:local', (e) => notify(String(e.detail)));
   document.getElementById('boot-fallback')?.remove();
-  window.__lab = { store, refresh, actions: A, basename };
 }
 boot();

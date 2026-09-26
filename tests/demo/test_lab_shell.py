@@ -245,3 +245,20 @@ def test_contract_file_entries_for_folders(lab_client: TestClient) -> None:
             assert folders[name]["badges"] in (["extension"], ["outside_layout"])
     source = (LAB_ROOT / "views" / "explorer.js").read_text(encoding="utf-8")
     assert "dir === 'memory'" in source
+
+
+def test_no_debug_global_exposes_the_store() -> None:
+    # store.keys holds page API keys; nothing may hang the store or the actions on window.
+    for module in LAB_MODULES:
+        source = module.read_text(encoding="utf-8")
+        assert "window.__" not in source, module.name
+        assert "globalThis." not in source, module.name
+
+
+def test_event_stream_reads_default_messages_only() -> None:
+    # /api/lab/events frames carry no `event:` line (docs/lab.md), so per-type listeners get nothing.
+    source = (LAB_ROOT / "events.js").read_text(encoding="utf-8")
+    assert "es.onmessage = handle" in source
+    assert "addEventListener(" not in source
+    store = (LAB_ROOT / "store.js").read_text(encoding="utf-8")
+    assert "lab.resync" in store and "replayCutoff" in store

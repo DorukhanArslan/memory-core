@@ -17,6 +17,10 @@ export const store = {
     detailErr: new Map(),
     events: [],
     lastEventId: 0,
+    // Events up to the first snapshot's lastEventId are replayed history: they fill the timeline
+    // but never mark a file as "changed in this turn" (null until that snapshot answers).
+    replayCutoff: null,
+    preSnapChanges: [],
     fileCache: new Map(),
     changed: new Set(),
     changedLines: new Map(),
@@ -133,6 +137,11 @@ export async function loadState() {
   const snap = await guard(() => api.get('/api/lab/state', { sessionKind: 'main' }), (e) => { d.snapErr = e; });
   if (snap) {
     d.snap = snap; d.snapErr = null;
+    if (d.replayCutoff === null && typeof snap.lastEventId === 'number') {
+      d.replayCutoff = snap.lastEventId;
+      for (const x of d.preSnapChanges) if (x.id > d.replayCutoff) d.changed.add(x.path);
+      d.preSnapChanges = [];
+    }
     if (Array.isArray(snap.turns)) mergeTurns(snap.turns, { replace: true });
     if (typeof snap.lastEventId === 'number' && snap.lastEventId > d.lastEventId) d.lastEventId = snap.lastEventId;
     if (snap.index) d.index = { ...(d.index || {}), ...snap.index };
@@ -289,14 +298,17 @@ export function ingestEvent(ev) {
   if (d.events.length > EVENT_RING) for (const old of d.events.splice(0, d.events.length - EVENT_RING)) seen.delete(evKey(old));
   const type = String(ev.type);
   const data = ev.data || {};
+  const live = typeof ev.id === 'number' && d.replayCutoff !== null && ev.id > d.replayCutoff;
+  if (type === 'lab.resync') { d.changed.clear(); later('state', loadState, 50); later('files', loadFiles, 80); later('index', loadIndex, 80); }
+  if (live && (type === 'chat.turn.started' || type === 'workspace.reset')) d.changed.clear();
   if (FILE_EVENTS.has(type) && data.path) {
-    d.changed.add(data.path);
+    if (live) d.changed.add(data.path);
+    else if (d.replayCutoff === null && typeof ev.id === 'number') d.preSnapChanges.push({ path: data.path, id: ev.id });
     const cached = d.fileCache.get(data.path);
     if (cached) cached.stale = true;
     later('files', loadFiles, 150);
     later(`file:${data.path}`, () => reloadOpenFile(data.path), 160);
   }
-  if (type === 'chat.turn.started') d.changed.clear();
   if (type === 'chat.turn.completed' || type === 'chat.turn.failed') { if (!store.stream) later('state', loadState, 200); }
   if (type === 'index.reindexed' || type.startsWith('search.')) later('index', loadIndex, 150);
   if (type === 'settings.changed' || type === 'provider.check') later('settings', loadSettings, 100);

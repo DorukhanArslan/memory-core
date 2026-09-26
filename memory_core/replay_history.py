@@ -3,11 +3,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY, MEMORY_CORE_RUNTIME_IDENTITY
+from memory_core.memory_flush import SILENT_REPLY_TOKEN
 from memory_core.runtime_context_prompt import (
-    OPENCLAW_NEXT_TURN_RUNTIME_CONTEXT_HEADER,
     OPENCLAW_RUNTIME_CONTEXT_NOTICE,
+    _find_delimited_token_index,
 )
+from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY, MEMORY_CORE_RUNTIME_IDENTITY
 
 
 STREAM_ERROR_FALLBACK_TEXT = "[assistant turn failed before producing content]"
@@ -152,7 +153,10 @@ def _normalize_assistant_replay_block_content(
 
 
 def _is_silent_reply_payload_text(text: str) -> bool:
-    return text == "NO_REPLY"
+    # Known gap: upstream replay-history.ts calls isSilentReplyPayloadText
+    # (src/auto-reply/tokens.ts:217), which also accepts repeated tokens,
+    # punctuation wrappers, JSON-string, envelope and reasoning-prefixed forms.
+    return text == SILENT_REPLY_TOKEN
 
 
 def _is_replay_droppable_trailing_assistant(message: dict[str, Any] | None) -> bool:
@@ -239,14 +243,6 @@ def _strip_internal_runtime_context(text: str) -> str:
     return next_text
 
 
-def _find_delimited_token_index(text: str, token: str, start: int) -> int:
-    pattern = re.compile(rf"(?:^|\r?\n){re.escape(token)}(?=\r?\n|$)")
-    match = pattern.search(text, max(0, start))
-    if not match:
-        return -1
-    return match.start() + len(match.group(0)) - len(token)
-
-
 def _strip_runtime_context_prompt_preface(text: str) -> str:
     lines = text.splitlines()
     changed = False
@@ -258,7 +254,7 @@ def _strip_runtime_context_prompt_preface(text: str) -> str:
         runtime_headers = {
             MEMORY_CORE_RUNTIME_IDENTITY.next_turn_runtime_context_header,
             MEMORY_CORE_RUNTIME_IDENTITY.runtime_event_header,
-            OPENCLAW_NEXT_TURN_RUNTIME_CONTEXT_HEADER,
+            OPENCLAW_COMPAT_RUNTIME_IDENTITY.next_turn_runtime_context_header,
             OPENCLAW_COMPAT_RUNTIME_IDENTITY.runtime_event_header,
         }
         if line.strip() in runtime_headers and next_line.strip() == OPENCLAW_RUNTIME_CONTEXT_NOTICE:

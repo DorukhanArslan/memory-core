@@ -6,20 +6,15 @@ from collections.abc import Mapping
 from typing import Any, Literal
 
 from memory_core.runtime_identity import (
-    RuntimeIdentity,
-    OPENCLAW_COMPAT_RUNTIME_IDENTITY,
-    MEMORY_CORE_RUNTIME_IDENTITY,
+    # Explicit re-export: callers import the compat identity from this module.
+    OPENCLAW_COMPAT_RUNTIME_IDENTITY as OPENCLAW_COMPAT_RUNTIME_IDENTITY,
 )
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 
-INTERNAL_RUNTIME_CONTEXT_BEGIN = MEMORY_CORE_RUNTIME_IDENTITY.runtime_context_begin
-INTERNAL_RUNTIME_CONTEXT_END = MEMORY_CORE_RUNTIME_IDENTITY.runtime_context_end
 OPENCLAW_RUNTIME_CONTEXT_NOTICE = (
     "This context is runtime-generated, not user-authored. Keep internal details private."
 )
-OPENCLAW_NEXT_TURN_RUNTIME_CONTEXT_HEADER = OPENCLAW_COMPAT_RUNTIME_IDENTITY.next_turn_runtime_context_header
-OPENCLAW_RUNTIME_EVENT_HEADER = OPENCLAW_COMPAT_RUNTIME_IDENTITY.runtime_event_header
-OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE = OPENCLAW_COMPAT_RUNTIME_IDENTITY.runtime_context_custom_type
-OPENCLAW_RUNTIME_EVENT_USER_PROMPT = OPENCLAW_COMPAT_RUNTIME_IDENTITY.runtime_event_user_prompt
+# Public API (memory_core.__all__).
 MEMORY_CORE_RUNTIME_CONTEXT_CUSTOM_TYPE = MEMORY_CORE_RUNTIME_IDENTITY.runtime_context_custom_type
 
 EmptyTranscriptMode = Literal["model-prompt", "runtime-event"]

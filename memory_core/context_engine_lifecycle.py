@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from memory_core.runtime_identity import RuntimeIdentity, OPENCLAW_COMPAT_RUNTIME_IDENTITY, MEMORY_CORE_RUNTIME_IDENTITY
-
-OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE = OPENCLAW_COMPAT_RUNTIME_IDENTITY.runtime_context_custom_type
-MEMORY_CORE_RUNTIME_CONTEXT_CUSTOM_TYPE = MEMORY_CORE_RUNTIME_IDENTITY.runtime_context_custom_type
+from memory_core.runtime_identity import (
+    # Explicit re-export: callers import the compat identity from this module.
+    OPENCLAW_COMPAT_RUNTIME_IDENTITY as OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+)
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 
 
 def strip_runtime_context_custom_messages(

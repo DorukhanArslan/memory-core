@@ -167,3 +167,23 @@ def test_typed_results_serialize_with_upstream_keys(tmp_path: Path):
         "rewroteStore": False,
         "removedStaleLock": False,
     }
+
+
+def test_snippet_caps_count_utf16_code_units(tmp_path: Path):
+    # truncateShortTermSnippet / truncatePromotedSnippet use UTF-16 .length and .slice;
+    # oracle: test_real_openclaw_oracle_snippet_caps_count_utf16_units.
+    from memory_core.consolidation.promotion import _format_promoted_snippet_for_memory
+    from memory_core.consolidation.store import truncate_short_term_snippet
+
+    brain = "\U0001f9e0"
+    assert truncate_short_term_snippet(brain * 10 + "a" * 800) == brain * 10 + "a" * 780
+    assert truncate_short_term_snippet("a" * 799 + brain) == "a" * 799 + "\ud83e"
+    assert _format_promoted_snippet_for_memory("x" * 639 + brain + "y", 160) == (
+        "x" * 639 + "�..."
+    )
+
+    config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
+    hit = {"path": "memory/2026-05-08.md", "startLine": 3, "snippet": "a" * 799 + brain}
+    record_short_term_recalls(config=config, query="a", results=[hit], now_ms=0)
+    stored = (tmp_path / "memory" / ".dreams" / "short-term-recall.json").read_text("utf-8")
+    assert '"snippet": "' + "a" * 799 + '\\ud83e"' in stored

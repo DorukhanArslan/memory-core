@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from memory_core.bootstrap._js import js_trim
+from memory_core.bootstrap._js import js_to_well_formed, js_trim, js_trim_end, utf16_len, utf16_slice
 from memory_core.config import MemoryConfig
 from memory_core.consolidation._util import (
     DAY_MS,
@@ -615,30 +615,40 @@ def _resolve_promoted_snippet_char_limit(max_tokens: int) -> int:
 
 
 def _truncate_promoted_snippet(snippet: str, max_tokens: int) -> str:
+    # short-term-promotion.ts:2349-2368 truncatePromotedSnippet: lengths, slices and
+    # lastIndexOf positions are UTF-16 code units, the trim is trimEnd.
     limit = _resolve_promoted_snippet_char_limit(max_tokens)
-    if limit == 0 or len(snippet) <= limit:
+    if limit == 0 or utf16_len(snippet) <= limit:
         return snippet
-    hard_limit = snippet[:limit]
+    hard_limit = utf16_slice(snippet, 0, limit)
     sentence_boundary = max(
-        hard_limit.rfind(". "),
-        hard_limit.rfind("! "),
-        hard_limit.rfind("? "),
+        _utf16_last_index_of(hard_limit, ". "),
+        _utf16_last_index_of(hard_limit, "! "),
+        _utf16_last_index_of(hard_limit, "? "),
     )
-    word_boundary = hard_limit.rfind(" ")
+    word_boundary = _utf16_last_index_of(hard_limit, " ")
     if sentence_boundary >= math.floor(limit * 0.55):
         cut_at = sentence_boundary + 1
     elif word_boundary >= math.floor(limit * 0.65):
         cut_at = word_boundary
     else:
         cut_at = limit
-    return f"{hard_limit[:cut_at].rstrip()}..."
+    return f"{js_trim_end(utf16_slice(hard_limit, 0, cut_at))}..."
+
+
+def _utf16_last_index_of(value: str, needle: str) -> int:
+    index = value.rfind(needle)
+    return index if index < 0 else utf16_len(value[:index])
 
 
 def _format_promoted_snippet_for_memory(raw_snippet: str, max_tokens: int) -> str:
     normalized = re.sub(
         r"^[-*+] +", "", normalize_snippet(raw_snippet or "(no snippet captured)")
     ).strip()
-    return _truncate_promoted_snippet(normalized or "(no snippet captured)", max_tokens)
+    truncated = _truncate_promoted_snippet(normalized or "(no snippet captured)", max_tokens)
+    # A hard cut inside a surrogate pair leaves a lone surrogate; Node's UTF-8 write
+    # of MEMORY.md turns it into U+FFFD (same UTF-16 length, same bytes).
+    return js_to_well_formed(truncated)
 
 
 def _mark_promoted(path: Path, candidates: list[PromotionCandidate], now_ms: int) -> None:
@@ -718,6 +728,11 @@ def _normalize_range_snippet(lines: list[str], start_line: int, end_line: int) -
 def _compare_candidate_window(target_snippet: str, window_snippet: str) -> tuple[bool, int]:
     if not target_snippet or not window_snippet:
         return False, 0
+    if _LONE_SURROGATE_RE.search(target_snippet) or _LONE_SURROGATE_RE.search(window_snippet):
+        # compareCandidateWindow compares UTF-16 code units: a stored snippet cut inside
+        # a surrogate pair (the 800-unit recall cap) still matches the line holding it.
+        target_snippet = _utf16_unit_text(target_snippet)
+        window_snippet = _utf16_unit_text(window_snippet)
     if window_snippet == target_snippet:
         return True, 3
     if target_snippet in window_snippet:
@@ -725,6 +740,17 @@ def _compare_candidate_window(target_snippet: str, window_snippet: str) -> tuple
     if window_snippet in target_snippet:
         return True, 1
     return False, 0
+
+
+_LONE_SURROGATE_RE = re.compile("[\\ud800-\\udfff]")
+
+
+def _utf16_unit_text(value: str) -> str:
+    """Return ``value`` with one character per UTF-16 code unit (pairs split apart)."""
+    data = value.encode("utf-16-le", "surrogatepass")
+    return "".join(
+        chr(int.from_bytes(data[index : index + 2], "little")) for index in range(0, len(data), 2)
+    )
 
 
 def _relocate_candidate_range(

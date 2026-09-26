@@ -3104,6 +3104,45 @@ def test_real_openclaw_oracle_promotion_metadata_rounds_ties_like_to_fixed(tmp_p
     _assert_apply_matches(applied, python_run, python_side)
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        # 10 astral emoji up front: the 800-unit store cap and the 640-unit MEMORY.md cap
+        # land 10 code points earlier than a code-point count would put them.
+        "- " + "\U0001f9e0" * 10 + " " + "alpha beta gamma " * 50,
+        # Emoji straddling both caps (units 639-640 of the MEMORY.md text, 799-800 of the
+        # stored snippet): the hard cuts split their surrogate pairs.
+        "- " + "x" * 639 + "\U0001f9e0" + "y" * 156 + "\U0001f9e0" + "z" * 20,
+    ],
+    ids=["emoji-prefix", "split-pair"],
+)
+def test_real_openclaw_oracle_snippet_caps_count_utf16_units(tmp_path: Path, line: str):
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+    now_ms = 1778241600000  # 2026-05-08T12:00:00Z
+    hit = {
+        "source": "memory",
+        "path": "memory/2026-05-08.md",
+        "startLine": 3,
+        "endLine": 3,
+        "snippet": line,
+        "score": 0.9,
+    }
+    recalls = [{"query": "alpha", "results": [hit], "nowMs": now_ms}]
+
+    ranked, applied, python_side = _run_promotion_fixture(
+        oracle, tmp_path, f"# 2026-05-08\n\n{line}\n", recalls, now_ms
+    )
+
+    assert applied["ok"] is True
+    assert applied["result"]["applied"] == 1
+    gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+    python_run = python_side.apply(now_ms, "UTC", **gates)
+    _assert_apply_matches(applied, python_run, python_side)
+
+
 def test_real_openclaw_oracle_history_limit_helpers_match_python():
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
     config = {

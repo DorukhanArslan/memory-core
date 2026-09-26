@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from memory_core.bootstrap._js import js_to_well_formed
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.promotion import (
     MemoryPromotionRun,
@@ -189,7 +190,8 @@ def _snippet_lines(candidates: list[PromotionCandidate]) -> list[str]:
 
 
 def _single_line(value: str) -> str:
-    return " ".join(value.strip().split())
+    # Stored snippets may end in a lone surrogate (UTF-16 cap); write it as U+FFFD.
+    return js_to_well_formed(" ".join(value.strip().split()))
 
 
 def _iso_seconds(now_ms: int) -> str:

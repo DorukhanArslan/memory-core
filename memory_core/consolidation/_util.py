@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import difflib
 import hashlib
-import json
 import math
 import os
 import secrets
@@ -18,6 +17,8 @@ from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
+
+from memory_core.bootstrap._js import js_json_stringify
 
 DAY_MS = 24 * 60 * 60 * 1000
 
@@ -99,10 +100,8 @@ def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     """Write ``payload`` as indented JSON via a same-directory temp file and rename."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
-    temporary_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    # JSON.stringify output: a lone surrogate from a UTF-16 snippet cut is escaped.
+    temporary_path.write_text(js_json_stringify(payload, indent=2) + "\n", encoding="utf-8")
     temporary_path.replace(path)
 
 

@@ -17,9 +17,14 @@ caller gets the unavailable result at once and the worker's
 :class:`~memory_core.cancellation.CancellationSignal` is aborted, which interrupts
 the open SQLite statement and stops the store at its next checkpoint; the
 abandoned worker only reads, so nothing is left half-written. A timeout or an
-error puts ``agent_id ?? agent_session_key ?? "default"`` on a process-wide
-60 s cooldown during which memory is not searched (``corpus=wiki`` never
-reads or records it; ``corpus=all`` still searches supplements).
+error puts the store on a process-wide 60 s cooldown during which memory is
+not searched (``corpus=wiki`` never reads or records it; ``corpus=all`` still
+searches supplements). Upstream keys the cooldown by
+``agentId ?? agentSessionKey ?? "default"``, and an agent there owns exactly
+one workspace and one index. memory-core hosts open many stores with the default
+``agent_id`` (one per workspace or subject), so the key is that upstream value
+scoped by the store's resolved path (documented deviation,
+:func:`memory_search_tool_cooldown_key`).
 
 An index whose stored identity is missing or no longer matches the store's
 provider/model/settings returns the paused result (no cooldown) until
@@ -34,6 +39,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from memory_core.bootstrap._js import js_trim
@@ -175,6 +181,30 @@ def resolve_memory_search_tool_cooldown_key(
     return "default"
 
 
+def memory_search_tool_cooldown_key(
+    config: MemoryConfig, store: SQLiteMemoryStore, *, agent_session_key: str | None = None
+) -> str:
+    """The cooldown key ``memory_search`` reads and records for ``store``.
+
+    Deviation from tools.ts:76-81, which keys by agent alone: upstream's agent
+    stands for one workspace and one index, while memory-core keeps one index per
+    store path, and every ``Memory.from_workspace()`` store defaults to
+    ``agent_id="main"``. Keying by agent alone would let one workspace's
+    provider error or timeout pause every other workspace in the process. The
+    key is the store's resolved path (``config.resolved_store_path()`` for a
+    store object without ``path``), a NUL separator, then
+    :func:`resolve_memory_search_tool_cooldown_key`; stores that open the same
+    index file share a cooldown.
+    """
+    store_path = getattr(store, "path", None)
+    if store_path is None:
+        store_path = config.resolved_store_path()
+    agent_key = resolve_memory_search_tool_cooldown_key(
+        agent_id=config.agent_id, agent_session_key=agent_session_key
+    )
+    return f"{Path(store_path).resolve()}\0{agent_key}"
+
+
 def read_memory_search_tool_cooldown(key: str) -> str | None:
     """The cooldown error for ``key``, dropping it once expired (tools.ts:83-93)."""
     with _cooldowns_lock:
@@ -294,9 +324,10 @@ def execute_memory_search_tool(
 ) -> dict:
     """Run ``memory_search`` on raw tool-call params (the model's arguments).
 
-    The cooldown key is ``config.agent_id`` (upstream's resolved session agent
-    id), falling back to ``agent_session_key`` and then ``"default"``. Stores
-    that share an ``agent_id`` in one process share the cooldown.
+    The cooldown key is :func:`memory_search_tool_cooldown_key`: the store's
+    resolved path plus ``config.agent_id`` (upstream's resolved session agent
+    id), falling back to ``agent_session_key`` and then ``"default"``. Only
+    stores that open the same index file with the same agent id share it.
     """
     parsed = read_memory_search_params(params)
     return _run_memory_search_tool(
@@ -369,8 +400,8 @@ def _run_memory_search_tool(
     runtime_identity: RuntimeIdentity,
 ) -> dict:
     requested_corpus = params.corpus
-    cooldown_key = resolve_memory_search_tool_cooldown_key(
-        agent_id=config.agent_id, agent_session_key=agent_session_key
+    cooldown_key = memory_search_tool_cooldown_key(
+        config, store, agent_session_key=agent_session_key
     )
     cooldown_error = (
         None if requested_corpus == "wiki" else read_memory_search_tool_cooldown(cooldown_key)

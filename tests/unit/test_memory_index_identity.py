@@ -10,7 +10,11 @@ from memory_core.index.identity import MEMORY_INDEX_META_KEY, hash_text, resolve
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.supplements import StaticMemoryCorpusSupplement
-from memory_core.tools.memory_search import memory_search, read_memory_search_tool_cooldown
+from memory_core.tools.memory_search import (
+    memory_search,
+    memory_search_tool_cooldown_key,
+    read_memory_search_tool_cooldown,
+)
 from memory_core.workspace import MemoryWorkspace
 
 FTS_ONLY = FeatureFlags(vector_search=False)
@@ -174,7 +178,7 @@ def test_paused_search_records_no_cooldown_and_skips_supplements(tmp_path):
     assert paused_all["error"] == "index metadata is missing"
     assert paused_all["results"] == []
     assert [item["path"] for item in wiki_only["results"]] == ["w.md"]
-    assert read_memory_search_tool_cooldown(cfg.agent_id) is None
+    assert read_memory_search_tool_cooldown(memory_search_tool_cooldown_key(cfg, store)) is None
 
 
 def test_paused_action_names_the_runtime(tmp_path):

@@ -17,6 +17,7 @@ from memory_core.tools.memory_search import (
     MEMORY_SEARCH_TOOL_TIMEOUT_MS,
     build_memory_search_unavailable_result,
     memory_search,
+    memory_search_tool_cooldown_key,
     read_memory_search_tool_cooldown,
     record_memory_search_tool_cooldown,
     resolve_memory_search_tool_cooldown_key,
@@ -200,7 +201,7 @@ def test_cooldown_expires_when_until_is_reached(tmp_path, clock):
     assert [hit["path"] for hit in memory_search(cfg, store, query="glacier")["results"]] == [
         "MEMORY.md"
     ]
-    assert read_memory_search_tool_cooldown("main") is None
+    assert read_memory_search_tool_cooldown(memory_search_tool_cooldown_key(cfg, store)) is None
 
 
 def test_cooldown_is_keyed_by_agent_id(tmp_path, clock):
@@ -213,6 +214,55 @@ def test_cooldown_is_keyed_by_agent_id(tmp_path, clock):
 
     assert memory_search(cfg_a, store_a, query="glacier", corpus="memory")["unavailable"] is True
     assert memory_search(cfg_b, store_b, query="glacier", corpus="memory")["results"]
+
+
+def test_cooldown_is_scoped_to_the_store_not_shared_across_workspaces(tmp_path, clock):
+    # Deviation from tools.ts:76-81 (agent-only key): two workspaces with the
+    # default agent_id "main" have two indexes, so one failing must not pause
+    # the other (with corpus="all" that pause would be a silent empty success).
+    failing = _ControlledProvider()
+    healthy = _ControlledProvider()
+    cfg_1 = MemoryConfig(workspace_dir=tmp_path / "ws1")
+    cfg_2 = MemoryConfig(workspace_dir=tmp_path / "ws2")
+    stores = []
+    for cfg, provider in ((cfg_1, failing), (cfg_2, healthy)):
+        cfg.workspace_dir.mkdir()
+        (cfg.workspace_dir / "MEMORY.md").write_text("- Glacier backups.\n", encoding="utf-8")
+        store = SQLiteMemoryStore(cfg, provider)
+        store.reindex(MemoryWorkspace(cfg.workspace_dir))
+        stores.append(store)
+    store_1, store_2 = stores
+    assert cfg_1.agent_id == cfg_2.agent_id == "main"
+    failing.error = RuntimeError("provider exploded")
+
+    assert memory_search(cfg_1, store_1, query="glacier")["error"] == "provider exploded"
+    assert [hit["path"] for hit in memory_search(cfg_2, store_2, query="glacier")["results"]] == [
+        "MEMORY.md"
+    ]
+    assert "disabled" not in memory_search(cfg_2, store_2, query="glacier", corpus="memory")
+    assert memory_search(cfg_1, store_1, query="glacier", corpus="memory")["error"] == (
+        "provider exploded"
+    )
+    assert read_memory_search_tool_cooldown(memory_search_tool_cooldown_key(cfg_2, store_2)) is None
+
+
+def test_stores_on_the_same_index_file_share_a_cooldown(tmp_path, clock):
+    provider = _ControlledProvider()
+    cfg, store = _vector_store(tmp_path, provider)
+    same_index = SQLiteMemoryStore(cfg, provider)
+    provider.error = RuntimeError("provider exploded")
+    memory_search(cfg, store, query="glacier", corpus="memory")
+    provider.error = None
+
+    assert memory_search_tool_cooldown_key(cfg, same_index) == memory_search_tool_cooldown_key(
+        cfg, store
+    )
+    assert memory_search(cfg, same_index, query="glacier", corpus="memory")["error"] == (
+        "provider exploded"
+    )
+    assert memory_search_tool_cooldown_key(
+        cfg, store, agent_session_key="agent:main:s"
+    ).endswith("\0main")
 
 
 def test_default_corpus_all_hides_a_cooldown_behind_empty_results(tmp_path, clock):
@@ -254,9 +304,10 @@ def test_supplement_failure_under_corpus_all_records_no_cooldown(tmp_path, clock
     )
 
     assert failed["error"] == wiki_failed["error"] == "wiki down"
-    assert read_memory_search_tool_cooldown("main") is None
-    record_memory_search_tool_cooldown("main", "x")
-    assert read_memory_search_tool_cooldown("main") == "x"
+    key = memory_search_tool_cooldown_key(cfg, store)
+    assert read_memory_search_tool_cooldown(key) is None
+    record_memory_search_tool_cooldown(key, "x")
+    assert read_memory_search_tool_cooldown(key) == "x"
 
 
 def test_deadline_runs_from_an_event_loop_and_from_other_threads(tmp_path):

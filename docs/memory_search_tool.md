@@ -118,15 +118,17 @@ In OpenClaw compat mode it is upstream's text, which names the `openclaw` CLI.
   query embedding, and between FTS probes). A search only reads, so the
   abandoned worker leaves nothing half-written.
 - A timeout or error starts a 60 s cooldown (`MEMORY_SEARCH_TOOL_COOLDOWN_MS`).
-  Cooldowns are process-wide and keyed by
-  `config.agent_id ?? agent_session_key ?? "default"`. While a cooldown is
-  active, memory is not searched and the unavailable result repeats the
-  recorded error.
+  Cooldowns are process-wide and keyed by the store's resolved path plus
+  `config.agent_id ?? agent_session_key ?? "default"`
+  (`memory_search_tool_cooldown_key`). While a cooldown is active, memory is
+  not searched and the unavailable result repeats the recorded error.
 - `corpus=wiki` never reads or records a cooldown. `corpus=all` still searches
   supplements during a cooldown, and records one only when the memory phase
   failed. A paused index records no cooldown.
-- Two stores that share an `agent_id` in one process share a cooldown. Give
-  each store its own `agent_id` if they must fail independently.
+- Only stores that open the same index file with the same agent id share a
+  cooldown. Workspaces and live subjects that all use the default
+  `agent_id="main"` have separate indexes, so one failing never pauses the
+  others.
 - Tests call `reset_memory_search_tool_cooldowns()`;
   `tests/conftest.py` does this around every test.
 
@@ -166,6 +168,12 @@ reindexes.
 - `store_path` stays configurable (default `<workspace>/.memory-core/<agent_id>.sqlite`,
   decision Q15). Upstream ignores `memorySearch.store.path` and uses
   `<stateDir>/agents/<agentId>/agent/openclaw-agent.sqlite`.
+- The cooldown key adds the store's resolved path to upstream's
+  `agentId ?? agentSessionKey ?? "default"` (`tools.ts:76-81`). Upstream's
+  agent owns exactly one workspace and one index; in memory-core every
+  `Memory.from_workspace()` store and every `SubjectMemory` workspace defaults
+  to `agent_id="main"`, so an agent-only key would let one workspace's
+  provider error pause memory search in all of them for 60 s.
 - Omitted `maxResults`/`minScore` fall back to 5 / 0.0 (the memory-core facade
   defaults); upstream reads the agent config (6 / 0.35). The facade and
   `memory_search` default to `corpus="all"`, where upstream's default is an

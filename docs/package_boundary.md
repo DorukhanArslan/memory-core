@@ -23,7 +23,9 @@ Included:
 - curated memory writes (`MemoryCurator`, `Memory.curator()`): a memory-core
   extension, not OpenClaw parity, behind `FeatureFlags.curated_memory_writes`;
   the host decides which operations to offer (`CurationPolicy`) and passes
-  `memory_flush=True` during flush runs
+  `memory_flush=True` during flush runs; `MemoryCurator.dispatch` raises
+  `MemoryToolInputError` like `memory_search`, so one host handler sends the
+  model `error.to_tool_error()` for both
 - the session-memory hook for `/new` and `/reset` (`save_session_memory`,
   `memory_core.session_memory`): the host calls it with the ending session's
   transcript file or messages; it writes a new `memory/<date>-<slug>.md` through

@@ -54,11 +54,15 @@ changed a file, typically to reindex the memory store.
 For model tool calls, ``MemoryCurator.tool_definitions()`` returns
 provider-neutral specs (``name``, ``description``, JSON-schema
 ``parameters``; wrap them in the host's tool format) for the operations on
-offer, and ``MemoryCurator.dispatch(name, arguments)`` runs one call. Input
-problems come back as ``{"status": "error", "tool", "error"}`` payloads, the
-shape upstream's tool adapter gives a thrown ``ToolInputError``
-(``src/agents/agent-tool-definition-adapter.ts:250-259``); a call to a tool
-that is not on offer raises ``CurationUnavailableError`` instead.
+offer, and ``MemoryCurator.dispatch(name, arguments)`` runs one call. Errors
+follow the ``memory_search`` tool contract (``memory_core.tools.common``): bad
+arguments, refused writes and failed writes raise ``MemoryToolInputError``
+tagged with the tool name, and a host tool loop sends the model
+``error.to_tool_error()``, the ``{"status": "error", "tool", "error"}`` payload
+upstream's tool adapter builds for a thrown tool error
+(``src/agents/agent-tool-definition-adapter.ts:250-259``). A call to a tool
+that is not on offer raises ``CurationUnavailableError``, which is not a
+``MemoryToolInputError``, so the host sees its own mistake.
 """
 
 from __future__ import annotations
@@ -95,7 +99,9 @@ from memory_core.bootstrap.layout import PROACTIVE_PREFERENCES_FILENAME, USER_FI
 from memory_core.flags import FeatureFlags
 from memory_core.memory_budget import PROMOTION_SECTION_HEADING_RE, parse_memory_blocks
 from memory_core.memory_flush import SILENT_REPLY_TOKEN
-from memory_core.workspace import MemoryWorkspace, UnsafeMemoryPathError
+from memory_core.memory_paths import UnsafeMemoryPathError
+from memory_core.tools.common import MemoryToolInputError
+from memory_core.workspace import MemoryWorkspace
 
 ADD_MEMORY_ENTRY = "add_memory_entry"
 REPLACE_MEMORY_ENTRY = "replace_memory_entry"
@@ -128,7 +134,10 @@ _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 class CurationError(ValueError):
-    """A refused curated write; the message is written for the model."""
+    """A refused curated write; the message is written for the model.
+
+    ``MemoryCurator.dispatch`` re-raises it as ``MemoryToolInputError``.
+    """
 
 
 class CurationUnavailableError(CurationError):
@@ -165,11 +174,6 @@ class CurationResult:
         if self.chars is not None:
             payload["chars"] = self.chars
         return payload
-
-
-def to_tool_error(tool: str, message: str) -> dict:
-    """Model-facing tool error in the ``ToolInputError`` payload shape."""
-    return {"status": "error", "tool": tool, "error": message}
 
 
 _ONE_LINE = "One line, without the leading '- '."
@@ -697,32 +701,32 @@ def proactive_preferences_text(text: str) -> str:
 # --- curator -------------------------------------------------------------------
 
 
-def _parse_arguments(arguments: Mapping[str, object] | str | None) -> dict:
+def _parse_arguments(arguments: Mapping[str, object] | str | None, *, tool: str) -> dict:
     if arguments is None:
         return {}
     if isinstance(arguments, str):
         try:
             arguments = json.loads(arguments) if arguments.strip() else {}
         except json.JSONDecodeError as exc:
-            raise CurationError("arguments must be a JSON object") from exc
+            raise MemoryToolInputError("arguments must be a JSON object", tool=tool) from exc
     if not isinstance(arguments, Mapping):
-        raise CurationError("arguments must be a JSON object")
+        raise MemoryToolInputError("arguments must be a JSON object", tool=tool)
     return dict(arguments)
 
 
-def _required_arg(args: dict, key: str, *, allow_blank: bool = False) -> str:
+def _required_arg(args: dict, key: str, *, tool: str, allow_blank: bool = False) -> str:
     value = args.get(key)
     if not isinstance(value, str) or (not allow_blank and not value.strip()):
-        raise CurationError(f"{key} required")
+        raise MemoryToolInputError(f"{key} required", tool=tool)
     return value
 
 
-def _optional_arg(args: dict, key: str) -> str | None:
+def _optional_arg(args: dict, key: str, *, tool: str) -> str | None:
     value = args.get(key)
     if value is None or (isinstance(value, str) and not value.strip()):
         return None
     if not isinstance(value, str):
-        raise CurationError(f"{key} must be a string")
+        raise MemoryToolInputError(f"{key} must be a string", tool=tool)
     return value
 
 
@@ -816,57 +820,66 @@ class MemoryCurator:
     ) -> dict:
         """Run one tool call; ``arguments`` is a mapping or its JSON text.
 
-        Returns the result payload, or a tool-error payload for bad input and
-        refused writes. Raises ``CurationUnavailableError`` for a tool that is
-        not on offer (unknown name, flag off, memory flush, policy). Blank
-        optional arguments count as absent.
+        Returns the result payload (``CurationResult.to_tool_result``). Bad
+        arguments, refused writes (``CurationError``) and failed writes
+        (``OSError``, as ``write failed: ...``) raise ``MemoryToolInputError``
+        with ``tool == name``, like ``execute_memory_search_tool``; the host
+        sends the model ``error.to_tool_error()``. Raises
+        ``CurationUnavailableError`` for a tool that is not on offer (unknown
+        name, flag off, memory flush, policy). Blank optional arguments count
+        as absent.
         """
         if name not in CURATION_OPERATIONS:
             raise CurationUnavailableError(f"unknown curation tool: {name}")
         self._require(name, self._target_for(name), memory_flush=memory_flush)
+        args = _parse_arguments(arguments, tool=name)
         try:
-            args = _parse_arguments(arguments)
             result = self._dispatch_call(name, args, memory_flush=memory_flush)
         except CurationUnavailableError:
             raise
         except CurationError as exc:
-            return to_tool_error(name, str(exc))
+            raise MemoryToolInputError(str(exc), tool=name) from exc
         except OSError as exc:
-            return to_tool_error(name, f"write failed: {exc.strerror or exc}")
+            raise MemoryToolInputError(
+                f"write failed: {exc.strerror or exc}", tool=name
+            ) from exc
         return result.to_tool_result()
 
     def _dispatch_call(self, name: str, args: dict, *, memory_flush: bool) -> CurationResult:
         if name == ADD_MEMORY_ENTRY:
             return self.add_memory_entry(
-                _required_arg(args, "section"),
-                _required_arg(args, "text"),
+                _required_arg(args, "section", tool=name),
+                _required_arg(args, "text", tool=name),
                 memory_flush=memory_flush,
             )
         if name == REPLACE_MEMORY_ENTRY:
             return self.replace_memory_entry(
-                _required_arg(args, "old"),
-                _required_arg(args, "new"),
-                section=_optional_arg(args, "section"),
+                _required_arg(args, "old", tool=name),
+                _required_arg(args, "new", tool=name),
+                section=_optional_arg(args, "section", tool=name),
                 memory_flush=memory_flush,
             )
         if name == REMOVE_MEMORY_ENTRY:
             return self.remove_memory_entry(
-                _required_arg(args, "entry"),
-                section=_optional_arg(args, "section"),
+                _required_arg(args, "entry", tool=name),
+                section=_optional_arg(args, "section", tool=name),
                 memory_flush=memory_flush,
             )
         if name == UPSERT_USER_DIRECTIVE:
             return self.upsert_user_directive(
-                _required_arg(args, "text"),
-                observed=_optional_arg(args, "observed"),
-                supersede=_optional_arg(args, "supersede"),
+                _required_arg(args, "text", tool=name),
+                observed=_optional_arg(args, "observed", tool=name),
+                supersede=_optional_arg(args, "supersede", tool=name),
                 memory_flush=memory_flush,
             )
         if name == SET_PROACTIVE_PREFERENCES:
             return self.set_proactive_preferences(
-                _required_arg(args, "text", allow_blank=True), memory_flush=memory_flush
+                _required_arg(args, "text", tool=name, allow_blank=True),
+                memory_flush=memory_flush,
             )
-        return self.append_daily_note(_required_arg(args, "text"), memory_flush=memory_flush)
+        return self.append_daily_note(
+            _required_arg(args, "text", tool=name), memory_flush=memory_flush
+        )
 
     def _target_for(self, operation: str) -> str:
         if operation in MEMORY_ENTRY_OPERATIONS:

@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from memory_core import CurationUnavailableError, FeatureFlags, Memory, MemoryConfig, MemoryCurator
+from memory_core import (
+    CurationUnavailableError,
+    FeatureFlags,
+    Memory,
+    MemoryConfig,
+    MemoryCurator,
+    MemoryToolInputError,
+    execute_memory_search_tool,
+)
 
 NOW_MS = 1790375400000  # 2026-09-25 22:30 UTC
 
@@ -55,3 +63,36 @@ def test_the_config_flag_disables_the_curator(tmp_path):
     with pytest.raises(CurationUnavailableError, match="disabled"):
         curator.add_memory_entry("Decisions", "delta")
     assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == before
+
+
+def test_one_host_handler_serializes_search_and_curation_tool_errors(tmp_path):
+    memory = _memory(tmp_path)
+    curator = memory.curator(now_ms=lambda: NOW_MS)
+    tools = {
+        "memory_search": lambda args: execute_memory_search_tool(memory.config, memory.store, args),
+        **{name: (lambda args, name=name: curator.dispatch(name, args))
+           for name in curator.available_operations()},
+    }
+
+    def run_tool(name, args):
+        try:
+            return tools[name](args)
+        except MemoryToolInputError as error:
+            return error.to_tool_error()
+
+    assert run_tool("memory_search", {"query": "  "}) == {
+        "status": "error",
+        "tool": "memory_search",
+        "error": "query required",
+    }
+    assert run_tool("add_memory_entry", {"section": "Decisions"}) == {
+        "status": "error",
+        "tool": "add_memory_entry",
+        "error": "text required",
+    }
+    assert run_tool("remove_memory_entry", {"entry": "absent"}) == {
+        "status": "error",
+        "tool": "remove_memory_entry",
+        "error": "entry not found in MEMORY.md",
+    }
+    assert run_tool("add_memory_entry", {"section": "Decisions", "text": "delta"})["status"] == "ok"

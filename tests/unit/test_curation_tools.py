@@ -12,12 +12,13 @@ from memory_core.curation import (
     ADD_MEMORY_ENTRY,
     CURATION_OPERATIONS,
     SET_PROACTIVE_PREFERENCES,
+    CurationError,
     CurationPolicy,
     CurationUnavailableError,
     MemoryCurator,
-    to_tool_error,
 )
 from memory_core.flags import FeatureFlags
+from memory_core.tools.common import MemoryToolInputError
 
 MEMORY_MD = (
     "# Long-Term Memory\n"
@@ -121,42 +122,51 @@ def test_dispatch_runs_calls_from_json_or_mappings(tmp_path, curator):
         ("append_daily_note", None, "text required"),
     ],
 )
-def test_dispatch_returns_tool_errors_for_bad_input(curator, name, arguments, message):
-    payload = curator.dispatch(name, arguments)
+def test_dispatch_raises_tool_input_errors_for_bad_input(curator, name, arguments, message):
+    with pytest.raises(MemoryToolInputError) as caught:
+        curator.dispatch(name, arguments)
 
-    assert payload["status"] == "error"
-    assert payload["tool"] == name
-    assert message in payload["error"]
-    assert payload == to_tool_error(name, payload["error"])
+    error = caught.value
+    assert (error.status, error.tool) == (400, name)
+    assert message in error.message
+    assert error.to_tool_error() == {"status": "error", "tool": name, "error": error.message}
+    assert (curator.root / "MEMORY.md").read_text(encoding="utf-8") == MEMORY_MD
 
 
-def test_dispatch_returns_tool_errors_for_refused_writes(tmp_path):
+def test_dispatch_raises_tool_input_errors_for_refused_writes(tmp_path):
     (tmp_path / "USER.md").write_text("x" * 3_990 + "\n", encoding="utf-8")
     curator = MemoryCurator(tmp_path, now_ms=lambda: NOW_MS)
 
-    payload = curator.dispatch("upsert_user_directive", {"text": "Prefer delta."})
+    with pytest.raises(MemoryToolInputError, match="over its 4000-char cap") as caught:
+        curator.dispatch("upsert_user_directive", {"text": "Prefer delta."})
 
-    assert payload["status"] == "error"
-    assert "over its 4000-char cap" in payload["error"]
+    assert caught.value.tool == "upsert_user_directive"
+    assert isinstance(caught.value.__cause__, CurationError)
+    assert caught.value.to_tool_error()["status"] == "error"
 
 
-def test_dispatch_reports_os_errors_as_tool_errors(tmp_path):
+def test_dispatch_raises_tool_input_errors_for_os_errors(tmp_path):
     root = tmp_path / "workspace"
     root.mkdir()
     (root / "MEMORY.md").write_text(MEMORY_MD, encoding="utf-8")
     curator = MemoryCurator(root)
     os.chmod(root, 0o500)
     try:
-        payload = curator.dispatch(ADD_MEMORY_ENTRY, {"section": "My Notes", "text": "delta"})
+        with pytest.raises(MemoryToolInputError, match="^write failed:") as caught:
+            curator.dispatch(ADD_MEMORY_ENTRY, {"section": "My Notes", "text": "delta"})
     finally:
         os.chmod(root, 0o700)
 
-    assert payload["status"] == "error"
-    assert payload["error"].startswith("write failed:")
+    assert caught.value.tool == ADD_MEMORY_ENTRY
+    assert isinstance(caught.value.__cause__, OSError)
     assert (root / "MEMORY.md").read_text(encoding="utf-8") == MEMORY_MD
 
 
 def test_dispatch_raises_for_tools_not_on_offer(tmp_path, curator):
+    # Not a tool-input error: a host that offers only tool_definitions() never
+    # sends these, so its tool loop's MemoryToolInputError handler must not
+    # hide them.
+    assert not issubclass(CurationUnavailableError, MemoryToolInputError)
     with pytest.raises(CurationUnavailableError, match="unknown curation tool: write"):
         curator.dispatch("write", {"path": "MEMORY.md", "content": "x"})
     with pytest.raises(CurationUnavailableError, match="memory flush"):

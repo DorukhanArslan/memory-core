@@ -176,6 +176,36 @@ def test_real_openclaw_oracle_deep_policy_uses_configured_values():
     assert result["result"] == resolve_deep_dreaming_policy(config).as_dict()
 
 
+@pytest.mark.parametrize(
+    "deep",
+    [
+        {"minScore": 1.4, "limit": None, "maxAgeDays": None, "maxPromotedSnippetTokens": None},
+        {"minScore": -0.2, "limit": "Infinity", "maxAgeDays": "Infinity"},
+        {"minScore": None, "limit": " 12 ", "maxAgeDays": 0, "maxPromotedSnippetTokens": 0},
+        {"minScore": "0.5", "limit": "0x10", "maxAgeDays": -3, "maxPromotedSnippetTokens": "200"},
+        {"minScore": "  ", "limit": "1e2", "maxAgeDays": "7.5", "minRecallCount": "x"},
+        {"minScore": "abc", "limit": [7], "maxAgeDays": "abc", "recencyHalfLifeDays": "-1"},
+        {"minScore": "inf", "limit": [], "minUniqueQueries": 2.9, "recencyHalfLifeDays": True},
+        {"limit": 7.9, "minRecallCount": -0.5, "minUniqueQueries": "1_0", "enabled": "TRUE"},
+    ],
+)
+def test_real_openclaw_oracle_deep_policy_coerces_malformed_values(deep: dict):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    config = {
+        "plugins": {
+            "entries": {
+                "memory-core": {"config": {"dreaming": {"enabled": True, "phases": {"deep": deep}}}}
+            }
+        }
+    }
+
+    result = oracle.run({"operation": "deepPolicy", "config": config})
+
+    assert result["ok"] is True
+    assert result["operation"] == "deepPolicy"
+    assert result["result"] == resolve_deep_dreaming_policy(config).as_dict()
+
+
 def test_real_openclaw_oracle_flush_plan_matches_python_defaults(tmp_path: Path):
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
     now_ms = 1777824000000

@@ -69,10 +69,28 @@ def test_deep_dreaming_policy_reads_full_or_plugin_config_and_falls_back():
         policy = resolve_deep_dreaming_policy(config)
         assert policy.enabled is True
         assert policy.limit == 7
-        assert policy.min_score == 1.0
+        # dreaming.ts:220-230 normalizeScore: out of range falls back, never clamps.
+        assert policy.min_score == 0.8
         assert policy.max_age_days == 30
         assert policy.min_recall_count == 3
     assert resolve_deep_dreaming_policy(full_config).as_dict()["limit"] == 7
+
+
+def test_deep_dreaming_policy_uses_javascript_number_coercion():
+    # Pin values measured with the deepPolicy oracle at 4c42815348 (dreaming.ts:181-230).
+    def resolve(**deep):
+        return resolve_deep_dreaming_policy({"dreaming": {"phases": {"deep": deep}}})
+
+    assert resolve(minScore=-0.2).min_score == 0.8
+    assert resolve(minScore=None).min_score == 0.0
+    assert resolve(limit=None).limit == 0
+    assert resolve(limit="Infinity").limit == 10
+    assert resolve(limit=float("inf")).limit == 10
+    assert resolve(limit=" 12 ").limit == 12
+    assert resolve(limit=7.9).limit == 7
+    assert resolve(maxAgeDays=float("inf")).max_age_days == 30
+    assert resolve(maxAgeDays=None).max_age_days == 30
+    assert resolve(maxPromotedSnippetTokens="200").max_promoted_snippet_tokens == 200
 
 
 def test_promotion_append_delegates_budget_compaction_to_memory_budget(

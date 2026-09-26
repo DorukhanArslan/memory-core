@@ -187,10 +187,26 @@ class SQLiteMemoryStore:
         return meta
 
     def reindex(self, workspace: MemoryWorkspace) -> int:
+        """Rebuild the index from every discovered file; returns the files indexed.
+
+        Markdown is decoded like upstream ``buildFileEntry``
+        (``packages/memory-host-sdk/src/host/internal.ts:292-304``):
+        ``Buffer.toString("utf-8")`` replaces invalid bytes, so an AppleDouble
+        ``._*.md`` or a Latin-1 note never fails the reindex, and a file that
+        vanished after discovery is skipped (upstream returns ``null``).
+        """
         files = workspace.discover_indexable_files()
         chunks: list[MemoryChunk] = []
+        indexed_files = 0
         for file in files:
-            text = file.index_text if file.index_text is not None else file.abs_path.read_text(encoding="utf-8")
+            if file.index_text is not None:
+                text = file.index_text
+            else:
+                try:
+                    text = file.abs_path.read_text(encoding="utf-8", errors="replace")
+                except FileNotFoundError:
+                    continue
+            indexed_files += 1
             chunks.extend(
                 chunk_markdown(
                     file.rel_path,
@@ -234,7 +250,7 @@ class SQLiteMemoryStore:
                 (MEMORY_INDEX_META_KEY, js_json_stringify(self._build_index_meta(vector_dims))),
             )
 
-        return len(files)
+        return indexed_files
 
     def count_chunks(self) -> int:
         with self.connect() as db:

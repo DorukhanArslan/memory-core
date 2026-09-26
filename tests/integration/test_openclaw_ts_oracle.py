@@ -6208,3 +6208,72 @@ def test_real_openclaw_oracle_memory_search_finds_session_memory_files(tmp_path:
     assert [item["score"] for item in openclaw_results] == pytest.approx(
         [item["score"] for item in python_results], rel=0, abs=1e-12
     )
+
+
+def test_real_openclaw_oracle_memory_search_indexes_invalid_utf8_markdown(tmp_path: Path):
+    # buildFileEntry (host/internal.ts:292-304) decodes with
+    # Buffer.toString("utf-8"): invalid bytes become U+FFFD instead of failing
+    # the index, for an AppleDouble `._*.md` and a Latin-1 note alike. The
+    # AppleDouble stand-in carries no NUL bytes: upstream's snippet ends at the
+    # first NUL (a known gap, docs/parity_matrix.md `memory_search` corpora).
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    (tmp_path / "MEMORY.md").write_text("# Long-Term Memory\n\n- Weekly review.\n", encoding="utf-8")
+    (memory_dir / "2026-09-26.md").write_text("- The zephyrquartz backup ran.\n", encoding="utf-8")
+    (memory_dir / "._2026-09-26.md").write_bytes(
+        b"\x05\x16\x07\x02Mac OS X zephyrquartz \xff\xfe\xe2\x82 end"
+    )
+    (memory_dir / "latin1.md").write_bytes("- Caf\xe9 zephyrquartz notes.\n".encode("latin-1"))
+
+    result = oracle.run(
+        {
+            "operation": "memorySearch",
+            "workspaceDir": str(tmp_path),
+            "query": "zephyrquartz",
+            "corpus": "memory",
+            "maxResults": 5,
+            "minScore": 0,
+        }
+    )
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "python-memory.sqlite",
+        vector_weight=0,
+        text_weight=1,
+    )
+    store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+    python_result = memory_search(
+        cfg, store, query="zephyrquartz", corpus="memory", max_results=5, min_score=0
+    )
+
+    assert result["ok"] is True, result
+
+    def shape(items):
+        return [
+            {
+                "source": item["source"],
+                "path": item["path"],
+                "startLine": item["startLine"],
+                "endLine": item["endLine"],
+                "snippet": item["snippet"],
+            }
+            for item in items
+        ]
+
+    openclaw_results = result["result"]["results"]
+    assert shape(openclaw_results) == shape(python_result["results"])
+    assert sorted(item["path"] for item in openclaw_results) == [
+        "MEMORY.md",
+        "memory/._2026-09-26.md",
+        "memory/2026-09-26.md",
+        "memory/latin1.md",
+    ]
+    assert sum("\ufffd" in item["snippet"] for item in openclaw_results) == 2
+    assert [item["score"] for item in openclaw_results] == pytest.approx(
+        [item["score"] for item in python_result["results"]], rel=0, abs=1e-12
+    )

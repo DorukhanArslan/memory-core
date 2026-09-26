@@ -283,3 +283,44 @@ def test_record_turn_skips_write_when_flush_model_returns_no_reply(tmp_path: Pat
     assert result.wrote is False
     assert result.path == "memory/2026-05-03.md"
     assert not (tmp_path / "memory" / "2026-05-03.md").exists()
+
+
+def test_from_workspace_indexes_markdown_that_is_not_valid_utf8(tmp_path: Path):
+    # buildFileEntry decodes with Buffer.toString("utf-8"), which replaces
+    # invalid bytes: an AppleDouble `._*.md` (written by macOS on SMB/exFAT)
+    # or a Latin-1 note under memory/ must not fail the reindex.
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    (memory_dir / "2026-09-26.md").write_text("- Glacier backups run nightly.\n", encoding="utf-8")
+    (memory_dir / "._2026-09-26.md").write_bytes(b"\x00\x05\x16\x07\x00\x02\x00\x00Mac OS X\xff\xfe")
+    (memory_dir / "latin1.md").write_bytes("- Caf\xe9 glacier notes.\n".encode("latin-1"))
+
+    memory = Memory.from_workspace(
+        tmp_path,
+        embedding_provider=FakeEmbeddingProvider(),
+        initialize=False,
+    )
+    result = memory.search("glacier", corpus="memory")
+
+    assert memory.store.reindex(memory.workspace) == 3
+    snippets = {item["path"]: item["snippet"] for item in result["results"]}
+    assert "Caf\ufffd glacier notes." in snippets["memory/latin1.md"]
+    assert "memory/2026-09-26.md" in snippets
+
+
+def test_reindex_skips_a_file_that_vanished_after_discovery(tmp_path: Path, monkeypatch):
+    (tmp_path / "MEMORY.md").write_text("- Glacier backups.\n", encoding="utf-8")
+    memory = Memory.from_workspace(
+        tmp_path, embedding_provider=FakeEmbeddingProvider(), initialize=False
+    )
+    discover = memory.workspace.discover_indexable_files
+
+    def discover_with_a_vanished_file():
+        files = discover()
+        gone = files[0].__class__("memory/gone.md", tmp_path / "memory" / "gone.md")
+        return [*files, gone]
+
+    monkeypatch.setattr(memory.workspace, "discover_indexable_files", discover_with_a_vanished_file)
+
+    assert memory.store.reindex(memory.workspace) == 1
+    assert [item["path"] for item in memory.search("glacier")["results"]] == ["MEMORY.md"]

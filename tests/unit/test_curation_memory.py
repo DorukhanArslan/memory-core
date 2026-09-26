@@ -6,6 +6,7 @@ import pytest
 
 from memory_core import (
     CurationUnavailableError,
+    FakeEmbeddingProvider,
     FeatureFlags,
     Memory,
     MemoryConfig,
@@ -96,3 +97,55 @@ def test_one_host_handler_serializes_search_and_curation_tool_errors(tmp_path):
         "error": "entry not found in MEMORY.md",
     }
     assert run_tool("add_memory_entry", {"section": "Decisions", "text": "delta"})["status"] == "ok"
+
+
+class _FailingDocumentsProvider(FakeEmbeddingProvider):
+    def __init__(self):
+        super().__init__(dimensions=8)
+        self.fail = False
+
+    def embed_documents(self, texts):
+        if self.fail:
+            raise RuntimeError("provider down")
+        return super().embed_documents(texts)
+
+
+def test_a_failed_reindex_does_not_turn_a_committed_write_into_an_error(tmp_path):
+    # The write is committed before after_write runs; a provider error in the
+    # reindex must neither escape dispatch nor read as a failed write (the
+    # model would retry add_memory_entry and duplicate the entry).
+    provider = _FailingDocumentsProvider()
+    memory = Memory.from_workspace(tmp_path, embedding_provider=provider)
+    curator = memory.curator(now_ms=lambda: NOW_MS)
+    provider.fail = True
+
+    payload = curator.dispatch("add_memory_entry", {"section": "Decisions", "text": "delta"})
+    direct = curator.append_daily_note("quokkabyte arrived")
+
+    assert payload["status"] == "ok"
+    assert payload["action"] == "added"
+    assert payload["afterWriteError"] == "provider down"
+    assert "- delta" in (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
+    assert direct.changed is True
+    assert direct.after_write_error == "provider down"
+    assert "quokkabyte" in (tmp_path / "memory" / "2026-09-25.md").read_text(encoding="utf-8")
+
+
+def test_an_os_error_in_after_write_is_not_reported_as_a_failed_write(tmp_path, monkeypatch):
+    memory = _memory(tmp_path)
+    curator = memory.curator(now_ms=lambda: NOW_MS)
+
+    def unreadable(workspace):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(memory.store, "reindex", unreadable)
+    payload = curator.dispatch("add_memory_entry", {"section": "Decisions", "text": "delta"})
+
+    assert payload["status"] == "ok"
+    assert payload["afterWriteError"] == "[Errno 13] Permission denied"
+    assert "write failed" not in payload["afterWriteError"]
+    assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8").count("- delta") == 1
+    monkeypatch.undo()
+    assert "afterWriteError" not in curator.dispatch(
+        "add_memory_entry", {"section": "Decisions", "text": "epsilon"}
+    )

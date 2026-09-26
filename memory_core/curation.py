@@ -49,7 +49,12 @@ Safety rules shared by every operation:
   not offered and calls raise ``CurationUnavailableError``.
 
 ``after_write`` is called with the ``CurationResult`` of every write that
-changed a file, typically to reindex the memory store.
+changed a file, typically to reindex the memory store. It runs after the write
+is committed: if it raises (an embedding provider error, an unreadable file
+during the reindex), the write stands and the result carries
+``after_write_error`` (``afterWriteError`` in the tool payload, next to
+``"status": "ok"``), so the model is never told that a committed write failed
+and never retries it.
 
 For model tool calls, ``MemoryCurator.tool_definitions()`` returns
 provider-neutral specs (``name``, ``description``, JSON-schema
@@ -75,7 +80,7 @@ import secrets
 import stat
 import time
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -100,7 +105,7 @@ from memory_core.flags import FeatureFlags
 from memory_core.memory_budget import PROMOTION_SECTION_HEADING_RE, parse_memory_blocks
 from memory_core.memory_flush import SILENT_REPLY_TOKEN
 from memory_core.memory_paths import UnsafeMemoryPathError
-from memory_core.tools.common import MemoryToolInputError
+from memory_core.tools.common import MemoryToolInputError, format_error_message
 from memory_core.workspace import MemoryWorkspace
 
 ADD_MEMORY_ENTRY = "add_memory_entry"
@@ -163,6 +168,8 @@ class CurationResult:
     action: str
     changed: bool
     chars: int | None = None
+    # Set when the ``after_write`` hook raised after this write was committed.
+    after_write_error: str | None = None
 
     def to_tool_result(self) -> dict:
         payload: dict = {
@@ -173,6 +180,8 @@ class CurationResult:
         }
         if self.chars is not None:
             payload["chars"] = self.chars
+        if self.after_write_error is not None:
+            payload["afterWriteError"] = self.after_write_error
         return payload
 
 
@@ -745,7 +754,8 @@ class MemoryCurator:
 
     ``flags`` defaults to ``FeatureFlags()`` (curation on). ``policy`` defaults
     to ``CurationPolicy.for_layout(layout)``. ``after_write`` runs after each
-    write that changed a file. ``timezone`` (IANA name, default UTC like the
+    write that changed a file; its errors are reported on the result, never
+    raised (the write is already committed). ``timezone`` (IANA name, default UTC like the
     rest of the package) and ``now_ms`` (epoch-milliseconds clock) decide
     "today" for daily notes and default ``observed`` dates.
     """
@@ -824,7 +834,9 @@ class MemoryCurator:
         arguments, refused writes (``CurationError``) and failed writes
         (``OSError``, as ``write failed: ...``) raise ``MemoryToolInputError``
         with ``tool == name``, like ``execute_memory_search_tool``; the host
-        sends the model ``error.to_tool_error()``. Raises
+        sends the model ``error.to_tool_error()``. A failing ``after_write``
+        hook does not raise: the committed write returns its ok payload with
+        ``afterWriteError``. Raises
         ``CurationUnavailableError`` for a tool that is not on offer (unknown
         name, flag off, memory flush, policy). Blank optional arguments count
         as absent.
@@ -1000,10 +1012,7 @@ class MemoryCurator:
             MemoryWorkspace(self.root).append_daily_memory(rel_path, raw)
         except UnsafeMemoryPathError as exc:
             raise CurationError(str(exc)) from exc
-        result = CurationResult(APPEND_DAILY_NOTE, rel_path, "appended", True)
-        if self.after_write is not None:
-            self.after_write(result)
-        return result
+        return self._run_after_write(CurationResult(APPEND_DAILY_NOTE, rel_path, "appended", True))
 
     def today(self) -> str:
         """Today's ``YYYY-MM-DD`` in the curator's timezone."""
@@ -1031,9 +1040,17 @@ class MemoryCurator:
             return CurationResult(operation, name, "unchanged", False, chars)
         self._check_caps(name, before, updated)
         self._write_target(name, before, updated)
-        result = CurationResult(operation, name, action, True, chars)
-        if self.after_write is not None:
+        return self._run_after_write(CurationResult(operation, name, action, True, chars))
+
+    def _run_after_write(self, result: CurationResult) -> CurationResult:
+        # The write is committed: a failing hook is reported, never raised, so
+        # neither a caller nor the model mistakes a stored write for a failed one.
+        if self.after_write is None:
+            return result
+        try:
             self.after_write(result)
+        except Exception as exc:
+            return replace(result, after_write_error=format_error_message(exc))
         return result
 
     def _read_target(self, name: str) -> str | None:

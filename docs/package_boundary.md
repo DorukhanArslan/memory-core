@@ -28,7 +28,11 @@ Included:
   the host decides which operations to offer (`CurationPolicy`) and passes
   `memory_flush=True` during flush runs; `MemoryCurator.dispatch` raises
   `MemoryToolInputError` like `memory_search`, so one host handler sends the
-  model `error.to_tool_error()` for both
+  model `error.to_tool_error()` for both; a failing `after_write` hook (the
+  facade's reindex) never raises: the committed write returns its ok payload
+  with `afterWriteError`. `dispatch` accepts a mapping or its JSON text, while
+  `execute_memory_search_tool` / `execute_memory_get_tool` need the parsed
+  mapping (a JSON string reads as `{}`, as upstream `asToolParamsRecord`)
 - the session-memory hook for `/new` and `/reset` (`save_session_memory`,
   `memory_core.session_memory`): the host calls it with the ending session's
   transcript file or messages; it writes a new `memory/<date>-<slug>.md` through

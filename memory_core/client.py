@@ -242,6 +242,9 @@ class Memory:
         The curator uses this memory's feature flags and reindexes the store
         after each write to MEMORY.md or a daily note, the files memory_search
         indexes; USER.md and PROACTIVE_PREFERENCES.md writes skip the reindex.
+        The reindex runs after the write is committed and re-embeds the whole
+        corpus synchronously; if it fails, the write stands and the result
+        carries ``after_write_error`` (``afterWriteError`` in the tool payload).
         """
 
         def reindex(result: CurationResult) -> None:

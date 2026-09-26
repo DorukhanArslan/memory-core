@@ -909,7 +909,7 @@ def _parse_session_summary_output(raw_text: str) -> dict[str, Any]:
     text = _SUMMARY_TOOL_CALL_SPAN_RE.sub("", raw_text)
     text = _SUMMARY_SPECIAL_TOKEN_RE.sub("", text).strip()
     if text.startswith(SILENT_REPLY_TOKEN):
-        return _session_summary_payload(memory_text="", raw_text=raw_text, skip_reason="silent")
+        return _session_summary_payload(skip_reason="silent")
     text = _SUMMARY_TRAILING_SILENT_RE.sub("", text).strip()
     body = _drop_summary_preamble(text)
     payload = _load_summary_json(text)
@@ -917,32 +917,25 @@ def _parse_session_summary_output(raw_text: str) -> dict[str, Any]:
         payload = _load_summary_json(body)
     if payload is not _NOT_JSON:
         if not isinstance(payload, dict):
-            return _unstructured_session_summary(raw_text)
+            return _session_summary_payload(skip_reason="unstructured")
         durable_facts = _string_tuple(payload.get("durable_facts"))
         preferences = _string_tuple(payload.get("preferences"))
         follow_ups = _string_tuple(payload.get("follow_ups"))
-        memory_text = _format_structured_session_memory(
+        return _session_summary_payload(
+            memory_text=_format_structured_session_memory(
+                durable_facts=durable_facts,
+                preferences=preferences,
+                follow_ups=follow_ups,
+            ),
             durable_facts=durable_facts,
             preferences=preferences,
             follow_ups=follow_ups,
         )
-        return {
-            "memory_text": memory_text,
-            "durable_facts": durable_facts,
-            "preferences": preferences,
-            "follow_ups": follow_ups,
-            "skip_reason": None if memory_text else "empty",
-        }
     fenced = _SUMMARY_CODE_FENCE_RE.match(body)
     bullets = _summary_bullets(fenced.group(1) if fenced else body)
     if bullets is None:
-        return _unstructured_session_summary(raw_text)
-    memory_text = "\n".join(bullets)
-    return _session_summary_payload(
-        memory_text=memory_text,
-        raw_text=raw_text,
-        skip_reason=None if memory_text else "empty",
-    )
+        return _session_summary_payload(skip_reason="unstructured")
+    return _session_summary_payload(memory_text="\n".join(bullets))
 
 
 def _drop_summary_preamble(text: str) -> str:
@@ -976,18 +969,22 @@ def _summary_bullets(text: str) -> list[str] | None:
     return bullets
 
 
-def _unstructured_session_summary(raw_text: str) -> dict[str, Any]:
-    return _session_summary_payload(memory_text="", raw_text=raw_text, skip_reason="unstructured")
-
-
 def _session_summary_payload(
-    *, memory_text: str, raw_text: str, skip_reason: str | None
+    *,
+    memory_text: str = "",
+    durable_facts: tuple[str, ...] = (),
+    preferences: tuple[str, ...] = (),
+    follow_ups: tuple[str, ...] = (),
+    skip_reason: str | None = None,
 ) -> dict[str, Any]:
+    # Nothing to write without a stated reason is "empty".
+    if not memory_text and skip_reason is None:
+        skip_reason = "empty"
     return {
         "memory_text": memory_text,
-        "durable_facts": (),
-        "preferences": (),
-        "follow_ups": (),
+        "durable_facts": durable_facts,
+        "preferences": preferences,
+        "follow_ups": follow_ups,
         "skip_reason": skip_reason,
     }
 

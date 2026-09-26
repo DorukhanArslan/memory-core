@@ -93,7 +93,7 @@ async def record_session_summary(workspace_dir: str | Path) -> str:
 
 
 def seed_identity(workspace_dir: str | Path) -> None:
-    # Seed the default (memory-core) layout with this example's own text. Files without
+    # Seed the default memory-core layout with this example's own text. Files without
     # a template are created empty and are not injected; seed_bootstrap=False
     # skips BOOTSTRAP.md because a live host has no first-run ritual.
     initialize_agent_workspace(

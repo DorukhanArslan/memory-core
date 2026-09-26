@@ -5,7 +5,7 @@ and renders the workspace files a turn injects into the system prompt. It is a
 port of the OpenClaw workspace bootstrap code at pin `4c42815348`
 (`src/agents/workspace.ts`, `src/agents/bootstrap-files.ts`,
 `src/agents/embedded-agent-helpers/bootstrap.ts`, `src/agents/system-prompt.ts`),
-plus the memory-core additions as a provisional extension. Parity status per
+plus memory-core extensions that have no upstream reference. Parity status per
 behaviour lives in [the parity matrix](parity_matrix.md) (rows "Workspace
 bootstrap files" and "Bootstrap truncation").
 
@@ -37,18 +37,19 @@ Two presets ship; `DEFAULT_WORKSPACE_LAYOUT` is `MEMORY_CORE_WORKSPACE_LAYOUT`.
 | TOOLS.md | 3 | 50 | always | yes | yes |
 | IDENTITY.md | 4 | 30 | optional | no | yes |
 | USER.md | 5 | 40 | optional | no | yes |
-| PROACTIVE_PREFERENCES.md (memory-core only) | 6 | 45 | optional | no | yes |
+| PROACTIVE_PREFERENCES.md (memory-core extension) | 6 | 45 | optional | no | yes |
 | HEARTBEAT.md | 7 | dynamic, below the cache boundary | optional | no | no |
 | BOOTSTRAP.md | 8 | 60 | first run only | no | no |
 | MEMORY.md | 9 | 70 | never | no | no |
 
 - `OPENCLAW_PIN_LAYOUT` is the pin's file set: the same rows without
   PROACTIVE_PREFERENCES.md, so its load order has 8 entries.
-- `MEMORY_CORE_WORKSPACE_LAYOUT` adds PROACTIVE_PREFERENCES.md and the folders `user/` and
-  `workspace/`. The folders are created on initialization and are never
-  injected or indexed. Extension (provisional: no upstream reference):
-  the PROACTIVE_PREFERENCES.md placement (after USER.md, kept for cron like
-  USER.md, not setup evidence) is memory-core's own design.
+- `MEMORY_CORE_WORKSPACE_LAYOUT` adds PROACTIVE_PREFERENCES.md (when and how the
+  agent may act or reach out unprompted) and the folders `user/` (user-supplied
+  files) and `workspace/` (agent-made artifacts). The folders are created on
+  initialization and are never injected or indexed. These are memory-core
+  extensions with no upstream reference; PROACTIVE_PREFERENCES.md loads after
+  USER.md, follows USER.md into cron sessions and is not setup evidence.
 - Two orders exist upstream. Files consume the per-file (20,000) and total
   (60,000) budget in load order, then render in priority order; unknown
   basenames sort last. Lengths are UTF-16 code units.

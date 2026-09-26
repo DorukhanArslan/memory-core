@@ -415,7 +415,7 @@ def initialize_agent_workspace(
 
     When setup evidence appears while BOOTSTRAP.md exists, the state is marked
     complete and BOOTSTRAP.md is deleted, exactly like upstream's reconcile.
-    Layout ``extra_dirs`` (memory-core: ``user/``, ``workspace/``) are created.
+    Layout ``extra_dirs`` (memory-core layout: ``user/``, ``workspace/``) are created.
     """
     root_path = _root_path(root)
     root_path.mkdir(parents=True, exist_ok=True)

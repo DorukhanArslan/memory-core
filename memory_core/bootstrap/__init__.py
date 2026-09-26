@@ -1,8 +1,9 @@
 """Workspace bootstrap files: layout, seeding, loading, budget and rendering.
 
 Ports the OpenClaw workspace bootstrap surface at pin 4c42815348 (see each
-module's docstring for upstream anchors) and adds the memory-core layout as the
-default. memory-core additions are an extension (provisional: no upstream reference).
+module's docstring for upstream anchors) and adds memory-core's default layout
+(``MEMORY_CORE_WORKSPACE_LAYOUT``) with extensions that have no upstream
+reference.
 
 Typical host flow, every turn (upstream runs ``ensureAgentWorkspace`` on each
 reply, ``src/auto-reply/reply/get-reply.ts:418-425``, which is where a configured

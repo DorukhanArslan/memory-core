@@ -42,7 +42,7 @@ def test_render_order_uses_priorities_then_icu_like_names():
         "/w/alpha.md",
         "/w/Zeta.md",
     ]
-    # Without the memory-core priority the file is an unknown basename.
+    # Without the extension priority the file is an unknown basename.
     assert _paths(sort_context_files(files, OPENCLAW_PIN_LAYOUT))[-3:] == [
         "/w/alpha.md",
         "/w/PROACTIVE_PREFERENCES.md",
@@ -202,7 +202,7 @@ def test_workspace_context_injection_skip_and_truncation(tmp_path):
     )
 
 
-def test_memory_core_extra_dirs_are_never_injected_or_indexed(tmp_path):
+def test_extension_dirs_are_never_injected_or_indexed(tmp_path):
     initialize_agent_workspace(tmp_path, seed_bootstrap=False)
     for relative, content in {
         "user/AGENTS.md": "per-user rules",

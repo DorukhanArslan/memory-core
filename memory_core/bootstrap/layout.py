@@ -5,13 +5,14 @@ Two presets ship:
 - ``OPENCLAW_PIN_LAYOUT``: the OpenClaw file set at the pinned commit
   4c42815348 (``src/agents/workspace.ts:31-47,195-211,1045-1078``;
   render order ``src/agents/system-prompt.ts:69-79``).
-- ``MEMORY_CORE_WORKSPACE_LAYOUT`` (default): the pin layout plus the memory-core additions
-  ``PROACTIVE_PREFERENCES.md`` and the ``user/`` and ``workspace/`` folders.
-  Extension (provisional: no upstream reference). The
-  PROACTIVE_PREFERENCES.md placement (load after USER.md, render priority 45,
-  kept for cron sessions like USER.md, optional seed) is memory-core's own
-  design, not an upstream behaviour; the folders are created on
-  initialization but never injected into context and never indexed. An
+- ``MEMORY_CORE_WORKSPACE_LAYOUT`` (default): the pin layout plus the memory-core
+  extensions ``PROACTIVE_PREFERENCES.md`` (when and how the agent may act or
+  reach out unprompted) and the ``user/`` (user-supplied files) and
+  ``workspace/`` (agent-made artifacts) folders. They have no upstream
+  reference: PROACTIVE_PREFERENCES.md loads after USER.md, renders at priority
+  45, is kept for cron sessions like USER.md and is an optional seed; the
+  folders are created on initialization but never injected into context and
+  never indexed. An
   absent PROACTIVE_PREFERENCES.md is skipped like an absent MEMORY.md (no
   ``[MISSING]`` marker), so upstream-shaped workspaces render unchanged.
 """
@@ -29,7 +30,7 @@ USER_FILENAME = "USER.md"
 HEARTBEAT_FILENAME = "HEARTBEAT.md"
 BOOTSTRAP_FILENAME = "BOOTSTRAP.md"
 MEMORY_FILENAME = "MEMORY.md"
-# Extension (provisional: no upstream reference).
+# memory-core extension (no upstream reference).
 PROACTIVE_PREFERENCES_FILENAME = "PROACTIVE_PREFERENCES.md"
 
 
@@ -179,11 +180,11 @@ MEMORY_CORE_WORKSPACE_LAYOUT = WorkspaceLayout(
         PROACTIVE_PREFERENCES_FILENAME,
         HEARTBEAT_FILENAME,
     ),
-    # Upstream's onboarding profile set; PROACTIVE_PREFERENCES.md is not
-    # completion evidence because the extension's semantics for it are unknown.
+    # Upstream's onboarding profile set; PROACTIVE_PREFERENCES.md (an
+    # extension) is not treated as setup-completion evidence.
     profile_files=(SOUL_FILENAME, IDENTITY_FILENAME, USER_FILENAME),
     subagent_files=frozenset({AGENTS_FILENAME, TOOLS_FILENAME}),
-    # Provisional: preferences follow USER.md into cron sessions.
+    # Extension choice: preferences follow USER.md into cron sessions.
     cron_files=frozenset(
         {
             AGENTS_FILENAME,

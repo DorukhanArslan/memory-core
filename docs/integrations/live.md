@@ -29,7 +29,7 @@ workspace/
   TOOLS.md
   IDENTITY.md
   USER.md
-  PROACTIVE_PREFERENCES.md   # memory-core extension, provisional
+  PROACTIVE_PREFERENCES.md   # memory-core extension
   HEARTBEAT.md
   BOOTSTRAP.md               # first run only
   MEMORY.md                  # not injected into subject prompts by default

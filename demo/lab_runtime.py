@@ -123,6 +123,19 @@ def redact_secrets(message: str, secret_values: tuple[str, ...]) -> str:
     return message
 
 
+def redact_payload(value: Any, secret_values: tuple[str, ...]) -> Any:
+    """Every string in a JSON-like value with the configured key values replaced."""
+    if not secret_values:
+        return value
+    if isinstance(value, str):
+        return redact_secrets(value, secret_values)
+    if isinstance(value, dict):
+        return {key: redact_payload(item, secret_values) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [redact_payload(item, secret_values) for item in value]
+    return value
+
+
 def safe_exception_message(exc: BaseException, secret_values: tuple[str, ...] = ()) -> str:
     message = str(exc) or exc.__class__.__name__
     return f"{exc.__class__.__name__}: {redact_secrets(message, secret_values)}"

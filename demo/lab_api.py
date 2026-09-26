@@ -24,6 +24,7 @@ from demo.lab_chat import chat_turn_frames
 from demo.lab_events import parse_last_event_id, stream_lab_events, unified_diff
 from demo.lab_flush import flush_meter
 from demo.lab_heartbeat import heartbeat_run_frames, heartbeat_state, set_clock, strip_payload
+from demo.lab_kept_api import index_status
 from demo.lab_prompt import (
     PromptOptions,
     file_entries,
@@ -98,7 +99,7 @@ def lab_snapshot(lab: LabRuntime, *, kind: str = "main") -> dict[str, Any]:
         },
         "session": session.public(),
         "sessions": {name: item.public() for name, item in lab.sessions.items()},
-        "index": dict(lab.index_status),
+        "index": index_status(lab),
         "flush": flush_meter(lab, session),
         "layoutOrder": workspace_layout_summary(layout),
         "memoryFiles": [file.rel_path for file in workspace.discover_memory_files()],
@@ -240,6 +241,11 @@ def build_router(lab: LabRuntime) -> APIRouter:
             media_type="text/event-stream",
             headers=SSE_HEADERS,
         )
+
+    @router.get("/index/status")
+    def index_status_route():
+        lab.ensure_exists()
+        return index_status(lab)
 
     @router.get("/heartbeat")
     def heartbeat():

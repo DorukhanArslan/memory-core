@@ -6,6 +6,7 @@ consolidation sweeps and the live SDK task. Thin adapters over the package, like
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from fastapi import APIRouter, Body
@@ -21,6 +22,7 @@ from demo.lab_runtime import (
     LabError,
     LabRuntime,
     optional_text,
+    redact_payload,
     redact_secrets,
     safe_exception_message,
     validate_id,
@@ -34,7 +36,14 @@ from demo.parity_trace import build_parity_trace
 from memory_core.live import LIVE_TURN_FAILED
 from memory_core.prompt_section import build_prompt_section
 from memory_core.tools.memory_get import memory_get
-from memory_core.tools.memory_search import memory_search
+from memory_core.tools.common import MemoryToolInputError
+from memory_core.tools.memory_search import (
+    MEMORY_SEARCH_TOOL_COOLDOWN_MS,
+    MEMORY_SEARCH_TOOL_TIMEOUT_MS,
+    execute_memory_search_tool,
+    memory_search_tool_cooldown_key,
+    memory_search_tool_cooldown_remaining,
+)
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
@@ -101,20 +110,14 @@ def build_kept_router(lab: LabRuntime) -> APIRouter:
 
     @router.post("/search")
     def search(payload: dict = Body(...)):
+        """The memory_search contract for the playground (DESIGN §4.1, changed).
+
+        ``mode`` picks ``FeatureFlags(vector_search, text_search)``: hybrid, vector or
+        text. Without a real embedding endpoint the Lab is FTS-only (Q9): text works,
+        hybrid/vector answer 400 ``fts_only`` and no embedder is ever built.
+        """
         lab.ensure_exists()
-        embedding = lab.resolve_embedding(payload)
-        mode = payload.get("mode") or lab.default_search_mode(embedding)
-        store = lab.store(embedding, mode=mode)
-        if lab.index_is_stale(store):
-            lab.reindex(store)
-        return memory_search(
-            lab.config(mode=mode),
-            store,
-            query=str(payload.get("query", "")),
-            max_results=_optional_int(payload.get("maxResults", 5), "maxResults"),
-            min_score=payload.get("minScore", 0),
-            corpus=str(payload.get("corpus") or "all"),
-        )
+        return run_search(lab, payload)
 
     @router.post("/memory/promote")
     def memory_promote(payload: dict = Body(default={})):
@@ -287,6 +290,85 @@ async def _live_turn_frames(
         yield sse_frame(serialize_live_state(lab, lab.live_task.state(), payload), event="live_task_state")
     except Exception as exc:
         yield error_frame(f"live task turn failed: {safe_exception_message(exc, secrets)}", code="live_turn_failed")
+
+
+def cooldown_payload(lab: LabRuntime, config, store) -> dict[str, Any] | None:
+    remaining = memory_search_tool_cooldown_remaining(memory_search_tool_cooldown_key(config, store))
+    if remaining is None:
+        return None
+    remaining_ms, error = remaining
+    return {"remainingMs": int(remaining_ms), "until": lab.now_ms() + int(remaining_ms), "error": error}
+
+
+def run_search(lab: LabRuntime, payload: dict[str, Any]) -> dict[str, Any]:
+    embedding = lab.resolve_embedding(payload)
+    mode = str(payload.get("mode") or lab.default_search_mode(embedding))
+    store = lab.store(embedding, mode=mode)
+    config = lab.config(mode=mode)
+    secrets = lab.secret_values(payload)
+    cooldown = cooldown_payload(lab, config, store)
+    reindexed = False
+    reindex_error = None
+    if cooldown is not None:
+        lab.bus.emit(
+            "search.cooldown",
+            summary=f"memory_search soğumada: {cooldown['remainingMs'] // 1000} sn",
+            data={"mode": mode, **cooldown},
+        )
+    elif lab.index_is_stale(store) or store.index_identity().get("status") != "valid":
+        try:
+            lab.reindex(store)
+            reindexed = True
+        except Exception as exc:  # the search below reports the failure like upstream
+            reindex_error = safe_exception_message(exc, secrets)
+    params = {key: payload[key] for key in ("query", "maxResults", "minScore", "corpus") if key in payload}
+    started = time.perf_counter()
+    try:
+        result = execute_memory_search_tool(config, store, params)
+    except MemoryToolInputError as error:
+        raise LabError(400, str(error), code="tool_input_error", toolError=error.to_tool_error()) from error
+    ms = int((time.perf_counter() - started) * 1000)
+    if result.get("unavailable"):
+        lab.bus.emit(
+            "search.unavailable",
+            summary=f"memory_search kullanılamıyor: {redact_secrets(str(result.get('error')), secrets)}",
+            data={"mode": mode, "warning": result.get("warning"), "action": result.get("action")},
+        )
+    else:
+        lab.bus.emit(
+            "search.completed",
+            summary=f"memory_search ({mode}): {len(result.get('results') or [])} sonuç · {ms} ms",
+            data={"mode": mode, "hits": len(result.get("results") or []), "ms": ms},
+        )
+    return redact_payload({
+        **result,
+        "mode": mode,
+        "flags": {"vectorSearch": mode != "text", "textSearch": mode != "vector"},
+        "identity": store.index_identity(),
+        "cooldown": cooldown_payload(lab, config, store),
+        "ms": ms,
+        "embeddings": embedding.public(),
+        "reindexed": reindexed,
+        "reindexError": reindex_error,
+        "redacted": True,
+    }, secrets)
+
+
+def index_status(lab: LabRuntime, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    embedding = lab.resolve_embedding(payload or {})
+    mode = lab.default_search_mode(embedding)
+    store = lab.store(embedding, mode=mode)
+    config = lab.config(mode=mode)
+    return redact_payload({
+        **lab.index_status,
+        "mode": mode,
+        "identity": store.index_identity(),
+        "embeddings": embedding.public(),
+        "cooldown": cooldown_payload(lab, config, store),
+        "deadlineMs": MEMORY_SEARCH_TOOL_TIMEOUT_MS,
+        "cooldownMs": MEMORY_SEARCH_TOOL_COOLDOWN_MS,
+        "stale": lab.index_is_stale(store),
+    }, lab.secret_values(payload))
 
 
 def stream_response(frames) -> StreamingResponse:

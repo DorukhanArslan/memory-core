@@ -258,6 +258,24 @@ def read_memory_search_tool_cooldown(key: str) -> str | None:
         return error
 
 
+def memory_search_tool_cooldown_remaining(key: str) -> tuple[float, str] | None:
+    """``(remaining_ms, error)`` of an active cooldown for ``key``, or ``None``.
+
+    Read-only view for host status displays; like
+    :func:`read_memory_search_tool_cooldown` it drops an expired entry.
+    """
+    with _cooldowns_lock:
+        entry = _cooldowns.get(key)
+        if entry is None:
+            return None
+        until, error = entry
+        remaining = until - _now_ms()
+        if remaining <= 0:
+            del _cooldowns[key]
+            return None
+        return remaining, error
+
+
 def record_memory_search_tool_cooldown(key: str, error: str) -> None:
     """tools.ts:95-100: pause memory search for ``key`` for 60 s."""
     with _cooldowns_lock:

@@ -18,6 +18,7 @@ from memory_core.tools.memory_search import (
     build_memory_search_unavailable_result,
     memory_search,
     memory_search_tool_cooldown_key,
+    memory_search_tool_cooldown_remaining,
     read_memory_search_tool_cooldown,
     record_memory_search_tool_cooldown,
     resolve_memory_search_tool_cooldown_key,
@@ -378,3 +379,17 @@ def test_format_error_message_follows_the_explicit_cause_chain():
 
     assert format_error_message(ValueError()) == "ValueError"
     assert format_error_message("plain") == "plain"
+
+
+def test_cooldown_remaining_reports_the_time_left_and_expires(tmp_path, clock):
+    provider = _ControlledProvider()
+    cfg, store = _vector_store(tmp_path, provider)
+    key = memory_search_tool_cooldown_key(cfg, store)
+    assert memory_search_tool_cooldown_remaining(key) is None
+    provider.error = RuntimeError("provider exploded")
+    memory_search(cfg, store, query="glacier", corpus="memory")
+
+    clock["now"] += 1_000
+    assert memory_search_tool_cooldown_remaining(key) == (MEMORY_SEARCH_TOOL_COOLDOWN_MS - 1_000, "provider exploded")
+    clock["now"] += MEMORY_SEARCH_TOOL_COOLDOWN_MS
+    assert memory_search_tool_cooldown_remaining(key) is None

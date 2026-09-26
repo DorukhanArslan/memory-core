@@ -1340,3 +1340,149 @@ def test_clock_validates_and_resets(client):
     assert client.post("/api/lab/clock", json={"offsetMs": "soon"}).status_code == 400
     assert client.post("/api/lab/clock", json={"offsetMs": 10**12}).status_code == 400
     assert client.post("/api/lab/clock", json={"reset": True}).json()["offsetMs"] == 0
+
+
+# --- search playground and embeddings (Q9) -----------------------------------------------
+
+
+class RecordingEmbeddings:
+    """Test-only stand-in for the OpenAI-compatible provider (never used at runtime)."""
+
+    instances = []
+
+    def __init__(self, *, api_key, model, base_url, timeout=30.0):
+        self.api_key = api_key
+        self.model = model
+        self.base_url = base_url
+        self.provider_id = "openai-compatible"
+        self.error = None
+        self.calls = 0
+        RecordingEmbeddings.instances.append(self)
+
+    def cache_key_data(self):
+        return {"provider": self.provider_id, "baseUrl": self.base_url, "model": self.model}
+
+    def _vector(self, text):
+        return [float(len(text) % 7 + 1), float(text.count("a") + 1), 1.0]
+
+    def embed_query(self, text):
+        self.calls += 1
+        if RecordingEmbeddings.error:
+            raise RuntimeError(RecordingEmbeddings.error)
+        return self._vector(text)
+
+    def embed_documents(self, texts):
+        self.calls += 1
+        if RecordingEmbeddings.error:
+            raise RuntimeError(RecordingEmbeddings.error)
+        return [self._vector(text) for text in texts]
+
+
+@pytest.fixture
+def embeddings(monkeypatch):
+    import demo.lab_runtime as lab_runtime
+
+    RecordingEmbeddings.instances = []
+    RecordingEmbeddings.error = None
+    monkeypatch.setattr(lab_runtime, "OpenAICompatibleEmbeddingProvider", RecordingEmbeddings)
+    return RecordingEmbeddings
+
+
+def seed_notes(client, lab):
+    client.get("/api/lab/state")
+    (lab.root / "memory" / f"{lab.today()}.md").write_text(
+        "- Müşteri demosu 16:00'ya alındı.\n- Haftalık sürüm toplantısı perşembe 10:30.\n", encoding="utf-8"
+    )
+
+
+def test_default_lab_is_fts_only_and_never_builds_an_embedder(client, lab, embeddings):
+    seed_notes(client, lab)
+
+    result = client.post("/api/search", json={"query": "perşembe", "maxResults": 5, "minScore": 0}).json()
+    hybrid = client.post("/api/search", json={"query": "perşembe", "mode": "hybrid"})
+    status = client.get("/api/lab/index/status").json()
+
+    assert result["mode"] == "text"
+    assert result["provider"] == "none" and result["model"] == "fts-only"
+    assert result["embeddings"]["mode"] == "fts-only"
+    assert "openrouter.ai" in result["embeddings"]["reason"]
+    assert result["results"][0]["vectorScore"] is None or result["results"][0]["vectorScore"] == 0
+    assert result["results"][0]["citation"].startswith(f"Source: memory/{lab.today()}.md#L")
+    assert result["identity"]["status"] == "valid"
+    assert result["reindexed"] is True and isinstance(result["ms"], int)
+    assert hybrid.status_code == 400 and hybrid.json()["code"] == "fts_only"
+    assert status["embeddings"]["mode"] == "fts-only" and status["deadlineMs"] == 15_000
+    assert embeddings.instances == []
+    assert "embedding.request" not in event_types(client)
+
+
+def test_demo_runtime_never_imports_fake_embeddings():
+    demo_dir = Path(demo_app.__file__).parent
+    offenders = [path.name for path in demo_dir.glob("*.py") if "FakeEmbeddingProvider" in path.read_text(encoding="utf-8")]
+
+    assert offenders == []
+
+
+def test_an_embedding_endpoint_enables_hybrid_search(client, lab, embeddings, monkeypatch):
+    seed_notes(client, lab)
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL", "https://embeddings.example/v1")
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY", "embedding-env-key-value")
+
+    result = client.post("/api/search", json={"query": "toplantı", "mode": "hybrid"}).json()
+    text = client.post("/api/search", json={"query": "toplantı", "mode": "text"}).json()
+
+    assert result["mode"] == "hybrid" and result["provider"] == "openai-compatible"
+    assert result["embeddings"] == {
+        "mode": "hybrid", "provider": "openai-compatible", "baseUrl": "https://embeddings.example/v1",
+        "model": "text-embedding-3-small", "keySource": "env", "reason": None,
+    }
+    assert result["results"] and result["results"][0]["vectorScore"] is not None
+    assert text["provider"] == "none"
+    assert "embedding.request" in event_types(client)
+    assert "embedding-env-key-value" not in json.dumps(result)
+
+
+def test_the_chat_key_is_never_sent_to_another_embedding_host(lab, monkeypatch):
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL", "https://embeddings.example/v1")
+
+    resolution = lab.resolve_embedding({"openai": {"apiKey": "chat-key", "baseUrl": "https://chat.example/v1"}})
+
+    assert resolution.mode == "fts-only" and resolution.api_key == ""
+
+
+def test_embedding_failures_put_search_on_cooldown_without_provider_calls(client, lab, embeddings, monkeypatch):
+    seed_notes(client, lab)
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL", "https://embeddings.example/v1")
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY", "embedding-env-key-value")
+    client.post("/api/search", json={"query": "demo", "mode": "hybrid"})
+    embeddings.error = "connection refused embedding-env-key-value"
+
+    failed = client.post("/api/search", json={"query": "toplantı", "mode": "hybrid"}).json()
+    mark = client.get("/api/lab/state").json()["lastEventId"]
+    calls_before = sum(instance.calls for instance in embeddings.instances)
+    again = client.post("/api/search", json={"query": "toplantı", "mode": "hybrid"}).json()
+
+    assert failed["unavailable"] is True and failed["disabled"] is True
+    assert failed["warning"] == "Memory search is unavailable due to an embedding/provider error."
+    assert failed["action"] == "Check embedding provider configuration and retry memory_search."
+    assert "embedding-env-key-value" not in json.dumps(failed)
+    assert failed["cooldown"]["remainingMs"] > 55_000
+    assert again["unavailable"] is True
+    assert sum(instance.calls for instance in embeddings.instances) == calls_before
+    later = event_types(client, mark)
+    assert "search.cooldown" in later and "embedding.request" not in later
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [({"query": ""}, "query required"), ({"query": "x", "maxResults": 0}, "maxResults must be a positive integer")],
+)
+def test_search_contract_errors_are_verbatim(client, payload, message):
+    client.get("/api/lab/state")
+
+    response = client.post("/api/search", json=payload)
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"] == message and body["code"] == "tool_input_error"
+    assert body["toolError"] == {"status": "error", "tool": "memory_search", "error": message}

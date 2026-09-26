@@ -64,6 +64,68 @@ def test_memory_get_reads_wiki_supplement_result(tmp_path: Path):
     }
 
 
+def test_memory_get_returns_upstream_error_for_session_search_hits(tmp_path: Path):
+    # OpenClaw memory_get cannot read session hits either: state-dir transcripts
+    # and session-corpus `.txt` files fail readMemoryFile's `.md` memory-path gate.
+    sessions_dir = tmp_path / ".openclaw-state" / "agents" / "main" / "sessions"
+    sessions_dir.mkdir(parents=True)
+    (sessions_dir / "session-nebula.jsonl").write_text(
+        '{"type":"message","message":{"role":"assistant","content":'
+        '[{"type":"text","text":"Project Nebula is ORBIT-10."}]}}\n',
+        encoding="utf-8",
+    )
+    (sessions_dir / "sessions.json").write_text(
+        '{"agent:main:session-nebula":{"sessionFile":"session-nebula.jsonl"}}\n',
+        encoding="utf-8",
+    )
+    corpus_dir = tmp_path / "memory" / ".dreams" / "session-corpus"
+    corpus_dir.mkdir(parents=True)
+    (corpus_dir / "2026-05-07.txt").write_text("User: ORBIT-10 corpus line\n", encoding="utf-8")
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "memory.sqlite",
+        flags=FeatureFlags(vector_search=False),
+    )
+    store = SQLiteMemoryStore(cfg, None)
+    store.reindex(MemoryWorkspace(tmp_path, openclaw_state_dir=tmp_path / ".openclaw-state"))
+
+    hits = memory_search(cfg, store, query="ORBIT-10", corpus="sessions", max_results=5)
+    paths = sorted(hit["path"] for hit in hits["results"])
+
+    assert paths == [
+        "memory/.dreams/session-corpus/2026-05-07.txt",
+        "sessions/main/session-nebula.jsonl",
+    ]
+    for path in paths:
+        for corpus in ("memory", "sessions", "all"):
+            assert memory_get(cfg, path=path, corpus=corpus) == {
+                "path": path,
+                "text": "",
+                "disabled": True,
+                "error": "path required",
+            }
+
+
+def test_memory_get_all_corpus_falls_back_to_supplement_after_read_failure(tmp_path: Path):
+    # tools.ts resolveMemoryReadFailureResult: corpus=all retries supplements.
+    wiki = StaticMemoryCorpusSupplement(
+        [{"corpus": "wiki", "path": "wiki/nebula.txt", "content": "Nebula rule.\n"}]
+    )
+    cfg = MemoryConfig(workspace_dir=tmp_path)
+
+    fallback = memory_get(cfg, path="wiki/nebula.txt", corpus="all", supplements=[wiki])
+    no_fallback = memory_get(cfg, path="wiki/nebula.txt", corpus="memory", supplements=[wiki])
+
+    assert fallback["corpus"] == "wiki"
+    assert fallback["text"].startswith("Nebula rule.")
+    assert no_fallback == {
+        "path": "wiki/nebula.txt",
+        "text": "",
+        "disabled": True,
+        "error": "path required",
+    }
+
+
 def test_memory_get_wiki_supplement_missing_result(tmp_path: Path):
     result = memory_get(
         MemoryConfig(workspace_dir=tmp_path),

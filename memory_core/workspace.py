@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import stat
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +22,23 @@ CANONICAL_ROOT_MEMORY_FILENAME = "MEMORY.md"
 # shouldDescendMemoryEntry). Kept under its upstream name so a workspace shared
 # with OpenClaw never indexes repair artifacts.
 OPENCLAW_REPAIR_DIRNAME = ".openclaw-repair"
+
+# memory_get refusal messages, verbatim: readMemoryFile
+# (packages/memory-host-sdk/src/host/read-file.ts:78,114,117) and fs-safe
+# statRegularFile (symlinked or non-regular target).
+MEMORY_PATH_REQUIRED_ERROR = "path required"
+MEMORY_PATH_NOT_REGULAR_FILE_ERROR = "path must be a regular file"
+_LEADING_DOTS_AND_SLASHES_RE = re.compile(r"^[./]+")
+
+
+def is_memory_path(rel_path: str) -> bool:
+    """Port of OpenClaw ``isMemoryPath`` + ``normalizeRelPath`` (host/internal.ts:76-110)."""
+    normalized = _LEADING_DOTS_AND_SLASHES_RE.sub("", rel_path.strip()).replace("\\", "/")
+    if not normalized:
+        return False
+    if normalized == CANONICAL_ROOT_MEMORY_FILENAME or normalized.lower() == "dreams.md":
+        return True
+    return normalized.startswith("memory/")
 
 
 def list_memory_files(workspace_dir: Path) -> list[Path]:
@@ -224,6 +242,53 @@ class MemoryWorkspace:
         if not self.is_path_inside_root(candidate):
             raise UnsafeMemoryPathError(f"memory path escapes workspace: {rel_path}")
         return candidate
+
+    def resolve_memory_read_path(self, raw_path: str) -> tuple[str, Path | None]:
+        """Port of OpenClaw ``readMemoryFile``'s workspace gate (host/read-file.ts:67-134).
+
+        Returns ``(rel_path, abs_path)``, with ``abs_path`` None when the file
+        (or the workspace) does not exist. Raises ``UnsafeMemoryPathError`` with
+        upstream's message: ``path required`` for a blank path, a path outside
+        the workspace, a non-memory path (anything but ``MEMORY.md``,
+        ``dreams.md`` in any case, or ``memory/...``) or a non-``.md`` file,
+        such as session-corpus ``.txt`` files and ``sessions/<agent>/*.jsonl``
+        state-dir transcripts; ``path must be a regular file`` for a symlink or
+        a non-regular file. Paths are resolved lexically first, so
+        ``memory/../AGENTS.md`` is refused. Not ported: ``extraPaths``.
+
+        Deviation (stricter than upstream): a path whose realpath leaves the
+        workspace through a symlinked parent directory is refused with
+        ``path required``; upstream only lstats the final component and reads
+        through such parents.
+        """
+        path = raw_path.strip()
+        if not path:
+            raise UnsafeMemoryPathError(MEMORY_PATH_REQUIRED_ERROR)
+        abs_path = Path(
+            os.path.normpath(path if os.path.isabs(path) else os.path.join(self.root, path))
+        )
+        rel_path = os.path.relpath(abs_path, self.root).replace("\\", "/")
+        if rel_path == ".":
+            rel_path = ""
+        in_workspace = bool(rel_path) and not rel_path.startswith("..") and not os.path.isabs(
+            rel_path
+        )
+        if not in_workspace or not is_memory_path(rel_path) or not str(abs_path).endswith(".md"):
+            raise UnsafeMemoryPathError(MEMORY_PATH_REQUIRED_ERROR)
+        if not self.root.exists():
+            # fs-safe root(): "root dir not found" counts as a missing file.
+            return rel_path, None
+        if not self.root.is_dir():
+            raise UnsafeMemoryPathError("root dir is not a directory")
+        try:
+            file_stat = os.lstat(abs_path)
+        except (FileNotFoundError, NotADirectoryError):
+            return rel_path, None
+        if stat.S_ISLNK(file_stat.st_mode) or not stat.S_ISREG(file_stat.st_mode):
+            raise UnsafeMemoryPathError(MEMORY_PATH_NOT_REGULAR_FILE_ERROR)
+        if not self.is_path_inside_root(abs_path.resolve()):
+            raise UnsafeMemoryPathError(MEMORY_PATH_REQUIRED_ERROR)
+        return rel_path, abs_path
 
     def append_daily_memory(self, rel_path: str, entry: str) -> Path:
         validate_daily_memory_path(rel_path)

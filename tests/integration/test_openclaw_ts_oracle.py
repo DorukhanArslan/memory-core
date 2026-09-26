@@ -764,6 +764,63 @@ def test_real_openclaw_oracle_memory_get_char_budget_matches_python(tmp_path: Pa
     assert result["result"] == python_result
 
 
+def _write_memory_get_gate_workspace(root: Path) -> None:
+    files = {
+        "MEMORY.md": b"# Root\nline two",
+        "DREAMS.md": b"diary line",
+        "AGENTS.md": b"workspace rules",
+        "memory/2026-05-26.md": b"a\r\nb\r\nc",
+        "memory/bytes.md": b"ok\xff\nnext",
+        "memory/real.md": b"real note",
+        "memory/.dreams/session-corpus/2026-05-26.txt": b"User: hi\nAssistant: hello",
+        "memory/.dreams/session-corpus/2026-05-27.md": b"User: markdown corpus",
+    }
+    for relative, content in files.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    (root / "memory" / "dir.md").mkdir()
+    try:
+        (root / "memory" / "link.md").symlink_to(root / "memory" / "real.md")
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symlinks are not supported on this platform: {exc}")
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        # memory_search session hits: state-dir transcripts and session-corpus files.
+        "sessions/main/session-nebula.jsonl",
+        "memory/.dreams/session-corpus/2026-05-26.txt",
+        "memory/.dreams/session-corpus/2026-05-27.md",
+        # readMemoryFile path gate.
+        "memory/../AGENTS.md",
+        "memory.md",
+        "dreams.md",
+        "/MEMORY.md",
+        "<abs>/memory/2026-05-26.md",
+        "./memory/2026-05-26.md",
+        "memory/2026-05-26.md",
+        "memory/bytes.md",
+        "memory/link.md",
+        "memory/dir.md",
+        "memory/missing.md",
+    ],
+)
+def test_real_openclaw_oracle_memory_get_path_gate_matches_python(tmp_path: Path, path: str):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    root = tmp_path / "workspace"
+    _write_memory_get_gate_workspace(root)
+    requested = path.replace("<abs>", str(root))
+
+    result = oracle.run({"operation": "memoryGet", "workspaceDir": str(root), "path": requested})
+    python_result = memory_get(MemoryConfig(workspace_dir=root), path=requested)
+
+    assert result["ok"] is True
+    assert result["operation"] == "memoryGet"
+    assert result["result"] == python_result
+
+
 MEMORY_DISCOVERY_SCENARIOS = {
     "recursive-tree": {
         "MEMORY.md": "# Root\n",

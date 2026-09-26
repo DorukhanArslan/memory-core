@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from memory_core.config import MemoryConfig
 from memory_core.supplements import MemoryCorpusSupplement
-from memory_core.workspace import MemoryWorkspace, UnsafeMemoryPathError
+from memory_core.workspace import MemoryWorkspace
 
 
 def _continuation_notice(*, next_from: int | None, suggest_read_fallback: bool) -> str:
@@ -40,26 +40,40 @@ def memory_get(
     supplements: list[MemoryCorpusSupplement] | None = None,
 ) -> dict:
     workspace = MemoryWorkspace(config.workspace_dir)
-    normalized_path = workspace.normalize_memory_path(path)
     if corpus == "wiki":
         return _memory_get_supplement(
             config,
-            path=normalized_path,
+            path=workspace.normalize_memory_path(path),
             from_line=from_line,
             lines=lines,
             corpus=corpus,
             supplements=supplements or [],
         )
+    # Builtin read (OpenClaw extensions/memory-core/src/tools.ts createMemoryGetTool
+    # -> readAgentMemoryFile -> readMemoryFile). memory_search session hits
+    # (`sessions/<agent>/*.jsonl` and memory/.dreams/session-corpus/*.txt) are
+    # not readable upstream either: they fail the memory-path/`.md` gate with
+    # "path required"; a session-corpus `.md` file is an ordinary memory file.
+    requested_path = path.strip()
+    rel_path = requested_path
     try:
-        memory_path = workspace.resolve_memory_path(path)
-        rel_path = normalized_path
-        content = memory_path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return {"text": "", "path": workspace.normalize_memory_path(path)}
-    except UnsafeMemoryPathError:
-        return {"path": path, "text": "", "disabled": True, "error": "path required"}
+        rel_path, memory_path = workspace.resolve_memory_read_path(path)
+        if memory_path is None:
+            return {"text": "", "path": rel_path}
+        # Buffer.toString("utf-8"): no newline translation, invalid bytes replaced.
+        content = memory_path.read_bytes().decode("utf-8", errors="replace")
+    except (FileNotFoundError, NotADirectoryError):
+        return {"text": "", "path": rel_path}
     except Exception as exc:
-        return {"path": path, "text": "", "disabled": True, "error": str(exc)}
+        return _memory_read_failure(
+            config,
+            error=exc,
+            path=requested_path,
+            from_line=from_line,
+            lines=lines,
+            corpus=corpus,
+            supplements=supplements or [],
+        )
 
     return _memory_get_text(
         config,
@@ -68,6 +82,32 @@ def memory_get(
         from_line=from_line,
         lines=lines,
     )
+
+
+def _memory_read_failure(
+    config: MemoryConfig,
+    *,
+    error: Exception,
+    path: str,
+    from_line: int | None,
+    lines: int | None,
+    corpus: str,
+    supplements: list[MemoryCorpusSupplement],
+) -> dict:
+    # tools.ts resolveMemoryReadFailureResult: only corpus=all retries the
+    # registered supplements before returning the disabled error payload.
+    if corpus == "all":
+        for supplement in supplements:
+            if supplement.get(path=path, corpus=corpus) is not None:
+                return _memory_get_supplement(
+                    config,
+                    path=path,
+                    from_line=from_line,
+                    lines=lines,
+                    corpus=corpus,
+                    supplements=[supplement],
+                )
+    return {"path": path, "text": "", "disabled": True, "error": str(error)}
 
 
 def _memory_get_supplement(

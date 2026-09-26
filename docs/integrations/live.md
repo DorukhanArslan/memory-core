@@ -321,21 +321,48 @@ result = await memory.async_record_session_summary(
 )
 ```
 
-`summary_llm` receives the OpenClaw-style memory flush messages. If it returns
-empty text or starts with `NO_REPLY`, nothing is written.
+`summary_llm` receives the OpenClaw-style memory flush messages. Its reply is
+sanitized before anything is written, and only two shapes are ever written.
+This is a memory-core rule (upstream's flush turn writes through tools and has no
+reply-to-file step):
 
-For safer extraction, `summary_llm` may return JSON:
+1. Tool-call spans (`<|tool_call>…<tool_call|>`, `<tool_call>…</tool_call>`,
+   `<|tool_call_begin|>…<|tool_call_end|>`; an unclosed span runs to the end of
+   the reply) and special-token markers such as `<|im_end|>` are removed. A
+   reply that then starts with `NO_REPLY` writes nothing (`skip_reason="silent"`).
+   A trailing `NO_REPLY` is stripped, as upstream's `stripSilentToken` does.
+2. A JSON object, optionally inside a ```` ``` ```` fence and after preamble
+   lines, keeps only `durable_facts`, `preferences`, and `follow_ups`, one
+   bullet per item with whitespace collapsed:
 
-```json
-{
-  "durable_facts": ["Subject moved to the premium plan."],
-  "preferences": ["Subject prefers evening delivery."],
-  "follow_ups": ["Send updated invoice."]
-}
-```
+   ```json
+   {
+     "durable_facts": ["Subject moved to the premium plan."],
+     "preferences": ["Subject prefers evening delivery."],
+     "follow_ups": ["Send updated invoice."]
+   }
+   ```
 
-Only `durable_facts`, `preferences`, and `follow_ups` are appended to subject
-memory.
+3. Otherwise the reply must be a bullet list. Label lines (non-bullet lines
+   ending with `:`, such as a model preamble `Appending durable memory to
+   memory/2026-09-26.md:` or a `Preferences:` label) are dropped, and every
+   other non-empty line must start with `-`, `*`, or `+`. Bullets are written
+   as `- <text>`.
+4. Anything else writes nothing (`skip_reason="unstructured"`): prose, a JSON
+   value that is not an object, a numbered list, a heading, or bullets mixed
+   with prose. A reply with nothing left, or a JSON object without those
+   fields, gives `skip_reason="empty"`.
+
+| `summary_llm` reply | Written to `memory/YYYY-MM-DD.md` |
+|---|---|
+| `Appending durable memory to memory/2026-09-26.md:`<br>`- Subject prefers SMS.<\|tool_call>call:write{…}<tool_call\|>`<br>`NO_REPLY` | `- Subject prefers SMS.` |
+| `{"preferences": ["Subject prefers SMS."]}` | `- Preference: Subject prefers SMS.` |
+| `The subject prefers SMS updates.` | nothing (`unstructured`) |
+| `NO_REPLY` | nothing (`silent`) |
+
+`result.skip_reason` is `None` when something was written; the
+`session_summary_skipped` trace event carries the same `skip_reason`.
+`result.raw_text` keeps the unsanitized reply.
 
 ## Subject Promotion
 

@@ -295,6 +295,9 @@ class SessionSummaryResult:
     durable_facts: tuple[str, ...] = ()
     preferences: tuple[str, ...] = ()
     follow_ups: tuple[str, ...] = ()
+    # Why nothing was written: "silent" (NO_REPLY), "empty" (nothing left after
+    # sanitization) or "unstructured" (neither a JSON object nor a bullet list).
+    skip_reason: str | None = None
 
 
 class TraceSink(Protocol):
@@ -648,17 +651,17 @@ class SubjectMemory:
         trace_sink: TraceSink | None,
     ) -> SessionSummaryResult:
         extraction = _parse_session_summary_output(raw_text)
-        text = extraction["memory_text"]
         result = SessionSummaryResult(
             wrote=False,
             path=relative_path,
-            text=text,
+            text=extraction["memory_text"],
             raw_text=raw_text,
             durable_facts=extraction["durable_facts"],
             preferences=extraction["preferences"],
             follow_ups=extraction["follow_ups"],
+            skip_reason=extraction["skip_reason"],
         )
-        if not text or text.startswith(SILENT_REPLY_TOKEN):
+        if result.skip_reason is not None:
             _record_trace_event(
                 SESSION_SUMMARY_SKIPPED,
                 trace_sink=trace_sink,
@@ -666,17 +669,9 @@ class SubjectMemory:
             )
             return result
 
-        self.memory.workspace.append_daily_memory(relative_path, text)
+        self.memory.workspace.append_daily_memory(relative_path, result.text)
         self.memory.store.reindex(self.memory.workspace)
-        result = SessionSummaryResult(
-            wrote=True,
-            path=relative_path,
-            text=text,
-            raw_text=raw_text,
-            durable_facts=extraction["durable_facts"],
-            preferences=extraction["preferences"],
-            follow_ups=extraction["follow_ups"],
-        )
+        result = replace(result, wrote=True)
         _record_trace_event(
             SESSION_SUMMARY_COMPLETED,
             trace_sink=trace_sink,
@@ -828,61 +823,159 @@ def _record_trace_event(
 
 
 def _session_summary_trace_data(result: SessionSummaryResult) -> dict[str, Any]:
-    return {
+    data: dict[str, Any] = {
         "wrote": result.wrote,
         "path": result.path,
         "durable_facts": list(result.durable_facts),
         "preferences": list(result.preferences),
         "follow_ups": list(result.follow_ups),
     }
+    if result.skip_reason is not None:
+        data["skip_reason"] = result.skip_reason
+    return data
+
+
+# Session summary sanitization: a memory-core rule with no upstream counterpart
+# (upstream's flush turn writes through tools and discards its reply text).
+# Tool-call spans: <|tool_call>...<tool_call|>, <tool_call>...</tool_call> and
+# <|tool_call_begin|>...<|tool_call_end|>; an unclosed span runs to the end.
+_SUMMARY_TOOL_CALL_SPAN_RE = re.compile(
+    r"<\|?tool_call(?:_begin)?\|?>.*?(?:<\|?/?tool_call(?:_end)?\|?>|\Z)",
+    re.DOTALL | re.IGNORECASE,
+)
+# Other special-token markers such as <|im_end|> or <|channel|>: the marker shape
+# of upstream HARMONY_CHANNEL_MARKER_RE (src/auto-reply/tokens.ts).
+_SUMMARY_SPECIAL_TOKEN_RE = re.compile(r"<\w*\|[^<>\n]*>")
+# A trailing silent token: upstream stripSilentToken (src/auto-reply/tokens.ts).
+_SUMMARY_TRAILING_SILENT_RE = re.compile(
+    rf"(?:^|\s+|\*+){re.escape(SILENT_REPLY_TOKEN)}\s*\Z", re.IGNORECASE
+)
+_SUMMARY_CODE_FENCE_RE = re.compile(r"\A```[\w-]*[ \t]*\n(.*?)\n?```\Z", re.DOTALL)
+_SUMMARY_BULLET_RE = re.compile(r"^[-*+]\s+(\S.*)$")
+_NOT_JSON = object()
 
 
 def _parse_session_summary_output(raw_text: str) -> dict[str, Any]:
-    text = raw_text.strip()
-    if not text or text.startswith(SILENT_REPLY_TOKEN):
-        return _session_summary_payload(memory_text="", raw_text=raw_text)
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
-        return _session_summary_payload(memory_text=text, raw_text=raw_text)
-    if not isinstance(payload, dict):
-        return _session_summary_payload(memory_text=text, raw_text=raw_text)
+    """Turn the summary model's reply into the bullets appended to daily memory.
 
-    durable_facts = _string_tuple(payload.get("durable_facts"))
-    preferences = _string_tuple(payload.get("preferences"))
-    follow_ups = _string_tuple(payload.get("follow_ups"))
-    memory_text = _format_structured_session_memory(
-        durable_facts=durable_facts,
-        preferences=preferences,
-        follow_ups=follow_ups,
+    The rule, in order:
+
+    1. Tool-call spans and special-token markers (``<|im_end|>``) are removed.
+       A reply that then starts with ``NO_REPLY`` is ``silent``; a trailing
+       ``NO_REPLY`` is stripped.
+    2. A JSON object (the whole reply, or what follows the preamble lines;
+       optionally inside a ```` ``` ```` fence) keeps only ``durable_facts``,
+       ``preferences`` and ``follow_ups``, one bullet per item with whitespace
+       collapsed.
+    3. Otherwise the reply must be a bullet list: label lines (non-bullet
+       lines ending with ``:``, such as the preamble ``Appending durable memory
+       to memory/2026-09-26.md:`` or a ``Preferences:`` label) are dropped, and
+       every other non-empty line must start with ``-``, ``*`` or ``+``;
+       bullets are written as ``- <text>``.
+    4. Prose, a non-object JSON value, numbered lists, headings, or bullets
+       mixed with prose are ``unstructured``: nothing is written. Nothing left
+       is ``empty``.
+    """
+    text = _SUMMARY_TOOL_CALL_SPAN_RE.sub("", raw_text)
+    text = _SUMMARY_SPECIAL_TOKEN_RE.sub("", text).strip()
+    if text.startswith(SILENT_REPLY_TOKEN):
+        return _session_summary_payload(memory_text="", raw_text=raw_text, skip_reason="silent")
+    text = _SUMMARY_TRAILING_SILENT_RE.sub("", text).strip()
+    body = _drop_summary_preamble(text)
+    payload = _load_summary_json(text)
+    if payload is _NOT_JSON:
+        payload = _load_summary_json(body)
+    if payload is not _NOT_JSON:
+        if not isinstance(payload, dict):
+            return _unstructured_session_summary(raw_text)
+        durable_facts = _string_tuple(payload.get("durable_facts"))
+        preferences = _string_tuple(payload.get("preferences"))
+        follow_ups = _string_tuple(payload.get("follow_ups"))
+        memory_text = _format_structured_session_memory(
+            durable_facts=durable_facts,
+            preferences=preferences,
+            follow_ups=follow_ups,
+        )
+        return {
+            "memory_text": memory_text,
+            "durable_facts": durable_facts,
+            "preferences": preferences,
+            "follow_ups": follow_ups,
+            "skip_reason": None if memory_text else "empty",
+        }
+    fenced = _SUMMARY_CODE_FENCE_RE.match(body)
+    bullets = _summary_bullets(fenced.group(1) if fenced else body)
+    if bullets is None:
+        return _unstructured_session_summary(raw_text)
+    memory_text = "\n".join(bullets)
+    return _session_summary_payload(
+        memory_text=memory_text,
+        raw_text=raw_text,
+        skip_reason=None if memory_text else "empty",
     )
-    return {
-        "memory_text": memory_text,
-        "durable_facts": durable_facts,
-        "preferences": preferences,
-        "follow_ups": follow_ups,
-    }
 
 
-def _session_summary_payload(*, memory_text: str, raw_text: str) -> dict[str, Any]:
+def _drop_summary_preamble(text: str) -> str:
+    lines = text.splitlines()
+    index = 0
+    while index < len(lines):
+        line = lines[index].strip()
+        if line and (_SUMMARY_BULLET_RE.match(line) or not line.endswith(":")):
+            break
+        index += 1
+    return "\n".join(lines[index:]).strip()
+
+
+def _load_summary_json(text: str) -> Any:
+    fenced = _SUMMARY_CODE_FENCE_RE.match(text)
+    try:
+        return json.loads(fenced.group(1) if fenced else text)
+    except json.JSONDecodeError:
+        return _NOT_JSON
+
+
+def _summary_bullets(text: str) -> list[str] | None:
+    bullets: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        match = _SUMMARY_BULLET_RE.match(stripped)
+        if match is not None:
+            bullets.append(f"- {_collapse_whitespace(match.group(1))}")
+        elif stripped and not stripped.endswith(":"):
+            return None
+    return bullets
+
+
+def _unstructured_session_summary(raw_text: str) -> dict[str, Any]:
+    return _session_summary_payload(memory_text="", raw_text=raw_text, skip_reason="unstructured")
+
+
+def _session_summary_payload(
+    *, memory_text: str, raw_text: str, skip_reason: str | None
+) -> dict[str, Any]:
     return {
         "memory_text": memory_text,
         "durable_facts": (),
         "preferences": (),
         "follow_ups": (),
+        "skip_reason": skip_reason,
     }
+
+
+def _collapse_whitespace(value: str) -> str:
+    return " ".join(value.split())
 
 
 def _string_tuple(value: Any) -> tuple[str, ...]:
     if isinstance(value, str):
-        stripped = value.strip()
+        stripped = _collapse_whitespace(value)
         return (stripped,) if stripped else ()
     if not isinstance(value, list | tuple):
         return ()
     items = []
     for item in value:
         if isinstance(item, str) and item.strip():
-            items.append(item.strip())
+            items.append(_collapse_whitespace(item))
     return tuple(items)
 
 

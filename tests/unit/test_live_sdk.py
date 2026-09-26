@@ -476,6 +476,120 @@ def test_record_session_summary_ignores_unknown_structured_fields(tmp_path: Path
     ]
 
 
+def _summarize(tmp_path: Path, reply: str):
+    memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+    trace_path = tmp_path / "trace" / "session_1.jsonl"
+    result = memory.record_session_summary(
+        session_id="session_1",
+        transcript="Transcript.",
+        summary_llm=lambda messages: reply,
+        now_ms=1_788_526_800_000,
+        timezone="Europe/Istanbul",
+        trace_sink=JsonlTraceSink(trace_path),
+    )
+    daily = tmp_path / "subjects" / "subj_123" / "memory" / "2026-09-04.md"
+    written = daily.read_text(encoding="utf-8") if daily.exists() else None
+    return result, written, _trace_records(trace_path)[-1]
+
+
+def test_record_session_summary_strips_preamble_trailing_silent_token_and_tool_calls(
+    tmp_path: Path,
+):
+    reply = (
+        "Appending durable memory to memory/2026-09-04.md:\n"
+        "- Subject prefers evening delivery.<|tool_call>call:append_daily_memory"
+        '{path:"memory/2026-09-04.md"}<tool_call|>\n'
+        "* Subject moved to the premium plan.\n"
+        "<tool_call>\n"
+        '{"name": "memory_write", "arguments": {"text": "junk"}}\n'
+        "</tool_call>\n"
+        "<|im_end|>\n"
+        "NO_REPLY"
+    )
+
+    result, written, record = _summarize(tmp_path, reply)
+
+    expected = "- Subject prefers evening delivery.\n- Subject moved to the premium plan."
+    assert result.wrote is True
+    assert result.text == expected
+    assert result.raw_text == reply
+    assert result.skip_reason is None
+    assert written == expected + "\n"
+    assert record["type"] == SESSION_SUMMARY_COMPLETED
+
+
+def test_record_session_summary_drops_label_lines_between_bullets(tmp_path: Path):
+    reply = "Durable facts:\n- Subject moved.\n\nPreferences:\n+ Subject prefers SMS."
+
+    result, written, _ = _summarize(tmp_path, reply)
+
+    assert result.wrote is True
+    assert written == "- Subject moved.\n- Subject prefers SMS.\n"
+
+
+def test_record_session_summary_drops_an_unclosed_tool_call_to_the_end(tmp_path: Path):
+    reply = '- Subject asks for SMS updates.\n<|tool_call>call:append_daily_memory{text:"- x"}'
+
+    result, written, _ = _summarize(tmp_path, reply)
+
+    assert result.wrote is True
+    assert written == "- Subject asks for SMS updates.\n"
+
+
+def test_record_session_summary_parses_fenced_json_after_a_preamble(tmp_path: Path):
+    reply = (
+        "Here is the extraction:\n"
+        "```json\n"
+        '{"durable_facts": ["Subject moved\\n to the premium plan."],'
+        ' "follow_ups": ["Send updated invoice."]}\n'
+        "```"
+    )
+
+    result, written, _ = _summarize(tmp_path, reply)
+
+    assert result.wrote is True
+    assert result.durable_facts == ("Subject moved to the premium plan.",)
+    assert written == (
+        "- Subject moved to the premium plan.\n- Follow-up: Send updated invoice.\n"
+    )
+
+
+def test_record_session_summary_never_writes_prose(tmp_path: Path):
+    for reply in (
+        "The subject prefers evening delivery and moved to the premium plan.",
+        "- Subject prefers evening delivery.\nLet me know if you need anything else.",
+        "Appending durable memory to memory/2026-09-04.md: Subject prefers SMS.",
+        '["Subject prefers evening delivery."]',
+        "1. Subject prefers evening delivery.",
+        "## Durable facts\n- Subject prefers evening delivery.",
+    ):
+        result, written, record = _summarize(tmp_path, reply)
+
+        assert result.wrote is False, reply
+        assert result.text == ""
+        assert result.skip_reason == "unstructured"
+        assert written is None
+        assert record["type"] == SESSION_SUMMARY_SKIPPED
+        assert record["data"]["skip_reason"] == "unstructured"
+
+
+def test_record_session_summary_keeps_the_silent_and_empty_skips(tmp_path: Path):
+    cases = {
+        "NO_REPLY": "silent",
+        "  NO_REPLY - nothing durable": "silent",
+        "<|channel|>NO_REPLY": "silent",
+        "Appending durable memory to memory/2026-09-04.md:\nNO_REPLY": "empty",
+        "   \n": "empty",
+        '{"policy_suggestions": ["Tighten escalation policy."]}': "empty",
+    }
+    for reply, reason in cases.items():
+        result, written, record = _summarize(tmp_path, reply)
+
+        assert (result.wrote, result.skip_reason) == (False, reason), reply
+        assert written is None
+        assert record["data"]["skip_reason"] == reason
+
+
 def test_record_session_summary_traces_failure_before_reraising(tmp_path: Path):
     memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
     trace_sink = JsonlTraceSink(tmp_path / "trace" / "session_1.jsonl")

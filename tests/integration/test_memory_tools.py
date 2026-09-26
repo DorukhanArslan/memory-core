@@ -2,6 +2,7 @@ from pathlib import Path
 
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
+from memory_core.flags import FeatureFlags
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.supplements import StaticMemoryCorpusSupplement
 from memory_core.tools.memory_get import memory_get
@@ -314,6 +315,38 @@ def test_temporal_decay_affects_store_search_order(tmp_path: Path):
 
     assert results[0].path == "memory/2999-01-01.md"
     assert results[0].score > results[1].score
+
+
+def test_undated_and_session_style_notes_are_searchable_and_evergreen(tmp_path: Path):
+    # Recursive memory/**/*.md discovery (OpenClaw listMemoryFiles) makes these
+    # files searchable; temporal-decay.ts treats non-daily memory/ paths as
+    # evergreen, so only the dated daily file decays.
+    (tmp_path / "memory" / "topics").mkdir(parents=True)
+    for relative in (
+        "memory/2000-01-01.md",
+        "memory/2000-01-01-1430.md",
+        "memory/topics/alpha.md",
+    ):
+        (tmp_path / relative).write_text("orbit nebula\n", encoding="utf-8")
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "memory.sqlite",
+        flags=FeatureFlags(vector_search=False, temporal_decay=True),
+        temporal_decay_half_life_days=1,
+    )
+    store = SQLiteMemoryStore(cfg, None)
+    store.reindex(MemoryWorkspace(tmp_path))
+
+    results = store.search("orbit nebula", max_results=3, min_score=0.0)
+    scores = {result.path: result.score for result in results}
+
+    assert set(scores) == {
+        "memory/2000-01-01.md",
+        "memory/2000-01-01-1430.md",
+        "memory/topics/alpha.md",
+    }
+    assert scores["memory/2000-01-01-1430.md"] == scores["memory/topics/alpha.md"]
+    assert scores["memory/2000-01-01.md"] < scores["memory/topics/alpha.md"] * 1e-6
 
 
 def test_mmr_config_is_applied_to_store_search(tmp_path: Path, monkeypatch):

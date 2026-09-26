@@ -1,14 +1,130 @@
 from __future__ import annotations
 
+import os
 import re
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 
 from memory_core.session_corpus import MemoryCoreSessionCorpus
 
-DATED_MEMORY_FILE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
 DAILY_MEMORY_PATH_RE = re.compile(r"^memory/\d{4}-\d{2}-\d{2}\.md$")
 SESSION_CORPUS_FILE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.(?:md|txt)$")
+
+# Root memory file name (OpenClaw src/memory/root-memory-files.ts
+# CANONICAL_ROOT_MEMORY_FILENAME). The legacy lowercase `memory.md` is a
+# doctor/repair concern upstream and is never indexed.
+CANONICAL_ROOT_MEMORY_FILENAME = "MEMORY.md"
+# Directory name memory discovery never descends into: OpenClaw's doctor
+# writes repair copies there (packages/memory-host-sdk/src/host/internal.ts
+# shouldDescendMemoryEntry). Kept under its upstream name so a workspace shared
+# with OpenClaw never indexes repair artifacts.
+OPENCLAW_REPAIR_DIRNAME = ".openclaw-repair"
+
+
+def list_memory_files(workspace_dir: Path) -> list[Path]:
+    """Port of OpenClaw ``listMemoryFiles`` (memory-host-sdk host/internal.ts:150-222).
+
+    Returns absolute paths in upstream order: the root ``MEMORY.md`` when it is
+    a real file (exact name, not a symlink), then every ``*.md`` under
+    ``memory/`` in a pre-order walk with byte-sorted directory entries (Node
+    ``fs.readdir`` sorts via libuv scandir). Symlinked files and directories are
+    skipped, a symlinked ``memory/`` is ignored, and ``.openclaw-repair``
+    directories are not descended; hidden files and dot-directories such as
+    ``memory/.dreams`` are walked like any other entry. Results are deduplicated
+    by realpath.
+
+    Not ported: ``extraPaths`` and multimodal files (memory-core has no config for
+    them), and the ``shouldSkipRootMemoryAuxiliaryPath`` guard, which can only
+    match for extra paths outside ``memory/``.
+    """
+    root = Path(workspace_dir)
+    result: list[Path] = []
+    memory_file = _resolve_canonical_root_memory_file(root)
+    if memory_file is not None and _is_regular_markdown_file(memory_file):
+        result.append(memory_file)
+    memory_dir = root / "memory"
+    try:
+        memory_dir_stat = os.lstat(memory_dir)
+    except OSError:
+        memory_dir_stat = None
+    if (
+        memory_dir_stat is not None
+        and not stat.S_ISLNK(memory_dir_stat.st_mode)
+        and stat.S_ISDIR(memory_dir_stat.st_mode)
+    ):
+        _collect_memory_files_from_dir(memory_dir, result)
+    if len(result) <= 1:
+        return result
+    seen: set[str] = set()
+    deduped: list[Path] = []
+    for entry in result:
+        try:
+            key = os.path.realpath(entry, strict=True)
+        except OSError:
+            key = str(entry)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(entry)
+    return deduped
+
+
+def _resolve_canonical_root_memory_file(root: Path) -> Path | None:
+    # src/memory/root-memory-files.ts resolveCanonicalRootMemoryFile: an exact
+    # directory entry (no case folding) that is a file and not a symlink.
+    try:
+        with os.scandir(root) as entries:
+            for entry in entries:
+                if entry.name == CANONICAL_ROOT_MEMORY_FILENAME and entry.is_file(
+                    follow_symlinks=False
+                ):
+                    return root / entry.name
+    except OSError:
+        pass
+    return None
+
+
+def _is_regular_markdown_file(path: Path) -> bool:
+    # listMemoryFiles addMarkdownFile: statRegularFile (lstat; symlinks and
+    # non-regular files are rejected) plus the `.md` suffix check.
+    try:
+        file_stat = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISREG(file_stat.st_mode) and path.name.endswith(".md")
+
+
+def _collect_memory_files_from_dir(directory: Path, files: list[Path]) -> None:
+    # collectMemoryFilesFromDir over @openclaw/fs-safe walkDirectory with
+    # `symlinks: "skip"`: each directory is visited once by realpath, entries
+    # are pushed before descending, and unreadable directories are skipped.
+    visited: set[str] = set()
+
+    def visit(current: Path) -> None:
+        try:
+            real_dir = os.path.realpath(current, strict=True)
+        except OSError:
+            return
+        if real_dir in visited:
+            return
+        visited.add(real_dir)
+        try:
+            with os.scandir(current) as iterator:
+                entries = sorted(iterator, key=lambda item: os.fsencode(item.name))
+        except OSError:
+            return
+        for entry in entries:
+            if entry.is_symlink():
+                continue
+            full_path = current / entry.name
+            if entry.is_file(follow_symlinks=False):
+                if entry.name.endswith(".md"):
+                    files.append(full_path)
+            elif entry.is_dir(follow_symlinks=False) and entry.name != OPENCLAW_REPAIR_DIRNAME:
+                visit(full_path)
+
+    visit(directory)
 
 
 class UnsafeMemoryPathError(ValueError):
@@ -38,22 +154,12 @@ class MemoryWorkspace:
         self.agent_id = agent_id
 
     def discover_memory_files(self) -> list[MemoryFile]:
-        files: list[MemoryFile] = []
-        for name in ("MEMORY.md", "memory.md"):
-            path = self.root / name
-            resolved_path = path.resolve()
-            if path.is_file() and self.is_path_inside_root(resolved_path):
-                files.append(MemoryFile(name, resolved_path))
-                break
-        memory_dir = self.root / "memory"
-        if memory_dir.is_dir():
-            for path in sorted(memory_dir.glob("*.md")):
-                resolved_path = path.resolve()
-                if DATED_MEMORY_FILE_RE.match(path.name) and self.is_path_inside_root(
-                    resolved_path
-                ):
-                    files.append(MemoryFile(path.relative_to(self.root).as_posix(), resolved_path))
-        return files
+        # Same file list as OpenClaw's memory index (listMemoryFiles); the
+        # relative path mirrors buildFileEntry (path.relative + "/" separators).
+        return [
+            MemoryFile(path.relative_to(self.root).as_posix(), path)
+            for path in list_memory_files(self.root)
+        ]
 
     def discover_session_transcript_files(self) -> list[MemoryFile]:
         files: list[MemoryFile] = []
@@ -85,7 +191,18 @@ class MemoryWorkspace:
         return files
 
     def discover_indexable_files(self) -> list[MemoryFile]:
-        return [*self.discover_memory_files(), *self.discover_session_transcript_files()]
+        # memory-core extension: files under memory/.dreams/session-corpus/ are
+        # indexed once, as source "sessions" (the lab writes its chat corpus
+        # there as YYYY-MM-DD.md). Upstream has no sessions scan of that
+        # directory; its recursive memory walk would index such a `.md` as a
+        # memory file, and upstream's own corpus files are `.txt`, which the
+        # memory walk never picks up.
+        session_files = self.discover_session_transcript_files()
+        session_paths = {file.rel_path for file in session_files}
+        memory_files = [
+            file for file in self.discover_memory_files() if file.rel_path not in session_paths
+        ]
+        return [*memory_files, *session_files]
 
     def normalize_memory_path(self, rel_path: str) -> str:
         return rel_path.replace("\\", "/").lstrip("/")

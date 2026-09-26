@@ -750,6 +750,23 @@ async function main() {
     };
   }
 
+  if (payload.operation === "listMemoryFiles") {
+    // packages/memory-host-sdk/src/host/internal.ts listMemoryFiles on a fixture
+    // workspace written by the Python side (no extraPaths, multimodal disabled),
+    // reported as workspace-relative paths the way buildFileEntry derives them.
+    if (!payload.workspaceDir) {
+      throw new Error("workspaceDir is required");
+    }
+    const workspaceDir = payload.workspaceDir;
+    const internal = await importFromRepo(repoPath, "packages/memory-host-sdk/src/host/internal.ts");
+    const files: string[] = await internal.listMemoryFiles(workspaceDir);
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: files.map((file) => path.relative(workspaceDir, file).replace(/\\/g, "/")),
+    };
+  }
+
   if (payload.operation === "memorySearch") {
     // OpenClaw HEAD ignores agents.defaults.memorySearch.store.path: the index
     // always lives at <stateDir>/agents/<agentId>/agent/openclaw-agent.sqlite

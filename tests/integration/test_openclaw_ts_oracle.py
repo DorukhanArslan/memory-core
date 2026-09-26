@@ -764,6 +764,88 @@ def test_real_openclaw_oracle_memory_get_char_budget_matches_python(tmp_path: Pa
     assert result["result"] == python_result
 
 
+MEMORY_DISCOVERY_SCENARIOS = {
+    "recursive-tree": {
+        "MEMORY.md": "# Root\n",
+        "DREAMS.md": "diary\n",
+        "memory/2026-09-26.md": "day\n",
+        "memory/2026-09-26-1430.md": "session file\n",
+        "memory/notes.md": "undated note\n",
+        "memory/abcd-ef-gh.md": "not a date\n",
+        "memory/aa/nested.md": "nested\n",
+        "memory/b.md": "b\n",
+        "memory/_x.md": "underscore\n",
+        "memory/10.md": "ten\n",
+        "memory/9.md": "nine\n",
+        "memory/.hidden.md": "hidden file\n",
+        "memory/.dreams/diary.md": "dot dir\n",
+        "memory/.dreams/session-corpus/2026-09-26.txt": "corpus\n",
+        "memory/.dreams/short-term-recall.json": "{}\n",
+        "memory/.openclaw-repair/copy.md": "repair copy\n",
+        "memory/sub/.openclaw-repair/copy.md": "nested repair copy\n",
+        "memory/.openclaw-repair.md": "a file, not the repair dir\n",
+        "memory/notes.txt": "text\n",
+        "memory/UPPER.MD": "upper suffix\n",
+        "memory/projects/alpha/deep.md": "deep\n",
+        "memory/zz-ä.md": "non-ascii\n",
+        "memory/link.md": {"symlink": "memory/notes.md"},
+        "memory/linkdir": {"symlink": "memory/projects"},
+        "memory/escape.md": {"symlink": "../outside.md"},
+    },
+    "legacy-lowercase-root": {
+        "memory.md": "legacy\n",
+        "memory/2026-09-26.md": "day\n",
+    },
+    "symlinked-root-memory": {
+        "notes/real.md": "real\n",
+        "MEMORY.md": {"symlink": "notes/real.md"},
+        "memory/2026-09-26.md": "day\n",
+    },
+    "symlinked-memory-dir": {
+        "MEMORY.md": "# Root\n",
+        "elsewhere/2026-09-26.md": "day\n",
+        "memory": {"symlink": "elsewhere"},
+    },
+    "root-memory-is-directory": {
+        "MEMORY.md/inner.md": "inner\n",
+        "memory/2026-09-26.md": "day\n",
+    },
+    "empty": {},
+}
+
+
+def _write_memory_discovery_tree(root: Path, spec: dict) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    (root.parent / "outside.md").write_text("outside\n", encoding="utf-8")
+    symlinks = []
+    for relative, content in spec.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(content, dict):
+            symlinks.append((path, content["symlink"]))
+        else:
+            path.write_text(content, encoding="utf-8")
+    for path, target in symlinks:
+        try:
+            path.symlink_to(root / target)
+        except (NotImplementedError, OSError) as exc:
+            pytest.skip(f"symlinks are not supported on this platform: {exc}")
+
+
+@pytest.mark.parametrize("scenario", sorted(MEMORY_DISCOVERY_SCENARIOS))
+def test_real_openclaw_oracle_list_memory_files_matches_python(tmp_path: Path, scenario: str):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    root = tmp_path / "workspace"
+    _write_memory_discovery_tree(root, MEMORY_DISCOVERY_SCENARIOS[scenario])
+
+    result = oracle.run({"operation": "listMemoryFiles", "workspaceDir": str(root)})
+    python_result = [file.rel_path for file in MemoryWorkspace(root).discover_memory_files()]
+
+    assert result["ok"] is True
+    assert result["operation"] == "listMemoryFiles"
+    assert result["result"] == python_result
+
+
 def test_real_openclaw_oracle_memory_search_memory_corpus_matches_python_paths(
     tmp_path: Path,
 ):

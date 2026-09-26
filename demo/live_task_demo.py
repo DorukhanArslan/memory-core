@@ -118,6 +118,8 @@ class LiveTaskDemo:
         user_utterance: str,
         llm: Callable[[list[dict[str, str]]], Any] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
+        # The trace file is named after the session: for_session rejects unsafe ids.
+        trace_sink = JsonlTraceSink.for_session(self.trace_dir, session_id)
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
         self._bootstrap_workspace()
         if self._state.session_id != session_id or self._state.subject_id != subject_id:
@@ -131,7 +133,6 @@ class LiveTaskDemo:
             reindex=False,
         )
         identity = self._identity_store().load()
-        trace_sink = JsonlTraceSink(self._trace_path(session_id))
         context = LiveTurnContext(
             subject_id=subject_id,
             session_id=session_id,
@@ -193,7 +194,7 @@ class LiveTaskDemo:
             transcript=transcript_text,
             summary_llm=resolved_summary_llm,
             timezone="Europe/Istanbul",
-            trace_sink=JsonlTraceSink(self._trace_path(session_id)),
+            trace_sink=JsonlTraceSink.for_session(self.trace_dir, session_id),
         )
         return {
             "wrote": result.wrote,

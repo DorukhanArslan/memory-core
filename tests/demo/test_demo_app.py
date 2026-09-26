@@ -457,6 +457,25 @@ def test_live_task_turn_stream_emits_latency_events(monkeypatch):
     assert {"type": "llm", "provider": "scripted", "model": "workflow-script"} in provider_payloads
 
 
+def test_live_task_rejects_a_session_id_that_would_leave_the_trace_dir(monkeypatch):
+    # The Lab names trace files after the session: JsonlTraceSink.for_session checks it.
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
+    client = TestClient(app)
+    client.post("/api/live-task/reset", json={})
+    payload = {"sessionId": "../../escaped", "subjectId": "subject_demo"}
+
+    turn = client.post("/api/live-task/turn-stream", json={**payload, "message": "Merhaba"})
+    summary = client.post("/api/live-task/summary", json=payload)
+
+    events = _parse_sse(turn.text)
+    assert [event["event"] for event in events] == ["error"]
+    assert "session_id is not filesystem-safe" in events[0]["data"]["error"]
+    assert summary.status_code == 400
+    assert "session_id is not filesystem-safe" in summary.json()["error"]
+    # trace/live-task/../../escaped.jsonl would land in the workspace root.
+    assert not list(demo_app.LIVE_TASK_DEMO.workspace_dir.rglob("escaped.jsonl"))
+
+
 def test_live_task_summary_writes_subject_memory(monkeypatch):
     monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
     client = TestClient(app)

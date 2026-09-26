@@ -149,13 +149,15 @@ memory-core-state/
 user, customer, account, device, patient, lead, or another durable memory
 subject.
 
-`subject_id` and `session_id` must be filesystem-safe: letters, digits, `_`,
-`.` and `-` only (`SAFE_ID_RE`), and not only dots (`.` and `..` would name the
-namespace directory or the root). `SubjectMemory.open` rejects an unsafe
-`subject_id`. `prepare_live_turn`, `stream_live_turn` and
-`record_session_summary` reject an unsafe `session_id` with `ValueError` before
-any event is yielded or recorded, because hosts name trace files after it
-(`../../x` would otherwise write outside the trace directory).
+`subject_id` must be filesystem-safe, because it names the subject directory:
+letters, digits, `_`, `.` and `-` only (`SAFE_ID_RE`), and not only dots (`.`
+and `..` would name the namespace directory or the root). `SubjectMemory.open`
+rejects an unsafe `subject_id` with `ValueError`.
+
+`session_id` is any host id (`whatsapp:+905551234567`, a Slack thread key):
+`prepare_live_turn`, `stream_live_turn` and `record_session_summary` never build
+a path from it. The check applies where an id becomes a file name, in
+`JsonlTraceSink.for_session` (see [Trace Sink](#trace-sink)).
 
 The default namespace is `subjects/<subject_id>`. Hosts can choose another
 namespace or provide a path builder:
@@ -303,8 +305,12 @@ to observe the `session_summary_*` events at all; they are trace-only.
 ```
 
 `JsonlTraceSink.for_session(trace_dir, session_id)` builds
-`<trace_dir>/<session_id>.jsonl` and applies the same `session_id` check, so a
-host never joins an unchecked id into a path itself.
+`<trace_dir>/<session_id>.jsonl` and raises `ValueError` unless `session_id`
+matches upstream's `SAFE_SESSION_ID_RE` (`src/config/sessions/paths.ts`): a
+leading letter or digit, then at most 127 of `[A-Za-z0-9._-]`. So `../../x`
+cannot write outside the trace directory and a very long id fails before the
+first write. A host whose ids do not fit (a phone number with `+` and `:`) maps
+them to a safe file name itself, or keeps traces in its own `TraceSink`.
 
 This is intentionally append-only and generic. Production hosts can implement
 the `TraceSink` protocol to write events into their own audit log, database, or

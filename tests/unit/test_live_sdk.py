@@ -907,12 +907,27 @@ def test_stream_live_turn_yields_failure_on_subject_mismatch(tmp_path: Path):
     assert asyncio.run(stop_at_failure()) == [LIVE_TURN_STARTED, LIVE_TURN_FAILED]
 
 
-UNSAFE_SESSION_IDS = ("../../escaped", "..", ".", "a/b", "..\\x", "sess ion", "")
+UNSAFE_SESSION_IDS = (
+    "../../escaped",
+    "..",
+    ".",
+    "a/b",
+    "..\\x",
+    "sess ion",
+    "",
+    ".hidden",
+    "-dash",
+    "_under",
+    "whatsapp:+905551234567",
+    "s" * 129,
+)
 
 
-def test_trace_sink_for_session_rejects_unsafe_session_ids(tmp_path: Path):
+def test_trace_sink_for_session_uses_the_upstream_session_id_rule(tmp_path: Path):
+    # SAFE_SESSION_ID_RE (src/config/sessions/paths.ts:63): leading [A-Za-z0-9], max 128.
     sink = JsonlTraceSink.for_session(tmp_path / "trace", "session_1.v2")
     assert sink.path == tmp_path / "trace" / "session_1.v2.jsonl"
+    assert JsonlTraceSink.for_session(tmp_path, "S" * 128).path.name == "S" * 128 + ".jsonl"
 
     for session_id in UNSAFE_SESSION_IDS:
         try:
@@ -921,49 +936,31 @@ def test_trace_sink_for_session_rejects_unsafe_session_ids(tmp_path: Path):
             assert "session_id" in str(exc)
         else:
             raise AssertionError(f"expected {session_id!r} to be rejected")
-
-
-def test_unsafe_session_ids_are_rejected_before_any_trace_write(tmp_path: Path):
-    # A host that names its trace file after the session id (as the Lab demo
-    # does) must not let "../../escaped" write outside its trace directory.
-    root = tmp_path / "state"
-    memory = SubjectMemory.open(workspace_dir=root, subject_id="subj_123", reindex=False)
-
-    def unused_llm(messages):
-        raise AssertionError("the LLM must not run for an unsafe session_id")
-
-    async def async_summary(session_id: str, sink: JsonlTraceSink):
-        return await memory.async_record_session_summary(
-            session_id=session_id, transcript="t", summary_llm=unused_llm, trace_sink=sink
-        )
-
-    for session_id in UNSAFE_SESSION_IDS:
-        sink = JsonlTraceSink(root / "trace" / f"{session_id}.jsonl")
-        context = LiveTurnContext(
-            subject_id="subj_123", session_id=session_id, user_utterance="Hi."
-        )
-        events, error = _collect_until_failure(
-            memory.stream_live_turn(context, llm=unused_llm, trace_sink=sink)
-        )
-        assert events == []
-        assert isinstance(error, ValueError) and "session_id" in str(error)
-        attempts = (
-            lambda: memory.prepare_live_turn(context),
-            lambda: memory.record_session_summary(
-                session_id=session_id, transcript="t", summary_llm=unused_llm, trace_sink=sink
-            ),
-            lambda: asyncio.run(async_summary(session_id, sink)),
-        )
-        for attempt in attempts:
-            try:
-                attempt()
-            except ValueError as exc:
-                assert "session_id" in str(exc)
-            else:
-                raise AssertionError(f"expected {session_id!r} to be rejected")
-
     assert list(tmp_path.rglob("*.jsonl")) == []
-    assert not list((root / "subjects" / "subj_123" / "memory").glob("*.md"))
+
+
+def test_turn_and_summary_calls_accept_any_host_session_id(tmp_path: Path):
+    # Host ids such as WhatsApp numbers or Slack thread keys are not file names;
+    # only JsonlTraceSink.for_session checks an id that becomes a path.
+    memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+    session_id = "whatsapp:+905551234567"
+    context = LiveTurnContext(subject_id="subj_123", session_id=session_id, user_utterance="Hi.")
+
+    async def reply(messages):
+        yield "Merhaba."
+
+    prepared = memory.prepare_live_turn(context)
+    events, error = _collect_until_failure(memory.stream_live_turn(context, llm=reply))
+    summary = memory.record_session_summary(
+        session_id=session_id,
+        transcript="User: Hi.",
+        summary_llm=lambda messages: "- Subject greets in Turkish.",
+    )
+
+    assert prepared.trace_context["session_id"] == session_id
+    assert error is None and events[-1].type == LIVE_TURN_COMPLETED
+    assert summary.wrote is True
+    assert list(tmp_path.rglob("*.jsonl")) == []
 
 
 def test_dot_only_subject_ids_are_rejected(tmp_path: Path):

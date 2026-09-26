@@ -45,6 +45,10 @@ IDENTITY_FILE_NAMES = frozenset(DEFAULT_WORKSPACE_LAYOUT.load_order)
 # dreaming diary (extensions/memory-core/src/dreaming-dreams-file.ts:10).
 NON_INJECTED_WORKSPACE_FILES = frozenset({"BOOT.md", "DREAMS.md", "dreams.md"})
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+# Upstream SAFE_SESSION_ID_RE (src/config/sessions/paths.ts:63 at 4c42815348): a leading
+# letter or digit, then up to 127 of [A-Za-z0-9._-]. Applied only where a session id
+# becomes a file name (JsonlTraceSink.for_session); turn and summary calls take any id.
+SAFE_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SENTENCE_RE = re.compile(r"(.+?[.!?…])(?:\s+|$)", re.DOTALL)
 LIVE_TURN_STARTED = "live_turn_started"
 MEMORY_RECALL_COMPLETED = "memory_recall_completed"
@@ -335,11 +339,13 @@ class JsonlTraceSink:
     def for_session(cls, trace_dir: str | Path, session_id: str) -> "JsonlTraceSink":
         """Trace sink at ``<trace_dir>/<session_id>.jsonl``.
 
-        ``session_id`` must pass the ``subject_id`` rule (``SAFE_ID_RE``, not
-        only dots), so it cannot leave ``trace_dir``; otherwise ``ValueError``.
+        ``session_id`` must match upstream's ``SAFE_SESSION_ID_RE`` (a leading
+        letter or digit, then at most 127 of ``[A-Za-z0-9._-]``), so it cannot
+        leave ``trace_dir`` or exceed a file-name limit; otherwise ``ValueError``.
         """
-        safe_session_id = _validate_safe_id(session_id, label="session_id")
-        return cls(Path(trace_dir) / f"{safe_session_id}.jsonl")
+        if not SAFE_SESSION_ID_RE.fullmatch(session_id):
+            raise ValueError(f"session_id is not filesystem-safe: {session_id}")
+        return cls(Path(trace_dir) / f"{session_id}.jsonl")
 
     def record(self, event: LiveTurnEvent) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -417,7 +423,6 @@ class SubjectMemory:
         min_score: float = 0.0,
         corpus: str = "all",
     ) -> PreparedLiveTurn:
-        _validate_safe_id(context.session_id, label="session_id")
         _validate_context_subject(self.subject_id, context.subject_id)
         memory_search = self.memory.search(
             context.user_utterance,
@@ -476,11 +481,10 @@ class SubjectMemory:
         exception. A consumer that stops iterating at ``live_turn_failed``
         closes the stream without the re-raise.
 
-        An unsafe ``context.session_id`` (see :meth:`JsonlTraceSink.for_session`)
-        raises ``ValueError`` before any event is yielded or recorded, because
-        hosts name trace files after it.
+        ``context.session_id`` is any host id (``whatsapp:+90...``, a Slack
+        thread key); a host that names trace files after it builds the sink
+        with :meth:`JsonlTraceSink.for_session`, which checks it.
         """
-        _validate_safe_id(context.session_id, label="session_id")
         resolved_config = _resolve_live_sdk_config(
             config=config,
             openclaw_compatible=openclaw_compatible,
@@ -642,8 +646,6 @@ class SubjectMemory:
         timezone: str,
         trace_sink: TraceSink | None,
     ):
-        # Before the first trace write: hosts name trace files after session_id.
-        _validate_safe_id(session_id, label="session_id")
         _record_trace_event(
             SESSION_SUMMARY_STARTED,
             trace_sink=trace_sink,

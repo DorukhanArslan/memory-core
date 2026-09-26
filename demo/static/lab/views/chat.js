@@ -334,7 +334,8 @@ function chatHeader() {
 let logEl = null; let stickBottom = true;
 const stackedMq = window.matchMedia('(max-width: 820px)');
 function scrollLog() {
-  if (!logEl || !stickBottom) return;
+  // Only while the chat is on screen: in the stacked layouts the page itself scrolls.
+  if (!logEl || !stickBottom || !logEl.offsetParent || store.ui.view !== 'chat' || store.ui.centerTab !== 'view') return;
   if (stackedMq.matches) { const se = document.scrollingElement; se.scrollTop = se.scrollHeight; } else logEl.scrollTop = logEl.scrollHeight;
 }
 export function renderChat(body) {

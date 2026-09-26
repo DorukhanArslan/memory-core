@@ -3,6 +3,8 @@ from pathlib import Path
 import json
 import os
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 import demo.app as demo_app
@@ -1237,6 +1239,35 @@ def test_chat_send_stream_emits_deltas_and_final_state(monkeypatch):
     assert "event: final_state" in body
     assert "Project decision: stream chat." in body
     assert '"shouldWrite": true' in body
+
+
+@pytest.mark.parametrize("endpoint", ["/api/chat/send", "/api/chat/send-stream"])
+def test_chat_send_records_raw_hits_without_source_citation(monkeypatch, endpoint):
+    # Upstream records the raw memory_search hits (tools.ts queueShortTermRecallTracking);
+    # the "Source: path#La-Lb" citation must not become its own recall entry.
+    monkeypatch.setattr(demo_app, "_chat_engine", lambda payload: StubOpenAIEngine())
+    monkeypatch.setattr(demo_app, "demo_store", fake_demo_store)
+    client = TestClient(app)
+    client.post("/api/chat/reset", json={})
+    today = demo_app._local_date(demo_app._now_ms()).isoformat()
+    daily = demo_app.DEMO_WORKSPACE / "memory" / f"{today}.md"
+    daily.write_text(f"# {today}\n\n- Glacier backups run weekly on Sunday.\n", encoding="utf-8")
+
+    response = client.post(
+        endpoint,
+        json={
+            "message": "glacier backups",
+            "engine": "openai",
+            "openai": {"apiKey": "request-key"},
+            "autoFlush": False,
+        },
+    )
+
+    assert response.status_code == 200
+    store_path = demo_app.DEMO_WORKSPACE / "memory" / ".dreams" / "short-term-recall.json"
+    entries = json.loads(store_path.read_text(encoding="utf-8"))["entries"]
+    assert f"memory:memory/{today}.md:3:3" in entries
+    assert not [key for key, entry in entries.items() if "Source:" in entry["snippet"]]
 
 
 def test_chat_send_unconfigured_openai_returns_json_error(monkeypatch):

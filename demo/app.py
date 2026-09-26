@@ -56,6 +56,7 @@ from memory_core.consolidation import (
     record_short_term_recalls,
     repair_short_term_promotion_artifacts,
     run_short_term_promotion,
+    undecorate_search_results,
 )
 from memory_core.consolidation import run_dreaming_sweep as run_consolidation_dreaming_sweep
 from memory_core.embeddings.base import EmbeddingProvider, FakeEmbeddingProvider
@@ -632,10 +633,12 @@ def chat_send(payload: dict):
         )
         recall_results = recall.get("results", [])
         chat_recall_results = _filter_chat_auto_memory_results(recall_results)
+        # Upstream records the raw hits (tools.ts queueShortTermRecallTracking gets
+        # rawResults); the citation-decorated snippets only feed the prompt.
         record_short_term_recalls(
             config=demo_config(),
             query=recall_query,
-            results=chat_recall_results,
+            results=undecorate_search_results(chat_recall_results),
             now_ms=_now_ms(),
         )
         memory_context = _memory_context_from_results(chat_recall_results)
@@ -882,10 +885,12 @@ def _chat_send_stream_events(payload: dict):
         )
         recall_results = recall.get("results", [])
         chat_recall_results = _filter_chat_auto_memory_results(recall_results)
+        # Upstream records the raw hits (tools.ts queueShortTermRecallTracking gets
+        # rawResults); the citation-decorated snippets only feed the prompt.
         record_short_term_recalls(
             config=demo_config(),
             query=recall_query,
-            results=chat_recall_results,
+            results=undecorate_search_results(chat_recall_results),
             now_ms=_now_ms(),
         )
         memory_context = _memory_context_from_results(chat_recall_results)

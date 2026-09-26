@@ -4,7 +4,10 @@ Ports the OpenClaw workspace bootstrap surface at pin 4c42815348 (see each
 module's docstring for upstream anchors) and adds the memory-core layout as the
 default. memory-core additions are an extension (provisional: no upstream reference).
 
-Typical host flow::
+Typical host flow, every turn (upstream runs ``ensureAgentWorkspace`` on each
+reply, ``src/auto-reply/reply/get-reply.ts:418-425``, which is where a configured
+workspace gets BOOTSTRAP.md reconciled away; ``build_workspace_context`` only
+reads)::
 
     from memory_core.bootstrap import build_workspace_context, initialize_agent_workspace
 

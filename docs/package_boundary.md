@@ -18,6 +18,10 @@ Included:
 - Markdown memory files such as `MEMORY.md` and `memory/YYYY-MM-DD.md`
 - SQLite-backed indexing, hybrid search, MMR, temporal scoring, and citations
 - flush planning and daily-memory target validation
+- `memory_core.bootstrap`: workspace layouts, seeding and the BOOTSTRAP.md
+  lifecycle, bootstrap file loading, budget and truncation, Project Context
+  rendering and the startup-context prelude (see
+  [Workspace Layout](workspace_layout.md))
 - replay cleanup, history windowing, tool-use repair, and overflow helpers when
   those behaviors are required to preserve OpenClaw-compatible prompt assembly
 

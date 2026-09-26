@@ -12,10 +12,19 @@ bootstrap files" and "Bootstrap truncation").
 ```python
 from memory_core.bootstrap import build_workspace_context, initialize_agent_workspace
 
+# Every turn, like upstream's ensureAgentWorkspace in the reply path:
 initialize_agent_workspace(root, templates=host_templates)
 context = build_workspace_context(root, session_kind="main")
 system_prompt = context.prompt_text
 ```
+
+`build_workspace_context` only reads. Upstream runs `ensureAgentWorkspace` on
+every reply turn (`src/auto-reply/reply/get-reply.ts:418-425`), and that call
+is where a configured workspace (a changed SOUL/IDENTITY/USER, `memory/`,
+`MEMORY.md`, a skill) gets its BOOTSTRAP.md deleted and setup marked complete.
+A host that initializes only once keeps injecting BOOTSTRAP.md and `## Bootstrap
+Pending`; call `initialize_agent_workspace` with the same templates before each
+`build_workspace_context`.
 
 ## Layouts
 
@@ -153,4 +162,16 @@ deviation, not a content change.
   `record_completed_bootstrap_turn` is set.
 - The heartbeat-guidance decision: the host passes `include_heartbeat`.
 - `localeCompare` is approximated for non-ASCII text; it only breaks ties
-  between paths.
+  between paths. It is exact for ASCII. Non-ASCII letters without a
+  decomposition (ı, ø, ß, æ) and non-ASCII punctuation (the en dash) sort after
+  `z` by code point, where ICU puts them next to their base letters or before
+  letters. Layout files under one root never hit this, but unknown non-ASCII
+  basenames a host passes to `render_project_context` or `sort_context_files`
+  can render in a different order than upstream (for example Turkish `ılık`
+  after `zeta`).
+- `WorkspaceContext.workspace_notes` holds upstream's
+  `Reminder: commit your changes in this workspace after edits.` note
+  (`attempt.ts:1489-1495`) but `prompt_text` does not render it: upstream puts
+  it into the `## Workspace` section of the full system prompt
+  (`system-prompt.ts:1157-1161`), which memory-core does not build. Hosts that
+  render that section add the note themselves.

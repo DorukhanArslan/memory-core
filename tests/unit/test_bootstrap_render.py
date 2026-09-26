@@ -400,3 +400,23 @@ def test_workspace_context_resolves_char_limits_like_upstream_config(tmp_path: P
         assert user_length(max_chars=value, total_max_chars=value) == default_length
     assert resolve_bootstrap_char_limit(300.9, 20_000) == 300
     assert user_length(max_chars=300.9) == user_length(max_chars=300) <= 300
+
+
+def test_bootstrap_reconcile_needs_the_per_turn_initialize(tmp_path: Path):
+    # Upstream runs ensureAgentWorkspace on every reply (get-reply.ts:418-425);
+    # build_workspace_context only reads, so the host initializes each turn.
+    templates = {"BOOTSTRAP.md": "host ritual\n"}
+    initialize_agent_workspace(tmp_path, templates=templates)
+    (tmp_path / "USER.md").write_text("Name: Doruk\n", encoding="utf-8")
+
+    read_only = build_workspace_context(tmp_path, path_style="relative")
+    initialize_agent_workspace(tmp_path, templates=templates)
+    next_turn = build_workspace_context(tmp_path, path_style="relative")
+
+    assert read_only.bootstrap_status == "pending"
+    assert read_only.bootstrap_mode == "full"
+    assert "## Bootstrap Pending" in read_only.prompt_text
+    assert next_turn.bootstrap_status == "complete"
+    assert next_turn.bootstrap_mode == "none"
+    assert "## Bootstrap Pending" not in next_turn.prompt_text
+    assert not (tmp_path / "BOOTSTRAP.md").exists()

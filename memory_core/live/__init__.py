@@ -182,6 +182,15 @@ class LiveIdentity:
 
 @dataclass
 class LiveIdentityStore:
+    """Caches a :class:`LiveIdentity` until :meth:`reload`.
+
+    The cache holds the bootstrap state too (bootstrap mode, ``## Bootstrap
+    Pending``, the truncation notice). Upstream reloads bootstrap files every
+    turn and runs ``ensureAgentWorkspace`` on each reply; a host that wants the
+    BOOTSTRAP.md lifecycle calls ``initialize_agent_workspace`` with its
+    templates and then :meth:`reload` per turn or session.
+    """
+
     identity_dir: Path
     required_files: tuple[str, ...] = ()
     max_chars_per_file: int | None = DEFAULT_BOOTSTRAP_MAX_CHARS

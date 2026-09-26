@@ -91,8 +91,23 @@ identity = LiveIdentity.from_dir(
 BOOT.md, DREAMS.md and dreams.md are accepted (upstream files that are never
 injected), and folders such as `user/`, `workspace/`, `memory/`, `skills/` and
 `subjects/` are ignored. `identity.sections` holds `(path, injected text)`
-pairs and `identity.warnings` the budget warnings. `IDENTITY_FILE_ORDER` stays
-exported for compatibility as `(name, name)` pairs in the default load order.
+pairs and `identity.warnings` the budget warnings. `IDENTITY_FILE_ORDER` and
+`IDENTITY_FILE_NAMES` stay exported for compatibility (`(name, name)` pairs and
+a frozenset of the default load order).
+
+Changes from the earlier loader that a host will notice:
+
+- `max_chars_per_file=None` used to mean "no cap"; it now falls back to the
+  20,000 default like upstream's config resolution, and there is no way to
+  switch the cap off.
+- A directory that does not exist no longer yields an empty identity: every
+  layout file renders `[MISSING] Expected at: <absolute path>`, as upstream
+  does for a workspace without its files. Pass `required_files` to fail
+  instead.
+- With the default `path_style="absolute"` the `## <path>` headings and the
+  `[MISSING]` markers carry the host's absolute filesystem paths (user names,
+  server layout) to the LLM provider on every turn, exactly like upstream.
+  Pass `path_style="relative"` to send root-relative paths instead.
 
 Use `LiveIdentityStore` when a host runtime wants stable cached workspace
 instructions during a session and explicit reloads after file changes:
@@ -102,6 +117,16 @@ identity_store = LiveIdentityStore("./workspace", required_files=["AGENTS.md"])
 identity = identity_store.load()
 identity = identity_store.reload()
 ```
+
+`load()` caches everything, including the bootstrap state: the bootstrap mode,
+`## Bootstrap Pending` and the truncation notice stay as they were at the last
+`reload()`, even after BOOTSTRAP.md is deleted. Upstream refreshes bootstrap
+files every turn (`src/agents/bootstrap-cache.ts`) and runs
+`ensureAgentWorkspace` on every reply (`src/auto-reply/reply/get-reply.ts`),
+which is when a configured workspace gets its BOOTSTRAP.md reconciled away. A
+host that wants that lifecycle calls `initialize_agent_workspace(root,
+templates=...)` with the same templates and then `reload()` at each turn (or at
+least at each session start).
 
 The loader itself only reads files. Whether an agent can update workspace files
 is controlled by the host runtime's normal file/tool policy, matching OpenClaw's

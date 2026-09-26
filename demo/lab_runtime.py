@@ -73,12 +73,12 @@ CONTEXT_INJECTION_MODES = ("always", "continuation-skip", "never")
 
 # Lab feature flags: (default, label, extension). Curation flags feed CurationPolicy.
 LAB_FLAGS: dict[str, tuple[bool, str, bool]] = {
-    "curated_memory_writes": (True, "Küratörlü yazımlar (FeatureFlags.curated_memory_writes)", True),
-    "curation.memory_md": (True, "MEMORY.md küratörlüğü (Q16)", True),
-    "curation.user_md": (True, "USER.md direktifleri (D5)", True),
+    "curated_memory_writes": (True, "Küratörlü yazımlar", True),
+    "curation.memory_md": (True, "MEMORY.md küratörlüğü", True),
+    "curation.user_md": (True, "USER.md direktifleri", True),
     "curation.daily_note": (True, "Günlük not", True),
     "curation.proactive_preferences": (True, "PROACTIVE_PREFERENCES.md", True),
-    "lab_file_editing": (True, "Lab dosya düzenleme (Q16)", True),
+    "lab_file_editing": (True, "Lab dosya düzenleme", True),
 }
 
 
@@ -422,7 +422,7 @@ class LabRuntime:
                 base_url,
                 model,
                 "none",
-                "openrouter.ai serves no /embeddings endpoint (Q9): FTS-only",
+                "openrouter.ai serves no /embeddings endpoint: FTS-only",
             )
         request_key = optional_text(body.get("apiKey"))
         env_key = optional_text(os.getenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY"))

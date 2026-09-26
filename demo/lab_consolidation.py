@@ -203,7 +203,7 @@ def consolidation_view(lab: LabRuntime) -> dict[str, Any]:
         "audit": lab.consolidation_results.get("audit"),
         "repair": lab.consolidation_results.get("repair"),
         "labels": {
-            "curated": "uzantı (Q16, D5): turda anında yazar, kapı yok",
+            "curated": "uzantı: turda anında yazar, kapı yok",
             "scored": _matrix_label(("Promotion", "Apply short-term", "Deep dreaming", "Recall tracking")),
         },
         "flags": {

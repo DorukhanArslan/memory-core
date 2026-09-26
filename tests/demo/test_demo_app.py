@@ -1592,7 +1592,7 @@ def test_settings_defaults_follow_d4_and_q9(client):
                                    "defaults": {"maxChars": 20_000, "totalMaxChars": 60_000, "warningMode": "always"}}
     assert settings["flush"]["mode"] == "threshold" and settings["flush"]["threshold"] == 176_000
     assert settings["heartbeat"] == {"every": "30m", "everyMs": 1_800_000, "ackMaxChars": 300, "lightContext": False}
-    assert settings["flags"]["curation.user_md"] == {"on": True, "label": "USER.md direktifleri (D5)", "extension": True}
+    assert settings["flags"]["curation.user_md"] == {"on": True, "label": "USER.md direktifleri", "extension": True}
     assert settings["timezone"] == "Europe/Istanbul"
 
 

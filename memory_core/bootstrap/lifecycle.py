@@ -1,0 +1,486 @@
+"""Workspace seeding, setup state and the BOOTSTRAP.md lifecycle.
+
+Port of OpenClaw ``src/agents/workspace.ts`` at pin 4c42815348:
+``writeFileIfMissing`` (232-246), ``fileContentDiffersFromTemplate`` (248-261),
+``hasWorkspaceUserContentEvidence`` / ``hasWorkspaceSkillEvidence`` (263-303),
+``workspaceProfileLooksConfigured`` (332-347),
+``reconcileWorkspaceBootstrapCompletionState`` (413-460), the setup-state
+reader/writer (653-772), ``isWorkspaceSetupCompleted`` /
+``resolveWorkspaceBootstrapStatus`` (738-757) and steps 5-6 of
+``ensureAgentWorkspace`` (817-1037), plus ``stripFrontMatter`` (106-118).
+
+Deviations (not yet carried into docs/parity_matrix.md):
+
+- Templates come from the host (``templates``), default to empty strings, and
+  never carry OpenClaw template wording. They pass through upstream's
+  front-matter stripping like ``loadTemplate`` output.
+- The setup state lives at ``<root>/.memory-core/workspace-state.json``;
+  upstream's ``<root>/openclaw-workspace-state.json`` and legacy
+  ``<root>/.openclaw/workspace-state.json`` are read as fallbacks and migrated.
+- Not ported: workspace attestations and the ``WorkspaceVanishedError``
+  guard, ``git init`` for brand-new workspaces, the ``ensureBootstrapFiles:
+  false`` skip mode. ``seed_bootstrap=False`` (never write BOOTSTRAP.md) is a
+  memory-core extension for hosts without a bootstrap ritual.
+- One ``now_ms`` stamps every timestamp of a call (upstream calls
+  ``new Date()`` per timestamp).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+import time
+from collections.abc import Collection, Mapping
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Literal
+
+from memory_core.bootstrap._js import JS_WHITESPACE, js_json_stringify, js_trim, js_utf8_encode
+from memory_core.bootstrap.files import exact_workspace_entry_exists
+from memory_core.bootstrap.layout import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
+
+WORKSPACE_STATE_VERSION = 1
+MEMORY_CORE_WORKSPACE_STATE_DIRNAME = ".memory-core"
+MEMORY_CORE_WORKSPACE_STATE_FILENAME = "workspace-state.json"
+OPENCLAW_WORKSPACE_STATE_FILENAME = "openclaw-workspace-state.json"
+OPENCLAW_LEGACY_WORKSPACE_STATE_DIRNAME = ".openclaw"
+OPENCLAW_LEGACY_WORKSPACE_STATE_FILENAME = "workspace-state.json"
+
+BootstrapStatus = Literal["pending", "complete"]
+
+
+@dataclass(frozen=True)
+class WorkspaceSetupState:
+    """``{version: 1, bootstrapSeededAt?, setupCompletedAt?}`` as upstream stores it."""
+
+    version: int = WORKSPACE_STATE_VERSION
+    bootstrap_seeded_at: str | None = None
+    setup_completed_at: str | None = None
+
+    @property
+    def has_marker(self) -> bool:
+        return bool(self.bootstrap_seeded_at or self.setup_completed_at)
+
+    @property
+    def setup_completed(self) -> bool:
+        value = self.setup_completed_at
+        return isinstance(value, str) and bool(js_trim(value))
+
+    def to_json(self) -> dict[str, object]:
+        data: dict[str, object] = {"version": WORKSPACE_STATE_VERSION}
+        if self.bootstrap_seeded_at is not None:
+            data["bootstrapSeededAt"] = self.bootstrap_seeded_at
+        if self.setup_completed_at is not None:
+            data["setupCompletedAt"] = self.setup_completed_at
+        return data
+
+
+@dataclass(frozen=True)
+class WorkspaceInitResult:
+    """Outcome of :func:`initialize_agent_workspace`.
+
+    ``created_files`` and ``created_dirs`` name what this call created, in
+    creation order. ``bootstrap_removed`` is true when completion evidence made
+    the reconcile step delete BOOTSTRAP.md.
+    """
+
+    root: Path
+    created_files: tuple[str, ...]
+    created_dirs: tuple[str, ...]
+    bootstrap_seeded: bool
+    bootstrap_removed: bool
+    state: WorkspaceSetupState
+    bootstrap_status: BootstrapStatus
+
+
+def strip_template_front_matter(content: str) -> str:
+    """Port of ``stripFrontMatter`` (workspace.ts:106-118)."""
+    if not content.startswith("---"):
+        return content
+    end_index = content.find("\n---", 3)
+    if end_index == -1:
+        return content
+    return content[end_index + len("\n---") :].lstrip(JS_WHITESPACE)
+
+
+def _iso_from_ms(now_ms: int | float) -> str:
+    moment = datetime.fromtimestamp(int(now_ms) / 1000, tz=timezone.utc)
+    return moment.strftime("%Y-%m-%dT%H:%M:%S.") + f"{int(now_ms) % 1000:03d}Z"
+
+
+def _root_path(root: str | os.PathLike[str]) -> Path:
+    return Path(os.path.abspath(os.path.expanduser(os.fspath(root))))
+
+
+def _state_path(root: Path) -> Path:
+    return root / MEMORY_CORE_WORKSPACE_STATE_DIRNAME / MEMORY_CORE_WORKSPACE_STATE_FILENAME
+
+
+def _fallback_state_paths(root: Path) -> tuple[Path, Path]:
+    return (
+        root / OPENCLAW_WORKSPACE_STATE_FILENAME,
+        root / OPENCLAW_LEGACY_WORKSPACE_STATE_DIRNAME / OPENCLAW_LEGACY_WORKSPACE_STATE_FILENAME,
+    )
+
+
+def _reject_constant(value: str) -> object:
+    raise ValueError(f"invalid JSON constant: {value}")
+
+
+def _parse_state(raw: str) -> WorkspaceSetupState | None:
+    """Port of ``parseWorkspaceSetupState`` (workspace.ts:653-672)."""
+    try:
+        parsed = json.loads(raw, parse_constant=_reject_constant)
+    except ValueError:
+        return None
+    if isinstance(parsed, list):
+        return WorkspaceSetupState()
+    if not isinstance(parsed, dict):
+        return None
+
+    def string_value(key: str) -> str | None:
+        value = parsed.get(key)
+        return value if isinstance(value, str) else None
+
+    completed = string_value("setupCompletedAt")
+    if completed is None:
+        completed = string_value("onboardingCompletedAt")
+    return WorkspaceSetupState(
+        bootstrap_seeded_at=string_value("bootstrapSeededAt"),
+        setup_completed_at=completed,
+    )
+
+
+def _needs_state_rewrite(raw: str, state: WorkspaceSetupState) -> bool:
+    return (
+        '"onboardingCompletedAt"' in raw
+        and '"setupCompletedAt"' not in raw
+        and bool(state.setup_completed_at)
+    )
+
+
+def _read_state_file(path: Path) -> tuple[str, WorkspaceSetupState] | None:
+    try:
+        raw = path.read_bytes().decode("utf-8", errors="replace")
+    except FileNotFoundError:
+        return None
+    parsed = _parse_state(raw)
+    return (raw, parsed) if parsed is not None else None
+
+
+def _write_state(root: Path, state: WorkspaceSetupState) -> None:
+    """``writeWorkspaceSetupState``: ``JSON.stringify(state, null, 2) + "\\n"``, atomic."""
+    path = _state_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = js_json_stringify(state.to_json(), indent=2) + "\n"
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(js_utf8_encode(content))
+        os.replace(temp_name, path)
+    except BaseException:
+        try:
+            os.unlink(temp_name)
+        except OSError:
+            pass
+        raise
+
+
+def read_workspace_setup_state(
+    root: str | os.PathLike[str], *, persist_migration: bool = False
+) -> WorkspaceSetupState:
+    """Port of ``readWorkspaceSetupStateForDir`` (workspace.ts:703-736).
+
+    Reads memory-core's state file first, then upstream's
+    ``openclaw-workspace-state.json`` (same error handling as upstream's
+    canonical file), then the legacy ``.openclaw/workspace-state.json`` (read
+    errors treated as absent). ``onboardingCompletedAt`` maps to
+    ``setupCompletedAt``. With ``persist_migration`` a migrated state is
+    written to memory-core's file.
+    """
+    root_path = _root_path(root)
+    canonical = _read_state_file(_state_path(root_path))
+    if canonical is not None:
+        raw, state = canonical
+        if persist_migration and _needs_state_rewrite(raw, state):
+            _write_state(root_path, state)
+        return state
+    upstream_canonical, upstream_legacy = _fallback_state_paths(root_path)
+    fallback = _read_state_file(upstream_canonical)
+    if fallback is None:
+        try:
+            fallback = _read_state_file(upstream_legacy)
+        except OSError:
+            fallback = None
+    if fallback is None:
+        return WorkspaceSetupState()
+    _, state = fallback
+    if persist_migration and state.has_marker:
+        _write_state(root_path, state)
+    return state
+
+
+def is_workspace_setup_completed(root: str | os.PathLike[str]) -> bool:
+    """Port of ``isWorkspaceSetupCompleted`` (workspace.ts:738-741)."""
+    return read_workspace_setup_state(root).setup_completed
+
+
+def bootstrap_status(
+    root: str | os.PathLike[str], layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT
+) -> BootstrapStatus:
+    """Port of ``resolveWorkspaceBootstrapStatus`` (workspace.ts:743-757)."""
+    root_path = _root_path(root)
+    if read_workspace_setup_state(root_path).setup_completed:
+        return "complete"
+    return "pending" if os.path.exists(root_path / layout.bootstrap_file) else "complete"
+
+
+def _write_file_if_missing(path: Path, content: str) -> bool:
+    try:
+        with open(path, "xb") as handle:
+            handle.write(js_utf8_encode(content))
+    except FileExistsError:
+        return False
+    return True
+
+
+def _differs_from_template(path: Path, template: str) -> bool:
+    try:
+        return path.read_bytes().decode("utf-8", errors="replace") != template
+    except FileNotFoundError:
+        return False
+
+
+def _has_skill_evidence(root: Path) -> bool:
+    try:
+        entries = list(os.scandir(root / "skills"))
+    except OSError:
+        return False
+    for entry in entries:
+        try:
+            is_dir = entry.is_dir(follow_symlinks=False)
+        except OSError:
+            continue
+        if is_dir and os.path.exists(root / "skills" / entry.name / "SKILL.md"):
+            return True
+    return False
+
+
+def has_workspace_user_content_evidence(
+    root: str | os.PathLike[str],
+    *,
+    include_git: bool = False,
+    layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT,
+) -> bool:
+    """``memory/``, exact ``MEMORY.md``, a ``skills/*/SKILL.md`` (``.git`` optional)."""
+    root_path = _root_path(root)
+    indicators = [root_path / "memory"]
+    if include_git:
+        indicators.append(root_path / ".git")
+    if any(os.path.exists(indicator) for indicator in indicators):
+        return True
+    if exact_workspace_entry_exists(root_path, layout.memory_file):
+        return True
+    return _has_skill_evidence(root_path)
+
+
+def _resolve_templates(
+    layout: WorkspaceLayout, templates: Mapping[str, str] | None
+) -> dict[str, str]:
+    supplied = dict(templates or {})
+    unknown = set(supplied) - set(layout.seed_order) - {layout.bootstrap_file}
+    if unknown:
+        raise ValueError(f"templates for files outside the layout: {sorted(unknown)}")
+    names = (*layout.seed_order, layout.bootstrap_file)
+    return {name: strip_template_front_matter(supplied.get(name, "")) for name in names}
+
+
+def workspace_profile_looks_configured(
+    root: str | os.PathLike[str],
+    *,
+    layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT,
+    templates: Mapping[str, str] | None = None,
+    include_git_evidence: bool = False,
+) -> bool:
+    """Port of ``workspaceProfileLooksConfigured`` (workspace.ts:332-347).
+
+    True when any profile file (SOUL.md, IDENTITY.md, USER.md) differs from its
+    template (a missing file does not differ) or user-content evidence exists.
+    """
+    root_path = _root_path(root)
+    resolved = _resolve_templates(layout, templates)
+    if any(
+        _differs_from_template(root_path / name, resolved.get(name, ""))
+        for name in layout.profile_files
+    ):
+        return True
+    return has_workspace_user_content_evidence(
+        root_path, include_git=include_git_evidence, layout=layout
+    )
+
+
+@dataclass(frozen=True)
+class _ReconcileResult:
+    repaired: bool
+    bootstrap_exists: bool
+    state: WorkspaceSetupState
+    bootstrap_removed: bool = False
+
+
+def _reconcile_completion_state(
+    root: Path,
+    *,
+    layout: WorkspaceLayout,
+    templates: Mapping[str, str],
+    state: WorkspaceSetupState,
+    bootstrap_exists: bool,
+    now_iso: str,
+) -> _ReconcileResult:
+    """Port of ``reconcileWorkspaceBootstrapCompletionState`` (workspace.ts:413-460)."""
+    if state.setup_completed:
+        return _ReconcileResult(False, bootstrap_exists, state)
+    if state.bootstrap_seeded_at and not bootstrap_exists:
+        completed = replace(state, setup_completed_at=now_iso)
+        _write_state(root, completed)
+        return _ReconcileResult(True, False, completed)
+    if not bootstrap_exists or not workspace_profile_looks_configured(
+        root, layout=layout, templates=templates
+    ):
+        return _ReconcileResult(False, bootstrap_exists, state)
+    repaired = replace(
+        state,
+        bootstrap_seeded_at=(
+            state.bootstrap_seeded_at if state.bootstrap_seeded_at is not None else now_iso
+        ),
+        setup_completed_at=now_iso,
+    )
+    _write_state(root, repaired)
+    try:
+        os.unlink(root / layout.bootstrap_file)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        # Completion state is authoritative; stale BOOTSTRAP cleanup is best-effort.
+        return _ReconcileResult(True, True, repaired)
+    return _ReconcileResult(True, False, repaired, bootstrap_removed=True)
+
+
+def initialize_agent_workspace(
+    root: str | os.PathLike[str],
+    *,
+    layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT,
+    templates: Mapping[str, str] | None = None,
+    seed_bootstrap: bool = True,
+    skip_optional: bool | Collection[str] = False,
+    now_ms: int | None = None,
+) -> WorkspaceInitResult:
+    """Seed a workspace and run the BOOTSTRAP.md lifecycle, like ``ensureAgentWorkspace``.
+
+    Required files (AGENTS.md, TOOLS.md) are written when missing. Optional
+    files (SOUL.md, IDENTITY.md, USER.md, HEARTBEAT.md; with the memory-core layout
+    also PROACTIVE_PREFERENCES.md) are written unless ``skip_optional`` names
+    them (``True`` = all) or setup is already complete. MEMORY.md is never
+    seeded. Existing files are never overwritten. ``templates`` maps file names
+    to host-supplied text; every file defaults to an empty template, so a
+    workspace initialized without templates gets empty files.
+
+    BOOTSTRAP.md is written (from ``templates["BOOTSTRAP.md"]``, default empty)
+    only when the state has neither ``bootstrapSeededAt`` nor
+    ``setupCompletedAt``, BOOTSTRAP.md is absent, and the profile does not
+    already look configured (a profile file differs from its template, or
+    ``memory/``, ``MEMORY.md``, a workspace skill or ``.git`` exists). Create
+    memory files after this call, or the workspace counts as configured.
+    With an empty BOOTSTRAP.md template the workspace still reports
+    ``pending`` until the file is removed or the profile is configured; pass
+    ``seed_bootstrap=False`` (extension) when the host has no ritual.
+
+    When setup evidence appears while BOOTSTRAP.md exists, the state is marked
+    complete and BOOTSTRAP.md is deleted, exactly like upstream's reconcile.
+    Layout ``extra_dirs`` (memory-core: ``user/``, ``workspace/``) are created.
+    """
+    root_path = _root_path(root)
+    root_path.mkdir(parents=True, exist_ok=True)
+    stamp = _iso_from_ms(now_ms if now_ms is not None else time.time() * 1000)
+    resolved = _resolve_templates(layout, templates)
+
+    if skip_optional is True:
+        skipped = set(layout.optional_files)
+    elif skip_optional is False or skip_optional is None:
+        skipped = set()
+    elif isinstance(skip_optional, str):
+        skipped = {skip_optional}
+    else:
+        skipped = set(skip_optional)
+    # Completed setup: never recreate optional root files a user removed.
+    if is_workspace_setup_completed(root_path):
+        skipped.update(layout.optional_files)
+
+    created_files: list[str] = []
+    for name in layout.seed_order:
+        if name in layout.optional_files and name in skipped:
+            continue
+        if _write_file_if_missing(root_path / name, resolved[name]):
+            created_files.append(name)
+
+    created_dirs: list[str] = []
+    for dirname in layout.extra_dirs:
+        target = root_path / dirname
+        if not target.exists():
+            target.mkdir(parents=True, exist_ok=True)
+            created_dirs.append(dirname)
+
+    state = read_workspace_setup_state(root_path, persist_migration=True)
+    dirty = False
+    bootstrap_path = root_path / layout.bootstrap_file
+    bootstrap_exists = os.path.exists(bootstrap_path)
+    bootstrap_seeded = False
+    bootstrap_removed = False
+    if not state.bootstrap_seeded_at and bootstrap_exists:
+        state = replace(state, bootstrap_seeded_at=stamp)
+        dirty = True
+
+    if not state.setup_completed_at:
+        repair = _reconcile_completion_state(
+            root_path,
+            layout=layout,
+            templates=resolved,
+            state=state,
+            bootstrap_exists=bootstrap_exists,
+            now_iso=stamp,
+        )
+        if repair.repaired:
+            state = repair.state
+            dirty = False
+            bootstrap_exists = repair.bootstrap_exists
+            bootstrap_removed = repair.bootstrap_removed
+
+    if not state.bootstrap_seeded_at and not state.setup_completed_at and not bootstrap_exists:
+        if workspace_profile_looks_configured(
+            root_path, layout=layout, templates=resolved, include_git_evidence=True
+        ):
+            state = replace(state, setup_completed_at=stamp)
+            dirty = True
+        elif seed_bootstrap:
+            wrote = _write_file_if_missing(bootstrap_path, resolved[layout.bootstrap_file])
+            bootstrap_exists = True if wrote else os.path.exists(bootstrap_path)
+            if wrote:
+                bootstrap_seeded = True
+                created_files.append(layout.bootstrap_file)
+            if bootstrap_exists and not state.bootstrap_seeded_at:
+                state = replace(state, bootstrap_seeded_at=stamp)
+                dirty = True
+
+    if dirty:
+        _write_state(root_path, state)
+
+    return WorkspaceInitResult(
+        root=root_path,
+        created_files=tuple(created_files),
+        created_dirs=tuple(created_dirs),
+        bootstrap_seeded=bootstrap_seeded,
+        bootstrap_removed=bootstrap_removed,
+        state=state,
+        bootstrap_status=bootstrap_status(root_path, layout),
+    )

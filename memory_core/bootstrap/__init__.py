@@ -1,4 +1,4 @@
-"""Workspace bootstrap files: layout, loading, filtering and budget.
+"""Workspace bootstrap files: layout, seeding, loading, filtering and budget.
 
 Ports the OpenClaw workspace bootstrap surface at pin 4c42815348 (see each
 module's docstring for upstream anchors) and adds the memory-core layout as the
@@ -45,6 +45,17 @@ from memory_core.bootstrap.layout import (
     PROACTIVE_PREFERENCES_FILENAME,
     WorkspaceLayout,
 )
+from memory_core.bootstrap.lifecycle import (
+    WorkspaceInitResult,
+    WorkspaceSetupState,
+    bootstrap_status,
+    has_workspace_user_content_evidence,
+    initialize_agent_workspace,
+    is_workspace_setup_completed,
+    read_workspace_setup_state,
+    strip_template_front_matter,
+    workspace_profile_looks_configured,
+)
 
 __all__ = [
     "DEFAULT_BOOTSTRAP_MAX_CHARS",
@@ -63,10 +74,13 @@ __all__ = [
     "ContextInjectionDecision",
     "TrimBootstrapResult",
     "WorkspaceBootstrapFile",
+    "WorkspaceInitResult",
     "WorkspaceLayout",
+    "WorkspaceSetupState",
     "analyze_bootstrap_budget",
     "append_bootstrap_prompt_warning",
     "apply_context_mode_filter",
+    "bootstrap_status",
     "build_bootstrap_context_files",
     "build_bootstrap_injection_stats",
     "build_bootstrap_prompt_warning",
@@ -77,8 +91,14 @@ __all__ = [
     "filter_completed_bootstrap_file",
     "filter_heartbeat_bootstrap_file",
     "format_bootstrap_truncation_warning_lines",
+    "has_workspace_user_content_evidence",
+    "initialize_agent_workspace",
+    "is_workspace_setup_completed",
     "load_workspace_bootstrap_files",
+    "read_workspace_setup_state",
     "resolve_bootstrap_mode",
     "resolve_context_injection",
+    "strip_template_front_matter",
     "trim_bootstrap_content",
+    "workspace_profile_looks_configured",
 ]

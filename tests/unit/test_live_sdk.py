@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 from memory_core.bootstrap import (
     MEMORY_CORE_WORKSPACE_LAYOUT,
     OPENCLAW_PIN_LAYOUT,
@@ -14,6 +16,7 @@ from memory_core.bootstrap import (
 )
 from memory_core.config import MemoryConfig
 from memory_core.flags import FeatureFlags
+from memory_core.tools.common import MemoryToolInputError
 from memory_core.live import (
     IDENTITY_FILE_ORDER,
     IdentityLoadError,
@@ -1105,3 +1108,27 @@ def test_session_summary_skip_reasons_are_a_closed_literal():
 
     assert typing.get_args(SessionSummarySkipReason) == ("silent", "empty", "unstructured")
     assert memory_core.SessionSummarySkipReason is SessionSummarySkipReason
+
+
+def test_stream_live_turn_yields_failure_for_a_blank_utterance(tmp_path: Path):
+    # docs/integrations/live.md: the memory_search contract raises `query required` for a
+    # blank utterance (docs/memory_search_tool.md, "Blank queries"); like any other failure
+    # after live_turn_started, the stream yields live_turn_failed and then re-raises it.
+    def unused_llm(messages):
+        raise AssertionError("the LLM must not run for a blank utterance")
+
+    memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+    context = LiveTurnContext(subject_id="subj_123", session_id="session_1", user_utterance="  ")
+
+    with pytest.raises(MemoryToolInputError, match="^query required$"):
+        memory.prepare_live_turn(context)
+    events, error = _collect_until_failure(memory.stream_live_turn(context, llm=unused_llm))
+
+    assert isinstance(error, MemoryToolInputError)
+    assert str(error) == "query required"
+    assert [event.type for event in events] == [LIVE_TURN_STARTED, LIVE_TURN_FAILED]
+    assert events[-1].data == {
+        "error_type": "MemoryToolInputError",
+        "error": "query required",
+        "assistant_text": "",
+    }

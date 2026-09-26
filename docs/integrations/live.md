@@ -254,9 +254,10 @@ returns an async iterable of text chunks, or dictionaries containing `text`,
 
 A blank `user_utterance` (empty or whitespace only, such as a silent ASR turn)
 makes `prepare_live_turn` raise `MemoryToolInputError("query required")` from the
-memory search; `stream_live_turn` raises it after its `live_turn_started` event,
-with no `live_turn_failed` event. Skip the turn or catch the error
-(`docs/memory_search_tool.md`, "Blank queries").
+memory search; `stream_live_turn` yields `live_turn_started`, then
+`live_turn_failed` (`error_type` `MemoryToolInputError`, `error` `query required`),
+then re-raises it, like any other failure after the start event. Skip the turn
+or catch the error (`docs/memory_search_tool.md`, "Blank queries").
 
 ## Event Contract
 

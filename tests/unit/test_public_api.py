@@ -172,3 +172,23 @@ def test_public_api_exports_heartbeat_helpers():
     assert expected.issubset(set(memory.__all__))
     for name in expected:
         assert hasattr(memory, name)
+
+
+def test_public_api_exports_curation_and_session_memory():
+    expected = {
+        "CurationError",
+        "CurationPolicy",
+        "CurationResult",
+        "CurationUnavailableError",
+        "MemoryCurator",
+        "SessionMemoryResult",
+        "is_session_memory_trigger",
+        "save_session_memory",
+    }
+
+    assert expected.issubset(set(memory.__all__))
+    for name in expected:
+        assert hasattr(memory, name)
+    assert issubclass(memory.CurationUnavailableError, memory.CurationError)
+    assert memory.is_session_memory_trigger("command", "new")
+    assert not memory.is_session_memory_trigger("command", "compact")

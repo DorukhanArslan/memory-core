@@ -29,10 +29,10 @@ class RuntimeIdentity:
         "memory_search."
     )
     # memory_search paused-index action (OpenClaw extensions/memory-core/src/tools.ts
-    # PAUSED_MEMORY_INDEX_ACTION names its CLI; memory-core names its store API).
+    # PAUSED_MEMORY_INDEX_ACTION names two CLI commands that both reindex; memory-core
+    # names its one reindex call, since index_identity() only reports).
     memory_search_paused_action: str = (
-        "Tell the user to run: SQLiteMemoryStore.index_identity() or "
-        "SQLiteMemoryStore.reindex(workspace)."
+        "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
     )
     # Transcript row recorded for a heartbeat turn instead of the full heartbeat
     # prompt (OpenClaw src/auto-reply/heartbeat.ts:23 HEARTBEAT_TRANSCRIPT_PROMPT,
@@ -60,8 +60,7 @@ MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
         "memory_search."
     ),
     memory_search_paused_action=(
-        "Tell the user to run: SQLiteMemoryStore.index_identity() or "
-        "SQLiteMemoryStore.reindex(workspace)."
+        "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
     ),
     heartbeat_transcript_prompt="[memory-core heartbeat poll]",
 )

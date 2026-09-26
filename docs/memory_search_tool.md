@@ -119,8 +119,13 @@ Paused (the index identity is missing or mismatched): the same shape, with
 `Tell the user: memory search is paused because the memory index was built with a different embedding provider/model/settings.`
 and `RuntimeIdentity.memory_search_paused_action` as the action. Under the
 memory-core identity that action is
-`Tell the user to run: SQLiteMemoryStore.index_identity() or SQLiteMemoryStore.reindex(workspace).`
-In OpenClaw compat mode it is upstream's text, which names the `openclaw` CLI.
+`Tell the user to run: SQLiteMemoryStore.reindex(workspace).`
+In OpenClaw compat mode it is upstream's text, which names two `openclaw` CLI
+commands that both reindex. The memory-core text keeps upstream's "Tell the user"
+frame and names only the reindex call (`index_identity()` only reports and never
+lifts the pause). In memory-core the host owns reindexing, so the model relays a step
+that an end user of the host app cannot take; whether the memory-core text should
+address the host instead is an open decision.
 
 ## Deadline and cooldown
 
@@ -177,6 +182,12 @@ reindexed, read as `index metadata is missing` until their next reindex.
 `Memory.from_workspace()` reindexes by default. Switching `vector_search`, the
 embedding model or the endpoint therefore pauses search until the host
 reindexes.
+
+Upgrading: an index built before identity gating has no stored identity, so
+every search on it returns the paused result until it is reindexed. Hosts that
+open stores with `Memory.from_workspace(reindex=False)`, or keep a store open
+across the upgrade, must call `SQLiteMemoryStore.reindex(workspace)` (`memory.store.reindex(memory.workspace)`
+on the facade) once after upgrading.
 
 ## Deviations from upstream
 

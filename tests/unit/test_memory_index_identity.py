@@ -191,8 +191,7 @@ def test_paused_action_names_the_runtime(tmp_path):
     )
 
     assert memory_core["action"] == (
-        "Tell the user to run: SQLiteMemoryStore.index_identity() or "
-        "SQLiteMemoryStore.reindex(workspace)."
+        "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
     )
     assert compat["action"] == (
         "Tell the user to run: openclaw memory status --index or openclaw memory index --force."

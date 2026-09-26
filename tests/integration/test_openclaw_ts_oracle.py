@@ -2004,8 +2004,7 @@ def test_real_openclaw_oracle_memory_search_pauses_on_index_model_change(tmp_pat
         "index was built for model fake-deterministic, expected fake-other"
     )
     assert memory_search(cfg, reopened, query="glacier")["action"] == (
-        "Tell the user to run: SQLiteMemoryStore.index_identity() or "
-        "SQLiteMemoryStore.reindex(workspace)."
+        "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
     )
 
 def test_real_openclaw_oracle_records_short_term_recall():

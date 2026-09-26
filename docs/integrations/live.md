@@ -60,10 +60,16 @@ Defaults and behaviour a host will notice:
   This is a deliberate deviation: upstream injects it for every session that is
   not a subagent or cron session, but a live subject prompt should not carry the
   operator's long-term memory. Subject memory reaches the prompt through recall.
-- While BOOTSTRAP.md is pending, the prompt carries `## Bootstrap Pending` and
-  the file, as in an upstream full-mode run. A live workspace never produces
-  setup evidence on its own (subject memory lives under `subjects/`), so the
-  host removes BOOTSTRAP.md, seeds with `seed_bootstrap=False`, or passes
+- While BOOTSTRAP.md is pending, the bootstrap mode follows upstream's
+  `resolveBootstrapMode` with host inputs. `has_bootstrap_file_access`
+  (default `False`: memory_core.live gives the model no tools; pass `True` when
+  the host gives it a `read` tool) and `is_canonical_workspace` (default
+  `True`). A BOOTSTRAP.md with content counts as file access, as upstream's
+  attempt routing does, so the prompt carries `## Bootstrap Pending` and the
+  file (`full`). An empty BOOTSTRAP.md without file access gives the `limited`
+  lines and leaves the file out. A live workspace never produces setup
+  evidence on its own (subject memory lives under `subjects/`), so the host
+  removes BOOTSTRAP.md, seeds with `seed_bootstrap=False`, or passes
   `bootstrap_mode="none"`.
 - `include_heartbeat=True` keeps HEARTBEAT.md, like upstream's default agent.
 

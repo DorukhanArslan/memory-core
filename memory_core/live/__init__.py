@@ -110,6 +110,8 @@ class LiveIdentity:
         include_agent_memory: bool = False,
         include_heartbeat: bool = True,
         bootstrap_mode: BootstrapMode | None = None,
+        has_bootstrap_file_access: bool = False,
+        is_canonical_workspace: bool = True,
         path_style: str = "absolute",
     ) -> "LiveIdentity":
         """Load a workspace's bootstrap files for live prompts.
@@ -123,7 +125,14 @@ class LiveIdentity:
         not injected unless ``include_agent_memory=True``; upstream injects it
         for every non-subagent, non-cron session. Subject memory reaches the
         prompt through recall instead. ``bootstrap_mode`` overrides upstream's
-        resolution (``full`` for a pending workspace on this interactive run).
+        resolution. ``has_bootstrap_file_access`` says whether the host gives
+        the model a ``read`` tool for the workspace (upstream derives it from
+        the run's tools); it defaults to ``False`` because memory_core.live itself
+        exposes no tools. A pending workspace then resolves ``limited``
+        (BOOTSTRAP.md left out, limited ``## Bootstrap Pending`` lines), unless
+        BOOTSTRAP.md has content, which upstream counts as file access
+        (``full``, file in Project Context). ``is_canonical_workspace`` is
+        passed through to ``resolveBootstrapMode``.
         """
         root = Path(identity_dir)
         _validate_required_identity_files(root, required_files, layout)
@@ -135,6 +144,8 @@ class LiveIdentity:
             include_heartbeat=include_heartbeat,
             exclude_files=() if include_agent_memory else (layout.memory_file,),
             bootstrap_mode=bootstrap_mode,
+            has_bootstrap_file_access=has_bootstrap_file_access,
+            is_canonical_workspace=is_canonical_workspace,
             max_chars=_resolve_char_limit(max_chars_per_file, DEFAULT_BOOTSTRAP_MAX_CHARS),
             total_max_chars=_resolve_char_limit(total_max_chars, DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS),
             path_style=path_style,
@@ -178,6 +189,8 @@ class LiveIdentityStore:
     include_agent_memory: bool = False
     include_heartbeat: bool = True
     bootstrap_mode: BootstrapMode | None = None
+    has_bootstrap_file_access: bool = False
+    is_canonical_workspace: bool = True
     path_style: str = "absolute"
     _cached: LiveIdentity | None = None
 
@@ -193,6 +206,8 @@ class LiveIdentityStore:
         include_agent_memory: bool = False,
         include_heartbeat: bool = True,
         bootstrap_mode: BootstrapMode | None = None,
+        has_bootstrap_file_access: bool = False,
+        is_canonical_workspace: bool = True,
         path_style: str = "absolute",
     ):
         self.identity_dir = Path(identity_dir)
@@ -204,6 +219,8 @@ class LiveIdentityStore:
         self.include_agent_memory = include_agent_memory
         self.include_heartbeat = include_heartbeat
         self.bootstrap_mode = bootstrap_mode
+        self.has_bootstrap_file_access = has_bootstrap_file_access
+        self.is_canonical_workspace = is_canonical_workspace
         self.path_style = path_style
         self._cached = None
 
@@ -223,6 +240,8 @@ class LiveIdentityStore:
             include_agent_memory=self.include_agent_memory,
             include_heartbeat=self.include_heartbeat,
             bootstrap_mode=self.bootstrap_mode,
+            has_bootstrap_file_access=self.has_bootstrap_file_access,
+            is_canonical_workspace=self.is_canonical_workspace,
             path_style=self.path_style,
         )
         return self._cached

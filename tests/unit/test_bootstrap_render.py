@@ -324,3 +324,55 @@ def test_workspace_context_host_strings_are_well_formed_after_a_surrogate_split(
     ):
         assert not _has_lone_surrogate(text)
         text.encode("utf-8")
+
+
+def test_workspace_context_routes_bootstrap_by_file_access_like_the_attempt(tmp_path: Path):
+    from memory_core.bootstrap.render import (
+        BOOTSTRAP_IN_CONTEXT_READ_LINE,
+        BOOTSTRAP_LIMITED_INTRO_LINE,
+        BOOTSTRAP_READ_FILE_LINE,
+    )
+
+    empty = tmp_path / "empty"
+    initialize_agent_workspace(empty, layout=OPENCLAW_PIN_LAYOUT)  # empty BOOTSTRAP.md
+    ritual = tmp_path / "ritual"
+    initialize_agent_workspace(
+        ritual, layout=OPENCLAW_PIN_LAYOUT, templates={"BOOTSTRAP.md": "host ritual\n"}
+    )
+
+    def build(root, **kwargs):
+        return build_workspace_context(
+            root, layout=OPENCLAW_PIN_LAYOUT, path_style="relative", **kwargs
+        )
+
+    with_read = build(empty)
+    without_read = build(empty, has_bootstrap_file_access=False)
+    sandboxed = build(empty, is_canonical_workspace=False)
+    ritual_without_read = build(ritual, has_bootstrap_file_access=False)
+
+    # attempt.ts:1370 bootstrapHasFileAccess and resolveBootstrapMode.
+    assert with_read.bootstrap_mode == "full"
+    assert BOOTSTRAP_READ_FILE_LINE in with_read.bootstrap_text
+    for limited in (without_read, sandboxed):
+        assert limited.bootstrap_mode == "limited"
+        assert BOOTSTRAP_LIMITED_INTRO_LINE in limited.bootstrap_text
+        assert "BOOTSTRAP.md" not in [file.path for file in limited.files]
+    # attempt-bootstrap-routing.ts:69-81: BOOTSTRAP.md content counts as file access.
+    assert ritual_without_read.bootstrap_mode == "full"
+    assert BOOTSTRAP_IN_CONTEXT_READ_LINE in ritual_without_read.bootstrap_text
+    assert "BOOTSTRAP.md" in [file.path for file in ritual_without_read.files]
+
+
+def test_live_identity_assumes_no_read_tool_unless_the_host_says_so(tmp_path: Path):
+    from memory_core.bootstrap.render import BOOTSTRAP_LIMITED_INTRO_LINE, BOOTSTRAP_READ_FILE_LINE
+    from memory_core.live import LiveIdentity, LiveIdentityStore
+
+    root = tmp_path / "workspace"
+    initialize_agent_workspace(root, templates={"AGENTS.md": "Rules.\n"})  # empty BOOTSTRAP.md
+
+    default = LiveIdentity.from_dir(root, path_style="relative")
+    with_read = LiveIdentityStore(root, has_bootstrap_file_access=True).load()
+
+    assert BOOTSTRAP_LIMITED_INTRO_LINE in default.bootstrap_text
+    assert "BOOTSTRAP.md" not in dict(default.sections)
+    assert BOOTSTRAP_READ_FILE_LINE in with_read.bootstrap_text

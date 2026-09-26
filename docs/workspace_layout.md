@@ -67,9 +67,9 @@ setupCompletedAt}`); upstream's `openclaw-workspace-state.json` and
 
 - Create memory files after initialization, or the workspace counts as set up
   and no BOOTSTRAP.md is written.
-- An empty BOOTSTRAP.md still reports `pending`; the prompt then asks the model
-  to read it. Hosts without a first-run ritual pass `seed_bootstrap=False`
-  (extension).
+- An empty BOOTSTRAP.md still reports `pending`; with file access the prompt
+  asks the model to read it, without it the prompt carries the `limited` lines.
+  Hosts without a first-run ritual pass `seed_bootstrap=False` (extension).
 
 ## Per-turn filters
 
@@ -80,8 +80,14 @@ setupCompletedAt}`); upstream's `openclaw-workspace-state.json` and
   everything, MEMORY.md included (upstream enforces "main session only" in
   template prose, not in code).
 - BOOTSTRAP.md is dropped once setup is complete, and stays in Project Context
-  only when the bootstrap mode is `full` (pending workspace, primary
-  interactive run). `limited` and `none` follow `resolveBootstrapMode`.
+  only when the bootstrap mode is `full`. The mode follows
+  `resolveBootstrapMode` as the attempt routes it: `none` unless the workspace
+  is pending on a primary interactive run; then `limited` when
+  `has_bootstrap_file_access=False` (upstream: the run has no `read` tool) or
+  `is_canonical_workspace=False`, else `full`. A BOOTSTRAP.md with content
+  counts as file access. Both inputs come from the host (default `True` here,
+  `has_bootstrap_file_access=False` in `memory_core.live` and the Lab chat, which
+  give the model no read tool).
 - `context_mode="lightweight"` keeps only HEARTBEAT.md on heartbeat runs and
   nothing otherwise; `commitment-only` runs drop HEARTBEAT.md.
 - `context_injection` is `always`, `continuation-skip` or `never`.

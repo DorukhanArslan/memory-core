@@ -137,6 +137,8 @@ def build_workspace_context(
     has_completed_bootstrap_turn: bool = False,
     bootstrap_mode: BootstrapMode | None = None,
     is_interactive_user_facing: bool = True,
+    has_bootstrap_file_access: bool = True,
+    is_canonical_workspace: bool = True,
     max_chars: int = DEFAULT_BOOTSTRAP_MAX_CHARS,
     total_max_chars: int = DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
     truncation_warning_mode: BootstrapPromptWarningMode = "always",
@@ -148,10 +150,19 @@ def build_workspace_context(
 
     ``run_kind`` defaults from ``session_kind`` (``heartbeat`` -> heartbeat run,
     ``cron`` -> cron run, otherwise default). ``bootstrap_mode`` defaults to
-    upstream's ``resolveBootstrapMode`` for a canonical workspace with file
-    access: ``full`` for a pending workspace on a primary interactive run,
-    otherwise ``none``. ``path_style="absolute"`` renders upstream's absolute
-    paths, ``"relative"`` renders root-relative POSIX paths.
+    upstream's ``resolveBootstrapMode`` (``src/agents/bootstrap-mode.ts``) as
+    the attempt routes it (``attempt-bootstrap-routing.ts:36-81``): ``none``
+    unless the workspace is pending on a primary interactive run, then
+    ``limited`` without file access or for a non-canonical workspace, else
+    ``full``. ``has_bootstrap_file_access`` is upstream's
+    ``bootstrapHasFileAccess`` (``attempt.ts:1370``: the run's tools include
+    ``read``); pass ``False`` when the model cannot read workspace files.
+    Non-empty BOOTSTRAP.md content counts as pending and as file access, like
+    upstream's hook-content rule. ``is_canonical_workspace`` is ``False`` when
+    the run works in a different directory than the workspace root (upstream:
+    ``effectiveWorkspace !== resolvedWorkspace``). ``path_style="absolute"``
+    renders upstream's absolute paths, ``"relative"`` renders root-relative
+    POSIX paths.
 
     ``exclude_files`` names basenames the host keeps out of this turn (host
     policy, no upstream equivalent). They are dropped after the session and run
@@ -184,11 +195,15 @@ def build_workspace_context(
             and js_trim(file.content)
             for file in filtered
         )
+        # resolveAttemptWorkspaceBootstrapRouting (attempt-bootstrap-routing.ts:63-81):
+        # BOOTSTRAP.md content counts as both pending bootstrap and file access.
         bootstrap_mode = resolve_bootstrap_mode(
             bootstrap_pending=status == "pending" or hook_like_bootstrap,
             run_kind=effective_run_kind,
             is_interactive_user_facing=is_interactive_user_facing,
             is_primary_run=session_kind != "subagent",
+            is_canonical_workspace=is_canonical_workspace,
+            has_bootstrap_file_access=has_bootstrap_file_access or hook_like_bootstrap,
         )
     decision = resolve_context_injection(
         context_injection,

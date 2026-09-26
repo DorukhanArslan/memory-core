@@ -375,6 +375,46 @@ def test_live_task_reset_and_state_endpoints():
     ) == 1
 
 
+def test_live_task_summary_before_reset_keeps_state_endpoints_working(monkeypatch, tmp_path):
+    from demo.live_task_demo import LiveTaskDemo
+
+    monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(demo_app, "LIVE_TASK_DEMO", LiveTaskDemo(workspace_dir=tmp_path / "live"))
+    client = TestClient(app)
+
+    summary = client.post(
+        "/api/live-task/summary",
+        json={"sessionId": "session_demo", "subjectId": "subject_demo"},
+    )
+    chat_state = client.get("/api/chat/state")
+    live_state = client.get("/api/live-task/state")
+
+    assert summary.status_code == 200
+    assert chat_state.status_code == 200
+    assert live_state.status_code == 200
+    # The workspace was never seeded: the display shows upstream's missing markers.
+    injected = live_state.json()["workspaceInjectedFiles"]
+    assert injected["AGENTS.md"].startswith("[MISSING] Expected at: ")
+
+
+def test_live_task_state_endpoints_survive_a_deleted_required_file(monkeypatch, tmp_path):
+    from demo.live_task_demo import LiveTaskDemo
+
+    live_root = tmp_path / "live"
+    monkeypatch.setattr(demo_app, "LIVE_TASK_DEMO", LiveTaskDemo(workspace_dir=live_root))
+    client = TestClient(app)
+    client.post("/api/live-task/reset", json={"sessionId": "session_demo", "subjectId": "subject_demo"})
+    (live_root / "USER.md").unlink()
+
+    chat_state = client.get("/api/chat/state")
+    live_state = client.get("/api/live-task/state")
+
+    assert chat_state.status_code == 200
+    assert live_state.status_code == 200
+    injected = live_state.json()["workspaceInjectedFiles"]
+    assert injected["USER.md"] == f"[MISSING] Expected at: {os.path.abspath(live_root)}/USER.md"
+
+
 def test_live_task_turn_stream_emits_latency_events(monkeypatch):
     monkeypatch.delenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", raising=False)
     client = TestClient(app)

@@ -79,14 +79,22 @@ class LiveTaskDemo:
         )
 
     def _identity_files(self) -> dict[str, str]:
-        """What a live turn injects: file name -> injected text, in Project Context order."""
+        """What a live turn injects: file name -> injected text, in Project Context order.
+
+        Display only: the store is not strict, so a workspace that lacks a
+        required file shows its ``[MISSING]`` markers instead of failing every
+        state response. ``stream_turn`` keeps the strict required-file check.
+        """
         if not self.workspace_dir.is_dir():
             return {}
-        identity = self._identity_store().load()
+        identity = self._identity_store(strict=False).load()
         return {Path(path).name: content for path, content in identity.sections}
 
-    def _identity_store(self) -> LiveIdentityStore:
-        return LiveIdentityStore(self.workspace_dir, required_files=LIVE_TASK_REQUIRED_FILES)
+    def _identity_store(self, *, strict: bool = True) -> LiveIdentityStore:
+        return LiveIdentityStore(
+            self.workspace_dir,
+            required_files=LIVE_TASK_REQUIRED_FILES if strict else (),
+        )
 
     def _subject_memory_files(self, subject_id: str) -> dict[str, str]:
         if not subject_id or any(part in subject_id for part in ("/", "\\", "..")):

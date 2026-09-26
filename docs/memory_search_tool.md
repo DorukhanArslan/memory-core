@@ -139,6 +139,13 @@ lifts the pause). In memory-core the host owns reindexing, so the model relays a
 that an end user of the host app cannot take; whether the memory-core text should
 address the host instead is an open decision.
 
+The recall helpers keep only `results`: `Memory.prepare_turn`,
+`LangGraphMemoryRecall` and `SubjectMemory.prepare_live_turn` drop the
+`disabled`, `warning` and `action` of an unavailable or paused result, so
+recall injects nothing and nobody is told. These helpers are adapter-only (no
+upstream counterpart). A host that needs the signal calls `Memory.search` (or
+`execute_memory_search_tool`) and checks `disabled`.
+
 ## Deadline and cooldown
 
 - Each search runs on a daemon worker thread with a 15 s deadline

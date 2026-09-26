@@ -709,3 +709,9 @@ def test_stream_live_turn_accepts_sdk_config_defaults(tmp_path: Path):
 
     assert events[-1].type == LIVE_TURN_COMPLETED
     assert (tmp_path / "trace" / "session_1.jsonl").exists()
+
+
+def test_identity_file_names_alias_stays_exported():
+    from memory_core.live import IDENTITY_FILE_NAMES
+
+    assert IDENTITY_FILE_NAMES == frozenset(MEMORY_CORE_WORKSPACE_LAYOUT.load_order)

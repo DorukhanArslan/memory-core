@@ -37,6 +37,8 @@ from memory_core.runtime_identity import (
 # layout's load order. The second element used to be a section title; live
 # prompts now render upstream ``## <path>`` headings, so it repeats the name.
 IDENTITY_FILE_ORDER = tuple((name, name) for name in DEFAULT_WORKSPACE_LAYOUT.load_order)
+# Compatibility alias: the default layout's file names.
+IDENTITY_FILE_NAMES = frozenset(DEFAULT_WORKSPACE_LAYOUT.load_order)
 # Workspace files that exist upstream but are never injected: BOOT.md is the
 # gateway boot checklist (src/gateway/boot.ts:36), DREAMS.md / dreams.md the
 # dreaming diary (extensions/memory-core/src/dreaming-dreams-file.ts:10).

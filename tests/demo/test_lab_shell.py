@@ -229,3 +229,19 @@ def test_contract_parity_rows_and_commands(lab_client: TestClient) -> None:
         assert field in source, field
     for stale in ("m.evidence", "m.gaps", "'python_ts'", "x.comparison"):
         assert stale not in source, stale
+
+
+def test_contract_file_entries_for_folders(lab_client: TestClient) -> None:
+    # views/explorer.js groupFiles(): the memory folder entry heads the memory section; user/
+    # and workspace/ are extension folders only when their badges say so.
+    lab_client.post("/api/lab/workspace/reset", json={"mode": "seeded"})
+    entries = lab_client.get("/api/lab/files").json()
+    folders = {e["path"]: e for e in entries if e["kind"] == "folder"}
+
+    assert folders["memory"]["badges"] == []
+    assert folders["memory"]["note"] == "indexed, not injected"
+    for name in ("user", "workspace"):
+        if name in folders:
+            assert folders[name]["badges"] in (["extension"], ["outside_layout"])
+    source = (LAB_ROOT / "views" / "explorer.js").read_text(encoding="utf-8")
+    assert "dir === 'memory'" in source

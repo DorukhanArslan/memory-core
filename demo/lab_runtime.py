@@ -671,10 +671,10 @@ class LabRuntime:
                 raise LabError(400, f"{rel_path} is not a regular file", code="not_a_file")
         return "/".join(parts), target
 
-    def writable(self, rel_path: str) -> tuple[bool, str | None]:
+    def writable(self, rel_path: str, *, enforce_flag: bool = True) -> tuple[bool, str | None]:
         parts = rel_path.split("/")
         layout = self.layout
-        if not self.settings.flags.get("lab_file_editing", True):
+        if enforce_flag and not self.settings.flags.get("lab_file_editing", True):
             return False, "Lab dosya düzenleme kapalı (lab_file_editing)"
         if any(part.startswith(".") for part in parts):
             return False, "gizli dizin (salt-okunur)"
@@ -723,6 +723,7 @@ class LabRuntime:
         source: str = "editor",
         turn_id: int | None = None,
         delete: bool = False,
+        enforce_flag: bool = True,
     ) -> dict[str, Any]:
         """Guarded editor write: 409 when ``baseSha256`` no longer matches the disk."""
         if not delete and not isinstance(content, str):
@@ -730,7 +731,7 @@ class LabRuntime:
         if not delete and len(content.encode("utf-8")) > FILE_MAX_BYTES:
             raise LabError(400, "content is larger than 2 MiB", code="too_large")
         path, target = self.resolve_path(rel_path, must_exist=False)
-        writable, reason = self.writable(path)
+        writable, reason = self.writable(path, enforce_flag=enforce_flag)
         if not writable:
             raise LabError(403, f"{path} is read-only: {reason}", code="read_only")
         if target.exists() and not target.is_file():

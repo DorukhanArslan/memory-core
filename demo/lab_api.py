@@ -18,6 +18,8 @@ from typing import Any
 from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import StreamingResponse
 
+from demo.chat_engine import ChatEngine, OpenAICompatibleChatEngine, ScriptedChatEngine
+from demo.lab_chat import chat_turn_frames
 from demo.lab_events import parse_last_event_id, stream_lab_events, unified_diff
 from demo.lab_prompt import PromptOptions, file_entries, lab_workspace_context
 from demo.lab_runtime import (
@@ -186,6 +188,58 @@ def build_router(lab: LabRuntime) -> APIRouter:
             raise LabError(404, f"turn {turn_id} not found", code="not_found")
         return detail
 
+    @router.post("/chat/stream")
+    def chat_stream(payload: dict = Body(...)):
+        lab.ensure_exists()
+        kind = str(payload.get("sessionKind") or "main")
+        lab.session(kind)  # validates the kind
+        reset = bool(payload.get("reset"))
+        message = str(payload.get("message") or "").strip()
+        if not message and not reset:
+            raise LabError(400, "message is required", code="invalid_message")
+        engine = resolve_chat_engine(lab, payload)
+        return StreamingResponse(
+            chat_turn_frames(lab, payload, engine, kind=kind, message=message, reset=reset),
+            media_type="text/event-stream",
+            headers=SSE_HEADERS,
+        )
+
+    @router.post("/curation/revert")
+    def curation_revert(payload: dict = Body(...)):
+        lab.ensure_exists()
+        write_id = validate_id(payload.get("writeId"), "writeId")
+        write = next((item for item in lab.curated_writes if item["id"] == write_id), None)
+        if write is None:
+            raise LabError(404, f"curated write {write_id} not found", code="not_found")
+        if write.get("refused"):
+            raise LabError(400, "a refused write changed nothing", code="refused_write")
+        if write.get("reverted"):
+            raise LabError(409, f"{write_id} was already reverted", code="already_reverted")
+        path, target = lab.resolve_path(write["path"], must_exist=False)
+        current = lab.read_file(path) if target.is_file() else None
+        current_sha = current["sha256"] if current else None
+        if current_sha != write.get("afterSha256"):
+            raise LabError(
+                409,
+                f"{path} changed after this curated write; revert refused",
+                code="conflict",
+                current={"sha256": current_sha, "content": current["content"]} if current else None,
+            )
+        with lab.lock:
+            if write.get("before") is None:
+                result = lab.write_file(path, None, current_sha, source="curation_revert", delete=True,
+                                        enforce_flag=False)
+            else:
+                result = lab.write_file(path, write["before"], current_sha, source="curation_revert",
+                                        enforce_flag=False)
+        write["reverted"] = True
+        lab.bus.emit(
+            "curation.reverted",
+            summary=f"{path} geri alındı ({write_id})",
+            data={"writeId": write_id, "path": path},
+        )
+        return result
+
     @router.get("/parity")
     def parity():
         repo = Path(os.getenv("OPENCLAW_ORACLE_REPO") or DEFAULT_ORACLE_REPO)
@@ -201,6 +255,30 @@ def build_router(lab: LabRuntime) -> APIRouter:
         }
 
     return router
+
+
+def resolve_chat_engine(lab: LabRuntime, payload: dict[str, Any]) -> ChatEngine:
+    """The request's chat engine: a real OpenAI-compatible model, or the labelled script.
+
+    Without a key there is no chat (no fake model): the request fails with
+    ``no_api_key`` unless it explicitly asks for ``engine: "scripted"``.
+    """
+    engine = payload.get("engine")
+    if engine == "scripted":
+        return ScriptedChatEngine()
+    if engine not in (None, "", "openai"):
+        raise LabError(400, "engine must be 'openai' or 'scripted'", code="invalid_engine")
+    chat = lab.resolve_chat(payload)
+    if not chat.has_key:
+        raise LabError(
+            400,
+            "no chat model key: set MEMORY_CORE_DEMO_OPENAI_API_KEY or send openai.apiKey "
+            "(the Lab has no fake chat model; engine 'scripted' runs the pipeline without one)",
+            code="no_api_key",
+        )
+    return OpenAICompatibleChatEngine(
+        base_url=chat.base_url, api_key=chat.api_key, model=chat.model, timeout=60.0
+    )
 
 
 def _git_head(repo: Path) -> str | None:

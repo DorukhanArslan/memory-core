@@ -622,3 +622,236 @@ def test_live_task_rejects_unsafe_ids(client):
     turn = client.post("/api/live-task/turn-stream", json={"sessionId": "../x", "message": "Merhaba"})
     summary = client.post("/api/live-task/summary", json={"subjectId": "..", "message": "x"})
     assert turn.status_code == summary.status_code == 400
+
+
+# --- chat turns: the host tool loop -------------------------------------------------------
+
+
+class StubEngine:
+    """Deterministic engine: each round is (content, tool calls); records what it was sent."""
+
+    name = "stub"
+    provider = "stub"
+    model = "stub-model"
+
+    def __init__(self, rounds, *, usage=None, flush_output=None):
+        self.rounds = list(rounds)
+        self.calls = []
+        self.usage = usage if usage is not None else {"promptTokens": 1_000, "completionTokens": 50, "totalTokens": 1_050}
+        self.flush_output = flush_output
+        self.flush_calls = []
+
+    def stream_chat(self, messages, *, tools=None):
+        self.calls.append({"messages": [dict(message) for message in messages], "tools": tools})
+        content, calls = self.rounds.pop(0) if self.rounds else ("done", [])
+        if content:
+            yield {"type": "delta", "text": content}
+        yield {"type": "message", "content": content, "toolCalls": calls, "usage": self.usage,
+               "finishReason": "tool_calls" if calls else "stop"}
+
+    def flush(self, *, system_prompt, prompt, transcript, target):
+        from demo.chat_engine import FlushModelOutput
+
+        self.flush_calls.append({"system_prompt": system_prompt, "prompt": prompt,
+                                 "transcript": transcript, "target": target})
+        return self.flush_output(target) if self.flush_output else FlushModelOutput(raw_text="NO_REPLY")
+
+
+def tool_call(call_id, name, arguments):
+    return {"id": call_id, "name": name, "arguments": arguments if isinstance(arguments, str) else json.dumps(arguments)}
+
+
+def use_engine(monkeypatch, engine):
+    import demo.lab_api as lab_api
+
+    monkeypatch.setattr(lab_api, "resolve_chat_engine", lambda lab, payload: engine)
+    return engine
+
+
+def send(client, message="Merhaba", **extra):
+    response = client.post("/api/lab/chat/stream", json={"message": message, "sessionKind": "main", **extra})
+    assert response.status_code == 200, response.text
+    return parse_sse(response.text)
+
+
+def frames_of(frames, event):
+    return [frame["data"] for frame in frames if frame["event"] == event]
+
+
+def test_chat_without_a_key_fails_with_no_api_key(client):
+    response = client.post("/api/lab/chat/stream", json={"message": "Merhaba", "sessionKind": "main"})
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "no_api_key"
+
+
+def test_chat_rejects_an_empty_message_and_an_unknown_kind(client):
+    assert client.post("/api/lab/chat/stream", json={"message": " "}).json()["code"] == "invalid_message"
+    assert client.post("/api/lab/chat/stream", json={"message": "x", "sessionKind": "boss"}).json()["code"] == "invalid_kind"
+
+
+def test_scripted_engine_is_explicit_labelled_and_offers_no_tools(client):
+    from demo.chat_engine import SCRIPTED_REPLY
+
+    frames = send(client, "Merhaba", engine="scripted")
+
+    done = frames_of(frames, "turn_done")[0]
+    assert done["turn"]["engine"] == {"provider": "scripted", "model": "lab-script", "scripted": True}
+    assert done["turn"]["assistant"] == SCRIPTED_REPLY
+    assert done["detail"]["prompt"]["tools"] == []
+    assert frames_of(frames, "tool_call") == []
+
+
+def test_tool_loop_dispatches_curation_and_memory_tools(client, lab, monkeypatch):
+    engine = use_engine(monkeypatch, StubEngine([
+        ("", [tool_call("c1", "upsert_user_directive", {"text": "Always answer briefly, in bullet points."}),
+              tool_call("c2", "memory_search", {"query": "bullet"})]),
+        ("Tamam.", []),
+    ]))
+
+    frames = send(client, "Bundan sonra kısa ve madde madde cevap ver.")
+
+    order = [frame["event"] for frame in frames if frame["event"] in {"tool_call", "tool_result", "curation", "assistant_delta", "turn_done"}]
+    assert order == ["tool_call", "tool_result", "curation", "tool_call", "tool_result", "assistant_delta", "turn_done"]
+    offered = [tool["function"]["name"] for tool in engine.calls[0]["tools"]]
+    assert offered[:2] == ["memory_search", "memory_get"]
+    assert "upsert_user_directive" in offered and "add_memory_entry" in offered
+    assert engine.calls[1]["messages"][-1] == {
+        "role": "tool", "tool_call_id": "c2",
+        "content": json.dumps({"results": [], "provider": "none", "model": "fts-only", "citations": "on"}),
+    }
+    assert "- Always answer briefly, in bullet points." in (lab.root / "USER.md").read_text(encoding="utf-8")
+    detail = frames_of(frames, "turn_done")[0]["detail"]
+    assert [stage["name"] for stage in detail["stages"]] == ["ensure", "reindex", "recall", "prompt", "stream", "persist"]
+    assert detail["curation"][0]["kind"] == "user_directive"
+    assert detail["curation"][0]["flag"] == "curated_memory_writes"
+    assert "before" not in detail["curation"][0]
+    assert {"type": "write", "label": "USER.md +1", "target": "USER.md", "source": "curation", "extension": True} in detail["chips"]
+    assert [(diff["path"], diff["source"]) for diff in detail["diffs"]] == [("USER.md", "curation")]
+    assert "## Memory Recall" in engine.calls[0]["messages"][0]["content"]
+    types = event_types(client)
+    assert types.index("chat.turn.started") < types.index("curation.written") < types.index("chat.turn.completed")
+
+
+def test_tool_loop_returns_refusals_and_bad_arguments_to_the_model(client, lab, monkeypatch):
+    use_engine(monkeypatch, StubEngine([
+        ("", [tool_call("c1", "upsert_user_directive", {"text": "x" * 4_100}),
+              tool_call("c2", "memory_get", "{not json"),
+              tool_call("c3", "write", {"path": "USER.md"})]),
+        ("Olmadı.", []),
+    ]))
+
+    frames = send(client, "Uzun bir tercih kaydet.")
+
+    results = {item["id"]: item for item in frames_of(frames, "tool_result")}
+    assert results["c1"]["ok"] is False and results["c1"]["result"]["status"] == "error"
+    assert results["c1"]["curation"]["refused"] is True
+    assert "invalid JSON arguments" in results["c2"]["result"]["error"]
+    assert results["c3"]["result"]["error"] == "tool write is not available"
+    detail = frames_of(frames, "turn_done")[0]["detail"]
+    assert any(chip["type"] == "refused" for chip in detail["chips"])
+    assert lab.curated_writes[0]["refused"] is True
+    assert "curation.refused" in event_types(client)
+    assert (lab.root / "USER.md").read_text(encoding="utf-8") == DEMO_WORKSPACE_TEMPLATES["USER.md"]
+
+
+def test_tool_loop_is_bounded(client, monkeypatch):
+    from demo.lab_tools import MAX_TOOL_ROUNDS
+
+    engine = use_engine(monkeypatch, StubEngine(
+        [("", [tool_call(f"c{i}", "memory_search", {"query": "x"})]) for i in range(MAX_TOOL_ROUNDS)] + [("Son.", [])]
+    ))
+
+    frames = send(client, "Döngü")
+
+    assert len(engine.calls) == MAX_TOOL_ROUNDS + 1
+    assert engine.calls[-1]["tools"] is None
+    detail = frames_of(frames, "turn_done")[0]["detail"]
+    assert detail["toolLoop"]["capped"] is True
+    assert detail["assistant"] == "Son."
+
+
+def test_curation_flags_gate_the_offered_tools(client, lab, monkeypatch):
+    engine = use_engine(monkeypatch, StubEngine([("a", [])], usage={}))
+    lab.settings.flags["curation.user_md"] = False
+    send(client, "bir")
+    offered = [tool["function"]["name"] for tool in engine.calls[0]["tools"]]
+    assert "upsert_user_directive" not in offered and "add_memory_entry" in offered
+
+    engine.rounds = [("b", [])]
+    lab.settings.flags["curated_memory_writes"] = False
+    send(client, "iki")
+    offered = [tool["function"]["name"] for tool in engine.calls[1]["tools"]]
+    assert offered == ["memory_search", "memory_get"]
+
+
+def test_memory_search_tool_calls_record_short_term_recalls(client, lab, monkeypatch):
+    client.get("/api/lab/state")
+    (lab.root / "memory" / f"{lab.today()}.md").write_text("- Redis 7.2 staging upgrade\n", encoding="utf-8")
+    use_engine(monkeypatch, StubEngine([("", [tool_call("c1", "memory_search", {"query": "Redis"})]), ("7.2", [])]))
+
+    frames = send(client, "Hangi sürüm?")
+
+    result = frames_of(frames, "tool_result")[0]["result"]
+    assert result["results"][0]["path"] == f"memory/{lab.today()}.md"
+    store = lab.root / "memory" / ".dreams" / "short-term-recall.json"
+    assert "Redis" in store.read_text(encoding="utf-8")
+
+
+def test_curated_write_revert_only_while_the_file_is_unchanged(client, lab, monkeypatch):
+    use_engine(monkeypatch, StubEngine([
+        ("", [tool_call("c1", "add_memory_entry", {"section": "Decisions", "text": "SQLite for the payment service."})]),
+        ("Tamam.", []),
+        ("", [tool_call("c2", "add_memory_entry", {"section": "Decisions", "text": "Postgres elsewhere."})]),
+        ("Tamam.", []),
+    ]))
+    send(client, "Karar al.")
+    first = lab.curated_writes[0]["id"]
+    assert "SQLite" in (lab.root / "MEMORY.md").read_text(encoding="utf-8")
+
+    reverted = client.post("/api/lab/curation/revert", json={"writeId": first})
+    again = client.post("/api/lab/curation/revert", json={"writeId": first})
+
+    assert reverted.status_code == 200
+    assert not (lab.root / "MEMORY.md").exists()
+    assert again.status_code == 409 and again.json()["code"] == "already_reverted"
+
+    send(client, "Bir karar daha.")
+    second = lab.curated_writes[1]["id"]
+    (lab.root / "MEMORY.md").write_text((lab.root / "MEMORY.md").read_text(encoding="utf-8") + "- edited\n", encoding="utf-8")
+    conflict = client.post("/api/lab/curation/revert", json={"writeId": second})
+    assert conflict.status_code == 409 and conflict.json()["code"] == "conflict"
+    assert "- edited" in conflict.json()["current"]["content"]
+    assert client.post("/api/lab/curation/revert", json={"writeId": "../x"}).status_code == 400
+    assert client.post("/api/lab/curation/revert", json={"writeId": "cw99"}).status_code == 404
+
+
+def test_chat_provider_errors_are_redacted_and_recorded(client, lab, monkeypatch):
+    import httpx
+
+    secret = "request-scoped-secret-value-123"
+
+    class FailingEngine(StubEngine):
+        def stream_chat(self, messages, *, tools=None):
+            request = httpx.Request("POST", "http://127.0.0.1:9/v1/chat/completions")
+            raise httpx.ConnectError(f"connection refused while sending {secret}", request=request)
+            yield  # pragma: no cover
+
+    use_engine(monkeypatch, FailingEngine([]))
+
+    response = client.post(
+        "/api/lab/chat/stream",
+        json={"message": "Merhaba", "sessionKind": "main", "openai": {"apiKey": secret}},
+    )
+
+    assert secret not in response.text
+    error = frames_of(parse_sse(response.text), "error")[0]
+    assert error["code"] == "provider_unreachable"
+    assert error["error"].startswith("chat send failed: ConnectError")
+    assert "[redacted]" in error["error"]
+    assert error["stage"] == "stream" and error["redacted"] is True
+    detail = client.get(f"/api/lab/turns/{error['turnId']}").json()
+    assert detail["failedStage"] == "stream"
+    assert {"type": "error", "label": "hata: stream"} in detail["chips"]
+    assert "chat.turn.failed" in event_types(client)
+    assert secret not in client.get("/api/lab/events", params={"once": "true"}).text

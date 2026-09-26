@@ -69,57 +69,67 @@ def test_openai_engine_from_config_uses_payload_key_and_defaults(monkeypatch):
     assert engine.base_url == "https://openrouter.ai/api/v1"
 
 
-def test_openai_engine_complete_posts_openai_compatible_chat_request(monkeypatch):
+class StubStream:
+    def __init__(self, lines):
+        self.lines = lines
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def raise_for_status(self):
+        pass
+
+    def iter_lines(self):
+        yield from self.lines
+
+
+def test_openai_engine_stream_chat_assembles_streamed_tool_calls(monkeypatch):
     calls = []
+    chunks = [
+        {"choices": [{"delta": {"content": "Bakıyorum. "}}]},
+        {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "call_1", "function": {"name": "memory_", "arguments": '{"que'}}]}}]},
+        {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"name": "search", "arguments": 'ry":"x"}'}}]}}]},
+        {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]},
+        {"choices": [], "usage": {"prompt_tokens": 1200, "completion_tokens": 30, "total_tokens": 1230}},
+    ]
 
-    def fake_post(url, *, headers, json, timeout):
-        calls.append({"url": url, "headers": headers, "json": json, "timeout": timeout})
-        return StubResponse(
-            {
-                "choices": [
-                    {"message": {"role": "assistant", "content": "Tamam, kısa yanıt."}},
-                ]
-            }
-        )
+    def fake_stream(method, url, *, headers, json, timeout):
+        calls.append({"method": method, "url": url, "headers": headers, "json": json, "timeout": timeout})
+        return StubStream([f"data: {__import__('json').dumps(chunk)}" for chunk in chunks] + ["data: [DONE]"])
 
-    monkeypatch.setattr("demo.chat_engine.httpx.post", fake_post)
-    engine = OpenAICompatibleChatEngine(
-        base_url="https://llm.example/v1/",
-        api_key="secret-key",
-        model="demo-model",
-    )
+    monkeypatch.setattr("demo.chat_engine.httpx.stream", fake_stream)
+    engine = OpenAICompatibleChatEngine(base_url="https://llm.example/v1/", api_key="secret-key", model="demo-model")
+    tools = [{"type": "function", "function": {"name": "memory_search", "parameters": {"type": "object"}}}]
 
-    response = engine.complete(
-        messages=[ChatMessage(role="user", content="Kısa yanıt verir misin?")],
-        memory_context=["MEMORY.md#1: User prefers Turkish."],
-        workspace_context="# Project Context\n## /w/AGENTS.md\nUse Turkish.",
-    )
+    events = list(engine.stream_chat([{"role": "user", "content": "Ne demiştik?"}], tools=tools))
 
-    assert response.role == "assistant"
-    assert response.content == "Tamam, kısa yanıt."
-    assert len(calls) == 1
+    assert events[0] == {"type": "delta", "text": "Bakıyorum. "}
+    assert events[-1] == {
+        "type": "message",
+        "content": "Bakıyorum. ",
+        "toolCalls": [{"id": "call_1", "name": "memory_search", "arguments": '{"query":"x"}'}],
+        "usage": {"promptTokens": 1200, "completionTokens": 30, "totalTokens": 1230},
+        "finishReason": "tool_calls",
+    }
+    body = calls[0]["json"]
     assert calls[0]["url"] == "https://llm.example/v1/chat/completions"
     assert calls[0]["headers"]["Authorization"] == "Bearer secret-key"
-    assert calls[0]["headers"]["Content-Type"] == "application/json"
-    assert calls[0]["json"]["model"] == "demo-model"
-    assert calls[0]["json"]["messages"] == [
-        {
-            "role": "system",
-            "content": (
-                "Use injected workspace files as standing instructions and stable context. "
-                "Use supplied memory context when relevant. Do not invent memory."
-            ),
-        },
-        {
-            "role": "system",
-            "content": "# Project Context\n## /w/AGENTS.md\nUse Turkish.",
-        },
-        {
-            "role": "system",
-            "content": "Memory context:\nMEMORY.md#1: User prefers Turkish.",
-        },
-        {"role": "user", "content": "Kısa yanıt verir misin?"},
-    ]
+    assert body["tools"] == tools and body["tool_choice"] == "auto"
+    assert body["stream"] is True and body["stream_options"] == {"include_usage": True}
+    assert body["messages"] == [{"role": "user", "content": "Ne demiştik?"}]
+
+
+def test_scripted_engine_never_calls_tools():
+    from demo.chat_engine import SCRIPTED_REPLY, ScriptedChatEngine
+
+    events = list(ScriptedChatEngine().stream_chat([], tools=[{"type": "function"}]))
+
+    assert events[-1]["toolCalls"] == []
+    assert events[-1]["content"] == SCRIPTED_REPLY
+    assert ScriptedChatEngine.provider == "scripted"
 
 
 def test_openai_engine_flush_runs_openclaw_style_write_tool(monkeypatch):

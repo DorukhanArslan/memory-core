@@ -19,13 +19,6 @@ class ChatMessage:
 
 
 @dataclass(frozen=True)
-class ChatResponse:
-    role: str
-    content: str
-    raw: dict | None = None
-
-
-@dataclass(frozen=True)
 class FlushWriteCall:
     path: str
     content: str
@@ -41,24 +34,13 @@ class FlushModelOutput:
 
 
 class ChatEngine(Protocol):
+    """What the Lab needs from a chat model: a streamed completion with tools, and the flush."""
+
     name: str
+    provider: str
+    model: str
 
-    def complete(
-        self,
-        *,
-        messages: list[ChatMessage],
-        memory_context: list[str],
-        workspace_context: str = "",
-    ) -> ChatResponse:
-        raise NotImplementedError
-
-    def stream_complete(
-        self,
-        *,
-        messages: list[ChatMessage],
-        memory_context: list[str],
-        workspace_context: str = "",
-    ) -> Iterator[str]:
+    def stream_chat(self, messages: list[dict], *, tools: list[dict] | None = None) -> Iterator[dict]:
         raise NotImplementedError
 
     def flush(
@@ -70,7 +52,6 @@ class ChatEngine(Protocol):
         target: str,
     ) -> FlushModelOutput:
         raise NotImplementedError
-
 
 
 class OpenAICompatibleChatEngine:
@@ -108,37 +89,6 @@ class OpenAICompatibleChatEngine:
             ).strip(),
             api_key=resolved_api_key,
             model=(model or os.getenv("MEMORY_CORE_DEMO_OPENAI_MODEL") or DEFAULT_OPENAI_MODEL).strip(),
-        )
-
-    def complete(
-        self,
-        *,
-        messages: list[ChatMessage],
-        memory_context: list[str],
-        workspace_context: str = "",
-    ) -> ChatResponse:
-        api_messages = self._api_messages(
-            messages=messages,
-            memory_context=memory_context,
-            workspace_context=workspace_context,
-        )
-        raw = self._chat(api_messages)
-        content = raw["choices"][0]["message"]["content"]
-        return ChatResponse(role="assistant", content=content, raw=raw)
-
-    def stream_complete(
-        self,
-        *,
-        messages: list[ChatMessage],
-        memory_context: list[str],
-        workspace_context: str = "",
-    ) -> Iterator[str]:
-        yield from self._chat_stream(
-            self._api_messages(
-                messages=messages,
-                memory_context=memory_context,
-                workspace_context=workspace_context,
-            )
         )
 
     def flush(
@@ -180,6 +130,86 @@ class OpenAICompatibleChatEngine:
     def raw_chat_stream(self, messages: list[dict[str, str]]) -> Iterator[str]:
         return self._chat_stream(messages)
 
+    @property
+    def provider(self) -> str:
+        return "openrouter" if "openrouter.ai" in self.base_url else "openai-compatible"
+
+    def stream_chat(
+        self, messages: list[dict], *, tools: list[dict] | None = None
+    ) -> Iterator[dict]:
+        """One streamed chat completion with optional OpenAI-style function tools.
+
+        Yields ``{"type": "delta", "text"}`` for content and finally one
+        ``{"type": "message", "content", "toolCalls", "usage", "finishReason"}``
+        with the tool calls assembled from their streamed fragments. The host
+        (the Lab tool loop) runs the calls; this engine never does.
+        """
+        body: dict = {
+            "model": self.model,
+            "messages": messages,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        if tools:
+            body["tools"] = tools
+            body["tool_choice"] = "auto"
+        content: list[str] = []
+        calls: dict[int, dict] = {}
+        usage: dict | None = None
+        finish_reason: str | None = None
+        with httpx.stream(
+            "POST",
+            f"{self.base_url}/chat/completions",
+            headers=self._headers(),
+            json=body,
+            timeout=self.timeout,
+        ) as response:
+            response.raise_for_status()
+            for line in response.iter_lines():
+                payload = _parse_stream_payload(line)
+                if payload is None:
+                    continue
+                if isinstance(payload.get("usage"), dict):
+                    usage = payload["usage"]
+                choices = payload.get("choices")
+                if not isinstance(choices, list) or not choices:
+                    continue
+                choice = choices[0] if isinstance(choices[0], dict) else {}
+                if choice.get("finish_reason"):
+                    finish_reason = str(choice["finish_reason"])
+                delta = choice.get("delta") if isinstance(choice.get("delta"), dict) else {}
+                text = delta.get("content")
+                if isinstance(text, str) and text:
+                    content.append(text)
+                    yield {"type": "delta", "text": text}
+                for fragment in delta.get("tool_calls") or ():
+                    if not isinstance(fragment, dict):
+                        continue
+                    index = fragment.get("index", len(calls))
+                    call = calls.setdefault(int(index), {"id": "", "name": "", "arguments": ""})
+                    if fragment.get("id"):
+                        call["id"] = str(fragment["id"])
+                    function = fragment.get("function") if isinstance(fragment.get("function"), dict) else {}
+                    if function.get("name"):
+                        call["name"] += str(function["name"])
+                    if function.get("arguments"):
+                        call["arguments"] += str(function["arguments"])
+        tool_calls = [
+            {**call, "id": call["id"] or f"call_{index}"} for index, call in sorted(calls.items())
+        ]
+        yield {
+            "type": "message",
+            "content": "".join(content),
+            "toolCalls": tool_calls,
+            "usage": _normalize_usage(usage),
+            "finishReason": finish_reason,
+        }
+
+    def check(self) -> dict:
+        """One short completion, for the settings view's connection check."""
+        raw = self._chat([{"role": "user", "content": "ping"}], max_tokens=1)
+        return {"model": raw.get("model") or self.model}
+
     def _headers(self) -> dict[str, str]:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -190,8 +220,12 @@ class OpenAICompatibleChatEngine:
             headers["X-Title"] = "memory-core Lab"
         return headers
 
-    def _chat(self, messages: list[dict], *, tools: list[dict] | None = None) -> dict:
+    def _chat(
+        self, messages: list[dict], *, tools: list[dict] | None = None, max_tokens: int | None = None
+    ) -> dict:
         body: dict = {"model": self.model, "messages": messages}
+        if max_tokens is not None:
+            body["max_tokens"] = max_tokens
         if tools:
             body["tools"] = tools
             body["tool_choice"] = "auto"
@@ -218,33 +252,6 @@ class OpenAICompatibleChatEngine:
                 if chunk is None:
                     continue
                 yield chunk
-
-    def _api_messages(
-        self,
-        *,
-        messages: list[ChatMessage],
-        memory_context: list[str],
-        workspace_context: str = "",
-    ) -> list[dict[str, str]]:
-        api_messages = [
-            {
-                "role": "system",
-                "content": (
-                    "Use injected workspace files as standing instructions and stable context. "
-                    "Use supplied memory context when relevant. Do not invent memory."
-                ),
-            },
-        ]
-        if workspace_context.strip():
-            api_messages.append({"role": "system", "content": workspace_context})
-        api_messages.append(
-            {
-                "role": "system",
-                "content": "Memory context:\n" + "\n".join(memory_context),
-            }
-        )
-        api_messages.extend({"role": message.role, "content": message.content} for message in messages)
-        return api_messages
 
 
 def _memory_flush_write_tool(target: str) -> dict:
@@ -312,6 +319,60 @@ def _extract_write_tool_calls(message: dict) -> tuple[FlushWriteCall, ...]:
                 )
             )
     return tuple(writes)
+
+
+def _parse_stream_payload(line: str | bytes) -> dict | None:
+    text = line.decode("utf-8") if isinstance(line, bytes) else line
+    if not text.startswith("data: "):
+        return None
+    data = text.removeprefix("data: ").strip()
+    if not data or data == "[DONE]":
+        return None
+    payload = json.loads(data)
+    return payload if isinstance(payload, dict) else None
+
+
+def _normalize_usage(usage: dict | None) -> dict | None:
+    if not isinstance(usage, dict):
+        return None
+    prompt = usage.get("prompt_tokens")
+    completion = usage.get("completion_tokens")
+    if not isinstance(prompt, int | float) and not isinstance(completion, int | float):
+        return None
+    return {
+        "promptTokens": int(prompt) if isinstance(prompt, int | float) else None,
+        "completionTokens": int(completion) if isinstance(completion, int | float) else None,
+        "totalTokens": int(usage["total_tokens"]) if isinstance(usage.get("total_tokens"), int | float) else None,
+    }
+
+
+SCRIPTED_REPLY = (
+    "Scripted reply (no model key): the Lab ran the turn pipeline (workspace check, flush "
+    "decision, reindex, recall, prompt) but called no model and ran no memory tool."
+)
+
+
+class ScriptedChatEngine:
+    """Explicit keyless stand-in, labelled ``scripted``: fixed text, never a tool call.
+
+    Only used when a request asks for ``engine: "scripted"``; it makes no
+    memory decision, so nothing it returns can pass for model output.
+    """
+
+    name = "scripted"
+    provider = "scripted"
+    model = "lab-script"
+
+    def stream_chat(self, messages: list[dict], *, tools: list[dict] | None = None) -> Iterator[dict]:
+        del messages, tools
+        yield {"type": "delta", "text": SCRIPTED_REPLY}
+        yield {
+            "type": "message",
+            "content": SCRIPTED_REPLY,
+            "toolCalls": [],
+            "usage": None,
+            "finishReason": "stop",
+        }
 
 
 def _parse_stream_line(line: str | bytes) -> str | None:

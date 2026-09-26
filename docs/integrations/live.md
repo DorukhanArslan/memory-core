@@ -37,7 +37,8 @@ workspace/
 ```
 
 Seed the workspace with `initialize_agent_workspace(root, templates=...)`; pass
-`seed_bootstrap=False` when the host has no first-run ritual.
+`seed_bootstrap=False` when the host has no first-run ritual (setup is then
+marked complete right away).
 
 `to_prompt_section()` returns, in upstream order: `## Bootstrap Pending` and
 `## Bootstrap Context Notice` when they apply, `## Workspace Files (injected)`

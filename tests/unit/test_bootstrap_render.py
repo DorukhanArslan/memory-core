@@ -280,8 +280,9 @@ def test_exclude_files_drops_files_before_budgeting(tmp_path):
     assert excluded.warnings == ()
     assert excluded.truncated is False
     assert "MEMORY.md" not in excluded.stable_text
+    # seed_bootstrap=False completes setup, so the root BOOTSTRAP.md is filtered too.
     assert [file.name for file in excluded.bootstrap_files] == [
-        name for name in MEMORY_CORE_WORKSPACE_LAYOUT.load_order if name != "MEMORY.md"
+        name for name in MEMORY_CORE_WORKSPACE_LAYOUT.load_order if name not in ("MEMORY.md", "BOOTSTRAP.md")
     ]
     assert _paths(single.files) == ["AGENTS.md"]
 

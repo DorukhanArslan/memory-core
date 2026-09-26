@@ -63,13 +63,21 @@ Two presets ship; `DEFAULT_WORKSPACE_LAYOUT` is `MEMORY_CORE_WORKSPACE_LAYOUT`.
 
 State lives in `.memory-core/workspace-state.json` (`{version, bootstrapSeededAt,
 setupCompletedAt}`); upstream's `openclaw-workspace-state.json` and
-`.openclaw/workspace-state.json` are read as fallbacks and migrated.
+`.openclaw/workspace-state.json` are read as fallbacks and migrated. The
+migration is a one-way snapshot: once `initialize_agent_workspace` has copied a
+marker-bearing upstream state into `.memory-core/`, memory-core reads only its own
+file, so later state changes by an OpenClaw runtime sharing the workspace are
+not seen. A `.memory-core` that is not a directory reads as no state; writing the
+state then fails.
 
 - Create memory files after initialization, or the workspace counts as set up
   and no BOOTSTRAP.md is written.
 - An empty BOOTSTRAP.md still reports `pending`; with file access the prompt
   asks the model to read it, without it the prompt carries the `limited` lines.
-  Hosts without a first-run ritual pass `seed_bootstrap=False` (extension).
+  Hosts without a first-run ritual pass `seed_bootstrap=False` (extension):
+  where BOOTSTRAP.md would be written, setup is marked complete instead, so
+  optional files a user removes later are not recreated. An existing
+  BOOTSTRAP.md is still honoured.
 
 ## Per-turn filters
 

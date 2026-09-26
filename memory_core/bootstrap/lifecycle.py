@@ -9,7 +9,7 @@ reader/writer (653-772), ``isWorkspaceSetupCompleted`` /
 ``resolveWorkspaceBootstrapStatus`` (738-757) and steps 5-6 of
 ``ensureAgentWorkspace`` (817-1037), plus ``stripFrontMatter`` (106-118).
 
-Deviations (not yet carried into docs/parity_matrix.md):
+Deviations (also listed in docs/parity_matrix.md › Workspace bootstrap files):
 
 - Templates come from the host (``templates``), default to empty strings, and
   never carry OpenClaw template wording. They pass through upstream's
@@ -17,10 +17,19 @@ Deviations (not yet carried into docs/parity_matrix.md):
 - The setup state lives at ``<root>/.memory-core/workspace-state.json``;
   upstream's ``<root>/openclaw-workspace-state.json`` and legacy
   ``<root>/.openclaw/workspace-state.json`` are read as fallbacks and migrated.
+  The migration is a one-way snapshot: once ``initialize_agent_workspace``
+  has copied a marker-bearing upstream state into ``.memory-core/``, memory-core reads
+  only its own file, so later changes an OpenClaw runtime sharing the
+  workspace makes to its state file (a new ``setupCompletedAt``) are not
+  seen. Upstream itself rewrites only the legacy file or key
+  (workspace.ts:703-736). A ``.memory-core`` that is not a directory counts as
+  no state (like upstream's unreadable legacy dot-directory); writing the
+  state then fails.
 - Not ported: workspace attestations and the ``WorkspaceVanishedError``
   guard, ``git init`` for brand-new workspaces, the ``ensureBootstrapFiles:
-  false`` skip mode. ``seed_bootstrap=False`` (never write BOOTSTRAP.md) is a
-  memory-core extension for hosts without a bootstrap ritual.
+  false`` skip mode. ``seed_bootstrap=False`` is a memory-core extension for hosts
+  without a bootstrap ritual: where upstream would write BOOTSTRAP.md, memory-core
+  marks setup complete instead (an existing BOOTSTRAP.md is still honoured).
 - One ``now_ms`` stamps every timestamp of a call (upstream calls
   ``new Date()`` per timestamp).
 """
@@ -201,7 +210,13 @@ def read_workspace_setup_state(
     written to memory-core's file.
     """
     root_path = _root_path(root)
-    canonical = _read_state_file(_state_path(root_path))
+    try:
+        canonical = _read_state_file(_state_path(root_path))
+    except NotADirectoryError:
+        # ``.memory-core`` is a plain file. memory-core's state path sits under a dot
+        # directory like upstream's legacy one, whose read errors count as
+        # absent (workspace.ts:721-727).
+        canonical = None
     if canonical is not None:
         raw, state = canonical
         if persist_migration and _needs_state_rewrite(raw, state):
@@ -394,7 +409,9 @@ def initialize_agent_workspace(
     memory files after this call, or the workspace counts as configured.
     With an empty BOOTSTRAP.md template the workspace still reports
     ``pending`` until the file is removed or the profile is configured; pass
-    ``seed_bootstrap=False`` (extension) when the host has no ritual.
+    ``seed_bootstrap=False`` (extension) when the host has no ritual. Where
+    BOOTSTRAP.md would be written, setup is then marked complete instead, so
+    optional files a user removes later are not recreated.
 
     When setup evidence appears while BOOTSTRAP.md exists, the state is marked
     complete and BOOTSTRAP.md is deleted, exactly like upstream's reconcile.
@@ -471,6 +488,11 @@ def initialize_agent_workspace(
             if bootstrap_exists and not state.bootstrap_seeded_at:
                 state = replace(state, bootstrap_seeded_at=stamp)
                 dirty = True
+        else:
+            # Extension (seed_bootstrap=False): no first-run ritual means nothing
+            # is pending, so setup completes here, as in the configured branch.
+            state = replace(state, setup_completed_at=stamp)
+            dirty = True
 
     if dirty:
         _write_state(root_path, state)

@@ -18,6 +18,7 @@ Two presets ship:
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 AGENTS_FILENAME = "AGENTS.md"
@@ -30,6 +31,16 @@ BOOTSTRAP_FILENAME = "BOOTSTRAP.md"
 MEMORY_FILENAME = "MEMORY.md"
 # Extension (provisional: no upstream reference).
 PROACTIVE_PREFERENCES_FILENAME = "PROACTIVE_PREFERENCES.md"
+
+
+def _is_plain_basename(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and value not in ("", ".", "..")
+        and not any(char in value for char in ("/", "\\", "\0"))
+        and not os.path.isabs(value)
+        and not os.path.splitdrive(value)[0]
+    )
 
 
 @dataclass(frozen=True)
@@ -65,6 +76,29 @@ class WorkspaceLayout:
     bootstrap_file: str = BOOTSTRAP_FILENAME
     memory_file: str = MEMORY_FILENAME
     heartbeat_file: str = HEARTBEAT_FILENAME
+
+    def __post_init__(self) -> None:
+        # Seeding writes root / name and mkdirs root / dirname: only plain
+        # basenames keep those writes inside the workspace root.
+        names: dict[str, tuple[str, ...]] = {
+            "load_order": self.load_order,
+            "required_files": self.required_files,
+            "optional_files": self.optional_files,
+            "profile_files": self.profile_files,
+            "subagent_files": tuple(self.subagent_files),
+            "cron_files": tuple(self.cron_files),
+            "extension_files": tuple(self.extension_files),
+            "extra_dirs": self.extra_dirs,
+            "bootstrap_file": (self.bootstrap_file,),
+            "memory_file": (self.memory_file,),
+            "heartbeat_file": (self.heartbeat_file,),
+        }
+        for field_name, values in names.items():
+            for value in values:
+                if not _is_plain_basename(value):
+                    raise ValueError(
+                        f"WorkspaceLayout.{field_name} entries must be plain basenames: {value!r}"
+                    )
 
     def render_priority(self, basename: str) -> int | None:
         lowered = basename.lower()

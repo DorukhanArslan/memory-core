@@ -164,14 +164,34 @@ def test_completed_setup_does_not_recreate_optional_files(tmp_path):
     assert not (tmp_path / "PROACTIVE_PREFERENCES.md").exists()
 
 
-def test_seed_bootstrap_false_leaves_state_unmarked(tmp_path):
-    result = initialize_agent_workspace(tmp_path, seed_bootstrap=False)
+def test_seed_bootstrap_false_marks_setup_complete(tmp_path):
+    result = initialize_agent_workspace(tmp_path, seed_bootstrap=False, now_ms=NOW_MS)
 
     assert result.bootstrap_seeded is False
     assert not (tmp_path / "BOOTSTRAP.md").exists()
-    assert result.state == WorkspaceSetupState()
-    assert not _state_file(tmp_path).exists()
+    # Extension: no ritual means nothing is pending, so setup completes right away.
+    assert result.state == WorkspaceSetupState(setup_completed_at=NOW_ISO)
+    assert json.loads(_state_file(tmp_path).read_text(encoding="utf-8")) == {
+        "version": 1,
+        "setupCompletedAt": NOW_ISO,
+    }
     assert result.bootstrap_status == "complete"
+    assert is_workspace_setup_completed(tmp_path) is True
+
+    # Like any completed setup, optional files a user removed are not recreated.
+    (tmp_path / "SOUL.md").unlink()
+    again = initialize_agent_workspace(tmp_path, seed_bootstrap=False)
+    assert again.created_files == ()
+    assert not (tmp_path / "SOUL.md").exists()
+
+
+def test_seed_bootstrap_false_still_honours_an_existing_bootstrap_file(tmp_path):
+    (tmp_path / "BOOTSTRAP.md").write_text("host ritual\n", encoding="utf-8")
+
+    result = initialize_agent_workspace(tmp_path, seed_bootstrap=False, now_ms=NOW_MS)
+
+    assert result.state == WorkspaceSetupState(bootstrap_seeded_at=NOW_ISO)
+    assert result.bootstrap_status == "pending"
 
 
 def test_state_falls_back_to_openclaw_files_and_migrates(tmp_path):
@@ -220,3 +240,91 @@ def test_whitespace_completion_is_not_complete(tmp_path):
 
     assert is_workspace_setup_completed(tmp_path) is False
     assert bootstrap_status(tmp_path) == "pending"
+
+
+def test_initialize_rewrites_a_corrupt_memory_core_state_file(tmp_path):
+    path = _state_file(tmp_path)
+    path.parent.mkdir()
+    path.write_text("not json", encoding="utf-8")
+
+    result = initialize_agent_workspace(tmp_path, now_ms=NOW_MS)
+
+    assert result.bootstrap_status == "pending"
+    assert json.loads(path.read_text(encoding="utf-8")) == {
+        "version": 1,
+        "bootstrapSeededAt": NOW_ISO,
+    }
+
+
+def test_reconcile_keeps_completion_when_bootstrap_cleanup_fails(tmp_path, monkeypatch):
+    import os
+
+    from memory_core.bootstrap import lifecycle
+
+    initialize_agent_workspace(tmp_path, templates={"BOOTSTRAP.md": "ritual\n"}, now_ms=NOW_MS)
+    (tmp_path / "USER.md").write_text("Name: Doruk\n", encoding="utf-8")
+    real_unlink = os.unlink
+
+    def refuse_bootstrap(path, *args, **kwargs):
+        if os.fspath(path).endswith("BOOTSTRAP.md"):
+            raise PermissionError("read-only")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(lifecycle.os, "unlink", refuse_bootstrap)
+
+    result = initialize_agent_workspace(
+        tmp_path, templates={"BOOTSTRAP.md": "ritual\n"}, now_ms=NOW_MS + 1
+    )
+
+    # workspace.ts:437-459: completion state is authoritative, cleanup best-effort.
+    assert result.bootstrap_removed is False
+    assert (tmp_path / "BOOTSTRAP.md").exists()
+    assert result.state.setup_completed_at == "2026-09-21T14:13:20.001Z"
+    assert result.bootstrap_status == "complete"
+
+
+def test_memory_core_state_path_that_is_a_file_reads_as_absent(tmp_path):
+    from memory_core.bootstrap import build_workspace_context
+
+    (tmp_path / ".memory-core").write_text("not a directory", encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("rules", encoding="utf-8")
+
+    assert read_workspace_setup_state(tmp_path) == WorkspaceSetupState()
+    context = build_workspace_context(tmp_path, path_style="relative")
+    assert [file.content for file in context.files if file.path == "AGENTS.md"] == ["rules"]
+    # Writing the state still fails loudly.
+    with pytest.raises(OSError):
+        initialize_agent_workspace(tmp_path)
+
+
+def test_symlinked_workspace_root_is_loaded(tmp_path):
+    from memory_core.bootstrap import build_workspace_context
+
+    real_root = tmp_path / "real"
+    initialize_agent_workspace(real_root, templates={"AGENTS.md": "rules\n"}, seed_bootstrap=False)
+    link = tmp_path / "link"
+    link.symlink_to(real_root, target_is_directory=True)
+
+    context = build_workspace_context(link, path_style="relative")
+
+    assert [(file.path, file.content) for file in context.files] == [("AGENTS.md", "rules")]
+    assert is_workspace_setup_completed(link) is True
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"load_order": ("AGENTS.md", "../escape.md")},
+        {"optional_files": ("nested/SOUL.md",)},
+        {"required_files": ("/abs/AGENTS.md",)},
+        {"extra_dirs": ("../../outside",)},
+        {"extra_dirs": ("..",)},
+        {"bootstrap_file": ""},
+        {"memory_file": "win\\MEMORY.md"},
+    ],
+)
+def test_layout_rejects_names_that_are_not_plain_basenames(overrides):
+    from dataclasses import replace
+
+    with pytest.raises(ValueError, match="plain basenames"):
+        replace(MEMORY_CORE_WORKSPACE_LAYOUT, **overrides)

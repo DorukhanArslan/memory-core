@@ -2,9 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 
+from memory_core.bootstrap import (
+    MEMORY_CORE_WORKSPACE_LAYOUT,
+    OPENCLAW_PIN_LAYOUT,
+    initialize_agent_workspace,
+    trim_bootstrap_content,
+)
 from memory_core.live import (
+    IDENTITY_FILE_ORDER,
     IdentityLoadError,
     JsonlTraceSink,
     LIVE_TURN_COMPLETED,
@@ -27,22 +35,85 @@ from memory_core.live import (
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 
 
-def test_identity_loader_reads_known_files_in_prompt_order(tmp_path: Path):
-    identity_dir = tmp_path / "identity"
-    identity_dir.mkdir()
-    (identity_dir / "USER.md").write_text("Subject profile.", encoding="utf-8")
-    (identity_dir / "SOUL.md").write_text("Speak briefly.", encoding="utf-8")
-    (identity_dir / "AGENTS.md").write_text("You are a support voice agent.", encoding="utf-8")
+def _abs(root: Path, name: str) -> str:
+    return f"{os.path.abspath(root)}/{name}"
 
-    identity = LiveIdentity.from_dir(identity_dir)
 
-    assert identity.to_prompt_section() == "\n\n".join(
+def test_identity_loader_renders_project_context_through_bootstrap(tmp_path: Path):
+    root = tmp_path / "workspace"
+    initialize_agent_workspace(
+        root,
+        templates={
+            "AGENTS.md": "You are a support voice agent.\n",
+            "SOUL.md": "Speak briefly.\n",
+            "USER.md": "Subject profile.\n",
+        },
+        seed_bootstrap=False,
+    )
+
+    identity = LiveIdentity.from_dir(root)
+
+    # Empty seeded files (TOOLS, IDENTITY, PROACTIVE_PREFERENCES, HEARTBEAT) are
+    # not injected; the rest render in upstream Project Context order.
+    assert identity.sections == (
+        (_abs(root, "AGENTS.md"), "You are a support voice agent."),
+        (_abs(root, "SOUL.md"), "Speak briefly."),
+        (_abs(root, "USER.md"), "Subject profile."),
+    )
+    assert identity.to_prompt_section() == "\n".join(
         [
-            "## Operating Instructions\nYou are a support voice agent.",
-            "## Soul\nSpeak briefly.",
-            "## User\nSubject profile.",
+            "## Workspace Files (injected)",
+            "These user-editable files are loaded by memory-core and included below in Project Context.",
+            "# Project Context",
+            "The following project context files have been loaded:",
+            "SOUL.md: persona/tone. Follow it unless higher-priority instructions override.",
+            f"## {_abs(root, 'AGENTS.md')}",
+            "You are a support voice agent.",
+            f"## {_abs(root, 'SOUL.md')}",
+            "Speak briefly.",
+            f"## {_abs(root, 'USER.md')}",
+            "Subject profile.",
         ]
     )
+    assert "loaded by OpenClaw" in identity.to_prompt_section(OPENCLAW_COMPAT_RUNTIME_IDENTITY)
+    assert identity.warnings == ()
+    assert identity.truncated is False
+
+
+def test_identity_loader_marks_missing_layout_files_like_upstream(tmp_path: Path):
+    identity_dir = tmp_path / "identity"
+    identity_dir.mkdir()
+    (identity_dir / "AGENTS.md").write_text("Rules.", encoding="utf-8")
+
+    identity = LiveIdentity.from_dir(identity_dir, path_style="relative")
+
+    assert dict(identity.sections) == {
+        "AGENTS.md": "Rules.",
+        "SOUL.md": f"[MISSING] Expected at: {_abs(identity_dir, 'SOUL.md')}",
+        "IDENTITY.md": f"[MISSING] Expected at: {_abs(identity_dir, 'IDENTITY.md')}",
+        "USER.md": f"[MISSING] Expected at: {_abs(identity_dir, 'USER.md')}",
+        "PROACTIVE_PREFERENCES.md": (
+            f"[MISSING] Expected at: {_abs(identity_dir, 'PROACTIVE_PREFERENCES.md')}"
+        ),
+        "TOOLS.md": f"[MISSING] Expected at: {_abs(identity_dir, 'TOOLS.md')}",
+        "HEARTBEAT.md": f"[MISSING] Expected at: {_abs(identity_dir, 'HEARTBEAT.md')}",
+    }
+    pin = LiveIdentity.from_dir(identity_dir, layout=OPENCLAW_PIN_LAYOUT, path_style="relative")
+    assert "PROACTIVE_PREFERENCES.md" not in dict(pin.sections)
+
+
+def test_identity_loader_keeps_agent_memory_out_by_default(tmp_path: Path):
+    root = tmp_path / "workspace"
+    initialize_agent_workspace(root, templates={"AGENTS.md": "Rules.\n"}, seed_bootstrap=False)
+    (root / "MEMORY.md").write_text("Operator-only fact.", encoding="utf-8")
+
+    default = LiveIdentity.from_dir(root, path_style="relative")
+    with_memory = LiveIdentity.from_dir(root, path_style="relative", include_agent_memory=True)
+
+    assert [path for path, _ in default.sections] == ["AGENTS.md"]
+    assert "Operator-only fact." not in default.to_prompt_section()
+    assert [path for path, _ in with_memory.sections] == ["AGENTS.md", "MEMORY.md"]
+    assert "MEMORY.md: durable user preferences" in with_memory.to_prompt_section()
 
 
 def test_identity_loader_enforces_required_files(tmp_path: Path):
@@ -72,17 +143,90 @@ def test_identity_loader_can_reject_unknown_markdown_files(tmp_path: Path):
         raise AssertionError("expected unknown identity file error")
 
 
-def test_identity_loader_truncates_sections_deterministically(tmp_path: Path):
+def test_identity_loader_strict_mode_accepts_layout_and_known_workspace_files(tmp_path: Path):
     identity_dir = tmp_path / "identity"
     identity_dir.mkdir()
-    (identity_dir / "AGENTS.md").write_text("A" * 200, encoding="utf-8")
+    for name in (*MEMORY_CORE_WORKSPACE_LAYOUT.load_order, "BOOT.md", "DREAMS.md"):
+        (identity_dir / name).write_text(f"{name} text", encoding="utf-8")
+    for folder in ("user", "workspace", "memory", "skills", "subjects", "notes.md"):
+        (identity_dir / folder).mkdir()
+    (identity_dir / "memory" / "2026-09-26.md").write_text("daily", encoding="utf-8")
 
-    identity = LiveIdentity.from_dir(identity_dir, max_chars_per_file=32)
+    identity = LiveIdentity.from_dir(identity_dir, unknown_files="error", path_style="relative")
 
-    section = identity.to_prompt_section()
-    assert "## Operating Instructions" in section
-    assert "[truncated]" in section
-    assert len(identity.sections[0][1]) <= 32
+    injected = [path for path, _ in identity.sections]
+    assert "BOOT.md" not in injected and "DREAMS.md" not in injected
+    assert "MEMORY.md" not in injected
+    assert "PROACTIVE_PREFERENCES.md" in injected
+
+
+def test_identity_loader_truncates_with_upstream_markers(tmp_path: Path):
+    identity_dir = tmp_path / "identity"
+    identity_dir.mkdir()
+    (identity_dir / "SOUL.md").write_text("S" * 1000, encoding="utf-8")
+    (identity_dir / "USER.md").write_text("U" * 200, encoding="utf-8")
+
+    identity = LiveIdentity.from_dir(identity_dir, max_chars_per_file=300, path_style="relative")
+    compact = LiveIdentity.from_dir(identity_dir, max_chars_per_file=80, path_style="relative")
+
+    soul = dict(identity.sections)["SOUL.md"]
+    assert soul == trim_bootstrap_content("S" * 1000, "SOUL.md", 300).content
+    assert "\n[...truncated, read SOUL.md for full content...]\n" in soul
+    assert "…(truncated SOUL.md: kept " in soul
+    assert "[truncated]" not in soul
+    assert len(soul) <= 300
+    assert dict(identity.sections)["USER.md"] == "U" * 200
+    assert dict(compact.sections)["USER.md"] == trim_bootstrap_content("U" * 200, "USER.md", 80).content
+    assert "[…truncated " in dict(compact.sections)["USER.md"]
+    assert identity.truncated is True
+    assert identity.warnings == (
+        "workspace bootstrap file SOUL.md is 1000 chars (limit 300); truncating in injected context",
+    )
+    assert identity.to_prompt_section().startswith(
+        "## Bootstrap Context Notice\n[Bootstrap truncation warning]"
+    )
+
+
+def test_identity_loader_defaults_to_upstream_caps(tmp_path: Path):
+    identity_dir = tmp_path / "identity"
+    identity_dir.mkdir()
+    (identity_dir / "USER.md").write_text("u" * 25_000, encoding="utf-8")
+
+    default = LiveIdentity.from_dir(identity_dir, path_style="relative")
+    unset = LiveIdentity.from_dir(
+        identity_dir, max_chars_per_file=None, total_max_chars=0, path_style="relative"
+    )
+    store = LiveIdentityStore(identity_dir)
+
+    assert store.max_chars_per_file == 20_000
+    assert store.total_max_chars == 60_000
+    for identity in (default, unset):
+        user = dict(identity.sections)["USER.md"]
+        assert len(user) <= 20_000
+        assert "…(truncated USER.md: kept " in user
+
+
+def test_identity_loader_follows_bootstrap_pending_unless_overridden(tmp_path: Path):
+    root = tmp_path / "workspace"
+    initialize_agent_workspace(
+        root, templates={"AGENTS.md": "Rules.\n", "BOOTSTRAP.md": "Ask for the operator name.\n"}
+    )
+
+    pending = LiveIdentity.from_dir(root, path_style="relative")
+    overridden = LiveIdentity.from_dir(root, path_style="relative", bootstrap_mode="none")
+
+    assert pending.to_prompt_section().startswith(
+        "## Bootstrap Pending\n"
+        "BOOTSTRAP.md is included below in Project Context; follow it before replying normally."
+    )
+    assert "BOOTSTRAP.md" in dict(pending.sections)
+    assert overridden.bootstrap_text == ""
+    assert "BOOTSTRAP.md" not in dict(overridden.sections)
+
+
+def test_identity_file_order_is_a_compatibility_view_of_the_default_layout():
+    assert tuple(name for name, _ in IDENTITY_FILE_ORDER) == MEMORY_CORE_WORKSPACE_LAYOUT.load_order
+    assert all(name == title for name, title in IDENTITY_FILE_ORDER)
 
 
 def test_identity_store_caches_until_reload(tmp_path: Path):
@@ -306,6 +450,7 @@ def test_prepare_live_turn_wraps_workflow_state_as_openclaw_runtime_context(tmp_
 
     assert prepared.messages[0]["role"] == "system"
     assert "You are a voice support agent." in prepared.messages[0]["content"]
+    assert "files are loaded by OpenClaw and included below" in prepared.messages[0]["content"]
     assert OPENCLAW_COMPAT_RUNTIME_IDENTITY.runtime_context_begin in prepared.messages[0]["content"]
     assert "workflow_id: address_change" in prepared.messages[0]["content"]
     assert "current_step: verify_identity" in prepared.messages[0]["content"]
@@ -313,6 +458,29 @@ def test_prepare_live_turn_wraps_workflow_state_as_openclaw_runtime_context(tmp_
         "role": "user",
         "content": "Adresimi değiştirmek istiyorum.",
     }
+
+
+def test_prepare_live_turn_places_workspace_files_before_recall(tmp_path: Path):
+    identity_dir = tmp_path / "identity"
+    initialize_agent_workspace(
+        identity_dir, templates={"AGENTS.md": "Verify first.\n"}, seed_bootstrap=False
+    )
+    identity = LiveIdentity.from_dir(identity_dir)
+    memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+
+    prepared = memory.prepare_live_turn(
+        LiveTurnContext(subject_id="subj_123", session_id="session_1", user_utterance="Merhaba"),
+        identity=identity,
+    )
+
+    system = prepared.messages[0]["content"]
+    assert system.startswith(
+        "## Workspace Files (injected)\n"
+        "These user-editable files are loaded by memory-core and included below in Project Context.\n"
+        "# Project Context\n"
+    )
+    assert "OpenClaw" not in system
+    assert system.index("Verify first.") < system.index("## Session")
 
 
 def test_stream_live_turn_emits_sentence_events_for_tts(tmp_path: Path):

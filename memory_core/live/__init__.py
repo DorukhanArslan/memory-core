@@ -4,10 +4,23 @@ from collections.abc import AsyncIterable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 import inspect
 import json
+import math
 from pathlib import Path
 import re
 from typing import Any, Literal, Protocol
 
+from memory_core.bootstrap import (
+    DEFAULT_BOOTSTRAP_MAX_CHARS,
+    DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
+    DEFAULT_WORKSPACE_LAYOUT,
+    ContextFile,
+    WorkspaceLayout,
+    build_workspace_context,
+    render_project_context,
+    render_workspace_files_injected,
+    render_workspace_prompt,
+)
+from memory_core.bootstrap.files import BootstrapMode
 from memory_core.client import Memory
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import EmbeddingProvider
@@ -17,19 +30,17 @@ from memory_core.runtime_context_prompt import build_runtime_context_system_cont
 from memory_core.runtime_identity import (
     OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     MEMORY_CORE_RUNTIME_IDENTITY,
+    RuntimeIdentity,
 )
 
-IDENTITY_FILE_ORDER = (
-    ("AGENTS.md", "Operating Instructions"),
-    ("SOUL.md", "Soul"),
-    ("TOOLS.md", "Tools"),
-    ("IDENTITY.md", "Identity"),
-    ("USER.md", "User"),
-    ("HEARTBEAT.md", "Heartbeat"),
-    ("BOOTSTRAP.md", "Bootstrap"),
-    ("MEMORY.md", "Memory"),
-)
-IDENTITY_FILE_NAMES = frozenset(filename for filename, _title in IDENTITY_FILE_ORDER)
+# Compatibility re-export: ``(file name, file name)`` pairs in the default
+# layout's load order. The second element used to be a section title; live
+# prompts now render upstream ``## <path>`` headings, so it repeats the name.
+IDENTITY_FILE_ORDER = tuple((name, name) for name in DEFAULT_WORKSPACE_LAYOUT.load_order)
+# Workspace files that exist upstream but are never injected: BOOT.md is the
+# gateway boot checklist (src/gateway/boot.ts:36), DREAMS.md / dreams.md the
+# dreaming diary (extensions/memory-core/src/dreaming-dreams-file.ts:10).
+NON_INJECTED_WORKSPACE_FILES = frozenset({"BOOT.md", "DREAMS.md", "dreams.md"})
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 SENTENCE_RE = re.compile(r"(.+?[.!?…])(?:\s+|$)", re.DOTALL)
 LIVE_TURN_STARTED = "live_turn_started"
@@ -69,7 +80,21 @@ class IdentityLoadError(ValueError):
 
 @dataclass(frozen=True)
 class LiveIdentity:
+    """Workspace bootstrap files injected into live subject prompts.
+
+    Built by :meth:`from_dir` through :mod:`memory_core.bootstrap`: the layout's
+    files are loaded, filtered like a main session, budgeted (20,000 chars per
+    file, 60,000 total, UTF-16 units) and rendered as upstream Project Context.
+    ``sections`` holds ``(path, injected content)`` pairs in render order;
+    ``bootstrap_text`` holds ``## Bootstrap Pending`` / ``## Bootstrap Context
+    Notice`` when they apply; ``warnings`` are the budget warnings.
+    """
+
     sections: tuple[tuple[str, str], ...]
+    bootstrap_text: str = ""
+    warnings: tuple[str, ...] = ()
+    truncated: bool = False
+    layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT
 
     @classmethod
     def from_dir(
@@ -77,33 +102,82 @@ class LiveIdentity:
         identity_dir: str | Path,
         *,
         required_files: Iterable[str] = (),
-        max_chars_per_file: int | None = None,
+        max_chars_per_file: int | None = DEFAULT_BOOTSTRAP_MAX_CHARS,
+        total_max_chars: int | None = DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
         unknown_files: UnknownIdentityFilePolicy = "ignore",
+        layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT,
+        include_agent_memory: bool = False,
+        include_heartbeat: bool = True,
+        bootstrap_mode: BootstrapMode | None = None,
+        path_style: str = "absolute",
     ) -> "LiveIdentity":
-        root = Path(identity_dir)
-        _validate_required_identity_files(root, required_files)
-        _validate_unknown_identity_files(root, unknown_files)
-        sections: list[tuple[str, str]] = []
-        for filename, title in IDENTITY_FILE_ORDER:
-            path = root / filename
-            if not path.is_file():
-                continue
-            text = path.read_text(encoding="utf-8").strip()
-            if text:
-                text = _truncate_identity_text(text, max_chars_per_file)
-                sections.append((title, text))
-        return cls(tuple(sections))
+        """Load a workspace's bootstrap files for live prompts.
 
-    def to_prompt_section(self) -> str:
-        return "\n\n".join(f"## {title}\n{text}" for title, text in self.sections)
+        Missing layout files render upstream's ``[MISSING] Expected at:``
+        marker (MEMORY.md is skipped when absent, empty files are not
+        injected). ``max_chars_per_file`` / ``total_max_chars`` of ``None`` or
+        ``<= 0`` fall back to the defaults, like upstream's config resolution.
+
+        Deliberate deviation (decided 2026-09-26): the agent's root MEMORY.md is
+        not injected unless ``include_agent_memory=True``; upstream injects it
+        for every non-subagent, non-cron session. Subject memory reaches the
+        prompt through recall instead. ``bootstrap_mode`` overrides upstream's
+        resolution (``full`` for a pending workspace on this interactive run).
+        """
+        root = Path(identity_dir)
+        _validate_required_identity_files(root, required_files, layout)
+        _validate_unknown_identity_files(root, unknown_files, layout)
+        context = build_workspace_context(
+            root,
+            layout=layout,
+            session_kind="main",
+            include_heartbeat=include_heartbeat,
+            exclude_files=() if include_agent_memory else (layout.memory_file,),
+            bootstrap_mode=bootstrap_mode,
+            max_chars=_resolve_char_limit(max_chars_per_file, DEFAULT_BOOTSTRAP_MAX_CHARS),
+            total_max_chars=_resolve_char_limit(total_max_chars, DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS),
+            path_style=path_style,
+        )
+        return cls(
+            sections=tuple((file.path, file.content) for file in context.files),
+            bootstrap_text=context.bootstrap_text,
+            warnings=context.warnings,
+            truncated=context.truncated,
+            layout=layout,
+        )
+
+    def to_prompt_section(
+        self, runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY
+    ) -> str:
+        """Render the injected files in upstream prompt order and line format.
+
+        Bootstrap sections, ``## Workspace Files (injected)`` (brand from
+        ``runtime_identity``), ``# Project Context`` and the dynamic block
+        (HEARTBEAT.md), joined without a cache boundary. Unlike upstream, the
+        Workspace Files lines are left out when no file is injected.
+        """
+        files = [ContextFile(path, content) for path, content in self.sections]
+        stable_text, dynamic_text = render_project_context(files, self.layout)
+        return render_workspace_prompt(
+            bootstrap_text=self.bootstrap_text,
+            workspace_files_text=render_workspace_files_injected(runtime_identity) if files else "",
+            stable_text=stable_text,
+            dynamic_text=dynamic_text,
+        )
 
 
 @dataclass
 class LiveIdentityStore:
     identity_dir: Path
     required_files: tuple[str, ...] = ()
-    max_chars_per_file: int | None = None
+    max_chars_per_file: int | None = DEFAULT_BOOTSTRAP_MAX_CHARS
+    total_max_chars: int | None = DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS
     unknown_files: UnknownIdentityFilePolicy = "ignore"
+    layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT
+    include_agent_memory: bool = False
+    include_heartbeat: bool = True
+    bootstrap_mode: BootstrapMode | None = None
+    path_style: str = "absolute"
     _cached: LiveIdentity | None = None
 
     def __init__(
@@ -111,13 +185,25 @@ class LiveIdentityStore:
         identity_dir: str | Path,
         *,
         required_files: Iterable[str] = (),
-        max_chars_per_file: int | None = None,
+        max_chars_per_file: int | None = DEFAULT_BOOTSTRAP_MAX_CHARS,
+        total_max_chars: int | None = DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
         unknown_files: UnknownIdentityFilePolicy = "ignore",
+        layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT,
+        include_agent_memory: bool = False,
+        include_heartbeat: bool = True,
+        bootstrap_mode: BootstrapMode | None = None,
+        path_style: str = "absolute",
     ):
         self.identity_dir = Path(identity_dir)
         self.required_files = tuple(required_files)
         self.max_chars_per_file = max_chars_per_file
+        self.total_max_chars = total_max_chars
         self.unknown_files = unknown_files
+        self.layout = layout
+        self.include_agent_memory = include_agent_memory
+        self.include_heartbeat = include_heartbeat
+        self.bootstrap_mode = bootstrap_mode
+        self.path_style = path_style
         self._cached = None
 
     def load(self) -> LiveIdentity:
@@ -130,7 +216,13 @@ class LiveIdentityStore:
             self.identity_dir,
             required_files=self.required_files,
             max_chars_per_file=self.max_chars_per_file,
+            total_max_chars=self.total_max_chars,
             unknown_files=self.unknown_files,
+            layout=self.layout,
+            include_agent_memory=self.include_agent_memory,
+            include_heartbeat=self.include_heartbeat,
+            bootstrap_mode=self.bootstrap_mode,
+            path_style=self.path_style,
         )
         return self._cached
 
@@ -266,7 +358,7 @@ class SubjectMemory:
         runtime_context = _build_runtime_context(context)
         identity_mode = OPENCLAW_COMPAT_RUNTIME_IDENTITY if openclaw_compatible else MEMORY_CORE_RUNTIME_IDENTITY
         system_parts = [
-            identity.to_prompt_section() if identity is not None else "",
+            identity.to_prompt_section(identity_mode) if identity is not None else "",
             "## Recalled Subject Memory\n" + memory_context if memory_context else "",
             build_runtime_context_system_context(runtime_context, identity=identity_mode)
             if runtime_context
@@ -595,33 +687,47 @@ def _resolve_subject_workspace(
     return Path(workspace)
 
 
-def _validate_required_identity_files(root: Path, required_files: Iterable[str]) -> None:
+def _validate_required_identity_files(
+    root: Path, required_files: Iterable[str], layout: WorkspaceLayout
+) -> None:
+    names = frozenset(layout.load_order)
     missing = [
         filename
         for filename in required_files
-        if filename not in IDENTITY_FILE_NAMES or not (root / filename).is_file()
+        if filename not in names or not (root / filename).is_file()
     ]
     if missing:
         raise IdentityLoadError(f"missing required workspace files: {', '.join(sorted(missing))}")
 
 
-def _validate_unknown_identity_files(root: Path, policy: UnknownIdentityFilePolicy) -> None:
+def _validate_unknown_identity_files(
+    root: Path, policy: UnknownIdentityFilePolicy, layout: WorkspaceLayout
+) -> None:
     if policy == "ignore" or not root.is_dir():
         return
     if policy != "error":
         raise IdentityLoadError(f"unknown identity file policy: {policy}")
-    unknown = sorted(path.name for path in root.glob("*.md") if path.name not in IDENTITY_FILE_NAMES)
+    # Root-level Markdown files only; folders (user/, workspace/, memory/,
+    # skills/, subjects/) are never workspace bootstrap files.
+    allowed = frozenset(layout.load_order) | NON_INJECTED_WORKSPACE_FILES
+    unknown = sorted(
+        path.name
+        for path in root.iterdir()
+        if path.name.endswith(".md") and path.is_file() and path.name not in allowed
+    )
     if unknown:
         raise IdentityLoadError(f"unknown workspace files: {', '.join(unknown)}")
 
 
-def _truncate_identity_text(text: str, max_chars: int | None) -> str:
-    if max_chars is None or max_chars <= 0 or len(text) <= max_chars:
-        return text
-    suffix = "\n\n[truncated]"
-    if max_chars <= len(suffix):
-        return text[:max_chars]
-    return f"{text[: max_chars - len(suffix)].rstrip()}{suffix}"
+def _resolve_char_limit(value: int | float | None, default: int) -> int:
+    # resolveBootstrapMaxChars / resolveBootstrapTotalMaxChars
+    # (src/agents/embedded-agent-helpers/bootstrap.ts:120-145): a finite positive
+    # number is floored, anything else falls back to the default.
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return default
+    if not math.isfinite(value) or value <= 0:
+        return default
+    return math.floor(value)
 
 
 def _record_trace_event(
@@ -805,6 +911,7 @@ def _pop_complete_sentences(buffer: str) -> tuple[list[str], str]:
 
 __all__ = [
     "IDENTITY_FILE_ORDER",
+    "NON_INJECTED_WORKSPACE_FILES",
     "IdentityLoadError",
     "JsonlTraceSink",
     "LIVE_TURN_COMPLETED",

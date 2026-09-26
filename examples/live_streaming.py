@@ -5,7 +5,14 @@ from collections.abc import AsyncIterator
 import json
 from pathlib import Path
 
-from memory_core import JsonlTraceSink, LiveIdentityStore, LiveSDKConfig, LiveTurnContext, SubjectMemory
+from memory_core import (
+    JsonlTraceSink,
+    LiveIdentityStore,
+    LiveSDKConfig,
+    LiveTurnContext,
+    SubjectMemory,
+    initialize_agent_workspace,
+)
 
 
 async def fake_streaming_llm(messages: list[dict[str, str]]) -> AsyncIterator[str]:
@@ -86,19 +93,20 @@ async def record_session_summary(workspace_dir: str | Path) -> str:
 
 
 def seed_identity(workspace_dir: str | Path) -> None:
-    root = Path(workspace_dir)
-    root.mkdir(parents=True, exist_ok=True)
-    (root / "AGENTS.md").write_text(
-        "You are a concise live support agent. Verify identity before changing account data.",
-        encoding="utf-8",
-    )
-    (root / "SOUL.md").write_text(
-        "Use short, clear turns suitable for text-to-speech.",
-        encoding="utf-8",
-    )
-    (root / "TOOLS.md").write_text(
-        "Tool calls are owned by the host runtime.",
-        encoding="utf-8",
+    # Seed the default (memory-core) layout with this example's own text. Files without
+    # a template are created empty and are not injected; seed_bootstrap=False
+    # skips BOOTSTRAP.md because a live host has no first-run ritual.
+    initialize_agent_workspace(
+        workspace_dir,
+        templates={
+            "AGENTS.md": (
+                "You are a concise live support agent. "
+                "Verify identity before changing account data.\n"
+            ),
+            "SOUL.md": "Use short, clear turns suitable for text-to-speech.\n",
+            "TOOLS.md": "Tool calls are owned by the host runtime.\n",
+        },
+        seed_bootstrap=False,
     )
 
 

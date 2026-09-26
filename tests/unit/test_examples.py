@@ -4,7 +4,7 @@ from pathlib import Path
 import examples.basic_usage as basic_usage
 import examples.chatbot_memory as chatbot_memory
 import examples.live_streaming as live_streaming
-from memory_core import Memory
+from memory_core import LiveIdentityStore, Memory
 from memory_core.embeddings.base import FakeEmbeddingProvider
 
 
@@ -145,6 +145,19 @@ def test_live_streaming_example_emits_tts_sentences(tmp_path: Path):
         "Once kimliginizi dogrulayalim.",
     ]
     assert (tmp_path / "trace" / "session_456.jsonl").exists()
+
+
+def test_live_streaming_example_seeds_the_default_layout(tmp_path: Path):
+    live_streaming.seed_identity(tmp_path)
+
+    identity = LiveIdentityStore(tmp_path, required_files=["AGENTS.md"]).load()
+    prompt = identity.to_prompt_section()
+
+    assert not (tmp_path / "BOOTSTRAP.md").exists()
+    assert (tmp_path / "PROACTIVE_PREFERENCES.md").read_text(encoding="utf-8") == ""
+    assert [Path(path).name for path, _ in identity.sections] == ["AGENTS.md", "SOUL.md", "TOOLS.md"]
+    assert "[MISSING]" not in prompt
+    assert "Bootstrap Pending" not in prompt
 
 
 def test_live_streaming_example_records_session_summary(tmp_path: Path):

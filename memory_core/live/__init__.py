@@ -4,7 +4,6 @@ from collections.abc import AsyncIterable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 import inspect
 import json
-import math
 from pathlib import Path
 import re
 from typing import Any, Literal, Protocol
@@ -146,8 +145,9 @@ class LiveIdentity:
             bootstrap_mode=bootstrap_mode,
             has_bootstrap_file_access=has_bootstrap_file_access,
             is_canonical_workspace=is_canonical_workspace,
-            max_chars=_resolve_char_limit(max_chars_per_file, DEFAULT_BOOTSTRAP_MAX_CHARS),
-            total_max_chars=_resolve_char_limit(total_max_chars, DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS),
+            # build_workspace_context applies resolveBootstrapMaxChars semantics.
+            max_chars=max_chars_per_file,
+            total_max_chars=total_max_chars,
             path_style=path_style,
         )
         return cls(
@@ -742,17 +742,6 @@ def _validate_unknown_identity_files(
     )
     if unknown:
         raise IdentityLoadError(f"unknown workspace files: {', '.join(unknown)}")
-
-
-def _resolve_char_limit(value: int | float | None, default: int) -> int:
-    # resolveBootstrapMaxChars / resolveBootstrapTotalMaxChars
-    # (src/agents/embedded-agent-helpers/bootstrap.ts:120-145): a finite positive
-    # number is floored, anything else falls back to the default.
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return default
-    if not math.isfinite(value) or value <= 0:
-        return default
-    return math.floor(value)
 
 
 def _record_trace_event(

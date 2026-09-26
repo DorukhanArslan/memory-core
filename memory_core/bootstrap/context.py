@@ -35,6 +35,7 @@ from memory_core.bootstrap.budget import (
     build_bootstrap_injection_stats,
     build_bootstrap_prompt_warning,
     build_bootstrap_prompt_warning_notice,
+    resolve_bootstrap_char_limit,
 )
 from memory_core.bootstrap.files import (
     BootstrapContextMode,
@@ -139,8 +140,8 @@ def build_workspace_context(
     is_interactive_user_facing: bool = True,
     has_bootstrap_file_access: bool = True,
     is_canonical_workspace: bool = True,
-    max_chars: int = DEFAULT_BOOTSTRAP_MAX_CHARS,
-    total_max_chars: int = DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
+    max_chars: int | None = DEFAULT_BOOTSTRAP_MAX_CHARS,
+    total_max_chars: int | None = DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
     truncation_warning_mode: BootstrapPromptWarningMode = "always",
     seen_truncation_signatures: Iterable[str] = (),
     path_style: str = "absolute",
@@ -162,7 +163,9 @@ def build_workspace_context(
     the run works in a different directory than the workspace root (upstream:
     ``effectiveWorkspace !== resolvedWorkspace``). ``path_style="absolute"``
     renders upstream's absolute paths, ``"relative"`` renders root-relative
-    POSIX paths.
+    POSIX paths. ``max_chars`` / ``total_max_chars`` are resolved like
+    upstream's config (``resolveBootstrapMaxChars``): ``None`` or a value
+    ``<= 0`` falls back to 20,000 / 60,000, others are floored.
 
     ``exclude_files`` names basenames the host keeps out of this turn (host
     policy, no upstream equivalent). They are dropped after the session and run
@@ -170,6 +173,10 @@ def build_workspace_context(
     truncation warning; ``memory_core.live`` uses it to keep the agent's MEMORY.md
     out of subject prompts.
     """
+    max_chars = resolve_bootstrap_char_limit(max_chars, DEFAULT_BOOTSTRAP_MAX_CHARS)
+    total_max_chars = resolve_bootstrap_char_limit(
+        total_max_chars, DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS
+    )
     effective_run_kind = run_kind or _default_run_kind(session_kind)
     status = resolve_bootstrap_status(root, layout)
     setup_completed = is_workspace_setup_completed(root)

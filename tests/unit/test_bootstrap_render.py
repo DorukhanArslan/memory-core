@@ -376,3 +376,26 @@ def test_live_identity_assumes_no_read_tool_unless_the_host_says_so(tmp_path: Pa
     assert BOOTSTRAP_LIMITED_INTRO_LINE in default.bootstrap_text
     assert "BOOTSTRAP.md" not in dict(default.sections)
     assert BOOTSTRAP_READ_FILE_LINE in with_read.bootstrap_text
+
+
+def test_workspace_context_resolves_char_limits_like_upstream_config(tmp_path: Path):
+    from memory_core.bootstrap import resolve_bootstrap_char_limit
+
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "USER.md").write_text("u" * 25_000, encoding="utf-8")
+
+    def user_length(**kwargs):
+        context = build_workspace_context(
+            root, layout=OPENCLAW_PIN_LAYOUT, path_style="relative", **kwargs
+        )
+        return len(dict((file.path, file.content) for file in context.files)["USER.md"])
+
+    default_length = user_length()
+    assert 19_000 < default_length <= 20_000
+    # resolveBootstrapMaxChars (bootstrap.ts:120-145): not a finite number > 0 -> default.
+    for value in (None, 0, -5, float("nan"), float("inf"), True):
+        assert resolve_bootstrap_char_limit(value, 20_000) == 20_000
+        assert user_length(max_chars=value, total_max_chars=value) == default_length
+    assert resolve_bootstrap_char_limit(300.9, 20_000) == 300
+    assert user_length(max_chars=300.9) == user_length(max_chars=300) <= 300

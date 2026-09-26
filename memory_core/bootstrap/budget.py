@@ -326,6 +326,20 @@ def clamp_to_budget(content: str, budget: int) -> str:
     return f"{truncate_utf16_safe(content, budget - 1)}…"
 
 
+def resolve_bootstrap_char_limit(value: object, default: int) -> int:
+    """Port of ``resolveBootstrapMaxChars`` / ``resolveBootstrapTotalMaxChars``.
+
+    ``bootstrap.ts:120-145``: a finite number above 0 is floored; anything else
+    (``None``, 0, a negative value, NaN, infinity, a non-number) falls back to
+    ``default``. Upstream reads the value from agent config; hosts pass it here.
+    """
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return default
+    if not math.isfinite(value) or value <= 0:
+        return default
+    return math.floor(value)
+
+
 @dataclass(frozen=True)
 class BootstrapContextFilesResult:
     files: tuple[ContextFile, ...]

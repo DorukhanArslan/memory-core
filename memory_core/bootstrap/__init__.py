@@ -33,6 +33,7 @@ from memory_core.bootstrap.budget import (
     build_bootstrap_prompt_warning_notice,
     clamp_to_budget,
     format_bootstrap_truncation_warning_lines,
+    resolve_bootstrap_char_limit,
     trim_bootstrap_content,
 )
 from memory_core.bootstrap.context import WorkspaceContext, build_workspace_context
@@ -124,6 +125,7 @@ __all__ = [
     "render_project_context",
     "render_workspace_files_injected",
     "render_workspace_prompt",
+    "resolve_bootstrap_char_limit",
     "resolve_bootstrap_mode",
     "resolve_context_injection",
     "should_apply_startup_context",

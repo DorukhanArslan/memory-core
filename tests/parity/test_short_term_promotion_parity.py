@@ -200,8 +200,8 @@ def test_promotion_run_returns_locked_result_when_lock_is_active(tmp_path: Path)
             timezone="Europe/Istanbul",
         )
 
-    assert run.parsed.should_write is False
-    assert run.parsed.reason == "promotion locked"
+    assert run.outcome.should_write is False
+    assert run.outcome.reason == "promotion locked"
 
 
 def test_audit_reports_unreadable_recall_store(tmp_path: Path):
@@ -638,7 +638,7 @@ def test_promotion_run_reconciles_existing_marker_without_duplicate_append(tmp_p
         min_unique_queries=1,
     )
 
-    assert run.parsed.should_write is False
+    assert run.outcome.should_write is False
     assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == existing_memory
     recall_store = json.loads(
         (tmp_path / "memory" / ".dreams" / "short-term-recall.json").read_text(encoding="utf-8")
@@ -682,7 +682,7 @@ def test_promotion_run_parses_spaced_case_insensitive_marker_like_openclaw(tmp_p
         min_unique_queries=0,
     )
 
-    assert run.parsed.should_write is False
+    assert run.outcome.should_write is False
     assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == existing_memory
     recall_store = json.loads(
         (tmp_path / "memory" / ".dreams" / "short-term-recall.json").read_text(encoding="utf-8")
@@ -748,7 +748,7 @@ def test_promotion_run_compacts_oldest_promotion_section_when_memory_budget_exce
     )
     memory_text = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
 
-    assert run.parsed.should_write is True
+    assert run.outcome.should_write is True
     assert "User-authored note that must stay." in memory_text
     assert "(2026-04-10)" not in memory_text
     assert "legacy-old" not in memory_text
@@ -794,7 +794,7 @@ def test_promotion_run_leaves_memory_unchanged_before_append_when_budget_fits(tm
     )
     memory_text = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
 
-    assert run.parsed.should_write is True
+    assert run.outcome.should_write is True
     assert memory_text.startswith(seeded_memory)
     assert "Some small existing content." in memory_text
     assert "A short snippet that fits comfortably." in memory_text
@@ -852,7 +852,7 @@ def test_promotion_run_drops_all_old_promotion_sections_when_budget_cannot_fit_o
     )
     memory_text = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
 
-    assert run.parsed.should_write is True
+    assert run.outcome.should_write is True
     assert "(2026-04-10)" not in memory_text
     assert "(2026-04-15)" not in memory_text
     assert "(2026-04-20)" not in memory_text
@@ -891,7 +891,7 @@ def test_first_promotion_write_bootstraps_long_term_memory_header_like_openclaw(
         min_unique_queries=0,
     )
 
-    assert run.parsed.should_write is True
+    assert run.outcome.should_write is True
     assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8").startswith(
         "# Long-Term Memory\n\n\n## Promoted From Short-Term Memory (2026-05-08)"
     )
@@ -945,9 +945,9 @@ def test_second_promotion_apply_reconciles_existing_marker_without_duplicate_lik
         identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     )
 
-    assert first.parsed.should_write is True
-    assert second.parsed.should_write is False
-    assert "appending 0; reconciled 1" in second.raw_text
+    assert first.outcome.should_write is True
+    assert second.outcome.should_write is False
+    assert "appending 0; reconciled 1" in second.summary
     assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == memory_after_first
     assert memory_after_first.count("openclaw-memory-promotion:") == 1
     assert memory_after_first.count("Move backups to S3 Glacier.") == 1
@@ -1168,7 +1168,7 @@ def test_promotion_run_skips_candidate_when_live_daily_note_no_longer_contains_s
     )
 
     assert len(candidates) == 1
-    assert run.parsed.should_write is False
+    assert run.outcome.should_write is False
     assert not (tmp_path / "MEMORY.md").exists()
     recall_store = json.loads(
         (tmp_path / "memory" / ".dreams" / "short-term-recall.json").read_text(encoding="utf-8")
@@ -1213,7 +1213,7 @@ def test_promotion_header_uses_dreaming_timezone_like_openclaw(tmp_path: Path):
         min_unique_queries=0,
     )
 
-    assert run.parsed.should_write is True
+    assert run.outcome.should_write is True
     assert "Promoted From Short-Term Memory (2026-04-01)" in (
         tmp_path / "MEMORY.md"
     ).read_text(encoding="utf-8")

@@ -160,8 +160,8 @@ class PromotionWriteOutcome:
 class MemoryPromotionRun:
     """Result of :func:`run_short_term_promotion`.
 
-    ``parsed`` holds the write outcome (field name kept from the demo flush
-    result it mirrors); ``diff`` is a unified diff of MEMORY.md;
+    ``summary`` is a one-line account of the run, ``outcome`` the write
+    outcome; ``diff`` is a unified diff of MEMORY.md;
     ``evaluated_candidates`` lists every live entry with its gate reasons.
     ``applied_candidates``, ``appended``, ``reconciled_existing`` and
     ``compacted_dates`` mirror upstream ``ApplyShortTermPromotionsResult``
@@ -170,8 +170,8 @@ class MemoryPromotionRun:
     """
 
     target: str
-    raw_text: str
-    parsed: PromotionWriteOutcome
+    summary: str
+    outcome: PromotionWriteOutcome
     diff: str
     indexed_files: int
     chunks: int
@@ -220,8 +220,8 @@ def run_short_term_promotion(
         if not lock.acquired:
             return MemoryPromotionRun(
                 target=PROMOTION_TARGET,
-                raw_text="short-term promotion skipped: locked",
-                parsed=PromotionWriteOutcome(
+                summary="short-term promotion skipped: locked",
+                outcome=PromotionWriteOutcome(
                     should_write=False,
                     target=PROMOTION_TARGET,
                     entry="",
@@ -419,7 +419,7 @@ def _run_short_term_promotion_unlocked(
     to_append = [
         candidate for candidate in rehydrated_candidates if candidate.key not in existing_markers
     ]
-    raw_text = (
+    summary = (
         f"ranked {len(candidates)} short-term promotion candidate(s); "
         f"evaluated {len(evaluations)} candidate(s); "
         f"rehydrated {len(rehydrated_candidates)}; "
@@ -446,14 +446,14 @@ def _run_short_term_promotion_unlocked(
                 indexed_files = store.reindex(workspace)
             except Exception as exc:
                 reindex_error = exception_message(exc)
-        parsed = PromotionWriteOutcome(
+        outcome = PromotionWriteOutcome(
             should_write=bool(to_append),
             target=target,
             entry=entry.strip(),
             reason="short-term promotion" if to_append else "short-term promotion reconciled",
         )
     else:
-        parsed = PromotionWriteOutcome(
+        outcome = PromotionWriteOutcome(
             should_write=False,
             target=target,
             entry="",
@@ -462,8 +462,8 @@ def _run_short_term_promotion_unlocked(
     after = read_text_if_exists(target_path)
     return MemoryPromotionRun(
         target=target,
-        raw_text=raw_text,
-        parsed=parsed,
+        summary=summary,
+        outcome=outcome,
         diff=unified_diff(before, after, target),
         indexed_files=indexed_files,
         chunks=store.count_chunks(),

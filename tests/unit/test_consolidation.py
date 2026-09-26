@@ -135,7 +135,7 @@ def test_promotion_append_delegates_budget_compaction_to_memory_budget(
         memory_file_max_chars=4_000,
     )
 
-    assert run.parsed.should_write is True
+    assert run.outcome.should_write is True
     assert [call["budget_chars"] for call in calls] == [4_000]
     assert calls[0]["existing_memory"] == "# MEMORY.md\n"
 

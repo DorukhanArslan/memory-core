@@ -1095,3 +1095,13 @@ def test_identity_file_names_alias_stays_exported():
     from memory_core.live import IDENTITY_FILE_NAMES
 
     assert IDENTITY_FILE_NAMES == frozenset(MEMORY_CORE_WORKSPACE_LAYOUT.load_order)
+
+
+def test_session_summary_skip_reasons_are_a_closed_literal():
+    import typing
+
+    import memory_core
+    from memory_core.live import SessionSummarySkipReason
+
+    assert typing.get_args(SessionSummarySkipReason) == ("silent", "empty", "unstructured")
+    assert memory_core.SessionSummarySkipReason is SessionSummarySkipReason

@@ -150,7 +150,7 @@ def run_dreaming_sweep(
             identity=identity,
             **gates,
         )
-        if promotion.parsed.should_write:
+        if promotion.outcome.should_write:
             files_changed.append(promotion.target)
 
     return DreamingSweepResult(
@@ -167,13 +167,13 @@ def serialize_promotion_run(run: MemoryPromotionRun) -> dict[str, Any]:
     """JSON-ready summary of a promotion run (camelCase keys, candidate count only)."""
     return {
         "target": run.target,
-        "rawText": run.raw_text,
+        "rawText": run.summary,
         "parsed": {
-            "shouldWrite": run.parsed.should_write,
-            "target": run.parsed.target,
-            "entry": run.parsed.entry,
-            "reason": run.parsed.reason,
-            "error": run.parsed.error,
+            "shouldWrite": run.outcome.should_write,
+            "target": run.outcome.target,
+            "entry": run.outcome.entry,
+            "reason": run.outcome.reason,
+            "error": run.outcome.error,
         },
         "diff": run.diff,
         "indexedFiles": run.indexed_files,

@@ -124,7 +124,7 @@ def test_deep_dreaming_runs_promotion(tmp_path: Path):
     )
 
     assert run.phase == "deep"
-    assert run.promotion.parsed.should_write is True
+    assert run.promotion.outcome.should_write is True
     assert "lowercase answers" in (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
 
 
@@ -180,7 +180,7 @@ def test_deep_dreaming_keeps_durable_user_preference_behind_openclaw_score_gate(
     )
 
     assert run.phase == "deep"
-    assert run.promotion.parsed.should_write is False
+    assert run.promotion.outcome.should_write is False
     assert "Kudret" not in memory.read_text(encoding="utf-8")
 
 
@@ -228,7 +228,7 @@ def test_deep_dreaming_rejects_three_signal_durable_preference_like_openclaw(tmp
     )
 
     assert run.phase == "deep"
-    assert run.promotion.parsed.should_write is False
+    assert run.promotion.outcome.should_write is False
     assert "Kudret" not in memory.read_text(encoding="utf-8")
 
 
@@ -248,5 +248,5 @@ def test_deep_dreaming_does_not_promote_single_weak_recall(tmp_path: Path):
     )
 
     assert run.phase == "deep"
-    assert run.promotion.parsed.should_write is False
+    assert run.promotion.outcome.should_write is False
     assert memory.read_text(encoding="utf-8") == "# MEMORY.md\n"

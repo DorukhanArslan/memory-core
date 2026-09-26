@@ -1045,7 +1045,7 @@ def test_short_term_promotion_writes_repeated_recalls_to_memory_md():
     )
 
     memory_text = (config.workspace_dir / "MEMORY.md").read_text(encoding="utf-8")
-    assert promotion.parsed.should_write is True
+    assert promotion.outcome.should_write is True
     assert promotion.target == "MEMORY.md"
     assert "Promoted From Short-Term Memory" in memory_text
     assert "User was fired from work." in memory_text

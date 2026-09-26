@@ -78,6 +78,9 @@ LiveTurnEventType = Literal[
 ]
 UnknownIdentityFilePolicy = Literal["ignore", "error"]
 SentenceBoundaryPolicy = Literal["punctuation"]
+# Why record_session_summary wrote nothing: NO_REPLY, nothing left after
+# sanitization, or neither a JSON object nor a bullet list.
+SessionSummarySkipReason = Literal["silent", "empty", "unstructured"]
 SubjectPathBuilder = Callable[[Path, str], Path]
 
 
@@ -308,9 +311,8 @@ class SessionSummaryResult:
     durable_facts: tuple[str, ...] = ()
     preferences: tuple[str, ...] = ()
     follow_ups: tuple[str, ...] = ()
-    # Why nothing was written: "silent" (NO_REPLY), "empty" (nothing left after
-    # sanitization) or "unstructured" (neither a JSON object nor a bullet list).
-    skip_reason: str | None = None
+    # None when something was written; see SessionSummarySkipReason.
+    skip_reason: SessionSummarySkipReason | None = None
 
 
 class TraceSink(Protocol):
@@ -1002,7 +1004,7 @@ def _session_summary_payload(
     durable_facts: tuple[str, ...] = (),
     preferences: tuple[str, ...] = (),
     follow_ups: tuple[str, ...] = (),
-    skip_reason: str | None = None,
+    skip_reason: SessionSummarySkipReason | None = None,
 ) -> dict[str, Any]:
     # Nothing to write without a stated reason is "empty".
     if not memory_text and skip_reason is None:
@@ -1161,6 +1163,7 @@ __all__ = [
     "SESSION_SUMMARY_SKIPPED",
     "SESSION_SUMMARY_STARTED",
     "SessionSummaryResult",
+    "SessionSummarySkipReason",
     "SentenceBoundaryPolicy",
     "SubjectConsolidation",
     "SubjectMemory",

@@ -438,8 +438,8 @@ def _serialize_flush(flush: MemoryFlushRun) -> dict[str, Any]:
 def _serialize_promotion(promotion: MemoryPromotionRun) -> dict[str, Any]:
     return {
         "target": promotion.target,
-        "rawText": promotion.raw_text,
-        "parsed": _serialize_parsed_flush(promotion.parsed),
+        "rawText": promotion.summary,
+        "parsed": _serialize_parsed_flush(promotion.outcome),
         "diff": promotion.diff,
         "indexedFiles": promotion.indexed_files,
         "chunks": promotion.chunks,

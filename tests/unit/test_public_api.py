@@ -135,3 +135,25 @@ def test_public_api_exports_workspace_bootstrap_surface(tmp_path):
     assert result.bootstrap_status == "pending"
     context = memory.build_workspace_context(tmp_path / "ws")
     assert context.files == ()
+
+
+def test_public_api_exports_scored_consolidation_surface():
+    expected = {
+        "DeepDreamingPolicy",
+        "DreamingSweepResult",
+        "MemoryPromotionRun",
+        "SubjectConsolidation",
+        "SubjectPromotionDisabledError",
+        "audit_short_term_promotion_artifacts",
+        "record_daily_memory_flush",
+        "record_short_term_recalls",
+        "repair_short_term_promotion_artifacts",
+        "resolve_deep_dreaming_policy",
+        "run_dreaming_sweep",
+        "run_short_term_promotion",
+    }
+
+    assert expected.issubset(set(memory.__all__))
+    for name in expected:
+        assert hasattr(memory, name)
+    assert memory.FeatureFlags().subject_promotion is False

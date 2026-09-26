@@ -25,6 +25,7 @@ from memory_core.client import Memory
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.flags import FeatureFlags
+from memory_core.live.consolidation import SubjectConsolidation, SubjectPromotionDisabledError
 from memory_core.memory_flush import SILENT_REPLY_TOKEN, build_memory_flush_plan
 from memory_core.runtime_context_prompt import build_runtime_context_system_context
 from memory_core.runtime_identity import (
@@ -346,7 +347,13 @@ class SubjectMemory:
         config: MemoryConfig | None = None,
         initialize: bool = True,
         reindex: bool = True,
+        flags: FeatureFlags | None = None,
     ) -> "SubjectMemory":
+        # ``flags`` replaces the default flags of the subject's own config (FTS-only
+        # without a provider); pass it instead of a shared ``config`` to keep the
+        # config's workspace the subject's directory.
+        if flags is not None and config is not None:
+            raise ValueError("pass flags inside config, or flags without config")
         safe_subject_id = _validate_safe_id(subject_id, label="subject_id")
         workspace = _resolve_subject_workspace(
             Path(workspace_dir),
@@ -354,9 +361,10 @@ class SubjectMemory:
             namespace=namespace,
             subject_path_builder=subject_path_builder,
         )
+        default_flags = None if embedding_provider is not None else FeatureFlags(vector_search=False)
         resolved_config = config or MemoryConfig(
             workspace_dir=workspace,
-            flags=None if embedding_provider is not None else FeatureFlags(vector_search=False),
+            flags=flags if flags is not None else default_flags,
         )
         memory = Memory.from_workspace(
             workspace,
@@ -956,8 +964,10 @@ __all__ = [
     "SESSION_SUMMARY_STARTED",
     "SessionSummaryResult",
     "SentenceBoundaryPolicy",
+    "SubjectConsolidation",
     "SubjectMemory",
     "SubjectPathBuilder",
+    "SubjectPromotionDisabledError",
     "TEXT_DELTA",
     "TraceSink",
     "LiveTurnContext",

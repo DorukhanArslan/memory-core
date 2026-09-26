@@ -16,6 +16,7 @@ timezone, ``dedupeByQueryPerDay``/``claimHash`` grounding and the
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from memory_core.config import MemoryConfig
@@ -218,6 +219,27 @@ def record_daily_memory_flush(
         now_ms=now_ms,
         signal_type="daily",
     )
+
+
+def undecorate_search_results(results: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Return ``memory_search`` hits without the citation suffix of their snippets.
+
+    ``memory_core.tools.memory_search`` appends ``"\n\nSource: <path>#L<a>-L<b>"`` to each
+    snippet when citations are on (upstream ``decorateCitations``); upstream
+    records the raw hits (``tools.ts`` ``queueShortTermRecallTracking``), so the
+    suffix is removed before recording.
+    """
+    undecorated = []
+    for result in results:
+        item = dict(result)
+        snippet = item.get("snippet")
+        citation = item.get("citation")
+        if isinstance(snippet, str) and isinstance(citation, str) and citation:
+            suffix = f"\n\n{citation}"
+            if snippet.endswith(suffix):
+                item["snippet"] = snippet[: -len(suffix)]
+        undecorated.append(item)
+    return undecorated
 
 
 def is_contaminated_dreaming_snippet(raw: str) -> bool:

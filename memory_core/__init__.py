@@ -2,7 +2,9 @@
 
 The package root exposes the stable, plug-and-play memory-core surface. Runtime
 parity helpers remain available from their modules and selected helpers are
-re-exported here when they are useful for host integrations. OpenClaw remains
+re-exported here when they are useful for host integrations. Scored
+consolidation (short-term recall, promotion, dreaming) lives in
+``memory_core.consolidation``; its entry points are re-exported here. OpenClaw remains
 the upstream parity target for source-backed and oracle-backed behavior.
 """
 
@@ -35,6 +37,19 @@ from memory_core.client import (
     initialize_memory_core_workspace,
 )
 from memory_core.config import MemoryConfig
+from memory_core.consolidation import (
+    DeepDreamingPolicy,
+    DreamingSweepResult,
+    MemoryPromotionRun,
+    audit_short_term_promotion_artifacts,
+    record_daily_memory_flush,
+    record_short_term_recalls,
+    repair_short_term_promotion_artifacts,
+    resolve_deep_dreaming_policy,
+    run_dreaming_sweep,
+    run_short_term_promotion,
+)
+from memory_core.live.consolidation import SubjectConsolidation, SubjectPromotionDisabledError
 from memory_core.embeddings import (
     EmbeddingProvider,
     FakeEmbeddingProvider,
@@ -169,6 +184,18 @@ __all__ = [
     "build_workspace_context",
     "initialize_agent_workspace",
     "load_workspace_bootstrap_files",
+    "DeepDreamingPolicy",
+    "DreamingSweepResult",
+    "MemoryPromotionRun",
+    "SubjectConsolidation",
+    "SubjectPromotionDisabledError",
+    "audit_short_term_promotion_artifacts",
+    "record_daily_memory_flush",
+    "record_short_term_recalls",
+    "repair_short_term_promotion_artifacts",
+    "resolve_deep_dreaming_policy",
+    "run_dreaming_sweep",
+    "run_short_term_promotion",
     "DEFAULT_CHAT_SYSTEM_PROMPT",
     "DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES",
     "DEFAULT_MEMORY_FLUSH_SOFT_TOKENS",

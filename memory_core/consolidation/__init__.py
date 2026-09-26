@@ -72,6 +72,7 @@ from memory_core.consolidation.recall import (
     record_daily_memory_flush,
     record_short_term_phase_signals,
     record_short_term_recalls,
+    undecorate_search_results,
 )
 from memory_core.consolidation.store import (
     SHORT_TERM_LOCK_RELATIVE_PATH,
@@ -136,4 +137,5 @@ __all__ = [
     "run_dreaming_sweep",
     "run_short_term_promotion",
     "serialize_promotion_run",
+    "undecorate_search_results",
 ]

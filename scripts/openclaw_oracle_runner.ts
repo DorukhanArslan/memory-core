@@ -1393,6 +1393,71 @@ async function main() {
     };
   }
 
+  if (payload.operation === "sessionMemoryTranscript") {
+    // src/hooks/bundled/session-memory/transcript.ts exports:
+    // sanitizeSessionMemoryTranscriptText, getRecentSessionContent,
+    // getRecentSessionContentWithResetFallback and findPreviousSessionFile. Case kinds:
+    // "sanitize" {text}; "recent" {content, messageCount?} (content is the raw file text,
+    // null for a missing file); "resetFallback" {files, target, messageCount?};
+    // "findPrevious" {files, currentSessionFile?, sessionId?} (names inside the sessions
+    // dir; the result is relative to it).
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-session-memory-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    try {
+      const transcript = await importFromRepo(
+        repoPath,
+        "src/hooks/bundled/session-memory/transcript.ts",
+      );
+      const writeFiles = async (dir: string, files: Record<string, string> | undefined) => {
+        await fs.mkdir(dir, { recursive: true });
+        for (const [name, content] of Object.entries(files ?? {})) {
+          if (name.includes("/") || name.includes("\\")) {
+            throw new Error(`invalid session fixture name: ${name}`);
+          }
+          await fs.writeFile(path.join(dir, name), content, "utf-8");
+        }
+      };
+      const results = [];
+      for (const [index, item] of (payload.cases ?? []).entries()) {
+        const dir = path.join(sandbox, `case-${index}`, "sessions");
+        const count = typeof item.messageCount === "number" ? item.messageCount : undefined;
+        if (item.kind === "sanitize") {
+          results.push(transcript.sanitizeSessionMemoryTranscriptText(String(item.text)));
+        } else if (item.kind === "recent") {
+          await writeFiles(dir, item.content === null ? {} : { "session.jsonl": item.content });
+          results.push(
+            await transcript.getRecentSessionContent(path.join(dir, "session.jsonl"), count),
+          );
+        } else if (item.kind === "resetFallback") {
+          await writeFiles(dir, item.files);
+          results.push(
+            await transcript.getRecentSessionContentWithResetFallback(
+              path.join(dir, String(item.target)),
+              count,
+            ),
+          );
+        } else if (item.kind === "findPrevious") {
+          await writeFiles(dir, item.files);
+          const found = await transcript.findPreviousSessionFile({
+            sessionsDir: dir,
+            currentSessionFile:
+              typeof item.currentSessionFile === "string"
+                ? path.join(dir, item.currentSessionFile)
+                : undefined,
+            sessionId: item.sessionId ?? undefined,
+          });
+          results.push(found === undefined ? null : path.relative(dir, found));
+        } else {
+          throw new Error(`unsupported sessionMemoryTranscript case: ${item.kind}`);
+        }
+      }
+      return { ok: true, operation: payload.operation, result: { cases: results } };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
   const promotionOperations = new Set([
     "recordShortTermRecalls",
     "recordShortTermRecallSequence",

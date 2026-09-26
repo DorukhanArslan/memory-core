@@ -665,7 +665,9 @@ class SubjectMemory:
                     f"{plan.prompt}\n\n"
                     f"Session memory extraction for session {session_id}.\n"
                     "Extract only durable facts, preferences, and follow-ups. "
-                    "Return only durable memory facts, preferences, and follow-ups when using JSON.\n\n"
+                    "Reply with either a JSON object whose keys durable_facts, preferences "
+                    "and follow_ups each hold a list of strings, or a list of lines that "
+                    "each start with \"- \". Any other reply shape is not stored.\n\n"
                     f"Session transcript:\n{redacted_transcript}"
                 ),
             },
@@ -875,15 +877,23 @@ _SUMMARY_TOOL_CALL_SPAN_RE = re.compile(
     r"<\|?tool_call(?:_begin)?\|?>.*?(?:<\|?/?tool_call(?:_end)?\|?>|\Z)",
     re.DOTALL | re.IGNORECASE,
 )
-# Other special-token markers such as <|im_end|> or <|channel|>: the marker shape
-# of upstream HARMONY_CHANNEL_MARKER_RE (src/auto-reply/tokens.ts).
-_SUMMARY_SPECIAL_TOKEN_RE = re.compile(r"<\w*\|[^<>\n]*>")
+# Special tokens with a pipe on both sides (<|im_end|>, <|channel|>,
+# <|tool_calls_section_begin|>) are removed anywhere; text such as "<A|B>" stays.
+_SUMMARY_SPECIAL_TOKEN_RE = re.compile(r"<\|[A-Za-z0-9_]+\|>")
+# A line that is only a marker is dropped: upstream HARMONY_CHANNEL_MARKER_RE
+# (src/auto-reply/tokens.ts:9 at 4c42815348), applied per line.
+_SUMMARY_MARKER_LINE_RE = re.compile(
+    r"^[ \t]*(?:set-thought\s+)?<[A-Za-z0-9_]*\|[^>\n]*>[ \t]*$", re.MULTILINE
+)
 # A trailing silent token: upstream stripSilentToken (src/auto-reply/tokens.ts).
 _SUMMARY_TRAILING_SILENT_RE = re.compile(
     rf"(?:^|\s+|\*+){re.escape(SILENT_REPLY_TOKEN)}\s*\Z", re.IGNORECASE
 )
 _SUMMARY_CODE_FENCE_RE = re.compile(r"\A```[\w-]*[ \t]*\n(.*?)\n?```\Z", re.DOTALL)
 _SUMMARY_BULLET_RE = re.compile(r"^[-*+]\s+(\S.*)$")
+# Label lines dropped before bullets or JSON: "Preferences:", a Markdown heading
+# ("## Session notes") or a bold label ("**Preferences:**", "**Preferences**:").
+_SUMMARY_LABEL_RE = re.compile(r"^(?:.*:|#{1,6}\s+\S.*|(\*\*|__)\S(?:.*\S)?(?::\1|\1:))$")
 _NOT_JSON = object()
 
 
@@ -892,24 +902,26 @@ def _parse_session_summary_output(raw_text: str) -> dict[str, Any]:
 
     The rule, in order:
 
-    1. Tool-call spans and special-token markers (``<|im_end|>``) are removed.
-       A reply that then starts with ``NO_REPLY`` is ``silent``; a trailing
-       ``NO_REPLY`` is stripped.
-    2. A JSON object (the whole reply, or what follows the preamble lines;
+    1. Tool-call spans, ``<|name|>`` special tokens (``<|im_end|>``) and lines
+       that are only a marker are removed. A reply that then starts with
+       ``NO_REPLY`` is ``silent``; a trailing ``NO_REPLY`` is stripped.
+    2. A JSON object (the whole reply, or what follows the label lines;
        optionally inside a ```` ``` ```` fence) keeps only ``durable_facts``,
        ``preferences`` and ``follow_ups``, one bullet per item with whitespace
        collapsed.
     3. Otherwise the reply must be a bullet list: label lines (non-bullet
-       lines ending with ``:``, such as the preamble ``Appending durable memory
-       to memory/2026-09-26.md:`` or a ``Preferences:`` label) are dropped, and
-       every other non-empty line must start with ``-``, ``*`` or ``+``;
-       bullets are written as ``- <text>``.
-    4. Prose, a non-object JSON value, numbered lists, headings, or bullets
-       mixed with prose are ``unstructured``: nothing is written. Nothing left
-       is ``empty``.
+       lines ending with ``:`` such as the preamble ``Appending durable memory
+       to memory/2026-09-26.md:``, Markdown headings, bold labels such as
+       ``**Preferences:**``) are dropped, an indented line continues the bullet
+       above it, and every other non-empty line must start with ``-``, ``*``
+       or ``+``; bullets are written as ``- <text>``.
+    4. Prose, a non-object JSON value, numbered lists, other bullet glyphs, or
+       bullets mixed with prose are ``unstructured``: nothing is written.
+       Nothing left is ``empty``.
     """
     text = _SUMMARY_TOOL_CALL_SPAN_RE.sub("", raw_text)
-    text = _SUMMARY_SPECIAL_TOKEN_RE.sub("", text).strip()
+    text = _SUMMARY_SPECIAL_TOKEN_RE.sub("", text)
+    text = _SUMMARY_MARKER_LINE_RE.sub("", text).strip()
     if text.startswith(SILENT_REPLY_TOKEN):
         return _session_summary_payload(skip_reason="silent")
     text = _SUMMARY_TRAILING_SILENT_RE.sub("", text).strip()
@@ -940,12 +952,16 @@ def _parse_session_summary_output(raw_text: str) -> dict[str, Any]:
     return _session_summary_payload(memory_text="\n".join(bullets))
 
 
+def _is_summary_label_line(line: str) -> bool:
+    return _SUMMARY_BULLET_RE.match(line) is None and _SUMMARY_LABEL_RE.match(line) is not None
+
+
 def _drop_summary_preamble(text: str) -> str:
     lines = text.splitlines()
     index = 0
     while index < len(lines):
         line = lines[index].strip()
-        if line and (_SUMMARY_BULLET_RE.match(line) or not line.endswith(":")):
+        if line and not _is_summary_label_line(line):
             break
         index += 1
     return "\n".join(lines[index:]).strip()
@@ -961,12 +977,21 @@ def _load_summary_json(text: str) -> Any:
 
 def _summary_bullets(text: str) -> list[str] | None:
     bullets: list[str] = []
+    continues = False
     for line in text.splitlines():
         stripped = line.strip()
         match = _SUMMARY_BULLET_RE.match(stripped)
         if match is not None:
             bullets.append(f"- {_collapse_whitespace(match.group(1))}")
-        elif stripped and not stripped.endswith(":"):
+            continues = True
+        elif not stripped:
+            continues = False
+        elif continues and line[:1] in (" ", "\t"):
+            # A wrapped bullet: the indented line belongs to the bullet above.
+            bullets[-1] = f"{bullets[-1]} {_collapse_whitespace(stripped)}"
+        elif _is_summary_label_line(stripped):
+            continues = False
+        else:
             return None
     return bullets
 

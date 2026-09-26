@@ -562,7 +562,8 @@ def test_record_session_summary_never_writes_prose(tmp_path: Path):
         "Appending durable memory to memory/2026-09-04.md: Subject prefers SMS.",
         '["Subject prefers evening delivery."]',
         "1. Subject prefers evening delivery.",
-        "## Durable facts\n- Subject prefers evening delivery.",
+        "\u2022 Subject prefers evening delivery.",
+        "<think>The user wants SMS.</think>\n- Subject prefers evening delivery.",
     ):
         result, written, record = _summarize(tmp_path, reply)
 
@@ -572,6 +573,54 @@ def test_record_session_summary_never_writes_prose(tmp_path: Path):
         assert written is None
         assert record["type"] == SESSION_SUMMARY_SKIPPED
         assert record["data"]["skip_reason"] == "unstructured"
+
+
+def test_record_session_summary_drops_headings_and_bold_labels(tmp_path: Path):
+    for reply in (
+        "## Session notes\n- Subject prefers SMS.",
+        "**Preferences:**\n- Subject prefers SMS.",
+        "__Preferences__:\n- Subject prefers SMS.",
+        "# Summary\n```json\n{\"durable_facts\": [\"Subject prefers SMS.\"]}\n```",
+    ):
+        result, written, _ = _summarize(tmp_path, reply)
+
+        assert result.wrote is True, reply
+        assert written.endswith("- Subject prefers SMS.\n"), reply
+
+
+def test_record_session_summary_joins_an_indented_continuation_line(tmp_path: Path):
+    reply = "- Subject prefers SMS\n  over email.\n- Subject moved."
+
+    result, written, _ = _summarize(tmp_path, reply)
+
+    assert result.wrote is True
+    assert written == "- Subject prefers SMS over email.\n- Subject moved.\n"
+
+
+def test_record_session_summary_keeps_pipe_text_that_is_not_a_special_token(tmp_path: Path):
+    # Only <|name|> tokens and marker-only lines (HARMONY_CHANNEL_MARKER_RE) are removed.
+    reply = "<channel|final>\n- Subject uses the <A|B> plan tier.<|im_end|>\n- Range <5|10> days."
+
+    result, written, _ = _summarize(tmp_path, reply)
+
+    assert result.wrote is True
+    assert written == "- Subject uses the <A|B> plan tier.\n- Range <5|10> days.\n"
+
+
+def test_record_session_summary_prompt_states_the_accepted_reply_shapes(tmp_path: Path):
+    memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+    seen: list[list[dict[str, str]]] = []
+
+    memory.record_session_summary(
+        session_id="session_1",
+        transcript="Transcript.",
+        summary_llm=lambda messages: seen.append(messages) or "NO_REPLY",
+    )
+
+    user_message = seen[0][1]["content"]
+    assert "JSON object whose keys durable_facts, preferences and follow_ups" in user_message
+    assert 'each start with "- "' in user_message
+    assert "Any other reply shape is not stored." in user_message
 
 
 def test_record_session_summary_keeps_the_silent_and_empty_skips(tmp_path: Path):

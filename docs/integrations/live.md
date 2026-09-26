@@ -347,17 +347,22 @@ result = await memory.async_record_session_summary(
 )
 ```
 
-`summary_llm` receives the OpenClaw-style memory flush messages. Its reply is
-sanitized before anything is written, and only two shapes are ever written.
-This is a memory-core rule (upstream's flush turn writes through tools and has no
-reply-to-file step):
+`summary_llm` receives the OpenClaw-style memory flush messages; the
+memory-core-authored part of the user message names the two accepted reply shapes
+(a JSON object with `durable_facts`, `preferences` and `follow_ups`, or lines
+that each start with `- `). Its reply is sanitized before anything is written,
+and only those two shapes are ever written. This is a memory-core rule (upstream's
+flush turn writes through tools and has no reply-to-file step):
 
 1. Tool-call spans (`<|tool_call>…<tool_call|>`, `<tool_call>…</tool_call>`,
    `<|tool_call_begin|>…<|tool_call_end|>`; an unclosed span runs to the end of
-   the reply) and special-token markers such as `<|im_end|>` are removed. A
-   reply that then starts with `NO_REPLY` writes nothing (`skip_reason="silent"`).
-   A trailing `NO_REPLY` is stripped, as upstream's `stripSilentToken` does.
-2. A JSON object, optionally inside a ```` ``` ```` fence and after preamble
+   the reply) and special tokens with a pipe on both sides, such as
+   `<|im_end|>`, are removed; so is a line that is only a marker (upstream's
+   `HARMONY_CHANNEL_MARKER_RE`, applied per line). Text such as `<A|B>` inside
+   a fact stays. A reply that then starts with `NO_REPLY` writes nothing
+   (`skip_reason="silent"`). A trailing `NO_REPLY` is stripped, as upstream's
+   `stripSilentToken` does.
+2. A JSON object, optionally inside a ```` ``` ```` fence and after label
    lines, keeps only `durable_facts`, `preferences`, and `follow_ups`, one
    bullet per item with whitespace collapsed:
 
@@ -369,26 +374,36 @@ reply-to-file step):
    }
    ```
 
-3. Otherwise the reply must be a bullet list. Label lines (non-bullet lines
-   ending with `:`, such as a model preamble `Appending durable memory to
-   memory/2026-09-26.md:` or a `Preferences:` label) are dropped, and every
+3. Otherwise the reply must be a bullet list. Label lines are dropped:
+   non-bullet lines ending with `:` (a model preamble `Appending durable memory
+   to memory/2026-09-26.md:`, a `Preferences:` label), Markdown headings
+   (`## Session notes`) and bold labels (`**Preferences:**`,
+   `**Preferences**:`). An indented line continues the bullet above it. Every
    other non-empty line must start with `-`, `*`, or `+`. Bullets are written
    as `- <text>`.
 4. Anything else writes nothing (`skip_reason="unstructured"`): prose, a JSON
-   value that is not an object, a numbered list, a heading, or bullets mixed
-   with prose. A reply with nothing left, or a JSON object without those
-   fields, gives `skip_reason="empty"`.
+   value that is not an object, a numbered list, other bullet glyphs (`•`), a
+   reasoning block such as `<think>…</think>`, or bullets mixed with prose. A
+   reply with nothing left, or a JSON object without those fields, gives
+   `skip_reason="empty"`.
 
 | `summary_llm` reply | Written to `memory/YYYY-MM-DD.md` |
 |---|---|
 | `Appending durable memory to memory/2026-09-26.md:`<br>`- Subject prefers SMS.<\|tool_call>call:write{…}<tool_call\|>`<br>`NO_REPLY` | `- Subject prefers SMS.` |
 | `{"preferences": ["Subject prefers SMS."]}` | `- Preference: Subject prefers SMS.` |
+| `**Preferences:**`<br>`- Subject uses the <A\|B> plan tier.` | `- Subject uses the <A\|B> plan tier.` |
 | `The subject prefers SMS updates.` | nothing (`unstructured`) |
 | `NO_REPLY` | nothing (`silent`) |
 
 `result.skip_reason` is `None` when something was written; the
 `session_summary_skipped` trace event carries the same `skip_reason`.
-`result.raw_text` keeps the unsanitized reply.
+`result.raw_text` keeps the unsanitized reply. A skip raises nothing: without
+a trace sink it is visible only in the returned `skip_reason`, so a host that
+must not lose facts checks it (and can retry with a stricter extractor).
+
+Behaviour change (branch `feat/workspace-layout`, 2026-09-26): before this rule,
+any reply that was not a JSON object was appended verbatim. A host whose
+extractor answered in prose or another shape now writes nothing for it.
 
 ## Subject Promotion
 

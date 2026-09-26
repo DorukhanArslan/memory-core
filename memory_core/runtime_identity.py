@@ -17,6 +17,11 @@ class RuntimeIdentity:
     workspace_files_injected_line: str = (
         "These user-editable files are loaded by memory-core and included below in Project Context."
     )
+    # Last bootstrap truncation warning line (OpenClaw
+    # src/agents/bootstrap-budget.ts:312-314 names OpenClaw config keys).
+    bootstrap_truncation_limits_line: str = (
+        "If unintentional, raise the per-file and/or total bootstrap character limits."
+    )
 
 
 MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -30,6 +35,9 @@ MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
     workspace_files_injected_line=(
         "These user-editable files are loaded by memory-core and included below in Project Context."
     ),
+    bootstrap_truncation_limits_line=(
+        "If unintentional, raise the per-file and/or total bootstrap character limits."
+    ),
 )
 
 OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -42,5 +50,9 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
     runtime_event_user_prompt="Continue the OpenClaw runtime event.",
     workspace_files_injected_line=(
         "These user-editable files are loaded by OpenClaw and included below in Project Context."
+    ),
+    bootstrap_truncation_limits_line=(
+        "If unintentional, raise agents.defaults.bootstrapMaxChars and/or "
+        "agents.defaults.bootstrapTotalMaxChars."
     ),
 )

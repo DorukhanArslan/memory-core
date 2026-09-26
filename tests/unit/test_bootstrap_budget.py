@@ -214,7 +214,12 @@ def _truncated_analysis():
 
 
 def test_truncation_warning_lines_and_notice_are_verbatim():
-    warning = build_bootstrap_prompt_warning(_truncated_analysis())
+    from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
+
+    warning = build_bootstrap_prompt_warning(
+        _truncated_analysis(), identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY
+    )
+    memory_core_warning = build_bootstrap_prompt_warning(_truncated_analysis())
 
     assert warning.warning_shown is True
     assert warning.lines[0].startswith("AGENTS.md: ")
@@ -224,6 +229,12 @@ def test_truncation_warning_lines_and_notice_are_verbatim():
         "If unintentional, raise agents.defaults.bootstrapMaxChars and/or "
         "agents.defaults.bootstrapTotalMaxChars.",
     )
+    # MEMORY-CORE (default) names no OpenClaw config keys; everything else is identical.
+    assert memory_core_warning.lines[:-1] == warning.lines[:-1]
+    assert memory_core_warning.lines[-1] == (
+        "If unintentional, raise the per-file and/or total bootstrap character limits."
+    )
+    assert memory_core_warning.signature == warning.signature
     assert build_bootstrap_prompt_warning_notice(warning.lines) == (
         "[Bootstrap truncation warning]\n"
         "Some workspace bootstrap files were truncated before Project Context injection.\n"

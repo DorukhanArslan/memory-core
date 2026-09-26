@@ -238,7 +238,10 @@ def build_workspace_context(
         bootstrap_total_max_chars=total_max_chars,
     )
     prompt_warning = build_bootstrap_prompt_warning(
-        analysis, mode=truncation_warning_mode, seen_signatures=seen_truncation_signatures
+        analysis,
+        mode=truncation_warning_mode,
+        seen_signatures=seen_truncation_signatures,
+        identity=identity,
     )
     notice = build_bootstrap_prompt_warning_notice(prompt_warning.lines)
     notes = (

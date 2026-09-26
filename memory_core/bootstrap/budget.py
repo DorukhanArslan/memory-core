@@ -33,6 +33,7 @@ from memory_core.bootstrap._js import (
     utf16_slice,
 )
 from memory_core.bootstrap.files import WorkspaceBootstrapFile
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 
 DEFAULT_BOOTSTRAP_MAX_CHARS = 20_000
 DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS = 60_000
@@ -596,9 +597,17 @@ def _js_round(value: float) -> int:
 
 
 def format_bootstrap_truncation_warning_lines(
-    analysis: BootstrapBudgetAnalysis, *, max_files: int | None = None
+    analysis: BootstrapBudgetAnalysis,
+    *,
+    max_files: int | None = None,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> tuple[str, ...]:
-    """Port of ``formatBootstrapTruncationWarningLines`` (bootstrap-budget.ts:270-316)."""
+    """Port of ``formatBootstrapTruncationWarningLines`` (bootstrap-budget.ts:270-316).
+
+    The last line names OpenClaw's ``agents.defaults.bootstrap*MaxChars``
+    config keys upstream; it comes from ``identity`` (verbatim with
+    ``OPENCLAW_COMPAT_RUNTIME_IDENTITY``, memory-core's own wording by default).
+    """
     if not analysis.has_truncation:
         return ()
     limit = (
@@ -635,10 +644,7 @@ def format_bootstrap_truncation_warning_lines(
         lines.append(
             "AGENTS.md was truncated; read the full AGENTS.md before relying on scoped policy."
         )
-    lines.append(
-        "If unintentional, raise agents.defaults.bootstrapMaxChars and/or "
-        "agents.defaults.bootstrapTotalMaxChars."
-    )
+    lines.append(identity.bootstrap_truncation_limits_line)
     return tuple(lines)
 
 
@@ -665,8 +671,13 @@ def build_bootstrap_prompt_warning(
     previous_signature: str | None = None,
     seen_signatures: Iterable[str] | None = None,
     max_files: int | None = None,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> BootstrapPromptWarning:
-    """Port of ``buildBootstrapPromptWarning`` (bootstrap-budget.ts:319-349)."""
+    """Port of ``buildBootstrapPromptWarning`` (bootstrap-budget.ts:319-349).
+
+    ``identity`` picks the wording of the config-limit line (see
+    :func:`format_bootstrap_truncation_warning_lines`).
+    """
     signature = _truncation_signature(analysis)
     seen = _normalize_seen_signatures(seen_signatures)
     if previous_signature and previous_signature not in seen:
@@ -679,7 +690,9 @@ def build_bootstrap_prompt_warning(
     return BootstrapPromptWarning(
         signature=signature,
         warning_shown=shown,
-        lines=format_bootstrap_truncation_warning_lines(analysis, max_files=max_files)
+        lines=format_bootstrap_truncation_warning_lines(
+            analysis, max_files=max_files, identity=identity
+        )
         if shown
         else (),
         warning_signatures_seen=tuple(signatures_seen),

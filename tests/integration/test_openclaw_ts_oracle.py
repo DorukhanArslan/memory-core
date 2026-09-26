@@ -2995,7 +2995,10 @@ def _python_bootstrap_context_report(
         bootstrap_total_max_chars=total_max_chars if total_max_chars is not None else 60_000,
     )
     warning = build_bootstrap_prompt_warning(
-        analysis, mode=warning_mode, seen_signatures=seen_signatures
+        analysis,
+        mode=warning_mode,
+        seen_signatures=seen_signatures,
+        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     )
     return {
         "contextFiles": [_context_file_payload(file) for file in built.files],

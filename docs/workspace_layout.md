@@ -102,6 +102,14 @@ memory-core does not own (output directives, Silent Replies) and the cache bound
 marker are not rendered; hosts with a prompt cache place `dynamic_text` below
 their boundary.
 
+`truncation_warning_lines` end with upstream's config hint, which names
+OpenClaw's `agents.defaults.bootstrapMaxChars` and
+`agents.defaults.bootstrapTotalMaxChars`. With the default MEMORY-CORE runtime
+identity the line names the per-file and total limits instead; in memory-core they
+are `max_chars` / `total_max_chars` (`max_chars_per_file` / `total_max_chars`
+in `memory_core.live`). `identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY` keeps the
+upstream text, like the Workspace Files intro line.
+
 `build_startup_context` ports the bare `/new` / `/reset` daily-memory prelude;
 the host passes the timezone (default UTC).
 

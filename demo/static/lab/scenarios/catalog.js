@@ -262,7 +262,7 @@ export const SCENARIOS = [
         checks: [auto('searchUnavailable({warning,action})', searchUnavailable(), ['search']), auto('chip(cooldown)', cooldownActive(), ['index'])] },
       { act: 'look', tab: 'memory', search: { query: 'toplantı' }, label: 'scn.S14.l6', expect: 'scn.S14.e6', blockedIf: needsHybrid,
         checks: [auto('event(search.cooldown)', event('search.cooldown')), auto('noEvent(embedding.request)', noEvent('embedding.request'))] },
-      { act: 'setting', apply: { restore: ['embedding.baseUrl'] }, then: 'check-embedding', label: 'scn.S14.l7', expect: 'scn.S14.e7',
+      { act: 'setting', apply: { restore: ['embedding.baseUrl'] }, then: 'check-embedding', label: 'scn.S14.l7', expect: 'scn.S14.e7', blockedIf: needsHybrid,
         checks: [auto('event(provider.check,{ok:true})', providerCheck('embedding', true))] },
     ],
   },

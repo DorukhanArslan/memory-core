@@ -148,3 +148,20 @@ def test_public_api_exports_memory_search_tool_contract():
         "tool": "memory_search",
         "error": "query required",
     }
+
+
+def test_public_api_exports_heartbeat_helpers():
+    expected = {
+        "HEARTBEAT_PROMPT",
+        "HEARTBEAT_TOKEN",
+        "HeartbeatTurn",
+        "build_heartbeat_section_lines",
+        "prepare_heartbeat_turn",
+        "resolve_heartbeat_interval_ms",
+        "resolve_heartbeat_prompt_for_system_prompt",
+        "strip_heartbeat_token",
+    }
+
+    assert expected.issubset(set(memory.__all__))
+    for name in expected:
+        assert hasattr(memory, name)

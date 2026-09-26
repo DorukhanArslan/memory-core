@@ -3,7 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import re
 from typing import Any
+
+from memory_core.bootstrap._js import JS_SPACE_CLASS, js_trim
+from memory_core.heartbeat import HEARTBEAT_PROMPT, HEARTBEAT_TOKEN, is_heartbeat_user_message
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
+
+_NEWLINE_RUN_RE = re.compile(f"[{JS_SPACE_CLASS}]*\n+[{JS_SPACE_CLASS}]*")
+_WHITESPACE_RUN_RE = re.compile(f"[{JS_SPACE_CLASS}]+")
 
 
 @dataclass(frozen=True)
@@ -14,9 +22,19 @@ class SessionCorpusFile:
 
 
 class MemoryCoreSessionCorpus:
-    def __init__(self, state_dir: Path, *, agent_id: str = "main"):
+    def __init__(
+        self,
+        state_dir: Path,
+        *,
+        agent_id: str = "main",
+        runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+    ):
         self.state_dir = state_dir.resolve()
         self.agent_id = agent_id
+        # Decides which heartbeat transcript row (HEARTBEAT_TRANSCRIPT_PROMPT) is
+        # dropped; transcripts written by an OpenClaw runtime need
+        # OPENCLAW_COMPAT_RUNTIME_IDENTITY.
+        self.runtime_identity = runtime_identity
 
     @property
     def sessions_dir(self) -> Path:
@@ -48,6 +66,12 @@ class MemoryCoreSessionCorpus:
         # transcript-tree helpers. Readers that want the active branch use
         # memory_core.transcript_tree.select_session_transcript_leaf_controlled_path
         # (the src/agents/cli-runner/session-history.ts pattern).
+        # Heartbeat prompt rows and bare HEARTBEAT_OK replies are dropped like
+        # sanitizeSessionText (session-files.ts:645-674). Not ported from that
+        # function: inbound-metadata and internal-runtime-context stripping
+        # before the checks, whitespace normalisation of the indexed text, the
+        # system-wrapper, cron-prompt, silent-reply and exec-completion drops,
+        # redaction and 800-char line wrapping.
         lines: list[str] = []
         for entry in _read_jsonl(file.abs_path):
             message = entry.get("message") if isinstance(entry, dict) else None
@@ -56,12 +80,27 @@ class MemoryCoreSessionCorpus:
             role = message.get("role")
             if role not in {"user", "assistant"}:
                 continue
-            text = _message_text(message.get("content")).strip()
+            raw_text = _message_text(message.get("content"))
+            text = raw_text.strip()
             if not text:
+                continue
+            if self._is_heartbeat_row(raw_text, role):
                 continue
             label = "User" if role == "user" else "Assistant"
             lines.append(f"{label}: {text}")
         return "\n".join(lines).rstrip() + ("\n" if lines else "")
+
+    def _is_heartbeat_row(self, raw_text: str, role: str) -> bool:
+        # Checks run on normalizeSessionText output (session-files.ts:523-528), so
+        # a heartbeat prompt followed by a newline and more text no longer matches.
+        normalized = _normalize_session_text(raw_text)
+        if role == "assistant":
+            return normalized == HEARTBEAT_TOKEN
+        return is_heartbeat_user_message(
+            {"role": role, "content": normalized},
+            HEARTBEAT_PROMPT,
+            runtime_identity=self.runtime_identity,
+        )
 
     def _read_session_store(self) -> dict[str, Any]:
         path = self.sessions_dir / "sessions.json"
@@ -92,6 +131,10 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
         if isinstance(value, dict):
             entries.append(value)
     return entries
+
+
+def _normalize_session_text(value: str) -> str:
+    return js_trim(_WHITESPACE_RUN_RE.sub(" ", _NEWLINE_RUN_RE.sub(" ", value)))
 
 
 def _message_text(content: Any) -> str:

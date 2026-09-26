@@ -35,12 +35,29 @@ from memory_core.client import (
     initialize_memory_core_workspace,
 )
 from memory_core.config import MemoryConfig
+from memory_core.curation import (
+    CurationError,
+    CurationPolicy,
+    CurationResult,
+    CurationUnavailableError,
+    MemoryCurator,
+)
 from memory_core.embeddings import (
     EmbeddingProvider,
     FakeEmbeddingProvider,
     OpenAICompatibleEmbeddingProvider,
 )
 from memory_core.flags import FeatureFlags
+from memory_core.heartbeat import (
+    HEARTBEAT_PROMPT,
+    HEARTBEAT_TOKEN,
+    HeartbeatTurn,
+    build_heartbeat_section_lines,
+    prepare_heartbeat_turn,
+    resolve_heartbeat_interval_ms,
+    resolve_heartbeat_prompt_for_system_prompt,
+    strip_heartbeat_token,
+)
 from memory_core.live import (
     IdentityLoadError,
     JsonlTraceSink,
@@ -136,6 +153,11 @@ from memory_core.runtime_context_prompt import (
     resolve_runtime_context_prompt_parts,
 )
 from memory_core.session_corpus import MemoryCoreSessionCorpus, SessionCorpusFile
+from memory_core.session_memory import (
+    SessionMemoryResult,
+    is_session_memory_trigger,
+    save_session_memory,
+)
 from memory_core.supplements import (
     MemoryCorpusResult,
     MemoryCorpusSupplement,
@@ -170,6 +192,11 @@ __all__ = [
     "build_workspace_context",
     "initialize_agent_workspace",
     "load_workspace_bootstrap_files",
+    "CurationError",
+    "CurationPolicy",
+    "CurationResult",
+    "CurationUnavailableError",
+    "MemoryCurator",
     "DEFAULT_CHAT_SYSTEM_PROMPT",
     "DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES",
     "DEFAULT_MEMORY_FLUSH_SOFT_TOKENS",
@@ -178,6 +205,14 @@ __all__ = [
     "EmbeddingProvider",
     "FakeEmbeddingProvider",
     "FeatureFlags",
+    "HEARTBEAT_PROMPT",
+    "HEARTBEAT_TOKEN",
+    "HeartbeatTurn",
+    "build_heartbeat_section_lines",
+    "prepare_heartbeat_turn",
+    "resolve_heartbeat_interval_ms",
+    "resolve_heartbeat_prompt_for_system_prompt",
+    "strip_heartbeat_token",
     "LangGraphMemoryRecall",
     "OpenAICompatibleEmbeddingProvider",
     "RuntimeIdentity",
@@ -227,6 +262,9 @@ __all__ = [
     "MemoryRecordResult",
     "MemoryWorkspace",
     "MemoryCoreSessionCorpus",
+    "SessionMemoryResult",
+    "is_session_memory_trigger",
+    "save_session_memory",
     "OverflowClassification",
     "PreemptiveCompactionDecision",
     "ProviderOverflowRecoveryDecision",

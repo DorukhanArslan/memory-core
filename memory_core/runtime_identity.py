@@ -34,6 +34,10 @@ class RuntimeIdentity:
         "Tell the user to run: SQLiteMemoryStore.index_identity() or "
         "SQLiteMemoryStore.reindex(workspace)."
     )
+    # Transcript row recorded for a heartbeat turn instead of the full heartbeat
+    # prompt (OpenClaw src/auto-reply/heartbeat.ts:23 HEARTBEAT_TRANSCRIPT_PROMPT,
+    # written by src/auto-reply/reply/prompt-prelude.ts:231-232).
+    heartbeat_transcript_prompt: str = "[memory-core heartbeat poll]"
 
 
 MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -59,6 +63,7 @@ MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
         "Tell the user to run: SQLiteMemoryStore.index_identity() or "
         "SQLiteMemoryStore.reindex(workspace)."
     ),
+    heartbeat_transcript_prompt="[memory-core heartbeat poll]",
 )
 
 OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -82,4 +87,5 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
     memory_search_paused_action=(
         "Tell the user to run: openclaw memory status --index or openclaw memory index --force."
     ),
+    heartbeat_transcript_prompt="[OpenClaw heartbeat poll]",
 )

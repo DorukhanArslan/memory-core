@@ -178,3 +178,58 @@ def test_openclaw_session_corpus_ignores_unregistered_transcripts(tmp_path: Path
     corpus = MemoryCoreSessionCorpus(tmp_path / ".openclaw-state", agent_id="main")
 
     assert corpus.discover_files() == []
+
+
+def _write_single_session(state_dir: Path, rows: list[tuple[str, object]]) -> None:
+    sessions_dir = state_dir / "agents" / "main" / "sessions"
+    sessions_dir.mkdir(parents=True)
+    (sessions_dir / "session-heartbeat.jsonl").write_text(
+        "".join(
+            json.dumps({"type": "message", "message": {"role": role, "content": content}}) + "\n"
+            for role, content in rows
+        ),
+        encoding="utf-8",
+    )
+    (sessions_dir / "sessions.json").write_text(
+        '{"agent:main:session-heartbeat":{"sessionId":"session-heartbeat",'
+        '"sessionFile":"session-heartbeat.jsonl"}}\n',
+        encoding="utf-8",
+    )
+
+
+def test_openclaw_session_corpus_drops_heartbeat_rows(tmp_path: Path):
+    from memory_core.heartbeat import HEARTBEAT_PROMPT
+    from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
+
+    state_dir = tmp_path / ".openclaw-state"
+    _write_single_session(
+        state_dir,
+        [
+            ("user", HEARTBEAT_PROMPT),
+            ("assistant", "HEARTBEAT_OK"),
+            ("user", "[memory-core heartbeat poll]"),
+            ("assistant", [{"type": "text", "text": " HEARTBEAT_OK "}]),
+            ("user", "[OpenClaw heartbeat poll]"),
+            ("assistant", "**HEARTBEAT_OK**"),
+            ("user", f"{HEARTBEAT_PROMPT}\nAlso check the queue."),
+            ("user", "What is Project Nebula?"),
+        ],
+    )
+
+    default_corpus = MemoryCoreSessionCorpus(state_dir)
+    compat_corpus = MemoryCoreSessionCorpus(
+        state_dir, runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY
+    )
+
+    assert default_corpus.read_index_text(default_corpus.discover_files()[0]) == (
+        "User: [OpenClaw heartbeat poll]\n"
+        "Assistant: **HEARTBEAT_OK**\n"
+        f"User: {HEARTBEAT_PROMPT}\nAlso check the queue.\n"
+        "User: What is Project Nebula?\n"
+    )
+    assert compat_corpus.read_index_text(compat_corpus.discover_files()[0]) == (
+        "User: [memory-core heartbeat poll]\n"
+        "Assistant: **HEARTBEAT_OK**\n"
+        f"User: {HEARTBEAT_PROMPT}\nAlso check the queue.\n"
+        "User: What is Project Nebula?\n"
+    )

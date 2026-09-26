@@ -24,6 +24,7 @@ memory = Memory.from_workspace(".", config=config)  # no embedding provider need
 | `text_search` | `True` | Vector-only mode. Mirrors OpenClaw's non-hybrid path: raw vector scores, strict `min_score` filter, no keyword relaxation. |
 | `mmr` | `False` | No MMR re-ranking of hybrid results. |
 | `temporal_decay` | `False` | Scores are not decayed by memory-file age. |
+| `subject_promotion` | `False` | `memory_core.live.SubjectConsolidation` raises `SubjectPromotionDisabledError` on every call before touching the subject workspace. memory-core extension (decision Q16), no upstream counterpart. Enable per subject with `SubjectMemory.open(..., flags=FeatureFlags(vector_search=False, subject_promotion=True))`. |
 
 At least one of `vector_search` / `text_search` must stay enabled;
 `FeatureFlags(vector_search=False, text_search=False)` raises `ValueError`.

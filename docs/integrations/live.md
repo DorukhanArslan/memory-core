@@ -307,6 +307,35 @@ For safer extraction, `summary_llm` may return JSON:
 Only `durable_facts`, `preferences`, and `follow_ups` are appended to subject
 memory.
 
+## Subject Promotion
+
+`SubjectConsolidation` runs scored promotion and dreaming
+(`memory_core.consolidation`) inside one subject's workspace. It is a memory-core
+extension (decision Q16) behind `FeatureFlags.subject_promotion`, off by
+default; with the flag off every call raises `SubjectPromotionDisabledError`.
+
+```python
+from memory_core import FeatureFlags, SubjectConsolidation
+from memory_core.live import SubjectMemory
+
+memory = SubjectMemory.open(
+    workspace_dir="runtime",
+    subject_id="subject_123",
+    flags=FeatureFlags(vector_search=False, subject_promotion=True),
+)
+consolidation = SubjectConsolidation(memory)
+
+hits = memory.memory.search("delivery window")["results"]
+consolidation.record_recalls("delivery window", hits, now_ms=now_ms)
+run = consolidation.promote(now_ms=now_ms, timezone="Europe/Istanbul")
+sweep = consolidation.dream("light", now_ms=now_ms)
+```
+
+Recall stores, promoted `MEMORY.md` sections and `DREAMS.md` stay under
+`runtime/subjects/subject_123/`. `record_recalls` drops the `Source:` citation
+that `memory_search` appends, like upstream recall tracking. Nothing runs on a
+schedule; the host decides when to promote or dream.
+
 ## Demo Environment
 
 The FastAPI demo app exposes a generic live task simulator for local latency and

@@ -24,9 +24,38 @@ Included:
   [Workspace Layout](workspace_layout.md))
 - replay cleanup, history windowing, tool-use repair, and overflow helpers when
   those behaviors are required to preserve OpenClaw-compatible prompt assembly
+- `memory_core.consolidation`: scored consolidation. Short-term recall signals,
+  gated promotion into `MEMORY.md`, manual light/REM/deep dreaming sweeps,
+  the deep-dreaming policy resolver, and audit/repair of the recall stores
+  (moved out of `demo/` on 2026-09-26, decision Q13). Budget compaction is
+  `memory_core.memory_budget`.
 
 Core memory should not know about Slack, WhatsApp, FastAPI, browser UI, or a
 specific agent framework.
+
+## Consolidation Modes
+
+Three paths change memory files; none of them uses keyword triggers.
+
+| Mode | Writes | Decided by | Module | Evidence |
+| --- | --- | --- | --- | --- |
+| Daily capture | `memory/YYYY-MM-DD.md` (append only) | the model's flush pass (`NO_REPLY` writes nothing) | `memory_core.memory_flush`, `Memory.chat(force_flush=True)` | flush plan oracle-backed; the write loop is adapter-only |
+| Scored promotion and dreaming | dated `## Promoted From Short-Term Memory (<date>)` sections of `MEMORY.md`, `memory/.dreams/*.json`, `DREAMS.md` | recall signals and the score, signal, diversity and age gates; no LLM | `memory_core.consolidation` | 21 promotion oracle tests assert Python == TS (docs/parity_matrix.md) |
+| Curated writes | the rest of `MEMORY.md` | the agent, through curation tools (decision Q16, on by default) | `memory_core.curation` (developed on its own branch, not in this tree yet) | memory-core extension, no upstream counterpart |
+
+- Scored consolidation never runs on its own: there is no scheduler and
+  dreaming is off by default (`DEFAULT_DEEP_DREAMING_ENABLED = False`). A host
+  records hits with `record_short_term_recalls` and calls
+  `run_short_term_promotion` or `run_dreaming_sweep` when it chooses.
+- The two MEMORY.md writers share one block model
+  (`memory_core.memory_budget.parse_memory_blocks`): budget compaction only drops
+  the oldest promotion sections, never other blocks.
+- Promotion markers use the runtime identity's prefix
+  (`memory-core-memory-promotion:` by default, `openclaw-memory-promotion:` under
+  `OPENCLAW_COMPAT_RUNTIME_IDENTITY`); both prefixes are read (decision Q22).
+- Live subjects: `memory_core.live.SubjectConsolidation` runs the same pipeline in
+  one `subjects/<id>/` workspace behind `FeatureFlags.subject_promotion` (off
+  by default, decision Q16).
 
 ## Runtime Adapters
 
@@ -36,6 +65,9 @@ thin.
 Included:
 
 - `LangGraphMemoryRecall`
+- `memory_core.live` (subject memory, live turns, session summaries) and
+  `SubjectConsolidation`, which only routes a subject's workspace into
+  `memory_core.consolidation`
 
 Adapter responsibilities:
 
@@ -64,7 +96,8 @@ Demo-only responsibilities:
 - chat lab UI
 - OpenAI-compatible demo provider form
 - side-by-side inspectors
-- manual flush buttons
+- manual flush, promote, dreaming, audit and repair buttons (they call
+  `memory_core.consolidation`; the demo keeps only serializers)
 
 Do not copy demo internals into production integrations. Production hosts should
 depend on the package API and adapter layer.

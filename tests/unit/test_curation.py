@@ -731,3 +731,44 @@ def test_budget_check_skips_bootstrap_md_once_setup_is_complete(tmp_path):
     (tmp_path / "BOOTSTRAP.md").write_text("b" * 900, encoding="utf-8")
     assert is_workspace_setup_completed(tmp_path)
     assert curator.add_memory_entry("My Notes", "d" * 150).action == "added"
+
+
+def test_parallel_curated_writes_to_one_file_lose_no_edit(tmp_path, monkeypatch):
+    # Both calls hold os.replace until the other arrives (or 0.5 s pass). Without
+    # a per-file lock both pass the re-read check first and the later replace
+    # silently drops the earlier edit; with it the second call waits, rereads
+    # the file and keeps both entries.
+    import threading
+
+    import memory_core.curation as curation_module
+
+    (tmp_path / "MEMORY.md").write_text("# Long-Term Memory\n\n## Notes\n- base\n", encoding="utf-8")
+    curator = MemoryCurator(tmp_path)
+    barrier = threading.Barrier(2, timeout=0.5)
+    real_replace = os.replace
+
+    def replace_after_both_checked(src, dst):
+        try:
+            barrier.wait()
+        except threading.BrokenBarrierError:
+            pass
+        real_replace(src, dst)
+
+    monkeypatch.setattr(curation_module.os, "replace", replace_after_both_checked)
+    errors: list[BaseException] = []
+
+    def add(text: str) -> None:
+        try:
+            curator.add_memory_entry("Notes", text)
+        except BaseException as error:  # reported below
+            errors.append(error)
+
+    threads = [threading.Thread(target=add, args=(text,)) for text in ("alpha", "beta")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(5)
+
+    assert errors == []
+    content = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
+    assert "- alpha\n" in content and "- beta\n" in content

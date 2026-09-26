@@ -36,7 +36,10 @@ Safety rules shared by every operation:
   differently cased aliases (a legacy ``memory.md``) and files that are not
   valid UTF-8 are refused, never followed or repaired.
 - Writes are atomic (temporary file in the root, ``fsync``, ``os.replace``)
-  and refused when the file changed since it was read.
+  and refused when the file changed since it was read. Within one process,
+  each file's read, check and replace run under a per-file lock, so parallel
+  tool calls (a host thread pool) are serialized and no edit is lost; writers
+  in other processes are not locked out, only caught by the re-read check.
 - A write that grows a file is refused when the file would exceed its policy
   cap or when the workspace bootstrap budget
   (``memory_core.bootstrap.build_bootstrap_context_files`` with the policy's
@@ -78,6 +81,7 @@ import os
 import re
 import secrets
 import stat
+import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
@@ -136,6 +140,17 @@ _DIRECTIVE_MARKER_RE = re.compile(
 _DIRECTIVE_STATUS_RE = re.compile(r"(status:\s*)active")
 _TRAILING_COMMENT_RE = re.compile(r"\s*<!--(?:(?!-->).)*-->\s*$")
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+# One lock per (workspace root, file) for this process: read, check and
+# os.replace happen under it (see _edit and append_daily_note).
+_TARGET_LOCKS: dict[tuple[str, str], threading.Lock] = {}
+_TARGET_LOCKS_GUARD = threading.Lock()
+
+
+def _target_lock(root: Path, name: str) -> threading.Lock:
+    with _TARGET_LOCKS_GUARD:
+        return _TARGET_LOCKS.setdefault((str(root), name), threading.Lock())
 
 
 class CurationError(ValueError):
@@ -997,21 +1012,22 @@ class MemoryCurator:
         if not stripped or stripped.startswith(SILENT_REPLY_TOKEN):
             return CurationResult(APPEND_DAILY_NOTE, rel_path, "skipped", False)
         memory_dir = self.root / "memory"
-        if memory_dir.is_symlink():
-            raise CurationError("memory/ is a symlink; curated writes never follow symlinks")
-        if os.path.lexists(memory_dir) and not memory_dir.is_dir():
-            raise CurationError("memory is not a directory")
-        daily = memory_dir / f"{day}.md"
-        if os.path.lexists(daily) and not daily.is_symlink():
-            info = os.lstat(daily)
-            if not stat.S_ISREG(info.st_mode):
-                raise CurationError(f"{rel_path} is not a regular file")
-            if info.st_nlink > 1:
-                raise CurationError(f"{rel_path} has more than one hard link")
-        try:
-            MemoryWorkspace(self.root).append_daily_memory(rel_path, raw)
-        except UnsafeMemoryPathError as exc:
-            raise CurationError(str(exc)) from exc
+        with _target_lock(self.root, rel_path):
+            if memory_dir.is_symlink():
+                raise CurationError("memory/ is a symlink; curated writes never follow symlinks")
+            if os.path.lexists(memory_dir) and not memory_dir.is_dir():
+                raise CurationError("memory is not a directory")
+            daily = memory_dir / f"{day}.md"
+            if os.path.lexists(daily) and not daily.is_symlink():
+                info = os.lstat(daily)
+                if not stat.S_ISREG(info.st_mode):
+                    raise CurationError(f"{rel_path} is not a regular file")
+                if info.st_nlink > 1:
+                    raise CurationError(f"{rel_path} has more than one hard link")
+            try:
+                MemoryWorkspace(self.root).append_daily_memory(rel_path, raw)
+            except UnsafeMemoryPathError as exc:
+                raise CurationError(str(exc)) from exc
         return self._run_after_write(CurationResult(APPEND_DAILY_NOTE, rel_path, "appended", True))
 
     def today(self) -> str:
@@ -1031,15 +1047,16 @@ class MemoryCurator:
         require_existing: bool = False,
     ) -> CurationResult:
         self._require(operation, name, memory_flush=memory_flush)
-        before = self._read_target(name)
-        if before is None and require_existing:
-            raise CurationError(f"{name} does not exist")
-        updated, action = edit(before or "")
-        chars = utf16_len(js_trim_end(updated))
-        if updated == (before or ""):
-            return CurationResult(operation, name, "unchanged", False, chars)
-        self._check_caps(name, before, updated)
-        self._write_target(name, before, updated)
+        with _target_lock(self.root, name):
+            before = self._read_target(name)
+            if before is None and require_existing:
+                raise CurationError(f"{name} does not exist")
+            updated, action = edit(before or "")
+            chars = utf16_len(js_trim_end(updated))
+            if updated == (before or ""):
+                return CurationResult(operation, name, "unchanged", False, chars)
+            self._check_caps(name, before, updated)
+            self._write_target(name, before, updated)
         return self._run_after_write(CurationResult(operation, name, action, True, chars))
 
     def _run_after_write(self, result: CurationResult) -> CurationResult:

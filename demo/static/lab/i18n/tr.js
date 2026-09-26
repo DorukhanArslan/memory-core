@@ -24,7 +24,6 @@ export const TR = {
   'top.status': 'Durum', 'top.chatModel': 'Sohbet modeli', 'top.noKey': 'anahtar yok', 'top.lastCallOk': 'son çağrı tamam', 'top.lastCallError': 'son çağrı hatalı', 'top.untested': 'henüz sınanmadı',
   'top.layoutPinTip': 'Upstream pin düzeni: yalnız pin dosya seti', 'top.layoutMemoryCoreTip': 'MEMORY-CORE düzeni: pin dosya seti ve memory-core uzantıları',
   'top.bootstrapPendingTip': 'BOOTSTRAP.md var; kurulum sürüyor', 'top.bootstrapDoneTip': 'Kurulum tamamlandı',
-  'top.flushPerTurn': 'flush: her tur (demo)', 'top.flushPerTurnTip': 'Demo modu: flush her turdan sonra çalışır. Upstream, turdan önce eşik kararıyla çalıştırır.',
   'status.index': 'indeks', 'status.lastReindex': 'Son yeniden indeksleme', 'status.tz': 'İst.',
   'status.eventsOpen': 'olay akışı', 'status.eventsConnecting': 'olay akışı bağlanıyor', 'status.eventsRetry': 'olay akışı koptu · yeniden bağlanıyor ({n})', 'status.eventsMissing': 'olay akışı henüz yok',
   'status.eventsTip': 'GET /api/lab/events · Last-Event-ID ile devam eder',
@@ -99,8 +98,8 @@ export const TR = {
   'prompt.noFlush': 'Bu turda flush kararı yok.', 'prompt.transcript': 'Konuşma penceresi (transcript)', 'prompt.transcriptLine': '{a} mesaj gönderildi · {b} atlandı',
   'prompt.transcriptNone': '0 önceki mesaj (yeni oturum ya da yeni tür)', 'prompt.raw': 'Ham istek',
   'prompt.honestyFoot': "Yalnız çalışma alanı bölümleri gösterilir. Upstream sistem prompt'unun diğer bölümleri (araçlar, Silent Replies, Runtime…) Lab'de üretilmez.",
-  'flush.decision': 'karar', 'flush.ran': 'çalıştı', 'flush.notRan': 'çalışmadı', 'flush.reason': 'neden', 'flush.target': 'hedef', 'flush.order': 'sıra', 'flush.beforeTurn': 'turdan önce (upstream)', 'flush.afterTurn': 'turdan sonra (demo)',
-  'flush.formula': 'eşik = pencere − rezerv − yumuşak eşik', 'flush.lastReason': 'son neden', 'flush.mode': 'Flush modu', 'flush.gate': 'flush eşiği', 'flush.threshold': 'eşik',
+  'flush.decision': 'karar', 'flush.ran': 'çalıştı', 'flush.notRan': 'çalışmadı', 'flush.reason': 'neden', 'flush.target': 'hedef', 'flush.order': 'sıra', 'flush.beforeTurn': 'turdan önce (upstream)',
+  'flush.formula': 'eşik = pencere − rezerv − yumuşak eşik','flush.mode': 'Flush modu', 'flush.gate': 'flush eşiği', 'flush.threshold': 'eşik',
   'flush.over': 'eşik aşıldı', 'flush.overFlushed': 'döngü #{n} · flush yapıldı · compaction yok (Lab, bilinen açık)',
   'memory.identity': 'kimlik', 'memory.identityNotFile': 'İndeks kimliği; IDENTITY.md değildir.', 'memory.thisTurn': 'Bu tur', 'memory.autoRecallTip': 'Otomatik hatırlama filtresi (MEMORY.md + bugün/dün) demo-only.',
   'memory.autoRecallParams': 'otomatik hatırlama · max {m} · minScore {s}', 'memory.noRecall': 'Bu turda otomatik hatırlama kaydı yok.', 'memory.resetNoRecall': 'Reset turunda otomatik hatırlama yok; başlangıç bağlamı yüklenir.',
@@ -178,7 +177,7 @@ export const TR = {
   'settings.result': 'Sonuç', 'settings.noFakeEmbeddings': 'Sahte embedding yok; OpenRouter temel URL’si yalnız FTS verir.',
   'settings.layout': 'Çalışma alanı düzeni', 'settings.layoutPin': 'Upstream pin', 'settings.layoutHelp': 'Değiştirmek dosya silmez; düzen dışı dosyalar “düzen dışı” rozeti alır.',
   'settings.budget': 'Bootstrap bütçesi', 'settings.perFile': 'dosya başına', 'settings.total': 'toplam', 'settings.warnMode': 'kırpma uyarısı', 'settings.testValue': 'test ayarı', 'settings.upstreamDefault': 'upstream varsayılanı {a} / {b}',
-  'settings.injection': 'Enjeksiyon', 'settings.flushThreshold': 'Eşik (upstream tetikleyici)', 'settings.flushPerTurn': 'Her tur (demo)', 'settings.flushHelp': 'Eşik modunda karar turdan önce verilir (upstream sırası).',
+  'settings.injection': 'Enjeksiyon', 'settings.flushThreshold': 'Eşik (upstream tetikleyici)','settings.flushHelp': 'Eşik modunda karar turdan önce verilir (upstream sırası).',
   'settings.contextWindow': 'bağlam penceresi (token)', 'settings.contextWindowHelp': 'Test ayarı: küçük pencere flush’ı kışkırtır; eşiği sunucu hesaplar.',
   'settings.lightContext': 'yalnız HEARTBEAT.md', 'settings.curation': 'Küratörlük', 'settings.noCurationFlags': 'Sunucu küratörlük bayrağı bildirmedi.', 'settings.flags': 'Diğer bayraklar', 'settings.extensionFlag': 'uzantı (bayrakla)',
   'settings.workspace': 'Çalışma alanı', 'settings.path': 'Yol', 'settings.keepMemory': 'Belleği koru',
@@ -331,4 +330,6 @@ export const TR = {
   // scenario blocks (real seed)
   'scn.blockedNoMemoryMd': 'MEMORY.md yok (tohum MEMORY.md içermez)',
   'scn.blockedProactiveEmpty': 'PROACTIVE_PREFERENCES.md boş: iki düzende de dışarıda, adım bir şey ölçmez',
+  // flush meter (FlushDecision)
+  'flush.tokenSource': 'token kaynağı',
 };

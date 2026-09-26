@@ -262,3 +262,16 @@ def test_event_stream_reads_default_messages_only() -> None:
     assert "addEventListener(" not in source
     store = (LAB_ROOT / "store.js").read_text(encoding="utf-8")
     assert "lab.resync" in store and "replayCutoff" in store
+
+
+def test_settings_offer_no_per_turn_flush(lab_client: TestClient) -> None:
+    # D1 removed the per-turn demo flush; the backend reports mode threshold and rejects others.
+    assert lab_client.get("/api/lab/settings").json()["flush"]["mode"] == "threshold"
+    assert lab_client.put("/api/lab/settings", json={"flush": {"mode": "per_turn"}}).status_code == 400
+    for module in LAB_MODULES:
+        assert "per_turn" not in module.read_text(encoding="utf-8"), module.name
+    snapshot = lab_client.get("/api/lab/state").json()["flush"]
+    shell = (LAB_ROOT / "views" / "shell.js").read_text(encoding="utf-8")
+    for field in ("reserveTokensFloor", "softThresholdTokens", "contextWindowTokens", "alreadyFlushed", "compactionCount", "reason"):
+        assert field in snapshot, field
+        assert field in shell, field

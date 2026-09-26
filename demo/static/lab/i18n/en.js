@@ -20,7 +20,6 @@ export const EN = {
   'top.status': 'Status', 'top.chatModel': 'Chat model', 'top.noKey': 'no key', 'top.lastCallOk': 'last call ok', 'top.lastCallError': 'last call failed', 'top.untested': 'not tested yet',
   'top.layoutPinTip': 'Upstream pin layout: the pin file set only', 'top.layoutMemoryCoreTip': 'MEMORY-CORE layout: the pin file set plus memory-core extensions',
   'top.bootstrapPendingTip': 'BOOTSTRAP.md exists; setup in progress', 'top.bootstrapDoneTip': 'Setup completed',
-  'top.flushPerTurn': 'flush: every turn (demo)', 'top.flushPerTurnTip': 'Demo mode: flush runs after every turn. Upstream decides by threshold before the turn.',
   'status.index': 'index', 'status.lastReindex': 'Last reindex', 'status.tz': 'Istanbul',
   'status.eventsOpen': 'event stream', 'status.eventsConnecting': 'event stream connecting', 'status.eventsRetry': 'event stream lost · reconnecting ({n})', 'status.eventsMissing': 'event stream not there yet',
   'status.eventsTip': 'GET /api/lab/events · resumes with Last-Event-ID',
@@ -89,8 +88,8 @@ export const EN = {
   'prompt.noFlush': 'No flush decision this turn.', 'prompt.transcript': 'Conversation window (transcript)', 'prompt.transcriptLine': '{a} messages sent · {b} omitted',
   'prompt.transcriptNone': '0 previous messages (new session or new kind)', 'prompt.raw': 'Raw request',
   'prompt.honestyFoot': 'Only the workspace sections are shown. Other upstream system prompt sections (tools, Silent Replies, Runtime…) are not produced by the Lab.',
-  'flush.decision': 'decision', 'flush.ran': 'ran', 'flush.notRan': 'did not run', 'flush.reason': 'reason', 'flush.target': 'target', 'flush.order': 'order', 'flush.beforeTurn': 'before the turn (upstream)', 'flush.afterTurn': 'after the turn (demo)',
-  'flush.formula': 'threshold = window − reserve − soft threshold', 'flush.lastReason': 'last reason', 'flush.mode': 'Flush mode', 'flush.gate': 'flush threshold', 'flush.threshold': 'threshold',
+  'flush.decision': 'decision', 'flush.ran': 'ran', 'flush.notRan': 'did not run', 'flush.reason': 'reason', 'flush.target': 'target', 'flush.order': 'order', 'flush.beforeTurn': 'before the turn (upstream)',
+  'flush.formula': 'threshold = window − reserve − soft threshold','flush.mode': 'Flush mode', 'flush.gate': 'flush threshold', 'flush.threshold': 'threshold',
   'flush.over': 'over threshold', 'flush.overFlushed': 'cycle #{n} · flushed · no compaction (Lab, known gap)',
   'memory.identity': 'identity', 'memory.identityNotFile': 'Index identity; not IDENTITY.md.', 'memory.thisTurn': 'This turn', 'memory.autoRecallTip': 'The auto-recall filter (MEMORY.md + today/yesterday) is demo-only.',
   'memory.autoRecallParams': 'auto recall · max {m} · minScore {s}', 'memory.noRecall': 'No auto-recall record this turn.', 'memory.resetNoRecall': 'The reset turn has no auto recall; startup context loads instead.',
@@ -163,7 +162,7 @@ export const EN = {
   'settings.result': 'Result', 'settings.noFakeEmbeddings': 'No fake embeddings; an OpenRouter base URL yields FTS only.',
   'settings.layout': 'Workspace layout', 'settings.layoutPin': 'Upstream pin', 'settings.layoutHelp': 'Switching deletes no files; files outside the layout get an “outside layout” badge.',
   'settings.budget': 'Bootstrap budget', 'settings.perFile': 'per file', 'settings.total': 'total', 'settings.warnMode': 'truncation warning', 'settings.testValue': 'test value', 'settings.upstreamDefault': 'upstream default {a} / {b}',
-  'settings.injection': 'Injection', 'settings.flushThreshold': 'Threshold (upstream trigger)', 'settings.flushPerTurn': 'Every turn (demo)', 'settings.flushHelp': 'In threshold mode the decision comes before the turn (upstream order).',
+  'settings.injection': 'Injection', 'settings.flushThreshold': 'Threshold (upstream trigger)','settings.flushHelp': 'In threshold mode the decision comes before the turn (upstream order).',
   'settings.contextWindow': 'context window (tokens)', 'settings.contextWindowHelp': 'Test value: a small window provokes the flush; the server computes the threshold.',
   'settings.lightContext': 'HEARTBEAT.md only', 'settings.curation': 'Curation', 'settings.noCurationFlags': 'The server reported no curation flag.', 'settings.flags': 'Other flags', 'settings.extensionFlag': 'extension (flag)',
   'settings.workspace': 'Workspace', 'settings.path': 'Path', 'settings.keepMemory': 'Keep memory',
@@ -313,4 +312,6 @@ export const EN = {
   // scenario blocks (real seed)
   'scn.blockedNoMemoryMd': 'no MEMORY.md (the seed has none)',
   'scn.blockedProactiveEmpty': 'PROACTIVE_PREFERENCES.md is empty: excluded in both layouts, the step measures nothing',
+  // flush meter (FlushDecision)
+  'flush.tokenSource': 'token source',
 };

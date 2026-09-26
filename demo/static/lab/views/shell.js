@@ -70,7 +70,6 @@ function statusChips() {
     const fts = s.embedding.mode === 'fts-only';
     list.push(chip({ label: fts ? t('search.ftsOnly') : `${t('search.hybrid')} · ${s.embedding.model || '—'}`, tone: fts ? 'warn' : 'info', ic: fts ? 'alert-triangle' : 'layers', onClick: () => store.actions.openSettings('embedding'), title: fts ? (s.embedding.reason || t('search.noEmbedder')) : t('search.hybridTip'), testid: 'chip-embedding' }));
   }
-  if (s?.flush?.mode === 'per_turn') list.push(chip({ label: t('top.flushPerTurn'), tone: 'warn', ic: 'alert-triangle', onClick: () => store.actions.openSettings('flush'), title: t('top.flushPerTurnTip'), testid: 'chip-flush-mode' }));
   const cd = cooldownLeft();
   if (cd) list.push(chip({ label: `${t('search.cooldown')} ${cd} ${t('unit.sec')}`, tone: 'warn', ic: 'clock', testid: 'chip-cooldown', title: store.data.index?.cooldown?.error || '' }));
   return list;
@@ -176,10 +175,13 @@ function renderStatus() {
   const identity = idx?.identity;
   const idTone = { valid: 'ok', mismatched: 'danger', missing: 'warn' }[identity?.status] || 'grey';
   const offset = d.snap?.clock?.offsetMs || d.heartbeat?.clock?.offsetMs || 0;
+  // FlushDecision of the snapshot (docs/lab.md): the meter between turns, all numbers from the server.
   const flushTip = fm ? [
-    `${t('flush.formula')}: ${fm.f.contextWindowTokens ? fmtN(fm.f.contextWindowTokens) : '—'} − ${fmtN(fm.f.reserveFloorTokens ?? 20000)} − ${fmtN(fm.f.softThresholdTokens ?? 4000)} = ${thr0(fm.thr)}`,
-    `${t('flush.lastReason')}: ${fm.f.lastReason || '—'}`,
-    fm.f.mode ? `${t('flush.mode')}: ${fm.f.mode === 'per_turn' ? t('settings.flushPerTurn') : t('settings.flushThreshold')}` : null,
+    `${t('flush.formula')}: ${thr0(fm.f.contextWindowTokens)} − ${thr0(fm.f.reserveTokensFloor)} − ${thr0(fm.f.softThresholdTokens)} = ${thr0(fm.thr)}`,
+    `${t('flush.reason')}: ${fm.f.reason || '—'}`,
+    fm.f.tokenSource ? `${t('flush.tokenSource')}: ${fm.f.tokenSource}` : null,
+    `${t('flush.mode')}: ${t('settings.flushThreshold')}`,
+    fm.f.note || null,
   ].filter(Boolean).join('\n') : t('state.notYet');
   replace(el,
     idx ? h('button', { type: 'button', class: 'sb-item', onclick: () => store.actions.openInspector('memory'), 'data-tip': t('status.lastReindex') }, icon('database', 12), `${t('status.index')} ${fmtN(idx.files)} ${t('unit.files')} · ${fmtN(idx.chunks)} ${t('unit.chunks')} · ${fmtTime(idx.lastReindexAt)}`)
@@ -190,7 +192,7 @@ function renderStatus() {
     h('button', { type: 'button', class: ['sb-item', fm?.over ? 'is-over' : ''], 'data-tip': flushTip, 'data-testid': 'flush-meter', onclick: () => { u.openSections.add('flush'); store.actions.openInspector('prompt'); } },
       'flush', h('span', { class: ['sb-meter', fm?.over ? 'is-over' : fm && fm.pct >= 85 ? 'is-near' : ''], role: 'meter', 'aria-label': t('flush.gate'), 'aria-valuemin': '0', 'aria-valuemax': String(fm?.thr || 0), 'aria-valuenow': String(fm?.f.totalTokens || 0) }, h('span', { style: { '--p': `${Math.min(100, fm?.pct || 0)}%` } })),
       fm && fm.thr ? `${fmtN(fm.f.totalTokens)}/${fmtN(fm.thr)}` : '—',
-      fm?.over ? h('span', { class: 'sb-over' }, fm.f.flushedThisCycle ? t('flush.overFlushed', { n: fm.f.cycle ?? '?' }) : t('flush.over')) : null),
+      fm?.over || fm?.f.alreadyFlushed ? h('span', { class: 'sb-over' }, fm.f.alreadyFlushed ? t('flush.overFlushed', { n: fm.f.compactionCount ?? '—' }) : t('flush.over')) : null),
     h('span', { class: 'sb-sep', 'aria-hidden': 'true' }),
     h('span', { class: 'sb-item', 'data-testid': 'events-status', 'data-tip': t('status.eventsTip') }, h('span', { class: ['dot', `dot-${connDot}`, conn.state === 'open' ? 'is-live' : ''], 'aria-hidden': 'true' }), `${connLabel} · ${fmtN(d.events.length)}`),
     sc ? h('span', { class: 'sb-sep', 'aria-hidden': 'true' }) : null,

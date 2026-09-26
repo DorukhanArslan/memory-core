@@ -150,7 +150,8 @@ export function renderSettings(body) {
         row('contextInjection', segmented({ options: ['always', 'continuation-skip', 'never'].map((x) => ({ value: x, label: x })), value: s.contextInjection, onChange: (v) => putSettings({ contextInjection: v }), aria: 'contextInjection', size: 'sm' })),
       ], { ic: 'prompt' }),
       group('flush', 'Flush', [
-        row(t('flush.mode'), segmented({ options: [{ value: 'threshold', label: t('settings.flushThreshold') }, { value: 'per_turn', label: t('settings.flushPerTurn') }], value: s.flush?.mode, onChange: (v) => putSettings({ flush: { mode: v } }), aria: t('flush.mode'), size: 'sm' }), t('settings.flushHelp')),
+        // D1: the flush follows the upstream trigger only; the mode is read-only (PUT rejects others).
+        row(t('flush.mode'), chip({ label: s.flush?.mode === 'threshold' || !s.flush?.mode ? t('settings.flushThreshold') : String(s.flush.mode), tone: 'neutral', ic: 'check', testid: 'settings-flush-mode' }), t('settings.flushHelp')),
         row(t('settings.contextWindow'), h('span', { class: 'inline-group' }, numberInput('set-window', s.flush?.contextWindowTokens, (v) => putSettings({ flush: { contextWindowTokens: v } }), { step: 500 }),
           fl?.threshold !== undefined ? h('span', { class: 'muted mono small' }, `→ ${t('flush.threshold')} ${fl.threshold === null ? '—' : fmtN(fl.threshold)} token`) : null), t('settings.contextWindowHelp'), { forId: 'set-window' }),
       ], { ic: 'minus' }),

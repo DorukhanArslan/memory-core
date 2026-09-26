@@ -443,6 +443,16 @@ class SubjectMemory:
         corpus: str | None = None,
         trace_sink: TraceSink | None = None,
     ) -> AsyncIterable[LiveTurnEvent]:
+        """Stream one live turn as :class:`LiveTurnEvent` objects.
+
+        Every event is yielded and, with a trace sink, recorded in the same
+        order. After ``live_turn_started``, any exception (a subject_id
+        mismatch, a recall error, the host LLM stream raising) yields
+        ``live_turn_failed`` with ``error_type``, ``error`` and the partial
+        ``assistant_text``; the next iteration step re-raises the original
+        exception. A consumer that stops iterating at ``live_turn_failed``
+        closes the stream without the re-raise.
+        """
         resolved_config = _resolve_live_sdk_config(
             config=config,
             openclaw_compatible=openclaw_compatible,
@@ -457,28 +467,33 @@ class SubjectMemory:
             trace_sink=resolved_config.trace_sink,
             data={"subject_id": context.subject_id, "session_id": context.session_id},
         )
-        prepared = self.prepare_live_turn(
-            context,
-            identity=identity,
-            openclaw_compatible=resolved_config.openclaw_compatible,
-            max_results=resolved_config.max_results,
-            min_score=resolved_config.min_score,
-            corpus=resolved_config.corpus,
-        )
-        yield _record_trace_event(
-            MEMORY_RECALL_COMPLETED,
-            trace_sink=resolved_config.trace_sink,
-            data={"results": prepared.memory_results, "memory_context": prepared.memory_context},
-        )
-        yield _record_trace_event(
-            PROMPT_ASSEMBLED,
-            trace_sink=resolved_config.trace_sink,
-            data={"trace_context": prepared.trace_context, "runtime_context": prepared.runtime_context},
-        )
-
         assistant_parts: list[str] = []
         sentence_buffer = ""
         try:
+            prepared = self.prepare_live_turn(
+                context,
+                identity=identity,
+                openclaw_compatible=resolved_config.openclaw_compatible,
+                max_results=resolved_config.max_results,
+                min_score=resolved_config.min_score,
+                corpus=resolved_config.corpus,
+            )
+            yield _record_trace_event(
+                MEMORY_RECALL_COMPLETED,
+                trace_sink=resolved_config.trace_sink,
+                data={
+                    "results": prepared.memory_results,
+                    "memory_context": prepared.memory_context,
+                },
+            )
+            yield _record_trace_event(
+                PROMPT_ASSEMBLED,
+                trace_sink=resolved_config.trace_sink,
+                data={
+                    "trace_context": prepared.trace_context,
+                    "runtime_context": prepared.runtime_context,
+                },
+            )
             async for chunk in _aiter_stream(llm(prepared.messages)):
                 if _is_provider_event_chunk(chunk):
                     yield _record_trace_event(
@@ -514,7 +529,7 @@ class SubjectMemory:
                 },
             )
         except Exception as exc:
-            _record_trace_event(
+            yield _record_trace_event(
                 LIVE_TURN_FAILED,
                 trace_sink=resolved_config.trace_sink,
                 data={

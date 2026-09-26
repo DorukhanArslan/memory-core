@@ -674,42 +674,87 @@ def test_live_event_type_constants_are_exported():
     assert SESSION_SUMMARY_FAILED == "session_summary_failed"
 
 
-def test_stream_live_turn_traces_failure_before_reraising(tmp_path: Path):
+def _collect_until_failure(stream) -> tuple[list[LiveTurnEvent], BaseException | None]:
+    async def run():
+        events: list[LiveTurnEvent] = []
+        try:
+            async for event in stream:
+                events.append(event)
+        except Exception as exc:
+            return events, exc
+        return events, None
+
+    return asyncio.run(run())
+
+
+def _trace_records(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def test_stream_live_turn_yields_failure_before_reraising(tmp_path: Path):
     async def failing_stream(messages):
         yield "Basladim. "
         raise RuntimeError("provider disconnected")
 
-    async def collect_until_failure() -> None:
-        memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
-        trace_sink = JsonlTraceSink(tmp_path / "trace" / "session_1.jsonl")
-        async for _event in memory.stream_live_turn(
-            LiveTurnContext(
-                subject_id="subj_123",
-                session_id="session_1",
-                user_utterance="Selam.",
-            ),
+    memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+    trace_path = tmp_path / "trace" / "session_1.jsonl"
+    events, error = _collect_until_failure(
+        memory.stream_live_turn(
+            LiveTurnContext(subject_id="subj_123", session_id="session_1", user_utterance="Selam."),
             llm=failing_stream,
-            trace_sink=trace_sink,
-        ):
-            pass
+            trace_sink=JsonlTraceSink(trace_path),
+        )
+    )
 
-    try:
-        asyncio.run(collect_until_failure())
-    except RuntimeError as exc:
-        assert "provider disconnected" in str(exc)
-    else:
-        raise AssertionError("expected stream failure to be re-raised")
+    assert isinstance(error, RuntimeError)
+    assert str(error) == "provider disconnected"
+    assert events[-1] == LiveTurnEvent(
+        LIVE_TURN_FAILED,
+        data={
+            "error_type": "RuntimeError",
+            "error": "provider disconnected",
+            "assistant_text": "Basladim.",
+        },
+    )
+    records = _trace_records(trace_path)
+    assert [record["type"] for record in records] == [event.type for event in events]
+    assert records[-1]["data"] == events[-1].data
 
-    records = [
-        json.loads(line)
-        for line in (tmp_path / "trace" / "session_1.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
-    assert records[-1]["type"] == LIVE_TURN_FAILED
-    assert records[-1]["data"] == {
-        "error_type": "RuntimeError",
-        "error": "provider disconnected",
-        "assistant_text": "Basladim.",
+
+def test_stream_live_turn_yields_failure_on_subject_mismatch(tmp_path: Path):
+    def unused_llm(messages):
+        raise AssertionError("the LLM must not run for a mismatched subject")
+
+    memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+    trace_path = tmp_path / "trace" / "session_1.jsonl"
+    context = LiveTurnContext(subject_id="subj_999", session_id="session_1", user_utterance="Hi.")
+    events, error = _collect_until_failure(
+        memory.stream_live_turn(context, llm=unused_llm, trace_sink=JsonlTraceSink(trace_path))
+    )
+
+    assert isinstance(error, ValueError)
+    assert "subject_id mismatch" in str(error)
+    assert [event.type for event in events] == [LIVE_TURN_STARTED, LIVE_TURN_FAILED]
+    assert events[-1].data == {
+        "error_type": "ValueError",
+        "error": "live turn subject_id mismatch: expected subj_123, got subj_999",
+        "assistant_text": "",
     }
+    assert [record["type"] for record in _trace_records(trace_path)] == [
+        LIVE_TURN_STARTED,
+        LIVE_TURN_FAILED,
+    ]
+
+    async def stop_at_failure() -> list[str]:
+        seen: list[str] = []
+        async for event in memory.stream_live_turn(context, llm=unused_llm):
+            seen.append(event.type)
+            if event.type == LIVE_TURN_FAILED:
+                break
+        return seen
+
+    # A consumer that stops at the failure event closes the stream without the re-raise.
+    assert asyncio.run(stop_at_failure()) == [LIVE_TURN_STARTED, LIVE_TURN_FAILED]
 
 
 def test_stream_live_turn_passes_through_provider_events(tmp_path: Path):

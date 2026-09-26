@@ -233,18 +233,26 @@ returns an async iterable of text chunks, or dictionaries containing `text`,
 The SDK exports event-name constants and a `LiveTurnEventType` literal alias.
 Current event types:
 
-- `live_turn_started`
-- `memory_recall_completed`
-- `prompt_assembled`
-- `text_delta`
-- `provider_event`
-- `sentence`
-- `live_turn_completed`
-- `live_turn_failed`
-- `session_summary_started`
-- `session_summary_completed`
-- `session_summary_skipped`
-- `session_summary_failed`
+| Event | Emitted by | Reaches the host as |
+|---|---|---|
+| `live_turn_started` | `stream_live_turn` | yielded, and recorded to the trace sink |
+| `memory_recall_completed` | `stream_live_turn` | yielded, and recorded to the trace sink |
+| `prompt_assembled` | `stream_live_turn` | yielded, and recorded to the trace sink |
+| `text_delta` | `stream_live_turn` | yielded, and recorded to the trace sink |
+| `provider_event` | `stream_live_turn` | yielded, and recorded to the trace sink |
+| `sentence` | `stream_live_turn` | yielded, and recorded to the trace sink |
+| `live_turn_completed` | `stream_live_turn` | yielded, and recorded to the trace sink |
+| `live_turn_failed` | `stream_live_turn` | yielded, and recorded to the trace sink, then the exception is re-raised |
+| `session_summary_started` | `record_session_summary` | trace sink only |
+| `session_summary_completed` | `record_session_summary` | trace sink only |
+| `session_summary_skipped` | `record_session_summary` | trace sink only |
+| `session_summary_failed` | `record_session_summary` | trace sink only, then the exception is re-raised |
+
+The `session_summary_*` events are never yielded: `record_session_summary` and
+`async_record_session_summary` return a `SessionSummaryResult`, and their events
+go only to the `trace_sink=` passed to that call (`LiveSDKConfig.trace_sink`
+applies to `stream_live_turn` only). Without a trace sink they are not
+observable.
 
 `sentence` events are designed for TTS. `text_delta` events are useful for live
 UI, logs, and transcript buffers.
@@ -253,10 +261,15 @@ UI, logs, and transcript buffers.
 function-call deltas. The SDK does not execute tools or mutate workflow state;
 the host runtime consumes these events and decides what to do.
 
-If the host-supplied LLM stream raises, the SDK records `live_turn_failed` to
-the trace sink with `error_type`, `error`, and partial `assistant_text`, then
-re-raises the original exception so the host runtime can apply its retry or
-fallback policy.
+Once `live_turn_started` has been yielded, any exception in the turn (a
+`subject_id` that does not match the `SubjectMemory`, a recall error, or the
+host-supplied LLM stream raising) records `live_turn_failed` with `error_type`,
+`error`, and the partial `assistant_text` to the trace sink, yields it, and
+then re-raises the original exception on the next iteration step, so the host
+runtime can apply its retry or fallback policy. A consumer that stops iterating
+at `live_turn_failed` closes the stream without the re-raise. The `error` text
+is `str(exception)`, unredacted: a host that forwards events to a client
+should redact it first.
 
 The host still owns workflow state transitions and tool calls. Put active
 workflow state into `LiveTurnContext.workflow_state`; the SDK places it inside
@@ -264,7 +277,9 @@ runtime context rather than durable memory.
 
 ## Trace Sink
 
-Pass `trace_sink=` when you want the SDK to persist the same events it yields.
+Pass `trace_sink=` to `stream_live_turn` when you want the SDK to persist the
+same events it yields, in the same order. Pass it to `record_session_summary`
+to observe the `session_summary_*` events at all; they are trace-only.
 `JsonlTraceSink` writes one JSON object per event:
 
 ```json

@@ -188,6 +188,7 @@ class EmbeddingResolution:
             "model": self.model if self.available else "fts-only",
             "keySource": self.key_source,
             "reason": self.reason,
+            "label": "hibrit" if self.available else "yalnız FTS",
         }
 
 

@@ -1405,6 +1405,7 @@ def test_default_lab_is_fts_only_and_never_builds_an_embedder(client, lab, embed
     assert result["mode"] == "text"
     assert result["provider"] == "none" and result["model"] == "fts-only"
     assert result["embeddings"]["mode"] == "fts-only"
+    assert result["embeddings"]["label"] == "yalnız FTS"
     assert "openrouter.ai" in result["embeddings"]["reason"]
     assert result["results"][0]["vectorScore"] is None or result["results"][0]["vectorScore"] == 0
     assert result["results"][0]["citation"].startswith(f"Source: memory/{lab.today()}.md#L")
@@ -1434,7 +1435,7 @@ def test_an_embedding_endpoint_enables_hybrid_search(client, lab, embeddings, mo
     assert result["mode"] == "hybrid" and result["provider"] == "openai-compatible"
     assert result["embeddings"] == {
         "mode": "hybrid", "provider": "openai-compatible", "baseUrl": "https://embeddings.example/v1",
-        "model": "text-embedding-3-small", "keySource": "env", "reason": None,
+        "model": "text-embedding-3-small", "keySource": "env", "reason": None, "label": "hibrit",
     }
     assert result["results"] and result["results"][0]["vectorScore"] is not None
     assert text["provider"] == "none"

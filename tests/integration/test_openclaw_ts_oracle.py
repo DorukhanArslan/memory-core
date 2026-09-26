@@ -3730,3 +3730,154 @@ def test_bootstrap_constants_and_keyword_sets_equal_upstream_source():
         if name in expected_numbers
     }
     assert python_numbers == expected_numbers
+
+
+# --- memory budget compaction (extensions/memory-core/src/memory-budget.ts) --------------
+
+
+def _promotion_section(date: str, size_chars: int, pad: str = "x") -> str:
+    # memory-budget.test.ts promotionSection helper; `pad` widens it to non-ASCII padding.
+    heading = f"## Promoted From Short-Term Memory ({date})\n"
+    return heading + pad * max(0, size_chars - len(heading))
+
+
+_UPSTREAM_USER_SECTION = "## My Notes\n\nImportant user content I do not want dropped.\n"
+_UPSTREAM_REFLECTIONS = "## My Reflections\nMy own notes.\n\n"
+_EMOJI_PAD = "\U0001f600"
+_ACCENT_PAD = "\u00e9"
+
+MEMORY_BUDGET_CASES = [
+    # memory-budget.test.ts inputs, in test order.
+    {
+        "existingMemory": "# Long-Term Memory\n\nSome content.\n",
+        "newSection": "\n## Promoted From Short-Term Memory (2026-04-29)\n- entry\n",
+        "budgetChars": 1_000,
+    },
+    {
+        "existingMemory": (
+            f"{_promotion_section('2026-04-10', 500)}\n{_promotion_section('2026-04-20', 500)}"
+        ),
+        "newSection": f"\n{_promotion_section('2026-04-29', 500)}",
+        "budgetChars": 1_200,
+    },
+    {
+        "existingMemory": "\n".join(
+            _promotion_section(date, 400) for date in ("2026-04-25", "2026-04-10", "2026-04-18")
+        ),
+        "newSection": f"\n{_promotion_section('2026-04-29', 400)}",
+        "budgetChars": 1_300,
+    },
+    {
+        "existingMemory": (
+            f"# Long-Term Memory\n\n{_UPSTREAM_USER_SECTION}\n{_promotion_section('2026-04-10', 800)}"
+        ),
+        "newSection": f"\n{_promotion_section('2026-04-29', 600)}",
+        "budgetChars": 800,
+    },
+    {
+        "existingMemory": "\n".join(
+            _promotion_section(date, 600) for date in ("2026-04-10", "2026-04-15", "2026-04-20")
+        ),
+        "newSection": f"\n{_promotion_section('2026-04-29', 600)}",
+        "budgetChars": 700,
+    },
+    {
+        "existingMemory": "# Long-Term Memory\n\nLots of user content here.\n" * 50,
+        "newSection": f"\n{_promotion_section('2026-04-29', 200)}",
+        "budgetChars": 500,
+    },
+    {
+        "existingMemory": _promotion_section("2026-04-10", 500),
+        "newSection": f"\n{_promotion_section('2026-04-29', 500)}",
+        "budgetChars": 0,
+    },
+    {"existingMemory": "", "newSection": _promotion_section("2026-04-29", 500), "budgetChars": 100},
+    {
+        "existingMemory": (
+            f"{_promotion_section('2026-04-10', 400)}\n{_UPSTREAM_REFLECTIONS}"
+            f"{_promotion_section('2026-04-20', 400)}"
+        ),
+        "newSection": f"\n{_promotion_section('2026-04-29', 400)}",
+        "budgetChars": 900,
+    },
+    {
+        "existingMemory": (
+            f"{_promotion_section('2026-04-10', 200)}\n{_promotion_section('2026-04-20', 200)}"
+        ),
+        "newSection": f"\n{_promotion_section('2026-04-29', 200)}",
+        "budgetChars": 500,
+    },
+    {
+        "existingMemory": (
+            f"{_promotion_section('2026-04-10', 1_000)}\n{_promotion_section('2026-04-20', 1_000)}"
+        ),
+        "newSection": f"\n{_promotion_section('2026-04-29', 1_000)}",
+        "budgetChars": 2_000,
+    },
+    # Block-parser edges built from the upstream strings above.
+    {
+        "existingMemory": (
+            f"# Long-Term Memory\n\n{_UPSTREAM_USER_SECTION}\n{_promotion_section('2026-04-10', 800)}"
+        ).replace("\n", "\r\n"),
+        "newSection": f"\n{_promotion_section('2026-04-29', 600)}",
+        "budgetChars": 800,
+    },
+    {
+        "existingMemory": (
+            f"{_UPSTREAM_USER_SECTION}"
+            "## Promoted From Short-Term Memory (2026-04-10) \t\n- entry\n"
+            "### Promoted From Short-Term Memory (2026-04-11)\n- entry\n"
+            "## Promoted From Short-Term Memory ()\n- entry\n"
+            "##Promoted From Short-Term Memory (2026-04-12)\n- entry\n"
+            "## promoted from short-term memory (2026-04-13)\n- entry\n"
+            f"{_UPSTREAM_REFLECTIONS}"
+        ),
+        "newSection": "",
+        "budgetChars": 1,
+    },
+    {
+        "existingMemory": "\n".join(
+            _promotion_section(date, 300) for date in ("2026-04-20", "2026-04-10", "2026-04-10")
+        ),
+        "newSection": "",
+        "budgetChars": 650,
+    },
+    {
+        "existingMemory": (
+            f"# Long-Term Memory\n\n{_UPSTREAM_USER_SECTION}\n"
+            f"{_promotion_section('2026-04-10', 300, pad=_EMOJI_PAD)}\n"
+            f"{_promotion_section('2026-04-20', 300, pad=_ACCENT_PAD)}"
+        ),
+        "newSection": f"\n{_promotion_section('2026-04-29', 100, pad=_EMOJI_PAD)}",
+        "budgetChars": 800,
+    },
+    {
+        "existingMemory": (
+            f"# Long-Term Memory\n\nSome content.\n\n{_promotion_section('2026-04-10', 200)}\n"
+            f"{_UPSTREAM_USER_SECTION}\n{_promotion_section('2026-04-20', 200)}\n"
+            f"{_UPSTREAM_REFLECTIONS}"
+        ),
+        "newSection": "",
+        "budgetChars": 1,
+    },
+]
+
+
+def test_real_openclaw_oracle_memory_budget_compaction_matches_python():
+    from memory_core.memory_budget import DEFAULT_MEMORY_FILE_MAX_CHARS, compact_memory_for_budget
+
+    result = _oracle().run({"operation": "memoryBudgetCompaction", "cases": MEMORY_BUDGET_CASES})
+
+    assert result["ok"] is True, result
+    assert result["result"]["defaultMemoryFileMaxChars"] == DEFAULT_MEMORY_FILE_MAX_CHARS
+    python_cases = []
+    for case in MEMORY_BUDGET_CASES:
+        compacted = compact_memory_for_budget(
+            existing_memory=case["existingMemory"],
+            new_section=case["newSection"],
+            budget_chars=case["budgetChars"],
+        )
+        python_cases.append(
+            {"compacted": compacted.compacted, "droppedDates": list(compacted.dropped_dates)}
+        )
+    assert result["result"]["cases"] == python_cases

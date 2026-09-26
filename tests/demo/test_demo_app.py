@@ -1173,7 +1173,7 @@ def test_dreaming_endpoint_reindexes_changed_files(monkeypatch):
     monkeypatch.setattr(demo_app, "demo_store", lambda payload: store)
     monkeypatch.setattr(
         demo_app,
-        "run_dreaming_sweep",
+        "_lab_dreaming_sweep",
         lambda **kwargs: {"phase": "rem", "filesChanged": ["DREAMS.md"]},
     )
     client = TestClient(app)
@@ -1196,7 +1196,7 @@ def test_dreaming_endpoint_preserves_sweep_when_reindex_metadata_fails(monkeypat
     monkeypatch.setattr(demo_app, "demo_store", lambda payload: store)
     monkeypatch.setattr(
         demo_app,
-        "run_dreaming_sweep",
+        "_lab_dreaming_sweep",
         lambda **kwargs: {
             "phase": "rem",
             "filesChanged": ["DREAMS.md"],

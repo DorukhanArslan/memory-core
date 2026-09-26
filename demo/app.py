@@ -49,16 +49,17 @@ from memory_core.consolidation import (
     DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES,
     SHORT_TERM_LOCK_RELATIVE_PATH,
     SHORT_TERM_STORE_RELATIVE_PATH,
+    DreamingSweepResult,
     MemoryPromotionRun,
     PromotionWriteOutcome,
     audit_short_term_promotion_artifacts,
     record_daily_memory_flush,
     record_short_term_recalls,
     repair_short_term_promotion_artifacts,
+    run_dreaming_sweep,
     run_short_term_promotion,
     undecorate_search_results,
 )
-from memory_core.consolidation import run_dreaming_sweep as run_consolidation_dreaming_sweep
 from memory_core.embeddings.base import EmbeddingProvider, FakeEmbeddingProvider
 from memory_core.embeddings.openai_compatible import OpenAICompatibleEmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore
@@ -792,7 +793,7 @@ def dreaming_run(payload: dict):
     try:
         phase = str(payload.get("phase") or "light")
         store = demo_store(payload)
-        DREAMING_SWEEP = run_dreaming_sweep(
+        DREAMING_SWEEP = _lab_dreaming_sweep(
             config=demo_config(),
             store=store,
             phase=phase,
@@ -832,9 +833,34 @@ def _flush_latest_turn(engine: ChatEngine, store: SQLiteMemoryStore) -> dict[str
     )
 
 
-def run_dreaming_sweep(**kwargs: Any) -> dict[str, Any]:
+def _lab_dreaming_sweep(**kwargs: Any) -> dict[str, Any]:
     # Thin adapter: the package sweep, serialized for the Lab state payload.
-    return run_consolidation_dreaming_sweep(**kwargs).as_dict()
+    return _serialize_dreaming_sweep(run_dreaming_sweep(**kwargs))
+
+
+def _serialize_dreaming_sweep(sweep: DreamingSweepResult) -> dict[str, Any]:
+    return {
+        "phase": sweep.phase,
+        "candidateCount": len(sweep.candidates),
+        "candidateKeys": [candidate.key for candidate in sweep.candidates],
+        "phaseSignalsRecorded": sweep.phase_signals_recorded,
+        "filesChanged": list(sweep.files_changed),
+        "promotion": _serialize_sweep_promotion(sweep.promotion) if sweep.promotion else None,
+        "skipReason": sweep.skip_reason,
+    }
+
+
+def _serialize_sweep_promotion(run: MemoryPromotionRun) -> dict[str, Any]:
+    return {
+        "target": run.target,
+        "rawText": run.summary,
+        "parsed": _serialize_parsed_flush(run.outcome),
+        "diff": run.diff,
+        "indexedFiles": run.indexed_files,
+        "chunks": run.chunks,
+        "evaluatedCandidateCount": len(run.evaluated_candidates),
+        "reindexError": run.reindex_error,
+    }
 
 
 def _promote_short_term(store: SQLiteMemoryStore) -> dict[str, Any]:

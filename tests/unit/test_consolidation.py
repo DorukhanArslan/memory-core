@@ -140,28 +140,13 @@ def test_promotion_append_delegates_budget_compaction_to_memory_budget(
     assert calls[0]["existing_memory"] == "# MEMORY.md\n"
 
 
-def test_typed_results_serialize_with_upstream_keys(tmp_path: Path):
+def test_repair_result_serializes_with_upstream_keys(tmp_path: Path):
+    # RepairShortTermPromotionArtifactsResult field names (short-term-promotion.ts).
     config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
     now = _ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
 
-    sweep = run_dreaming_sweep(
-        config=config,
-        store=SQLiteMemoryStore(config, FakeEmbeddingProvider(dimensions=8)),
-        phase="light",
-        now_ms=now,
-        timezone="UTC",
-    )
     repair = repair_short_term_promotion_artifacts(config, now)
 
-    assert sweep.as_dict() == {
-        "phase": "light",
-        "candidateCount": 0,
-        "candidateKeys": [],
-        "phaseSignalsRecorded": 0,
-        "filesChanged": [],
-        "promotion": None,
-        "skipReason": None,
-    }
     assert repair.as_dict() == {
         "changed": False,
         "removedInvalidEntries": 0,

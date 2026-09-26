@@ -53,18 +53,6 @@ class DreamingSweepResult:
     # "disabled" when a deep sweep got a policy with enabled=False (nothing promoted).
     skip_reason: str | None = None
 
-    def as_dict(self) -> dict[str, Any]:
-        """JSON-ready summary (camelCase keys) used by the Lab state payload."""
-        return {
-            "phase": self.phase,
-            "candidateCount": len(self.candidates),
-            "candidateKeys": [candidate.key for candidate in self.candidates],
-            "phaseSignalsRecorded": self.phase_signals_recorded,
-            "filesChanged": list(self.files_changed),
-            "promotion": serialize_promotion_run(self.promotion) if self.promotion else None,
-            "skipReason": self.skip_reason,
-        }
-
 
 def run_dreaming_sweep(
     *,
@@ -161,26 +149,6 @@ def run_dreaming_sweep(
         promotion=promotion,
         skip_reason=skip_reason,
     )
-
-
-def serialize_promotion_run(run: MemoryPromotionRun) -> dict[str, Any]:
-    """JSON-ready summary of a promotion run (camelCase keys, candidate count only)."""
-    return {
-        "target": run.target,
-        "rawText": run.summary,
-        "parsed": {
-            "shouldWrite": run.outcome.should_write,
-            "target": run.outcome.target,
-            "entry": run.outcome.entry,
-            "reason": run.outcome.reason,
-            "error": run.outcome.error,
-        },
-        "diff": run.diff,
-        "indexedFiles": run.indexed_files,
-        "chunks": run.chunks,
-        "evaluatedCandidateCount": len(run.evaluated_candidates),
-        "reindexError": run.reindex_error,
-    }
 
 
 def _append_dreams_section(

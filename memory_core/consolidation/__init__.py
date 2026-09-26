@@ -37,7 +37,6 @@ from memory_core.consolidation.dreaming import (
     DREAMS_FILE_NAME,
     DreamingSweepResult,
     run_dreaming_sweep,
-    serialize_promotion_run,
 )
 from memory_core.consolidation.markers import (
     OPENCLAW_PROMOTION_MARKER_PREFIX,
@@ -139,6 +138,5 @@ __all__ = [
     "resolve_deep_dreaming_policy",
     "run_dreaming_sweep",
     "run_short_term_promotion",
-    "serialize_promotion_run",
     "undecorate_search_results",
 ]

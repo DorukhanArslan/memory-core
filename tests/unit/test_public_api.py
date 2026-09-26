@@ -135,3 +135,16 @@ def test_public_api_exports_workspace_bootstrap_surface(tmp_path):
     assert result.bootstrap_status == "pending"
     context = memory.build_workspace_context(tmp_path / "ws")
     assert context.files == ()
+
+
+def test_public_api_exports_memory_search_tool_contract():
+    expected = {"execute_memory_search_tool", "MemoryToolInputError", "to_tool_error"}
+
+    assert expected.issubset(set(memory.__all__))
+    error = memory.MemoryToolInputError("query required", tool="memory_search")
+    assert error.status == 400
+    assert memory.to_tool_error(error, tool="memory_search") == {
+        "status": "error",
+        "tool": "memory_search",
+        "error": "query required",
+    }

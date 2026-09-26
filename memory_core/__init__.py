@@ -143,7 +143,8 @@ from memory_core.supplements import (
     sort_corpus_results,
 )
 from memory_core.tools.memory_get import memory_get
-from memory_core.tools.memory_search import memory_search
+from memory_core.tools.common import MemoryToolInputError, to_tool_error
+from memory_core.tools.memory_search import execute_memory_search_tool, memory_search
 from memory_core.workspace import (
     MemoryFile,
     MemoryReadResult,
@@ -265,6 +266,9 @@ __all__ = [
     "limit_history_turns",
     "memory_get",
     "memory_search",
+    "execute_memory_search_tool",
+    "MemoryToolInputError",
+    "to_tool_error",
     "normalize_assistant_replay_content",
     "repair_tool_use_result_pairing",
     "resolve_runtime_context_prompt_parts",

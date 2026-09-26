@@ -44,6 +44,10 @@ At least one of `vector_search` / `text_search` must stay enabled;
 - `Memory.from_workspace()` runs the same check (plus the `agent_id` store-path
   check) before it creates anything, so a call that raises leaves no
   `MEMORY.md`, `memory/` or `.memory-core/` behind.
+- The index records whether it was built FTS-only or with which provider and
+  model. Reopening a store with `vector_search` switched (or another embedding
+  model or endpoint) makes `memory_search` return the paused result until the
+  store is reindexed (`docs/memory_search_tool.md`, Index identity).
 
 ## Parity notes
 

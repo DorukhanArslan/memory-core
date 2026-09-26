@@ -292,7 +292,8 @@ function boot() {
     const cd = store.data.index?.cooldown?.until && store.data.index.cooldown.until > Date.now() - 1000;
     if (minute !== lastMinute || cd) { lastMinute = minute; refresh('status', 'top'); if (cd && store.ui.inspectorTab === 'memory') refresh('inspector'); }
   }, 1000);
-  window.addEventListener('lab:saved', (e) => notify('file.saved', e.detail));
+  window.addEventListener('lab:saved', () => notify('file.saved'));
+  window.addEventListener('lab:local', (e) => notify(String(e.detail)));
   document.getElementById('boot-fallback')?.remove();
   window.__lab = { store, refresh, actions: A, basename };
 }

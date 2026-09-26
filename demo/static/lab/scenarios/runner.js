@@ -302,6 +302,12 @@ export async function evaluate() {
 export function notify(type) {
   const s = sc(); if (!s || s.step < 0 || s.finished || s.blocked) return;
   const step = s.def.steps[s.step];
+  // An edit step with a follow-up button (Kaydet → Şimdi çalıştır) returns to its view after the save.
+  if (type === 'file.saved' && step.act === 'edit' && step.then) {
+    const view = step.view || s.def.view;
+    if (view) store.actions.setView(view);
+    setTimeout(() => pulse(step.then), 250);
+  }
   if (!step.waitFor) return;
   if (new RegExp(`^(${step.waitFor})$`).test(type)) setTimeout(evaluate, 350);
 }

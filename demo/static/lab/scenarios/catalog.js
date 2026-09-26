@@ -241,7 +241,7 @@ export const SCENARIOS = [
         checks: [auto('liveStep(collect_new_time)', liveStep('collect_new_time'), ['live'])] },
       { act: 'send', live: true, text: 'Yarın saat 14:30 olabilir mi?', waitFor: 'live.turn', expect: 'scn.S13.e3', checks: [auto('liveStep(confirm_change)', liveStep('confirm_change'), ['live'])] },
       { act: 'send', live: true, text: 'Evet, onaylıyorum.', waitFor: 'live.turn', expect: 'scn.S13.e4', checks: [auto('liveStep(completed)', liveStep('completed'), ['live']), auto('businessAction(appointment_rescheduled)', businessAction('appointment_rescheduled'), ['live'])] },
-      { act: 'press', view: 'live', target: 'live-summary', waitFor: 'live.summary', label: 'scn.S13.l5', expect: 'scn.S13.e5',
+      { act: 'press', view: 'live', target: 'live-summary', waitFor: 'live.summary|live.session_summary_completed|live.session_summary_skipped', label: 'scn.S13.l5', expect: 'scn.S13.e5',
         checks: [auto('summary wrote to subject daily file', liveSummaryWrote(), ['live']), auto('bus: eventOrder([live.session_summary_started,live.session_summary_completed])', (ctx) => eventOrder(['live.session_summary_started', 'live.session_summary_completed'])(ctx) || (ctx.live?.summary?.wrote === true && !(ctx.events || []).some((e) => String(e.type).startsWith('live.'))), ['live'])] },
       { act: 'look', view: 'live', label: 'scn.S13.l6', expect: 'scn.S13.e6', labels: [{ tone: 'warn', text: 'scn.S13.gapShort' }],
         checks: [auto('textAbsent(subjectDaily, proof@3)', proofAbsentFromSummary(3), ['live'], { gap: true })] },

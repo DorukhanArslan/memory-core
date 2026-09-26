@@ -19,6 +19,7 @@ async function reset() {
   try { L.state = await api.post('/api/live-task/reset', ids()); L.turns = []; L.events = []; L.engine = null; L.summary = null; L.summaryDiff = null; L.err = null; }
   catch (err) { toast(err.message, { tone: 'danger' }); L.lastError = err; }
   refresh('center', 'inspector');
+  window.dispatchEvent(new CustomEvent('lab:local', { detail: 'live.reset' }));
 }
 async function summary() {
   const L = store.data.live;
@@ -34,6 +35,7 @@ async function summary() {
   } catch (err) { L.summary = { error: err.message }; toast(err.message, { tone: 'danger' }); }
   L.summarizing = false;
   refresh('center', 'inspector');
+  window.dispatchEvent(new CustomEvent('lab:local', { detail: 'live.summary' }));
 }
 export async function liveSend(textArg = null) {
   const L = store.data.live; const u = store.ui;

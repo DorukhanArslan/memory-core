@@ -36,6 +36,7 @@ from demo.lab_runtime import (
 )
 from demo.lab_tools import LabToolbox, ToolLoopOutcome, public_write, run_tool_loop
 from demo.transcript_context import select_transcript_context
+from memory_core.bootstrap import format_session_reset_transcript_prompt
 from memory_core.consolidation import record_short_term_recalls, undecorate_search_results
 from memory_core.prompt_section import build_prompt_section
 from memory_core.tools.memory_search import memory_search
@@ -269,8 +270,26 @@ def _run_turn(
     secrets = lab.secret_values(payload)
     session = lab.session(kind)
     scripted = getattr(engine, "provider", "") == "scripted"
-    turn = TurnState(lab, session, user=message, engine=engine, reset=reset)
+    reset_info = session.pending_reset if reset else None
+    if reset_info is not None:
+        # prompt-prelude.ts:212-235: the model gets [startup prelude, reset prompt];
+        # the transcript keeps only the "[... session new]" row.
+        display_user = format_session_reset_transcript_prompt(reset_info["command"])
+        startup_text = (reset_info.get("startup") or {}).get("text")
+        user_content = "\n\n".join(part for part in (startup_text, reset_info["prompt"]) if part)
+    else:
+        display_user = message
+        user_content = message
+    turn = TurnState(lab, session, user=display_user, engine=engine, reset=reset)
     detail = turn.detail
+    if reset_info is not None:
+        detail["transcriptUser"] = display_user
+        detail["startup"] = reset_info.get("startup")
+        detail["resetPrompt"] = {
+            "command": reset_info["command"],
+            "text": reset_info["prompt"],
+            "bootstrapMode": reset_info["bootstrapMode"],
+        }
     yield sse_frame(
         {"turnId": turn.id, "sessionId": session.id, "sessionKey": session.key, "sessionKind": kind,
          "engine": detail["engine"]},
@@ -289,7 +308,6 @@ def _run_turn(
         mode = lab.default_search_mode(embedding)
         config = lab.config(mode=mode)
         store = lab.store(embedding, mode=mode)
-        user_content = message
 
         # D1: upstream order is preflight compaction, memory flush, then the main run.
         yield turn.skip("compaction", "Lab compaction yok (bilinen açık)")
@@ -330,12 +348,12 @@ def _run_turn(
             recall = None
         else:
             yield turn.start("recall")
-            recall = auto_recall(lab, config, store, message, turn_id=turn.id)
+            recall = auto_recall(lab, config, store, user_content, turn_id=turn.id)
             detail["recall"] = recall
             lab.bus.emit(
                 "recall.completed",
                 summary=f"recall {len(recall['used'])} / {len(recall['results'])} isabet",
-                data={"query": message, "used": recall["used"], "hits": len(recall["results"]),
+                data={"query": user_content, "used": recall["used"], "hits": len(recall["results"]),
                       "filtered": recall["filtered"], "unavailable": recall["unavailable"]},
                 turn_id=turn.id,
             )
@@ -374,7 +392,7 @@ def _run_turn(
                                "window": TRANSCRIPT_MESSAGE_WINDOW, "charBudget": TRANSCRIPT_CHAR_BUDGET,
                                "label": "demo-only"},
                 "messages": messages,
-                "startup": None,
+                "startup": detail.get("startup"),
                 "flush": (
                     {
                         "prompt": detail["flush"]["run"]["prompt"],
@@ -469,4 +487,5 @@ def _persist(lab: LabRuntime, session: LabSession, turn: TurnState, wc, user_con
     if wc.record_completed_bootstrap_turn:
         session.completed_bootstrap_turn = True
     update_token_snapshot(session, outcome.usage, messages=outcome.messages, output_text=outcome.text)
+    session.pending_reset = None
     del lab

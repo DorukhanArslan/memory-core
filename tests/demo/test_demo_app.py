@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -1120,3 +1121,85 @@ def test_chat_turn_prompt_matches_the_messages_sent(client, lab, monkeypatch):
     assert detail["sessionKey"].startswith("lab:subagent:")
     assert detail["recall"] is None
     assert {stage["name"]: stage["status"] for stage in detail["stages"]}["recall"] == "skip"
+
+
+# --- sessions: /new and /reset -------------------------------------------------------------
+
+
+def test_bare_new_writes_session_memory_and_loads_the_startup_context(client, lab, monkeypatch):
+    from memory_core.bootstrap import BARE_SESSION_RESET_PROMPT_BASE
+
+    engine = use_engine(monkeypatch, StubEngine([("Not aldım.", []), ("Merhaba!", []), ("16:00.", [])]))
+    client.get("/api/lab/state")
+    daily = lab.root / "memory" / f"{lab.today()}.md"
+    daily.write_text("- Müşteri demosu 16:00'ya alındı.\n", encoding="utf-8")
+    send(client, "Bugün müşteri demosunu 16:00'ya aldık.")
+    old_key = client.get("/api/lab/state").json()["session"]["key"]
+    daily_before = daily.read_text(encoding="utf-8")
+
+    result = client.post("/api/lab/session/new", json={"command": "new", "sessionKind": "main"}).json()
+
+    memory_path = result["sessionMemory"]["path"]
+    assert re.fullmatch(rf"memory/{lab.today()}-\d{{4}}\.md", memory_path)
+    content = (lab.root / memory_path).read_text(encoding="utf-8")
+    assert content.startswith("# Session: ")
+    assert f"- **Session Key**: {old_key}" in content
+    assert "- **Source**: lab" in content
+    assert "## Conversation Summary" in content
+    assert "user: Bugün müşteri demosunu 16:00'ya aldık." in content
+    assert "assistant: Not aldım." in content
+    assert result["sessionMemory"]["rawLines"] is True and "D2" in result["sessionMemory"]["label"]
+    assert daily.read_text(encoding="utf-8") == daily_before
+    assert result["sessionKey"] != old_key and result["bare"] is True
+    assert result["startup"]["text"].startswith("[Startup context loaded by runtime]\n")
+    assert result["startup"]["files"] == [f"memory/{lab.today()}.md", memory_path]
+    assert result["resetPrompt"]["text"].startswith(BARE_SESSION_RESET_PROMPT_BASE + "\nCurrent time: ")
+    assert result["resetPrompt"]["bootstrapMode"] == "none"
+    types = event_types(client)
+    assert {"session_memory.written", "session.new", "startup_context.loaded"} <= set(types)
+
+    reset_frames = send(client, "", reset=True)
+    reset_detail = frames_of(reset_frames, "turn_done")[0]["detail"]
+    sent_user = engine.calls[1]["messages"][-1]
+    assert sent_user["role"] == "user"
+    assert sent_user["content"] == f"{result['startup']['text']}\n\n{result['resetPrompt']['text']}"
+    assert reset_detail["user"] == "[memory-core session new]"
+    assert reset_detail["prompt"]["startup"] == result["startup"]
+    assert any(chip["type"] == "startup" for chip in reset_detail["chips"])
+    assert {stage["name"]: stage["status"] for stage in reset_detail["stages"]}["recall"] == "skip"
+
+    next_detail = frames_of(send(client, "Nerede kalmıştık?"), "turn_done")[0]["detail"]
+    assert next_detail["prompt"]["startup"] is None
+    assert engine.calls[2]["messages"][-3]["content"] == "[memory-core session new]"
+
+
+def test_new_with_text_writes_the_file_but_loads_no_startup_context(client, lab):
+    client.get("/api/lab/state")
+    (lab.root / "memory" / f"{lab.today()}.md").write_text("- a note\n", encoding="utf-8")
+
+    result = client.post("/api/lab/session/new", json={"command": "reset", "text": "Selam, yeni konu."}).json()
+
+    assert result["bare"] is False
+    assert result["startup"] is None and result["resetPrompt"] is None
+    assert (lab.root / result["sessionMemory"]["path"]).exists()
+    assert "## Conversation Summary" not in result["sessionMemory"]["content"]
+    assert "startup_context.loaded" not in event_types(client)
+    no_pending = client.post("/api/lab/chat/stream", json={"message": "", "reset": True, "sessionKind": "main"})
+    assert no_pending.status_code == 400 and no_pending.json()["code"] == "no_pending_reset"
+
+
+def test_bare_new_while_bootstrap_is_pending_uses_the_limited_prompt(client, lab):
+    from memory_core.bootstrap.startup import BARE_SESSION_RESET_PROMPT_BOOTSTRAP_LIMITED
+
+    client.post("/api/lab/workspace/reset", json={"mode": "fresh"})
+
+    result = client.post("/api/lab/session/new", json={"command": "new"}).json()
+
+    assert result["resetPrompt"]["bootstrapMode"] == "limited"
+    assert result["resetPrompt"]["text"].startswith(BARE_SESSION_RESET_PROMPT_BOOTSTRAP_LIMITED)
+    assert result["startup"] is None
+
+
+def test_session_new_validates_the_command(client):
+    assert client.post("/api/lab/session/new", json={"command": "wipe"}).json()["code"] == "invalid_command"
+    assert client.post("/api/lab/session/new", json={"command": "new", "sessionKind": "x"}).status_code == 400

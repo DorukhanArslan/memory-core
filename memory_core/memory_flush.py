@@ -559,6 +559,14 @@ def _format_date_stamp_in_timezone(now_ms: int, timezone: str) -> str:
     return local.strftime("%Y-%m-%d")
 
 
+def format_current_time_line(now_ms: int, timezone: str = "UTC") -> str:
+    """The two-line ``Current time: ...`` / ``Reference UTC: ...`` block of
+    ``resolveCronStyleNow`` (``src/agents/current-time.ts:26-37``) in 24-hour format;
+    an unknown or blank zone falls back to UTC like the flush plan.
+    """
+    return _format_current_time_line(int(now_ms), _resolve_timezone(timezone))
+
+
 def _format_current_time_line(now_ms: int, timezone: str) -> str:
     instant = datetime.fromtimestamp(now_ms / 1000, tz=UTC)
     local = instant.astimezone(ZoneInfo(timezone))

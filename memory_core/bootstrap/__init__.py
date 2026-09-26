@@ -80,9 +80,20 @@ from memory_core.bootstrap.render import (
     render_workspace_prompt,
     sort_context_files,
 )
-from memory_core.bootstrap.startup import build_startup_context, should_apply_startup_context
+from memory_core.bootstrap.startup import (
+    BARE_SESSION_RESET_PROMPT_BASE,
+    BareSessionResetPromptState,
+    append_cron_style_current_time_line,
+    build_bare_session_reset_prompt,
+    build_startup_context,
+    format_session_reset_transcript_prompt,
+    resolve_bare_session_reset_prompt_state,
+    should_apply_startup_context,
+)
 
 __all__ = [
+    "BARE_SESSION_RESET_PROMPT_BASE",
+    "BareSessionResetPromptState",
     "DEFAULT_BOOTSTRAP_MAX_CHARS",
     "DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS",
     "DEFAULT_WORKSPACE_LAYOUT",
@@ -105,8 +116,10 @@ __all__ = [
     "WorkspaceSetupState",
     "analyze_bootstrap_budget",
     "append_bootstrap_prompt_warning",
+    "append_cron_style_current_time_line",
     "apply_context_mode_filter",
     "bootstrap_status",
+    "build_bare_session_reset_prompt",
     "build_bootstrap_context_files",
     "build_bootstrap_injection_stats",
     "build_bootstrap_prompt_section_lines",
@@ -120,6 +133,7 @@ __all__ = [
     "filter_completed_bootstrap_file",
     "filter_heartbeat_bootstrap_file",
     "format_bootstrap_truncation_warning_lines",
+    "format_session_reset_transcript_prompt",
     "has_workspace_user_content_evidence",
     "initialize_agent_workspace",
     "is_workspace_setup_completed",
@@ -129,6 +143,7 @@ __all__ = [
     "render_project_context",
     "render_workspace_files_injected",
     "render_workspace_prompt",
+    "resolve_bare_session_reset_prompt_state",
     "resolve_bootstrap_char_limit",
     "resolve_bootstrap_mode",
     "resolve_context_injection",

@@ -48,6 +48,10 @@ class RuntimeIdentity:
     # prompt (OpenClaw src/auto-reply/heartbeat.ts:23 HEARTBEAT_TRANSCRIPT_PROMPT,
     # written by src/auto-reply/reply/prompt-prelude.ts:231-232).
     heartbeat_transcript_prompt: str = "[memory-core heartbeat poll]"
+    # Transcript row recorded for a bare /new or /reset turn instead of the reset prompt
+    # (OpenClaw src/auto-reply/reply/prompt-prelude.ts:233-234 `[OpenClaw session ${action}]`);
+    # ``{action}`` is "new" or "reset".
+    session_reset_transcript_prompt: str = "[memory-core session {action}]"
 
 
 MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -77,6 +81,7 @@ MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
         "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
     ),
     heartbeat_transcript_prompt="[memory-core heartbeat poll]",
+    session_reset_transcript_prompt="[memory-core session {action}]",
 )
 
 OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -106,4 +111,5 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
         "Tell the user to run: openclaw memory status --index or openclaw memory index --force."
     ),
     heartbeat_transcript_prompt="[OpenClaw heartbeat poll]",
+    session_reset_transcript_prompt="[OpenClaw session {action}]",
 )

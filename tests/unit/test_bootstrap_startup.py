@@ -139,3 +139,75 @@ def test_startup_context_is_well_formed_when_the_file_cap_splits_an_emoji(tmp_pa
     assert re.search("[\ud800-\udfff]", prelude) is None
     assert "a" * 1199 + "�\n...[truncated]..." in prelude
     prelude.encode("utf-8")
+
+
+# --- bare /new and /reset prompt (session-reset-prompt.ts) -------------------------------
+
+from memory_core.bootstrap import (  # noqa: E402
+    BARE_SESSION_RESET_PROMPT_BASE,
+    append_cron_style_current_time_line,
+    build_bare_session_reset_prompt,
+    format_session_reset_transcript_prompt,
+    initialize_agent_workspace,
+    resolve_bare_session_reset_prompt_state,
+)
+from memory_core.bootstrap.startup import (  # noqa: E402
+    BARE_SESSION_RESET_PROMPT_BOOTSTRAP_LIMITED,
+    BARE_SESSION_RESET_PROMPT_BOOTSTRAP_PENDING,
+)
+from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY  # noqa: E402
+
+RESET_NOW_MS = 1_790_435_481_770  # 2026-09-26 15:11:21Z
+TIME_LINE = (
+    "Current time: Saturday, September 26th, 2026 - 18:11 (Europe/Istanbul)\n"
+    "Reference UTC: 2026-09-26 15:11 UTC"
+)
+
+
+def test_bare_reset_prompt_picks_the_variant_by_bootstrap_mode():
+    assert build_bare_session_reset_prompt(now_ms=RESET_NOW_MS, timezone="Europe/Istanbul") == (
+        f"{BARE_SESSION_RESET_PROMPT_BASE}\n{TIME_LINE}"
+    )
+    assert build_bare_session_reset_prompt(
+        now_ms=RESET_NOW_MS, bootstrap_mode="full", timezone="Europe/Istanbul"
+    ).startswith(BARE_SESSION_RESET_PROMPT_BOOTSTRAP_PENDING + "\nCurrent time: ")
+    assert build_bare_session_reset_prompt(
+        now_ms=RESET_NOW_MS, bootstrap_mode="limited", timezone="Europe/Istanbul"
+    ).startswith(BARE_SESSION_RESET_PROMPT_BOOTSTRAP_LIMITED + "\nCurrent time: ")
+
+
+def test_bare_reset_state_prepends_startup_context_only_in_mode_none(tmp_path):
+    initialize_agent_workspace(tmp_path, templates={"BOOTSTRAP.md": "# Ritual\n"})
+    pending = resolve_bare_session_reset_prompt_state(
+        tmp_path, now_ms=RESET_NOW_MS, has_bootstrap_file_access=False
+    )
+    full = resolve_bare_session_reset_prompt_state(tmp_path, now_ms=RESET_NOW_MS)
+    subagent = resolve_bare_session_reset_prompt_state(tmp_path, now_ms=RESET_NOW_MS, is_primary_run=False)
+    (tmp_path / "memory").mkdir()
+    initialize_agent_workspace(tmp_path, templates={"BOOTSTRAP.md": "# Ritual\n"})
+    complete = resolve_bare_session_reset_prompt_state(tmp_path, now_ms=RESET_NOW_MS)
+
+    assert (pending.bootstrap_mode, pending.should_prepend_startup_context) == ("limited", False)
+    assert (full.bootstrap_mode, full.should_prepend_startup_context) == ("full", False)
+    assert (subagent.bootstrap_mode, subagent.should_prepend_startup_context) == ("none", True)
+    assert (complete.bootstrap_mode, complete.should_prepend_startup_context) == ("none", True)
+    assert complete.prompt.startswith(BARE_SESSION_RESET_PROMPT_BASE)
+
+
+def test_cron_style_time_line_is_appended_once_and_refreshed():
+    once = append_cron_style_current_time_line("Hello  \n", now_ms=RESET_NOW_MS, timezone="Europe/Istanbul")
+    refreshed = append_cron_style_current_time_line(
+        once.replace("18:11", "09:00").replace("15:11 UTC", "06:00 UTC"), now_ms=RESET_NOW_MS,
+        timezone="Europe/Istanbul",
+    )
+
+    assert once == f"Hello\n{TIME_LINE}"
+    assert refreshed == once
+    assert append_cron_style_current_time_line("   ", now_ms=RESET_NOW_MS) == ""
+
+
+def test_reset_transcript_row_follows_the_runtime_identity():
+    assert format_session_reset_transcript_prompt("new") == "[memory-core session new]"
+    assert format_session_reset_transcript_prompt("reset", OPENCLAW_COMPAT_RUNTIME_IDENTITY) == (
+        "[OpenClaw session reset]"
+    )

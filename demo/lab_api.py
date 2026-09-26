@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -32,9 +33,11 @@ from demo.lab_prompt import (
 from demo.lab_runtime import MINIMAL_PROMPT_KINDS
 from demo.lab_tools import lab_curator
 from demo.lab_runtime import (
+    LAB_SESSION_SOURCE,
     LAB_TIMEZONE,
     LabError,
     LabRuntime,
+    optional_text,
     summarize_turn,
     validate_id,
 )
@@ -46,7 +49,13 @@ from demo.parity_results import (
     parse_parity_matrix,
 )
 from demo.workspace_context import workspace_layout_summary
-from memory_core.bootstrap import trim_bootstrap_content
+from memory_core.bootstrap import (
+    build_startup_context,
+    resolve_bare_session_reset_prompt_state,
+    should_apply_startup_context,
+    trim_bootstrap_content,
+)
+from memory_core.session_memory import save_session_memory
 from memory_core.heartbeat import build_heartbeat_section_lines, resolve_heartbeat_prompt_for_system_prompt
 from memory_core.prompt_section import build_prompt_section
 from memory_core.tools.memory_get import MEMORY_GET_TOOL_NAME
@@ -220,12 +229,26 @@ def build_router(lab: LabRuntime) -> APIRouter:
         message = str(payload.get("message") or "").strip()
         if not message and not reset:
             raise LabError(400, "message is required", code="invalid_message")
+        if reset and lab.session(kind).pending_reset is None:
+            raise LabError(
+                400, "no bare /new or /reset is pending for this session kind", code="no_pending_reset"
+            )
         engine = resolve_chat_engine(lab, payload)
         return StreamingResponse(
             chat_turn_frames(lab, payload, engine, kind=kind, message=message, reset=reset),
             media_type="text/event-stream",
             headers=SSE_HEADERS,
         )
+
+    @router.post("/session/new")
+    def session_new(payload: dict = Body(...)):
+        lab.ensure_exists()
+        command = payload.get("command")
+        if command not in ("new", "reset"):
+            raise LabError(400, "command must be 'new' or 'reset'", code="invalid_command")
+        kind = str(payload.get("sessionKind") or "main")
+        with lab.lock:
+            return start_new_session(lab, kind=kind, command=command, text=optional_text(payload.get("text")))
 
     @router.post("/curation/revert")
     def curation_revert(payload: dict = Body(...)):
@@ -278,6 +301,90 @@ def build_router(lab: LabRuntime) -> APIRouter:
         }
 
     return router
+
+
+SESSION_MEMORY_LABEL = "ham satırlar (upstream, D2): redaktör yok"
+_STARTUP_FILE_RE = re.compile(r"^\[Untrusted daily memory: (.+)\]$", re.MULTILINE)
+
+
+def start_new_session(lab: LabRuntime, *, kind: str, command: str, text: str | None) -> dict[str, Any]:
+    """``/new`` and ``/reset``: the session-memory hook, a new session and, when bare,
+    the reset prompt with the startup context (upstream get-reply-run.ts:711-752).
+    """
+    old = lab.session(kind)
+    now = lab.now_ms()
+    # session-memory hook (handler.ts): always writes memory/<date>-<slug>.md with the
+    # raw recent lines, like upstream; the Lab passes no redactor (D2).
+    with lab.tracked("session_memory"):
+        saved = save_session_memory(
+            lab.root,
+            session_key=old.key,
+            session_id=old.id,
+            messages=old.messages,
+            source=LAB_SESSION_SOURCE,
+            now_ms=now,
+            timezone=LAB_TIMEZONE,
+        )
+    lab.bus.emit(
+        "session_memory.written",
+        summary=f"oturum belleği → {saved.rel_path}",
+        data={"path": saved.rel_path, "slug": saved.slug, "lines": len((saved.session_content or "").splitlines()),
+              "label": SESSION_MEMORY_LABEL},
+    )
+    new = lab.replace_session(kind)
+    bare = not text
+    lab.bus.emit(
+        "session.new",
+        summary=f"/{command}{'' if bare else ' (metinli)'} · {kind}",
+        data={"command": command, "bare": bare, "oldSessionKey": old.key, "sessionKey": new.key},
+    )
+    startup = None
+    reset_prompt = None
+    if bare:
+        state = resolve_bare_session_reset_prompt_state(
+            lab.root,
+            now_ms=now,
+            timezone=LAB_TIMEZONE,
+            layout=lab.layout,
+            is_primary_run=kind != "subagent",
+            # resolveBareResetBootstrapFileAccess: the Lab model has no read tool.
+            has_bootstrap_file_access=False,
+        )
+        startup_text = (
+            build_startup_context(lab.root, now_ms=now, timezone=LAB_TIMEZONE)
+            if state.should_prepend_startup_context and should_apply_startup_context(command)
+            else None
+        )
+        if startup_text:
+            files = _STARTUP_FILE_RE.findall(startup_text)
+            startup = {"text": startup_text, "files": files}
+            lab.bus.emit(
+                "startup_context.loaded",
+                summary=f"başlangıç bağlamı: {len(files)} dosya",
+                data={"files": files, "chars": utf16_len(startup_text)},
+            )
+        reset_prompt = {
+            "text": state.prompt,
+            "bootstrapMode": state.bootstrap_mode,
+            "shouldPrependStartupContext": state.should_prepend_startup_context,
+        }
+        new.pending_reset = {
+            "command": command,
+            "prompt": state.prompt,
+            "bootstrapMode": state.bootstrap_mode,
+            "startup": startup,
+        }
+    return {
+        "sessionId": new.id,
+        "sessionKey": new.key,
+        "sessionKind": kind,
+        "command": command,
+        "bare": bare,
+        "sessionMemory": {"path": saved.rel_path, "content": saved.entry, "rawLines": True,
+                          "label": SESSION_MEMORY_LABEL},
+        "startup": startup,
+        "resetPrompt": reset_prompt,
+    }
 
 
 def offered_tool_names(lab: LabRuntime) -> list[str]:

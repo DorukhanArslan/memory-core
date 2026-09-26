@@ -8,6 +8,13 @@ are still read for upstream compatibility, although memory-core itself only writ
 canonical names. Upstream prepends this only when the run's bootstrap mode is
 ``none`` (``session-reset-prompt.ts:89-93``); that decision stays with the host.
 
+The bare reset prompt of the same turn is a port of
+``src/auto-reply/reply/session-reset-prompt.ts``: :data:`BARE_SESSION_RESET_PROMPT_BASE`
+and its two bootstrap-pending variants (verbatim), the mode gate
+(:func:`resolve_bare_session_reset_prompt_state`: the startup context is
+prepended only in bootstrap mode ``none``, ``:89-93``) and the cron-style
+current-time line (``appendCronStyleCurrentTimeLine``, ``src/agents/current-time.ts:58-80``).
+
 Deviations: the timezone is an explicit argument (default UTC) and an unknown
 zone raises, where upstream falls back to the host timezone. The prelude is
 returned well-formed (``String.prototype.toWellFormed``): the 1,200-unit cut
@@ -21,6 +28,7 @@ import math
 import os
 import re
 from collections.abc import Collection
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from datetime import timezone as _dt_timezone
 from functools import cmp_to_key
@@ -30,11 +38,21 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from memory_core.bootstrap._js import (
     js_to_well_formed,
     js_trim,
+    js_trim_end,
     locale_compare,
     utf16_len,
     utf16_slice,
 )
-from memory_core.bootstrap.files import read_workspace_file_guarded
+from memory_core.bootstrap.files import BootstrapMode, read_workspace_file_guarded, resolve_bootstrap_mode
+from memory_core.bootstrap.layout import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
+from memory_core.bootstrap.lifecycle import bootstrap_status
+from memory_core.bootstrap.render import (
+    _BOOTSTRAP_FULL_FIXED_LINES,
+    _BOOTSTRAP_LIMITED_FIXED_LINES,
+    BOOTSTRAP_LIMITED_NEXT_STEP_LINE,
+)
+from memory_core.memory_flush import format_current_time_line
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 
 STARTUP_MEMORY_FILE_MAX_BYTES = 16_384
 STARTUP_MEMORY_FILE_MAX_CHARS = 1_200
@@ -263,3 +281,135 @@ def build_startup_context(
         sections.append(block)
         used += utf16_len(block)
     return js_to_well_formed("\n".join([*STARTUP_CONTEXT_PRELUDE_LINES, "", *sections]))
+
+
+# --- bare /new and /reset prompt (session-reset-prompt.ts) ---------------------------------
+
+# session-reset-prompt.ts:12-13 (verbatim).
+BARE_SESSION_RESET_PROMPT_BASE = (
+    "A new session was started via /new or /reset. Execute your Session Startup sequence now - "
+    "read the required files before responding to the user. If BOOTSTRAP.md exists in the "
+    "provided Project Context, read it and follow its instructions first. Then greet the user in "
+    "your configured persona, if one is provided. Be yourself - use your defined voice, "
+    "mannerisms, and mood. Keep it to 1-3 sentences and ask what they want to do. If the runtime "
+    "model differs from default_model in the system prompt, mention the default model. Do not "
+    "mention internal steps, files, tools, or reasoning."
+)
+# session-reset-prompt.ts:15-25: buildFullBootstrapPromptLines (bootstrap-prompt.ts:2-14)
+# with the reset read/first-reply lines, joined with spaces.
+BARE_SESSION_RESET_PROMPT_BOOTSTRAP_PENDING = " ".join(
+    [
+        "A new session was started via /new or /reset while bootstrap is still pending for this "
+        "workspace.",
+        "Please read BOOTSTRAP.md from the workspace now and follow it before replying normally.",
+        *_BOOTSTRAP_FULL_FIXED_LINES,
+        "Your first user-visible reply must follow BOOTSTRAP.md, not a generic greeting.",
+        "If the runtime model differs from default_model in the system prompt, mention the default "
+        "model only after handling BOOTSTRAP.md.",
+        "Do not mention internal steps, files, tools, or reasoning.",
+    ]
+)
+# session-reset-prompt.ts:27-38: buildLimitedBootstrapPromptLines(...).slice(1).
+BARE_SESSION_RESET_PROMPT_BOOTSTRAP_LIMITED = " ".join(
+    [
+        "A new session was started via /new or /reset while bootstrap is still pending for this "
+        "workspace, but this run cannot safely complete the full BOOTSTRAP.md workflow here.",
+        *_BOOTSTRAP_LIMITED_FIXED_LINES,
+        BOOTSTRAP_LIMITED_NEXT_STEP_LINE,
+        "If the runtime model differs from default_model in the system prompt, mention the default "
+        "model only after you have handled this limitation.",
+        "Do not mention internal steps, files, tools, or reasoning.",
+    ]
+)
+
+# current-time.ts:52-53 CURRENT_TIME_LINE_RE (JS \d is ASCII; `.` excludes line breaks).
+_CURRENT_TIME_LINE_RE = re.compile(
+    r"^Current time: .+? \([^)]+\)\nReference UTC: [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} UTC$",
+    re.MULTILINE,
+)
+_THREE_NEWLINES_RE = re.compile(r"\n{3,}")
+_BLANK_BEFORE_TIME_RE = re.compile(r"\n\n+(?=Current time:)")
+
+
+def append_cron_style_current_time_line(text: str, *, now_ms: int | float, timezone: str = "UTC") -> str:
+    """Port of ``appendCronStyleCurrentTimeLine`` (current-time.ts:58-80)."""
+    base = js_trim_end(text)
+    if not base:
+        return base
+    time_line = format_current_time_line(int(now_ms), timezone)
+    if not _CURRENT_TIME_LINE_RE.search(base):
+        return f"{base}\n{time_line}"
+    replaced = False
+
+    def refresh(_match: re.Match[str]) -> str:
+        nonlocal replaced
+        if replaced:
+            return ""
+        replaced = True
+        return time_line
+
+    refreshed = _CURRENT_TIME_LINE_RE.sub(refresh, base)
+    refreshed = _BLANK_BEFORE_TIME_RE.sub("\n", _THREE_NEWLINES_RE.sub("\n\n", refreshed))
+    return js_trim_end(refreshed)
+
+
+def build_bare_session_reset_prompt(
+    *, now_ms: int | float, bootstrap_mode: BootstrapMode | None = None, timezone: str = "UTC"
+) -> str:
+    """Port of ``buildBareSessionResetPrompt`` (session-reset-prompt.ts:101-115)."""
+    if bootstrap_mode == "full":
+        base = BARE_SESSION_RESET_PROMPT_BOOTSTRAP_PENDING
+    elif bootstrap_mode == "limited":
+        base = BARE_SESSION_RESET_PROMPT_BOOTSTRAP_LIMITED
+    else:
+        base = BARE_SESSION_RESET_PROMPT_BASE
+    return append_cron_style_current_time_line(base, now_ms=now_ms, timezone=timezone)
+
+
+@dataclass(frozen=True)
+class BareSessionResetPromptState:
+    """``resolveBareSessionResetPromptState`` result (session-reset-prompt.ts:66-95)."""
+
+    bootstrap_mode: BootstrapMode
+    prompt: str
+    should_prepend_startup_context: bool
+
+
+def resolve_bare_session_reset_prompt_state(
+    root: str | os.PathLike[str],
+    *,
+    now_ms: int | float,
+    timezone: str = "UTC",
+    layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT,
+    is_primary_run: bool = True,
+    is_canonical_workspace: bool = True,
+    has_bootstrap_file_access: bool = True,
+) -> BareSessionResetPromptState:
+    """The prompt and startup-context gate of a bare ``/new`` or ``/reset`` turn.
+
+    ``has_bootstrap_file_access`` is upstream's ``resolveBareResetBootstrapFileAccess``
+    (the run's tools include ``read``); it only matters while bootstrap is pending.
+    The startup context (:func:`build_startup_context`) is prepended only when the
+    resolved mode is ``none``.
+    """
+    pending = bootstrap_status(root, layout) == "pending"
+    mode = resolve_bootstrap_mode(
+        bootstrap_pending=pending,
+        run_kind="default",
+        is_interactive_user_facing=True,
+        is_primary_run=is_primary_run,
+        is_canonical_workspace=is_canonical_workspace,
+        has_bootstrap_file_access=has_bootstrap_file_access if pending else True,
+    )
+    return BareSessionResetPromptState(
+        bootstrap_mode=mode,
+        prompt=build_bare_session_reset_prompt(now_ms=now_ms, bootstrap_mode=mode, timezone=timezone),
+        should_prepend_startup_context=mode == "none",
+    )
+
+
+def format_session_reset_transcript_prompt(
+    action: StartupAction, identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY
+) -> str:
+    """Transcript row of a bare reset turn (prompt-prelude.ts:233-234), branded by ``identity``."""
+    return identity.session_reset_transcript_prompt.format(action=action)

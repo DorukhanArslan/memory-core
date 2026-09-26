@@ -22,11 +22,13 @@ from memory_core.bootstrap._js import js_trim
 
 # dreaming.ts:14. Dreaming is off unless a host enables it (sweeps are manual here).
 DEFAULT_DEEP_DREAMING_ENABLED = False
-# dreaming.ts:38-44.
+# dreaming.ts:38-44 DEFAULT_MEMORY_DEEP_DREAMING_*. These are the deep-phase gates, not
+# short-term-promotion.ts's own DEFAULT_PROMOTION_MIN_SCORE / _MIN_RECALL_COUNT /
+# _MIN_UNIQUE_QUERIES (0.75 / 3 / 2), which memory-core does not use (gates 0.8/3/3, 29008e1).
 DEFAULT_DEEP_DREAMING_LIMIT = 10
-DEFAULT_PROMOTION_MIN_SCORE = 0.8
-DEFAULT_PROMOTION_MIN_RECALL_COUNT = 3
-DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES = 3
+DEFAULT_DEEP_DREAMING_MIN_SCORE = 0.8
+DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT = 3
+DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES = 3
 DEFAULT_RECENCY_HALF_LIFE_DAYS = 14
 DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS = 30
 DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS = 160
@@ -41,9 +43,9 @@ class DeepDreamingPolicy:
 
     enabled: bool = DEFAULT_DEEP_DREAMING_ENABLED
     limit: int = DEFAULT_DEEP_DREAMING_LIMIT
-    min_score: float = DEFAULT_PROMOTION_MIN_SCORE
-    min_recall_count: int = DEFAULT_PROMOTION_MIN_RECALL_COUNT
-    min_unique_queries: int = DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES
+    min_score: float = DEFAULT_DEEP_DREAMING_MIN_SCORE
+    min_recall_count: int = DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT
+    min_unique_queries: int = DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES
     max_age_days: int = DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS
     recency_half_life_days: int = DEFAULT_RECENCY_HALF_LIFE_DAYS
     max_promoted_snippet_tokens: int = DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS
@@ -85,12 +87,12 @@ def resolve_deep_dreaming_policy(config: Mapping[str, Any] | None = None) -> Dee
     return DeepDreamingPolicy(
         enabled=dreaming_enabled and deep_enabled,
         limit=_non_negative_int(deep.get("limit", _UNDEFINED), DEFAULT_DEEP_DREAMING_LIMIT),
-        min_score=_score(deep.get("minScore", _UNDEFINED), DEFAULT_PROMOTION_MIN_SCORE),
+        min_score=_score(deep.get("minScore", _UNDEFINED), DEFAULT_DEEP_DREAMING_MIN_SCORE),
         min_recall_count=_non_negative_int(
-            deep.get("minRecallCount", _UNDEFINED), DEFAULT_PROMOTION_MIN_RECALL_COUNT
+            deep.get("minRecallCount", _UNDEFINED), DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT
         ),
         min_unique_queries=_non_negative_int(
-            deep.get("minUniqueQueries", _UNDEFINED), DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES
+            deep.get("minUniqueQueries", _UNDEFINED), DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES
         ),
         # dreaming.ts:443-447: a number from normalizeOptionalPositiveInt, else the default.
         max_age_days=_optional_positive_int(deep.get("maxAgeDays", _UNDEFINED))

@@ -16,9 +16,9 @@ if str(ROOT) not in sys.path:
 
 from memory_core.config import MemoryConfig  # noqa: E402
 from memory_core.consolidation import (  # noqa: E402
-    DEFAULT_PROMOTION_MIN_RECALL_COUNT,
-    DEFAULT_PROMOTION_MIN_SCORE,
-    DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+    DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT,
+    DEFAULT_DEEP_DREAMING_MIN_SCORE,
+    DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES,
     evaluate_short_term_promotion_candidates,
     record_daily_memory_flush,
     record_short_term_recalls,
@@ -88,14 +88,14 @@ def summarize(candidate: Any) -> CandidateSummary:
     }
     score = float(candidate.score)
     reasons: list[str] = []
-    if score < DEFAULT_PROMOTION_MIN_SCORE:
-        reasons.append(f"score {score:.3f} < {DEFAULT_PROMOTION_MIN_SCORE:.3f}")
-    if candidate.signal_count < DEFAULT_PROMOTION_MIN_RECALL_COUNT:
-        reasons.append(f"signals {candidate.signal_count} < {DEFAULT_PROMOTION_MIN_RECALL_COUNT}")
-    if candidate.context_diversity < DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES:
+    if score < DEFAULT_DEEP_DREAMING_MIN_SCORE:
+        reasons.append(f"score {score:.3f} < {DEFAULT_DEEP_DREAMING_MIN_SCORE:.3f}")
+    if candidate.signal_count < DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT:
+        reasons.append(f"signals {candidate.signal_count} < {DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT}")
+    if candidate.context_diversity < DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES:
         reasons.append(
             f"unique queries/days {candidate.context_diversity} < "
-            f"{DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES}"
+            f"{DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES}"
         )
     return CandidateSummary(
         snippet=candidate.snippet,
@@ -122,9 +122,9 @@ def run_fixture(workspace: Path | None = None, *, keep_workspace: bool = False) 
         evaluations = evaluate_short_term_promotion_candidates(
             config=config,
             now_ms=NOW_MS,
-            min_score=DEFAULT_PROMOTION_MIN_SCORE,
-            min_recall_count=DEFAULT_PROMOTION_MIN_RECALL_COUNT,
-            min_unique_queries=DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+            min_score=DEFAULT_DEEP_DREAMING_MIN_SCORE,
+            min_recall_count=DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT,
+            min_unique_queries=DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES,
         )
         top = evaluations[0] if evaluations else None
         summary = summarize(top) if top else None

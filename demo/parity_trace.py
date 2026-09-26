@@ -8,9 +8,9 @@ from typing import Any
 from demo.openclaw_oracle import OpenClawOracle
 from memory_core.config import MemoryConfig
 from memory_core.consolidation import (
-    DEFAULT_PROMOTION_MIN_RECALL_COUNT,
-    DEFAULT_PROMOTION_MIN_SCORE,
-    DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+    DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT,
+    DEFAULT_DEEP_DREAMING_MIN_SCORE,
+    DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES,
     SHORT_TERM_STORE_RELATIVE_PATH,
     rank_short_term_promotion_candidates,
     record_short_term_recalls,
@@ -389,9 +389,9 @@ def build_promotion_ranking_trace(oracle: OpenClawOracle | Any) -> dict[str, Any
             config=MemoryConfig(workspace_dir=python_workspace),
             now_ms=RANKING_NOW_MS,
             limit=10,
-            min_score=DEFAULT_PROMOTION_MIN_SCORE,
-            min_recall_count=DEFAULT_PROMOTION_MIN_RECALL_COUNT,
-            min_unique_queries=DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+            min_score=DEFAULT_DEEP_DREAMING_MIN_SCORE,
+            min_recall_count=DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT,
+            min_unique_queries=DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES,
         )
         python_values = {
             "candidates": [_promotion_candidate_values(candidate) for candidate in python_candidates]

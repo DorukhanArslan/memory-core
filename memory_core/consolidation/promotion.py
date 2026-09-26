@@ -53,9 +53,9 @@ from memory_core.consolidation.markers import (
 )
 from memory_core.consolidation.policy import (
     DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
-    DEFAULT_PROMOTION_MIN_RECALL_COUNT,
-    DEFAULT_PROMOTION_MIN_SCORE,
-    DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+    DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT,
+    DEFAULT_DEEP_DREAMING_MIN_SCORE,
+    DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES,
     DEFAULT_RECENCY_HALF_LIFE_DAYS,
 )
 from memory_core.consolidation.recall import is_contaminated_dreaming_snippet
@@ -187,9 +187,9 @@ def run_short_term_promotion(
     now_ms: int,
     timezone: str,
     limit: int = 5,
-    min_score: float = DEFAULT_PROMOTION_MIN_SCORE,
-    min_recall_count: int = DEFAULT_PROMOTION_MIN_RECALL_COUNT,
-    min_unique_queries: int = DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES,
+    min_score: float = DEFAULT_DEEP_DREAMING_MIN_SCORE,
+    min_recall_count: int = DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT,
+    min_unique_queries: int = DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES,
     max_age_days: int = -1,
     recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
     memory_file_max_chars: int = DEFAULT_MEMORY_FILE_MAX_CHARS,

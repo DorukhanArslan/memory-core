@@ -5065,3 +5065,130 @@ def test_session_memory_constants_equal_upstream_source():
     assert re.findall(r"^\s*/(.+)/g,", patterns.group(1), re.M) == [
         r"<\|reserved_special_token_\d+\|>"
     ]
+    slug_constants = _upstream_numeric_constants(_upstream_source("src/hooks/llm-slug-generator.ts"))
+    assert slug_constants["DEFAULT_SLUG_GENERATOR_TIMEOUT_MS"] == (
+        session_memory.DEFAULT_SLUG_GENERATOR_TIMEOUT_MS
+    )
+
+
+_SM_SLUG_ERROR_TEXTS = [
+    # llm-slug-generator.test.ts error replies.
+    'HTTP 400: {"error":{"type":"insufficient_quota","message":"Your account has insufficient '
+    'quota balance."}}',
+    "Authentication failed: invalid API key",
+    "Missing token or projectId in Google Cloud credentials. Use /login to re-authenticate.",
+    "Provider API error (429): quota exceeded",
+    # Error-helper edges built from those strings.
+    'Error: {"type":"error"}',
+    'openai error 429: {"error":{"message":"quota exceeded"}}',
+    '{"error":"insufficient_balance","message":"quota exceeded"}',
+    '{"requestId":"abc123def456"}',
+    '{"error":{"code":429}}',
+    '{"a":1}',
+    "429 quota exceeded",
+    "http429: quota exceeded",
+    "HTTP 400 : invalid api key",
+    "400 auth-refresh",
+    "401",
+    "429 ",
+    "4290 quota exceeded",
+    "Unauthorized",
+    "rate-limit-design",
+    "api error handling",
+    "model request failed",
+    "",
+    "   ",
+    None,
+]
+_SM_HELLO = "hello"
+_SM_LONG_CONTENT = "user: Hello there\nassistant: Hi! How can I help?\n" * 50
+_SM_SPLIT_CONTENT = ("Hello there " * 170)[:1999] + "\U0001f600" + "Hello there"
+SESSION_MEMORY_SLUG_CASES = [
+    # llm-slug-generator.test.ts and handler.test.ts replies.
+    {"sessionContent": _SM_HELLO, "reply": {"text": "test-slug"}},
+    {
+        "sessionContent": _SM_HELLO,
+        "reply": {"isError": True, "text": "Provider API error (429): quota exceeded"},
+    },
+    *({"sessionContent": _SM_HELLO, "reply": {"text": text}} for text in _SM_SLUG_ERROR_TEXTS[:4]),
+    {"sessionContent": _SM_HELLO, "reply": {"text": "auth-refresh"}},
+    {"sessionContent": _SM_HELLO, "reply": {"text": "12345678901234567890123456789 trailing"}},
+    {
+        "sessionContent": "user: What is 2+2?\nassistant: 2+2 equals 4",
+        "reply": {"text": "simple-math"},
+    },
+    {
+        "sessionContent": "user: Investigate slow WhatsApp reset\nassistant: Checking reset hooks",
+        "reply": {"text": "slow-reset"},
+    },
+    # Normalisation, payload and prompt-excerpt edges.
+    {"sessionContent": _SM_LONG_CONTENT, "reply": {"text": "  Vendor Pitch!! "}},
+    {"sessionContent": _SM_SPLIT_CONTENT, "reply": {"text": '"api-design"'}},
+    {"sessionContent": _SM_HELLO, "reply": {"text": "Bug_Fix.md"}},
+    {"sessionContent": _SM_HELLO, "reply": {"text": "İstanbul Vendor Pitch"}},
+    {"sessionContent": _SM_HELLO, "reply": {"text": "\U0001f600 bug fix \U0001f600"}},
+    {"sessionContent": _SM_HELLO, "reply": {"text": "apiK-designſ"}},
+    {"sessionContent": _SM_HELLO, "reply": {"text": "api-design\n\nbug-fix"}},
+    {"sessionContent": _SM_HELLO, "reply": {"text": "---"}},
+    {"sessionContent": _SM_HELLO, "reply": {"text": ""}},
+    {"sessionContent": _SM_HELLO, "reply": {"text": "   "}},
+    {"sessionContent": _SM_HELLO, "reply": {"text": 5}},
+    {"sessionContent": _SM_HELLO, "reply": {"isError": "true", "text": "api-design"}},
+    {"sessionContent": _SM_HELLO, "reply": {"isError": False, "text": "api-design"}},
+    {"sessionContent": _SM_HELLO, "reply": {"isError": True}},
+    {"sessionContent": _SM_HELLO, "reply": {}},
+    {"sessionContent": _SM_HELLO, "reply": None},
+    {"sessionContent": _SM_HELLO, "reply": {"throw": "Provider API error (429): quota exceeded"}},
+    {"sessionContent": "", "reply": {"text": "auth-refresh"}},
+    *(
+        {"sessionContent": _SM_HELLO, "reply": {"text": text}}
+        for text in _SM_SLUG_ERROR_TEXTS[4:21]
+    ),
+]
+
+
+def _python_slug_generator(reply):
+    def generator(prompt: str):
+        generator.prompts.append(prompt)
+        if isinstance(reply, dict) and "throw" in reply:
+            raise RuntimeError(reply["throw"])
+        return reply
+
+    generator.prompts = []
+    return generator
+
+
+def test_real_openclaw_oracle_session_memory_slug_matches_python():
+    from memory_core.session_memory import (
+        extract_leading_http_status,
+        generate_session_memory_slug,
+        parse_api_error_payload,
+    )
+
+    result = _oracle().run(
+        {
+            "operation": "sessionMemorySlug",
+            "cases": SESSION_MEMORY_SLUG_CASES,
+            "texts": _SM_SLUG_ERROR_TEXTS,
+        }
+    )
+
+    assert result["ok"] is True, result
+    for index, case in enumerate(SESSION_MEMORY_SLUG_CASES):
+        generator = _python_slug_generator(case["reply"])
+        slug = generate_session_memory_slug(case["sessionContent"], generator)
+        assert {"slug": slug, "prompt": generator.prompts[0]} == result["result"]["cases"][index], (
+            index,
+            case,
+        )
+    python_helpers = []
+    for text in _SM_SLUG_ERROR_TEXTS:
+        status = extract_leading_http_status(text or "")
+        python_helpers.append(
+            {
+                "payload": parse_api_error_payload(text),
+                "status": None if status is None else {"code": status[0], "rest": status[1]},
+            }
+        )
+    assert result["result"]["errorHelpers"] == python_helpers
+    assert len(result["result"]["cases"]) == len(SESSION_MEMORY_SLUG_CASES)

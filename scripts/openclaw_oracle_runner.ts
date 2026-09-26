@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
+import * as nodeModule from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -358,6 +359,53 @@ function resolveMemoryCorePluginConfig(config?: Record<string, unknown>): Record
   const memoryCore = isRecord(entries?.["memory-core"]) ? entries["memory-core"] : undefined;
   const memoryCoreConfig = isRecord(memoryCore?.config) ? memoryCore.config : undefined;
   return memoryCoreConfig ?? config ?? {};
+}
+
+// The session-memory slug oracles run the real generateSlugViaLLM without a model: its
+// ../agents/embedded-agent.js import resolves to this stub, which hands the run params
+// (the real prompt) to the current case and returns the case's reply as the first payload.
+const EMBEDDED_AGENT_STUB_URL = `data:text/javascript,${encodeURIComponent(
+  "export async function runEmbeddedAgent(params) { return globalThis.__memoryCoreEmbeddedAgentStub(params); }",
+)}`;
+let embeddedAgentStubInstalled = false;
+
+function installEmbeddedAgentStub(): void {
+  if (embeddedAgentStubInstalled) {
+    return;
+  }
+  const registerHooks = (nodeModule as { registerHooks?: (hooks: unknown) => unknown })
+    .registerHooks;
+  if (typeof registerHooks !== "function") {
+    throw new Error("node:module registerHooks is required (Node >= 22.15)");
+  }
+  registerHooks({
+    resolve(
+      specifier: string,
+      context: { parentURL?: string },
+      nextResolve: (specifier: string, context: unknown) => unknown,
+    ) {
+      if (
+        specifier === "../agents/embedded-agent.js" &&
+        context.parentURL?.endsWith("/src/hooks/llm-slug-generator.ts")
+      ) {
+        return { url: EMBEDDED_AGENT_STUB_URL, format: "module", shortCircuit: true };
+      }
+      return nextResolve(specifier, context);
+    },
+  });
+  embeddedAgentStubInstalled = true;
+}
+
+function setEmbeddedAgentStubReply(reply: unknown, prompts: string[]): void {
+  (globalThis as Record<string, unknown>).__memoryCoreEmbeddedAgentStub = async (params: {
+    prompt?: string;
+  }) => {
+    prompts.push(String(params.prompt));
+    if (isRecord(reply) && "throw" in reply) {
+      throw new Error(String(reply.throw));
+    }
+    return { payloads: reply === null || reply === undefined ? [] : [reply] };
+  };
 }
 
 async function main() {
@@ -1453,6 +1501,41 @@ async function main() {
         }
       }
       return { ok: true, operation: payload.operation, result: { cases: results } };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  if (payload.operation === "sessionMemorySlug") {
+    // src/hooks/llm-slug-generator.ts generateSlugViaLLM with only its model run replaced:
+    // a module hook resolves its ../agents/embedded-agent.js import to a stub whose
+    // runEmbeddedAgent returns each case's reply (in memory-core the host supplies that model
+    // call), so the real prompt, error-payload rejection and slug normalisation run. A
+    // case reply is the first run payload ({text, isError}), null for no payloads, or
+    // {throw} to make the run fail. `texts` go through the real parseApiErrorPayload and
+    // extractLeadingHttpStatus (src/shared/assistant-error-format.ts).
+    installEmbeddedAgentStub();
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-session-slug-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    try {
+      const slugGenerator = await importFromRepo(repoPath, "src/hooks/llm-slug-generator.ts");
+      const errorFormat = await importFromRepo(repoPath, "src/shared/assistant-error-format.ts");
+      const cases = [];
+      for (const item of payload.cases ?? []) {
+        const prompts: string[] = [];
+        setEmbeddedAgentStubReply(item.reply, prompts);
+        const slug = await slugGenerator.generateSlugViaLLM({
+          sessionContent: String(item.sessionContent ?? ""),
+          cfg: {},
+        });
+        cases.push({ slug, prompt: prompts[0] ?? null });
+      }
+      const errorHelpers = (payload.texts ?? []).map((text) => ({
+        payload: errorFormat.parseApiErrorPayload(text ?? undefined),
+        status: errorFormat.extractLeadingHttpStatus(text ?? ""),
+      }));
+      return { ok: true, operation: payload.operation, result: { cases, errorHelpers } };
     } finally {
       await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
     }

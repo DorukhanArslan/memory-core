@@ -23,6 +23,14 @@ dicts: session entries (they have a ``type`` key) are read like parsed JSONL
 rows, and plain message dicts (``role``, ``content``, optional ``provenance``,
 ``provider``, ``model``) count as ``type: "message"`` rows.
 
+Optional LLM filename slug (``src/hooks/llm-slug-generator.ts``):
+``generate_session_memory_slug`` sends the verbatim prompt
+(``build_session_memory_slug_prompt``) to a host-supplied generator, rejects
+error replies (``is_error_slug_payload`` with ``parseApiErrorPayload`` and
+``extractLeadingHttpStatus`` from ``src/shared/assistant-error-format.ts``) and
+normalizes the reply (``normalize_session_memory_slug``). memory-core never calls a
+model itself; without a generator the slug is the timestamp.
+
 The stored lines are the raw recent conversation, like upstream (its
 ``## Conversation Summary`` is not an LLM summary).
 """
@@ -34,10 +42,10 @@ import math
 import os
 import posixpath
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
-from memory_core.bootstrap._js import JS_SPACE_CLASS, js_trim
+from memory_core.bootstrap._js import JS_SPACE_CLASS, js_trim, utf16_slice
 
 DEFAULT_SESSION_MEMORY_MESSAGE_COUNT = 15
 
@@ -446,3 +454,182 @@ def find_previous_session_file(
     if reset_jsonl:
         return _node_join(directory, reset_jsonl[0])
     return None
+
+
+# --- LLM filename slug (src/hooks/llm-slug-generator.ts) ---------------------------------
+
+# llm-slug-generator.ts:25. memory-core does not run the model: the host's generator
+# enforces the timeout (upstream: this default, or agents.defaults.timeoutSeconds).
+DEFAULT_SLUG_GENERATOR_TIMEOUT_MS = 15_000
+SLUG_PROMPT_SESSION_CONTENT_MAX_CHARS = 2_000
+SLUG_MAX_CHARS = 30
+
+SlugReply = str | Mapping[str, Any] | None
+"""A slug generator's reply: the model text, or a payload with ``text`` and ``isError``."""
+SlugGenerator = Callable[[str], SlugReply]
+
+# src/shared/assistant-error-format.ts:3-13 and llm-slug-generator.ts:26-29, without
+# the u flag (ASCII \w, \d, \b and case folding; the JavaScript \s set; $ is \Z).
+_ERROR_PAYLOAD_PREFIX_RE = re.compile(
+    f"^(?:error|(?:[a-z][\\w-]*{_S}+)?api{_S}*error|apierror|openai{_S}*error"
+    f"|anthropic{_S}*error|gateway{_S}*error|codex{_S}*error)(?:{_S}+\\d{{3}})?"
+    f"[:{JS_SPACE_CLASS}-]+",
+    re.ASCII | re.IGNORECASE,
+)
+_HTTP_STATUS_CODE_PREFIX_RE = re.compile(
+    f"^(?:http{_S}*)?(\\d{{3}})(?:(?:{_S}*:{_S}*|{_S}+)([\\s\\S]+))?\\Z",
+    re.ASCII | re.IGNORECASE,
+)
+_PROVIDER_ERROR_PREFIX_RE = re.compile(
+    f"^(?:provider{_S}+)?(?:api|llm|model|openai|anthropic|codex|gateway){_S}+"
+    f"(?:request{_S}+)?(?:error|failed|failure)\\b",
+    re.ASCII | re.IGNORECASE,
+)
+_PROVIDER_ERROR_DETAIL_RE = re.compile(
+    r"\b(?:insufficient[_ -]?quota|quota (?:exceeded|exhausted)|exceeded your current quota"
+    r"|payment required|insufficient credits|credit balance|insufficient[_ -]?(?:balance|funds)"
+    r"|rate[_ -]?limit(?:ed)?|too many requests|invalid[_ -]?api[_ -]?key|incorrect api key"
+    r"|authentication failed|oauth token refresh failed|missing (?:token|projectid|credentials)"
+    r"|google cloud credentials|re-?authenticate|unauthorized|forbidden|permission_error"
+    r"|billing hard limit|spend(?:ing)? limit)\b",
+    re.ASCII | re.IGNORECASE,
+)
+_SLUG_DISALLOWED_RE = re.compile(r"[^a-z0-9-]")
+_SLUG_DASH_RUN_RE = re.compile(r"-+")
+_SLUG_EDGE_DASHES_RE = re.compile(r"^-+|-+\Z")
+
+
+def build_session_memory_slug_prompt(session_content: str) -> str:
+    """The slug prompt of ``generateSlugViaLLM`` (llm-slug-generator.ts:88-93), verbatim.
+
+    Only the first 2000 UTF-16 units of the conversation are included.
+    """
+    excerpt = utf16_slice(session_content, 0, SLUG_PROMPT_SESSION_CONTENT_MAX_CHARS)
+    return (
+        "Based on this conversation, generate a short 1-2 word filename slug (lowercase, "
+        "hyphen-separated, no file extension).\n"
+        "\n"
+        "Conversation summary:\n"
+        f"{excerpt}\n"
+        "\n"
+        'Reply with ONLY the slug, nothing else. Examples: "vendor-pitch", "api-design", '
+        '"bug-fix"'
+    )
+
+
+def normalize_session_memory_slug(text: str) -> str | None:
+    """Slug cleanup of ``generateSlugViaLLM`` (llm-slug-generator.ts:128-136).
+
+    Lower-cases the trimmed reply, maps every character outside ``[a-z0-9-]``
+    to ``-``, collapses and trims dashes, and keeps at most 30 characters.
+    """
+    slug = js_trim(text).lower()
+    slug = _SLUG_DISALLOWED_RE.sub("-", slug)
+    slug = _SLUG_DASH_RUN_RE.sub("-", slug)
+    slug = _SLUG_EDGE_DASHES_RE.sub("", slug)
+    slug = _SLUG_EDGE_DASHES_RE.sub("", slug[:SLUG_MAX_CHARS])
+    return slug or None
+
+
+def _is_error_payload_object(payload: object) -> bool:
+    """``isErrorPayloadObject`` (assistant-error-format.ts:37-67)."""
+    if not isinstance(payload, Mapping):
+        return False
+    if payload.get("type") == "error":
+        return True
+    if isinstance(payload.get("request_id"), str) or isinstance(payload.get("requestId"), str):
+        return True
+    if "error" in payload:
+        error = payload["error"]
+        if isinstance(error, Mapping) and any(
+            isinstance(error.get(key), str) for key in ("message", "type", "code")
+        ):
+            return True
+        # Flat error payloads: {"error":"insufficient_balance","message":"..."}
+        if isinstance(error, str) and isinstance(payload.get("message"), str):
+            return True
+    return False
+
+
+def parse_api_error_payload(raw: str | None) -> dict[str, Any] | None:
+    """Port of ``parseApiErrorPayload`` (assistant-error-format.ts:69-95)."""
+    if not raw:
+        return None
+    trimmed = js_trim(raw)
+    if not trimmed:
+        return None
+    candidates = [trimmed]
+    if _ERROR_PAYLOAD_PREFIX_RE.match(trimmed):
+        candidates.append(js_trim(_ERROR_PAYLOAD_PREFIX_RE.sub("", trimmed, count=1)))
+    for candidate in candidates:
+        if not candidate.startswith("{") or not candidate.endswith("}"):
+            continue
+        try:
+            parsed = _parse_jsonl_row(candidate)
+        except (ValueError, RecursionError):
+            continue
+        if _is_error_payload_object(parsed):
+            return parsed
+    return None
+
+
+def extract_leading_http_status(raw: str) -> tuple[int, str] | None:
+    """Port of ``extractLeadingHttpStatus`` (assistant-error-format.ts:97-107): (code, rest)."""
+    match = _HTTP_STATUS_CODE_PREFIX_RE.match(raw)
+    if match is None:
+        return None
+    return int(match.group(1)), js_trim(match.group(2) or "")
+
+
+def is_error_slug_payload(payload: Mapping[str, Any] | None) -> bool:
+    """Port of ``isErrorSlugPayload`` (llm-slug-generator.ts:39-68).
+
+    A reply flagged ``isError``, an API error payload, a leading 401/402/403/429
+    status (or 400 with an error detail) or provider error wording is not a slug.
+    """
+    if not payload:
+        return False
+    if payload.get("isError") is True:
+        return True
+    text = payload.get("text")
+    text = js_trim(text) if isinstance(text, str) else None
+    if not text:
+        return False
+    if parse_api_error_payload(text):
+        return True
+    status = extract_leading_http_status(text)
+    if status is not None:
+        code, rest = status
+        if code in (401, 402, 403, 429):
+            return True
+        if code == 400 and (
+            parse_api_error_payload(rest)
+            or _PROVIDER_ERROR_PREFIX_RE.match(rest)
+            or _PROVIDER_ERROR_DETAIL_RE.search(rest)
+        ):
+            return True
+    return bool(_PROVIDER_ERROR_PREFIX_RE.match(text) or _PROVIDER_ERROR_DETAIL_RE.search(text))
+
+
+def generate_session_memory_slug(session_content: str, generator: SlugGenerator) -> str | None:
+    """Port of ``generateSlugViaLLM`` (llm-slug-generator.ts:73-155) around a host model call.
+
+    ``generator`` receives the verbatim prompt and returns the model's reply
+    (text, or a ``{"text", "isError"}`` payload like upstream's first run
+    payload). Errors raised by the generator, error replies and replies that
+    normalize to nothing give ``None``, so the caller falls back to the
+    timestamp slug.
+    """
+    try:
+        reply = generator(build_session_memory_slug_prompt(session_content))
+    except Exception:  # upstream logs "Failed to generate slug" and returns null
+        return None
+    payload = {"text": reply} if isinstance(reply, str) else reply
+    if not isinstance(payload, Mapping):
+        return None
+    text = payload.get("text")
+    if not isinstance(text, str) or not text:
+        return None
+    if is_error_slug_payload(payload):
+        return None
+    return normalize_session_memory_slug(text)

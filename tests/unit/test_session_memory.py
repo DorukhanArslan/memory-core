@@ -7,9 +7,15 @@ from memory_core.session_memory import (
     DEFAULT_SESSION_MEMORY_MESSAGE_COUNT,
     LLM_SPECIAL_TOKEN_LITERALS,
     SPECIAL_TOKEN_REPLACEMENT,
+    build_session_memory_slug_prompt,
+    extract_leading_http_status,
     find_previous_session_file,
+    generate_session_memory_slug,
     get_recent_session_content,
     get_recent_session_content_with_reset_fallback,
+    is_error_slug_payload,
+    normalize_session_memory_slug,
+    parse_api_error_payload,
     sanitize_model_special_tokens,
     sanitize_session_memory_transcript_text,
 )
@@ -259,3 +265,85 @@ def test_find_previous_session_file_lookup_order(tmp_path: Path):
     ) == str(tmp_path / "test-session.jsonl")
     assert find_previous_session_file(tmp_path) is None
     assert find_previous_session_file(tmp_path / "missing", session_id="x") is None
+
+
+# --- slug (llm-slug-generator.test.ts inputs) ---------------------------------------------
+
+
+def test_slug_prompt_is_verbatim_and_caps_the_excerpt():
+    prompt = build_session_memory_slug_prompt("hello")
+
+    assert prompt == (
+        "Based on this conversation, generate a short 1-2 word filename slug (lowercase, "
+        "hyphen-separated, no file extension).\n\nConversation summary:\nhello\n\n"
+        'Reply with ONLY the slug, nothing else. Examples: "vendor-pitch", "api-design", '
+        '"bug-fix"'
+    )
+    long_prompt = build_session_memory_slug_prompt("\U0001f600" * 1500)
+    excerpt = long_prompt.split("Conversation summary:\n", 1)[1].split("\n\nReply", 1)[0]
+    # 2000 UTF-16 units: 1000 emoji, no split pair at an even boundary.
+    assert excerpt == "\U0001f600" * 1000
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("test-slug", "test-slug"),
+        ("auth-refresh", "auth-refresh"),
+        ("12345678901234567890123456789 trailing", "12345678901234567890123456789"),
+        ("  Vendor Pitch!! ", "vendor-pitch"),
+        ("Bug_Fix.md", "bug-fix-md"),
+        ("---", None),
+        ("", None),
+    ],
+)
+def test_normalize_slug(text, expected):
+    assert normalize_session_memory_slug(text) == expected
+
+
+def test_generator_reply_forms():
+    prompts: list[str] = []
+
+    def reply_with(reply):
+        def generator(prompt: str):
+            prompts.append(prompt)
+            return reply
+
+        return generator
+
+    def failing(prompt: str):
+        raise TimeoutError("slow model")
+
+    assert generate_session_memory_slug("hello", reply_with("simple-math")) == "simple-math"
+    assert generate_session_memory_slug("hello", reply_with({"text": "slow-reset"})) == (
+        "slow-reset"
+    )
+    assert generate_session_memory_slug("hello", reply_with(None)) is None
+    assert generate_session_memory_slug("hello", reply_with({"text": 5})) is None
+    assert generate_session_memory_slug("hello", failing) is None
+    assert prompts == [build_session_memory_slug_prompt("hello")] * 4
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        'HTTP 400: {"error":{"type":"insufficient_quota","message":"Your account has '
+        'insufficient quota balance."}}',
+        "Authentication failed: invalid API key",
+        "Missing token or projectId in Google Cloud credentials. Use /login to re-authenticate.",
+        "Provider API error (429): quota exceeded",
+    ],
+)
+def test_error_replies_are_not_slugs(text):
+    assert is_error_slug_payload({"text": text}) is True
+    assert generate_session_memory_slug("hello", lambda prompt: text) is None
+
+
+def test_error_helpers():
+    assert is_error_slug_payload({"isError": True, "text": "auth-refresh"}) is True
+    assert is_error_slug_payload({"text": "auth-refresh"}) is False
+    assert parse_api_error_payload('Error: {"type":"error"}') == {"type": "error"}
+    assert parse_api_error_payload('{"error":{"code":429}}') is None
+    assert parse_api_error_payload('{"type":"error","x":NaN}') is None
+    assert extract_leading_http_status("http429: quota exceeded") == (429, "quota exceeded")
+    assert extract_leading_http_status("4290 quota exceeded") is None

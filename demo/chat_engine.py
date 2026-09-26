@@ -9,7 +9,20 @@ from typing import Protocol
 import httpx
 
 DEFAULT_OPENAI_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_OPENAI_MODEL = "openai/gpt-4o-mini"
+# D4 (Q10): the newest OpenAI GPT chat model in OpenRouter's public model list
+# (GET https://openrouter.ai/api/v1/models, no auth), checked 2026-09-26. Rule: the newest
+# `created` among `openai/gpt-*` ids that support tools, without a `:variant` suffix and
+# without a `-pro` serving variant (OpenRouter lists `openai/gpt-6-luna-pro` five seconds
+# later as "the same underlying model as GPT-6 Luna" with reasoning mode pro).
+# MEMORY_CORE_DEMO_OPENAI_MODEL and the Lab settings still override it.
+DEFAULT_OPENAI_MODEL = "openai/gpt-6-luna"
+DEFAULT_OPENAI_MODEL_SOURCE = {
+    "id": DEFAULT_OPENAI_MODEL,
+    "source": "https://openrouter.ai/api/v1/models",
+    "checkedAt": "2026-09-26",
+    "created": "2026-09-22T18:13:06Z",
+    "rule": "newest openai/gpt-* chat model with tool support; no :variant, no -pro serving variant",
+}
 
 
 @dataclass(frozen=True)

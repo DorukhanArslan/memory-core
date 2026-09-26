@@ -26,6 +26,7 @@ from demo.lab_events import parse_last_event_id, stream_lab_events, unified_diff
 from demo.lab_flush import flush_meter
 from demo.lab_heartbeat import heartbeat_run_frames, heartbeat_state, set_clock, strip_payload
 from demo.lab_kept_api import index_status
+from demo.lab_settings import provider_check, settings_payload, update_settings
 from demo.lab_prompt import (
     PromptOptions,
     file_entries,
@@ -242,6 +243,19 @@ def build_router(lab: LabRuntime) -> APIRouter:
             media_type="text/event-stream",
             headers=SSE_HEADERS,
         )
+
+    @router.get("/settings")
+    def settings_get():
+        return settings_payload(lab)
+
+    @router.put("/settings")
+    def settings_put(payload: dict = Body(...)):
+        with lab.lock:
+            return update_settings(lab, payload)
+
+    @router.post("/provider/check")
+    def provider_check_route(payload: dict = Body(default={})):
+        return provider_check(lab, payload)
 
     @router.get("/consolidation")
     def consolidation():

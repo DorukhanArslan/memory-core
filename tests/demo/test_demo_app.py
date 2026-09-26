@@ -1562,3 +1562,99 @@ def test_promotion_writes_gated_recalls_into_memory_md_with_source_promotion(cli
     assert "User was fired from work." in (lab.root / "MEMORY.md").read_text(encoding="utf-8")
     changes = {change["path"]: change for change in client.get("/api/lab/diff", params={"since": "reset"}).json()}
     assert changes["MEMORY.md"]["sources"][0]["source"] == "promotion"
+
+
+# --- settings and provider checks -------------------------------------------------------------
+
+
+def test_settings_defaults_follow_d4_and_q9(client):
+    from demo.chat_engine import DEFAULT_OPENAI_MODEL
+
+    settings = client.get("/api/lab/settings").json()
+
+    assert settings["chat"]["baseUrl"] == "https://openrouter.ai/api/v1"
+    assert settings["chat"]["model"] == DEFAULT_OPENAI_MODEL == "openai/gpt-6-luna"
+    assert settings["chat"]["defaultModel"]["checkedAt"] == "2026-09-26"
+    assert settings["chat"]["keySource"] == "none"
+    assert settings["embedding"]["mode"] == "fts-only"
+    assert settings["layout"] == "memory-core"
+    assert settings["budgets"] == {"maxChars": 20_000, "totalMaxChars": 60_000, "warningMode": "always",
+                                   "defaults": {"maxChars": 20_000, "totalMaxChars": 60_000, "warningMode": "always"}}
+    assert settings["flush"]["mode"] == "threshold" and settings["flush"]["threshold"] == 176_000
+    assert settings["heartbeat"] == {"every": "30m", "everyMs": 1_800_000, "ackMaxChars": 300, "lightContext": False}
+    assert settings["flags"]["curation.user_md"] == {"on": True, "label": "USER.md direktifleri (D5)", "extension": True}
+    assert settings["timezone"] == "Europe/Istanbul"
+
+
+def test_settings_env_key_is_reported_by_source_only(client, monkeypatch):
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", "env-chat-key-value-123")
+
+    body = client.get("/api/lab/settings").text
+
+    assert json.loads(body)["chat"]["keySource"] == "env"
+    assert "env-chat-key-value-123" not in body
+
+
+def test_settings_update_applies_and_emits(client, lab):
+    updated = client.put("/api/lab/settings", json={
+        "chat": {"model": "openai/gpt-6-sol", "baseUrl": "https://llm.example/v1/"},
+        "layout": "pin",
+        "budgets": {"totalMaxChars": 12_000, "warningMode": "once"},
+        "contextInjection": "continuation-skip",
+        "flush": {"mode": "threshold", "contextWindowTokens": 26_000},
+        "heartbeat": {"every": "10m", "ackMaxChars": 50, "lightContext": True},
+        "flags": {"lab_file_editing": False},
+    }).json()
+
+    assert updated["chat"]["model"] == "openai/gpt-6-sol" and updated["chat"]["baseUrl"] == "https://llm.example/v1"
+    assert updated["layout"] == "pin" and lab.layout.name == "openclaw-pin"
+    assert updated["budgets"]["totalMaxChars"] == 12_000 and updated["budgets"]["warningMode"] == "once"
+    assert updated["flush"]["threshold"] == 2_000
+    assert updated["heartbeat"]["everyMs"] == 600_000
+    assert updated["flags"]["lab_file_editing"]["on"] is False
+    assert "settings.changed" in event_types(client)
+    client.get("/api/lab/state")
+    assert client.get("/api/lab/file", params={"path": "USER.md"}).json()["writable"] is False
+    reset = client.put("/api/lab/settings", json={"budgets": {"totalMaxChars": None}, "flush": {"contextWindowTokens": None}}).json()
+    assert reset["budgets"]["totalMaxChars"] == 60_000 and reset["flush"]["contextWindowTokens"] is None
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"chat": {"apiKey": "x"}},
+        {"embedding": {"apiKey": "x"}},
+        {"flush": {"mode": "per_turn"}},
+        {"layout": "custom"},
+        {"budgets": {"maxChars": -1}},
+        {"budgets": {"warningMode": "sometimes"}},
+        {"heartbeat": {"every": "soon"}},
+        {"flags": {"unknown_flag": True}},
+        {"chat": {"baseUrl": "ftp://x"}},
+        {"surprise": 1},
+    ],
+)
+def test_settings_update_rejects_keys_and_bad_values(client, payload):
+    response = client.put("/api/lab/settings", json=payload)
+
+    assert response.status_code == 400
+    assert response.json()["code"] in {"key_not_accepted", "invalid_setting"}
+
+
+def test_provider_check_redacts_the_key_and_records_the_status(client, monkeypatch):
+    secret = "check-key-value-456"
+
+    class FailingCheck(StubEngine):
+        def check(self):
+            raise RuntimeError(f"401 invalid key {secret}")
+
+    use_engine(monkeypatch, FailingCheck([]))
+
+    result = client.post("/api/lab/provider/check", json={"openai": {"apiKey": secret}}).json()
+
+    assert result["ok"] is False and result["redacted"] is True
+    assert secret not in json.dumps(result)
+    assert client.get("/api/lab/settings").json()["chat"]["lastCheck"]["ok"] is False
+    embedding = client.post("/api/lab/provider/check", json={"embedding": {}}).json()
+    assert embedding == {**embedding, "ok": False, "mode": "fts-only", "target": "embedding"}
+    assert "provider.check" in event_types(client)

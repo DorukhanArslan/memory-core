@@ -1,8 +1,20 @@
-"""Workspace bootstrap files: layout, seeding, loading, filtering and budget.
+"""Workspace bootstrap files: layout, seeding, loading, budget and rendering.
 
 Ports the OpenClaw workspace bootstrap surface at pin 4c42815348 (see each
 module's docstring for upstream anchors) and adds the memory-core layout as the
 default. memory-core additions are an extension (provisional: no upstream reference).
+
+Typical host flow::
+
+    from memory_core.bootstrap import build_workspace_context, initialize_agent_workspace
+
+    initialize_agent_workspace(root, templates=host_templates)
+    context = build_workspace_context(root, session_kind="main")
+    system_prompt = "\\n".join(
+        part for part in (context.bootstrap_text, context.workspace_files_text,
+                          context.stable_text) if part
+    )
+    dynamic_suffix = context.dynamic_text  # below the prompt cache boundary
 """
 
 from memory_core.bootstrap.budget import (
@@ -25,6 +37,7 @@ from memory_core.bootstrap.budget import (
     format_bootstrap_truncation_warning_lines,
     trim_bootstrap_content,
 )
+from memory_core.bootstrap.context import WorkspaceContext, build_workspace_context
 from memory_core.bootstrap.files import (
     MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES,
     ContextInjectionDecision,
@@ -56,6 +69,14 @@ from memory_core.bootstrap.lifecycle import (
     strip_template_front_matter,
     workspace_profile_looks_configured,
 )
+from memory_core.bootstrap.render import (
+    build_bootstrap_prompt_section_lines,
+    render_bootstrap_prompt_sections,
+    render_project_context,
+    render_workspace_files_injected,
+    sort_context_files,
+)
+from memory_core.bootstrap.startup import build_startup_context, should_apply_startup_context
 
 __all__ = [
     "DEFAULT_BOOTSTRAP_MAX_CHARS",
@@ -74,6 +95,7 @@ __all__ = [
     "ContextInjectionDecision",
     "TrimBootstrapResult",
     "WorkspaceBootstrapFile",
+    "WorkspaceContext",
     "WorkspaceInitResult",
     "WorkspaceLayout",
     "WorkspaceSetupState",
@@ -83,8 +105,11 @@ __all__ = [
     "bootstrap_status",
     "build_bootstrap_context_files",
     "build_bootstrap_injection_stats",
+    "build_bootstrap_prompt_section_lines",
     "build_bootstrap_prompt_warning",
     "build_bootstrap_prompt_warning_notice",
+    "build_startup_context",
+    "build_workspace_context",
     "clamp_to_budget",
     "filter_bootstrap_files",
     "filter_bootstrap_files_for_session",
@@ -96,8 +121,13 @@ __all__ = [
     "is_workspace_setup_completed",
     "load_workspace_bootstrap_files",
     "read_workspace_setup_state",
+    "render_bootstrap_prompt_sections",
+    "render_project_context",
+    "render_workspace_files_injected",
     "resolve_bootstrap_mode",
     "resolve_context_injection",
+    "should_apply_startup_context",
+    "sort_context_files",
     "strip_template_front_matter",
     "trim_bootstrap_content",
     "workspace_profile_looks_configured",

@@ -7,6 +7,23 @@ the upstream parity target for source-backed and oracle-backed behavior.
 """
 
 from memory_core.adapters.langgraph import LangGraphMemoryRecall, format_memory_context
+from memory_core.bootstrap import (
+    DEFAULT_WORKSPACE_LAYOUT,
+    MEMORY_CORE_WORKSPACE_LAYOUT,
+    OPENCLAW_PIN_LAYOUT,
+    ContextFile,
+    WorkspaceBootstrapFile,
+    WorkspaceContext,
+    WorkspaceInitResult,
+    WorkspaceLayout,
+    WorkspaceSetupState,
+    bootstrap_status,
+    build_bootstrap_context_files,
+    build_startup_context,
+    build_workspace_context,
+    initialize_agent_workspace,
+    load_workspace_bootstrap_files,
+)
 from memory_core.runtime_identity import RuntimeIdentity, OPENCLAW_COMPAT_RUNTIME_IDENTITY, MEMORY_CORE_RUNTIME_IDENTITY
 from memory_core.client import (
     DEFAULT_CHAT_SYSTEM_PROMPT,
@@ -137,6 +154,21 @@ from memory_core.workspace import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "ContextFile",
+    "DEFAULT_WORKSPACE_LAYOUT",
+    "MEMORY_CORE_WORKSPACE_LAYOUT",
+    "OPENCLAW_PIN_LAYOUT",
+    "WorkspaceBootstrapFile",
+    "WorkspaceContext",
+    "WorkspaceInitResult",
+    "WorkspaceLayout",
+    "WorkspaceSetupState",
+    "bootstrap_status",
+    "build_bootstrap_context_files",
+    "build_startup_context",
+    "build_workspace_context",
+    "initialize_agent_workspace",
+    "load_workspace_bootstrap_files",
     "DEFAULT_CHAT_SYSTEM_PROMPT",
     "DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES",
     "DEFAULT_MEMORY_FLUSH_SOFT_TOKENS",

@@ -1,0 +1,218 @@
+"""One-call workspace context assembly for a host turn.
+
+Mirrors the bootstrap part of OpenClaw's embedded attempt
+(``src/agents/embedded-agent-runner/run/attempt.ts:1377-1500`` at pin
+4c42815348): resolve the run's bootstrap files, decide contextInjection,
+apply the per-file/total budget, drop BOOTSTRAP.md unless the bootstrap mode is
+``full``, build the truncation report, and render Project Context. The host
+places ``stable_text`` in the cacheable system prompt and ``dynamic_text``
+below its cache boundary.
+"""
+
+from __future__ import annotations
+
+import os
+from collections.abc import Iterable
+from dataclasses import dataclass
+
+from memory_core.bootstrap._js import js_trim
+from memory_core.bootstrap.budget import (
+    DEFAULT_BOOTSTRAP_MAX_CHARS,
+    DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
+    BootstrapBudgetAnalysis,
+    BootstrapPromptWarning,
+    BootstrapPromptWarningMode,
+    ContextFile,
+    analyze_bootstrap_budget,
+    build_bootstrap_context_files,
+    build_bootstrap_injection_stats,
+    build_bootstrap_prompt_warning,
+    build_bootstrap_prompt_warning_notice,
+)
+from memory_core.bootstrap.files import (
+    BootstrapContextMode,
+    BootstrapContextRunKind,
+    BootstrapMode,
+    ContextInjectionMode,
+    SessionKind,
+    WorkspaceBootstrapFile,
+    display_path,
+    filter_bootstrap_files,
+    load_workspace_bootstrap_files,
+    resolve_bootstrap_mode,
+    resolve_context_injection,
+)
+from memory_core.bootstrap.layout import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
+from memory_core.bootstrap.lifecycle import (
+    BootstrapStatus,
+    bootstrap_status as resolve_bootstrap_status,
+    is_workspace_setup_completed,
+)
+from memory_core.bootstrap.render import (
+    WORKSPACE_BOOTSTRAP_COMMIT_REMINDER,
+    is_bootstrap_context_path,
+    render_bootstrap_prompt_sections,
+    render_project_context,
+    render_workspace_files_injected,
+    sort_context_files,
+)
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
+
+
+@dataclass(frozen=True)
+class WorkspaceContext:
+    """Rendered workspace context for one turn.
+
+    ``files`` are the injected context files in render order (paths in the
+    requested ``path_style``); ``bootstrap_files`` are the filtered raw files
+    before budgeting. ``warnings`` are the budget warnings of
+    ``buildBootstrapContextFiles``; ``truncation_warning_lines`` and
+    ``truncation_notice`` follow ``bootstrap-budget.ts``. ``bootstrap_text``
+    holds ``## Bootstrap Pending`` and ``## Bootstrap Context Notice`` when
+    they apply. ``record_completed_bootstrap_turn`` asks the host to remember a
+    full bootstrap turn for ``context_injection="continuation-skip"``.
+    """
+
+    stable_text: str
+    dynamic_text: str
+    workspace_files_text: str
+    bootstrap_text: str
+    files: tuple[ContextFile, ...]
+    bootstrap_files: tuple[WorkspaceBootstrapFile, ...]
+    warnings: tuple[str, ...]
+    truncated: bool
+    truncation_warning_lines: tuple[str, ...]
+    truncation_notice: str | None
+    prompt_warning: BootstrapPromptWarning
+    analysis: BootstrapBudgetAnalysis
+    bootstrap_mode: BootstrapMode
+    bootstrap_status: BootstrapStatus
+    injection_skipped: bool
+    record_completed_bootstrap_turn: bool
+    workspace_notes: tuple[str, ...]
+
+
+def _default_run_kind(session_kind: SessionKind | None) -> BootstrapContextRunKind:
+    if session_kind == "heartbeat":
+        return "heartbeat"
+    if session_kind == "cron":
+        return "cron"
+    return "default"
+
+
+def build_workspace_context(
+    root: str | os.PathLike[str],
+    *,
+    layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT,
+    session_kind: SessionKind = "main",
+    run_kind: BootstrapContextRunKind | None = None,
+    context_mode: BootstrapContextMode = "full",
+    include_heartbeat: bool = True,
+    context_injection: ContextInjectionMode = "always",
+    has_completed_bootstrap_turn: bool = False,
+    bootstrap_mode: BootstrapMode | None = None,
+    is_interactive_user_facing: bool = True,
+    max_chars: int = DEFAULT_BOOTSTRAP_MAX_CHARS,
+    total_max_chars: int = DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
+    truncation_warning_mode: BootstrapPromptWarningMode = "always",
+    seen_truncation_signatures: Iterable[str] = (),
+    path_style: str = "absolute",
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+) -> WorkspaceContext:
+    """Load, filter, budget and render a workspace's bootstrap files.
+
+    ``run_kind`` defaults from ``session_kind`` (``heartbeat`` -> heartbeat run,
+    ``cron`` -> cron run, otherwise default). ``bootstrap_mode`` defaults to
+    upstream's ``resolveBootstrapMode`` for a canonical workspace with file
+    access: ``full`` for a pending workspace on a primary interactive run,
+    otherwise ``none``. ``path_style="absolute"`` renders upstream's absolute
+    paths, ``"relative"`` renders root-relative POSIX paths.
+    """
+    effective_run_kind = run_kind or _default_run_kind(session_kind)
+    status = resolve_bootstrap_status(root, layout)
+    setup_completed = is_workspace_setup_completed(root)
+    loaded = load_workspace_bootstrap_files(root, layout)
+    filtered = filter_bootstrap_files(
+        loaded,
+        root=root,
+        layout=layout,
+        session_kind=session_kind,
+        setup_completed=setup_completed,
+        context_mode=context_mode,
+        run_kind=effective_run_kind,
+        include_heartbeat=include_heartbeat,
+    )
+    if bootstrap_mode is None:
+        hook_like_bootstrap = any(
+            file.name == layout.bootstrap_file
+            and not file.missing
+            and isinstance(file.content, str)
+            and js_trim(file.content)
+            for file in filtered
+        )
+        bootstrap_mode = resolve_bootstrap_mode(
+            bootstrap_pending=status == "pending" or hook_like_bootstrap,
+            run_kind=effective_run_kind,
+            is_interactive_user_facing=is_interactive_user_facing,
+            is_primary_run=session_kind != "subagent",
+        )
+    decision = resolve_context_injection(
+        context_injection,
+        bootstrap_mode=bootstrap_mode,
+        run_kind=effective_run_kind,
+        context_mode=context_mode,
+        has_completed_bootstrap_turn=has_completed_bootstrap_turn,
+    )
+    bootstrap_files = [] if decision.skip_injection else filtered
+    budgeted = build_bootstrap_context_files(
+        bootstrap_files, max_chars=max_chars, total_max_chars=total_max_chars
+    )
+    include_bootstrap = bootstrap_mode == "full"
+    context_files = [
+        file
+        for file in budgeted.files
+        if include_bootstrap or not is_bootstrap_context_path(file.path)
+    ]
+    stats_files = [
+        file for file in bootstrap_files if include_bootstrap or file.name != layout.bootstrap_file
+    ]
+    analysis = analyze_bootstrap_budget(
+        build_bootstrap_injection_stats(stats_files, context_files),
+        bootstrap_max_chars=max_chars,
+        bootstrap_total_max_chars=total_max_chars,
+    )
+    prompt_warning = build_bootstrap_prompt_warning(
+        analysis, mode=truncation_warning_mode, seen_signatures=seen_truncation_signatures
+    )
+    notice = build_bootstrap_prompt_warning_notice(prompt_warning.lines)
+    notes = (
+        (WORKSPACE_BOOTSTRAP_COMMIT_REMINDER,)
+        if any(file.name == layout.bootstrap_file and not file.missing for file in bootstrap_files)
+        else ()
+    )
+    shown_files = [
+        ContextFile(display_path(file.path, root, path_style), file.content)
+        for file in context_files
+    ]
+    stable_text, dynamic_text = render_project_context(shown_files, layout)
+    return WorkspaceContext(
+        stable_text=stable_text,
+        dynamic_text=dynamic_text,
+        workspace_files_text=render_workspace_files_injected(identity),
+        bootstrap_text=render_bootstrap_prompt_sections(
+            bootstrap_mode, truncation_notice=notice, context_files=shown_files, layout=layout
+        ),
+        files=tuple(sort_context_files(shown_files, layout)),
+        bootstrap_files=tuple(bootstrap_files),
+        warnings=budgeted.warnings,
+        truncated=analysis.has_truncation,
+        truncation_warning_lines=prompt_warning.lines,
+        truncation_notice=notice,
+        prompt_warning=prompt_warning,
+        analysis=analysis,
+        bootstrap_mode=bootstrap_mode,
+        bootstrap_status=status,
+        injection_skipped=decision.skip_injection,
+        record_completed_bootstrap_turn=decision.record_completed_bootstrap_turn,
+        workspace_notes=notes,
+    )

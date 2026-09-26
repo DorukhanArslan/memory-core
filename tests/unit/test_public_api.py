@@ -108,3 +108,30 @@ def test_public_api_replay_helpers_are_callable():
 
     assert cleaned == [{"role": "user", "content": "hello"}]
     assert repaired.messages[1]["toolCallId"] == "call_1"
+
+
+def test_public_api_exports_workspace_bootstrap_surface(tmp_path):
+    expected = {
+        "ContextFile",
+        "DEFAULT_WORKSPACE_LAYOUT",
+        "MEMORY_CORE_WORKSPACE_LAYOUT",
+        "OPENCLAW_PIN_LAYOUT",
+        "WorkspaceBootstrapFile",
+        "WorkspaceContext",
+        "WorkspaceInitResult",
+        "WorkspaceLayout",
+        "WorkspaceSetupState",
+        "bootstrap_status",
+        "build_bootstrap_context_files",
+        "build_startup_context",
+        "build_workspace_context",
+        "initialize_agent_workspace",
+        "load_workspace_bootstrap_files",
+    }
+
+    assert expected.issubset(set(memory.__all__))
+    assert memory.DEFAULT_WORKSPACE_LAYOUT is memory.MEMORY_CORE_WORKSPACE_LAYOUT
+    result = memory.initialize_agent_workspace(tmp_path / "ws")
+    assert result.bootstrap_status == "pending"
+    context = memory.build_workspace_context(tmp_path / "ws")
+    assert context.files == ()

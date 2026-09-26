@@ -1,0 +1,160 @@
+"""Workspace layouts: which bootstrap files exist, in which order they load and render.
+
+Two presets ship:
+
+- ``OPENCLAW_PIN_LAYOUT``: the OpenClaw file set at the pinned commit
+  4c42815348 (``src/agents/workspace.ts:31-47,195-211,1045-1078``;
+  render order ``src/agents/system-prompt.ts:69-79``).
+- ``MEMORY_CORE_WORKSPACE_LAYOUT`` (default): the pin layout plus the memory-core additions
+  ``PROACTIVE_PREFERENCES.md`` and the ``user/`` and ``workspace/`` folders.
+  Extension (provisional: no upstream reference). The
+  PROACTIVE_PREFERENCES.md placement (load after USER.md, render priority 45,
+  kept for cron sessions like USER.md, optional seed) is memory-core's own
+  design, not an upstream behaviour; the folders are created on
+  initialization but never injected into context and never indexed.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+AGENTS_FILENAME = "AGENTS.md"
+SOUL_FILENAME = "SOUL.md"
+TOOLS_FILENAME = "TOOLS.md"
+IDENTITY_FILENAME = "IDENTITY.md"
+USER_FILENAME = "USER.md"
+HEARTBEAT_FILENAME = "HEARTBEAT.md"
+BOOTSTRAP_FILENAME = "BOOTSTRAP.md"
+MEMORY_FILENAME = "MEMORY.md"
+# Extension (provisional: no upstream reference).
+PROACTIVE_PREFERENCES_FILENAME = "PROACTIVE_PREFERENCES.md"
+
+
+@dataclass(frozen=True)
+class WorkspaceLayout:
+    """Frozen description of a workspace's bootstrap files.
+
+    ``load_order`` is the load and budget order (per-file and total caps are
+    consumed in this order). ``render_priorities`` maps lower-cased basenames to
+    the Project Context sort priority; unknown basenames sort after every known
+    one, by basename then by path. ``dynamic_files`` render below the prompt
+    cache boundary instead of in the stable Project Context block.
+    ``required_files`` are always seeded when missing; ``optional_files`` are
+    seeded unless skipped or setup is complete. ``profile_files`` are compared
+    with their templates to detect a configured workspace. ``subagent_files``
+    and ``cron_files`` are the allowlists for those session kinds.
+    ``extra_dirs`` are created on initialization and never loaded.
+    """
+
+    name: str
+    load_order: tuple[str, ...]
+    render_priorities: tuple[tuple[str, int], ...]
+    dynamic_files: frozenset[str]
+    required_files: tuple[str, ...]
+    optional_files: tuple[str, ...]
+    profile_files: tuple[str, ...]
+    subagent_files: frozenset[str]
+    cron_files: frozenset[str]
+    extra_dirs: tuple[str, ...] = ()
+    bootstrap_file: str = BOOTSTRAP_FILENAME
+    memory_file: str = MEMORY_FILENAME
+    heartbeat_file: str = HEARTBEAT_FILENAME
+
+    def render_priority(self, basename: str) -> int | None:
+        lowered = basename.lower()
+        for name, priority in self.render_priorities:
+            if name == lowered:
+                return priority
+        return None
+
+    def is_dynamic(self, basename: str) -> bool:
+        return basename.lower() in self.dynamic_files
+
+    @property
+    def seed_order(self) -> tuple[str, ...]:
+        seeded = set(self.required_files) | set(self.optional_files)
+        return tuple(name for name in self.load_order if name in seeded)
+
+
+OPENCLAW_PIN_LAYOUT = WorkspaceLayout(
+    name="openclaw-pin",
+    load_order=(
+        AGENTS_FILENAME,
+        SOUL_FILENAME,
+        TOOLS_FILENAME,
+        IDENTITY_FILENAME,
+        USER_FILENAME,
+        HEARTBEAT_FILENAME,
+        BOOTSTRAP_FILENAME,
+        MEMORY_FILENAME,
+    ),
+    render_priorities=(
+        ("agents.md", 10),
+        ("soul.md", 20),
+        ("identity.md", 30),
+        ("user.md", 40),
+        ("tools.md", 50),
+        ("bootstrap.md", 60),
+        ("memory.md", 70),
+    ),
+    dynamic_files=frozenset({"heartbeat.md"}),
+    required_files=(AGENTS_FILENAME, TOOLS_FILENAME),
+    optional_files=(SOUL_FILENAME, IDENTITY_FILENAME, USER_FILENAME, HEARTBEAT_FILENAME),
+    profile_files=(SOUL_FILENAME, IDENTITY_FILENAME, USER_FILENAME),
+    subagent_files=frozenset({AGENTS_FILENAME, TOOLS_FILENAME}),
+    cron_files=frozenset(
+        {AGENTS_FILENAME, TOOLS_FILENAME, SOUL_FILENAME, IDENTITY_FILENAME, USER_FILENAME}
+    ),
+)
+
+MEMORY_CORE_WORKSPACE_LAYOUT = WorkspaceLayout(
+    name="memory-core",
+    load_order=(
+        AGENTS_FILENAME,
+        SOUL_FILENAME,
+        TOOLS_FILENAME,
+        IDENTITY_FILENAME,
+        USER_FILENAME,
+        PROACTIVE_PREFERENCES_FILENAME,
+        HEARTBEAT_FILENAME,
+        BOOTSTRAP_FILENAME,
+        MEMORY_FILENAME,
+    ),
+    render_priorities=(
+        ("agents.md", 10),
+        ("soul.md", 20),
+        ("identity.md", 30),
+        ("user.md", 40),
+        ("proactive_preferences.md", 45),
+        ("tools.md", 50),
+        ("bootstrap.md", 60),
+        ("memory.md", 70),
+    ),
+    dynamic_files=frozenset({"heartbeat.md"}),
+    required_files=(AGENTS_FILENAME, TOOLS_FILENAME),
+    optional_files=(
+        SOUL_FILENAME,
+        IDENTITY_FILENAME,
+        USER_FILENAME,
+        PROACTIVE_PREFERENCES_FILENAME,
+        HEARTBEAT_FILENAME,
+    ),
+    # Upstream's onboarding profile set; PROACTIVE_PREFERENCES.md is not
+    # completion evidence because the extension's semantics for it are unknown.
+    profile_files=(SOUL_FILENAME, IDENTITY_FILENAME, USER_FILENAME),
+    subagent_files=frozenset({AGENTS_FILENAME, TOOLS_FILENAME}),
+    # Provisional: preferences follow USER.md into cron sessions.
+    cron_files=frozenset(
+        {
+            AGENTS_FILENAME,
+            TOOLS_FILENAME,
+            SOUL_FILENAME,
+            IDENTITY_FILENAME,
+            USER_FILENAME,
+            PROACTIVE_PREFERENCES_FILENAME,
+        }
+    ),
+    extra_dirs=("user", "workspace"),
+)
+
+DEFAULT_WORKSPACE_LAYOUT = MEMORY_CORE_WORKSPACE_LAYOUT

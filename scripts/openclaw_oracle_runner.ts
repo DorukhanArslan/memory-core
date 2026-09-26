@@ -178,6 +178,22 @@ async function readStdin(): Promise<Payload> {
   return JSON.parse(Buffer.concat(chunks).toString("utf-8")) as Payload;
 }
 
+async function withIsolatedRuntimeState<T>(prefix: string, run: () => Promise<T>): Promise<T> {
+  // Every bootstrap operation gets its own OPENCLAW_STATE_DIR and HOME (set before any repo
+  // module is imported) and removes them afterwards, so no operation can read or leave
+  // state in the user's real ~/.openclaw or leak temp dirs between test cases.
+  const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+  process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+  process.env.HOME = path.join(sandbox, "home");
+  await fs.mkdir(process.env.OPENCLAW_STATE_DIR, { recursive: true });
+  await fs.mkdir(process.env.HOME, { recursive: true });
+  try {
+    return await run();
+  } finally {
+    await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 async function importFromRepo(repoPath: string, relativePath: string) {
   const fullPath = path.join(repoPath, relativePath);
   return await import(pathToFileURL(fullPath).href);
@@ -863,155 +879,160 @@ async function main() {
   }
 
   if (payload.operation === "bootstrapContextFiles") {
-    // src/agents/embedded-agent-helpers/bootstrap.ts buildBootstrapContextFiles plus the
-    // src/agents/bootstrap-budget.ts report built from the same files (attempt.ts:1466-1488).
-    const bootstrap = await importFromRepo(repoPath, "src/agents/embedded-agent-helpers/bootstrap.ts");
-    const budget = await importFromRepo(repoPath, "src/agents/bootstrap-budget.ts");
-    const warnings: string[] = [];
-    const bootstrapFiles = (payload.bootstrapFiles ?? []).map((file) => ({
-      name: file.name ?? "",
-      path: file.path ?? "",
-      ...(typeof file.content === "string" ? { content: file.content } : {}),
-      missing: file.missing === true,
-    }));
-    const maxChars = payload.maxChars ?? bootstrap.DEFAULT_BOOTSTRAP_MAX_CHARS;
-    const contextFiles = bootstrap.buildBootstrapContextFiles(bootstrapFiles, {
-      warn: (message: string) => warnings.push(message),
-      maxChars,
-      ...(typeof payload.totalMaxChars === "number" ? { totalMaxChars: payload.totalMaxChars } : {}),
-    });
-    const totalMaxChars = payload.totalMaxChars ?? bootstrap.DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS;
-    const stats = budget.buildBootstrapInjectionStats({ bootstrapFiles, injectedFiles: contextFiles });
-    const analysis = budget.analyzeBootstrapBudget({
-      files: stats,
-      bootstrapMaxChars: maxChars,
-      bootstrapTotalMaxChars: totalMaxChars,
-    });
-    const promptWarning = budget.buildBootstrapPromptWarning({
-      analysis,
-      mode: payload.warningMode ?? "always",
-      seenSignatures: payload.seenSignatures,
-    });
-    return {
-      ok: true,
-      operation: payload.operation,
-      result: {
-        contextFiles,
-        warnings,
-        stats,
-        analysis: {
-          files: analysis.files,
-          totalNearLimit: analysis.totalNearLimit,
-          hasTruncation: analysis.hasTruncation,
-          totals: analysis.totals,
+    return withIsolatedRuntimeState("openclaw-oracle-bootstrap-context-", async () => {
+      // src/agents/embedded-agent-helpers/bootstrap.ts buildBootstrapContextFiles plus the
+      // src/agents/bootstrap-budget.ts report built from the same files (attempt.ts:1466-1488).
+      const bootstrap = await importFromRepo(repoPath, "src/agents/embedded-agent-helpers/bootstrap.ts");
+      const budget = await importFromRepo(repoPath, "src/agents/bootstrap-budget.ts");
+      const warnings: string[] = [];
+      const bootstrapFiles = (payload.bootstrapFiles ?? []).map((file) => ({
+        name: file.name ?? "",
+        path: file.path ?? "",
+        ...(typeof file.content === "string" ? { content: file.content } : {}),
+        missing: file.missing === true,
+      }));
+      const maxChars = payload.maxChars ?? bootstrap.DEFAULT_BOOTSTRAP_MAX_CHARS;
+      const contextFiles = bootstrap.buildBootstrapContextFiles(bootstrapFiles, {
+        warn: (message: string) => warnings.push(message),
+        maxChars,
+        ...(typeof payload.totalMaxChars === "number" ? { totalMaxChars: payload.totalMaxChars } : {}),
+      });
+      const totalMaxChars = payload.totalMaxChars ?? bootstrap.DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS;
+      const stats = budget.buildBootstrapInjectionStats({ bootstrapFiles, injectedFiles: contextFiles });
+      const analysis = budget.analyzeBootstrapBudget({
+        files: stats,
+        bootstrapMaxChars: maxChars,
+        bootstrapTotalMaxChars: totalMaxChars,
+      });
+      const promptWarning = budget.buildBootstrapPromptWarning({
+        analysis,
+        mode: payload.warningMode ?? "always",
+        seenSignatures: payload.seenSignatures,
+      });
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: {
+          contextFiles,
+          warnings,
+          stats,
+          analysis: {
+            files: analysis.files,
+            totalNearLimit: analysis.totalNearLimit,
+            hasTruncation: analysis.hasTruncation,
+            totals: analysis.totals,
+          },
+          promptWarning: {
+            signature: promptWarning.signature ?? null,
+            warningShown: promptWarning.warningShown,
+            lines: promptWarning.lines,
+            warningSignaturesSeen: promptWarning.warningSignaturesSeen,
+          },
+          notice: budget.buildBootstrapPromptWarningNotice(promptWarning.lines) ?? null,
+          appended: budget.appendBootstrapPromptWarning("Prompt body", promptWarning.lines),
         },
-        promptWarning: {
-          signature: promptWarning.signature ?? null,
-          warningShown: promptWarning.warningShown,
-          lines: promptWarning.lines,
-          warningSignaturesSeen: promptWarning.warningSignaturesSeen,
-        },
-        notice: budget.buildBootstrapPromptWarningNotice(promptWarning.lines) ?? null,
-        appended: budget.appendBootstrapPromptWarning("Prompt body", promptWarning.lines),
-      },
-    };
+      };
+    });
   }
 
   if (payload.operation === "workspaceBootstrapFiles") {
-    // src/agents/workspace.ts loadWorkspaceBootstrapFiles/filterBootstrapFilesForSession and
-    // src/agents/bootstrap-files.ts resolveBootstrapFilesForRun/resolveBootstrapContextForRun
-    // on a fixture workspace written by the Python side (no config, no hooks registered).
-    if (!payload.workspaceDir) {
-      throw new Error("workspaceDir is required");
-    }
-    process.env.OPENCLAW_STATE_DIR = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-bootstrap-state-"));
-    const workspace = await importFromRepo(repoPath, "src/agents/workspace.ts");
-    const bootstrapFilesModule = await importFromRepo(repoPath, "src/agents/bootstrap-files.ts");
-    const loaded = await workspace.loadWorkspaceBootstrapFiles(payload.workspaceDir);
-    const bySessionKey: Record<string, unknown[]> = {};
-    for (const key of payload.keys ?? []) {
-      bySessionKey[key] = workspace.filterBootstrapFilesForSession(loaded, key);
-    }
-    const runs = [];
-    for (const run of payload.runs ?? []) {
-      const warnings: string[] = [];
-      const resolved = await bootstrapFilesModule.resolveBootstrapContextForRun({
-        workspaceDir: payload.workspaceDir,
-        sessionKey: run.sessionKey,
-        contextMode: run.contextMode,
-        runKind: run.runKind,
-        warn: (message: string) => warnings.push(message),
-      });
-      runs.push({
-        run,
-        bootstrapFiles: resolved.bootstrapFiles,
-        contextFiles: resolved.contextFiles,
-        warnings,
-      });
-    }
-    return {
-      ok: true,
-      operation: payload.operation,
-      result: {
-        loaded,
-        bySessionKey,
-        runs,
-        setupCompleted: await workspace.isWorkspaceSetupCompleted(payload.workspaceDir),
-        bootstrapStatus: await workspace.resolveWorkspaceBootstrapStatus(payload.workspaceDir),
-      },
-    };
+    return withIsolatedRuntimeState("openclaw-oracle-bootstrap-files-", async () => {
+      // src/agents/workspace.ts loadWorkspaceBootstrapFiles/filterBootstrapFilesForSession and
+      // src/agents/bootstrap-files.ts resolveBootstrapFilesForRun/resolveBootstrapContextForRun
+      // on a fixture workspace written by the Python side (no config, no hooks registered).
+      if (!payload.workspaceDir) {
+        throw new Error("workspaceDir is required");
+      }
+      const workspace = await importFromRepo(repoPath, "src/agents/workspace.ts");
+      const bootstrapFilesModule = await importFromRepo(repoPath, "src/agents/bootstrap-files.ts");
+      const loaded = await workspace.loadWorkspaceBootstrapFiles(payload.workspaceDir);
+      const bySessionKey: Record<string, unknown[]> = {};
+      for (const key of payload.keys ?? []) {
+        bySessionKey[key] = workspace.filterBootstrapFilesForSession(loaded, key);
+      }
+      const runs = [];
+      for (const run of payload.runs ?? []) {
+        const warnings: string[] = [];
+        const resolved = await bootstrapFilesModule.resolveBootstrapContextForRun({
+          workspaceDir: payload.workspaceDir,
+          sessionKey: run.sessionKey,
+          contextMode: run.contextMode,
+          runKind: run.runKind,
+          warn: (message: string) => warnings.push(message),
+        });
+        runs.push({
+          run,
+          bootstrapFiles: resolved.bootstrapFiles,
+          contextFiles: resolved.contextFiles,
+          warnings,
+        });
+      }
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: {
+          loaded,
+          bySessionKey,
+          runs,
+          setupCompleted: await workspace.isWorkspaceSetupCompleted(payload.workspaceDir),
+          bootstrapStatus: await workspace.resolveWorkspaceBootstrapStatus(payload.workspaceDir),
+        },
+      };
+    });
   }
 
   if (payload.operation === "projectContextRender") {
-    // src/agents/system-prompt.ts buildAgentSystemPrompt: the Project Context blocks are cut
-    // from the real prompt around SYSTEM_PROMPT_CACHE_BOUNDARY; bootstrap sections come from
-    // the exported buildAgentBootstrapSystemPromptSections.
-    const systemPrompt = await importFromRepo(repoPath, "src/agents/system-prompt.ts");
-    const boundaryModule = await importFromRepo(
-      repoPath,
-      "packages/ai/src/utils/system-prompt-cache-boundary.ts",
-    );
-    const boundary: string = boundaryModule.SYSTEM_PROMPT_CACHE_BOUNDARY;
-    const contextFiles = payload.contextFiles ?? [];
-    const prompt: string = systemPrompt.buildAgentSystemPrompt({
-      workspaceDir: payload.workspaceDir ?? "/w",
-      contextFiles,
-      bootstrapMode: payload.bootstrapMode,
-      bootstrapTruncationNotice: payload.bootstrapTruncationNotice,
-      silentReplyPromptMode: "none",
+    return withIsolatedRuntimeState("openclaw-oracle-project-context-", async () => {
+      // src/agents/system-prompt.ts buildAgentSystemPrompt: the Project Context blocks are cut
+      // from the real prompt around SYSTEM_PROMPT_CACHE_BOUNDARY; bootstrap sections come from
+      // the exported buildAgentBootstrapSystemPromptSections.
+      const systemPrompt = await importFromRepo(repoPath, "src/agents/system-prompt.ts");
+      const boundaryModule = await importFromRepo(
+        repoPath,
+        "packages/ai/src/utils/system-prompt-cache-boundary.ts",
+      );
+      const boundary: string = boundaryModule.SYSTEM_PROMPT_CACHE_BOUNDARY;
+      const contextFiles = payload.contextFiles ?? [];
+      const prompt: string = systemPrompt.buildAgentSystemPrompt({
+        workspaceDir: payload.workspaceDir ?? "/w",
+        contextFiles,
+        bootstrapMode: payload.bootstrapMode,
+        bootstrapTruncationNotice: payload.bootstrapTruncationNotice,
+        silentReplyPromptMode: "none",
+      });
+      const boundaryIndex = prompt.indexOf(boundary);
+      if (boundaryIndex === -1) {
+        throw new Error("cache boundary missing from system prompt");
+      }
+      const stablePart = prompt.slice(0, boundaryIndex);
+      const stableStart = stablePart.indexOf("\n# Project Context\n");
+      const stable =
+        stableStart === -1 ? "" : stablePart.slice(stableStart + 1).replace(/\n$/, "");
+      const dynamicPart = prompt.slice(boundaryIndex + boundary.length);
+      const approvalIndex = dynamicPart.indexOf("\nIf exec returns approval-pending");
+      const dynamicCandidate = (approvalIndex === -1 ? dynamicPart : dynamicPart.slice(0, approvalIndex)).replace(/^\n/, "");
+      const dynamic = dynamicCandidate.startsWith("# ") ? dynamicCandidate : "";
+      const workspaceHeading = "## Workspace Files (injected)\n";
+      const workspaceIndex = prompt.indexOf(workspaceHeading);
+      const workspaceLineEnd = prompt.indexOf("\n", workspaceIndex + workspaceHeading.length);
+      const pendingIndex = prompt.indexOf("## Bootstrap Pending\n");
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: {
+          stable,
+          dynamic,
+          workspaceFiles:
+            workspaceIndex === -1 ? null : prompt.slice(workspaceIndex, workspaceLineEnd),
+          bootstrapSections: systemPrompt.buildAgentBootstrapSystemPromptSections({
+            bootstrapMode: payload.bootstrapMode,
+            bootstrapTruncationNotice: payload.bootstrapTruncationNotice,
+            contextFiles,
+          }),
+          bootstrapPendingInPrompt: pendingIndex !== -1,
+        },
+      };
     });
-    const boundaryIndex = prompt.indexOf(boundary);
-    if (boundaryIndex === -1) {
-      throw new Error("cache boundary missing from system prompt");
-    }
-    const stablePart = prompt.slice(0, boundaryIndex);
-    const stableStart = stablePart.indexOf("\n# Project Context\n");
-    const stable =
-      stableStart === -1 ? "" : stablePart.slice(stableStart + 1).replace(/\n$/, "");
-    const dynamicPart = prompt.slice(boundaryIndex + boundary.length);
-    const approvalIndex = dynamicPart.indexOf("\nIf exec returns approval-pending");
-    const dynamicCandidate = (approvalIndex === -1 ? dynamicPart : dynamicPart.slice(0, approvalIndex)).replace(/^\n/, "");
-    const dynamic = dynamicCandidate.startsWith("# ") ? dynamicCandidate : "";
-    const workspaceHeading = "## Workspace Files (injected)\n";
-    const workspaceIndex = prompt.indexOf(workspaceHeading);
-    const workspaceLineEnd = prompt.indexOf("\n", workspaceIndex + workspaceHeading.length);
-    const pendingIndex = prompt.indexOf("## Bootstrap Pending\n");
-    return {
-      ok: true,
-      operation: payload.operation,
-      result: {
-        stable,
-        dynamic,
-        workspaceFiles:
-          workspaceIndex === -1 ? null : prompt.slice(workspaceIndex, workspaceLineEnd),
-        bootstrapSections: systemPrompt.buildAgentBootstrapSystemPromptSections({
-          bootstrapMode: payload.bootstrapMode,
-          bootstrapTruncationNotice: payload.bootstrapTruncationNotice,
-          contextFiles,
-        }),
-        bootstrapPendingInPrompt: pendingIndex !== -1,
-      },
-    };
   }
 
   if (payload.operation === "workspaceLifecycle") {
@@ -1075,24 +1096,26 @@ async function main() {
   }
 
   if (payload.operation === "startupContext") {
-    // src/auto-reply/reply/startup-context.ts buildSessionStartupContextPrelude.
-    if (!payload.workspaceDir) {
-      throw new Error("workspaceDir is required");
-    }
-    const startup = await importFromRepo(repoPath, "src/auto-reply/reply/startup-context.ts");
-    const prelude = await startup.buildSessionStartupContextPrelude({
-      workspaceDir: payload.workspaceDir,
-      nowMs,
-      cfg: {
-        agents: {
-          defaults: {
-            userTimezone: timezone,
-            ...(payload.startupContext ? { startupContext: payload.startupContext } : {}),
+    return withIsolatedRuntimeState("openclaw-oracle-startup-context-", async () => {
+      // src/auto-reply/reply/startup-context.ts buildSessionStartupContextPrelude.
+      if (!payload.workspaceDir) {
+        throw new Error("workspaceDir is required");
+      }
+      const startup = await importFromRepo(repoPath, "src/auto-reply/reply/startup-context.ts");
+      const prelude = await startup.buildSessionStartupContextPrelude({
+        workspaceDir: payload.workspaceDir,
+        nowMs,
+        cfg: {
+          agents: {
+            defaults: {
+              userTimezone: timezone,
+              ...(payload.startupContext ? { startupContext: payload.startupContext } : {}),
+            },
           },
         },
-      },
+      });
+      return { ok: true, operation: payload.operation, result: { prelude: prelude ?? null } };
     });
-    return { ok: true, operation: payload.operation, result: { prelude: prelude ?? null } };
   }
 
   const promotionOperations = new Set([

@@ -118,38 +118,58 @@ def test_workspace_prompt_marks_missing_files_and_truncates_agents(tmp_path):
     assert "[...truncated, read AGENTS.md for full content...]" in context
     assert "…(truncated AGENTS.md: kept 9000+policy 0+3000 chars of 20100)…" in context
     assert f"[MISSING] Expected at: {os.path.abspath(tmp_path)}/SOUL.md" in context
-    # MEMORY.md is skipped entirely when absent; BOOTSTRAP.md absent means complete.
-    assert "MEMORY.md" not in context.replace("MEMORY.md:", "")
+    # MEMORY.md is skipped entirely when absent (no marker, no intro line);
+    # BOOTSTRAP.md absent means complete.
+    assert "MEMORY.md" not in context
     assert "BOOTSTRAP.md" not in context
     assert "## Bootstrap Context Notice\n[Bootstrap truncation warning]" in context
 
 
-def test_workspace_prompt_matches_golden_snapshot(tmp_path):
-    # Regenerated 2026-09-26 for the upstream render format (was "### <rel>"
-    # sections in load order): bootstrap sections, Workspace Files lines,
-    # "# Project Context" with "## <abs path>" headings in render order, then
-    # HEARTBEAT.md in the dynamic block.
+BOOTSTRAP_PENDING_FULL_IN_CONTEXT = (
+    "## Bootstrap Pending\n"
+    "BOOTSTRAP.md is included below in Project Context; follow it before replying normally.\n"
+    "If this run can complete the BOOTSTRAP.md workflow, do so.\n"
+    "If it cannot, explain the blocker briefly, continue with any bootstrap steps that are "
+    "still possible here, and offer the simplest next step.\n"
+    "Do not pretend bootstrap is complete when it is not.\n"
+    "Do not use a generic first greeting or reply normally until after you have handled "
+    "BOOTSTRAP.md.\n"
+    "Your first user-visible reply for a bootstrap-pending workspace must follow "
+    "BOOTSTRAP.md, not a generic greeting.\n"
+)
+WORKSPACE_FILES_LINES = (
+    "## Workspace Files (injected)\n"
+    "These user-editable files are loaded by memory-core and included below in Project Context.\n"
+)
+DYNAMIC_INTRO = (
+    "# Dynamic Project Context\n"
+    "The following frequently-changing project context files are kept below the cache "
+    "boundary when possible:\n"
+)
+
+
+def _write_marker_files(root: Path) -> None:
     for rel_path in MEMORY_CORE_WORKSPACE_LAYOUT.load_order:
         marker = rel_path.removesuffix(".md")[0]
-        (tmp_path / rel_path).write_text(f"# {marker}\n", encoding="utf-8")
+        (root / rel_path).write_text(f"# {marker}\n", encoding="utf-8")
+
+
+def test_workspace_prompt_matches_golden_snapshot(tmp_path):
+    # Pure-read state: every layout file written by hand, no state file and no
+    # initialization, so BOOTSTRAP.md and MEMORY.md render together. The Lab
+    # itself never reaches this state (demo_config() initializes, which would
+    # reconcile BOOTSTRAP.md away); see the snapshots below for reachable ones.
+    # Regenerated 2026-09-26 for the upstream render format (was "### <rel>"
+    # sections in load order).
+    _write_marker_files(tmp_path)
 
     context = build_workspace_prompt(tmp_path)
 
     root = os.path.abspath(tmp_path)
     assert context == (
-        "## Bootstrap Pending\n"
-        "BOOTSTRAP.md is included below in Project Context; follow it before replying normally.\n"
-        "If this run can complete the BOOTSTRAP.md workflow, do so.\n"
-        "If it cannot, explain the blocker briefly, continue with any bootstrap steps that are "
-        "still possible here, and offer the simplest next step.\n"
-        "Do not pretend bootstrap is complete when it is not.\n"
-        "Do not use a generic first greeting or reply normally until after you have handled "
-        "BOOTSTRAP.md.\n"
-        "Your first user-visible reply for a bootstrap-pending workspace must follow "
-        "BOOTSTRAP.md, not a generic greeting.\n"
-        "## Workspace Files (injected)\n"
-        "These user-editable files are loaded by memory-core and included below in Project Context.\n"
-        "# Project Context\n"
+        BOOTSTRAP_PENDING_FULL_IN_CONTEXT
+        + WORKSPACE_FILES_LINES
+        + "# Project Context\n"
         "The following project context files have been loaded:\n"
         "SOUL.md: persona/tone. Follow it unless higher-priority instructions override.\n"
         "MEMORY.md: durable user preferences and behavior guidance. Keep following it "
@@ -162,10 +182,93 @@ def test_workspace_prompt_matches_golden_snapshot(tmp_path):
         f"## {root}/TOOLS.md\n# T\n"
         f"## {root}/BOOTSTRAP.md\n# B\n"
         f"## {root}/MEMORY.md\n# M\n"
-        "# Dynamic Project Context\n"
-        "The following frequently-changing project context files are kept below the cache "
-        "boundary when possible:\n"
-        f"## {root}/HEARTBEAT.md\n# H"
+        + DYNAMIC_INTRO
+        + f"## {root}/HEARTBEAT.md\n# H"
+    )
+
+
+def test_workspace_prompt_pin_layout_snapshot_has_no_extension_file(tmp_path):
+    from memory_core.bootstrap import OPENCLAW_PIN_LAYOUT
+
+    _write_marker_files(tmp_path)
+
+    context = build_workspace_prompt(tmp_path, layout=OPENCLAW_PIN_LAYOUT)
+
+    root = os.path.abspath(tmp_path)
+    assert context == (
+        BOOTSTRAP_PENDING_FULL_IN_CONTEXT
+        + WORKSPACE_FILES_LINES
+        + "# Project Context\n"
+        "The following project context files have been loaded:\n"
+        "SOUL.md: persona/tone. Follow it unless higher-priority instructions override.\n"
+        "MEMORY.md: durable user preferences and behavior guidance. Keep following it "
+        "throughout the session unless higher-priority instructions override.\n"
+        f"## {root}/AGENTS.md\n# A\n"
+        f"## {root}/SOUL.md\n# S\n"
+        f"## {root}/IDENTITY.md\n# I\n"
+        f"## {root}/USER.md\n# U\n"
+        f"## {root}/TOOLS.md\n# T\n"
+        f"## {root}/BOOTSTRAP.md\n# B\n"
+        f"## {root}/MEMORY.md\n# M\n"
+        + DYNAMIC_INTRO
+        + f"## {root}/HEARTBEAT.md\n# H"
+    )
+
+
+def _template_block(root: str, name: str) -> str:
+    return f"## {root}/{name}\n{DEMO_WORKSPACE_TEMPLATES[name].rstrip()}\n"
+
+
+def test_workspace_prompt_snapshot_of_a_fresh_lab_workspace(tmp_path):
+    # Reachable: the Lab's first request on an empty workspace runs
+    # ensure_workspace_bootstrap_files, which seeds the Lab templates and
+    # BOOTSTRAP.md (no setup evidence yet), so bootstrap is pending.
+    ensure_workspace_bootstrap_files(tmp_path)
+
+    context = build_workspace_prompt(tmp_path)
+
+    root = os.path.abspath(tmp_path)
+    assert context == (
+        BOOTSTRAP_PENDING_FULL_IN_CONTEXT
+        + WORKSPACE_FILES_LINES
+        + "# Project Context\n"
+        "The following project context files have been loaded:\n"
+        "SOUL.md: persona/tone. Follow it unless higher-priority instructions override.\n"
+        + "".join(
+            _template_block(root, name)
+            for name in ("AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md")
+        )
+        + _template_block(root, "BOOTSTRAP.md")
+        + DYNAMIC_INTRO
+        + _template_block(root, "HEARTBEAT.md").rstrip("\n")
+    )
+
+
+def test_workspace_prompt_snapshot_after_the_lab_seeds_memory(tmp_path):
+    # Reachable: a chat reset seeds memory/ and MEMORY.md, and the next
+    # ensure_workspace_bootstrap_files reconciles setup and deletes BOOTSTRAP.md.
+    ensure_workspace_bootstrap_files(tmp_path)
+    (tmp_path / "memory").mkdir()
+    (tmp_path / "MEMORY.md").write_text("# MEMORY.md - Long-Term Memory\n", encoding="utf-8")
+    ensure_workspace_bootstrap_files(tmp_path)
+
+    context = build_workspace_prompt(tmp_path)
+
+    root = os.path.abspath(tmp_path)
+    assert context == (
+        WORKSPACE_FILES_LINES
+        + "# Project Context\n"
+        "The following project context files have been loaded:\n"
+        "SOUL.md: persona/tone. Follow it unless higher-priority instructions override.\n"
+        "MEMORY.md: durable user preferences and behavior guidance. Keep following it "
+        "throughout the session unless higher-priority instructions override.\n"
+        + "".join(
+            _template_block(root, name)
+            for name in ("AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md")
+        )
+        + f"## {root}/MEMORY.md\n# MEMORY.md - Long-Term Memory\n"
+        + DYNAMIC_INTRO
+        + _template_block(root, "HEARTBEAT.md").rstrip("\n")
     )
 
 

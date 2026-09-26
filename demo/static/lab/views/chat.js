@@ -3,7 +3,7 @@
 // stream client (POST /api/lab/chat/stream via fetch + ReadableStream).
 import { h, icon, replace, fmtMs, fmtTime } from '../ui/dom.js';
 import { t, has } from '../i18n/index.js';
-import { store, refresh, mergeTurns, providerBody, loadState, loadFiles, loadIndex, chatKeyState, loadTurn } from '../store.js';
+import { store, refresh, mergeTurns, providerBody, loadState, loadFiles, loadIndex, chatKeyState, loadTurn, SYS_TYPES } from '../store.js';
 import { api, postStream } from '../api.js';
 import { chip, btn, iconBtn, jsonDisclosure, emptyState, honesty, missingCard } from '../ui/kit.js';
 import { openMenu, announce, toast } from '../ui/overlay.js';
@@ -265,7 +265,6 @@ function errorCard(turn) {
       /no_api_key|provider|network|http_/.test(code || '') ? btn(t('act.goSettings'), { size: 'sm', kind: 'ghost', onClick: () => store.actions.openSettings('chat') }) : null),
     jsonDisclosure(e, { title: t('act.details') }));
 }
-const SYS_TYPES = new Set(['session.new', 'heartbeat.decided', 'settings.changed', 'workspace.reset', 'bootstrap.seeded', 'bootstrap.completed']);
 function systemRows() {
   const rows = [];
   const evs = store.data.events;

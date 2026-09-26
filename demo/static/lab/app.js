@@ -3,7 +3,7 @@
 // and the inspector bottom sheet (detents 50% / 92%, velocity-aware dismiss).
 import { h, replace, isTyping, clamp, prefersReducedMotion, basename } from './ui/dom.js';
 import { setLang, t } from './i18n/index.js';
-import { store, refresh, registerRenderer, persistUi, setView, refreshAll, loadFiles, loadFile, loadIndex, loadState, ingestEvent, loadParity } from './store.js';
+import { store, refresh, renderNow, registerRenderer, persistUi, setView, refreshAll, loadFiles, loadFile, loadIndex, loadState, ingestEvent, loadParity } from './store.js';
 import { api } from './api.js';
 import { connectEvents } from './events.js';
 import { initTooltips, toast, closeTop, topLayerOpen, confirmDialog, announce, openDialog, pulse } from './ui/overlay.js';
@@ -30,26 +30,21 @@ const layoutMode = () => (mq.compact.matches ? 'compact' : mq.stacked.matches ? 
 
 /* ---------- center router ---------- */
 const VIEW_RENDER = { chat: renderChat, heartbeat: renderHeartbeat, consolidation: renderConsolidation, live: renderLive, parity: renderParity, settings: renderSettings, scenarios: renderScenarios };
+// Focus, open <details> and inner scroll are kept by the refresh loop (store.js, ui/dom.js).
 function renderCenter() {
   const el = document.getElementById('center');
   const u = store.ui;
-  const active = document.activeElement;
-  const sel = active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT') ? [active.selectionStart, active.selectionEnd] : null;
-  const body = h('div', { class: 'view-body', 'data-view': u.centerTab === 'view' ? u.view : 'file' });
+  const body = h('div', { class: 'view-body', 'data-view': u.centerTab === 'view' ? u.view : `file:${u.centerTab}` });
   replace(el, tabStrip(), body);
   if (u.centerTab !== 'view') renderEditor(body, u.centerTab);
   else (VIEW_RENDER[u.view] || renderChat)(body);
-  if (active && active.isConnected && document.activeElement !== active && el.contains(active)) {
-    active.focus({ preventScroll: true });
-    if (sel) try { active.setSelectionRange(sel[0], sel[1]); } catch { /* not a text input */ }
-  }
 }
 registerRenderer('center', renderCenter);
 
 /* ---------- actions ---------- */
 const A = store.actions;
 Object.assign(A, {
-  renderCenterNow: renderCenter,
+  renderCenterNow: () => renderNow('center'),
   syncShell: () => syncShell(),
   setView: (v) => { setView(v); if (v === 'parity') loadParity(); },
   openFile(path, lineA = null, lineB = null) {

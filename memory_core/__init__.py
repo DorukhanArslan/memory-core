@@ -35,6 +35,13 @@ from memory_core.client import (
     initialize_memory_core_workspace,
 )
 from memory_core.config import MemoryConfig
+from memory_core.curation import (
+    CurationError,
+    CurationPolicy,
+    CurationResult,
+    CurationUnavailableError,
+    MemoryCurator,
+)
 from memory_core.embeddings import (
     EmbeddingProvider,
     FakeEmbeddingProvider,
@@ -179,6 +186,11 @@ __all__ = [
     "build_workspace_context",
     "initialize_agent_workspace",
     "load_workspace_bootstrap_files",
+    "CurationError",
+    "CurationPolicy",
+    "CurationResult",
+    "CurationUnavailableError",
+    "MemoryCurator",
     "DEFAULT_CHAT_SYSTEM_PROMPT",
     "DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES",
     "DEFAULT_MEMORY_FLUSH_SOFT_TOKENS",

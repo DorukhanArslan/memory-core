@@ -149,11 +149,11 @@ export const TR = {
   'cons.result.promote': 'Terfi taraması', 'cons.result.dream': 'Rüya', 'cons.result.audit': 'Denetim', 'cons.result.repair': 'Onarım',
   'cons.footer': "Terfi yalnız tarama ile yazar; küratörlük turda anında yazar. İkisi Diff'te farklı kaynakla görünür.",
   // live
-  'live.title': 'Canlı SDK görevi', 'live.realModel': 'gerçek model', 'live.engineUnknown': 'motor: ilk turda belli olur',
+  'live.title': 'Canlı SDK görevi', 'live.realModel': 'gerçek model', 'live.engineUnknown': 'motor: ilk turda belli olur (sayfa anahtarı)',
   'live.scriptedTip': 'Anahtar çözülmedi: yanıtlar LiveTaskDemo senaryo metninden gelir.', 'live.scriptedBanner': 'SCRIPTED · workflow-script: yanıtlar senaryo metninden',
-  'live.stepMachineNote': 'Adım makinesi anahtar kelime tabanlı; LLM yalnız yanıtı yazar.', 'live.reset': 'Sıfırla', 'live.summary': 'Özet', 'live.customer': 'Müşteri',
-  'live.placeholder': 'Müşteri mesajı yaz…', 'live.inputLabel': 'Canlı görev mesajı', 'live.streaming': 'Akışta…', 'live.empty': 'Transcript boş.', 'live.emptyText': 'Bir müşteri mesajı gönder.',
-  'live.firstToken': 'ilk token', 'live.firstSentence': 'ilk cümle', 'live.total': 'toplam', 'live.transcriptTitle': 'Transcript (sunucu durumu)', 'live.summaryTitle': 'Oturum özeti',
+  'live.stepMachineNote': 'Adım makinesi anahtar kelime tabanlı; LLM yalnız yanıtı yazar.', 'live.reset': 'Sıfırla', 'live.summary': 'Özet', 'live.customer': 'Konu',
+  'live.placeholder': 'Konunun mesajını yaz…', 'live.inputLabel': 'Canlı görev mesajı', 'live.streaming': 'Akışta…', 'live.empty': 'Konuşma boş.', 'live.emptyText': 'Konunun ilk mesajını gönder.',
+  'live.firstToken': 'ilk token', 'live.firstSentence': 'ilk cümle', 'live.total': 'toplam', 'live.transcriptTitle': 'Konuşma (sunucu durumu)', 'live.summaryTitle': 'Oturum özeti',
   'live.wroteTo': 'yazıldı:', 'live.summaryWrote': 'Özet konu belleğine yazıldı', 'live.summarySkipped': 'Özet yazılmadı: {r}', 'live.root': 'Ayrı çalışma alanı: {r}',
   'live.promptNote': "Canlı sistem mesajı: kimlik bölümleri, ## Recalled Subject Memory ve işaretli çalışma zamanı bağlamı. Ajanın MEMORY.md'si konu prompt'una girmez.",
   'live.identitySections': 'Kimlik bölümleri', 'live.noState': 'Durum henüz okunmadı.', 'live.recallEmpty': '(konu belleğinde isabet yok)', 'live.noTurnYet': 'Henüz tur yok.',
@@ -372,4 +372,8 @@ export const TR = {
   'how.memory.3': 'Embedding: gerçek bir uç nokta varsa hibrit; yoksa yalnız FTS ve embedder kurulmaz. Sahte vektör yok (Q9).',
   'how.memory.4': 'Bu tur bölümü demo-only otomatik hatırlamayı gösterir: prompt\'a yalnız MEMORY.md ile bugünün ve dünün günlük dosyası girer.',
   'how.memory.src': 'docs/memory_search_tool.md › Deadline and cooldown · docs/lab.md',
+  // live view labels
+  'live.session': 'Oturum',
+  'live.subject': 'Konu',
+  'live.engineFromState': 'Sunucu durumu (engine.mode): .env anahtarı çözülünce gerçek model',
 };

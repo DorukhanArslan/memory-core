@@ -8,6 +8,7 @@ that can be read statically.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -302,3 +303,19 @@ def test_how_it_works_disclosures_have_both_languages() -> None:
             assert f"'{key}':" in tr and f"'{key}':" in en, key
     for module in ("views/chat.js", "views/heartbeat.js", "views/consolidation.js", "views/live.js", "views/parity.js", "inspector/memory.js"):
         assert "howItWorks(" in (LAB_ROOT / module).read_text(encoding="utf-8"), module
+
+
+def test_contract_live_state_engine_and_provider_check_target(lab_client: TestClient) -> None:
+    # views/live.js seeds the engine chip from state.engine; checks.js matches provider.check on target.
+    state = lab_client.get("/api/live-task/state").json()
+    assert state["engine"]["mode"] in ("llm", "scripted") and "model" in state["engine"]
+    assert "identityFiles" not in state and "workspaceInjectedFiles" in state
+    start = lab_client.get("/api/lab/state").json()["lastEventId"]
+    result = lab_client.post("/api/lab/provider/check", json={"embedding": {}}).json()
+    assert result["target"] == "embedding"
+    body = lab_client.get("/api/lab/events", params={"once": "true"}, headers={"Last-Event-ID": str(start)}).text
+    events = [json.loads(line[6:]) for line in body.splitlines() if line.startswith("data: ")]
+    check = [e for e in events if e["type"] == "provider.check"][-1]
+    assert check["data"]["target"] == "embedding"
+    assert "e.data?.target === which" in (LAB_ROOT / "scenarios" / "checks.js").read_text(encoding="utf-8")
+    assert "st.engine.mode" in (LAB_ROOT / "views" / "live.js").read_text(encoding="utf-8")

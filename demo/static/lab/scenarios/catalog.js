@@ -259,7 +259,7 @@ export const SCENARIOS = [
       { act: 'setting', apply: { page: { suspendKeys: true } }, label: 'scn.S14.l0', expect: 'scn.S14.e0',
         checks: [auto('chip(model, grey dot)', (ctx) => ctx.modelChip?.grey === true)] },
       { act: 'send', live: true, text: 'Merhaba', waitFor: 'live.turn', expect: 'scn.S14.e1',
-        checks: [auto('liveEngine(scripted)', (ctx) => ctx.live?.engine?.provider === 'scripted', ['live'])] },
+        checks: [auto('liveEngine(scripted)', (ctx) => ctx.live?.engine?.provider === 'scripted', ['live']), observe('state engine.mode', (ctx) => ctx.live?.state?.engine?.mode || '—', ['live'])] },
       { act: 'setting', apply: { page: { restoreKeys: true }, settings: { chat: { baseUrl: 'http://127.0.0.1:9/v1' } } }, label: 'scn.S14.l2', expect: 'scn.S14.e2', checks: [] },
       { act: 'send', text: 'Merhaba', waitFor: 'chat.turn.failed|chat.turn.completed', expect: 'scn.S14.e3', blockedIf: needsKey,
         checks: [auto('errorShown(/chat send failed/)', turnErrorMatches(/chat send failed/)), auto('error.redacted (server-side)', errorRedacted()), auto('elapsed ≤ 10000 ms', (ctx) => (ctx.turnMs ?? Infinity) <= 10000, ['turn'])] },

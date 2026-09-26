@@ -17,7 +17,7 @@ export function liveTab(tab) {
   const wrap = h('div', { class: 'live-insp' });
   if (tab === 'prompt') {
     wrap.append(honesty(t('live.promptNote'), 'info'));
-    const identity = st?.identityFiles || st?.workspaceInjectedFiles || {};
+    const identity = st?.workspaceInjectedFiles || {};
     const names = Object.keys(identity);
     wrap.append(h('div', { class: 'subhead' }, h('h3', null, t('live.identitySections')), h('span', { class: 'muted small' }, `${names.length} ${t('unit.files')}`)));
     if (!names.length) wrap.append(h('div', { class: 'muted pad' }, t('live.noState')));

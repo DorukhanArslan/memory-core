@@ -136,10 +136,10 @@ export const EN = {
   'cons.memoryChanged': 'MEMORY.md changed', 'cons.noFileChange': 'no file change',
   'cons.result.promote': 'Promotion sweep', 'cons.result.dream': 'Dream', 'cons.result.audit': 'Audit', 'cons.result.repair': 'Repair',
   'cons.footer': 'Promotion writes only on a sweep; curation writes during the turn. Diff shows them with different sources.',
-  'live.title': 'Live SDK task', 'live.realModel': 'real model', 'live.engineUnknown': 'engine: known after the first turn',
+  'live.title': 'Live SDK task', 'live.realModel': 'real model', 'live.engineUnknown': 'engine: known after the first turn (page key)',
   'live.scriptedTip': 'No key resolved: replies come from the LiveTaskDemo script.', 'live.scriptedBanner': 'SCRIPTED · workflow-script: replies come from the script text',
-  'live.stepMachineNote': 'The step machine is keyword-based; the LLM only words the reply.', 'live.reset': 'Reset', 'live.summary': 'Summary', 'live.customer': 'Customer',
-  'live.placeholder': 'Write a customer message…', 'live.inputLabel': 'Live task message', 'live.streaming': 'Streaming…', 'live.empty': 'Empty transcript.', 'live.emptyText': 'Send a customer message.',
+  'live.stepMachineNote': 'The step machine is keyword-based; the LLM only words the reply.', 'live.reset': 'Reset', 'live.summary': 'Summary', 'live.customer': 'Subject',
+  'live.placeholder': 'Write the subject\'s message…', 'live.inputLabel': 'Live task message', 'live.streaming': 'Streaming…', 'live.empty': 'Empty transcript.', 'live.emptyText': 'Send the subject\'s first message.',
   'live.firstToken': 'first token', 'live.firstSentence': 'first sentence', 'live.total': 'total', 'live.transcriptTitle': 'Transcript (server state)', 'live.summaryTitle': 'Session summary',
   'live.wroteTo': 'written:', 'live.summaryWrote': 'Summary written to subject memory', 'live.summarySkipped': 'Summary not written: {r}', 'live.root': 'Separate workspace: {r}',
   'live.promptNote': "Live system message: identity sections, ## Recalled Subject Memory and marker-wrapped runtime context. The agent's MEMORY.md does not enter subject prompts.",
@@ -354,4 +354,8 @@ export const EN = {
   'how.memory.3': 'Embeddings: a real endpoint gives hybrid search; otherwise FTS-only and no embedder is built. Never fake vectors (Q9).',
   'how.memory.4': 'The this-turn section shows the demo-only auto-recall: only MEMORY.md and today\'s/yesterday\'s daily file reach the prompt.',
   'how.memory.src': 'docs/memory_search_tool.md › Deadline and cooldown · docs/lab.md',
+  // live view labels
+  'live.session': 'Session',
+  'live.subject': 'Subject',
+  'live.engineFromState': 'Server state (engine.mode): a real model when the .env key resolves',
 };

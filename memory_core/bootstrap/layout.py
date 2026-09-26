@@ -11,7 +11,9 @@ Two presets ship:
   PROACTIVE_PREFERENCES.md placement (load after USER.md, render priority 45,
   kept for cron sessions like USER.md, optional seed) is memory-core's own
   design, not an upstream behaviour; the folders are created on
-  initialization but never injected into context and never indexed.
+  initialization but never injected into context and never indexed. An
+  absent PROACTIVE_PREFERENCES.md is skipped like an absent MEMORY.md (no
+  ``[MISSING]`` marker), so upstream-shaped workspaces render unchanged.
 """
 
 from __future__ import annotations
@@ -44,6 +46,9 @@ class WorkspaceLayout:
     with their templates to detect a configured workspace. ``subagent_files``
     and ``cron_files`` are the allowlists for those session kinds.
     ``extra_dirs`` are created on initialization and never loaded.
+    ``extension_files`` have no upstream counterpart; like MEMORY.md they are
+    skipped (no ``[MISSING]`` marker) unless the directory lists the exact
+    name, so an upstream-shaped workspace renders as it does upstream.
     """
 
     name: str
@@ -56,6 +61,7 @@ class WorkspaceLayout:
     subagent_files: frozenset[str]
     cron_files: frozenset[str]
     extra_dirs: tuple[str, ...] = ()
+    extension_files: frozenset[str] = frozenset()
     bootstrap_file: str = BOOTSTRAP_FILENAME
     memory_file: str = MEMORY_FILENAME
     heartbeat_file: str = HEARTBEAT_FILENAME
@@ -155,6 +161,9 @@ MEMORY_CORE_WORKSPACE_LAYOUT = WorkspaceLayout(
         }
     ),
     extra_dirs=("user", "workspace"),
+    # Extension: an absent PROACTIVE_PREFERENCES.md renders nothing, so a
+    # pin-era workspace without it gets exactly upstream's Project Context.
+    extension_files=frozenset({PROACTIVE_PREFERENCES_FILENAME}),
 )
 
 DEFAULT_WORKSPACE_LAYOUT = MEMORY_CORE_WORKSPACE_LAYOUT

@@ -132,14 +132,16 @@ def load_workspace_bootstrap_files(
     """Load the layout's bootstrap files in load order.
 
     MEMORY.md is skipped entirely (no missing marker) unless the directory lists
-    the exact name ``MEMORY.md``; any other file that fails the guarded read is
-    returned with ``missing=True``.
+    the exact name ``MEMORY.md``; the layout's ``extension_files`` (no upstream
+    counterpart) are skipped the same way. Any other file that fails the
+    guarded read is returned with ``missing=True``.
     """
     display_root = _display_root(root)
     files: list[WorkspaceBootstrapFile] = []
     for name in layout.load_order:
         file_path = os.path.join(display_root, name)
-        if name == layout.memory_file and not exact_workspace_entry_exists(display_root, name):
+        skip_when_absent = name == layout.memory_file or name in layout.extension_files
+        if skip_when_absent and not exact_workspace_entry_exists(display_root, name):
             continue
         content = read_workspace_file_guarded(file_path, display_root, max_bytes=max_bytes)
         if content is None:

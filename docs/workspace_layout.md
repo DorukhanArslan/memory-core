@@ -92,7 +92,9 @@ setupCompletedAt}`); upstream's `openclaw-workspace-state.json` and
   nothing otherwise; `commitment-only` runs drop HEARTBEAT.md.
 - `context_injection` is `always`, `continuation-skip` or `never`.
 - A missing file renders `[MISSING] Expected at: <path>`; a missing MEMORY.md
-  is skipped; empty files are not injected.
+  is skipped, and so is a missing extension file (PROACTIVE_PREFERENCES.md,
+  `WorkspaceLayout.extension_files`), so a pin-era workspace renders as it does
+  upstream; empty files are not injected.
 - `exclude_files` drops basenames before budgeting (host policy, no upstream
   equivalent).
 

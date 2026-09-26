@@ -81,7 +81,25 @@ def test_loader_includes_exact_memory_file(tmp_path):
 
     assert files[-1].name == "MEMORY.md"
     assert files[-1].content == "- fact 記憶\n"
+    # An absent extension file is skipped like an absent MEMORY.md.
+    assert "PROACTIVE_PREFERENCES.md" not in [file.name for file in files]
+
+    _write(tmp_path, "PROACTIVE_PREFERENCES.md", "")
+    files = load_workspace_bootstrap_files(tmp_path, MEMORY_CORE_WORKSPACE_LAYOUT)
     assert [file.name for file in files][5] == "PROACTIVE_PREFERENCES.md"
+    assert files[5].missing is False
+
+
+def test_loader_marks_a_rejected_extension_file_missing(tmp_path):
+    # Listed but refused by the guarded read: the marker appears, as for MEMORY.md.
+    outside = _write(tmp_path, "outside.md", "secret")
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "PROACTIVE_PREFERENCES.md").symlink_to(outside)
+
+    files = {file.name: file for file in load_workspace_bootstrap_files(root, MEMORY_CORE_WORKSPACE_LAYOUT)}
+
+    assert files["PROACTIVE_PREFERENCES.md"].missing
 
 
 def test_loader_guards_size_symlink_escape_and_hardlinks(tmp_path):

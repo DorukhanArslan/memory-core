@@ -54,8 +54,9 @@ Defaults and behaviour a host will notice:
   upstream's 75/25 head/tail markers and AGENTS.md policy digest. `None` or a
   value `<= 0` falls back to the default.
 - A missing layout file renders `[MISSING] Expected at: <path>`, like upstream;
-  empty files and a missing MEMORY.md are skipped. Use
-  `layout=OPENCLAW_PIN_LAYOUT` for a workspace without PROACTIVE_PREFERENCES.md.
+  empty files, a missing MEMORY.md and a missing PROACTIVE_PREFERENCES.md
+  (extension, no upstream counterpart) are skipped, so a pin-era workspace
+  renders the same under the default layout and `OPENCLAW_PIN_LAYOUT`.
 - The agent's root MEMORY.md is not injected unless `include_agent_memory=True`.
   This is a deliberate deviation: upstream injects it for every session that is
   not a subagent or cron session, but a live subject prompt should not carry the

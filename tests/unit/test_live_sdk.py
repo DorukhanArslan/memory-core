@@ -92,14 +92,13 @@ def test_identity_loader_marks_missing_layout_files_like_upstream(tmp_path: Path
         "SOUL.md": f"[MISSING] Expected at: {_abs(identity_dir, 'SOUL.md')}",
         "IDENTITY.md": f"[MISSING] Expected at: {_abs(identity_dir, 'IDENTITY.md')}",
         "USER.md": f"[MISSING] Expected at: {_abs(identity_dir, 'USER.md')}",
-        "PROACTIVE_PREFERENCES.md": (
-            f"[MISSING] Expected at: {_abs(identity_dir, 'PROACTIVE_PREFERENCES.md')}"
-        ),
         "TOOLS.md": f"[MISSING] Expected at: {_abs(identity_dir, 'TOOLS.md')}",
         "HEARTBEAT.md": f"[MISSING] Expected at: {_abs(identity_dir, 'HEARTBEAT.md')}",
     }
+    # The extension file has no upstream counterpart: absent, it renders nothing,
+    # so the default layout matches the pin layout for an upstream-shaped workspace.
     pin = LiveIdentity.from_dir(identity_dir, layout=OPENCLAW_PIN_LAYOUT, path_style="relative")
-    assert "PROACTIVE_PREFERENCES.md" not in dict(pin.sections)
+    assert pin.to_prompt_section() == identity.to_prompt_section()
 
 
 def test_identity_loader_keeps_agent_memory_out_by_default(tmp_path: Path):

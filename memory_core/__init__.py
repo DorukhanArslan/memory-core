@@ -50,12 +50,29 @@ from memory_core.consolidation import (
     run_short_term_promotion,
 )
 from memory_core.live.consolidation import SubjectConsolidation, SubjectPromotionDisabledError
+from memory_core.curation import (
+    CurationError,
+    CurationPolicy,
+    CurationResult,
+    CurationUnavailableError,
+    MemoryCurator,
+)
 from memory_core.embeddings import (
     EmbeddingProvider,
     FakeEmbeddingProvider,
     OpenAICompatibleEmbeddingProvider,
 )
 from memory_core.flags import FeatureFlags
+from memory_core.heartbeat import (
+    HEARTBEAT_PROMPT,
+    HEARTBEAT_TOKEN,
+    HeartbeatTurn,
+    build_heartbeat_section_lines,
+    prepare_heartbeat_turn,
+    resolve_heartbeat_interval_ms,
+    resolve_heartbeat_prompt_for_system_prompt,
+    strip_heartbeat_token,
+)
 from memory_core.live import (
     IdentityLoadError,
     JsonlTraceSink,
@@ -152,14 +169,28 @@ from memory_core.runtime_context_prompt import (
     resolve_runtime_context_prompt_parts,
 )
 from memory_core.session_corpus import MemoryCoreSessionCorpus, SessionCorpusFile
+from memory_core.session_memory import (
+    SessionMemoryResult,
+    is_session_memory_trigger,
+    save_session_memory,
+)
 from memory_core.supplements import (
     MemoryCorpusResult,
     MemoryCorpusSupplement,
     StaticMemoryCorpusSupplement,
     sort_corpus_results,
 )
-from memory_core.tools.memory_get import memory_get
-from memory_core.tools.memory_search import memory_search
+from memory_core.tools.memory_get import (
+    execute_memory_get_tool,
+    memory_get,
+    memory_get_tool_definition,
+)
+from memory_core.tools.common import MemoryToolInputError, to_tool_error
+from memory_core.tools.memory_search import (
+    execute_memory_search_tool,
+    memory_search,
+    memory_search_tool_definition,
+)
 from memory_core.workspace import (
     MemoryFile,
     MemoryReadResult,
@@ -197,6 +228,11 @@ __all__ = [
     "resolve_deep_dreaming_policy",
     "run_dreaming_sweep",
     "run_short_term_promotion",
+    "CurationError",
+    "CurationPolicy",
+    "CurationResult",
+    "CurationUnavailableError",
+    "MemoryCurator",
     "DEFAULT_CHAT_SYSTEM_PROMPT",
     "DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES",
     "DEFAULT_MEMORY_FLUSH_SOFT_TOKENS",
@@ -205,6 +241,14 @@ __all__ = [
     "EmbeddingProvider",
     "FakeEmbeddingProvider",
     "FeatureFlags",
+    "HEARTBEAT_PROMPT",
+    "HEARTBEAT_TOKEN",
+    "HeartbeatTurn",
+    "build_heartbeat_section_lines",
+    "prepare_heartbeat_turn",
+    "resolve_heartbeat_interval_ms",
+    "resolve_heartbeat_prompt_for_system_prompt",
+    "strip_heartbeat_token",
     "LangGraphMemoryRecall",
     "OpenAICompatibleEmbeddingProvider",
     "RuntimeIdentity",
@@ -255,6 +299,9 @@ __all__ = [
     "MemoryRecordResult",
     "MemoryWorkspace",
     "MemoryCoreSessionCorpus",
+    "SessionMemoryResult",
+    "is_session_memory_trigger",
+    "save_session_memory",
     "OverflowClassification",
     "PreemptiveCompactionDecision",
     "ProviderOverflowRecoveryDecision",
@@ -294,6 +341,12 @@ __all__ = [
     "limit_history_turns",
     "memory_get",
     "memory_search",
+    "execute_memory_search_tool",
+    "execute_memory_get_tool",
+    "memory_search_tool_definition",
+    "memory_get_tool_definition",
+    "MemoryToolInputError",
+    "to_tool_error",
     "normalize_assistant_replay_content",
     "repair_tool_use_result_pairing",
     "resolve_runtime_context_prompt_parts",

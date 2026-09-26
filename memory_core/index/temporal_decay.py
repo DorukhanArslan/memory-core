@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import math
-import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar
 
+from memory_core.memory_paths import parse_dated_memory_path
+
 T = TypeVar("T")
 
 DAY_MS = 24 * 60 * 60 * 1000
-DATED_MEMORY_PATH_RE = re.compile(r"(?:^|/)memory/(\d{4})-(\d{2})-(\d{2})\.md$")
 
 
 @dataclass(frozen=True)
@@ -47,11 +47,11 @@ def apply_temporal_decay_to_score(
 
 def _parse_memory_date_from_path(file_path: str) -> datetime | None:
     normalized = file_path.replace("\\", "/").removeprefix("./")
-    match = DATED_MEMORY_PATH_RE.search(normalized)
-    if match is None:
+    parts = parse_dated_memory_path(normalized)
+    if parts is None:
         return None
 
-    year, month, day = (int(part) for part in match.groups())
+    year, month, day = parts
     try:
         return datetime(year, month, day, tzinfo=UTC)
     except ValueError:
@@ -64,7 +64,7 @@ def _is_evergreen_memory_path(file_path: str) -> bool:
         return True
     if not normalized.startswith("memory/"):
         return False
-    return DATED_MEMORY_PATH_RE.search(normalized) is None
+    return parse_dated_memory_path(normalized) is None
 
 
 def _extract_timestamp(

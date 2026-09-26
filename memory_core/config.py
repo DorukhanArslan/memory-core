@@ -14,9 +14,6 @@ class MemoryConfig:
     workspace_dir: Path
     agent_id: str = "main"
     store_path: Path | None = None
-    embedding_provider: str = "openai-compatible"
-    embedding_model: str = "text-embedding-3-small"
-    embedding_base_url: str = "https://api.openai.com/v1"
     citation_mode: str = "on"
     memory_get_max_chars: int = 12_000
     memory_get_default_lines: int = 120
@@ -38,6 +35,18 @@ class MemoryConfig:
         )
 
     def resolved_store_path(self) -> Path:
+        """Where the SQLite memory index lives.
+
+        Documented deviation (decision Q15): ``store_path`` stays configurable
+        and defaults to ``<workspace>/.memory-core/<agent_id>.sqlite``. OpenClaw at
+        pin 4c428153 ignores ``memorySearch.store.path`` and always keeps the
+        index in the per-agent state database
+        ``<stateDir>/agents/<agentId>/agent/openclaw-agent.sqlite``
+        (``src/state/openclaw-agent-db.paths.ts`` resolveOpenClawAgentSqlitePath).
+        Hosts embed memory-core next to their own storage, so the path is theirs to
+        choose; the stored index identity still pauses search when a store is
+        reopened with another provider, model or settings.
+        """
         if self.store_path is not None:
             return self.store_path
         if not SAFE_AGENT_ID_RE.match(self.agent_id):

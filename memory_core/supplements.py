@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, TypedDict
 
+from memory_core.bootstrap._js import locale_sort_key
+
 
 class MemoryCorpusResult(TypedDict, total=False):
     corpus: str
@@ -40,4 +42,9 @@ class StaticMemoryCorpusSupplement:
 
 
 def sort_corpus_results(results: list[MemoryCorpusResult]) -> list[MemoryCorpusResult]:
-    return sorted(results, key=lambda item: (-float(item.get("score", 0)), item.get("path", "")))
+    """Score descending, then ``localeCompare`` on the path (OpenClaw
+    ``extensions/memory-core/src/tools.shared.ts`` ``searchMemoryCorpusSupplements``)."""
+    return sorted(
+        results,
+        key=lambda item: (-float(item.get("score", 0)), locale_sort_key(item.get("path", ""))),
+    )

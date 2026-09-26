@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
+import * as nodeModule from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -15,6 +16,22 @@ type Payload = {
   query?: string;
   corpus?: "memory" | "sessions" | "wiki" | "all";
   maxResults?: number;
+  rawParams?: unknown;
+  embeddingModel?: string;
+  identity?: {
+    states?: Array<Record<string, unknown>>;
+    providerIdentities?: Array<Record<string, unknown>>;
+    sources?: string[][];
+    scopes?: Array<Record<string, unknown>>;
+  };
+  unavailableCases?: Array<{ error?: string | null; warning?: string; action?: string }>;
+  searchSteps?: Array<{
+    rawParams: unknown;
+    embedQuery?: string;
+    supplement?: string;
+    advanceMs?: number;
+    deadlineFireMs?: number;
+  }>;
   results?: unknown[];
   wikiResults?: unknown[];
   sessionTranscripts?: Array<{
@@ -81,6 +98,9 @@ type Payload = {
     skipOptional?: string[];
   }>;
   startupContext?: Record<string, unknown>;
+  texts?: Array<string | null>;
+  cases?: Array<Record<string, any>>;
+  scenarios?: Array<Record<string, any>>;
 };
 
 const WORKSPACE_STATE_SNAPSHOT_SKIP = new Set([
@@ -344,6 +364,57 @@ async function registerWikiCorpusFixture(repoPath: string, payload: Payload): Pr
   });
 }
 
+function buildMemorySearchOracleConfig(payload: Payload): Record<string, unknown> {
+  // Builtin memory backend with the fake embedding provider, no watchers and
+  // no embedding cache; hybrid weights and query limits come from the payload.
+  const baseConfig = payload.config ?? {};
+  const agents = isRecord(baseConfig.agents) ? baseConfig.agents : {};
+  const defaults = isRecord(agents.defaults) ? agents.defaults : {};
+  const defaultMemorySearch = isRecord(defaults.memorySearch) ? defaults.memorySearch : {};
+  const defaultQuery = isRecord(defaultMemorySearch.query) ? defaultMemorySearch.query : {};
+  const defaultHybrid = isRecord(defaultQuery.hybrid) ? defaultQuery.hybrid : {};
+  const cfg = {
+    ...baseConfig,
+    memory: {
+      ...(isRecord(baseConfig.memory) ? baseConfig.memory : {}),
+      backend: "builtin",
+      citations: "on",
+    },
+    agents: {
+      ...agents,
+      defaults: {
+        ...defaults,
+        ...(payload.workspaceDir ? { workspace: payload.workspaceDir } : {}),
+        memorySearch: {
+          ...defaultMemorySearch,
+          provider: "memory-core-fake",
+          model: payload.embeddingModel ?? "fake-deterministic",
+          sync: {
+            ...(isRecord(defaultMemorySearch.sync) ? defaultMemorySearch.sync : {}),
+            watch: false,
+            onSessionStart: false,
+            onSearch: false,
+          },
+          query: {
+            ...defaultQuery,
+            minScore: payload.minScore ?? defaultQuery.minScore ?? 0,
+            maxResults: payload.maxResults ?? defaultQuery.maxResults ?? 5,
+            hybrid: {
+              ...defaultHybrid,
+              enabled: true,
+              vectorWeight: payload.vectorWeight ?? 0,
+              textWeight: payload.textWeight ?? 1,
+            },
+          },
+          cache: { enabled: false },
+        },
+      },
+      list: [{ id: "main", default: true }],
+    },
+  };
+  return cfg;
+}
+
 async function resolvePromotionPolicy(repoPath: string, payload: Payload): Promise<PromotionPolicy> {
   const dreaming = await importFromRepo(repoPath, "src/memory-host-sdk/dreaming.ts");
   const pluginConfig = resolveMemoryCorePluginConfig(payload.config);
@@ -372,6 +443,53 @@ function resolveMemoryCorePluginConfig(config?: Record<string, unknown>): Record
   const memoryCore = isRecord(entries?.["memory-core"]) ? entries["memory-core"] : undefined;
   const memoryCoreConfig = isRecord(memoryCore?.config) ? memoryCore.config : undefined;
   return memoryCoreConfig ?? config ?? {};
+}
+
+// The session-memory slug oracles run the real generateSlugViaLLM without a model: its
+// ../agents/embedded-agent.js import resolves to this stub, which hands the run params
+// (the real prompt) to the current case and returns the case's reply as the first payload.
+const EMBEDDED_AGENT_STUB_URL = `data:text/javascript,${encodeURIComponent(
+  "export async function runEmbeddedAgent(params) { return globalThis.__memoryCoreEmbeddedAgentStub(params); }",
+)}`;
+let embeddedAgentStubInstalled = false;
+
+function installEmbeddedAgentStub(): void {
+  if (embeddedAgentStubInstalled) {
+    return;
+  }
+  const registerHooks = (nodeModule as { registerHooks?: (hooks: unknown) => unknown })
+    .registerHooks;
+  if (typeof registerHooks !== "function") {
+    throw new Error("node:module registerHooks is required (Node >= 22.15)");
+  }
+  registerHooks({
+    resolve(
+      specifier: string,
+      context: { parentURL?: string },
+      nextResolve: (specifier: string, context: unknown) => unknown,
+    ) {
+      if (
+        specifier === "../agents/embedded-agent.js" &&
+        context.parentURL?.endsWith("/src/hooks/llm-slug-generator.ts")
+      ) {
+        return { url: EMBEDDED_AGENT_STUB_URL, format: "module", shortCircuit: true };
+      }
+      return nextResolve(specifier, context);
+    },
+  });
+  embeddedAgentStubInstalled = true;
+}
+
+function setEmbeddedAgentStubReply(reply: unknown, prompts: string[]): void {
+  (globalThis as Record<string, unknown>).__memoryCoreEmbeddedAgentStub = async (params: {
+    prompt?: string;
+  }) => {
+    prompts.push(String(params.prompt));
+    if (isRecord(reply) && "throw" in reply) {
+      throw new Error(String(reply.throw));
+    }
+    return { payloads: reply === null || reply === undefined ? [] : [reply] };
+  };
 }
 
 async function main() {
@@ -729,40 +847,109 @@ async function main() {
   }
 
   if (payload.operation === "memoryGet") {
-    const runtimeFiles = await importFromRepo(
-      repoPath,
-      "packages/memory-host-sdk/src/host/read-file.ts",
-    );
-    const baseConfig = payload.config ?? {};
-    const agents = isRecord(baseConfig.agents) ? baseConfig.agents : {};
-    const defaults = isRecord(agents.defaults) ? agents.defaults : {};
-    const cfg = {
-      ...baseConfig,
-      agents: {
-        ...agents,
-        defaults: {
-          ...defaults,
-          ...(payload.workspaceDir ? { workspace: payload.workspaceDir } : {}),
-        },
-      },
-    };
-    let result: unknown;
+    // extensions/memory-core/src/tools.ts createMemoryGetTool (builtin backend)
+    // through the real tool-definition adapter, so param errors come back as the
+    // ToolInputError payload the model sees (agent-tool-definition-adapter.ts
+    // buildToolExecutionErrorResult) and read failures as the tool's own
+    // resolveMemoryReadFailureResult payload. `rawParams` passes the model's
+    // arguments as given; otherwise path/from/lines build them (omitted when unset).
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-memory-get-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
     try {
-      result = await runtimeFiles.readAgentMemoryFile({
-        cfg,
-        agentId: "main",
-        relPath: payload.path ?? "",
-        from: payload.from,
-        lines: payload.lines,
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      result = { path: payload.path ?? "", text: "", disabled: true, error: message };
+      const baseConfig = payload.config ?? {};
+      const agents = isRecord(baseConfig.agents) ? baseConfig.agents : {};
+      const defaults = isRecord(agents.defaults) ? agents.defaults : {};
+      const cfg = {
+        ...baseConfig,
+        agents: {
+          ...agents,
+          defaults: {
+            ...defaults,
+            ...(payload.workspaceDir ? { workspace: payload.workspaceDir } : {}),
+          },
+        },
+      };
+      const tools = await importFromRepo(repoPath, "extensions/memory-core/src/tools.ts");
+      const adapter = await importFromRepo(repoPath, "src/agents/agent-tool-definition-adapter.ts");
+      const tool = tools.createMemoryGetTool({ config: cfg, agentId: "main" });
+      if (!tool) {
+        throw new Error("memory_get tool missing");
+      }
+      const rawParams =
+        payload.rawParams !== undefined
+          ? payload.rawParams
+          : {
+              path: payload.path ?? "",
+              ...(payload.from !== undefined ? { from: payload.from } : {}),
+              ...(payload.lines !== undefined ? { lines: payload.lines } : {}),
+            };
+      const [definition] = adapter.toToolDefinitions([tool]);
+      const wrapped = await definition.execute(
+        "memory_get_oracle",
+        rawParams,
+        undefined,
+        undefined,
+        undefined,
+      );
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: wrapped.details,
+      };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
     }
+  }
+
+  if (payload.operation === "memoryToolDefinitions") {
+    // The model-facing name, description and parameter schema of the real
+    // memory_search and memory_get tools (tools.ts createMemorySearchTool /
+    // createMemoryGetTool, tools.shared.ts MemorySearchSchema / MemoryGetSchema),
+    // as JSON (TypeBox symbol keys dropped).
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-memory-tools-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    try {
+      const tools = await importFromRepo(repoPath, "extensions/memory-core/src/tools.ts");
+      const cfg = { agents: { defaults: { workspace: path.join(sandbox, "workspace") } } };
+      const describe = (tool: { name: string; description: string; parameters: unknown } | null) => {
+        if (!tool) {
+          throw new Error("memory tool missing");
+        }
+        return {
+          name: tool.name,
+          description: tool.description,
+          parameters: JSON.parse(JSON.stringify(tool.parameters)),
+        };
+      };
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: [
+          describe(tools.createMemorySearchTool({ config: cfg, agentId: "main" })),
+          describe(tools.createMemoryGetTool({ config: cfg, agentId: "main" })),
+        ],
+      };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  if (payload.operation === "listMemoryFiles") {
+    // packages/memory-host-sdk/src/host/internal.ts listMemoryFiles on a fixture
+    // workspace written by the Python side (no extraPaths, multimodal disabled),
+    // reported as workspace-relative paths the way buildFileEntry derives them.
+    if (!payload.workspaceDir) {
+      throw new Error("workspaceDir is required");
+    }
+    const workspaceDir = payload.workspaceDir;
+    const internal = await importFromRepo(repoPath, "packages/memory-host-sdk/src/host/internal.ts");
+    const files: string[] = await internal.listMemoryFiles(workspaceDir);
     return {
       ok: true,
       operation: payload.operation,
-      result,
+      result: files.map((file) => path.relative(workspaceDir, file).replace(/\\/g, "/")),
     };
   }
 
@@ -784,13 +971,14 @@ async function main() {
       repoPath,
       "src/plugins/memory-embedding-providers.ts",
     );
+    const embeddingModel = payload.embeddingModel ?? "fake-deterministic";
     embeddingProviders.registerMemoryEmbeddingProvider({
       id: "memory-core-fake",
-      defaultModel: "fake-deterministic",
+      defaultModel: embeddingModel,
       create: async () => ({
         provider: {
           id: "memory-core-fake",
-          model: "fake-deterministic",
+          model: embeddingModel,
           embedQuery: async (text: string) => deterministicEmbedding(`query:${text}`),
           embedBatch: async (texts: string[]) =>
             texts.map((text) => deterministicEmbedding(`document:${text}`)),
@@ -803,51 +991,7 @@ async function main() {
       repoPath,
       "extensions/memory-core/src/memory/index.ts",
     );
-    const baseConfig = payload.config ?? {};
-    const agents = isRecord(baseConfig.agents) ? baseConfig.agents : {};
-    const defaults = isRecord(agents.defaults) ? agents.defaults : {};
-    const defaultMemorySearch = isRecord(defaults.memorySearch) ? defaults.memorySearch : {};
-    const defaultQuery = isRecord(defaultMemorySearch.query) ? defaultMemorySearch.query : {};
-    const defaultHybrid = isRecord(defaultQuery.hybrid) ? defaultQuery.hybrid : {};
-    const cfg = {
-      ...baseConfig,
-      memory: {
-        ...(isRecord(baseConfig.memory) ? baseConfig.memory : {}),
-        backend: "builtin",
-        citations: "on",
-      },
-      agents: {
-        ...agents,
-        defaults: {
-          ...defaults,
-          ...(payload.workspaceDir ? { workspace: payload.workspaceDir } : {}),
-          memorySearch: {
-            ...defaultMemorySearch,
-            provider: "memory-core-fake",
-            model: "fake-deterministic",
-            sync: {
-              ...(isRecord(defaultMemorySearch.sync) ? defaultMemorySearch.sync : {}),
-              watch: false,
-              onSessionStart: false,
-              onSearch: false,
-            },
-            query: {
-              ...defaultQuery,
-              minScore: payload.minScore ?? defaultQuery.minScore ?? 0,
-              maxResults: payload.maxResults ?? defaultQuery.maxResults ?? 5,
-              hybrid: {
-                ...defaultHybrid,
-                enabled: true,
-                vectorWeight: payload.vectorWeight ?? 0,
-                textWeight: payload.textWeight ?? 1,
-              },
-            },
-            cache: { enabled: false },
-          },
-        },
-        list: [{ id: "main", default: true }],
-      },
-    };
+    const cfg = buildMemorySearchOracleConfig(payload);
     const firstSessionFileName = payload.sessionTranscripts?.[0]?.fileName?.trim();
     const requesterSessionId =
       firstSessionFileName && firstSessionFileName.endsWith(".jsonl")
@@ -862,6 +1006,25 @@ async function main() {
       if (!tool) {
         throw new Error("memory_search tool missing");
       }
+      if (payload.rawParams !== undefined) {
+        // Raw model arguments go through the real tool-definition adapter, so a
+        // thrown ToolInputError comes back serialized exactly as the model sees
+        // it (agent-tool-definition-adapter.ts buildToolExecutionErrorResult).
+        const adapter = await importFromRepo(repoPath, "src/agents/agent-tool-definition-adapter.ts");
+        const [definition] = adapter.toToolDefinitions([tool]);
+        const wrapped = await definition.execute(
+          "memory_search_oracle",
+          payload.rawParams,
+          undefined,
+          undefined,
+          undefined,
+        );
+        return {
+          ok: true,
+          operation: payload.operation,
+          result: wrapped.details,
+        };
+      }
       const result = await tool.execute("memory_search_oracle", {
         query: payload.query ?? "",
         corpus: payload.corpus ?? "all",
@@ -873,6 +1036,154 @@ async function main() {
         operation: payload.operation,
         result: result.details,
       };
+    } finally {
+      await memoryIndex.closeAllMemorySearchManagers();
+    }
+  }
+
+  if (payload.operation === "memoryIndexIdentity") {
+    // extensions/memory-core/src/memory/manager-reindex-state.ts pure exports.
+    const reindexState = await importFromRepo(
+      repoPath,
+      "extensions/memory-core/src/memory/manager-reindex-state.ts",
+    );
+    const identity = payload.identity ?? {};
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        states: (identity.states ?? []).map((params) =>
+          reindexState.resolveMemoryIndexIdentityState(params),
+        ),
+        providerIdentities: (identity.providerIdentities ?? []).map((params) =>
+          reindexState.resolveMemoryIndexProviderIdentities(params),
+        ),
+        sources: (identity.sources ?? []).map((sources) =>
+          reindexState.resolveConfiguredSourcesForMeta(sources),
+        ),
+        scopes: (identity.scopes ?? []).map((multimodal) =>
+          reindexState.resolveConfiguredScopeHash({
+            workspaceDir: payload.workspaceDir ?? os.tmpdir(),
+            extraPaths: [],
+            multimodal,
+          }),
+        ),
+      },
+    };
+  }
+
+  if (payload.operation === "memorySearchUnavailableResult") {
+    // extensions/memory-core/src/tools.shared.ts buildMemorySearchUnavailableResult;
+    // a null error stands for undefined.
+    const shared = await importFromRepo(repoPath, "extensions/memory-core/src/tools.shared.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.unavailableCases ?? []).map((entry) =>
+        shared.buildMemorySearchUnavailableResult(
+          entry.error ?? undefined,
+          entry.warning !== undefined || entry.action !== undefined
+            ? { warning: entry.warning, action: entry.action }
+            : undefined,
+        ),
+      ),
+    };
+  }
+
+  if (payload.operation === "memorySearchToolSequence") {
+    // One process and one memory_search tool, so tools.ts's process-wide
+    // cooldown Map carries across steps. Each step scripts the fake provider's
+    // embedQuery ("ok", "throw:<message>", "hang" until aborted) and the wiki
+    // supplement ("ok", "throw:<message>"). Date.now is offset by `advanceMs`
+    // to reach cooldown expiry, and a step's `deadlineFireMs` makes the 15 s
+    // deadline timer fire after that many real ms (the deadline code and its
+    // message are untouched).
+    if (!payload.workspaceDir) {
+      throw new Error("workspaceDir is required");
+    }
+    process.env.OPENCLAW_STATE_DIR = payload.stateDir ?? path.join(payload.workspaceDir, ".openclaw-state");
+    let clockOffsetMs = 0;
+    const realNow = Date.now.bind(Date);
+    Date.now = () => realNow() + clockOffsetMs;
+    const realSetTimeout = globalThis.setTimeout;
+    let deadlineFireMs: number | undefined;
+    globalThis.setTimeout = ((handler: (...args: unknown[]) => void, timeout?: number, ...args: unknown[]) =>
+      realSetTimeout(
+        handler,
+        timeout === 15_000 && deadlineFireMs !== undefined ? deadlineFireMs : timeout,
+        ...args,
+      )) as typeof setTimeout;
+
+    let embedQueryBehavior = "ok";
+    let supplementBehavior = "ok";
+    let embedQueryCalls = 0;
+    const memoryState = await importFromRepo(repoPath, "src/plugins/memory-state.ts");
+    memoryState.registerMemoryCorpusSupplement("memory-wiki", {
+      search: async () => {
+        if (supplementBehavior.startsWith("throw:")) {
+          throw new Error(supplementBehavior.slice("throw:".length));
+        }
+        return payload.wikiResults ?? [];
+      },
+      get: async () => null,
+    });
+    const embeddingProviders = await importFromRepo(
+      repoPath,
+      "src/plugins/memory-embedding-providers.ts",
+    );
+    embeddingProviders.registerMemoryEmbeddingProvider({
+      id: "memory-core-fake",
+      defaultModel: "fake-deterministic",
+      create: async () => ({
+        provider: {
+          id: "memory-core-fake",
+          model: "fake-deterministic",
+          embedQuery: async (text: string, options?: { signal?: AbortSignal }) => {
+            embedQueryCalls += 1;
+            if (embedQueryBehavior.startsWith("throw:")) {
+              throw new Error(embedQueryBehavior.slice("throw:".length));
+            }
+            if (embedQueryBehavior === "hang") {
+              return await new Promise<number[]>((_, reject) => {
+                options?.signal?.addEventListener(
+                  "abort",
+                  () => reject(options.signal?.reason ?? new Error("aborted")),
+                  { once: true },
+                );
+              });
+            }
+            return deterministicEmbedding(`query:${text}`);
+          },
+          embedBatch: async (texts: string[]) =>
+            texts.map((text) => deterministicEmbedding(`document:${text}`)),
+        },
+      }),
+    });
+    const tools = await importFromRepo(repoPath, "extensions/memory-core/src/tools.ts");
+    const memoryIndex = await importFromRepo(
+      repoPath,
+      "extensions/memory-core/src/memory/index.ts",
+    );
+    try {
+      const tool = tools.createMemorySearchTool({
+        config: buildMemorySearchOracleConfig(payload),
+        agentId: "main",
+        agentSessionKey: "agent:main:oracle",
+      });
+      if (!tool) {
+        throw new Error("memory_search tool missing");
+      }
+      const steps: unknown[] = [];
+      for (const step of payload.searchSteps ?? []) {
+        clockOffsetMs += step.advanceMs ?? 0;
+        embedQueryBehavior = step.embedQuery ?? "ok";
+        supplementBehavior = step.supplement ?? "ok";
+        deadlineFireMs = step.deadlineFireMs;
+        const callsBefore = embedQueryCalls;
+        const result = await tool.execute("memory_search_oracle", step.rawParams);
+        steps.push({ result: result.details, embedQueryCalls: embedQueryCalls - callsBefore });
+      }
+      return { ok: true, operation: payload.operation, result: steps };
     } finally {
       await memoryIndex.closeAllMemorySearchManagers();
     }
@@ -1137,6 +1448,477 @@ async function main() {
         ),
       },
     };
+  }
+
+  if (payload.operation === "heartbeatConstants") {
+    // src/auto-reply/heartbeat.ts:16-25 and src/auto-reply/tokens.ts:5 exports.
+    const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
+    const tokens = await importFromRepo(repoPath, "src/auto-reply/tokens.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        HEARTBEAT_TOKEN: tokens.HEARTBEAT_TOKEN,
+        HEARTBEAT_PROMPT: heartbeat.HEARTBEAT_PROMPT,
+        HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS: heartbeat.HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS,
+        HEARTBEAT_RESPONSE_TOOL_PROMPT: heartbeat.HEARTBEAT_RESPONSE_TOOL_PROMPT,
+        HEARTBEAT_TRANSCRIPT_PROMPT: heartbeat.HEARTBEAT_TRANSCRIPT_PROMPT,
+        DEFAULT_HEARTBEAT_EVERY: heartbeat.DEFAULT_HEARTBEAT_EVERY,
+        DEFAULT_HEARTBEAT_ACK_MAX_CHARS: heartbeat.DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
+      },
+    };
+  }
+
+  if (payload.operation === "heartbeatContentEffectivelyEmpty") {
+    // src/auto-reply/heartbeat.ts isHeartbeatContentEffectivelyEmpty; null stands for undefined.
+    const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.texts ?? []).map((text) =>
+        heartbeat.isHeartbeatContentEffectivelyEmpty(text ?? undefined),
+      ),
+    };
+  }
+
+  if (payload.operation === "parseHeartbeatTasks") {
+    // src/auto-reply/heartbeat.ts parseHeartbeatTasks.
+    const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.texts ?? []).map((text) => heartbeat.parseHeartbeatTasks(text ?? "")),
+    };
+  }
+
+  if (payload.operation === "heartbeatTaskDue") {
+    // src/auto-reply/heartbeat.ts isTaskDue, src/cli/parse-duration.ts parseDurationMs and
+    // src/infra/heartbeat-summary.ts resolveHeartbeatIntervalMs. Case kinds: "due"
+    // (lastRunMs absent = undefined), "duration" (ms or the thrown message), "interval"
+    // (every absent = unset heartbeat config).
+    const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
+    const duration = await importFromRepo(repoPath, "src/cli/parse-duration.ts");
+    const summary = await importFromRepo(repoPath, "src/infra/heartbeat-summary.ts");
+    const result = (payload.cases ?? []).map((item) => {
+      if (item.kind === "due") {
+        return heartbeat.isTaskDue(item.lastRunMs, item.interval, item.nowMs);
+      }
+      if (item.kind === "duration") {
+        try {
+          return {
+            ms: duration.parseDurationMs(
+              item.raw,
+              item.defaultUnit ? { defaultUnit: item.defaultUnit } : undefined,
+            ),
+          };
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : String(error) };
+        }
+      }
+      if (item.kind === "interval") {
+        return summary.resolveHeartbeatIntervalMs(
+          {},
+          undefined,
+          "every" in item ? { every: item.every } : undefined,
+        );
+      }
+      throw new Error(`unknown heartbeatTaskDue case kind: ${String(item.kind)}`);
+    });
+    return { ok: true, operation: payload.operation, result };
+  }
+
+  if (payload.operation === "heartbeatPromptConfig") {
+    // src/auto-reply/heartbeat.ts resolveHeartbeatPrompt / resolveHeartbeatPromptForResponseTool;
+    // null stands for an unset prompt.
+    const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.texts ?? []).map((text) => ({
+        prompt: heartbeat.resolveHeartbeatPrompt(text ?? undefined),
+        responseToolPrompt: heartbeat.resolveHeartbeatPromptForResponseTool(text ?? undefined),
+      })),
+    };
+  }
+
+  if (payload.operation === "stripHeartbeatToken") {
+    // src/auto-reply/heartbeat.ts stripHeartbeatToken; text null stands for undefined.
+    const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map((item) =>
+        heartbeat.stripHeartbeatToken(item.text ?? undefined, {
+          ...("mode" in item ? { mode: item.mode } : {}),
+          ...("maxAckChars" in item ? { maxAckChars: item.maxAckChars } : {}),
+        }),
+      ),
+    };
+  }
+
+  if (payload.operation === "heartbeatRunPrompt") {
+    // src/infra/heartbeat-runner.ts runHeartbeatOnce on workspaces written by the Python side:
+    // target "none" (no channel delivery, no commitments), messages.visibleReplies pins the
+    // heartbeat_respond choice, and getReplyFromConfig captures the model input and answers
+    // HEARTBEAT_OK. The Body ends with appendCronStyleCurrentTimeLine's line, returned as
+    // timeLine from the real resolveCronStyleNow. HOME and OPENCLAW_STATE_DIR are sandboxed.
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-heartbeat-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    await fs.mkdir(process.env.HOME, { recursive: true });
+    try {
+      const runner = await importFromRepo(repoPath, "src/infra/heartbeat-runner.ts");
+      const sessions = await importFromRepo(repoPath, "src/config/sessions.ts");
+      const currentTime = await importFromRepo(repoPath, "src/agents/current-time.ts");
+      const results = [];
+      let index = 0;
+      for (const scenario of payload.cases ?? []) {
+        index += 1;
+        const scenarioNowMs = Number(scenario.nowMs);
+        const storePath = path.join(sandbox, `sessions-${index}.json`);
+        const cfg = {
+          agents: {
+            defaults: {
+              workspace: scenario.workspaceDir,
+              userTimezone: "UTC",
+              heartbeat: {
+                every: "5m",
+                target: "none",
+                ...(typeof scenario.prompt === "string" ? { prompt: scenario.prompt } : {}),
+              },
+            },
+          },
+          messages: { visibleReplies: scenario.useResponseTool ? "message_tool" : "automatic" },
+          session: { store: storePath },
+        };
+        const sessionKey = sessions.resolveMainSessionKey(cfg);
+        await fs.writeFile(
+          storePath,
+          JSON.stringify({
+            [sessionKey]: {
+              sessionId: `sid-${index}`,
+              updatedAt: scenarioNowMs - 3_600_000,
+              ...(scenario.taskState ? { heartbeatTaskState: scenario.taskState } : {}),
+            },
+          }),
+        );
+        const calls: Array<{ ctx: Record<string, unknown>; opts: Record<string, unknown> }> = [];
+        const res = await runner.runHeartbeatOnce({
+          cfg,
+          ...(scenario.source ? { source: scenario.source } : {}),
+          ...(scenario.intent ? { intent: scenario.intent } : {}),
+          ...(scenario.reason ? { reason: scenario.reason } : {}),
+          deps: {
+            getQueueSize: () => 0,
+            nowMs: () => scenarioNowMs,
+            getReplyFromConfig: async (ctx: Record<string, unknown>, opts: Record<string, unknown>) => {
+              calls.push({ ctx, opts });
+              return { text: "HEARTBEAT_OK" };
+            },
+          },
+        });
+        const store = JSON.parse(await fs.readFile(storePath, "utf-8"));
+        results.push({
+          status: res.status,
+          reason: res.status === "skipped" ? res.reason : null,
+          body: calls[0]?.ctx?.Body ?? null,
+          isHeartbeat: calls[0]?.opts?.isHeartbeat ?? null,
+          timeLine: currentTime.resolveCronStyleNow(cfg, scenarioNowMs).timeLine,
+          taskState: store[sessionKey]?.heartbeatTaskState ?? null,
+        });
+      }
+      return { ok: true, operation: payload.operation, result: results };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  if (payload.operation === "heartbeatSystemSection") {
+    // shouldInjectHeartbeatPrompt (attempt.prompt-helpers.ts) + resolveHeartbeatPromptForSystemPrompt
+    // (heartbeat-system-prompt.ts) for the default agent, then the "## Heartbeats" block cut from
+    // the real buildAgentSystemPrompt (up to "## Runtime").
+    const helpers = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/run/attempt.prompt-helpers.ts",
+    );
+    const heartbeatSystemPrompt = await importFromRepo(repoPath, "src/agents/heartbeat-system-prompt.ts");
+    const systemPrompt = await importFromRepo(repoPath, "src/agents/system-prompt.ts");
+    const result = (payload.cases ?? []).map((item) => {
+      const config = {
+        agents: {
+          defaults: {
+            heartbeat: {
+              ...("every" in item ? { every: item.every } : {}),
+              ...("includeSystemPromptSection" in item
+                ? { includeSystemPromptSection: item.includeSystemPromptSection }
+                : {}),
+              ...("prompt" in item ? { prompt: item.prompt } : {}),
+            },
+          },
+        },
+      };
+      const inject = helpers.shouldInjectHeartbeatPrompt({
+        config,
+        isDefaultAgent: true,
+        trigger: item.trigger,
+        bootstrapContextRunKind: item.runKind,
+      });
+      const heartbeatPrompt = inject
+        ? heartbeatSystemPrompt.resolveHeartbeatPromptForSystemPrompt({ config })
+        : undefined;
+      const prompt: string = systemPrompt.buildAgentSystemPrompt({
+        workspaceDir: "/w",
+        heartbeatPrompt: "sectionPrompt" in item ? (item.sectionPrompt ?? undefined) : heartbeatPrompt,
+        promptMode: item.promptMode,
+        silentReplyPromptMode: "none",
+      });
+      const start = prompt.indexOf("## Heartbeats\n");
+      const end = start === -1 ? -1 : prompt.indexOf("## Runtime", start);
+      return {
+        heartbeatPrompt: heartbeatPrompt ?? null,
+        section: start === -1 ? null : prompt.slice(start, end),
+      };
+    });
+    return { ok: true, operation: payload.operation, result };
+  }
+
+  if (payload.operation === "heartbeatSessionFilter") {
+    // src/auto-reply/heartbeat-filter.ts isHeartbeatUserMessage over message cases, and
+    // packages/memory-host-sdk/src/host/session-files.ts buildSessionEntry (whose
+    // sanitizeSessionText drops heartbeat rows) over transcript fixtures in a sandboxed
+    // OPENCLAW_STATE_DIR.
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-heartbeat-corpus-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    await fs.mkdir(process.env.HOME, { recursive: true });
+    try {
+      const filter = await importFromRepo(repoPath, "src/auto-reply/heartbeat-filter.ts");
+      const hints = await importFromRepo(repoPath, "src/plugin-sdk/message-tool-delivery-hints.ts");
+      const sessionFiles = await importFromRepo(
+        repoPath,
+        "packages/memory-host-sdk/src/host/session-files.ts",
+      );
+      const messages = (payload.cases ?? []).map((item) =>
+        filter.isHeartbeatUserMessage(item.message, item.heartbeatPrompt ?? undefined),
+      );
+      const sessionsDir = path.join(process.env.OPENCLAW_STATE_DIR, "agents", "main", "sessions");
+      await fs.mkdir(sessionsDir, { recursive: true });
+      const entries = [];
+      for (const transcript of payload.sessionTranscripts ?? []) {
+        const fileName = transcript.fileName?.trim() || "session-oracle.jsonl";
+        if (fileName.includes("/") || fileName.includes("\\") || !fileName.endsWith(".jsonl")) {
+          throw new Error(`invalid session transcript fixture name: ${fileName}`);
+        }
+        const absPath = path.join(sessionsDir, fileName);
+        const lines = (transcript.entries ?? []).map((entry) => JSON.stringify(entry));
+        await fs.writeFile(absPath, `${lines.join("\n")}\n`, "utf-8");
+        const entry = await sessionFiles.buildSessionEntry(absPath);
+        entries.push(entry ? { content: entry.content, lineMap: entry.lineMap } : null);
+      }
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: { messages, entries, deliveryHints: [...hints.MESSAGE_TOOL_DELIVERY_HINTS] },
+      };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  if (payload.operation === "sessionMemoryTranscript") {
+    // src/hooks/bundled/session-memory/transcript.ts exports:
+    // sanitizeSessionMemoryTranscriptText, getRecentSessionContent,
+    // getRecentSessionContentWithResetFallback and findPreviousSessionFile. Case kinds:
+    // "sanitize" {text}; "recent" {content, messageCount?} (content is the raw file text,
+    // null for a missing file); "resetFallback" {files, target, messageCount?};
+    // "findPrevious" {files, currentSessionFile?, sessionId?} (names inside the sessions
+    // dir; the result is relative to it).
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-session-memory-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    try {
+      const transcript = await importFromRepo(
+        repoPath,
+        "src/hooks/bundled/session-memory/transcript.ts",
+      );
+      const writeFiles = async (dir: string, files: Record<string, string> | undefined) => {
+        await fs.mkdir(dir, { recursive: true });
+        for (const [name, content] of Object.entries(files ?? {})) {
+          if (name.includes("/") || name.includes("\\")) {
+            throw new Error(`invalid session fixture name: ${name}`);
+          }
+          await fs.writeFile(path.join(dir, name), content, "utf-8");
+        }
+      };
+      const results = [];
+      for (const [index, item] of (payload.cases ?? []).entries()) {
+        const dir = path.join(sandbox, `case-${index}`, "sessions");
+        const count = typeof item.messageCount === "number" ? item.messageCount : undefined;
+        if (item.kind === "sanitize") {
+          results.push(transcript.sanitizeSessionMemoryTranscriptText(String(item.text)));
+        } else if (item.kind === "recent") {
+          await writeFiles(dir, item.content === null ? {} : { "session.jsonl": item.content });
+          results.push(
+            await transcript.getRecentSessionContent(path.join(dir, "session.jsonl"), count),
+          );
+        } else if (item.kind === "resetFallback") {
+          await writeFiles(dir, item.files);
+          results.push(
+            await transcript.getRecentSessionContentWithResetFallback(
+              path.join(dir, String(item.target)),
+              count,
+            ),
+          );
+        } else if (item.kind === "findPrevious") {
+          await writeFiles(dir, item.files);
+          const found = await transcript.findPreviousSessionFile({
+            sessionsDir: dir,
+            currentSessionFile:
+              typeof item.currentSessionFile === "string"
+                ? path.join(dir, item.currentSessionFile)
+                : undefined,
+            sessionId: item.sessionId ?? undefined,
+          });
+          results.push(found === undefined ? null : path.relative(dir, found));
+        } else {
+          throw new Error(`unsupported sessionMemoryTranscript case: ${item.kind}`);
+        }
+      }
+      return { ok: true, operation: payload.operation, result: { cases: results } };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  if (payload.operation === "sessionMemorySlug") {
+    // src/hooks/llm-slug-generator.ts generateSlugViaLLM with only its model run replaced:
+    // a module hook resolves its ../agents/embedded-agent.js import to a stub whose
+    // runEmbeddedAgent returns each case's reply (in memory-core the host supplies that model
+    // call), so the real prompt, error-payload rejection and slug normalisation run. A
+    // case reply is the first run payload ({text, isError}), null for no payloads, or
+    // {throw} to make the run fail. `texts` go through the real parseApiErrorPayload and
+    // extractLeadingHttpStatus (src/shared/assistant-error-format.ts).
+    installEmbeddedAgentStub();
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-session-slug-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    // Logging only: keeps stdout JSON-only and the shared /tmp/openclaw log untouched.
+    process.env.OPENCLAW_LOG_LEVEL = "silent";
+    try {
+      const slugGenerator = await importFromRepo(repoPath, "src/hooks/llm-slug-generator.ts");
+      const errorFormat = await importFromRepo(repoPath, "src/shared/assistant-error-format.ts");
+      const cases = [];
+      for (const item of payload.cases ?? []) {
+        const prompts: string[] = [];
+        setEmbeddedAgentStubReply(item.reply, prompts);
+        const slug = await slugGenerator.generateSlugViaLLM({
+          sessionContent: String(item.sessionContent ?? ""),
+          cfg: {},
+        });
+        cases.push({ slug, prompt: prompts[0] ?? null });
+      }
+      const errorHelpers = (payload.texts ?? []).map((text) => ({
+        payload: errorFormat.parseApiErrorPayload(text ?? undefined),
+        status: errorFormat.extractLeadingHttpStatus(text ?? ""),
+      }));
+      return { ok: true, operation: payload.operation, result: { cases, errorHelpers } };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  if (payload.operation === "sessionMemoryHook") {
+    // src/hooks/bundled/session-memory/handler.ts default export (the /new and /reset
+    // hook) plus flushSessionMemoryWritesForTest, with events from
+    // src/hooks/internal-hooks.ts createInternalHookEvent. Each scenario gets its own
+    // workspace (context.workspaceDir) seeded with `files`, then runs its events in
+    // order: process.env.TZ = event.timezone, event.timestamp = new Date(event.nowMs),
+    // hooks.internal.entries["session-memory"] from `messages`/`llmSlug`, and
+    // previousSessionEntry.sessionFile relative to the workspace. With llmSlug the real
+    // generateSlugViaLLM runs against the embedded-agent stub, which returns
+    // `slugReply`. The result is the memory/ tree and the slug prompts per scenario.
+    installEmbeddedAgentStub();
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-session-hook-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    // Logging only: keeps stdout JSON-only and the shared /tmp/openclaw log untouched.
+    process.env.OPENCLAW_LOG_LEVEL = "silent";
+    delete process.env.OPENCLAW_TEST_FAST;
+    delete process.env.VITEST;
+    delete process.env.NODE_ENV;
+    const originalTz = process.env.TZ;
+    try {
+      const handler = await importFromRepo(repoPath, "src/hooks/bundled/session-memory/handler.ts");
+      const internalHooks = await importFromRepo(repoPath, "src/hooks/internal-hooks.ts");
+      const scenarios = [];
+      for (const [index, scenario] of (payload.scenarios ?? []).entries()) {
+        const workspaceDir = path.join(sandbox, `workspace-${index}`);
+        await fs.mkdir(workspaceDir, { recursive: true });
+        for (const [relative, content] of Object.entries(scenario.files ?? {})) {
+          if (path.isAbsolute(relative) || relative.split("/").includes("..")) {
+            throw new Error(`invalid session hook fixture path: ${relative}`);
+          }
+          await fs.mkdir(path.dirname(path.join(workspaceDir, relative)), { recursive: true });
+          await fs.writeFile(path.join(workspaceDir, relative), String(content), "utf-8");
+        }
+        const prompts: string[] = [];
+        for (const event of (scenario.events ?? []) as Array<Record<string, any>>) {
+          process.env.TZ = String(event.timezone);
+          const hookConfig: Record<string, unknown> = {};
+          if ("messages" in event) {
+            hookConfig.messages = event.messages;
+          }
+          if (event.llmSlug) {
+            hookConfig.llmSlug = true;
+          }
+          const previous = isRecord(event.previousSessionEntry)
+            ? {
+                ...event.previousSessionEntry,
+                ...(typeof event.previousSessionEntry.sessionFile === "string"
+                  ? { sessionFile: path.join(workspaceDir, event.previousSessionEntry.sessionFile) }
+                  : {}),
+              }
+            : undefined;
+          const hookEvent = internalHooks.createInternalHookEvent(
+            event.type ?? "command",
+            event.action ?? "new",
+            event.sessionKey ?? "agent:main:main",
+            {
+              workspaceDir,
+              ...(Object.keys(hookConfig).length > 0
+                ? { cfg: { hooks: { internal: { entries: { "session-memory": hookConfig } } } } }
+                : {}),
+              ...(previous ? { previousSessionEntry: previous } : {}),
+              ...(event.commandSource ? { commandSource: event.commandSource } : {}),
+            },
+          );
+          hookEvent.timestamp = new Date(Number(event.nowMs));
+          setEmbeddedAgentStubReply(event.slugReply ?? null, prompts);
+          await handler.default(hookEvent);
+          await handler.flushSessionMemoryWritesForTest();
+        }
+        const memoryDir = path.join(workspaceDir, "memory");
+        let memory: Record<string, string> | null = null;
+        try {
+          const names = (await fs.readdir(memoryDir)).toSorted();
+          memory = {};
+          for (const name of names) {
+            memory[name] = await fs.readFile(path.join(memoryDir, name), "utf-8");
+          }
+        } catch {
+          memory = null;
+        }
+        scenarios.push({ memory, prompts });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios } };
+    } finally {
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
   }
 
   const promotionOperations = new Set([

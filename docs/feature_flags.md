@@ -25,6 +25,7 @@ memory = Memory.from_workspace(".", config=config)  # no embedding provider need
 | `mmr` | `False` | No MMR re-ranking of hybrid results. |
 | `temporal_decay` | `False` | Scores are not decayed by memory-file age. |
 | `subject_promotion` | `False` | `memory_core.live.SubjectConsolidation` raises `SubjectPromotionDisabledError` on every call before touching the subject workspace. memory-core extension (decision Q16), no upstream counterpart. Enable per subject with `SubjectMemory.open(..., flags=FeatureFlags(vector_search=False, subject_promotion=True))`. |
+| `curated_memory_writes` | `True` | memory-core extension (Q16), not OpenClaw parity. `MemoryCurator` offers no tools and every curation call raises `CurationUnavailableError` before reading or writing any workspace file; `after_write` hooks never run. |
 
 At least one of `vector_search` / `text_search` must stay enabled;
 `FeatureFlags(vector_search=False, text_search=False)` raises `ValueError`.
@@ -42,6 +43,13 @@ At least one of `vector_search` / `text_search` must stay enabled;
   explicit configuration errors; OpenClaw's runtime fallback chain
   (fallback provider activation, keyword-only degradation on embedding
   outage) is host-runtime behavior and out of package scope.
+- `Memory.from_workspace()` runs the same check (plus the `agent_id` store-path
+  check) before it creates anything, so a call that raises leaves no
+  `MEMORY.md`, `memory/` or `.memory-core/` behind.
+- The index records whether it was built FTS-only or with which provider and
+  model. Reopening a store with `vector_search` switched (or another embedding
+  model or endpoint) makes `memory_search` return the paused result until the
+  store is reindexed (`docs/memory_search_tool.md`, Index identity).
 
 ## Parity notes
 

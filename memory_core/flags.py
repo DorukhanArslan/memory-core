@@ -16,6 +16,11 @@ class FeatureFlags:
     (`memory_core.live.SubjectConsolidation`, a Q16 extension without an upstream
     counterpart, off by default): disabled means every call raises before
     touching the subject workspace.
+
+    `curated_memory_writes` gates the memory-core curation tools
+    (`memory_core.curation.MemoryCurator`, a Q16 extension, on by default):
+    disabled means the tools are not offered and every call raises before
+    touching the workspace.
     """
 
     vector_search: bool = True
@@ -23,6 +28,7 @@ class FeatureFlags:
     mmr: bool = False
     temporal_decay: bool = False
     subject_promotion: bool = False
+    curated_memory_writes: bool = True
 
     def __post_init__(self) -> None:
         if not self.vector_search and not self.text_search:

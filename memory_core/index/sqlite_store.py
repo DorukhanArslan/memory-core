@@ -2,16 +2,33 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
 
+from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.index.chunking import MemoryChunk, chunk_markdown
 from memory_core.index.fts import bm25_rank_to_score, build_fts_query
+from memory_core.bootstrap._js import js_json_stringify
 from memory_core.index.hybrid import (
     HybridKeywordResult,
     HybridResult,
     HybridVectorResult,
     merge_hybrid_results,
+)
+from memory_core.index.identity import (
+    DEFAULT_FTS_TOKENIZER,
+    FTS_ONLY_MODEL,
+    MEMORY_INDEX_META_KEY,
+    MEMORY_INDEX_META_TABLE,
+    NO_PROVIDER_ID,
+    parse_index_meta,
+    resolve_configured_scope_hash,
+    resolve_configured_sources_for_meta,
+    resolve_memory_index_identity_state,
+    resolve_memory_index_provider_identities,
 )
 from memory_core.index.keywords import extract_keywords
 from memory_core.index.mmr import mmr_rerank
@@ -26,24 +43,54 @@ from memory_core.workspace import MemoryWorkspace
 # cannot fan out into unbounded sqlite work (memory-core manager.ts).
 KEYWORD_FALLBACK_SEARCH_TERM_LIMIT = 6
 
+# Chunking recorded in the index identity (chunk_markdown defaults; upstream
+# DEFAULT_CHUNK_TOKENS / DEFAULT_CHUNK_OVERLAP, src/agents/memory-search.ts).
+CHUNK_TOKENS = 400
+CHUNK_OVERLAP = 80
+# memory-core always indexes memory files and session transcripts.
+CONFIGURED_SOURCES = ("memory", "sessions")
+
+
+def validate_store_config(config: MemoryConfig, embeddings: EmbeddingProvider | None) -> Path:
+    """Check everything that makes store construction raise, without side effects.
+
+    Fail closed per the FeatureFlags contract: vector search with no embedding
+    provider raises instead of silently falling back to FTS-only. Returns the
+    resolved store path.
+    """
+    if config.effective_flags().vector_search and embeddings is None:
+        raise ValueError(
+            "vector_search is enabled but no embedding provider was given; "
+            "pass an embedding provider or disable it via "
+            "FeatureFlags(vector_search=False) for FTS-only mode"
+        )
+    return config.resolved_store_path()
+
 
 class SQLiteMemoryStore:
     def __init__(self, config: MemoryConfig, embeddings: EmbeddingProvider | None):
+        self.path = validate_store_config(config, embeddings)
         self.config = config
         self.flags = config.effective_flags()
-        if self.flags.vector_search and embeddings is None:
-            raise ValueError(
-                "vector_search is enabled but no embedding provider was given; "
-                "pass an embedding provider or disable it via "
-                "FeatureFlags(vector_search=False) for FTS-only mode"
-            )
         self.embeddings = embeddings
-        self.path = config.resolved_store_path()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 
     def connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path)
+
+    @contextmanager
+    def _search_connection(self, signal: CancellationSignal | None) -> Iterator[sqlite3.Connection]:
+        # A read-only connection the caller's signal can interrupt from another
+        # thread (sqlite3 interrupt), closed when the search ends.
+        db = self.connect()
+        remove_listener = signal.add_listener(db.interrupt) if signal is not None else None
+        try:
+            yield db
+        finally:
+            if remove_listener is not None:
+                remove_listener()
+            db.close()
 
     def _init_schema(self) -> None:
         with self.connect() as db:
@@ -63,17 +110,110 @@ class SQLiteMemoryStore:
             db.execute(
                 "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(id UNINDEXED, text)"
             )
+            # memory-host-sdk memory-schema.ts. Stores created before this table
+            # existed read as "index metadata is missing" until their next reindex.
+            db.execute(
+                f"CREATE TABLE IF NOT EXISTS {MEMORY_INDEX_META_TABLE} "
+                "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+            )
+
+    def _index_provider(self) -> dict[str, str] | None:
+        # The embedder only counts while vector search is on; otherwise the
+        # index is FTS-only (provider none / model fts-only).
+        if not self.flags.vector_search or self.embeddings is None:
+            return None
+        return {"id": self.embeddings.provider_id, "model": self.embeddings.model}
+
+    def _provider_key(self) -> str:
+        cache_key_data = getattr(self.embeddings, "cache_key_data", None)
+        if callable(cache_key_data):
+            cache_key_data = cache_key_data()
+        provider = self._index_provider()
+        return resolve_memory_index_provider_identities(
+            provider,
+            cache_key_data=cache_key_data if provider is not None else None,
+        )[0]["providerKey"]
+
+    def read_index_meta(self) -> object:
+        """The stored index identity JSON, or ``None`` (``readMeta``)."""
+        with self.connect() as db:
+            row = db.execute(
+                f"SELECT value FROM {MEMORY_INDEX_META_TABLE} WHERE key = ?",
+                (MEMORY_INDEX_META_KEY,),
+            ).fetchone()
+        return parse_index_meta(row[0] if row else None)
+
+    def _has_indexed_chunks(self) -> bool:
+        with self.connect() as db:
+            return db.execute("SELECT 1 FROM chunks LIMIT 1").fetchone() is not None
+
+    def index_identity(self) -> dict[str, str]:
+        """Whether the index matches this store's provider and settings.
+
+        ``{"status": "valid"}``, or ``missing``/``mismatched`` with an upstream
+        reason (``manager-reindex-state.ts`` ``resolveMemoryIndexIdentityState``).
+        Searches return no hits and ``memory_search`` pauses until
+        :meth:`reindex` writes fresh metadata.
+        """
+        return resolve_memory_index_identity_state(
+            meta=self.read_index_meta(),
+            provider=self._index_provider(),
+            provider_key=self._provider_key(),
+            provider_key_known=True,
+            configured_sources=resolve_configured_sources_for_meta(CONFIGURED_SOURCES),
+            configured_scope_hash=resolve_configured_scope_hash(),
+            chunk_tokens=CHUNK_TOKENS,
+            chunk_overlap=CHUNK_OVERLAP,
+            vector_ready=self._index_provider() is not None,
+            has_indexed_chunks=self._has_indexed_chunks(),
+            fts_tokenizer=DEFAULT_FTS_TOKENIZER,
+        )
+
+    def _build_index_meta(self, vector_dims: int | None) -> dict:
+        # manager-sync-ops.ts nextMeta (same key order).
+        provider = self._index_provider()
+        meta = {
+            "model": provider["model"] if provider is not None else FTS_ONLY_MODEL,
+            "provider": provider["id"] if provider is not None else NO_PROVIDER_ID,
+            "providerKey": self._provider_key(),
+            "sources": resolve_configured_sources_for_meta(CONFIGURED_SOURCES),
+            "scopeHash": resolve_configured_scope_hash(),
+            "chunkTokens": CHUNK_TOKENS,
+            "chunkOverlap": CHUNK_OVERLAP,
+            "ftsTokenizer": DEFAULT_FTS_TOKENIZER,
+        }
+        if provider is not None and vector_dims:
+            meta["vectorDims"] = vector_dims
+        return meta
 
     def reindex(self, workspace: MemoryWorkspace) -> int:
+        """Rebuild the index from every discovered file; returns the files indexed.
+
+        Markdown is decoded like upstream ``buildFileEntry``
+        (``packages/memory-host-sdk/src/host/internal.ts:292-304``):
+        ``Buffer.toString("utf-8")`` replaces invalid bytes, so an AppleDouble
+        ``._*.md`` or a Latin-1 note never fails the reindex, and a file that
+        vanished after discovery is skipped (upstream returns ``null``).
+        """
         files = workspace.discover_indexable_files()
         chunks: list[MemoryChunk] = []
+        indexed_files = 0
         for file in files:
-            text = file.index_text if file.index_text is not None else file.abs_path.read_text(encoding="utf-8")
+            if file.index_text is not None:
+                text = file.index_text
+            else:
+                try:
+                    text = file.abs_path.read_text(encoding="utf-8", errors="replace")
+                except FileNotFoundError:
+                    continue
+            indexed_files += 1
             chunks.extend(
                 chunk_markdown(
                     file.rel_path,
                     text,
                     source=file.source,
+                    target_tokens=CHUNK_TOKENS,
+                    overlap_tokens=CHUNK_OVERLAP,
                 )
             )
 
@@ -82,6 +222,7 @@ class SQLiteMemoryStore:
         else:
             embeddings = [[] for _ in chunks]
 
+        vector_dims = len(embeddings[0]) if embeddings and embeddings[0] else None
         with self.connect() as db:
             db.execute("DELETE FROM chunks")
             db.execute("DELETE FROM chunks_fts")
@@ -102,8 +243,14 @@ class SQLiteMemoryStore:
                     "INSERT INTO chunks_fts(id, text) VALUES (?, ?)",
                     (chunk.id, chunk.text),
                 )
+            # Fresh identity in the same transaction as the chunks (writeMeta).
+            db.execute(
+                f"INSERT INTO {MEMORY_INDEX_META_TABLE} (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (MEMORY_INDEX_META_KEY, js_json_stringify(self._build_index_meta(vector_dims))),
+            )
 
-        return len(files)
+        return indexed_files
 
     def count_chunks(self) -> int:
         with self.connect() as db:
@@ -117,8 +264,22 @@ class SQLiteMemoryStore:
         max_results: int = 5,
         min_score: float = 0.0,
         sources: set[str] | None = None,
+        signal: CancellationSignal | None = None,
     ) -> list[HybridResult]:
+        """Search the index; ``signal`` aborts it at the next checkpoint.
+
+        Returns no hits while :meth:`index_identity` is not valid (a store
+        built with another provider/model/settings, or one never reindexed).
+        Checkpoints mirror where OpenClaw's manager honours the tool's
+        AbortSignal (``memory/manager.ts`` search, ``embedQueryWithRetry``):
+        before and after the query embedding and between FTS probes; an abort
+        also interrupts the open SQLite statement.
+        """
         source_filter = _source_filter_clause(sources)
+        _checkpoint(signal)
+        # memory/manager.ts:680-685: no hits unless the index identity is valid.
+        if self.index_identity()["status"] != "valid":
+            return []
 
         if not self.flags.vector_search:
             return self._search_keyword_only(
@@ -126,10 +287,12 @@ class SQLiteMemoryStore:
                 max_results=max_results,
                 min_score=min_score,
                 source_filter=source_filter,
+                signal=signal,
             )
 
         query_embedding = self.embeddings.embed_query(query)
-        with self.connect() as db:
+        _checkpoint(signal)
+        with self._search_connection(signal) as db:
             rows = db.execute(
                 "SELECT id, path, start_line, end_line, source, text, embedding FROM chunks"
                 + source_filter.sql,
@@ -150,7 +313,10 @@ class SQLiteMemoryStore:
 
             keyword: list[HybridKeywordResult] = []
             if self.flags.text_search:
-                keyword = self._query_keyword_hits_with_fallback(db, query, source_filter)
+                keyword = self._query_keyword_hits_with_fallback(
+                    db, query, source_filter, signal
+                )
+        _checkpoint(signal)
 
         if not self.flags.text_search:
             # Vector-only mode mirrors OpenClaw's non-hybrid path: raw vector
@@ -226,12 +392,14 @@ class SQLiteMemoryStore:
         max_results: int,
         min_score: float,
         source_filter: _SourceFilter,
+        signal: CancellationSignal | None = None,
     ) -> list[HybridResult]:
         # OpenClaw FTS-only mode ("provider: none"): keyword hits keep their
         # full text score (no text-weight scaling), temporal decay still
         # applies, and an empty strict pass relaxes the min-score to 0.
-        with self.connect() as db:
-            keyword = self._query_keyword_hits_with_fallback(db, query, source_filter)
+        with self._search_connection(signal) as db:
+            keyword = self._query_keyword_hits_with_fallback(db, query, source_filter, signal)
+        _checkpoint(signal)
         results = [
             HybridResult(
                 path=item.path,
@@ -264,6 +432,7 @@ class SQLiteMemoryStore:
         db: sqlite3.Connection,
         query: str,
         source_filter: _SourceFilter,
+        signal: CancellationSignal | None = None,
     ) -> list[HybridKeywordResult]:
         full_query_hits = self._query_keyword_hits(db, query, source_filter)
         if full_query_hits:
@@ -281,9 +450,10 @@ class SQLiteMemoryStore:
         if not fallback_terms:
             return []
 
-        result_sets = [
-            self._query_keyword_hits(db, term, source_filter) for term in fallback_terms
-        ]
+        result_sets = []
+        for term in fallback_terms:
+            _checkpoint(signal)
+            result_sets.append(self._query_keyword_hits(db, term, source_filter))
         return _merge_keyword_search_hits(result_sets)
 
     def _query_keyword_hits(
@@ -317,6 +487,11 @@ class SQLiteMemoryStore:
                 (fts_query, *source_filter.params),
             )
         ]
+
+
+def _checkpoint(signal: CancellationSignal | None) -> None:
+    if signal is not None:
+        signal.throw_if_aborted()
 
 
 def _merge_keyword_search_hits(

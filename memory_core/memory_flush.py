@@ -8,6 +8,7 @@ import re
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from memory_core.memory_paths import UnsafeMemoryPathError, validate_daily_memory_path
 
 SILENT_REPLY_TOKEN = "NO_REPLY"
 DEFAULT_MEMORY_FLUSH_SOFT_TOKENS = 4000
@@ -56,11 +57,9 @@ DEFAULT_MEMORY_FLUSH_SYSTEM_PROMPT = " ".join(
     ],
 )
 
-_DAILY_MEMORY_TARGET_RE = re.compile(r"^memory/\d{4}-\d{2}-\d{2}\.md$")
-
-
-class UnsafeMemoryFlushTargetError(ValueError):
-    """Raised when a memory flush target is not the canonical daily memory file."""
+# Kept for existing imports: flush-target and write-surface violations share
+# one exception type and one validator (memory_core.memory_paths).
+UnsafeMemoryFlushTargetError = UnsafeMemoryPathError
 
 
 @dataclass(frozen=True)
@@ -117,11 +116,7 @@ def append_current_time_line(text: str, time_line: str) -> str:
 
 
 def validate_daily_memory_target(relative_path: str) -> str:
-    if not _DAILY_MEMORY_TARGET_RE.fullmatch(relative_path):
-        raise UnsafeMemoryFlushTargetError(
-            f"memory flush target must be memory/YYYY-MM-DD.md: {relative_path}",
-        )
-    return relative_path
+    return validate_daily_memory_path(relative_path)
 
 
 def build_memory_flush_plan(

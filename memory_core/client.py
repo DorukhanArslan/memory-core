@@ -5,9 +5,11 @@ from pathlib import Path
 from typing import Callable
 
 from memory_core.adapters.langgraph import LangGraphMemoryRecall, format_memory_context
+from memory_core.bootstrap import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
 from memory_core.config import MemoryConfig
+from memory_core.curation import CurationPolicy, CurationResult, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
-from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.index.sqlite_store import SQLiteMemoryStore, validate_store_config
 from memory_core.memory_flush import SILENT_REPLY_TOKEN, build_memory_flush_plan
 from memory_core.tools.memory_get import memory_get
 from memory_core.tools.memory_search import memory_search
@@ -66,6 +68,9 @@ class Memory:
     ) -> Memory:
         workspace = MemoryWorkspace(Path(workspace_dir))
         resolved_config = config or MemoryConfig(workspace_dir=workspace.root)
+        # Raise on an invalid provider/flag/agent-id combination before any
+        # directory or MEMORY.md is created.
+        validate_store_config(resolved_config, embedding_provider)
         if initialize:
             initialize_memory_core_workspace(workspace.root)
         store = SQLiteMemoryStore(resolved_config, embedding_provider)
@@ -222,6 +227,38 @@ class Memory:
             turn=turn,
             assistant_message=assistant_message,
             flush_result=flush_result,
+        )
+
+    def curator(
+        self,
+        *,
+        layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT,
+        policy: CurationPolicy | None = None,
+        timezone: str = "UTC",
+        now_ms: Callable[[], int] | None = None,
+    ) -> MemoryCurator:
+        """Curated writes for this workspace (memory-core extension, see memory_core.curation).
+
+        The curator uses this memory's feature flags and reindexes the store
+        after each write to MEMORY.md or a daily note, the files memory_search
+        indexes; USER.md and PROACTIVE_PREFERENCES.md writes skip the reindex.
+        The reindex runs after the write is committed and re-embeds the whole
+        corpus synchronously; if it fails, the write stands and the result
+        carries ``after_write_error`` (``afterWriteError`` in the tool payload).
+        """
+
+        def reindex(result: CurationResult) -> None:
+            if result.path == layout.memory_file or result.path.startswith("memory/"):
+                self.store.reindex(self.workspace)
+
+        return MemoryCurator(
+            self.workspace.root,
+            layout=layout,
+            policy=policy,
+            flags=self.config.effective_flags(),
+            after_write=reindex,
+            timezone=timezone,
+            now_ms=now_ms,
         )
 
     def langgraph_recall(

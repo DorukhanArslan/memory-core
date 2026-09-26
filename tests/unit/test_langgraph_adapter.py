@@ -16,11 +16,15 @@ class _Store:
         self.max_results = max_results
         self.min_score = min_score
 
-    def search(self, query, *, max_results, min_score, sources):
+    def index_identity(self):
+        return {"status": "valid"}
+
+    def search(self, query, *, max_results, min_score, sources, signal=None):
         assert query == "Bana nasil hitap edeceksin?"
         assert max_results == self.max_results
         assert min_score == self.min_score
-        assert sources == {"memory", "sessions"}
+        # corpus="all" passes no source filter (tools.ts: searchSources undefined).
+        assert sources is None
         return [
             type(
                 "SearchResult",

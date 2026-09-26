@@ -27,6 +27,27 @@ class RuntimeIdentity:
     # PROMOTION_MARKER_PREFIX). memory_core.consolidation reads every known prefix and writes
     # this one.
     promotion_marker_prefix: str = "memory-core-memory-promotion:"
+    # memory_search unavailable guidance when the failure reason names a
+    # missing SQLite runtime (OpenClaw extensions/memory-core/src/tools.shared.ts
+    # buildMemorySearchUnavailableResult names its Node runtime).
+    memory_search_sqlite_unavailable_warning: str = (
+        "Memory search is unavailable because this memory-core Python runtime does not provide "
+        "SQLite support."
+    )
+    memory_search_sqlite_unavailable_action: str = (
+        "Run memory-core with a Python build that includes the sqlite3 module, then retry "
+        "memory_search."
+    )
+    # memory_search paused-index action (OpenClaw extensions/memory-core/src/tools.ts
+    # PAUSED_MEMORY_INDEX_ACTION names two CLI commands that both reindex; memory-core
+    # names its one reindex call, since index_identity() only reports).
+    memory_search_paused_action: str = (
+        "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
+    )
+    # Transcript row recorded for a heartbeat turn instead of the full heartbeat
+    # prompt (OpenClaw src/auto-reply/heartbeat.ts:23 HEARTBEAT_TRANSCRIPT_PROMPT,
+    # written by src/auto-reply/reply/prompt-prelude.ts:231-232).
+    heartbeat_transcript_prompt: str = "[memory-core heartbeat poll]"
 
 
 MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -44,6 +65,18 @@ MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
         "If unintentional, raise the per-file and/or total bootstrap character limits."
     ),
     promotion_marker_prefix="memory-core-memory-promotion:",
+    memory_search_sqlite_unavailable_warning=(
+        "Memory search is unavailable because this memory-core Python runtime does not provide "
+        "SQLite support."
+    ),
+    memory_search_sqlite_unavailable_action=(
+        "Run memory-core with a Python build that includes the sqlite3 module, then retry "
+        "memory_search."
+    ),
+    memory_search_paused_action=(
+        "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
+    ),
+    heartbeat_transcript_prompt="[memory-core heartbeat poll]",
 )
 
 OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -62,4 +95,15 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
         "agents.defaults.bootstrapTotalMaxChars."
     ),
     promotion_marker_prefix="openclaw-memory-promotion:",
+    memory_search_sqlite_unavailable_warning=(
+        "Memory search is unavailable because this OpenClaw Node runtime does not provide "
+        "SQLite support."
+    ),
+    memory_search_sqlite_unavailable_action=(
+        "Run OpenClaw with a Node runtime that includes node:sqlite, then retry memory_search."
+    ),
+    memory_search_paused_action=(
+        "Tell the user to run: openclaw memory status --index or openclaw memory index --force."
+    ),
+    heartbeat_transcript_prompt="[OpenClaw heartbeat poll]",
 )

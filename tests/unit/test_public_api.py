@@ -184,3 +184,60 @@ def test_import_memory_core_works_without_fcntl(tmp_path):
     )
 
     assert completed.returncode == 0, completed.stderr
+
+
+def test_public_api_exports_memory_search_tool_contract():
+    expected = {
+        "execute_memory_search_tool",
+        "execute_memory_get_tool",
+        "memory_search_tool_definition",
+        "memory_get_tool_definition",
+        "MemoryToolInputError",
+        "to_tool_error",
+    }
+
+    assert expected.issubset(set(memory.__all__))
+    error = memory.MemoryToolInputError("query required", tool="memory_search")
+    assert error.status == 400
+    assert memory.to_tool_error(error, tool="memory_search") == {
+        "status": "error",
+        "tool": "memory_search",
+        "error": "query required",
+    }
+
+
+def test_public_api_exports_heartbeat_helpers():
+    expected = {
+        "HEARTBEAT_PROMPT",
+        "HEARTBEAT_TOKEN",
+        "HeartbeatTurn",
+        "build_heartbeat_section_lines",
+        "prepare_heartbeat_turn",
+        "resolve_heartbeat_interval_ms",
+        "resolve_heartbeat_prompt_for_system_prompt",
+        "strip_heartbeat_token",
+    }
+
+    assert expected.issubset(set(memory.__all__))
+    for name in expected:
+        assert hasattr(memory, name)
+
+
+def test_public_api_exports_curation_and_session_memory():
+    expected = {
+        "CurationError",
+        "CurationPolicy",
+        "CurationResult",
+        "CurationUnavailableError",
+        "MemoryCurator",
+        "SessionMemoryResult",
+        "is_session_memory_trigger",
+        "save_session_memory",
+    }
+
+    assert expected.issubset(set(memory.__all__))
+    for name in expected:
+        assert hasattr(memory, name)
+    assert issubclass(memory.CurationUnavailableError, memory.CurationError)
+    assert memory.is_session_memory_trigger("command", "new")
+    assert not memory.is_session_memory_trigger("command", "compact")

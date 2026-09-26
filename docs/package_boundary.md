@@ -14,7 +14,11 @@ Included:
 - `MemoryWorkspace` and `MemoryConfig`
 - `Memory.from_workspace(...)`
 - `initialize_memory_core_workspace(...)`
-- `memory_search` and `memory_get`
+- `memory_search` and `memory_get`, their tool-call entry points
+  (`execute_memory_search_tool`, `execute_memory_get_tool`) and upstream tool
+  definitions (`memory_search_tool_definition`, `memory_get_tool_definition`);
+  params, errors, deadline, cooldown and index-identity gating:
+  `docs/memory_search_tool.md`
 - Markdown memory files such as `MEMORY.md` and `memory/YYYY-MM-DD.md`
 - SQLite-backed indexing, hybrid search, MMR, temporal scoring, and citations
 - flush planning and daily-memory target validation
@@ -22,6 +26,34 @@ Included:
   lifecycle, bootstrap file loading, budget and truncation, Project Context
   rendering and the startup-context prelude (see
   [Workspace Layout](workspace_layout.md))
+- MEMORY.md budget compaction (`memory_core.memory_budget`)
+- curated memory writes (`MemoryCurator`, `Memory.curator()`): a memory-core
+  extension, not OpenClaw parity, behind `FeatureFlags.curated_memory_writes`;
+  the host decides which operations to offer (`CurationPolicy`) and passes
+  `memory_flush=True` during flush runs; `MemoryCurator.dispatch` raises
+  `MemoryToolInputError` like `memory_search`, so one host handler sends the
+  model `error.to_tool_error()` for both; a failing `after_write` hook (the
+  facade's reindex) never raises: the committed write returns its ok payload
+  with `afterWriteError`. `dispatch` accepts a mapping or its JSON text, while
+  `execute_memory_search_tool` / `execute_memory_get_tool` need the parsed
+  mapping (a JSON string reads as `{}`, as upstream `asToolParamsRecord`)
+- the session-memory hook for `/new` and `/reset` (`save_session_memory`,
+  `memory_core.session_memory`): the host calls it with the ending session's
+  transcript file or messages; it writes a new `memory/<date>-<slug>.md` through
+  its own write path, never through the daily-flush target, and after the host
+  reindexes, `memory_search` finds it like any `memory/**/*.md`; an LLM slug needs a
+  host-supplied generator, and a host redactor can map each stored line
+- heartbeat turn helpers (`prepare_heartbeat_turn`, `HeartbeatTurn`,
+  `strip_heartbeat_token`, `build_heartbeat_section_lines`,
+  `resolve_heartbeat_prompt_for_system_prompt`, `resolve_heartbeat_interval_ms`,
+  `HEARTBEAT_PROMPT`, `HEARTBEAT_TOKEN`; the rest stays in `memory_core.heartbeat`).
+  Heartbeat itself is a runtime feature: the host schedules the turns and
+  delivers replies. The helpers are in core only because heartbeat turns change
+  memory-core behaviour: the session corpus drops heartbeat prompt rows and
+  `HEARTBEAT_OK` replies, which works only when the host writes the same prompt
+  and token; memory flush skips heartbeat runs; and `HEARTBEAT.md` is one of the
+  pin's bootstrap files. Evidence: the "Heartbeat turn inputs and reply
+  handling" row in `docs/parity_matrix.md`
 - replay cleanup, history windowing, tool-use repair, and overflow helpers when
   those behaviors are required to preserve OpenClaw-compatible prompt assembly
 - `memory_core.consolidation`: scored consolidation. Short-term recall signals,
@@ -35,22 +67,23 @@ specific agent framework.
 
 ## Consolidation Modes
 
-Three paths change memory files; none of them uses keyword triggers.
+Four paths change memory files; none of them uses keyword triggers.
 
 | Mode | Writes | Decided by | Module | Evidence |
 | --- | --- | --- | --- | --- |
 | Daily capture | `memory/YYYY-MM-DD.md` (append only) | the model's flush pass (`NO_REPLY` writes nothing) | `memory_core.memory_flush`, `Memory.chat(force_flush=True)` | flush plan oracle-backed; the write loop is adapter-only |
 | Scored promotion and dreaming | dated `## Promoted From Short-Term Memory (<date>)` sections of `MEMORY.md`, `memory/.dreams/*.json`, `DREAMS.md` | recall signals and the score, signal, diversity and age gates; no LLM | `memory_core.consolidation` | 21 promotion oracle tests assert Python == TS (docs/parity_matrix.md) |
-| Curated writes | the rest of `MEMORY.md` | the agent, through curation tools (decision Q16, on by default) | `memory_core.curation` (developed on its own branch, not in this tree yet) | memory-core extension, no upstream counterpart |
+| Curated writes | the non-promotion blocks of `MEMORY.md`, `USER.md`, `PROACTIVE_PREFERENCES.md`, today's daily note (append only) | the agent, through curation tools (decision Q16, on by default) | `memory_core.curation` (`MemoryCurator`, `Memory.curator()`) | memory-core extension, no upstream counterpart; one oracle test runs curated edits against the real promotion apply |
+| Session snapshot | a new `memory/<date>-<slug>.md` per ending session (never appended to) | the host's `/new` or `/reset` command; the slug comes from a host-supplied generator, else the timestamp | `memory_core.session_memory` (`save_session_memory`) | oracle-backed with named deviations (docs/parity_matrix.md) |
 
 - Scored consolidation never runs on its own: there is no scheduler and
   dreaming is off by default (`DEFAULT_DEEP_DREAMING_ENABLED = False`). A host
   records hits with `record_short_term_recalls` and calls
   `run_short_term_promotion` or `run_dreaming_sweep` when it chooses.
-- Budget compaction uses one block model
-  (`memory_core.memory_budget.parse_memory_blocks`) and only drops the oldest
-  promotion sections, never other blocks. `memory_core.curation` is meant to reuse
-  it once that branch lands; in this tree it has no second writer.
+- Promotion and curation share one block model
+  (`memory_core.memory_budget.parse_memory_blocks`): budget compaction only drops
+  the oldest promotion sections, never other blocks, and `memory_core.curation`
+  treats the same promotion sections as read-only.
 - Promotion markers use the runtime identity's prefix
   (`memory-core-memory-promotion:` by default, `openclaw-memory-promotion:` under
   `OPENCLAW_COMPAT_RUNTIME_IDENTITY`); both prefixes are read (decision Q22).

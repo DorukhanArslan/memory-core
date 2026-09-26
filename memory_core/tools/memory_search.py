@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from memory_core.bootstrap._js import js_trim
+from memory_core.bootstrap._js import js_trim, locale_sort_key
 from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
 from memory_core.index.sqlite_store import SQLiteMemoryStore
@@ -584,7 +584,12 @@ def _merge_corpus_results(
 
 
 def _sort_tool_results(results: list[dict]) -> list[dict]:
-    return sorted(results, key=lambda item: (-float(item.get("score", 0)), item.get("path", "")))
+    # tools.ts sortMemorySearchToolResults: score descending, then
+    # `left.path.localeCompare(right.path)` (stable, like toSorted).
+    return sorted(
+        results,
+        key=lambda item: (-float(item.get("score", 0)), locale_sort_key(item.get("path", ""))),
+    )
 
 
 def _ceil_div(value: int, divisor: int) -> int:

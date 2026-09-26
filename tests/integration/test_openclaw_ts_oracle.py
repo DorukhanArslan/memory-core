@@ -6348,3 +6348,80 @@ def test_real_openclaw_oracle_memory_search_indexes_invalid_utf8_markdown(tmp_pa
     assert [item["score"] for item in openclaw_results] == pytest.approx(
         [item["score"] for item in python_result["results"]], rel=0, abs=1e-12
     )
+
+
+def test_real_openclaw_oracle_memory_search_breaks_score_ties_with_locale_compare(
+    tmp_path: Path,
+):
+    # sortMemorySearchToolResults and searchMemoryCorpusSupplements break equal
+    # scores with `left.path.localeCompare(right.path)`, not code-point order.
+    from memory_core.supplements import StaticMemoryCorpusSupplement
+
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    for name in ("B.md", "a.md", "_x.md", "c-1.md", "C.md"):
+        (memory_dir / name).write_text("- The zephyrquartz tie note.\n", encoding="utf-8")
+    wiki_results = [
+        {"corpus": "wiki", "path": path, "title": path, "kind": "entity", "score": 7,
+         "snippet": "zephyrquartz wiki"}
+        for path in ("W.md", "a.md", "_z.md", "b.md")
+    ]
+
+    memory_run = oracle.run(
+        {
+            "operation": "memorySearch",
+            "workspaceDir": str(tmp_path),
+            "query": "zephyrquartz",
+            "corpus": "memory",
+            "maxResults": 10,
+            "minScore": 0,
+        }
+    )
+    wiki_run = oracle.run(
+        {
+            "operation": "memorySearch",
+            "workspaceDir": str(tmp_path),
+            "query": "zephyrquartz",
+            "corpus": "wiki",
+            "maxResults": 10,
+            "minScore": 0,
+            "wikiResults": wiki_results,
+        }
+    )
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "python-memory.sqlite",
+        vector_weight=0,
+        text_weight=1,
+    )
+    store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+    python_memory = memory_search(
+        cfg, store, query="zephyrquartz", corpus="memory", max_results=10, min_score=0
+    )
+    python_wiki = memory_search(
+        cfg,
+        store,
+        query="zephyrquartz",
+        corpus="wiki",
+        max_results=10,
+        min_score=0,
+        supplements=[StaticMemoryCorpusSupplement(wiki_results)],
+    )
+
+    assert memory_run["ok"] is True, memory_run
+    assert wiki_run["ok"] is True, wiki_run
+    upstream_memory = memory_run["result"]["results"]
+    assert len({item["score"] for item in upstream_memory}) == 1
+    assert [item["path"] for item in upstream_memory] == [
+        item["path"] for item in python_memory["results"]
+    ]
+    assert [item["path"] for item in upstream_memory][:2] == ["memory/_x.md", "memory/a.md"]
+    assert [item["path"] for item in wiki_run["result"]["results"]] == [
+        item["path"] for item in python_wiki["results"]
+    ]
+    assert [item["path"] for item in python_wiki["results"]] == ["_z.md", "a.md", "b.md", "W.md"]

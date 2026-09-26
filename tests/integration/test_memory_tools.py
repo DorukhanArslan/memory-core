@@ -505,3 +505,22 @@ def test_mmr_config_is_applied_to_store_search(tmp_path: Path, monkeypatch):
     store.search("alpha", max_results=2, min_score=0.0)
 
     assert calls == [(True, 0.7, 2)]
+
+
+def test_equal_scores_are_ordered_by_locale_compare_not_code_points():
+    # tools.ts sortMemorySearchToolResults / tools.shared.ts
+    # searchMemoryCorpusSupplements: `left.path.localeCompare(right.path)`.
+    from memory_core.supplements import sort_corpus_results
+
+    results = [
+        {"path": path, "score": 1.0} for path in ("memory/B.md", "memory/a.md", "memory/_x.md")
+    ]
+
+    ordered = sort_corpus_results([{"path": "z.md", "score": 2}, *results])
+
+    assert [item["path"] for item in ordered] == [
+        "z.md",
+        "memory/_x.md",
+        "memory/a.md",
+        "memory/B.md",
+    ]

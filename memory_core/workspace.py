@@ -6,6 +6,7 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
+from memory_core.bootstrap._js import js_trim
 from memory_core.memory_paths import (
     SESSION_CORPUS_FILE_RE,
     UnsafeMemoryPathError,
@@ -33,7 +34,7 @@ _LEADING_DOTS_AND_SLASHES_RE = re.compile(r"^[./]+")
 
 def is_memory_path(rel_path: str) -> bool:
     """Port of OpenClaw ``isMemoryPath`` + ``normalizeRelPath`` (host/internal.ts:76-110)."""
-    normalized = _LEADING_DOTS_AND_SLASHES_RE.sub("", rel_path.strip()).replace("\\", "/")
+    normalized = _LEADING_DOTS_AND_SLASHES_RE.sub("", js_trim(rel_path)).replace("\\", "/")
     if not normalized:
         return False
     if normalized == CANONICAL_ROOT_MEMORY_FILENAME or normalized.lower() == "dreams.md":
@@ -261,7 +262,7 @@ class MemoryWorkspace:
         ``path required``; upstream only lstats the final component and reads
         through such parents.
         """
-        path = raw_path.strip()
+        path = js_trim(raw_path)
         if not path:
             raise UnsafeMemoryPathError(MEMORY_PATH_REQUIRED_ERROR)
         abs_path = Path(

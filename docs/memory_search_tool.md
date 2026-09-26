@@ -15,6 +15,21 @@ purpose; `docs/parity_matrix.md` records the evidence.
 | `memory_search(config, store, *, query, max_results=5, min_score=0.0, corpus="all")` | Python calls. `None` for a param means "omitted". |
 | `Memory.search(...)` | The facade; same defaults as `memory_search`. |
 
+`memory_search_tool_definition()` returns the upstream tool's name, verbatim
+description and JSON schema as `{"name", "description", "parameters"}` (the
+shape `MemoryCurator.tool_definitions()` uses; wrap it in the host's tool
+format). The description tells the model to pass on the `warning` and `action`
+of an unavailable or paused result, so hosts should send it unchanged.
+`memory_get` has the same pair: `execute_memory_get_tool(config, params)` reads
+`path` (required, JavaScript trim), `from` and `lines` (positive integers) and
+raises `MemoryToolInputError` tagged `memory_get`, and
+`memory_get_tool_definition()` returns its definition.
+
+Both tools take the parsed argument mapping. A JSON string, or anything else
+that is not a mapping, reads as `{}` (upstream `asToolParamsRecord`), so the
+call fails with `query required` / `path required`; parse the model's argument
+text first. (`MemoryCurator.dispatch` also accepts the JSON text.)
+
 `execute_memory_search_tool` and `memory_search` also take `supplements=`,
 `agent_session_key=` (a cooldown-key fallback) and `runtime_identity=` (`MEMORY_CORE_RUNTIME_IDENTITY` by default,
 `OPENCLAW_COMPAT_RUNTIME_IDENTITY` for OpenClaw's exact texts).
@@ -208,3 +223,5 @@ Each of these runs the real TypeScript export at the pin
 | `memorySearchToolSequence` | 17 tool calls in one process: cooldown record/replay/expiry, the wiki and all rules, the supplement-phase rule, a timeout |
 | `memoryIndexIdentity` | 26 identity states, 5 provider-key, 4 source and 2 scope-hash cases |
 | `memorySearch` with `embeddingModel` | end-to-end pause after a model change |
+| `memoryToolDefinitions` | the `memory_search` and `memory_get` names, descriptions and schemas |
+| `memoryGet` with `rawParams` (through the real `toToolDefinitions` wrapper) | 19 `memory_get` param cases |

@@ -54,8 +54,13 @@ from memory_core.tools.memory_search import (
     build_memory_search_unavailable_result,
     execute_memory_search_tool,
     memory_search,
+    memory_search_tool_definition,
 )
-from memory_core.tools.memory_get import memory_get
+from memory_core.tools.memory_get import (
+    execute_memory_get_tool,
+    memory_get,
+    memory_get_tool_definition,
+)
 from memory_core.workspace import MemoryWorkspace
 
 
@@ -833,6 +838,72 @@ def test_real_openclaw_oracle_memory_get_path_gate_matches_python(tmp_path: Path
     assert result["ok"] is True
     assert result["operation"] == "memoryGet"
     assert result["result"] == python_result
+    assert _python_memory_get_tool(MemoryConfig(workspace_dir=root), {"path": requested}) == (
+        python_result
+    )
+
+
+def _python_memory_get_tool(config: MemoryConfig, raw_params: object) -> dict:
+    # What a host tool loop sends the model: the result, or the tool error.
+    try:
+        return execute_memory_get_tool(config, raw_params)
+    except MemoryToolInputError as error:
+        return error.to_tool_error()
+
+
+@pytest.mark.parametrize(
+    "raw_params",
+    [
+        # createMemoryGetTool param readers (tools.ts:720-725), through the real
+        # toToolDefinitions wrapper.
+        {"path": "   "},
+        {},
+        {"path": 5},
+        {"path": None},
+        "not a mapping",
+        {"path": "memory/a.md", "from": 0},
+        {"path": "memory/a.md", "from": -2},
+        {"path": "memory/a.md", "lines": 0},
+        {"path": "memory/a.md", "lines": -1},
+        {"path": "memory/a.md", "from": 1.5},
+        {"path": "memory/a.md", "from": True},
+        {"path": "memory/a.md", "from": "0x2"},
+        {"path": "memory/a.md", "from": "2", "lines": " 1 "},
+        {"path": "memory/a.md", "from": 2.0, "lines": None},
+        # JavaScript trim: BOM and Unicode spaces are trimmed, control
+        # separators are not.
+        {"path": "\ufeffmemory/a.md"},
+        {"path": "\u00a0memory/a.md\u3000"},
+        {"path": "\x1cmemory/a.md"},
+        {"path": " memory/../AGENTS.md "},
+        {"path": " memory/a.md ", "corpus": " memory "},
+    ],
+)
+def test_real_openclaw_oracle_memory_get_tool_params_match_python(
+    tmp_path: Path, raw_params: object
+):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    root = tmp_path / "workspace"
+    (root / "memory").mkdir(parents=True)
+    (root / "memory" / "a.md").write_text("one\ntwo\nthree", encoding="utf-8")
+    (root / "AGENTS.md").write_text("rules\n", encoding="utf-8")
+
+    result = oracle.run(
+        {"operation": "memoryGet", "workspaceDir": str(root), "rawParams": raw_params}
+    )
+
+    assert result["ok"] is True, result
+    assert result["operation"] == "memoryGet"
+    assert result["result"] == _python_memory_get_tool(MemoryConfig(workspace_dir=root), raw_params)
+
+
+def test_real_openclaw_oracle_memory_tool_definitions_match_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+    result = oracle.run({"operation": "memoryToolDefinitions"})
+
+    assert result["ok"] is True, result
+    assert result["result"] == [memory_search_tool_definition(), memory_get_tool_definition()]
 
 
 MEMORY_DISCOVERY_SCENARIOS = {

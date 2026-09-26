@@ -33,6 +33,7 @@ provider/model/settings returns the paused result (no cooldown) until
 
 from __future__ import annotations
 
+import copy
 import math
 import re
 import threading
@@ -59,6 +60,29 @@ from memory_core.tools.common import (
 )
 
 MEMORY_SEARCH_TOOL_NAME = "memory_search"
+# tools.ts createMemorySearchTool description (verbatim).
+MEMORY_SEARCH_TOOL_DESCRIPTION = (
+    "Mandatory recall step: semantically search MEMORY.md + memory/*.md (and optional "
+    "session transcripts) before answering questions about prior work, decisions, dates, "
+    "people, preferences, or todos. Optional `corpus=wiki` or `corpus=all` also searches "
+    "registered compiled-wiki supplements. `corpus=memory` restricts hits to indexed memory "
+    "files (excludes session transcript chunks from ranking). `corpus=sessions` restricts "
+    "hits to indexed session transcripts (same visibility rules as session history tools). "
+    "If response has disabled=true, memory retrieval is unavailable; you must tell the user "
+    "and include the warning/action guidance."
+)
+# tools.shared.ts MemorySearchSchema as JSON Schema (TypeBox output;
+# optionalFiniteNumberSchema is a plain number).
+MEMORY_SEARCH_TOOL_PARAMETERS: dict[str, Any] = {
+    "type": "object",
+    "required": ["query"],
+    "properties": {
+        "query": {"type": "string"},
+        "maxResults": {"type": "integer", "minimum": 1},
+        "minScore": {"type": "number"},
+        "corpus": {"type": "string", "enum": ["memory", "wiki", "all", "sessions"]},
+    },
+}
 
 # tools.ts:49-50.
 MEMORY_SEARCH_TOOL_TIMEOUT_MS = 15_000
@@ -93,6 +117,22 @@ PAUSED_MEMORY_INDEX_WARNING = (
 PAUSED_MEMORY_INDEX_REASON = "memory index identity is missing or mismatched"
 _QUOTA_ERROR_RE = re.compile(r"insufficient_quota|quota|429")
 _MISSING_SQLITE_RE = re.compile(r"missing node:sqlite|no such built-?in module: node:sqlite")
+
+
+def memory_search_tool_definition() -> dict[str, Any]:
+    """``{"name", "description", "parameters"}`` of the upstream ``memory_search`` tool.
+
+    Same provider-neutral shape as ``MemoryCurator.tool_definitions()``; wrap it
+    in the host's tool format. The description tells the model to pass on the
+    unavailable/paused ``warning`` and ``action``. The schema's ``corpus`` enum
+    is enforced by the host's argument validation, not by
+    :func:`execute_memory_search_tool`.
+    """
+    return {
+        "name": MEMORY_SEARCH_TOOL_NAME,
+        "description": MEMORY_SEARCH_TOOL_DESCRIPTION,
+        "parameters": copy.deepcopy(MEMORY_SEARCH_TOOL_PARAMETERS),
+    }
 
 
 def build_memory_search_unavailable_result(

@@ -164,9 +164,17 @@ from memory_core.supplements import (
     StaticMemoryCorpusSupplement,
     sort_corpus_results,
 )
-from memory_core.tools.memory_get import memory_get
+from memory_core.tools.memory_get import (
+    execute_memory_get_tool,
+    memory_get,
+    memory_get_tool_definition,
+)
 from memory_core.tools.common import MemoryToolInputError, to_tool_error
-from memory_core.tools.memory_search import execute_memory_search_tool, memory_search
+from memory_core.tools.memory_search import (
+    execute_memory_search_tool,
+    memory_search,
+    memory_search_tool_definition,
+)
 from memory_core.workspace import (
     MemoryFile,
     MemoryReadResult,
@@ -305,6 +313,9 @@ __all__ = [
     "memory_get",
     "memory_search",
     "execute_memory_search_tool",
+    "execute_memory_get_tool",
+    "memory_search_tool_definition",
+    "memory_get_tool_definition",
     "MemoryToolInputError",
     "to_tool_error",
     "normalize_assistant_replay_content",

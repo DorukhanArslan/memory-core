@@ -138,7 +138,14 @@ def test_public_api_exports_workspace_bootstrap_surface(tmp_path):
 
 
 def test_public_api_exports_memory_search_tool_contract():
-    expected = {"execute_memory_search_tool", "MemoryToolInputError", "to_tool_error"}
+    expected = {
+        "execute_memory_search_tool",
+        "execute_memory_get_tool",
+        "memory_search_tool_definition",
+        "memory_get_tool_definition",
+        "MemoryToolInputError",
+        "to_tool_error",
+    }
 
     assert expected.issubset(set(memory.__all__))
     error = memory.MemoryToolInputError("query required", tool="memory_search")

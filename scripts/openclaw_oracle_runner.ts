@@ -831,41 +831,93 @@ async function main() {
   }
 
   if (payload.operation === "memoryGet") {
-    const runtimeFiles = await importFromRepo(
-      repoPath,
-      "packages/memory-host-sdk/src/host/read-file.ts",
-    );
-    const baseConfig = payload.config ?? {};
-    const agents = isRecord(baseConfig.agents) ? baseConfig.agents : {};
-    const defaults = isRecord(agents.defaults) ? agents.defaults : {};
-    const cfg = {
-      ...baseConfig,
-      agents: {
-        ...agents,
-        defaults: {
-          ...defaults,
-          ...(payload.workspaceDir ? { workspace: payload.workspaceDir } : {}),
-        },
-      },
-    };
-    let result: unknown;
+    // extensions/memory-core/src/tools.ts createMemoryGetTool (builtin backend)
+    // through the real tool-definition adapter, so param errors come back as the
+    // ToolInputError payload the model sees (agent-tool-definition-adapter.ts
+    // buildToolExecutionErrorResult) and read failures as the tool's own
+    // resolveMemoryReadFailureResult payload. `rawParams` passes the model's
+    // arguments as given; otherwise path/from/lines build them (omitted when unset).
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-memory-get-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
     try {
-      result = await runtimeFiles.readAgentMemoryFile({
-        cfg,
-        agentId: "main",
-        relPath: payload.path ?? "",
-        from: payload.from,
-        lines: payload.lines,
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      result = { path: payload.path ?? "", text: "", disabled: true, error: message };
+      const baseConfig = payload.config ?? {};
+      const agents = isRecord(baseConfig.agents) ? baseConfig.agents : {};
+      const defaults = isRecord(agents.defaults) ? agents.defaults : {};
+      const cfg = {
+        ...baseConfig,
+        agents: {
+          ...agents,
+          defaults: {
+            ...defaults,
+            ...(payload.workspaceDir ? { workspace: payload.workspaceDir } : {}),
+          },
+        },
+      };
+      const tools = await importFromRepo(repoPath, "extensions/memory-core/src/tools.ts");
+      const adapter = await importFromRepo(repoPath, "src/agents/agent-tool-definition-adapter.ts");
+      const tool = tools.createMemoryGetTool({ config: cfg, agentId: "main" });
+      if (!tool) {
+        throw new Error("memory_get tool missing");
+      }
+      const rawParams =
+        payload.rawParams !== undefined
+          ? payload.rawParams
+          : {
+              path: payload.path ?? "",
+              ...(payload.from !== undefined ? { from: payload.from } : {}),
+              ...(payload.lines !== undefined ? { lines: payload.lines } : {}),
+            };
+      const [definition] = adapter.toToolDefinitions([tool]);
+      const wrapped = await definition.execute(
+        "memory_get_oracle",
+        rawParams,
+        undefined,
+        undefined,
+        undefined,
+      );
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: wrapped.details,
+      };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
     }
-    return {
-      ok: true,
-      operation: payload.operation,
-      result,
-    };
+  }
+
+  if (payload.operation === "memoryToolDefinitions") {
+    // The model-facing name, description and parameter schema of the real
+    // memory_search and memory_get tools (tools.ts createMemorySearchTool /
+    // createMemoryGetTool, tools.shared.ts MemorySearchSchema / MemoryGetSchema),
+    // as JSON (TypeBox symbol keys dropped).
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-memory-tools-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    try {
+      const tools = await importFromRepo(repoPath, "extensions/memory-core/src/tools.ts");
+      const cfg = { agents: { defaults: { workspace: path.join(sandbox, "workspace") } } };
+      const describe = (tool: { name: string; description: string; parameters: unknown } | null) => {
+        if (!tool) {
+          throw new Error("memory tool missing");
+        }
+        return {
+          name: tool.name,
+          description: tool.description,
+          parameters: JSON.parse(JSON.stringify(tool.parameters)),
+        };
+      };
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: [
+          describe(tools.createMemorySearchTool({ config: cfg, agentId: "main" })),
+          describe(tools.createMemoryGetTool({ config: cfg, agentId: "main" })),
+        ],
+      };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
   }
 
   if (payload.operation === "listMemoryFiles") {

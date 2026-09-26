@@ -5,8 +5,14 @@ from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.flags import FeatureFlags
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.supplements import StaticMemoryCorpusSupplement
-from memory_core.tools.memory_get import memory_get
-from memory_core.tools.memory_search import memory_search
+from memory_core.tools.common import MemoryToolInputError
+from memory_core.tools.memory_get import (
+    MEMORY_GET_TOOL_DESCRIPTION,
+    execute_memory_get_tool,
+    memory_get,
+    memory_get_tool_definition,
+)
+from memory_core.tools.memory_search import memory_search, memory_search_tool_definition
 from memory_core.workspace import MemoryWorkspace
 
 
@@ -21,6 +27,72 @@ def test_memory_get_reads_line_window(tmp_path: Path):
     assert result["lines"] == 1
     assert result["truncated"] is True
     assert result["nextFrom"] == 3
+
+
+def test_memory_get_tool_reads_params_like_create_memory_get_tool(tmp_path: Path):
+    # tools.ts:720-725: readStringParam(path, required) with JavaScript trim and
+    # readPositiveIntegerParam for from/lines raise before any read.
+    (tmp_path / "memory").mkdir()
+    (tmp_path / "memory" / "a.md").write_text("one\ntwo\nthree", encoding="utf-8")
+    config = MemoryConfig(workspace_dir=tmp_path)
+
+    errors = {}
+    for raw in (
+        {"path": "   "},
+        {"path": "memory/a.md", "from": 0},
+        {"path": "memory/a.md", "from": -2},
+        {"path": "memory/a.md", "lines": 0},
+    ):
+        try:
+            execute_memory_get_tool(config, raw)
+        except MemoryToolInputError as error:
+            errors[str(raw)] = error.to_tool_error()
+    read = execute_memory_get_tool(config, {"path": "\ufeffmemory/a.md", "lines": "1"})
+
+    assert list(errors.values()) == [
+        {"status": "error", "tool": "memory_get", "error": "path required"},
+        {"status": "error", "tool": "memory_get", "error": "from must be a positive integer"},
+        {"status": "error", "tool": "memory_get", "error": "from must be a positive integer"},
+        {"status": "error", "tool": "memory_get", "error": "lines must be a positive integer"},
+    ]
+    assert read["path"] == "memory/a.md"
+    assert read["text"].startswith("one\n\n[More content available.")
+    # The Python-call form keeps readMemoryFile's clamping below the readers.
+    assert memory_get(config, path="memory/a.md", from_line=0, lines=0)["from"] == 1
+    assert memory_get(config, path="   ")["error"] == "path required"
+
+
+def test_memory_tool_definitions_are_upstream_verbatim():
+    search = memory_search_tool_definition()
+    get = memory_get_tool_definition()
+
+    assert search["name"] == "memory_search"
+    assert search["description"].endswith(
+        "If response has disabled=true, memory retrieval is unavailable; you must tell the "
+        "user and include the warning/action guidance."
+    )
+    assert search["parameters"]["properties"]["corpus"]["enum"] == [
+        "memory",
+        "wiki",
+        "all",
+        "sessions",
+    ]
+    assert get == {
+        "name": "memory_get",
+        "description": MEMORY_GET_TOOL_DESCRIPTION,
+        "parameters": {
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+                "path": {"type": "string"},
+                "from": {"type": "integer"},
+                "lines": {"type": "integer"},
+                "corpus": {"type": "string", "enum": ["memory", "wiki", "all"]},
+            },
+        },
+    }
+    get["parameters"]["required"].append("x")
+    assert memory_get_tool_definition()["parameters"]["required"] == ["path"]
 
 
 def test_memory_get_rejects_non_memory_workspace_file(tmp_path: Path):

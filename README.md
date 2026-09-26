@@ -64,6 +64,9 @@ See [LangGraph Integration](docs/integrations/langgraph.md) for a minimal
 See [Live SDK Integration](docs/integrations/live.md) for streaming turn
 assembly, sentence-level TTS events, subject-scoped memory, and post-session
 summary writes.
+See [Workspace Layout](docs/workspace_layout.md) for the agent workspace files
+(`memory_core.bootstrap`): seeding, the BOOTSTRAP.md lifecycle, and what each turn
+injects.
 
 ## Setup
 

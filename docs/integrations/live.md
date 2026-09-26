@@ -1,8 +1,9 @@
 # Live SDK Integration
 
 `memory_core.live` is adapter-only glue for low-latency host runtimes. It keeps
-workflow state, streaming output, and durable subject memory separate while
-reading the same OpenClaw-compatible workspace files as the rest of the runtime.
+workflow state, streaming output, and durable subject memory separate, and it
+reads the agent's workspace files through `memory_core.bootstrap` (see
+[Workspace Layout](../workspace_layout.md)).
 
 Use it when the host application already owns:
 
@@ -17,7 +18,9 @@ events for TTS, and writes post-session summaries to daily memory files.
 
 ## Workspace Files
 
-The SDK reads known OpenClaw workspace files in deterministic order:
+`LiveIdentity` loads the agent workspace with the default `MEMORY_CORE_WORKSPACE_LAYOUT`, filters
+it like a main session, applies the upstream budget and renders it in the
+upstream prompt format:
 
 ```text
 workspace/
@@ -26,21 +29,62 @@ workspace/
   TOOLS.md
   IDENTITY.md
   USER.md
+  PROACTIVE_PREFERENCES.md   # memory-core extension, provisional
   HEARTBEAT.md
-  BOOTSTRAP.md
-  MEMORY.md
+  BOOTSTRAP.md               # first run only
+  MEMORY.md                  # not injected into subject prompts by default
+  user/  workspace/          # created by initialize_agent_workspace, never injected
 ```
 
-Loader hardening options:
+Seed the workspace with `initialize_agent_workspace(root, templates=...)`; pass
+`seed_bootstrap=False` when the host has no first-run ritual.
+
+`to_prompt_section()` returns, in upstream order: `## Bootstrap Pending` and
+`## Bootstrap Context Notice` when they apply, `## Workspace Files (injected)`
+with its intro line, `# Project Context` with one `## <path>` block per file in
+render order (AGENTS, SOUL, IDENTITY, USER, PROACTIVE_PREFERENCES, TOOLS,
+BOOTSTRAP, MEMORY), then `# Dynamic Project Context` with HEARTBEAT.md. There is
+no cache boundary marker, and the Workspace Files lines are left out when no file
+is injected. With `openclaw_compatible=True` the intro line names OpenClaw
+instead of memory-core.
+
+Defaults and behaviour a host will notice:
+
+- `max_chars_per_file=20_000` and `total_max_chars=60_000` (UTF-16 units), with
+  upstream's 75/25 head/tail markers and AGENTS.md policy digest. `None` or a
+  value `<= 0` falls back to the default.
+- A missing layout file renders `[MISSING] Expected at: <path>`, like upstream;
+  empty files and a missing MEMORY.md are skipped. Use
+  `layout=OPENCLAW_PIN_LAYOUT` for a workspace without PROACTIVE_PREFERENCES.md.
+- The agent's root MEMORY.md is not injected unless `include_agent_memory=True`.
+  This is a deliberate deviation: upstream injects it for every session that is
+  not a subagent or cron session, but a live subject prompt should not carry the
+  operator's long-term memory. Subject memory reaches the prompt through recall.
+- While BOOTSTRAP.md is pending, the prompt carries `## Bootstrap Pending` and
+  the file, as in an upstream full-mode run. A live workspace never produces
+  setup evidence on its own (subject memory lives under `subjects/`), so the
+  host removes BOOTSTRAP.md, seeds with `seed_bootstrap=False`, or passes
+  `bootstrap_mode="none"`.
+- `include_heartbeat=True` keeps HEARTBEAT.md, like upstream's default agent.
+
+Loader options:
 
 ```python
 identity = LiveIdentity.from_dir(
     "./workspace",
     required_files=["AGENTS.md", "SOUL.md"],
     max_chars_per_file=20_000,
+    total_max_chars=60_000,
     unknown_files="error",
 )
 ```
+
+`unknown_files="error"` rejects root-level Markdown files outside the layout;
+BOOT.md, DREAMS.md and dreams.md are accepted (upstream files that are never
+injected), and folders such as `user/`, `workspace/`, `memory/`, `skills/` and
+`subjects/` are ignored. `identity.sections` holds `(path, injected text)`
+pairs and `identity.warnings` the budget warnings. `IDENTITY_FILE_ORDER` stays
+exported for compatibility as `(name, name)` pairs in the default load order.
 
 Use `LiveIdentityStore` when a host runtime wants stable cached workspace
 instructions during a session and explicit reloads after file changes:
@@ -94,7 +138,7 @@ memory = SubjectMemory.open(
 ```python
 from memory_core import JsonlTraceSink, LiveIdentity, LiveSDKConfig, LiveTurnContext, SubjectMemory
 
-identity = LiveIdentity.from_dir("./identity")
+identity = LiveIdentity.from_dir("./workspace")
 memory = SubjectMemory.open(
     workspace_dir="./memory-core-state",
     subject_id="subj_123",
@@ -264,6 +308,13 @@ later compare fake-provider latency with real inference latency. The final
 The demo task is appointment rescheduling. It verifies identity, collects a new
 time, asks for confirmation, emits sentence events for TTS-style chunking, and
 writes post-session summaries through `SubjectMemory.record_session_summary`.
+Without a provider key the replies are scripted.
+
+The live task uses its own workspace (`memory-core-live-task-demo-workspace` in the
+system temp dir), separate from the chat workspace. It is seeded with the Lab
+templates, and the demo appends its `## Live Task Demo: appointment_reschedule`
+section to AGENTS.md once: only while no line of the file equals that heading.
+Its BOOTSTRAP.md stays pending, so live prompts carry `## Bootstrap Pending`.
 
 ## OpenClaw Compatibility
 

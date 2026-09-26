@@ -88,6 +88,14 @@ function renderTopbar() {
       h('button', { type: 'button', class: 'palette-btn', onclick: () => store.actions.openPalette(), 'aria-label': t('palette.title'), 'data-testid': 'open-palette' }, icon('search', 14), h('span', { class: 'palette-btn-label' }, t('palette.search')), kbd('⌘K')),
       segmented({ options: [{ value: 'tr', label: 'TR' }, { value: 'en', label: 'EN' }], value: u.lang, onChange: (v) => store.actions.setLang(v), aria: t('settings.language'), size: 'sm', testid: 'lang-toggle' }),
       iconBtn(u.theme === 'light' ? 'moon' : 'sun', t('settings.theme'), () => store.actions.setTheme(u.theme === 'light' ? 'dark' : 'light'), { testid: 'theme-toggle' })));
+  // Chips that do not fit are hidden whole (never clipped); the Durum popover then lists them.
+  requestAnimationFrame(() => {
+    const box = el.querySelector('.tb-chips'); if (!box) return;
+    const chips = [...box.children];
+    chips.forEach((c) => { c.hidden = false; });
+    for (let i = chips.length - 1; i >= 0 && box.scrollWidth > box.clientWidth + 1; i--) chips[i].hidden = true;
+    el.classList.toggle('has-hidden-chips', chips.some((c) => c.hidden));
+  });
 }
 function openStatusPopover(anchor) {
   const d = store.data; const s = d.settings; const f = d.snap?.flush;

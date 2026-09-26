@@ -24,6 +24,7 @@ memory = Memory.from_workspace(".", config=config)  # no embedding provider need
 | `text_search` | `True` | Vector-only mode. Mirrors OpenClaw's non-hybrid path: raw vector scores, strict `min_score` filter, no keyword relaxation. |
 | `mmr` | `False` | No MMR re-ranking of hybrid results. |
 | `temporal_decay` | `False` | Scores are not decayed by memory-file age. |
+| `curated_memory_writes` | `True` | memory-core extension (Q16), not OpenClaw parity. `MemoryCurator` offers no tools and every curation call raises `CurationUnavailableError` before reading or writing any workspace file; `after_write` hooks never run. |
 
 At least one of `vector_search` / `text_search` must stay enabled;
 `FeatureFlags(vector_search=False, text_search=False)` raises `ValueError`.

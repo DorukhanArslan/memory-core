@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import os
-import re
 import stat
 from dataclasses import dataclass
 from pathlib import Path
 
+from memory_core.memory_paths import (
+    SESSION_CORPUS_FILE_RE,
+    UnsafeMemoryPathError,
+    validate_daily_memory_path,
+)
 from memory_core.session_corpus import MemoryCoreSessionCorpus
-
-DAILY_MEMORY_PATH_RE = re.compile(r"^memory/\d{4}-\d{2}-\d{2}\.md$")
-SESSION_CORPUS_FILE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.(?:md|txt)$")
 
 # Root memory file name (OpenClaw src/memory/root-memory-files.ts
 # CANONICAL_ROOT_MEMORY_FILENAME). The legacy lowercase `memory.md` is a
@@ -127,9 +128,6 @@ def _collect_memory_files_from_dir(directory: Path, files: list[Path]) -> None:
     visit(directory)
 
 
-class UnsafeMemoryPathError(ValueError):
-    pass
-
 
 @dataclass(frozen=True)
 class MemoryFile:
@@ -167,7 +165,7 @@ class MemoryWorkspace:
         if session_dir.is_dir():
             for path in sorted(session_dir.iterdir()):
                 resolved_path = path.resolve()
-                if SESSION_CORPUS_FILE_RE.match(path.name) and self.is_path_inside_root(
+                if SESSION_CORPUS_FILE_RE.fullmatch(path.name) and self.is_path_inside_root(
                     resolved_path
                 ):
                     files.append(
@@ -228,8 +226,7 @@ class MemoryWorkspace:
         return candidate
 
     def append_daily_memory(self, rel_path: str, entry: str) -> Path:
-        if DAILY_MEMORY_PATH_RE.match(rel_path) is None:
-            raise UnsafeMemoryPathError(f"path is not a canonical daily memory file: {rel_path}")
+        validate_daily_memory_path(rel_path)
         lexical_path = self.root / rel_path
         if lexical_path.is_symlink():
             raise UnsafeMemoryPathError(f"memory path is a symlink: {rel_path}")

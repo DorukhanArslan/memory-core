@@ -277,6 +277,9 @@ async function gather(s, step) {
   if (needs.has('index')) ctx.index = await store.actions.loadIndex();
   if (needs.has('live')) {
     const L = d.live;
+    // The workflow comes from the server: with a real model the streamed state was still the
+    // previous step when the live check ran, while the server was already done (2026-09-26).
+    try { L.state = await api.get('/api/live-task/state'); } catch { /* keep the streamed state */ }
     ctx.live = { state: L.state, events: L.events.slice(wm.liveEvents), engine: L.engine, summary: L.summary };
   }
   for (const spec of fileSpecs) {

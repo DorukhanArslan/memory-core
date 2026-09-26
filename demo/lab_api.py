@@ -23,6 +23,7 @@ from demo.chat_engine import ChatEngine, OpenAICompatibleChatEngine, ScriptedCha
 from demo.lab_chat import chat_turn_frames
 from demo.lab_events import parse_last_event_id, stream_lab_events, unified_diff
 from demo.lab_flush import flush_meter
+from demo.lab_heartbeat import heartbeat_run_frames, heartbeat_state, set_clock, strip_payload
 from demo.lab_prompt import (
     PromptOptions,
     file_entries,
@@ -239,6 +240,34 @@ def build_router(lab: LabRuntime) -> APIRouter:
             media_type="text/event-stream",
             headers=SSE_HEADERS,
         )
+
+    @router.get("/heartbeat")
+    def heartbeat():
+        lab.ensure_exists()
+        return heartbeat_state(lab)
+
+    @router.post("/heartbeat/run")
+    def heartbeat_run(payload: dict = Body(default={})):
+        lab.ensure_exists()
+        try:
+            engine, engine_error = resolve_chat_engine(lab, payload), None
+        except LabError as error:
+            if error.code not in {"no_api_key"}:
+                raise
+            engine, engine_error = None, error
+        return StreamingResponse(
+            heartbeat_run_frames(lab, payload, engine, engine_error),
+            media_type="text/event-stream",
+            headers=SSE_HEADERS,
+        )
+
+    @router.post("/heartbeat/strip")
+    def heartbeat_strip(payload: dict = Body(...)):
+        return strip_payload(payload)
+
+    @router.post("/clock")
+    def clock(payload: dict = Body(...)):
+        return set_clock(lab, payload)
 
     @router.post("/session/new")
     def session_new(payload: dict = Body(...)):

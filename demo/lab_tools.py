@@ -108,7 +108,7 @@ class LabToolbox:
     config: MemoryConfig
     store: SQLiteMemoryStore
     session: LabSession
-    turn_id: int
+    turn_id: int | None
     memory_tools: bool = True
     curation_tools: bool = True
     curated: list[dict[str, Any]] = field(default_factory=list)

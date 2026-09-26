@@ -1203,3 +1203,140 @@ def test_bare_new_while_bootstrap_is_pending_uses_the_limited_prompt(client, lab
 def test_session_new_validates_the_command(client):
     assert client.post("/api/lab/session/new", json={"command": "wipe"}).json()["code"] == "invalid_command"
     assert client.post("/api/lab/session/new", json={"command": "new", "sessionKind": "x"}).status_code == 400
+
+
+# --- heartbeat -------------------------------------------------------------------------------
+
+TASKS = """
+tasks:
+  - name: gunluk-takip
+    interval: 30m
+    prompt: Bugünün günlük notunda açık bir takip maddesi var mı kontrol et. Yoksa yalnızca HEARTBEAT_OK yaz.
+"""
+
+
+def heartbeat_run(client, **payload):
+    response = client.post("/api/lab/heartbeat/run", json=payload)
+    assert response.status_code == 200, response.text
+    return parse_sse(response.text)
+
+
+def test_heartbeat_state_parses_tasks_and_due_state(client, lab):
+    client.get("/api/lab/state")
+    (lab.root / "HEARTBEAT.md").write_text(DEMO_WORKSPACE_TEMPLATES["HEARTBEAT.md"] + TASKS + "  - name: broken\n", encoding="utf-8")
+
+    state = client.get("/api/lab/heartbeat").json()
+
+    assert state["file"] == {"path": "HEARTBEAT.md", "exists": True, "effectivelyEmpty": False}
+    assert state["every"] == "30m" and state["everyMs"] == 1_800_000 and state["ackMaxChars"] == 300
+    assert state["tasks"][0]["name"] == "gunluk-takip"
+    assert state["tasks"][0]["due"] is True and state["tasks"][0]["lastRunMs"] is None
+    assert state["unparsedTaskEntries"] == 1
+    assert state["preflight"] == {"skipReason": None, "dueTasks": ["gunluk-takip"]}
+    assert state["proactivePreferences"] == "empty"
+    assert state["runs"] == []
+
+
+def test_heartbeat_skips_an_empty_file_without_a_model_call(client, lab, monkeypatch):
+    engine = use_engine(monkeypatch, StubEngine([("x", [])]))
+    client.get("/api/lab/state")
+    (lab.root / "HEARTBEAT.md").write_text("# HEARTBEAT.md\n\n<!-- boş -->\n", encoding="utf-8")
+
+    frames = heartbeat_run(client)
+
+    assert frames_of(frames, "skipped") == [{"reason": "empty-heartbeat-file", "runId": 1}]
+    assert frames_of(frames, "flush")[0]["decision"]["reason"] == "runtime_skip:heartbeat"
+    assert engine.calls == []
+    types = event_types(client)
+    assert "heartbeat.skipped" in types and "heartbeat.llm" not in types
+
+
+def test_heartbeat_skip_without_a_key_needs_no_model(client, lab):
+    client.get("/api/lab/state")
+    (lab.root / "HEARTBEAT.md").write_text("# HEARTBEAT.md\n", encoding="utf-8")
+
+    frames = heartbeat_run(client)
+
+    assert frames_of(frames, "skipped")[0]["reason"] == "empty-heartbeat-file"
+
+
+def test_heartbeat_without_a_key_reports_no_api_key_when_it_would_call_the_model(client):
+    client.get("/api/lab/state")
+
+    frames = heartbeat_run(client)
+
+    assert frames_of(frames, "error")[0]["code"] == "no_api_key"
+
+
+def test_heartbeat_runs_the_tool_loop_and_decides_delivery(client, lab, monkeypatch):
+    client.get("/api/lab/state")
+    (lab.root / "HEARTBEAT.md").write_text(DEMO_WORKSPACE_TEMPLATES["HEARTBEAT.md"] + TASKS, encoding="utf-8")
+    (lab.root / "memory" / f"{lab.today()}.md").write_text("- Yarın 09:00 tedarikçiye fatura gönderilecek.\n", encoding="utf-8")
+    (lab.root / "PROACTIVE_PREFERENCES.md").write_text("# PROACTIVE_PREFERENCES.md\n\n- Fatura takiplerini bildir.\n", encoding="utf-8")
+    engine = use_engine(monkeypatch, StubEngine([
+        ("", [tool_call("h1", "memory_search", {"query": "fatura"})]),
+        ("Hatırlatma: yarın 09:00 tedarikçiye fatura gönderilecek.", []),
+        ("HEARTBEAT_OK", []),
+    ]))
+
+    first = heartbeat_run(client)
+
+    prompt = frames_of(first, "prompt")[0]
+    assert prompt["userMessage"].startswith("Run the following periodic tasks (only those due based on their intervals):")
+    assert "After completing all due tasks, reply HEARTBEAT_OK." in prompt["userMessage"]
+    assert "\nCurrent time: " in prompt["userMessage"]
+    assert prompt["systemSection"].startswith("## Heartbeats")
+    assert prompt["files"].index("USER.md") < prompt["files"].index("PROACTIVE_PREFERENCES.md") < prompt["files"].index("TOOLS.md")
+    assert "BOOTSTRAP.md" not in prompt["files"]
+    assert "memory_search" in prompt["tools"]
+    assert "## Heartbeats" in engine.calls[0]["messages"][0]["content"]
+    result = frames_of(first, "tool_result")[0]["result"]
+    assert result["results"][0]["path"] == f"memory/{lab.today()}.md"
+    decision = frames_of(first, "decision")[0]
+    assert decision["delivered"] is True and decision["text"].startswith("Hatırlatma")
+    run = frames_of(first, "done")[0]["run"]
+    assert run["dueTasks"] == ["gunluk-takip"]
+    assert run["taskState"]["gunluk-takip"] == run["virtualNowMs"]
+
+    waiting = client.get("/api/lab/heartbeat").json()
+    assert waiting["tasks"][0]["due"] is False
+    assert waiting["preflight"]["skipReason"] == "no-tasks-due"
+    skipped = heartbeat_run(client)
+    assert frames_of(skipped, "skipped")[0]["reason"] == "no-tasks-due"
+
+    clock = client.post("/api/lab/clock", json={"offsetMs": 31 * 60 * 1000}).json()
+    assert clock["offsetMs"] == 31 * 60 * 1000
+    acked = heartbeat_run(client)
+    assert frames_of(acked, "decision")[0] == {
+        "shouldSkip": True, "text": "", "didStrip": True, "remainderChars": 0, "delivered": False, "ackMaxChars": 300,
+    }
+    session = lab.session("heartbeat")
+    assert session.messages[0] == {"role": "user", "content": "[memory-core heartbeat poll]"}
+    runs = client.get("/api/lab/heartbeat").json()["runs"]
+    assert [item.get("skipped") for item in runs] == [None, "no-tasks-due", None]
+    assert {"heartbeat.run", "heartbeat.llm", "heartbeat.decided", "clock.changed"} <= set(event_types(client))
+
+
+def test_heartbeat_light_context_injects_only_heartbeat_md(client, lab, monkeypatch):
+    use_engine(monkeypatch, StubEngine([("HEARTBEAT_OK", [])]))
+    client.get("/api/lab/state")
+
+    frames = heartbeat_run(client, lightContext=True)
+
+    assert frames_of(frames, "prompt")[0]["files"] == ["HEARTBEAT.md"]
+
+
+@pytest.mark.parametrize(
+    ("text", "skip"),
+    [("HEARTBEAT_OK", True), ("**HEARTBEAT_OK**.", True), ("All good. HEARTBEAT_OK", True), ("Alert: disk full", False)],
+)
+def test_heartbeat_strip_parser(client, text, skip):
+    result = client.post("/api/lab/heartbeat/strip", json={"text": text}).json()
+
+    assert result["shouldSkip"] is skip
+
+
+def test_clock_validates_and_resets(client):
+    assert client.post("/api/lab/clock", json={"offsetMs": "soon"}).status_code == 400
+    assert client.post("/api/lab/clock", json={"offsetMs": 10**12}).status_code == 400
+    assert client.post("/api/lab/clock", json={"reset": True}).json()["offsetMs"] == 0

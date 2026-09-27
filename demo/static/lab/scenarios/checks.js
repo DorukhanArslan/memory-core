@@ -138,14 +138,16 @@ export const searchUnavailable = () => (ctx) => !!ctx.search && (ctx.search.unav
 export const cooldownActive = () => (ctx) => !!ctx.index?.cooldown && (ctx.index.cooldown.until ?? 0) > ctx.now;
 
 /* ---------- heartbeat ---------- */
-export const hbTask = (name, pred = null) => (ctx) => (ctx.heartbeat?.tasks || []).some((x) => x.name === name && (!pred || pred(x)));
+export const hbJob = (name, pred = null) => (ctx) => (ctx.heartbeat?.jobs || []).some((x) => x.name === name && (!pred || pred(x)));
+export const hbFinding = (requirement) => (ctx) => (ctx.heartbeat?.migrationFindings || []).some((f) => f.requirement === requirement);
+export const hbScratch = (status) => (ctx) => ctx.heartbeat?.scratch?.status === status;
 export const hbDelivered = (v) => (ctx) => ctx.hbRun?.decision?.delivered === v;
 export const hbSkipped = (reason) => (ctx) => ctx.hbRun?.skipped === reason;
 export const hbUserHas = (re) => (ctx) => re.test(ctx.hbRun?.userMessage || '');
 export const hbUserLacks = (re) => (ctx) => !!ctx.hbRun && !re.test(ctx.hbRun.userMessage || '');
 export const hbReplyMatches = (re) => (ctx) => re.test(ctx.hbRun?.reply || '');
 export const hbReplyLacks = (re) => (ctx) => !!ctx.hbRun && !re.test(ctx.hbRun.reply || '');
-export const stripSequence = (inputs, expected) => (ctx) => inputs.map((x) => (ctx.strip[x]?.shouldSkip ? 'skip' : ctx.strip[x] ? 'deliver' : '?')).join(',') === expected.join(',');
+export const replySequence = (inputs, expected) => (ctx) => inputs.map((x) => (!ctx.reply[x] ? '?' : ctx.reply[x].delivered ? 'deliver' : 'skip')).join(',') === expected.join(',');
 
 /* ---------- consolidation ---------- */
 export const candidate = (pred) => (ctx) => (ctx.consolidation?.candidates || []).some((c) => pred(c, ctx));

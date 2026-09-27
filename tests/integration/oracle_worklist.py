@@ -46,25 +46,6 @@ class RetiredOp:
 
 RETIRED_OPS: tuple[RetiredOp, ...] = (
     RetiredOp(
-        "parseHeartbeatTasks",
-        "b23c7bd0f84 (#113165)",
-        "src/commands/heartbeat-task-legacy.ts analyzeLegacyHeartbeatTasks (doctor migration of "
-        "tasks: blocks into cron jobs) plus the cron-owned scheduledTasks of "
-        "src/infra/heartbeat-runner-prompt.ts resolveHeartbeatRunPrompt",
-    ),
-    RetiredOp(
-        "heartbeatTaskDue",
-        "b23c7bd0f84 (#113165)",
-        "none for isTaskDue (cron owns due-ness); the duration and interval cases moved to the "
-        "heartbeatDurations op",
-    ),
-    RetiredOp(
-        "heartbeatSystemSection",
-        "6a1dedb00c2 (#129642)",
-        "src/infra/heartbeat-runner-prompt.ts resolveHeartbeatRunPrompt (the heartbeat prompt "
-        "lives only in the scheduled user turn; no '## Heartbeats' section)",
-    ),
-    RetiredOp(
         "sessionMemoryTranscript",
         "2cc49503a60 (#107412) and 4273ca9dbd9 (#113233)",
         "src/hooks/bundled/session-memory/transcript.ts getRecentSessionProjectionFromEvents "
@@ -250,18 +231,6 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
         (
             "test_openclaw_run_loop_oracle.py::"
             "test_real_openclaw_run_loop_mid_turn_precheck_continuation",
-        ),
-    ),
-    PendingPort(
-        "heartbeat monitor scratch (prompts follow the scratch and reply NO_REPLY, the runner "
-        "never reads HEARTBEAT.md, recurring tasks are cron jobs, heartbeat transcript filter)",
-        "3e2b3ea4d5e (#112967), 07e3855b465 (#113131), b23c7bd0f84 (#113165); "
-        "heartbeat-filter.ts 10 commits after 4c428153",
-        _oracle(
-            "heartbeat_constants_match_python",
-            "heartbeat_prompt_config_matches_python",
-            "heartbeat_run_prompt_matches_python",
-            "heartbeat_session_filter_matches_python",
         ),
     ),
     PendingPort(

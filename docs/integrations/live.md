@@ -37,7 +37,8 @@ workspace/
 This is the OpenClaw v2026.9.6 map (`WORKSPACE_BOOTSTRAP_FILENAMES`) plus the memory-core
 extensions. TOOLS.md and HEARTBEAT.md are no longer bootstrap files: move an old TOOLS.md
 into AGENTS.md with `memory_core.bootstrap.migrate_tools_md(root)` (upstream's doctor
-migration); `memory_core.heartbeat` still reads HEARTBEAT.md until the monitor-scratch port.
+migration); a leftover HEARTBEAT.md is moved into the heartbeat monitor scratch and its
+`tasks:` into automation jobs by `memory_core.heartbeat_migration` (the heartbeat never reads it).
 
 Seed the workspace with `initialize_agent_workspace(root, templates=...)`; pass
 `seed_bootstrap=False` when the host has no first-run ritual (setup is then

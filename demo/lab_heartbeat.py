@@ -1,24 +1,28 @@
-"""Heartbeat runs in the Lab over :mod:`memory_core.heartbeat` (runtime-only port, no scheduler).
+"""Heartbeat and automation in the Lab over the v2026.9.6 shape (runtime-only port, no scheduler).
 
-``GET /api/lab/heartbeat`` shows the HEARTBEAT.md preflight, the parsed
-``tasks:`` with their due state and the run history. ``POST
-/api/lab/heartbeat/run`` runs one heartbeat now: ``prepare_heartbeat_turn``
-(skip reasons ``empty-heartbeat-file`` and ``no-tasks-due`` make no model
-call), the flush decision with ``is_heartbeat=True`` (``runtime_skip:heartbeat``),
-the injected context for session kind ``heartbeat`` (PROACTIVE_PREFERENCES.md
-included on the memory-core layout), the ``## Heartbeats`` system section, then the
-same host tool loop as chat turns, so the model can read daily notes with
-``memory_search``/``memory_get`` (critique high #3). The reply goes through
-``strip_heartbeat_token(mode="heartbeat")``: delivered only when it carries an
-alert. Task state is kept per Lab session and stamped after each completed run.
+``GET /api/lab/heartbeat`` shows the agent's heartbeat monitor scratch (the per-agent checklist
+that replaced HEARTBEAT.md), the automation jobs with their due state and next run on the
+virtual clock, the preflight and prompt the next heartbeat would get, a leftover HEARTBEAT.md
+with its doctor findings, and the run history. ``PUT /api/lab/heartbeat/scratch`` writes or
+unsets the scratch by compare-and-swap (upstream ``openclaw cron scratch``). ``POST
+/api/lab/heartbeat/migrate`` runs both doctor migrations (HEARTBEAT.md into scratch, then its
+``tasks:`` into automation jobs). ``POST /api/lab/heartbeat/run`` runs one heartbeat now:
+the due jobs become scheduled tasks, ``prepare_heartbeat_turn`` builds the prompt (skip reason
+``empty-heartbeat-file`` makes no model call), the flush decision with ``is_heartbeat=True``
+(``runtime_skip:heartbeat``), the injected context for session kind ``heartbeat``
+(PROACTIVE_PREFERENCES.md included on the memory-core layout), then the same host tool loop as chat
+turns, so the model can read daily notes with ``memory_search``/``memory_get``. The reply goes
+through ``decide_heartbeat_reply`` (``NO_REPLY`` and a legacy ``HEARTBEAT_OK`` ack are not
+delivered), and every due job is rescheduled from the run. ``POST /api/lab/heartbeat/reply``
+decides a typed reply without a model.
 
-Demo-only: the virtual clock shifts heartbeat due checks only; the prompt's
-current-time line, daily file dates and the flush use the real clock.
+Demo-only: the virtual clock shifts due checks, job runs and migrated anchors only; the
+prompt's current-time lines, daily file dates and the flush use the real clock. Scratch and
+jobs live in ``<workspace>/.memory-core/automation.json`` (``FileAutomationStore``).
 """
 
 from __future__ import annotations
 
-import re
 import time
 from collections.abc import Iterator
 from typing import Any
@@ -31,39 +35,91 @@ from demo.lab_prompt import PromptOptions, lab_workspace_context, prompt_view
 from demo.lab_runtime import LAB_TIMEZONE, LabError, LabRuntime, safe_exception_message
 from demo.lab_tools import LabToolbox, ToolLoopOutcome, public_write, run_tool_loop
 from demo.transcript_context import select_transcript_context
-from memory_core.bootstrap import append_cron_style_current_time_line
+from memory_core.automation import (
+    AutomationJob,
+    FileAutomationStore,
+    due_automation_jobs,
+    heartbeat_scheduled_tasks,
+    is_heartbeat_task_job,
+    is_job_due,
+    record_automation_job_run,
+)
 from memory_core.bootstrap._js import utf16_len
 from memory_core.heartbeat import (
+    DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
     HEARTBEAT_TRANSCRIPT_PROMPT,
-    LEGACY_HEARTBEAT_FILENAME,
-    build_heartbeat_section_lines,
+    HeartbeatTurn,
+    decide_heartbeat_reply,
     is_heartbeat_content_effectively_empty,
-    is_task_due,
-    parse_duration_ms,
-    parse_heartbeat_tasks,
+    is_silent_reply_payload_text,
     prepare_heartbeat_turn,
     resolve_heartbeat_interval_ms,
-    resolve_heartbeat_prompt_for_system_prompt,
     strip_heartbeat_token,
+)
+from memory_core.heartbeat_migration import (
+    LEGACY_HEARTBEAT_FILENAME,
+    heartbeat_md_migration_findings,
+    heartbeat_task_migration_findings,
+    migrate_heartbeat_md,
+    migrate_heartbeat_tasks,
+)
+from memory_core.heartbeat_scratch import (
+    CRON_JOB_SCRATCH_MAX_BYTES,
+    HeartbeatScratchState,
+    HeartbeatScratchTooLargeError,
 )
 from memory_core.prompt_section import build_prompt_section
 
 HEARTBEAT_RUN_HISTORY = 20
+HEARTBEAT_AGENT_ID = "main"
 MAX_CLOCK_OFFSET_MS = 30 * 24 * 60 * 60 * 1000
-_TASK_ENTRY_RE = re.compile(r"^\s*- name:", re.MULTILINE)
 LABELS = {
     "runtime": "runtime-only port · zamanlayıcı yok (elle çalıştırılır)",
-    "clock": "sanal saat (demo-only): yalnız heartbeat vade hesabı; günlük dosya tarihleri ve flush gerçek saatle",
-    "unparsed": "Lab çıkarımı: ayrıştırılmayan '- name:' satırı sayısı (parser sebep vermez)",
+    "clock": "sanal saat (demo-only): vade, iş çalıştırma ve taşıma çapaları; günlük dosya tarihleri, zaman satırı ve flush gerçek saatle",
+    "store": "Lab deposu: .memory-core/automation.json (FileAutomationStore; upstream paylaşılan state DB'de tutar)",
+    "scheduler": "zamanlayıcı host'ta: memory-core yalnız vadesi gelen işleri ve heartbeat istemini hesaplar",
 }
 
 
-def _heartbeat_content(lab: LabRuntime) -> str | None:
-    path = lab.root / LEGACY_HEARTBEAT_FILENAME
-    try:
-        return path.read_bytes().decode("utf-8", errors="replace")
-    except OSError:
-        return None
+def automation_store(lab: LabRuntime) -> FileAutomationStore:
+    return FileAutomationStore(lab.root)
+
+
+def _scratch_view(state: HeartbeatScratchState) -> dict[str, Any]:
+    scratch = state.scratch
+    content = scratch.content if scratch is not None else None
+    if scratch is None:
+        status = "unset" if state.current_revision > 0 else "none"
+    else:
+        status = "empty" if is_heartbeat_content_effectively_empty(content) else "active"
+    return {
+        "agentId": HEARTBEAT_AGENT_ID,
+        "status": status,
+        "currentRevision": state.current_revision,
+        "content": content,
+        "bytes": len(content.encode("utf-8", errors="surrogatepass")) if content is not None else 0,
+        "maxBytes": CRON_JOB_SCRATCH_MAX_BYTES,
+        "sourceSha256": scratch.source_sha256 if scratch is not None else None,
+        "updatedAtMs": scratch.updated_at_ms if scratch is not None else None,
+    }
+
+
+def _job_view(job: AutomationJob, now_ms: int) -> dict[str, Any]:
+    return {
+        "id": job.id,
+        "name": job.name,
+        "displayName": job.display_name,
+        "description": job.description,
+        "declarationKey": job.declaration_key,
+        "heartbeatTask": is_heartbeat_task_job(job),
+        "enabled": job.enabled,
+        "everyMs": job.every_ms,
+        "anchorMs": job.anchor_ms,
+        "prompt": job.text,
+        "lastRunAtMs": job.last_run_at_ms,
+        "nextRunAtMs": job.next_run_at_ms,
+        "due": is_job_due(job, now_ms),
+    }
 
 
 def _proactive_state(lab: LabRuntime) -> str:
@@ -76,61 +132,138 @@ def _proactive_state(lab: LabRuntime) -> str:
     return "injected" if path.read_text(encoding="utf-8", errors="replace").strip() else "empty"
 
 
-def heartbeat_state(lab: LabRuntime) -> dict[str, Any]:
-    content = _heartbeat_content(lab)
+def _prepare_turn(lab: LabRuntime, store: FileAutomationStore) -> tuple[HeartbeatTurn, list[AutomationJob]]:
     now = lab.heartbeat_now_ms()
-    state = lab.heartbeat_task_state or {}
-    tasks = parse_heartbeat_tasks(content) if content is not None else []
-    rows = []
-    for task in tasks:
-        last = state.get(task.name)
-        try:
-            interval_ms = parse_duration_ms(task.interval, default_unit="m")
-        except ValueError:
-            interval_ms = None
-        rows.append(
-            {
-                "name": task.name,
-                "interval": task.interval,
-                "intervalMs": interval_ms,
-                "prompt": task.prompt,
-                "lastRunMs": last,
-                "due": is_task_due(last, task.interval, now),
-                "nextDueMs": (last + interval_ms) if last is not None and interval_ms is not None else None,
-            }
-        )
-    preflight = prepare_heartbeat_turn(
-        lab.root, now_ms=now, task_state=lab.heartbeat_task_state, layout=lab.layout
+    due = due_automation_jobs(store.list_jobs(agent_id=HEARTBEAT_AGENT_ID), now)
+    turn = prepare_heartbeat_turn(
+        now_ms=lab.now_ms(),
+        scratch=store.read_scratch(HEARTBEAT_AGENT_ID),
+        scheduled_tasks=heartbeat_scheduled_tasks(due),
+        timezone=LAB_TIMEZONE,
     )
+    return turn, due
+
+
+def heartbeat_preview(lab: LabRuntime) -> dict[str, Any]:
+    """The prompt the next heartbeat would get (the prompt inspector's heartbeat kind)."""
+    turn, due = _prepare_turn(lab, automation_store(lab))
+    return {
+        "skipReason": turn.skip_reason,
+        "prompt": turn.prompt,
+        "message": turn.message,
+        "dueTasks": [task.name for task in turn.scheduled_tasks],
+        "dueJobs": [job.id for job in due],
+        "scratchShown": turn.scratch_content is not None,
+        "scratchRevision": turn.scratch_revision,
+    }
+
+
+def heartbeat_state(lab: LabRuntime) -> dict[str, Any]:
+    store = automation_store(lab)
+    now = lab.heartbeat_now_ms()
+    legacy = lab.root / LEGACY_HEARTBEAT_FILENAME
+    findings = [
+        *(finding.to_json() for finding in heartbeat_md_migration_findings(lab.root)),
+        *(finding.to_json() for finding in heartbeat_task_migration_findings(store)),
+    ]
     every = lab.settings.heartbeat_every
     return {
-        "file": {
-            "path": LEGACY_HEARTBEAT_FILENAME,
-            "exists": content is not None,
-            "effectivelyEmpty": is_heartbeat_content_effectively_empty(content),
-        },
+        "scratch": _scratch_view(store.read_scratch(HEARTBEAT_AGENT_ID)),
+        "jobs": [_job_view(job, now) for job in store.list_jobs(agent_id=HEARTBEAT_AGENT_ID)],
+        "legacyFile": {"path": LEGACY_HEARTBEAT_FILENAME, "exists": legacy.exists() or legacy.is_symlink()},
+        "migrationFindings": [
+            {**finding, "path": _relative(lab, finding["path"])} for finding in findings
+        ],
         "every": every,
         "everyMs": resolve_heartbeat_interval_ms(every),
-        "ackMaxChars": lab.settings.heartbeat_ack_max_chars,
+        # v2026.9.6 retired heartbeat.ackMaxChars; the ack limit is fixed.
+        "ackLimit": DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
         "lightContext": lab.settings.heartbeat_light_context,
-        "tasks": rows,
-        "unparsedTaskEntries": max(0, len(_TASK_ENTRY_RE.findall(content or "")) - len(tasks)),
-        "preflight": {"skipReason": preflight.skip_reason, "dueTasks": [task.name for task in preflight.due_tasks]},
+        "preflight": heartbeat_preview(lab),
         "clock": {"nowMs": now, "offsetMs": lab.clock_offset_ms},
         "runs": list(reversed(lab.heartbeat_runs[-HEARTBEAT_RUN_HISTORY:])),
         "proactivePreferences": _proactive_state(lab),
         "sessionKey": lab.session("heartbeat").key,
+        "store": ".memory-core/automation.json",
         "labels": LABELS,
     }
 
 
-def strip_payload(payload: dict[str, Any]) -> dict[str, Any]:
+def _relative(lab: LabRuntime, path: str) -> str:
+    prefix = str(lab.root) + "/"
+    return path[len(prefix) :] if path.startswith(prefix) else path
+
+
+def write_scratch(lab: LabRuntime, payload: dict[str, Any]) -> dict[str, Any]:
+    content = payload.get("content")
+    if content is not None and not isinstance(content, str):
+        raise LabError(400, "content must be a string (or null to unset)", code="invalid_content")
+    expected = payload.get("expectedRevision")
+    if expected is not None and (isinstance(expected, bool) or not isinstance(expected, int) or expected < 0):
+        raise LabError(400, "expectedRevision must be a non-negative integer", code="invalid_revision")
+    store = automation_store(lab)
+    try:
+        result = store.write_scratch(
+            HEARTBEAT_AGENT_ID, content, expected_revision=expected, now_ms=lab.now_ms()
+        )
+    except HeartbeatScratchTooLargeError as error:
+        raise LabError(400, str(error), code="scratch_too_large") from error
+    view = _scratch_view(store.read_scratch(HEARTBEAT_AGENT_ID))
+    if result.ok:
+        summary = (
+            f"heartbeat scratch kaldırıldı (rev {result.current_revision})"
+            if content is None
+            else f"heartbeat scratch yazıldı (rev {result.current_revision}, {view['bytes']} bayt)"
+        )
+        lab.bus.emit("heartbeat.scratch_written", summary=summary, data={"write": result.to_json(), "scratch": view})
+    else:
+        lab.bus.emit(
+            "heartbeat.scratch_conflict",
+            summary=f"heartbeat scratch çakışması: rev {expected} beklendi, güncel {result.current_revision}",
+            data={"write": result.to_json()},
+        )
+    return {"write": result.to_json(), "scratch": view}
+
+
+def migrate(lab: LabRuntime) -> dict[str, Any]:
+    """Both doctor migrations on the Lab workspace (HEARTBEAT.md -> scratch, tasks: -> jobs)."""
+    store = automation_store(lab)
+    with lab.tracked("heartbeat_migration"):
+        scratch = migrate_heartbeat_md(lab.root, store, now_ms=lab.now_ms())
+    tasks = migrate_heartbeat_tasks(store, now_ms=lab.heartbeat_now_ms())
+    payload = {
+        "scratch": {"changes": list(scratch.changes), "warnings": list(scratch.warnings)},
+        "tasks": {
+            "changes": list(tasks.changes),
+            "warnings": list(tasks.warnings),
+            "jobs": [job.id for job in tasks.jobs],
+        },
+    }
+    changes = [*scratch.changes, *tasks.changes]
+    warnings = [*scratch.warnings, *tasks.warnings]
+    if changes:
+        summary = " · ".join(changes)
+    elif warnings:
+        summary = "heartbeat taşınamadı: " + warnings[0]
+    else:
+        summary = "taşınacak HEARTBEAT.md veya scratch görevi yok"
+    lab.bus.emit("heartbeat.migrated", summary=summary, data=payload)
+    return payload
+
+
+def reply_payload(payload: dict[str, Any]) -> dict[str, Any]:
     text = payload.get("text")
     if not isinstance(text, str):
         raise LabError(400, "text must be a string", code="invalid_text")
-    result = strip_heartbeat_token(text, mode="heartbeat", max_ack_chars=payload.get("ackMaxChars"))
-    return {"shouldSkip": result.should_skip, "text": result.text, "didStrip": result.did_strip,
-            "label": "yalnız ayrıştırıcı (model yok)"}
+    decision = decide_heartbeat_reply(text)
+    legacy = strip_heartbeat_token(text, mode="heartbeat")
+    return {
+        **decision.to_json(),
+        "delivered": decision.deliver,
+        "silentReply": is_silent_reply_payload_text(text),
+        "legacyAck": {"shouldSkip": legacy.should_skip, "text": legacy.text, "didStrip": legacy.did_strip},
+        "label": "yalnız karar kuralı (model yok)",
+    }
 
 
 def set_clock(lab: LabRuntime, payload: dict[str, Any]) -> dict[str, Any]:
@@ -178,8 +311,11 @@ def _run(
     }
     try:
         lab.ensure()
-        turn = prepare_heartbeat_turn(lab.root, now_ms=now, task_state=lab.heartbeat_task_state, layout=lab.layout)
-        decision = flush_decision(lab, session, turn.prompt, is_heartbeat=True)
+        store = automation_store(lab)
+        turn, due = _prepare_turn(lab, store)
+        run["dueTasks"] = [task.name for task in turn.scheduled_tasks]
+        run["scratchRevision"] = turn.scratch_revision
+        decision = flush_decision(lab, session, turn.message, is_heartbeat=True)
         run["flush"] = decision
         lab.bus.emit("flush.decided", summary=f"flush kararı: {decision['reason']} (heartbeat)", data=decision)
         yield sse_frame({"decision": decision}, event="flush")
@@ -200,40 +336,34 @@ def _run(
         embedding = lab.resolve_embedding(payload)
         mode = lab.default_search_mode(embedding)
         config = lab.config(mode=mode)
-        store = lab.store(embedding, mode=mode)
-        lab.reindex(store)
+        index = lab.store(embedding, mode=mode)
+        lab.reindex(index)
         options = PromptOptions(kind="heartbeat", context_mode="lightweight" if light_context else "full")
         wc = lab_workspace_context(lab, options, session=session)
-        heartbeat_prompt = resolve_heartbeat_prompt_for_system_prompt(
-            trigger="heartbeat", every=lab.settings.heartbeat_every
-        )
-        section = build_heartbeat_section_lines(heartbeat_prompt)
-        toolbox = LabToolbox(lab, config, store, session, turn_id=None)
+        toolbox = LabToolbox(lab, config, index, session, turn_id=None)
         tool_names = sorted(toolbox.names())
         memory_section = build_prompt_section(set(tool_names), citations_mode=config.citation_mode)
-        # The host appends its own current-time line (appendCronStyleCurrentTimeLine).
-        user_message = append_cron_style_current_time_line(turn.prompt or "", now_ms=lab.now_ms(), timezone=LAB_TIMEZONE)
+        user_message = turn.message or ""
         previous = [ChatMessage(role=item["role"], content=item["content"]) for item in session.messages]
         sent, _omitted = select_transcript_context([*previous, ChatMessage(role="user", content=user_message)], max_chars=24_000)
         messages = assemble_messages(
-            system_sections=["\n".join(memory_section), "\n".join(line for line in section), wc.prompt_text],
+            system_sections=["\n".join(memory_section), wc.prompt_text],
             recall_lines=[],
             sent=sent,
         )
         view = prompt_view(lab, options, wc, extras={
-            "heartbeatSection": section, "tools": tool_names, "messages": messages,
+            "heartbeatPrompt": heartbeat_preview(lab), "tools": tool_names, "messages": messages,
             "recall": {"lines": [], "memoryRecallSection": memory_section, "label": "demo-only"},
         })
         run.update({
             "userMessage": user_message,
-            "systemSection": "\n".join(line for line in section if line),
+            "scratchShown": turn.scratch_content is not None,
             "files": [file["name"] for file in view["files"]],
-            "dueTasks": [task.name for task in turn.due_tasks],
             "prompt": view,
         })
-        lab.bus.emit("heartbeat.run", summary=f"heartbeat #{run['id']} · {len(turn.due_tasks)} görev",
+        lab.bus.emit("heartbeat.run", summary=f"heartbeat #{run['id']} · {len(turn.scheduled_tasks)} görev",
                      data={"runId": run["id"], "dueTasks": run["dueTasks"], "files": run["files"]})
-        yield sse_frame({"userMessage": user_message, "systemSection": run["systemSection"], "files": run["files"],
+        yield sse_frame({"userMessage": user_message, "scratchShown": run["scratchShown"], "files": run["files"],
                          "bootstrapMode": view["bootstrapMode"], "tools": tool_names, "prompt": view}, event="prompt")
         lab.bus.emit("heartbeat.llm", summary=f"heartbeat modeli: {engine.model}",
                      data={"provider": getattr(engine, "provider", engine.name), "model": engine.model})
@@ -243,27 +373,29 @@ def _run(
             if event == "tool_result" and data.get("curation"):
                 yield sse_frame(data["curation"], event="curation")
         reply = outcome.text
-        stripped = strip_heartbeat_token(reply, mode="heartbeat", max_ack_chars=lab.settings.heartbeat_ack_max_chars)
-        remainder = strip_heartbeat_token(reply, mode="message")
+        reply_decision = decide_heartbeat_reply(reply)
         result = {
-            "shouldSkip": stripped.should_skip,
-            "text": stripped.text,
-            "didStrip": stripped.did_strip,
-            "remainderChars": utf16_len(remainder.text),
-            "delivered": not stripped.should_skip,
-            "ackMaxChars": lab.settings.heartbeat_ack_max_chars,
+            **reply_decision.to_json(),
+            "delivered": reply_decision.deliver,
+            "silentReply": is_silent_reply_payload_text(reply),
+            "replyChars": utf16_len(reply or ""),
         }
-        lab.heartbeat_task_state = turn.next_task_state(lab.heartbeat_task_state)
+        ended = lab.heartbeat_now_ms()
+        ran = [record_automation_job_run(job, started_at_ms=now, ended_at_ms=ended) for job in due]
+        if ran:
+            store.save_jobs(ran)
+            lab.bus.emit("automation.jobs_ran", summary=f"{len(ran)} otomasyon işi çalıştı, sonraki vadeler güncellendi",
+                         data={"jobs": [_job_view(job, ended) for job in ran]})
         session.messages.append({"role": "user", "content": HEARTBEAT_TRANSCRIPT_PROMPT})
         session.messages.append({"role": "assistant", "content": reply})
         update_token_snapshot(session, outcome.usage, messages=outcome.messages, output_text=reply)
         run.update({
             "reply": reply,
             "decision": result,
+            "jobsRun": [job.id for job in ran],
             "engine": {"provider": getattr(engine, "provider", engine.name), "model": engine.model},
             "toolCalls": toolbox.calls,
             "curation": [public_write(write) for write in toolbox.curated],
-            "taskState": lab.heartbeat_task_state,
             "ms": int((time.perf_counter() - started) * 1000),
         })
         _record(lab, run)

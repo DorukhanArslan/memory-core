@@ -64,8 +64,10 @@ Two presets ship; `DEFAULT_WORKSPACE_LAYOUT` is `MEMORY_CORE_WORKSPACE_LAYOUT`.
   migration (customised notes are appended verbatim under `### Local notes (migrated
   from TOOLS.md)`, stock templates and blank files are only archived, the original is
   archived under `.memory-core/backups/tools-md-migration/` and removed after a hash
-  check). HEARTBEAT.md moved to a heartbeat monitor scratch upstream; `memory_core.heartbeat`
-  still reads the file until that port lands.
+  check). HEARTBEAT.md moved to a heartbeat monitor scratch upstream and is never read:
+  `memory_core.heartbeat_migration.migrate_heartbeat_md(root, store)` moves its text into the
+  scratch (archived under `.memory-core/backups/heartbeat-migration/`), and
+  `migrate_heartbeat_tasks(store)` turns its `tasks:` block into automation jobs.
 - BOOT.md and DREAMS.md are upstream workspace files that are never injected.
   Daily notes in `memory/YYYY-MM-DD.md` are read on demand, not injected.
 

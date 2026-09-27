@@ -45,7 +45,7 @@ RUN_KINDS = ("default", "heartbeat", "cron")
 # v2026.9.6 retired workspace files the explorer names when a workspace still has them.
 RETIRED_FILE_NOTES = {
     "TOOLS.md": "v2026.9.6: TOOLS.md emekli; yerel araç notları AGENTS.md ## Tools bölümünde (migrate_tools_md)",
-    "HEARTBEAT.md": "v2026.9.6: HEARTBEAT.md bootstrap dosyası değil; heartbeat görünümü okur (monitor scratch portu bekliyor)",
+    "HEARTBEAT.md": "v2026.9.6: HEARTBEAT.md hiç okunmaz; heartbeat talimatları monitor scratch'te, görevler otomasyon işleri (Heartbeat görünümündeki taşıma eylemi)",
 }
 CONTEXT_MODES = ("full", "lightweight")
 

@@ -92,9 +92,9 @@ type Payload = {
     runKind?: "default" | "heartbeat" | "cron";
   }>;
   steps?: Array<{
-    op: "write" | "remove" | "mkdir" | "ensure";
+    op: "write" | "remove" | "mkdir" | "ensure" | "migrate" | "findings" | "scratch";
     path?: string;
-    content?: string;
+    content?: string | null;
     skipOptional?: string[];
   }>;
   startupContext?: Record<string, unknown>;
@@ -366,6 +366,28 @@ async function seedHeartbeatMonitorJob(
     { enabledExplicit: true, systemOwned: true },
   );
   return ("job" in added ? added.job : added).id;
+}
+
+// One heartbeat scenario's monitor scratch in its own cron store partition: {monitor: false}
+// adds no heartbeat job (readHeartbeatMonitorScratch is undefined), {content: null} a job
+// without a scratch row, {content: "..."} a job plus writeCronJobScratch, {unset: true} a
+// written then unset scratch (a revision-2 tombstone).
+async function seedHeartbeatScratchCase(
+  repoPath: string,
+  cronStorePath: string,
+  scratch: Record<string, any> | undefined,
+): Promise<void> {
+  if (!scratch || scratch.monitor === false) {
+    return;
+  }
+  const store = await importFromRepo(repoPath, "src/cron/scratch-store.ts");
+  const jobId = await seedHeartbeatMonitorJob(repoPath, cronStorePath, "main");
+  if (scratch.unset) {
+    store.writeCronJobScratch({ storePath: cronStorePath, jobId, content: "unset me" });
+    store.writeCronJobScratch({ storePath: cronStorePath, jobId, content: null });
+  } else if (typeof scratch.content === "string") {
+    store.writeCronJobScratch({ storePath: cronStorePath, jobId, content: scratch.content });
+  }
 }
 
 // extensions/memory-core/src/test-helpers.ts: at v2026.9.6 the SQLite-backed dreaming and
@@ -1756,9 +1778,10 @@ async function main() {
   }
 
   if (payload.operation === "heartbeatConstants") {
-    // src/auto-reply/heartbeat.ts:8-27 and src/auto-reply/tokens.ts exports. The pin's
+    // src/auto-reply/heartbeat.ts and src/auto-reply/tokens.ts exports. The pin's
     // HEARTBEAT_TRANSCRIPT_PROMPT is INTERNAL_WAKE_TRANSCRIPT_PROMPTS.heartbeat at v2026.9.6
-    // (cdda5825f8b, #143866; same "[OpenClaw heartbeat poll]" value).
+    // (cdda5825f8b, #143866; same "[OpenClaw heartbeat poll]" value); every value of that
+    // object is a transcript row the heartbeat filter drops.
     const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
     const tokens = await importFromRepo(repoPath, "src/auto-reply/tokens.ts");
     return {
@@ -1766,10 +1789,12 @@ async function main() {
       operation: payload.operation,
       result: {
         HEARTBEAT_TOKEN: tokens.HEARTBEAT_TOKEN,
+        SILENT_REPLY_TOKEN: tokens.SILENT_REPLY_TOKEN,
         HEARTBEAT_PROMPT: heartbeat.HEARTBEAT_PROMPT,
         HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS: heartbeat.HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS,
         HEARTBEAT_RESPONSE_TOOL_PROMPT: heartbeat.HEARTBEAT_RESPONSE_TOOL_PROMPT,
         HEARTBEAT_TRANSCRIPT_PROMPT: heartbeat.INTERNAL_WAKE_TRANSCRIPT_PROMPTS.heartbeat,
+        INTERNAL_WAKE_TRANSCRIPT_PROMPTS: Object.values(heartbeat.INTERNAL_WAKE_TRANSCRIPT_PROMPTS),
         DEFAULT_HEARTBEAT_EVERY: heartbeat.DEFAULT_HEARTBEAT_EVERY,
         DEFAULT_HEARTBEAT_ACK_MAX_CHARS: heartbeat.DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
       },
@@ -1855,17 +1880,16 @@ async function main() {
   }
 
   if (payload.operation === "heartbeatRunPrompt") {
-    // src/infra/heartbeat-runner.ts runHeartbeatOnce on workspaces written by the Python side:
-    // target "none" (no channel delivery, no commitments), messages.visibleReplies pins the
+    // src/infra/heartbeat-runner.ts runHeartbeatOnce per case, with the case's monitor scratch
+    // seeded the way upstream's tests do (seedHeartbeatScratchForTest: a CronService heartbeat
+    // job plus writeCronJobScratch, here in a per-case cron store partition, cfg.cron.store)
+    // and the case's scheduled tasks passed as `tasks` (what cron hands the runner for due
+    // heartbeat-task jobs). Target "none" (no channel delivery), messages.visibleReplies pins the
     // heartbeat_respond choice, and getReplyFromConfig captures the model input and answers
-    // HEARTBEAT_OK. The Body ends with appendCronStyleCurrentTimeLine's line, returned as
-    // timeLine from the real resolveCronStyleNow. HOME and OPENCLAW_STATE_DIR are sandboxed.
-    // v2026.9.6: plugins.enabled=false keeps runHeartbeatOnce from loading the runtime plugin
-    // registry (~50 s; upstream tests stub loadAgentRuntimePluginRegistryHandle instead), the
-    // main session entry is seeded through the SQLite session accessor (replaceSessionEntry,
-    // sessions moved out of sessions.json), and the runner never reads HEARTBEAT.md: its
-    // instructions are the cron job's monitor scratch (3e2b3ea4d5e, #112967; fallback removed in
-    // 07e3855b465), and task state belongs to cron jobs (b23c7bd0f84), so taskState is null.
+    // HEARTBEAT_OK. The Body ends with appendCronStyleCurrentTimeLine's lines, returned as
+    // timeLine from the real resolveCronStyleNow. plugins.enabled=false keeps runHeartbeatOnce
+    // from loading the runtime plugin registry; the main session entry is seeded through the
+    // SQLite session accessor. HOME and OPENCLAW_STATE_DIR are sandboxed.
     const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-heartbeat-"));
     process.env.HOME = path.join(sandbox, "home");
     process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
@@ -1881,11 +1905,13 @@ async function main() {
         index += 1;
         const scenarioNowMs = Number(scenario.nowMs);
         const storePath = path.join(sandbox, `sessions-${index}.json`);
+        const cronStorePath = path.join(sandbox, `cron-${index}`, "jobs.json");
+        await seedHeartbeatScratchCase(repoPath, cronStorePath, scenario.scratch);
         const cfg = {
           plugins: { enabled: false },
           agents: {
             defaults: {
-              workspace: scenario.workspaceDir,
+              workspace: path.join(sandbox, `workspace-${index}`),
               userTimezone: "UTC",
               heartbeat: {
                 every: "5m",
@@ -1896,6 +1922,7 @@ async function main() {
           },
           messages: { visibleReplies: scenario.useResponseTool ? "message_tool" : "automatic" },
           session: { store: storePath },
+          cron: { store: cronStorePath },
         };
         const sessionKey = sessions.resolveMainSessionKey(cfg);
         await sessionAccessor.replaceSessionEntry(
@@ -1908,6 +1935,7 @@ async function main() {
           ...(scenario.source ? { source: scenario.source } : {}),
           ...(scenario.intent ? { intent: scenario.intent } : {}),
           ...(scenario.reason ? { reason: scenario.reason } : {}),
+          ...(scenario.tasks ? { tasks: scenario.tasks } : {}),
           deps: {
             getQueueSize: () => 0,
             nowMs: () => scenarioNowMs,
@@ -1923,13 +1951,108 @@ async function main() {
           body: calls[0]?.ctx?.Body ?? null,
           isHeartbeat: calls[0]?.opts?.isHeartbeat ?? null,
           timeLine: currentTime.resolveCronStyleNow(cfg, scenarioNowMs).timeLine,
-          taskState: null,
         });
       }
       return { ok: true, operation: payload.operation, result: results };
     } finally {
       await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
     }
+  }
+
+  if (payload.operation === "heartbeatPreflight") {
+    // src/infra/heartbeat-runner-prompt.ts resolveHeartbeatPreflight and resolveHeartbeatRunPrompt
+    // called directly per case (fresh process: no queued system events), with the case's monitor
+    // scratch seeded in its own cron store partition like heartbeatRunPrompt. The run prompt is
+    // resolved from that preflight with canRelayToUser false, as runHeartbeatOnce passes
+    // preflight.heartbeatScratchContent and the case's scheduled tasks.
+    return withIsolatedRuntimeState("openclaw-oracle-heartbeat-preflight-", async () => {
+      const prompt = await importFromRepo(repoPath, "src/infra/heartbeat-runner-prompt.ts");
+      const results = [];
+      let index = 0;
+      for (const scenario of payload.cases ?? []) {
+        index += 1;
+        const cronStorePath = path.join(
+          process.env.OPENCLAW_STATE_DIR as string,
+          `cron-${index}`,
+          "jobs.json",
+        );
+        await seedHeartbeatScratchCase(repoPath, cronStorePath, scenario.scratch);
+        const heartbeat = {
+          every: "5m",
+          target: "none",
+          ...(typeof scenario.prompt === "string" ? { prompt: scenario.prompt } : {}),
+        };
+        const cfg = {
+          agents: { defaults: { heartbeat } },
+          cron: { store: cronStorePath },
+          session: { store: path.join(process.env.OPENCLAW_STATE_DIR as string, `sessions-${index}.json`) },
+        };
+        const scheduledTasks = scenario.tasks ?? [];
+        const preflight = await prompt.resolveHeartbeatPreflight({
+          cfg,
+          agentId: "main",
+          heartbeat,
+          ...(scenario.source ? { source: scenario.source } : {}),
+          ...(scenario.reason ? { reason: scenario.reason } : {}),
+          scheduledTasks,
+        });
+        const run = preflight.skipReason
+          ? null
+          : prompt.resolveHeartbeatRunPrompt({
+              cfg,
+              heartbeat,
+              preflight,
+              canRelayToUser: false,
+              startedAt: Number(scenario.nowMs ?? 0),
+              scheduledTasks,
+              heartbeatScratchContent: preflight.heartbeatScratchContent,
+              useHeartbeatResponseTool: Boolean(scenario.useResponseTool),
+            });
+        results.push({
+          skipReason: preflight.skipReason ?? null,
+          heartbeatScratchContent: preflight.heartbeatScratchContent ?? null,
+          scratchRevision: preflight.scratchRevision ?? null,
+          isExecEventWake: preflight.isExecEventWake,
+          isCronWake: preflight.isCronWake,
+          isWakePayload: preflight.isWakePayload,
+          prompt: run?.prompt ?? null,
+          usesHeartbeatResponseTool: run?.usesHeartbeatResponseTool ?? null,
+        });
+      }
+      return { ok: true, operation: payload.operation, result: results };
+    });
+  }
+
+  if (payload.operation === "heartbeatReplyDecision") {
+    // src/infra/heartbeat-delivery-normalization.ts classifyHeartbeatAgentOutcome for a plain text
+    // reply (no tool response, no run failure, no media, no source-reply suppression, no exec
+    // relay), with DEFAULT_HEARTBEAT_ACK_MAX_CHARS as heartbeat-dispatch.ts passes it; plus
+    // src/auto-reply/tokens.ts isSilentReplyPayloadText and src/auto-reply/heartbeat.ts
+    // isHeartbeatAcknowledgementText on the same text. text null stands for no reply payload.
+    const normalization = await importFromRepo(repoPath, "src/infra/heartbeat-delivery-normalization.ts");
+    const tokens = await importFromRepo(repoPath, "src/auto-reply/tokens.ts");
+    const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
+    const result = (payload.cases ?? []).map((item) => {
+      const outcome = normalization.classifyHeartbeatAgentOutcome({
+        agentRun: {
+          agentRunFailed: false,
+          ...(item.text === null || item.text === undefined ? {} : { replyPayload: { text: item.text } }),
+        },
+        hasRelayableExecCompletion: false,
+        suppressUnmarkedSourceReplies: false,
+        responsePrefix: item.responsePrefix ?? undefined,
+        ackMaxChars: heartbeat.DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
+      });
+      return {
+        decision:
+          outcome.kind === "delivery"
+            ? { kind: "delivery", text: outcome.normalized.text, silent: Boolean(outcome.normalized.silent) }
+            : { kind: outcome.kind, eventStatus: outcome.eventStatus, silent: Boolean(outcome.silent) },
+        silentReply: tokens.isSilentReplyPayloadText(item.text ?? undefined),
+        acknowledgement: heartbeat.isHeartbeatAcknowledgementText(item.text ?? undefined),
+      };
+    });
+    return { ok: true, operation: payload.operation, result };
   }
 
   // Retired at v2026.9.6: the heartbeatSystemSection op read src/agents/heartbeat-system-prompt.ts
@@ -2049,6 +2172,191 @@ async function main() {
           hashes: (payload.texts ?? []).map((text) => store.hashCronScratchSource(text ?? "")),
         },
       };
+    });
+  }
+
+  if (payload.operation === "legacyHeartbeatTasks") {
+    // src/commands/heartbeat-task-legacy.ts analyzeLegacyHeartbeatTasks (doctor's reader of the
+    // retired tasks: syntax) over texts.
+    const legacy = await importFromRepo(repoPath, "src/commands/heartbeat-task-legacy.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.texts ?? []).map((text) => legacy.analyzeLegacyHeartbeatTasks(text ?? "")),
+    };
+  }
+
+  if (payload.operation === "heartbeatScratchMigration") {
+    // src/commands/doctor-heartbeat-scratch-migration.ts maybeMigrateHeartbeatFilesToScratch
+    // ({shouldRepair: true}) and collectHeartbeatScratchMigrationFindings on a fixture workspace
+    // written by the Python side, for agent "main" (every 30m) whose workspace is workspaceDir;
+    // retainSource adds agent "ops" with heartbeat every 0m on the same workspace (upstream's
+    // disabled shared owner). Steps: "migrate", "findings", "scratch" (ensureHeartbeatMonitorJobs
+    // then writeCronJobScratch for main: content, or null to unset) and "write" (a workspace
+    // file). After each migrate the op returns main's scratch state, the workspace tree and the
+    // archive listing under <state>/backups/heartbeat-migration (a directory maps its entries).
+    if (!payload.workspaceDir) {
+      throw new Error("workspaceDir is required");
+    }
+    const workspaceDir = payload.workspaceDir;
+    return withIsolatedRuntimeState("openclaw-oracle-heartbeat-migration-", async () => {
+      process.env.OPENCLAW_SUPPRESS_NOTES = "1";
+      delete process.env.OPENCLAW_PROFILE;
+      delete process.env.OPENCLAW_CONTAINER_HINT;
+      const stateDir = process.env.OPENCLAW_STATE_DIR as string;
+      const migration = await importFromRepo(repoPath, "src/commands/doctor-heartbeat-scratch-migration.ts");
+      const cadence = await importFromRepo(repoPath, "src/commands/doctor-heartbeat-cadence-migration.ts");
+      const store = await importFromRepo(repoPath, "src/cron/scratch-store.ts");
+      const cronStore = await importFromRepo(repoPath, "src/cron/store.ts");
+      // retainSource is doctor-heartbeat-scratch-migration.test.ts sharedHeartbeatConfig: an
+      // explicit heartbeat on each agent makes only those agents heartbeat owners.
+      const cfg = payload.scenarios?.[0]?.retainSource
+        ? {
+            agents: {
+              defaults: { workspace: workspaceDir },
+              list: [
+                { id: "main", workspace: workspaceDir, heartbeat: { every: "30m" } },
+                { id: "ops", workspace: workspaceDir, heartbeat: { every: "0m" } },
+              ],
+            },
+          }
+        : {
+            agents: {
+              defaults: { heartbeat: { every: "30m" } },
+              list: [{ id: "main", default: true, workspace: workspaceDir }],
+            },
+          };
+      const storePath = cronStore.resolveCronJobsStorePathFromConfig(cfg);
+      const archiveDir = path.join(stateDir, "backups", "heartbeat-migration");
+      const monitorId = async () => (await cadence.ensureHeartbeatMonitorJobs(cfg, storePath)).get("main").id;
+      const listArchives = async () => {
+        const out: Record<string, unknown> = {};
+        for (const entry of await fs.readdir(archiveDir, { withFileTypes: true }).catch(() => [])) {
+          const full = path.join(archiveDir, entry.name);
+          if (entry.isDirectory()) {
+            const inner: Record<string, string> = {};
+            for (const name of await fs.readdir(full)) {
+              inner[name] = await fs.readFile(path.join(full, name), "utf-8");
+            }
+            out[`${entry.name}/`] = inner;
+          } else {
+            out[entry.name] = await fs.readFile(full, "utf-8");
+          }
+        }
+        return out;
+      };
+      const steps = [];
+      for (const step of payload.steps ?? []) {
+        if (step.op === "write") {
+          await fs.writeFile(path.join(workspaceDir, String(step.path)), String(step.content ?? ""), "utf-8");
+          steps.push(null);
+        } else if (step.op === "scratch") {
+          const jobId = await monitorId();
+          const current = store.readCronJobScratchState(storePath, jobId);
+          steps.push(
+            store.writeCronJobScratch({
+              storePath,
+              jobId,
+              content: step.content ?? null,
+              expectedRevision: current.currentRevision,
+            }),
+          );
+        } else if (step.op === "findings") {
+          steps.push(await migration.collectHeartbeatScratchMigrationFindings(cfg));
+        } else if (step.op === "migrate") {
+          const result = await migration.maybeMigrateHeartbeatFilesToScratch({ cfg, shouldRepair: true });
+          steps.push({
+            result,
+            scratch: store.readCronJobScratchState(storePath, await monitorId()),
+            tree: await snapshotWorkspaceTree(workspaceDir),
+            archives: await listArchives(),
+          });
+        } else {
+          throw new Error(`unknown heartbeatScratchMigration step: ${String(step.op)}`);
+        }
+      }
+      return { ok: true, operation: payload.operation, result: steps };
+    });
+  }
+
+  if (payload.operation === "heartbeatTaskMigration") {
+    // src/commands/doctor-heartbeat-task-migration.ts maybeMigrateHeartbeatTasksToCron
+    // ({shouldRepair: true, nowMs}) and collectHeartbeatTaskMigrationFindings, set up like
+    // doctor-heartbeat-task-migration.test.ts createFixture: agent "main" (every 30m), its
+    // heartbeat monitor job with the case's scratch, the heartbeat session entry with the case's
+    // legacy heartbeatTaskState, and optional existing cron jobs (CronService.add with the given
+    // fields, matchesExisting isHeartbeatTaskCronJob, as createExistingInboxJob). Each run returns
+    // changes/warnings, the heartbeat-task jobs (sorted by declaration key, ids dropped), main's
+    // scratch state and the session's remaining heartbeatTaskState.
+    return withIsolatedRuntimeState("openclaw-oracle-heartbeat-tasks-", async () => {
+      process.env.OPENCLAW_SUPPRESS_NOTES = "1";
+      delete process.env.OPENCLAW_PROFILE;
+      delete process.env.OPENCLAW_CONTAINER_HINT;
+      const env = { ...process.env };
+      const migration = await importFromRepo(repoPath, "src/commands/doctor-heartbeat-task-migration.ts");
+      const store = await importFromRepo(repoPath, "src/cron/scratch-store.ts");
+      const cronStore = await importFromRepo(repoPath, "src/cron/store.ts");
+      const heartbeatTask = await importFromRepo(repoPath, "src/cron/heartbeat-task.ts");
+      const heartbeatSession = await importFromRepo(repoPath, "src/infra/heartbeat-runner-session.ts");
+      const sessionAccessor = await importFromRepo(repoPath, "src/config/sessions/session-accessor.ts");
+      const { CronService } = await importFromRepo(repoPath, "src/cron/service.ts");
+      const cfg = { agents: { defaults: { heartbeat: { every: "30m" } }, list: [{ id: "main" }] } };
+      const storePath = cronStore.resolveCronJobsStorePathFromConfig(cfg, env);
+      const scenario = payload.scenarios?.[0] ?? {};
+      const nowMs = Number(scenario.nowMs);
+      const jobId = await seedHeartbeatMonitorJob(repoPath, storePath, "main");
+      store.writeCronJobScratch({ storePath, jobId, content: String(scenario.scratch ?? ""), expectedRevision: 0 });
+      const session = heartbeatSession.resolveHeartbeatSession(cfg, "main", cfg.agents.defaults.heartbeat, undefined, env);
+      await sessionAccessor.replaceSessionEntry(
+        { storePath: session.storePath, sessionKey: session.sessionKey, env },
+        {
+          sessionId: "heartbeat-main",
+          updatedAt: nowMs,
+          ...(scenario.taskState ? { heartbeatTaskState: scenario.taskState } : {}),
+        },
+      );
+      const noop = () => {};
+      for (const job of scenario.existingJobs ?? []) {
+        const cron = new CronService({
+          storePath,
+          nowMs: () => nowMs - 60_000,
+          cronEnabled: false,
+          defaultAgentId: "main",
+          log: { debug: noop, info: noop, warn: noop, error: noop },
+          enqueueSystemEvent: () => false,
+          requestHeartbeat: noop,
+          runIsolatedAgentJob: async () => ({ status: "skipped", error: "oracle" }),
+        });
+        await cron.add(job, {
+          enabledExplicit: true,
+          systemOwned: true,
+          matchesExisting: heartbeatTask.isHeartbeatTaskCronJob,
+        });
+      }
+      const runs = [];
+      for (const offset of scenario.runOffsetsMs ?? [0]) {
+        const findings = await migration.collectHeartbeatTaskMigrationFindings(cfg, env);
+        const result = await migration.maybeMigrateHeartbeatTasksToCron({
+          cfg,
+          env,
+          shouldRepair: true,
+          nowMs: nowMs + Number(offset),
+        });
+        const jobs = (await cronStore.loadCronJobsStore(storePath)).jobs
+          .filter(heartbeatTask.isHeartbeatTaskCronJob)
+          .map(({ id: _id, ...rest }: Record<string, unknown>) => rest)
+          .toSorted((a: any, b: any) => (a.declarationKey < b.declarationKey ? -1 : 1));
+        runs.push({
+          findings,
+          result,
+          jobs,
+          scratch: store.readCronJobScratchState(storePath, jobId),
+          taskState:
+            heartbeatSession.resolveHeartbeatSession(cfg, "main", undefined, undefined, env).entry
+              ?.heartbeatTaskState ?? null,
+        });
+      }
+      return { ok: true, operation: payload.operation, result: { storePath, runs } };
     });
   }
 

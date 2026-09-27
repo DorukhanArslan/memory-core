@@ -859,6 +859,11 @@
   .vclock-k { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); font-size: var(--t-sm); }
   .vclock-v { font: 600 15px var(--font-mono); margin-right: 4px; }
   .hb-run-group { display: flex; align-items: center; gap: 12px; }
+  .hb-scratch-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .hb-scratch-ta { display: block; width: 100%; min-height: 132px; resize: vertical; padding: 8px 10px; border-radius: var(--r-2); background: var(--bg-inset); border: 1px solid var(--line-1); color: var(--text-1); font: var(--m-md)/var(--lh-m-md) var(--font-mono); white-space: pre-wrap; tab-size: 2; caret-color: var(--accent); }
+  .hb-scratch-ta:focus { border-color: var(--accent); outline: none; }
+  .card-details > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: var(--t-sm); color: var(--text-2); }
+  .card-details[open] > summary { margin-bottom: 8px; }
   .ignored { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 2px; }
   .hb-history { display: grid; gap: 2px; }
   .hist-row { display: grid; grid-template-columns: 16px 30px 44px auto minmax(0, 1fr); gap: 8px; align-items: center; min-height: 30px; padding: 2px 6px; border-radius: var(--r-1); cursor: pointer; font-size: var(--t-sm); }

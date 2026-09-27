@@ -1123,7 +1123,10 @@ def test_prompt_preview_shows_the_pending_bootstrap_only_where_upstream_does(cli
         assert {item["name"]: item["reason"] for item in view["excluded"]}.get("BOOTSTRAP.md") in {
             "bootstrap modu none", "cron: yalnız AGENTS.md, IDENTITY.md, PROACTIVE_PREFERENCES.md, SOUL.md, USER.md",
         }
-    assert heartbeat["heartbeatSection"][0] == "## Heartbeats"
+    # v2026.9.6 has no "## Heartbeats" section; the preview shows the heartbeat user turn.
+    assert "heartbeatSection" not in heartbeat
+    assert heartbeat["heartbeatPrompt"]["prompt"].startswith("Follow the heartbeat monitor scratch")
+    assert heartbeat["heartbeatPrompt"]["skipReason"] is None
 
 
 def test_prompt_preview_reports_truncation_and_the_total_budget(client, lab):
@@ -1286,8 +1289,9 @@ def test_session_new_validates_the_command(client):
 
 # --- heartbeat -------------------------------------------------------------------------------
 
-# The Lab no longer seeds HEARTBEAT.md (v2026.9.6 retired it; the heartbeat view still reads
-# one a user writes until the monitor-scratch port). This header is the Lab's former seed text.
+# The Lab seeds no heartbeat text (v2026.9.6 keeps it in the monitor scratch, which starts
+# empty). HEARTBEAT_HEADER is the Lab's former HEARTBEAT.md seed and TASKS the scenario S09
+# task, both in the project's own words.
 HEARTBEAT_HEADER = """# HEARTBEAT.md - Continuity Check
 
 Before acting, re-read the workspace files that define current identity, user context, tools, and memory.
@@ -1306,26 +1310,54 @@ def heartbeat_run(client, **payload):
     return parse_sse(response.text)
 
 
-def test_heartbeat_state_parses_tasks_and_due_state(client, lab):
+def put_scratch(client, content, **extra):
+    response = client.put("/api/lab/heartbeat/scratch", json={"content": content, **extra})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_heartbeat_state_starts_without_scratch_or_jobs(client, lab):
     client.get("/api/lab/state")
-    (lab.root / "HEARTBEAT.md").write_text(HEARTBEAT_HEADER + TASKS + "  - name: broken\n", encoding="utf-8")
 
     state = client.get("/api/lab/heartbeat").json()
 
-    assert state["file"] == {"path": "HEARTBEAT.md", "exists": True, "effectivelyEmpty": False}
-    assert state["every"] == "30m" and state["everyMs"] == 1_800_000 and state["ackMaxChars"] == 300
-    assert state["tasks"][0]["name"] == "gunluk-takip"
-    assert state["tasks"][0]["due"] is True and state["tasks"][0]["lastRunMs"] is None
-    assert state["unparsedTaskEntries"] == 1
-    assert state["preflight"] == {"skipReason": None, "dueTasks": ["gunluk-takip"]}
+    assert state["scratch"]["status"] == "none" and state["scratch"]["currentRevision"] == 0
+    assert state["scratch"]["maxBytes"] == 262_144
+    assert state["jobs"] == [] and state["legacyFile"] == {"path": "HEARTBEAT.md", "exists": False}
+    assert state["migrationFindings"] == []
+    assert state["every"] == "30m" and state["everyMs"] == 1_800_000 and state["ackLimit"] == 300
+    assert state["preflight"]["skipReason"] is None
+    assert state["preflight"]["prompt"].startswith("Follow the heartbeat monitor scratch context")
+    assert state["preflight"]["prompt"].endswith("reply NO_REPLY.")
+    assert "HEARTBEAT.md" not in state["preflight"]["message"]
     assert state["proactivePreferences"] == "empty"
+    assert state["store"] == ".memory-core/automation.json"
     assert state["runs"] == []
 
 
-def test_heartbeat_skips_an_empty_file_without_a_model_call(client, lab, monkeypatch):
+def test_heartbeat_scratch_is_written_by_compare_and_swap(client, lab):
+    client.get("/api/lab/state")
+
+    written = put_scratch(client, HEARTBEAT_HEADER, expectedRevision=0)
+    conflict = put_scratch(client, "stale", expectedRevision=0)
+    unset = put_scratch(client, None, expectedRevision=1)
+
+    assert written["write"]["ok"] is True and written["scratch"]["status"] == "active"
+    assert conflict["write"] == {"ok": False, "reason": "revision-conflict", "currentRevision": 1}
+    assert unset["write"] == {"ok": True, "currentRevision": 2}
+    assert unset["scratch"]["status"] == "unset"
+    assert (lab.root / ".memory-core" / "automation.json").is_file()
+    assert not (lab.root / "HEARTBEAT.md").exists()
+    too_big = client.put("/api/lab/heartbeat/scratch", json={"content": "a" * 262_145})
+    assert too_big.status_code == 400 and too_big.json()["code"] == "scratch_too_large"
+    types = event_types(client)
+    assert "heartbeat.scratch_written" in types and "heartbeat.scratch_conflict" in types
+
+
+def test_heartbeat_skips_empty_scratch_without_a_model_call(client, lab, monkeypatch):
     engine = use_engine(monkeypatch, StubEngine([("x", [])]))
     client.get("/api/lab/state")
-    (lab.root / "HEARTBEAT.md").write_text("# HEARTBEAT.md\n\n<!-- boş -->\n", encoding="utf-8")
+    put_scratch(client, "# HEARTBEAT.md\n\n<!-- boş -->\n")
 
     frames = heartbeat_run(client)
 
@@ -1338,7 +1370,7 @@ def test_heartbeat_skips_an_empty_file_without_a_model_call(client, lab, monkeyp
 
 def test_heartbeat_skip_without_a_key_needs_no_model(client, lab):
     client.get("/api/lab/state")
-    (lab.root / "HEARTBEAT.md").write_text("# HEARTBEAT.md\n", encoding="utf-8")
+    put_scratch(client, "# HEARTBEAT.md\n")
 
     frames = heartbeat_run(client)
 
@@ -1353,60 +1385,98 @@ def test_heartbeat_without_a_key_reports_no_api_key_when_it_would_call_the_model
     assert frames_of(frames, "error")[0]["code"] == "no_api_key"
 
 
-def test_heartbeat_runs_the_tool_loop_and_decides_delivery(client, lab, monkeypatch):
+def test_legacy_heartbeat_md_is_migrated_into_scratch_and_jobs(client, lab):
     client.get("/api/lab/state")
     (lab.root / "HEARTBEAT.md").write_text(HEARTBEAT_HEADER + TASKS, encoding="utf-8")
+
+    before = client.get("/api/lab/heartbeat").json()
+    migrated = client.post("/api/lab/heartbeat/migrate").json()
+    after = client.get("/api/lab/heartbeat").json()
+
+    assert before["legacyFile"]["exists"] is True
+    assert [f["requirement"] for f in before["migrationFindings"]] == ["legacy-heartbeat-file"]
+    assert before["migrationFindings"][0]["path"] == "HEARTBEAT.md"
+    assert migrated["scratch"]["changes"][0].startswith("Migrated ")
+    assert migrated["tasks"]["changes"] == ['Converted 1 heartbeat task into cron jobs for agent "main".']
+    assert after["legacyFile"]["exists"] is False and after["migrationFindings"] == []
+    # The blank line before `tasks:` is outside the block, so it stays (analyzeLegacyHeartbeatTasks).
+    assert after["scratch"]["content"] == HEARTBEAT_HEADER + "\n"
+    assert after["scratch"]["sourceSha256"]
+    [job] = after["jobs"]
+    assert job["name"] == "gunluk-takip" and job["everyMs"] == 1_800_000 and job["heartbeatTask"] is True
+    assert job["prompt"].startswith("Bugünün günlük notunda")
+    # First run one millisecond after the migration (virtual clock), then every 30 minutes.
+    assert job["nextRunAtMs"] == job["anchorMs"] <= after["clock"]["nowMs"] + 1
+    archive = lab.root / ".memory-core" / "backups" / "heartbeat-migration"
+    assert any(path.is_dir() for path in archive.iterdir())
+    types = event_types(client)
+    assert "heartbeat.migrated" in types and "file.changed" in types
+
+
+def test_heartbeat_runs_due_jobs_through_the_tool_loop_and_decides_delivery(client, lab, monkeypatch):
+    client.get("/api/lab/state")
+    (lab.root / "HEARTBEAT.md").write_text(HEARTBEAT_HEADER + TASKS, encoding="utf-8")
+    client.post("/api/lab/heartbeat/migrate")
     (lab.root / "memory" / f"{lab.today()}.md").write_text("- Yarın 09:00 tedarikçiye fatura gönderilecek.\n", encoding="utf-8")
     (lab.root / "PROACTIVE_PREFERENCES.md").write_text("# PROACTIVE_PREFERENCES.md\n\n- Fatura takiplerini bildir.\n", encoding="utf-8")
     engine = use_engine(monkeypatch, StubEngine([
         ("", [tool_call("h1", "memory_search", {"query": "fatura"})]),
         ("Hatırlatma: yarın 09:00 tedarikçiye fatura gönderilecek.", []),
+        ("NO_REPLY", []),
         ("HEARTBEAT_OK", []),
     ]))
 
+    # The migrated job's first run is one millisecond after the migration.
+    client.post("/api/lab/clock", json={"offsetMs": 1000})
     first = heartbeat_run(client)
 
     prompt = frames_of(first, "prompt")[0]
     assert prompt["userMessage"].startswith("Run the following periodic tasks (only those due based on their intervals):")
-    assert "After completing all due tasks, reply HEARTBEAT_OK." in prompt["userMessage"]
+    assert "- gunluk-takip: Bugünün günlük notunda" in prompt["userMessage"]
+    assert "After completing all due tasks, reply NO_REPLY." in prompt["userMessage"]
+    assert "\n\nHeartbeat monitor scratch:\n# HEARTBEAT.md - Continuity Check" in prompt["userMessage"]
     assert "\nCurrent time: " in prompt["userMessage"]
-    assert prompt["systemSection"].startswith("## Heartbeats")
+    assert prompt["scratchShown"] is True
     assert prompt["files"].index("USER.md") < prompt["files"].index("PROACTIVE_PREFERENCES.md")
-    # HEARTBEAT.md is read by the heartbeat itself, never injected as a bootstrap file.
     assert "HEARTBEAT.md" not in prompt["files"] and "TOOLS.md" not in prompt["files"]
     assert "BOOTSTRAP.md" not in prompt["files"]
     assert "memory_search" in prompt["tools"]
-    assert "## Heartbeats" in engine.calls[0]["messages"][0]["content"]
+    assert "## Heartbeats" not in engine.calls[0]["messages"][0]["content"]
     result = frames_of(first, "tool_result")[0]["result"]
     assert result["results"][0]["path"] == f"memory/{lab.today()}.md"
     decision = frames_of(first, "decision")[0]
     assert decision["delivered"] is True and decision["text"].startswith("Hatırlatma")
     run = frames_of(first, "done")[0]["run"]
-    assert run["dueTasks"] == ["gunluk-takip"]
-    assert run["taskState"]["gunluk-takip"] == run["virtualNowMs"]
+    assert run["dueTasks"] == ["gunluk-takip"] and len(run["jobsRun"]) == 1
 
     waiting = client.get("/api/lab/heartbeat").json()
-    assert waiting["tasks"][0]["due"] is False
-    assert waiting["preflight"]["skipReason"] == "no-tasks-due"
-    skipped = heartbeat_run(client)
-    assert frames_of(skipped, "skipped")[0]["reason"] == "no-tasks-due"
-
-    clock = client.post("/api/lab/clock", json={"offsetMs": 31 * 60 * 1000}).json()
-    assert clock["offsetMs"] == 31 * 60 * 1000
-    acked = heartbeat_run(client)
-    assert frames_of(acked, "decision")[0] == {
-        "shouldSkip": True, "text": "", "didStrip": True, "remainderChars": 0, "delivered": False, "ackMaxChars": 300,
+    [job] = waiting["jobs"]
+    assert job["due"] is False and job["lastRunAtMs"] == run["virtualNowMs"]
+    assert job["nextRunAtMs"] == run["virtualNowMs"] + 1_800_000
+    assert waiting["preflight"]["dueTasks"] == []
+    quiet = heartbeat_run(client)
+    assert frames_of(quiet, "prompt")[0]["userMessage"].startswith("Follow the heartbeat monitor scratch")
+    assert frames_of(quiet, "decision")[0] == {
+        "kind": "ack", "eventStatus": "ok-token", "silent": False, "delivered": False,
+        "silentReply": True, "replyChars": 8,
     }
+
+    client.post("/api/lab/clock", json={"offsetMs": 31 * 60 * 1000})
+    acked = heartbeat_run(client)
+    assert frames_of(acked, "prompt")[0]["userMessage"].startswith("Run the following periodic tasks")
+    assert frames_of(acked, "decision")[0]["delivered"] is False
     session = lab.session("heartbeat")
     assert session.messages[0] == {"role": "user", "content": "[memory-core heartbeat poll]"}
     runs = client.get("/api/lab/heartbeat").json()["runs"]
-    assert [item.get("skipped") for item in runs] == [None, "no-tasks-due", None]
-    assert {"heartbeat.run", "heartbeat.llm", "heartbeat.decided", "clock.changed"} <= set(event_types(client))
+    assert [item["dueTasks"] for item in runs] == [["gunluk-takip"], [], ["gunluk-takip"]]
+    assert {"heartbeat.run", "heartbeat.llm", "heartbeat.decided", "automation.jobs_ran", "clock.changed"} <= set(
+        event_types(client)
+    )
 
 
 def test_heartbeat_light_context_injects_no_bootstrap_file(client, lab, monkeypatch):
     # applyContextModeFilter at v2026.9.6: lightweight runs get no bootstrap files at all.
-    use_engine(monkeypatch, StubEngine([("HEARTBEAT_OK", [])]))
+    use_engine(monkeypatch, StubEngine([("NO_REPLY", [])]))
     client.get("/api/lab/state")
 
     frames = heartbeat_run(client, lightContext=True)
@@ -1415,13 +1485,20 @@ def test_heartbeat_light_context_injects_no_bootstrap_file(client, lab, monkeypa
 
 
 @pytest.mark.parametrize(
-    ("text", "skip"),
-    [("HEARTBEAT_OK", True), ("**HEARTBEAT_OK**.", True), ("All good. HEARTBEAT_OK", True), ("Alert: disk full", False)],
+    ("text", "delivered"),
+    [
+        ("NO_REPLY", False),
+        ("HEARTBEAT_OK", False),
+        ("**HEARTBEAT_OK**.", False),
+        ("All good. HEARTBEAT_OK", False),
+        ("Alert: disk full", True),
+    ],
 )
-def test_heartbeat_strip_parser(client, text, skip):
-    result = client.post("/api/lab/heartbeat/strip", json={"text": text}).json()
+def test_heartbeat_reply_decision(client, text, delivered):
+    result = client.post("/api/lab/heartbeat/reply", json={"text": text}).json()
 
-    assert result["shouldSkip"] is skip
+    assert result["delivered"] is delivered
+    assert result["silentReply"] is (text == "NO_REPLY")
 
 
 def test_clock_validates_and_resets(client):
@@ -1672,7 +1749,7 @@ def test_settings_defaults_follow_d4_and_q9(client):
     assert settings["budgets"] == {"maxChars": 20_000, "totalMaxChars": 60_000, "warningMode": "always",
                                    "defaults": {"maxChars": 20_000, "totalMaxChars": 60_000, "warningMode": "always"}}
     assert settings["flush"]["mode"] == "threshold" and settings["flush"]["threshold"] == 176_000
-    assert settings["heartbeat"] == {"every": "30m", "everyMs": 1_800_000, "ackMaxChars": 300, "lightContext": False}
+    assert settings["heartbeat"] == {"every": "30m", "everyMs": 1_800_000, "lightContext": False}
     assert settings["flags"]["curation.user_md"] == {"on": True, "label": "USER.md direktifleri", "extension": True}
     assert settings["timezone"] == "Europe/Istanbul"
 
@@ -1693,7 +1770,7 @@ def test_settings_update_applies_and_emits(client, lab):
         "budgets": {"totalMaxChars": 12_000, "warningMode": "once"},
         "contextInjection": "continuation-skip",
         "flush": {"mode": "threshold", "contextWindowTokens": 26_000},
-        "heartbeat": {"every": "10m", "ackMaxChars": 50, "lightContext": True},
+        "heartbeat": {"every": "10m", "lightContext": True},
         "flags": {"lab_file_editing": False},
     }).json()
 
@@ -1720,6 +1797,7 @@ def test_settings_update_applies_and_emits(client, lab):
         {"budgets": {"maxChars": -1}},
         {"budgets": {"warningMode": "sometimes"}},
         {"heartbeat": {"every": "soon"}},
+        {"heartbeat": {"ackMaxChars": 50}},
         {"flags": {"unknown_flag": True}},
         {"chat": {"baseUrl": "ftp://x"}},
         {"surprise": 1},
@@ -1729,7 +1807,7 @@ def test_settings_update_rejects_keys_and_bad_values(client, payload):
     response = client.put("/api/lab/settings", json=payload)
 
     assert response.status_code == 400
-    assert response.json()["code"] in {"key_not_accepted", "invalid_setting"}
+    assert response.json()["code"] in {"key_not_accepted", "invalid_setting", "retired_setting"}
 
 
 def test_provider_check_redacts_the_key_and_records_the_status(client, monkeypatch):

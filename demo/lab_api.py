@@ -22,7 +22,15 @@ from demo.lab_chat import chat_turn_frames
 from demo.lab_consolidation import consolidation_view
 from demo.lab_events import parse_last_event_id, stream_lab_events, unified_diff
 from demo.lab_flush import flush_meter
-from demo.lab_heartbeat import heartbeat_run_frames, heartbeat_state, set_clock, strip_payload
+from demo.lab_heartbeat import (
+    heartbeat_preview,
+    heartbeat_run_frames,
+    heartbeat_state,
+    migrate as migrate_heartbeat,
+    reply_payload,
+    set_clock,
+    write_scratch,
+)
 from demo.lab_kept_api import index_status
 from demo.lab_settings import provider_check, settings_payload, update_settings
 from demo.lab_prompt import (
@@ -58,7 +66,6 @@ from memory_core.bootstrap import (
     trim_bootstrap_content,
 )
 from memory_core.session_memory import save_session_memory
-from memory_core.heartbeat import build_heartbeat_section_lines, resolve_heartbeat_prompt_for_system_prompt
 from memory_core.prompt_section import build_prompt_section
 from memory_core.tools.memory_get import MEMORY_GET_TOOL_NAME
 from memory_core.tools.memory_search import MEMORY_SEARCH_TOOL_NAME
@@ -291,9 +298,21 @@ def build_router(lab: LabRuntime) -> APIRouter:
             headers=SSE_HEADERS,
         )
 
-    @router.post("/heartbeat/strip")
-    def heartbeat_strip(payload: dict = Body(...)):
-        return strip_payload(payload)
+    @router.put("/heartbeat/scratch")
+    def heartbeat_scratch(payload: dict = Body(...)):
+        lab.ensure_exists()
+        with lab.locked():
+            return write_scratch(lab, payload)
+
+    @router.post("/heartbeat/migrate")
+    def heartbeat_migrate():
+        lab.ensure_exists()
+        with lab.locked():
+            return migrate_heartbeat(lab)
+
+    @router.post("/heartbeat/reply")
+    def heartbeat_reply(payload: dict = Body(...)):
+        return reply_payload(payload)
 
     @router.post("/clock")
     def clock(payload: dict = Body(...)):
@@ -462,20 +481,15 @@ def preview_extras(lab: LabRuntime, kind: str) -> dict[str, Any]:
     tools = offered_tool_names(lab)
     minimal = kind in MINIMAL_PROMPT_KINDS
     memory_section = [] if minimal else build_prompt_section(set(tools), citations_mode="on")
-    heartbeat_section = (
-        build_heartbeat_section_lines(
-            resolve_heartbeat_prompt_for_system_prompt(trigger="heartbeat", every=lab.settings.heartbeat_every),
-            is_minimal=minimal,
-        )
-        if kind == "heartbeat"
-        else []
-    )
+    # v2026.9.6 has no "## Heartbeats" system-prompt section (6a1dedb00c2, #129642): the
+    # heartbeat instructions are the user turn built from the monitor scratch and due jobs.
+    heartbeat_prompt = heartbeat_preview(lab) if kind == "heartbeat" else None
     return {
         "preview": True,
         "banner": "Önizleme: diskteki güncel durum, gönderilmedi",
         "tools": sorted(tools),
         "recall": {"lines": [], "memoryRecallSection": memory_section, "label": "demo-only"},
-        "heartbeatSection": heartbeat_section,
+        "heartbeatPrompt": heartbeat_prompt,
         "startup": None,
         "flush": None,
     }

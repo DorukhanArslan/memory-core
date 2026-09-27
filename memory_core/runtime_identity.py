@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from memory_core._heartbeat_constants import INTERNAL_WAKE_TRANSCRIPT_PROMPTS
+
+# OpenClaw src/auto-reply/heartbeat.ts INTERNAL_WAKE_TRANSCRIPT_PROMPTS (generated).
+_OPENCLAW_WAKE_PROMPTS = dict(INTERNAL_WAKE_TRANSCRIPT_PROMPTS)
+
 
 @dataclass(frozen=True)
 class RuntimeIdentity:
@@ -43,9 +48,15 @@ class RuntimeIdentity:
         "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
     )
     # Transcript row recorded for a heartbeat turn instead of the full heartbeat
-    # prompt (OpenClaw src/auto-reply/heartbeat.ts:23 HEARTBEAT_TRANSCRIPT_PROMPT,
-    # written by src/auto-reply/reply/prompt-prelude.ts:231-232).
+    # prompt (OpenClaw src/auto-reply/heartbeat.ts INTERNAL_WAKE_TRANSCRIPT_PROMPTS.heartbeat,
+    # the pin's HEARTBEAT_TRANSCRIPT_PROMPT; cdda5825f8b, #143866).
     heartbeat_transcript_prompt: str = "[memory-core heartbeat poll]"
+    # Every internal-wake transcript row the heartbeat transcript filter drops (OpenClaw
+    # src/auto-reply/heartbeat-filter.ts isHeartbeatUserMessage over
+    # INTERNAL_WAKE_TRANSCRIPT_PROMPTS). memory-core writes only the heartbeat row; exec-completion,
+    # cron-wake and session-event turns are not ported, so the memory-core identity lists no
+    # markers for them.
+    internal_wake_transcript_prompts: tuple[str, ...] = ("[memory-core heartbeat poll]",)
     # Transcript row recorded for a bare /new or /reset turn instead of the reset prompt
     # (OpenClaw src/auto-reply/reply/prompt-prelude.ts:233-234 `[OpenClaw session ${action}]`);
     # ``{action}`` is "new" or "reset".
@@ -77,6 +88,7 @@ MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
         "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
     ),
     heartbeat_transcript_prompt="[memory-core heartbeat poll]",
+    internal_wake_transcript_prompts=("[memory-core heartbeat poll]",),
     session_reset_transcript_prompt="[memory-core session {action}]",
 )
 
@@ -104,6 +116,7 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
     memory_search_paused_action=(
         "Tell the user to run: openclaw memory status --index or openclaw memory index --force."
     ),
-    heartbeat_transcript_prompt="[OpenClaw heartbeat poll]",
+    heartbeat_transcript_prompt=_OPENCLAW_WAKE_PROMPTS["heartbeat"],
+    internal_wake_transcript_prompts=tuple(_OPENCLAW_WAKE_PROMPTS.values()),
     session_reset_transcript_prompt="[OpenClaw session {action}]",
 )

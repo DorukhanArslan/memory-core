@@ -157,7 +157,8 @@ export function renderSettings(body) {
       ], { ic: 'minus' }),
       group('heartbeat', 'Heartbeat', [
         row('every', textInput('set-hb-every', s.heartbeat?.every, (v) => putSettings({ heartbeat: { every: v } })), null, { forId: 'set-hb-every' }),
-        row('ackMaxChars', numberInput('set-hb-ack', s.heartbeat?.ackMaxChars, (v) => putSettings({ heartbeat: { ackMaxChars: v } })), null, { forId: 'set-hb-ack' }),
+        // v2026.9.6 retired heartbeat.ackMaxChars: the acknowledgement limit is fixed (read-only here).
+        row('ackMaxChars', chip({ label: '300', tone: 'neutral', cls: 'chip-mono', testid: 'settings-hb-ack' }), t('settings.ackRetired')),
         row('lightContext', toggle({ checked: !!s.heartbeat?.lightContext, onChange: (v) => putSettings({ heartbeat: { lightContext: v } }), label: t('settings.lightContext') })),
       ], { ic: 'heart-pulse' }),
       curationFlags.length ? group('curation', t('settings.curation'), curationFlags.map(flagRow), { ic: 'puzzle', tag: chip({ label: t('badge.extension'), tone: 'ext', ic: 'puzzle', cls: 'chip-xs' }) }) : group('curation', t('settings.curation'), [h('div', { class: 'srow' }, h('span', { class: 'muted' }, t('settings.noCurationFlags')))], { ic: 'puzzle' }),

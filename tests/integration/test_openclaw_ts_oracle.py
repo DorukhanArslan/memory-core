@@ -5473,10 +5473,11 @@ def test_bootstrap_constants_and_keyword_sets_equal_upstream_source():
 
 from memory_core import heartbeat as heartbeat_module  # noqa: E402
 
-# Inputs come from upstream tests at the pin: src/auto-reply/heartbeat.test.ts,
+# Inputs come from upstream tests at the pin (src/auto-reply/heartbeat.test.ts,
 # src/infra/heartbeat-runner.returns-default-unset.test.ts, src/cli/cli-utils.test.ts and the
-# parseHeartbeatTasks doc comment (src/auto-reply/heartbeat.ts:250-258); whitespace and CRLF
-# variants only re-encode those inputs.
+# parseHeartbeatTasks doc comment) and at v2026.9.6 (heartbeat-runner.returns-default-unset.test.ts
+# scratch states, src/auto-reply/tokens.test.ts, heartbeat-runner.tool-response.test.ts); whitespace
+# and CRLF variants only re-encode those inputs.
 HEARTBEAT_TASKS_CONTEXT_FILE = """# Keep this header
 
 Remember escalation policy.
@@ -5562,15 +5563,6 @@ HEARTBEAT_TASK_FILES = [
     HEARTBEAT_UNINDENTED_TASKS_FILE,
     "",
 ]
-HEARTBEAT_DUE_CASES = [
-    {"kind": "due", "interval": "30m", "nowMs": 1_000},
-    {"kind": "due", "lastRunMs": 0, "interval": "5m", "nowMs": 300_000},
-    {"kind": "due", "lastRunMs": 1, "interval": "5m", "nowMs": 300_000},
-    {"kind": "due", "lastRunMs": 0, "interval": "5", "nowMs": 300_000},
-    {"kind": "due", "lastRunMs": 0, "interval": "1h30m", "nowMs": 5_400_000},
-    {"kind": "due", "lastRunMs": 0, "interval": "oops", "nowMs": 10**12},
-    {"kind": "due", "lastRunMs": 0, "interval": "", "nowMs": 10**12},
-]
 HEARTBEAT_DURATION_CASES = [
     {"kind": "duration", "raw": raw}
     for raw in (
@@ -5612,9 +5604,7 @@ HEARTBEAT_PROMPT_CONFIG_CASES = [
 ]
 
 
-def _python_heartbeat_due_case(case: dict):
-    if case["kind"] == "due":
-        return heartbeat_module.is_task_due(case.get("lastRunMs"), case["interval"], case["nowMs"])
+def _python_heartbeat_duration_case(case: dict):
     if case["kind"] == "duration":
         try:
             return {
@@ -5635,10 +5625,12 @@ def test_real_openclaw_oracle_heartbeat_constants_match_python():
     assert result["ok"] is True, result
     assert result["result"] == {
         "HEARTBEAT_TOKEN": heartbeat_module.HEARTBEAT_TOKEN,
+        "SILENT_REPLY_TOKEN": heartbeat_module.SILENT_REPLY_TOKEN,
         "HEARTBEAT_PROMPT": heartbeat_module.HEARTBEAT_PROMPT,
         "HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS": heartbeat_module.HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS,
         "HEARTBEAT_RESPONSE_TOOL_PROMPT": heartbeat_module.HEARTBEAT_RESPONSE_TOOL_PROMPT,
         "HEARTBEAT_TRANSCRIPT_PROMPT": compat.heartbeat_transcript_prompt,
+        "INTERNAL_WAKE_TRANSCRIPT_PROMPTS": list(compat.internal_wake_transcript_prompts),
         "DEFAULT_HEARTBEAT_EVERY": heartbeat_module.DEFAULT_HEARTBEAT_EVERY,
         "DEFAULT_HEARTBEAT_ACK_MAX_CHARS": heartbeat_module.DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
     }
@@ -5662,28 +5654,6 @@ def test_real_openclaw_oracle_heartbeat_content_effectively_empty_matches_python
         assert result["result"][-1] is True
 
 
-@retired_upstream("parseHeartbeatTasks")
-def test_real_openclaw_oracle_parse_heartbeat_tasks_matches_python():
-    result = _oracle().run({"operation": "parseHeartbeatTasks", "texts": HEARTBEAT_TASK_FILES})
-
-    assert result["ok"] is True, result
-    assert result["result"] == [
-        [
-            {"name": task.name, "interval": task.interval, "prompt": task.prompt}
-            for task in heartbeat_module.parse_heartbeat_tasks(text)
-        ]
-        for text in HEARTBEAT_TASK_FILES
-    ]
-
-
-@retired_upstream("heartbeatTaskDue")
-def test_real_openclaw_oracle_heartbeat_task_due_matches_python():
-    result = _oracle().run({"operation": "heartbeatTaskDue", "cases": HEARTBEAT_DUE_CASES})
-
-    assert result["ok"] is True, result
-    assert result["result"] == [_python_heartbeat_due_case(case) for case in HEARTBEAT_DUE_CASES]
-
-
 def test_real_openclaw_oracle_heartbeat_durations_match_python():
     # The duration and interval cases of the pin's heartbeatTaskDue op; their upstream
     # functions (parseDurationMs, resolveHeartbeatIntervalMs) survive at v2026.9.6.
@@ -5692,7 +5662,7 @@ def test_real_openclaw_oracle_heartbeat_durations_match_python():
     result = _oracle().run({"operation": "heartbeatDurations", "cases": cases})
 
     assert result["ok"] is True, result
-    assert result["result"] == [_python_heartbeat_due_case(case) for case in cases]
+    assert result["result"] == [_python_heartbeat_duration_case(case) for case in cases]
 
 
 def test_real_openclaw_oracle_heartbeat_prompt_config_matches_python():
@@ -5785,147 +5755,284 @@ def test_real_openclaw_oracle_strip_heartbeat_token_matches_python():
     assert result["result"] == [_python_strip_case(case) for case in HEARTBEAT_STRIP_CASES]
 
 
-# HEARTBEAT.md states of runHeartbeatFileScenario (heartbeat-runner.returns-default-unset.test.ts).
-HEARTBEAT_FILE_STATES = {
-    "empty": "# HEARTBEAT.md\n\n## Tasks\n\n",
-    "legacy-comment-only": (
-        "# Keep this file empty (or with only comments) to skip heartbeat API calls.\n\n"
-        "# Add tasks below when you want the agent to check something periodically.\n"
-    ),
+# Monitor scratch states of runHeartbeatScratchScenario (heartbeat-runner.returns-default-unset
+# .test.ts at v2026.9.6: "empty", "fenced-empty", "actionable", "fenced-actionable"; "missing"
+# is a monitor without a scratch row) plus the legacy task blocks that test keeps as ordinary
+# scratch, and memory-core probes for no monitor, an unset tombstone and present-empty content.
+HEARTBEAT_SCRATCH_TEXTS = {
+    "empty": "# Heartbeat scratch\n\n## Tasks\n\n",
     "fenced-empty": (
-        "# HEARTBEAT.md Template\n\n```markdown\n# Keep this file empty (or with only comments) "
+        "# Heartbeat scratch template\n\n```markdown\n# Keep this empty (or with only comments) "
         "to skip heartbeat API calls.\n\n# Add tasks below when you want the agent to check "
         "something periodically.\n```\n"
     ),
-    "actionable": "# HEARTBEAT.md\n\n- Check server logs\n- Review pending PRs\n",
+    "actionable": "# Heartbeat scratch\n\n- Check server logs\n- Review pending PRs\n",
     "fenced-actionable": (
-        "```markdown\n# Keep this file empty when you want to skip.\n\n- Check server logs\n```\n"
+        "```markdown\n# Keep this empty when you want to skip.\n\n- Check server logs\n```\n"
     ),
     "tasks-context": HEARTBEAT_TASKS_CONTEXT_FILE,
     "tasks-context-crlf": HEARTBEAT_TASKS_CONTEXT_FILE.replace("\n", "\r\n"),
     "unindented-tasks": HEARTBEAT_UNINDENTED_TASKS_FILE,
-    "constructor-task": (
-        "tasks:\n  - name: constructor\n    interval: 5m\n    prompt: Check urgent inbox items\n"
-    ),
     "directive-only": "Check the server logs",
+    "present-empty": "",
 }
+
+
+def _scratch_spec(name: str | None) -> dict:
+    if name is None:
+        return {"content": None}
+    if name == "no-monitor":
+        return {"monitor": False}
+    if name == "unset":
+        return {"unset": True}
+    return {"content": HEARTBEAT_SCRATCH_TEXTS[name]}
+
+
+def _python_scratch(spec: dict):
+    from memory_core.heartbeat_scratch import HeartbeatScratch, HeartbeatScratchState
+
+    if spec.get("monitor") is False:
+        return None
+    if spec.get("unset"):
+        return HeartbeatScratchState(current_revision=2)
+    if spec.get("content") is None:
+        return HeartbeatScratchState()
+    return HeartbeatScratchState(
+        current_revision=1,
+        scratch=HeartbeatScratch(content=spec["content"], revision=1, updated_at_ms=0),
+    )
+
+
 _HB_NOW_MS = 1_790_416_800_000  # 2026-09-26T10:00:00Z
+_HB_INBOX_TASK = {"jobId": "job-inbox", "name": "inbox", "prompt": "Check inbox"}
+_HB_TASK_WAKE = {"source": "interval", "intent": "task", "reason": "heartbeat-task:job-inbox"}
+# (scratch state, extra run options); the task inputs follow the tag's "runs a routeless interval
+# wake that carries scheduled tasks" test and cron's timer-execution wake shape.
 HEARTBEAT_RUN_SCENARIOS = [
-    {"file": "tasks-context"},
-    {"file": "tasks-context-crlf", "taskState": {"inbox": _HB_NOW_MS - 60_000}},
-    {"file": "unindented-tasks", "taskState": {"inbox": _HB_NOW_MS - 60_000, "stale": 1}},
-    {
-        "file": "unindented-tasks",
-        "taskState": {"inbox": _HB_NOW_MS - 60_000, "calendar": _HB_NOW_MS - 1},
-    },
-    {"file": "tasks-context", "useResponseTool": True},
-    {"file": "empty"},
-    {"file": "legacy-comment-only"},
-    {"file": "fenced-empty"},
-    {"file": "actionable"},
-    {"file": "fenced-actionable"},
-    {"file": "actionable", "useResponseTool": True},
-    {"file": "actionable", "prompt": "Check the handoff queue."},
-    {"file": "actionable", "prompt": "Read heartbeat.md and check the handoff queue."},
-    {"file": "actionable", "prompt": "Check the handoff queue.", "useResponseTool": True},
-    {"file": "directive-only", "prompt": "Check the server logs"},
-    {"file": None},
-    {"file": "read-error"},
-    {"file": "empty", "source": "hook", "intent": "immediate", "reason": "wake"},
-    {"file": "actionable", "source": "hook", "intent": "immediate", "reason": "wake"},
-    {"file": "constructor-task"},
-    {"file": "constructor-task", "taskState": {}},
+    ("actionable", {}),
+    ("empty", {}),
+    ("fenced-empty", {}),
+    ("fenced-actionable", {}),
+    (None, {}),
+    ("no-monitor", {}),
+    ("unset", {}),
+    ("present-empty", {}),
+    ("tasks-context", {}),
+    ("tasks-context-crlf", {}),
+    ("unindented-tasks", {}),
+    ("actionable", {"useResponseTool": True}),
+    ("actionable", {"prompt": "Check the handoff queue."}),
+    ("actionable", {"prompt": "Check the handoff queue.", "useResponseTool": True}),
+    ("directive-only", {"prompt": "Check the server logs"}),
+    ("empty", {"source": "hook", "intent": "immediate", "reason": "wake"}),
+    ("actionable", {"source": "hook", "intent": "immediate", "reason": "wake"}),
+    ("actionable", {"source": "cron", "intent": "immediate", "reason": "cron:job-1"}),
+    ("actionable", {"source": "exec-event", "intent": "event", "reason": "exec-event"}),
+    ("actionable", {**_HB_TASK_WAKE, "tasks": [_HB_INBOX_TASK]}),
+    ("empty", {**_HB_TASK_WAKE, "tasks": [_HB_INBOX_TASK]}),
+    ("no-monitor", {**_HB_TASK_WAKE, "tasks": [_HB_INBOX_TASK]}),
+    (
+        None,
+        {
+            **_HB_TASK_WAKE,
+            "tasks": [
+                {"jobId": "job-b", "name": "calendar", "prompt": "Check calendar changes"},
+                {"jobId": "job-a", "name": "inbox", "prompt": "Check urgent inbox items"},
+            ],
+        },
+    ),
+    ("actionable", {**_HB_TASK_WAKE, "tasks": [_HB_INBOX_TASK], "useResponseTool": True}),
 ]
 
 
-def _write_heartbeat_workspace(root: Path, file_state: str | None) -> None:
-    root.mkdir(parents=True)
-    if file_state == "read-error":
-        (root / "HEARTBEAT.md").mkdir()
-    elif file_state is not None:
-        (root / "HEARTBEAT.md").write_bytes(HEARTBEAT_FILE_STATES[file_state].encode("utf-8"))
+def _heartbeat_tasks(case: dict) -> list:
+    return [
+        heartbeat_module.HeartbeatScheduledTask(
+            job_id=task["jobId"], name=task["name"], prompt=task["prompt"]
+        )
+        for task in case.get("tasks", [])
+    ]
 
 
-def test_real_openclaw_oracle_heartbeat_run_prompt_matches_python(tmp_path: Path):
-    cases = []
-    for index, scenario in enumerate(HEARTBEAT_RUN_SCENARIOS):
-        workspace = tmp_path / f"ws-{index}"
-        _write_heartbeat_workspace(workspace, scenario["file"])
-        case = {key: value for key, value in scenario.items() if key != "file"}
-        cases.append({**case, "workspaceDir": str(workspace), "nowMs": _HB_NOW_MS})
+def _heartbeat_cases() -> list[dict]:
+    return [
+        {**options, "scratch": _scratch_spec(state), "nowMs": _HB_NOW_MS}
+        for state, options in HEARTBEAT_RUN_SCENARIOS
+    ]
 
-    # The tag's heartbeat prompt path boots the cron store per case: about 26 s on 2026-09-27,
-    # past the default 20 s, which let the xfail pass on a timeout instead of the value diff.
+
+def test_real_openclaw_oracle_heartbeat_run_prompt_matches_python():
+    from memory_core.memory_flush import format_current_time_line
+
+    cases = _heartbeat_cases()
+    # The tag's heartbeat path boots the cron store per case: about 26 s for 21 cases on
+    # 2026-09-27, past the default 20 s.
     oracle = _oracle()
-    oracle.timeout_seconds = 120.0
+    oracle.timeout_seconds = 180.0
     result = oracle.run({"operation": "heartbeatRunPrompt", "cases": cases})
 
     assert result["ok"] is True, result
     assert len(result["result"]) == len(cases)
     for case, observed in zip(cases, result["result"], strict=True):
         turn = heartbeat_module.prepare_heartbeat_turn(
-            case["workspaceDir"],
             now_ms=case["nowMs"],
-            task_state=case.get("taskState"),
+            scratch=_python_scratch(case["scratch"]),
+            scheduled_tasks=_heartbeat_tasks(case),
             prompt=case.get("prompt"),
             use_response_tool=case.get("useResponseTool", False),
-            bypass_file_gates=case.get("reason") == "wake",
+            source=case.get("source"),
+            reason=case.get("reason"),
         )
         if turn.skip_reason is not None:
             assert observed["status"] == "skipped", (case, observed)
             assert observed["reason"] == turn.skip_reason, case
             assert observed["body"] is None
-            assert observed["taskState"] == case.get("taskState"), case
             continue
         assert observed["status"] == "ran", (case, observed)
         assert observed["isHeartbeat"] is True
-        assert observed["body"] == f"{turn.prompt}\n{observed['timeLine']}", case
-        assert observed["taskState"] == turn.next_task_state(case.get("taskState")), case
+        # The Body passes the inbound-context newline normalization (CRLF, CR -> LF).
+        normalize = heartbeat_module.normalize_inbound_text_newlines
+        assert observed["body"] == normalize(f"{turn.prompt}\n{observed['timeLine']}"), case
+        assert "HEARTBEAT.md" not in observed["body"]
+        # Python formats the Current time line in 24-hour form (upstream "auto" follows the
+        # host OS setting); the Reference UTC line is the same.
+        assert turn.message == normalize(
+            f"{turn.prompt}\n{format_current_time_line(case['nowMs'])}"
+        )
+        assert turn.message.split("\n")[-1] == observed["timeLine"].split("\n")[-1]
 
 
-HEARTBEAT_SYSTEM_SECTION_CASES = [
-    {"trigger": "heartbeat"},
-    {"trigger": "heartbeat", "prompt": "Check the handoff queue."},
-    {"trigger": "user"},
-    {},
-    {"trigger": "cron"},
-    {"trigger": "heartbeat", "runKind": "commitment-only"},
-    {"trigger": "heartbeat", "runKind": "heartbeat"},
-    {"trigger": "heartbeat", "every": "0m"},
-    {"trigger": "heartbeat", "every": "oops"},
-    {"trigger": "heartbeat", "every": ""},
-    {"trigger": "heartbeat", "every": "5"},
-    {"trigger": "heartbeat", "includeSystemPromptSection": False},
-    {"trigger": "heartbeat", "includeSystemPromptSection": True},
-    {"trigger": "heartbeat", "promptMode": "minimal"},
-    {"trigger": "heartbeat", "promptMode": "none"},
-    {"trigger": "user", "sectionPrompt": "   "},
-    {"trigger": "user", "sectionPrompt": "Check the handoff queue."},
+def test_real_openclaw_oracle_heartbeat_preflight_matches_python():
+    cases = _heartbeat_cases()
+    oracle = _oracle()
+    oracle.timeout_seconds = 120.0
+    result = oracle.run({"operation": "heartbeatPreflight", "cases": cases})
+
+    assert result["ok"] is True, result
+    for case, observed in zip(cases, result["result"], strict=True):
+        tasks = _heartbeat_tasks(case)
+        preflight = heartbeat_module.resolve_heartbeat_preflight(
+            _python_scratch(case["scratch"]),
+            scheduled_tasks=tasks,
+            source=case.get("source"),
+            reason=case.get("reason"),
+        )
+        is_exec, is_cron, is_wake = heartbeat_module.resolve_heartbeat_wake_flags(
+            case.get("source"), case.get("reason")
+        )
+        use_tool = case.get("useResponseTool", False)
+        assert observed == {
+            "skipReason": preflight.skip_reason,
+            "heartbeatScratchContent": preflight.scratch_content,
+            "scratchRevision": preflight.scratch_revision,
+            "isExecEventWake": is_exec,
+            "isCronWake": is_cron,
+            "isWakePayload": is_wake,
+            "prompt": None
+            if preflight.skip_reason
+            else heartbeat_module.build_heartbeat_run_prompt(
+                scheduled_tasks=tasks,
+                scratch_content=preflight.scratch_content,
+                prompt=case.get("prompt"),
+                use_response_tool=use_tool,
+            ),
+            "usesHeartbeatResponseTool": None if preflight.skip_reason else use_tool,
+        }, case
+
+
+# src/auto-reply/tokens.test.ts (isSilentReplyText, isSilentReplyPayloadText),
+# heartbeat-runner.tool-response.test.ts (notify=false fallbacks) and the strip cases above;
+# responsePrefix is a memory-core probe of stripLeadingHeartbeatResponsePrefix.
+HEARTBEAT_REPLY_CASES = [
+    {"text": None},
+    {"text": ""},
+    {"text": "   "},
+    {"text": "NO_REPLY"},
+    {"text": "  NO_REPLY  "},
+    {"text": "\nNO_REPLY\n"},
+    {"text": "no_reply"},
+    {"text": "  No_RePlY  "},
+    {"text": "NO_REPLY\n\nNO_REPLY"},
+    {"text": "  no_reply \t No_RePlY  "},
+    {"text": "Here is a helpful response.\n\nNO_REPLY"},
+    {"text": "NO_REPLY but here is more content"},
+    {"text": "Please NO_REPLY to this"},
+    *(
+        {"text": text}
+        for text in (
+            ".NO_REPLY",
+            "*NO_REPLY",
+            "...NO_REPLY",
+            "NO_REPLY.",
+            "NO_REPLY*",
+            "NO_REPLY...",
+            "*NO_REPLY*",
+            '"NO_REPLY"',
+            ".NO_REPLY.",
+            " .NO_REPLY ",
+            " NO_REPLY. ",
+            " *NO_REPLY* ",
+            "«NO_REPLY»",
+            "\U00010100NO_REPLY\U00010101",
+            "\U00010100No_RePlY NO_REPLY\U00010101",
+            "the sentinel is NO_REPLY, fyi",
+            "\U0001f4acNO_REPLY",
+            "NO_REPLY\U0001f44d",
+            "NO_REPLY\ud800",
+            "NO_REPLY\udc00",
+            '{"action": "NO_REPLY"}',
+            '{"action": " NO_REPLY ", "extra": 1}',
+            '[ "NO_REPLY" ]',
+            '"  NO_REPLY  "',
+            "think\nCav is talking about a follow-up conversation.\nI will stay quiet here.NO_REPLY",
+            "think\ninternal reasoning\nNO_REPLY",
+            "<think>internal reasoning</think>\nNO_REPLY",
+            "<think>internal reasoning</think>\nI will stay quiet here.NO_REPLY",
+            "<think>I will stay quiet here.NO_REPLY",
+            "<mm:think>internal reasoning</mm:think>\nNO_REPLY",
+            "<mm:think>internal reasoning\nNO_REPLY",
+            "think\nHere is the actual answer.\nI will stay quiet here.NO_REPLY",
+            "think\nCav is talking about a follow-up conversation.\nNO_REPLY",
+            "analysis\nMeeting moved to 3 pm.\nNO_REPLY",
+            "think\nThe user is asking whether the outage is resolved. Tell them the service is "
+            "back up and they should retry.\nNO_REPLY",
+            "<think>internal reasoning</think>\nHere is the answer.\nNO_REPLY",
+            "think\nHere is the actual answer.\nNO_REPLY",
+            "<think>internal reasoning</think>\nYou should not reply to that email.\nNO_REPLY",
+            "<think>internal notes\nHere is the actual answer.\nNO_REPLY",
+            "<think>internal reasoning</think>\nHere is the answer: I will stay quiet in the "
+            "meeting, but you should still send the agenda.NO_REPLY",
+            "No interruption needed.\n\nnotify=false",
+            "No interruption needed.\n\nnotify=false\n",
+            "No interruption needed.\n\nnotify=false\r\n",
+            "notify=false\r\n",
+            "The literal notify=false flag is documented.",
+            "[assistant turn failed before producing content]",
+            "[assistant turn failed before producing content] [assistant turn failed before "
+            "producing content]",
+        )
+    ),
+    *({"text": case["text"]} for case in HEARTBEAT_STRIP_CASES if case["text"]),
+    {"text": "Ops: HEARTBEAT_OK", "responsePrefix": "Ops:"},
+    {"text": "ops disk full", "responsePrefix": "Ops"},
+    {"text": "Opsdisk full", "responsePrefix": "Ops"},
+    {"text": "Ops: NO_REPLY", "responsePrefix": " Ops: "},
 ]
 
 
-@retired_upstream("heartbeatSystemSection")
-def test_real_openclaw_oracle_heartbeat_system_section_matches_python():
-    result = _oracle().run(
-        {"operation": "heartbeatSystemSection", "cases": HEARTBEAT_SYSTEM_SECTION_CASES}
-    )
+def test_real_openclaw_oracle_heartbeat_reply_decision_matches_python():
+    result = _oracle().run({"operation": "heartbeatReplyDecision", "cases": HEARTBEAT_REPLY_CASES})
 
     assert result["ok"] is True, result
-    for case, observed in zip(HEARTBEAT_SYSTEM_SECTION_CASES, result["result"], strict=True):
-        resolved = heartbeat_module.resolve_heartbeat_prompt_for_system_prompt(
-            trigger=case.get("trigger"),
-            run_kind=case.get("runKind"),
-            every=case.get("every"),
-            include_system_prompt_section=case.get("includeSystemPromptSection"),
-            prompt=case.get("prompt"),
-        )
-        assert observed["heartbeatPrompt"] == resolved, case
-        lines = heartbeat_module.build_heartbeat_section_lines(
-            case["sectionPrompt"] if "sectionPrompt" in case else resolved,
-            is_minimal=case.get("promptMode") in ("minimal", "none"),
-        )
-        expected = "\n".join(line for line in lines if line) + "\n" if lines else None
-        assert observed["section"] == expected, case
+    for case, observed in zip(HEARTBEAT_REPLY_CASES, result["result"], strict=True):
+        text = case["text"]
+        assert observed == {
+            "decision": heartbeat_module.decide_heartbeat_reply(
+                text, response_prefix=case.get("responsePrefix")
+            ).to_json(),
+            "silentReply": heartbeat_module.is_silent_reply_payload_text(text),
+            "acknowledgement": heartbeat_module.is_heartbeat_acknowledgement_text(text),
+        }, case
 
 
 # Rows from heartbeat-filter.test.ts, extensions/memory-core/src/dreaming-phases.test.ts
@@ -5996,6 +6103,72 @@ HEARTBEAT_USER_MESSAGE_CASES = [
             "content": (
                 f"{heartbeat_module.MESSAGE_TOOL_DELIVERY_HINTS[3]} {_HB_COMPAT_TRANSCRIPT}"
             ),
+        }
+    },
+    # v2026.9.6 shapes: scratch-framed prompts, NO_REPLY and heartbeat_respond task completions,
+    # the other internal-wake transcript rows, and thinking blocks (no text of their own).
+    {
+        "message": {
+            "role": "user",
+            "content": heartbeat_module.build_heartbeat_run_prompt(scratch_content="- Check logs"),
+        },
+        "heartbeatPrompt": heartbeat_module.HEARTBEAT_PROMPT,
+    },
+    {
+        "message": {
+            "role": "user",
+            "content": heartbeat_module.build_heartbeat_run_prompt(
+                scheduled_tasks=[
+                    heartbeat_module.HeartbeatScheduledTask("job-1", "email-check", "Check email")
+                ]
+            ),
+        }
+    },
+    {
+        "message": {
+            "role": "user",
+            "content": heartbeat_module.build_heartbeat_run_prompt(
+                scheduled_tasks=[
+                    heartbeat_module.HeartbeatScheduledTask("job-1", "email-check", "Check email")
+                ],
+                use_response_tool=True,
+            ),
+        }
+    },
+    {
+        "message": {
+            "role": "user",
+            "content": "Run the following periodic tasks (only those due based on their "
+            "intervals):\n\n- inbox: Check\n\nAfter completing all due tasks, use heartbeat_respond "
+            "to report the outcome.",
+        }
+    },
+    {"message": {"role": "user", "content": "Run the following periodic tasks (only those due "
+                 "based on their intervals):\n\n- inbox: Check"}},
+    {"message": {"role": "user", "content": "[OpenClaw exec completion]"}},
+    {"message": {"role": "user", "content": "[OpenClaw cron wake]"}},
+    {"message": {"role": "user", "content": "[OpenClaw session event]"}},
+    {
+        "message": {
+            "role": "user",
+            "content": "[OpenClaw exec completion]\nDisable automatic completion turns with "
+            "tools.exec.notifyOnExit=false; check per-agent overrides. Background exec and process "
+            "poll remain available.",
+        }
+    },
+    {
+        "message": {
+            "role": "user",
+            "content": f"{heartbeat_module.MESSAGE_TOOL_DELIVERY_HINTS[1]}\n\n[OpenClaw cron wake]",
+        }
+    },
+    {
+        "message": {
+            "role": "user",
+            "content": [
+                {"type": "thinking", "thinking": "private"},
+                {"type": "text", "text": "[OpenClaw heartbeat poll]"},
+            ],
         }
     },
 ]
@@ -6303,6 +6476,375 @@ def test_real_openclaw_oracle_automation_job_schedule_matches_python():
         )
         for case in HEARTBEAT_TASK_KEY_CASES
     ]
+
+
+# --- HEARTBEAT.md and tasks: migrations (memory_core.heartbeat_migration) --------------------------
+
+from memory_core.heartbeat_migration import (  # noqa: E402
+    MIGRATE_HEARTBEAT_MD_COMMAND,
+    MIGRATE_HEARTBEAT_TASKS_COMMAND,
+    analyze_legacy_heartbeat_tasks,
+    heartbeat_md_migration_findings,
+    heartbeat_migration_archive_dir,
+    heartbeat_task_migration_findings,
+    migrate_heartbeat_md,
+    migrate_heartbeat_tasks,
+)
+
+_TASK_OPERATIONS_SCRATCH = """# Operations
+
+tasks:
+  - name: inbox
+    interval: 1h
+    prompt: Check urgent inbox items
+  - name: calendar
+    interval: 2h
+    prompt: Check the next meetings
+
+# Keep alerts concise
+"""
+# The scratch texts of doctor-heartbeat-task-migration.test.ts at v2026.9.6 plus the pin's
+# parseHeartbeatTasks inputs (HEARTBEAT_TASK_FILES) and memory-core probes (quotes, a zero
+# interval, an unparsable interval).
+LEGACY_TASK_TEXTS = [
+    _TASK_OPERATIONS_SCRATCH,
+    "tasks:\n  - name: inbox\n    interval: 1h\n    prompt: First\n  - name: inbox\n    interval: 1h\n"
+    "    prompt: Second\n",
+    "tasks:\n  - name: inbox\n    interval: 1h\n    prompt: First inbox pass\n  - name: calendar\n"
+    "    interval: 2h\n    prompt: Calendar pass\n  - name: inbox\n    interval: 1h\n"
+    "    prompt: Second inbox pass\n",
+    "# Operations\ntasks:\n  interval: 15m\n  prompt: Orphaned work must not disappear\n"
+    "  - name: inbox\n    interval: 1h\n    prompt: Check urgent inbox items\n# Keep alerts concise\n",
+    "Notes <!--\ntasks:\n  - name: disabled\n    interval: 5m\n    prompt: This must remain disabled\n"
+    "-->\n# Keep this scratch\n",
+    "tasks:\n  - name: active\n    interval: 1h\n    prompt: Run the active check <!--\ntasks:\n"
+    "  - name: disabled\n    interval: 5m\n    prompt: This must remain disabled\n-->\n"
+    "# Keep this scratch\n",
+    "# Operations\r\ntasks:\r\n  - name: inbox\r\n    interval: 1h\r\n    prompt: Check urgent inbox "
+    "items\r\n  Keep this indented note exactly.  \r\n# Keep alerts concise\r\n",
+    "# Operations\ntasks:\n  - name: inbox\n    interval: 1h\n    prompt: Check urgent inbox items\n"
+    "tasks:\n  - name: calendar\n    interval: 2h\n    prompt: Check the next meetings\n"
+    "# Keep alerts concise\n",
+    "# Concurrent replacement\ntasks:\n  - name: follow-up\n    interval: 3h\n"
+    "    prompt: Run the concurrent follow-up\n# Keep concurrent prose\n",
+    *HEARTBEAT_TASK_FILES,
+    "tasks:\n  - name: zero\n    interval: 0m\n    prompt: Never\n",
+    "tasks:\n  - name: 'quoted'\n    interval: \"5\"\n    prompt: 'Keep \"inner\" quotes'\n",
+    "tasks:\n  - name: bad\n    interval: soon\n    prompt: Check\n",
+    "tasks:\r  - name: cr\r    interval: 1h\r    prompt: Old Mac line endings\r",
+]
+
+
+def test_real_openclaw_oracle_legacy_heartbeat_tasks_match_python():
+    result = _oracle().run({"operation": "legacyHeartbeatTasks", "texts": LEGACY_TASK_TEXTS})
+
+    assert result["ok"] is True, result
+    assert result["result"] == [
+        analyze_legacy_heartbeat_tasks(text).to_json() for text in LEGACY_TASK_TEXTS
+    ]
+
+
+_HB_LEGACY_ACTIONABLE = "# Operations\n\ntasks:\n  - name: inbox\n    interval: 1h\n    prompt: Check inbox\n"
+_ARCHIVE_DIR_RE = re.compile(r"^(main-[0-9a-f]{64}\.md)\.[A-Za-z0-9_]+/$")
+# (initial files, steps, options). Scenarios follow doctor-heartbeat-scratch-migration.test.ts
+# at v2026.9.6 ("previews ... migrates, archives, and reruns idempotently", "leaves a legacy file
+# when operator scratch has different content", the disabled shared owner) plus memory-core probes
+# of the read gates (symlinks, hard link, directory, invalid UTF-8, BOM, oversized, stale claim),
+# the explicit unset and an archive collision.
+HEARTBEAT_SCRATCH_MIGRATION_SCENARIOS = [
+    pytest.param(
+        {"HEARTBEAT.md": _HB_LEGACY_ACTIONABLE},
+        ["findings", "migrate", "migrate", "findings"],
+        {},
+        id="migrate-archive-rerun",
+    ),
+    pytest.param(
+        {"HEARTBEAT.md": "legacy file\n"},
+        [
+            "migrate",
+            {"op": "scratch", "content": "operator scratch\n"},
+            {"op": "write", "path": "HEARTBEAT.md", "content": "recreated legacy file\n"},
+            "migrate",
+        ],
+        {},
+        id="operator-scratch-wins",
+    ),
+    pytest.param(
+        {"HEARTBEAT.md": "legacy file\n"},
+        ["migrate", {"op": "write", "path": "HEARTBEAT.md", "content": "legacy file\n"}, "migrate"],
+        {},
+        id="recreated-same-content",
+    ),
+    pytest.param(
+        {"HEARTBEAT.md": "legacy file\n"},
+        [{"op": "scratch", "content": "x"}, {"op": "scratch", "content": None}, "migrate"],
+        {},
+        id="explicit-unset-kept",
+    ),
+    pytest.param(
+        {"HEARTBEAT.md": "legacy file\n"},
+        [{"op": "scratch", "content": "legacy file\n"}, "migrate"],
+        {},
+        id="same-content-scratch",
+    ),
+    pytest.param({"HEARTBEAT.md": "shared checklist\n"}, ["migrate"], {"retainSource": True}, id="disabled-owner-retains"),
+    pytest.param({"HEARTBEAT.md": ""}, ["migrate"], {}, id="empty-file"),
+    pytest.param({"HEARTBEAT.md": "﻿- BOM checklist\n"}, ["migrate"], {}, id="bom"),
+    pytest.param({"HEARTBEAT.md": b"\xff\xfe bad"}, ["findings", "migrate"], {}, id="invalid-utf8"),
+    pytest.param({"HEARTBEAT.md": "a" * (CRON_JOB_SCRATCH_MAX_BYTES + 1)}, ["migrate"], {}, id="too-large"),
+    pytest.param({"HEARTBEAT.md": ("link", "notes/hb.md"), "notes/hb.md": "- linked\n"}, ["migrate"], {}, id="contained-symlink"),
+    pytest.param({"HEARTBEAT.md": ("link", "../outside.md")}, ["findings", "migrate"], {}, id="escaping-symlink"),
+    pytest.param({"HEARTBEAT.md": ("hardlink", "copy.md"), "copy.md": "- twin\n"}, ["migrate"], {}, id="hard-link"),
+    pytest.param({"HEARTBEAT.md": ("dir",)}, ["findings", "migrate"], {}, id="directory"),
+    pytest.param({"HEARTBEAT.md.doctor-importing-1-0123456789ab": "- claimed\n"}, ["findings", "migrate"], {}, id="stale-claim-recovered"),
+    pytest.param(
+        {"HEARTBEAT.md": "- current\n", "HEARTBEAT.md.doctor-importing-1-0123456789ab": "- claimed\n"},
+        ["migrate"],
+        {},
+        id="orphan-claim-blocks",
+    ),
+    pytest.param({}, ["findings", "migrate"], {}, id="no-file"),
+]
+
+
+def _write_heartbeat_fixture(root: Path, files: dict) -> None:
+    root.mkdir(parents=True)
+    (root.parent / "outside.md").write_text("- outside\n", encoding="utf-8")
+    for name, content in files.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(content, bytes):
+            path.write_bytes(content)
+        elif isinstance(content, tuple) and content[0] == "dir":
+            path.mkdir()
+        elif isinstance(content, tuple) and content[0] == "link":
+            path.symlink_to(content[1])
+        elif isinstance(content, tuple):
+            continue
+        else:
+            path.write_bytes(content.encode("utf-8"))
+    for name, content in files.items():
+        if isinstance(content, tuple) and content[0] == "hardlink":
+            os.link(root / content[1], root / name)
+
+
+def _normalize_migration_step(step, root: Path):
+    step = _replace_root(step, root)
+    if isinstance(step, dict) and "archives" in step:
+        scratch = step["scratch"].get("scratch")
+        if scratch is not None:
+            scratch["updatedAtMs"] = "<ms>"
+        step["archives"] = {
+            _ARCHIVE_DIR_RE.sub(r"\1.<random>/", name): value
+            for name, value in step["archives"].items()
+        }
+    if isinstance(step, list):  # findings
+        for finding in step:
+            finding["fixHint"] = finding["fixHint"].replace(
+                "openclaw doctor --fix", MIGRATE_HEARTBEAT_MD_COMMAND
+            )
+            finding["message"] = finding["message"].replace(
+                "openclaw doctor --fix", MIGRATE_HEARTBEAT_MD_COMMAND
+            )
+    return step
+
+
+def _python_heartbeat_archives(root: Path) -> dict:
+    archive_dir = heartbeat_migration_archive_dir(root)
+    out: dict = {}
+    if not archive_dir.is_dir():
+        return out
+    for entry in archive_dir.iterdir():
+        if entry.is_dir():
+            out[f"{entry.name}/"] = {
+                inner.name: inner.read_text(encoding="utf-8") for inner in entry.iterdir()
+            }
+        else:
+            out[entry.name] = entry.read_text(encoding="utf-8")
+    return out
+
+
+@pytest.mark.parametrize(("files", "steps", "options"), HEARTBEAT_SCRATCH_MIGRATION_SCENARIOS)
+def test_real_openclaw_oracle_heartbeat_scratch_migration_matches_python(
+    tmp_path: Path, files, steps, options
+):
+    ts_root = tmp_path / "ts" / "workspace"
+    py_root = tmp_path / "py" / "workspace"
+    _write_heartbeat_fixture(ts_root, files)
+    _write_heartbeat_fixture(py_root, files)
+    step_payloads = [{"op": step} if isinstance(step, str) else step for step in steps]
+
+    result = _oracle().run(
+        {
+            "operation": "heartbeatScratchMigration",
+            "workspaceDir": str(ts_root),
+            "steps": step_payloads,
+            "scenarios": [options],
+        }
+    )
+
+    assert result["ok"] is True, result
+    store = FileAutomationStore(py_root)
+    python_steps = []
+    for step in step_payloads:
+        if step["op"] == "write":
+            (py_root / step["path"]).write_text(step["content"], encoding="utf-8")
+            python_steps.append(None)
+        elif step["op"] == "scratch":
+            current = store.read_scratch("main")
+            python_steps.append(
+                store.write_scratch(
+                    "main", step.get("content"), expected_revision=current.current_revision
+                ).to_json()
+            )
+        elif step["op"] == "findings":
+            python_steps.append(
+                [finding.to_json() for finding in heartbeat_md_migration_findings(py_root)]
+            )
+        else:
+            run = migrate_heartbeat_md(
+                py_root, store, retain_source=bool(options.get("retainSource"))
+            )
+            python_steps.append(
+                {
+                    "result": {"changes": list(run.changes), "warnings": list(run.warnings)},
+                    "scratch": store.read_scratch("main").to_json(),
+                    "tree": _python_tree_snapshot(py_root),
+                    "archives": _python_heartbeat_archives(py_root),
+                }
+            )
+    for step, ts_step, py_step in zip(step_payloads, result["result"], python_steps, strict=True):
+        if step["op"] == "scratch":
+            for side in (ts_step, py_step):
+                if side.get("scratch"):
+                    side["scratch"]["updatedAtMs"] = "<ms>"
+        assert _normalize_migration_step(ts_step, ts_root) == _normalize_migration_step(
+            py_step, py_root
+        ), step
+
+
+_TASK_NOW_MS = 2_000_000_000_000
+_EXISTING_INBOX_JOB = {
+    # doctor-heartbeat-task-migration.test.ts createExistingInboxJob
+    "declarationKey": heartbeat_task_declaration_key("main", "inbox"),
+    "displayName": "Previous inbox task",
+    "name": "inbox",
+    "description": "Existing operator-owned state",
+    "agentId": "main",
+    "enabled": True,
+    "schedule": {"kind": "every", "everyMs": 5 * 60 * 60_000, "anchorMs": _TASK_NOW_MS - 60_000},
+    "payload": {"kind": "systemEvent", "text": "Previous inbox prompt"},
+    "sessionTarget": "main",
+    "wakeMode": "next-heartbeat",
+    "state": {"lastRunAtMs": _TASK_NOW_MS - 10_000},
+}
+_COLLIDING_JOB = {**_EXISTING_INBOX_JOB, "name": "renamed"}
+# (scratch, legacy heartbeatTaskState, existing jobs, run offsets). From
+# doctor-heartbeat-task-migration.test.ts: the two-task fixture with inbox's legacy timestamp
+# (30 min ago), reruns, duplicates, the mixed block, orphan fields, hidden and shared-line
+# comments, CRLF prose, consecutive blocks and the converged existing inbox job; plus memory-core
+# probes of a colliding declaration and invalid intervals.
+HEARTBEAT_TASK_MIGRATION_SCENARIOS = [
+    pytest.param(
+        _TASK_OPERATIONS_SCRATCH, {"inbox": _TASK_NOW_MS - 30 * 60_000}, [], [0, 10_000],
+        id="migrate-then-rerun",
+    ),
+    *(
+        pytest.param(text, None, [], [0, 10_000], id=f"text-{index}")
+        for index, text in enumerate(LEGACY_TASK_TEXTS[1:9], start=1)
+    ),
+    pytest.param(
+        _TASK_OPERATIONS_SCRATCH, {"inbox": _TASK_NOW_MS - 30 * 60_000, "stale": 5},
+        [_EXISTING_INBOX_JOB], [0], id="converges-existing-job",
+    ),
+    pytest.param(_TASK_OPERATIONS_SCRATCH, None, [_COLLIDING_JOB], [0], id="colliding-declaration"),
+    pytest.param(LEGACY_TASK_TEXTS[-4], None, [], [0], id="zero-interval"),
+    pytest.param(LEGACY_TASK_TEXTS[-2], None, [], [0], id="bad-interval"),
+    pytest.param("- no tasks here\n", None, [], [0], id="no-block"),
+]
+
+
+def _python_job_view(job: AutomationJob) -> dict:
+    view = job.to_json()
+    view.pop("id")
+    return view
+
+
+@pytest.mark.parametrize(("scratch", "task_state", "existing", "offsets"), HEARTBEAT_TASK_MIGRATION_SCENARIOS)
+def test_real_openclaw_oracle_heartbeat_task_migration_matches_python(
+    tmp_path: Path, scratch, task_state, existing, offsets
+):
+    result = _oracle().run(
+        {
+            "operation": "heartbeatTaskMigration",
+            "scenarios": [
+                {
+                    "scratch": scratch,
+                    "taskState": task_state,
+                    "existingJobs": existing,
+                    "runOffsetsMs": offsets,
+                    "nowMs": _TASK_NOW_MS,
+                }
+            ],
+        }
+    )
+
+    assert result["ok"] is True, result
+    store = FileAutomationStore(tmp_path)
+    store.write_scratch("main", scratch, expected_revision=0, now_ms=_TASK_NOW_MS)
+    for index, item in enumerate(existing):
+        store.save_jobs(
+            [
+                AutomationJob.from_json(
+                    {
+                        **item,
+                        "id": f"existing-{index}",
+                        "createdAtMs": _TASK_NOW_MS - 60_000,
+                        "updatedAtMs": _TASK_NOW_MS - 60_000,
+                        "state": {
+                            **item["state"],
+                            "nextRunAtMs": compute_job_next_run_at_ms(
+                                AutomationJob.from_json({**item, "id": "x", "createdAtMs": _TASK_NOW_MS - 60_000}),
+                                _TASK_NOW_MS - 60_000,
+                            ),
+                        },
+                    }
+                )
+            ]
+        )
+    legacy = dict(task_state) if task_state else None
+    storage = result["result"]["storePath"]
+    for offset, observed in zip(offsets, result["result"]["runs"], strict=True):
+        findings = [
+            {**finding.to_json(), "path": storage}
+            for finding in heartbeat_task_migration_findings(store)
+        ]
+        run = migrate_heartbeat_tasks(
+            store, legacy_task_state=legacy, now_ms=_TASK_NOW_MS + offset
+        )
+        if run.task_state_changed:
+            legacy = run.task_state
+        for finding in observed["findings"]:
+            finding["fixHint"] = finding["fixHint"].replace(
+                "openclaw doctor --fix", MIGRATE_HEARTBEAT_TASKS_COMMAND
+            )
+        assert observed["findings"] == findings
+        assert observed["result"] == {"changes": list(run.changes), "warnings": list(run.warnings)}
+        for job in observed["jobs"]:
+            if job.get("description"):
+                job["description"] = job["description"].replace(
+                    "openclaw doctor", MIGRATE_HEARTBEAT_TASKS_COMMAND
+                )
+        assert observed["jobs"] == sorted(
+            (_python_job_view(job) for job in store.list_jobs() if is_heartbeat_task_job(job)),
+            key=lambda view: view["declarationKey"],
+        )
+        python_scratch = store.read_scratch("main").to_json()
+        for side in (observed["scratch"], python_scratch):
+            if side.get("scratch"):
+                side["scratch"]["updatedAtMs"] = "<ms>"
+        assert observed["scratch"] == python_scratch
+        assert observed["taskState"] == legacy
 
 
 # --- memory budget compaction (extensions/memory-core/src/memory-budget.ts) --------------

@@ -30,7 +30,8 @@ function instruction(step) {
   if (step.act === 'press') return [verb('scn.verb.press'), h('span', { class: 'ss-msg' }, t(step.label)), h('span', { class: 'spacer' }), btn(t('scn.show'), { size: 'xs', kind: 'ghost', ic: 'eye', onClick: () => doStepAction(step) })];
   if (step.act === 'look') return [verb('scn.verb.look'), h('span', { class: 'ss-msg' }, t(step.label)), h('span', { class: 'spacer' }), btn(t('scn.show'), { size: 'xs', kind: 'ghost', ic: 'eye', onClick: () => doStepAction(step), testid: 'scenario-look' }), btn(t('scn.check'), { size: 'xs', onClick: () => evaluate(), busy: !!s?.evaluating })];
   if (step.act === 'edit') return [verb('scn.verb.edit'), h('span', { class: 'ss-msg' }, t(step.label)), h('span', { class: 'spacer' }), btn(t('scn.apply'), { size: 'xs', kind: 'primary', ic: 'pencil', onClick: () => doStepAction(step), title: t('scn.applyEditTip'), testid: 'scenario-edit' })];
-  if (step.act === 'strip') return [verb('scn.verb.look'), h('span', { class: 'ss-msg' }, t(step.label)), h('span', { class: 'spacer' }), btn(t('scn.apply'), { size: 'xs', kind: 'primary', onClick: () => doStepAction(step) })];
+  if (step.act === 'reply') return [verb('scn.verb.look'), h('span', { class: 'ss-msg' }, t(step.label)), h('span', { class: 'spacer' }), btn(t('scn.apply'), { size: 'xs', kind: 'primary', onClick: () => doStepAction(step) })];
+  if (step.act === 'scratch') return [verb('scn.verb.edit'), h('span', { class: 'ss-msg' }, t(step.label)), h('span', { class: 'spacer' }), btn(t('scn.apply'), { size: 'xs', kind: 'primary', ic: 'pencil', onClick: () => doStepAction(step), testid: 'scenario-scratch' })];
   return [verb('scn.verb.setting'), h('span', { class: 'ss-msg' }, t(step.label)), h('span', { class: 'spacer' }), btn(t('scn.apply'), { size: 'xs', kind: 'primary', ic: 'sliders', onClick: () => doStepAction(step), testid: 'scenario-apply' })];
 }
 export function scenarioStrip() {

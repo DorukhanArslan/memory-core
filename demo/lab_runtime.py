@@ -248,7 +248,6 @@ class LabSettings:
     context_injection: str = "always"
     context_window_tokens: int | None = None
     heartbeat_every: str = "30m"
-    heartbeat_ack_max_chars: int = 300
     heartbeat_light_context: bool = False
     flags: dict[str, bool] = field(
         default_factory=lambda: {name: spec[0] for name, spec in LAB_FLAGS.items()}
@@ -319,7 +318,6 @@ class LabRuntime:
         self._next_turn_id = 1
         self.curated_writes: list[dict[str, Any]] = []
         self._next_write_id = 1
-        self.heartbeat_task_state: dict[str, float] | None = None
         self.heartbeat_runs: list[dict[str, Any]] = []
         self._next_heartbeat_run_id = 1
         self.clock_offset_ms = 0
@@ -346,7 +344,8 @@ class LabRuntime:
         return now_ms()
 
     def heartbeat_now_ms(self) -> int:
-        """Virtual heartbeat clock (demo-only): shifts heartbeat due checks only."""
+        """Virtual heartbeat clock (demo-only): shifts automation due checks, job runs and
+        migrated anchors only."""
         return now_ms() + self.clock_offset_ms
 
     def today(self) -> str:
@@ -602,7 +601,6 @@ class LabRuntime:
         self.turns.clear()
         self.turn_order.clear()
         self.curated_writes.clear()
-        self.heartbeat_task_state = None
         self.heartbeat_runs.clear()
         self.consolidation_results.clear()
         self._index_revisions.clear()

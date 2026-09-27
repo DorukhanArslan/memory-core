@@ -173,7 +173,7 @@ export const flagTip = (id, f) => [id, f?.label].filter(Boolean).join(' · ');
 /* ---------- "Nasıl çalışır?" (DESIGN §10 D6): short, collapsed per-view explanations ----------
  * Wording comes from docs/lab.md and docs/*.md only (the removed /memory-system page is not a
  * source for numbers); the source line names the doc. Open state is kept per view for the session. */
-const HOW = { chat: 7, heartbeat: 4, consolidation: 5, live: 4, parity: 4, memory: 4 };
+const HOW = { chat: 7, heartbeat: 5, consolidation: 5, live: 4, parity: 4, memory: 4 };
 export function howItWorks(id) {
   const n = HOW[id] || 0;
   const key = id === 'parity' ? 'parity.how' : `how.${id}`; // the parity surface keeps its own ids

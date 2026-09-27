@@ -50,7 +50,7 @@ export async function startScenario(id, { queue = null } = {}) {
   }
   const begin = async () => {
     const startMark = await mark();
-    store.ui.scenario = { id, def, step: -1, startedAt: Date.now(), startMark, startWm: watermarks(), stepResults: def.steps.map(() => null), captured: [], manual: {}, queue, collapsed: false, finished: null, saved: {}, savedKeys: null, strip: {}, savedUi: { promptKind: store.ui.promptKind, promptMode: store.ui.promptMode, compare: store.ui.compare } };
+    store.ui.scenario = { id, def, step: -1, startedAt: Date.now(), startMark, startWm: watermarks(), stepResults: def.steps.map(() => null), captured: [], manual: {}, queue, collapsed: false, finished: null, saved: {}, savedKeys: null, reply: {}, savedUi: { promptKind: store.ui.promptKind, promptMode: store.ui.promptMode, compare: store.ui.compare } };
     pushLocal('senaryo.started', `${id} ${t('scn.started')}`, { id });
     await beginStep(0);
   };
@@ -177,13 +177,24 @@ export async function doStepAction(step, { send = false } = {}) {
     else await a.applyEdit(step.path, { content: step.content ?? null, from: step.from ?? null, to: step.to ?? null, append: step.append ?? null });
     return;
   }
-  if (step.act === 'strip') {
+  if (step.act === 'reply') {
     a.setView('heartbeat');
     for (const input of step.inputs) {
-      try { s.strip[input] = await api.post('/api/lab/heartbeat/strip', { text: input, ackMaxChars: store.data.heartbeat?.ackMaxChars }); } catch (err) { s.strip[input] = null; s.stripErr = err; }
+      try { s.reply[input] = await api.post('/api/lab/heartbeat/reply', { text: input }); } catch (err) { s.reply[input] = null; s.replyErr = err; }
     }
     if (step.target) setTimeout(() => pulse(step.target), 120);
     evaluate();
+    return;
+  }
+  if (step.act === 'scratch') {
+    // The monitor scratch replaced HEARTBEAT.md (v2026.9.6): written by compare-and-swap.
+    a.setView('heartbeat');
+    try {
+      const current = store.data.heartbeat?.scratch?.currentRevision ?? 0;
+      await api.put('/api/lab/heartbeat/scratch', { content: step.content ?? null, expectedRevision: current });
+    } catch (err) { toast(err.message, { tone: 'warn' }); }
+    await loadHeartbeat();
+    if (step.then) setTimeout(() => pulse(step.then), 250);
     return;
   }
   if (step.act === 'revert') {
@@ -229,7 +240,7 @@ async function gather(s, step) {
   const wm = s.wm;
   if (needs.has('snap') || needs.has('turn')) await loadState();
   const chipEl = document.querySelector('[data-testid="chip-model"]');
-  const ctx = { ...(await baseCtx()), captured: s.captured, prompts: {}, fileText: {}, strip: s.strip, modelChip: chipEl ? { grey: !!chipEl.querySelector('.dot-grey'), label: chipEl.textContent } : null };
+  const ctx = { ...(await baseCtx()), captured: s.captured, prompts: {}, fileText: {}, reply: s.reply, modelChip: chipEl ? { grey: !!chipEl.querySelector('.dot-grey'), label: chipEl.textContent } : null };
   ctx.events = d.events.filter((e) => typeof e.id === 'number' ? e.id > wm.eventId : (!e.local && (e.ts ?? 0) >= wm.ts));
   ctx.scenarioEvents = d.events.filter((e) => typeof e.id === 'number' ? e.id > s.startWm.eventId : (!e.local && (e.ts ?? 0) >= s.startWm.ts));
   // server diff since the step mark (always: it also becomes the step's captured reference)

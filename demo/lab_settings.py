@@ -78,7 +78,6 @@ def settings_payload(lab: LabRuntime) -> dict[str, Any]:
         "heartbeat": {
             "every": settings.heartbeat_every,
             "everyMs": resolve_heartbeat_interval_ms(settings.heartbeat_every),
-            "ackMaxChars": settings.heartbeat_ack_max_chars,
             "lightContext": settings.heartbeat_light_context,
         },
         "flags": {
@@ -192,11 +191,12 @@ def update_settings(lab: LabRuntime, payload: dict[str, Any]) -> dict[str, Any]:
         settings.heartbeat_every = every.strip()
         changed.append("heartbeat.every")
     if "ackMaxChars" in heartbeat:
-        value = heartbeat["ackMaxChars"]
-        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            raise LabError(400, "heartbeat.ackMaxChars must be a non-negative integer", code="invalid_setting")
-        settings.heartbeat_ack_max_chars = value
-        changed.append("heartbeat.ackMaxChars")
+        # v2026.9.6 retired heartbeat.ackMaxChars (the ack limit is DEFAULT_HEARTBEAT_ACK_MAX_CHARS).
+        raise LabError(
+            400,
+            "heartbeat.ackMaxChars is retired at v2026.9.6; the acknowledgement limit is fixed at 300",
+            code="retired_setting",
+        )
     if "lightContext" in heartbeat:
         if not isinstance(heartbeat["lightContext"], bool):
             raise LabError(400, "heartbeat.lightContext must be a boolean", code="invalid_setting")

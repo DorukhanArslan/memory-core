@@ -288,13 +288,18 @@ def test_settings_offer_no_per_turn_flush(lab_client: TestClient) -> None:
 
 
 def test_contract_heartbeat_fields(lab_client: TestClient) -> None:
-    # views/heartbeat.js reads the unparsed count, its label and the keyless preflight.
+    # views/heartbeat.js reads the monitor scratch, the automation jobs, the legacy HEARTBEAT.md
+    # findings and the keyless preflight (v2026.9.6 shape; no HEARTBEAT.md tasks: parsing).
     hb = lab_client.get("/api/lab/heartbeat").json()
-    for field in ("unparsedTaskEntries", "preflight", "labels", "file", "tasks", "runs"):
+    for field in ("scratch", "jobs", "legacyFile", "migrationFindings", "preflight", "labels", "runs", "ackLimit", "store"):
         assert field in hb, field
-    assert {"skipReason", "dueTasks"} <= set(hb["preflight"])
+    assert {"skipReason", "dueTasks", "prompt", "message", "scratchShown"} <= set(hb["preflight"])
+    assert {"status", "currentRevision", "content", "bytes", "maxBytes"} <= set(hb["scratch"])
     source = (LAB_ROOT / "views" / "heartbeat.js").read_text(encoding="utf-8")
-    assert "unparsedTaskEntries" in source and "unparsedCount" not in source
+    for used in ("hb.scratch", "migrationFindings", "legacyFile", "hb.jobs", "/api/lab/heartbeat/scratch", "/api/lab/heartbeat/migrate", "/api/lab/heartbeat/reply"):
+        assert used in source, used
+    for retired in ("unparsedTaskEntries", "systemSection", "/heartbeat/strip", "ackMaxChars"):
+        assert retired not in source, retired
     assert "memoryTools" not in source
     assert "disabled: noKey" not in source
 

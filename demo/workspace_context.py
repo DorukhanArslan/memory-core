@@ -27,8 +27,9 @@ DEMO_WORKSPACE_LAYOUT = DEFAULT_WORKSPACE_LAYOUT
 # and is seeded empty, so it is not injected until someone writes to it. v2026.9.6 retired
 # TOOLS.md and HEARTBEAT.md: the Lab's former TOOLS.md bullets are the AGENTS.md
 # "## Tools" section (upstream's home for local tool notes, 669db2968fc #113966), and no
-# HEARTBEAT.md is seeded (the heartbeat view reads one if a user writes it; the
-# monitor-scratch port is pending).
+# HEARTBEAT.md is seeded: heartbeat instructions are the monitor scratch (3e2b3ea4d5e,
+# #112967), which starts empty; a HEARTBEAT.md a user writes gets the Heartbeat view's
+# migration action (memory_core.heartbeat_migration).
 DEMO_WORKSPACE_TEMPLATES = {
     "AGENTS.md": """# AGENTS.md - Operating Instructions
 

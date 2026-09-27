@@ -63,16 +63,25 @@ from memory_core.embeddings import (
     OpenAICompatibleEmbeddingProvider,
 )
 from memory_core.flags import FeatureFlags
+from memory_core.automation import (
+    AutomationJob,
+    FileAutomationStore,
+    due_automation_jobs,
+    heartbeat_scheduled_tasks,
+    record_automation_job_run,
+)
 from memory_core.heartbeat import (
     HEARTBEAT_PROMPT,
     HEARTBEAT_TOKEN,
+    HeartbeatReplyDecision,
+    HeartbeatScheduledTask,
     HeartbeatTurn,
-    build_heartbeat_section_lines,
+    decide_heartbeat_reply,
     prepare_heartbeat_turn,
     resolve_heartbeat_interval_ms,
-    resolve_heartbeat_prompt_for_system_prompt,
     strip_heartbeat_token,
 )
+from memory_core.heartbeat_scratch import HeartbeatScratchState, HeartbeatScratchStore
 from memory_core.live import (
     IdentityLoadError,
     JsonlTraceSink,
@@ -243,11 +252,19 @@ __all__ = [
     "FeatureFlags",
     "HEARTBEAT_PROMPT",
     "HEARTBEAT_TOKEN",
+    "AutomationJob",
+    "FileAutomationStore",
+    "HeartbeatReplyDecision",
+    "HeartbeatScheduledTask",
+    "HeartbeatScratchState",
+    "HeartbeatScratchStore",
     "HeartbeatTurn",
-    "build_heartbeat_section_lines",
+    "decide_heartbeat_reply",
+    "due_automation_jobs",
+    "heartbeat_scheduled_tasks",
     "prepare_heartbeat_turn",
+    "record_automation_job_run",
     "resolve_heartbeat_interval_ms",
-    "resolve_heartbeat_prompt_for_system_prompt",
     "strip_heartbeat_token",
     "LangGraphMemoryRecall",
     "OpenAICompatibleEmbeddingProvider",

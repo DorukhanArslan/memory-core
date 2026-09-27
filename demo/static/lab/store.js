@@ -72,8 +72,11 @@ export const store = {
     search: { query: '', mode: 'text', corpus: 'all', maxResults: 5, minScore: 0, result: null, error: null, running: false },
     hbSelected: null,
     hbCompare: [],
-    hbStripInput: '',
-    hbStripResult: null,
+    hbReplyInput: '',
+    hbReplyResult: null,
+    hbScratchDraft: null,
+    hbScratchError: null,
+    hbMigration: null,
     consolidationPane: 'scored',
     liveSession: 'demo_session',
     liveSubject: 'demo_subject',
@@ -314,7 +317,7 @@ export function ingestEvent(ev) {
   if (type === 'index.reindexed' || type.startsWith('search.')) later('index', loadIndex, 150);
   if (type === 'settings.changed' || type === 'provider.check') later('settings', loadSettings, 100);
   if (type === 'bootstrap.completed' || type === 'bootstrap.seeded' || type === 'workspace.reset' || type === 'session.new') { later('state', loadState, 150); later('files', loadFiles, 150); }
-  if (type.startsWith('heartbeat.') || type === 'clock.changed') { if (d.heartbeat || store.ui.view === 'heartbeat') later('hb', loadHeartbeat, 200); }
+  if (type.startsWith('heartbeat.') || type.startsWith('automation.') || type === 'clock.changed') { if (d.heartbeat || store.ui.view === 'heartbeat') later('hb', loadHeartbeat, 200); }
   if (/^(promotion|dreaming|audit|repair|curation)\./.test(type)) { if (d.consolidation || store.ui.view === 'consolidation') later('cons', loadConsolidation, 200); }
   pending.push(ev);
   later('emit', () => { const evs = pending; pending = []; emit(evs); }, 30);

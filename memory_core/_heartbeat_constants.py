@@ -10,6 +10,7 @@ src/cron/scratch-contract.ts,
 src/infra/heartbeat-runner-prompt.ts,
 src/infra/heartbeat-wake.ts,
 src/cron/system-owned-declaration.ts,
+src/cron/heartbeat-monitor.ts,
 packages/ai/src/replay-turn-classification.ts,
 src/commands/doctor-heartbeat-task-migration.ts,
 src/commands/doctor-heartbeat-scratch-migration.ts.
@@ -59,6 +60,7 @@ HEARTBEAT_SCRATCH_PROMPT = '{prompt}\n\nHeartbeat monitor scratch:\n{directives}
 HEARTBEAT_TASK_LINE = '- {name}: {prompt}'
 HEARTBEAT_TASKS_PROMPT = 'Run the following periodic tasks (only those due based on their intervals):\n\n{task_list}\n\n{completion}'
 HEARTBEAT_FILTER_TASK_REPLY_COMPLETION = 'After completing all due tasks, reply {token}.'
+HEARTBEAT_MONITOR_DISPLAY_NAME = 'Heartbeat ({agent_id})'
 HEARTBEAT_TASK_MIGRATION_FIX_HINT = 'Run {command} to convert heartbeat tasks into automations.'
 HEARTBEAT_TASK_INTERVAL_ERROR = 'task {name_json} interval must be greater than zero'
 HEARTBEAT_TASK_FINDING_UNREADABLE = 'Agent "{agent_id}" heartbeat scratch cannot be inspected: {error}'

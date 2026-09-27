@@ -47,9 +47,9 @@ IDENTITY_FILE_NAMES = frozenset(DEFAULT_WORKSPACE_LAYOUT.load_order)
 NON_INJECTED_WORKSPACE_FILES = frozenset({"BOOT.md", "DREAMS.md", "dreams.md"})
 # Workspace files v2026.9.6 retired but still finds in older workspaces: TOOLS.md waits for
 # memory_core.bootstrap.migrate_tools_md (669db2968fc, #113966; LiveIdentity.migration_findings
-# reports it), HEARTBEAT.md for the monitor-scratch port (3e2b3ea4d5e, #112967;
-# memory_core.heartbeat still reads it). Neither is injected; the strict unknown-file policy
-# accepts them.
+# reports it), HEARTBEAT.md for memory_core.heartbeat_migration.migrate_heartbeat_md (its text
+# moves into the heartbeat monitor scratch, 3e2b3ea4d5e #112967; its tasks: become automation
+# jobs, b23c7bd0f84 #113165). Neither is injected; the strict unknown-file policy accepts them.
 RETIRED_WORKSPACE_FILES = frozenset({"TOOLS.md", "HEARTBEAT.md"})
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 # Upstream SAFE_SESSION_ID_RE (src/config/sessions/paths.ts:63 at 4c42815348): a leading

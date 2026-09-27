@@ -1,25 +1,31 @@
-"""Offline tests for memory_core.heartbeat.
+"""Offline tests for memory_core.heartbeat (v2026.9.6 shape: monitor scratch, NO_REPLY).
 
-Expected values come from upstream tests at pin 4c42815348
-(src/auto-reply/heartbeat.test.ts, src/cli/cli-utils.test.ts,
-src/infra/heartbeat-runner.returns-default-unset.test.ts); the oracle suite
-compares the same inputs against the real TypeScript functions.
+Expected values come from upstream tests at pin 4c42815348 (src/auto-reply/heartbeat.test.ts,
+src/cli/cli-utils.test.ts) and at v2026.9.6 (src/auto-reply/tokens.test.ts,
+src/infra/heartbeat-runner.returns-default-unset.test.ts,
+src/infra/heartbeat-runner.tool-response.test.ts); the oracle suite compares the same inputs
+against the real TypeScript functions.
 """
 
 import pytest
 
 from memory_core import heartbeat
+from memory_core.heartbeat_scratch import HeartbeatScratch, HeartbeatScratchState
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY, MEMORY_CORE_RUNTIME_IDENTITY
 
 
 def test_heartbeat_constants_are_upstream_verbatim():
     assert heartbeat.HEARTBEAT_TOKEN == "HEARTBEAT_OK"
+    assert heartbeat.SILENT_REPLY_TOKEN == "NO_REPLY"
     assert heartbeat.HEARTBEAT_PROMPT == (
-        "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or "
-        "repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK."
+        "Follow the heartbeat monitor scratch context when provided. Recurring tasks are "
+        "automations; create or change their schedules with the automations tool, not heartbeat "
+        "scratch. Do not infer or repeat old tasks from prior chats. If nothing needs attention, "
+        "reply NO_REPLY."
     )
     assert heartbeat.HEARTBEAT_RESPONSE_TOOL_PROMPT.endswith(
-        heartbeat.HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS
+        f"{heartbeat.HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS} "
+        f"{heartbeat.HEARTBEAT_RESPONSE_TOOL_FALLBACK_INSTRUCTIONS}"
     )
     assert heartbeat.DEFAULT_HEARTBEAT_EVERY == "30m"
     assert heartbeat.DEFAULT_HEARTBEAT_ACK_MAX_CHARS == 300
@@ -31,6 +37,8 @@ def test_heartbeat_transcript_prompt_brand_follows_runtime_identity():
     assert OPENCLAW_COMPAT_RUNTIME_IDENTITY.heartbeat_transcript_prompt == (
         "[OpenClaw heartbeat poll]"
     )
+    assert MEMORY_CORE_RUNTIME_IDENTITY.internal_wake_transcript_prompts == ("[memory-core heartbeat poll]",)
+    assert "[OpenClaw cron wake]" in OPENCLAW_COMPAT_RUNTIME_IDENTITY.internal_wake_transcript_prompts
 
 
 @pytest.mark.parametrize(
@@ -67,32 +75,6 @@ def test_is_heartbeat_content_effectively_empty_uses_javascript_whitespace():
     # U+001C is Python whitespace but not JavaScript whitespace.
     assert heartbeat.is_heartbeat_content_effectively_empty(" ﻿") is True
     assert heartbeat.is_heartbeat_content_effectively_empty("\u001c") is False
-
-
-def test_parse_heartbeat_tasks_does_not_bleed_top_level_fields():
-    content = (
-        "tasks:\n  - name: email-check\n    interval: 30m\n    prompt: Check for urgent emails\n"
-        "interval: should-not-bleed\n"
-    )
-    assert heartbeat.parse_heartbeat_tasks(content) == [
-        heartbeat.HeartbeatTask("email-check", "30m", "Check for urgent emails")
-    ]
-
-
-def test_parse_heartbeat_tasks_ignores_commented_blocks_and_incomplete_entries():
-    assert heartbeat.parse_heartbeat_tasks(
-        "<!--\ntasks:\n  - name: inbox\n    interval: 30m\n    prompt: Check inbox\n-->\n"
-    ) == []
-    assert heartbeat.parse_heartbeat_tasks(
-        "tasks:\n  - name: inbox\n    prompt: Check inbox\n"
-    ) == []
-
-
-def test_parse_heartbeat_tasks_strips_one_pair_of_edge_quotes():
-    content = 'tasks:\n  - name: "email-check"\n    interval: \'30m\'\n    prompt: "Check"\n'
-    assert heartbeat.parse_heartbeat_tasks(content) == [
-        heartbeat.HeartbeatTask("email-check", "30m", "Check")
-    ]
 
 
 @pytest.mark.parametrize(
@@ -154,14 +136,6 @@ def test_resolve_heartbeat_interval_ms(every, expected):
     assert heartbeat.resolve_heartbeat_interval_ms(every) == expected
 
 
-def test_is_task_due():
-    assert heartbeat.is_task_due(None, "30m", 0) is True
-    assert heartbeat.is_task_due(0, "5m", 300_000) is True
-    assert heartbeat.is_task_due(1, "5m", 300_000) is False
-    assert heartbeat.is_task_due(0, "5", 300_000) is True
-    assert heartbeat.is_task_due(0, "oops", 10**12) is False
-
-
 def test_resolve_heartbeat_prompts():
     assert heartbeat.resolve_heartbeat_prompt(None) == heartbeat.HEARTBEAT_PROMPT
     assert heartbeat.resolve_heartbeat_prompt("  Check the queue.  ") == "Check the queue."
@@ -175,6 +149,8 @@ def test_resolve_heartbeat_prompts():
     assert custom == (
         "Check the deployment queue and only interrupt the user for blockers.\n\n"
         + heartbeat.HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS
+        + "\n\n"
+        + heartbeat.HEARTBEAT_RESPONSE_TOOL_FALLBACK_INSTRUCTIONS
     )
     assert heartbeat.resolve_heartbeat_prompt_for_response_tool(custom) == custom
 
@@ -244,208 +220,158 @@ def test_strip_heartbeat_token_message_mode_edges_and_wrappers():
     assert _strip("Alert: disk full", mode="heartbeat") == (False, "Alert: disk full", False)
 
 
-TASKS_CONTEXT_FILE = """# Keep this header
-
-Remember escalation policy.
-
-tasks:
-  - name: inbox
-    interval: 5m
-    prompt: Check urgent inbox items
-
-  - name: calendar
-    interval: 5m
-    prompt: Check calendar changes
-
-Some global directive after tasks.
-
-- Keep this top-level directive too.
-"""
-NOW_MS = 1_790_416_800_000
+NOW_MS = 1_790_416_800_000  # 2026-09-26T10:00:00Z
+ACTIONABLE = "# Heartbeat scratch\n\n- Check server logs\n- Review pending PRs\n"
 
 
-def _workspace(tmp_path, content):
-    tmp_path.mkdir(parents=True, exist_ok=True)
-    if content is not None:
-        (tmp_path / "HEARTBEAT.md").write_text(content, encoding="utf-8")
-    return tmp_path
+def _state(content):
+    return HeartbeatScratchState(1, HeartbeatScratch(content, 1, 0))
 
 
-def test_prepare_heartbeat_turn_lists_due_tasks_and_keeps_other_directives(tmp_path):
-    workspace = _workspace(tmp_path, TASKS_CONTEXT_FILE)
-
-    turn = heartbeat.prepare_heartbeat_turn(
-        workspace, now_ms=NOW_MS, task_state={"inbox": NOW_MS - 60_000}
-    )
-
+def test_turn_follows_actionable_scratch_and_never_mentions_heartbeat_md():
+    turn = heartbeat.prepare_heartbeat_turn(now_ms=NOW_MS, scratch=_state(ACTIONABLE))
     assert turn.skip_reason is None
-    assert [task.name for task in turn.due_tasks] == ["calendar"]
+    assert turn.prompt == (
+        f"{heartbeat.HEARTBEAT_PROMPT}\n\nHeartbeat monitor scratch:\n"
+        "# Heartbeat scratch\n\n- Check server logs\n- Review pending PRs"
+    )
+    assert turn.message == (
+        f"{turn.prompt}\nCurrent time: Saturday, September 26th, 2026 - 10:00 (UTC)\n"
+        "Reference UTC: 2026-09-26 10:00 UTC"
+    )
+    assert "HEARTBEAT.md" not in turn.message
+    assert turn.scratch_revision == 1
+
+
+@pytest.mark.parametrize("content", ["# Heartbeat scratch\n\n## Tasks\n\n", "", "<!-- quiet -->"])
+def test_effectively_empty_scratch_skips_without_a_prompt(content):
+    turn = heartbeat.prepare_heartbeat_turn(now_ms=NOW_MS, scratch=_state(content))
+    assert (turn.skip_reason, turn.prompt, turn.message) == ("empty-heartbeat-file", None, None)
+
+
+@pytest.mark.parametrize("scratch", [None, HeartbeatScratchState(), HeartbeatScratchState(2)])
+def test_missing_or_unset_scratch_runs_the_generic_prompt(scratch):
+    turn = heartbeat.prepare_heartbeat_turn(now_ms=NOW_MS, scratch=scratch)
+    assert turn.skip_reason is None and turn.prompt == heartbeat.HEARTBEAT_PROMPT
+
+
+def test_due_tasks_run_even_with_empty_scratch_and_are_sorted_by_job_id():
+    tasks = [
+        heartbeat.HeartbeatScheduledTask("job-b", "calendar", "Check calendar changes"),
+        heartbeat.HeartbeatScheduledTask("job-a", "inbox", "Check urgent inbox items"),
+    ]
+    turn = heartbeat.prepare_heartbeat_turn(
+        now_ms=NOW_MS, scratch=_state("# Heartbeat scratch\n"), scheduled_tasks=tasks
+    )
     assert turn.prompt == (
         "Run the following periodic tasks (only those due based on their intervals):\n\n"
-        "- calendar: Check calendar changes\n\n"
-        "After completing all due tasks, reply HEARTBEAT_OK.\n\n"
-        "Additional context from HEARTBEAT.md:\n"
-        "# Keep this header\n\nRemember escalation policy.\n\n"
-        "Some global directive after tasks.\n\n- Keep this top-level directive too."
+        "- inbox: Check urgent inbox items\n- calendar: Check calendar changes\n\n"
+        "After completing all due tasks, reply NO_REPLY.\n\n"
+        "Heartbeat monitor scratch:\n# Heartbeat scratch"
     )
-    assert turn.next_task_state({"inbox": NOW_MS - 60_000, "stale": 1}) == {
-        "inbox": NOW_MS - 60_000,
-        "stale": 1,
-        "calendar": NOW_MS,
-    }
-
-
-def test_prepare_heartbeat_turn_skips_when_no_task_is_due(tmp_path):
-    workspace = _workspace(tmp_path, TASKS_CONTEXT_FILE)
-    state = {"inbox": NOW_MS - 1, "calendar": NOW_MS - 1}
-
-    turn = heartbeat.prepare_heartbeat_turn(workspace, now_ms=NOW_MS, task_state=state)
-
-    assert turn.skip_reason == heartbeat.HEARTBEAT_SKIP_NO_TASKS_DUE == "no-tasks-due"
-    assert turn.prompt is None
-    assert turn.next_task_state(state) == state
+    tool = heartbeat.build_heartbeat_run_prompt(scheduled_tasks=tasks[:1], use_response_tool=True)
+    assert tool.endswith(
+        f"After completing all due tasks:\n{heartbeat.HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS}"
+    )
 
 
 @pytest.mark.parametrize(
-    "content",
+    ("source", "reason"),
+    [("hook", "wake"), (None, "wake"), ("cron", "cron:job-1"), ("background-task", None)],
+)
+def test_wake_payloads_and_cron_wakes_bypass_the_scratch(source, reason):
+    turn = heartbeat.prepare_heartbeat_turn(
+        now_ms=NOW_MS, scratch=_state("# Heartbeat scratch\n"), source=source, reason=reason
+    )
+    assert turn.skip_reason is None
+    assert turn.prompt == heartbeat.HEARTBEAT_PROMPT and turn.scratch_content is None
+
+
+def test_exec_wake_without_pending_events_is_skipped():
+    turn = heartbeat.prepare_heartbeat_turn(
+        now_ms=NOW_MS, scratch=_state(ACTIONABLE), source="exec-event"
+    )
+    assert turn.skip_reason == "no-pending-event"
+
+
+def test_scratch_already_in_a_custom_prompt_is_not_repeated():
+    assert heartbeat.build_heartbeat_run_prompt(
+        scratch_content="Check the server logs", prompt="Check the server logs"
+    ) == "Check the server logs"
+
+
+def test_message_normalizes_carriage_returns_like_the_inbound_context():
+    turn = heartbeat.prepare_heartbeat_turn(now_ms=NOW_MS, scratch=_state("a\r\nb\rc"))
+    assert "\r" not in turn.message and "a\nb\nc" in turn.message
+    assert "a\r\nb" in turn.prompt
+
+
+@pytest.mark.parametrize(
+    "text",
     [
-        "# HEARTBEAT.md\n\n## Tasks\n\n",
-        "# Keep this file empty (or with only comments) to skip heartbeat API calls.\n",
+        "NO_REPLY",
+        "  no_reply \t No_RePlY  ",
+        "*NO_REPLY*",
+        "\u00abNO_REPLY\u00bb",
+        '{"action": "NO_REPLY"}',
+        '"NO_REPLY"',
+        "<think>internal reasoning</think>\nI will stay quiet here.NO_REPLY",
+        "think\ninternal reasoning\nNO_REPLY",
     ],
 )
-def test_prepare_heartbeat_turn_skips_effectively_empty_file(tmp_path, content):
-    turn = heartbeat.prepare_heartbeat_turn(_workspace(tmp_path, content), now_ms=NOW_MS)
-
-    assert turn.skip_reason == heartbeat.HEARTBEAT_SKIP_EMPTY_FILE == "empty-heartbeat-file"
-    assert turn.prompt is None
-
-
-def test_prepare_heartbeat_turn_base_prompt_gets_path_hint_and_directives(tmp_path):
-    workspace = _workspace(tmp_path, "# HEARTBEAT.md\n\n- Check server logs\n")
-
-    turn = heartbeat.prepare_heartbeat_turn(workspace, now_ms=NOW_MS)
-
-    assert turn.prompt == (
-        f"{heartbeat.HEARTBEAT_PROMPT}\n"
-        f"When reading HEARTBEAT.md, use workspace file {workspace}/HEARTBEAT.md (exact case). "
-        "Do not read docs/heartbeat.md.\n\n"
-        "Additional context from HEARTBEAT.md:\n# HEARTBEAT.md\n\n- Check server logs"
-    )
-    assert turn.next_task_state(None) is None
+def test_silent_replies_are_recognised(text):
+    assert heartbeat.is_silent_reply_payload_text(text)
+    assert heartbeat.decide_heartbeat_reply(text).to_json() == {
+        "kind": "ack",
+        "eventStatus": "ok-token",
+        "silent": False,
+    }
 
 
-def test_prepare_heartbeat_turn_runs_without_a_readable_file(tmp_path):
-    missing = heartbeat.prepare_heartbeat_turn(_workspace(tmp_path / "a", None), now_ms=NOW_MS)
-    directory = _workspace(tmp_path / "b", None)
-    (directory / "HEARTBEAT.md").mkdir()
-    unreadable = heartbeat.prepare_heartbeat_turn(directory, now_ms=NOW_MS)
-
-    for turn in (missing, unreadable):
-        assert turn.skip_reason is None
-        assert turn.prompt.startswith(f"{heartbeat.HEARTBEAT_PROMPT}\nWhen reading HEARTBEAT.md")
-        assert "Additional context" not in turn.prompt
-
-
-def test_prepare_heartbeat_turn_bypass_ignores_the_file(tmp_path):
-    workspace = _workspace(tmp_path, "# HEARTBEAT.md\n\n## Tasks\n\n")
-
-    turn = heartbeat.prepare_heartbeat_turn(workspace, now_ms=NOW_MS, bypass_file_gates=True)
-
-    assert turn.skip_reason is None
-    assert "Additional context" not in turn.prompt
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Here is a helpful response.\n\nNO_REPLY",
+        "NO_REPLY but here is more content",
+        "\U0001f4acNO_REPLY",
+        "think\nHere is the actual answer.\nNO_REPLY",
+        "<think>internal reasoning</think>\nYou should not reply to that email.\nNO_REPLY",
+    ],
+)
+def test_substantive_replies_are_not_silent(text):
+    assert not heartbeat.is_silent_reply_payload_text(text)
 
 
-def test_prepare_heartbeat_turn_response_tool_wording(tmp_path):
-    workspace = _workspace(tmp_path, TASKS_CONTEXT_FILE)
-
-    turn = heartbeat.prepare_heartbeat_turn(workspace, now_ms=NOW_MS, use_response_tool=True)
-
-    assert turn.uses_response_tool is True
-    assert heartbeat.HEARTBEAT_TASKS_RESPONSE_TOOL_COMPLETION_INSTRUCTION in turn.prompt
-    assert heartbeat.HEARTBEAT_TASKS_COMPLETION_INSTRUCTION not in turn.prompt
-
-
-def test_custom_prompt_gets_hint_only_when_it_mentions_heartbeat_md(tmp_path):
-    workspace = str(tmp_path)
-    assert (
-        heartbeat.build_heartbeat_prompt(workspace_dir=workspace, prompt="Check the handoff queue.")
-        == "Check the handoff queue."
-    )
-    hinted = heartbeat.build_heartbeat_prompt(
-        workspace_dir=workspace, prompt="Read heartbeat.md and check the handoff queue."
-    )
-    assert hinted.endswith(
-        f"use workspace file {workspace}/HEARTBEAT.md (exact case). Do not read docs/heartbeat.md."
-    )
-
-
-def test_path_hint_uses_node_path_join_normalization():
-    hinted = heartbeat.append_heartbeat_workspace_path_hint("heartbeat.md", "//srv/./agent/../w/")
-    assert "use workspace file /srv/w/HEARTBEAT.md (exact case)" in hinted
-    assert heartbeat.append_heartbeat_workspace_path_hint(hinted, "//srv/w") == hinted
-
-
-def test_file_directives_are_not_repeated():
-    assert (
-        heartbeat.append_heartbeat_file_directives("Check the server logs", "Check the server logs")
-        == "Check the server logs"
-    )
-    assert heartbeat.append_heartbeat_file_directives("p", "tasks:\n  - name: a\n") == "p"
-
-
-def test_strip_heartbeat_tasks_block_handles_crlf_and_unindented_entries():
-    content = "# Header\r\ntasks:\r\n- name: inbox\r\n  interval: 5m\r\n\r\n- Keep this.\r\n"
-    assert heartbeat.strip_heartbeat_tasks_block(content) == "# Header\n- Keep this.\n"
-
-
-def test_task_named_like_an_object_prototype_key_is_never_due_once_state_exists():
-    task = heartbeat.HeartbeatTask("constructor", "5m", "Check")
-    assert heartbeat.resolve_due_heartbeat_tasks([task], None, NOW_MS) == [task]
-    assert heartbeat.resolve_due_heartbeat_tasks([task], {}, NOW_MS) == []
-    assert heartbeat.resolve_due_heartbeat_tasks([task], {"constructor": 0}, NOW_MS) == [task]
-
-
-def test_update_heartbeat_task_state_ignores_a_new_proto_key():
-    task = heartbeat.HeartbeatTask("__proto__", "5m", "Check")
-    assert heartbeat.update_heartbeat_task_state(None, [task], [task], NOW_MS) == {}
-
-
-def test_heartbeat_system_section_only_for_heartbeat_triggers():
-    assert heartbeat.resolve_heartbeat_prompt_for_system_prompt(trigger="heartbeat") == (
-        heartbeat.HEARTBEAT_PROMPT
-    )
-    assert heartbeat.resolve_heartbeat_prompt_for_system_prompt(trigger="user") is None
-    assert (
-        heartbeat.resolve_heartbeat_prompt_for_system_prompt(
-            trigger="heartbeat", run_kind="commitment-only"
-        )
-        is None
-    )
-    assert (
-        heartbeat.resolve_heartbeat_prompt_for_system_prompt(trigger="heartbeat", every="0m")
-        is None
-    )
-    assert (
-        heartbeat.resolve_heartbeat_prompt_for_system_prompt(
-            trigger="heartbeat", include_system_prompt_section=False
-        )
-        is None
-    )
-
-
-def test_build_heartbeat_section_lines():
-    assert heartbeat.build_heartbeat_section_lines(heartbeat.HEARTBEAT_PROMPT) == [
-        "## Heartbeats",
-        "If the current user message is a heartbeat poll and nothing needs attention, reply "
-        "exactly:",
-        "HEARTBEAT_OK",
-        'If something needs attention, do NOT include "HEARTBEAT_OK"; reply with the alert text '
-        "instead.",
-        "",
-    ]
-    assert heartbeat.build_heartbeat_section_lines(None) == []
-    assert heartbeat.build_heartbeat_section_lines("   ") == []
-    assert heartbeat.build_heartbeat_section_lines("x", is_minimal=True) == []
+def test_reply_decision_keeps_the_legacy_ack_and_notify_false_rules():
+    decide = heartbeat.decide_heartbeat_reply
+    assert decide(None).to_json() == {"kind": "ack", "eventStatus": "ok-empty", "silent": False}
+    assert decide("HEARTBEAT_OK").deliver is False
+    assert decide("All good. HEARTBEAT_OK").deliver is False
+    long = "A" * (heartbeat.DEFAULT_HEARTBEAT_ACK_MAX_CHARS + 1)
+    assert decide(f"{long} HEARTBEAT_OK").to_json() == {
+        "kind": "delivery",
+        "text": long,
+        "silent": False,
+    }
+    assert decide("Alert: disk full").to_json() == {
+        "kind": "delivery",
+        "text": "Alert: disk full",
+        "silent": False,
+    }
+    assert decide("No interruption needed.\n\nnotify=false").to_json() == {
+        "kind": "delivery",
+        "text": "No interruption needed.",
+        "silent": True,
+    }
+    assert decide("notify=false\r\n").to_json() == {
+        "kind": "ack",
+        "eventStatus": "ok-token",
+        "silent": True,
+    }
+    assert decide("The literal notify=false flag is documented.").deliver is True
+    assert decide("[assistant turn failed before producing content]").deliver is False
+    assert decide("Ops: disk full", response_prefix="Ops:").text == "Ops: disk full"
+    assert decide("Ops: HEARTBEAT_OK", response_prefix="Ops:").deliver is False
 
 
 def test_is_heartbeat_user_message_matches_heartbeat_prompts():
@@ -497,3 +423,21 @@ def test_is_heartbeat_user_message_transcript_row_follows_runtime_identity():
         ],
     }
     assert heartbeat.is_heartbeat_user_message(hinted_row)
+
+
+def test_is_heartbeat_user_message_matches_v2026_9_6_task_prompts_and_wake_rows():
+    task = heartbeat.HeartbeatScheduledTask("job-1", "inbox", "Check inbox")
+    for prompt in (
+        heartbeat.build_heartbeat_run_prompt(scheduled_tasks=[task]),
+        heartbeat.build_heartbeat_run_prompt(scheduled_tasks=[task], use_response_tool=True),
+    ):
+        assert heartbeat.is_heartbeat_user_message({"role": "user", "content": prompt})
+    scratch_prompt = heartbeat.build_heartbeat_run_prompt(scratch_content="- Check logs")
+    assert heartbeat.is_heartbeat_user_message(
+        {"role": "user", "content": scratch_prompt}, heartbeat.HEARTBEAT_PROMPT
+    )
+    cron_row = {"role": "user", "content": "[OpenClaw cron wake]"}
+    assert not heartbeat.is_heartbeat_user_message(cron_row)
+    assert heartbeat.is_heartbeat_user_message(
+        cron_row, runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY
+    )

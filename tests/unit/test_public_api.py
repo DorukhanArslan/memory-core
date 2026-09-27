@@ -210,17 +210,28 @@ def test_public_api_exports_heartbeat_helpers():
     expected = {
         "HEARTBEAT_PROMPT",
         "HEARTBEAT_TOKEN",
+        "AutomationJob",
+        "FileAutomationStore",
+        "HeartbeatReplyDecision",
+        "HeartbeatScheduledTask",
+        "HeartbeatScratchState",
+        "HeartbeatScratchStore",
         "HeartbeatTurn",
-        "build_heartbeat_section_lines",
+        "decide_heartbeat_reply",
+        "due_automation_jobs",
+        "heartbeat_scheduled_tasks",
         "prepare_heartbeat_turn",
+        "record_automation_job_run",
         "resolve_heartbeat_interval_ms",
-        "resolve_heartbeat_prompt_for_system_prompt",
         "strip_heartbeat_token",
     }
 
     assert expected.issubset(set(memory.__all__))
     for name in expected:
         assert hasattr(memory, name)
+    # v2026.9.6 retired the "## Heartbeats" system-prompt section (6a1dedb00c2, #129642).
+    assert "build_heartbeat_section_lines" not in memory.__all__
+    assert "resolve_heartbeat_prompt_for_system_prompt" not in memory.__all__
 
 
 def test_public_api_exports_curation_and_session_memory():

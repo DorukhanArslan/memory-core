@@ -197,7 +197,8 @@ Doruk wants heartbeat and automation kept, in the tag's shape; nothing here is d
 - Tests: 4 (`heartbeatConstants`, `heartbeatPromptConfig`, `heartbeatRunPrompt`,
   `heartbeatSessionFilter`), plus re-ports of the retired `parseHeartbeatTasks`,
   `heartbeatTaskDue` and `heartbeatSystemSection` tests in the new shape.
-- Worklist areas: "heartbeat monitor scratch".
+- Worklist areas: none left; the `heartbeat monitor scratch` entries were removed when the area
+  landed (2026-09-27).
 - New oracle ops: `heartbeatPreflight` and a rewritten `heartbeatRunPrompt` that seed the monitor
   scratch through a `CronService` heartbeat job plus `writeCronJobScratch` (as upstream's
   `seedHeartbeatScratchForTest` does) instead of writing HEARTBEAT.md, with scheduled tasks as

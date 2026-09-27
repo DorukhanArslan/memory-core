@@ -57,8 +57,10 @@ gates).
 ## Areas
 
 Estimates are labelled estimates (2026-09-27, inferred from the measured failure classes and
-source reading, not measured). "Tests" counts worklist entries; names are in
-`tests/integration/oracle_worklist.py` under the area's label.
+source reading, not measured). "Tests" counts worklist tests, and "Worklist areas" names the
+`PendingPort.area` labels of `tests/integration/oracle_worklist.py` (17 labels, 120 tests) that
+each plan area owns; every worklist test belongs to exactly one plan area, and the counts below add
+up to 120.
 
 ### 1. Workspace and bootstrap map, TOOLS.md migration (estimate 14-24 h)
 
@@ -85,6 +87,7 @@ source reading, not measured). "Tests" counts worklist entries; names are in
   instead of `.memory-core/workspace-state.json` for the new layout; the shared-session MEMORY.md
   filter; the new render text.
 - Tests: 19 (`workspaceBootstrapFiles` 4, `workspaceLifecycle` 10, `projectContextRender` 5).
+- Worklist areas: "workspace bootstrap map".
 - New oracle ops: `toolsMdMigration` (`maybeMigrateToolsMd` with `shouldRepair` on a fixture
   workspace and state dir: merged AGENTS.md, archive name, removed source), `toolsMdMergeDecision`
   (`shouldMergeToolsMd`), `workspaceBootstrapPolicy` (`createWorkspaceBootstrapFilePolicy`,
@@ -103,6 +106,7 @@ source reading, not measured). "Tests" counts worklist entries; names are in
   keep the extraction plus set-equality check), `append_bootstrap_prompt_warning` (retire or keep
   as adapter-only).
 - Tests: 11 (`bootstrapContextFiles` 9, warning once-mode 1, keyword/constant source check 1).
+- Worklist areas: "bootstrap budget and truncation".
 - New oracle ops: none; the existing op covers it.
 
 ### 3. Heartbeat and automation (estimate 16-28 h)
@@ -142,6 +146,7 @@ Doruk wants heartbeat and automation kept, in the tag's shape; nothing here is d
 - Tests: 4 (`heartbeatConstants`, `heartbeatPromptConfig`, `heartbeatRunPrompt`,
   `heartbeatSessionFilter`), plus re-ports of the retired `parseHeartbeatTasks`,
   `heartbeatTaskDue` and `heartbeatSystemSection` tests in the new shape.
+- Worklist areas: "heartbeat monitor scratch".
 - New oracle ops: `heartbeatPreflight` and a rewritten `heartbeatRunPrompt` that seed the monitor
   scratch through a `CronService` heartbeat job plus `writeCronJobScratch` (as upstream's
   `seedHeartbeatScratchForTest` does) instead of writing HEARTBEAT.md, with scheduled tasks as
@@ -162,6 +167,7 @@ Doruk wants heartbeat and automation kept, in the tag's shape; nothing here is d
   `memory/YYYY-MM-DD.md`.
 - Python: `memory_core/memory_flush.py` (verbatim hints by extraction), `demo/lab_flush.py`.
 - Tests: 5 (`flushPlan` 2, `memoryFlushGate` 3).
+- Worklist areas: "flush plan", "flush gate".
 - New oracle ops: none; `flushPlan` gains a `contextWindowTokens` payload field, and
   `memoryFlushGate` fixtures switch to the tag's entry fields.
 
@@ -181,6 +187,8 @@ Doruk wants heartbeat and automation kept, in the tag's shape; nothing here is d
 - Python: `memory_core/tools/{memory_get,memory_search,common,citations}.py`,
   `memory_core/memory_paths.py`, `memory_core/index/identity.py`, `memory_core/prompt_section.py`.
 - Tests: 31 (`memoryGet` 26, `memoryToolDefinitions` 1, params/deadline 3, identity 1).
+- Worklist areas: "memory_get contract", "memory tool definitions", "memory_search params,
+  errors and deadline", "memory index identity".
 - New oracle ops: `memoryPromptSection` (`buildMemoryPromptSection`) for the prompt-section row.
 
 ### 6. Hybrid ranking and indexing (estimate 24-40 h)
@@ -195,6 +203,7 @@ Doruk wants heartbeat and automation kept, in the tag's shape; nothing here is d
   `memory_core/config.py`.
 - Tests: 14 `memorySearch` fixtures (corpus, text/vector/hybrid scores, wiki balance, 6 param
   coercion cases, index-model change, session-memory files, invalid UTF-8).
+- Worklist areas: "memory_search ranking and indexing".
 - New oracle ops: `hybridMerge` (`mergeHybridResults`, `selectHybridSearchResults`), `mmrRerank`
   (`applyMMRToHybridResults`), `temporalDecay` (`applyTemporalDecayToHybridResults`),
   `markdownChunks` (`chunkMarkdown`, `splitCuratedMarkdownEntries`), `ftsQuery`
@@ -204,8 +213,10 @@ Doruk wants heartbeat and automation kept, in the tag's shape; nothing here is d
 ### 7. Promotion and dreaming (estimate 30-50 h)
 
 - Upstream: deep dreaming is on by default with `minScore` 0.75 (b2cc5f50420 #115715,
-  28630a9a650 #114819); recall entries carry `provenance`, `userQueryHashes` and `claimHash`,
-  tainted captures are quarantined (20668eed037 #115818), and the unique-query gate counts
+  28630a9a650 #114819), and its integer fields (`limit`, `minRecallCount`, `minUniqueQueries`,
+  `recencyHalfLifeDays`) are parsed with `parseStrictNonNegativeInteger` instead of `Number()`
+  (`src/memory-host-sdk/dreaming.ts:480-490`; 6 of the 7 malformed-value fixtures differ there);
+  recall entries carry `provenance`, `userQueryHashes` and `claimHash`, tainted captures are quarantined (20668eed037 #115818), and the unique-query gate counts
   provenance-qualified query hashes (fe6556b643e #119624); promotion lines carry `signals=`,
   `trigger` and `importance` metadata; `short-term-promotion.ts` was split into
   `short-term-promotion-{record,apply,store,scoring,...}.ts` (a7d2f0bd685 #113223); curated
@@ -214,6 +225,8 @@ Doruk wants heartbeat and automation kept, in the tag's shape; nothing here is d
   deep dreaming adds an LLM consolidation step (`dreaming-consolidation.ts`).
 - Python: `memory_core/consolidation/*`, `memory_core/memory_budget.py`, `memory_core/curation.py`.
 - Tests: 25 (deep policy 8, concept tags 1, recall and promotion 15, budget 1).
+- Worklist areas: "deep dreaming policy", "concept vocabulary", "short-term recall and
+  promotion", "MEMORY.md budget compaction".
 - New oracle ops: `consolidateMemory` through `test-helpers.ts` `consolidateMemoryForTests` with a
   stubbed model (only if decision 3 ports it), `recordGroundedShortTermCandidates`.
 
@@ -225,8 +238,10 @@ Doruk wants heartbeat and automation kept, in the tag's shape; nothing here is d
   (`heartbeat-filter.ts`, 10 commits after the pin). The reset-recall cutoffs seen on main
   (f34c36899cf) are not in the tag.
 - Python: `memory_core/session_corpus.py`, `memory_core/transcript_tree.py`.
-- Tests: 1 (`heartbeatSessionFilter`); the TS-literal sessions fixture already passes with its
-  transcript seeded into SQLite by the runner.
+- Tests: 0. `heartbeatSessionFilter` touches the session corpus but is counted once, under area 3
+  (worklist area "heartbeat monitor scratch"); the TS-literal sessions fixture already passes
+  with its transcript seeded into SQLite by the runner.
+- Worklist areas: none of its own.
 - New oracle ops: `sessionCorpusEntry` (`buildSessionEntry` over SQLite-seeded transcripts),
   `redactSensitiveText` (with the redaction hooks, R13).
 
@@ -240,6 +255,7 @@ Doruk wants heartbeat and automation kept, in the tag's shape; nothing here is d
 - Python: `memory_core/session_memory.py`, `memory_core/bootstrap/startup.py` (reset prompts).
 - Tests: 4 (slug 1, hook 2, reset-prompt source check 1), plus the re-port of the retired
   `sessionMemoryTranscript` test.
+- Worklist areas: "session-memory hook".
 - New oracle ops: `sessionMemoryProjection` (the two exports over event lists); the
   `sessionMemoryHook` op seeds transcripts into SQLite instead of JSONL files.
 
@@ -255,6 +271,7 @@ Doruk wants heartbeat and automation kept, in the tag's shape; nothing here is d
   context_engine_lifecycle,preemptive_compaction,overflow_recovery}.py`,
   `memory_core/bootstrap/startup.py`.
 - Tests: 7 (six helper fixtures and the run-loop mid-turn scenario).
+- Worklist areas: "transcript and replay helpers", "overflow run loop".
 - New oracle ops: none.
 
 ### 11. Matrix, docs and re-measure (estimate 6-10 h)

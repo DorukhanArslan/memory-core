@@ -80,3 +80,16 @@ def test_retired_operations_are_gone_from_the_runner_and_skipped_in_tests():
         assert f'@retired_upstream("{retired.operation}")' in oracle_tests, retired.operation
         assert retired.reason.startswith("retired upstream in "), retired.reason
         assert "(v2026.9.6); re-port in stage 2: " in retired.reason, retired.reason
+
+
+def test_port_plan_assigns_every_worklist_area_to_one_plan_area():
+    # docs/upstream_port_v2026_9_6.md names, per plan area, the worklist labels it owns
+    # ("- Worklist areas: ..."). Each label (PendingPort.area up to its parenthesis) must be owned
+    # by exactly one plan area, so the per-area test counts add up to the worklist.
+    worklist = _worklist()
+    plan = (ROOT / "docs" / "upstream_port_v2026_9_6.md").read_text(encoding="utf-8")
+    owned: list[str] = []
+    for block in re.findall(r"^- Worklist areas: (.*(?:\n  .*)*)", plan, re.MULTILINE):
+        owned.extend(re.findall(r'"([^"]+)"', block.replace("\n  ", " ")))
+    labels = [port.area.split(" (", 1)[0] for port in worklist.PENDING_PORTS]
+    assert sorted(owned) == sorted(labels)

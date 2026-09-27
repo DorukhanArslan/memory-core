@@ -178,8 +178,10 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
         _oracle("memory_index_identity_matches_python"),
     ),
     PendingPort(
-        "deep dreaming policy (enabled by default, minScore 0.75)",
-        "b2cc5f50420 (#115715), 28630a9a650 (#114819)",
+        "deep dreaming policy (enabled by default, minScore 0.75, integer fields limit, "
+        "minRecallCount, minUniqueQueries and recencyHalfLifeDays parsed with "
+        "parseStrictNonNegativeInteger instead of Number() coercion)",
+        "b2cc5f50420 (#115715), 28630a9a650 (#114819); src/memory-host-sdk/dreaming.ts:480-490",
         _oracle(
             "deep_policy",
             "deep_policy_coerces_malformed_values[deep0]",

@@ -37,9 +37,12 @@ def _oracle_operations(value: str) -> list[str]:
 
 def test_match_rows_have_executable_oracle_test_evidence():
     oracle_test_source = ORACLE_TEST_PATH.read_text(encoding="utf-8")
-    match_rows = [row for row in _matrix_rows() if row["status"] == "`match`"]
+    rows = _matrix_rows()
+    # A parse guard, not a quota: since the v2026.9.6 re-pin (2026-09-27) no row is `match`
+    # until stage 2 re-earns the oracle evidence (docs/upstream_port_v2026_9_6.md).
+    assert len(rows) >= 30, "expected the parity matrix rows to parse"
+    match_rows = [row for row in rows if row["status"] == "`match`"]
 
-    assert match_rows, "expected at least one parity match row"
     for row in match_rows:
         operations = _oracle_operations(row["oracle"])
         assert operations, f"{row['area']} is match but has no oracle operation"

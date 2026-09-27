@@ -191,8 +191,9 @@ The `## Heartbeats` section, HEARTBEAT.md reading, file task parsing and the lay
 left `memory_core.heartbeat`; `heartbeat.ackMaxChars` left the Lab settings. The session corpus
 drops silent replies like `sanitizeSessionText`. The Lab heartbeat view became the scratch
 editor, the automation job list on the virtual clock, the doctor migration action, the next
-prompt preview and the reply decision; scenario S09 starts from a scratch `tasks:` block (the
-Lab editor cannot write non-layout files such as HEARTBEAT.md). Left (known gaps in the three
+prompt preview and the reply decision; scenario S09 starts from a legacy HEARTBEAT.md that the
+demo-only `POST /api/lab/heartbeat/legacy-file` puts in place (the Lab editor cannot write
+non-layout files). Left (known gaps in the three
 matrix rows): pending system events (exec-completion, cron-event and session-notice prompts),
 the `heartbeat_respond` tool and its `scratch` argument, the 12-hour `auto` time format, job
 conflicts between planning and commit, `applyJobResult` beyond the ok/skipped path, the
@@ -221,14 +222,23 @@ kit that will wrap these helpers.
   (e74be5d41db #122157); the transcript marker is `INTERNAL_WAKE_TRANSCRIPT_PROMPTS.heartbeat`.
 - Python: `memory_core/heartbeat.py`, `memory_core/runtime_identity.py`, `memory_core/bootstrap/files.py`
   (heartbeat filters), `demo/lab_heartbeat.py` and the Lab heartbeat view.
-- Port: the host owns scheduling and storage (AGENTS.md › Code and scope boundaries), so the core
-  gets data contracts, not a scheduler: a `HeartbeatMonitorScratch` value (content, revision,
-  256 KiB check, CAS update) and an `AutomationJob` description (declaration key, schedule,
-  payload kind, owner agent) that hosts persist; `prepare_heartbeat_turn(scratch=...,
-  scheduled_tasks=...)` builds the tag's prompt and preflight skip; the new constants with
-  `NO_REPLY`; a `migrate_heartbeat_md(root)` helper that splits a legacy file into scratch text
-  and task jobs the way doctor does. `OPENCLAW_PIN_LAYOUT` keeps the pin behaviour for existing
-  workspaces. The Lab heartbeat view edits the scratch and lists automation jobs.
+- Port (as done): the host owns scheduling and storage (AGENTS.md › Code and scope boundaries),
+  so the core gets data contracts, not a scheduler. `HeartbeatScratchState` (a revision plus
+  optional content; the 256 KiB check and the compare-and-swap write rule are
+  `assert_heartbeat_scratch_content` and `apply_heartbeat_scratch_write`) sits behind the
+  `HeartbeatScratchStore` interface; `AutomationJob` (every schedule, `systemEvent` payload,
+  declaration key, owner agent) comes with `compute_job_next_run_at_ms`, `is_job_due`,
+  `due_automation_jobs`, `heartbeat_scheduled_tasks`, `record_automation_job_run` and the
+  persist gate `assert_automation_jobs_can_persist`, behind the `AutomationStore` interface
+  (the scratch methods plus `list_jobs` and the atomic scratch-and-jobs `save_jobs`);
+  `FileAutomationStore` (`<root>/.memory-core/automation.json`) is the default for both.
+  `prepare_heartbeat_turn(scratch=..., scheduled_tasks=...)` builds the tag's preflight skip and
+  run prompt, and `decide_heartbeat_reply` reads the reply; the constants with `NO_REPLY` are
+  generated. `migrate_heartbeat_md(root, store)` moves a legacy file into the scratch and
+  `migrate_heartbeat_tasks(store)` turns its `tasks:` block into jobs, each with its doctor
+  findings. There is no pin-layout mode: area 1 replaced `OPENCLAW_PIN_LAYOUT` with
+  `OPENCLAW_COMPAT_LAYOUT`, and `memory_core.heartbeat` takes no layout parameter. The Lab
+  heartbeat view edits the scratch, lists the automation jobs and runs both migrations.
 - Tests: 4 (`heartbeatConstants`, `heartbeatPromptConfig`, `heartbeatRunPrompt`,
   `heartbeatSessionFilter`), plus re-ports of the retired `parseHeartbeatTasks`,
   `heartbeatTaskDue` and `heartbeatSystemSection` tests in the new shape.

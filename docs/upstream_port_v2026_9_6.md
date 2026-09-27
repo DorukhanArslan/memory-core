@@ -18,8 +18,9 @@ Node 25 for SQLite work), a fresh `OPENCLAW_STATE_DIR` and a short `TMPDIR`.
 | Tag, runner unchanged (run-loop deselected) | 69 passed, 155 failed, 1 skipped (497 s) |
 | Tag, after the embedding-registry and dreaming-state re-wire | 95 passed, 129 failed, 1 skipped (1223 s) |
 | Tag, after the full re-wire, before classification | 102 passed, 119 failed, 5 skipped |
-| Tag, final (three chunks) | 102 passed, 119 xfailed, 5 skipped, 0 failed (1256 s) |
+| Tag, final, three chunks (run-loop deselected) | 102 passed, 119 xfailed, 5 skipped, 0 failed (1258 s) |
 | Tag, run-loop oracle (one Vitest run, 7 tests) | 6 passed, 1 xfailed (32 s) |
+| Tag, final run at `d49d157`, run-loop included | 108 passed, 120 xfailed, 5 skipped, 0 failed (1263 s) |
 | Old pin `4c428153`, pre-bump tree `99f33ca` (Node 25.2.1) | 224 passed, 1 failed, 1 skipped (491 s, run-loop included) |
 
 The five skips are the four retired operations and the live-embedding test. The old-pin failure

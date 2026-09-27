@@ -181,6 +181,9 @@ function renderStatus() {
   // FlushDecision of the snapshot (docs/lab.md): the meter between turns, all numbers from the server.
   const flushTip = fm ? [
     `${t('flush.formula')}: ${thr0(fm.f.contextWindowTokens)} − ${thr0(fm.f.reserveTokensFloor)} − ${thr0(fm.f.softThresholdTokens)} = ${thr0(fm.thr)}`,
+    // v2026.9.6: both terms derive from the window (the server sends the results and the defaults).
+    `${t('flush.reserveRule', { a: thr0(fm.f.defaults?.reserveTokensFloor) })} = ${thr0(fm.f.reserveTokensFloor)}`,
+    `${t('flush.softRule', { a: thr0(fm.f.defaults?.softThresholdTokens) })} = ${thr0(fm.f.softThresholdTokens)}`,
     `${t('flush.reason')}: ${fm.f.reason || '—'}`,
     fm.f.tokenSource ? `${t('flush.tokenSource')}: ${fm.f.tokenSource}` : null,
     `${t('flush.mode')}: ${t('settings.flushThreshold')}`,

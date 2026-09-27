@@ -154,6 +154,8 @@ export function renderSettings(body) {
         row(t('flush.mode'), chip({ label: s.flush?.mode === 'threshold' || !s.flush?.mode ? t('settings.flushThreshold') : String(s.flush.mode), tone: 'neutral', ic: 'check', testid: 'settings-flush-mode' }), t('settings.flushHelp')),
         row(t('settings.contextWindow'), h('span', { class: 'inline-group' }, numberInput('set-window', s.flush?.contextWindowTokens, (v) => putSettings({ flush: { contextWindowTokens: v } }), { step: 500 }),
           fl?.threshold !== undefined ? h('span', { class: 'muted mono small' }, `→ ${t('flush.threshold')} ${fl.threshold === null ? '—' : fmtN(fl.threshold)} token`) : null), t('settings.contextWindowHelp'), { forId: 'set-window' }),
+        // Derived by the server from the window (flush plan); read-only, like upstream.
+        row(t('flush.reserveSoft'), h('span', { class: 'mono small', 'data-testid': 'settings-flush-derived' }, `${fmtN(s.flush?.reserveTokensFloor)} / ${fmtN(s.flush?.softThresholdTokens)}`), t('flush.derived')),
       ], { ic: 'minus' }),
       group('heartbeat', 'Heartbeat', [
         row('every', textInput('set-hb-every', s.heartbeat?.every, (v) => putSettings({ heartbeat: { every: v } })), null, { forId: 'set-hb-every' }),

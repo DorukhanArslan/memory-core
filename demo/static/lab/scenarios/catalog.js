@@ -203,7 +203,7 @@ export const SCENARIOS = [
   {
     id: 'S11', minutes: 5, view: 'chat', tags: ['upstream-uyumlu', 'demo-only: token sayımı'], requires: ['anahtar'], blockedIf: needsKey,
     steps: [
-      { act: 'setting', apply: { settings: { flush: { mode: 'threshold', contextWindowTokens: 26000 } } }, label: 'scn.S11.l0', expect: 'scn.S11.e0',
+      { act: 'setting', apply: { settings: { flush: { mode: 'threshold', contextWindowTokens: 5333 } } }, label: 'scn.S11.l0', expect: 'scn.S11.e0',
         checks: [observe('flush eşiği', (ctx) => `${ctx.snap?.flush?.totalTokens ?? '—'} / ${ctx.snap?.flush?.threshold ?? '—'}`, ['snap'])] },
       { act: 'send', text: "Bugün staging ortamında Redis'i 7.2 sürümüne yükselttik.", waitFor: 'chat.turn.completed|chat.turn.failed', expect: 'scn.S11.e1',
         checks: [observe('flush', (ctx) => `${ctx.turn?.flush?.decision?.reason || '—'} · ${ctx.snap?.flush?.totalTokens ?? '—'}/${ctx.snap?.flush?.threshold ?? '—'}`, ['turn', 'snap'])] },

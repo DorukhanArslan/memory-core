@@ -38,6 +38,8 @@ from demo.memory_flush import MemoryFlushRun, run_memory_flush
 from memory_core.bootstrap._js import utf16_len
 from memory_core.consolidation import record_daily_memory_flush
 from memory_core.memory_flush import (
+    DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR,
+    DEFAULT_MEMORY_FLUSH_SOFT_TOKENS,
     SESSION_TOTAL_TOKENS_VERSION,
     MemoryFlushPlan,
     build_memory_flush_plan,
@@ -117,6 +119,12 @@ def flush_decision(
         "contextWindowSource": "setting" if lab.settings.context_window_tokens else "upstream DEFAULT_CONTEXT_TOKENS",
         "reserveTokensFloor": plan.reserve_tokens_floor,
         "softThresholdTokens": plan.soft_threshold_tokens,
+        # The terms before the window caps them (flush-plan.ts): the reserve floor and the soft
+        # threshold the Lab configures (none, so upstream's default).
+        "defaults": {
+            "reserveTokensFloor": DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR,
+            "softThresholdTokens": DEFAULT_MEMORY_FLUSH_SOFT_TOKENS,
+        },
         "promptTokenEstimate": estimate,
         "persistedPromptTokens": persisted,
         "lastOutputTokens": session.last_output_tokens,

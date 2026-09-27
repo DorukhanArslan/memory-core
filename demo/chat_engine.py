@@ -67,6 +67,17 @@ class ChatEngine(Protocol):
         raise NotImplementedError
 
 
+def _rejects_parameter(response: httpx.Response, name: str) -> bool:
+    """True when a 400 from the provider names ``name`` as the offending parameter."""
+    if response.status_code != 400:
+        return False
+    try:
+        error = response.json().get("error") or {}
+    except ValueError:
+        return False
+    return isinstance(error, dict) and error.get("param") == name
+
+
 class OpenAICompatibleChatEngine:
     name = "openai"
 
@@ -219,8 +230,19 @@ class OpenAICompatibleChatEngine:
         }
 
     def check(self) -> dict:
-        """One short completion, for the settings view's connection check."""
-        raw = self._chat([{"role": "user", "content": "ping"}], max_tokens=1)
+        """One short completion, for the settings view's connection check.
+
+        Newer OpenAI models reject ``max_tokens`` with a 400 naming that parameter, and a
+        reasoning model cannot finish under a tiny ``max_completion_tokens`` either (both
+        seen with gpt-6-luna on 2026-09-27), so that answer is retried once without a cap.
+        """
+        ping = [{"role": "user", "content": "ping"}]
+        try:
+            raw = self._chat(ping, max_tokens=1)
+        except httpx.HTTPStatusError as exc:
+            if not _rejects_parameter(exc.response, "max_tokens"):
+                raise
+            raw = self._chat(ping)
         return {"model": raw.get("model") or self.model}
 
     def _headers(self) -> dict[str, str]:

@@ -1420,6 +1420,29 @@ def test_heartbeat_scratch_stores_a_lone_surrogate_as_u_fffd(client, lab):
     assert response.json()["scratch"]["bytes"] == 5
 
 
+def test_lab_passes_one_host_time_format_to_flush_heartbeat_and_reset(client, lab, monkeypatch):
+    # memory_core.current_time: the Lab host gives the flush plan, the heartbeat turn and the bare
+    # /new prompt the same LAB_TIME_FORMAT, so the same instant reads the same in all three.
+    from demo.lab_flush import lab_flush_plan
+    from demo.lab_runtime import LAB_TIME_FORMAT, LAB_TIMEZONE
+    from memory_core.current_time import format_current_time_line
+
+    fixed = 1_790_445_900_000  # 2026-09-26T18:05:00Z
+    monkeypatch.setattr(lab, "now_ms", lambda: fixed)
+    client.get("/api/lab/state")
+    expected = format_current_time_line(fixed, LAB_TIMEZONE, LAB_TIME_FORMAT)
+
+    settings = client.get("/api/lab/settings").json()
+    preflight = client.get("/api/lab/heartbeat").json()["preflight"]
+    reset = client.post("/api/lab/session/new", json={"command": "new"}).json()["resetPrompt"]
+
+    assert LAB_TIME_FORMAT == "24" and settings["timeFormat"] == preflight["timeFormat"] == "24"
+    assert expected.startswith("Current time: Saturday, September 26th, 2026 - 21:05 (Europe/Istanbul)")
+    assert preflight["message"].endswith(f"\n{expected}")
+    assert lab_flush_plan(lab).prompt.endswith(f"\n{expected}")
+    assert reset["text"].endswith(f"\n{expected}")
+
+
 def test_heartbeat_state_skips_job_rows_the_store_cannot_load(client, lab):
     client.get("/api/lab/state")
     store = lab.root / ".memory-core" / "automation.json"

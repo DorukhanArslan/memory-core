@@ -90,7 +90,7 @@ checked against the configured keys (`redacted: true`). Ids (`sessionId`,
 | POST `/chat/stream` | `{message, sessionKind, reset?, engine?, openai?, embedding?}` | SSE: `turn_started`, `stage`, `flush`, `recall`, `prompt`, `tool_call`, `tool_result`, `curation`, `assistant_delta`, `turn_done {turn, detail}`, `error` |
 | POST `/session/new` | `{command:"new"\|"reset", text?, sessionKind}` | `{sessionId, sessionKey, bare, sessionMemory, startup, resetPrompt}` |
 | GET `/index/status` | — | `{files, chunks, lastReindexAt, mode, identity, embeddings, cooldown, deadlineMs, cooldownMs, stale}` |
-| GET `/heartbeat` | — | `{scratch {status, currentRevision, content, bytes, maxBytes, sourceSha256, updatedAtMs}, jobs[] {id, name, displayName, everyMs, anchorMs, prompt, lastRunAtMs, nextRunAtMs, due, heartbeatTask}, skippedJobRows[] {index, id, reason} (stored rows the store cannot load; kept untouched), legacyFile, legacyArchives[] (files under `.memory-core/backups/heartbeat-migration/`), migrationFindings[], every, everyMs, ackLimit, lightContext, preflight {skipReason, prompt, message, dueTasks, dueJobs, hostDueJobs, scratchShown, scratchRevision}, clock, runs[], proactivePreferences, sessionKey, store, labels}`; `status` is none, unset, empty (the run skips with `empty-heartbeat-file`) or active |
+| GET `/heartbeat` | — | `{scratch {status, currentRevision, content, bytes, maxBytes, sourceSha256, updatedAtMs}, jobs[] {id, name, displayName, everyMs, anchorMs, prompt, lastRunAtMs, nextRunAtMs, due, heartbeatTask}, skippedJobRows[] {index, id, reason} (stored rows the store cannot load; kept untouched), legacyFile, legacyArchives[] (files under `.memory-core/backups/heartbeat-migration/`), migrationFindings[], every, everyMs, ackLimit, lightContext, preflight {skipReason, prompt, message, dueTasks, dueJobs, hostDueJobs, scratchShown, scratchRevision, timeFormat}, clock, runs[], proactivePreferences, sessionKey, store, labels}`; `status` is none, unset, empty (the run skips with `empty-heartbeat-file`) or active |
 | PUT `/heartbeat/scratch` | `{content, expectedRevision?}` (`content: null` unsets) | `{write {ok, currentRevision, scratch?}, scratch}`: compare-and-swap on the revision; a stale `expectedRevision` is `409 revision_conflict` with `{error, code, write {ok: false, reason: revision-conflict, currentRevision}, scratch}` (the stored scratch); `400 scratch_too_large` over 256 KiB; a lone surrogate is stored as U+FFFD; events `heartbeat.scratch_written`, `heartbeat.scratch_conflict` |
 | POST `/heartbeat/migrate` | — | `{scratch {changes, warnings}, tasks {changes, warnings, jobs}}`: `migrate_heartbeat_md` (a leftover HEARTBEAT.md into the scratch, archived under `.memory-core/backups/heartbeat-migration/`) then `migrate_heartbeat_tasks` (the scratch's `tasks:` block into automation jobs, anchored on the virtual clock); event `heartbeat.migrated` |
 | POST `/heartbeat/legacy-file` | `{content}` | demo-only: writes a legacy HEARTBEAT.md with the caller's text at the Lab root so the doctor migration can be seen (nothing else in the Lab creates a retired file; the file editor answers `403 read_only` for it): `{path, bytes, migrationFindings, label}`; `409 legacy_file_exists` when one is there, `400 invalid_content`, `400 too_large` over 2 MiB; event `heartbeat.legacy_file_written` and `file.changed`; scenario S09 starts here |
@@ -100,7 +100,7 @@ checked against the configured keys (`redacted: true`). Ids (`sessionId`,
 | GET `/consolidation` | — | `{curated[], shortTerm, candidates[], gates, weights, lastPromotion, lastDreaming, audit, repair, labels, flags}` |
 | POST `/curation/revert` | `{writeId}` | PUT-file shape; `409` when the file changed since the write |
 | GET `/parity` | — | `{pin, oracleRepo, node, resultsPath, results, matrix[], commands[]}` |
-| GET · PUT `/settings` | partial Settings (never a key) | Settings; `heartbeat {every, lightContext}` (`ackMaxChars` is retired at v2026.9.6: `400 retired_setting`) |
+| GET · PUT `/settings` | partial Settings (never a key) | Settings; `heartbeat {every, lightContext}` (`ackMaxChars` is retired at v2026.9.6: `400 retired_setting`); read-only `timezone` and `timeFormat` (the one host 12/24-hour format of every current-time line) |
 | POST `/provider/check` | `{openai}` or `{embedding}` | `{ok, target, latencyMs, model?, error?, redacted?}` |
 
 ### Kept `/api/*`
@@ -134,7 +134,10 @@ Stages, in the order the `stage` events stream them:
    S11 test window 5,333 gives 1,333 / 2,000 / 2,000). The status-bar meter, the
    settings flush group and the prompt inspector show the terms. The flush prompt's
    time line uses the Lab's host-supplied 24-hour format (`timeFormat`); upstream
-   detects the host's 12/24-hour format, and the inspector says so.
+   detects the host's 12/24-hour format, and the inspector says so. The Lab passes
+   the same `LAB_TIME_FORMAT` (`demo/lab_runtime.py`) to the heartbeat turn and the
+   bare `/new` / `/reset` prompt (`memory_core.current_time`), and settings show it
+   read-only under Time zone.
 4. `flush`: when triggered, the flush turn (write tool on today's daily file only;
    bootstrap files read-only), then `record_memory_flush_success`/`failure`, which
    write the session entry's `memoryFlush` state (`succeeded` with the flushed

@@ -184,7 +184,7 @@ export const TR = {
   'settings.appearance': 'Görünüm', 'settings.language': 'Dil', 'settings.theme': 'Tema', 'settings.dark': 'Koyu', 'settings.light': 'Açık', 'settings.system': 'Sistem', 'settings.motion': 'Hareket', 'settings.reduced': 'Azaltılmış',
   'settings.density': 'Yoğunluk', 'settings.compact': 'Yoğun', 'settings.comfortable': 'Rahat', 'settings.densityHelp': 'Rahat: sunum yoğunluğu (bir yazı adımı büyük, satırlar 4 px yüksek).',
   'settings.singleKeys': 'Tek tuş kısayolları', 'settings.singleKeysLabel': 'e, j, k, [, ], ?, / ve g dizileri', 'settings.singleKeysHelp': 'Kapalıyken yalnız ⌘/Ctrl kısayolları çalışır.',
-  'settings.timezone': 'Saat dilimi', 'settings.readOnly': 'salt okunur', 'settings.saved': 'Ayar kaydedildi', 'settings.rejected': 'Ayar reddedildi',
+  'settings.timezone': 'Saat dilimi', 'settings.readOnly': 'salt okunur', 'settings.timeFormatNote': "salt okunur, host verir: flush, heartbeat ve /new saat satırları için tek 12/24 saat biçimi; upstream host'unkini algılar", 'settings.saved': 'Ayar kaydedildi', 'settings.rejected': 'Ayar reddedildi',
   'settings.noEnvWrite': 'Ayarlar yalnız çalışan Lab sürecinde tutulur; .env dosyasına hiçbir şey yazılmaz.',
   'settings.seedTitle': 'Sıfırla ve tohumla?', 'settings.seedLine1': 'Çalışma alanı silinir ve Lab başlangıç dosyaları (seed) yazılır.', 'settings.seedLine2': 'Sohbet geçmişi ve fark tabanları sıfırlanır.', 'settings.seedConfirm': 'Sıfırla',
   'settings.freshTitle': 'Boş çalışma alanı?', 'settings.freshLine1': 'Tüm dosyalar silinir; yalnız başlangıç dosyaları (seed) ve BOOTSTRAP.md yazılır.', 'settings.freshLine2': 'memory/, user/, workspace/ ve sohbet geçmişi silinir.', 'settings.freshLine3': 'Bootstrap durumu: bekliyor.', 'settings.freshConfirm': 'Boşalt',

@@ -45,6 +45,7 @@ from demo.lab_runtime import MINIMAL_PROMPT_KINDS
 from demo.lab_tools import lab_curator
 from demo.lab_runtime import (
     LAB_SESSION_SOURCE,
+    LAB_TIME_FORMAT,
     LAB_TIMEZONE,
     LabError,
     LabRuntime,
@@ -436,6 +437,7 @@ def start_new_session(lab: LabRuntime, *, kind: str, command: str, text: str | N
             lab.root,
             now_ms=now,
             timezone=LAB_TIMEZONE,
+            time_format=LAB_TIME_FORMAT,
             layout=lab.layout,
             is_primary_run=kind != "subagent",
             # resolveBareResetBootstrapFileAccess: the Lab model has no read tool.

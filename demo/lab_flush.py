@@ -33,7 +33,14 @@ import math
 from typing import Any
 
 from demo.chat_engine import ChatEngine, ChatMessage
-from demo.lab_runtime import LAB_TIMEZONE, LabRuntime, LabSession, redact_secrets, safe_exception_message
+from demo.lab_runtime import (
+    LAB_TIME_FORMAT,
+    LAB_TIMEZONE,
+    LabRuntime,
+    LabSession,
+    redact_secrets,
+    safe_exception_message,
+)
 from demo.memory_flush import MemoryFlushRun, run_memory_flush
 from memory_core.bootstrap._js import utf16_len
 from memory_core.consolidation import record_daily_memory_flush
@@ -51,9 +58,6 @@ from memory_core.memory_flush import (
 )
 
 LAB_FORCED_REASON = "lab_forced"
-# The host's 12/24-hour format for the flush prompt's time line. Upstream detects the host's
-# (resolveUserTimeFormat(undefined), edecdbd05ef #111527); the Lab, as a host, supplies "24".
-LAB_TIME_FORMAT = "24"
 NO_COMPACTION_NOTE = (
     "Lab never compacts: after a flush this session stays in the same compaction cycle "
     "(already_flushed) until /new (known gap)"
@@ -196,6 +200,7 @@ def run_flush_turn(
                 transcript=transcript,
                 now_ms=lab.now_ms(),
                 timezone=LAB_TIMEZONE,
+                time_format=LAB_TIME_FORMAT,
             )
     except Exception as exc:
         # The SDK formats the cause chain and truncates it like upstream; the Lab's key values

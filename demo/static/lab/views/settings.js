@@ -173,6 +173,10 @@ export function renderSettings(body) {
           toggle({ checked: !!u.keepMemory, onChange: (v) => { u.keepMemory = v; refresh('center'); }, label: t('settings.keepMemory') }))),
       ], { ic: 'folder' }),
       appearance,
-      group('tz', t('settings.timezone'), [row('timezone', h('code', { class: 'mono' }, s.timezone || 'Europe/Istanbul'), t('settings.readOnly'))], { ic: 'clock' }),
+      group('tz', t('settings.timezone'), [
+        row('timezone', h('code', { class: 'mono' }, s.timezone || 'Europe/Istanbul'), t('settings.readOnly')),
+        // One host-supplied 12/24-hour format for every Current time line (memory_core.current_time).
+        row('timeFormat', h('code', { class: 'mono', 'data-testid': 'settings-time-format' }, `${s.timeFormat || '24'}h`), t('settings.timeFormatNote')),
+      ], { ic: 'clock' }),
       honesty(t('settings.noEnvWrite'), 'neutral', 'info')));
 }

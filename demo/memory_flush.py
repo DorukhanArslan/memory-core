@@ -7,6 +7,7 @@ from typing import Protocol
 
 from demo.chat_engine import ChatEngine, ChatMessage
 from memory_core.config import MemoryConfig
+from memory_core.current_time import DEFAULT_TIME_FORMAT
 from memory_core.memory_flush import (
     SILENT_REPLY_TOKEN,
     UnsafeMemoryFlushTargetError,
@@ -67,11 +68,13 @@ def run_memory_flush(
     transcript: list[ChatMessage],
     now_ms: int | None = None,
     timezone: str = "UTC",
+    time_format: str = DEFAULT_TIME_FORMAT,
 ) -> MemoryFlushRun:
     plan = build_memory_flush_plan(
         workspace_dir=config.workspace_dir,
         now_ms=now_ms,
         timezone=timezone,
+        time_format=time_format,
     )
     workspace = MemoryWorkspace(config.workspace_dir)
     target_path = workspace.resolve_memory_path(plan.relative_path)

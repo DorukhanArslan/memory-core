@@ -52,6 +52,10 @@ from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.workspace import MemoryWorkspace
 
 LAB_TIMEZONE = "Europe/Istanbul"
+# The Lab host's 12/24-hour format for every Current time line it builds (the flush plan, the
+# heartbeat turn and the bare /new and /reset prompt): one value, as memory_core.current_time asks
+# of a host. Upstream detects the host OS's format instead (edecdbd05ef #111527).
+LAB_TIME_FORMAT = "24"
 LAB_WORKSPACE_DIRNAME = "memory-core-lab-workspace"
 LIVE_TASK_WORKSPACE_DIRNAME = "memory-core-live-task-demo-workspace"
 LAB_SESSION_SOURCE = "lab"

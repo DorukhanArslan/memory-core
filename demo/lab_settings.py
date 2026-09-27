@@ -15,6 +15,7 @@ from demo.chat_engine import DEFAULT_OPENAI_MODEL_SOURCE
 from demo.lab_runtime import (
     CONTEXT_INJECTION_MODES,
     LAB_FLAGS,
+    LAB_TIME_FORMAT,
     LAB_TIMEZONE,
     LAYOUTS,
     WARNING_MODES,
@@ -80,6 +81,7 @@ def settings_payload(lab: LabRuntime) -> dict[str, Any]:
             for name, spec in LAB_FLAGS.items()
         },
         "timezone": LAB_TIMEZONE,
+        "timeFormat": LAB_TIME_FORMAT,
         "workspace": {"root": str(lab.root)},
         "liveWorkspace": {"root": str(lab.live_root)},
     }

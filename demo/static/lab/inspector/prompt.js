@@ -189,6 +189,7 @@ export function promptTab(turn, { ctx = 'turn' } = {}) {
   if (pv.heartbeatPrompt) {
     const hp = pv.heartbeatPrompt;
     wrap.append(section('hb-prompt', t('hb.nextPrompt'), { count: hp.skipReason ? hp.skipReason : (hp.message || '').length, copy: hp.message || '', empty: !hp.message && !hp.skipReason, testid: 'prompt-section-heartbeat',
+      tags: hp.timeFormat ? [{ text: `${hp.timeFormat}h`, tone: 'neutral', tip: t('settings.timeFormatNote') }] : [],
       body: () => (hp.message ? promptPre(hp.message) : h('div', { class: 'muted' }, `${t('hb.skipped')}: ${hp.skipReason} · ${t('hb.noModelCall')}`)) }));
   }
   // 8. Hatırlama

@@ -169,7 +169,7 @@ export const EN = {
   'settings.appearance': 'Appearance', 'settings.language': 'Language', 'settings.theme': 'Theme', 'settings.dark': 'Dark', 'settings.light': 'Light', 'settings.system': 'System', 'settings.motion': 'Motion', 'settings.reduced': 'Reduced',
   'settings.density': 'Density', 'settings.compact': 'Compact', 'settings.comfortable': 'Comfortable', 'settings.densityHelp': 'Comfortable: presentation density (one type step up, rows 4 px taller).',
   'settings.singleKeys': 'Single-key shortcuts', 'settings.singleKeysLabel': 'e, j, k, [, ], ?, / and g sequences', 'settings.singleKeysHelp': 'When off, only ⌘/Ctrl shortcuts work.',
-  'settings.timezone': 'Time zone', 'settings.readOnly': 'read-only', 'settings.saved': 'Setting saved', 'settings.rejected': 'Setting rejected',
+  'settings.timezone': 'Time zone', 'settings.readOnly': 'read-only', 'settings.timeFormatNote': "read-only, host-supplied: one 12/24-hour format for the flush, heartbeat and /new time lines; upstream detects the host's", 'settings.saved': 'Setting saved', 'settings.rejected': 'Setting rejected',
   'settings.noEnvWrite': 'Settings live only in the running Lab process; nothing is written to .env.',
   'settings.seedTitle': 'Reset and seed?', 'settings.seedLine1': 'The workspace is deleted and the Lab starter files (seed) are written.', 'settings.seedLine2': 'Chat history and diff baselines are reset.', 'settings.seedConfirm': 'Reset',
   'settings.freshTitle': 'Empty workspace?', 'settings.freshLine1': 'All files are deleted; only the starter files (seed) and BOOTSTRAP.md are written.', 'settings.freshLine2': 'memory/, user/, workspace/ and chat history are deleted.', 'settings.freshLine3': 'Bootstrap status: pending.', 'settings.freshConfirm': 'Empty it',

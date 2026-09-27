@@ -311,6 +311,20 @@ def test_prompt_inspector_separates_the_flush_decision_from_the_flush_turn() -> 
     assert "upstream detects the host" in en
 
 
+def test_settings_and_heartbeat_inspector_show_the_one_host_time_format(lab_client: TestClient) -> None:
+    # memory_core.current_time: one host-supplied 12/24-hour format for every Current time line; the
+    # settings show it read-only next to the time zone and the heartbeat prompt section tags it.
+    assert lab_client.get("/api/lab/settings").json()["timeFormat"] == "24"
+    settings_view = (LAB_ROOT / "views" / "settings.js").read_text(encoding="utf-8")
+    assert "settings-time-format" in settings_view and "s.timeFormat" in settings_view
+    prompt_view = (LAB_ROOT / "inspector" / "prompt.js").read_text(encoding="utf-8")
+    assert "hp.timeFormat" in prompt_view
+    tr = (LAB_ROOT / "i18n" / "tr.js").read_text(encoding="utf-8")
+    en = (LAB_ROOT / "i18n" / "en.js").read_text(encoding="utf-8")
+    assert "'settings.timeFormatNote':" in tr and "'settings.timeFormatNote':" in en
+    assert "upstream detects the host's" in en and "upstream host'unkini algılar" in tr
+
+
 def test_contract_heartbeat_fields(lab_client: TestClient) -> None:
     # views/heartbeat.js reads the monitor scratch, the automation jobs, the legacy HEARTBEAT.md
     # findings and the keyless preflight (v2026.9.6 shape; no HEARTBEAT.md tasks: parsing).

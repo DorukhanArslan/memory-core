@@ -37,7 +37,14 @@ from demo.lab_chat import LOCK_TIMEOUT_SECONDS, assemble_messages
 from demo.lab_events import sse_frame
 from demo.lab_flush import flush_decision, update_token_snapshot
 from demo.lab_prompt import PromptOptions, lab_workspace_context, prompt_view
-from demo.lab_runtime import FILE_MAX_BYTES, LAB_TIMEZONE, LabError, LabRuntime, safe_exception_message
+from demo.lab_runtime import (
+    FILE_MAX_BYTES,
+    LAB_TIME_FORMAT,
+    LAB_TIMEZONE,
+    LabError,
+    LabRuntime,
+    safe_exception_message,
+)
 from demo.lab_tools import LabToolbox, ToolLoopOutcome, public_write, run_tool_loop
 from demo.transcript_context import select_transcript_context
 from memory_core.automation import (
@@ -154,6 +161,7 @@ def _prepare_turn(
         scratch=store.read_scratch(HEARTBEAT_AGENT_ID),
         scheduled_tasks=heartbeat_scheduled_tasks(due),
         timezone=LAB_TIMEZONE,
+        time_format=LAB_TIME_FORMAT,
     )
     in_turn = {task.job_id for task in turn.scheduled_tasks}
     return (
@@ -175,6 +183,7 @@ def heartbeat_preview(lab: LabRuntime) -> dict[str, Any]:
         "hostDueJobs": [job.id for job in host_due],
         "scratchShown": turn.scratch_content is not None,
         "scratchRevision": turn.scratch_revision,
+        "timeFormat": LAB_TIME_FORMAT,
     }
 
 

@@ -1026,6 +1026,7 @@ def test_flush_decision_without_usage_is_labelled_an_estimate(client, lab, monke
     decision = frames_of(frames, "flush")[0]["decision"]
     assert decision["reason"] == "under_threshold"
     assert decision["tokenSource"].startswith("estimate (chars/4")
+    assert decision["timeFormat"] == "24" and "upstream detects" in decision["timeFormatSource"]
     assert decision["contextWindowTokens"] == 200_000
     assert decision["contextWindowSource"] == "upstream DEFAULT_CONTEXT_TOKENS"
 

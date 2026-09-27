@@ -51,6 +51,9 @@ from memory_core.memory_flush import (
 )
 
 LAB_FORCED_REASON = "lab_forced"
+# The host's 12/24-hour format for the flush prompt's time line. Upstream detects the host's
+# (resolveUserTimeFormat(undefined), edecdbd05ef #111527); the Lab, as a host, supplies "24".
+LAB_TIME_FORMAT = "24"
 NO_COMPACTION_NOTE = (
     "Lab never compacts: after a flush this session stays in the same compaction cycle "
     "(already_flushed) until /new (known gap)"
@@ -80,6 +83,7 @@ def lab_flush_plan(lab: LabRuntime) -> MemoryFlushPlan:
         now_ms=lab.now_ms(),
         timezone=LAB_TIMEZONE,
         context_window_tokens=lab.settings.effective_context_window_tokens,
+        time_format=LAB_TIME_FORMAT,
     )
 
 
@@ -136,6 +140,8 @@ def flush_decision(
         "memoryFlushCompactionCount": memory_flush.get("compactionCount"),
         "memoryFlushFailureCount": memory_flush.get("failureCount", 0) if memory_flush.get("kind") == "failed" else 0,
         "target": plan.relative_path,
+        "timeFormat": LAB_TIME_FORMAT,
+        "timeFormatSource": "host-supplied (upstream detects the host's 12/24-hour format)",
         "mode": "threshold",
         "note": NO_COMPACTION_NOTE,
     }

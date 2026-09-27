@@ -294,6 +294,23 @@ def test_settings_offer_no_per_turn_flush(lab_client: TestClient) -> None:
     assert "dd.memoryFlush" in prompt_view and "dd.reserveTokensFloor" in prompt_view
 
 
+def test_prompt_inspector_separates_the_flush_decision_from_the_flush_turn() -> None:
+    # The decision reads "run"/"skip"; what happened comes from the run or the flush stage
+    # (a scripted engine decides "run" and skips the turn). The time format is host-supplied.
+    prompt_view = (LAB_ROOT / "inspector" / "prompt.js").read_text(encoding="utf-8")
+    assert "dd.shouldRun ? t('flush.decideRun') : t('flush.decideSkip')" in prompt_view
+    assert "x.name === 'flush'" in prompt_view and "st?.status === 'skip'" in prompt_view
+    assert "prompt-flush-outcome" in prompt_view and "dd.timeFormat" in prompt_view
+    assert "dd.shouldRun ? t('flush.ran')" not in prompt_view
+    tr = (LAB_ROOT / "i18n" / "tr.js").read_text(encoding="utf-8")
+    en = (LAB_ROOT / "i18n" / "en.js").read_text(encoding="utf-8")
+    for key in ("flush.decideRun", "flush.decideSkip", "flush.outcome", "flush.skipped", "flush.failed",
+                "flush.wrote", "flush.noWrite", "flush.timeFormat", "flush.timeFormatNote"):
+        assert f"'{key}':" in tr and f"'{key}':" in en, key
+    assert "'flush.decideRun': 'çalıştır'" in tr and "'flush.skipped': 'atlandı'" in tr
+    assert "upstream detects the host" in en
+
+
 def test_contract_heartbeat_fields(lab_client: TestClient) -> None:
     # views/heartbeat.js reads the unparsed count, its label and the keyless preflight.
     hb = lab_client.get("/api/lab/heartbeat").json()

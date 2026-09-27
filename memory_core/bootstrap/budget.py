@@ -1,13 +1,22 @@
 """Bootstrap context budget, truncation and truncation reports.
 
-Port of OpenClaw ``src/agents/embedded-agent-helpers/bootstrap.ts``
-(``buildBootstrapContextFiles``, ``trimBootstrapContent``,
-``trimAgentsBootstrapContent``, ``buildAgentsPolicyDigest``, ``clampToBudget``;
-lines 91-472) and ``src/agents/bootstrap-budget.ts`` (injection stats, budget
-analysis, prompt warning lines and the compact truncation notice) at pin
-4c42815348. All lengths are UTF-16 code units; head/tail slices are plain
-UTF-16 slices (they may split a surrogate pair, bootstrap.ts:356-357) while the
-final clamp is surrogate-safe, exactly like upstream.
+Port of OpenClaw at the parity pin v2026.9.6:
+``src/agents/embedded-agent-helpers/bootstrap.ts`` (``buildBootstrapContextFiles``,
+``trimBootstrapContent``, ``trimAgentsBootstrapContent``, ``buildAgentsPolicyDigest``,
+``clampToBudget``, the fixed ``USER_BOOTSTRAP_MAX_CHARS`` cap of 28630a9a650 #114819 and the
+Traditional Chinese digest markers of dfc9678a516 #142915), ``src/agents/bootstrap-budget.ts``
+(injection stats, budget analysis with ``effectiveFileLimit``, dae1aea7117 #136967, and the
+compact truncation notice) and ``src/agents/bootstrap-budget-warning.ts`` (prompt warning lines
+and signatures). All lengths are UTF-16 code units. Head and tail slices are surrogate-safe
+(``sliceUtf16Safe``), like the final clamp. The numbers and keyword sets come from
+``memory_core/bootstrap/_bootstrap_constants.py``, generated from the tag by
+``scripts/extract_upstream_constants.py``.
+
+``appendBootstrapPromptWarning`` is gone upstream (0b450013ea0, #130325: the truncation notice
+goes into the system prompt as ``## Bootstrap Context Notice``), and so is its port.
+
+Not ported: the authenticated personal ``users/<profile-id>/USER.md`` overlay, which upstream
+skips instead of truncating (``personalUser``).
 """
 
 from __future__ import annotations
@@ -19,6 +28,26 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
+from memory_core.bootstrap._bootstrap_constants import (
+    AGENTS_POLICY_DIGEST_MAX_LINE_CHARS,
+    AGENTS_POLICY_DIGEST_RATIO,
+    AGENTS_POLICY_HEAD_RATIO,
+    AGENTS_POLICY_TAIL_RATIO,
+    BOOTSTRAP_HEAD_RATIO,
+    BOOTSTRAP_TAIL_RATIO,
+    DEFAULT_BOOTSTRAP_MAX_CHARS,
+    DEFAULT_BOOTSTRAP_NEAR_LIMIT_RATIO,
+    DEFAULT_BOOTSTRAP_PROMPT_WARNING_MAX_FILES,
+    DEFAULT_BOOTSTRAP_PROMPT_WARNING_SIGNATURE_HISTORY_MAX,
+    DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
+    MIN_BOOTSTRAP_FILE_BUDGET_CHARS,
+    MIN_BOOTSTRAP_TRIMMED_CONTENT_CHARS,
+    POLICY_DIGEST_HIGH_PRIORITY_KEYWORDS,
+    POLICY_DIGEST_HIGH_PRIORITY_UNBOUNDED_KEYWORDS,
+    POLICY_DIGEST_KEYWORDS,
+    POLICY_DIGEST_UNBOUNDED_KEYWORDS,
+    USER_BOOTSTRAP_MAX_CHARS,
+)
 from memory_core.bootstrap._js import (
     JS_IU_WORD_CLASS,
     JS_NON_SPACE,
@@ -28,39 +57,41 @@ from memory_core.bootstrap._js import (
     js_trim,
     js_trim_end,
     locale_compare,
+    slice_utf16_safe,
     truncate_utf16_safe,
     utf16_len,
-    utf16_slice,
 )
 from memory_core.bootstrap.files import WorkspaceBootstrapFile
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 
-DEFAULT_BOOTSTRAP_MAX_CHARS = 20_000
-DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS = 60_000
-DEFAULT_BOOTSTRAP_PROMPT_TRUNCATION_WARNING_MODE = "always"
-MIN_BOOTSTRAP_FILE_BUDGET_CHARS = 64
-BOOTSTRAP_HEAD_RATIO = 0.75
-BOOTSTRAP_TAIL_RATIO = 0.25
-MIN_BOOTSTRAP_TRIMMED_CONTENT_CHARS = 16
-AGENTS_BOOTSTRAP_FILENAME = "AGENTS.md"
-AGENTS_POLICY_DIGEST_RATIO = 0.35
-AGENTS_POLICY_HEAD_RATIO = 0.45
-AGENTS_POLICY_TAIL_RATIO = 0.15
-AGENTS_POLICY_DIGEST_MAX_LINE_CHARS = 240
+__all__ = [
+    "AGENTS_POLICY_DIGEST_MAX_LINE_CHARS",
+    "AGENTS_POLICY_DIGEST_RATIO",
+    "AGENTS_POLICY_HEAD_RATIO",
+    "AGENTS_POLICY_TAIL_RATIO",
+    "BOOTSTRAP_HEAD_RATIO",
+    "BOOTSTRAP_TAIL_RATIO",
+    "DEFAULT_BOOTSTRAP_MAX_CHARS",
+    "DEFAULT_BOOTSTRAP_NEAR_LIMIT_RATIO",
+    "DEFAULT_BOOTSTRAP_PROMPT_WARNING_MAX_FILES",
+    "DEFAULT_BOOTSTRAP_PROMPT_WARNING_SIGNATURE_HISTORY_MAX",
+    "DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS",
+    "MIN_BOOTSTRAP_FILE_BUDGET_CHARS",
+    "MIN_BOOTSTRAP_TRIMMED_CONTENT_CHARS",
+    "USER_BOOTSTRAP_MAX_CHARS",
+]
 
-DEFAULT_BOOTSTRAP_NEAR_LIMIT_RATIO = 0.85
-DEFAULT_BOOTSTRAP_PROMPT_WARNING_MAX_FILES = 3
-DEFAULT_BOOTSTRAP_PROMPT_WARNING_SIGNATURE_HISTORY_MAX = 32
+DEFAULT_BOOTSTRAP_PROMPT_TRUNCATION_WARNING_MODE = "always"
+AGENTS_BOOTSTRAP_FILENAME = "AGENTS.md"
+USER_BOOTSTRAP_FILENAME = "USER.md"
 
 BOOTSTRAP_TRUNCATION_NOTICE_LINES = (
     "[Bootstrap truncation warning]",
     "Some workspace bootstrap files were truncated before Project Context injection.",
     "Treat Project Context as partial and read the relevant files directly if details seem missing.",
 )
-BOOTSTRAP_TRUNCATION_WARNING_HEADER_LINES = (
-    "[Bootstrap truncation warning]",
-    "Some workspace bootstrap files were truncated before injection.",
-    "Treat Project Context as partial and read the relevant files directly if details seem missing.",
+USER_BOOTSTRAP_FIXED_CAP_LINE = (
+    f"USER.md has a fixed {USER_BOOTSTRAP_MAX_CHARS}-character bootstrap cap; keep it compact."
 )
 
 BootstrapPromptWarningMode = Literal["off", "once", "always"]
@@ -83,62 +114,41 @@ class TrimBootstrapResult:
     original_length: int
 
 
-# --- AGENTS.md policy digest (bootstrap.ts:157-219) -------------------------
+# --- AGENTS.md policy digest (bootstrap.ts buildAgentsPolicyDigest) ----------------------
 
 _POLICY_STRUCTURE_RE = re.compile(
     rf"^(?:#{{1,6}}|{JS_SPACE}*[-*+]|{JS_SPACE}*[0-9]+[.)]){JS_SPACE}+{JS_NON_SPACE}"
 )
-_POLICY_KEYWORDS = (
-    "AGENTS.md",
-    "scoped",
-    "required",
-    "must",
-    "never",
-    "do not",
-    "before subtree",
-    "read scoped",
-    "owner",
-    "security",
-    "secret",
-    "credential",
-    "test",
-    "validation",
-    "command",
-    "commit",
-    "push",
-    "github",
-    "pr",
-)
-_HIGH_PRIORITY_KEYWORDS = (
-    "AGENTS.md",
-    "scoped",
-    "required",
-    "must",
-    "never",
-    "do not",
-    "before subtree",
-    "read scoped",
-    "security",
-    "secret",
-    "credential",
-)
+# Kept under the pin-era names for callers and the source check.
+_POLICY_KEYWORDS = POLICY_DIGEST_KEYWORDS
+_HIGH_PRIORITY_KEYWORDS = POLICY_DIGEST_HIGH_PRIORITY_KEYWORDS
 
 
-def _keyword_regex(keywords: Iterable[str]) -> re.Pattern[str]:
-    # JavaScript /\b(?:...)\b/iu: every keyword starts and ends with a word
-    # character, so \b reduces to "no /iu word character" on the outer side.
+def _keyword_regex(keywords: Iterable[str], unbounded: Iterable[str]) -> re.Pattern[str]:
+    # JavaScript /\b(?:...)\b|(?:...)/iu: every bounded keyword starts and ends with a word
+    # character, so \b reduces to "no /iu word character" on the outer side; the second group
+    # (CJK prohibition terms, a red-circle emoji) has no case folding and no boundary.
     alternation = "|".join(js_iu_keyword_pattern(keyword) for keyword in keywords)
-    return re.compile(rf"(?<![{JS_IU_WORD_CLASS}])(?:{alternation})(?![{JS_IU_WORD_CLASS}])")
+    bounded = rf"(?<![{JS_IU_WORD_CLASS}])(?:{alternation})(?![{JS_IU_WORD_CLASS}])"
+    extra = "|".join(re.escape(keyword) for keyword in unbounded)
+    return re.compile(f"{bounded}|(?:{extra})" if extra else bounded)
 
 
-_POLICY_KEYWORD_RE = _keyword_regex(_POLICY_KEYWORDS)
-_HIGH_PRIORITY_RE = _keyword_regex(_HIGH_PRIORITY_KEYWORDS)
+_POLICY_KEYWORD_RE = _keyword_regex(POLICY_DIGEST_KEYWORDS, POLICY_DIGEST_UNBOUNDED_KEYWORDS)
+_HIGH_PRIORITY_RE = _keyword_regex(
+    POLICY_DIGEST_HIGH_PRIORITY_KEYWORDS, POLICY_DIGEST_HIGH_PRIORITY_UNBOUNDED_KEYWORDS
+)
 _JS_WHITESPACE_RUN_RE = re.compile(f"{JS_SPACE}+")
 _LINE_SPLIT_RE = re.compile(r"\r?\n")
+_FENCE_RE = re.compile(f"^{JS_SPACE}*(?:`{{3,}}|~{{3,}})")
 
 
 def _is_agents_bootstrap_file(file_name: str | None) -> bool:
     return file_name is not None and file_name.lower() == AGENTS_BOOTSTRAP_FILENAME.lower()
+
+
+def _is_user_bootstrap_file(file_name: str | None) -> bool:
+    return file_name is not None and file_name.lower() == USER_BOOTSTRAP_FILENAME.lower()
 
 
 def _is_policy_digest_candidate(line: str) -> bool:
@@ -155,39 +165,70 @@ def _normalize_policy_digest_line(line: str) -> str:
 
 
 @dataclass(frozen=True)
+class _PolicyDigestCandidate:
+    text: str
+    high_priority: bool
+
+
+@dataclass(frozen=True)
 class _PolicyDigest:
     text: str
     omitted_lines: int
 
 
-def _build_agents_policy_digest(content: str, budget: int) -> _PolicyDigest:
+def _policy_digest_candidates(content: str) -> list[_PolicyDigestCandidate]:
+    """Source-ordered candidates; a candidate carries the prose line right above it.
+
+    The framing prose and its candidate are one indivisible text unit; empty lines and code
+    fences break the framing (``trimAgentsBootstrapContent``).
+    """
+    candidates: list[_PolicyDigestCandidate] = []
+    last_prose: str | None = None
+    for source_line in _LINE_SPLIT_RE.split(content):
+        line = _normalize_policy_digest_line(source_line)
+        if not line:
+            last_prose = None
+            continue
+        if _FENCE_RE.match(line):
+            last_prose = None
+        elif _is_policy_digest_candidate(line):
+            candidates.append(
+                _PolicyDigestCandidate(
+                    line if last_prose is None else f"{last_prose}\n{line}",
+                    _HIGH_PRIORITY_RE.search(line) is not None,
+                )
+            )
+            last_prose = None
+        else:
+            last_prose = line
+    return candidates
+
+
+def _build_agents_policy_digest(
+    candidates: Sequence[_PolicyDigestCandidate], budget: int
+) -> _PolicyDigest:
     if budget <= 0:
         return _PolicyDigest("", 0)
-    candidates: list[tuple[int, str]] = []
-    for index, raw_line in enumerate(_LINE_SPLIT_RE.split(content)):
-        line = _normalize_policy_digest_line(raw_line)
-        if line and _is_policy_digest_candidate(line):
-            candidates.append((index, line))
     selected: set[int] = set()
     used = 0
 
-    def try_select(index: int, line: str) -> None:
+    def try_select(index: int) -> None:
         nonlocal used
         separator_chars = 1 if selected else 0
-        line_length = utf16_len(line)
-        if used + separator_chars + line_length > budget:
+        length = utf16_len(candidates[index].text)
+        if used + separator_chars + length > budget:
             return
         selected.add(index)
-        used += separator_chars + line_length
+        used += separator_chars + length
 
-    for index, line in candidates:
-        if _HIGH_PRIORITY_RE.search(line):
-            try_select(index, line)
-    for index, line in candidates:
+    for index, candidate in enumerate(candidates):
+        if candidate.high_priority:
+            try_select(index)
+    for index in range(len(candidates)):
         if index not in selected:
-            try_select(index, line)
-    lines = [line for index, line in sorted(candidates) if index in selected]
-    return _PolicyDigest("\n".join(lines), max(0, len(candidates) - len(lines)))
+            try_select(index)
+    lines = [candidate.text for index, candidate in enumerate(candidates) if index in selected]
+    return _PolicyDigest("\n".join(lines), max(0, len(candidates) - len(selected)))
 
 
 def _trim_agents_bootstrap_content(content: str, max_chars: int) -> TrimBootstrapResult:
@@ -199,11 +240,12 @@ def _trim_agents_bootstrap_content(content: str, max_chars: int) -> TrimBootstra
     head_chars = math.floor(max_chars * AGENTS_POLICY_HEAD_RATIO)
     tail_chars = math.floor(max_chars * AGENTS_POLICY_TAIL_RATIO)
     digest_budget = math.floor(max_chars * AGENTS_POLICY_DIGEST_RATIO)
-    digest = _build_agents_policy_digest(trimmed, digest_budget)
+    candidates = _policy_digest_candidates(trimmed) if digest_budget > 0 else []
+    digest = _build_agents_policy_digest(candidates, digest_budget)
 
     def render() -> str:
         parts = [
-            utf16_slice(trimmed, 0, head_chars),
+            slice_utf16_safe(trimmed, 0, head_chars),
             f"[...truncated, read {AGENTS_BOOTSTRAP_FILENAME} for full content...]",
             "[Policy digest from AGENTS.md]" if digest.text else "",
             digest.text,
@@ -212,7 +254,7 @@ def _trim_agents_bootstrap_content(content: str, max_chars: int) -> TrimBootstra
             else "",
             f"…(truncated {AGENTS_BOOTSTRAP_FILENAME}: kept {head_chars}+policy "
             f"{utf16_len(digest.text)}+{tail_chars} chars of {total})…",
-            utf16_slice(trimmed, -tail_chars) if tail_chars > 0 else "",
+            slice_utf16_safe(trimmed, -tail_chars) if tail_chars > 0 else "",
         ]
         return "\n".join(part for part in parts if part)
 
@@ -225,7 +267,7 @@ def _trim_agents_bootstrap_content(content: str, max_chars: int) -> TrimBootstra
             head_chars = max(1, head_chars - overflow)
         else:
             digest_budget = max(0, digest_budget - overflow)
-            digest = _build_agents_policy_digest(trimmed, digest_budget)
+            digest = _build_agents_policy_digest(candidates, digest_budget)
         rendered = render()
 
     if utf16_len(rendered) > max_chars:
@@ -233,7 +275,7 @@ def _trim_agents_bootstrap_content(content: str, max_chars: int) -> TrimBootstra
     return TrimBootstrapResult(rendered, True, max_chars, total)
 
 
-# --- generic truncation (bootstrap.ts:271-384) ------------------------------
+# --- generic truncation (bootstrap.ts trimBootstrapContent) ------------------------
 
 
 def trim_bootstrap_content(content: str, file_name: str, max_chars: int) -> TrimBootstrapResult:
@@ -307,8 +349,8 @@ def trim_bootstrap_content(content: str, file_name: str, max_chars: int) -> Trim
             head_chars = 1
             marker = single_marker
 
-    head = utf16_slice(trimmed, 0, head_chars)
-    tail = utf16_slice(trimmed, -tail_chars) if tail_chars > 0 else ""
+    head = slice_utf16_safe(trimmed, 0, head_chars)
+    tail = slice_utf16_safe(trimmed, -tail_chars) if tail_chars > 0 else ""
     joiner = "\n" if "\n" in marker else ""
     rendered = joiner.join(part for part in (head, marker, tail) if part)
     if utf16_len(rendered) > max_chars:
@@ -317,7 +359,7 @@ def trim_bootstrap_content(content: str, file_name: str, max_chars: int) -> Trim
 
 
 def clamp_to_budget(content: str, budget: int) -> str:
-    """Port of ``clampToBudget`` (bootstrap.ts:372-384)."""
+    """Port of ``clampToBudget`` (bootstrap.ts)."""
     if budget <= 0:
         return ""
     if utf16_len(content) <= budget:
@@ -330,7 +372,7 @@ def clamp_to_budget(content: str, budget: int) -> str:
 def resolve_bootstrap_char_limit(value: object, default: int) -> int:
     """Port of ``resolveBootstrapMaxChars`` / ``resolveBootstrapTotalMaxChars``.
 
-    ``bootstrap.ts:120-145``: a finite number above 0 is floored; anything else
+    ``bootstrap.ts resolveBootstrapCharLimit``: a finite number above 0 is floored; anything else
     (``None``, 0, a negative value, NaN, infinity, a non-number) falls back to
     ``default``. Upstream reads the value from agent config; hosts pass it here.
     """
@@ -353,10 +395,11 @@ def build_bootstrap_context_files(
     max_chars: int = DEFAULT_BOOTSTRAP_MAX_CHARS,
     total_max_chars: int | None = None,
 ) -> BootstrapContextFilesResult:
-    """Port of ``buildBootstrapContextFiles`` (bootstrap.ts:413-472).
+    """Port of ``buildBootstrapContextFiles`` (bootstrap.ts).
 
     Files are consumed in the given (load) order against a per-file cap and a
-    shared total budget. ``total_max_chars=None`` means
+    shared total budget. USER.md (any case) is capped at ``min(max_chars, 4000)``
+    (``USER_BOOTSTRAP_MAX_CHARS``). ``total_max_chars=None`` means
     ``max(max_chars, 60000)`` like upstream's option default.
     """
     total = max(
@@ -393,7 +436,10 @@ def build_bootstrap_context_files(
                 f"(<{MIN_BOOTSTRAP_FILE_BUDGET_CHARS}); skipping additional bootstrap files"
             )
             break
-        file_max_chars = max(1, min(max_chars, remaining))
+        file_budget = (
+            min(max_chars, USER_BOOTSTRAP_MAX_CHARS) if _is_user_bootstrap_file(file.name) else max_chars
+        )
+        file_max_chars = max(1, min(file_budget, remaining))
         trimmed = trim_bootstrap_content(file.content or "", file.name, file_max_chars)
         within_budget = clamp_to_budget(trimmed.content, remaining)
         if not within_budget:
@@ -429,6 +475,7 @@ class BootstrapAnalyzedFile:
     raw_chars: int
     injected_chars: int
     truncated: bool
+    effective_file_limit: int
     near_limit: bool
     causes: tuple[BootstrapTruncationCause, ...]
 
@@ -465,29 +512,32 @@ def build_bootstrap_injection_stats(
     bootstrap_files: Sequence[WorkspaceBootstrapFile],
     injected_files: Sequence[ContextFile],
 ) -> tuple[BootstrapInjectionStat, ...]:
-    """Port of ``buildBootstrapInjectionStats`` (bootstrap-budget.ts:135-173)."""
+    """Port of ``buildBootstrapInjectionStats`` (bootstrap-budget.ts).
+
+    Injected content is matched by source path only (basenames can repeat); a file without a
+    name is named after its path's basename, or ``bootstrap``.
+    """
     injected_by_path: dict[str, str] = {}
-    injected_by_basename: dict[str, str] = {}
     for file in injected_files:
         path_value = js_trim(file.path) if isinstance(file.path, str) else ""
-        if not path_value:
-            continue
-        injected_by_path.setdefault(path_value, file.content)
-        injected_by_basename.setdefault(_posix_basename(path_value.replace("\\", "/")), file.content)
+        if path_value:
+            injected_by_path.setdefault(path_value, file.content)
     stats: list[BootstrapInjectionStat] = []
     for file in bootstrap_files:
         path_value = js_trim(file.path) if isinstance(file.path, str) else ""
+        normalized_path = path_value.replace("\\", "/")
+        name = (
+            (js_trim(file.name) if isinstance(file.name, str) else "")
+            or (_posix_basename(normalized_path) if normalized_path else "")
+            or "bootstrap"
+        )
         raw_chars = 0 if file.missing else utf16_len(js_trim_end(file.content or ""))
         injected = injected_by_path.get(path_value) if path_value else None
-        if injected is None:
-            injected = injected_by_path.get(file.name)
-        if injected is None:
-            injected = injected_by_basename.get(file.name)
         injected_chars = utf16_len(injected) if injected else 0
         stats.append(
             BootstrapInjectionStat(
-                name=file.name,
-                path=path_value or file.name,
+                name=name,
+                path=path_value or name,
                 missing=file.missing,
                 raw_chars=raw_chars,
                 injected_chars=injected_chars,
@@ -503,6 +553,13 @@ def _normalize_positive_limit(value: float) -> int:
     return math.floor(value)
 
 
+def effective_bootstrap_file_limit(name: str, bootstrap_max_chars: int) -> int:
+    """Port of ``effectiveBootstrapFileLimit``: USER.md is capped at 4000."""
+    if name.lower() == USER_BOOTSTRAP_FILENAME.lower():
+        return min(bootstrap_max_chars, USER_BOOTSTRAP_MAX_CHARS)
+    return bootstrap_max_chars
+
+
 def analyze_bootstrap_budget(
     files: Sequence[BootstrapInjectionStat],
     *,
@@ -510,7 +567,12 @@ def analyze_bootstrap_budget(
     bootstrap_total_max_chars: int,
     near_limit_ratio: float | None = None,
 ) -> BootstrapBudgetAnalysis:
-    """Port of ``analyzeBootstrapBudget`` (bootstrap-budget.ts:176-233)."""
+    """Port of ``analyzeBootstrapBudget`` (bootstrap-budget.ts).
+
+    Each file is judged against its effective limit (USER.md: 4000). ``total-limit`` is a cause
+    only when the total budget left before the file was below that limit and below the file's
+    raw size; missing-file markers consume that budget but stay out of the totals.
+    """
     max_chars = _normalize_positive_limit(bootstrap_max_chars)
     total_max = _normalize_positive_limit(bootstrap_total_max_chars)
     ratio = (
@@ -520,26 +582,34 @@ def analyze_bootstrap_budget(
         and 0 < near_limit_ratio < 1
         else DEFAULT_BOOTSTRAP_NEAR_LIMIT_RATIO
     )
-    non_missing = [file for file in files if not file.missing]
-    raw_chars = sum(file.raw_chars for file in non_missing)
-    injected_chars = sum(file.injected_chars for file in non_missing)
-    total_near_limit = injected_chars >= math.ceil(total_max * ratio)
-    total_over_limit = injected_chars >= total_max
+    raw_chars = 0
+    injected_chars = 0
+    remaining_total = total_max
     analyzed: list[BootstrapAnalyzedFile] = []
     for file in files:
+        effective_limit = effective_bootstrap_file_limit(file.name, max_chars)
+        available_total = remaining_total
+        remaining_total = max(0, remaining_total - file.injected_chars)
         if file.missing:
-            analyzed.append(BootstrapAnalyzedFile(**vars(file), near_limit=False, causes=()))
+            analyzed.append(
+                BootstrapAnalyzedFile(
+                    **vars(file), effective_file_limit=effective_limit, near_limit=False, causes=()
+                )
+            )
             continue
+        raw_chars += file.raw_chars
+        injected_chars += file.injected_chars
         causes: list[BootstrapTruncationCause] = []
         if file.truncated:
-            if file.raw_chars > max_chars:
+            if file.raw_chars > effective_limit:
                 causes.append("per-file-limit")
-            if total_over_limit:
+            if available_total < effective_limit and file.raw_chars > available_total:
                 causes.append("total-limit")
         analyzed.append(
             BootstrapAnalyzedFile(
                 **vars(file),
-                near_limit=file.raw_chars >= math.ceil(max_chars * ratio),
+                effective_file_limit=effective_limit,
+                near_limit=file.raw_chars >= math.ceil(effective_limit * ratio),
                 causes=tuple(causes),
             )
         )
@@ -548,7 +618,7 @@ def analyze_bootstrap_budget(
         files=tuple(analyzed),
         truncated_files=truncated_files,
         near_limit_files=tuple(file for file in analyzed if file.near_limit),
-        total_near_limit=total_near_limit,
+        total_near_limit=injected_chars >= math.ceil(total_max * ratio),
         has_truncation=bool(truncated_files),
         raw_chars=raw_chars,
         injected_chars=injected_chars,
@@ -602,11 +672,14 @@ def format_bootstrap_truncation_warning_lines(
     max_files: int | None = None,
     identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> tuple[str, ...]:
-    """Port of ``formatBootstrapTruncationWarningLines`` (bootstrap-budget.ts:270-316).
+    """Port of ``formatBootstrapTruncationWarningLines`` (bootstrap-budget-warning.ts).
 
-    The last line names OpenClaw's ``agents.defaults.bootstrap*MaxChars``
-    config keys upstream; it comes from ``identity`` (verbatim with
-    ``OPENCLAW_COMPAT_RUNTIME_IDENTITY``, memory-core's own wording by default).
+    A USER.md cut by its fixed cap gets upstream's "fixed 4000-character bootstrap cap" line;
+    the configurable-limit line is added only when a limit the host can raise applied (a file
+    other than USER.md, a per-file limit below 4000, or the total budget). That line names
+    OpenClaw's ``agents.defaults.bootstrap*MaxChars`` config keys upstream; it comes from
+    ``identity`` (verbatim with ``OPENCLAW_COMPAT_RUNTIME_IDENTITY``, memory-core's own wording by
+    default).
     """
     if not analysis.has_truncation:
         return ()
@@ -644,7 +717,20 @@ def format_bootstrap_truncation_warning_lines(
         lines.append(
             "AGENTS.md was truncated; read the full AGENTS.md before relying on scoped policy."
         )
-    lines.append(identity.bootstrap_truncation_limits_line)
+    if any(
+        file.name.lower() == "user.md"
+        and file.effective_file_limit == USER_BOOTSTRAP_MAX_CHARS
+        and "per-file-limit" in file.causes
+        for file in analysis.truncated_files
+    ):
+        lines.append(USER_BOOTSTRAP_FIXED_CAP_LINE)
+    if any(
+        file.name.lower() != "user.md"
+        or file.effective_file_limit < USER_BOOTSTRAP_MAX_CHARS
+        or "total-limit" in file.causes
+        for file in analysis.truncated_files
+    ):
+        lines.append(identity.bootstrap_truncation_limits_line)
     return tuple(lines)
 
 
@@ -673,7 +759,7 @@ def build_bootstrap_prompt_warning(
     max_files: int | None = None,
     identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> BootstrapPromptWarning:
-    """Port of ``buildBootstrapPromptWarning`` (bootstrap-budget.ts:319-349).
+    """Port of ``buildBootstrapPromptWarning`` (bootstrap-budget-warning.ts).
 
     ``identity`` picks the wording of the config-limit line (see
     :func:`format_bootstrap_truncation_warning_lines`).
@@ -700,26 +786,7 @@ def build_bootstrap_prompt_warning(
 
 
 def build_bootstrap_prompt_warning_notice(warning_lines: Iterable[str] | None) -> str | None:
-    """Port of ``buildBootstrapPromptWarningNotice`` (bootstrap-budget.ts:376-386)."""
+    """Port of ``buildBootstrapPromptWarningNotice`` (bootstrap-budget.ts)."""
     if not any(js_trim(line) for line in (warning_lines or ())):
         return None
     return "\n".join(BOOTSTRAP_TRUNCATION_NOTICE_LINES)
-
-
-def append_bootstrap_prompt_warning(
-    prompt: str,
-    warning_lines: Iterable[str] | None,
-    *,
-    preserve_exact_prompt: str | None = None,
-) -> str:
-    """Port of ``appendBootstrapPromptWarning`` (bootstrap-budget.ts:352-373)."""
-    normalized = [js_trim(line) for line in (warning_lines or ())]
-    normalized = [line for line in normalized if line]
-    if not normalized:
-        return prompt
-    if preserve_exact_prompt and prompt == preserve_exact_prompt:
-        return prompt
-    block = "\n".join(
-        [*BOOTSTRAP_TRUNCATION_WARNING_HEADER_LINES, *(f"- {line}" for line in normalized)]
-    )
-    return f"{prompt}\n\n{block}" if prompt else block

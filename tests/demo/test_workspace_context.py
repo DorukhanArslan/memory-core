@@ -280,19 +280,19 @@ def test_workspace_prompt_stops_injecting_at_total_budget(tmp_path):
 
     context = build_workspace_prompt(tmp_path)
 
-    # Load order consumes the 60000 total: AGENTS (digest), SOUL, IDENTITY, then USER
-    # clamped to what is left; later files are not injected at all.
-    for name in ("AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md"):
+    # Load order consumes the 60000 total: AGENTS (digest), SOUL, IDENTITY, USER (its fixed
+    # 4000 cap, USER_BOOTSTRAP_MAX_CHARS), then PROACTIVE_PREFERENCES clamped to what is left;
+    # later files are not injected at all.
+    for name in ("AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "PROACTIVE_PREFERENCES.md"):
         assert _heading(tmp_path, name) in context
-    for name in ("PROACTIVE_PREFERENCES.md", "BOOTSTRAP.md", "MEMORY.md"):
+    for name in ("BOOTSTRAP.md", "MEMORY.md"):
         assert _heading(tmp_path, name) not in context
     # Injected content is trimEnd()ed, so the only trailing newline is the join.
     injected = sum(
         len(block.split("\n", 1)[1].removesuffix("\n"))
         for block in context.split(f"## {os.path.abspath(tmp_path)}/")[1:]
     )
-    # USER.md gets the 7,886 units left and its head/tail marker render rounds to 7,885.
-    assert injected == DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS - 1
+    assert injected == DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS
     assert "## Bootstrap Context Notice\n[Bootstrap truncation warning]" in context
 
 

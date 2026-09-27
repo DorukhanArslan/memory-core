@@ -136,12 +136,16 @@ def _is_low_surrogate(unit: int) -> bool:
 
 
 def slice_utf16_safe(value: str, start: int, end: int | None = None) -> str:
-    """Port of normalization-core ``sliceUtf16Safe`` (utf16-slice.ts:16-43)."""
+    """Port of normalization-core ``sliceUtf16Safe`` (utf16-slice.ts at v2026.9.6).
+
+    Reversed bounds give ``""`` (the pin swapped them); a bound that would split a surrogate
+    pair moves inward.
+    """
     data = _units(value)
     length = len(data) // 2
     start_index, end_index = _resolve_slice_bounds(length, start, end)
-    if end_index < start_index:
-        start_index, end_index = end_index, start_index
+    if end_index <= start_index:
+        return ""
 
     def unit_at(index: int) -> int:
         return int.from_bytes(data[index * 2 : index * 2 + 2], "little")
@@ -158,7 +162,7 @@ def slice_utf16_safe(value: str, start: int, end: int | None = None) -> str:
 
 
 def truncate_utf16_safe(value: str, max_len: int | float) -> str:
-    """Port of normalization-core ``truncateUtf16Safe`` (utf16-slice.ts:46-52)."""
+    """Port of normalization-core ``truncateUtf16Safe`` (utf16-slice.ts)."""
     limit = max(0, int(max_len // 1))
     if utf16_len(value) <= limit:
         return value

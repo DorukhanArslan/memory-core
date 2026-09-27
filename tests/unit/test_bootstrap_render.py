@@ -297,9 +297,10 @@ def _has_lone_surrogate(text: str) -> bool:
     return re.search("[\ud800-\udfff]", text) is not None
 
 
-def test_workspace_context_host_strings_are_well_formed_after_a_surrogate_split(tmp_path: Path):
+def test_workspace_context_slices_never_split_a_surrogate_pair(tmp_path: Path):
+    # v2026.9.6 slices head and tail with sliceUtf16Safe, so the budgeted text is already
+    # well-formed (at the pin a plain slice split the pair and the host saw U+FFFD).
     from memory_core.bootstrap import build_bootstrap_context_files
-    from memory_core.bootstrap._js import js_to_well_formed
     from memory_core.live import LiveIdentity
 
     root = tmp_path / "workspace"
@@ -312,13 +313,8 @@ def test_workspace_context_host_strings_are_well_formed_after_a_surrogate_split(
     soul = dict((file.path, file.content) for file in context.files)["SOUL.md"]
     identity = LiveIdentity.from_dir(root, layout=OPENCLAW_COMPAT_LAYOUT)
 
-    # The budget stays byte-exact (upstream's plain slice splits the pair)...
-    assert _has_lone_surrogate(raw_soul)
-    # ...and the host-facing strings carry U+FFFD instead, with the same length.
-    assert soul == js_to_well_formed(raw_soul)
-    assert "�" in soul and len(soul.encode("utf-16-le")) == len(
-        raw_soul.encode("utf-16-le", "surrogatepass")
-    )
+    assert not _has_lone_surrogate(raw_soul)
+    assert soul == raw_soul and "\ufffd" not in soul
     for text in (
         context.prompt_text,
         context.stable_text,
@@ -388,17 +384,18 @@ def test_workspace_context_resolves_char_limits_like_upstream_config(tmp_path: P
 
     root = tmp_path / "workspace"
     root.mkdir()
-    (root / "USER.md").write_text("u" * 25_000, encoding="utf-8")
+    # SOUL.md, not USER.md: USER.md has its own fixed 4000 cap at v2026.9.6.
+    (root / "SOUL.md").write_text("u" * 25_000, encoding="utf-8")
 
     def user_length(**kwargs):
         context = build_workspace_context(
             root, layout=OPENCLAW_COMPAT_LAYOUT, path_style="relative", **kwargs
         )
-        return len(dict((file.path, file.content) for file in context.files)["USER.md"])
+        return len(dict((file.path, file.content) for file in context.files)["SOUL.md"])
 
     default_length = user_length()
     assert 19_000 < default_length <= 20_000
-    # resolveBootstrapMaxChars (bootstrap.ts:120-145): not a finite number > 0 -> default.
+    # resolveBootstrapMaxChars (bootstrap.ts): not a finite number > 0 -> default.
     for value in (None, 0, -5, float("nan"), float("inf"), True):
         assert resolve_bootstrap_char_limit(value, 20_000) == 20_000
         assert user_length(max_chars=value, total_max_chars=value) == default_length

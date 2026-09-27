@@ -1,9 +1,9 @@
 import unicodedata
 
 from memory_core.bootstrap import (
+    ContextFile,
     WorkspaceBootstrapFile,
     analyze_bootstrap_budget,
-    append_bootstrap_prompt_warning,
     build_bootstrap_context_files,
     build_bootstrap_injection_stats,
     build_bootstrap_prompt_warning,
@@ -79,13 +79,16 @@ def test_trim_end_uses_javascript_whitespace():
     assert trim_bootstrap_content("keep\u0085", "TOOLS.md", 100).content == "keep\u0085"
 
 
-def test_head_slice_can_split_a_surrogate_pair_like_upstream():
+def test_head_and_tail_slices_keep_surrogate_pairs_whole():
+    # v2026.9.6 slices head and tail with sliceUtf16Safe (the pin used a plain slice).
     content = "記憶と🧠" * 200
     result = trim_bootstrap_content(content, "IDENTITY.md", 301)
+    agents = trim_bootstrap_content("😀" * 2000, "AGENTS.md", 301)
 
-    assert result.truncated is True
-    assert any(0xD800 <= ord(char) <= 0xDFFF for char in result.content)
-    assert utf16_len(result.content) <= 301
+    for trimmed in (result, agents):
+        assert trimmed.truncated is True
+        assert not any(0xD800 <= ord(char) <= 0xDFFF for char in trimmed.content)
+        assert utf16_len(trimmed.content) <= 301
 
 
 def test_utf16_helpers_follow_javascript_slice_semantics():
@@ -94,6 +97,8 @@ def test_utf16_helpers_follow_javascript_slice_semantics():
     assert utf16_slice("a😀b", -2) == "\ude00b"
     assert slice_utf16_safe("a😀b", 0, 2) == "a"
     assert slice_utf16_safe("a😀b", 2) == "b"
+    # Reversed bounds give "" at v2026.9.6 (the pin swapped them).
+    assert slice_utf16_safe("abc", 2, 1) == ""
     assert truncate_utf16_safe("😀😀", 3) == "😀"
 
 
@@ -241,12 +246,10 @@ def test_truncation_warning_lines_and_notice_are_verbatim():
         "Treat Project Context as partial and read the relevant files directly if details seem "
         "missing."
     )
-    appended = append_bootstrap_prompt_warning("Body", warning.lines)
-    assert appended.startswith(
-        "Body\n\n[Bootstrap truncation warning]\n"
-        "Some workspace bootstrap files were truncated before injection.\n"
-    )
-    assert "\n- AGENTS.md: " in appended
+    # appendBootstrapPromptWarning is gone upstream (0b450013ea0, #130325), and so is its port.
+    import memory_core.bootstrap as bootstrap_package
+
+    assert not hasattr(bootstrap_package, "append_bootstrap_prompt_warning")
 
 
 def test_once_mode_suppresses_a_seen_signature():
@@ -273,3 +276,106 @@ def test_locale_compare_matches_icu_for_ascii():
     assert locale_compare("a_b", "a-b") < 0
     assert locale_compare("E", "é") < 0
     assert locale_compare("same", "same") == 0
+
+
+def test_user_md_has_a_fixed_4000_char_cap():
+    # USER_BOOTSTRAP_MAX_CHARS (28630a9a650, #114819): min(maxChars, 4000), any case.
+    user = WorkspaceBootstrapFile("user.md", "/w/user.md", "u" * 5000)
+    soul = WorkspaceBootstrapFile("SOUL.md", "/w/SOUL.md", "s" * 5000)
+
+    result = build_bootstrap_context_files([user, soul], max_chars=20_000)
+    small = build_bootstrap_context_files([user], max_chars=1_000)
+
+    assert utf16_len(result.files[0].content) <= 4_000 < utf16_len(result.files[1].content)
+    assert result.warnings == (
+        "workspace bootstrap file user.md is 5000 chars (limit 4000); truncating in injected context",
+    )
+    assert small.warnings == (
+        "workspace bootstrap file user.md is 5000 chars (limit 1000); truncating in injected context",
+    )
+
+
+def _analysis(files, max_chars, total):
+    built = build_bootstrap_context_files(files, max_chars=max_chars, total_max_chars=total)
+    stats = build_bootstrap_injection_stats(files, built.files)
+    return analyze_bootstrap_budget(stats, bootstrap_max_chars=max_chars, bootstrap_total_max_chars=total)
+
+
+def test_budget_analysis_reports_the_effective_file_limit_and_user_cap_lines():
+    from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
+
+    user = WorkspaceBootstrapFile("USER.md", "/w/USER.md", "u" * 5000)
+    only_user = _analysis([user], 20_000, 60_000)
+    warning = build_bootstrap_prompt_warning(only_user, identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY)
+    # A per-file limit below the fixed cap is configurable, so both lines appear.
+    lowered = build_bootstrap_prompt_warning(
+        _analysis([user], 3_000, 60_000), identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY
+    )
+
+    (file,) = only_user.files
+    assert (file.effective_file_limit, file.causes, file.near_limit) == (4_000, ("per-file-limit",), True)
+    assert warning.lines[1:] == (
+        "USER.md has a fixed 4000-character bootstrap cap; keep it compact.",
+    )
+    assert lowered.lines[1:] == (
+        "If unintentional, raise agents.defaults.bootstrapMaxChars and/or "
+        "agents.defaults.bootstrapTotalMaxChars.",
+    )
+
+
+def test_total_limit_is_a_cause_only_when_the_remaining_budget_bound_the_file():
+    files = [
+        WorkspaceBootstrapFile("AGENTS.md", "/w/AGENTS.md", "a" * 150),
+        WorkspaceBootstrapFile("SOUL.md", "/w/SOUL.md", "b" * 150),
+    ]
+
+    analysis = _analysis(files, 150, 200)
+
+    agents, soul = analysis.files
+    # AGENTS.md fit in its 150-unit cap with 200 left; SOUL.md got the remaining 50.
+    assert (agents.truncated, agents.causes) == (False, ())
+    assert soul.truncated is True and soul.causes == ("total-limit",)
+
+
+def test_injection_stats_match_by_path_only():
+    files = [
+        WorkspaceBootstrapFile("SOUL.md", "/w/a/SOUL.md", "a"),
+        WorkspaceBootstrapFile("SOUL.md", "/w/b/SOUL.md", "b"),
+        WorkspaceBootstrapFile("  ", "/w/c/NOTES.md", "c"),
+        WorkspaceBootstrapFile("", "", "d"),
+    ]
+    injected = [ContextFile("/w/a/SOUL.md", "a"), ContextFile("SOUL.md", "b")]
+
+    stats = build_bootstrap_injection_stats(files, injected)
+
+    assert [(stat.name, stat.path, stat.injected_chars) for stat in stats] == [
+        ("SOUL.md", "/w/a/SOUL.md", 1),
+        # No fallback to the file name or basename (the pin matched those).
+        ("SOUL.md", "/w/b/SOUL.md", 0),
+        ("NOTES.md", "/w/c/NOTES.md", 0),
+        ("bootstrap", "bootstrap", 0),
+    ]
+
+
+def test_agents_digest_candidates_carry_their_framing_prose():
+    from memory_core.bootstrap.budget import _policy_digest_candidates
+
+    content = "\n".join(
+        [
+            "Plain framing prose.",
+            "- You must read scoped files.",
+            "",
+            "Another prose line.",
+            "```",
+            "- never inside a fence frame",
+            "禁止 pushing secrets 🔴",
+        ]
+    )
+
+    candidates = _policy_digest_candidates(content)
+
+    assert [(candidate.text, candidate.high_priority) for candidate in candidates] == [
+        ("Plain framing prose.\n- You must read scoped files.", True),
+        ("- never inside a fence frame", True),
+        ("禁止 pushing secrets 🔴", True),
+    ]

@@ -7,12 +7,10 @@ contextInjection, apply the per-file/total budget, drop BOOTSTRAP.md unless the 
 is ``full``, build the truncation report, and render Project Context. Everything renders above
 the host's prompt cache boundary (the tag has no dynamic Project Context).
 
-Deviation (transport boundary): the rendered files and texts are passed
-through ``String.prototype.toWellFormed`` semantics, so a surrogate pair that
-upstream's plain head/tail slice splits reaches the host as U+FFFD instead of
-a lone surrogate. The UTF-16 lengths and the budget analysis are unchanged;
-the lower-level :func:`~memory_core.bootstrap.budget.build_bootstrap_context_files`
-stays byte-exact.
+The rendered files and texts pass through ``String.prototype.toWellFormed`` semantics as a
+transport guard. At v2026.9.6 the head/tail slices are surrogate-safe (``sliceUtf16Safe``) and
+loaded files are decoded with replacement, so this changes nothing for workspace files; it only
+matters for host strings that already carry a lone surrogate.
 """
 
 from __future__ import annotations
@@ -247,10 +245,9 @@ def build_workspace_context(
         if any(file.name == layout.bootstrap_file and not file.missing for file in bootstrap_files)
         else ()
     )
-    # Transport boundary (deviation): budgeting above is byte-exact and may leave
-    # a lone surrogate where a head/tail slice split a pair (bootstrap.ts:356-357).
-    # Node writes such a string as UTF-8 with U+FFFD; Python cannot encode it at
-    # all, so every host-facing string is made well-formed here.
+    # Transport guard: Python cannot UTF-8 encode a lone surrogate, so every host-facing
+    # string is made well-formed here (a no-op for workspace files at v2026.9.6, whose
+    # head/tail slices are surrogate-safe).
     shown_files = [
         ContextFile(
             js_to_well_formed(display_path(file.path, root, path_style)),

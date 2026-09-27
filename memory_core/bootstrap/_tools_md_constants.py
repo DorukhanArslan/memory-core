@@ -1,12 +1,14 @@
-"""Upstream TOOLS.md migration constants, extracted by scripts/extract_upstream_constants.py.
+"""Upstream TOOLS.md migration constants.
 
+Extracted by scripts/extract_upstream_constants.py.
 Generated from OpenClaw eb377ac59e6c9fd6c7705028034812becf00271b:
 src/commands/doctor-tools-md-migration-content.ts,
 src/commands/doctor-tools-md-migration-guidance.ts,
 src/commands/doctor-tools-md-migration.ts.
-Do not edit by hand: re-run the script; tests/integration/test_tools_md_migration_source.py
-checks these values against the source. The legacy templates are upstream's retired
-TOOLS.md stock texts, used only to recognise an untouched file; memory-core never seeds them.
+Do not edit by hand: re-run the script; tests/integration/test_extracted_upstream_constants.py
+checks these values against the source.
+The legacy templates are upstream's retired TOOLS.md stock texts, used only to
+recognise an untouched file; memory-core never seeds them.
 """
 
 from __future__ import annotations

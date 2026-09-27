@@ -253,26 +253,6 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
         ),
     ),
     PendingPort(
-        "bootstrap budget and truncation (USER.md fixed 4000-char cap, effectiveFileLimit in the "
-        "budget analysis, Traditional Chinese AGENTS.md digest markers)",
-        "28630a9a650 (#114819), dae1aea7117 (#136967), dfc9678a516 (#142915)",
-        (
-            *_oracle(
-                "bootstrap_context_files_match_python[probe-head-tail]",
-                "bootstrap_context_files_match_python[compact-marker]",
-                "bootstrap_context_files_match_python[agents-policy-digest]",
-                "bootstrap_context_files_match_python[agents-digest-tight]",
-                "bootstrap_context_files_match_python[surrogate-split-cjk-turkish]",
-                "bootstrap_context_files_match_python[total-budget-exhaustion]",
-                "bootstrap_context_files_match_python[missing-marker-clamp-then-break]",
-                "bootstrap_context_files_match_python[paths-and-js-whitespace]",
-                "bootstrap_context_files_match_python[duplicate-names-report]",
-                "bootstrap_warning_once_mode_matches_python",
-            ),
-            "test_openclaw_ts_oracle.py::test_bootstrap_constants_and_keyword_sets_equal_upstream_source",
-        ),
-    ),
-    PendingPort(
         "heartbeat monitor scratch (prompts follow the scratch and reply NO_REPLY, the runner "
         "never reads HEARTBEAT.md, recurring tasks are cron jobs, heartbeat transcript filter)",
         "3e2b3ea4d5e (#112967), 07e3855b465 (#113131), b23c7bd0f84 (#113165); "

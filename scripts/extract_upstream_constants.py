@@ -1,10 +1,16 @@
-"""Extract upstream string constants from the OpenClaw TypeScript source (no hand-copying).
+"""Extract upstream constants from the OpenClaw TypeScript source (no hand-copying).
 
 AGENTS.md › Parity rules: upstream prompt, template and safety constants are copied verbatim by
 script, and a set-equality check compares them with the source at test time
-(tests/integration/test_tools_md_migration_source.py). This script generates
-``memory_core/bootstrap/_tools_md_constants.py`` from the checkout named by ``--repo`` (default
-``OPENCLAW_ORACLE_REPO``), writing every non-ASCII character as a ``\\u`` escape::
+(tests/integration/test_extracted_upstream_constants.py). From the checkout named by
+``--repo`` (default ``OPENCLAW_ORACLE_REPO``) this script generates, writing every non-ASCII
+character as a ``\\u`` escape:
+
+- ``memory_core/bootstrap/_tools_md_constants.py``: the TOOLS.md migration templates, guidance
+  rewrites and heading (src/commands/doctor-tools-md-migration*.ts);
+- ``memory_core/bootstrap/_bootstrap_constants.py``: the bootstrap budget numbers and the AGENTS.md
+  policy-digest keyword sets (src/agents/embedded-agent-helpers/bootstrap.ts,
+  src/agents/bootstrap-budget.ts, src/agents/bootstrap-budget-warning.ts)::
 
     .venv/bin/python scripts/extract_upstream_constants.py --repo /tmp/openclaw-head
 
@@ -22,6 +28,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "memory-core" / "bootstrap" / "_tools_md_constants.py"
+BOOTSTRAP_OUTPUT = ROOT / "memory-core" / "bootstrap" / "_bootstrap_constants.py"
+CHECK_TEST = "tests/integration/test_extracted_upstream_constants.py"
+BOOTSTRAP_SOURCE = "src/agents/embedded-agent-helpers/bootstrap.ts"
+BUDGET_SOURCE = "src/agents/bootstrap-budget.ts"
+BUDGET_WARNING_SOURCE = "src/agents/bootstrap-budget-warning.ts"
 CONTENT_SOURCE = "src/commands/doctor-tools-md-migration-content.ts"
 GUIDANCE_SOURCE = "src/commands/doctor-tools-md-migration-guidance.ts"
 MIGRATION_SOURCE = "src/commands/doctor-tools-md-migration.ts"
@@ -146,6 +157,88 @@ def repr_ts(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'
 
 
+_NUMERIC_CONST_RE = re.compile(
+    r"^(?:export )?const ([A-Z0-9_]+) = ([0-9_.]+(?: \* [0-9_.]+)*);", re.MULTILINE
+)
+# /\b(?:word|...)\b|(?:unbounded|...)/iu (bootstrap.ts AGENTS_POLICY_DIGEST_*_PATTERN).
+_KEYWORD_PATTERN_RE = r"const {name} =\s*/\\b\(\?:([^)]*)\)\\b(?:\|\(\?:([^)]*)\))?/iu;"
+
+
+def ts_numeric_constants(source: str, names: tuple[str, ...]) -> dict[str, int | float]:
+    found: dict[str, int | float] = {}
+    for match in _NUMERIC_CONST_RE.finditer(source):
+        if match.group(1) not in names:
+            continue
+        factors = [part.replace("_", "") for part in match.group(2).split(" * ")]
+        if all("." not in factor for factor in factors):
+            value: int | float = 1
+            for factor in factors:
+                value *= int(factor)
+        else:
+            value = 1.0
+            for factor in factors:
+                value *= float(factor)
+        found[match.group(1)] = value
+    missing = [name for name in names if name not in found]
+    if missing:
+        raise ValueError(f"numeric constants not found: {missing}")
+    return {name: found[name] for name in names}
+
+
+def ts_keyword_pattern(source: str, name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """(word-bounded alternatives, unbounded alternatives) of a policy keyword regex."""
+    match = re.search(_KEYWORD_PATTERN_RE.format(name=re.escape(name)), source)
+    if match is None:
+        raise ValueError(f"keyword pattern {name} not found")
+
+    def split(group: str | None) -> tuple[str, ...]:
+        if not group:
+            return ()
+        return tuple(item.replace("\\.", ".") for item in group.split("|"))
+
+    return split(match.group(1)), split(match.group(2))
+
+
+BOOTSTRAP_NUMERIC = {
+    BOOTSTRAP_SOURCE: (
+        "DEFAULT_BOOTSTRAP_MAX_CHARS",
+        "DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS",
+        "USER_BOOTSTRAP_MAX_CHARS",
+        "MIN_BOOTSTRAP_FILE_BUDGET_CHARS",
+        "BOOTSTRAP_HEAD_RATIO",
+        "BOOTSTRAP_TAIL_RATIO",
+        "MIN_BOOTSTRAP_TRIMMED_CONTENT_CHARS",
+        "AGENTS_POLICY_DIGEST_RATIO",
+        "AGENTS_POLICY_HEAD_RATIO",
+        "AGENTS_POLICY_TAIL_RATIO",
+        "AGENTS_POLICY_DIGEST_MAX_LINE_CHARS",
+    ),
+    BUDGET_SOURCE: ("DEFAULT_BOOTSTRAP_NEAR_LIMIT_RATIO",),
+    BUDGET_WARNING_SOURCE: (
+        "DEFAULT_BOOTSTRAP_PROMPT_WARNING_MAX_FILES",
+        "DEFAULT_BOOTSTRAP_PROMPT_WARNING_SIGNATURE_HISTORY_MAX",
+    ),
+}
+
+
+def extract_bootstrap(repo: Path) -> dict[str, object]:
+    constants: dict[str, object] = {}
+    for relative, names in BOOTSTRAP_NUMERIC.items():
+        constants.update(ts_numeric_constants((repo / relative).read_text(encoding="utf-8"), names))
+    bootstrap = (repo / BOOTSTRAP_SOURCE).read_text(encoding="utf-8")
+    policy, policy_unbounded = ts_keyword_pattern(bootstrap, "AGENTS_POLICY_DIGEST_CANDIDATE_PATTERN")
+    high, high_unbounded = ts_keyword_pattern(bootstrap, "AGENTS_POLICY_DIGEST_HIGH_PRIORITY_PATTERN")
+    constants.update(
+        {
+            "POLICY_DIGEST_KEYWORDS": policy,
+            "POLICY_DIGEST_UNBOUNDED_KEYWORDS": policy_unbounded,
+            "POLICY_DIGEST_HIGH_PRIORITY_KEYWORDS": high,
+            "POLICY_DIGEST_HIGH_PRIORITY_UNBOUNDED_KEYWORDS": high_unbounded,
+        }
+    )
+    return constants
+
+
 def _git_head(repo: Path) -> str:
     completed = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=False
@@ -153,31 +246,63 @@ def _git_head(repo: Path) -> str:
     return completed.stdout.strip() or "unknown"
 
 
-def render(constants: dict[str, object], commit: str) -> str:
+def _render_value(name: str, value: object) -> list[str]:
+    if isinstance(value, (str, int, float)):
+        return [f"{name} = {ascii(value)}"]
+    items = list(value)  # type: ignore[call-overload]
+    if items and isinstance(items[0], tuple):
+        lines = [f"{name}: tuple[tuple[str, str], ...] = ("]
+        lines.extend(f"    ({ascii(first)}, {ascii(second)})," for first, second in items)
+        return [*lines, ")"]
+    lines = [f"{name}: tuple[str, ...] = ("]
+    lines.extend(f"    {ascii(item)}," for item in items)
+    return [*lines, ")"]
+
+
+def render(constants: dict[str, object], commit: str, *, title: str, sources: list[str], note: list[str]) -> str:
     lines = [
-        '"""Upstream TOOLS.md migration constants, extracted by scripts/extract_upstream_constants.py.',
+        f'"""{title}.',
         "",
+        "Extracted by scripts/extract_upstream_constants.py.",
         f"Generated from OpenClaw {commit}:",
-        f"{CONTENT_SOURCE},",
-        f"{GUIDANCE_SOURCE},",
-        f"{MIGRATION_SOURCE}.",
-        "Do not edit by hand: re-run the script; tests/integration/test_tools_md_migration_source.py",
-        "checks these values against the source. The legacy templates are upstream's retired",
-        "TOOLS.md stock texts, used only to recognise an untouched file; memory-core never seeds them.",
+        *[f"{source}{'.' if index == len(sources) - 1 else ','}" for index, source in enumerate(sources)],
+        f"Do not edit by hand: re-run the script; {CHECK_TEST}",
+        "checks these values against the source.",
+        *note,
         '"""',
         "",
         "from __future__ import annotations",
         "",
     ]
     for name, value in constants.items():
-        if isinstance(value, str):
-            lines.append(f"{name} = {ascii(value)}")
-        else:
-            lines.append(f"{name}: tuple[tuple[str, str], ...] = (")
-            for first, second in value:  # type: ignore[union-attr]
-                lines.append(f"    ({ascii(first)}, {ascii(second)}),")
-            lines.append(")")
+        lines.extend(_render_value(name, value))
     return "\n".join(lines) + "\n"
+
+
+def outputs(repo: Path) -> dict[Path, str]:
+    commit = _git_head(repo)
+    return {
+        OUTPUT: render(
+            extract(repo),
+            commit,
+            title="Upstream TOOLS.md migration constants",
+            sources=[CONTENT_SOURCE, GUIDANCE_SOURCE, MIGRATION_SOURCE],
+            note=[
+                "The legacy templates are upstream's retired TOOLS.md stock texts, used only to",
+                "recognise an untouched file; memory-core never seeds them.",
+            ],
+        ),
+        BOOTSTRAP_OUTPUT: render(
+            extract_bootstrap(repo),
+            commit,
+            title="Upstream bootstrap budget constants and policy-digest keywords",
+            sources=[BOOTSTRAP_SOURCE, BUDGET_SOURCE, BUDGET_WARNING_SOURCE],
+            note=[
+                "The *_UNBOUNDED_KEYWORDS match without word boundaries (the second alternation",
+                "group of the upstream /\\b(?:...)\\b|(?:...)/iu patterns).",
+            ],
+        ),
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -188,15 +313,16 @@ def main(argv: list[str] | None = None) -> int:
     if not args.repo:
         parser.error("--repo (or OPENCLAW_ORACLE_REPO) is required")
     repo = Path(args.repo)
-    text = render(extract(repo), _git_head(repo))
-    if args.check:
-        current = OUTPUT.read_text(encoding="utf-8") if OUTPUT.exists() else ""
-        if current != text:
-            print(f"{OUTPUT} differs from {repo}", file=sys.stderr)
-            return 1
-        return 0
-    OUTPUT.write_text(text, encoding="utf-8")
-    return 0
+    status = 0
+    for path, text in outputs(repo).items():
+        if args.check:
+            current = path.read_text(encoding="utf-8") if path.exists() else ""
+            if current != text:
+                print(f"{path} differs from {repo}", file=sys.stderr)
+                status = 1
+            continue
+        path.write_text(text, encoding="utf-8")
+    return status
 
 
 if __name__ == "__main__":

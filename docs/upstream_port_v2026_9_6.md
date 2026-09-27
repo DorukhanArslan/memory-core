@@ -108,7 +108,8 @@ up to 120.
   keep the extraction plus set-equality check), `append_bootstrap_prompt_warning` (retire or keep
   as adapter-only).
 - Tests: 11 (`bootstrapContextFiles` 9, warning once-mode 1, keyword/constant source check 1).
-- Worklist areas: "bootstrap budget and truncation".
+- Worklist areas: none left; the `bootstrap budget and truncation` entries were removed
+  when the area landed (2026-09-27).
 - New oracle ops: none; the existing op covers it.
 
 ### 3. Heartbeat and automation (estimate 16-28 h)

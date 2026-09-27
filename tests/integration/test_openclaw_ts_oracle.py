@@ -4276,7 +4276,12 @@ def _python_bootstrap_context_report(
         "stats": [_stat_payload(stat) for stat in stats],
         "analysis": {
             "files": [
-                {**_stat_payload(file), "nearLimit": file.near_limit, "causes": list(file.causes)}
+                {
+                    **_stat_payload(file),
+                    "effectiveFileLimit": file.effective_file_limit,
+                    "nearLimit": file.near_limit,
+                    "causes": list(file.causes),
+                }
                 for file in analysis.files
             ],
             "totalNearLimit": analysis.total_near_limit,
@@ -5279,35 +5284,40 @@ def _upstream_numeric_constants(source: str) -> dict[str, float]:
 
 
 def test_bootstrap_constants_and_keyword_sets_equal_upstream_source():
-    # Set-equality check (AGENTS.md › Parity rules): constants and the AGENTS.md digest keyword
-    # lists are extracted from the pinned TS source, not retyped.
-    import re
-
+    # Set-equality check (AGENTS.md › Parity rules): the budget module uses the script-extracted
+    # constants (memory_core/bootstrap/_bootstrap_constants.py, regenerated and compared by
+    # test_extracted_upstream_constants.py); this reads the tag's source independently.
     from memory_core.bootstrap import budget, files, startup
 
     bootstrap_source = _upstream_source("src/agents/embedded-agent-helpers/bootstrap.ts")
-    # Each digest pattern is /\b(?:word|...)\b/iu; v2026.9.6 appends a non-word-bounded group
-    # (CJK prohibition terms and a red-circle emoji), /\b(?:...)\b|(?:...)/iu, whose
-    # alternatives belong to the same keyword set.
+    # Each digest pattern is /\b(?:word|...)\b|(?:unbounded|...)/iu at v2026.9.6: the second
+    # group (CJK prohibition terms and a red-circle emoji, dfc9678a516 #142915) matches without
+    # word boundaries.
     keyword_sets = [
-        [*words.split("|"), *(extra.split("|") if extra else [])]
+        ([*words.split("|")], [*extra.split("|")] if extra else [])
         for words, extra in re.findall(
             r"/\\b\(\?:([^)]*)\)\\b(?:\|\(\?:([^)]*)\))?/iu", bootstrap_source
         )
     ]
     assert [
-        [keyword.replace("\\.", ".") for keyword in keywords] for keywords in keyword_sets
-    ] == [list(budget._POLICY_KEYWORDS), list(budget._HIGH_PRIORITY_KEYWORDS)]
+        ([keyword.replace("\\.", ".") for keyword in words], extra)
+        for words, extra in keyword_sets
+    ] == [
+        (list(budget._POLICY_KEYWORDS), list(budget.POLICY_DIGEST_UNBOUNDED_KEYWORDS)),
+        (
+            list(budget._HIGH_PRIORITY_KEYWORDS),
+            list(budget.POLICY_DIGEST_HIGH_PRIORITY_UNBOUNDED_KEYWORDS),
+        ),
+    ]
 
     expected_numbers = {
         **_upstream_numeric_constants(bootstrap_source),
         **_upstream_numeric_constants(_upstream_source("src/agents/bootstrap-budget.ts")),
+        **_upstream_numeric_constants(_upstream_source("src/agents/bootstrap-budget-warning.ts")),
         **_upstream_numeric_constants(_upstream_source("src/auto-reply/reply/startup-context.ts")),
+        # The 2 MiB read bound moved to workspace-bootstrap-read.ts at v2026.9.6.
+        **_upstream_numeric_constants(_upstream_source("src/agents/workspace-bootstrap-read.ts")),
     }
-    workspace_numbers = _upstream_numeric_constants(_upstream_source("src/agents/workspace.ts"))
-    expected_numbers["MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES"] = workspace_numbers[
-        "MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES"
-    ]
     python_numbers = {
         name: float(getattr(module, name))
         for module in (budget, files, startup)

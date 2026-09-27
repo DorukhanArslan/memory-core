@@ -4973,6 +4973,35 @@ def test_real_openclaw_oracle_workspace_lifecycle_matches_python(tmp_path: Path,
     assert ts_snapshots == _python_lifecycle_snapshots(py_root, steps)
 
 
+def test_real_openclaw_oracle_workspace_lifecycle_legacy_gate_is_cached_upstream(tmp_path: Path):
+    # Documented deviation (memory_core/bootstrap/lifecycle.py, matrix row "Workspace bootstrap
+    # files"): upstream's assertNoUnmigratedWorkspaceState remembers a clean source set for the
+    # process (checkedWorkspaceSourceSets), so a legacy file written after a clean ensure is
+    # ignored; memory-core checks on every call and refuses it.
+    steps = [
+        {"op": "ensure"},
+        {"op": "write", "path": ".openclaw/workspace-state.json", "content": "{}"},
+        {"op": "ensure"},
+    ]
+    ts_root = tmp_path / "ts" / "workspace"
+    py_root = tmp_path / "py" / "workspace"
+    ts_root.parent.mkdir(parents=True)
+    py_root.parent.mkdir(parents=True)
+
+    result = _oracle().run(
+        {"operation": "workspaceLifecycle", "workspaceDir": str(ts_root), "steps": steps}
+    )
+
+    assert result["ok"] is True, result
+    ts_snapshots = result["result"]["snapshots"]
+    python_snapshots = _python_lifecycle_snapshots(py_root, steps)
+    assert "error" not in ts_snapshots[1] and ts_snapshots[1]["setupCompleted"] is False
+    assert python_snapshots[1]["error"] == (
+        "Legacy workspace setup state requires migration for <root>; run <migration>."
+    )
+    assert ts_snapshots[0] == python_snapshots[0]
+
+
 # --- TOOLS.md retirement (memory_core.bootstrap.tools_md) -----------------------------------------
 
 from memory_core.bootstrap._tools_md_constants import (  # noqa: E402

@@ -22,6 +22,11 @@ Deviations (also listed in docs/parity_matrix.md › Workspace bootstrap files):
   :func:`migrate_legacy_workspace_state` imports it (upstream: ``openclaw doctor --fix``);
   runtime code never parses those files. Attestation sources (upstream's state-dir files and
   sibling ``<workspace>.attested`` markers) are not checked: memory-core has no attestation store.
+  Stricter than upstream: ``assertNoUnmigratedWorkspaceState`` caches a clean check per source
+  set for the process lifetime (``checkedWorkspaceSourceSets``,
+  ``src/agents/workspace-legacy-state.ts:196-213``), so a legacy file that appears later is
+  ignored until restart; memory-core checks on every call (a library has no process lifetime to
+  scope such a cache to).
 - Templates come from the host (``templates``), default to empty strings, and never carry
   OpenClaw template wording. They pass through upstream's front-matter stripping like
   ``loadTemplate`` output.
@@ -178,7 +183,11 @@ class WorkspaceStateMigrationRequiredError(RuntimeError):
 
 
 def assert_no_unmigrated_workspace_state(root: str | os.PathLike[str]) -> None:
-    """Fail closed while an upstream legacy setup file or its doctor claim exists."""
+    """Fail closed while an upstream legacy setup file or its doctor claim exists.
+
+    Deviation: checked on every call; upstream skips source sets it already found clean in
+    this process (``checkedWorkspaceSourceSets``).
+    """
     blocked = tuple(
         str(candidate)
         for source in legacy_workspace_state_paths(root)

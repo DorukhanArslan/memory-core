@@ -402,6 +402,38 @@ def test_real_openclaw_oracle_flush_plan_derives_thresholds_from_the_context_win
     }
 
 
+@pytest.mark.parametrize(
+    "force_flush_transcript_bytes",
+    [-0.5, "0.5b", "2.5b", 2**60, "٣", 2**53, "3\n"],
+    ids=["negative_half", "half_byte", "two_and_a_half", "unsafe_2_60", "arabic_digit", "unsafe_2_53", "newline"],
+)
+def test_real_openclaw_oracle_flush_plan_parses_force_flush_bytes_like_python(
+    force_flush_transcript_bytes
+):
+    # parseNonNegativeByteSize (src/config/byte-size.ts) and parseByteSize (src/cli/parse-bytes.ts):
+    # Math.floor plus a safe-integer check for numbers; an ASCII-only pattern, Math.round and a
+    # safe-integer check for strings; a rejected value keeps the 2 MiB default.
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    config = {
+        "agents": {
+            "defaults": {
+                "userTimezone": "Europe/Istanbul",
+                "compaction": {"memoryFlush": {"forceFlushTranscriptBytes": force_flush_transcript_bytes}},
+            }
+        }
+    }
+
+    result = oracle.run({"operation": "flushPlan", "nowMs": 1777824000000, "config": config})
+    python_plan = build_memory_flush_plan_from_config(
+        workspace_dir=None, cfg=config, now_ms=1777824000000, time_format=result["hostTimeFormat"]
+    )
+
+    assert result["ok"] is True
+    assert python_plan is not None
+    assert result["result"]["forceFlushTranscriptBytes"] == python_plan.force_flush_transcript_bytes
+    assert result["result"]["prompt"] == python_plan.prompt
+
+
 def test_real_openclaw_oracle_preemptive_compaction_routes_match_python():
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
     medium = "alpha beta gamma delta epsilon " * 400

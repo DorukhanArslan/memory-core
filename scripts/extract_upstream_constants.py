@@ -18,8 +18,9 @@ character as a ``\\u`` escape:
   joined with ``" "`` and ``${SILENT_REPLY_TOKEN}`` is substituted from src/auto-reply/tokens.ts),
   the flush plan and compaction reserve defaults (src/agents/agent-settings.ts,
   src/agents/agent-compaction-constants.ts), the flush failure limits
-  (src/auto-reply/reply/agent-runner-memory.ts) and ``SESSION_TOTAL_TOKENS_VERSION``
-  (src/config/sessions/types.ts)::
+  (src/auto-reply/reply/agent-runner-memory.ts), ``SESSION_TOTAL_TOKENS_VERSION``
+  (src/config/sessions/types.ts) and the byte-size unit table of ``forceFlushTranscriptBytes``
+  (src/cli/parse-bytes.ts)::
 
     .venv/bin/python scripts/extract_upstream_constants.py --repo /tmp/openclaw-head
 
@@ -53,6 +54,7 @@ AGENT_SETTINGS_SOURCE = "src/agents/agent-settings.ts"
 COMPACTION_CONSTANTS_SOURCE = "src/agents/agent-compaction-constants.ts"
 RUNNER_MEMORY_SOURCE = "src/auto-reply/reply/agent-runner-memory.ts"
 SESSION_TYPES_SOURCE = "src/config/sessions/types.ts"
+PARSE_BYTES_SOURCE = "src/cli/parse-bytes.ts"
 # Template-literal expressions of the finding texts -> str.format field names.
 FINDING_TEMPLATE_FIELDS = {
     "target.primaryAgentId": "agent_id",
@@ -413,6 +415,22 @@ def ts_joined_string_array(
     return " ".join(parts)
 
 
+def ts_numeric_record(source: str, name: str) -> dict[str, int]:
+    """Value of ``const NAME: Record<string, number> = { key: 1, key: 1024 ** 2, ... };``."""
+    match = re.search(rf"\bconst {re.escape(name)}(?::[^=]+)?=\s*\{{([^}}]*)\}};", source)
+    if match is None:
+        raise ValueError(f"constant {name} not found")
+    record: dict[str, int] = {}
+    for item in (part.strip() for part in match.group(1).split(",")):
+        if not item:
+            continue
+        entry = re.fullmatch(r"([a-z]+):\s*([0-9]+)(?:\s*\*\*\s*([0-9]+))?", item)
+        if entry is None:
+            raise ValueError(f"{name}: unexpected entry {item!r}")
+        record[entry.group(1)] = int(entry.group(2)) ** int(entry.group(3) or 1)
+    return record
+
+
 FLUSH_HINTS = ("MEMORY_FLUSH_TARGET_HINT", "MEMORY_FLUSH_APPEND_ONLY_HINT", "MEMORY_FLUSH_READ_ONLY_HINT")
 
 
@@ -460,6 +478,9 @@ def extract_memory_flush(repo: Path) -> dict[str, object]:
             flush_plan, "DEFAULT_MEMORY_FLUSH_SYSTEM_PROMPT", hints, fields
         ),
         "MEMORY_FLUSH_NO_REPLY_HINT_TEMPLATE": no_reply_hint,
+        "UNIT_MULTIPLIERS": ts_numeric_record(
+            (repo / PARSE_BYTES_SOURCE).read_text(encoding="utf-8"), "UNIT_MULTIPLIERS"
+        ),
     }
 
 
@@ -473,6 +494,10 @@ def _git_head(repo: Path) -> str:
 def _render_value(name: str, value: object) -> list[str]:
     if isinstance(value, (str, int, float)):
         return [f"{name} = {ascii(value)}"]
+    if isinstance(value, dict):
+        lines = [f"{name}: dict[str, int] = {{"]
+        lines.extend(f"    {ascii(key)}: {ascii(item)}," for key, item in value.items())
+        return [*lines, "}"]
     items = list(value)  # type: ignore[call-overload]
     if items and isinstance(items[0], tuple):
         arity = ", ".join("str" for _ in items[0])
@@ -539,11 +564,13 @@ def outputs(repo: Path) -> dict[Path, str]:
                 COMPACTION_CONSTANTS_SOURCE,
                 RUNNER_MEMORY_SOURCE,
                 SESSION_TYPES_SOURCE,
+                PARSE_BYTES_SOURCE,
             ],
             note=[
                 "The default prompts are the joined upstream arrays with SILENT_REPLY_TOKEN",
                 "substituted; MEMORY_FLUSH_NO_REPLY_HINT_TEMPLATE is the str.format template of",
-                "ensureNoReplyHint (fields: text, silent_reply_token).",
+                "ensureNoReplyHint (fields: text, silent_reply_token); UNIT_MULTIPLIERS is the",
+                "byte-size unit table of parseByteSize.",
             ],
         ),
     }

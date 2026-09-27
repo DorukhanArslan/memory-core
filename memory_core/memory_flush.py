@@ -43,7 +43,9 @@ from memory_core._memory_flush_constants import (
     MEMORY_FLUSH_TARGET_HINT,
     SESSION_TOTAL_TOKENS_VERSION,
     SILENT_REPLY_TOKEN,
+    UNIT_MULTIPLIERS,
 )
+from memory_core.bootstrap._js import js_trim
 from memory_core.memory_paths import UnsafeMemoryPathError, validate_daily_memory_path
 
 __all__ = [
@@ -611,31 +613,72 @@ def _normalize_non_negative_int(value: Any) -> int | None:
 
 
 def _parse_non_negative_byte_size(value: Any) -> int | None:
-    if _is_number(value) and _is_finite_number(value):
-        parsed = int(value)
+    """Port of ``parseNonNegativeByteSize`` (src/config/byte-size.ts).
+
+    A number is floored and must be a safe integer that is not negative; a string is a byte
+    size for ``parseByteSize`` with bare numbers in bytes. Anything else, or a value upstream
+    rejects, is ``None`` (the plan then keeps the default).
+    """
+    if _is_number(value):
+        if not _is_finite_number(value):
+            return None
+        integer = math.floor(value)
+        return integer if _is_safe_integer(integer) and integer >= 0 else None
+    if isinstance(value, str):
+        trimmed = js_trim(value)
+        if not trimmed:
+            return None
+        try:
+            parsed = _parse_byte_size(trimmed, default_unit="b")
+        except ValueError:
+            return None
         return parsed if parsed >= 0 else None
-    if not isinstance(value, str):
-        return None
-    match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)([a-zA-Z]+)?\s*", value)
-    if not match:
-        return None
+    return None
+
+
+# /^(\d+(?:\.\d+)?)([a-z]+)?$/ of parseByteSize: JS \d is ASCII only.
+_BYTE_SIZE_RE = re.compile(r"([0-9]+(?:\.[0-9]+)?)([a-z]+)?")
+
+
+def _parse_byte_size(raw: str, *, default_unit: str = "b") -> int:
+    """Port of ``parseByteSize`` (src/cli/parse-bytes.ts); raises ``ValueError`` where it throws."""
+    trimmed = js_trim(raw).lower()
+    if not trimmed:
+        raise ValueError(f"Invalid byte size (empty): {raw!r}")
+    match = _BYTE_SIZE_RE.fullmatch(trimmed)
+    if match is None:
+        raise ValueError(f"Invalid byte size: {raw!r}")
     number = float(match.group(1))
-    unit = (match.group(2) or "b").lower()
-    multipliers = {
-        "b": 1,
-        "kb": 1024,
-        "k": 1024,
-        "mb": 1024**2,
-        "m": 1024**2,
-        "gb": 1024**3,
-        "g": 1024**3,
-        "tb": 1024**4,
-        "t": 1024**4,
-    }
-    multiplier = multipliers.get(unit)
-    if multiplier is None:
+    if not _is_finite_number(number) or number < 0:
+        raise ValueError(f"Invalid byte size: {raw!r}")
+    unit = js_trim(match.group(2) or default_unit).lower()
+    multiplier = UNIT_MULTIPLIERS.get(unit)
+    if not multiplier:
+        raise ValueError(f'Invalid byte size (unknown unit "{unit}"): {raw!r}')
+    size = _js_math_round(number * multiplier)
+    # Validate the rounded byte count, as upstream does.
+    if size is None or not _is_safe_integer(size):
+        raise ValueError(f"Invalid byte size: {raw!r}")
+    return size
+
+
+_MAX_SAFE_INTEGER = 2**53 - 1
+
+
+def _is_safe_integer(value: int) -> bool:
+    """``Number.isSafeInteger`` of an already integral value."""
+    return -_MAX_SAFE_INTEGER <= value <= _MAX_SAFE_INTEGER
+
+
+def _js_math_round(value: float) -> int | None:
+    """``Math.round``: the nearest integer, halves toward +Infinity (not banker's rounding).
+
+    ``None`` for a non-finite value (``Math.round`` keeps it, and no such value is safe).
+    """
+    if not _is_finite_number(value):
         return None
-    return round(number * multiplier)
+    floor = math.floor(value)
+    return floor + 1 if value - floor >= 0.5 else floor
 
 
 def _is_number(value: Any) -> bool:

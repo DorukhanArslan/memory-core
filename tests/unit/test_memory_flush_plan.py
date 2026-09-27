@@ -161,6 +161,45 @@ def test_soft_threshold_normalizes_like_normalize_non_negative_int(value, expect
     assert plan.soft_threshold_tokens == expected
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        # numbers: Math.floor, then a safe integer that is not negative (byte-size.ts)
+        (1.5, 1),
+        (-0.5, DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES),
+        (-1e-9, DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES),
+        (2**53 - 1, 2**53 - 1),
+        (2**53, DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES),
+        (2**60, DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES),
+        (float("nan"), DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES),
+        (True, DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES),
+        # strings: parseByteSize with Math.round (halves up) and an ASCII-only pattern
+        ("0.5", 1),
+        ("0.5b", 1),
+        ("2.5b", 3),
+        ("1.5kb", 1536),
+        (" 3MB ", 3 * 1024 * 1024),
+        ("2 mb", DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES),
+        ("1pb", DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES),
+        ("", DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES),
+        ("٣", DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES),
+        ("3\n", 3),
+        ("9007199254740993", DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES),
+    ],
+)
+def test_force_flush_transcript_bytes_parses_like_parse_non_negative_byte_size(value, expected):
+    plan = build_memory_flush_plan(workspace_dir=None, now_ms=NOW_MS, force_flush_transcript_bytes=value)
+
+    assert plan.force_flush_transcript_bytes == expected
+
+
+def test_byte_size_units_come_from_the_extracted_upstream_table():
+    assert extracted.UNIT_MULTIPLIERS == {
+        "b": 1, "kb": 1024, "k": 1024, "mb": 1024**2, "m": 1024**2,
+        "gb": 1024**3, "g": 1024**3, "tb": 1024**4, "t": 1024**4,
+    }
+
+
 def test_build_memory_flush_plan_from_config_ignores_removed_keys():
     plan = build_memory_flush_plan_from_config(
         workspace_dir=None,

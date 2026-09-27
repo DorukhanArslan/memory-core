@@ -233,3 +233,25 @@ def test_openclaw_session_corpus_drops_heartbeat_rows(tmp_path: Path):
         f"User: {HEARTBEAT_PROMPT}\nAlso check the queue.\n"
         "User: What is Project Nebula?\n"
     )
+
+
+def test_openclaw_session_corpus_drops_silent_replies(tmp_path: Path):
+    # v2026.9.6 sanitizeSessionText drops isSilentReplyPayloadText rows of either role; the
+    # heartbeat's quiet answer is NO_REPLY now.
+    state_dir = tmp_path / ".openclaw-state"
+    _write_single_session(
+        state_dir,
+        [
+            ("user", "Check the queue."),
+            ("assistant", "NO_REPLY"),
+            ("assistant", '{"action": "NO_REPLY"}'),
+            ("user", "no_reply"),
+            ("assistant", "Here is a helpful response.\n\nNO_REPLY"),
+        ],
+    )
+    corpus = MemoryCoreSessionCorpus(state_dir)
+
+    assert corpus.read_index_text(corpus.discover_files()[0]) == (
+        "User: Check the queue.\n"
+        "Assistant: Here is a helpful response.\n\nNO_REPLY\n"
+    )

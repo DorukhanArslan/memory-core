@@ -7,7 +7,12 @@ import re
 from typing import Any
 
 from memory_core.bootstrap._js import JS_SPACE_CLASS, js_trim
-from memory_core.heartbeat import HEARTBEAT_PROMPT, HEARTBEAT_TOKEN, is_heartbeat_user_message
+from memory_core.heartbeat import (
+    HEARTBEAT_PROMPT,
+    HEARTBEAT_TOKEN,
+    is_heartbeat_user_message,
+    is_silent_reply_payload_text,
+)
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 
 _NEWLINE_RUN_RE = re.compile(f"[{JS_SPACE_CLASS}]*\n+[{JS_SPACE_CLASS}]*")
@@ -66,12 +71,13 @@ class MemoryCoreSessionCorpus:
         # transcript-tree helpers. Readers that want the active branch use
         # memory_core.transcript_tree.select_session_transcript_leaf_controlled_path
         # (the src/agents/cli-runner/session-history.ts pattern).
-        # Heartbeat prompt rows and bare HEARTBEAT_OK replies are dropped like
-        # sanitizeSessionText (session-files.ts:645-674). Not ported from that
-        # function: inbound-metadata and internal-runtime-context stripping
-        # before the checks, whitespace normalisation of the indexed text, the
-        # system-wrapper, cron-prompt, silent-reply and exec-completion drops,
-        # redaction and 800-char line wrapping.
+        # Heartbeat prompt rows, silent replies (isSilentReplyPayloadText: NO_REPLY,
+        # the canonical quiet heartbeat answer at v2026.9.6) and bare HEARTBEAT_OK
+        # replies are dropped like sanitizeSessionText (session-files.ts:529-560 at
+        # v2026.9.6). Not ported from that function: inbound-metadata and
+        # internal-runtime-context stripping before the checks, whitespace
+        # normalisation of the indexed text, the system-wrapper, cron-prompt and
+        # exec-completion drops, redaction and 800-char line wrapping.
         lines: list[str] = []
         for entry in _read_jsonl(file.abs_path):
             message = entry.get("message") if isinstance(entry, dict) else None
@@ -91,16 +97,18 @@ class MemoryCoreSessionCorpus:
         return "\n".join(lines).rstrip() + ("\n" if lines else "")
 
     def _is_heartbeat_row(self, raw_text: str, role: str) -> bool:
-        # Checks run on normalizeSessionText output (session-files.ts:523-528), so
+        # Checks run on normalizeSessionText output (sanitizeSessionText at v2026.9.6), so
         # a heartbeat prompt followed by a newline and more text no longer matches.
         normalized = _normalize_session_text(raw_text)
-        if role == "assistant":
-            return normalized == HEARTBEAT_TOKEN
-        return is_heartbeat_user_message(
+        if role == "user" and is_heartbeat_user_message(
             {"role": role, "content": normalized},
             HEARTBEAT_PROMPT,
             runtime_identity=self.runtime_identity,
-        )
+        ):
+            return True
+        if is_silent_reply_payload_text(normalized):
+            return True
+        return role == "assistant" and normalized == HEARTBEAT_TOKEN
 
     def _read_session_store(self) -> dict[str, Any]:
         path = self.sessions_dir / "sessions.json"

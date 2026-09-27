@@ -6200,6 +6200,10 @@ HEARTBEAT_CORPUS_ROWS = [
     ("user", "Please reply HEARTBEAT_OK so I can test something."),
     ("user", "[memory-core heartbeat poll]"),
     ("assistant", "HEARTBEAT_OK HEARTBEAT_OK"),
+    # v2026.9.6: canonical silent replies (the heartbeat's NO_REPLY) leave the corpus too.
+    ("assistant", "NO_REPLY"),
+    ("user", "Please NO_REPLY to this"),
+    ("assistant", '{"action": "NO_REPLY"}'),
 ]
 
 
@@ -6258,7 +6262,7 @@ def test_real_openclaw_oracle_heartbeat_session_filter_matches_python(tmp_path: 
     assert corpus.read_index_text(files["session-heartbeat.jsonl"]) == (
         heartbeat_entry["content"] + "\n"
     )
-    assert heartbeat_entry["lineMap"] == [3, 4, 11, 12, 13, 14]
+    assert heartbeat_entry["lineMap"] == [3, 4, 11, 12, 13, 14, 16]
     # A prompt followed by the path hint survives upstream's normalised check too; upstream
     # indexes the normalised one-line text, memory-core the raw text (documented gap).
     assert hint_entry["lineMap"] == [1]

@@ -115,7 +115,12 @@ from memory_core.automation import (
     heartbeat_task_declaration_key,
     is_heartbeat_task_job,
 )
-from memory_core.bootstrap._js import js_json_stringify, js_trim, truncate_utf16_safe
+from memory_core.bootstrap._js import (
+    JS_SPACE_CLASS,
+    js_json_stringify,
+    js_trim,
+    truncate_utf16_safe,
+)
 from memory_core.bootstrap.tools_md import _format_error_message, _make_private_dirs, _shorten_home_path
 from memory_core.heartbeat import parse_duration_ms
 from memory_core.heartbeat_scratch import (
@@ -158,7 +163,7 @@ _FS_SAFE_NOT_REGULAR = "path must be a regular file"
 
 _LINE_RE = re.compile("[^\r\n]*(?:\r\n|\n|\r|\\Z)")
 _LINE_ENDING_RE = re.compile("(?:\r\n|\n|\r)\\Z")
-_NON_SPACE_RE = re.compile("[^\t\n\u000b\u000c\r    -     　﻿]")
+_NON_SPACE_RE = re.compile(f"[^{JS_SPACE_CLASS}]")  # JavaScript \S
 _EDGE_QUOTES_RE = re.compile("^[\"']|[\"']\\Z")
 
 

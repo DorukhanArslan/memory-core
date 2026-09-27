@@ -45,6 +45,7 @@ gates).
 | Area 3 review fixes | done (`fb0a5d9`, `a40084c`, `58b8478`, `7e089ec`, `ef257f7`, `387ed5e`, `e0f23d8`, `358662f`, `0fc9bb1`) | no worklist change; 3 new tests (`heartbeatScratchMigration` crlf, `heartbeatTaskMigration` state-float and state-negative) and 3 extended (`heartbeatScratchContract` lone-surrogate steps, the disabled-owner findings steps) |
 | 4 Flush plan and runtime flush gate | done (`83cbcc3`, `99ef3c9`, `cb3d48b`) | 5 worklist entries removed; 14 new tests (`flushPlan` windows 5, `memoryFlushGate` fixtures 9) |
 | Area 4 review fixes | done (`dfe7e0c`, `d518dbe`, `5a44e11`, `1c9122f`, `a10eb23`, `d727d2e`, `e68f663`) | no worklist change; 13 new tests (`flushPlan` byte sizes 7, offset zones 4, out-of-range `nowMs` 1; `memoryFlushGate` disabled plan 1); flush plan row back to `partial` |
+| Merge of areas 3 and 4 | done (`e656e88` merge, `301cac9`, `299bd1f`, `2316e5f`, `39fc96c`) | 5 more worklist entries gone from the pin branch (12 labels, 81 tests); 1 new test (`current_time_line_is_one_host_format_for_flush_and_heartbeat`); `heartbeatRunPrompt` now compares the full Body with the reported host format |
 
 Full `tests/integration` at `afd9965` plus the plan and matrix edits, `/tmp/openclaw-head` at
 `eb377ac59e6`, Node 24.21.0, seven chunks with the run-loop
@@ -103,6 +104,23 @@ redactor, `resolve_memory_flush_threshold`/`resolve_compaction_threshold` are to
 Lab prompt inspector shows the flush decision and the flush turn apart, with the host-supplied time
 format. The flush plan row is `partial` again: it names four gaps (host time format, UTC fallback
 for an invalid zone, the Python date range, `zoneinfo` versus ICU names).
+
+After merging areas 3 and 4 (2026-09-27, `wip/pin-flush` into `feat/pin-v2026.9.6` as
+`e656e88`, then `301cac9`..`39fc96c`, same checkout and Node, fourteen chunks with the run-loop
+included; tests ran at `39fc96c`): `tests/integration` 254 passed, 81 xfailed (exactly the 81
+worklist entries, strict), 2 skipped (the retired `sessionMemoryTranscript` op and the
+live-embedding test), 0 failed, 337 collected, about 32 minutes summed. The run-loop oracle,
+which the flush lane never ran, is 6 passed and 1 xfailed (its worklist entry). Against the two
+lanes (221 passed, 86 xfailed, 2 skipped of 309 on the pin branch; 204 passed, 84 xfailed,
+5 skipped of 293 on `wip/pin-flush` without the run-loop): the five flush worklist entries pass
+on the merged branch, the flush lane's 27 new tests (14 in area 4, 13 in its review fixes) are
+in, and the one new time-format oracle test passes (309 + 27 + 1 = 337). The merge settled the
+time format: one host `time_format` for every current-time line (`memory_core/current_time.py`,
+area 4 above). Offline suite at `39fc96c`: 1218 passed, 311 skipped; `tests/parity` 70 passed;
+ruff clean; `scripts/extract_upstream_constants.py --check` against the tag rc 0 (the four
+generated modules were regenerated at the merge and did not change); `/tmp/openclaw-head` clean
+after the runs. Matrix after the merge: 42 rows, 24 `partial`, 11 `mismatch`, 2 `missing`,
+5 `out of scope`, 0 `match`.
 
 ## Decisions needed before stage 2
 

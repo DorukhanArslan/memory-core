@@ -63,15 +63,28 @@ async function shiftClock(ms) {
   } catch (err) { toast(err.missing ? t('state.waitsFor', { m: err.module || err.path }) : err.message, { tone: 'warn' }); }
   loadHeartbeat();
 }
-export async function saveScratch(content) {
+// Compare-and-swap on the revision the draft started from (u.hbScratchBase), never on the latest
+// loaded one: a write that landed while the draft was open answers 409 revision_conflict and the
+// draft is kept, instead of silently replacing that write.
+export async function saveScratch(content, { expectedRevision } = {}) {
   const u = store.ui; const sc = store.data.heartbeat?.scratch;
   u.hbScratchError = null;
+  const expected = expectedRevision ?? u.hbScratchBase ?? sc?.currentRevision ?? 0;
   try {
-    const res = await api.put('/api/lab/heartbeat/scratch', { content, expectedRevision: sc?.currentRevision ?? 0 });
-    if (!res.write?.ok) u.hbScratchError = { code: 'revision-conflict', message: t('hb.scratchConflict', { n: res.write?.currentRevision ?? '—' }) };
-    else { u.hbScratchDraft = null; toast(content === null ? t('hb.scratchUnset') : t('hb.scratchSaved', { n: res.write.currentRevision }), { tone: 'ok' }); }
-  } catch (err) { u.hbScratchError = { code: err.code, message: err.message }; }
+    const res = await api.put('/api/lab/heartbeat/scratch', { content, expectedRevision: expected });
+    u.hbScratchDraft = null; u.hbScratchBase = null;
+    toast(content === null ? t('hb.scratchUnset') : t('hb.scratchSaved', { n: res.write?.currentRevision ?? '—' }), { tone: 'ok' });
+  } catch (err) {
+    u.hbScratchError = err.code === 'revision_conflict'
+      ? { code: err.code, message: t('hb.scratchConflict', { n: err.body?.write?.currentRevision ?? '—' }) }
+      : { code: err.code, message: err.message };
+  }
   await loadHeartbeat();
+}
+function dropScratchDraft() {
+  const u = store.ui;
+  u.hbScratchDraft = null; u.hbScratchBase = null; u.hbScratchError = null;
+  refresh('center');
 }
 async function migrateLegacy() {
   const u = store.ui;
@@ -142,10 +155,22 @@ function replyCard() {
 const SCRATCH_TONE = { none: 'neutral', unset: 'neutral', empty: 'neutral', active: 'ok' };
 function scratchCard(sc) {
   const u = store.ui;
-  const draft = u.hbScratchDraft ?? sc?.content ?? '';
-  const ta = h('textarea', { class: 'hb-scratch-ta', spellcheck: 'false', 'aria-label': t('hb.scratch'), 'data-testid': 'hb-scratch-input', placeholder: t('hb.scratchPlaceholder'), oninput: (e) => { u.hbScratchDraft = e.target.value; } });
-  ta.value = draft;
+  const stored = sc?.content ?? '';
+  const rev = sc?.currentRevision ?? 0;
+  // A draft equal to the stored text is no draft; a dirty draft whose base revision is behind the
+  // loaded one is a conflict (like the file editor's dirty-draft banner, store.js reloadOpenFile).
+  if (u.hbScratchDraft !== null && u.hbScratchDraft === stored) { u.hbScratchDraft = null; u.hbScratchBase = null; }
+  const stale = u.hbScratchDraft !== null && u.hbScratchBase !== null && u.hbScratchBase !== rev;
+  const prev = document.activeElement?.getAttribute?.('data-testid') === 'hb-scratch-input' ? document.activeElement : null;
+  const ta = h('textarea', { class: 'hb-scratch-ta', spellcheck: 'false', 'aria-label': t('hb.scratch'), 'data-testid': 'hb-scratch-input', placeholder: t('hb.scratchPlaceholder'),
+    oninput: (e) => { if (u.hbScratchDraft === null) u.hbScratchBase = rev; u.hbScratchDraft = e.target.value; } });
+  ta.value = u.hbScratchDraft ?? stored;
+  if (prev) { const a = prev.selectionStart; const b = prev.selectionEnd; requestAnimationFrame(() => { if (ta.isConnected && !ta.contains(document.activeElement)) { ta.focus(); ta.setSelectionRange(a, b); } }); }
   const err = u.hbScratchError;
+  const banner = stale ? h('div', { class: 'conflict-banner', role: 'alert', 'data-testid': 'hb-scratch-conflict' }, icon('alert-triangle', 14),
+    h('span', null, t('hb.scratchStale', { a: u.hbScratchBase, b: rev })),
+    btn(t('hb.scratchTakeStored'), { size: 'xs', kind: 'ghost', onClick: dropScratchDraft }),
+    btn(t('hb.scratchOverwrite'), { size: 'xs', kind: 'danger', onClick: () => saveScratch(ta.value, { expectedRevision: rev }), testid: 'hb-scratch-overwrite' })) : null;
   return card(t('hb.scratch'), [
     h('div', { class: 'hb-scratch-bar' },
       h('div', { class: 'chip-wrap' },
@@ -154,8 +179,9 @@ function scratchCard(sc) {
         chip({ label: `${fmtN(sc?.bytes ?? 0)} / ${fmtN(sc?.maxBytes ?? 262144)} ${t('unit.bytes')}`, tone: 'neutral', cls: 'chip-xs' }),
         sc?.sourceSha256 ? chip({ label: t('hb.scratchMigrated'), tone: 'info', cls: 'chip-xs', title: sc.sourceSha256 }) : null),
       h('div', { class: 'chip-wrap' },
-        btn(t('act.save'), { size: 'sm', kind: 'primary', onClick: () => saveScratch(ta.value), target: 'hb-scratch-save', testid: 'hb-scratch-save' }),
-        btn(t('hb.scratchUnsetBtn'), { size: 'sm', kind: 'ghost', disabled: !sc || sc.status === 'none' || sc.status === 'unset', onClick: () => saveScratch(null) }))),
+        btn(t('act.save'), { size: 'sm', kind: 'primary', disabled: stale, title: stale ? t('hb.scratchStaleTip') : null, onClick: () => saveScratch(ta.value, { expectedRevision: u.hbScratchBase ?? rev }), target: 'hb-scratch-save', testid: 'hb-scratch-save' }),
+        btn(t('hb.scratchUnsetBtn'), { size: 'sm', kind: 'ghost', disabled: !sc || sc.status === 'none' || sc.status === 'unset', onClick: () => saveScratch(null, { expectedRevision: rev }) }))),
+    banner,
     ta,
     err ? h('div', { class: 'muted small tone-text-warn', 'data-testid': 'hb-scratch-error' }, err.message) : null,
   ], { ic: 'file', target: 'hb-scratch', testid: 'hb-scratch', right: h('span', { class: 'muted small mono' }, store.data.heartbeat?.store || '') });

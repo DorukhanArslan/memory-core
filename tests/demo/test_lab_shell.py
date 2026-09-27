@@ -308,6 +308,12 @@ def test_contract_heartbeat_fields(lab_client: TestClient) -> None:
     assert "pv.heartbeatPrompt" in prompt_js and "heartbeatSection" not in prompt_js
     assert "memoryTools" not in source
     assert "disabled: noKey" not in source
+    # The scratch editor's compare-and-swap uses the revision its draft started from and handles
+    # the 409 (tests/demo/test_demo_app.py covers the server side of that conflict).
+    assert "u.hbScratchBase = rev" in source
+    assert "expectedRevision: u.hbScratchBase ?? rev" in source
+    assert "err.code === 'revision_conflict'" in source and "hb-scratch-conflict" in source
+    assert "sc?.currentRevision ?? 0 });" not in source
 
 
 def test_how_it_works_disclosures_have_both_languages() -> None:

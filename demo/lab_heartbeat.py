@@ -4,7 +4,9 @@
 that replaced HEARTBEAT.md), the automation jobs with their due state and next run on the
 virtual clock, the preflight and prompt the next heartbeat would get, a leftover HEARTBEAT.md
 with its doctor findings, and the run history. ``PUT /api/lab/heartbeat/scratch`` writes or
-unsets the scratch by compare-and-swap (upstream ``openclaw cron scratch``). ``POST
+unsets the scratch by compare-and-swap (upstream ``openclaw cron scratch``); a stale
+``expectedRevision`` answers ``409 revision_conflict`` with the write result and the stored
+scratch. ``POST
 /api/lab/heartbeat/migrate`` runs both doctor migrations (HEARTBEAT.md into scratch, then its
 ``tasks:`` into automation jobs). ``POST /api/lab/heartbeat/run`` runs one heartbeat now:
 the due jobs become scheduled tasks, ``prepare_heartbeat_turn`` builds the prompt (skip reason
@@ -242,6 +244,15 @@ def write_scratch(lab: LabRuntime, payload: dict[str, Any]) -> dict[str, Any]:
             "heartbeat.scratch_conflict",
             summary=f"heartbeat scratch çakışması: rev {expected} beklendi, güncel {result.current_revision}",
             data={"write": result.to_json()},
+        )
+        # A stale compare-and-swap is an HTTP conflict; the body keeps the write result and the
+        # stored scratch so the editor can offer "take stored" or "overwrite".
+        raise LabError(
+            409,
+            f"heartbeat scratch changed: expected rev {expected}, current rev {result.current_revision}",
+            code="revision_conflict",
+            write=result.to_json(),
+            scratch=view,
         )
     return {"write": result.to_json(), "scratch": view}
 

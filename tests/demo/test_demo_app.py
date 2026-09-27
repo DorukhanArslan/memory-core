@@ -1340,11 +1340,13 @@ def test_heartbeat_scratch_is_written_by_compare_and_swap(client, lab):
     client.get("/api/lab/state")
 
     written = put_scratch(client, HEARTBEAT_HEADER, expectedRevision=0)
-    conflict = put_scratch(client, "stale", expectedRevision=0)
+    conflict = client.put("/api/lab/heartbeat/scratch", json={"content": "stale", "expectedRevision": 0})
     unset = put_scratch(client, None, expectedRevision=1)
 
     assert written["write"]["ok"] is True and written["scratch"]["status"] == "active"
-    assert conflict["write"] == {"ok": False, "reason": "revision-conflict", "currentRevision": 1}
+    assert conflict.status_code == 409 and conflict.json()["code"] == "revision_conflict"
+    assert conflict.json()["write"] == {"ok": False, "reason": "revision-conflict", "currentRevision": 1}
+    assert conflict.json()["scratch"]["content"] == HEARTBEAT_HEADER
     assert unset["write"] == {"ok": True, "currentRevision": 2}
     assert unset["scratch"]["status"] == "unset"
     assert (lab.root / ".memory-core" / "automation.json").is_file()
@@ -1353,6 +1355,25 @@ def test_heartbeat_scratch_is_written_by_compare_and_swap(client, lab):
     assert too_big.status_code == 400 and too_big.json()["code"] == "scratch_too_large"
     types = event_types(client)
     assert "heartbeat.scratch_written" in types and "heartbeat.scratch_conflict" in types
+
+
+def test_heartbeat_scratch_draft_saved_on_its_base_revision_conflicts(client, lab):
+    # views/heartbeat.js sends the revision the draft started from, not the latest loaded one:
+    # a write that lands while the draft is open makes the save a 409, never a silent overwrite.
+    client.get("/api/lab/state")
+    base = put_scratch(client, "- base\n", expectedRevision=0)["write"]["currentRevision"]
+    put_scratch(client, "- written elsewhere\n", expectedRevision=base)
+    reloaded = client.get("/api/lab/heartbeat").json()["scratch"]["currentRevision"]
+
+    save = client.put(
+        "/api/lab/heartbeat/scratch", json={"content": "- draft\n", "expectedRevision": base}
+    )
+
+    assert reloaded == base + 1
+    assert save.status_code == 409 and save.json()["code"] == "revision_conflict"
+    assert save.json()["scratch"]["content"] == "- written elsewhere\n"
+    assert client.get("/api/lab/heartbeat").json()["scratch"]["content"] == "- written elsewhere\n"
+    assert "heartbeat.scratch_conflict" in event_types(client)
 
 
 def test_heartbeat_scratch_stores_a_lone_surrogate_as_u_fffd(client, lab):

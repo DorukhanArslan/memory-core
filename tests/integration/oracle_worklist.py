@@ -1,8 +1,9 @@
-"""Oracle worklist of the re-pin to OpenClaw v2026.9.6 (stage 1).
+"""Oracle worklist of the re-pin to OpenClaw v2026.9.6 (stage 1, shrinking through stage 2).
 
 Stage 1 moved the oracle target from pin 4c428153 to release tag v2026.9.6 without changing
 Python behaviour. Each oracle test that fails at the tag because memory-core still follows the pin
-is listed in PENDING_PORTS, grouped by area with the upstream change that moved it;
+is listed in PENDING_PORTS, grouped by area with the upstream change that moved it and the
+number of the plan area that owns it (``plan_area``);
 tests/integration/conftest.py marks those tests ``xfail(strict=True)``, so the suite stays
 green, an unexpected pass fails it, and this module is the stage-2 worklist
 (docs/upstream_port_v2026_9_6.md). Oracle operations whose upstream function no longer exists
@@ -27,10 +28,16 @@ class PendingPort:
     area: str
     upstream: str
     tests: tuple[str, ...]
+    # The docs/upstream_port_v2026_9_6.md area ("### N.") whose "Worklist areas" line owns
+    # this label; the parity matrix audit notes use the same numbers.
+    plan_area: int
 
     @property
     def reason(self) -> str:
-        return f"pending port to {ORACLE_TAG}: {self.area}; upstream {self.upstream}"
+        return (
+            f"pending port to {ORACLE_TAG}: area {self.plan_area} {self.area}; "
+            f"upstream {self.upstream}"
+        )
 
 
 @dataclass(frozen=True)
@@ -96,11 +103,13 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
             "memory_get_tool_params_match_python[raw_params17]",
             "memory_get_tool_params_match_python[raw_params18]",
         ),
+        plan_area=5,
     ),
     PendingPort(
         "memory tool definitions (descriptions name MEMORY.md, USER.md and per-corpus outcomes)",
         "16bec3c7272 (#126552), 3fe833dfa40 (#126530)",
         _oracle("memory_tool_definitions_match_python"),
+        plan_area=5,
     ),
     PendingPort(
         "memory_search ranking and indexing (hybrid weights fixed at 0.7/0.3, MMR and temporal "
@@ -123,6 +132,7 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
             "memory_search_finds_session_memory_files",
             "memory_search_indexes_invalid_utf8_markdown",
         ),
+        plan_area=6,
     ),
     PendingPort(
         "memory_search params, errors and deadline (empty maxResults rejected, corpus validated, "
@@ -133,11 +143,13 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
             "memory_search_param_coercion_matches_python[unknown-corpus-searches-all-sources]",
             "memory_search_deadline_and_cooldown_match_python",
         ),
+        plan_area=5,
     ),
     PendingPort(
         "memory index identity (provenance_version reason)",
         "28630a9a650 (#114819)",
         _oracle("memory_index_identity_matches_python"),
+        plan_area=5,
     ),
     PendingPort(
         "deep dreaming policy (enabled by default, minScore 0.75, integer fields limit, "
@@ -154,11 +166,13 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
             "deep_policy_coerces_malformed_values[deep6]",
             "deep_policy_coerces_malformed_values[deep7]",
         ),
+        plan_area=7,
     ),
     PendingPort(
         "concept vocabulary (qmd tag gone with the QMD backend)",
         "8b0735e89f2 (#120936)",
         _oracle("derives_concept_vocabulary_tags"),
+        plan_area=7,
     ),
     PendingPort(
         "short-term recall and promotion (provenance, userQueryHashes and claimHash on recall "
@@ -181,11 +195,13 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
             "snippet_caps_count_utf16_units[emoji-prefix]",
             "snippet_caps_count_utf16_units[split-pair]",
         ),
+        plan_area=7,
     ),
     PendingPort(
         "MEMORY.md budget compaction (bounded prior-entry loss)",
         "extensions/memory-core/src/memory-budget.ts, 4 commits after 4c428153, latest fc0360dab2e",
         _oracle("memory_budget_compaction_matches_python"),
+        plan_area=7,
     ),
     PendingPort(
         "transcript and replay helpers (history-limit hysteresis, tool-use repair, runtime context "
@@ -203,6 +219,7 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
             ),
             "test_openclaw_ts_oracle.py::test_real_openclaw_oracle_truncate_tool_result_text_matches_python[Line 1*",
         ),
+        plan_area=10,
     ),
     PendingPort(
         "overflow run loop (the mid-turn precheck retry no longer sends the continuation prompt; "
@@ -213,6 +230,7 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
             "test_openclaw_run_loop_oracle.py::"
             "test_real_openclaw_run_loop_mid_turn_precheck_continuation",
         ),
+        plan_area=10,
     ),
     PendingPort(
         "session-memory hook (transcripts from the SQLite session store, agentId-scoped slug run "
@@ -227,6 +245,7 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
             ),
             "test_session_reset_prompt_source.py::test_bare_session_reset_prompts_equal_upstream_source",
         ),
+        plan_area=9,
     ),
 )
 

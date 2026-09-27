@@ -62,7 +62,9 @@ def test_pending_port_reasons_follow_the_stage_one_wording():
 def test_pending_port_reason_matches_exact_and_prefix_entries():
     worklist = _worklist()
     exact = "test_openclaw_ts_oracle.py::test_real_openclaw_oracle_deep_policy"
-    assert worklist.pending_port_reason(exact).startswith("pending port to v2026.9.6: deep")
+    assert worklist.pending_port_reason(exact).startswith(
+        "pending port to v2026.9.6: area 7 deep dreaming policy"
+    )
     long_param = (
         "test_openclaw_ts_oracle.py::test_real_openclaw_oracle_truncate_tool_result_text_"
         "matches_python[Line 1\\nLine 1]"
@@ -93,3 +95,26 @@ def test_port_plan_assigns_every_worklist_area_to_one_plan_area():
         owned.extend(re.findall(r'"([^"]+)"', block.replace("\n  ", " ")))
     labels = [port.area.split(" (", 1)[0] for port in worklist.PENDING_PORTS]
     assert sorted(owned) == sorted(labels)
+
+
+def _plan_area_owners(plan: str) -> dict[str, int]:
+    # label -> number of the "### N. ..." section whose "- Worklist areas:" line names it.
+    owners: dict[str, int] = {}
+    for number, body in re.findall(r"^### (\d+)\. .*\n((?:(?!^### ).*\n)*)", plan, re.MULTILINE):
+        for block in re.findall(r"^- Worklist areas: (.*(?:\n  .*)*)", body, re.MULTILINE):
+            for label in re.findall(r'"([^"]+)"', block.replace("\n  ", " ")):
+                assert label not in owners, label
+                owners[label] = int(number)
+    return owners
+
+
+def test_worklist_plan_areas_match_the_port_plan_numbering():
+    # One area numbering everywhere: PendingPort.plan_area (and so every xfail reason) names the
+    # plan section that owns the label; the matrix audit notes cite the same "area N".
+    worklist = _worklist()
+    plan = (ROOT / "docs" / "upstream_port_v2026_9_6.md").read_text(encoding="utf-8")
+    owners = _plan_area_owners(plan)
+    for port in worklist.PENDING_PORTS:
+        label = port.area.split(" (", 1)[0]
+        assert owners[label] == port.plan_area, (label, port.plan_area, owners[label])
+        assert port.reason.startswith(f"pending port to v2026.9.6: area {port.plan_area} {label}")

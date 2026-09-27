@@ -132,7 +132,8 @@ Estimates are labelled estimates (2026-09-27, inferred from the measured failure
 source reading, not measured). "Tests" counts worklist tests, and "Worklist areas" names the
 `PendingPort.area` labels of `tests/integration/oracle_worklist.py` that each plan area owns
 (stage 1: 17 labels, 120 tests; after areas 1 and 2: 15 labels, 90 tests; after area 3: 14
-labels, 86 tests); every worklist test
+labels, 86 tests; after areas 3 and 4 merged: 12 labels, 81 tests; each label carries its plan
+area as `PendingPort.plan_area`, which the xfail reason prints as "area N"); every worklist test
 belongs to exactly one plan area, and the stage-1 counts below add up to 120.
 
 ### 1. Workspace and bootstrap map, TOOLS.md migration (estimate 14-24 h)
@@ -230,7 +231,8 @@ prompt preview and the reply decision; scenario S09 starts from a legacy HEARTBE
 demo-only `POST /api/lab/heartbeat/legacy-file` puts in place (the Lab editor cannot write
 non-layout files). Left (known gaps in the three
 matrix rows): pending system events (exec-completion, cron-event and session-notice prompts),
-the `heartbeat_respond` tool and its `scratch` argument, the 12-hour `auto` time format, job
+the `heartbeat_respond` tool and its `scratch` argument, host time-format detection (the host
+passes one `time_format` for every current-time line, `memory_core/current_time.py`), job
 conflicts between planning and commit, `applyJobResult` beyond the ok/skipped path, the
 heartbeat monitor job and its cadence migration (the host runs the monitor), the `memory_core.host`
 kit that will wrap these helpers.
@@ -320,12 +322,17 @@ kit that will wrap these helpers.
 - Review fixes 2026-09-27 (`dfe7e0c`..`e68f663`): see the measured paragraph under Stage 2
   progress. `DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR` is `DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR`
   since `83cbcc3` (the tag's name, src/agents/agent-settings.ts); no alias was kept, so a host
-  importing the old name must rename it. Open for the merge: one time-format policy for the SDK.
-  This lane takes `time_format` in `build_memory_flush_plan` (default `"24"`); the heartbeat lane's
-  `prepare_heartbeat_turn` and the startup context (`memory_core/bootstrap/startup.py`) take none and
-  print 24-hour lines. Either thread one host `time_format` through all three or drop it and keep a
-  single documented 24-hour deviation; the heartbeat run-prompt oracle test should then pass
-  `hostTimeFormat` and compare the full time line.
+  importing the old name must rename it.
+- Time format, settled at the merge with area 3 (2026-09-27, `301cac9`, `299bd1f`): upstream
+  builds every `Current time:` line with `resolveCronStyleNow`, which detects the host's
+  12/24-hour format since edecdbd05ef. `memory_core/current_time.py` ports `current-time.ts` with
+  the parts of `date-time.ts` it uses and is the one place that documents the deviation: the
+  host passes one `time_format` (`"12"` or `"24"`, default `"24"`, `"auto"` refused) and
+  `build_memory_flush_plan`, `prepare_heartbeat_turn`, the bare reset prompt, `Memory.record_turn`
+  / `chat` and the live SDK's session summary pass it through. The `heartbeatRunPrompt` op reports
+  `hostTimeFormat` like `flushPlan`, its test compares the full Body, and
+  `current_time_line_is_one_host_format_for_flush_and_heartbeat` compares both tag paths with
+  both Python paths for one instant. The Lab passes one `LAB_TIME_FORMAT` and shows it.
 
 ### 5. memory_get, memory_search contract, deadline and index identity (estimate 16-26 h)
 
@@ -464,6 +471,7 @@ Total labelled estimate (2026-09-27): about 152-260 engineering hours for areas 
   (inline upstream, not exported) around the real `resolveCompactionThreshold`; without explicit
   reserve/soft it takes both from the real `buildMemoryFlushPlan` for the window. `flushPlan`
   reports the host's detected time format (`hostTimeFormat`, `resolveUserTimeFormat(undefined)`),
-  which the Python side passes as `time_format`.
+  which the Python side passes as `time_format`; `heartbeatRunPrompt` reports it too
+  (the same `resolveUserTimeFormat(undefined)` the Body's `resolveCronStyleNow` uses).
 - A persistent runner that serves many operations per process would cut the 21-minute suite
   (estimate 4-6 h, not included above).

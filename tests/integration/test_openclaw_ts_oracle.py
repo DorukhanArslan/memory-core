@@ -5373,7 +5373,11 @@ def test_real_openclaw_oracle_heartbeat_run_prompt_matches_python(tmp_path: Path
         case = {key: value for key, value in scenario.items() if key != "file"}
         cases.append({**case, "workspaceDir": str(workspace), "nowMs": _HB_NOW_MS})
 
-    result = _oracle().run({"operation": "heartbeatRunPrompt", "cases": cases})
+    # The tag's heartbeat prompt path boots the cron store per case: about 26 s on 2026-09-27,
+    # past the default 20 s, which let the xfail pass on a timeout instead of the value diff.
+    oracle = _oracle()
+    oracle.timeout_seconds = 120.0
+    result = oracle.run({"operation": "heartbeatRunPrompt", "cases": cases})
 
     assert result["ok"] is True, result
     assert len(result["result"]) == len(cases)

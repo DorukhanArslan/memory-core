@@ -234,18 +234,20 @@ async function withIsolatedRuntimeState<T>(prefix: string, run: () => Promise<T>
   }
 }
 
-function bootstrapSectionLines(prompt: string, workspaceIndex: number): string[] {
+function bootstrapSectionsText(prompt: string, workspaceIndex: number): string {
+  // The bootstrap sections as the prompt carries them: from the first "## Bootstrap Pending" /
+  // "## Bootstrap Context Notice" heading up to "## Workspace Files (injected)". The stable prefix
+  // is joined with lines.filter(Boolean).join("\n") (src/agents/system-prompt.ts:1143 at
+  // v2026.9.6), so upstream itself drops the builder's empty separator lines; blank lines inside
+  // one entry (a multi-line truncation notice) survive and are compared as they are.
   const end = workspaceIndex === -1 ? prompt.length : workspaceIndex;
   const starts = ["## Bootstrap Pending\n", "## Bootstrap Context Notice\n"]
     .map((heading) => prompt.indexOf(heading))
     .filter((index) => index !== -1 && index < end);
   if (starts.length === 0) {
-    return [];
+    return "";
   }
-  return prompt
-    .slice(Math.min(...starts), end)
-    .split("\n")
-    .filter((line) => line.length > 0);
+  return prompt.slice(Math.min(...starts), end).replace(/\n$/, "");
 }
 
 async function importFromRepo(repoPath: string, relativePath: string) {
@@ -1395,12 +1397,16 @@ async function main() {
 
   if (payload.operation === "projectContextRender") {
     return withIsolatedRuntimeState("openclaw-oracle-project-context-", async () => {
-      // src/agents/system-prompt.ts buildAgentSystemPrompt: the Project Context blocks are cut
-      // from the real prompt around SYSTEM_PROMPT_CACHE_BOUNDARY. buildAgentBootstrapSystemPromptSections
-      // is private at v2026.9.6, so the bootstrap sections are cut from the same prompt: from the
-      // first "## Bootstrap Pending" / "## Bootstrap Context Notice" heading up to
-      // "## Workspace Files (injected)", as the prompt's non-empty lines (the stable prefix is
-      // joined with lines.filter(Boolean)).
+      // src/agents/system-prompt.ts buildAgentSystemPrompt at v2026.9.6. Project Context is the
+      // last block of the stable prefix: buildProjectContextSection
+      // (src/agents/system-prompt-context-files.ts) is pushed right before
+      // SYSTEM_PROMPT_CACHE_BOUNDARY (system-prompt.ts:1140-1143), and the tag has no dynamic
+      // Project Context below the boundary (the pin's "# Dynamic Project Context" for
+      // HEARTBEAT.md went with the monitor scratch). So `stable` runs from "# Project Context" to
+      // the boundary, and `projectContextBelowBoundary` reports whether any Project Context
+      // heading appears in the volatile suffix. buildAgentBootstrapSystemPromptSections is
+      // private (system-prompt.ts:257), so the bootstrap sections are cut from the same prompt
+      // (bootstrapSectionsText).
       const systemPrompt = await importFromRepo(repoPath, "src/agents/system-prompt.ts");
       const boundaryModule = await importFromRepo(
         repoPath,
@@ -1423,10 +1429,7 @@ async function main() {
       const stableStart = stablePart.indexOf("\n# Project Context\n");
       const stable =
         stableStart === -1 ? "" : stablePart.slice(stableStart + 1).replace(/\n$/, "");
-      const dynamicPart = prompt.slice(boundaryIndex + boundary.length);
-      const approvalIndex = dynamicPart.indexOf("\nIf exec returns approval-pending");
-      const dynamicCandidate = (approvalIndex === -1 ? dynamicPart : dynamicPart.slice(0, approvalIndex)).replace(/^\n/, "");
-      const dynamic = dynamicCandidate.startsWith("# ") ? dynamicCandidate : "";
+      const volatileSuffix = prompt.slice(boundaryIndex + boundary.length);
       const workspaceHeading = "## Workspace Files (injected)\n";
       const workspaceIndex = prompt.indexOf(workspaceHeading);
       const workspaceLineEnd = prompt.indexOf("\n", workspaceIndex + workspaceHeading.length);
@@ -1436,10 +1439,10 @@ async function main() {
         operation: payload.operation,
         result: {
           stable,
-          dynamic,
+          projectContextBelowBoundary: /^# (?:Dynamic )?Project Context$/mu.test(volatileSuffix),
           workspaceFiles:
             workspaceIndex === -1 ? null : prompt.slice(workspaceIndex, workspaceLineEnd),
-          bootstrapSections: bootstrapSectionLines(prompt, workspaceIndex),
+          bootstrapSections: bootstrapSectionsText(prompt, workspaceIndex),
           bootstrapPendingInPrompt: pendingIndex !== -1,
         },
       };

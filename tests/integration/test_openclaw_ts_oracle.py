@@ -1831,6 +1831,8 @@ def test_real_openclaw_oracle_memory_search_param_coercion_matches_python(
     assert result["ok"] is True
     assert result["operation"] == "memorySearch"
     assert result["result"].get("disabled") is None
+    # A TS error payload (v2026.9.6 rejects an unknown corpus, tools.ts:86-97) has no results.
+    assert "results" in result["result"], result["result"]
     assert [
         (item["corpus"], item["path"], item["startLine"], item["endLine"])
         for item in result["result"]["results"]
@@ -4170,6 +4172,7 @@ from memory_core.bootstrap import (  # noqa: E402
     initialize_agent_workspace,
     is_workspace_setup_completed,
     load_workspace_bootstrap_files,
+    render_bootstrap_prompt_sections,
     render_project_context,
     render_workspace_files_injected,
 )
@@ -4665,13 +4668,17 @@ def test_real_openclaw_oracle_project_context_render_matches_python(files, mode,
     sections = build_bootstrap_prompt_section_lines(
         mode, truncation_notice=notice, context_files=context_files, layout=OPENCLAW_PIN_LAYOUT
     )
-    # The runner cuts the bootstrap sections from the real prompt (the section builder is private
-    # at v2026.9.6), where empty lines are filtered out.
+    # The section builder is private at v2026.9.6, so the runner cuts the sections from the real
+    # prompt. Upstream joins that prompt with lines.filter(Boolean).join("\n")
+    # (src/agents/system-prompt.ts:1143), so the builder's empty separator lines never reach it;
+    # render_bootstrap_prompt_sections applies the same join to Python's lines.
     assert result["result"] == {
         "stable": stable,
-        "dynamic": dynamic,
+        "projectContextBelowBoundary": bool(dynamic),
         "workspaceFiles": render_workspace_files_injected(OPENCLAW_COMPAT_RUNTIME_IDENTITY),
-        "bootstrapSections": [line for line in sections if line],
+        "bootstrapSections": render_bootstrap_prompt_sections(
+            mode, truncation_notice=notice, context_files=context_files, layout=OPENCLAW_PIN_LAYOUT
+        ),
         "bootstrapPendingInPrompt": "## Bootstrap Pending" in sections,
     }
 

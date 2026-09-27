@@ -7,9 +7,14 @@ Anchors and cadences follow src/commands/doctor-heartbeat-task-migration.test.ts
 
 from __future__ import annotations
 
+from dataclasses import replace
+
+import pytest
+
 from memory_core.automation import (
     AutomationJob,
     FileAutomationStore,
+    assert_automation_jobs_can_persist,
     compute_job_next_run_at_ms,
     due_automation_jobs,
     heartbeat_scheduled_tasks,
@@ -115,3 +120,25 @@ def test_store_saves_jobs_and_scratch_in_one_compare_and_swap(tmp_path):
     assert written is not None and written.current_revision == 2
     assert [job.id for job in store.list_jobs()] == ["a"]
     assert store.read_scratch("main").content == ""
+
+
+def test_store_refuses_jobs_the_cron_store_cannot_persist(tmp_path):
+    # assertCronStoreCanPersist: normalizeCronJobInput floors the schedule numbers, then
+    # getInvalidPersistedCronJobReason checks the state timestamps and the schedule.
+    inbox = _job("job-1", "inbox", 60 * 60_000, NOW)
+    [floored] = assert_automation_jobs_can_persist([replace(inbox, every_ms=60_000.9, anchor_ms=NOW + 0.5)])
+    assert (floored.every_ms, floored.anchor_ms) == (60_000, NOW)
+    for bad in (
+        replace(inbox, last_run_at_ms=NOW + 0.5),
+        replace(inbox, last_run_at_ms=-5),
+        replace(inbox, next_run_at_ms=2**53),
+        replace(inbox, every_ms=0.5),
+        replace(inbox, anchor_ms=-1),
+        replace(inbox, id=" "),
+    ):
+        with pytest.raises(ValueError, match=r"^Cannot persist cron store with 1 invalid job\(s\)$"):
+            assert_automation_jobs_can_persist([inbox, bad])
+    store = FileAutomationStore(tmp_path)
+    with pytest.raises(ValueError):
+        store.save_jobs([inbox, replace(inbox, id="job-2", last_run_at_ms=-5)])
+    assert store.list_jobs() == [] and not store.path.exists()

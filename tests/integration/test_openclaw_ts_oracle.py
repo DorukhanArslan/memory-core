@@ -6762,7 +6762,8 @@ _COLLIDING_JOB = {**_EXISTING_INBOX_JOB, "name": "renamed"}
 # doctor-heartbeat-task-migration.test.ts: the two-task fixture with inbox's legacy timestamp
 # (30 min ago), reruns, duplicates, the mixed block, orphan fields, hidden and shared-line
 # comments, CRLF prose, consecutive blocks and the converged existing inbox job; plus memory-core
-# probes of a colliding declaration and invalid intervals.
+# probes of a colliding declaration, legacy timestamps the cron store refuses and invalid
+# intervals.
 HEARTBEAT_TASK_MIGRATION_SCENARIOS = [
     pytest.param(
         _TASK_OPERATIONS_SCRATCH, {"inbox": _TASK_NOW_MS - 30 * 60_000}, [], [0, 10_000],
@@ -6777,6 +6778,12 @@ HEARTBEAT_TASK_MIGRATION_SCENARIOS = [
         [_EXISTING_INBOX_JOB], [0], id="converges-existing-job",
     ),
     pytest.param(_TASK_OPERATIONS_SCRATCH, None, [_COLLIDING_JOB], [0], id="colliding-declaration"),
+    # Legacy timestamps that assertCronStoreCanPersist refuses (fractional, negative).
+    pytest.param(
+        _TASK_OPERATIONS_SCRATCH, {"inbox": _TASK_NOW_MS - 30 * 60_000 + 0.5}, [], [0, 10_000],
+        id="state-float",
+    ),
+    pytest.param(_TASK_OPERATIONS_SCRATCH, {"inbox": -5}, [], [0], id="state-negative"),
     pytest.param(LEGACY_TASK_TEXTS[-4], None, [], [0], id="zero-interval"),
     pytest.param(LEGACY_TASK_TEXTS[-2], None, [], [0], id="bad-interval"),
     pytest.param("- no tasks here\n", None, [], [0], id="no-block"),

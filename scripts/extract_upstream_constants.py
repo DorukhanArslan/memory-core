@@ -15,8 +15,9 @@ character as a ``\\u`` escape:
   src/agents/bootstrap-budget.ts, src/agents/bootstrap-budget-warning.ts);
 - ``memory_core/_heartbeat_constants.py``: the heartbeat prompts and tokens, the monitor-scratch
   contract, the heartbeat run-prompt and transcript-filter texts, the automation declaration
-  prefixes and the texts of the two doctor migrations (HEARTBEAT.md -> monitor scratch,
-  ``tasks:`` -> automation jobs); see HEARTBEAT_SOURCES::
+  prefixes, the texts of the two doctor migrations (HEARTBEAT.md -> monitor scratch,
+  ``tasks:`` -> automation jobs) and the cron store's persist refusal
+  (src/cron/store/row-codec.ts); see HEARTBEAT_SOURCES::
 
     .venv/bin/python scripts/extract_upstream_constants.py --repo /tmp/openclaw-head
 
@@ -366,6 +367,7 @@ HEARTBEAT_SOURCES = {
     "placeholder": "packages/ai/src/replay-turn-classification.ts",
     "task_migration": "src/commands/doctor-heartbeat-task-migration.ts",
     "scratch_migration": "src/commands/doctor-heartbeat-scratch-migration.ts",
+    "cron_rows": "src/cron/store/row-codec.ts",
 }
 # Template-literal expressions of the heartbeat texts -> str.format field names.
 HEARTBEAT_TEMPLATE_FIELDS = {
@@ -398,6 +400,7 @@ HEARTBEAT_TEMPLATE_FIELDS = {
     "taskList": "task_list",
     "completionInstruction": "completion",
     "token": "token",
+    "invalidJobs": "invalid_jobs",
 }
 # (python name, source key, raw TypeScript text the literal starts with). Templates become
 # str.format templates; "string" entries are plain '...' / "..." literals.
@@ -420,6 +423,8 @@ HEARTBEAT_TEMPLATES = (
     ("HEARTBEAT_TASK_WARNING_SCRATCH_CHANGED", "task_migration", 'Agent "${agent.agentId}" scratch changed during task migration'),
     ("HEARTBEAT_TASK_WARNING_JOBS_CHANGED", "task_migration", 'Agent "${agent.agentId}" cron jobs changed during task migration'),
     ("HEARTBEAT_TASK_WARNING_TIMESTAMPS", "task_migration", 'Agent "${agent.agentId}" legacy task timestamps'),
+    ("HEARTBEAT_TASK_WARNING_NOT_PLANNED", "task_migration", 'Agent "${agent.agentId}" task jobs could not be planned'),
+    ("CRON_STORE_CANNOT_PERSIST", "cron_rows", "Cannot persist cron store with ${invalidJobs}"),
     ("HEARTBEAT_TASK_CHANGE", "task_migration", "Converted ${document.tasks.length}"),
     ("HEARTBEAT_TASK_DISPLAY_NAME", "task_migration", "Heartbeat task: ${params.task.name}"),
     ("HEARTBEAT_SCRATCH_MIGRATION_FIX_HINT", "scratch_migration", "Run ${formatCliCommand"),

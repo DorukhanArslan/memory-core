@@ -13,7 +13,8 @@ src/cron/system-owned-declaration.ts,
 src/cron/heartbeat-monitor.ts,
 packages/ai/src/replay-turn-classification.ts,
 src/commands/doctor-heartbeat-task-migration.ts,
-src/commands/doctor-heartbeat-scratch-migration.ts.
+src/commands/doctor-heartbeat-scratch-migration.ts,
+src/cron/store/row-codec.ts.
 Do not edit by hand: re-run the script; tests/integration/test_extracted_upstream_constants.py
 checks these values against the source.
 Template texts are str.format templates; their fields stand for upstream
@@ -73,6 +74,8 @@ HEARTBEAT_TASK_WARNING_COMMIT_FAILED = 'Agent "{agent_id}" task migration could 
 HEARTBEAT_TASK_WARNING_SCRATCH_CHANGED = 'Agent "{agent_id}" scratch changed during task migration; no changes were committed.'
 HEARTBEAT_TASK_WARNING_JOBS_CHANGED = 'Agent "{agent_id}" cron jobs changed during task migration; no changes were committed.'
 HEARTBEAT_TASK_WARNING_TIMESTAMPS = 'Agent "{agent_id}" legacy task timestamps could not be cleared after migration: {error}. Cron jobs remain authoritative and a rerun is safe.'
+HEARTBEAT_TASK_WARNING_NOT_PLANNED = 'Agent "{agent_id}" task jobs could not be planned: {error}. Scratch was left unchanged.'
+CRON_STORE_CANNOT_PERSIST = 'Cannot persist cron store with {invalid_jobs} invalid job(s)'
 HEARTBEAT_TASK_CHANGE = 'Converted {count} heartbeat task{plural} into cron jobs for agent "{agent_id}".'
 HEARTBEAT_TASK_DISPLAY_NAME = 'Heartbeat task: {name}'
 HEARTBEAT_SCRATCH_MIGRATION_FIX_HINT = 'Run {command} to migrate HEARTBEAT.md into cron scratch.'

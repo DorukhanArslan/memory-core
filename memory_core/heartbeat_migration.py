@@ -16,8 +16,9 @@ a host :class:`~memory_core.heartbeat_scratch.HeartbeatScratchStore` (the defaul
 - :func:`migrate_heartbeat_tasks` (``maybeMigrateHeartbeatTasksToCron``,
   ``doctor-heartbeat-task-migration.ts``): a valid ``tasks:`` block of the scratch becomes
   independent automation jobs (``every`` schedule from the interval, ``systemEvent`` payload,
-  stable declaration keys, first run from the legacy task timestamp), and the block leaves the
-  scratch in the same compare-and-swap write; a rerun converges;
+  stable declaration keys, first run from the legacy task timestamp), refused with the tag's
+  "could not be planned" warning when a job cannot be stored (``assertCronStoreCanPersist``),
+  and the block leaves the scratch in the same compare-and-swap write; a rerun converges;
 - :func:`analyze_legacy_heartbeat_tasks` (``src/commands/heartbeat-task-legacy.ts``): the
   doctor-only reader of the retired syntax, which also marks the bytes it removes;
 - the read-only doctor health findings (``collectHeartbeatScratchMigrationFindings``,
@@ -106,12 +107,14 @@ from memory_core._heartbeat_constants import (
     HEARTBEAT_TASK_WARNING_COLLISION,
     HEARTBEAT_TASK_WARNING_COMMIT_FAILED,
     HEARTBEAT_TASK_WARNING_INVALID,
+    HEARTBEAT_TASK_WARNING_NOT_PLANNED,
     HEARTBEAT_TASK_WARNING_SCRATCH_CHANGED,
     HEARTBEAT_TASK_WARNING_UNREADABLE,
     LEGACY_HEARTBEAT_FILENAME,
 )
 from memory_core.automation import (
     AutomationJob,
+    assert_automation_jobs_can_persist,
     compute_job_next_run_at_ms,
     heartbeat_task_declaration_key,
     is_heartbeat_task_job,
@@ -1113,6 +1116,20 @@ def migrate_heartbeat_tasks(
             now_ms=stamp,
         )
         planned.append((existing, job))
+    try:
+        # assertCronStoreCanPersist over the planned jobs: a legacy timestamp that is fractional,
+        # negative or outside Date's range cannot be stored, so nothing is written.
+        persisted = assert_automation_jobs_can_persist([job for _previous, job in planned])
+    except ValueError as exc:
+        return HeartbeatMigrationResult(
+            (),
+            (
+                HEARTBEAT_TASK_WARNING_NOT_PLANNED.format(
+                    agent_id=agent_id, error=_format_error_message(exc)
+                ),
+            ),
+        )
+    planned = [(previous, job) for (previous, _planned), job in zip(planned, persisted, strict=True)]
     try:
         committed = store.save_jobs(
             [job for previous, job in planned if previous != job],

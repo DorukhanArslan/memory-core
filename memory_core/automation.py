@@ -20,7 +20,13 @@ decisions, ported from ``src/cron/service/jobs-scheduling.ts`` and ``src/cron/sc
 - :func:`record_automation_job_run`: after a successful or skipped run, ``lastRunAtMs`` is the
   run start and the next run is ``computeJobNextRunAtMs(job, endedAt)`` (the ok/skipped path of
   ``applyJobResult``, ``src/cron/service/timer-outcomes.ts``); error backoff is the host's;
-- :func:`heartbeat_task_declaration_key` (``src/cron/heartbeat-task.ts``).
+- :func:`heartbeat_task_declaration_key` (``src/cron/heartbeat-task.ts``);
+- the persist gate of ``src/cron/store/row-codec.ts`` (``assertCronStoreCanPersist``,
+  ``normalizeCronJobForSqlite``): :func:`assert_automation_jobs_can_persist` refuses a job whose
+  ``everyMs`` is not a safe integer >= 1 after the flooring of ``src/cron/normalize.ts``, whose
+  ``anchorMs`` is not a non-negative safe integer after it, or whose ``lastRunAtMs`` /
+  ``nextRunAtMs`` is not a non-negative safe integer (``getInvalidPersistedCronJobReason``,
+  ``src/cron/persisted-shape.ts``); :class:`FileAutomationStore` applies it on every save.
 
 :class:`FileAutomationStore` is the default store for both the monitor scratch
 (:class:`~memory_core.heartbeat_scratch.HeartbeatScratchStore`) and the jobs: one JSON file,
@@ -47,8 +53,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from memory_core._heartbeat_constants import HEARTBEAT_TASK_DECLARATION_PREFIX
-from memory_core.bootstrap._js import js_json_stringify, locale_sort_key
+from memory_core._heartbeat_constants import CRON_STORE_CANNOT_PERSIST, HEARTBEAT_TASK_DECLARATION_PREFIX
+from memory_core.bootstrap._js import js_json_stringify, js_trim, locale_sort_key
 from memory_core.heartbeat import HeartbeatScheduledTask
 from memory_core.heartbeat_scratch import (
     HeartbeatScratchState,
@@ -60,6 +66,7 @@ from memory_core.heartbeat_scratch import (
 __all__ = [
     "AutomationJob",
     "FileAutomationStore",
+    "assert_automation_jobs_can_persist",
     "compute_job_next_run_at_ms",
     "due_automation_jobs",
     "heartbeat_scheduled_tasks",
@@ -71,6 +78,7 @@ __all__ = [
 
 # normalization-core number-coercion.ts MAX_DATE_TIMESTAMP_MS (Date's representable range).
 _MAX_DATE_TIMESTAMP_MS = 8_640_000_000_000_000
+_MAX_SAFE_INTEGER = 2**53 - 1
 AUTOMATION_STORE_PARTS = (".memory-core", "automation.json")
 
 
@@ -166,6 +174,60 @@ class AutomationJob:
             session_target=str(data.get("sessionTarget", "main")),
             wake_mode=str(data.get("wakeMode", "next-heartbeat")),
         )
+
+
+def _as_safe_integer_in_range(value: object, minimum: int, maximum: int) -> bool:
+    # normalization-core asSafeIntegerInRange: a number that is a safe integer within range.
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    if isinstance(value, float) and not (math.isfinite(value) and value.is_integer()):
+        return False
+    return abs(value) <= _MAX_SAFE_INTEGER and minimum <= value <= maximum
+
+
+def _floor_schedule_number(value: object, minimum: int) -> object:
+    # src/cron/normalize.ts coerceSchedule: a finite, Date-range everyMs >= 1 or anchorMs >= 0 is
+    # floored (coerceFiniteScheduleNumber); anything else is left as it is.
+    coerced = _as_date_timestamp_ms(value)
+    if coerced is not None and coerced >= minimum:
+        return math.floor(coerced)
+    return value
+
+
+def _persisted_job(job: AutomationJob) -> AutomationJob | None:
+    """``normalizeCronJobForSqlite`` for an every-schedule ``systemEvent`` job (``None``: refused).
+
+    ``normalizeCronJobInput`` floors the schedule numbers, then
+    ``getInvalidPersistedCronJobReason`` checks the id, the state timestamps and the schedule
+    (the payload text is always a string here).
+    """
+    if not js_trim(job.id):
+        return None
+    for value in (job.next_run_at_ms, job.last_run_at_ms):
+        if value is not None and not _as_safe_integer_in_range(value, 0, _MAX_DATE_TIMESTAMP_MS):
+            return None
+    every = _floor_schedule_number(job.every_ms, 1)
+    if not _as_safe_integer_in_range(every, 1, _MAX_DATE_TIMESTAMP_MS):
+        return None
+    anchor = None if job.anchor_ms is None else _floor_schedule_number(job.anchor_ms, 0)
+    if anchor is not None and not _as_safe_integer_in_range(anchor, 0, _MAX_DATE_TIMESTAMP_MS):
+        return None
+    if every == job.every_ms and anchor == job.anchor_ms:
+        return job
+    return replace(job, every_ms=int(every), anchor_ms=None if anchor is None else int(anchor))  # type: ignore[arg-type]
+
+
+def assert_automation_jobs_can_persist(jobs: Sequence[AutomationJob]) -> list[AutomationJob]:
+    """Port of ``assertCronStoreCanPersist``: the jobs as they would be stored, or ``ValueError``.
+
+    Raises with upstream's ``Cannot persist cron store with N invalid job(s)`` when any job
+    cannot be stored (see :func:`_persisted_job`); otherwise returns the normalized jobs.
+    """
+    persisted = [_persisted_job(job) for job in jobs]
+    invalid = sum(1 for job in persisted if job is None)
+    if invalid:
+        raise ValueError(CRON_STORE_CANNOT_PERSIST.format(invalid_jobs=invalid))
+    return [job for job in persisted if job is not None]
 
 
 def _next_every_run_at_ms(every_ms: float, anchor_ms: float | None, now_ms: float) -> int | None:
@@ -416,8 +478,11 @@ class FileAutomationStore:
         With ``scratch_agent_id`` the same write also replaces that agent's scratch through
         :func:`~memory_core.heartbeat_scratch.apply_heartbeat_scratch_write` (a compare-and-swap on
         ``scratch_expected_revision``); on a conflict nothing is written and the conflict is
-        returned.
+        returned. Jobs are stored as :func:`assert_automation_jobs_can_persist` normalizes them;
+        a job it refuses raises ``ValueError`` before anything is written (upstream's cron
+        store runs ``assertCronStoreCanPersist`` on every save).
         """
+        jobs = assert_automation_jobs_can_persist(jobs)
         with self._locked() as data:
             result: HeartbeatScratchWrite | None = None
             if scratch_agent_id is not None:

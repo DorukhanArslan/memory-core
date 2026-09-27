@@ -323,7 +323,7 @@ def resolve_fresh_session_total_tokens(entry: dict[str, Any] | None) -> int | fl
     if not isinstance(entry, dict):
         return None
     total = entry.get("totalTokens")
-    if not _is_number(total) or total < 0:
+    if not _is_number(total) or not _is_finite_number(total) or total < 0:
         return None
     version = entry.get("totalTokensVersion")
     if entry.get("totalTokensFresh") is not True or not (
@@ -343,9 +343,10 @@ def should_run_memory_flush(
 
     ``token_count`` is a fresh projected snapshot that wins over the entry's total.
     """
+    # ``params.entry`` is truthy for any object in JS, so an empty dict still counts here.
     return bool(
         _should_run_preflight_compaction(entry=entry, token_count=token_count, threshold=threshold)
-        and entry
+        and entry is not None
         and not has_already_flushed_for_current_compaction(entry)
     )
 
@@ -354,7 +355,7 @@ def _should_run_preflight_compaction(
     *, entry: dict[str, Any] | None, token_count: int | float | None, threshold: int | float
 ) -> bool:
     """``shouldRunPreflightCompaction`` (memory-flush.ts), the token half of the gate."""
-    if not entry:
+    if entry is None:
         return False
     total_tokens = _resolve_gate_total_tokens(entry, token_count)
     return total_tokens is not None and total_tokens > 0 and threshold > 0 and total_tokens >= threshold
@@ -373,7 +374,8 @@ def has_already_flushed_for_current_compaction(entry: dict[str, Any]) -> bool:
         compaction_count = 0
     memory_flush = entry.get("memoryFlush")
     last_flush_at = memory_flush.get("compactionCount") if isinstance(memory_flush, dict) else None
-    return _is_number(last_flush_at) and last_flush_at == compaction_count
+    # ``===``: both sides are numbers (a bool or string compactionCount never matches).
+    return _is_number(last_flush_at) and _is_number(compaction_count) and last_flush_at == compaction_count
 
 
 def should_force_memory_flush_by_transcript_size(

@@ -296,6 +296,20 @@ def test_should_run_memory_flush_uses_projected_token_count_over_stale_total():
     assert not should_run_memory_flush(entry=None, token_count=93_000, threshold=1)
 
 
+def test_should_run_memory_flush_treats_an_empty_entry_like_js():
+    # An empty object is truthy in JS: the projected token count still decides.
+    assert should_run_memory_flush(entry={}, token_count=93_000, threshold=93_000)
+    assert not should_run_memory_flush(entry={}, threshold=1)
+
+
+def test_fresh_totals_must_be_finite():
+    assert resolve_fresh_session_total_tokens(fresh(float("inf"))) is None
+    assert resolve_fresh_session_total_tokens(fresh(float("nan"))) is None
+    assert not has_already_flushed_for_current_compaction(
+        {"compactionCount": True, "memoryFlush": {"kind": "succeeded", "compactionCount": 1}}
+    )
+
+
 def test_should_run_memory_flush_needs_a_positive_threshold():
     assert not should_run_memory_flush(entry=fresh(10), threshold=0)
 

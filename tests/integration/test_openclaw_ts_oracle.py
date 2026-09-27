@@ -781,6 +781,8 @@ def _fresh(total_tokens: int, **fields) -> dict:
         {"entry": _fresh(3_000), "contextWindowTokens": 8_000},
         # The Lab's S11 window: reserve 1,333, soft 2,000, threshold 2,000.
         {"entry": _fresh(2_000), "contextWindowTokens": 5_333},
+        # An empty entry is truthy in JS: the projected token count still decides.
+        {"entry": {}, "tokenCount": 93_000, "contextWindowTokens": 100_000},
     ],
 )
 def test_real_openclaw_oracle_memory_flush_gate_matches_python(payload: dict):
@@ -814,7 +816,7 @@ def test_real_openclaw_oracle_memory_flush_gate_matches_python(payload: dict):
         threshold=threshold,
     )
     assert result["result"]["hasAlreadyFlushedForCurrentCompaction"] is (
-        has_already_flushed_for_current_compaction(entry) if entry else False
+        has_already_flushed_for_current_compaction(entry) if entry is not None else False
     )
 
 

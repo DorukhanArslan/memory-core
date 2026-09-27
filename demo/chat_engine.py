@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import os
 import json
+import os
+from contextlib import contextmanager
 from dataclasses import dataclass
 from collections.abc import Iterator
 from typing import Protocol
@@ -67,6 +68,27 @@ class ChatEngine(Protocol):
         raise NotImplementedError
 
 
+def _refuses_tool_reasoning(body: dict, response: httpx.Response) -> bool:
+    """True when a tool request without ``reasoning_effort`` got the 400 that names it."""
+    if "tools" not in body or "reasoning_effort" in body:
+        return False
+    if getattr(response, "status_code", None) != 400:
+        return False
+    response.read()
+    return _rejects_parameter(response, "reasoning_effort")
+
+
+def _rejects_parameter(response: httpx.Response, name: str) -> bool:
+    """True when a 400 from the provider names ``name`` as the offending parameter."""
+    if response.status_code != 400:
+        return False
+    try:
+        error = response.json().get("error") or {}
+    except ValueError:
+        return False
+    return isinstance(error, dict) and error.get("param") == name
+
+
 class OpenAICompatibleChatEngine:
     name = "openai"
 
@@ -75,6 +97,9 @@ class OpenAICompatibleChatEngine:
         self.api_key = api_key
         self.model = model
         self.timeout = timeout
+        # Set once the provider refuses function tools with its default reasoning effort
+        # (api.openai.com, gpt-6-luna, 2026-09-27: "set reasoning_effort to 'none'").
+        self.tool_reasoning_effort: str | None = None
 
     @classmethod
     def from_env(cls) -> OpenAICompatibleChatEngine | None:
@@ -166,18 +191,13 @@ class OpenAICompatibleChatEngine:
         if tools:
             body["tools"] = tools
             body["tool_choice"] = "auto"
+            if self.tool_reasoning_effort:
+                body["reasoning_effort"] = self.tool_reasoning_effort
         content: list[str] = []
         calls: dict[int, dict] = {}
         usage: dict | None = None
         finish_reason: str | None = None
-        with httpx.stream(
-            "POST",
-            f"{self.base_url}/chat/completions",
-            headers=self._headers(),
-            json=body,
-            timeout=self.timeout,
-        ) as response:
-            response.raise_for_status()
+        with self._open_stream(body) as response:
             for line in response.iter_lines():
                 payload = _parse_stream_payload(line)
                 if payload is None:
@@ -219,8 +239,19 @@ class OpenAICompatibleChatEngine:
         }
 
     def check(self) -> dict:
-        """One short completion, for the settings view's connection check."""
-        raw = self._chat([{"role": "user", "content": "ping"}], max_tokens=1)
+        """One short completion, for the settings view's connection check.
+
+        Newer OpenAI models reject ``max_tokens`` with a 400 naming that parameter, and a
+        reasoning model cannot finish under a tiny ``max_completion_tokens`` either (both
+        seen with gpt-6-luna on 2026-09-27), so that answer is retried once without a cap.
+        """
+        ping = [{"role": "user", "content": "ping"}]
+        try:
+            raw = self._chat(ping, max_tokens=1)
+        except httpx.HTTPStatusError as exc:
+            if not _rejects_parameter(exc.response, "max_tokens"):
+                raise
+            raw = self._chat(ping)
         return {"model": raw.get("model") or self.model}
 
     def _headers(self) -> dict[str, str]:
@@ -242,14 +273,45 @@ class OpenAICompatibleChatEngine:
         if tools:
             body["tools"] = tools
             body["tool_choice"] = "auto"
+            if self.tool_reasoning_effort:
+                body["reasoning_effort"] = self.tool_reasoning_effort
         response = httpx.post(
             f"{self.base_url}/chat/completions",
             headers=self._headers(),
             json=body,
             timeout=self.timeout,
         )
+        if _refuses_tool_reasoning(body, response):
+            self.tool_reasoning_effort = "none"
+            return self._chat(messages, tools=tools, max_tokens=max_tokens)
         response.raise_for_status()
         return response.json()
+
+    @contextmanager
+    def _open_stream(self, body: dict) -> Iterator[httpx.Response]:
+        """POST a streamed completion; a refusal of tools with reasoning is retried once.
+
+        The retry sends ``reasoning_effort: "none"``, the fix the provider's own 400 names;
+        the engine keeps it for later tool calls. Any other error status raises.
+        """
+        with self._stream(body) as response:
+            if not _refuses_tool_reasoning(body, response):
+                response.raise_for_status()
+                yield response
+                return
+        self.tool_reasoning_effort = "none"
+        with self._stream({**body, "reasoning_effort": "none"}) as response:
+            response.raise_for_status()
+            yield response
+
+    def _stream(self, body: dict):
+        return httpx.stream(
+            "POST",
+            f"{self.base_url}/chat/completions",
+            headers=self._headers(),
+            json=body,
+            timeout=self.timeout,
+        )
 
     def _chat_stream(self, messages: list[dict[str, str]]) -> Iterator[str]:
         with httpx.stream(

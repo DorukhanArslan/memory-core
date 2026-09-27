@@ -215,3 +215,92 @@ def test_parse_stream_line_extracts_delta_content():
     assert _parse_stream_line(line) == "hello"
     assert _parse_stream_line("data: [DONE]") is None
     assert _parse_stream_line(": keep-alive") is None
+
+
+def test_check_retries_without_a_token_cap_when_the_provider_rejects_max_tokens(monkeypatch):
+    # gpt-6-luna on api.openai.com: 400 param=max_tokens ("Use 'max_completion_tokens'
+    # instead"), and a tiny max_completion_tokens cannot finish a reasoning model either.
+    import httpx
+
+    engine = OpenAICompatibleChatEngine(base_url="https://llm.example/v1", api_key="k", model="m")
+    bodies = []
+    request = httpx.Request("POST", "https://llm.example/v1/chat/completions")
+
+    def fake_post(url, *, headers, json, timeout):
+        bodies.append(json)
+        if "max_tokens" in json:
+            return httpx.Response(
+                400,
+                json={"error": {"param": "max_tokens", "message": "Unsupported parameter"}},
+                request=request,
+            )
+        return httpx.Response(200, json={"model": "m-2026", "choices": []}, request=request)
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    assert engine.check() == {"model": "m-2026"}
+    assert [("max_tokens" in body) for body in bodies] == [True, False]
+
+
+def test_check_does_not_retry_other_provider_errors(monkeypatch):
+    import httpx
+    import pytest
+
+    engine = OpenAICompatibleChatEngine(base_url="https://llm.example/v1", api_key="k", model="m")
+    request = httpx.Request("POST", "https://llm.example/v1/chat/completions")
+    calls = []
+
+    def fake_post(url, *, headers, json, timeout):
+        calls.append(json)
+        return httpx.Response(401, json={"error": {"message": "bad key"}}, request=request)
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        engine.check()
+    assert len(calls) == 1
+
+
+def _tool_refusal():
+    import httpx
+
+    return httpx.Response(
+        400,
+        json={"error": {"param": "reasoning_effort", "message": "Function tools with reasoning_effort are not supported"}},
+        request=httpx.Request("POST", "https://llm.example/v1/chat/completions"),
+    )
+
+
+def test_stream_chat_retries_tools_without_reasoning_when_the_provider_names_it(monkeypatch):
+    # api.openai.com, gpt-6-luna, 2026-09-27: function tools on /v1/chat/completions need
+    # reasoning_effort "none"; the engine retries once and keeps the setting.
+    from contextlib import contextmanager
+
+    import httpx
+
+    engine = OpenAICompatibleChatEngine(base_url="https://llm.example/v1", api_key="k", model="m")
+    bodies = []
+    ok = httpx.Response(
+        200,
+        content=b'data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+        request=httpx.Request("POST", "https://llm.example/v1/chat/completions"),
+    )
+
+    @contextmanager
+    def fake_stream(method, url, *, headers, json, timeout):
+        bodies.append(json)
+        refused = "tools" in json and "reasoning_effort" not in json
+        yield _tool_refusal() if refused else ok
+
+    monkeypatch.setattr(httpx, "stream", fake_stream)
+    tools = [{"type": "function", "function": {"name": "t", "parameters": {"type": "object"}}}]
+
+    events = list(engine.stream_chat([{"role": "user", "content": "x"}], tools=tools))
+    assert events[-1]["content"] == "hi"
+    assert [body.get("reasoning_effort") for body in bodies] == [None, "none"]
+
+    list(engine.stream_chat([{"role": "user", "content": "x"}], tools=tools))
+    assert bodies[-1]["reasoning_effort"] == "none" and len(bodies) == 3
+
+    list(engine.stream_chat([{"role": "user", "content": "x"}]))
+    assert "reasoning_effort" not in bodies[-1]

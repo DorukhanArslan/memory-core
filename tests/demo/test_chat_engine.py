@@ -259,3 +259,48 @@ def test_check_does_not_retry_other_provider_errors(monkeypatch):
     with pytest.raises(httpx.HTTPStatusError):
         engine.check()
     assert len(calls) == 1
+
+
+def _tool_refusal():
+    import httpx
+
+    return httpx.Response(
+        400,
+        json={"error": {"param": "reasoning_effort", "message": "Function tools with reasoning_effort are not supported"}},
+        request=httpx.Request("POST", "https://llm.example/v1/chat/completions"),
+    )
+
+
+def test_stream_chat_retries_tools_without_reasoning_when_the_provider_names_it(monkeypatch):
+    # api.openai.com, gpt-6-luna, 2026-09-27: function tools on /v1/chat/completions need
+    # reasoning_effort "none"; the engine retries once and keeps the setting.
+    from contextlib import contextmanager
+
+    import httpx
+
+    engine = OpenAICompatibleChatEngine(base_url="https://llm.example/v1", api_key="k", model="m")
+    bodies = []
+    ok = httpx.Response(
+        200,
+        content=b'data: {"choices":[{"delta":{"content":"hi"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+        request=httpx.Request("POST", "https://llm.example/v1/chat/completions"),
+    )
+
+    @contextmanager
+    def fake_stream(method, url, *, headers, json, timeout):
+        bodies.append(json)
+        refused = "tools" in json and "reasoning_effort" not in json
+        yield _tool_refusal() if refused else ok
+
+    monkeypatch.setattr(httpx, "stream", fake_stream)
+    tools = [{"type": "function", "function": {"name": "t", "parameters": {"type": "object"}}}]
+
+    events = list(engine.stream_chat([{"role": "user", "content": "x"}], tools=tools))
+    assert events[-1]["content"] == "hi"
+    assert [body.get("reasoning_effort") for body in bodies] == [None, "none"]
+
+    list(engine.stream_chat([{"role": "user", "content": "x"}], tools=tools))
+    assert bodies[-1]["reasoning_effort"] == "none" and len(bodies) == 3
+
+    list(engine.stream_chat([{"role": "user", "content": "x"}]))
+    assert "reasoning_effort" not in bodies[-1]

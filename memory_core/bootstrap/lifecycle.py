@@ -242,16 +242,25 @@ def _write_state(root: Path, state: WorkspaceSetupState) -> None:
         raise
 
 
+def read_stored_workspace_setup_state(root: str | os.PathLike[str]) -> WorkspaceSetupState:
+    """The stored setup state, without the legacy-state gate.
+
+    Upstream ``readWorkspaceStateSnapshot(dir).setup`` (``src/agents/workspace-state-store.ts``,
+    the SQLite row); memory-core reads ``<root>/.memory-core/workspace-state.json`` (absent,
+    unreadable as a directory, or not a JSON object: no markers).
+    """
+    return _read_state_file(_state_path(_root_path(root))) or WorkspaceSetupState()
+
+
 def read_workspace_setup_state(root: str | os.PathLike[str]) -> WorkspaceSetupState:
     """Setup state of a workspace (upstream ``readCanonicalWorkspaceStateSnapshot().setup``).
 
     Raises :class:`WorkspaceStateMigrationRequiredError` while upstream's retired JSON state
-    is present, then reads ``<root>/.memory-core/workspace-state.json`` (absent, unreadable as a
-    directory, or not a JSON object: no markers).
+    is present, then returns :func:`read_stored_workspace_setup_state`.
     """
     root_path = _root_path(root)
     assert_no_unmigrated_workspace_state(root_path)
-    return _read_state_file(_state_path(root_path)) or WorkspaceSetupState()
+    return read_stored_workspace_setup_state(root_path)
 
 
 def is_workspace_setup_completed(root: str | os.PathLike[str]) -> bool:

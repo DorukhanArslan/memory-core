@@ -14,6 +14,7 @@ from memory_core.bootstrap import (
     initialize_agent_workspace,
     is_workspace_setup_completed,
     migrate_legacy_workspace_state,
+    read_stored_workspace_setup_state,
     read_workspace_setup_state,
     strip_template_front_matter,
 )
@@ -305,6 +306,20 @@ def test_migrate_legacy_state_leaves_a_doctor_claim_alone(tmp_path):
     with pytest.raises(WorkspaceStateMigrationError, match="interrupted doctor claim"):
         migrate_legacy_workspace_state(tmp_path)
     assert claim.exists()
+
+
+def test_stored_setup_state_is_read_without_the_legacy_gate(tmp_path):
+    # readWorkspaceStateSnapshot(dir).setup reads the store only; the gated reader
+    # (readCanonicalWorkspaceStateSnapshot) refuses while retired JSON state is present.
+    initialize_agent_workspace(tmp_path, now_ms=NOW_MS)
+    (tmp_path / "openclaw-workspace-state.json").write_text("{}", encoding="utf-8")
+
+    assert read_stored_workspace_setup_state(tmp_path).to_json() == {
+        "version": 1,
+        "bootstrapSeededAt": NOW_ISO,
+    }
+    with pytest.raises(WorkspaceStateMigrationRequiredError):
+        read_workspace_setup_state(tmp_path)
 
 
 @pytest.mark.parametrize("raw", ["not json", "null", "42", '"text"', "NaN"])

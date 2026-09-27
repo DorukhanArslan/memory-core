@@ -4175,6 +4175,7 @@ from memory_core.bootstrap import (  # noqa: E402
     is_workspace_setup_completed,
     load_workspace_bootstrap_files,
     migrate_tools_md,
+    read_stored_workspace_setup_state,
     render_bootstrap_prompt_sections,
     render_project_context,
     render_workspace_files_injected,
@@ -4852,6 +4853,10 @@ def _python_lifecycle_snapshots(root: Path, steps: list[dict]) -> list[dict]:
                 "state": _normalize_state(
                     state_path.read_text(encoding="utf-8") if state_path.exists() else None
                 ),
+                # Upstream's SQLite row vs .memory-core/workspace-state.json, both read ungated.
+                "setupState": _normalize_state(
+                    json.dumps(read_stored_workspace_setup_state(root).to_json())
+                ),
                 "status": _capture_migration_error(
                     lambda: bootstrap_status(root, OPENCLAW_COMPAT_LAYOUT), root
                 ),
@@ -4963,7 +4968,8 @@ def test_real_openclaw_oracle_workspace_lifecycle_matches_python(tmp_path: Path,
                 snapshot[key] = _normalize_migration_error(snapshot[key], ts_root)
     # Setup state is not a workspace file on either side (upstream: SQLite, memory-core:
     # .memory-core/workspace-state.json); snapshots compare the tree, the fixture's own legacy file,
-    # the status, the completion flag and the refusal of retired JSON state.
+    # the stored setup state ({version, bootstrapSeededAt?, setupCompletedAt?}, timestamps
+    # normalised), the status, the completion flag and the refusal of retired JSON state.
     assert ts_snapshots == _python_lifecycle_snapshots(py_root, steps)
 
 
@@ -4983,7 +4989,10 @@ from memory_core.bootstrap.tools_md import (  # noqa: E402
     tools_md_migration_findings,
 )
 
-# Inputs of src/commands/doctor-tools-md-migration.test.ts at v2026.9.6.
+# 21 inputs of src/commands/doctor-tools-md-migration.test.ts at v2026.9.6 (no-tools-md is the
+# state its idempotent rerun leaves; the 12 guidance rewrites are its LEGACY_AGENTS_GUIDANCE_
+# REWRITES rows), plus memory-core probes: fence-and-closed-heading (structural, findToolsSection)
+# and the two archive EEXIST cases.
 _TOOLS_AGENTS = "# Agent\n\n## Tools\n\nExisting notes.\n"
 _TOOLS_CAMERAS = "### Cameras\n\n- kitchen → wide angle\n"
 TOOLS_MD_MIGRATION_SCENARIOS = [
@@ -5037,6 +5046,8 @@ TOOLS_MD_MIGRATION_SCENARIOS = [
         {"stateDirIsFile": True},
         id="archive-blocked",
     ),
+    # memory-core structural probe (not in the upstream test): a fenced "## Tools", a closed
+    # "## Tools ##" heading and a differently cased "### Local Notes".
     pytest.param(
         {
             "AGENTS.md": "# A\n\n```\n## Tools\n```\n\n## Tools ##\n\nn\n\n### Local Notes\n\nx\n",

@@ -1,6 +1,7 @@
-"""memory_core.bootstrap.migrate_tools_md, with the inputs of upstream's
-src/commands/doctor-tools-md-migration.test.ts at v2026.9.6 (the oracle comparison is
-tests/integration/test_openclaw_ts_oracle.py › toolsMdMigration)."""
+"""memory_core.bootstrap.migrate_tools_md and tools_md_migration_findings, mostly with the inputs
+of upstream's src/commands/doctor-tools-md-migration.test.ts at v2026.9.6; the archive-collision,
+fence, agent-id and mode cases are memory-core probes (the oracle comparisons are
+tests/integration/test_openclaw_ts_oracle.py › toolsMdMigration, toolsMdMigrationFindings)."""
 
 from __future__ import annotations
 

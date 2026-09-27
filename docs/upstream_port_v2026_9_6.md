@@ -84,7 +84,7 @@ the tag's map (`OPENCLAW_COMPAT_LAYOUT` replaces `OPENCLAW_PIN_LAYOUT`; `MEMORY_
 adds the labelled extensions), TOOLS.md and HEARTBEAT.md left both, `migrate_tools_md` ports
 the doctor migration, retired JSON setup state is refused (`migrate_legacy_workspace_state`
 imports it), and the 19 worklist entries passed against the tag and were removed; the new ops
-`toolsMdMigration` (22 fixtures), `toolsMdMergeDecision` and `workspaceBootstrapPolicy`, a
+`toolsMdMigration` (21 upstream fixtures plus one memory-core structural probe), `toolsMdMergeDecision` and `workspaceBootstrapPolicy`, a
 legacy-state scenario and a retired-files lifecycle scenario pass too. Left (known gaps, row
 "Workspace bootstrap files"): attestations and `WorkspaceVanishedError`, the personal
 `users/<profile-id>/USER.md` overlay, the automatic-memory provenance filter, the per-project

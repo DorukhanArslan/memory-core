@@ -273,10 +273,13 @@ async function withWorkspaceStepSandbox<T>(run: () => Promise<T>): Promise<T> {
 type WorkspaceStep = NonNullable<Payload["steps"]>[number];
 
 // write / remove / mkdir edit the fixture; ensure runs the real ensureAgentWorkspace and
-// snapshots the tree, the fixture's own legacy state file (upstream writes none), the
-// bootstrap status and the setup-completed flag.
+// snapshots the tree, the fixture's own legacy state file (upstream writes none), the stored
+// setup state (src/agents/workspace-state-store.ts readWorkspaceStateSnapshot(dir).setup: the
+// SQLite row, read without the legacy-state gate, timestamps as "__iso__"), the bootstrap
+// status and the setup-completed flag.
 async function runWorkspaceSteps(repoPath: string, workspaceDir: string, steps: WorkspaceStep[]) {
   const workspace = await importFromRepo(repoPath, "src/agents/workspace.ts");
+  const stateStore = await importFromRepo(repoPath, "src/agents/workspace-state-store.ts");
   const snapshots = [];
   for (const step of steps) {
     const target = step.path ? path.join(workspaceDir, step.path) : workspaceDir;
@@ -310,6 +313,11 @@ async function runWorkspaceSteps(repoPath: string, workspaceDir: string, steps: 
       ...(isRecord(ensured) && typeof ensured.error === "string" ? { error: ensured.error } : {}),
       tree: await snapshotWorkspaceTree(workspaceDir),
       state: normalizeSetupStateTimestamps(stateRaw),
+      setupState: await captureUpstreamError(async () =>
+        normalizeSetupStateTimestamps(
+          JSON.stringify((await stateStore.readWorkspaceStateSnapshot(workspaceDir)).setup),
+        ),
+      ),
       status: await captureUpstreamError(() => workspace.resolveWorkspaceBootstrapStatus(workspaceDir)),
       setupCompleted: await captureUpstreamError(() =>
         workspace.isWorkspaceSetupCompleted(workspaceDir),

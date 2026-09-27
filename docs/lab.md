@@ -163,16 +163,16 @@ fast with `oracle-node-unsupported` (or `oracle-node-missing` for a binary that 
 instead of failing inside TS. The parity view shows the resolved Node and turns red outside the
 range or for a binary not named `node`.
 
-On this machine Node 24 is Homebrew's `node@24` (`/opt/homebrew/opt/node@24/bin`); the default
-`node` is 25:
+With `<node-dir>` a directory whose `node` is in that range (for example a version manager's
+Node 24 install):
 
 ```bash
 git clone https://github.com/openclaw/openclaw /tmp/openclaw-head
 git -C /tmp/openclaw-head checkout v2026.9.6
-(cd /tmp/openclaw-head && PATH=/opt/homebrew/opt/node@24/bin:$PATH \
+(cd /tmp/openclaw-head && PATH=<node-dir>:$PATH \
   npx --yes pnpm@12.4.0 install --ignore-scripts --frozen-lockfile)
 export OPENCLAW_ORACLE_REPO=/tmp/openclaw-head
-export OPENCLAW_ORACLE_NODE=/opt/homebrew/opt/node@24/bin/node
+export OPENCLAW_ORACLE_NODE=<node-dir>/node
 ```
 
 Use a short, fresh `TMPDIR` per run (long paths break tsx's IPC sockets); the runner gives
@@ -182,7 +182,7 @@ every operation its own `OPENCLAW_STATE_DIR` and never touches `~/.openclaw`.
 
 ```bash
 TMPDIR=<scratch> PYTHONDONTWRITEBYTECODE=1 MEMORY_CORE_DEMO_OPENAI_API_KEY= MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY= \
-OPENCLAW_ORACLE_REPO=/tmp/openclaw-head OPENCLAW_ORACLE_NODE=/opt/homebrew/opt/node@24/bin/node \
+OPENCLAW_ORACLE_REPO=/tmp/openclaw-head OPENCLAW_ORACLE_NODE=<node-dir>/node \
 .venv/bin/python -m pytest -q -p no:cacheprovider \
   tests/integration/test_openclaw_ts_oracle.py tests/integration/test_memory_tools.py \
   --junitxml=<scratch>/memory-core-lab/oracle.xml

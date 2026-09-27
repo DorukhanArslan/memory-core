@@ -99,9 +99,9 @@ re-run once warm. Setup details: [docs/lab.md › Oracle checkout](docs/lab.md).
 ```bash
 git clone https://github.com/openclaw/openclaw /tmp/openclaw-head
 git -C /tmp/openclaw-head checkout v2026.9.6
-# On the maintainer's machine Node 24 is Homebrew's node@24; the default node is 25.
-export OPENCLAW_ORACLE_NODE=/opt/homebrew/opt/node@24/bin/node
-(cd /tmp/openclaw-head && PATH=/opt/homebrew/opt/node@24/bin:$PATH \
+# <node-dir>: a directory whose `node` is Node >=24.16 <25 or >=26.1.
+export OPENCLAW_ORACLE_NODE=<node-dir>/node
+(cd /tmp/openclaw-head && PATH=<node-dir>:$PATH \
   npx --yes pnpm@12.4.0 install --ignore-scripts --frozen-lockfile)
 OPENCLAW_ORACLE_REPO=/tmp/openclaw-head pytest tests/integration -v
 ```

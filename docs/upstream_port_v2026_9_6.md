@@ -42,7 +42,7 @@ gates).
 | Infrastructure | done (`39ba67e`, `aa4f7d3`, `1a5e09f`) | worklist xfails fail only on value assertions; oracle defaults point at the pin checkout with a Node engines check |
 
 Full `tests/integration` at `afd9965` plus the plan and matrix edits, `/tmp/openclaw-head` at
-`eb377ac59e6`, Node 24.21.0 (`/opt/homebrew/opt/node@24/bin`), seven chunks with the run-loop
+`eb377ac59e6`, Node 24.21.0, seven chunks with the run-loop
 included: 165 passed, 90 xfailed, 5 skipped (the 4 retired ops and the live-embedding test),
 0 failed, 260 collected, about 27 minutes. Stage 1 ended at 108 passed, 120 xfailed, 5 skipped
 (233 collected). The worklist now holds 15 areas and 90 tests.

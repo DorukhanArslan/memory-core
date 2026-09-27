@@ -22,12 +22,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta, timezone as fixed_offset_zone, tzinfo
+from datetime import tzinfo
 import math
 import re
-import time
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from memory_core._memory_flush_constants import (
     DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR,
@@ -48,6 +46,13 @@ from memory_core._memory_flush_constants import (
     UNIT_MULTIPLIERS,
 )
 from memory_core.bootstrap._js import format_js_error_message, js_trim, truncate_utf16_safe, utf16_len
+from memory_core.current_time import (
+    DEFAULT_TIME_FORMAT,
+    format_current_time_line,
+    resolve_date_timestamp_ms,
+    resolve_user_timezone,
+    utc_and_local_instants,
+)
 from memory_core.memory_paths import UnsafeMemoryPathError, validate_daily_memory_path
 
 __all__ = [
@@ -198,7 +203,7 @@ def build_memory_flush_plan(
     force_flush_transcript_bytes: Any = DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES,
     model: str | None = None,
     context_window_tokens: Any = None,
-    time_format: str = "24",
+    time_format: str = DEFAULT_TIME_FORMAT,
 ) -> MemoryFlushPlan:
     """Port of ``buildMemoryFlushPlan`` (extensions/memory-core/src/flush-plan.ts, v2026.9.6).
 
@@ -208,7 +213,8 @@ def build_memory_flush_plan(
     floor becomes ``min(20000, floor(window * 0.25))`` and the soft threshold
     ``min(soft, floor((window - reserve) / 2))`` (6b6f1969c11 #130072); without one they stay
     20000 and the configured soft threshold. ``time_format`` is the host's 12/24-hour format
-    of the prompt's ``Current time:`` line (:func:`format_current_time_line`).
+    of the prompt's ``Current time:`` line (``memory_core.current_time``, which documents the
+    host-format deviation).
     ``workspace_dir`` is unused, as upstream.
 
     ``now_ms`` follows ``resolveMemoryCoreNowMs`` (extensions/memory-core/src/time.ts): a
@@ -233,11 +239,11 @@ def build_memory_flush_plan(
         )
         soft_threshold = min(soft_threshold, math.floor((window - reserve_tokens_floor) / 2))
 
-    resolved_now_ms = _resolve_date_timestamp_ms(now_ms)
-    timezone_label, zone = _resolve_timezone(timezone)
+    resolved_now_ms = resolve_date_timestamp_ms(now_ms)
+    _, zone = resolve_user_timezone(timezone)
     date_stamp = _format_date_stamp_in_timezone(resolved_now_ms, zone)
     relative_path = validate_daily_memory_target(f"memory/{date_stamp}.md")
-    time_line = _format_current_time_line(resolved_now_ms, timezone_label, zone, time_format)
+    time_line = format_current_time_line(resolved_now_ms, timezone, time_format)
 
     prompt_base = ensure_no_reply_hint(ensure_memory_flush_safety_hints(DEFAULT_MEMORY_FLUSH_PROMPT))
     system_prompt = ensure_no_reply_hint(
@@ -261,7 +267,7 @@ def build_memory_flush_plan_from_config(
     cfg: dict[str, Any] | None = None,
     now_ms: int | None = None,
     context_window_tokens: Any = None,
-    time_format: str = "24",
+    time_format: str = DEFAULT_TIME_FORMAT,
 ) -> MemoryFlushPlan | None:
     """``buildMemoryFlushPlan({cfg, nowMs, contextWindowTokens})`` over an OpenClaw config dict.
 
@@ -724,148 +730,7 @@ def _optional_text(value: Any) -> str | None:
     return stripped or None
 
 
-# ECMA-402 offset time zone identifiers (``UTCOffset`` without seconds, as Node's Intl accepts
-# them): ``+03``, ``+0300`` or ``+03:00``, hours 00-23, minutes 00-59; the sign may be U+2212.
-_OFFSET_TIME_ZONE_RE = re.compile("([+\\-\u2212])([01][0-9]|2[0-3])(?::?([0-5][0-9]))?")
-
-
-def _offset_time_zone(name: str) -> tzinfo | None:
-    match = _OFFSET_TIME_ZONE_RE.fullmatch(name)
-    if match is None:
-        return None
-    sign = 1 if match.group(1) == "+" else -1
-    minutes = int(match.group(2)) * 60 + int(match.group(3) or 0)
-    return fixed_offset_zone(sign * timedelta(minutes=minutes))
-
-
-def _resolve_timezone(timezone: str) -> tuple[str, tzinfo]:
-    """``resolveUserTimezone`` (src/agents/date-time.ts:27-39): (label, zone).
-
-    The trimmed configured zone when ``Intl`` accepts it, an IANA name or an ECMA-402 offset
-    such as ``+03:00`` (the label keeps the configured spelling, as upstream prints it).
-    Deviation: a blank or unknown zone falls back to UTC, where upstream takes the host zone.
-    """
-    trimmed = js_trim(timezone) if isinstance(timezone, str) else ""
-    if trimmed:
-        offset = _offset_time_zone(trimmed)
-        if offset is not None:
-            return trimmed, offset
-        try:
-            return trimmed, ZoneInfo(trimmed)
-        except (ZoneInfoNotFoundError, ValueError):
-            pass
-    return "UTC", ZoneInfo("UTC")
-
-
-_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
-# MAX_DATE_TIMESTAMP_MS (packages/normalization-core/src/number-coercion.ts): TimeClip's limit.
-_MAX_DATE_TIMESTAMP_MS = 8_640_000_000_000_000
-
-
-def _date_now_ms() -> int:
-    """``Date.now()``."""
-    return time.time_ns() // 1_000_000
-
-
-def _resolve_date_timestamp_ms(now_ms: Any) -> int | float:
-    """``resolveMemoryCoreNowMs`` (extensions/memory-core/src/time.ts) and
-    ``resolveDateTimestampMs`` (number-coercion.ts): a ``Date``-valid timestamp, else now."""
-    if _is_number(now_ms) and _is_finite_number(now_ms) and abs(now_ms) <= _MAX_DATE_TIMESTAMP_MS:
-        return now_ms
-    return _date_now_ms()
-
-
-def _local_instants(now_ms: int | float, zone: tzinfo) -> tuple[datetime, datetime]:
-    """(UTC, local) of ``new Date(now_ms)``: TimeClip truncates toward zero.
-
-    Raises ``ValueError`` outside the years 1-9999, where Python dates stop.
-    """
-    try:
-        instant = _EPOCH + timedelta(milliseconds=math.trunc(now_ms))
-        return instant, instant.astimezone(zone)
-    except OverflowError as exc:
-        raise ValueError(
-            f"now_ms {now_ms!r} falls outside the years 1-9999 that Python dates support"
-        ) from exc
-
-
 def _format_date_stamp_in_timezone(now_ms: int | float, zone: tzinfo) -> str:
     """``formatDateStampInTimezone`` (flush-plan.ts): en-US ``numeric`` year, 2-digit month/day."""
-    _, local = _local_instants(now_ms, zone)
+    _, local = utc_and_local_instants(now_ms, zone)
     return f"{local.year}-{local.month:02d}-{local.day:02d}"
-
-
-def format_current_time_line(
-    now_ms: int | float, timezone: str = "UTC", time_format: str = "24"
-) -> str:
-    """The two-line ``Current time: ...`` / ``Reference UTC: ...`` block of
-    ``resolveCronStyleNow`` (``src/agents/current-time.ts:23-32``); the zone resolves like the
-    flush plan's (an IANA name or an offset such as ``+03:00``; blank or unknown: UTC) and a
-    non-finite or out-of-``Date``-range ``now_ms`` means the current time
-    (``resolveDateTimestampMs``).
-
-    ``time_format`` is the host's 12/24-hour preference (``"12"`` or ``"24"``). Since
-    edecdbd05ef (#111527) upstream ignores the ``timeFormat`` config here and detects the
-    host's format (``resolveUserTimeFormat(undefined)``, date-time.ts:42-51: macOS
-    ``AppleICUForce24HourTime``, else ``Intl`` ``hour12``); memory-core does not probe the host,
-    so the host passes it (default ``"24"``, a documented deviation).
-    """
-    label, zone = _resolve_timezone(timezone)
-    return _format_current_time_line(_resolve_date_timestamp_ms(now_ms), label, zone, time_format)
-
-
-def _format_current_time_line(
-    now_ms: int | float, label: str, zone: tzinfo, time_format: str = "24"
-) -> str:
-    instant, local = _local_instants(now_ms, zone)
-    formatted_time = _format_user_time(local, _resolve_time_format(time_format))
-    # Date.prototype.toISOString sliced to minutes: a 4-digit zero-padded year.
-    utc_time = (
-        f"{instant.year:04d}-{instant.month:02d}-{instant.day:02d} "
-        f"{instant.hour:02d}:{instant.minute:02d} UTC"
-    )
-    return f"Current time: {formatted_time} ({label})\nReference UTC: {utc_time}"
-
-
-def _resolve_time_format(time_format: str) -> str:
-    if time_format not in ("12", "24"):
-        raise ValueError(f"time_format must be '12' or '24', got {time_format!r}")
-    return time_format
-
-
-_EN_US_WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-_EN_US_MONTHS = (
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-)
-
-
-def _format_user_time(local: datetime, time_format: str) -> str:
-    """``formatUserTime`` (date-time.ts:247-290): en-US parts, ``h23`` or ``h12`` cycle.
-
-    The names are fixed en-US strings (``strftime`` would follow the process locale).
-    """
-    day = local.day
-    if time_format == "24":
-        time_part = f"{local.hour:02d}:{local.minute:02d}"
-    else:
-        hour = local.hour % 12 or 12
-        time_part = f"{hour}:{local.minute:02d} {'AM' if local.hour < 12 else 'PM'}"
-    return (
-        f"{_EN_US_WEEKDAYS[local.weekday()]}, {_EN_US_MONTHS[local.month - 1]} "
-        f"{day}{_ordinal_suffix(day)}, {local.year} - {time_part}"
-    )
-
-
-def _ordinal_suffix(day: int) -> str:
-    if 11 <= day <= 13:
-        return "th"
-    match day % 10:
-        case 1:
-            return "st"
-        case 2:
-            return "nd"
-        case 3:
-            return "rd"
-        case _:
-            return "th"

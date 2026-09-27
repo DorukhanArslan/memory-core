@@ -203,9 +203,9 @@ def test_byte_size_units_come_from_the_extracted_upstream_table():
 @pytest.mark.parametrize("now_ms", [8_640_000_000_000_001, -8_640_000_000_000_001, float("nan"), float("inf"), None])
 def test_flush_plan_falls_back_when_the_timestamp_is_outside_date_range(monkeypatch, now_ms):
     # flush-plan.test.ts:10-18 (resolveMemoryCoreNowMs): Date.now() is mocked to 2026-05-30T12:00Z.
-    import memory_core.memory_flush as memory_flush
+    import memory_core.current_time as current_time
 
-    monkeypatch.setattr(memory_flush, "_date_now_ms", lambda: 1780142400000)
+    monkeypatch.setattr(current_time, "_date_now_ms", lambda: 1780142400000)
 
     plan = build_memory_flush_plan(workspace_dir=None, now_ms=now_ms)
 

@@ -24,6 +24,7 @@ from memory_core.bootstrap.files import BootstrapMode
 from memory_core.bootstrap.tools_md import ToolsMdMigrationFinding
 from memory_core.client import Memory
 from memory_core.config import MemoryConfig
+from memory_core.current_time import DEFAULT_TIME_FORMAT
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.flags import FeatureFlags
 from memory_core.live.consolidation import SubjectConsolidation, SubjectPromotionDisabledError
@@ -590,6 +591,7 @@ class SubjectMemory:
         now_ms: int | None = None,
         timezone: str = "UTC",
         trace_sink: TraceSink | None = None,
+        time_format: str = DEFAULT_TIME_FORMAT,
     ) -> SessionSummaryResult:
         plan, messages = self._prepare_session_summary_messages(
             session_id=session_id,
@@ -598,6 +600,7 @@ class SubjectMemory:
             now_ms=now_ms,
             timezone=timezone,
             trace_sink=trace_sink,
+            time_format=time_format,
         )
         try:
             raw_text = summary_llm(messages)
@@ -622,6 +625,7 @@ class SubjectMemory:
         now_ms: int | None = None,
         timezone: str = "UTC",
         trace_sink: TraceSink | None = None,
+        time_format: str = DEFAULT_TIME_FORMAT,
     ) -> SessionSummaryResult:
         plan, messages = self._prepare_session_summary_messages(
             session_id=session_id,
@@ -630,6 +634,7 @@ class SubjectMemory:
             now_ms=now_ms,
             timezone=timezone,
             trace_sink=trace_sink,
+            time_format=time_format,
         )
         try:
             raw_text = summary_llm(messages)
@@ -653,6 +658,7 @@ class SubjectMemory:
         now_ms: int | None,
         timezone: str,
         trace_sink: TraceSink | None,
+        time_format: str = DEFAULT_TIME_FORMAT,
     ):
         _record_trace_event(
             SESSION_SUMMARY_STARTED,
@@ -664,6 +670,7 @@ class SubjectMemory:
             workspace_dir=self.memory.workspace.root,
             now_ms=now_ms,
             timezone=timezone,
+            time_format=time_format,
         )
         messages = [
             {"role": "system", "content": plan.system_prompt},

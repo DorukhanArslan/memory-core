@@ -1920,9 +1920,12 @@ async function main() {
     // heartbeat-task jobs). Target "none" (no channel delivery), messages.visibleReplies pins the
     // heartbeat_respond choice, and getReplyFromConfig captures the model input and answers
     // HEARTBEAT_OK. The Body ends with appendCronStyleCurrentTimeLine's lines, returned as
-    // timeLine from the real resolveCronStyleNow. plugins.enabled=false keeps runHeartbeatOnce
-    // from loading the runtime plugin registry; the main session entry is seeded through the
-    // SQLite session accessor. HOME and OPENCLAW_STATE_DIR are sandboxed.
+    // timeLine from the real resolveCronStyleNow; like flushPlan, the op reports the host's
+    // detected 12/24-hour format (hostTimeFormat, resolveUserTimeFormat(undefined), which
+    // resolveCronStyleNow uses since edecdbd05ef #111527) so the Python side can pass it on.
+    // plugins.enabled=false keeps runHeartbeatOnce from loading the runtime plugin registry;
+    // the main session entry is seeded through the SQLite session accessor. HOME and
+    // OPENCLAW_STATE_DIR are sandboxed.
     const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-heartbeat-"));
     process.env.HOME = path.join(sandbox, "home");
     process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
@@ -1932,6 +1935,7 @@ async function main() {
       const sessions = await importFromRepo(repoPath, "src/config/sessions.ts");
       const sessionAccessor = await importFromRepo(repoPath, "src/config/sessions/session-accessor.ts");
       const currentTime = await importFromRepo(repoPath, "src/agents/current-time.ts");
+      const dateTime = await importFromRepo(repoPath, "src/agents/date-time.ts");
       const results = [];
       let index = 0;
       for (const scenario of payload.cases ?? []) {
@@ -1986,7 +1990,12 @@ async function main() {
           timeLine: currentTime.resolveCronStyleNow(cfg, scenarioNowMs).timeLine,
         });
       }
-      return { ok: true, operation: payload.operation, result: results };
+      return {
+        ok: true,
+        operation: payload.operation,
+        hostTimeFormat: dateTime.resolveUserTimeFormat(undefined),
+        result: results,
+      };
     } finally {
       await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
     }

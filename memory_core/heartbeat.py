@@ -16,7 +16,8 @@ system-prompt section is gone (6a1dedb00c2, #129642). Ported here:
   prompt, due scheduled tasks always run, wake payloads, cron and exec wakes bypass the scratch;
 - the run prompt (``resolveHeartbeatRunPrompt``): due tasks as ``Run the following periodic
   tasks ...`` or the configured prompt, then ``Heartbeat monitor scratch:``, and the Body's
-  current-time lines (``appendCronStyleCurrentTimeLine``, ``heartbeat-runner-run.ts``);
+  current-time lines (``appendCronStyleCurrentTimeLine``, ``heartbeat-runner-run.ts``, through
+  :mod:`memory_core.current_time` with the host's ``time_format``, like the flush plan);
 - the reply decision (``classifyHeartbeatAgentOutcome`` / ``normalizeHeartbeatReply``,
   ``src/infra/heartbeat-delivery-normalization.ts``): canonical silent replies
   (``isSilentReplyPayloadText``, ``tokens.ts``), legacy ``HEARTBEAT_OK`` at the start or end
@@ -36,6 +37,7 @@ is skipped and how its reply is read; it never starts a timer. Typical host flow
         scratch=store.read_scratch("main"),
         scheduled_tasks=heartbeat_scheduled_tasks(due),
         now_ms=now_ms,
+        time_format=HOST_TIME_FORMAT,            # the same "12"/"24" the flush plan gets
     )
     if turn.skip_reason is None:
         reply = run_model(turn.message)          # memory flush off for heartbeats
@@ -97,7 +99,7 @@ from memory_core.bootstrap._js import (
     js_trim_start,
     locale_sort_key,
 )
-from memory_core.bootstrap.startup import append_cron_style_current_time_line
+from memory_core.current_time import DEFAULT_TIME_FORMAT, append_cron_style_current_time_line
 from memory_core.heartbeat_scratch import HeartbeatScratchState
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 
@@ -947,14 +949,16 @@ def prepare_heartbeat_turn(
     source: str | None = None,
     reason: str | None = None,
     timezone: str = "UTC",
+    time_format: str = DEFAULT_TIME_FORMAT,
 ) -> HeartbeatTurn:
     """Preflight and prompt of one heartbeat turn the host has decided to run now.
 
     Mirrors ``resolveHeartbeatWakeStage`` (scheduled tasks sorted by job id), the preflight,
     ``resolveHeartbeatRunPrompt`` and the Body of ``runHeartbeatOnce``
     (``appendCronStyleCurrentTimeLine`` in ``timezone``, UTC by default, then the inbound
-    newline normalization). The Current time line is always 24-hour (upstream's ``auto``
-    format follows the host OS).
+    newline normalization). ``time_format`` is the host's 12/24-hour format of the
+    ``Current time:`` line, the same value the host passes to ``build_memory_flush_plan``
+    (``memory_core.current_time`` documents the deviation: upstream detects the host's format).
     """
     tasks = tuple(sorted(scheduled_tasks, key=lambda task: locale_sort_key(task.job_id)))
     preflight = resolve_heartbeat_preflight(
@@ -980,7 +984,9 @@ def prepare_heartbeat_turn(
         skip_reason=None,
         prompt=turn_prompt,
         message=normalize_inbound_text_newlines(
-            append_cron_style_current_time_line(turn_prompt, now_ms=now_ms, timezone=timezone)
+            append_cron_style_current_time_line(
+                turn_prompt, now_ms=now_ms, timezone=timezone, time_format=time_format
+            )
         ),
         scheduled_tasks=tasks,
         scratch_content=preflight.scratch_content,

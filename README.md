@@ -73,6 +73,7 @@ turn = prepare_heartbeat_turn(
     now_ms=now_ms,
     scratch=store.read_scratch("main"),
     scheduled_tasks=heartbeat_scheduled_tasks(due),
+    time_format="24",  # the host's 12/24-hour format; pass the same value to the flush plan
 )
 if turn.skip_reason is None:
     decision = decide_heartbeat_reply(run_model(turn.message))  # host model call
@@ -87,6 +88,11 @@ store.save_jobs(
 
 `memory_core.heartbeat_migration` moves a leftover HEARTBEAT.md into the scratch and its
 `tasks:` block into automation jobs (the doctor migrations).
+
+Every `Current time:` prompt line (the heartbeat turn, the memory flush plan, the bare
+`/new` / `/reset` prompt) comes from `memory_core.current_time` and takes the host's
+`time_format` (`"12"` or `"24"`, default `"24"`). Upstream detects the host OS setting
+instead; memory-core leaves that to the host.
 
 Optional capabilities (vector search, MMR, temporal decay) are controlled by
 `FeatureFlags`; `FeatureFlags(vector_search=False)` gives a deterministic

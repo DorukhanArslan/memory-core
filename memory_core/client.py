@@ -8,6 +8,7 @@ from memory_core.adapters.langgraph import LangGraphMemoryRecall, format_memory_
 from memory_core.bootstrap import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
 from memory_core.config import MemoryConfig
 from memory_core.curation import CurationPolicy, CurationResult, MemoryCurator
+from memory_core.current_time import DEFAULT_TIME_FORMAT
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore, validate_store_config
 from memory_core.memory_flush import SILENT_REPLY_TOKEN, build_memory_flush_plan
@@ -147,11 +148,13 @@ class Memory:
         flush_llm: Callable[[list[dict[str, str]]], str],
         now_ms: int | None = None,
         timezone: str = "UTC",
+        time_format: str = DEFAULT_TIME_FORMAT,
     ) -> MemoryRecordResult:
         plan = build_memory_flush_plan(
             workspace_dir=self.workspace.root,
             now_ms=now_ms,
             timezone=timezone,
+            time_format=time_format,
         )
         flush_messages = [
             {"role": "system", "content": plan.system_prompt},
@@ -196,6 +199,7 @@ class Memory:
         corpus: str = "all",
         force_flush: bool = False,
         timezone: str = "UTC",
+        time_format: str = DEFAULT_TIME_FORMAT,
     ) -> MemoryChatResult:
         turn = self.prepare_turn(
             user_message,
@@ -211,11 +215,13 @@ class Memory:
                 assistant_message,
                 flush_llm=flush_llm or llm,
                 timezone=timezone,
+                time_format=time_format,
             )
         else:
             plan = build_memory_flush_plan(
                 workspace_dir=self.workspace.root,
                 timezone=timezone,
+                time_format=time_format,
             )
             flush_result = MemoryRecordResult(
                 wrote=False,

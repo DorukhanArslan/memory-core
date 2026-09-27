@@ -6091,8 +6091,6 @@ def _heartbeat_cases() -> list[dict]:
 
 
 def test_real_openclaw_oracle_heartbeat_run_prompt_matches_python():
-    from memory_core.memory_flush import format_current_time_line
-
     cases = _heartbeat_cases()
     # The tag's heartbeat path boots the cron store per case: about 26 s for 21 cases on
     # 2026-09-27, past the default 20 s.
@@ -6101,8 +6099,11 @@ def test_real_openclaw_oracle_heartbeat_run_prompt_matches_python():
     result = oracle.run({"operation": "heartbeatRunPrompt", "cases": cases})
 
     assert result["ok"] is True, result
+    assert result["hostTimeFormat"] in ("12", "24"), result
     assert len(result["result"]) == len(cases)
     for case, observed in zip(cases, result["result"], strict=True):
+        # The tag's Current time line follows the host's detected 12/24-hour format
+        # (edecdbd05ef); the op reports it and the Python host passes it as time_format.
         turn = heartbeat_module.prepare_heartbeat_turn(
             now_ms=case["nowMs"],
             scratch=_python_scratch(case["scratch"]),
@@ -6111,6 +6112,7 @@ def test_real_openclaw_oracle_heartbeat_run_prompt_matches_python():
             use_response_tool=case.get("useResponseTool", False),
             source=case.get("source"),
             reason=case.get("reason"),
+            time_format=result["hostTimeFormat"],
         )
         if turn.skip_reason is not None:
             assert observed["status"] == "skipped", (case, observed)
@@ -6123,12 +6125,50 @@ def test_real_openclaw_oracle_heartbeat_run_prompt_matches_python():
         normalize = heartbeat_module.normalize_inbound_text_newlines
         assert observed["body"] == normalize(f"{turn.prompt}\n{observed['timeLine']}"), case
         assert "HEARTBEAT.md" not in observed["body"]
-        # Python formats the Current time line in 24-hour form (upstream "auto" follows the
-        # host OS setting); the Reference UTC line is the same.
-        assert turn.message == normalize(
-            f"{turn.prompt}\n{format_current_time_line(case['nowMs'])}"
-        )
-        assert turn.message.split("\n")[-1] == observed["timeLine"].split("\n")[-1]
+        assert turn.message == observed["body"], case
+
+
+def test_real_openclaw_oracle_current_time_line_is_one_host_format_for_flush_and_heartbeat():
+    # Upstream builds the flush prompt's and the heartbeat Body's Current time line with the same
+    # resolveCronStyleNow and one detected host format (edecdbd05ef #111527); memory-core takes one
+    # host time_format for both (memory_core.current_time). 18:05 UTC tells 12- and 24-hour apart.
+    from memory_core.current_time import format_current_time_line
+
+    now_ms = _HB_NOW_MS + 29_100_000  # 2026-09-26T18:05:00Z
+    oracle = _oracle()
+    oracle.timeout_seconds = 120.0
+    flush = oracle.run(
+        {
+            "operation": "flushPlan",
+            "config": {"agents": {"defaults": {"userTimezone": "UTC"}}},
+            "nowMs": now_ms,
+        }
+    )
+    heartbeat = oracle.run(
+        {
+            "operation": "heartbeatRunPrompt",
+            "cases": [{"scratch": _scratch_spec("actionable"), "nowMs": now_ms}],
+        }
+    )
+
+    assert flush["ok"] is True and heartbeat["ok"] is True, (flush, heartbeat)
+    host_format = flush["hostTimeFormat"]
+    assert heartbeat["hostTimeFormat"] == host_format
+    ts_line = heartbeat["result"][0]["timeLine"]
+    assert flush["result"]["prompt"].endswith(f"\n{ts_line}")
+    python_plan = build_memory_flush_plan(
+        workspace_dir=None, now_ms=now_ms, timezone="UTC", time_format=host_format
+    )
+    python_turn = heartbeat_module.prepare_heartbeat_turn(
+        now_ms=now_ms,
+        scratch=_python_scratch(_scratch_spec("actionable")),
+        timezone="UTC",
+        time_format=host_format,
+    )
+    assert format_current_time_line(now_ms, "UTC", host_format) == ts_line
+    assert python_plan.prompt.endswith(f"\n{ts_line}")
+    assert python_turn.message.endswith(f"\n{ts_line}")
+    assert python_turn.message == heartbeat["result"][0]["body"]
 
 
 def test_real_openclaw_oracle_heartbeat_preflight_matches_python():

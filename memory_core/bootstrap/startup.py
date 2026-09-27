@@ -13,10 +13,13 @@ The bare reset prompt of the same turn is a port of
 and its two bootstrap-pending variants (verbatim), the mode gate
 (:func:`resolve_bare_session_reset_prompt_state`: the startup context is
 prepended only in bootstrap mode ``none``, ``:89-93``) and the cron-style
-current-time line (``appendCronStyleCurrentTimeLine``, ``src/agents/current-time.ts:58-80``).
+current-time line (``appendCronStyleCurrentTimeLine``, ``src/agents/current-time.ts:58-80``,
+ported in ``memory_core.current_time`` with its host time-format and zone deviations; it is
+re-exported here).
 
-Deviations: the timezone is an explicit argument (default UTC) and an unknown
-zone raises, where upstream falls back to the host timezone. The prelude is
+Deviations: the timezone is an explicit argument (default UTC), and an unknown
+zone raises for the startup-context date stamps, where upstream falls back to the
+host timezone. The prelude is
 returned well-formed (``String.prototype.toWellFormed``): the 1,200-unit cut
 (startup-context.ts:97) can split a surrogate pair, which Node writes as U+FFFD
 and Python cannot encode, so a lone surrogate becomes U+FFFD.
@@ -38,7 +41,6 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from memory_core.bootstrap._js import (
     js_to_well_formed,
     js_trim,
-    js_trim_end,
     locale_compare,
     utf16_len,
     utf16_slice,
@@ -51,7 +53,7 @@ from memory_core.bootstrap.render import (
     _BOOTSTRAP_LIMITED_FIXED_LINES,
     BOOTSTRAP_LIMITED_NEXT_STEP_LINE,
 )
-from memory_core.memory_flush import format_current_time_line
+from memory_core.current_time import DEFAULT_TIME_FORMAT, append_cron_style_current_time_line
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 
 STARTUP_MEMORY_FILE_MAX_BYTES = 16_384
@@ -322,48 +324,27 @@ BARE_SESSION_RESET_PROMPT_BOOTSTRAP_LIMITED = " ".join(
     ]
 )
 
-# current-time.ts:52-53 CURRENT_TIME_LINE_RE (JS \d is ASCII; `.` excludes line breaks).
-_CURRENT_TIME_LINE_RE = re.compile(
-    r"^Current time: .+? \([^)]+\)\nReference UTC: [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} UTC$",
-    re.MULTILINE,
-)
-_THREE_NEWLINES_RE = re.compile(r"\n{3,}")
-_BLANK_BEFORE_TIME_RE = re.compile(r"\n\n+(?=Current time:)")
-
-
-def append_cron_style_current_time_line(text: str, *, now_ms: int | float, timezone: str = "UTC") -> str:
-    """Port of ``appendCronStyleCurrentTimeLine`` (current-time.ts:58-80)."""
-    base = js_trim_end(text)
-    if not base:
-        return base
-    time_line = format_current_time_line(int(now_ms), timezone)
-    if not _CURRENT_TIME_LINE_RE.search(base):
-        return f"{base}\n{time_line}"
-    replaced = False
-
-    def refresh(_match: re.Match[str]) -> str:
-        nonlocal replaced
-        if replaced:
-            return ""
-        replaced = True
-        return time_line
-
-    refreshed = _CURRENT_TIME_LINE_RE.sub(refresh, base)
-    refreshed = _BLANK_BEFORE_TIME_RE.sub("\n", _THREE_NEWLINES_RE.sub("\n\n", refreshed))
-    return js_trim_end(refreshed)
-
-
 def build_bare_session_reset_prompt(
-    *, now_ms: int | float, bootstrap_mode: BootstrapMode | None = None, timezone: str = "UTC"
+    *,
+    now_ms: int | float,
+    bootstrap_mode: BootstrapMode | None = None,
+    timezone: str = "UTC",
+    time_format: str = DEFAULT_TIME_FORMAT,
 ) -> str:
-    """Port of ``buildBareSessionResetPrompt`` (session-reset-prompt.ts:101-115)."""
+    """Port of ``buildBareSessionResetPrompt`` (session-reset-prompt.ts:101-115).
+
+    ``time_format`` is the host's 12/24-hour format of the current-time line
+    (``memory_core.current_time``).
+    """
     if bootstrap_mode == "full":
         base = BARE_SESSION_RESET_PROMPT_BOOTSTRAP_PENDING
     elif bootstrap_mode == "limited":
         base = BARE_SESSION_RESET_PROMPT_BOOTSTRAP_LIMITED
     else:
         base = BARE_SESSION_RESET_PROMPT_BASE
-    return append_cron_style_current_time_line(base, now_ms=now_ms, timezone=timezone)
+    return append_cron_style_current_time_line(
+        base, now_ms=now_ms, timezone=timezone, time_format=time_format
+    )
 
 
 @dataclass(frozen=True)
@@ -380,6 +361,7 @@ def resolve_bare_session_reset_prompt_state(
     *,
     now_ms: int | float,
     timezone: str = "UTC",
+    time_format: str = DEFAULT_TIME_FORMAT,
     layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT,
     is_primary_run: bool = True,
     is_canonical_workspace: bool = True,
@@ -403,7 +385,9 @@ def resolve_bare_session_reset_prompt_state(
     )
     return BareSessionResetPromptState(
         bootstrap_mode=mode,
-        prompt=build_bare_session_reset_prompt(now_ms=now_ms, bootstrap_mode=mode, timezone=timezone),
+        prompt=build_bare_session_reset_prompt(
+            now_ms=now_ms, bootstrap_mode=mode, timezone=timezone, time_format=time_format
+        ),
         should_prepend_startup_context=mode == "none",
     )
 

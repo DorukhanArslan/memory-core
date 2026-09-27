@@ -35,7 +35,7 @@ already set win; nothing is ever written back):
 | `MEMORY_CORE_DEMO_OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | embeddings model |
 | `MEMORY_CORE_LAB_PARITY_RESULTS` | `$TMPDIR/memory-core-lab/parity-results.json` | parity results file |
 | `OPENCLAW_ORACLE_REPO` | `/tmp/openclaw-head` | oracle checkout (a checkout of the parity pin, tag `v2026.9.6`) used by the parity view and the oracle tests |
-| `OPENCLAW_ORACLE_NODE` | first `node` on `PATH` | node binary the oracle runner and the run-loop Vitest run with; must be in the checkout's `engines.node` range |
+| `OPENCLAW_ORACLE_NODE` | first `node` on `PATH` | node binary the oracle runner and the run-loop Vitest run with; must be named `node` (or a symlink named `node`) and be in the checkout's `engines.node` range |
 
 Default model (D4, Q10): the newest OpenAI GPT chat model in OpenRouter's public
 model list (`GET https://openrouter.ai/api/v1/models`, no auth), checked
@@ -154,10 +154,14 @@ turns amber when the checkout's HEAD is not the pin.
 The tag's `package.json` asks for Node `>=24.16.0 <25 || >=26.1.0` (its SQLite state refuses
 Node 25). The runner starts through the checkout's `tsx`, which runs the first `node` on
 `PATH`; `OPENCLAW_ORACLE_NODE` names a node binary to use instead (its directory goes first on
-`PATH` for the runner, `pnpm` and the run-loop Vitest). Before each run the oracle client
-checks the resolved Node against `engines.node` and fails fast with `oracle-node-unsupported`
-(or `oracle-node-missing` for a binary that does not run) instead of failing inside TS. The
-parity view shows the resolved Node and turns red outside the range.
+`PATH` for the runner, `pnpm` and the run-loop Vitest). tsx, pnpm and Vitest start through
+`#!/usr/bin/env node`, so the configured value is resolved to an absolute path (a bare name is
+looked up on `PATH`) and must be a binary or symlink named `node`: an alias such as `node24`
+is refused with `oracle-node-unsupported`, since the next `node` on `PATH` would run instead of
+it. Before each run the oracle client checks the resolved Node against `engines.node` and fails
+fast with `oracle-node-unsupported` (or `oracle-node-missing` for a binary that does not run)
+instead of failing inside TS. The parity view shows the resolved Node and turns red outside the
+range or for a binary not named `node`.
 
 On this machine Node 24 is Homebrew's `node@24` (`/opt/homebrew/opt/node@24/bin`); the default
 `node` is 25:

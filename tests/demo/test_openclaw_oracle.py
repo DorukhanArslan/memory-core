@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -291,4 +292,76 @@ def test_resolve_oracle_node_reports_the_engines_check(monkeypatch, tmp_path: Pa
         "engines": TAG_ENGINES,
         "satisfies": True,
         "env": "OPENCLAW_ORACLE_NODE",
+        "namedNode": True,
     }
+
+
+def test_run_refuses_an_oracle_node_alias_that_env_node_would_not_find(monkeypatch, tmp_path: Path):
+    # tsx, pnpm and vitest start through `#!/usr/bin/env node`: a binary named node24 would pass
+    # the engines probe while the next `node` on PATH (here a Node 25) actually runs.
+    repo = _engines_repo(tmp_path)
+    good = _fake_node(tmp_path, "v24.21.0")
+    alias = tmp_path / "alias-bin" / "node24"
+    alias.parent.mkdir()
+    alias.symlink_to(good)
+    other = tmp_path / "other-bin" / "node"
+    other.parent.mkdir()
+    other.write_text("#!/bin/sh\necho v25.2.1\n", encoding="utf-8")
+    other.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{other.parent}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("OPENCLAW_ORACLE_NODE", str(alias))
+    openclaw_oracle._probe_node_version.cache_clear()
+    ran = []
+    real_run = subprocess.run
+
+    def fake_run(cmd, **kwargs):
+        if cmd[1:] == ["--version"]:
+            return real_run(cmd, **kwargs)
+        if cmd[:3] == ["git", "rev-parse", "HEAD"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
+        ran.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout='{"ok": true}', stderr="")
+
+    monkeypatch.setattr(openclaw_oracle.subprocess, "run", fake_run)
+
+    resolved = openclaw_oracle.resolve_oracle_node(repo)
+    result = OpenClawOracle(repo_path=repo).run({"operation": "deepPolicy"})
+
+    assert resolved.version == "v24.21.0" and resolved.satisfies is True
+    assert resolved.named_node is False and resolved.to_json()["namedNode"] is False
+    assert result["ok"] is False
+    assert result["error"]["code"] == "oracle-node-unsupported"
+    assert f"resolves to {alias}, which is not named 'node'" in result["error"]["message"]
+    assert ran == []
+
+
+def test_a_bare_oracle_node_name_resolves_on_path_not_in_the_checkout(monkeypatch, tmp_path: Path):
+    # Path("node").parent is ".", which used to put the checkout cwd first on PATH.
+    repo = _engines_repo(tmp_path)
+    node = _fake_node(tmp_path, "v24.21.0")
+    monkeypatch.setenv("PATH", f"{node.parent}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("OPENCLAW_ORACLE_NODE", "node")
+    openclaw_oracle._probe_node_version.cache_clear()
+
+    resolved = openclaw_oracle.resolve_oracle_node(repo)
+    env = openclaw_oracle.oracle_subprocess_env(repo)
+
+    assert resolved.path == str(node) and resolved.named_node is True
+    assert env is not None
+    first = env["PATH"].split(os.pathsep)[0]
+    assert first == str(node.parent)
+    assert shutil.which("node", path=env["PATH"]) == str(node)
+
+
+def test_a_relative_oracle_node_path_is_made_absolute(monkeypatch, tmp_path: Path):
+    # The runner's cwd is the checkout, so a relative directory on PATH would point into it.
+    repo = _engines_repo(tmp_path)
+    node = _fake_node(tmp_path, "v24.21.0")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENCLAW_ORACLE_NODE", os.path.join("node-bin", "node"))
+    openclaw_oracle._probe_node_version.cache_clear()
+
+    env = openclaw_oracle.oracle_subprocess_env(repo)
+
+    assert env is not None
+    assert env["PATH"].split(os.pathsep)[0] == str(node.parent)

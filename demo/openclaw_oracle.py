@@ -4,10 +4,14 @@ The oracle checkout is ``OPENCLAW_ORACLE_REPO`` (default :data:`PIN_CHECKOUT_PAT
 of the parity pin ``memory_core.parity.upstream.LATEST_INSPECTED_COMMIT`` with its pnpm deps). The
 runner starts through the checkout's ``tsx`` (``pnpm exec tsx`` when pnpm is installed), which
 runs the first ``node`` on ``PATH``; ``OPENCLAW_ORACLE_NODE`` names a node binary to use instead
-(its directory is put first on ``PATH`` for the runner and every process it starts). The
-resolved Node must satisfy the checkout's ``package.json`` ``engines.node`` range: v2026.9.6
-asks for ``>=24.16.0 <25 || >=26.1.0`` and refuses Node 25 for its SQLite state, so a run with
-an unsupported Node fails fast with ``oracle-node-unsupported`` instead of failing inside TS.
+(its directory is put first on ``PATH`` for the runner and every process it starts). tsx, pnpm
+and vitest start through ``#!/usr/bin/env node``, so the configured value is resolved to an
+absolute path (a bare name is looked up on ``PATH``) and must be a file or symlink named
+``node``; an alias such as ``node24`` would be probed while the next ``node`` on ``PATH`` runs,
+so it is refused. The resolved Node must satisfy the checkout's ``package.json``
+``engines.node`` range: v2026.9.6 asks for ``>=24.16.0 <25 || >=26.1.0`` and refuses Node 25
+for its SQLite state, so a run with an unsupported Node fails fast with
+``oracle-node-unsupported`` instead of failing inside TS.
 """
 
 from __future__ import annotations
@@ -172,15 +176,24 @@ def _probe_node_version(node: str) -> str | None:
     return version if completed.returncode == 0 and version else None
 
 
+# The name tsx, pnpm and vitest look up through their `#!/usr/bin/env node` shebangs.
+_NODE_BASENAMES = frozenset({"node", "node.exe"})
+
+
 @dataclass(frozen=True)
 class OracleNode:
-    """The node binary the oracle runs with and how it compares with the checkout's engines."""
+    """The node binary the oracle runs with and how it compares with the checkout's engines.
+
+    ``named_node`` is False when ``OPENCLAW_ORACLE_NODE`` resolves to a file not named
+    ``node``: the scripts would then run the next ``node`` on ``PATH``, not this binary.
+    """
 
     path: str | None
     version: str | None
     engines: str | None
     satisfies: bool | None
     from_env: bool
+    named_node: bool = True
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -189,29 +202,43 @@ class OracleNode:
             "engines": self.engines,
             "satisfies": self.satisfies,
             "env": ORACLE_NODE_ENV if self.from_env else None,
+            "namedNode": self.named_node,
         }
+
+
+def _resolve_configured_node(configured: str) -> str | None:
+    """Absolute path of ``OPENCLAW_ORACLE_NODE``; a bare name is looked up on ``PATH``."""
+    found = shutil.which(configured)
+    return os.path.abspath(found) if found else None
 
 
 def resolve_oracle_node(repo_path: Path, *, probe: bool = True) -> OracleNode:
     """Resolve ``OPENCLAW_ORACLE_NODE`` (else ``node`` on PATH) and check the engines range."""
     configured = os.getenv(ORACLE_NODE_ENV, "").strip()
-    node = configured or shutil.which("node")
+    if configured:
+        resolved = _resolve_configured_node(configured)
+        node = resolved or configured
+        named_node = resolved is None or os.path.basename(resolved) in _NODE_BASENAMES
+    else:
+        node = shutil.which("node")
+        named_node = True
     engines = checkout_node_engines(repo_path)
     if not node or not probe:
-        return OracleNode(node, None, engines, None, bool(configured))
+        return OracleNode(node, None, engines, None, bool(configured), named_node)
     version = _probe_node_version(node)
     satisfies = (
         node_version_satisfies(version, engines) if version is not None and engines else None
     )
-    return OracleNode(node, version, engines, satisfies, bool(configured))
+    return OracleNode(node, version, engines, satisfies, bool(configured), named_node)
 
 
 def oracle_subprocess_env(repo_path: Path) -> dict[str, str] | None:
     """Environment for oracle subprocesses, or None to inherit.
 
-    Raises :class:`OracleNodeError` when ``OPENCLAW_ORACLE_NODE`` does not run, or when the
-    resolved Node is outside the checkout's ``engines.node`` range. Without an engines range
-    and without ``OPENCLAW_ORACLE_NODE`` nothing is probed.
+    Raises :class:`OracleNodeError` when ``OPENCLAW_ORACLE_NODE`` does not run, when it is not
+    a binary named ``node`` (the one the scripts' ``#!/usr/bin/env node`` would find), or when
+    the resolved Node is outside the checkout's ``engines.node`` range. Without an engines
+    range and without ``OPENCLAW_ORACLE_NODE`` nothing is probed.
     """
     configured = os.getenv(ORACLE_NODE_ENV, "").strip()
     engines = checkout_node_engines(repo_path)
@@ -223,6 +250,14 @@ def oracle_subprocess_env(repo_path: Path) -> dict[str, str] | None:
             "oracle-node-missing",
             f"{ORACLE_NODE_ENV}={configured} is not a runnable node binary",
         )
+    if not node.named_node:
+        raise OracleNodeError(
+            "oracle-node-unsupported",
+            f"{ORACLE_NODE_ENV}={configured} resolves to {node.path}, which is not named "
+            "'node': tsx, pnpm and vitest start through '#!/usr/bin/env node', so the first "
+            f"'node' on PATH would run instead of it; point {ORACLE_NODE_ENV} at a binary or "
+            "symlink named 'node' (docs/lab.md › Oracle checkout)",
+        )
     if node.satisfies is False:
         source = f"{ORACLE_NODE_ENV}={node.path}" if node.from_env else f"node on PATH ({node.path})"
         raise OracleNodeError(
@@ -233,8 +268,16 @@ def oracle_subprocess_env(repo_path: Path) -> dict[str, str] | None:
         )
     if not configured:
         return None
-    node_dir = str(Path(configured).parent)
-    return {**os.environ, "PATH": f"{node_dir}{os.pathsep}{os.environ.get('PATH', '')}"}
+    node_path = node.path or configured  # a probed version implies a resolved path
+    path = f"{os.path.dirname(node_path)}{os.pathsep}{os.environ.get('PATH', '')}"
+    runs = shutil.which("node", path=path)
+    if runs is None or os.path.abspath(runs) != node_path:
+        raise OracleNodeError(
+            "oracle-node-unsupported",
+            f"{ORACLE_NODE_ENV}={configured} resolves to {node_path}, but 'node' on the oracle "
+            f"PATH is {runs}; point {ORACLE_NODE_ENV} at an executable named 'node'",
+        )
+    return {**os.environ, "PATH": path}
 
 
 class OpenClawOracle:

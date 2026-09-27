@@ -328,6 +328,7 @@ export const TR = {
   'parity.noGitHead': 'checkout var, .git yok',
   'parity.notPinned': 'HEAD parite pini değil',
   'act.migrateToolsMd': "AGENTS.md ## Tools'a taşı", 'toast.toolsMdMigrated': 'TOOLS.md, AGENTS.md ## Tools bölümüne taşındı', 'toast.toolsMdRemoved': 'Dokunulmamış TOOLS.md arşivlendi ve kaldırıldı', 'toast.toolsMdWarning': 'TOOLS.md taşınamadı',
+  'parity.nodeNotNamedNode': 'adı node değil: oracle betikleri PATH üzerindeki bir sonraki node ile çalışır',
   'parity.nodeOutOfRange': 'checkout engines aralığının dışında',
   'parity.cmdNodeNote': 'OPENCLAW_ORACLE_NODE: checkout engines aralığındaki bir node (v2026.9.6: >=24.16.0 <25 || >=26.1.0).',
   // scenario blocks (real seed)

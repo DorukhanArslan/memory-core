@@ -310,6 +310,7 @@ export const EN = {
   'parity.noGitHead': 'checkout present, no .git',
   'parity.notPinned': 'HEAD is not the parity pin',
   'act.migrateToolsMd': 'Move to AGENTS.md ## Tools', 'toast.toolsMdMigrated': 'TOOLS.md merged into AGENTS.md ## Tools', 'toast.toolsMdRemoved': 'Untouched TOOLS.md archived and removed', 'toast.toolsMdWarning': 'TOOLS.md not migrated',
+  'parity.nodeNotNamedNode': 'not named node: the oracle scripts would run the next node on PATH',
   'parity.nodeOutOfRange': 'outside the checkout engines range',
   'parity.cmdNodeNote': 'OPENCLAW_ORACLE_NODE: a node binary in the checkout engines range (v2026.9.6: >=24.16.0 <25 || >=26.1.0).',
   // scenario blocks (real seed)

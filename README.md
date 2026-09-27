@@ -89,8 +89,9 @@ only the parity pin, release tag `v2026.9.6` (`memory_core/parity/upstream.py`);
 Lab's parity view defaults to a checkout at `/tmp/openclaw-head`. The tag needs
 Node `>=24.16.0 <25` or `>=26.1.0` (its `package.json` `engines`; Node 25 is
 refused for SQLite state). `OPENCLAW_ORACLE_NODE` names the node binary the
-oracle runs with (default: the first `node` on `PATH`), and the oracle client
-fails fast with `oracle-node-unsupported` when that Node is outside the range.
+oracle runs with (default: the first `node` on `PATH`; it must be a binary or
+symlink named `node`), and the oracle client fails fast with
+`oracle-node-unsupported` when that Node is outside the range.
 `pnpm install --ignore-scripts` is enough for the runner. The first run compiles
 TypeScript on demand; cold-cache runs can hit the per-operation oracle timeout, so
 re-run once warm. Setup details: [docs/lab.md › Oracle checkout](docs/lab.md).

@@ -1524,7 +1524,9 @@ def test_consolidation_view_lists_candidates_gates_and_curated_writes(client, la
     assert set(candidate["gates"]) == {"score", "recall", "unique", "age"}
     assert candidate["selected"] is (not candidate["reasons"])
     assert view["labels"]["scored"].startswith("paket (memory_core.consolidation)")
-    assert "Promotion gates: match" in view["labels"]["scored"]
+    # The label quotes docs/parity_matrix.md; Promotion gates is `partial` since the v2026.9.6
+    # re-pin (2026-09-27).
+    assert "Promotion gates: partial" in view["labels"]["scored"]
 
 
 def test_promotion_dreaming_audit_and_repair_emit_events(client, lab):

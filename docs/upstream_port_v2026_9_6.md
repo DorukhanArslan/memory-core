@@ -33,13 +33,27 @@ No matrix row is `match` at the tag. The rows that were `match` at the pin are m
 mismatches (deep dreaming policy, flush plan, `memory_search` params) or `partial` (promotion
 gates).
 
+## Stage 2 progress (measured 2026-09-27)
+
+| Area | Status | Oracle at the tag |
+| --- | --- | --- |
+| 1 Workspace and bootstrap map | done (`7f28a3c`, `5be794e`, `e944b1d`, `afd9965`) | 19 worklist entries removed; 27 new tests (TOOLS.md migration ops, policy, legacy-state and retired-file scenarios) |
+| 2 Bootstrap budget and truncation | done (`3bbf0b9`) | 11 worklist entries removed |
+| Infrastructure | done (`39ba67e`, `aa4f7d3`, `1a5e09f`) | worklist xfails fail only on value assertions; oracle defaults point at the pin checkout with a Node engines check |
+
+Full `tests/integration` at `afd9965` plus the plan and matrix edits, `/tmp/openclaw-head` at
+`eb377ac59e6`, Node 24.21.0 (`/opt/homebrew/opt/node@24/bin`), seven chunks with the run-loop
+included: 165 passed, 90 xfailed, 5 skipped (the 4 retired ops and the live-embedding test),
+0 failed, 260 collected, about 27 minutes. Stage 1 ended at 108 passed, 120 xfailed, 5 skipped
+(233 collected). The worklist now holds 15 areas and 90 tests.
+
 ## Decisions needed before stage 2
 
-1. Default workspace layout. Q2 and the USER.md directive "Always keep TOOLS.md and HEARTBEAT.md
-   as workspace files" keep the pin-era files; the tag has neither. This plan adds the tag's map
-   as a new layout (`OPENCLAW_V2026_9_6_LAYOUT`) with a TOOLS.md migration helper and a
-   heartbeat monitor-scratch surface, and keeps `OPENCLAW_PIN_LAYOUT` for existing workspaces.
-   Which layout `MEMORY_CORE_WORKSPACE_LAYOUT` (the default) follows is Doruk's call.
+1. Default workspace layout: decided by Doruk 2026-09-27. The default follows the v2026.9.6
+   map plus the labelled memory-core extensions; extensions that overlap newer upstream features
+   (PROACTIVE_PREFERENCES.md vs the AGENTS.md "Automations - Be Proactive" section, `user/` vs
+   `users/<profile-id>/USER.md`) are kept and the overlap documented. Done in area 1:
+   `OPENCLAW_COMPAT_LAYOUT` replaces `OPENCLAW_PIN_LAYOUT`.
 2. Search defaults. The tag fixes hybrid weights at 0.7/0.3 and turns MMR and temporal decay on
    by default with no config knob. Porting that changes memory-core defaults (0.5/0.5, both off) and
    removes configurability, which needs Doruk's go-ahead (AGENTS.md: never change defaults
@@ -59,11 +73,24 @@ gates).
 
 Estimates are labelled estimates (2026-09-27, inferred from the measured failure classes and
 source reading, not measured). "Tests" counts worklist tests, and "Worklist areas" names the
-`PendingPort.area` labels of `tests/integration/oracle_worklist.py` (17 labels, 120 tests) that
-each plan area owns; every worklist test belongs to exactly one plan area, and the counts below add
-up to 120.
+`PendingPort.area` labels of `tests/integration/oracle_worklist.py` that each plan area owns
+(stage 1: 17 labels, 120 tests; after areas 1 and 2: 15 labels, 90 tests); every worklist test
+belongs to exactly one plan area, and the stage-1 counts below add up to 120.
 
 ### 1. Workspace and bootstrap map, TOOLS.md migration (estimate 14-24 h)
+
+Status: done 2026-09-27 (commits `7f28a3c`, `5be794e`, `e944b1d`, `afd9965`). Both layouts follow
+the tag's map (`OPENCLAW_COMPAT_LAYOUT` replaces `OPENCLAW_PIN_LAYOUT`; `MEMORY_CORE_WORKSPACE_LAYOUT`
+adds the labelled extensions), TOOLS.md and HEARTBEAT.md left both, `migrate_tools_md` ports
+the doctor migration, retired JSON setup state is refused (`migrate_legacy_workspace_state`
+imports it), and the 19 worklist entries passed against the tag and were removed; the new ops
+`toolsMdMigration` (22 fixtures), `toolsMdMergeDecision` and `workspaceBootstrapPolicy`, a
+legacy-state scenario and a retired-files lifecycle scenario pass too. Left (known gaps, row
+"Workspace bootstrap files"): attestations and `WorkspaceVanishedError`, the personal
+`users/<profile-id>/USER.md` overlay, the automatic-memory provenance filter, the per-project
+curated MEMORY.md filter (area 7), `bootstrap-extra-files`, oracle ops for `resolveBootstrapMode`
+and `resolveAttemptBootstrapContext`, and no oracle for the legacy-state import (its upstream
+target is SQLite). HEARTBEAT.md is still read by `memory_core.heartbeat` until area 3.
 
 - Upstream: the bootstrap set is AGENTS, SOUL, IDENTITY, USER, BOOTSTRAP, MEMORY, and load order
   equals render order (`src/agents/workspace-bootstrap-policy.ts` `WORKSPACE_BOOTSTRAP_FILENAMES`,
@@ -82,11 +109,12 @@ up to 120.
 - Python: `memory_core/bootstrap/{layout,files,lifecycle,render,context}.py`, `memory_core/workspace.py`,
   `memory_core/live/__init__.py` (`IDENTITY_FILE_ORDER`), `demo/workspace_context.py`, the Lab
   workspace views.
-- Port: add `OPENCLAW_V2026_9_6_LAYOUT`; a `migrate_tools_md(root)` helper that ports
-  `shouldMergeToolsMd` and `mergeToolsMdIntoAgentsMd` byte for byte (archive into the host's
-  state dir, never delete without the archive); setup state through a host-supplied store
-  instead of `.memory-core/workspace-state.json` for the new layout; the shared-session MEMORY.md
-  filter; the new render text.
+- Port (as done): `OPENCLAW_COMPAT_LAYOUT` for the tag's map, the default layout on the same map
+  plus the extensions (decision 1); a `migrate_tools_md(root)` helper that ports
+  `shouldMergeToolsMd` and `mergeToolsMdIntoAgentsMd` byte for byte and archives under
+  `<root>/.memory-core/backups/tools-md-migration/` before removing anything; setup state stays in
+  `.memory-core/workspace-state.json` (documented deviation) while upstream's retired JSON state is
+  refused; the shared-session MEMORY.md filter; the new render text.
 - Tests: 19 (`workspaceBootstrapFiles` 4, `workspaceLifecycle` 10, `projectContextRender` 5).
 - Worklist areas: none left; the `workspace bootstrap map` entries were removed when
   the area landed (2026-09-27).
@@ -97,6 +125,14 @@ up to 120.
   so completed-setup scenarios need no legacy JSON.
 
 ### 2. Bootstrap budget and truncation (estimate 6-10 h)
+
+Status: done 2026-09-27 (commit `3bbf0b9`). The USER.md cap, `effectiveFileLimit` and the
+total-limit cause rule, the new warning lines, the digest markers and framing, surrogate-safe
+slices and path-only injection stats are ported, `append_bootstrap_prompt_warning` is removed,
+and the numbers and keyword sets are generated from the tag (`_bootstrap_constants.py`). The 11
+worklist entries passed and were removed. Left: config resolution stays host numbers
+(source-backed), the ICU tie-break of the signature for non-ASCII paths is approximated, and
+the personal-USER skip waits for the overlay.
 
 - Upstream: USER.md has a fixed 4000-character cap (`USER_BOOTSTRAP_MAX_CHARS`,
   28630a9a650 #114819) reported as `effectiveFileLimit` with its own warning line

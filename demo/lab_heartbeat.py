@@ -8,7 +8,9 @@ unsets the scratch by compare-and-swap (upstream ``openclaw cron scratch``); a s
 ``expectedRevision`` answers ``409 revision_conflict`` with the write result and the stored
 scratch. ``POST
 /api/lab/heartbeat/migrate`` runs both doctor migrations (HEARTBEAT.md into scratch, then its
-``tasks:`` into automation jobs). ``POST /api/lab/heartbeat/run`` runs one heartbeat now:
+``tasks:`` into automation jobs). ``POST /api/lab/heartbeat/legacy-file`` (demo-only) puts a
+legacy HEARTBEAT.md with the caller's text at the Lab root, since nothing else in the Lab can
+create a retired file, so the migration, its findings and its archive can be seen. ``POST /api/lab/heartbeat/run`` runs one heartbeat now:
 the due jobs become scheduled tasks, ``prepare_heartbeat_turn`` builds the prompt (skip reason
 ``empty-heartbeat-file`` makes no model call), the flush decision with ``is_heartbeat=True``
 (``runtime_skip:heartbeat``), the injected context for session kind ``heartbeat``
@@ -35,7 +37,7 @@ from demo.lab_chat import LOCK_TIMEOUT_SECONDS, assemble_messages
 from demo.lab_events import sse_frame
 from demo.lab_flush import flush_decision, update_token_snapshot
 from demo.lab_prompt import PromptOptions, lab_workspace_context, prompt_view
-from demo.lab_runtime import LAB_TIMEZONE, LabError, LabRuntime, safe_exception_message
+from demo.lab_runtime import FILE_MAX_BYTES, LAB_TIMEZONE, LabError, LabRuntime, safe_exception_message
 from demo.lab_tools import LabToolbox, ToolLoopOutcome, public_write, run_tool_loop
 from demo.transcript_context import select_transcript_context
 from memory_core.automation import (
@@ -60,6 +62,7 @@ from memory_core.heartbeat import (
     strip_heartbeat_token,
 )
 from memory_core.heartbeat_migration import (
+    HEARTBEAT_MIGRATION_ARCHIVE_PARTS,
     LEGACY_HEARTBEAT_FILENAME,
     heartbeat_md_migration_findings,
     heartbeat_task_migration_findings,
@@ -175,6 +178,16 @@ def heartbeat_preview(lab: LabRuntime) -> dict[str, Any]:
     }
 
 
+def _legacy_archives(lab: LabRuntime) -> list[str]:
+    """Files under the migration archive (``<root>/.memory-core/backups/heartbeat-migration/``)."""
+    archive = lab.root.joinpath(*HEARTBEAT_MIGRATION_ARCHIVE_PARTS)
+    if not archive.is_dir():
+        return []
+    return sorted(
+        path.relative_to(lab.root).as_posix() for path in archive.rglob("*") if path.is_file()
+    )
+
+
 def heartbeat_state(lab: LabRuntime) -> dict[str, Any]:
     store = automation_store(lab)
     now = lab.heartbeat_now_ms()
@@ -190,6 +203,7 @@ def heartbeat_state(lab: LabRuntime) -> dict[str, Any]:
         # Rows list_jobs skips (a shape memory-core does not model, values the cron store refuses).
         "skippedJobRows": [row.to_json() for row in store.skipped_job_rows()],
         "legacyFile": {"path": LEGACY_HEARTBEAT_FILENAME, "exists": legacy.exists() or legacy.is_symlink()},
+        "legacyArchives": _legacy_archives(lab),
         "migrationFindings": [
             {**finding, "path": _relative(lab, finding["path"])} for finding in findings
         ],
@@ -255,6 +269,39 @@ def write_scratch(lab: LabRuntime, payload: dict[str, Any]) -> dict[str, Any]:
             scratch=view,
         )
     return {"write": result.to_json(), "scratch": view}
+
+
+def write_legacy_file(lab: LabRuntime, payload: dict[str, Any]) -> dict[str, Any]:
+    """Demo-only: write a legacy HEARTBEAT.md so the doctor migration has a file to move.
+
+    v2026.9.6 never reads HEARTBEAT.md and the Lab editor refuses it (not a layout file). The
+    text is the caller's (scenario S09 sends its ``tasks:`` block); an existing file is left
+    alone (409), and the bytes are Node's UTF-8 (a lone surrogate becomes U+FFFD).
+    """
+    content = payload.get("content")
+    if not isinstance(content, str):
+        raise LabError(400, "content must be a string", code="invalid_content")
+    data = js_utf8_encode(content)
+    if len(data) > FILE_MAX_BYTES:
+        raise LabError(400, "content is larger than 2 MiB", code="too_large")
+    target = lab.root / LEGACY_HEARTBEAT_FILENAME
+    if target.exists() or target.is_symlink():
+        raise LabError(409, f"{LEGACY_HEARTBEAT_FILENAME} already exists", code="legacy_file_exists")
+    with lab.tracked("heartbeat_legacy"):
+        target.write_bytes(data)
+    findings = [finding.to_json() for finding in heartbeat_md_migration_findings(lab.root)]
+    result = {
+        "path": LEGACY_HEARTBEAT_FILENAME,
+        "bytes": len(data),
+        "migrationFindings": [{**finding, "path": _relative(lab, finding["path"])} for finding in findings],
+        "label": "demo-only",
+    }
+    lab.bus.emit(
+        "heartbeat.legacy_file_written",
+        summary=f"eski HEARTBEAT.md yazıldı (demo-only, {len(data)} bayt): doctor taşıması için",
+        data=result,
+    )
+    return result
 
 
 def migrate(lab: LabRuntime) -> dict[str, Any]:

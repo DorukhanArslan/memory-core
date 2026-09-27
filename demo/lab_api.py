@@ -29,6 +29,7 @@ from demo.lab_heartbeat import (
     migrate as migrate_heartbeat,
     reply_payload,
     set_clock,
+    write_legacy_file as write_legacy_heartbeat_file,
     write_scratch,
 )
 from demo.lab_kept_api import index_status
@@ -309,6 +310,12 @@ def build_router(lab: LabRuntime) -> APIRouter:
         lab.ensure_exists()
         with lab.locked():
             return migrate_heartbeat(lab)
+
+    @router.post("/heartbeat/legacy-file")
+    def heartbeat_legacy_file(payload: dict = Body(...)):
+        lab.ensure_exists()
+        with lab.locked():
+            return write_legacy_heartbeat_file(lab, payload)
 
     @router.post("/heartbeat/reply")
     def heartbeat_reply(payload: dict = Body(...)):

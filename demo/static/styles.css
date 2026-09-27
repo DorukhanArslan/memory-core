@@ -863,6 +863,8 @@
   .hb-scratch-ta { display: block; width: 100%; min-height: 132px; resize: vertical; padding: 8px 10px; border-radius: var(--r-2); background: var(--bg-inset); border: 1px solid var(--line-1); color: var(--text-1); font: var(--m-md)/var(--lh-m-md) var(--font-mono); white-space: pre-wrap; tab-size: 2; caret-color: var(--accent); }
   .hb-scratch-ta:focus { border-color: var(--accent); outline: none; }
   .hb-scratch-bar + .conflict-banner { margin: 0 0 8px; }
+  .hb-migration-lines { margin: 0; overflow-wrap: anywhere; }
+  .hb-archives > .chip { flex: 0 1 auto; }
   .card-details > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: var(--t-sm); color: var(--text-2); }
   .card-details[open] > summary { margin-bottom: 8px; }
   .ignored { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 2px; }

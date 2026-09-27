@@ -186,6 +186,14 @@ export async function doStepAction(step, { send = false } = {}) {
     evaluate();
     return;
   }
+  if (step.act === 'legacyFile') {
+    // Demo-only: a retired HEARTBEAT.md for the doctor migration (POST /api/lab/heartbeat/legacy-file).
+    a.setView('heartbeat');
+    try { await api.post('/api/lab/heartbeat/legacy-file', { content: step.content ?? '' }); } catch (err) { toast(err.message, { tone: 'warn' }); }
+    await Promise.all([loadHeartbeat(), store.actions.loadFiles?.()]);
+    if (step.then) setTimeout(() => pulse(step.then), 250);
+    return;
+  }
   if (step.act === 'scratch') {
     // The monitor scratch replaced HEARTBEAT.md (v2026.9.6): written by compare-and-swap.
     a.setView('heartbeat');

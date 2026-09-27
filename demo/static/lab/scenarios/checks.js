@@ -141,6 +141,8 @@ export const cooldownActive = () => (ctx) => !!ctx.index?.cooldown && (ctx.index
 export const hbJob = (name, pred = null) => (ctx) => (ctx.heartbeat?.jobs || []).some((x) => x.name === name && (!pred || pred(x)));
 export const hbFinding = (requirement) => (ctx) => (ctx.heartbeat?.migrationFindings || []).some((f) => f.requirement === requirement);
 export const hbScratch = (status) => (ctx) => ctx.heartbeat?.scratch?.status === status;
+export const hbLegacyFile = (exists) => (ctx) => !!ctx.heartbeat && !!ctx.heartbeat.legacyFile?.exists === exists;
+export const hbArchive = (re) => (ctx) => (ctx.heartbeat?.legacyArchives || []).some((a) => re.test(a));
 export const hbDelivered = (v) => (ctx) => ctx.hbRun?.decision?.delivered === v;
 export const hbSkipped = (reason) => (ctx) => ctx.hbRun?.skipped === reason;
 export const hbUserHas = (re) => (ctx) => re.test(ctx.hbRun?.userMessage || '');

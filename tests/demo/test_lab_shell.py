@@ -291,13 +291,18 @@ def test_contract_heartbeat_fields(lab_client: TestClient) -> None:
     # views/heartbeat.js reads the monitor scratch, the automation jobs, the legacy HEARTBEAT.md
     # findings and the keyless preflight (v2026.9.6 shape; no HEARTBEAT.md tasks: parsing).
     hb = lab_client.get("/api/lab/heartbeat").json()
-    for field in ("scratch", "jobs", "skippedJobRows", "legacyFile", "migrationFindings", "preflight", "labels", "runs", "ackLimit", "store"):
+    for field in ("scratch", "jobs", "skippedJobRows", "legacyFile", "legacyArchives", "migrationFindings", "preflight", "labels", "runs", "ackLimit", "store"):
         assert field in hb, field
     assert {"skipReason", "dueTasks", "prompt", "message", "scratchShown"} <= set(hb["preflight"])
     assert {"status", "currentRevision", "content", "bytes", "maxBytes"} <= set(hb["scratch"])
     source = (LAB_ROOT / "views" / "heartbeat.js").read_text(encoding="utf-8")
-    for used in ("hb.scratch", "migrationFindings", "legacyFile", "hb.jobs", "/api/lab/heartbeat/scratch", "/api/lab/heartbeat/migrate", "/api/lab/heartbeat/reply"):
+    for used in ("hb.scratch", "migrationFindings", "legacyFile", "legacyArchives", "hb.jobs", "/api/lab/heartbeat/scratch", "/api/lab/heartbeat/migrate", "/api/lab/heartbeat/legacy-file", "/api/lab/heartbeat/reply"):
         assert used in source, used
+    # Scenario S09 starts from a demo-only legacy HEARTBEAT.md that the runner puts in place.
+    catalog = (LAB_ROOT / "scenarios" / "catalog.js").read_text(encoding="utf-8")
+    runner = (LAB_ROOT / "scenarios" / "runner.js").read_text(encoding="utf-8")
+    assert "{ act: 'legacyFile'" in catalog and "hbArchive(" in catalog
+    assert "step.act === 'legacyFile'" in runner and "/api/lab/heartbeat/legacy-file" in runner
     for retired in ("unparsedTaskEntries", "systemSection", "/heartbeat/strip", "ackMaxChars"):
         assert retired not in source, retired
     # inspector/prompt.js renders the heartbeat kind's user turn from the preview payload.

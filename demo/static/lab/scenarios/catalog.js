@@ -10,7 +10,7 @@ import {
   startupLoaded, startupAbsent, startupHas, startupDailyAtMost,
   bootstrapStatus, badge, fileAbsent, event, noEvent, eventOrder,
   searchTop, citationsFormat, allVectorOff, hybridScores, allScoresAtLeast, rowsAtMost, searchError, searchUnavailable, cooldownActive,
-  hbJob, hbFinding, hbScratch, hbDelivered, hbSkipped, hbUserHas, hbUserLacks, hbReplyMatches, hbReplyLacks, replySequence,
+  hbJob, hbFinding, hbScratch, hbLegacyFile, hbArchive, hbDelivered, hbSkipped, hbUserHas, hbUserLacks, hbReplyMatches, hbReplyLacks, replySequence,
   candidate, candidateGatesConsistent, auditClean,
   liveStep, liveOrder, businessAction, liveSummaryWrote, proofAbsentFromSummary,
   turnErrorCode, turnErrorMatches, errorRedacted, providerCheck,
@@ -166,16 +166,18 @@ export const SCENARIOS = [
     ],
   },
   {
-    // v2026.9.6 shape: a legacy tasks: block in the monitor scratch (where doctor puts an old
-    // HEARTBEAT.md) becomes an automation job (doctor's task migration); the job is due, then waits 30 minutes on the virtual clock. Keyless:
-    // the scratch write, the finding, the migration and the reply rule need no model; the runs (and the
-    // empty-scratch skip, which needs the job to have run first) are blocked per step.
-    id: 'S09', minutes: 6, view: 'heartbeat', tags: ['upstream-uyumlu', 'demo-only: sanal saat', 'model'], requires: ['anahtar (3.-6. ve 8. adım)'], setup: { reset: 'seeded' },
+    // v2026.9.6 shape: a legacy HEARTBEAT.md (demo-only: nothing else in the Lab can create a
+    // retired file) goes through both doctor migrations: its text into the monitor scratch (the
+    // original archived), then its tasks: block into an automation job; the job is due, then waits
+    // 30 minutes on the virtual clock. Keyless: the legacy file, the finding, the migration and the
+    // reply rule need no model; the runs (and the empty-scratch skip, which needs the job to have
+    // run first) are blocked per step.
+    id: 'S09', minutes: 6, view: 'heartbeat', tags: ['upstream-uyumlu', 'demo-only: sanal saat', 'demo-only: eski HEARTBEAT.md', 'model'], requires: ['anahtar (3.-6. ve 8. adım)'], setup: { reset: 'seeded' },
     steps: [
-      { act: 'scratch', content: 'tasks:\n  - name: gunluk-takip\n    interval: 30m\n    prompt: Bugünün günlük notunda açık bir takip maddesi var mı kontrol et. Yoksa yalnızca HEARTBEAT_OK yaz.\n', waitFor: 'heartbeat.scratch_written', label: 'scn.S09.l0', expect: 'scn.S09.e0',
-        checks: [auto('finding(heartbeat-tasks-in-scratch)', hbFinding('heartbeat-tasks-in-scratch'), ['heartbeat']), auto('automationJobs(none)', (ctx) => !!ctx.heartbeat && (ctx.heartbeat.jobs || []).length === 0, ['heartbeat'])] },
+      { act: 'legacyFile', content: 'tasks:\n  - name: gunluk-takip\n    interval: 30m\n    prompt: Bugünün günlük notunda açık bir takip maddesi var mı kontrol et. Yoksa yalnızca HEARTBEAT_OK yaz.\n', waitFor: 'heartbeat.legacy_file_written', then: 'hb-migrate', label: 'scn.S09.l0', expect: 'scn.S09.e0',
+        checks: [auto('legacyFile(HEARTBEAT.md)', hbLegacyFile(true), ['heartbeat']), auto('finding(legacy-heartbeat-file)', hbFinding('legacy-heartbeat-file'), ['heartbeat']), auto('automationJobs(none)', (ctx) => !!ctx.heartbeat && (ctx.heartbeat.jobs || []).length === 0, ['heartbeat'])] },
       { act: 'press', view: 'heartbeat', target: 'hb-migrate', waitFor: 'heartbeat.migrated', label: 'scn.S09.l1', expect: 'scn.S09.e1',
-        checks: [auto('event(heartbeat.migrated)', event('heartbeat.migrated')), auto('automationJobs({name:gunluk-takip,everyMs:1800000})', hbJob('gunluk-takip', (x) => x.everyMs === 1_800_000 && x.heartbeatTask), ['heartbeat']), auto('noFinding(heartbeat-tasks-in-scratch)', (ctx) => !!ctx.heartbeat && !hbFinding('heartbeat-tasks-in-scratch')(ctx), ['heartbeat']), auto('scratch(empty)', hbScratch('empty'), ['heartbeat'])] },
+        checks: [auto('event(heartbeat.migrated)', event('heartbeat.migrated')), auto('legacyFile(absent)', hbLegacyFile(false), ['heartbeat']), auto('archive(.memory-core/backups/heartbeat-migration/…/HEARTBEAT.md)', hbArchive(/^\.memory-core\/backups\/heartbeat-migration\/main-[0-9a-f]{64}\.md\.[^/]+\/HEARTBEAT\.md$/), ['heartbeat']), auto('automationJobs({name:gunluk-takip,everyMs:1800000})', hbJob('gunluk-takip', (x) => x.everyMs === 1_800_000 && x.heartbeatTask), ['heartbeat']), auto('noFinding(legacy-heartbeat-file, heartbeat-tasks-in-scratch)', (ctx) => !!ctx.heartbeat && !hbFinding('legacy-heartbeat-file')(ctx) && !hbFinding('heartbeat-tasks-in-scratch')(ctx), ['heartbeat']), auto('scratch(empty)', hbScratch('empty'), ['heartbeat'])] },
       { act: 'press', view: 'heartbeat', target: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l2', expect: 'scn.S09.e2', blockedIf: needsKey,
         checks: [auto('promptHas(heartbeatUser,/^Run the following periodic tasks/)', hbUserHas(/^Run the following periodic tasks/), ['hbRun']), auto('promptHas(heartbeatUser,/reply NO_REPLY\./)', hbUserHas(/reply NO_REPLY\./), ['hbRun']), auto('event(flush.decided,{reason:runtime_skip:heartbeat})', event('flush.decided', (d) => d.reason === 'runtime_skip:heartbeat')), model('heartbeatDelivered(false)', hbDelivered(false), ['hbRun'])] },
       { act: 'press', view: 'heartbeat', target: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l3', expect: 'scn.S09.e3', blockedIf: needsKey,

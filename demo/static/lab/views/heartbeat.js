@@ -91,6 +91,23 @@ async function migrateLegacy() {
   try { u.hbMigration = await api.post('/api/lab/heartbeat/migrate'); } catch (err) { u.hbMigration = { error: err.message }; }
   await Promise.all([loadHeartbeat(), store.actions.loadFiles?.()]);
 }
+/** Demo-only: POST /api/lab/heartbeat/legacy-file puts a legacy HEARTBEAT.md with this text at the Lab root. */
+export async function writeLegacyFile(content) {
+  const u = store.ui;
+  try { await api.post('/api/lab/heartbeat/legacy-file', { content }); u.hbMigration = null; return true; }
+  catch (err) { toast(err.missing ? t('state.waitsFor', { m: err.module || err.path }) : err.message, { tone: 'warn' }); return false; }
+  finally { await Promise.all([loadHeartbeat(), store.actions.loadFiles?.()]); }
+}
+function openLegacyDialog() {
+  const ta = h('textarea', { class: 'hb-scratch-ta', spellcheck: 'false', 'aria-label': 'HEARTBEAT.md', placeholder: t('hb.legacyWritePlaceholder'), 'data-testid': 'hb-legacy-input' });
+  const dlg = openDialog({
+    title: t('hb.legacyWriteTitle'),
+    body: [honesty(t('hb.legacyWriteNote'), 'warn', 'alert-triangle'), ta],
+    initialFocus: '[data-testid="hb-legacy-input"]',
+    actions: [btn(t('act.cancel'), { kind: 'ghost', onClick: () => dlg.close() }),
+      btn(t('hb.legacyWrite'), { kind: 'primary', testid: 'hb-legacy-write', onClick: async () => { if (await writeLegacyFile(ta.value)) dlg.close(); } })],
+  });
+}
 async function runReply(text) {
   const u = store.ui;
   u.hbReplyInput = text;
@@ -207,15 +224,20 @@ function jobsCard(jobs, now, skipped = []) {
 function legacyCard(hb) {
   const u = store.ui;
   const findings = hb.migrationFindings || [];
-  if (!hb.legacyFile?.exists && !findings.length && !u.hbMigration) return null;
+  const archives = hb.legacyArchives || [];
+  const exists = !!hb.legacyFile?.exists;
   const m = u.hbMigration;
   const lines = m?.error ? [m.error] : m ? [...(m.scratch?.changes || []), ...(m.tasks?.changes || []), ...(m.scratch?.warnings || []), ...(m.tasks?.warnings || [])] : [];
   return card(t('hb.legacy'), [
     findings.map((f) => h('div', { class: 'sf-row sf-wrap', 'data-testid': 'hb-finding' }, chip({ label: f.requirement, tone: f.severity === 'error' ? 'danger' : 'warn', cls: 'chip-xs chip-mono' }), h('span', { class: 'small' }, f.message))),
-    findings.length ? h('div', { class: 'muted small' }, t('hb.legacyNote')) : null,
-    lines.length ? h('ul', { class: 'small', 'data-testid': 'hb-migration-result' }, lines.map((l) => h('li', null, l))) : null,
-    findings.length ? h('div', null, btn(t('hb.migrate'), { size: 'sm', kind: 'primary', ic: 'merge', onClick: () => migrateLegacy(), target: 'hb-migrate', testid: 'hb-migrate' })) : null,
-  ], { ic: 'alert-triangle', target: 'hb-legacy', testid: 'hb-legacy', right: chip({ label: 'HEARTBEAT.md', tone: hb.legacyFile?.exists ? 'warn' : 'neutral', cls: 'chip-xs chip-mono', onClick: hb.legacyFile?.exists ? () => store.actions.openFile('HEARTBEAT.md') : null }) });
+    h('div', { class: 'muted small' }, findings.length || exists ? t('hb.legacyNote') : t('hb.legacyNone')),
+    lines.length ? h('ul', { class: 'small hb-migration-lines', 'data-testid': 'hb-migration-result' }, lines.map((l) => h('li', null, l))) : null,
+    archives.length ? h('div', { class: 'sf-row sf-wrap hb-archives', 'data-testid': 'hb-archives' }, h('span', { class: 'muted small' }, t('hb.legacyArchives')), archives.map((a) => chip({ label: a, tone: 'neutral', cls: 'chip-xs chip-mono', title: a }))) : null,
+    h('div', { class: 'chip-wrap' },
+      findings.length ? btn(t('hb.migrate'), { size: 'sm', kind: 'primary', ic: 'merge', onClick: () => migrateLegacy(), target: 'hb-migrate', testid: 'hb-migrate' }) : null,
+      exists ? null : btn(t('hb.legacyWriteBtn'), { size: 'sm', kind: 'ghost', ic: 'file', onClick: () => openLegacyDialog(), target: 'hb-legacy-file', testid: 'hb-legacy-file' }),
+      exists ? null : h('span', { class: 'chip chip-xs tone-warn', 'data-tip': t('hb.legacyWriteNote') }, 'demo-only')),
+  ], { ic: 'alert-triangle', target: 'hb-legacy', testid: 'hb-legacy', right: chip({ label: 'HEARTBEAT.md', tone: exists ? 'warn' : 'neutral', cls: 'chip-xs chip-mono', onClick: exists ? () => store.actions.openFile('HEARTBEAT.md') : null }) });
 }
 function nextPromptCard(pre) {
   const d = h('details', { class: 'card-details', 'data-testid': 'hb-next-prompt' },

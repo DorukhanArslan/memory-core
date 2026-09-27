@@ -1468,6 +1468,38 @@ def test_legacy_heartbeat_md_is_migrated_into_scratch_and_jobs(client, lab):
     assert "heartbeat.migrated" in types and "file.changed" in types
 
 
+def test_lab_puts_a_legacy_heartbeat_md_for_the_doctor_migration(client, lab):
+    # Demo-only: the Lab editor refuses HEARTBEAT.md (not a layout file), so scenario S09 puts
+    # the retired file through POST /api/lab/heartbeat/legacy-file with its own tasks: text.
+    client.get("/api/lab/state")
+    assert client.put("/api/lab/file", json={"path": "HEARTBEAT.md", "content": TASKS, "baseSha256": None}).status_code == 403
+
+    written = client.post("/api/lab/heartbeat/legacy-file", json={"content": TASKS.lstrip("\n")})
+    again = client.post("/api/lab/heartbeat/legacy-file", json={"content": "x"})
+    before = client.get("/api/lab/heartbeat").json()
+    migrated = client.post("/api/lab/heartbeat/migrate").json()
+    after = client.get("/api/lab/heartbeat").json()
+
+    assert written.status_code == 200 and written.json()["label"] == "demo-only"
+    assert [f["requirement"] for f in written.json()["migrationFindings"]] == ["legacy-heartbeat-file"]
+    assert again.status_code == 409 and again.json()["code"] == "legacy_file_exists"
+    assert before["legacyFile"]["exists"] is True and before["legacyArchives"] == []
+    assert migrated["scratch"]["changes"][0].startswith("Migrated ")
+    assert migrated["tasks"]["changes"] == ['Converted 1 heartbeat task into cron jobs for agent "main".']
+    assert after["legacyFile"]["exists"] is False and after["migrationFindings"] == []
+    # The snapshot archived before the claim, then the claimed original in its private directory.
+    snapshot, original = after["legacyArchives"]
+    assert re.match(r"^\.memory-core/backups/heartbeat-migration/main-[0-9a-f]{64}\.md$", snapshot)
+    assert original.startswith(snapshot + ".") and original.endswith("/HEARTBEAT.md")
+    for archive in (snapshot, original):
+        assert (lab.root / archive).read_text(encoding="utf-8") == TASKS.lstrip("\n")
+    assert after["scratch"]["status"] == "empty" and after["scratch"]["sourceSha256"]
+    assert [job["name"] for job in after["jobs"]] == ["gunluk-takip"]
+    types = event_types(client)
+    assert "heartbeat.legacy_file_written" in types and "file.changed" in types
+    assert client.post("/api/lab/heartbeat/legacy-file", json={"content": None}).status_code == 400
+
+
 def test_heartbeat_runs_due_jobs_through_the_tool_loop_and_decides_delivery(client, lab, monkeypatch):
     client.get("/api/lab/state")
     (lab.root / "HEARTBEAT.md").write_text(HEARTBEAT_HEADER + TASKS, encoding="utf-8")

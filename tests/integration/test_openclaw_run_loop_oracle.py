@@ -16,14 +16,15 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_real_openclaw_run_loop_overflow_recovery_scenarios():
-    repo_path = Path(os.environ["OPENCLAW_ORACLE_REPO"])
-
-    result = run_overflow_run_loop_oracle(repo_path=repo_path)
-
+@pytest.fixture(scope="module")
+def scenarios() -> dict[str, dict]:
+    # One Vitest run records every scenario; each test below checks one of them.
+    result = run_overflow_run_loop_oracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
     assert result["ok"] is True
-    scenarios = {scenario["name"]: scenario for scenario in result["scenarios"]}
+    return {scenario["name"]: scenario for scenario in result["scenarios"]}
 
+
+def test_real_openclaw_run_loop_successful_compaction_retries(scenarios):
     assert scenarios["successful_compaction_retries"] == {
         "name": "successful_compaction_retries",
         "attemptCalls": 2,
@@ -32,6 +33,9 @@ def test_real_openclaw_run_loop_overflow_recovery_scenarios():
         "errorKind": None,
         "payloadIsError": None,
     }
+
+
+def test_real_openclaw_run_loop_attempt_level_compaction_retries(scenarios):
     assert scenarios["attempt_level_compaction_retries_without_extra_compaction"] == {
         "name": "attempt_level_compaction_retries_without_extra_compaction",
         "attemptCalls": 2,
@@ -40,6 +44,9 @@ def test_real_openclaw_run_loop_overflow_recovery_scenarios():
         "errorKind": None,
         "payloadIsError": None,
     }
+
+
+def test_real_openclaw_run_loop_failed_compaction_uses_tool_truncation(scenarios):
     fallback_decision = decide_provider_overflow_recovery(
         error_text="request_too_large: Request size exceeds model context window",
         overflow_compaction_attempts=1,
@@ -60,6 +67,9 @@ def test_real_openclaw_run_loop_overflow_recovery_scenarios():
         # compact_then_truncate preflight route; this scenario has none.
         "truncateProtectTrailing": fallback_decision.protect_trailing_tool_results,
     }
+
+
+def test_real_openclaw_run_loop_compact_then_truncate(scenarios):
     post_compaction_decision = decide_provider_overflow_recovery(
         error_text="Context overflow: prompt too large for the model (precheck).",
         overflow_compaction_attempts=1,
@@ -81,6 +91,9 @@ def test_real_openclaw_run_loop_overflow_recovery_scenarios():
         # truncation of the compact_then_truncate route.
         "truncateProtectTrailing": post_compaction_decision.protect_trailing_tool_results,
     }
+
+
+def test_real_openclaw_run_loop_assistant_error_overflow(scenarios):
     assert scenarios["assistant_error_overflow_compacts_and_retries"] == {
         "name": "assistant_error_overflow_compacts_and_retries",
         "attemptCalls": 2,
@@ -89,6 +102,9 @@ def test_real_openclaw_run_loop_overflow_recovery_scenarios():
         "errorKind": None,
         "payloadIsError": None,
     }
+
+
+def test_real_openclaw_run_loop_mid_turn_precheck_continuation(scenarios):
     assert scenarios["mid_turn_precheck_continues_from_transcript"] == {
         "name": "mid_turn_precheck_continues_from_transcript",
         "attemptCalls": 2,
@@ -99,6 +115,9 @@ def test_real_openclaw_run_loop_overflow_recovery_scenarios():
         "secondPromptIncludesContinuation": True,
         "secondSuppressesUserPersistence": True,
     }
+
+
+def test_real_openclaw_run_loop_gives_up_after_max_compaction_attempts(scenarios):
     assert scenarios["give_up_after_max_compaction_attempts"] == {
         "name": "give_up_after_max_compaction_attempts",
         "attemptCalls": MAX_OVERFLOW_COMPACTION_ATTEMPTS + 1,

@@ -62,33 +62,43 @@ def run_overflow_run_loop_oracle(
 
 
 def _overflow_run_loop_oracle_test_source() -> str:
+    # Written against the v2026.9.6 run-loop test surface. The pin's
+    # overflowBaseRunParams, resetRunOverflowCompactionHarnessMocks, mockOverflowRetrySuccess,
+    # queueOverflowAttemptWithOversizedToolOutput and exported truncation mocks are gone: the
+    # shared integration harness (run.shared-integration-harness.test-support.ts) owns the run
+    # params and a real session row per case, and the truncation seam is the vi.fn module the
+    # harness installs for ./tool-result-truncation.js (sessionLikelyHasOversizedToolResults,
+    # truncateOversizedToolResultsInSessionManager). The two pin helpers are inlined from
+    # 4c428153 run.overflow-compaction.fixture.ts:110-149 with the same inputs. The cases only
+    # record what the real run loop did; the Python test owns every assertion.
     return r'''
 import fs from "node:fs";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, it, type Mock } from "vitest";
+import { makeCompactionSuccess, makeOverflowError } from "./run.overflow-compaction.fixture.js";
 import {
-  makeAttemptResult,
-  makeCompactionSuccess,
-  makeOverflowError,
-  mockOverflowRetrySuccess,
-  queueOverflowAttemptWithOversizedToolOutput,
-} from "./run.overflow-compaction.fixture.js";
-import {
-  loadRunOverflowCompactionHarness,
   mockedCompactDirect,
   mockedIsCompactionFailureError,
   mockedIsLikelyContextOverflowError,
   mockedRunEmbeddedAttempt,
-  mockedSessionLikelyHasOversizedToolResults,
-  mockedTruncateOversizedToolResultsInSession,
-  overflowBaseRunParams as baseParams,
-  resetRunOverflowCompactionHarnessMocks,
+  resetSharedRunIntegrationHarnessMocks,
 } from "./run.overflow-compaction.harness.js";
+import {
+  cleanupSharedRunIntegrationSessions,
+  createSharedRunIntegrationSession,
+  loadSharedRunIntegrationHarness,
+} from "./run.shared-integration-harness.test-support.js";
 import type { EmbeddedRunAttemptResult } from "./run/types.js";
 
-let runEmbeddedAgent: typeof import("./run.js").runEmbeddedAgent;
+type RunEmbeddedAgent = Awaited<ReturnType<typeof loadSharedRunIntegrationHarness>>;
+type Session = Awaited<ReturnType<typeof createSharedRunIntegrationSession>>;
+
+let runEmbeddedAgent: RunEmbeddedAgent;
+let mockedSessionLikelyHasOversizedToolResults: Mock;
+let mockedTruncateOversizedToolResults: Mock;
+let session: Session | undefined;
 const scenarios: Array<Record<string, unknown>> = [];
 
-function record(name: string, result: Awaited<ReturnType<typeof runEmbeddedAgent>>) {
+function record(name: string, result: Awaited<ReturnType<RunEmbeddedAgent>>) {
   const secondAttempt = mockedRunEmbeddedAttempt.mock.calls[1]?.[0] as
     | { prompt?: unknown; suppressNextUserMessagePersistence?: unknown }
     | undefined;
@@ -97,14 +107,14 @@ function record(name: string, result: Awaited<ReturnType<typeof runEmbeddedAgent
   );
   const secondSuppressesUserPersistence =
     secondAttempt?.suppressNextUserMessagePersistence === true;
-  const firstTruncateCall = mockedTruncateOversizedToolResultsInSession.mock.calls[0]?.[0] as
+  const firstTruncateCall = mockedTruncateOversizedToolResults.mock.calls[0]?.[0] as
     | { protectTrailingToolResults?: unknown }
     | undefined;
   scenarios.push({
     name,
     attemptCalls: mockedRunEmbeddedAttempt.mock.calls.length,
     compactCalls: mockedCompactDirect.mock.calls.length,
-    truncateCalls: mockedTruncateOversizedToolResultsInSession.mock.calls.length,
+    truncateCalls: mockedTruncateOversizedToolResults.mock.calls.length,
     errorKind: result.meta.error?.kind ?? null,
     payloadIsError: result.payloads?.[0]?.isError ?? null,
     ...(firstTruncateCall
@@ -119,13 +129,38 @@ function record(name: string, result: Awaited<ReturnType<typeof runEmbeddedAgent
   });
 }
 
+function attempt(overrides: Parameters<Session["makeAttemptResult"]>[0] = {}) {
+  if (!session) {
+    throw new Error("session missing");
+  }
+  return session.makeAttemptResult(overrides);
+}
+
+function compactionSuccess(summary = "Compacted session", firstKeptEntryId = "entry-5") {
+  return makeCompactionSuccess({ summary, firstKeptEntryId, tokensBefore: 150000 });
+}
+
 describe("memory-core overflow run-loop oracle", () => {
   beforeAll(async () => {
-    ({ runEmbeddedAgent } = await loadRunOverflowCompactionHarness());
+    runEmbeddedAgent = await loadSharedRunIntegrationHarness();
+    const truncation = (await import("./tool-result-truncation.js")) as unknown as {
+      sessionLikelyHasOversizedToolResults: Mock;
+      truncateOversizedToolResultsInSessionManager: Mock;
+    };
+    mockedSessionLikelyHasOversizedToolResults = truncation.sessionLikelyHasOversizedToolResults;
+    mockedTruncateOversizedToolResults = truncation.truncateOversizedToolResultsInSessionManager;
   });
 
-  beforeEach(() => {
-    resetRunOverflowCompactionHarnessMocks();
+  beforeEach(async () => {
+    resetSharedRunIntegrationHarnessMocks();
+    mockedSessionLikelyHasOversizedToolResults.mockReset();
+    mockedSessionLikelyHasOversizedToolResults.mockReturnValue(false);
+    mockedTruncateOversizedToolResults.mockReset();
+    mockedTruncateOversizedToolResults.mockResolvedValue({
+      truncated: false,
+      truncatedCount: 0,
+      reason: "no oversized tool results",
+    });
     mockedIsCompactionFailureError.mockImplementation((msg?: string) => {
       if (!msg) {
         return false;
@@ -145,9 +180,16 @@ describe("memory-core overflow run-loop oracle", () => {
         lower.includes("prompt too large")
       );
     });
+    session = await createSharedRunIntegrationSession();
   });
 
-  afterAll(() => {
+  afterEach(async () => {
+    await session?.cleanup();
+    session = undefined;
+  });
+
+  afterAll(async () => {
+    await cleanupSharedRunIntegrationSessions();
     const outputPath = process.env.MEMORY_CORE_OVERFLOW_ORACLE_OUT;
     if (!outputPath) {
       throw new Error("MEMORY_CORE_OVERFLOW_ORACLE_OUT missing");
@@ -156,89 +198,82 @@ describe("memory-core overflow run-loop oracle", () => {
   });
 
   it("successful compaction retries", async () => {
-    mockOverflowRetrySuccess({
-      runEmbeddedAttempt: mockedRunEmbeddedAttempt,
-      compactDirect: mockedCompactDirect,
-    });
+    // 4c428153 mockOverflowRetrySuccess.
+    mockedRunEmbeddedAttempt
+      .mockResolvedValueOnce(attempt({ promptError: makeOverflowError() }))
+      .mockResolvedValueOnce(attempt({ promptError: null }));
+    mockedCompactDirect.mockResolvedValueOnce(compactionSuccess());
 
-    const result = await runEmbeddedAgent(baseParams);
+    const result = await runEmbeddedAgent(session!.runParams);
 
-    expect(mockedCompactDirect).toHaveBeenCalledTimes(1);
-    expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(2);
-    expect(result.meta.error).toBeUndefined();
     record("successful_compaction_retries", result);
   });
 
   it("attempt-level compaction retries without extra compaction", async () => {
     mockedRunEmbeddedAttempt
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: makeOverflowError(), compactionCount: 1 }))
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
+      .mockResolvedValueOnce(attempt({ promptError: makeOverflowError(), compactionCount: 1 }))
+      .mockResolvedValueOnce(attempt({ promptError: null }));
 
-    const result = await runEmbeddedAgent(baseParams);
+    const result = await runEmbeddedAgent(session!.runParams);
 
-    expect(mockedCompactDirect).not.toHaveBeenCalled();
-    expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(2);
-    expect(result.meta.error).toBeUndefined();
     record("attempt_level_compaction_retries_without_extra_compaction", result);
   });
 
   it("failed compaction uses tool truncation fallback", async () => {
-    queueOverflowAttemptWithOversizedToolOutput(mockedRunEmbeddedAttempt, makeOverflowError());
-    mockedRunEmbeddedAttempt.mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
+    // 4c428153 queueOverflowAttemptWithOversizedToolOutput.
+    mockedRunEmbeddedAttempt
+      .mockResolvedValueOnce(
+        attempt({
+          promptError: makeOverflowError(),
+          messagesSnapshot: [
+            {
+              role: "toolResult",
+              content: [{ type: "text", text: "x".repeat(80_000) }],
+            } as unknown as EmbeddedRunAttemptResult["messagesSnapshot"][number],
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(attempt({ promptError: null }));
     mockedCompactDirect.mockResolvedValueOnce({
       ok: false,
       compacted: false,
       reason: "nothing to compact",
     });
     mockedSessionLikelyHasOversizedToolResults.mockReturnValue(true);
-    mockedTruncateOversizedToolResultsInSession.mockResolvedValueOnce({
+    mockedTruncateOversizedToolResults.mockResolvedValueOnce({
       truncated: true,
       truncatedCount: 1,
     });
 
-    const result = await runEmbeddedAgent(baseParams);
+    const result = await runEmbeddedAgent(session!.runParams);
 
-    expect(mockedCompactDirect).toHaveBeenCalledTimes(1);
-    expect(mockedTruncateOversizedToolResultsInSession).toHaveBeenCalledTimes(1);
-    expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(2);
-    expect(result.meta.error).toBeUndefined();
     record("failed_compaction_uses_tool_truncation_fallback", result);
   });
 
   it("compact then truncate runs after compaction", async () => {
     mockedRunEmbeddedAttempt
       .mockResolvedValueOnce(
-        makeAttemptResult({
+        attempt({
           promptError: makeOverflowError("Context overflow: prompt too large for the model (precheck)."),
           preflightRecovery: { route: "compact_then_truncate" },
         }),
       )
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
-    mockedCompactDirect.mockResolvedValueOnce(
-      makeCompactionSuccess({
-        summary: "Compacted session",
-        firstKeptEntryId: "entry-5",
-        tokensBefore: 150000,
-      }),
-    );
-    mockedTruncateOversizedToolResultsInSession.mockResolvedValueOnce({
+      .mockResolvedValueOnce(attempt({ promptError: null }));
+    mockedCompactDirect.mockResolvedValueOnce(compactionSuccess());
+    mockedTruncateOversizedToolResults.mockResolvedValueOnce({
       truncated: true,
       truncatedCount: 2,
     });
 
-    const result = await runEmbeddedAgent(baseParams);
+    const result = await runEmbeddedAgent(session!.runParams);
 
-    expect(mockedCompactDirect).toHaveBeenCalledTimes(1);
-    expect(mockedTruncateOversizedToolResultsInSession).toHaveBeenCalledTimes(1);
-    expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(2);
-    expect(result.meta.error).toBeUndefined();
     record("compact_then_truncate_runs_after_compaction", result);
   });
 
   it("assistant error overflow compacts and retries", async () => {
     mockedRunEmbeddedAttempt
       .mockResolvedValueOnce(
-        makeAttemptResult({
+        attempt({
           promptError: null,
           lastAssistant: {
             stopReason: "error",
@@ -246,27 +281,18 @@ describe("memory-core overflow run-loop oracle", () => {
           } as EmbeddedRunAttemptResult["lastAssistant"],
         }),
       )
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
-    mockedCompactDirect.mockResolvedValueOnce(
-      makeCompactionSuccess({
-        summary: "Compacted session",
-        firstKeptEntryId: "entry-5",
-        tokensBefore: 150000,
-      }),
-    );
+      .mockResolvedValueOnce(attempt({ promptError: null }));
+    mockedCompactDirect.mockResolvedValueOnce(compactionSuccess());
 
-    const result = await runEmbeddedAgent(baseParams);
+    const result = await runEmbeddedAgent(session!.runParams);
 
-    expect(mockedCompactDirect).toHaveBeenCalledTimes(1);
-    expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(2);
-    expect(result.meta.error).toBeUndefined();
     record("assistant_error_overflow_compacts_and_retries", result);
   });
 
   it("mid-turn precheck continues from transcript", async () => {
     mockedRunEmbeddedAttempt
       .mockResolvedValueOnce(
-        makeAttemptResult({
+        attempt({
           promptError: makeOverflowError(
             "Context overflow: prompt too large for the model (mid-turn precheck).",
           ),
@@ -274,7 +300,7 @@ describe("memory-core overflow run-loop oracle", () => {
           preflightRecovery: { route: "compact_only", source: "mid-turn" },
         }),
       )
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
+      .mockResolvedValueOnce(attempt({ promptError: null }));
     mockedCompactDirect.mockResolvedValueOnce(
       makeCompactionSuccess({
         summary: "Compacted after mid-turn precheck",
@@ -283,38 +309,25 @@ describe("memory-core overflow run-loop oracle", () => {
       }),
     );
 
-    const result = await runEmbeddedAgent(baseParams);
-    const retryParams = mockedRunEmbeddedAttempt.mock.calls[1]?.[0] as {
-      prompt?: unknown;
-      suppressNextUserMessagePersistence?: unknown;
-    };
+    const result = await runEmbeddedAgent(session!.runParams);
 
-    expect(mockedCompactDirect).toHaveBeenCalledTimes(1);
-    expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(2);
-    expect(String(retryParams.prompt)).toContain("Continue from the current transcript");
-    expect(retryParams.suppressNextUserMessagePersistence).toBe(true);
-    expect(result.meta.error).toBeUndefined();
     record("mid_turn_precheck_continues_from_transcript", result);
   });
 
   it("gives up after max compaction attempts", async () => {
     const overflowError = makeOverflowError();
     mockedRunEmbeddedAttempt
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: overflowError }))
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: overflowError }))
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: overflowError }))
-      .mockResolvedValueOnce(makeAttemptResult({ promptError: overflowError }));
+      .mockResolvedValueOnce(attempt({ promptError: overflowError }))
+      .mockResolvedValueOnce(attempt({ promptError: overflowError }))
+      .mockResolvedValueOnce(attempt({ promptError: overflowError }))
+      .mockResolvedValueOnce(attempt({ promptError: overflowError }));
     mockedCompactDirect
-      .mockResolvedValueOnce(makeCompactionSuccess({ summary: "Compacted 1", firstKeptEntryId: "entry-3" }))
-      .mockResolvedValueOnce(makeCompactionSuccess({ summary: "Compacted 2", firstKeptEntryId: "entry-5" }))
-      .mockResolvedValueOnce(makeCompactionSuccess({ summary: "Compacted 3", firstKeptEntryId: "entry-7" }));
+      .mockResolvedValueOnce(compactionSuccess("Compacted 1", "entry-3"))
+      .mockResolvedValueOnce(compactionSuccess("Compacted 2", "entry-5"))
+      .mockResolvedValueOnce(compactionSuccess("Compacted 3", "entry-7"));
 
-    const result = await runEmbeddedAgent(baseParams);
+    const result = await runEmbeddedAgent(session!.runParams);
 
-    expect(mockedCompactDirect).toHaveBeenCalledTimes(3);
-    expect(mockedRunEmbeddedAttempt).toHaveBeenCalledTimes(4);
-    expect(result.meta.error?.kind).toBe("context_overflow");
-    expect(result.payloads?.[0]?.isError).toBe(true);
     record("give_up_after_max_compaction_attempts", result);
   });
 });

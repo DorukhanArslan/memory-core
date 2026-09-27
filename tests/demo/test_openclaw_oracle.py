@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -174,3 +175,120 @@ def test_runner_resolves_memory_core_plugin_config():
     assert "const pluginConfig =" in source
     assert "pluginConfig," in source
     assert "cfg: payload.config ?? {}" in source
+
+
+# --- oracle checkout default and Node engines check -------------------------------------------
+
+TAG_ENGINES = ">=24.16.0 <25 || >=26.1.0"  # package.json engines.node at v2026.9.6
+
+
+def test_default_oracle_repo_is_the_pin_checkout(monkeypatch):
+    monkeypatch.delenv("OPENCLAW_ORACLE_REPO", raising=False)
+    assert openclaw_oracle.resolve_oracle_repo() == openclaw_oracle.PIN_CHECKOUT_PATH
+    assert OpenClawOracle().repo_path == openclaw_oracle.PIN_CHECKOUT_PATH
+    monkeypatch.setenv("OPENCLAW_ORACLE_REPO", "/elsewhere/openclaw")
+    assert OpenClawOracle().repo_path == Path("/elsewhere/openclaw")
+
+
+def test_node_version_satisfies_the_tag_engines_range():
+    satisfies = openclaw_oracle.node_version_satisfies
+    assert satisfies("v24.21.0", TAG_ENGINES) is True
+    assert satisfies("v24.16.0", TAG_ENGINES) is True
+    assert satisfies("v26.1.0", TAG_ENGINES) is True
+    assert satisfies("v25.2.1", TAG_ENGINES) is False
+    assert satisfies("v24.15.9", TAG_ENGINES) is False
+    assert satisfies("v26.0.5", TAG_ENGINES) is False
+    # The old pin 4c428153 asked for >=22.19.0 <23 || >=23.11.0.
+    assert satisfies("v25.2.1", ">=22.19.0 <23 || >=23.11.0") is True
+    assert satisfies("v23.10.0", ">=22.19.0 <23 || >=23.11.0") is False
+    assert satisfies("v24.1.0", "^24.0.0") is True
+    assert satisfies("v25.0.0", "^24") is False
+    assert satisfies("v24.3.9", "~24.3") is True
+    assert satisfies("v20.0.0", "18 - 22") is True
+    assert satisfies("v24.0.0", "node >= 24") is None
+
+
+def _engines_repo(tmp_path: Path, engines: str | None = TAG_ENGINES) -> Path:
+    repo = tmp_path / "openclaw"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    package = {"packageManager": "pnpm@12.4.0"}
+    if engines is not None:
+        package["engines"] = {"node": engines}
+    (repo / "package.json").write_text(json.dumps(package), encoding="utf-8")
+    return repo
+
+
+def _fake_node(tmp_path: Path, version: str) -> Path:
+    node = tmp_path / "node-bin" / "node"
+    node.parent.mkdir(parents=True)
+    node.write_text(f"#!/bin/sh\necho {version}\n", encoding="utf-8")
+    node.chmod(0o755)
+    return node
+
+
+def test_run_refuses_a_node_outside_the_checkout_engines(monkeypatch, tmp_path: Path):
+    repo = _engines_repo(tmp_path)
+    node = _fake_node(tmp_path, "v25.2.1")
+    monkeypatch.setenv("OPENCLAW_ORACLE_NODE", str(node))
+    openclaw_oracle._probe_node_version.cache_clear()
+
+    result = OpenClawOracle(repo_path=repo).run({"operation": "deepPolicy"})
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "oracle-node-unsupported"
+    message = result["error"]["message"]
+    assert f"OPENCLAW_ORACLE_NODE={node} is v25.2.1" in message
+    assert TAG_ENGINES in message and str(repo / "package.json") in message
+
+
+def test_run_reports_a_missing_oracle_node(monkeypatch, tmp_path: Path):
+    repo = _engines_repo(tmp_path)
+    monkeypatch.setenv("OPENCLAW_ORACLE_NODE", str(tmp_path / "no-such-node"))
+    openclaw_oracle._probe_node_version.cache_clear()
+
+    result = OpenClawOracle(repo_path=repo).run({"operation": "deepPolicy"})
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "oracle-node-missing"
+
+
+def test_run_puts_the_oracle_node_first_on_path(monkeypatch, tmp_path: Path):
+    repo = _engines_repo(tmp_path)
+    node = _fake_node(tmp_path, "v24.21.0")
+    monkeypatch.setenv("OPENCLAW_ORACLE_NODE", str(node))
+    openclaw_oracle._probe_node_version.cache_clear()
+    seen_env = []
+    real_run = subprocess.run
+
+    def fake_run(cmd, **kwargs):
+        if cmd == [str(node), "--version"]:
+            return real_run(cmd, **kwargs)
+        if cmd[:3] == ["git", "rev-parse", "HEAD"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
+        seen_env.append(kwargs.get("env"))
+        return subprocess.CompletedProcess(cmd, 0, stdout='{"ok": true}', stderr="")
+
+    monkeypatch.setattr(openclaw_oracle.subprocess, "run", fake_run)
+
+    result = OpenClawOracle(repo_path=repo).run({"operation": "deepPolicy"})
+
+    assert result["ok"] is True
+    assert seen_env[0]["PATH"].split(os.pathsep)[0] == str(node.parent)
+
+
+def test_resolve_oracle_node_reports_the_engines_check(monkeypatch, tmp_path: Path):
+    repo = _engines_repo(tmp_path)
+    node = _fake_node(tmp_path, "v24.21.0")
+    monkeypatch.setenv("OPENCLAW_ORACLE_NODE", str(node))
+    openclaw_oracle._probe_node_version.cache_clear()
+
+    resolved = openclaw_oracle.resolve_oracle_node(repo).to_json()
+
+    assert resolved == {
+        "path": str(node),
+        "version": "v24.21.0",
+        "engines": TAG_ENGINES,
+        "satisfies": True,
+        "env": "OPENCLAW_ORACLE_NODE",
+    }

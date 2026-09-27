@@ -9,9 +9,7 @@ message leaves the server.
 from __future__ import annotations
 
 import json
-import os
 import re
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -45,8 +43,8 @@ from demo.lab_runtime import (
     summarize_turn,
     validate_id,
 )
+from demo.openclaw_oracle import resolve_oracle_node, resolve_oracle_repo
 from demo.parity_results import (
-    DEFAULT_ORACLE_REPO,
     PRODUCER_COMMANDS,
     default_results_path,
     load_parity_results,
@@ -343,12 +341,18 @@ def build_router(lab: LabRuntime) -> APIRouter:
 
     @router.get("/parity")
     def parity():
-        repo = Path(os.getenv("OPENCLAW_ORACLE_REPO") or DEFAULT_ORACLE_REPO)
+        repo = resolve_oracle_repo()
         results_path = default_results_path()
+        head = _git_head(repo)
         return {
             "pin": LATEST_INSPECTED_COMMIT,
-            "oracleRepo": {"path": str(repo), "exists": repo.is_dir(), "head": _git_head(repo)},
-            "node": _node_version(),
+            "oracleRepo": {
+                "path": str(repo),
+                "exists": repo.is_dir(),
+                "head": head,
+                "pinned": head == LATEST_INSPECTED_COMMIT,
+            },
+            "node": _oracle_node(repo),
             "resultsPath": str(results_path),
             "results": load_parity_results(results_path),
             "matrix": parse_parity_matrix(),
@@ -508,16 +512,10 @@ def _git_head(repo: Path) -> str | None:
     return completed.stdout.strip() or None
 
 
-def _node_version() -> dict[str, str] | None:
-    node = shutil.which("node") or ("/opt/homebrew/bin/node" if Path("/opt/homebrew/bin/node").exists() else None)
-    if node is None:
-        return None
-    try:
-        completed = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=5, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    version = completed.stdout.strip()
-    return {"version": version, "path": node} if version else None
+def _oracle_node(repo: Path) -> dict[str, Any] | None:
+    """The Node the oracle runs with (``OPENCLAW_ORACLE_NODE`` or PATH) and its engines check."""
+    node = resolve_oracle_node(repo)
+    return node.to_json() if node.path else None
 
 
 def turn_summary(detail: dict[str, Any]) -> dict[str, Any]:

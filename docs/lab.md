@@ -34,7 +34,8 @@ already set win; nothing is ever written back):
 | `MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY` | none | embeddings key (or `embedding.apiKey`) |
 | `MEMORY_CORE_DEMO_OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | embeddings model |
 | `MEMORY_CORE_LAB_PARITY_RESULTS` | `$TMPDIR/memory-core-lab/parity-results.json` | parity results file |
-| `OPENCLAW_ORACLE_REPO` | `/tmp/openclaw-upstream` | oracle checkout shown in the parity view |
+| `OPENCLAW_ORACLE_REPO` | `/tmp/openclaw-head` | oracle checkout (a checkout of the parity pin, tag `v2026.9.6`) used by the parity view and the oracle tests |
+| `OPENCLAW_ORACLE_NODE` | first `node` on `PATH` | node binary the oracle runner and the run-loop Vitest run with; must be in the checkout's `engines.node` range |
 
 Default model (D4, Q10): the newest OpenAI GPT chat model in OpenRouter's public
 model list (`GET https://openrouter.ai/api/v1/models`, no auth), checked
@@ -141,11 +142,43 @@ upstream text) plus `build_startup_context` when the bootstrap mode is `none`. T
 client then streams the reset turn with `{reset: true}`; the model gets
 `[startup context, reset prompt]` and the transcript keeps `[memory-core session new]`.
 
+## Oracle checkout
+
+The parity view and `tests/integration` run the real OpenClaw TypeScript through
+`scripts/openclaw_oracle_runner.ts`, which supports only the parity pin, release tag
+`v2026.9.6` (`eb377ac59e6`, `memory_core/parity/upstream.py`). The default checkout is
+`/tmp/openclaw-head`; `OPENCLAW_ORACLE_REPO` points elsewhere. The chip in the parity view
+turns amber when the checkout's HEAD is not the pin.
+
+The tag's `package.json` asks for Node `>=24.16.0 <25 || >=26.1.0` (its SQLite state refuses
+Node 25). The runner starts through the checkout's `tsx`, which runs the first `node` on
+`PATH`; `OPENCLAW_ORACLE_NODE` names a node binary to use instead (its directory goes first on
+`PATH` for the runner, `pnpm` and the run-loop Vitest). Before each run the oracle client
+checks the resolved Node against `engines.node` and fails fast with `oracle-node-unsupported`
+(or `oracle-node-missing` for a binary that does not run) instead of failing inside TS. The
+parity view shows the resolved Node and turns red outside the range.
+
+On this machine Node 24 is Homebrew's `node@24` (`/opt/homebrew/opt/node@24/bin`); the default
+`node` is 25:
+
+```bash
+git clone https://github.com/openclaw/openclaw /tmp/openclaw-head
+git -C /tmp/openclaw-head checkout v2026.9.6
+(cd /tmp/openclaw-head && PATH=/opt/homebrew/opt/node@24/bin:$PATH \
+  npx --yes pnpm@12.4.0 install --ignore-scripts --frozen-lockfile)
+export OPENCLAW_ORACLE_REPO=/tmp/openclaw-head
+export OPENCLAW_ORACLE_NODE=/opt/homebrew/opt/node@24/bin/node
+```
+
+Use a short, fresh `TMPDIR` per run (long paths break tsx's IPC sockets); the runner gives
+every operation its own `OPENCLAW_STATE_DIR` and never touches `~/.openclaw`.
+
 ## Parity results
 
 ```bash
 TMPDIR=<scratch> PYTHONDONTWRITEBYTECODE=1 MEMORY_CORE_DEMO_OPENAI_API_KEY= MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY= \
-OPENCLAW_ORACLE_REPO=/tmp/openclaw-upstream .venv/bin/python -m pytest -q -p no:cacheprovider \
+OPENCLAW_ORACLE_REPO=/tmp/openclaw-head OPENCLAW_ORACLE_NODE=/opt/homebrew/opt/node@24/bin/node \
+.venv/bin/python -m pytest -q -p no:cacheprovider \
   tests/integration/test_openclaw_ts_oracle.py tests/integration/test_memory_tools.py \
   --junitxml=<scratch>/memory-core-lab/oracle.xml
 .venv/bin/python -m demo.parity_results <scratch>/memory-core-lab/oracle.xml --out <scratch>/memory-core-lab/parity-results.json

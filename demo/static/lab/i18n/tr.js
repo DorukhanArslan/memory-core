@@ -326,6 +326,9 @@ export const TR = {
   'parity.matrixCaption': 'docs/parity_matrix.md satırları',
   'parity.resultsPath': 'Beklenen yol:',
   'parity.noGitHead': 'checkout var, .git yok',
+  'parity.notPinned': 'HEAD parite pini değil',
+  'parity.nodeOutOfRange': 'checkout engines aralığının dışında',
+  'parity.cmdNodeNote': 'OPENCLAW_ORACLE_NODE: checkout engines aralığındaki bir node (v2026.9.6: >=24.16.0 <25 || >=26.1.0).',
   // scenario blocks (real seed)
   'scn.blockedNoMemoryMd': 'MEMORY.md yok (tohum MEMORY.md içermez)',
   'scn.blockedProactiveEmpty': 'PROACTIVE_PREFERENCES.md boş: iki düzende de dışarıda, adım bir şey ölçmez',

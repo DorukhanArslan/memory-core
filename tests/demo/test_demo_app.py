@@ -585,7 +585,9 @@ def test_parity_endpoint_reads_the_results_file_and_the_matrix(client, tmp_path,
 
     assert payload["results"]["totals"]["passed"] == 2
     assert payload["resultsPath"] == str(out)
-    assert payload["oracleRepo"] == {"path": str(tmp_path / "no-such-checkout"), "exists": False, "head": None}
+    assert payload["oracleRepo"] == {
+        "path": str(tmp_path / "no-such-checkout"), "exists": False, "head": None, "pinned": False,
+    }
     assert payload["matrix"] and set(payload["matrix"][0]) == {
         "area", "openclawSource", "pythonSource", "oracleOperation", "status", "knownGaps", "nextTest", "priority",
     }

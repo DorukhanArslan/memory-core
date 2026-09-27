@@ -84,16 +84,25 @@ ruff check .
 ```
 
 OpenClaw TypeScript oracle tests are skipped unless `OPENCLAW_ORACLE_REPO`
-points to an OpenClaw checkout with installed dependencies. The oracle needs
-Node.js >= 22.13 (pnpm 11 and OpenClaw both use the `node:sqlite` builtin), and
-`pnpm install --ignore-scripts` is enough for the runner. Note the first run
-compiles TypeScript on demand; cold-cache runs can hit the 20s per-operation
-oracle timeout and report spurious failures, so re-run once warm.
+points to an OpenClaw checkout with installed dependencies. The runner supports
+only the parity pin, release tag `v2026.9.6` (`memory_core/parity/upstream.py`); the
+Lab's parity view defaults to a checkout at `/tmp/openclaw-head`. The tag needs
+Node `>=24.16.0 <25` or `>=26.1.0` (its `package.json` `engines`; Node 25 is
+refused for SQLite state). `OPENCLAW_ORACLE_NODE` names the node binary the
+oracle runs with (default: the first `node` on `PATH`), and the oracle client
+fails fast with `oracle-node-unsupported` when that Node is outside the range.
+`pnpm install --ignore-scripts` is enough for the runner. The first run compiles
+TypeScript on demand; cold-cache runs can hit the per-operation oracle timeout, so
+re-run once warm. Setup details: [docs/lab.md › Oracle checkout](docs/lab.md).
 
 ```bash
-git clone https://github.com/openclaw/openclaw /tmp/openclaw-upstream
-(cd /tmp/openclaw-upstream && pnpm install --ignore-scripts --frozen-lockfile)
-OPENCLAW_ORACLE_REPO=/tmp/openclaw-upstream pytest tests/integration -v
+git clone https://github.com/openclaw/openclaw /tmp/openclaw-head
+git -C /tmp/openclaw-head checkout v2026.9.6
+# On the maintainer's machine Node 24 is Homebrew's node@24; the default node is 25.
+export OPENCLAW_ORACLE_NODE=/opt/homebrew/opt/node@24/bin/node
+(cd /tmp/openclaw-head && PATH=/opt/homebrew/opt/node@24/bin:$PATH \
+  npx --yes pnpm@12.4.0 install --ignore-scripts --frozen-lockfile)
+OPENCLAW_ORACLE_REPO=/tmp/openclaw-head pytest tests/integration -v
 ```
 
 ## Run the Lab

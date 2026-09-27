@@ -1,6 +1,7 @@
 """Oracle JUnit XML -> ``parity-results.json`` for the Lab's parity view (demo-only).
 
-Producer (AGENTS.md › Tools isolated env, ``OPENCLAW_ORACLE_REPO`` set)::
+Producer (isolated env, ``OPENCLAW_ORACLE_REPO`` at a checkout of the pin, ``OPENCLAW_ORACLE_NODE``
+at a node binary in that checkout's ``engines.node`` range; docs/lab.md › Oracle checkout)::
 
     .venv/bin/python -m pytest -q -p no:cacheprovider \\
         tests/integration/test_openclaw_ts_oracle.py tests/integration/test_memory_tools.py \\
@@ -38,17 +39,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from demo.openclaw_oracle import PIN_CHECKOUT_PATH
 from memory_core.parity.upstream import LATEST_INSPECTED_COMMIT
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MATRIX_PATH = PROJECT_ROOT / "docs" / "parity_matrix.md"
 ORACLE_MODULES = ("demo.openclaw_oracle", "demo.openclaw_run_loop_oracle")
 PYTHON_MODULE_PREFIXES = ("memory-core", "demo")
-DEFAULT_ORACLE_REPO = "/tmp/openclaw-upstream"
+DEFAULT_ORACLE_REPO = str(PIN_CHECKOUT_PATH)
 
 PRODUCER_COMMANDS = (
     "TMPDIR=<scratch> PYTHONDONTWRITEBYTECODE=1 MEMORY_CORE_DEMO_OPENAI_API_KEY= "
-    "MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY= OPENCLAW_ORACLE_REPO=/tmp/openclaw-upstream "
+    f"MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY= OPENCLAW_ORACLE_REPO={DEFAULT_ORACLE_REPO} "
+    "OPENCLAW_ORACLE_NODE=<node in the checkout's engines range> "
     ".venv/bin/python -m pytest -q -p no:cacheprovider tests/integration/test_openclaw_ts_oracle.py "
     "tests/integration/test_memory_tools.py --junitxml=<scratch>/memory-core-lab/oracle.xml",
     ".venv/bin/python -m demo.parity_results <scratch>/memory-core-lab/oracle.xml "

@@ -308,6 +308,9 @@ export const EN = {
   'parity.matrixCaption': 'docs/parity_matrix.md rows',
   'parity.resultsPath': 'Expected path:',
   'parity.noGitHead': 'checkout present, no .git',
+  'parity.notPinned': 'HEAD is not the parity pin',
+  'parity.nodeOutOfRange': 'outside the checkout engines range',
+  'parity.cmdNodeNote': 'OPENCLAW_ORACLE_NODE: a node binary in the checkout engines range (v2026.9.6: >=24.16.0 <25 || >=26.1.0).',
   // scenario blocks (real seed)
   'scn.blockedNoMemoryMd': 'no MEMORY.md (the seed has none)',
   'scn.blockedProactiveEmpty': 'PROACTIVE_PREFERENCES.md is empty: excluded in both layouts, the step measures nothing',

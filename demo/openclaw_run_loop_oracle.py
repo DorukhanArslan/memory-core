@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
+
+from demo.openclaw_oracle import OracleNodeError, oracle_subprocess_env
 
 
 class OpenClawRunLoopOracleError(RuntimeError):
@@ -29,6 +32,11 @@ def run_overflow_run_loop_oracle(
             f"OpenClaw vitest binary missing; run pnpm install in {repo_path}"
         )
 
+    try:
+        # Vitest runs on the same Node as the runner (OPENCLAW_ORACLE_NODE, engines check).
+        node_env = oracle_subprocess_env(repo_path)
+    except OracleNodeError as exc:
+        raise OpenClawRunLoopOracleError(str(exc)) from exc
     test_file = test_dir / "memory-core-overflow-run-loop.oracle.test.ts"
     with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-run-loop-oracle-") as tmp_dir:
         output_path = Path(tmp_dir) / "result.json"
@@ -42,7 +50,7 @@ def run_overflow_run_loop_oracle(
                 timeout=timeout_seconds,
                 check=False,
                 env={
-                    **__import__("os").environ,
+                    **(node_env if node_env is not None else os.environ),
                     "MEMORY_CORE_OVERFLOW_ORACLE_OUT": str(output_path),
                 },
             )

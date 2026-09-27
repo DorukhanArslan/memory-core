@@ -50,9 +50,10 @@ gates).
    reads host-supplied transcript events (recommended; the host owns storage) or it reads
    OpenClaw's SQLite directly (couples the package to a private schema).
 5. The old-pin zone-sweep failure above: investigate, or accept as environment drift.
-6. The oracle defaults still name `/tmp/openclaw-upstream` (`demo/openclaw_oracle.py`,
-   `demo/parity_results.py` producer commands, README, docs/lab.md) and do not set Node 24;
-   stage 1 left them unchanged (no default changes unasked).
+6. Oracle defaults: done in stage 2 area 1 (2026-09-27, decided by Doruk). The default checkout
+   is `/tmp/openclaw-head` (`demo/openclaw_oracle.py` `PIN_CHECKOUT_PATH`, the producer
+   commands, README, docs/lab.md), `OPENCLAW_ORACLE_NODE` names the node binary, and the client
+   refuses a Node outside the checkout's `engines.node` range (docs/lab.md › Oracle checkout).
 
 ## Areas
 

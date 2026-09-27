@@ -114,8 +114,8 @@ export function renderParity(body) {
   replace(body, strip,
     viewHead(t('parity.title'), 'scale', [
       p.pin ? chip({ label: `pin ${String(p.pin).slice(0, 8)}`, tone: 'info', cls: 'chip-mono', onClick: () => copyText(p.pin).then(() => toast(t('parity.hashCopied'), { tone: 'ok' })), title: p.pin, testid: 'parity-pin' }) : null,
-      p.oracleRepo ? chip({ label: `OPENCLAW_ORACLE_REPO: ${p.oracleRepo.path || '—'}`, tone: p.oracleRepo.exists ? 'ok' : 'danger', ic: p.oracleRepo.exists ? 'check' : 'alert-octagon', title: p.oracleRepo.head ? `HEAD ${p.oracleRepo.head}` : p.oracleRepo.exists ? t('parity.noGitHead') : t('parity.noCheckout'), cls: 'chip-mono' }) : null,
-      chip({ label: p.node?.version ? `node ${p.node.version}` : t('parity.noNode'), tone: p.node?.version ? 'neutral' : 'warn', cls: 'chip-mono', title: p.node?.path || null }),
+      p.oracleRepo ? chip({ label: `OPENCLAW_ORACLE_REPO: ${p.oracleRepo.path || '—'}`, tone: !p.oracleRepo.exists ? 'danger' : p.oracleRepo.pinned === false ? 'warn' : 'ok', ic: !p.oracleRepo.exists ? 'alert-octagon' : p.oracleRepo.pinned === false ? 'alert-triangle' : 'check', title: p.oracleRepo.head ? `HEAD ${p.oracleRepo.head}${p.oracleRepo.pinned === false ? ` (${t('parity.notPinned')})` : ''}` : p.oracleRepo.exists ? t('parity.noGitHead') : t('parity.noCheckout'), cls: 'chip-mono', testid: 'parity-oracle-repo' }) : null,
+      chip({ label: p.node?.version ? `node ${p.node.version}` : t('parity.noNode'), tone: !p.node?.version ? 'warn' : p.node.satisfies === false ? 'danger' : 'neutral', ic: p.node?.satisfies === false ? 'alert-octagon' : undefined, cls: 'chip-mono', title: p.node ? [p.node.env ? `${p.node.env}=${p.node.path}` : p.node.path, p.node.engines ? `engines ${p.node.engines}${p.node.satisfies === false ? ` (${t('parity.nodeOutOfRange')})` : ''}` : null].filter(Boolean).join(' · ') : null, testid: 'parity-node' }),
     ].filter(Boolean)),
     h('div', { class: 'view-scroll' },
       howItWorks('parity'),
@@ -124,6 +124,7 @@ export function renderParity(body) {
         p.resultsPath ? h('div', { class: 'muted small' }, t('parity.resultsPath'), ' ', h('code', { class: 'mono' }, p.resultsPath)) : null,
         commands.map(cmdLine),
         h('div', { class: 'muted small' }, t('parity.cmdNote')),
+        h('div', { class: 'muted small' }, t('parity.cmdNodeNote')),
       ], { ic: 'command', testid: 'empty-parity' }),
       matrix.length ? matrixBlock(matrix) : null,
       card(t('parity.trace'), [

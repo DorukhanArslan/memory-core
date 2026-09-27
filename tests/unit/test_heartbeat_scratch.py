@@ -125,3 +125,18 @@ def test_hash_matches_upstream_sha256_hex():
     assert hash_heartbeat_scratch_source("") == (
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     )
+
+
+def test_lone_surrogates_follow_nodes_utf8_conversion(tmp_path):
+    # Buffer.byteLength and createHash().update(content, "utf8") see U+FFFD; the SQLite text
+    # binding stores it; writeCronJobScratch echoes params.content (heartbeatScratchContract).
+    assert hash_heartbeat_scratch_source("\ud800") == hash_heartbeat_scratch_source("�")
+    assert hash_heartbeat_scratch_source("😀") == hash_heartbeat_scratch_source("\U0001f600")
+    assert_heartbeat_scratch_content("😀" * (CRON_JOB_SCRATCH_MAX_BYTES // 4))
+    store = FileAutomationStore(tmp_path)
+
+    write = store.write_scratch("main", "a\ud800b", now_ms=5)
+
+    assert write.scratch is not None and write.scratch.content == "a\ud800b"
+    assert store.read_scratch("main").content == "a�b"
+    assert json.loads(store.path.read_text(encoding="utf-8"))["scratch"]["main"]["content"] == "a�b"

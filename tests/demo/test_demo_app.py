@@ -1354,6 +1354,22 @@ def test_heartbeat_scratch_is_written_by_compare_and_swap(client, lab):
     assert "heartbeat.scratch_written" in types and "heartbeat.scratch_conflict" in types
 
 
+def test_heartbeat_scratch_stores_a_lone_surrogate_as_u_fffd(client, lab):
+    # Node's UTF-8 conversion: the stored row holds U+FFFD, sized and hashed like Node.
+    client.get("/api/lab/state")
+
+    response = client.put(
+        "/api/lab/heartbeat/scratch",
+        content='{"content": "a\\ud800b", "expectedRevision": 0}',
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["write"]["scratch"]["content"] == "a�b"
+    assert response.json()["scratch"]["content"] == "a�b"
+    assert response.json()["scratch"]["bytes"] == 5
+
+
 def test_heartbeat_skips_empty_scratch_without_a_model_call(client, lab, monkeypatch):
     engine = use_engine(monkeypatch, StubEngine([("x", [])]))
     client.get("/api/lab/state")

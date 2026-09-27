@@ -15,6 +15,11 @@ of that storage contract:
   :func:`apply_heartbeat_scratch_write`, the guarded delete of ``deleteCronJobScratch``
   (:func:`apply_heartbeat_scratch_delete`) and ``hashCronScratchSource``.
 
+Strings follow Node's UTF-8 conversion: sizes and hashes count a lone surrogate as U+FFFD
+(``Buffer.byteLength``, ``createHash().update(content, "utf8")``), and the stored content is
+the well-formed text, as the SQLite binding writes it, while the write result echoes the content
+as passed (``writeCronJobScratch`` returns ``params.content``).
+
 The host owns storage. :class:`HeartbeatScratchStore` is the small interface memory-core's
 heartbeat helpers read and write through; :class:`memory_core.automation.FileAutomationStore` is
 the default file-backed implementation under ``<root>/.memory-core/``. Deviation (documented in
@@ -26,11 +31,11 @@ monitors, so a host that removes an agent's heartbeat calls ``delete_scratch`` i
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
 from memory_core._heartbeat_constants import CRON_JOB_SCRATCH_MAX_BYTES, CRON_JOB_SCRATCH_TOO_LARGE
-from memory_core.bootstrap._js import js_trim
+from memory_core.bootstrap._js import js_to_well_formed, js_trim, js_utf8_encode
 
 __all__ = [
     "CRON_JOB_SCRATCH_MAX_BYTES",
@@ -53,9 +58,9 @@ class HeartbeatScratchTooLargeError(ValueError):
 
 
 def _utf8_length(content: str) -> int:
-    # Buffer.byteLength(content, "utf8"): a lone surrogate encodes as U+FFFD (3 bytes), which
-    # is also the length of its surrogatepass encoding.
-    return len(content.encode("utf-8", errors="surrogatepass"))
+    # Buffer.byteLength(content, "utf8"): a lone surrogate encodes as U+FFFD (3 bytes) and two
+    # adjacent surrogate code points as one 4-byte character.
+    return len(js_utf8_encode(content))
 
 
 def assert_heartbeat_scratch_content(content: str) -> None:
@@ -70,8 +75,11 @@ def assert_heartbeat_scratch_content(content: str) -> None:
 
 
 def hash_heartbeat_scratch_source(content: str) -> str:
-    """Port of ``hashCronScratchSource``: SHA-256 hex of the UTF-8 text."""
-    return hashlib.sha256(content.encode("utf-8", errors="surrogatepass")).hexdigest()
+    """Port of ``hashCronScratchSource``: SHA-256 hex of the UTF-8 text.
+
+    Node hashes the UTF-8 conversion, where a lone surrogate is U+FFFD.
+    """
+    return hashlib.sha256(js_utf8_encode(content)).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -176,7 +184,9 @@ def apply_heartbeat_scratch_write(
     before anything else. A mismatching ``expected_revision`` is a ``revision-conflict``. An
     unset of an absent row is a no-op; every other write bumps the revision and replaces the
     whole row, so a write without ``source_sha256`` clears a stale migration hash and an unset
-    leaves a tombstone. Returns the new state and the result.
+    leaves a tombstone. The new state holds the well-formed content (a lone surrogate becomes
+    U+FFFD, as upstream's SQLite text binding stores it); the result echoes ``content`` as
+    passed. Returns the new state and the result.
     """
     if content is not None:
         assert_heartbeat_scratch_content(content)
@@ -193,11 +203,12 @@ def apply_heartbeat_scratch_write(
         return HeartbeatScratchState(current_revision=revision), HeartbeatScratchWrite(
             ok=True, current_revision=revision
         )
-    scratch = HeartbeatScratch(
+    echoed = HeartbeatScratch(
         content=content, revision=revision, updated_at_ms=int(now_ms), source_sha256=sha or None
     )
-    return HeartbeatScratchState(current_revision=revision, scratch=scratch), HeartbeatScratchWrite(
-        ok=True, current_revision=revision, scratch=scratch
+    stored = replace(echoed, content=js_to_well_formed(content))
+    return HeartbeatScratchState(current_revision=revision, scratch=stored), HeartbeatScratchWrite(
+        ok=True, current_revision=revision, scratch=echoed
     )
 
 

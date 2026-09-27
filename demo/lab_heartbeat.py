@@ -44,7 +44,7 @@ from memory_core.automation import (
     is_job_due,
     record_automation_job_run,
 )
-from memory_core.bootstrap._js import utf16_len
+from memory_core.bootstrap._js import js_to_well_formed, js_utf8_encode, utf16_len
 from memory_core.heartbeat import (
     DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
     HEARTBEAT_TRANSCRIPT_PROMPT,
@@ -97,7 +97,7 @@ def _scratch_view(state: HeartbeatScratchState) -> dict[str, Any]:
         "status": status,
         "currentRevision": state.current_revision,
         "content": content,
-        "bytes": len(content.encode("utf-8", errors="surrogatepass")) if content is not None else 0,
+        "bytes": len(js_utf8_encode(content)) if content is not None else 0,
         "maxBytes": CRON_JOB_SCRATCH_MAX_BYTES,
         "sourceSha256": scratch.source_sha256 if scratch is not None else None,
         "updatedAtMs": scratch.updated_at_ms if scratch is not None else None,
@@ -201,6 +201,10 @@ def write_scratch(lab: LabRuntime, payload: dict[str, Any]) -> dict[str, Any]:
     expected = payload.get("expectedRevision")
     if expected is not None and (isinstance(expected, bool) or not isinstance(expected, int) or expected < 0):
         raise LabError(400, "expectedRevision must be a non-negative integer", code="invalid_revision")
+    if content is not None:
+        # The store keeps the well-formed text (a lone surrogate becomes U+FFFD, as upstream's
+        # SQLite row); the Lab sends that text, so its JSON answer and events stay encodable.
+        content = js_to_well_formed(content)
     store = automation_store(lab)
     try:
         result = store.write_scratch(

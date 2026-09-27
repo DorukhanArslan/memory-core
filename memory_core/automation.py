@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Any
 
 from memory_core._heartbeat_constants import HEARTBEAT_TASK_DECLARATION_PREFIX
-from memory_core.bootstrap._js import locale_sort_key
+from memory_core.bootstrap._js import js_json_stringify, locale_sort_key
 from memory_core.heartbeat import HeartbeatScheduledTask
 from memory_core.heartbeat_scratch import (
     HeartbeatScratchState,
@@ -323,7 +323,9 @@ class FileAutomationStore:
         fd, temp = tempfile.mkstemp(prefix=".automation.", suffix=".tmp", dir=self.path.parent)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(data, handle, ensure_ascii=False, indent=2)
+                # JSON.stringify's well-formed output: a lone surrogate in a job field is kept
+                # as a \udXXX escape (upstream job_json), never an unencodable character.
+                handle.write(js_json_stringify(data, indent=2))
                 handle.write("\n")
             os.chmod(temp, 0o600)
             os.replace(temp, self.path)

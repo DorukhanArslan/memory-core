@@ -6304,8 +6304,8 @@ HEARTBEAT_SCRATCH_SIZE_CASES = [
 ]
 # The write/read/unset/delete sequence of src/cron/scratch-store.test.ts ("distinguishes no row
 # from present-empty content", "compare-and-swaps revisions and keeps a tombstone across unset")
-# plus memory-core probes for source hashes (trimmed, dropped when blank or on unset) and oversized
-# content.
+# plus memory-core probes for source hashes (trimmed, dropped when blank or on unset), oversized
+# content and a lone surrogate (the write echoes it; the stored row holds U+FFFD).
 HEARTBEAT_SCRATCH_STEPS = [
     {"op": "read"},
     {"op": "readMonitor"},
@@ -6332,8 +6332,11 @@ HEARTBEAT_SCRATCH_STEPS = [
     {"op": "write", "content": {"unit": "a", "count": CRON_JOB_SCRATCH_MAX_BYTES + 1}},
     {"op": "write", "content": None, "expectedRevision": 0, "nowMs": 70},
     {"op": "readMonitor"},
+    {"op": "write", "content": "a\ud800b", "sourceSha256": "abc", "nowMs": 80},
+    {"op": "read"},
+    {"op": "readMonitor"},
 ]
-HEARTBEAT_SCRATCH_HASH_TEXTS = ["", "- Check status\n", "é\U0001f600", "\ud800"]
+HEARTBEAT_SCRATCH_HASH_TEXTS = ["", "- Check status\n", "é\U0001f600", "\ud800", "a\ud83d\ude00b"]
 
 
 def _scratch_case_text(item: dict) -> str:
@@ -6384,10 +6387,8 @@ def test_real_openclaw_oracle_heartbeat_scratch_contract_matches_python(tmp_path
     store = FileAutomationStore(tmp_path)
     for step, expected in zip(HEARTBEAT_SCRATCH_STEPS, observed["steps"], strict=True):
         assert _python_scratch_step(store, step) == expected, step
-    # A lone surrogate reaches Node as U+FFFD, which is what the hash sees there.
     assert observed["hashes"] == [
-        hash_heartbeat_scratch_source(js_to_well_formed(text))
-        for text in HEARTBEAT_SCRATCH_HASH_TEXTS
+        hash_heartbeat_scratch_source(text) for text in HEARTBEAT_SCRATCH_HASH_TEXTS
     ]
 
 

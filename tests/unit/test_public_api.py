@@ -89,6 +89,24 @@ def test_public_api_can_build_workspace_and_flush_plan(tmp_path):
     assert plan.relative_path == "memory/2026-05-03.md"
 
 
+def test_public_api_gates_the_flush_from_top_level_names():
+    # should_run_memory_flush takes a precomputed threshold (v2026.9.6 #152268); the helpers
+    # that derive it from the host's window and plan are top-level too.
+    plan = memory.build_memory_flush_plan(workspace_dir=None, context_window_tokens=26_000)
+    threshold = memory.resolve_memory_flush_threshold(
+        context_window_tokens=26_000,
+        reserve_tokens_floor=plan.reserve_tokens_floor,
+        soft_threshold_tokens=plan.soft_threshold_tokens,
+    )
+    entry = {"totalTokens": 15_500, "totalTokensFresh": True, "totalTokensVersion": 1}
+
+    assert memory.resolve_compaction_threshold(context_window_tokens=26_000, reserve_tokens_floor=6_500) == 19_500
+    assert threshold == 15_500
+    assert memory.should_run_memory_flush(entry=entry, threshold=threshold)
+    assert "DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR" not in memory.__all__
+    assert memory.DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR == 20_000
+
+
 def test_public_api_replay_helpers_are_callable():
     cleaned = memory.normalize_assistant_replay_content(
         [

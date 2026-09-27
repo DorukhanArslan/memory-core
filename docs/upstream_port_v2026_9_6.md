@@ -42,6 +42,7 @@ gates).
 | Infrastructure | done (`39ba67e`, `aa4f7d3`, `1a5e09f`) | worklist xfails fail only on value assertions; oracle defaults point at the pin checkout with a Node engines check |
 | Area 1 review fixes | done (`8f66aa2`, `145ca72`, `84f780d`, `4e771af`, `a6c8b97`, `3f40ecc`, `89cb1de`, `4803d13`) | no worklist change; 13 new tests (`toolsMdMigrationFindings` 10, archive collision probes 2, legacy-gate cache deviation 1) |
 | 4 Flush plan and runtime flush gate | done (`83cbcc3`, `99ef3c9`, `cb3d48b`) | 5 worklist entries removed; 14 new tests (`flushPlan` windows 5, `memoryFlushGate` fixtures 9) |
+| Area 4 review fixes | done (`dfe7e0c`, `d518dbe`, `5a44e11`, `1c9122f`, `a10eb23`, `d727d2e`, `e68f663`) | no worklist change; 13 new tests (`flushPlan` byte sizes 7, offset zones 4, out-of-range `nowMs` 1; `memoryFlushGate` disabled plan 1); flush plan row back to `partial` |
 
 Full `tests/integration` at `afd9965` plus the plan and matrix edits, `/tmp/openclaw-head` at
 `eb377ac59e6`, Node 24.21.0, seven chunks with the run-loop
@@ -64,6 +65,21 @@ After area 4 (2026-09-27, `cb3d48b` on `wip/pin-flush`, same checkout and Node, 
 run-loop test not run in this lane): `tests/integration` 191 passed, 84 xfailed, 5 skipped,
 0 failed of 280 collected, about 29 minutes. The worklist holds 13 areas and 85 tests (84
 here plus the run-loop xfail). Offline suite: 1109 passed, 254 skipped (run-loop deselected).
+
+After the area 4 review fixes (2026-09-27, `e68f663` on `wip/pin-flush`, same checkout and Node,
+six chunks, run-loop test not run in this lane): `tests/integration` 204 passed, 84 xfailed,
+5 skipped, 0 failed of 293 collected, about 29 minutes; the 13 new tests pass. Offline suite:
+1154 passed, 267 skipped (run-loop deselected); ruff clean; `scripts/extract_upstream_constants.py
+--check` against the tag rc 0; `/tmp/openclaw-head` clean after the runs. The fixes: byte sizes
+parse like `parseNonNegativeByteSize`/`parseByteSize` (−0.5 no longer disables the transcript-size
+force path; `UNIT_MULTIPLIERS` is extracted), ECMA-402 offset zones such as `+03:00` resolve like
+`Intl` (the flush targeted the previous day's file before), an `nowMs` beyond ±8.64e15 falls back
+to the current time (`resolveMemoryCoreNowMs`), the `memoryFlushGate` op returns `{disabled: true}`
+for a disabled plan instead of failing, flush errors carry the cause chain and take a host
+redactor, `resolve_memory_flush_threshold`/`resolve_compaction_threshold` are top-level, and the
+Lab prompt inspector shows the flush decision and the flush turn apart, with the host-supplied time
+format. The flush plan row is `partial` again: it names four gaps (host time format, UTC fallback
+for an invalid zone, the Python date range, `zoneinfo` versus ICU names).
 
 ## Decisions needed before stage 2
 
@@ -242,6 +258,15 @@ Doruk wants heartbeat and automation kept, in the tag's shape; nothing here is d
   pin's 26,000 gives 15,500 at the tag). Not ported: the store-load projection of the flat
   pre-tag `memoryFlush*` fields, the incognito/sandbox skips and the provider server-compaction
   minimum threshold (docs/parity_matrix.md, row Runtime flush trigger).
+- Review fixes 2026-09-27 (`dfe7e0c`..`e68f663`): see the measured paragraph under Stage 2
+  progress. `DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR` is `DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR`
+  since `83cbcc3` (the tag's name, src/agents/agent-settings.ts); no alias was kept, so a host
+  importing the old name must rename it. Open for the merge: one time-format policy for the SDK.
+  This lane takes `time_format` in `build_memory_flush_plan` (default `"24"`); the heartbeat lane's
+  `prepare_heartbeat_turn` and the startup context (`memory_core/bootstrap/startup.py`) take none and
+  print 24-hour lines. Either thread one host `time_format` through all three or drop it and keep a
+  single documented 24-hour deviation; the heartbeat run-prompt oracle test should then pass
+  `hostTimeFormat` and compare the full time line.
 
 ### 5. memory_get, memory_search contract, deadline and index identity (estimate 16-26 h)
 

@@ -129,11 +129,17 @@ Stages, in the order the `stage` events stream them:
    the plan built for that window: threshold = window − reserve − soft threshold,
    both terms derived from the window (200,000 gives 20,000 / 4,000 / 176,000; the
    S11 test window 5,333 gives 1,333 / 2,000 / 2,000). The status-bar meter, the
-   settings flush group and the prompt inspector show the terms.
+   settings flush group and the prompt inspector show the terms. The flush prompt's
+   time line uses the Lab's host-supplied 24-hour format (`timeFormat`); upstream
+   detects the host's 12/24-hour format, and the inspector says so.
 4. `flush`: when triggered, the flush turn (write tool on today's daily file only;
    bootstrap files read-only), then `record_memory_flush_success`/`failure`, which
    write the session entry's `memoryFlush` state (`succeeded` with the flushed
    cycle, or `failed` with a failure count; three failures mark the cycle flushed).
+   A failure's `error.message` is the SDK's truncated message with the cause chain,
+   redacted with the Lab's key values. The prompt inspector shows the decision
+   (run/skip) and the flush turn's outcome apart: the scripted engine decides "run"
+   and skips the turn (`scripted: flush turn needs a model`).
 5. `reindex`, 6. `recall` (demo-only auto-recall), 7. `prompt`
    (`build_workspace_context` for the session kind; no generic `read` tool),
 8. `stream` (tool loop), 9. `persist` (transcript, token snapshot, seen truncation

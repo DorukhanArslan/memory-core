@@ -2,13 +2,14 @@
 // GET /api/lab/files (FileEntry[], DESIGN §4.3); nothing about the layout is hardcoded here.
 import { h, icon, replace, fmtN, fmtK, fmtTime, middleTruncate, copyText, trFold, clamp, basename } from '../ui/dom.js';
 import { t } from '../i18n/index.js';
-import { store, refresh, registerRenderer, persistUi, loadFiles } from '../store.js';
+import { store, refresh, registerRenderer, persistUi, loadFiles, loadState } from '../store.js';
+import { api } from '../api.js';
 import { badge, badgeLabel, iconBtn, segmented, skeleton, failCard, emptyState, btn } from '../ui/kit.js';
 import { openMenu, toast } from '../ui/overlay.js';
 import { layoutLabel } from './shell.js';
 import { previewFor } from '../inspector/prompt.js';
 
-const BADGE_ORDER = ['pending', 'missing', 'truncated', 'outside_layout', 'dynamic', 'injected', 'empty', 'excluded', 'absent', 'session', 'today', 'yesterday', 'extension'];
+const BADGE_ORDER = ['pending', 'missing', 'unreadable', 'truncated', 'retired', 'outside_layout', 'injected', 'empty', 'excluded', 'absent', 'session', 'today', 'yesterday', 'extension'];
 export const isMemoryPath = (p) => p === 'MEMORY.md' || p.startsWith('memory/');
 
 export function badgeTip(type, e) {
@@ -18,7 +19,8 @@ export function badgeTip(type, e) {
     case 'missing': return t('badgeTip.missing');
     case 'absent': return t('badgeTip.absent');
     case 'excluded': return e.excludedReason || '';
-    case 'dynamic': return t('badgeTip.dynamic');
+    case 'unreadable': return e.unreadableReason ? `${t('badgeTip.unreadable')} · ${e.unreadableReason}` : t('badgeTip.unreadable');
+    case 'retired': return e.retiredNote || t('badgeTip.retired');
     case 'pending': return t('badgeTip.pending');
     case 'empty': return e.excludedReason || '';
     case 'extension': return t('badgeTip.extension');
@@ -62,8 +64,20 @@ function rowMenu(anchor, e) {
     { label: t('act.copyPath'), ic: 'copy', onSelect: () => copyText(root ? `${root}/${e.path}` : e.path).then(() => toast(t('toast.pathCopied'), { tone: 'ok' })) },
     { label: t('act.viewDiff'), ic: 'diff', onSelect: () => { store.ui.diffBase = 'reset'; store.actions.openInspector('diff'); } },
     isMemoryPath(e.path) ? { label: t('act.memoryGet'), ic: 'database', onSelect: () => store.actions.memoryGet(e.path) } : null,
+    e.migration === 'tools_md' ? { label: t('act.migrateToolsMd'), ic: 'merge', onSelect: () => migrateToolsMd() } : null,
     { label: t('act.searchFile'), ic: 'search', onSelect: () => store.actions.searchMemory(basename(e.path).replace(/\.md$/, '')) },
   ]);
+}
+// POST /api/lab/workspace/migrate-tools-md: memory_core.bootstrap.migrate_tools_md (upstream doctor step).
+async function migrateToolsMd() {
+  try {
+    const res = await api.post('/api/lab/workspace/migrate-tools-md', {});
+    if (res?.warnings?.length) toast(`${t('toast.toolsMdWarning')}: ${res.warnings[0]}`, { tone: 'danger' });
+    else if (res?.changes?.length) toast(res.merged ? t('toast.toolsMdMigrated') : t('toast.toolsMdRemoved'), { tone: 'ok' });
+    await Promise.all([loadFiles(), loadState()]);
+  } catch (err) {
+    toast(err.message, { tone: 'danger' });
+  }
 }
 function folderRow(id, label, { level = 1, meta = null, count = null, tone = null, tip = null } = {}) {
   const open = store.ui.expanded.has(id);

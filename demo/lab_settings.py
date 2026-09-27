@@ -152,7 +152,7 @@ def update_settings(lab: LabRuntime, payload: dict[str, Any]) -> dict[str, Any]:
         changed.append("embedding.model")
     if "layout" in payload:
         if payload["layout"] not in LAYOUTS:
-            raise LabError(400, "layout must be 'memory-core' or 'openclaw'", code="invalid_setting")
+            raise LabError(400, "layout must be 'memory-core' or 'upstream'", code="invalid_setting")
         settings.layout = payload["layout"]
         changed.append("layout")
     budgets = _section(payload, "budgets")

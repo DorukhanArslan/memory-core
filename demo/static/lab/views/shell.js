@@ -24,9 +24,9 @@ export function layoutLabel() {
   const d = store.data;
   const layout = d.settings?.layout || d.snap?.workspace?.layout;
   if (!layout) return null;
-  if (layout === 'pin' || String(layout).endsWith('-pin')) {
+  if (layout === 'upstream') {
     const pin = d.snap?.pin || d.parity?.pin;
-    return pin ? `pin ${String(pin).slice(0, 8)}` : 'pin';
+    return pin ? `upstream ${String(pin).slice(0, 8)}` : 'upstream';
   }
   return 'MEMORY-CORE';
 }
@@ -53,7 +53,7 @@ function statusChips() {
   const d = store.data; const s = d.settings; const snap = d.snap;
   const list = [];
   const lay = layoutLabel();
-  if (lay) list.push(chip({ label: lay, tone: lay.startsWith('pin') ? 'info' : 'neutral', onClick: () => store.actions.openSettings('layout'), title: lay.startsWith('pin') ? t('top.layoutPinTip') : t('top.layoutMemoryCoreTip'), testid: 'chip-layout', cls: 'chip-mono' }));
+  if (lay) list.push(chip({ label: lay, tone: lay.startsWith('upstream') ? 'info' : 'neutral', onClick: () => store.actions.openSettings('layout'), title: lay.startsWith('upstream') ? t('top.layoutPinTip') : t('top.layoutMemoryCoreTip'), testid: 'chip-layout', cls: 'chip-mono' }));
   const bs = snap?.bootstrap;
   if (bs?.status) {
     const pending = bs.status === 'pending';

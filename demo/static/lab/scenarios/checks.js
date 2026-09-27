@@ -32,7 +32,6 @@ const diffFor = (ctx, p) => (ctx.diff || []).find((d) => d.path === p);
 function sectionText(pv, section) {
   if (!pv) return '';
   if (section === 'stable') return pv.stableText || '';
-  if (section === 'dynamic') return pv.dynamicText || '';
   if (section === 'bootstrap') return pv.bootstrapText || '';
   if (section === 'startup') return pv.startup?.text || '';
   if (section === 'flush') return `${pv.flush?.prompt || ''}\n${pv.flush?.target || ''}`;
@@ -95,7 +94,7 @@ export const turnPromptFilesExclude = (names) => (ctx) => !!ctx.turn?.prompt && 
 export const turnKind = (kind) => (ctx) => (ctx.turn?.sessionKind || ctx.turn?.prompt?.sessionKind) === kind;
 export const promptDiffOnly = (names) => (ctx) => {
   const a = ctx.prevTurn?.prompt; const b = ctx.turn?.prompt; if (!a || !b) return false;
-  const blocks = (pv) => new Map([...splitFileSections(pv.stableText, pv.files).files, ...splitFileSections(pv.dynamicText, pv.files).files].map((x) => [x.file.name, x.text]));
+  const blocks = (pv) => new Map(splitFileSections(pv.stableText, pv.files).files.map((x) => [x.file.name, x.text]));
   const A = blocks(a); const B = blocks(b);
   const changed = [...new Set([...A.keys(), ...B.keys()])].filter((n) => A.get(n) !== B.get(n));
   return changed.length === names.length && names.every((n) => changed.includes(n));

@@ -18,7 +18,8 @@ import {
 import { sourceNames } from '../ui/diff.js';
 
 const SESSION_FILE = /^memory\/\d{4}-\d{2}-\d{2}-[a-z0-9-]+\.md$/;
-const BOOTSTRAP_FILES = ['AGENTS.md', 'SOUL.md', 'TOOLS.md', 'IDENTITY.md', 'USER.md', 'HEARTBEAT.md', 'PROACTIVE_PREFERENCES.md'];
+// v2026.9.6 map plus the extension; TOOLS.md and HEARTBEAT.md are no longer bootstrap files.
+const BOOTSTRAP_FILES = ['AGENTS.md', 'SOUL.md', 'IDENTITY.md', 'USER.md', 'PROACTIVE_PREFERENCES.md'];
 const TURN = ['turn', 'diff'];
 const curationUserFlagOff = (ctx) => {
   const flags = ctx.settings?.flags || {};
@@ -147,21 +148,21 @@ export const SCENARIOS = [
       { act: 'look', tab: 'prompt', promptKind: 'main', label: 'scn.S08.l0', expect: 'scn.S08.e0',
         checks: [auto('promptFiles(equals, upstream main set)', promptFiles('equals', (ctx) => {
           const nonEmpty = (n) => (ctx.files || []).some((e) => e.path === n && e.exists !== false && !(e.badges || []).includes('empty'));
-          const base = ['AGENTS.md', 'SOUL.md', 'IDENTITY.md', 'USER.md', 'TOOLS.md', 'MEMORY.md', 'HEARTBEAT.md'].filter(nonEmpty);
+          const base = ['AGENTS.md', 'SOUL.md', 'IDENTITY.md', 'USER.md', 'MEMORY.md'].filter(nonEmpty);
           if (nonEmpty('PROACTIVE_PREFERENCES.md')) base.push('PROACTIVE_PREFERENCES.md');
           if (ctx.snap?.bootstrap?.status === 'pending' && nonEmpty('BOOTSTRAP.md')) base.push('BOOTSTRAP.md');
           return base;
         }, 'main'), ['prompt:main', 'files', 'snap'])] },
       { act: 'look', tab: 'prompt', promptKind: 'subagent', label: 'scn.S08.l1', expect: 'scn.S08.e1',
-        checks: [auto('promptFiles(equals,[AGENTS.md,TOOLS.md],{kind:subagent})', promptFiles('equals', ['AGENTS.md', 'TOOLS.md'], 'subagent'), ['prompt:subagent'])] },
+        checks: [auto('promptFiles(equals,[AGENTS.md],{kind:subagent})', promptFiles('equals', ['AGENTS.md'], 'subagent'), ['prompt:subagent'])] },
       { act: 'look', tab: 'prompt', promptKind: 'cron', label: 'scn.S08.l2', expect: 'scn.S08.e2',
-        checks: [auto('promptFiles(excludes,[MEMORY.md,HEARTBEAT.md],{kind:cron})', promptFiles('excludes', ['MEMORY.md', 'HEARTBEAT.md'], 'cron'), ['prompt:cron']), auto('promptFiles(includes,[AGENTS.md,TOOLS.md,SOUL.md,IDENTITY.md,USER.md],{kind:cron})', promptFiles('includes', ['AGENTS.md', 'TOOLS.md', 'SOUL.md', 'IDENTITY.md', 'USER.md'], 'cron'), ['prompt:cron'])] },
+        checks: [auto('promptFiles(excludes,[MEMORY.md],{kind:cron})', promptFiles('excludes', ['MEMORY.md'], 'cron'), ['prompt:cron']), auto('promptFiles(includes,[AGENTS.md,SOUL.md,IDENTITY.md,USER.md],{kind:cron})', promptFiles('includes', ['AGENTS.md', 'SOUL.md', 'IDENTITY.md', 'USER.md'], 'cron'), ['prompt:cron'])] },
       { act: 'look', tab: 'prompt', promptKind: 'group', label: 'scn.S08.l3', expect: 'scn.S08.e3', blockedIf: needsMemoryMd,
-        checks: [auto('promptFiles(includes,[MEMORY.md],{kind:group})', promptFiles('includes', ['MEMORY.md'], 'group'), ['prompt:group'])] },
+        checks: [auto('promptFiles(excludes,[MEMORY.md],{kind:group})', promptFiles('excludes', ['MEMORY.md'], 'group'), ['prompt:group'])] },
       { act: 'send', kind: 'subagent', text: 'Sana nasıl cevap vermemi istediğimi biliyor musun?', waitFor: 'chat.turn.completed|chat.turn.failed', expect: 'scn.S08.e4', blockedIf: needsKey,
         checks: [auto('turn kind = subagent', turnKind('subagent'), ['turn']), auto('turnPromptFiles(excludes,[USER.md,MEMORY.md])', turnPromptFilesExclude(['USER.md', 'MEMORY.md']), ['turn']), manual('scn.S08.m4')] },
-      { act: 'setting', apply: { settings: { layout: 'pin' } }, label: 'scn.S08.l5', expect: 'scn.S08.e5', blockedIf: needsProactive,
-        checks: [auto('promptFiles(excludes,[PROACTIVE_PREFERENCES.md],{layout:pin})', promptFiles('excludes', ['PROACTIVE_PREFERENCES.md'], 'main'), ['prompt:main'])] },
+      { act: 'setting', apply: { settings: { layout: 'upstream' } }, label: 'scn.S08.l5', expect: 'scn.S08.e5', blockedIf: needsProactive,
+        checks: [auto('promptFiles(excludes,[PROACTIVE_PREFERENCES.md],{layout:upstream})', promptFiles('excludes', ['PROACTIVE_PREFERENCES.md'], 'main'), ['prompt:main'])] },
     ],
   },
   {
@@ -189,13 +190,13 @@ export const SCENARIOS = [
     id: 'S10', minutes: 5, view: 'heartbeat', tags: ['uzantı', 'model'], requires: ['S09 görevleri', 'düzen MEMORY-CORE'], blockedIf: needsKey,
     steps: [
       { act: 'edit', path: 'PROACTIVE_PREFERENCES.md', content: '# PROACTIVE_PREFERENCES.md\n\n- Fatura ve ödeme takiplerini her zaman bildir.\n- Toplantı hatırlatmaları için bildirim gönderme; HEARTBEAT_OK yaz.\n', waitFor: 'file.saved', label: 'scn.S10.l0', expect: 'scn.S10.e0',
-        checks: [auto('badge(PROACTIVE_PREFERENCES.md,injected)', badge('PROACTIVE_PREFERENCES.md', 'injected'), ['files']), auto('promptOrder([USER.md,PROACTIVE_PREFERENCES.md,TOOLS.md],{kind:heartbeat})', promptOrder(['USER.md', 'PROACTIVE_PREFERENCES.md', 'TOOLS.md'], 'heartbeat'), ['prompt:heartbeat'])] },
+        checks: [auto('badge(PROACTIVE_PREFERENCES.md,injected)', badge('PROACTIVE_PREFERENCES.md', 'injected'), ['files']), auto('promptOrder([USER.md,PROACTIVE_PREFERENCES.md],{kind:heartbeat})', promptOrder(['USER.md', 'PROACTIVE_PREFERENCES.md'], 'heartbeat'), ['prompt:heartbeat'])] },
       { act: 'send', text: 'Bugünün notuna takip maddesi ekle: cuma 11:00 ekip toplantısı.', waitFor: 'chat.turn.completed|chat.turn.failed', expect: 'scn.S10.e1',
         checks: [auto('fileChanged(daily(bugün))', fileChanged(daily()), TURN)] },
       { act: 'press', view: 'heartbeat', target: 'hb-clock30', then: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S10.l2', expect: 'scn.S10.e2',
         checks: [model('heartbeatDelivered(true)', hbDelivered(true), ['hbRun']), model('replyMatches(/fatura/i)', hbReplyMatches(/fatura/i), ['hbRun']), model('replyLacks(/toplantı/i)', hbReplyLacks(/toplantı/i), ['hbRun'])] },
       { act: 'look', view: 'heartbeat', target: 'hb-compare', label: 'scn.S10.l3', expect: 'scn.S10.e3', checks: [manual('scn.S10.m3')] },
-      { act: 'setting', apply: { settings: { layout: 'pin' } }, label: 'scn.S10.l4', expect: 'scn.S10.e4',
+      { act: 'setting', apply: { settings: { layout: 'upstream' } }, label: 'scn.S10.l4', expect: 'scn.S10.e4',
         checks: [auto('promptFiles(excludes,[PROACTIVE_PREFERENCES.md],{kind:heartbeat})', promptFiles('excludes', ['PROACTIVE_PREFERENCES.md'], 'heartbeat'), ['prompt:heartbeat'])] },
     ],
   },

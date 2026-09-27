@@ -51,12 +51,12 @@ _BETA_AGENTS_PREFIX = f"{AGENTS_FILENAME}.doctor-backup-"
 _WRITING_INFIX = ".doctor-writing-"
 
 # JavaScript regex semantics: `.` stops at every line terminator, `$` is end of input.
-_LINE_RE = re.compile("[^\n\r  ]*(?:\n|\\Z)")
+_LINE_RE = re.compile("[^\n\r\u2028\u2029]*(?:\n|\\Z)")
 _FENCE_RE = re.compile(f"^{JS_SPACE}*(`{{3,}}|~{{3,}})")
 _CLOSING_FENCE_RE = re.compile(f"^{JS_SPACE}*(`{{3,}}|~{{3,}}){JS_SPACE}*\\Z")
 _HEADING_RE = re.compile(f"^(#{{1,6}}){JS_SPACE}+(.+?){JS_SPACE}*#*{JS_SPACE}*\\Z")
 _LOCAL_NOTES_RE = re.compile(
-    "(?:^|(?<=[\n\r  ]))###"
+    "(?:^|(?<=[\n\r\u2028\u2029]))###"
     f"{JS_SPACE}+{js_iu_keyword_pattern('Local notes')}(?:{JS_SPACE}|\\Z)"
 )
 

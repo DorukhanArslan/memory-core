@@ -124,8 +124,8 @@ export function promptTab(turn, { ctx = 'turn' } = {}) {
 
   // compare with the previous turn's stored prompt
   let changedMap = {}; let prevTurn = null;
-  const stableSplit = splitFileSections(pv.stableText, (pv.files || []).filter((f) => f.section !== 'dynamic'));
-  const dynSplit = splitFileSections(pv.dynamicText, (pv.files || []).filter((f) => f.section === 'dynamic'));
+  // v2026.9.6 renders every file in Project Context, above the cache boundary (no dynamic block).
+  const stableSplit = splitFileSections(pv.stableText, pv.files || []);
   if (mode === 'turn' && u.compare) {
     const list = d.turns.filter((x) => typeof x.id === 'number' && !x.failedStage);
     const i = list.findIndex((x) => x.id === turn.id);
@@ -134,15 +134,14 @@ export function promptTab(turn, { ctx = 'turn' } = {}) {
       const prev = d.details.get(prevTurn.id);
       if (!prev) loadTurn(prevTurn.id);
       else if (prev.prompt) {
-        const prevSplit = splitFileSections(prev.prompt.stableText, (prev.prompt.files || []).filter((f) => f.section !== 'dynamic'));
-        const prevDyn = splitFileSections(prev.prompt.dynamicText, (prev.prompt.files || []).filter((f) => f.section === 'dynamic'));
-        const prevBy = new Map([...prevSplit.files, ...prevDyn.files].map((x) => [x.file.name, x.text]));
-        for (const x of [...stableSplit.files, ...dynSplit.files]) {
+        const prevSplit = splitFileSections(prev.prompt.stableText, prev.prompt.files || []);
+        const prevBy = new Map(prevSplit.files.map((x) => [x.file.name, x.text]));
+        for (const x of stableSplit.files) {
           const before = prevBy.get(x.file.name);
           if (before === undefined) changedMap[x.file.name] = { ...diffStats(lineDiff('', x.text)), prev: '' };
           else if (before !== x.text) changedMap[x.file.name] = { ...diffStats(lineDiff(before, x.text)), prev: before };
         }
-        for (const name of prevBy.keys()) if (![...stableSplit.files, ...dynSplit.files].some((x) => x.file.name === name)) changedMap[name] = { added: 0, removed: 1, prev: prevBy.get(name), gone: true };
+        for (const name of prevBy.keys()) if (!stableSplit.files.some((x) => x.file.name === name)) changedMap[name] = { added: 0, removed: 1, prev: prevBy.get(name), gone: true };
       }
     }
   }
@@ -180,10 +179,7 @@ export function promptTab(turn, { ctx = 'turn' } = {}) {
   wrap.append(h('div', { class: 'cache-boundary', role: 'separator', 'aria-label': t('prompt.cacheBoundary'), 'data-testid': 'cache-boundary' },
     h('span', { class: 'cb-line' }), h('span', { class: 'cb-label' }, icon('layers', 12), t('prompt.cacheBoundary')), h('span', { class: 'cb-line' }),
     h('span', { class: 'chip chip-xs tone-neutral cb-chip', 'data-tip': t('prompt.visualOnlyTip') }, t('prompt.visualOnly'))));
-  // 6. Dinamik kısım
-  wrap.append(section('dynamic', t('prompt.dynamic'), { count: (pv.dynamicText || '').length, copy: pv.dynamicText || '', empty: !pv.dynamicText,
-    body: () => (dynSplit.files.length ? h('div', { class: 'stack-tight' }, dynSplit.head ? promptPre(dynSplit.head) : null, dynSplit.files.map((x) => fileFold(x.file, x.text, { changed: changedMap[x.file.name], prevText: changedMap[x.file.name]?.prev ?? null }))) : h('div', { class: 'muted' }, t('prompt.noDynamic'))) }));
-  // 7. Hariç tutulanlar
+  // 6. Hariç tutulanlar
   const excl = pv.excluded || [];
   wrap.append(section('excluded', t('prompt.excluded'), { count: excl.length, empty: !excl.length, testid: 'prompt-section-excluded',
     body: () => (excl.length ? h('ul', { class: 'kv-list' }, excl.map((e) => h('li', null, h('span', { class: 'mono' }, e.name), badge(/empty|boş/.test(e.reason || '') ? 'empty' : 'excluded'), h('span', { class: 'muted' }, e.reason)))) : h('div', { class: 'muted' }, t('prompt.noExcluded'))) }));

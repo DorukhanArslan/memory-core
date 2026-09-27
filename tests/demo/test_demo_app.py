@@ -238,10 +238,10 @@ def test_files_follow_the_session_kind_filter(client):
     assert entries["USER.md"]["excludedReason"] == "subagent: yalnız AGENTS.md"
 
 
-def test_files_with_the_openclaw_layout_mark_extensions_outside_the_layout(client):
+def test_files_with_the_upstream_layout_mark_extensions_outside_the_layout(client):
     client.get("/api/lab/state")
 
-    entries = {entry["path"]: entry for entry in client.get("/api/lab/files", params={"layout": "openclaw"}).json()}
+    entries = {entry["path"]: entry for entry in client.get("/api/lab/files", params={"layout": "upstream"}).json()}
 
     assert entries["PROACTIVE_PREFERENCES.md"]["badges"] == ["outside_layout"]
     assert entries["user"]["badges"] == ["outside_layout"]
@@ -1056,7 +1056,7 @@ def test_prompt_preview_follows_the_upstream_session_filters(client, lab):
     subagent = preview(client, sessionKind="subagent")
     cron = preview(client, sessionKind="cron")
     group = preview(client, sessionKind="group")
-    compat = preview(client, sessionKind="main", layout="openclaw")
+    compat = preview(client, sessionKind="main", layout="upstream")
 
     assert names(main) == ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "PROACTIVE_PREFERENCES.md", "MEMORY.md"]
     assert "dynamicText" not in main
@@ -1075,7 +1075,7 @@ def test_prompt_preview_follows_the_upstream_session_filters(client, lab):
         "group: kök MEMORY.md paylaşılan oturumda yüklenmez"
     )
     assert "PROACTIVE_PREFERENCES.md" not in names(compat)
-    assert compat["layout"] == "openclaw"
+    assert compat["layout"] == "upstream"
 
 
 def test_prompt_preview_shows_the_pending_bootstrap_only_where_upstream_does(client, lab):
@@ -1663,7 +1663,7 @@ def test_settings_env_key_is_reported_by_source_only(client, monkeypatch):
 def test_settings_update_applies_and_emits(client, lab):
     updated = client.put("/api/lab/settings", json={
         "chat": {"model": "openai/gpt-6-sol", "baseUrl": "https://llm.example/v1/"},
-        "layout": "openclaw",
+        "layout": "upstream",
         "budgets": {"totalMaxChars": 12_000, "warningMode": "once"},
         "contextInjection": "continuation-skip",
         "flush": {"mode": "threshold", "contextWindowTokens": 26_000},
@@ -1672,7 +1672,7 @@ def test_settings_update_applies_and_emits(client, lab):
     }).json()
 
     assert updated["chat"]["model"] == "openai/gpt-6-sol" and updated["chat"]["baseUrl"] == "https://llm.example/v1"
-    assert updated["layout"] == "openclaw" and lab.layout.name == "openclaw"
+    assert updated["layout"] == "upstream" and lab.layout.name == "openclaw"
     assert updated["budgets"]["totalMaxChars"] == 12_000 and updated["budgets"]["warningMode"] == "once"
     assert updated["flush"]["threshold"] == 2_000
     assert updated["heartbeat"]["everyMs"] == 600_000

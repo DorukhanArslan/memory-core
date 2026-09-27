@@ -139,7 +139,7 @@ export function renderSettings(body) {
         row('', checkLine('embedding')),
       ], { ic: 'layers' }),
       group('layout', t('settings.layout'), [
-        row(t('settings.layout'), segmented({ options: [{ value: 'memory-core', label: 'MEMORY-CORE' }, { value: 'pin', label: t('settings.layoutPin') }], value: s.layout, onChange: (v) => putSettings({ layout: v }), aria: t('settings.layout'), size: 'sm', testid: 'settings-layout-seg' }), t('settings.layoutHelp')),
+        row(t('settings.layout'), segmented({ options: [{ value: 'memory-core', label: 'MEMORY-CORE' }, { value: 'upstream', label: t('settings.layoutPin') }], value: s.layout, onChange: (v) => putSettings({ layout: v }), aria: t('settings.layout'), size: 'sm', testid: 'settings-layout-seg' }), t('settings.layoutHelp')),
       ], { ic: 'layers' }),
       group('budget', t('settings.budget'), [
         row(t('settings.perFile'), numberInput('set-max', bud.maxChars, (v) => putSettings({ budgets: { maxChars: v } }), { step: 1000 }), null, { forId: 'set-max' }),

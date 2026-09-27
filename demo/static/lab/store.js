@@ -49,7 +49,7 @@ export const store = {
     promptMode: 'turn',
     promptOpts: { contextInjection: null, lightContext: false },
     compare: false,
-    openSections: new Set(saved.openSections || ['notices', 'budget', 'stable', 'dynamic', 'recall', 'tools']),
+    openSections: new Set(saved.openSections || ['notices', 'budget', 'stable', 'recall', 'tools']),
     openFolds: new Set(),
     howOpen: new Set(),
     explorerOrder: saved.explorerOrder || 'prompt',

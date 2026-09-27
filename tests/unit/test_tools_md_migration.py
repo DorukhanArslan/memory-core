@@ -205,7 +205,7 @@ def test_should_merge_and_merge_helpers():
     for template in (LEGACY_TOOLS_MD_TEMPLATE, LEGACY_TOOLS_DEV_MD_TEMPLATE, LEGACY_TOOLS_DEV_FALLBACK):
         assert should_merge_tools_md(template) is False
         assert should_merge_tools_md(template.rstrip("\n")) is True
-    assert should_merge_tools_md("　\n") is False
+    assert should_merge_tools_md("\u3000\n") is False
     assert should_merge_tools_md("x") is True
     # A fenced "## Tools" is not the Tools section.
     agents = "# A\n\n```\n## Tools\n```\n"

@@ -61,7 +61,8 @@ SESSION_KINDS = ("main", "group", "channel", "direct", "subagent", "cron", "hear
 MINIMAL_PROMPT_KINDS = frozenset({"subagent", "cron"})
 LAYOUTS: dict[str, WorkspaceLayout] = {
     "memory-core": MEMORY_CORE_WORKSPACE_LAYOUT,
-    "openclaw": OPENCLAW_COMPAT_LAYOUT,
+    # The upstream v2026.9.6 map alone (no OpenClaw brand in the Lab UI).
+    "upstream": OPENCLAW_COMPAT_LAYOUT,
 }
 SEARCH_MODES = ("hybrid", "vector", "text")
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
@@ -364,7 +365,7 @@ class LabRuntime:
         if name in (None, ""):
             return self.layout
         if name not in LAYOUTS:
-            raise LabError(400, "layout must be 'memory-core' or 'openclaw'", code="invalid_layout")
+            raise LabError(400, "layout must be 'memory-core' or 'upstream'", code="invalid_layout")
         return LAYOUTS[str(name)]
 
     def config(self, *, mode: str = "text") -> MemoryConfig:

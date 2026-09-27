@@ -230,7 +230,7 @@ def prompt_view(
     *,
     extras: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    layout = lab.layout_for(options.layout)
+    lab.layout_for(options.layout)  # rejects an unknown layout id
     truncation = truncation_by_name(wc)
     files = []
     for file in wc.files:
@@ -247,7 +247,7 @@ def prompt_view(
         "sessionKind": options.kind,
         "runKind": _run_kind(options),
         "contextMode": options.context_mode,
-        "layout": layout.name,
+        "layout": options.layout or lab.settings.layout,
         "bootstrapMode": wc.bootstrap_mode,
         "bootstrapModeReason": bootstrap_mode_reason(wc, options),
         "bootstrapStatus": wc.bootstrap_status,

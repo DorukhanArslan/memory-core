@@ -434,6 +434,26 @@ def test_real_openclaw_oracle_flush_plan_parses_force_flush_bytes_like_python(
     assert result["result"]["prompt"] == python_plan.prompt
 
 
+def test_real_openclaw_oracle_flush_plan_falls_back_to_now_outside_date_range():
+    # resolveMemoryCoreNowMs (extensions/memory-core/src/time.ts; flush-plan.test.ts:10-18): an
+    # nowMs beyond 8.64e15 is not a valid Date, so the plan uses Date.now(). The Python plans
+    # built around the call bracket the oracle's clock (a UTC date change during the call).
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    now_ms = 8_640_000_000_000_001
+    config = {"agents": {"defaults": {"userTimezone": "UTC"}}}
+
+    before = build_memory_flush_plan_from_config(workspace_dir=None, cfg=config, now_ms=now_ms)
+    result = oracle.run({"operation": "flushPlan", "nowMs": now_ms, "config": config})
+    after = build_memory_flush_plan_from_config(workspace_dir=None, cfg=config, now_ms=now_ms)
+
+    assert result["ok"] is True
+    assert before is not None and after is not None
+    assert (result["result"]["relativePath"], result["result"]["systemPrompt"]) in {
+        (before.relative_path, before.system_prompt),
+        (after.relative_path, after.system_prompt),
+    }
+
+
 @pytest.mark.parametrize("user_timezone", ["+03:00", "-05:30", "+0300", "\u221203:00"])
 def test_real_openclaw_oracle_flush_plan_accepts_offset_time_zones(user_timezone: str):
     # resolveUserTimezone (src/agents/date-time.ts) keeps any zone Intl accepts, so an ECMA-402

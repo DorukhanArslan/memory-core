@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone as fixed_offset_zone, tzinfo
 import math
 import re
+import time
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -208,6 +209,12 @@ def build_memory_flush_plan(
     20000 and the configured soft threshold. ``time_format`` is the host's 12/24-hour format
     of the prompt's ``Current time:`` line (:func:`format_current_time_line`).
     ``workspace_dir`` is unused, as upstream.
+
+    ``now_ms`` follows ``resolveMemoryCoreNowMs`` (extensions/memory-core/src/time.ts): a
+    missing, non-finite or out-of-``Date``-range (beyond ±8.64e15) value means the current
+    time. Deviation: a ``Date``-valid instant outside the years 1-9999 raises ``ValueError``
+    (Python dates stop there; upstream formats it), and before the year 1000 the unpadded
+    upstream stamp (``memory/999-01-01.md``) fails the daily-path check.
     """
     del workspace_dir
 
@@ -225,7 +232,7 @@ def build_memory_flush_plan(
         )
         soft_threshold = min(soft_threshold, math.floor((window - reserve_tokens_floor) / 2))
 
-    resolved_now_ms = now_ms if now_ms is not None else int(datetime.now(tz=UTC).timestamp() * 1000)
+    resolved_now_ms = _resolve_date_timestamp_ms(now_ms)
     timezone_label, zone = _resolve_timezone(timezone)
     date_stamp = _format_date_stamp_in_timezone(resolved_now_ms, zone)
     relative_path = validate_daily_memory_target(f"memory/{date_stamp}.md")
@@ -734,16 +741,52 @@ def _resolve_timezone(timezone: str) -> tuple[str, tzinfo]:
     return "UTC", ZoneInfo("UTC")
 
 
-def _format_date_stamp_in_timezone(now_ms: int, zone: tzinfo) -> str:
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+# MAX_DATE_TIMESTAMP_MS (packages/normalization-core/src/number-coercion.ts): TimeClip's limit.
+_MAX_DATE_TIMESTAMP_MS = 8_640_000_000_000_000
+
+
+def _date_now_ms() -> int:
+    """``Date.now()``."""
+    return time.time_ns() // 1_000_000
+
+
+def _resolve_date_timestamp_ms(now_ms: Any) -> int | float:
+    """``resolveMemoryCoreNowMs`` (extensions/memory-core/src/time.ts) and
+    ``resolveDateTimestampMs`` (number-coercion.ts): a ``Date``-valid timestamp, else now."""
+    if _is_number(now_ms) and _is_finite_number(now_ms) and abs(now_ms) <= _MAX_DATE_TIMESTAMP_MS:
+        return now_ms
+    return _date_now_ms()
+
+
+def _local_instants(now_ms: int | float, zone: tzinfo) -> tuple[datetime, datetime]:
+    """(UTC, local) of ``new Date(now_ms)``: TimeClip truncates toward zero.
+
+    Raises ``ValueError`` outside the years 1-9999, where Python dates stop.
+    """
+    try:
+        instant = _EPOCH + timedelta(milliseconds=math.trunc(now_ms))
+        return instant, instant.astimezone(zone)
+    except OverflowError as exc:
+        raise ValueError(
+            f"now_ms {now_ms!r} falls outside the years 1-9999 that Python dates support"
+        ) from exc
+
+
+def _format_date_stamp_in_timezone(now_ms: int | float, zone: tzinfo) -> str:
     """``formatDateStampInTimezone`` (flush-plan.ts): en-US ``numeric`` year, 2-digit month/day."""
-    local = datetime.fromtimestamp(now_ms / 1000, tz=UTC).astimezone(zone)
+    _, local = _local_instants(now_ms, zone)
     return f"{local.year}-{local.month:02d}-{local.day:02d}"
 
 
-def format_current_time_line(now_ms: int, timezone: str = "UTC", time_format: str = "24") -> str:
+def format_current_time_line(
+    now_ms: int | float, timezone: str = "UTC", time_format: str = "24"
+) -> str:
     """The two-line ``Current time: ...`` / ``Reference UTC: ...`` block of
     ``resolveCronStyleNow`` (``src/agents/current-time.ts:23-32``); the zone resolves like the
-    flush plan's (an IANA name or an offset such as ``+03:00``; blank or unknown: UTC).
+    flush plan's (an IANA name or an offset such as ``+03:00``; blank or unknown: UTC) and a
+    non-finite or out-of-``Date``-range ``now_ms`` means the current time
+    (``resolveDateTimestampMs``).
 
     ``time_format`` is the host's 12/24-hour preference (``"12"`` or ``"24"``). Since
     edecdbd05ef (#111527) upstream ignores the ``timeFormat`` config here and detects the
@@ -752,12 +795,13 @@ def format_current_time_line(now_ms: int, timezone: str = "UTC", time_format: st
     so the host passes it (default ``"24"``, a documented deviation).
     """
     label, zone = _resolve_timezone(timezone)
-    return _format_current_time_line(int(now_ms), label, zone, time_format)
+    return _format_current_time_line(_resolve_date_timestamp_ms(now_ms), label, zone, time_format)
 
 
-def _format_current_time_line(now_ms: int, label: str, zone: tzinfo, time_format: str = "24") -> str:
-    instant = datetime.fromtimestamp(now_ms / 1000, tz=UTC)
-    local = instant.astimezone(zone)
+def _format_current_time_line(
+    now_ms: int | float, label: str, zone: tzinfo, time_format: str = "24"
+) -> str:
+    instant, local = _local_instants(now_ms, zone)
     formatted_time = _format_user_time(local, _resolve_time_format(time_format))
     # Date.prototype.toISOString sliced to minutes: a 4-digit zero-padded year.
     utc_time = (

@@ -200,6 +200,39 @@ def test_byte_size_units_come_from_the_extracted_upstream_table():
     }
 
 
+@pytest.mark.parametrize("now_ms", [8_640_000_000_000_001, -8_640_000_000_000_001, float("nan"), float("inf"), None])
+def test_flush_plan_falls_back_when_the_timestamp_is_outside_date_range(monkeypatch, now_ms):
+    # flush-plan.test.ts:10-18 (resolveMemoryCoreNowMs): Date.now() is mocked to 2026-05-30T12:00Z.
+    import memory_core.memory_flush as memory_flush
+
+    monkeypatch.setattr(memory_flush, "_date_now_ms", lambda: 1780142400000)
+
+    plan = build_memory_flush_plan(workspace_dir=None, now_ms=now_ms)
+
+    assert plan.relative_path == "memory/2026-05-30.md"
+    assert "Reference UTC: 2026-05-30 12:00 UTC" in plan.prompt
+
+
+def test_flush_plan_truncates_fractional_timestamps_toward_zero_like_date():
+    # new Date(-0.5) is the epoch (TimeClip truncates toward zero), not 23:59 on 1969-12-31.
+    plan = build_memory_flush_plan(workspace_dir=None, now_ms=-0.5)
+
+    assert plan.relative_path == "memory/1970-01-01.md"
+    assert "Reference UTC: 1970-01-01 00:00 UTC" in plan.prompt
+
+
+def test_flush_plan_rejects_date_valid_instants_python_cannot_represent():
+    # Deviation: upstream formats years past 9999 (and before 1000 with an unpadded year);
+    # Python dates stop at 9999 and the daily path must be memory/YYYY-MM-DD.md.
+    assert build_memory_flush_plan(workspace_dir=None, now_ms=253402300799999).relative_path == (
+        "memory/9999-12-31.md"
+    )
+    with pytest.raises(ValueError, match="years 1-9999"):
+        build_memory_flush_plan(workspace_dir=None, now_ms=253402300800000)
+    with pytest.raises(UnsafeMemoryFlushTargetError):
+        build_memory_flush_plan(workspace_dir=None, now_ms=-62135596800000)
+
+
 def test_build_memory_flush_plan_from_config_ignores_removed_keys():
     plan = build_memory_flush_plan_from_config(
         workspace_dir=None,

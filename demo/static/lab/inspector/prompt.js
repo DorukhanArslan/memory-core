@@ -213,10 +213,19 @@ export function promptTab(turn, { ctx = 'turn' } = {}) {
       body: () => {
         if (!fl) return h('div', { class: 'muted' }, t('prompt.noFlush'));
         const dd = fl.decision || {};
+        // The decision (explain_memory_flush_trigger) and what happened to the flush turn are separate:
+        // a scripted engine decides "run" but skips the turn (stage flush: skip).
+        const st = (detail?.stages || []).find((x) => x.name === 'flush');
+        const outcome = fl.run ? `${t('flush.ran')} · ${fl.run.error ? t('flush.failed') : fl.run.wrote ? t('flush.wrote') : t('flush.noWrite')}`
+          : st?.status === 'skip' ? `${t('flush.skipped')} (${st.detail || '—'})` : '—';
         const b = h('div', { class: 'stack-tight' }, h('div', { class: 'kv' },
-          kvRow(t('flush.decision'), dd.shouldRun ? t('flush.ran') : t('flush.notRan')), kvRow(t('flush.reason'), h('span', { class: 'mono' }, dd.reason || '—')),
+          kvRow(t('flush.decision'), dd.shouldRun ? t('flush.decideRun') : t('flush.decideSkip')), kvRow(t('flush.reason'), h('span', { class: 'mono' }, dd.reason || '—')),
+          kvRow(t('flush.outcome'), h('span', { 'data-testid': 'prompt-flush-outcome' }, outcome)),
           dd.threshold !== undefined ? kvRow('token', `${fmtN(dd.totalTokens)} / ${fmtN(dd.threshold)}`) : null,
+          dd.reserveTokensFloor !== undefined ? kvRow(t('flush.formula'), h('span', { class: 'mono' }, `${fmtN(dd.contextWindowTokens)} − ${fmtN(dd.reserveTokensFloor)} − ${fmtN(dd.softThresholdTokens)} = ${fmtN(dd.threshold)}`)) : null,
+          dd.memoryFlush ? kvRow(t('flush.state'), h('span', { class: 'mono' }, [dd.memoryFlush.kind, dd.memoryFlush.compactionCount !== undefined ? `compactionCount ${dd.memoryFlush.compactionCount}` : null, dd.memoryFlush.failureCount ? `failureCount ${dd.memoryFlush.failureCount}` : null].filter(Boolean).join(' · '))) : null,
           dd.tokenSource ? kvRow(t('flush.tokenSource'), h('span', { class: 'mono' }, dd.tokenSource)) : null,
+          dd.timeFormat ? kvRow(t('flush.timeFormat'), h('span', null, h('span', { class: 'mono' }, `${dd.timeFormat}h`), ' ', h('span', { class: 'muted small' }, t('flush.timeFormatNote')))) : null,
           kvRow(t('flush.order'), t('flush.beforeTurn'))));
         if (pv.flush) b.append(kvRow(t('flush.target'), h('span', { class: 'mono' }, pv.flush.target)), h('div', { class: 'muted small' }, 'prompt'), promptPre(pv.flush.prompt));
         if (fl.run) b.append(jsonDisclosure(fl.run, { title: 'flush run' }));

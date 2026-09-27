@@ -282,9 +282,33 @@ def test_settings_offer_no_per_turn_flush(lab_client: TestClient) -> None:
         assert "per_turn" not in module.read_text(encoding="utf-8"), module.name
     snapshot = lab_client.get("/api/lab/state").json()["flush"]
     shell = (LAB_ROOT / "views" / "shell.js").read_text(encoding="utf-8")
-    for field in ("reserveTokensFloor", "softThresholdTokens", "contextWindowTokens", "alreadyFlushed", "compactionCount", "reason"):
+    for field in ("reserveTokensFloor", "softThresholdTokens", "contextWindowTokens", "alreadyFlushed", "compactionCount", "reason", "defaults"):
         assert field in snapshot, field
         assert field in shell, field
+    # v2026.9.6: the window caps both terms; the tooltip shows the rules with the server's defaults.
+    assert snapshot["defaults"] == {"reserveTokensFloor": 20_000, "softThresholdTokens": 4_000}
+    assert "flush.reserveRule" in shell and "flush.softRule" in shell
+    settings_view = (LAB_ROOT / "views" / "settings.js").read_text(encoding="utf-8")
+    assert "settings-flush-derived" in settings_view and "s.flush?.reserveTokensFloor" in settings_view
+    prompt_view = (LAB_ROOT / "inspector" / "prompt.js").read_text(encoding="utf-8")
+    assert "dd.memoryFlush" in prompt_view and "dd.reserveTokensFloor" in prompt_view
+
+
+def test_prompt_inspector_separates_the_flush_decision_from_the_flush_turn() -> None:
+    # The decision reads "run"/"skip"; what happened comes from the run or the flush stage
+    # (a scripted engine decides "run" and skips the turn). The time format is host-supplied.
+    prompt_view = (LAB_ROOT / "inspector" / "prompt.js").read_text(encoding="utf-8")
+    assert "dd.shouldRun ? t('flush.decideRun') : t('flush.decideSkip')" in prompt_view
+    assert "x.name === 'flush'" in prompt_view and "st?.status === 'skip'" in prompt_view
+    assert "prompt-flush-outcome" in prompt_view and "dd.timeFormat" in prompt_view
+    assert "dd.shouldRun ? t('flush.ran')" not in prompt_view
+    tr = (LAB_ROOT / "i18n" / "tr.js").read_text(encoding="utf-8")
+    en = (LAB_ROOT / "i18n" / "en.js").read_text(encoding="utf-8")
+    for key in ("flush.decideRun", "flush.decideSkip", "flush.outcome", "flush.skipped", "flush.failed",
+                "flush.wrote", "flush.noWrite", "flush.timeFormat", "flush.timeFormatNote"):
+        assert f"'{key}':" in tr and f"'{key}':" in en, key
+    assert "'flush.decideRun': 'çalıştır'" in tr and "'flush.skipped': 'atlandı'" in tr
+    assert "upstream detects the host" in en
 
 
 def test_contract_heartbeat_fields(lab_client: TestClient) -> None:
@@ -350,3 +374,25 @@ def test_contract_live_state_engine_and_provider_check_target(lab_client: TestCl
     assert check["data"]["target"] == "embedding"
     assert "e.data?.target === which" in (LAB_ROOT / "scenarios" / "checks.js").read_text(encoding="utf-8")
     assert "st.engine.mode" in (LAB_ROOT / "views" / "live.js").read_text(encoding="utf-8")
+
+
+def test_s11_window_and_its_arithmetic_match_the_flush_plan() -> None:
+    # S11 sets a test window; its expect text spells out the v2026.9.6 derivation, which must
+    # equal what the backend computes for that window (flush-plan.ts, agent-runner-memory.ts).
+    from memory_core.memory_flush import build_memory_flush_plan, resolve_memory_flush_threshold
+
+    catalog = (LAB_ROOT / "scenarios" / "catalog.js").read_text(encoding="utf-8")
+    window = int(re.search(r"id: 'S11'.*?contextWindowTokens: (\d+)", catalog, re.DOTALL).group(1))
+    plan = build_memory_flush_plan(workspace_dir=None, context_window_tokens=window)
+    threshold = resolve_memory_flush_threshold(
+        context_window_tokens=window,
+        reserve_tokens_floor=plan.reserve_tokens_floor,
+        soft_threshold_tokens=plan.soft_threshold_tokens,
+    )
+    en = (LAB_ROOT / "i18n" / "en.js").read_text(encoding="utf-8")
+    tr = (LAB_ROOT / "i18n" / "tr.js").read_text(encoding="utf-8")
+
+    assert (window, plan.reserve_tokens_floor, plan.soft_threshold_tokens, threshold) == (5_333, 1_333, 2_000, 2_000)
+    assert "threshold = 5,333 − 1,333 − 2,000 = 2,000 tokens" in en
+    assert "eşik = 5.333 − 1.333 − 2.000 = 2.000 token" in tr
+    assert "26,000" not in en and "26.000" not in tr

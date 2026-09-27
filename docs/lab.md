@@ -53,7 +53,7 @@ seconds later as the same model with reasoning mode pro). Recorded in
 | `engine: "scripted"` | scripted | Explicit per request only. Fixed text, no model call, no tool call, no flush turn. |
 | Tool loop | host (Lab) | `memory_search`, `memory_get` (upstream definitions), curation tools; ≤ 6 tool rounds + 1 final round without tools. |
 | Curated writes | extension (Q16, D5) | `MemoryCurator`; per-target flags `curation.memory_md`, `curation.user_md`, `curation.daily_note`, `curation.proactive_preferences`, master flag `curated_memory_writes`. |
-| Flush decision | upstream order (D1) | `explain_memory_flush_trigger` before the main run. Token counts: provider usage, else a chars/4 estimate (labelled). |
+| Flush decision | upstream order (D1) | `explain_memory_flush_trigger` before the main run, with the flush plan built for the Lab's context window (v2026.9.6: reserve min(20,000, ⌊window/4⌋), soft threshold min(4,000, ⌊(window − reserve)/2⌋)). Token counts: provider usage stored as a fresh v1 total, else a chars/4 estimate (labelled). |
 | Compaction | known gap | The Lab never compacts, so after one flush a session reports `already_flushed` until `/new`. |
 | Auto-recall | demo-only | `memory_search` on the user message; only MEMORY.md and today's/yesterday's daily file reach the prompt. Off for subagent/cron and reset turns. |
 | Transcript window | demo-only | Last 40 messages, 24,000 chars. |
@@ -128,9 +128,21 @@ Stages, in the order the `stage` events stream them:
    on every reply; a configured profile deletes BOOTSTRAP.md here).
 2. `compaction`: skipped, the Lab never compacts.
 3. `flush_decision`: `explain_memory_flush_trigger` for the session entry, the
-   incoming prompt's estimate and the context window (setting, else 200,000).
+   incoming prompt's estimate and the context window (setting, else 200,000), with
+   the plan built for that window: threshold = window − reserve − soft threshold,
+   both terms derived from the window (200,000 gives 20,000 / 4,000 / 176,000; the
+   S11 test window 5,333 gives 1,333 / 2,000 / 2,000). The status-bar meter, the
+   settings flush group and the prompt inspector show the terms. The flush prompt's
+   time line uses the Lab's host-supplied 24-hour format (`timeFormat`); upstream
+   detects the host's 12/24-hour format, and the inspector says so.
 4. `flush`: when triggered, the flush turn (write tool on today's daily file only;
-   bootstrap files read-only), then `record_memory_flush_success`/`failure`.
+   bootstrap files read-only), then `record_memory_flush_success`/`failure`, which
+   write the session entry's `memoryFlush` state (`succeeded` with the flushed
+   cycle, or `failed` with a failure count; three failures mark the cycle flushed).
+   A failure's `error.message` is the SDK's truncated message with the cause chain,
+   redacted with the Lab's key values. The prompt inspector shows the decision
+   (run/skip) and the flush turn's outcome apart: the scripted engine decides "run"
+   and skips the turn (`scripted: flush turn needs a model`).
 5. `reindex`, 6. `recall` (demo-only auto-recall), 7. `prompt`
    (`build_workspace_context` for the session kind; no generic `read` tool),
 8. `stream` (tool loop), 9. `persist` (transcript, token snapshot, seen truncation

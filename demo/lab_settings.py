@@ -27,8 +27,10 @@ from demo.lab_runtime import (
 from memory_core.bootstrap import DEFAULT_BOOTSTRAP_MAX_CHARS, DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS
 from memory_core.heartbeat import resolve_heartbeat_interval_ms
 from memory_core.memory_flush import (
+    DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR,
     DEFAULT_MEMORY_FLUSH_SOFT_TOKENS,
-    DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR,
+    build_memory_flush_plan,
+    resolve_memory_flush_threshold,
 )
 
 
@@ -67,14 +69,7 @@ def settings_payload(lab: LabRuntime) -> dict[str, Any]:
             },
         },
         "contextInjection": settings.context_injection,
-        "flush": {
-            "mode": "threshold",
-            "contextWindowTokens": settings.context_window_tokens,
-            "effectiveContextWindowTokens": window,
-            "reserveTokensFloor": DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR,
-            "softThresholdTokens": DEFAULT_MEMORY_FLUSH_SOFT_TOKENS,
-            "threshold": max(0, window - DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR - DEFAULT_MEMORY_FLUSH_SOFT_TOKENS),
-        },
+        "flush": _flush_settings(settings.context_window_tokens, window),
         "heartbeat": {
             "every": settings.heartbeat_every,
             "everyMs": resolve_heartbeat_interval_ms(settings.heartbeat_every),
@@ -87,6 +82,31 @@ def settings_payload(lab: LabRuntime) -> dict[str, Any]:
         "timezone": LAB_TIMEZONE,
         "workspace": {"root": str(lab.root)},
         "liveWorkspace": {"root": str(lab.live_root)},
+    }
+
+
+def _flush_settings(configured_window: int | None, window: int) -> dict[str, Any]:
+    """v2026.9.6 flush thresholds for the window (flush-plan.ts, agent-runner-memory.ts:1254-1260).
+
+    The reserve floor and the soft threshold derive from the window; the flush plan has no
+    reserve or prompt settings any more, so the window is the Lab's only flush input.
+    """
+    plan = build_memory_flush_plan(workspace_dir=None, context_window_tokens=window)
+    return {
+        "mode": "threshold",
+        "contextWindowTokens": configured_window,
+        "effectiveContextWindowTokens": window,
+        "reserveTokensFloor": plan.reserve_tokens_floor,
+        "softThresholdTokens": plan.soft_threshold_tokens,
+        "threshold": resolve_memory_flush_threshold(
+            context_window_tokens=window,
+            reserve_tokens_floor=plan.reserve_tokens_floor,
+            soft_threshold_tokens=plan.soft_threshold_tokens,
+        ),
+        "defaults": {
+            "reserveTokensFloor": DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR,
+            "softThresholdTokens": DEFAULT_MEMORY_FLUSH_SOFT_TOKENS,
+        },
     }
 
 

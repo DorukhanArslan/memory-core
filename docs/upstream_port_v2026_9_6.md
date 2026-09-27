@@ -43,6 +43,8 @@ gates).
 | Area 1 review fixes | done (`8f66aa2`, `145ca72`, `84f780d`, `4e771af`, `a6c8b97`, `3f40ecc`, `89cb1de`, `4803d13`) | no worklist change; 13 new tests (`toolsMdMigrationFindings` 10, archive collision probes 2, legacy-gate cache deviation 1) |
 | 3 Heartbeat and automation | done (`0baac86`, `0d43b0d`, `033ef14`, `258f3dd`, docs) | 4 worklist entries removed; the 3 retired heartbeat ops re-ported and their skipped tests removed; 36 new tests (`heartbeatScratchContract`, `automationJobSchedule`, `heartbeatPreflight`, `heartbeatReplyDecision`, `legacyHeartbeatTasks` 1 each, `heartbeatScratchMigration` 17, `heartbeatTaskMigration` 14); `heartbeatRunPrompt` rewritten |
 | Area 3 review fixes | done (`fb0a5d9`, `a40084c`, `58b8478`, `7e089ec`, `ef257f7`, `387ed5e`, `e0f23d8`, `358662f`, `0fc9bb1`) | no worklist change; 3 new tests (`heartbeatScratchMigration` crlf, `heartbeatTaskMigration` state-float and state-negative) and 3 extended (`heartbeatScratchContract` lone-surrogate steps, the disabled-owner findings steps) |
+| 4 Flush plan and runtime flush gate | done (`83cbcc3`, `99ef3c9`, `cb3d48b`) | 5 worklist entries removed; 14 new tests (`flushPlan` windows 5, `memoryFlushGate` fixtures 9) |
+| Area 4 review fixes | done (`dfe7e0c`, `d518dbe`, `5a44e11`, `1c9122f`, `a10eb23`, `d727d2e`, `e68f663`) | no worklist change; 13 new tests (`flushPlan` byte sizes 7, offset zones 4, out-of-range `nowMs` 1; `memoryFlushGate` disabled plan 1); flush plan row back to `partial` |
 
 Full `tests/integration` at `afd9965` plus the plan and matrix edits, `/tmp/openclaw-head` at
 `eb377ac59e6`, Node 24.21.0, seven chunks with the run-loop
@@ -81,6 +83,26 @@ revision and a stale save is `409 revision_conflict`; a demo-only legacy HEARTBE
 starts scenario S09. Offline suite at `0fc9bb1`: 1114 passed, 283 skipped; ruff clean;
 `scripts/extract_upstream_constants.py --check` against the tag rc 0; `/tmp/openclaw-head`
 clean after the runs.
+
+After area 4 (2026-09-27, `cb3d48b` on `wip/pin-flush`, same checkout and Node, seven chunks,
+run-loop test not run in this lane): `tests/integration` 191 passed, 84 xfailed, 5 skipped,
+0 failed of 280 collected, about 29 minutes. The worklist holds 13 areas and 85 tests (84
+here plus the run-loop xfail). Offline suite: 1109 passed, 254 skipped (run-loop deselected).
+
+After the area 4 review fixes (2026-09-27, `e68f663` on `wip/pin-flush`, same checkout and Node,
+six chunks, run-loop test not run in this lane): `tests/integration` 204 passed, 84 xfailed,
+5 skipped, 0 failed of 293 collected, about 29 minutes; the 13 new tests pass. Offline suite:
+1154 passed, 267 skipped (run-loop deselected); ruff clean; `scripts/extract_upstream_constants.py
+--check` against the tag rc 0; `/tmp/openclaw-head` clean after the runs. The fixes: byte sizes
+parse like `parseNonNegativeByteSize`/`parseByteSize` (−0.5 no longer disables the transcript-size
+force path; `UNIT_MULTIPLIERS` is extracted), ECMA-402 offset zones such as `+03:00` resolve like
+`Intl` (the flush targeted the previous day's file before), an `nowMs` beyond ±8.64e15 falls back
+to the current time (`resolveMemoryCoreNowMs`), the `memoryFlushGate` op returns `{disabled: true}`
+for a disabled plan instead of failing, flush errors carry the cause chain and take a host
+redactor, `resolve_memory_flush_threshold`/`resolve_compaction_threshold` are top-level, and the
+Lab prompt inspector shows the flush decision and the flush turn apart, with the host-supplied time
+format. The flush plan row is `partial` again: it names four gaps (host time format, UTC fallback
+for an invalid zone, the Python date range, `zoneinfo` versus ICU names).
 
 ## Decisions needed before stage 2
 
@@ -277,9 +299,33 @@ kit that will wrap these helpers.
   `memory/YYYY-MM-DD.md`.
 - Python: `memory_core/memory_flush.py` (verbatim hints by extraction), `demo/lab_flush.py`.
 - Tests: 5 (`flushPlan` 2, `memoryFlushGate` 3).
-- Worklist areas: "flush plan", "flush gate".
-- New oracle ops: none; `flushPlan` gains a `contextWindowTokens` payload field, and
-  `memoryFlushGate` fixtures switch to the tag's entry fields.
+- Worklist areas: none left; the `flush plan` and `flush gate` entries were removed when the
+  area landed (2026-09-27).
+- New oracle ops: none; `flushPlan` gains a `contextWindowTokens` payload field and reports
+  `hostTimeFormat`, and `memoryFlushGate` fixtures switch to the tag's entry fields.
+- Landed 2026-09-27 (`83cbcc3`, `99ef3c9`, `cb3d48b`): `build_memory_flush_plan(context_window_tokens=...)`
+  derives reserve and soft threshold; the removed overrides are gone from the Python API (no
+  host depended on them); hints and prompts come from `memory_core/_memory_flush_constants.py`
+  (script-extracted); `should_run_memory_flush(entry, threshold, token_count)`,
+  `resolve_compaction_threshold`, `resolve_memory_flush_threshold`,
+  `resolve_fresh_session_total_tokens`; `explain_memory_flush_trigger` takes the host's plan;
+  the success/failure helpers write the tag's `memoryFlush` object. Found while porting:
+  edecdbd05ef also made `resolveCronStyleNow` ignore `timeFormat` and detect the host's
+  12/24-hour format, so the flush prompt's time line is host-dependent at the tag; memory-core takes
+  `time_format` from the host (default `"24"`, documented deviation). The Lab builds the plan for
+  its window, shows the derived terms, and S11 uses a 5,333-token window (threshold 2,000; the
+  pin's 26,000 gives 15,500 at the tag). Not ported: the store-load projection of the flat
+  pre-tag `memoryFlush*` fields, the incognito/sandbox skips and the provider server-compaction
+  minimum threshold (docs/parity_matrix.md, row Runtime flush trigger).
+- Review fixes 2026-09-27 (`dfe7e0c`..`e68f663`): see the measured paragraph under Stage 2
+  progress. `DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR` is `DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR`
+  since `83cbcc3` (the tag's name, src/agents/agent-settings.ts); no alias was kept, so a host
+  importing the old name must rename it. Open for the merge: one time-format policy for the SDK.
+  This lane takes `time_format` in `build_memory_flush_plan` (default `"24"`); the heartbeat lane's
+  `prepare_heartbeat_turn` and the startup context (`memory_core/bootstrap/startup.py`) take none and
+  print 24-hour lines. Either thread one host `time_format` through all three or drop it and keep a
+  single documented 24-hour deviation; the heartbeat run-prompt oracle test should then pass
+  `hostTimeFormat` and compare the full time line.
 
 ### 5. memory_get, memory_search contract, deadline and index identity (estimate 16-26 h)
 
@@ -415,6 +461,9 @@ Total labelled estimate (2026-09-27): about 152-260 engineering hours for areas 
   (docs/lab.md › Oracle checkout). Moving it outside the checkout would need a Vitest root or
   config override that the tag's project matrix (`test/vitest/*.config.ts`) does not offer.
 - `memoryFlushGate` derives the threshold with the expression of `agent-runner-memory.ts:1254-1260`
-  (inline upstream, not exported) around the real `resolveCompactionThreshold`.
+  (inline upstream, not exported) around the real `resolveCompactionThreshold`; without explicit
+  reserve/soft it takes both from the real `buildMemoryFlushPlan` for the window. `flushPlan`
+  reports the host's detected time format (`hostTimeFormat`, `resolveUserTimeFormat(undefined)`),
+  which the Python side passes as `time_format`.
 - A persistent runner that serves many operations per process would cut the 21-minute suite
   (estimate 4-6 h, not included above).

@@ -12,9 +12,12 @@ import pytest
 
 from demo.openclaw_oracle import OpenClawOracle
 from memory_core.memory_flush import (
+    SESSION_TOTAL_TOKENS_VERSION,
     build_memory_flush_plan,
     build_memory_flush_plan_from_config,
+    explain_memory_flush_trigger,
     has_already_flushed_for_current_compaction,
+    resolve_memory_flush_threshold,
     should_run_memory_flush,
 )
 from memory_core.history import get_history_limit_from_session_key, limit_history_turns
@@ -228,6 +231,8 @@ def test_real_openclaw_oracle_deep_policy_coerces_malformed_values(deep: dict):
 
 
 def test_real_openclaw_oracle_flush_plan_matches_python_defaults(tmp_path: Path):
+    # The tag ignores "timeFormat" (edecdbd05ef #111527) and detects the host's 12/24-hour
+    # format; the runner reports it (hostTimeFormat) and Python takes it as time_format.
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
     now_ms = 1777824000000
     config = {
@@ -250,6 +255,7 @@ def test_real_openclaw_oracle_flush_plan_matches_python_defaults(tmp_path: Path)
         workspace_dir=tmp_path,
         now_ms=now_ms,
         timezone="Europe/Istanbul",
+        time_format=result["hostTimeFormat"],
     )
 
     assert result["ok"] is True
@@ -266,6 +272,9 @@ def test_real_openclaw_oracle_flush_plan_matches_python_defaults(tmp_path: Path)
 
 
 def test_real_openclaw_oracle_flush_plan_supports_disabled_and_overrides():
+    # v2026.9.6: memoryFlush.prompt/systemPrompt (edecdbd05ef #111527) and
+    # compaction.reserveTokensFloor (783a5d21cfc #111382) are gone; buildMemoryFlushPlan ignores
+    # them, while softThresholdTokens, forceFlushTranscriptBytes and model still apply.
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
     now_ms = 1777824000000
 
@@ -315,6 +324,7 @@ def test_real_openclaw_oracle_flush_plan_supports_disabled_and_overrides():
         workspace_dir=Path("/tmp"),
         cfg=configured_config,
         now_ms=now_ms,
+        time_format=configured["hostTimeFormat"],
     )
 
     assert disabled["ok"] is True
@@ -323,13 +333,13 @@ def test_real_openclaw_oracle_flush_plan_supports_disabled_and_overrides():
     assert python_configured is not None
     assert configured["result"]["softThresholdTokens"] == 456
     assert configured["result"]["forceFlushTranscriptBytes"] == 3 * 1024 * 1024
-    assert configured["result"]["reserveTokensFloor"] == 123
+    assert configured["result"]["reserveTokensFloor"] == 20_000
     assert configured["result"]["model"] == "flush-model"
     assert configured["result"]["relativePath"] == "memory/2026-05-03.md"
-    assert "Custom prompt." in configured["result"]["prompt"]
-    assert "Custom system." in configured["result"]["systemPrompt"]
+    assert "Custom prompt." not in configured["result"]["prompt"]
+    assert "Custom system." not in configured["result"]["systemPrompt"]
+    assert "TOOLS.md" not in configured["result"]["prompt"]
     assert "Store durable memories only in memory/2026-05-03.md" in configured["result"]["prompt"]
-    assert "If no user-visible reply is needed, start with NO_REPLY." in configured["result"]["prompt"]
     assert configured["result"] == {
         "softThresholdTokens": python_configured.soft_threshold_tokens,
         "forceFlushTranscriptBytes": python_configured.force_flush_transcript_bytes,
@@ -338,6 +348,138 @@ def test_real_openclaw_oracle_flush_plan_supports_disabled_and_overrides():
         "prompt": python_configured.prompt,
         "systemPrompt": python_configured.system_prompt,
         "model": python_configured.model,
+    }
+
+
+@pytest.mark.parametrize(
+    ("context_window_tokens", "soft_threshold_tokens"),
+    [(200_000, None), (26_000, None), (8_000, None), (100, None), (1_000, 456)],
+    ids=["window_200k", "window_26k", "window_8k", "window_100", "window_1k_soft_456"],
+)
+def test_real_openclaw_oracle_flush_plan_derives_thresholds_from_the_context_window(
+    context_window_tokens: int, soft_threshold_tokens: int | None
+):
+    # 6b6f1969c11 (#130072): reserve = resolveEffectiveCompactionReserveTokens(window, 20000),
+    # soft = min(soft, floor((window - reserve) / 2)).
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    now_ms = 1777824000000
+    memory_flush = {} if soft_threshold_tokens is None else {"softThresholdTokens": soft_threshold_tokens}
+    config = {
+        "agents": {
+            "defaults": {
+                "userTimezone": "Europe/Istanbul",
+                "timeFormat": "24",
+                "compaction": {"memoryFlush": memory_flush},
+            }
+        }
+    }
+
+    result = oracle.run(
+        {
+            "operation": "flushPlan",
+            "nowMs": now_ms,
+            "config": config,
+            "contextWindowTokens": context_window_tokens,
+        }
+    )
+    python_plan = build_memory_flush_plan_from_config(
+        workspace_dir=None,
+        cfg=config,
+        now_ms=now_ms,
+        context_window_tokens=context_window_tokens,
+        time_format=result["hostTimeFormat"],
+    )
+
+    assert result["ok"] is True
+    assert python_plan is not None
+    assert result["result"] == {
+        "softThresholdTokens": python_plan.soft_threshold_tokens,
+        "forceFlushTranscriptBytes": python_plan.force_flush_transcript_bytes,
+        "reserveTokensFloor": python_plan.reserve_tokens_floor,
+        "relativePath": python_plan.relative_path,
+        "prompt": python_plan.prompt,
+        "systemPrompt": python_plan.system_prompt,
+        "model": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "force_flush_transcript_bytes",
+    [-0.5, "0.5b", "2.5b", 2**60, "٣", 2**53, "3\n"],
+    ids=["negative_half", "half_byte", "two_and_a_half", "unsafe_2_60", "arabic_digit", "unsafe_2_53", "newline"],
+)
+def test_real_openclaw_oracle_flush_plan_parses_force_flush_bytes_like_python(
+    force_flush_transcript_bytes
+):
+    # parseNonNegativeByteSize (src/config/byte-size.ts) and parseByteSize (src/cli/parse-bytes.ts):
+    # Math.floor plus a safe-integer check for numbers; an ASCII-only pattern, Math.round and a
+    # safe-integer check for strings; a rejected value keeps the 2 MiB default.
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    config = {
+        "agents": {
+            "defaults": {
+                "userTimezone": "Europe/Istanbul",
+                "compaction": {"memoryFlush": {"forceFlushTranscriptBytes": force_flush_transcript_bytes}},
+            }
+        }
+    }
+
+    result = oracle.run({"operation": "flushPlan", "nowMs": 1777824000000, "config": config})
+    python_plan = build_memory_flush_plan_from_config(
+        workspace_dir=None, cfg=config, now_ms=1777824000000, time_format=result["hostTimeFormat"]
+    )
+
+    assert result["ok"] is True
+    assert python_plan is not None
+    assert result["result"]["forceFlushTranscriptBytes"] == python_plan.force_flush_transcript_bytes
+    assert result["result"]["prompt"] == python_plan.prompt
+
+
+def test_real_openclaw_oracle_flush_plan_falls_back_to_now_outside_date_range():
+    # resolveMemoryCoreNowMs (extensions/memory-core/src/time.ts; flush-plan.test.ts:10-18): an
+    # nowMs beyond 8.64e15 is not a valid Date, so the plan uses Date.now(). The Python plans
+    # built around the call bracket the oracle's clock (a UTC date change during the call).
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    now_ms = 8_640_000_000_000_001
+    config = {"agents": {"defaults": {"userTimezone": "UTC"}}}
+
+    before = build_memory_flush_plan_from_config(workspace_dir=None, cfg=config, now_ms=now_ms)
+    result = oracle.run({"operation": "flushPlan", "nowMs": now_ms, "config": config})
+    after = build_memory_flush_plan_from_config(workspace_dir=None, cfg=config, now_ms=now_ms)
+
+    assert result["ok"] is True
+    assert before is not None and after is not None
+    assert (result["result"]["relativePath"], result["result"]["systemPrompt"]) in {
+        (before.relative_path, before.system_prompt),
+        (after.relative_path, after.system_prompt),
+    }
+
+
+@pytest.mark.parametrize("user_timezone", ["+03:00", "-05:30", "+0300", "\u221203:00"])
+def test_real_openclaw_oracle_flush_plan_accepts_offset_time_zones(user_timezone: str):
+    # resolveUserTimezone (src/agents/date-time.ts) keeps any zone Intl accepts, so an ECMA-402
+    # offset names the daily file's date and the prompt's "(TZ)" label. 2026-05-03T21:00Z is
+    # already 2026-05-04 at +03:00.
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    now_ms = 1777842000000
+    config = {"agents": {"defaults": {"userTimezone": user_timezone}}}
+
+    result = oracle.run({"operation": "flushPlan", "nowMs": now_ms, "config": config})
+    python_plan = build_memory_flush_plan_from_config(
+        workspace_dir=None, cfg=config, now_ms=now_ms, time_format=result["hostTimeFormat"]
+    )
+
+    assert result["ok"] is True
+    assert python_plan is not None
+    assert f"({user_timezone})" in result["result"]["prompt"]
+    assert result["result"] == {
+        "softThresholdTokens": python_plan.soft_threshold_tokens,
+        "forceFlushTranscriptBytes": python_plan.force_flush_transcript_bytes,
+        "reserveTokensFloor": python_plan.reserve_tokens_floor,
+        "relativePath": python_plan.relative_path,
+        "prompt": python_plan.prompt,
+        "systemPrompt": python_plan.system_prompt,
+        "model": None,
     }
 
 
@@ -614,11 +756,25 @@ def test_real_openclaw_oracle_truncate_tool_results_in_session_file_matches_pyth
     assert result["result"]["toolTexts"] == list(python_result.tool_texts)
 
 
+def _fresh(total_tokens: int, **fields) -> dict:
+    """A session entry whose totalTokens is a fresh v1 snapshot (tag's SessionEntry fields)."""
+    return {
+        "totalTokens": total_tokens,
+        "totalTokensFresh": True,
+        "totalTokensVersion": SESSION_TOTAL_TOKENS_VERSION,
+        **fields,
+    }
+
+
+# Fixtures use the tag's SessionEntry fields (8ee1d046d33 #115299, 084d51d0c7b #152268): fresh
+# totals carry totalTokensFresh + totalTokensVersion and the flushed cycle lives in
+# entry.memoryFlush. Payloads without reserveTokensFloor/softThresholdTokens take both from
+# the flush plan for the window, as runMemoryFlushIfNeeded does.
 @pytest.mark.parametrize(
     "payload",
     [
         {
-            "entry": {"totalTokens": 0},
+            "entry": _fresh(0),
             "contextWindowTokens": 16_000,
             "reserveTokensFloor": 20_000,
             "softThresholdTokens": 4_000,
@@ -630,29 +786,29 @@ def test_real_openclaw_oracle_truncate_tool_results_in_session_file_matches_pyth
             "softThresholdTokens": 4_000,
         },
         {
-            "entry": {"totalTokens": 10_000},
+            "entry": _fresh(10_000),
             "contextWindowTokens": 100_000,
             "reserveTokensFloor": 20_000,
             "softThresholdTokens": 10_000,
         },
         {
-            "entry": {"totalTokens": 85},
+            "entry": _fresh(85),
             "contextWindowTokens": 100,
             "reserveTokensFloor": 10,
             "softThresholdTokens": 5,
         },
         {
-            "entry": {
-                "totalTokens": 90_000,
-                "compactionCount": 2,
-                "memoryFlushCompactionCount": 2,
-            },
+            "entry": _fresh(
+                90_000,
+                compactionCount=2,
+                memoryFlush={"kind": "succeeded", "compactionCount": 2},
+            ),
             "contextWindowTokens": 100_000,
             "reserveTokensFloor": 5_000,
             "softThresholdTokens": 2_000,
         },
         {
-            "entry": {"totalTokens": 96_000, "compactionCount": 1},
+            "entry": _fresh(96_000, compactionCount=1),
             "contextWindowTokens": 100_000,
             "reserveTokensFloor": 5_000,
             "softThresholdTokens": 2_000,
@@ -670,6 +826,44 @@ def test_real_openclaw_oracle_truncate_tool_results_in_session_file_matches_pyth
             "reserveTokensFloor": 5_000,
             "softThresholdTokens": 2_000,
         },
+        {
+            # A pre-tag entry: no freshness fields, so the total is unknown.
+            "entry": {"totalTokens": 96_000, "compactionCount": 1},
+            "contextWindowTokens": 100_000,
+            "reserveTokensFloor": 5_000,
+            "softThresholdTokens": 2_000,
+        },
+        {
+            "entry": {"totalTokens": 96_000, "totalTokensFresh": True, "compactionCount": 1},
+            "contextWindowTokens": 100_000,
+            "reserveTokensFloor": 5_000,
+            "softThresholdTokens": 2_000,
+        },
+        {
+            # The pre-tag flat field is not read by hasAlreadyFlushedForCurrentCompaction.
+            "entry": _fresh(90_000, compactionCount=2, memoryFlushCompactionCount=2),
+            "contextWindowTokens": 100_000,
+            "reserveTokensFloor": 5_000,
+            "softThresholdTokens": 2_000,
+        },
+        {
+            # A failed state keeps the last flushed cycle, which still guards that cycle.
+            "entry": _fresh(
+                96_000,
+                compactionCount=1,
+                memoryFlush={"kind": "failed", "compactionCount": 1, "failureCount": 2},
+            ),
+            "contextWindowTokens": 100_000,
+            "reserveTokensFloor": 5_000,
+            "softThresholdTokens": 2_000,
+        },
+        {"entry": _fresh(15_500, compactionCount=0), "contextWindowTokens": 26_000},
+        {"entry": _fresh(15_499, compactionCount=0), "contextWindowTokens": 26_000},
+        {"entry": _fresh(3_000), "contextWindowTokens": 8_000},
+        # The Lab's S11 window: reserve 1,333, soft 2,000, threshold 2,000.
+        {"entry": _fresh(2_000), "contextWindowTokens": 5_333},
+        # An empty entry is truthy in JS: the projected token count still decides.
+        {"entry": {}, "tokenCount": 93_000, "contextWindowTokens": 100_000},
     ],
 )
 def test_real_openclaw_oracle_memory_flush_gate_matches_python(payload: dict):
@@ -677,19 +871,54 @@ def test_real_openclaw_oracle_memory_flush_gate_matches_python(payload: dict):
 
     result = oracle.run({"operation": "memoryFlushGate", **payload})
     entry = payload.get("entry")
+    reserve = payload.get("reserveTokensFloor")
+    soft = payload.get("softThresholdTokens")
+    if reserve is None or soft is None:
+        plan = build_memory_flush_plan(
+            workspace_dir=None, context_window_tokens=payload["contextWindowTokens"]
+        )
+        reserve, soft = plan.reserve_tokens_floor, plan.soft_threshold_tokens
+    threshold = resolve_memory_flush_threshold(
+        context_window_tokens=payload["contextWindowTokens"],
+        reserve_tokens_floor=reserve,
+        soft_threshold_tokens=soft,
+    )
 
     assert result["ok"] is True
     assert result["operation"] == "memoryFlushGate"
+    assert (result["result"]["reserveTokensFloor"], result["result"]["softThresholdTokens"]) == (
+        reserve,
+        soft,
+    )
+    assert result["result"]["threshold"] == threshold
     assert result["result"]["shouldRunMemoryFlush"] is should_run_memory_flush(
         entry=entry,
         token_count=payload.get("tokenCount"),
-        context_window_tokens=payload["contextWindowTokens"],
-        reserve_tokens_floor=payload["reserveTokensFloor"],
-        soft_threshold_tokens=payload["softThresholdTokens"],
+        threshold=threshold,
     )
     assert result["result"]["hasAlreadyFlushedForCurrentCompaction"] is (
-        has_already_flushed_for_current_compaction(entry) if entry else False
+        has_already_flushed_for_current_compaction(entry) if entry is not None else False
     )
+
+
+def test_real_openclaw_oracle_memory_flush_gate_skips_a_disabled_plan():
+    # memoryFlush.enabled false: buildMemoryFlushPlan returns null and runMemoryFlushIfNeeded
+    # skips before the gate (agent-runner-memory.ts:1243-1245); Python's plan is None and
+    # explain_memory_flush_trigger reports "disabled" even over the threshold.
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    config = {"agents": {"defaults": {"compaction": {"memoryFlush": {"enabled": False}}}}}
+    entry = _fresh(99_000)
+
+    result = oracle.run(
+        {"operation": "memoryFlushGate", "config": config, "entry": entry, "contextWindowTokens": 100_000}
+    )
+    plan = build_memory_flush_plan_from_config(workspace_dir=None, cfg=config, context_window_tokens=100_000)
+    decision = explain_memory_flush_trigger(entry=entry, plan=plan, context_window_tokens=100_000)
+
+    assert result["ok"] is True
+    assert result["result"] == {"disabled": True}
+    assert plan is None
+    assert (decision.should_flush, decision.reason) == (False, "disabled")
 
 
 def test_real_openclaw_oracle_memory_get_reads_line_window_like_python(tmp_path: Path):

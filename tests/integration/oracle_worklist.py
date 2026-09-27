@@ -65,25 +65,6 @@ def _oracle(*names: str) -> tuple[str, ...]:
 
 PENDING_PORTS: tuple[PendingPort, ...] = (
     PendingPort(
-        "flush plan (read-only hint without TOOLS.md, no reserveTokensFloor or prompt overrides, "
-        "reserve and soft threshold derived from the context window)",
-        "669db2968fc (#113966), 783a5d21cfc (#111382), edecdbd05ef, 6b6f1969c11 (#130072)",
-        _oracle(
-            "flush_plan_matches_python_defaults",
-            "flush_plan_supports_disabled_and_overrides",
-        ),
-    ),
-    PendingPort(
-        "flush gate (shouldRunMemoryFlush takes a threshold, counts only fresh session totals, "
-        "and reads entry.memoryFlush.compactionCount)",
-        "8ee1d046d33 (#115299), 084d51d0c7b (#152268)",
-        _oracle(
-            "memory_flush_gate_matches_python[payload3]",
-            "memory_flush_gate_matches_python[payload4]",
-            "memory_flush_gate_matches_python[payload5]",
-        ),
-    ),
-    PendingPort(
         "memory_get contract (status ok/not_found/error, MEMORY_PATH_NOT_ALLOWED and read-failure "
         "codes, `disabled` dropped, USER.md and DREAMS.md as memory paths)",
         "35e0bc22ead (#125979), 28630a9a650 (#114819)",

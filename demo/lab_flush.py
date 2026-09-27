@@ -3,16 +3,18 @@
 Upstream ``runReplyAgent`` (``src/auto-reply/reply/agent-runner.ts:1585-1627``)
 runs preflight compaction, then ``runMemoryFlushIfNeeded``
 (``agent-runner-memory.ts:1051-1540``), then the main run. The Lab follows the
-same order with the package pieces: ``build_memory_flush_plan`` for the target
-and prompts, ``explain_memory_flush_trigger`` for the decision and
+same order with the package pieces: ``build_memory_flush_plan`` for the target,
+the prompts and (v2026.9.6) the reserve floor and soft threshold derived from the
+context window, ``explain_memory_flush_trigger`` for the decision and
 ``record_memory_flush_success``/``record_memory_flush_failure`` for the
-session entry. The flush turn itself (append-only to today's daily file
+session entry's ``memoryFlush`` state. The flush turn itself (append-only to today's daily file
 through the ``write`` tool) is :func:`demo.memory_flush.run_memory_flush`.
 
 Host-side inputs and their Lab approximations (named in each payload):
 
 - the token snapshot: the provider's ``usage.prompt_tokens`` of the previous
-  turn (upstream ``totalTokens``, fresh) plus its completion tokens plus
+  turn (upstream ``totalTokens``, a fresh v1 snapshot: ``totalTokensFresh`` and
+  ``totalTokensVersion``) plus its completion tokens plus
   ``estimatePromptTokensForMemoryFlush(prompt)``; without usage the Lab falls
   back to a chars/4 estimate and says so (``tokenSource``);
 - the transcript size: the UTF-8 size of the session's JSON message lines
@@ -31,19 +33,27 @@ import math
 from typing import Any
 
 from demo.chat_engine import ChatEngine, ChatMessage
-from demo.lab_runtime import LAB_TIMEZONE, LabRuntime, LabSession, safe_exception_message
+from demo.lab_runtime import LAB_TIMEZONE, LabRuntime, LabSession, redact_secrets, safe_exception_message
 from demo.memory_flush import MemoryFlushRun, run_memory_flush
 from memory_core.bootstrap._js import utf16_len
 from memory_core.consolidation import record_daily_memory_flush
 from memory_core.memory_flush import (
+    DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR,
+    DEFAULT_MEMORY_FLUSH_SOFT_TOKENS,
+    SESSION_TOTAL_TOKENS_VERSION,
+    MemoryFlushPlan,
     build_memory_flush_plan,
     explain_memory_flush_trigger,
     has_already_flushed_for_current_compaction,
     record_memory_flush_failure,
     record_memory_flush_success,
+    resolve_fresh_session_total_tokens,
 )
 
 LAB_FORCED_REASON = "lab_forced"
+# The host's 12/24-hour format for the flush prompt's time line. Upstream detects the host's
+# (resolveUserTimeFormat(undefined), edecdbd05ef #111527); the Lab, as a host, supplies "24".
+LAB_TIME_FORMAT = "24"
 NO_COMPACTION_NOTE = (
     "Lab never compacts: after a flush this session stays in the same compaction cycle "
     "(already_flushed) until /new (known gap)"
@@ -66,31 +76,41 @@ def transcript_byte_size(session: LabSession) -> int:
     return sum(len(json.dumps(message, ensure_ascii=False).encode("utf-8")) + 1 for message in session.messages)
 
 
+def lab_flush_plan(lab: LabRuntime) -> MemoryFlushPlan:
+    """The flush plan for the Lab's context window (upstream builds it per run with the window)."""
+    return build_memory_flush_plan(
+        workspace_dir=lab.root,
+        now_ms=lab.now_ms(),
+        timezone=LAB_TIMEZONE,
+        context_window_tokens=lab.settings.effective_context_window_tokens,
+        time_format=LAB_TIME_FORMAT,
+    )
+
+
 def flush_decision(
     lab: LabRuntime, session: LabSession, prompt: str | None, *, is_heartbeat: bool = False
 ) -> dict[str, Any]:
-    plan = build_memory_flush_plan(workspace_dir=lab.root, now_ms=lab.now_ms(), timezone=LAB_TIMEZONE)
+    plan = lab_flush_plan(lab)
     entry = session.flush_entry
     window = lab.settings.effective_context_window_tokens
     estimate = estimate_prompt_tokens_for_memory_flush(prompt)
-    persisted = entry.get("totalTokens") if entry.get("totalTokensFresh") is True else None
+    persisted = resolve_fresh_session_total_tokens(entry)
     # resolveEffectivePromptTokens: fresh prompt snapshot + last output + prompt estimate.
     projected = (
         int(persisted) + int(session.last_output_tokens or 0) + int(estimate or 0)
-        if isinstance(persisted, int | float) and persisted > 0
+        if persisted is not None and persisted > 0
         else None
     )
     size = transcript_byte_size(session)
     decision = explain_memory_flush_trigger(
         entry=entry,
-        token_count=projected,
+        plan=plan,
         context_window_tokens=window,
-        reserve_tokens_floor=plan.reserve_tokens_floor,
-        soft_threshold_tokens=plan.soft_threshold_tokens,
+        token_count=projected,
         transcript_byte_size=size,
-        force_flush_transcript_bytes=plan.force_flush_transcript_bytes,
         is_heartbeat=is_heartbeat,
     )
+    memory_flush = entry.get("memoryFlush") if isinstance(entry.get("memoryFlush"), dict) else {}
     return {
         "shouldRun": decision.should_flush,
         "reason": decision.reason,
@@ -103,6 +123,12 @@ def flush_decision(
         "contextWindowSource": "setting" if lab.settings.context_window_tokens else "upstream DEFAULT_CONTEXT_TOKENS",
         "reserveTokensFloor": plan.reserve_tokens_floor,
         "softThresholdTokens": plan.soft_threshold_tokens,
+        # The terms before the window caps them (flush-plan.ts): the reserve floor and the soft
+        # threshold the Lab configures (none, so upstream's default).
+        "defaults": {
+            "reserveTokensFloor": DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR,
+            "softThresholdTokens": DEFAULT_MEMORY_FLUSH_SOFT_TOKENS,
+        },
         "promptTokenEstimate": estimate,
         "persistedPromptTokens": persisted,
         "lastOutputTokens": session.last_output_tokens,
@@ -110,9 +136,12 @@ def flush_decision(
         "transcriptBytes": size,
         "forceFlushTranscriptBytes": plan.force_flush_transcript_bytes,
         "compactionCount": entry.get("compactionCount", 0),
-        "memoryFlushCompactionCount": entry.get("memoryFlushCompactionCount"),
-        "memoryFlushFailureCount": entry.get("memoryFlushFailureCount", 0),
+        "memoryFlush": memory_flush or None,
+        "memoryFlushCompactionCount": memory_flush.get("compactionCount"),
+        "memoryFlushFailureCount": memory_flush.get("failureCount", 0) if memory_flush.get("kind") == "failed" else 0,
         "target": plan.relative_path,
+        "timeFormat": LAB_TIME_FORMAT,
+        "timeFormatSource": "host-supplied (upstream detects the host's 12/24-hour format)",
         "mode": "threshold",
         "note": NO_COMPACTION_NOTE,
     }
@@ -156,7 +185,7 @@ def run_flush_turn(
     secrets: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Run the flush turn and update the session entry like upstream (success or strike)."""
-    plan = build_memory_flush_plan(workspace_dir=lab.root, now_ms=lab.now_ms(), timezone=LAB_TIMEZONE)
+    plan = lab_flush_plan(lab)
     transcript = [ChatMessage(role=item["role"], content=item["content"]) for item in session.messages]
     try:
         with lab.tracked("flush", turn_id=turn_id):
@@ -169,10 +198,15 @@ def run_flush_turn(
                 timezone=LAB_TIMEZONE,
             )
     except Exception as exc:
-        outcome = record_memory_flush_failure(session.flush_entry, now_ms=lab.now_ms(), error=safe_exception_message(exc, secrets))
+        # The SDK formats the cause chain and truncates it like upstream; the Lab's key values
+        # are the redactor (upstream's redactSensitiveText is not ported).
+        outcome = record_memory_flush_failure(
+            session.flush_entry, error=exc, redact=lambda text: redact_secrets(text, secrets)
+        )
         session.flush_entry = outcome.entry
         error = {
             "error": f"memory flush failed: {safe_exception_message(exc, secrets)}",
+            "message": outcome.error,
             "failureCount": outcome.failure_count,
             "exhausted": outcome.exhausted,
             "redacted": True,
@@ -185,7 +219,7 @@ def run_flush_turn(
         )
         return {"reason": reason, "error": error, "wrote": False, "prompt": plan.prompt,
                 "systemPrompt": plan.system_prompt, "target": plan.relative_path}
-    session.flush_entry = record_memory_flush_success(session.flush_entry, now_ms=lab.now_ms())
+    session.flush_entry = record_memory_flush_success(session.flush_entry)
     result = serialize_flush_run(run, prompt=plan.prompt, system_prompt=plan.system_prompt)
     result["reason"] = reason
     if result["wrote"]:
@@ -221,12 +255,14 @@ def update_token_snapshot(session: LabSession, usage: dict[str, Any] | None, *, 
     if isinstance(prompt_tokens, int) and prompt_tokens > 0:
         session.flush_entry["totalTokens"] = prompt_tokens
         session.flush_entry["totalTokensFresh"] = True
+        session.flush_entry["totalTokensVersion"] = SESSION_TOTAL_TOKENS_VERSION
         session.last_output_tokens = completion_tokens if isinstance(completion_tokens, int) else None
         session.token_source = "provider usage"
         return
     chars = sum(utf16_len(str(message.get("content") or "")) for message in messages)
     session.flush_entry["totalTokens"] = max(1, math.ceil(chars / 4))
     session.flush_entry["totalTokensFresh"] = True
+    session.flush_entry["totalTokensVersion"] = SESSION_TOTAL_TOKENS_VERSION
     session.last_output_tokens = math.ceil(utf16_len(output_text) / 4) if output_text else 0
     session.token_source = "estimate (chars/4; provider sent no usage)"
 

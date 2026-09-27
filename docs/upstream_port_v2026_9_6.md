@@ -40,12 +40,24 @@ gates).
 | 1 Workspace and bootstrap map | done (`7f28a3c`, `5be794e`, `e944b1d`, `afd9965`) | 19 worklist entries removed; 27 new tests (TOOLS.md migration ops, policy, legacy-state and retired-file scenarios) |
 | 2 Bootstrap budget and truncation | done (`3bbf0b9`) | 11 worklist entries removed |
 | Infrastructure | done (`39ba67e`, `aa4f7d3`, `1a5e09f`) | worklist xfails fail only on value assertions; oracle defaults point at the pin checkout with a Node engines check |
+| Area 1 review fixes | done (`8f66aa2`, `145ca72`, `84f780d`, `4e771af`, `a6c8b97`, `3f40ecc`, `89cb1de`, `4803d13`) | no worklist change; 13 new tests (`toolsMdMigrationFindings` 10, archive collision probes 2, legacy-gate cache deviation 1) |
 
 Full `tests/integration` at `afd9965` plus the plan and matrix edits, `/tmp/openclaw-head` at
 `eb377ac59e6`, Node 24.21.0, seven chunks with the run-loop
 included: 165 passed, 90 xfailed, 5 skipped (the 4 retired ops and the live-embedding test),
 0 failed, 260 collected, about 27 minutes. Stage 1 ended at 108 passed, 120 xfailed, 5 skipped
 (233 collected). The worklist now holds 15 areas and 90 tests.
+
+After the area 1 review fixes (2026-09-27, `4803d13`, same checkout and Node, twelve chunks with
+the run-loop included): 178 passed, 90 xfailed, 5 skipped, 0 failed, 273 collected, about 33
+minutes. The fixes: the oracle refuses an `OPENCLAW_ORACLE_NODE` that is not an absolute binary
+named `node` (the scripts' `#!/usr/bin/env node` would run another Node); a leftover TOOLS.md is
+reported through the ported `collectToolsMdMigrationFindings` (`WorkspaceContext` and
+`LiveIdentity` `migration_findings`, the Lab prompt inspector) instead of being dropped
+silently; the archive collision keeps its cause and the archive parents are created `0o700`;
+lifecycle snapshots compare the stored setup state again; the per-call legacy-state gate is a
+documented deviation from upstream's per-process cache; the run-loop oracle's one file in the
+checkout is a documented exception whose stale copy is removed and reported.
 
 ## Decisions needed before stage 2
 

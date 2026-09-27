@@ -21,6 +21,7 @@ from memory_core.bootstrap.tools_md import (
     migrate_tools_md,
     should_merge_tools_md,
     tools_md_archive_dir,
+    tools_md_migration_findings,
 )
 
 MIGRATED = "### Local notes (migrated from TOOLS.md)"
@@ -281,3 +282,85 @@ def test_a_different_existing_archive_is_a_collision_with_its_cause(tmp_path):
     assert sorted(path.name for path in archive.parent.iterdir()) == [archive.name]
     assert (root / "AGENTS.md").read_text(encoding="utf-8") == agents
     assert (root / "TOOLS.md").read_text(encoding="utf-8") == tools
+
+
+# --- collectToolsMdMigrationFindings ------------------------------------------------------------
+
+
+def test_findings_name_a_leftover_tools_md_without_touching_anything(tmp_path):
+    agents = "# Agent\n\n## Tools\n\nExisting notes.\n"
+    tools = "### Cameras\n\n- kitchen → wide angle\n"
+    root = _workspace(tmp_path, agents, tools)
+
+    (finding,) = tools_md_migration_findings(root)
+
+    assert finding.to_json() == {
+        "checkId": "core/doctor/tools-md-migration",
+        "severity": "warning",
+        "message": 'Agent "main" still stores local tool notes in TOOLS.md.',
+        "path": str(root / "TOOLS.md"),
+        "target": "main",
+        "requirement": "legacy-tools-md",
+        "fixHint": "Run memory_core.bootstrap.migrate_tools_md() to merge TOOLS.md into AGENTS.md.",
+    }
+    assert sorted(entry.name for entry in root.iterdir()) == ["AGENTS.md", "TOOLS.md"]
+    assert (root / "AGENTS.md").read_text(encoding="utf-8") == agents
+
+
+def test_findings_check_the_merged_size_in_utf16_units(tmp_path):
+    # upstream's test: 15,000 + 15,000 characters against bootstrapMaxChars 20,000.
+    agents = f"# Agent\n\n## Tools\n\n{'a' * 15_000}\n"
+    tools = f"{'b' * 15_000}\n"
+    merged = f"{agents}\n### Local notes (migrated from TOOLS.md)\n\n{tools}"
+    root = _workspace(tmp_path, agents, tools)
+
+    legacy, limit = tools_md_migration_findings(root, bootstrap_max_chars=20_000)
+
+    assert legacy.requirement == "legacy-tools-md"
+    assert limit.requirement == "tools-md-merged-bootstrap-limit"
+    assert limit.path == str(root / "AGENTS.md")
+    assert limit.message == (
+        f'Agent "main" TOOLS.md migration will produce a {len(merged)}-character AGENTS.md, '
+        "exceeding its configured bootstrapMaxChars limit of 20000. Raise "
+        "`agents.entries.*.bootstrapMaxChars` for this agent, or `agents.defaults.bootstrapMaxChars` "
+        "as fallback, to preserve all migrated instructions."
+    )
+    assert len(tools_md_migration_findings(root, bootstrap_max_chars=40_000)) == 1
+    # An astral character is two UTF-16 units, as in JavaScript's String length.
+    (root / "TOOLS.md").write_text("\U0001F600" * 10_001, encoding="utf-8")
+    assert [f.requirement for f in tools_md_migration_findings(root, agent_id="ops")] == [
+        "legacy-tools-md",
+        "tools-md-merged-bootstrap-limit",
+    ]
+
+
+def test_findings_skip_the_size_check_for_a_template_and_report_blocked_files(tmp_path):
+    root = _workspace(tmp_path, "x" * 30_000, LEGACY_TOOLS_MD_TEMPLATE)
+    assert [f.requirement for f in tools_md_migration_findings(root)] == ["legacy-tools-md"]
+
+    (root / "TOOLS.md.doctor-importing-1").write_text("x", encoding="utf-8")
+    (blocked,) = tools_md_migration_findings(root)
+    assert blocked.severity == "error"
+    assert blocked.requirement == "tools-md-migration-blocked"
+    assert blocked.message.startswith(
+        'Agent "main" TOOLS.md cannot be migrated: Interrupted v2026.7.2-beta.5 migration'
+    )
+
+
+def test_findings_report_a_symlinked_agents_md_after_the_legacy_finding(tmp_path):
+    root = _workspace(tmp_path, None, "Local tool notes.\n")
+    outside = tmp_path / "outside-agents.md"
+    outside.write_text("Private external instructions.\n", encoding="utf-8")
+    (root / "AGENTS.md").symlink_to(outside)
+
+    findings = tools_md_migration_findings(root)
+
+    assert [(f.requirement, f.severity) for f in findings] == [
+        ("legacy-tools-md", "warning"),
+        ("tools-md-migration-blocked", "error"),
+    ]
+    assert findings[1].message == (
+        'Agent "main" TOOLS.md cannot be migrated: AGENTS.md must be an unlinked regular file '
+        "for automatic migration"
+    )
+    assert tools_md_migration_findings(tmp_path / "missing") == ()

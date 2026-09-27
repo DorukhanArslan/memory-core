@@ -75,7 +75,7 @@ export const EN = {
   'prompt.fromSettings': 'from settings', 'prompt.previewNote': 'Preview: current disk state, not sent', 'prompt.loadFailed': 'Could not read the prompt', 'prompt.none': 'No prompt to show.',
   'prompt.bootstrapMode': 'bootstrap mode', 'prompt.runKind': 'run', 'prompt.noPrevTurn': 'No previous turn.', 'prompt.loadingPrev': 'Loading the previous turn…',
   'prompt.compareChanged': 'Project Context diff (#{a} → #{b}): {n}', 'prompt.compareSame': 'Project Context same as the previous turn (#{a} → #{b})',
-  'prompt.notices': 'Notices', 'prompt.noNotices': 'No notices for this kind.', 'prompt.bootstrapNotice': 'Bootstrap notice', 'prompt.workspaceNote': 'Workspace note',
+  'prompt.notices': 'Notices', 'prompt.noNotices': 'No notices for this kind.', 'prompt.bootstrapNotice': 'Bootstrap notice', 'prompt.workspaceNote': 'Workspace note', 'prompt.migrationFinding': 'Doctor finding (not in the prompt)',
   'prompt.truncWarning': 'Truncation warning', 'prompt.runtimeWarning': 'runtime warning · not in the prompt', 'prompt.warnOnceShown': 'The truncation warning was already shown (once).',
   'prompt.filterWarning': 'Filter note', 'prompt.budget': 'Budget', 'prompt.noBudget': 'No budget information.', 'prompt.capLine': 'per-file cap {c}', 'prompt.fileCap': 'file cap', 'prompt.total': 'total',
   'prompt.wsFiles': 'Workspace files', 'prompt.stable': 'Project Context',

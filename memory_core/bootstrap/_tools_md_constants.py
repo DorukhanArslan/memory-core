@@ -4,11 +4,13 @@ Extracted by scripts/extract_upstream_constants.py.
 Generated from OpenClaw eb377ac59e6c9fd6c7705028034812becf00271b:
 src/commands/doctor-tools-md-migration-content.ts,
 src/commands/doctor-tools-md-migration-guidance.ts,
-src/commands/doctor-tools-md-migration.ts.
+src/commands/doctor-tools-md-migration.ts,
+src/commands/doctor-tools-md-migration-budget.ts.
 Do not edit by hand: re-run the script; tests/integration/test_extracted_upstream_constants.py
 checks these values against the source.
 The legacy templates are upstream's retired TOOLS.md stock texts, used only to
-recognise an untouched file; memory-core never seeds them.
+recognise an untouched file; memory-core never seeds them. The finding texts are
+str.format templates; their fields stand for upstream template expressions.
 """
 
 from __future__ import annotations
@@ -32,3 +34,10 @@ LEGACY_AGENTS_TOOLS_GUIDANCE_REWRITES: tuple[tuple[str, str], ...] = (
     ('- \u5f53\u4f60\u5b66\u5230\u6559\u8bad \u2192 \u66f4\u65b0 AGENTS.md\u3001TOOLS.md \u6216\u76f8\u5173\u6280\u80fd\u6587\u4ef6', '- \u5f53\u4f60\u5b66\u5230\u6559\u8bad \u2192 \u66f4\u65b0 AGENTS.md \u6216\u76f8\u5173\u6280\u80fd\u6587\u4ef6'),
 )
 MIGRATED_SUBSECTION_HEADING = '### Local notes (migrated from TOOLS.md)'
+TOOLS_MD_MIGRATION_CHECK_ID = 'core/doctor/tools-md-migration'
+TOOLS_MD_MIGRATION_FIX_HINT = 'Run {command} to merge TOOLS.md into AGENTS.md.'
+TOOLS_MD_MIGRATION_FINDINGS: tuple[tuple[str, str, str], ...] = (
+    ('legacy-tools-md', 'warning', 'Agent "{agent_id}" still stores local tool notes in TOOLS.md.'),
+    ('tools-md-merged-bootstrap-limit', 'warning', 'Agent "{agent_id}" TOOLS.md migration will produce a {merged_chars}-character AGENTS.md, exceeding its configured bootstrapMaxChars limit of {bootstrap_max_chars}. Raise `agents.entries.*.bootstrapMaxChars` for this agent, or `agents.defaults.bootstrapMaxChars` as fallback, to preserve all migrated instructions.'),
+    ('tools-md-migration-blocked', 'error', 'Agent "{agent_id}" TOOLS.md cannot be migrated: {error}'),
+)

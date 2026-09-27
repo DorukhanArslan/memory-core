@@ -110,6 +110,30 @@ def test_identity_loader_marks_missing_layout_files_like_upstream(tmp_path: Path
     assert compat.to_prompt_section() == identity.to_prompt_section()
 
 
+def test_identity_loader_reports_a_leftover_tools_md(tmp_path: Path):
+    # v2026.9.6 no longer loads TOOLS.md; the host learns it through the doctor finding.
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "AGENTS.md").write_text("Rules.", encoding="utf-8")
+    (root / "TOOLS.md").write_text("- ssh host: build-1\n", encoding="utf-8")
+
+    identity = LiveIdentity.from_dir(root, path_style="relative")
+
+    assert "build-1" not in identity.to_prompt_section()
+    assert [finding.to_json() for finding in identity.migration_findings] == [
+        {
+            "checkId": "core/doctor/tools-md-migration",
+            "severity": "warning",
+            "message": 'Agent "main" still stores local tool notes in TOOLS.md.',
+            "path": str(root / "TOOLS.md"),
+            "target": "main",
+            "requirement": "legacy-tools-md",
+            "fixHint": "Run memory_core.bootstrap.migrate_tools_md() to merge TOOLS.md into AGENTS.md.",
+        }
+    ]
+    assert LiveIdentityStore(root).load().migration_findings == identity.migration_findings
+
+
 def test_identity_loader_keeps_agent_memory_out_by_default(tmp_path: Path):
     root = tmp_path / "workspace"
     initialize_agent_workspace(root, templates={"AGENTS.md": "Rules.\n"}, seed_bootstrap=False)

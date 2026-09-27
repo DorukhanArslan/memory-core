@@ -68,7 +68,8 @@ AREA_RULES: tuple[tuple[str, str, re.Pattern[str]], ...] = tuple(
         (
             "bootstrap",
             "Workspace bootstrap",
-            r"bootstrap|workspace_lifecycle|workspace_bootstrap|project_context|startup_context",
+            r"bootstrap|workspace_lifecycle|workspace_bootstrap|project_context|startup_context"
+            r"|tools_md",
         ),
         ("flush", "Memory flush", r"flush"),
         ("memory_get", "memory_get", r"memory_get"),

@@ -268,6 +268,8 @@ def prompt_view(
         },
         "injectionSkipped": wc.injection_skipped,
         "workspaceNotes": list(wc.workspace_notes),
+        # collectToolsMdMigrationFindings for a leftover TOOLS.md (host-facing, not prompt text).
+        "migrationFindings": [finding.to_json() for finding in wc.migration_findings],
         "budget": {
             "maxChars": wc.analysis.bootstrap_max_chars,
             "totalMaxChars": wc.analysis.bootstrap_total_max_chars,

@@ -7,7 +7,9 @@ script, and a set-equality check compares them with the source at test time
 character as a ``\\u`` escape:
 
 - ``memory_core/bootstrap/_tools_md_constants.py``: the TOOLS.md migration templates, guidance
-  rewrites and heading (src/commands/doctor-tools-md-migration*.ts);
+  rewrites and heading, and the doctor finding texts of ``collectToolsMdMigrationFindings``
+  (src/commands/doctor-tools-md-migration*.ts; template literals become ``str.format``
+  templates whose fields name the upstream expressions);
 - ``memory_core/bootstrap/_bootstrap_constants.py``: the bootstrap budget numbers and the AGENTS.md
   policy-digest keyword sets (src/agents/embedded-agent-helpers/bootstrap.ts,
   src/agents/bootstrap-budget.ts, src/agents/bootstrap-budget-warning.ts)::
@@ -36,6 +38,16 @@ BUDGET_WARNING_SOURCE = "src/agents/bootstrap-budget-warning.ts"
 CONTENT_SOURCE = "src/commands/doctor-tools-md-migration-content.ts"
 GUIDANCE_SOURCE = "src/commands/doctor-tools-md-migration-guidance.ts"
 MIGRATION_SOURCE = "src/commands/doctor-tools-md-migration.ts"
+MIGRATION_BUDGET_SOURCE = "src/commands/doctor-tools-md-migration-budget.ts"
+# Template-literal expressions of the finding texts -> str.format field names.
+FINDING_TEMPLATE_FIELDS = {
+    "target.primaryAgentId": "agent_id",
+    "agentId": "agent_id",
+    "errorMessage(error)": "error",
+    "params.mergedChars": "merged_chars",
+    "bootstrapMaxChars": "bootstrap_max_chars",
+    'formatCliCommand("openclaw doctor --fix")': "command",
+}
 
 _ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "\\": "\\", '"': '"', "'": "'", "0": "\0", "`": "`"}
 
@@ -101,6 +113,100 @@ def ts_string_constant(source: str, name: str) -> str:
     return value
 
 
+def ts_template_literal(source: str, index: int, fields: dict[str, str]) -> tuple[str, int]:
+    """A backtick template literal at ``index`` as a ``str.format`` template.
+
+    Every ``${expression}`` must be a key of ``fields`` and becomes ``{field}``; literal braces
+    are doubled. Returns (template, end index).
+    """
+    index = _skip_space(source, index)
+    if source[index] != "`":
+        raise ValueError(f"expected a template literal at {index}: {source[index:index + 20]!r}")
+    out: list[str] = []
+    position = index + 1
+    while True:
+        char = source[position]
+        if char == "`":
+            return "".join(out), position + 1
+        if char == "\\":
+            code = source[position + 1]
+            if code not in _ESCAPES and code not in "${":
+                raise ValueError(f"unsupported escape \\{code} at {position}")
+            value = _ESCAPES.get(code, code)
+            out.append(value.replace("{", "{{").replace("}", "}}"))
+            position += 2
+            continue
+        if char == "$" and source[position + 1] == "{":
+            depth = 1
+            end = position + 2
+            while depth:
+                current = source[end]
+                if current in "\"'":
+                    _, end = _read_ts_string(source, end)
+                    continue
+                depth += {"{": 1, "}": -1}.get(current, 0)
+                end += 1
+            expression = source[position + 2 : end - 1].strip()
+            if expression not in fields:
+                raise ValueError(f"unmapped template expression {expression!r} at {position}")
+            out.append("{" + fields[expression] + "}")
+            position = end
+            continue
+        out.append({"{": "{{", "}": "}}"}.get(char, char))
+        position += 1
+
+
+def _property_value_index(source: str, name: str, *, template: bool = False) -> int:
+    """Index of the value of the first ``name: `` property (``name: ` `` with ``template``)."""
+    match = re.search(rf"\b{re.escape(name)}: " + ("(?=`)" if template else ""), source)
+    if match is None:
+        raise ValueError(f"property {name} not found")
+    return match.end()
+
+
+def extract_tools_md_findings(migration: str, budget: str) -> dict[str, object]:
+    """``collectToolsMdMigrationFindings``: check id, fix hint and (requirement, severity,
+    message) per ``migrationFinding`` call, in source order."""
+    start = migration.index("export async function collectToolsMdMigrationFindings")
+    end = migration.index("export async function maybeMigrateToolsMd", start)
+    body = migration[start:end]
+    default_severity = re.search(r'severity: params\.severity \?\? "(\w+)"', migration)
+    if default_severity is None:
+        raise ValueError("migrationFinding default severity not found")
+    calls = body.split("migrationFinding({")[1:]
+    findings: list[tuple[str, str, str]] = []
+    for call in calls:
+        requirement = re.search(r'requirement: "([^"]+)"', call)
+        severity = re.search(r'severity: "(\w+)"', call)
+        if requirement is None:
+            raise ValueError("migrationFinding call without a requirement")
+        message_at = _skip_space(call, _property_value_index(call, "message"))
+        if call.startswith("budget.message", message_at):
+            # describeToolsMdMergedBootstrapLimits builds this message.
+            message, _ = ts_template_literal(
+                budget, _property_value_index(budget, "message", template=True),
+                FINDING_TEMPLATE_FIELDS,
+            )
+        else:
+            message, _ = ts_template_literal(call, message_at, FINDING_TEMPLATE_FIELDS)
+        findings.append(
+            (
+                requirement.group(1),
+                severity.group(1) if severity else default_severity.group(1),
+                message,
+            )
+        )
+    fix_hint, _ = ts_template_literal(
+        migration, _property_value_index(migration, "fixHint", template=True),
+        FINDING_TEMPLATE_FIELDS,
+    )
+    return {
+        "TOOLS_MD_MIGRATION_CHECK_ID": ts_string_constant(migration, "TOOLS_MD_MIGRATION_CHECK_ID"),
+        "TOOLS_MD_MIGRATION_FIX_HINT": fix_hint,
+        "TOOLS_MD_MIGRATION_FINDINGS": tuple(findings),
+    }
+
+
 def ts_string_pairs(source: str, name: str) -> tuple[tuple[str, str], ...]:
     """Value of ``const NAME = [[a, b], ...] as const;`` for string pairs."""
     match = re.search(rf"\bconst {re.escape(name)}\s*=\s*\[", source)
@@ -150,6 +256,9 @@ def extract(repo: Path) -> dict[str, object]:
             "LEGACY_AGENTS_TOOLS_GUIDANCE_REWRITES",
         ),
         "MIGRATED_SUBSECTION_HEADING": ts_string_constant(migration, "MIGRATED_SUBSECTION_HEADING"),
+        **extract_tools_md_findings(
+            migration, (repo / MIGRATION_BUDGET_SOURCE).read_text(encoding="utf-8")
+        ),
     }
 
 
@@ -251,8 +360,9 @@ def _render_value(name: str, value: object) -> list[str]:
         return [f"{name} = {ascii(value)}"]
     items = list(value)  # type: ignore[call-overload]
     if items and isinstance(items[0], tuple):
-        lines = [f"{name}: tuple[tuple[str, str], ...] = ("]
-        lines.extend(f"    ({ascii(first)}, {ascii(second)})," for first, second in items)
+        arity = ", ".join("str" for _ in items[0])
+        lines = [f"{name}: tuple[tuple[{arity}], ...] = ("]
+        lines.extend(f"    ({', '.join(ascii(part) for part in item)})," for item in items)
         return [*lines, ")"]
     lines = [f"{name}: tuple[str, ...] = ("]
     lines.extend(f"    {ascii(item)}," for item in items)
@@ -286,10 +396,11 @@ def outputs(repo: Path) -> dict[Path, str]:
             extract(repo),
             commit,
             title="Upstream TOOLS.md migration constants",
-            sources=[CONTENT_SOURCE, GUIDANCE_SOURCE, MIGRATION_SOURCE],
+            sources=[CONTENT_SOURCE, GUIDANCE_SOURCE, MIGRATION_SOURCE, MIGRATION_BUDGET_SOURCE],
             note=[
                 "The legacy templates are upstream's retired TOOLS.md stock texts, used only to",
-                "recognise an untouched file; memory-core never seeds them.",
+                "recognise an untouched file; memory-core never seeds them. The finding texts are",
+                "str.format templates; their fields stand for upstream template expressions.",
             ],
         ),
         BOOTSTRAP_OUTPUT: render(

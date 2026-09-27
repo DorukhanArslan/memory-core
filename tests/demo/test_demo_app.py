@@ -286,6 +286,25 @@ def test_tools_md_migration_endpoint_merges_into_agents_md(client, lab):
     assert again == {"changes": [], "warnings": [], "archivePath": None, "merged": None}
 
 
+def test_prompt_preview_reports_a_leftover_tools_md_until_it_is_migrated(client, lab):
+    # collectToolsMdMigrationFindings: TOOLS.md is not loaded at v2026.9.6, so the inspector
+    # names it as a doctor finding instead of dropping it silently.
+    client.get("/api/lab/state")
+    (lab.root / "TOOLS.md").write_text("- ssh host: build-1\n", encoding="utf-8")
+
+    before = preview(client, sessionKind="main")
+
+    assert "TOOLS.md" not in names(before) and "build-1" not in before["promptText"]
+    (finding,) = before["migrationFindings"]
+    assert finding["requirement"] == "legacy-tools-md" and finding["severity"] == "warning"
+    assert finding["message"] == 'Agent "main" still stores local tool notes in TOOLS.md.'
+    assert finding["fixHint"] == "Run memory_core.bootstrap.migrate_tools_md() to merge TOOLS.md into AGENTS.md."
+    client.post("/api/lab/workspace/migrate-tools-md")
+    after = preview(client, sessionKind="main")
+    assert after["migrationFindings"] == []
+    assert "build-1" in after["promptText"]
+
+
 def test_files_reject_an_unknown_layout(client):
     response = client.get("/api/lab/files", params={"layout": "other"})
 

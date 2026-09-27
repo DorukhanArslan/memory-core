@@ -4976,9 +4976,11 @@ from memory_core.bootstrap._tools_md_constants import (  # noqa: E402
     LEGACY_TOOLS_MD_TEMPLATE,
 )
 from memory_core.bootstrap.tools_md import (  # noqa: E402
+    MIGRATE_TOOLS_MD_COMMAND,
     rewrite_legacy_agents_tools_guidance_lines,
     should_merge_tools_md,
     tools_md_archive_dir,
+    tools_md_migration_findings,
 )
 
 # Inputs of src/commands/doctor-tools-md-migration.test.ts at v2026.9.6.
@@ -5139,6 +5141,74 @@ def test_real_openclaw_oracle_tools_md_migration_matches_python(tmp_path: Path, 
                 ]
         assert ts_result["runs"][0]["warnings"][0].endswith("| <os error> | EEXIST"), ts_result
     assert ts_result == python_result
+
+
+# collectToolsMdMigrationFindings: the first three are inputs of upstream's test (preview,
+# over-limit merge with bootstrapMaxChars 20000 on the agent, normal-sized merge) plus its
+# symlinked-AGENTS.md input; the rest are memory-core probes of the other branches (default limit,
+# UTF-16 length, a template, a symlinked TOOLS.md, a beta artifact, no TOOLS.md).
+_BIG_AGENTS = f"# Agent\n\n## Tools\n\n{'a' * 15_000}\n"
+TOOLS_MD_FINDINGS_SCENARIOS = [
+    pytest.param({"AGENTS.md": _TOOLS_AGENTS, "TOOLS.md": _TOOLS_CAMERAS}, {}, id="preview"),
+    pytest.param(
+        {"AGENTS.md": _BIG_AGENTS, "TOOLS.md": f"{'b' * 15_000}\n"},
+        {"bootstrapMaxChars": 20_000},
+        id="merged-over-agent-limit",
+    ),
+    pytest.param(
+        {"AGENTS.md": _TOOLS_AGENTS, "TOOLS.md": "Local camera: kitchen\n"}, {}, id="normal-sized"
+    ),
+    pytest.param(
+        {"TOOLS.md": "Local tool notes.\n", "AGENTS.md": ("symlink", "Private external instructions.\n")},
+        {},
+        id="symlinked-agents",
+    ),
+    pytest.param(
+        {"AGENTS.md": _BIG_AGENTS, "TOOLS.md": f"{'b' * 15_000}\n"}, {}, id="merged-over-default-limit"
+    ),
+    pytest.param(
+        {"AGENTS.md": _TOOLS_AGENTS, "TOOLS.md": "\U0001F600" * 10_001}, {}, id="utf16-length"
+    ),
+    pytest.param(
+        {"AGENTS.md": _BIG_AGENTS * 2, "TOOLS.md": LEGACY_TOOLS_MD_TEMPLATE}, {}, id="template-not-merged"
+    ),
+    pytest.param(
+        {"AGENTS.md": _TOOLS_AGENTS, "TOOLS.md": ("symlink", _TOOLS_CAMERAS)}, {}, id="symlinked-tools"
+    ),
+    pytest.param(
+        {"AGENTS.md": _TOOLS_AGENTS, "TOOLS.md": _TOOLS_CAMERAS, "TOOLS.md.doctor-importing-1": "x"},
+        {},
+        id="beta-artifact",
+    ),
+    pytest.param({"AGENTS.md": _TOOLS_AGENTS}, {}, id="no-tools-md"),
+]
+
+
+@pytest.mark.parametrize(("files", "options"), TOOLS_MD_FINDINGS_SCENARIOS)
+def test_real_openclaw_oracle_tools_md_migration_findings_match_python(tmp_path: Path, files, options):
+    ts_root = tmp_path / "ts" / "workspace"
+    py_root = tmp_path / "py" / "workspace"
+    _write_tools_fixture(ts_root, files, {})
+    _write_tools_fixture(py_root, files, {})
+
+    result = _oracle().run(
+        {"operation": "toolsMdMigrationFindings", "workspaceDir": str(ts_root), **options}
+    )
+
+    assert result["ok"] is True, result
+    ts_result = _replace_root(result["result"], ts_root)
+    # Deviation: memory-core's fix hint names its migration helper instead of `openclaw doctor --fix`.
+    for finding in ts_result["findings"]:
+        finding["fixHint"] = finding["fixHint"].replace(
+            "openclaw doctor --fix", MIGRATE_TOOLS_MD_COMMAND
+        )
+    findings = tools_md_migration_findings(
+        py_root, bootstrap_max_chars=options.get("bootstrapMaxChars")
+    )
+    assert ts_result == _replace_root(
+        {"findings": [finding.to_json() for finding in findings], "tree": _python_tree_snapshot(py_root)},
+        py_root,
+    )
 
 
 def test_real_openclaw_oracle_tools_md_merge_decision_matches_python():

@@ -47,7 +47,7 @@ from memory_core.bootstrap.files import (
     resolve_bootstrap_mode,
     resolve_context_injection,
 )
-from memory_core.bootstrap.layout import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
+from memory_core.bootstrap.layout import DEFAULT_WORKSPACE_LAYOUT, TOOLS_FILENAME, WorkspaceLayout
 from memory_core.bootstrap.lifecycle import (
     BootstrapStatus,
     bootstrap_status as resolve_bootstrap_status,
@@ -62,6 +62,7 @@ from memory_core.bootstrap.render import (
     render_workspace_prompt,
     sort_context_files,
 )
+from memory_core.bootstrap.tools_md import ToolsMdMigrationFinding, tools_md_migration_findings
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 
 
@@ -78,6 +79,10 @@ class WorkspaceContext:
     holds ``## Bootstrap Pending`` and ``## Bootstrap Context Notice`` when
     they apply. ``record_completed_bootstrap_turn`` asks the host to remember a
     full bootstrap turn for ``context_injection="continuation-skip"``.
+    ``migration_findings`` are the doctor findings of
+    :func:`~memory_core.bootstrap.tools_md.tools_md_migration_findings` (upstream
+    ``collectToolsMdMigrationFindings``) for a leftover TOOLS.md, which the layout no
+    longer loads; they are for the host (logs, a health view), never prompt text.
     """
 
     stable_text: str
@@ -96,6 +101,7 @@ class WorkspaceContext:
     injection_skipped: bool
     record_completed_bootstrap_turn: bool
     workspace_notes: tuple[str, ...]
+    migration_findings: tuple[ToolsMdMigrationFinding, ...] = ()
 
     @property
     def prompt_text(self) -> str:
@@ -166,6 +172,11 @@ def build_workspace_context(
     filters and before budgeting, so they consume no budget and raise no
     truncation warning; ``memory_core.live`` uses it to keep the agent's MEMORY.md
     out of subject prompts.
+
+    A TOOLS.md at ``root`` is not loaded by a layout without it (every shipped layout since
+    v2026.9.6); ``migration_findings`` then carries upstream's doctor findings for agent
+    ``main`` (``legacy-tools-md``, the merged-size check against ``max_chars``, or a blocked
+    migration) so the host can run :func:`~memory_core.bootstrap.tools_md.migrate_tools_md`.
     """
     max_chars = resolve_bootstrap_char_limit(max_chars, DEFAULT_BOOTSTRAP_MAX_CHARS)
     total_max_chars = resolve_bootstrap_char_limit(
@@ -275,4 +286,9 @@ def build_workspace_context(
         injection_skipped=decision.skip_injection,
         record_completed_bootstrap_turn=decision.record_completed_bootstrap_turn,
         workspace_notes=notes,
+        migration_findings=(
+            ()
+            if TOOLS_FILENAME in layout.load_order
+            else tools_md_migration_findings(root, bootstrap_max_chars=max_chars)
+        ),
     )

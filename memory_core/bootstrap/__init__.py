@@ -4,8 +4,9 @@ Ports the OpenClaw workspace bootstrap surface at the parity pin v2026.9.6 (see 
 module's docstring for upstream anchors) and adds memory-core's default layout
 (``MEMORY_CORE_WORKSPACE_LAYOUT``) with extensions that have no upstream reference.
 ``OPENCLAW_COMPAT_LAYOUT`` is upstream's map alone. ``migrate_tools_md`` retires a
-TOOLS.md into AGENTS.md ``## Tools``; ``migrate_legacy_workspace_state`` imports upstream's
-retired JSON setup state.
+TOOLS.md into AGENTS.md ``## Tools`` (``tools_md_migration_findings`` and
+``WorkspaceContext.migration_findings`` report one that is still there);
+``migrate_legacy_workspace_state`` imports upstream's retired JSON setup state.
 
 Typical host flow, every turn (upstream runs ``ensureAgentWorkspace`` on each
 reply, ``src/auto-reply/reply/get-reply.ts:418-425``, which is where a configured
@@ -82,10 +83,12 @@ from memory_core.bootstrap.lifecycle import (
     workspace_profile_looks_configured,
 )
 from memory_core.bootstrap.tools_md import (
+    ToolsMdMigrationFinding,
     ToolsMdMigrationResult,
     merge_tools_md_into_agents_md,
     migrate_tools_md,
     should_merge_tools_md,
+    tools_md_migration_findings,
 )
 from memory_core.bootstrap.render import (
     build_bootstrap_prompt_section_lines,
@@ -128,6 +131,7 @@ __all__ = [
     "ContextFile",
     "ContextInjectionDecision",
     "LegacyWorkspaceStateMigration",
+    "ToolsMdMigrationFinding",
     "ToolsMdMigrationResult",
     "TrimBootstrapResult",
     "WorkspaceBootstrapFile",
@@ -178,6 +182,7 @@ __all__ = [
     "should_merge_tools_md",
     "sort_context_files",
     "strip_template_front_matter",
+    "tools_md_migration_findings",
     "trim_bootstrap_content",
     "workspace_profile_looks_configured",
 ]

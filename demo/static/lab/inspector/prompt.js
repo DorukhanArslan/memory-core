@@ -162,6 +162,7 @@ export function promptTab(turn, { ctx = 'turn' } = {}) {
   const notices = [];
   if (pv.bootstrapText) notices.push(notice('bootstrap', pv.bootstrapText, { tone: pv.bootstrapStatus === 'pending' ? 'accent' : 'info', title: t('prompt.bootstrapNotice'), ic: 'clock' }));
   for (const n of pv.workspaceNotes || []) notices.push(notice('workspace', n, { tone: 'info', title: t('prompt.workspaceNote') }));
+  for (const f of pv.migrationFindings || []) notices.push(notice('migration', `${f.message}\n${f.fixHint}`, { tone: f.severity === 'error' ? 'danger' : 'warn', title: t('prompt.migrationFinding'), ic: 'alert-triangle', note: f.requirement }));
   if ((pv.truncationWarningLines || []).length) notices.push(notice('warning', pv.truncationWarningLines.join('\n'), { tone: 'warn', title: t('prompt.truncWarning'), ic: 'alert-triangle', note: t('prompt.runtimeWarning') }));
   if (pv.truncationWarning && pv.truncationWarning.shown === false && (pv.files || []).some((f) => f.truncated)) notices.push(honesty(t('prompt.warnOnceShown'), 'neutral', 'info'));
   if (pv.injectionSkipped) notices.push(notice('injection', `injection_skipped: contextInjection=${pv.contextInjection || '—'}`, { tone: 'neutral', title: 'contextInjection' }));

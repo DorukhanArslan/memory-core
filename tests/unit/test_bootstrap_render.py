@@ -179,6 +179,30 @@ def test_workspace_context_for_a_pending_memory_core_workspace(tmp_path):
     )
     assert context.record_completed_bootstrap_turn is True
     assert context.truncated is False and context.truncation_notice is None
+    # collectToolsMdMigrationFindings: the leftover TOOLS.md is reported to the host.
+    assert [finding.requirement for finding in context.migration_findings] == ["legacy-tools-md"]
+    assert context.migration_findings[0].message == (
+        'Agent "main" still stores local tool notes in TOOLS.md.'
+    )
+    assert context.migration_findings[0].path == str(tmp_path / "TOOLS.md")
+    assert "still stores" not in context.prompt_text
+
+
+def test_workspace_context_checks_the_merged_tools_size_against_max_chars(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("# Agent\n", encoding="utf-8")
+    (tmp_path / "TOOLS.md").write_text("n" * 200, encoding="utf-8")
+
+    small = build_workspace_context(tmp_path, max_chars=100)
+    default = build_workspace_context(tmp_path)
+
+    assert [f.requirement for f in small.migration_findings] == [
+        "legacy-tools-md",
+        "tools-md-merged-bootstrap-limit",
+    ]
+    assert "exceeding its configured bootstrapMaxChars limit of 100." in small.migration_findings[1].message
+    assert [f.requirement for f in default.migration_findings] == ["legacy-tools-md"]
+    (tmp_path / "TOOLS.md").unlink()
+    assert build_workspace_context(tmp_path).migration_findings == ()
 
 
 def test_workspace_context_drops_bootstrap_unless_mode_is_full(tmp_path):

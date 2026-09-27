@@ -102,6 +102,7 @@ type Payload = {
   repeat?: number;
   stateDirIsFile?: boolean;
   seedArchive?: "same" | "different";
+  bootstrapMaxChars?: number;
   cases?: Array<Record<string, any>>;
   scenarios?: Array<Record<string, any>>;
 };
@@ -1593,6 +1594,33 @@ async function main() {
         ok: true,
         operation: payload.operation,
         result: { runs, tree: await snapshotWorkspaceTree(workspaceDir), archives },
+      };
+    });
+  }
+
+  if (payload.operation === "toolsMdMigrationFindings") {
+    // src/commands/doctor-tools-md-migration.ts collectToolsMdMigrationFindings (read-only
+    // doctor health findings) for one default agent "main" whose workspace is workspaceDir, as
+    // upstream's test builds the config; bootstrapMaxChars goes on that agent entry like the
+    // test's `fixture.cfg.agents.list[0].bootstrapMaxChars`. The profile and container hints
+    // that formatCliCommand would add to the fix hint are cleared.
+    if (!payload.workspaceDir) {
+      throw new Error("workspaceDir is required");
+    }
+    const workspaceDir = payload.workspaceDir;
+    return withIsolatedRuntimeState("openclaw-oracle-tools-md-findings-", async () => {
+      delete process.env.OPENCLAW_PROFILE;
+      delete process.env.OPENCLAW_CONTAINER_HINT;
+      const migration = await importFromRepo(repoPath, "src/commands/doctor-tools-md-migration.ts");
+      const agent: Record<string, unknown> = { id: "main", default: true, workspace: workspaceDir };
+      if (payload.bootstrapMaxChars !== undefined) {
+        agent.bootstrapMaxChars = payload.bootstrapMaxChars;
+      }
+      const findings = await migration.collectToolsMdMigrationFindings({ agents: { list: [agent] } });
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: { findings, tree: await snapshotWorkspaceTree(workspaceDir) },
       };
     });
   }

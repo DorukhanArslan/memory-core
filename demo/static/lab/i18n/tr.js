@@ -85,7 +85,7 @@ export const TR = {
   'prompt.fromSettings': 'ayardan', 'prompt.previewNote': 'Önizleme: diskteki güncel durum, gönderilmedi', 'prompt.loadFailed': "Prompt okunamadı", 'prompt.none': 'Gösterilecek prompt yok.',
   'prompt.bootstrapMode': 'bootstrap modu', 'prompt.runKind': 'çalıştırma', 'prompt.noPrevTurn': 'Önceki tur yok.', 'prompt.loadingPrev': 'Önceki tur yükleniyor…',
   'prompt.compareChanged': 'Project Context farkı (#{a} → #{b}): {n}', 'prompt.compareSame': 'Project Context önceki turla aynı (#{a} → #{b})',
-  'prompt.notices': 'Bildirimler', 'prompt.noNotices': 'Bu türde bildirim yok.', 'prompt.bootstrapNotice': 'Bootstrap bildirimi', 'prompt.workspaceNote': 'Çalışma alanı notu',
+  'prompt.notices': 'Bildirimler', 'prompt.noNotices': 'Bu türde bildirim yok.', 'prompt.bootstrapNotice': 'Bootstrap bildirimi', 'prompt.workspaceNote': 'Çalışma alanı notu', 'prompt.migrationFinding': "Doctor bulgusu (prompt'ta yok)",
   'prompt.truncWarning': 'Kırpma uyarısı', 'prompt.runtimeWarning': "çalışma zamanı uyarısı · prompt'a girmez", 'prompt.warnOnceShown': 'Kırpma uyarısı daha önce gösterildi (once).',
   'prompt.filterWarning': 'Filtre notu', 'prompt.budget': 'Bütçe', 'prompt.noBudget': 'Bütçe bilgisi yok.', 'prompt.capLine': 'dosya başına sınır {c}', 'prompt.fileCap': 'dosya sınırı', 'prompt.total': 'toplam',
   'prompt.wsFiles': 'Çalışma alanı dosyaları', 'prompt.stable': 'Proje bağlamı (Project Context)',

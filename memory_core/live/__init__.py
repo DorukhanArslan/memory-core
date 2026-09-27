@@ -21,6 +21,7 @@ from memory_core.bootstrap import (
     render_workspace_prompt,
 )
 from memory_core.bootstrap.files import BootstrapMode
+from memory_core.bootstrap.tools_md import ToolsMdMigrationFinding
 from memory_core.client import Memory
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import EmbeddingProvider
@@ -45,9 +46,10 @@ IDENTITY_FILE_NAMES = frozenset(DEFAULT_WORKSPACE_LAYOUT.load_order)
 # dreaming diary (extensions/memory-core/src/dreaming-dreams-file.ts:10).
 NON_INJECTED_WORKSPACE_FILES = frozenset({"BOOT.md", "DREAMS.md", "dreams.md"})
 # Workspace files v2026.9.6 retired but still finds in older workspaces: TOOLS.md waits for
-# memory_core.bootstrap.migrate_tools_md (669db2968fc, #113966), HEARTBEAT.md for the
-# monitor-scratch port (3e2b3ea4d5e, #112967; memory_core.heartbeat still reads it). Neither is
-# injected; the strict unknown-file policy accepts them.
+# memory_core.bootstrap.migrate_tools_md (669db2968fc, #113966; LiveIdentity.migration_findings
+# reports it), HEARTBEAT.md for the monitor-scratch port (3e2b3ea4d5e, #112967;
+# memory_core.heartbeat still reads it). Neither is injected; the strict unknown-file policy
+# accepts them.
 RETIRED_WORKSPACE_FILES = frozenset({"TOOLS.md", "HEARTBEAT.md"})
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 # Upstream SAFE_SESSION_ID_RE (src/config/sessions/paths.ts:63 at 4c42815348): a leading
@@ -103,6 +105,10 @@ class LiveIdentity:
     ``sections`` holds ``(path, injected content)`` pairs in render order;
     ``bootstrap_text`` holds ``## Bootstrap Pending`` / ``## Bootstrap Context
     Notice`` when they apply; ``warnings`` are the budget warnings.
+    ``migration_findings`` are upstream's doctor findings for a leftover TOOLS.md
+    (``collectToolsMdMigrationFindings``: no layout loads it since v2026.9.6, so its notes
+    reach no subject prompt until the host runs ``memory_core.bootstrap.migrate_tools_md``);
+    they are host-facing and never rendered into the prompt.
     """
 
     sections: tuple[tuple[str, str], ...]
@@ -110,6 +116,7 @@ class LiveIdentity:
     warnings: tuple[str, ...] = ()
     truncated: bool = False
     layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT
+    migration_findings: tuple[ToolsMdMigrationFinding, ...] = ()
 
     @classmethod
     def from_dir(
@@ -170,6 +177,7 @@ class LiveIdentity:
             warnings=context.warnings,
             truncated=context.truncated,
             layout=layout,
+            migration_findings=context.migration_findings,
         )
 
     def to_prompt_section(

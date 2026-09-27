@@ -525,6 +525,43 @@ def test_truncate_memory_flush_error_message_matches_openclaw_boundary():
     assert truncate_memory_flush_error_message(RuntimeError("  boom  ")) == "boom"
 
 
+def test_truncate_memory_flush_error_message_joins_the_cause_chain():
+    # formatErrorMessage (error-coercion.ts): the message, then each cause " | cause", a cause
+    # the text already contains is skipped.
+    try:
+        try:
+            try:
+                raise TimeoutError("socket timed out")
+            except TimeoutError as root:
+                raise ConnectionError("provider unreachable: socket timed out") from root
+        except ConnectionError as middle:
+            raise RuntimeError("flush turn failed") from middle
+    except RuntimeError as error:
+        chained = error
+
+    assert truncate_memory_flush_error_message(chained) == (
+        "flush turn failed | provider unreachable: socket timed out"
+    )
+
+
+def test_truncate_memory_flush_error_message_applies_the_host_redactor():
+    # Upstream redacts with redactSensitiveText (not ported); the host passes its redactor.
+    def redact(text: str) -> str:
+        return text.replace("token-123", "[redacted]")
+
+    try:
+        try:
+            raise PermissionError("bad token-123")
+        except PermissionError as cause:
+            raise RuntimeError("flush failed") from cause
+    except RuntimeError as error:
+        outcome = record_memory_flush_failure({}, error=error, redact=redact)
+
+    assert outcome.error == "flush failed | bad [redacted]"
+    assert truncate_memory_flush_error_message("  token-123  ", redact=redact) == "[redacted]"
+    assert truncate_memory_flush_error_message(RuntimeError("token-123")) == "token-123"
+
+
 def test_truncate_memory_flush_error_message_counts_utf16_units():
     # truncateUtf16Safe: an astral character is two units and is never split.
     message = "e" * (MAX_FLUSH_ERROR_LENGTH - 2) + "\U0001f600" + "x"

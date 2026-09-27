@@ -20,6 +20,7 @@ decides. Writes stay append-only to ``memory/YYYY-MM-DD.md`` (``memory_core.memo
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone as fixed_offset_zone, tzinfo
 import math
@@ -46,7 +47,7 @@ from memory_core._memory_flush_constants import (
     SILENT_REPLY_TOKEN,
     UNIT_MULTIPLIERS,
 )
-from memory_core.bootstrap._js import js_trim
+from memory_core.bootstrap._js import format_js_error_message, js_trim, truncate_utf16_safe, utf16_len
 from memory_core.memory_paths import UnsafeMemoryPathError, validate_daily_memory_path
 
 __all__ = [
@@ -508,11 +509,23 @@ def should_run_memory_flush_trigger(
 # --- session-entry state (agent-runner-memory.ts) -----------------------------------------
 
 
-def truncate_memory_flush_error_message(error: object) -> str:
-    """``truncateMemoryFlushErrorMessage``: at most MAX_FLUSH_ERROR_LENGTH UTF-16 units."""
-    from memory_core.bootstrap._js import truncate_utf16_safe, utf16_len
+def truncate_memory_flush_error_message(
+    error: object, *, redact: Callable[[str], str] | None = None
+) -> str:
+    """``truncateMemoryFlushErrorMessage`` (agent-runner-memory.ts:295-300).
 
-    message = str(error).strip() or str(error)
+    The message is ``formatErrorMessage(err)``: an exception's message plus its ``__cause__``
+    chain (`` | cause``, :func:`memory_core.bootstrap._js.format_js_error_message`), trimmed, else
+    the plain string form; at most MAX_FLUSH_ERROR_LENGTH UTF-16 units. Upstream redacts it
+    with ``redactSensitiveText``, which memory-core does not port: ``redact`` is the host's
+    redactor, applied like upstream's (not to the blank-message fallback).
+    """
+    if isinstance(error, BaseException):
+        formatted = format_js_error_message(error, redact=redact)
+    else:
+        formatted = error if isinstance(error, str) else str(error)
+        formatted = redact(formatted) if redact is not None else formatted
+    message = js_trim(formatted) or str(error)
     if utf16_len(message) > MAX_FLUSH_ERROR_LENGTH:
         return f"{truncate_utf16_safe(message, MAX_FLUSH_ERROR_LENGTH - 1)}…"
     return message
@@ -536,15 +549,18 @@ def record_memory_flush_success(
     return {**entry, "memoryFlush": {"kind": "succeeded", "compactionCount": resolved_count}}
 
 
-def record_memory_flush_failure(entry: dict[str, Any], *, error: object) -> MemoryFlushFailureOutcome:
+def record_memory_flush_failure(
+    entry: dict[str, Any], *, error: object, redact: Callable[[str], str] | None = None
+) -> MemoryFlushFailureOutcome:
     """The entry after one failed flush (``recordMemoryFlushFailure``, agent-runner-memory.ts:1699-1770).
 
     ``memoryFlush`` becomes ``{"kind": "failed", "compactionCount"?, "failureCount"}``
     (the last flushed cycle is kept, the count grows over consecutive failures). After
     MAX_FLUSH_FAILURES failures the cycle is marked ``succeeded`` for the current
     ``compactionCount``, so the same-cycle guard stops retries until the next compaction.
+    ``redact`` is passed to :func:`truncate_memory_flush_error_message`.
     """
-    truncated_error = truncate_memory_flush_error_message(error)
+    truncated_error = truncate_memory_flush_error_message(error, redact=redact)
     current = entry.get("memoryFlush")
     current = current if isinstance(current, dict) else {}
     failed: dict[str, Any] = {"kind": "failed"}

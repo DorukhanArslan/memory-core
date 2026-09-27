@@ -36,7 +36,6 @@ doctor preview note is not ported.
 
 from __future__ import annotations
 
-import errno
 import hashlib
 import os
 import re
@@ -50,6 +49,7 @@ from typing import Literal
 
 from memory_core.bootstrap._bootstrap_constants import DEFAULT_BOOTSTRAP_MAX_CHARS
 from memory_core.bootstrap._js import JS_SPACE, js_iu_keyword_pattern, js_trim, utf16_len
+from memory_core.bootstrap._js import format_js_error_message as _format_error_message
 from memory_core.bootstrap._tools_md_constants import (
     LEGACY_AGENTS_TOOLS_GUIDANCE_REWRITES,
     LEGACY_TOOLS_DEV_FALLBACK,
@@ -247,34 +247,6 @@ def _shorten_home_path(value: str) -> str:
 
 def _temp_path(target: Path) -> Path:
     return Path(f"{target}{_WRITING_INFIX}{os.getpid()}-{int(time.time() * 1000)}")
-
-
-def _format_error_message(exc: BaseException) -> str:
-    """``formatErrorMessage`` (``packages/normalization-core/src/error-coercion.ts``) for the
-    ``__cause__`` chain: the message, then each cause's message (skipped when the text already
-    contains it) and its errno name, joined by `` | ``; secret redaction is not ported."""
-    formatted = str(exc) or type(exc).__name__
-    seen = {formatted}
-
-    def append(message: str | None) -> None:
-        nonlocal formatted
-        if message and message not in seen:
-            formatted += f" | {message}"
-            seen.add(message)
-
-    visited = {id(exc)}
-    cause = exc.__cause__
-    while cause is not None and id(cause) not in visited:
-        visited.add(id(cause))
-        message = str(cause)
-        if message and message in formatted:
-            seen.add(message)
-        else:
-            append(message)
-        if isinstance(cause, OSError) and cause.errno is not None:
-            append(errno.errorcode.get(cause.errno))
-        cause = cause.__cause__
-    return formatted
 
 
 def _make_private_dirs(path: Path) -> None:

@@ -15,9 +15,11 @@ through :func:`js_to_well_formed` at the transport boundary.
 
 from __future__ import annotations
 
+import errno
 import json
 import re
 import unicodedata
+from collections.abc import Callable
 from functools import cmp_to_key
 
 # ECMAScript WhiteSpace (TAB, VT, FF, ZWNBSP, USP = Zs) plus LineTerminator
@@ -248,3 +250,35 @@ def locale_compare(left: str, right: str) -> int:
 
 
 locale_sort_key = cmp_to_key(locale_compare)
+
+
+def format_js_error_message(exc: BaseException, *, redact: Callable[[str], str] | None = None) -> str:
+    """``formatErrorMessage`` (``packages/normalization-core/src/error-coercion.ts``) for the
+    ``__cause__`` chain: the message, then each cause's message (skipped when the text already
+    contains it) and its errno name, joined by `` | ``.
+
+    Upstream then applies ``redactSensitiveText`` (``src/infra/errors.ts``); memory-core does not
+    port it, so ``redact`` is the host's redactor (none: the text is returned as is).
+    """
+    formatted = str(exc) or type(exc).__name__
+    seen = {formatted}
+
+    def append(message: str | None) -> None:
+        nonlocal formatted
+        if message and message not in seen:
+            formatted += f" | {message}"
+            seen.add(message)
+
+    visited = {id(exc)}
+    cause = exc.__cause__
+    while cause is not None and id(cause) not in visited:
+        visited.add(id(cause))
+        message = str(cause)
+        if message and message in formatted:
+            seen.add(message)
+        else:
+            append(message)
+        if isinstance(cause, OSError) and cause.errno is not None:
+            append(errno.errorcode.get(cause.errno))
+        cause = cause.__cause__
+    return redact(formatted) if redact is not None else formatted

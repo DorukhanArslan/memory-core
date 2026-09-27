@@ -33,7 +33,7 @@ import math
 from typing import Any
 
 from demo.chat_engine import ChatEngine, ChatMessage
-from demo.lab_runtime import LAB_TIMEZONE, LabRuntime, LabSession, safe_exception_message
+from demo.lab_runtime import LAB_TIMEZONE, LabRuntime, LabSession, redact_secrets, safe_exception_message
 from demo.memory_flush import MemoryFlushRun, run_memory_flush
 from memory_core.bootstrap._js import utf16_len
 from memory_core.consolidation import record_daily_memory_flush
@@ -192,10 +192,15 @@ def run_flush_turn(
                 timezone=LAB_TIMEZONE,
             )
     except Exception as exc:
-        outcome = record_memory_flush_failure(session.flush_entry, error=safe_exception_message(exc, secrets))
+        # The SDK formats the cause chain and truncates it like upstream; the Lab's key values
+        # are the redactor (upstream's redactSensitiveText is not ported).
+        outcome = record_memory_flush_failure(
+            session.flush_entry, error=exc, redact=lambda text: redact_secrets(text, secrets)
+        )
         session.flush_entry = outcome.entry
         error = {
             "error": f"memory flush failed: {safe_exception_message(exc, secrets)}",
+            "message": outcome.error,
             "failureCount": outcome.failure_count,
             "exhausted": outcome.exhausted,
             "redacted": True,

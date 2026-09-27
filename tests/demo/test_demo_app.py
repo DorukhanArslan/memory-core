@@ -1053,6 +1053,26 @@ def test_manual_flush_is_forced_once_per_cycle(client, lab, monkeypatch):
     assert (lab.root / "memory" / f"{lab.today()}.md").read_text(encoding="utf-8").count("Manual flush note") == 1
 
 
+def test_failed_flush_reports_the_cause_chain_redacted(client, lab, monkeypatch):
+    # recordMemoryFlushFailure: formatErrorMessage joins the cause chain; the Lab passes its key
+    # values as the redactor, since redactSensitiveText is not ported.
+    def failing_flush(target):
+        try:
+            raise ConnectionError("provider refused key lab-secret-value")
+        except ConnectionError as exc:
+            raise RuntimeError("flush turn failed") from exc
+
+    use_engine(monkeypatch, StubEngine([("Bir.", [])], flush_output=failing_flush))
+    send(client, "Not: yük testi yarın.")
+    monkeypatch.setattr(lab, "secret_values", lambda payload: ("lab-secret-value",))
+
+    run = client.post("/api/chat/flush", json={"forced": True}).json()["flush"]
+
+    assert run["error"]["message"] == "flush turn failed | provider refused key [redacted]"
+    assert run["error"]["failureCount"] == 1
+    assert "lab-secret-value" not in json.dumps(run)
+
+
 def test_manual_flush_needs_a_model(client):
     response = client.post("/api/chat/flush", json={"forced": True})
 

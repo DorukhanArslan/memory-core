@@ -185,6 +185,12 @@ export function promptTab(turn, { ctx = 'turn' } = {}) {
   wrap.append(section('excluded', t('prompt.excluded'), { count: excl.length, empty: !excl.length, testid: 'prompt-section-excluded',
     body: () => (excl.length ? h('ul', { class: 'kv-list' }, excl.map((e) => h('li', null, h('span', { class: 'mono' }, e.name), badge(/empty|boş/.test(e.reason || '') ? 'empty' : 'excluded'), h('span', { class: 'muted' }, e.reason)))) : h('div', { class: 'muted' }, t('prompt.noExcluded'))) }));
   if (kind === 'group') wrap.append(honesty(t('prompt.groupNote'), 'info', 'info'));
+  // 7b. Heartbeat user turn (v2026.9.6: the monitor scratch and due jobs, no system section)
+  if (pv.heartbeatPrompt) {
+    const hp = pv.heartbeatPrompt;
+    wrap.append(section('hb-prompt', t('hb.nextPrompt'), { count: hp.skipReason ? hp.skipReason : (hp.message || '').length, copy: hp.message || '', empty: !hp.message && !hp.skipReason, testid: 'prompt-section-heartbeat',
+      body: () => (hp.message ? promptPre(hp.message) : h('div', { class: 'muted' }, `${t('hb.skipped')}: ${hp.skipReason} · ${t('hb.noModelCall')}`)) }));
+  }
   // 8. Hatırlama
   if (pv.recall) wrap.append(section('recall', t('prompt.recall'), { count: (pv.recall.lines || []).length, tags: [{ text: 'demo-only', tone: 'warn' }],
     body: () => h('div', { class: 'stack-tight' }, (pv.recall.memoryRecallSection || []).length ? promptPre(pv.recall.memoryRecallSection.join('\n')) : h('div', { class: 'muted' }, t('prompt.noRecallSection')), (pv.recall.lines || []).length ? promptPre(pv.recall.lines.join('\n')) : h('div', { class: 'muted' }, t('prompt.noRecallLines'))) }));

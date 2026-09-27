@@ -300,6 +300,12 @@ def test_contract_heartbeat_fields(lab_client: TestClient) -> None:
         assert used in source, used
     for retired in ("unparsedTaskEntries", "systemSection", "/heartbeat/strip", "ackMaxChars"):
         assert retired not in source, retired
+    # inspector/prompt.js renders the heartbeat kind's user turn from the preview payload.
+    preview = lab_client.post("/api/lab/prompt/preview", json={"sessionKind": "heartbeat"}).json()
+    assert {"prompt", "message", "skipReason"} <= set(preview["heartbeatPrompt"])
+    assert "heartbeatSection" not in preview
+    prompt_js = (LAB_ROOT / "inspector" / "prompt.js").read_text(encoding="utf-8")
+    assert "pv.heartbeatPrompt" in prompt_js and "heartbeatSection" not in prompt_js
     assert "memoryTools" not in source
     assert "disabled: noKey" not in source
 

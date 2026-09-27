@@ -252,7 +252,7 @@ export const TR = {
   'scn.S08.l0': 'Prompt › main', 'scn.S08.e0': 'AGENTS, SOUL, IDENTITY, USER, (boş değilse) PROACTIVE_PREFERENCES, MEMORY Project Context içinde; TOOLS ve HEARTBEAT v2026.9.6 ile bootstrap dosyası değil.',
   'scn.S08.l1': 'Prompt › subagent', 'scn.S08.e1': 'Yalnız AGENTS.md.',
   'scn.S08.l2': 'Prompt › cron', 'scn.S08.e2': 'AGENTS, SOUL, IDENTITY, USER (ve uzantı olarak PROACTIVE); MEMORY yok.',
-  'scn.S08.l3': 'Prompt › group', 'scn.S08.e3': "MEMORY.md yok: kök MEMORY.md paylaşılan oturumda yüklenmez (upstream #119198); hariç listesinde nedeni görünür.",
+  'scn.S08.l3': 'Prompt › group', 'scn.S08.e3': "MEMORY.md yok: kök MEMORY.md özel olmayan oturumda (subagent, cron, group, channel) yüklenmez (upstream #119198); hariç listesinde nedeni görünür.",
   'scn.S08.e4': "Tur başlığında subagent ve kendi oturum anahtarı. Bu turun prompt'unda USER.md ve MEMORY.md yok.", 'scn.S08.m4': 'tercihi bilmedi',
   'scn.S08.l5': 'Düzen → Upstream v2026.9.6', 'scn.S08.e5': 'PROACTIVE_PREFERENCES.md “düzen dışı”; main prompt’unda yok. Senaryo bitince düzen geri döner.',
   'scn.S09.title': 'Heartbeat: vade → çalıştır → HEARTBEAT_OK / uyarı', 'scn.S09.goal': 'tasks: ayrıştırma, vade hesabı, istem birleştirme, ack ayıklama, teslim kararı, boş dosya atlaması ve heartbeat’te flush atlaması görülsün.',

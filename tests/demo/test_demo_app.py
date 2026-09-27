@@ -1085,13 +1085,20 @@ def test_prompt_preview_follows_the_upstream_session_filters(client, lab):
     assert names(subagent) == ["AGENTS.md"]
     subagent_reasons = {item["name"]: item["reason"] for item in subagent["excluded"]}
     assert subagent_reasons["USER.md"] == "subagent: yalnız AGENTS.md"
-    assert subagent_reasons["MEMORY.md"].startswith("subagent: kök MEMORY.md")
+    assert subagent_reasons["MEMORY.md"] == (
+        "subagent: kök MEMORY.md özel olmayan oturumda (subagent, cron, group, channel) "
+        "yüklenmez (upstream #119198)"
+    )
     assert subagent["recall"]["memoryRecallSection"] == []
     assert names(cron) == ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "PROACTIVE_PREFERENCES.md"]
-    # d06fc25a0c5 (#119198): root MEMORY.md stays out of shared sessions.
+    assert {item["name"]: item["reason"] for item in cron["excluded"]}["MEMORY.md"].startswith(
+        "cron: kök MEMORY.md özel olmayan oturumda"
+    )
+    # d06fc25a0c5 (#119198): root MEMORY.md stays out of non-private sessions (subagent,
+    # cron, group, channel).
     assert "MEMORY.md" not in names(group)
     assert {item["name"]: item["reason"] for item in group["excluded"]}["MEMORY.md"].startswith(
-        "group: kök MEMORY.md paylaşılan oturumda yüklenmez"
+        "group: kök MEMORY.md özel olmayan oturumda (subagent, cron, group, channel) yüklenmez"
     )
     assert "PROACTIVE_PREFERENCES.md" not in names(compat)
     assert compat["layout"] == "upstream"

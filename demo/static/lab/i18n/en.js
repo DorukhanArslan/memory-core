@@ -235,7 +235,7 @@ export const EN = {
   'scn.S08.l0': 'Prompt › main', 'scn.S08.e0': 'AGENTS, SOUL, IDENTITY, USER, PROACTIVE_PREFERENCES (if not empty), MEMORY in Project Context; TOOLS and HEARTBEAT are no bootstrap files at v2026.9.6.',
   'scn.S08.l1': 'Prompt › subagent', 'scn.S08.e1': 'Only AGENTS.md.',
   'scn.S08.l2': 'Prompt › cron', 'scn.S08.e2': 'AGENTS, SOUL, IDENTITY, USER (plus PROACTIVE as an extension); no MEMORY.',
-  'scn.S08.l3': 'Prompt › group', 'scn.S08.e3': 'No MEMORY.md: root MEMORY.md stays out of shared sessions (upstream #119198); the excluded list names the reason.',
+  'scn.S08.l3': 'Prompt › group', 'scn.S08.e3': 'No MEMORY.md: root MEMORY.md stays out of non-private sessions (subagent, cron, group, channel; upstream #119198); the excluded list names the reason.',
   'scn.S08.e4': 'The turn header shows subagent and its own session key. No USER.md or MEMORY.md in this turn’s prompt.', 'scn.S08.m4': 'did not know the preference',
   'scn.S08.l5': 'Layout → Upstream v2026.9.6', 'scn.S08.e5': 'PROACTIVE_PREFERENCES.md “outside layout”; not in the main prompt. The layout is restored when the scenario ends.',
   'scn.S09.title': 'Heartbeat: due → run → HEARTBEAT_OK / alert', 'scn.S09.goal': 'Task parsing, due calculation, prompt assembly, ack stripping, delivery, the empty-file skip and the heartbeat flush skip.',

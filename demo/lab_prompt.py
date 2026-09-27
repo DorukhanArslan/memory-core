@@ -154,7 +154,9 @@ def explain_exclusions(
         step = drop(
             step,
             filter_root_memory_bootstrap_files(step, lab.root, layout),
-            f"{options.kind}: kök MEMORY.md paylaşılan oturumda yüklenmez (upstream #119198)",
+            # filterBootstrapFilesForSession: isSubagent || isCron || group || channel.
+            f"{options.kind}: kök MEMORY.md özel olmayan oturumda (subagent, cron, group, "
+            "channel) yüklenmez (upstream #119198)",
         )
     allow = sorted(layout.subagent_files if options.kind == "subagent" else layout.cron_files)
     step = drop(

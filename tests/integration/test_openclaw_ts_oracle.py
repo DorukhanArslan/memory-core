@@ -6095,6 +6095,216 @@ def test_real_openclaw_oracle_heartbeat_session_filter_matches_python(tmp_path: 
     )
 
 
+# --- heartbeat monitor scratch and automation jobs (memory_core.heartbeat_scratch, automation) ----
+
+from memory_core.automation import (  # noqa: E402
+    AutomationJob,
+    FileAutomationStore,
+    compute_job_next_run_at_ms,
+    heartbeat_task_declaration_key,
+    is_heartbeat_task_job,
+    is_job_due,
+)
+from memory_core.heartbeat_scratch import (  # noqa: E402
+    CRON_JOB_SCRATCH_MAX_BYTES,
+    HeartbeatScratchTooLargeError,
+    assert_heartbeat_scratch_content,
+    hash_heartbeat_scratch_source,
+)
+
+# Content is `unit` repeated `count` times plus `suffix`: the 256 KiB boundary in 1-, 2-, 4- and
+# 3-byte (lone surrogate, encoded as U+FFFD) UTF-8 units.
+HEARTBEAT_SCRATCH_SIZE_CASES = [
+    {"unit": "", "count": 0},
+    {"unit": "a", "count": CRON_JOB_SCRATCH_MAX_BYTES},
+    {"unit": "a", "count": CRON_JOB_SCRATCH_MAX_BYTES + 1},
+    {"unit": "é", "count": CRON_JOB_SCRATCH_MAX_BYTES // 2},
+    {"unit": "é", "count": CRON_JOB_SCRATCH_MAX_BYTES // 2, "suffix": "a"},
+    {"unit": "\U0001f600", "count": CRON_JOB_SCRATCH_MAX_BYTES // 4},
+    {"unit": "\U0001f600", "count": CRON_JOB_SCRATCH_MAX_BYTES // 4, "suffix": "x"},
+    {"unit": "\ud800", "count": 1},
+    {"unit": "\ud800", "count": CRON_JOB_SCRATCH_MAX_BYTES // 3 + 1},
+]
+# The write/read/unset/delete sequence of src/cron/scratch-store.test.ts ("distinguishes no row
+# from present-empty content", "compare-and-swaps revisions and keeps a tombstone across unset")
+# plus memory-core probes for source hashes (trimmed, dropped when blank or on unset) and oversized
+# content.
+HEARTBEAT_SCRATCH_STEPS = [
+    {"op": "read"},
+    {"op": "readMonitor"},
+    {"op": "write", "content": None},
+    {"op": "write", "content": "", "nowMs": 10},
+    {"op": "read"},
+    {"op": "write", "content": "first", "nowMs": 20},
+    {"op": "write", "content": "stale", "expectedRevision": 0, "nowMs": 25},
+    {"op": "write", "content": "second", "expectedRevision": 2, "sourceSha256": "  abc  ", "nowMs": 30},
+    {"op": "read"},
+    {"op": "write", "content": "third", "nowMs": 35},
+    {"op": "write", "content": None, "expectedRevision": 4, "nowMs": 40},
+    {"op": "read"},
+    {"op": "readMonitor"},
+    {"op": "write", "content": "resurrected", "expectedRevision": 4, "nowMs": 50},
+    {"op": "write", "content": "recreated", "expectedRevision": 5, "sourceSha256": "   ", "nowMs": 60},
+    {"op": "write", "content": None, "sourceSha256": "abc", "nowMs": 61},
+    {"op": "write", "content": "back", "sourceSha256": "def", "nowMs": 62},
+    {"op": "delete", "expectedRevision": 5},
+    {"op": "delete", "expectedRevision": 8},
+    {"op": "read"},
+    {"op": "delete", "expectedRevision": 0},
+    {"op": "delete"},
+    {"op": "write", "content": {"unit": "a", "count": CRON_JOB_SCRATCH_MAX_BYTES + 1}},
+    {"op": "write", "content": None, "expectedRevision": 0, "nowMs": 70},
+    {"op": "readMonitor"},
+]
+HEARTBEAT_SCRATCH_HASH_TEXTS = ["", "- Check status\n", "é\U0001f600", "\ud800"]
+
+
+def _scratch_case_text(item: dict) -> str:
+    return item.get("unit", "") * item.get("count", 0) + item.get("suffix", "")
+
+
+def _python_scratch_step(store: FileAutomationStore, step: dict):
+    try:
+        if step["op"] == "write":
+            content = step["content"]
+            if isinstance(content, dict):
+                content = _scratch_case_text(content)
+            return store.write_scratch(
+                "main",
+                content,
+                expected_revision=step.get("expectedRevision"),
+                source_sha256=step.get("sourceSha256"),
+                now_ms=step.get("nowMs"),
+            ).to_json()
+        if step["op"] in ("read", "readMonitor"):
+            return store.read_scratch("main").to_json()
+        return store.delete_scratch("main", expected_revision=step.get("expectedRevision"))
+    except HeartbeatScratchTooLargeError as error:
+        return {"error": str(error)}
+
+
+def test_real_openclaw_oracle_heartbeat_scratch_contract_matches_python(tmp_path: Path):
+    result = _oracle().run(
+        {
+            "operation": "heartbeatScratchContract",
+            "cases": HEARTBEAT_SCRATCH_SIZE_CASES,
+            "scenarios": HEARTBEAT_SCRATCH_STEPS,
+            "texts": HEARTBEAT_SCRATCH_HASH_TEXTS,
+        }
+    )
+
+    assert result["ok"] is True, result
+    observed = result["result"]
+    assert observed["maxBytes"] == CRON_JOB_SCRATCH_MAX_BYTES
+    sizes = []
+    for case in HEARTBEAT_SCRATCH_SIZE_CASES:
+        try:
+            assert_heartbeat_scratch_content(_scratch_case_text(case))
+            sizes.append({"ok": True})
+        except HeartbeatScratchTooLargeError as error:
+            sizes.append({"error": str(error)})
+    assert observed["sizes"] == sizes
+    store = FileAutomationStore(tmp_path)
+    for step, expected in zip(HEARTBEAT_SCRATCH_STEPS, observed["steps"], strict=True):
+        assert _python_scratch_step(store, step) == expected, step
+    # A lone surrogate reaches Node as U+FFFD, which is what the hash sees there.
+    assert observed["hashes"] == [
+        hash_heartbeat_scratch_source(js_to_well_formed(text))
+        for text in HEARTBEAT_SCRATCH_HASH_TEXTS
+    ]
+
+
+def _cron_job(**fields) -> dict:
+    # An upstream CronJob of the every-schedule, systemEvent shape AutomationJob covers.
+    job = {
+        "id": "job-1",
+        "name": "inbox",
+        "agentId": "main",
+        "enabled": True,
+        "createdAtMs": 1_000,
+        "updatedAtMs": 1_000,
+        "schedule": {"kind": "every", "everyMs": 60_000, "anchorMs": 0},
+        "payload": {"kind": "systemEvent", "text": "Check urgent inbox items"},
+        "sessionTarget": "main",
+        "wakeMode": "next-heartbeat",
+        "declarationKey": heartbeat_task_declaration_key("main", "inbox"),
+        "state": {},
+    }
+    for key, value in fields.items():
+        if key in ("everyMs", "anchorMs"):
+            if value is None:
+                job["schedule"].pop(key)
+            else:
+                job["schedule"][key] = value
+        elif key in ("lastRunAtMs", "nextRunAtMs"):
+            job["state"][key] = value
+        elif value is None:
+            job.pop(key, None)
+        else:
+            job[key] = value
+    return job
+
+
+_JOB_NOW_MS = 2_000_000_000_000
+# Anchors and cadences of doctor-heartbeat-task-migration.test.ts (nowMs 2e12, 1 h and 2 h
+# tasks, anchor now+1 and now+30 min) plus memory-core probes of the every-schedule branches.
+AUTOMATION_JOB_SCHEDULE_CASES = [
+    {"job": _cron_job(everyMs=3_600_000, anchorMs=_JOB_NOW_MS + 1), "nowMs": _JOB_NOW_MS},
+    {"job": _cron_job(everyMs=3_600_000, anchorMs=_JOB_NOW_MS + 1), "nowMs": _JOB_NOW_MS + 1},
+    {"job": _cron_job(everyMs=3_600_000, anchorMs=_JOB_NOW_MS + 1_800_000), "nowMs": _JOB_NOW_MS},
+    {"job": _cron_job(everyMs=7_200_000, anchorMs=_JOB_NOW_MS + 1), "nowMs": _JOB_NOW_MS + 7_200_002},
+    {"job": _cron_job(anchorMs=None), "nowMs": 1_000},
+    {"job": _cron_job(anchorMs=None), "nowMs": 61_500},
+    {"job": _cron_job(anchorMs=None, createdAtMs=None), "nowMs": 5_000},
+    {"job": _cron_job(lastRunAtMs=120_000), "nowMs": 150_000},
+    {"job": _cron_job(lastRunAtMs=120_000), "nowMs": 181_000},
+    {"job": _cron_job(anchorMs=500_000, lastRunAtMs=120_000), "nowMs": 150_000},
+    {"job": _cron_job(everyMs=90_000.7), "nowMs": 100_000},
+    {"job": _cron_job(everyMs=0), "nowMs": 100_000},
+    {"job": _cron_job(everyMs=0.5), "nowMs": 100_000},
+    {"job": _cron_job(anchorMs=-5), "nowMs": 100_000},
+    {"job": _cron_job(anchorMs=7.9), "nowMs": 100_000},
+    {"job": _cron_job(enabled=False, nextRunAtMs=1), "nowMs": 100_000},
+    {"job": _cron_job(nextRunAtMs=100_000), "nowMs": 100_000},
+    {"job": _cron_job(nextRunAtMs=100_001), "nowMs": 100_000},
+    {"job": _cron_job(nextRunAtMs=0), "nowMs": 100_000},
+    {"job": _cron_job(declarationKey="heartbeat:main"), "nowMs": 0},
+    {"job": _cron_job(declarationKey=None), "nowMs": 0},
+    {"job": _cron_job(sessionTarget="isolated"), "nowMs": 0},
+]
+HEARTBEAT_TASK_KEY_CASES = [
+    {"agentId": "main", "taskName": "inbox"},
+    {"agentId": "main", "taskName": "inbox", "occurrenceIndex": 0},
+    {"agentId": "main", "taskName": "inbox", "occurrenceIndex": 1},
+    {"agentId": "ops", "taskName": "günlük-takip", "occurrenceIndex": 2},
+]
+
+
+def test_real_openclaw_oracle_automation_job_schedule_matches_python():
+    result = _oracle().run(
+        {
+            "operation": "automationJobSchedule",
+            "cases": AUTOMATION_JOB_SCHEDULE_CASES,
+            "scenarios": HEARTBEAT_TASK_KEY_CASES,
+        }
+    )
+
+    assert result["ok"] is True, result
+    for case, observed in zip(AUTOMATION_JOB_SCHEDULE_CASES, result["result"]["cases"], strict=True):
+        job = AutomationJob.from_json(case["job"])
+        assert observed == {
+            "nextRunAtMs": compute_job_next_run_at_ms(job, case["nowMs"]),
+            "due": is_job_due(job, case["nowMs"]),
+            "isHeartbeatTask": is_heartbeat_task_job(job),
+        }, case
+    assert result["result"]["keys"] == [
+        heartbeat_task_declaration_key(
+            case["agentId"], case["taskName"], case.get("occurrenceIndex", 0)
+        )
+        for case in HEARTBEAT_TASK_KEY_CASES
+    ]
+
+
 # --- memory budget compaction (extensions/memory-core/src/memory-budget.ts) --------------
 
 

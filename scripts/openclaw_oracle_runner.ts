@@ -332,6 +332,42 @@ async function importFromRepo(repoPath: string, relativePath: string) {
   return await import(pathToFileURL(fullPath).href);
 }
 
+// src/infra/heartbeat-runner.test-utils.ts seedHeartbeatScratchForTest without its scratch write
+// (that file imports vitest): the real CronService adds the system-owned heartbeat monitor job of
+// one agent, whose declaration key heartbeat:<agentId> joins it to cron_job_scratch.
+async function seedHeartbeatMonitorJob(
+  repoPath: string,
+  storePath: string,
+  agentId: string,
+): Promise<string> {
+  const { CronService } = await importFromRepo(repoPath, "src/cron/service.ts");
+  const noop = () => {};
+  const cron = new CronService({
+    storePath,
+    cronEnabled: false,
+    defaultAgentId: "main",
+    log: { debug: noop, info: noop, warn: noop, error: noop },
+    enqueueSystemEvent: () => false,
+    requestHeartbeat: noop,
+    runIsolatedAgentJob: async () => ({ status: "skipped", error: "oracle" }),
+  });
+  const added = await cron.add(
+    {
+      declarationKey: `heartbeat:${agentId}`,
+      displayName: `Heartbeat (${agentId})`,
+      name: `heartbeat-${agentId}`,
+      agentId,
+      enabled: true,
+      schedule: { kind: "every", everyMs: 30 * 60_000, anchorMs: 0 },
+      payload: { kind: "heartbeat" },
+      sessionTarget: "main",
+      wakeMode: "next-heartbeat",
+    },
+    { enabledExplicit: true, systemOwned: true },
+  );
+  return ("job" in added ? added.job : added).id;
+}
+
 // extensions/memory-core/src/test-helpers.ts: at v2026.9.6 the SQLite-backed dreaming and
 // short-term state store is configured by configureMemoryCoreDreamingStateForTests (moved out
 // of dreaming-state.ts), and the raw store readers/writers the pin exposed as
@@ -1942,6 +1978,102 @@ async function main() {
     } finally {
       await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
     }
+  }
+
+  if (payload.operation === "heartbeatScratchContract") {
+    // src/cron/scratch-contract.ts CRON_JOB_SCRATCH_MAX_BYTES and assertCronJobScratchContent
+    // over size cases (content built as `unit` repeated `count` times plus `suffix`), then
+    // src/cron/scratch-store.ts writeCronJobScratch / readCronJobScratchState /
+    // deleteCronJobScratch / readHeartbeatMonitorScratch over a step sequence on the real state
+    // DB, and hashCronScratchSource over texts. The heartbeat monitor job is added like
+    // src/infra/heartbeat-runner.test-utils.ts seedHeartbeatScratchForTest (a system-owned
+    // CronService job, declarationKey heartbeat:<agentId>, payload heartbeat) without a scratch
+    // row; readHeartbeatMonitorScratch results drop the generated jobId.
+    return withIsolatedRuntimeState("openclaw-oracle-heartbeat-scratch-", async () => {
+      const contract = await importFromRepo(repoPath, "src/cron/scratch-contract.ts");
+      const store = await importFromRepo(repoPath, "src/cron/scratch-store.ts");
+      const cronStore = await importFromRepo(repoPath, "src/cron/store.ts");
+      const storePath = cronStore.resolveCronJobsStorePath();
+      const jobId = await seedHeartbeatMonitorJob(repoPath, storePath, "main");
+      const build = (item: Record<string, any>) =>
+        `${String(item.unit ?? "").repeat(Number(item.count ?? 0))}${String(item.suffix ?? "")}`;
+      const sizes = (payload.cases ?? []).map((item) => {
+        try {
+          contract.assertCronJobScratchContent(build(item));
+          return { ok: true };
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : String(error) };
+        }
+      });
+      const steps = [];
+      for (const step of payload.scenarios ?? []) {
+        try {
+          if (step.op === "write") {
+            steps.push(
+              store.writeCronJobScratch({
+                storePath,
+                jobId,
+                content: step.content && typeof step.content === "object" ? build(step.content) : step.content,
+                ...("expectedRevision" in step ? { expectedRevision: step.expectedRevision } : {}),
+                ...("sourceSha256" in step ? { sourceSha256: step.sourceSha256 } : {}),
+                ...("nowMs" in step ? { nowMs: step.nowMs } : {}),
+              }),
+            );
+          } else if (step.op === "read") {
+            steps.push(store.readCronJobScratchState(storePath, jobId));
+          } else if (step.op === "readMonitor") {
+            steps.push(store.readHeartbeatMonitorScratch(storePath, "main")?.state ?? null);
+          } else if (step.op === "delete") {
+            steps.push(
+              store.deleteCronJobScratch(
+                storePath,
+                jobId,
+                {},
+                "expectedRevision" in step ? { expectedRevision: step.expectedRevision } : undefined,
+              ),
+            );
+          } else {
+            throw new Error(`unknown heartbeatScratchContract step: ${String(step.op)}`);
+          }
+        } catch (error) {
+          steps.push({ error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: {
+          maxBytes: contract.CRON_JOB_SCRATCH_MAX_BYTES,
+          sizes,
+          steps,
+          hashes: (payload.texts ?? []).map((text) => store.hashCronScratchSource(text ?? "")),
+        },
+      };
+    });
+  }
+
+  if (payload.operation === "automationJobSchedule") {
+    // src/cron/service/jobs-scheduling.ts computeJobNextRunAtMs and isJobDue (not forced) over
+    // every-schedule jobs given in upstream's CronJob shape, each at the case's nowMs; and
+    // src/cron/heartbeat-task.ts heartbeatTaskDeclarationKey / isHeartbeatTaskCronJob.
+    const scheduling = await importFromRepo(repoPath, "src/cron/service/jobs-scheduling.ts");
+    const heartbeatTask = await importFromRepo(repoPath, "src/cron/heartbeat-task.ts");
+    const result = (payload.cases ?? []).map((item) => {
+      const job = structuredClone(item.job);
+      return {
+        nextRunAtMs: scheduling.computeJobNextRunAtMs(structuredClone(job), Number(item.nowMs)) ?? null,
+        due: scheduling.isJobDue(structuredClone(job), Number(item.nowMs), { forced: false }),
+        isHeartbeatTask: heartbeatTask.isHeartbeatTaskCronJob(structuredClone(job)),
+      };
+    });
+    const keys = (payload.scenarios ?? []).map((item) =>
+      heartbeatTask.heartbeatTaskDeclarationKey(
+        String(item.agentId),
+        String(item.taskName),
+        ...("occurrenceIndex" in item ? [Number(item.occurrenceIndex)] : []),
+      ),
+    );
+    return { ok: true, operation: payload.operation, result: { cases: result, keys } };
   }
 
   // Retired at v2026.9.6: the sessionMemoryTranscript op called

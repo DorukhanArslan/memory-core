@@ -117,6 +117,16 @@ _EDGE_QUOTES_RE = re.compile("^[\"']|[\"']\\Z")
 
 
 @dataclass(frozen=True)
+class HeartbeatScheduledTask:
+    """A due automation job handed to the heartbeat turn (``HeartbeatScheduledTask``,
+    ``src/infra/heartbeat-wake-contracts.ts``): its job id, name and prompt."""
+
+    job_id: str
+    name: str
+    prompt: str
+
+
+@dataclass(frozen=True)
 class HeartbeatTask:
     """One ``tasks:`` entry of HEARTBEAT.md (upstream ``HeartbeatTask``)."""
 

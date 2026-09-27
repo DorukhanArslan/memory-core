@@ -12,7 +12,11 @@ character as a ``\\u`` escape:
   templates whose fields name the upstream expressions);
 - ``memory_core/bootstrap/_bootstrap_constants.py``: the bootstrap budget numbers and the AGENTS.md
   policy-digest keyword sets (src/agents/embedded-agent-helpers/bootstrap.ts,
-  src/agents/bootstrap-budget.ts, src/agents/bootstrap-budget-warning.ts)::
+  src/agents/bootstrap-budget.ts, src/agents/bootstrap-budget-warning.ts);
+- ``memory_core/_heartbeat_constants.py``: the heartbeat prompts and tokens, the monitor-scratch
+  contract, the heartbeat run-prompt and transcript-filter texts, the automation declaration
+  prefixes and the texts of the two doctor migrations (HEARTBEAT.md -> monitor scratch,
+  ``tasks:`` -> automation jobs); see HEARTBEAT_SOURCES::
 
     .venv/bin/python scripts/extract_upstream_constants.py --repo /tmp/openclaw-head
 
@@ -31,6 +35,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "memory-core" / "bootstrap" / "_tools_md_constants.py"
 BOOTSTRAP_OUTPUT = ROOT / "memory-core" / "bootstrap" / "_bootstrap_constants.py"
+HEARTBEAT_OUTPUT = ROOT / "memory-core" / "_heartbeat_constants.py"
 CHECK_TEST = "tests/integration/test_extracted_upstream_constants.py"
 BOOTSTRAP_SOURCE = "src/agents/embedded-agent-helpers/bootstrap.ts"
 BUDGET_SOURCE = "src/agents/bootstrap-budget.ts"
@@ -348,6 +353,274 @@ def extract_bootstrap(repo: Path) -> dict[str, object]:
     return constants
 
 
+HEARTBEAT_SOURCES = {
+    "tokens": "src/auto-reply/tokens.ts",
+    "heartbeat": "src/auto-reply/heartbeat.ts",
+    "filter": "src/auto-reply/heartbeat-filter.ts",
+    "tool": "src/auto-reply/heartbeat-tool-response.ts",
+    "scratch": "src/cron/scratch-contract.ts",
+    "prompt": "src/infra/heartbeat-runner-prompt.ts",
+    "wake": "src/infra/heartbeat-wake.ts",
+    "declaration": "src/cron/system-owned-declaration.ts",
+    "placeholder": "packages/ai/src/replay-turn-classification.ts",
+    "task_migration": "src/commands/doctor-heartbeat-task-migration.ts",
+    "scratch_migration": "src/commands/doctor-heartbeat-scratch-migration.ts",
+}
+# Template-literal expressions of the heartbeat texts -> str.format field names.
+HEARTBEAT_TEMPLATE_FIELDS = {
+    "agent.agentId": "agent_id",
+    "agentId": "agent_id",
+    "commit.agentId": "agent_id",
+    "errorMessage(error)": "error",
+    "document.tasks.length": "count",
+    'document.tasks.length === 1 ? "" : "s"': "plural",
+    "JSON.stringify(task.name)": "name_json",
+    'formatCliCommand("openclaw doctor --fix")': "command",
+    "params.task.name": "name",
+    "shortenHomePath(source.path)": "path",
+    "monitor.displayName ?? monitor.name": "monitor",
+    'retainSource ? "a heartbeat owner is disabled" : "another heartbeat owner\'s scratch was '
+    'left unchanged"': "reason",
+    "heartbeatPath": "path",
+    "orphanClaim": "claim",
+    "staleClaim": "claim",
+    "ownerPid": "pid",
+    "conflictPath": "conflict_path",
+    "claimPath": "claim",
+    "archivePath": "archive",
+    "CRON_JOB_SCRATCH_MAX_BYTES": "max_bytes",
+    "sizeBytes": "size_bytes",
+    "prompt": "prompt",
+    "directives": "directives",
+    "task.name": "name",
+    "task.prompt": "prompt",
+    "taskList": "task_list",
+    "completionInstruction": "completion",
+    "token": "token",
+}
+# (python name, source key, raw TypeScript text the literal starts with). Templates become
+# str.format templates; "string" entries are plain '...' / "..." literals.
+HEARTBEAT_TEMPLATES = (
+    ("CRON_JOB_SCRATCH_TOO_LARGE", "scratch", "cron scratch exceeds ${"),
+    ("HEARTBEAT_SCRATCH_PROMPT", "prompt", "${prompt}\\n\\nHeartbeat monitor scratch:"),
+    ("HEARTBEAT_TASK_LINE", "prompt", "- ${task.name}: ${task.prompt}"),
+    ("HEARTBEAT_TASKS_PROMPT", "prompt", "Run the following periodic tasks"),
+    ("HEARTBEAT_FILTER_TASK_REPLY_COMPLETION", "filter", "After completing all due tasks, reply ${token}"),
+    ("HEARTBEAT_TASK_MIGRATION_FIX_HINT", "task_migration", "Run ${formatCliCommand"),
+    ("HEARTBEAT_TASK_INTERVAL_ERROR", "task_migration", "task ${JSON.stringify(task.name)} interval"),
+    ("HEARTBEAT_TASK_FINDING_UNREADABLE", "task_migration", 'Agent "${agent.agentId}" heartbeat scratch cannot be inspected'),
+    ("HEARTBEAT_TASK_FINDING_IN_SCRATCH", "task_migration", 'Agent "${agent.agentId}" has ${document.tasks.length}'),
+    ("HEARTBEAT_TASK_FINDING_BLOCKED", "task_migration", 'Agent "${agent.agentId}" heartbeat tasks cannot be migrated'),
+    ("HEARTBEAT_TASK_WARNING_UNREADABLE", "task_migration", 'Agent "${agent.agentId}" heartbeat scratch could not be inspected'),
+    ("HEARTBEAT_TASK_WARNING_INVALID", "task_migration", 'Agent "${agent.agentId}" heartbeat tasks were not migrated'),
+    ("HEARTBEAT_TASK_WARNING_COLLISION", "task_migration", 'Agent "${agent.agentId}" task ${JSON.stringify(task.name)} collides'),
+    ("HEARTBEAT_TASK_WARNING_COMMIT_FAILED", "task_migration", 'Agent "${agent.agentId}" task migration could not be committed'),
+    ("HEARTBEAT_TASK_WARNING_SCRATCH_CHANGED", "task_migration", 'Agent "${agent.agentId}" scratch changed during task migration'),
+    ("HEARTBEAT_TASK_WARNING_JOBS_CHANGED", "task_migration", 'Agent "${agent.agentId}" cron jobs changed during task migration'),
+    ("HEARTBEAT_TASK_WARNING_TIMESTAMPS", "task_migration", 'Agent "${agent.agentId}" legacy task timestamps'),
+    ("HEARTBEAT_TASK_CHANGE", "task_migration", "Converted ${document.tasks.length}"),
+    ("HEARTBEAT_TASK_DISPLAY_NAME", "task_migration", "Heartbeat task: ${params.task.name}"),
+    ("HEARTBEAT_SCRATCH_MIGRATION_FIX_HINT", "scratch_migration", "Run ${formatCliCommand"),
+    ("HEARTBEAT_SCRATCH_FINDING_LEGACY", "scratch_migration", 'Agent "${agent.agentId}" still stores heartbeat instructions'),
+    ("HEARTBEAT_SCRATCH_FINDING_BLOCKED", "scratch_migration", 'Agent "${agent.agentId}" HEARTBEAT.md cannot be migrated'),
+    ("HEARTBEAT_SCRATCH_ERROR_ORPHAN_CLAIM", "scratch_migration", "both ${heartbeatPath} and an interrupted migration claim"),
+    ("HEARTBEAT_SCRATCH_ERROR_STALE_CLAIM", "scratch_migration", "an interrupted migration claim exists at ${staleClaim}"),
+    ("HEARTBEAT_SCRATCH_ERROR_MULTIPLE_CLAIMS", "scratch_migration", "multiple interrupted migration claims exist for"),
+    ("HEARTBEAT_SCRATCH_ERROR_CLAIM_HELD", "scratch_migration", "a migration claim for ${heartbeatPath} is held"),
+    ("HEARTBEAT_SCRATCH_ERROR_RECREATED", "scratch_migration", "HEARTBEAT.md was recreated during migration"),
+    ("HEARTBEAT_SCRATCH_ERROR_RESTORE_FAILED", "scratch_migration", "HEARTBEAT.md migration claim could not be restored"),
+    ("HEARTBEAT_SCRATCH_ERROR_ARCHIVE_COLLISION", "scratch_migration", "heartbeat migration archive collision at"),
+    ("HEARTBEAT_SCRATCH_WARNING_NOT_MIGRATED", "scratch_migration", "${shortenHomePath(source.path)} was not migrated"),
+    ("HEARTBEAT_SCRATCH_WARNING_NOT_REMOVED", "scratch_migration", "${shortenHomePath(source.path)} was migrated but not removed"),
+    ("HEARTBEAT_SCRATCH_WARNING_UNREADABLE", "scratch_migration", 'Agent "${agentId}" HEARTBEAT.md was not migrated'),
+    ("HEARTBEAT_SCRATCH_WARNING_UNSET", "scratch_migration", 'Agent "${agentId}" scratch was explicitly unset'),
+    ("HEARTBEAT_SCRATCH_WARNING_DIFFERENT", "scratch_migration", 'Agent "${agentId}" already has different cron scratch'),
+    ("HEARTBEAT_SCRATCH_WARNING_NOT_FINALIZED", "scratch_migration", 'Agent "${agentId}" scratch was not finalized'),
+    ("HEARTBEAT_SCRATCH_WARNING_ROLLBACK", "scratch_migration", 'Agent "${commit.agentId}" scratch changed before the migration rollback'),
+    ("HEARTBEAT_SCRATCH_CHANGE_MIGRATED", "scratch_migration", "Migrated ${shortenHomePath(source.path)}"),
+    ("HEARTBEAT_SCRATCH_CHANGE_COPIED", "scratch_migration", "Copied ${shortenHomePath(source.path)}"),
+)
+HEARTBEAT_STRINGS = (
+    ("HEARTBEAT_SKIP_EMPTY_SCRATCH", "prompt", "empty-heartbeat-file"),
+    ("HEARTBEAT_TASK_ERROR_NO_TASKS", "task_migration", "tasks: block has no complete"),
+    ("HEARTBEAT_TASK_ERROR_INCOMPLETE", "task_migration", "tasks: block contains an incomplete"),
+    ("HEARTBEAT_TASK_DESCRIPTION", "task_migration", "Migrated from heartbeat monitor scratch"),
+    ("HEARTBEAT_SCRATCH_ERROR_NOT_FILE", "scratch_migration", "HEARTBEAT.md must be a regular file"),
+    ("HEARTBEAT_SCRATCH_ERROR_HARDLINK", "scratch_migration", "HEARTBEAT.md has multiple hard links"),
+    ("HEARTBEAT_SCRATCH_ERROR_ESCAPES", "scratch_migration", "HEARTBEAT.md symlink target escapes"),
+    ("HEARTBEAT_SCRATCH_ERROR_NOT_UTF8", "scratch_migration", "HEARTBEAT.md is not valid UTF-8"),
+    ("HEARTBEAT_SCRATCH_ERROR_WORKSPACE_CHANGED", "scratch_migration", "HEARTBEAT.md workspace changed after"),
+    ("HEARTBEAT_SCRATCH_ERROR_CLAIM_ESCAPES", "scratch_migration", "claimed HEARTBEAT.md target escapes"),
+    ("HEARTBEAT_SCRATCH_ERROR_CHANGED_BEFORE_CLAIM", "scratch_migration", "HEARTBEAT.md changed before the migration claim"),
+    ("HEARTBEAT_SCRATCH_ERROR_REVERIFY", "scratch_migration", "claimed HEARTBEAT.md could not be re-verified"),
+    ("HEARTBEAT_SCRATCH_ERROR_CHANGED_WHILE_HELD", "scratch_migration", "HEARTBEAT.md changed while the migration claim"),
+    ("HEARTBEAT_SCRATCH_ERROR_ORIGINAL_UNVERIFIED", "scratch_migration", "could not verify the original HEARTBEAT.md"),
+    ("HEARTBEAT_SCRATCH_ERROR_RECREATED_WHILE_HELD", "scratch_migration", "HEARTBEAT.md was recreated while"),
+    ("HEARTBEAT_SCRATCH_ERROR_RESTORED_UNVERIFIED", "scratch_migration", "restored HEARTBEAT.md could not be re-verified"),
+    ("HEARTBEAT_SCRATCH_ERROR_CHANGED_AFTER_RESTORE", "scratch_migration", "HEARTBEAT.md changed after the migration claim"),
+    ("HEARTBEAT_SCRATCH_ERROR_TARGET_ESCAPES", "scratch_migration", "HEARTBEAT.md target escapes"),
+    ("HEARTBEAT_SCRATCH_ERROR_SCRATCH_CHANGED", "scratch_migration", "scratch changed during migration"),
+    ("HEARTBEAT_SCRATCH_ERROR_VERIFY_FAILED", "scratch_migration", "scratch verification failed after write"),
+    ("HEARTBEAT_SCRATCH_REASON_OWNER_DISABLED", "scratch_migration", "a heartbeat owner is disabled"),
+    ("HEARTBEAT_SCRATCH_REASON_OWNER_SKIPPED", "scratch_migration", "another heartbeat owner's scratch"),
+)
+
+
+def ts_template_at(source: str, anchor: str, fields: dict[str, str]) -> str:
+    """The template literal whose raw text starts with ``anchor``, as a ``str.format`` template.
+
+    Every occurrence must give the same template (upstream repeats some warnings verbatim).
+    """
+    needle = "`" + anchor
+    templates = {
+        ts_template_literal(source, match.start(), fields)[0]
+        for match in re.finditer(re.escape(needle), source)
+    }
+    if len(templates) != 1:
+        raise ValueError(f"template starting {anchor!r}: {len(templates)} distinct values")
+    return templates.pop()
+
+
+def ts_string_at(source: str, anchor: str) -> str:
+    """The '...' or "..." literal whose text starts with ``anchor``."""
+    values = set()
+    for quote in "\"'":
+        for match in re.finditer(re.escape(quote + anchor), source):
+            values.add(_read_ts_string(source, match.start())[0])
+    if len(values) != 1:
+        raise ValueError(f"string starting {anchor!r}: {len(values)} distinct values")
+    return values.pop()
+
+
+def ts_template_constant(source: str, name: str, values: dict[str, str]) -> str:
+    """Value of ``const NAME = `...${OTHER}...`;`` with the named constants filled in."""
+    match = re.search(rf"\bconst {re.escape(name)}\s*=\s*", source)
+    if match is None:
+        raise ValueError(f"constant {name} not found")
+    template, _ = ts_template_literal(source, match.end(), {key: key for key in values})
+    return template.format(**values)
+
+
+def ts_string_object(source: str, name: str) -> tuple[tuple[str, str], ...]:
+    """(key, value) pairs of ``const NAME = { key: "...", ... } as const;`` (comments skipped)."""
+    match = re.search(rf"\bconst {re.escape(name)}\s*=\s*\{{", source)
+    if match is None:
+        raise ValueError(f"constant {name} not found")
+    index = match.end()
+    pairs: list[tuple[str, str]] = []
+    while True:
+        index = _skip_space(source, index)
+        if source.startswith("//", index):
+            index = source.index("\n", index) + 1
+            continue
+        if source[index] == "}":
+            return tuple(pairs)
+        key = re.match(r"[A-Za-z_$][\w$]*", source[index:])
+        if key is None:
+            raise ValueError(f"expected a key at {index}")
+        index = _skip_space(source, index + key.end())
+        if source[index] != ":":
+            raise ValueError(f"expected ':' at {index}")
+        value, index = ts_string_expression(source, index + 1)
+        pairs.append((key.group(0), value))
+        index = _skip_space(source, index)
+        if source[index] == ",":
+            index += 1
+
+
+def extract_heartbeat(repo: Path) -> dict[str, object]:
+    src = {key: (repo / path).read_text(encoding="utf-8") for key, path in HEARTBEAT_SOURCES.items()}
+    tokens = {
+        name: ts_string_constant(src["tokens"], name)
+        for name in ("HEARTBEAT_TOKEN", "SILENT_REPLY_TOKEN")
+    }
+    heartbeat = src["heartbeat"]
+    guidance = ts_string_constant(heartbeat, "HEARTBEAT_CRON_TASK_GUIDANCE")
+    context = ts_template_constant(
+        heartbeat, "HEARTBEAT_CONTEXT_PROMPT", {"HEARTBEAT_CRON_TASK_GUIDANCE": guidance}
+    )
+    instructions = ts_string_constant(heartbeat, "HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS")
+    fallback = ts_template_constant(
+        heartbeat, "HEARTBEAT_RESPONSE_TOOL_FALLBACK_INSTRUCTIONS", tokens
+    )
+    tool_name = ts_string_constant(src["tool"], "HEARTBEAT_RESPONSE_TOOL_NAME")
+    constants: dict[str, object] = {
+        **tokens,
+        "HEARTBEAT_CRON_TASK_GUIDANCE": guidance,
+        "HEARTBEAT_CONTEXT_PROMPT": context,
+        "HEARTBEAT_PROMPT": ts_template_constant(
+            heartbeat, "HEARTBEAT_PROMPT", {"HEARTBEAT_CONTEXT_PROMPT": context, **tokens}
+        ),
+        "HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS": instructions,
+        "HEARTBEAT_RESPONSE_TOOL_FALLBACK_INSTRUCTIONS": fallback,
+        "HEARTBEAT_RESPONSE_TOOL_PROMPT": ts_template_constant(
+            heartbeat,
+            "HEARTBEAT_RESPONSE_TOOL_PROMPT",
+            {
+                "HEARTBEAT_CONTEXT_PROMPT": context,
+                "HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS": instructions,
+                "HEARTBEAT_RESPONSE_TOOL_FALLBACK_INSTRUCTIONS": fallback,
+            },
+        ),
+        "HEARTBEAT_RESPONSE_TOOL_NAME": tool_name,
+        "INTERNAL_WAKE_TRANSCRIPT_PROMPTS": ts_string_object(
+            heartbeat, "INTERNAL_WAKE_TRANSCRIPT_PROMPTS"
+        ),
+        "DEFAULT_HEARTBEAT_EVERY": ts_string_constant(heartbeat, "DEFAULT_HEARTBEAT_EVERY"),
+        **ts_numeric_constants(heartbeat, ("DEFAULT_HEARTBEAT_ACK_MAX_CHARS",)),
+        **ts_numeric_constants(src["scratch"], ("CRON_JOB_SCRATCH_MAX_BYTES",)),
+        "HEARTBEAT_SKIP_NO_PENDING_EVENT": ts_string_constant(
+            src["wake"], "HEARTBEAT_SKIP_NO_PENDING_EVENT"
+        ),
+        "HEARTBEAT_TASK_PROMPT_PREFIX": ts_string_constant(
+            src["filter"], "HEARTBEAT_TASK_PROMPT_PREFIX"
+        ),
+        "HEARTBEAT_TASKS_COMPLETION": ts_template_at(
+            src["prompt"], "After completing all due tasks, reply ${", {"SILENT_REPLY_TOKEN": "t"}
+        ).format(t=tokens["SILENT_REPLY_TOKEN"]),
+        "HEARTBEAT_TASKS_RESPONSE_TOOL_COMPLETION": ts_template_at(
+            src["prompt"],
+            "After completing all due tasks:",
+            {"HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS": "i"},
+        ).format(i=instructions),
+        "HEARTBEAT_FILTER_TASK_TOOL_COMPLETION": ts_template_at(
+            src["filter"],
+            "After completing all due tasks, use ${",
+            {"HEARTBEAT_RESPONSE_TOOL_NAME": "n"},
+        ).format(n=tool_name),
+        "HEARTBEAT_TASK_DECLARATION_PREFIX": ts_string_constant(
+            src["declaration"], "HEARTBEAT_TASK_DECLARATION_PREFIX"
+        ),
+        "HEARTBEAT_DECLARATION_PREFIX": ts_string_constant(
+            src["declaration"], "HEARTBEAT_DECLARATION_PREFIX"
+        ),
+        "STREAM_ERROR_FALLBACK_TEXT": ts_string_constant(
+            src["placeholder"], "STREAM_ERROR_FALLBACK_TEXT"
+        ),
+        "HEARTBEAT_TASK_MIGRATION_CHECK_ID": ts_string_constant(
+            src["task_migration"], "HEARTBEAT_TASK_MIGRATION_CHECK_ID"
+        ),
+        "HEARTBEAT_SCRATCH_MIGRATION_CHECK_ID": ts_string_constant(
+            src["scratch_migration"], "HEARTBEAT_SCRATCH_MIGRATION_CHECK_ID"
+        ),
+        "LEGACY_HEARTBEAT_FILENAME": ts_string_constant(
+            src["scratch_migration"], "LEGACY_HEARTBEAT_FILENAME"
+        ),
+        "HEARTBEAT_CLAIM_INFIX": ts_string_constant(
+            src["scratch_migration"], "HEARTBEAT_CLAIM_INFIX"
+        ),
+    }
+    # heartbeat-filter.ts: [HEARTBEAT_TOKEN, SILENT_REPLY_TOKEN].map(...) builds the first two
+    # completions, in this order.
+    if "...[HEARTBEAT_TOKEN, SILENT_REPLY_TOKEN].map(" not in src["filter"]:
+        raise ValueError("heartbeat-filter.ts completion token list changed")
+    for name, key, anchor in HEARTBEAT_TEMPLATES:
+        constants[name] = ts_template_at(src[key], anchor, HEARTBEAT_TEMPLATE_FIELDS)
+    for name, key, anchor in HEARTBEAT_STRINGS:
+        constants[name] = ts_string_at(src[key], anchor)
+    return constants
+
+
 def _git_head(repo: Path) -> str:
     completed = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=False
@@ -411,6 +684,18 @@ def outputs(repo: Path) -> dict[Path, str]:
             note=[
                 "The *_UNBOUNDED_KEYWORDS match without word boundaries (the second alternation",
                 "group of the upstream /\\b(?:...)\\b|(?:...)/iu patterns).",
+            ],
+        ),
+        HEARTBEAT_OUTPUT: render(
+            extract_heartbeat(repo),
+            commit,
+            title="Upstream heartbeat, monitor-scratch and automation-migration constants",
+            sources=list(HEARTBEAT_SOURCES.values()),
+            note=[
+                "Template texts are str.format templates; their fields stand for upstream",
+                "template expressions (HEARTBEAT_TEMPLATE_FIELDS in the script). The doctor",
+                "texts name 'openclaw doctor'; memory_core.heartbeat_migration substitutes its own",
+                "helper names where they are shown (documented deviation).",
             ],
         ),
     }

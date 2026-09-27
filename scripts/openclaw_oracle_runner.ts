@@ -769,6 +769,11 @@ async function main() {
         nowMs,
         contextWindowTokens,
       });
+      if (!plan) {
+        // memoryFlush.enabled false: runMemoryFlushIfNeeded (agent-runner-memory.ts:1243-1245)
+        // returns outcome "skipped" before any threshold or gate.
+        return { ok: true, operation: payload.operation, result: { disabled: true } };
+      }
       reserveTokensFloor ??= plan.reserveTokensFloor;
       softThresholdTokens ??= plan.softThresholdTokens;
     }

@@ -15,6 +15,7 @@ from memory_core.memory_flush import (
     SESSION_TOTAL_TOKENS_VERSION,
     build_memory_flush_plan,
     build_memory_flush_plan_from_config,
+    explain_memory_flush_trigger,
     has_already_flushed_for_current_compaction,
     resolve_memory_flush_threshold,
     should_run_memory_flush,
@@ -898,6 +899,26 @@ def test_real_openclaw_oracle_memory_flush_gate_matches_python(payload: dict):
     assert result["result"]["hasAlreadyFlushedForCurrentCompaction"] is (
         has_already_flushed_for_current_compaction(entry) if entry is not None else False
     )
+
+
+def test_real_openclaw_oracle_memory_flush_gate_skips_a_disabled_plan():
+    # memoryFlush.enabled false: buildMemoryFlushPlan returns null and runMemoryFlushIfNeeded
+    # skips before the gate (agent-runner-memory.ts:1243-1245); Python's plan is None and
+    # explain_memory_flush_trigger reports "disabled" even over the threshold.
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    config = {"agents": {"defaults": {"compaction": {"memoryFlush": {"enabled": False}}}}}
+    entry = _fresh(99_000)
+
+    result = oracle.run(
+        {"operation": "memoryFlushGate", "config": config, "entry": entry, "contextWindowTokens": 100_000}
+    )
+    plan = build_memory_flush_plan_from_config(workspace_dir=None, cfg=config, context_window_tokens=100_000)
+    decision = explain_memory_flush_trigger(entry=entry, plan=plan, context_window_tokens=100_000)
+
+    assert result["ok"] is True
+    assert result["result"] == {"disabled": True}
+    assert plan is None
+    assert (decision.should_flush, decision.reason) == (False, "disabled")
 
 
 def test_real_openclaw_oracle_memory_get_reads_line_window_like_python(tmp_path: Path):

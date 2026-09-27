@@ -84,7 +84,8 @@ checked against the configured keys (`redacted: true`). Ids (`sessionId`,
 | POST `/diff/mark` | — | `{markId}` |
 | POST `/diff/revert` | `{path, since, baseSha256?}` | PUT-file shape |
 | POST `/workspace/reset` | `{mode:"seeded"\|"fresh", keepMemory?}` | LabSnapshot |
-| POST `/prompt/preview` | `{sessionKind, runKind?, contextMode?, lightContext?, contextInjection?, includeHeartbeat?, maxChars?, totalMaxChars?, layout?}` | PromptView |
+| POST `/workspace/migrate-tools-md` | — | `{changes, warnings, archivePath, merged}`: `memory_core.bootstrap.migrate_tools_md` on the Lab workspace (TOOLS.md into AGENTS.md `## Tools`, archived under `.memory-core/backups/tools-md-migration/`); event `workspace.tools_md_migrated`; the explorer offers it on a TOOLS.md row |
+| POST `/prompt/preview` | `{sessionKind, runKind?, contextMode?, lightContext?, contextInjection?, maxChars?, totalMaxChars?, layout?}` (`runKind`: default, heartbeat, cron; `layout`: memory-core, upstream) | PromptView |
 | GET `/turns/{id}` | — | TurnDetail |
 | POST `/chat/stream` | `{message, sessionKind, reset?, engine?, openai?, embedding?}` | SSE: `turn_started`, `stage`, `flush`, `recall`, `prompt`, `tool_call`, `tool_result`, `curation`, `assistant_delta`, `turn_done {turn, detail}`, `error` |
 | POST `/session/new` | `{command:"new"\|"reset", text?, sessionKind}` | `{sessionId, sessionKey, bare, sessionMemory, startup, resetPrompt}` |

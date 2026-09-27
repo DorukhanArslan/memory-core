@@ -24,17 +24,20 @@ upstream prompt format:
 
 ```text
 workspace/
-  AGENTS.md
+  AGENTS.md                  # local tool notes go in its "## Tools" section
   SOUL.md
-  TOOLS.md
   IDENTITY.md
-  USER.md
+  USER.md                    # skipped when absent; fixed 4000-char cap
   PROACTIVE_PREFERENCES.md   # memory-core extension
-  HEARTBEAT.md
   BOOTSTRAP.md               # first run only
   MEMORY.md                  # not injected into subject prompts by default
   user/  workspace/          # created by initialize_agent_workspace, never injected
 ```
+
+This is the OpenClaw v2026.9.6 map (`WORKSPACE_BOOTSTRAP_FILENAMES`) plus the memory-core
+extensions. TOOLS.md and HEARTBEAT.md are no longer bootstrap files: move an old TOOLS.md
+into AGENTS.md with `memory_core.bootstrap.migrate_tools_md(root)` (upstream's doctor
+migration); `memory_core.heartbeat` still reads HEARTBEAT.md until the monitor-scratch port.
 
 Seed the workspace with `initialize_agent_workspace(root, templates=...)`; pass
 `seed_bootstrap=False` when the host has no first-run ritual (setup is then
@@ -42,22 +45,25 @@ marked complete right away).
 
 `to_prompt_section()` returns, in upstream order: `## Bootstrap Pending` and
 `## Bootstrap Context Notice` when they apply, `## Workspace Files (injected)`
-with its intro line, `# Project Context` with one `## <path>` block per file in
-render order (AGENTS, SOUL, IDENTITY, USER, PROACTIVE_PREFERENCES, TOOLS,
-BOOTSTRAP, MEMORY), then `# Dynamic Project Context` with HEARTBEAT.md. There is
-no cache boundary marker, and the Workspace Files lines are left out when no file
-is injected. With `openclaw_compatible=True` the intro line names OpenClaw
+with its intro line, and `# Project Context` with one `## <path>` block per file in
+render order (AGENTS, SOUL, IDENTITY, USER, PROACTIVE_PREFERENCES, BOOTSTRAP,
+MEMORY). There is no cache boundary marker and no dynamic block (the tag renders all
+Project Context above the boundary), and the Workspace Files lines are left out when no
+file is injected. With `openclaw_compatible=True` the intro line names OpenClaw
 instead of memory-core.
 
 Defaults and behaviour a host will notice:
 
 - `max_chars_per_file=20_000` and `total_max_chars=60_000` (UTF-16 units), with
-  upstream's 75/25 head/tail markers and AGENTS.md policy digest. `None` or a
-  value `<= 0` falls back to the default.
+  upstream's 75/25 head/tail markers and AGENTS.md policy digest; USER.md is capped at
+  `min(max_chars_per_file, 4000)`. `None` or a value `<= 0` falls back to the default.
 - A missing layout file renders `[MISSING] Expected at: <path>`, like upstream;
-  empty files, a missing MEMORY.md and a missing PROACTIVE_PREFERENCES.md
-  (extension, no upstream counterpart) are skipped, so a pin-era workspace
-  renders the same under the default layout and `OPENCLAW_PIN_LAYOUT`.
+  empty files, a missing USER.md, a missing MEMORY.md and a missing
+  PROACTIVE_PREFERENCES.md (extension, no upstream counterpart) are skipped, so an
+  upstream-shaped workspace renders the same under the default layout and
+  `OPENCLAW_COMPAT_LAYOUT`. A file the guarded read refuses (any symlink, a hard link, a
+  directory, over 2 MiB) renders `[UNREADABLE: <reason>]` and does not satisfy
+  `required_files`.
 - The agent's root MEMORY.md is not injected unless `include_agent_memory=True`.
   This is a deliberate deviation: upstream injects it for every session that is
   not a subagent or cron session, but a live subject prompt should not carry the
@@ -73,7 +79,6 @@ Defaults and behaviour a host will notice:
   evidence on its own (subject memory lives under `subjects/`), so the host
   removes BOOTSTRAP.md, seeds with `seed_bootstrap=False`, or passes
   `bootstrap_mode="none"`.
-- `include_heartbeat=True` keeps HEARTBEAT.md, like upstream's default agent.
 
 Loader options:
 
@@ -88,8 +93,8 @@ identity = LiveIdentity.from_dir(
 ```
 
 `unknown_files="error"` rejects root-level Markdown files outside the layout;
-BOOT.md, DREAMS.md and dreams.md are accepted (upstream files that are never
-injected), and folders such as `user/`, `workspace/`, `memory/`, `skills/` and
+BOOT.md, DREAMS.md and dreams.md (upstream files that are never injected) and the retired
+TOOLS.md and HEARTBEAT.md (`RETIRED_WORKSPACE_FILES`) are accepted, and folders such as `user/`, `workspace/`, `memory/`, `skills/` and
 `subjects/` are ignored. `identity.sections` holds `(path, injected text)`
 pairs and `identity.warnings` the budget warnings. `IDENTITY_FILE_ORDER` and
 `IDENTITY_FILE_NAMES` stay exported for compatibility (`(name, name)` pairs and

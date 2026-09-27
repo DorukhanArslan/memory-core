@@ -51,9 +51,10 @@ Included:
   delivers replies. The helpers are in core only because heartbeat turns change
   memory-core behaviour: the session corpus drops heartbeat prompt rows and
   `HEARTBEAT_OK` replies, which works only when the host writes the same prompt
-  and token; memory flush skips heartbeat runs; and `HEARTBEAT.md` is one of the
-  pin's bootstrap files. Evidence: the "Heartbeat turn inputs and reply
-  handling" row in `docs/parity_matrix.md`
+  and token; and memory flush skips heartbeat runs. At v2026.9.6 HEARTBEAT.md is
+  no longer a bootstrap file (the heartbeat follows a monitor scratch); the file-based
+  helpers stay until that port (docs/upstream_port_v2026_9_6.md, area 3). Evidence: the
+  "Heartbeat turn inputs and reply handling" row in `docs/parity_matrix.md`
 - replay cleanup, history windowing, tool-use repair, and overflow helpers when
   those behaviors are required to preserve OpenClaw-compatible prompt assembly
 - `memory_core.consolidation`: scored consolidation. Short-term recall signals,

@@ -133,11 +133,20 @@ async function snapshotWorkspaceTree(workspaceDir: string): Promise<Record<strin
   return Object.fromEntries(Object.entries(out).toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
-function normalizeSetupStateTimestamps(raw: string | null): Record<string, unknown> | null {
+function normalizeSetupStateTimestamps(
+  raw: string | null,
+): Record<string, unknown> | { unparsed: string } | null {
   if (raw === null) {
     return null;
   }
-  const parsed = JSON.parse(raw) as Record<string, unknown>;
+  // At v2026.9.6 upstream no longer writes this file (setup state is in SQLite), so what is
+  // read here is a fixture's own legacy file, which may be deliberately corrupt.
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return { unparsed: raw };
+  }
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(parsed)) {
     out[key] =
@@ -161,6 +170,17 @@ type PromotionPolicy = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// Runs one upstream call and returns its thrown message as data, so an op that covers several
+// calls reports an upstream refusal (e.g. v2026.9.6's "Legacy workspace setup state requires
+// migration") in place instead of failing the whole op.
+async function captureUpstreamError<T>(run: () => Promise<T> | T): Promise<T | { error: string }> {
+  try {
+    return await run();
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 function normalizeRepairMessage(message: unknown): unknown {
@@ -212,6 +232,20 @@ async function withIsolatedRuntimeState<T>(prefix: string, run: () => Promise<T>
   } finally {
     await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+function bootstrapSectionLines(prompt: string, workspaceIndex: number): string[] {
+  const end = workspaceIndex === -1 ? prompt.length : workspaceIndex;
+  const starts = ["## Bootstrap Pending\n", "## Bootstrap Context Notice\n"]
+    .map((heading) => prompt.indexOf(heading))
+    .filter((index) => index !== -1 && index < end);
+  if (starts.length === 0) {
+    return [];
+  }
+  return prompt
+    .slice(Math.min(...starts), end)
+    .split("\n")
+    .filter((line) => line.length > 0);
 }
 
 async function importFromRepo(repoPath: string, relativePath: string) {
@@ -335,32 +369,52 @@ async function snapshotFiles(workspaceDir?: string): Promise<Record<string, stri
   return out;
 }
 
-async function writeSessionTranscriptFixtures(payload: Payload): Promise<void> {
+async function writeSessionTranscriptFixtures(repoPath: string, payload: Payload): Promise<void> {
+  // v2026.9.6 keeps sessions and transcripts in the per-agent SQLite store (0a8e3604ba2, #98236;
+  // the file-era transcript runtime went in 4273ca9dbd9, #113233), so the fixture's JSONL entries
+  // are written the way upstream's memory manager tests seed them
+  // (manager-index.test-support.ts seedSessionTranscript): upsertSessionEntry for the session,
+  // then appendSessionTranscriptMessageByIdentity for each message entry. The session header
+  // entry has no counterpart (the store owns session metadata). Must run after
+  // OPENCLAW_STATE_DIR is set.
   if (!payload.stateDir || !payload.sessionTranscripts?.length) {
     return;
   }
-  const sessionsDir = path.join(payload.stateDir, "agents", "main", "sessions");
+  const paths = await importFromRepo(repoPath, "src/config/sessions/paths.ts");
+  const sessionStore = await importFromRepo(repoPath, "src/plugin-sdk/session-store-runtime.ts");
+  const transcriptStore = await importFromRepo(
+    repoPath,
+    "src/plugin-sdk/session-transcript-runtime.ts",
+  );
+  const sessionsDir: string = paths.resolveSessionTranscriptsDirForAgent("main");
+  const storePath = path.join(sessionsDir, "sessions.json");
   await fs.mkdir(sessionsDir, { recursive: true });
-  const sessionStore: Record<string, Record<string, unknown>> = {};
   for (const transcript of payload.sessionTranscripts) {
     const fileName = transcript.fileName?.trim() || "session-oracle.jsonl";
     if (fileName.includes("/") || fileName.includes("\\") || !fileName.endsWith(".jsonl")) {
       throw new Error(`invalid session transcript fixture name: ${fileName}`);
     }
-    const lines = (transcript.entries ?? []).map((entry) => JSON.stringify(entry));
-    await fs.writeFile(path.join(sessionsDir, fileName), `${lines.join("\n")}\n`, "utf-8");
     const sessionId = fileName.slice(0, -".jsonl".length);
-    sessionStore[`agent:main:${sessionId}`] = {
-      sessionId,
-      sessionFile: fileName,
-      updatedAt: Date.now(),
-    };
+    const sessionKey = `agent:main:${sessionId}`;
+    await sessionStore.upsertSessionEntry({
+      agentId: "main",
+      sessionKey,
+      storePath,
+      entry: { sessionId, updatedAt: Date.now() },
+    });
+    for (const entry of transcript.entries ?? []) {
+      if (!isRecord(entry) || entry.type !== "message" || !isRecord(entry.message)) {
+        continue;
+      }
+      await transcriptStore.appendSessionTranscriptMessageByIdentity({
+        agentId: "main",
+        sessionId,
+        sessionKey,
+        storePath,
+        message: entry.message,
+      });
+    }
   }
-  await fs.writeFile(
-    path.join(sessionsDir, "sessions.json"),
-    `${JSON.stringify(sessionStore, null, 2)}\n`,
-    "utf-8",
-  );
 }
 
 async function registerWikiCorpusFixture(repoPath: string, payload: Payload): Promise<void> {
@@ -607,8 +661,20 @@ async function main() {
   }
 
   if (payload.operation === "memoryFlushGate") {
+    // v2026.9.6 shouldRunMemoryFlush takes a precomputed `threshold` instead of the window,
+    // reserve floor and soft threshold. Its only caller (agent-runner-memory.ts:1254-1260
+    // runMemoryFlushIfNeeded, inline, not exported) derives it as
+    // max(0, resolveCompactionThreshold({contextWindowTokens, reserveTokensFloor}) - soft), so
+    // the runner applies that expression with the real resolveCompactionThreshold.
     const memoryFlush = await importFromRepo(repoPath, "src/auto-reply/reply/memory-flush.ts");
     const entry = payload.entry ?? undefined;
+    const threshold = Math.max(
+      0,
+      memoryFlush.resolveCompactionThreshold({
+        contextWindowTokens: payload.contextWindowTokens ?? 100_000,
+        reserveTokensFloor: payload.reserveTokensFloor ?? 20_000,
+      }) - Math.max(0, Math.floor(payload.softThresholdTokens ?? 4_000)),
+    );
     return {
       ok: true,
       operation: payload.operation,
@@ -616,9 +682,7 @@ async function main() {
         shouldRunMemoryFlush: memoryFlush.shouldRunMemoryFlush({
           entry,
           tokenCount: payload.tokenCount,
-          contextWindowTokens: payload.contextWindowTokens ?? 100_000,
-          reserveTokensFloor: payload.reserveTokensFloor ?? 20_000,
-          softThresholdTokens: payload.softThresholdTokens ?? 4_000,
+          threshold,
         }),
         hasAlreadyFlushedForCurrentCompaction: entry
           ? memoryFlush.hasAlreadyFlushedForCurrentCompaction(entry)
@@ -663,66 +727,61 @@ async function main() {
   }
 
   if (payload.operation === "truncateToolResultsInSession") {
+    // v2026.9.6 removed the file-era session runtime (4273ca9dbd9, #113233): SessionManager.create
+    // and truncateOversizedToolResultsInSession(sessionFile) are gone, and the embedded runner
+    // truncates through truncateOversizedToolResultsInSessionManager on a SessionManager. The op
+    // builds an in-memory SessionManager (SessionManager.inMemory, as upstream's tests do) from
+    // the fixture's message entries and reads the tool results back from its branch.
     const truncation = await importFromRepo(
       repoPath,
       "src/agents/embedded-agent-runner/tool-result-truncation.ts",
     );
     const sessions = await importFromRepo(repoPath, "src/agents/sessions/index.ts");
-    const tmpDir = await fs.mkdtemp(path.join(process.cwd(), ".openclaw-oracle-session-"));
-    try {
-      const manager = sessions.SessionManager.create(tmpDir, tmpDir);
-      for (const entry of payload.sessionEntries ?? []) {
-        if (entry.type === "message" && isRecord(entry.message)) {
-          manager.appendMessage(entry.message);
-        }
+    const manager = sessions.SessionManager.inMemory(process.cwd());
+    for (const entry of payload.sessionEntries ?? []) {
+      if (entry.type === "message" && isRecord(entry.message)) {
+        manager.appendMessage(entry.message);
       }
-      const sessionFile = manager.getSessionFile();
-      if (!sessionFile) {
-        throw new Error("session file missing");
-      }
-      const result = await truncation.truncateOversizedToolResultsInSession({
-        sessionFile,
-        contextWindowTokens: payload.contextWindowTokens ?? 100_000,
-        maxCharsOverride: payload.maxChars ?? payload.toolResultMaxChars,
-        aggregateMaxCharsOverride: payload.aggregateMaxChars,
-        protectTrailingToolResults: payload.protectTrailingToolResults,
-      });
-      const afterManager = sessions.SessionManager.open(sessionFile);
-      const toolResultMessages = afterManager
-        .getBranch()
-        .filter((entry: Record<string, unknown>) => {
-          const message = entry.message as Record<string, unknown> | undefined;
-          return entry.type === "message" && message?.role === "toolResult";
-        })
-        .map((entry: Record<string, unknown>) => entry.message as Record<string, unknown>);
-      const findTextBlock = (message: Record<string, unknown>) => {
-        const content = Array.isArray(message.content) ? message.content : [];
-        return content.find(
-          (block: unknown) =>
-            isRecord(block) &&
-            (block.type === "text" || block.type === "toolResult") &&
-            typeof block.text === "string",
-        ) as { text?: string; content?: unknown } | undefined;
-      };
-      const toolTexts = toolResultMessages.map((message) => findTextBlock(message)?.text ?? "");
-      const toolContents = toolResultMessages.map((message) => {
-        const blockContent = findTextBlock(message)?.content;
-        return typeof blockContent === "string" ? blockContent : null;
-      });
-      return {
-        ok: true,
-        operation: payload.operation,
-        result: {
-          truncated: result.truncated,
-          truncatedCount: result.truncatedCount,
-          reason: result.reason ?? null,
-          toolTexts,
-          toolContents,
-        },
-      };
-    } finally {
-      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
+    const result = await truncation.truncateOversizedToolResultsInSessionManager({
+      sessionManager: manager,
+      contextWindowTokens: payload.contextWindowTokens ?? 100_000,
+      maxCharsOverride: payload.maxChars ?? payload.toolResultMaxChars,
+      aggregateMaxCharsOverride: payload.aggregateMaxChars,
+      protectTrailingToolResults: payload.protectTrailingToolResults,
+    });
+    const toolResultMessages = manager
+      .getBranch()
+      .filter((entry: Record<string, unknown>) => {
+        const message = entry.message as Record<string, unknown> | undefined;
+        return entry.type === "message" && message?.role === "toolResult";
+      })
+      .map((entry: Record<string, unknown>) => entry.message as Record<string, unknown>);
+    const findTextBlock = (message: Record<string, unknown>) => {
+      const content = Array.isArray(message.content) ? message.content : [];
+      return content.find(
+        (block: unknown) =>
+          isRecord(block) &&
+          (block.type === "text" || block.type === "toolResult") &&
+          typeof block.text === "string",
+      ) as { text?: string; content?: unknown } | undefined;
+    };
+    const toolTexts = toolResultMessages.map((message) => findTextBlock(message)?.text ?? "");
+    const toolContents = toolResultMessages.map((message) => {
+      const blockContent = findTextBlock(message)?.content;
+      return typeof blockContent === "string" ? blockContent : null;
+    });
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        truncated: result.truncated,
+        truncatedCount: result.truncatedCount,
+        reason: result.reason ?? null,
+        toolTexts,
+        toolContents,
+      },
+    };
   }
 
   if (payload.operation === "preemptiveCompaction") {
@@ -831,7 +890,9 @@ async function main() {
     await lifecycle.assembleHarnessContextEngine({
       contextEngine,
       sessionId: "session-1",
-      sessionKey: "agent:main",
+      // v2026.9.6 rejects the pin fixture's "agent:main" ("Malformed agent session key"); the
+      // main-session key keeps the same agent.
+      sessionKey: "agent:main:main",
       messages: payload.messages ?? [],
       modelId: "gpt-test",
     });
@@ -841,7 +902,7 @@ async function main() {
       aborted: false,
       yieldAborted: false,
       sessionIdUsed: "session-1",
-      sessionKey: "agent:main",
+      sessionKey: "agent:main:main",
       sessionFile: "sessions/main.jsonl",
       messagesSnapshot: payload.messages ?? [],
       prePromptMessageCount: payload.limit ?? 0,
@@ -1011,7 +1072,7 @@ async function main() {
         ? path.join(payload.workspaceDir, ".openclaw-state")
         : await fs.mkdtemp(path.join(process.cwd(), ".openclaw-oracle-state-")));
     process.env.OPENCLAW_STATE_DIR = stateDir;
-    await writeSessionTranscriptFixtures({ ...payload, stateDir });
+    await writeSessionTranscriptFixtures(repoPath, { ...payload, stateDir });
     await registerWikiCorpusFixture(repoPath, payload);
     await registerFakeEmbeddingProvider(repoPath, {
       model: payload.embeddingModel ?? "fake-deterministic",
@@ -1218,9 +1279,14 @@ async function main() {
   if (payload.operation === "bootstrapContextFiles") {
     return withIsolatedRuntimeState("openclaw-oracle-bootstrap-context-", async () => {
       // src/agents/embedded-agent-helpers/bootstrap.ts buildBootstrapContextFiles plus the
-      // src/agents/bootstrap-budget.ts report built from the same files (attempt.ts:1466-1488).
+      // src/agents/bootstrap-budget.ts report built from the same files. At v2026.9.6
+      // buildBootstrapPromptWarning lives in src/agents/bootstrap-budget-warning.ts, the default
+      // caps are private (read through resolveBootstrapMaxChars/resolveBootstrapTotalMaxChars
+      // with no config, which return them) and appendBootstrapPromptWarning is gone (0b450013ea0,
+      // #130325: the notice goes into the system prompt instead of the user prompt).
       const bootstrap = await importFromRepo(repoPath, "src/agents/embedded-agent-helpers/bootstrap.ts");
       const budget = await importFromRepo(repoPath, "src/agents/bootstrap-budget.ts");
+      const budgetWarning = await importFromRepo(repoPath, "src/agents/bootstrap-budget-warning.ts");
       const warnings: string[] = [];
       const bootstrapFiles = (payload.bootstrapFiles ?? []).map((file) => ({
         name: file.name ?? "",
@@ -1228,20 +1294,20 @@ async function main() {
         ...(typeof file.content === "string" ? { content: file.content } : {}),
         missing: file.missing === true,
       }));
-      const maxChars = payload.maxChars ?? bootstrap.DEFAULT_BOOTSTRAP_MAX_CHARS;
+      const maxChars = payload.maxChars ?? bootstrap.resolveBootstrapMaxChars();
       const contextFiles = bootstrap.buildBootstrapContextFiles(bootstrapFiles, {
         warn: (message: string) => warnings.push(message),
         maxChars,
         ...(typeof payload.totalMaxChars === "number" ? { totalMaxChars: payload.totalMaxChars } : {}),
       });
-      const totalMaxChars = payload.totalMaxChars ?? bootstrap.DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS;
+      const totalMaxChars = payload.totalMaxChars ?? bootstrap.resolveBootstrapTotalMaxChars();
       const stats = budget.buildBootstrapInjectionStats({ bootstrapFiles, injectedFiles: contextFiles });
       const analysis = budget.analyzeBootstrapBudget({
         files: stats,
         bootstrapMaxChars: maxChars,
         bootstrapTotalMaxChars: totalMaxChars,
       });
-      const promptWarning = budget.buildBootstrapPromptWarning({
+      const promptWarning = budgetWarning.buildBootstrapPromptWarning({
         analysis,
         mode: payload.warningMode ?? "always",
         seenSignatures: payload.seenSignatures,
@@ -1266,7 +1332,6 @@ async function main() {
             warningSignaturesSeen: promptWarning.warningSignaturesSeen,
           },
           notice: budget.buildBootstrapPromptWarningNotice(promptWarning.lines) ?? null,
-          appended: budget.appendBootstrapPromptWarning("Prompt body", promptWarning.lines),
         },
       };
     });
@@ -1290,19 +1355,25 @@ async function main() {
       const runs = [];
       for (const run of payload.runs ?? []) {
         const warnings: string[] = [];
-        const resolved = await bootstrapFilesModule.resolveBootstrapContextForRun({
-          workspaceDir: payload.workspaceDir,
-          sessionKey: run.sessionKey,
-          contextMode: run.contextMode,
-          runKind: run.runKind,
-          warn: (message: string) => warnings.push(message),
-        });
-        runs.push({
-          run,
-          bootstrapFiles: resolved.bootstrapFiles,
-          contextFiles: resolved.contextFiles,
-          warnings,
-        });
+        const resolved = await captureUpstreamError(() =>
+          bootstrapFilesModule.resolveBootstrapContextForRun({
+            workspaceDir: payload.workspaceDir,
+            sessionKey: run.sessionKey,
+            contextMode: run.contextMode,
+            runKind: run.runKind,
+            warn: (message: string) => warnings.push(message),
+          }),
+        );
+        runs.push(
+          "error" in resolved
+            ? { run, error: resolved.error, warnings }
+            : {
+                run,
+                bootstrapFiles: resolved.bootstrapFiles,
+                contextFiles: resolved.contextFiles,
+                warnings,
+              },
+        );
       }
       return {
         ok: true,
@@ -1311,8 +1382,12 @@ async function main() {
           loaded,
           bySessionKey,
           runs,
-          setupCompleted: await workspace.isWorkspaceSetupCompleted(payload.workspaceDir),
-          bootstrapStatus: await workspace.resolveWorkspaceBootstrapStatus(payload.workspaceDir),
+          setupCompleted: await captureUpstreamError(() =>
+            workspace.isWorkspaceSetupCompleted(payload.workspaceDir),
+          ),
+          bootstrapStatus: await captureUpstreamError(() =>
+            workspace.resolveWorkspaceBootstrapStatus(payload.workspaceDir),
+          ),
         },
       };
     });
@@ -1321,8 +1396,11 @@ async function main() {
   if (payload.operation === "projectContextRender") {
     return withIsolatedRuntimeState("openclaw-oracle-project-context-", async () => {
       // src/agents/system-prompt.ts buildAgentSystemPrompt: the Project Context blocks are cut
-      // from the real prompt around SYSTEM_PROMPT_CACHE_BOUNDARY; bootstrap sections come from
-      // the exported buildAgentBootstrapSystemPromptSections.
+      // from the real prompt around SYSTEM_PROMPT_CACHE_BOUNDARY. buildAgentBootstrapSystemPromptSections
+      // is private at v2026.9.6, so the bootstrap sections are cut from the same prompt: from the
+      // first "## Bootstrap Pending" / "## Bootstrap Context Notice" heading up to
+      // "## Workspace Files (injected)", as the prompt's non-empty lines (the stable prefix is
+      // joined with lines.filter(Boolean)).
       const systemPrompt = await importFromRepo(repoPath, "src/agents/system-prompt.ts");
       const boundaryModule = await importFromRepo(
         repoPath,
@@ -1361,11 +1439,7 @@ async function main() {
           dynamic,
           workspaceFiles:
             workspaceIndex === -1 ? null : prompt.slice(workspaceIndex, workspaceLineEnd),
-          bootstrapSections: systemPrompt.buildAgentBootstrapSystemPromptSections({
-            bootstrapMode: payload.bootstrapMode,
-            bootstrapTruncationNotice: payload.bootstrapTruncationNotice,
-            contextFiles,
-          }),
+          bootstrapSections: bootstrapSectionLines(prompt, workspaceIndex),
           bootstrapPendingInPrompt: pendingIndex !== -1,
         },
       };
@@ -1374,22 +1448,24 @@ async function main() {
 
   if (payload.operation === "workspaceLifecycle") {
     // src/agents/workspace.ts ensureAgentWorkspace + resolveWorkspaceBootstrapStatus over a
-    // scripted sequence of file edits. Each ensure gets a fresh state dir so no attestation is
-    // ever "recent" (memory-core does not port attestations), HOME points at a temp dir, and PATH
-    // is emptied so git is unavailable (memory-core does not port git init).
+    // scripted sequence of file edits. HOME points at a temp dir and PATH is emptied so git is
+    // unavailable (memory-core does not port git init). At v2026.9.6 setup state and attestations
+    // live in the shared SQLite state DB (no workspace JSON state file; legacy JSON state is
+    // refused until doctor migrates it), so one state dir per scenario plays the agent's
+    // state across ensures (at the pin each ensure got a fresh one so no attestation was ever
+    // "recent"). An ensure that throws records its message in that step's snapshot.
     if (!payload.workspaceDir) {
       throw new Error("workspaceDir is required");
     }
     const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-lifecycle-"));
     process.env.HOME = path.join(sandbox, "home");
     process.env.PATH = "";
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
     await fs.mkdir(process.env.HOME, { recursive: true });
     const workspace = await importFromRepo(repoPath, "src/agents/workspace.ts");
     const snapshots = [];
     try {
-      let stepIndex = 0;
       for (const step of payload.steps ?? []) {
-        stepIndex += 1;
         const target = step.path ? path.join(payload.workspaceDir, step.path) : payload.workspaceDir;
         if (step.op === "write") {
           await fs.mkdir(path.dirname(target), { recursive: true });
@@ -1404,12 +1480,13 @@ async function main() {
           await fs.mkdir(target, { recursive: true });
           continue;
         }
-        process.env.OPENCLAW_STATE_DIR = path.join(sandbox, `state-${stepIndex}`);
-        await workspace.ensureAgentWorkspace({
-          dir: payload.workspaceDir,
-          ensureBootstrapFiles: true,
-          skipOptionalBootstrapFiles: step.skipOptional,
-        });
+        const ensured = await captureUpstreamError(() =>
+          workspace.ensureAgentWorkspace({
+            dir: payload.workspaceDir,
+            ensureBootstrapFiles: true,
+            skipOptionalBootstrapFiles: step.skipOptional,
+          }),
+        );
         let stateRaw: string | null = null;
         try {
           stateRaw = await fs.readFile(
@@ -1420,10 +1497,15 @@ async function main() {
           stateRaw = null;
         }
         snapshots.push({
+          ...(isRecord(ensured) && typeof ensured.error === "string" ? { error: ensured.error } : {}),
           tree: await snapshotWorkspaceTree(payload.workspaceDir),
           state: normalizeSetupStateTimestamps(stateRaw),
-          status: await workspace.resolveWorkspaceBootstrapStatus(payload.workspaceDir),
-          setupCompleted: await workspace.isWorkspaceSetupCompleted(payload.workspaceDir),
+          status: await captureUpstreamError(() =>
+            workspace.resolveWorkspaceBootstrapStatus(payload.workspaceDir),
+          ),
+          setupCompleted: await captureUpstreamError(() =>
+            workspace.isWorkspaceSetupCompleted(payload.workspaceDir),
+          ),
         });
       }
     } finally {
@@ -1477,7 +1559,9 @@ async function main() {
   }
 
   if (payload.operation === "heartbeatConstants") {
-    // src/auto-reply/heartbeat.ts:16-25 and src/auto-reply/tokens.ts:5 exports.
+    // src/auto-reply/heartbeat.ts:8-27 and src/auto-reply/tokens.ts exports. The pin's
+    // HEARTBEAT_TRANSCRIPT_PROMPT is INTERNAL_WAKE_TRANSCRIPT_PROMPTS.heartbeat at v2026.9.6
+    // (cdda5825f8b, #143866; same "[OpenClaw heartbeat poll]" value).
     const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
     const tokens = await importFromRepo(repoPath, "src/auto-reply/tokens.ts");
     return {
@@ -1488,7 +1572,7 @@ async function main() {
         HEARTBEAT_PROMPT: heartbeat.HEARTBEAT_PROMPT,
         HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS: heartbeat.HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS,
         HEARTBEAT_RESPONSE_TOOL_PROMPT: heartbeat.HEARTBEAT_RESPONSE_TOOL_PROMPT,
-        HEARTBEAT_TRANSCRIPT_PROMPT: heartbeat.HEARTBEAT_TRANSCRIPT_PROMPT,
+        HEARTBEAT_TRANSCRIPT_PROMPT: heartbeat.INTERNAL_WAKE_TRANSCRIPT_PROMPTS.heartbeat,
         DEFAULT_HEARTBEAT_EVERY: heartbeat.DEFAULT_HEARTBEAT_EVERY,
         DEFAULT_HEARTBEAT_ACK_MAX_CHARS: heartbeat.DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
       },
@@ -1507,28 +1591,18 @@ async function main() {
     };
   }
 
-  if (payload.operation === "parseHeartbeatTasks") {
-    // src/auto-reply/heartbeat.ts parseHeartbeatTasks.
-    const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
-    return {
-      ok: true,
-      operation: payload.operation,
-      result: (payload.texts ?? []).map((text) => heartbeat.parseHeartbeatTasks(text ?? "")),
-    };
-  }
+  // Retired at v2026.9.6: parseHeartbeatTasks and isTaskDue were removed in b23c7bd0f84 (#113165;
+  // HEARTBEAT.md `tasks:` entries became independent cron jobs, cron owns due-ness), so the
+  // parseHeartbeatTasks and heartbeatTaskDue ops are gone (docs/upstream_port_v2026_9_6.md).
 
-  if (payload.operation === "heartbeatTaskDue") {
-    // src/auto-reply/heartbeat.ts isTaskDue, src/cli/parse-duration.ts parseDurationMs and
-    // src/infra/heartbeat-summary.ts resolveHeartbeatIntervalMs. Case kinds: "due"
-    // (lastRunMs absent = undefined), "duration" (ms or the thrown message), "interval"
+  if (payload.operation === "heartbeatDurations") {
+    // src/cli/parse-duration.ts parseDurationMs and src/infra/heartbeat-summary.ts
+    // resolveHeartbeatIntervalMs (the duration and interval cases of the pin's
+    // heartbeatTaskDue op). Case kinds: "duration" (ms or the thrown message), "interval"
     // (every absent = unset heartbeat config).
-    const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
     const duration = await importFromRepo(repoPath, "src/cli/parse-duration.ts");
     const summary = await importFromRepo(repoPath, "src/infra/heartbeat-summary.ts");
     const result = (payload.cases ?? []).map((item) => {
-      if (item.kind === "due") {
-        return heartbeat.isTaskDue(item.lastRunMs, item.interval, item.nowMs);
-      }
       if (item.kind === "duration") {
         try {
           return {
@@ -1548,20 +1622,21 @@ async function main() {
           "every" in item ? { every: item.every } : undefined,
         );
       }
-      throw new Error(`unknown heartbeatTaskDue case kind: ${String(item.kind)}`);
+      throw new Error(`unknown heartbeatDurations case kind: ${String(item.kind)}`);
     });
     return { ok: true, operation: payload.operation, result };
   }
 
   if (payload.operation === "heartbeatPromptConfig") {
-    // src/auto-reply/heartbeat.ts resolveHeartbeatPrompt / resolveHeartbeatPromptForResponseTool;
-    // null stands for an unset prompt.
+    // src/auto-reply/heartbeat.ts resolveHeartbeatPromptCore (the pin's resolveHeartbeatPrompt,
+    // renamed in e74be5d41db, #122157) / resolveHeartbeatPromptForResponseTool; null stands
+    // for an unset prompt.
     const heartbeat = await importFromRepo(repoPath, "src/auto-reply/heartbeat.ts");
     return {
       ok: true,
       operation: payload.operation,
       result: (payload.texts ?? []).map((text) => ({
-        prompt: heartbeat.resolveHeartbeatPrompt(text ?? undefined),
+        prompt: heartbeat.resolveHeartbeatPromptCore(text ?? undefined),
         responseToolPrompt: heartbeat.resolveHeartbeatPromptForResponseTool(text ?? undefined),
       })),
     };
@@ -1588,6 +1663,12 @@ async function main() {
     // heartbeat_respond choice, and getReplyFromConfig captures the model input and answers
     // HEARTBEAT_OK. The Body ends with appendCronStyleCurrentTimeLine's line, returned as
     // timeLine from the real resolveCronStyleNow. HOME and OPENCLAW_STATE_DIR are sandboxed.
+    // v2026.9.6: plugins.enabled=false keeps runHeartbeatOnce from loading the runtime plugin
+    // registry (~50 s; upstream tests stub loadAgentRuntimePluginRegistryHandle instead), the
+    // main session entry is seeded through the SQLite session accessor (replaceSessionEntry,
+    // sessions moved out of sessions.json), and the runner never reads HEARTBEAT.md: its
+    // instructions are the cron job's monitor scratch (3e2b3ea4d5e, #112967; fallback removed in
+    // 07e3855b465), and task state belongs to cron jobs (b23c7bd0f84), so taskState is null.
     const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-heartbeat-"));
     process.env.HOME = path.join(sandbox, "home");
     process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
@@ -1595,6 +1676,7 @@ async function main() {
     try {
       const runner = await importFromRepo(repoPath, "src/infra/heartbeat-runner.ts");
       const sessions = await importFromRepo(repoPath, "src/config/sessions.ts");
+      const sessionAccessor = await importFromRepo(repoPath, "src/config/sessions/session-accessor.ts");
       const currentTime = await importFromRepo(repoPath, "src/agents/current-time.ts");
       const results = [];
       let index = 0;
@@ -1603,6 +1685,7 @@ async function main() {
         const scenarioNowMs = Number(scenario.nowMs);
         const storePath = path.join(sandbox, `sessions-${index}.json`);
         const cfg = {
+          plugins: { enabled: false },
           agents: {
             defaults: {
               workspace: scenario.workspaceDir,
@@ -1618,15 +1701,9 @@ async function main() {
           session: { store: storePath },
         };
         const sessionKey = sessions.resolveMainSessionKey(cfg);
-        await fs.writeFile(
-          storePath,
-          JSON.stringify({
-            [sessionKey]: {
-              sessionId: `sid-${index}`,
-              updatedAt: scenarioNowMs - 3_600_000,
-              ...(scenario.taskState ? { heartbeatTaskState: scenario.taskState } : {}),
-            },
-          }),
+        await sessionAccessor.replaceSessionEntry(
+          { storePath, sessionKey },
+          { sessionId: `sid-${index}`, updatedAt: scenarioNowMs - 3_600_000 },
         );
         const calls: Array<{ ctx: Record<string, unknown>; opts: Record<string, unknown> }> = [];
         const res = await runner.runHeartbeatOnce({
@@ -1643,14 +1720,13 @@ async function main() {
             },
           },
         });
-        const store = JSON.parse(await fs.readFile(storePath, "utf-8"));
         results.push({
           status: res.status,
           reason: res.status === "skipped" ? res.reason : null,
           body: calls[0]?.ctx?.Body ?? null,
           isHeartbeat: calls[0]?.opts?.isHeartbeat ?? null,
           timeLine: currentTime.resolveCronStyleNow(cfg, scenarioNowMs).timeLine,
-          taskState: store[sessionKey]?.heartbeatTaskState ?? null,
+          taskState: null,
         });
       }
       return { ok: true, operation: payload.operation, result: results };
@@ -1659,54 +1735,10 @@ async function main() {
     }
   }
 
-  if (payload.operation === "heartbeatSystemSection") {
-    // shouldInjectHeartbeatPrompt (attempt.prompt-helpers.ts) + resolveHeartbeatPromptForSystemPrompt
-    // (heartbeat-system-prompt.ts) for the default agent, then the "## Heartbeats" block cut from
-    // the real buildAgentSystemPrompt (up to "## Runtime").
-    const helpers = await importFromRepo(
-      repoPath,
-      "src/agents/embedded-agent-runner/run/attempt.prompt-helpers.ts",
-    );
-    const heartbeatSystemPrompt = await importFromRepo(repoPath, "src/agents/heartbeat-system-prompt.ts");
-    const systemPrompt = await importFromRepo(repoPath, "src/agents/system-prompt.ts");
-    const result = (payload.cases ?? []).map((item) => {
-      const config = {
-        agents: {
-          defaults: {
-            heartbeat: {
-              ...("every" in item ? { every: item.every } : {}),
-              ...("includeSystemPromptSection" in item
-                ? { includeSystemPromptSection: item.includeSystemPromptSection }
-                : {}),
-              ...("prompt" in item ? { prompt: item.prompt } : {}),
-            },
-          },
-        },
-      };
-      const inject = helpers.shouldInjectHeartbeatPrompt({
-        config,
-        isDefaultAgent: true,
-        trigger: item.trigger,
-        bootstrapContextRunKind: item.runKind,
-      });
-      const heartbeatPrompt = inject
-        ? heartbeatSystemPrompt.resolveHeartbeatPromptForSystemPrompt({ config })
-        : undefined;
-      const prompt: string = systemPrompt.buildAgentSystemPrompt({
-        workspaceDir: "/w",
-        heartbeatPrompt: "sectionPrompt" in item ? (item.sectionPrompt ?? undefined) : heartbeatPrompt,
-        promptMode: item.promptMode,
-        silentReplyPromptMode: "none",
-      });
-      const start = prompt.indexOf("## Heartbeats\n");
-      const end = start === -1 ? -1 : prompt.indexOf("## Runtime", start);
-      return {
-        heartbeatPrompt: heartbeatPrompt ?? null,
-        section: start === -1 ? null : prompt.slice(start, end),
-      };
-    });
-    return { ok: true, operation: payload.operation, result };
-  }
+  // Retired at v2026.9.6: the heartbeatSystemSection op read src/agents/heartbeat-system-prompt.ts
+  // and the "## Heartbeats" system-prompt section, both removed in 6a1dedb00c2 (#129642); the
+  // heartbeat prompt now lives only in the scheduled heartbeat user turn
+  // (src/infra/heartbeat-runner-prompt.ts resolveHeartbeatRunPrompt).
 
   if (payload.operation === "heartbeatSessionFilter") {
     // src/auto-reply/heartbeat-filter.ts isHeartbeatUserMessage over message cases, and
@@ -1751,70 +1783,12 @@ async function main() {
     }
   }
 
-  if (payload.operation === "sessionMemoryTranscript") {
-    // src/hooks/bundled/session-memory/transcript.ts exports:
-    // sanitizeSessionMemoryTranscriptText, getRecentSessionContent,
-    // getRecentSessionContentWithResetFallback and findPreviousSessionFile. Case kinds:
-    // "sanitize" {text}; "recent" {content, messageCount?} (content is the raw file text,
-    // null for a missing file); "resetFallback" {files, target, messageCount?};
-    // "findPrevious" {files, currentSessionFile?, sessionId?} (names inside the sessions
-    // dir; the result is relative to it).
-    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-session-memory-"));
-    process.env.HOME = path.join(sandbox, "home");
-    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
-    try {
-      const transcript = await importFromRepo(
-        repoPath,
-        "src/hooks/bundled/session-memory/transcript.ts",
-      );
-      const writeFiles = async (dir: string, files: Record<string, string> | undefined) => {
-        await fs.mkdir(dir, { recursive: true });
-        for (const [name, content] of Object.entries(files ?? {})) {
-          if (name.includes("/") || name.includes("\\")) {
-            throw new Error(`invalid session fixture name: ${name}`);
-          }
-          await fs.writeFile(path.join(dir, name), content, "utf-8");
-        }
-      };
-      const results = [];
-      for (const [index, item] of (payload.cases ?? []).entries()) {
-        const dir = path.join(sandbox, `case-${index}`, "sessions");
-        const count = typeof item.messageCount === "number" ? item.messageCount : undefined;
-        if (item.kind === "sanitize") {
-          results.push(transcript.sanitizeSessionMemoryTranscriptText(String(item.text)));
-        } else if (item.kind === "recent") {
-          await writeFiles(dir, item.content === null ? {} : { "session.jsonl": item.content });
-          results.push(
-            await transcript.getRecentSessionContent(path.join(dir, "session.jsonl"), count),
-          );
-        } else if (item.kind === "resetFallback") {
-          await writeFiles(dir, item.files);
-          results.push(
-            await transcript.getRecentSessionContentWithResetFallback(
-              path.join(dir, String(item.target)),
-              count,
-            ),
-          );
-        } else if (item.kind === "findPrevious") {
-          await writeFiles(dir, item.files);
-          const found = await transcript.findPreviousSessionFile({
-            sessionsDir: dir,
-            currentSessionFile:
-              typeof item.currentSessionFile === "string"
-                ? path.join(dir, item.currentSessionFile)
-                : undefined,
-            sessionId: item.sessionId ?? undefined,
-          });
-          results.push(found === undefined ? null : path.relative(dir, found));
-        } else {
-          throw new Error(`unsupported sessionMemoryTranscript case: ${item.kind}`);
-        }
-      }
-      return { ok: true, operation: payload.operation, result: { cases: results } };
-    } finally {
-      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
-    }
-  }
+  // Retired at v2026.9.6: the sessionMemoryTranscript op called
+  // src/hooks/bundled/session-memory/transcript.ts sanitizeSessionMemoryTranscriptText (no longer
+  // exported since 2cc49503a60, #107412) and the file readers getRecentSessionContent,
+  // getRecentSessionContentWithResetFallback and findPreviousSessionFile (removed with the
+  // file-era transcript runtime in 4273ca9dbd9, #113233). The module now projects SQLite
+  // transcript events: getRecentSessionProjectionFromEvents, countSessionMemoryMessages.
 
   if (payload.operation === "sessionMemorySlug") {
     // src/hooks/llm-slug-generator.ts generateSlugViaLLM with only its model run replaced:
@@ -1840,6 +1814,8 @@ async function main() {
         const slug = await slugGenerator.generateSlugViaLLM({
           sessionContent: String(item.sessionContent ?? ""),
           cfg: {},
+          // Required at v2026.9.6 (the helper run is admitted for that agent).
+          agentId: "main",
         });
         cases.push({ slug, prompt: prompts[0] ?? null });
       }
@@ -1910,6 +1886,8 @@ async function main() {
             event.action ?? "new",
             event.sessionKey ?? "agent:main:main",
             {
+              // v2026.9.6 requires context.agentId (handler.ts requireSessionMemoryAgentId).
+              agentId: "main",
               workspaceDir,
               ...(Object.keys(hookConfig).length > 0
                 ? { cfg: { hooks: { internal: { entries: { "session-memory": hookConfig } } } } }

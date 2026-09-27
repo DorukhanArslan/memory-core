@@ -74,6 +74,7 @@ from memory_core.tools.memory_get import (
     memory_get_tool_definition,
 )
 from memory_core.workspace import MemoryWorkspace
+from oracle_worklist import retired_upstream
 
 
 pytestmark = pytest.mark.skipif(
@@ -1398,13 +1399,13 @@ def test_real_openclaw_oracle_memory_search_sessions_corpus_reads_openclaw_trans
             "corpus": "sessions",
             "maxResults": 3,
             "minScore": 0,
+            # v2026.9.6 reads memory.search (agents.defaults.memorySearch is a legacy key that
+            # doctor migrates to it).
             "config": {
-                "agents": {
-                    "defaults": {
-                        "memorySearch": {
-                            "sources": ["memory", "sessions"],
-                            "experimental": {"sessionMemory": True},
-                        }
+                "memory": {
+                    "search": {
+                        "sources": ["memory", "sessions"],
+                        "experimental": {"sessionMemory": True},
                     }
                 }
             },
@@ -4157,7 +4158,6 @@ from memory_core.bootstrap import (  # noqa: E402
     OPENCLAW_PIN_LAYOUT,
     WorkspaceBootstrapFile,
     analyze_bootstrap_budget,
-    append_bootstrap_prompt_warning,
     build_bootstrap_context_files,
     build_bootstrap_injection_stats,
     build_bootstrap_prompt_section_lines,
@@ -4193,11 +4193,14 @@ def _oracle() -> OpenClawOracle:
 
 def _upstream_templates() -> dict[str, str]:
     # Test-only: the oracle's own template files stand in for host-supplied templates so the
-    # seeding comparison uses identical inputs. Nothing here reaches memory-core defaults.
+    # seeding comparison uses identical inputs. Nothing here reaches memory-core defaults. A template
+    # the checkout no longer ships (src/agents/templates/HEARTBEAT.md, deleted in 9b7c95a0f0f
+    # before v2026.9.6) is left out, so memory-core seeds its empty default for it.
     repo = Path(os.environ["OPENCLAW_ORACLE_REPO"])
     return {
         name: (repo / relative).read_bytes().decode("utf-8")
         for name, relative in UPSTREAM_TEMPLATE_PATHS.items()
+        if (repo / relative).is_file()
     }
 
 
@@ -4271,7 +4274,9 @@ def _python_bootstrap_context_report(
             "warningSignaturesSeen": list(warning.warning_signatures_seen),
         },
         "notice": build_bootstrap_prompt_warning_notice(warning.lines),
-        "appended": append_bootstrap_prompt_warning("Prompt body", warning.lines),
+        # No "appended": upstream removed appendBootstrapPromptWarning in 0b450013ea0 (#130325,
+        # v2026.9.6 routes the notice into the system prompt); append_bootstrap_prompt_warning
+        # keeps pin-era unit coverage only (docs/upstream_port_v2026_9_6.md).
     }
 
 
@@ -4660,11 +4665,13 @@ def test_real_openclaw_oracle_project_context_render_matches_python(files, mode,
     sections = build_bootstrap_prompt_section_lines(
         mode, truncation_notice=notice, context_files=context_files, layout=OPENCLAW_PIN_LAYOUT
     )
+    # The runner cuts the bootstrap sections from the real prompt (the section builder is private
+    # at v2026.9.6), where empty lines are filtered out.
     assert result["result"] == {
         "stable": stable,
         "dynamic": dynamic,
         "workspaceFiles": render_workspace_files_injected(OPENCLAW_COMPAT_RUNTIME_IDENTITY),
-        "bootstrapSections": sections,
+        "bootstrapSections": [line for line in sections if line],
         "bootstrapPendingInPrompt": "## Bootstrap Pending" in sections,
     }
 
@@ -4950,9 +4957,14 @@ def test_bootstrap_constants_and_keyword_sets_equal_upstream_source():
     from memory_core.bootstrap import budget, files, startup
 
     bootstrap_source = _upstream_source("src/agents/embedded-agent-helpers/bootstrap.ts")
+    # Each digest pattern is /\b(?:word|...)\b/iu; v2026.9.6 appends a non-word-bounded group
+    # (CJK prohibition terms and a red-circle emoji), /\b(?:...)\b|(?:...)/iu, whose
+    # alternatives belong to the same keyword set.
     keyword_sets = [
-        match.split("|")
-        for match in re.findall(r"/\\b\(\?:([^)]*)\)\\b/iu", bootstrap_source)
+        [*words.split("|"), *(extra.split("|") if extra else [])]
+        for words, extra in re.findall(
+            r"/\\b\(\?:([^)]*)\)\\b(?:\|\(\?:([^)]*)\))?/iu", bootstrap_source
+        )
     ]
     assert [
         [keyword.replace("\\.", ".") for keyword in keywords] for keywords in keyword_sets
@@ -5152,10 +5164,12 @@ def test_real_openclaw_oracle_heartbeat_constants_match_python():
 
 
 def test_real_openclaw_oracle_heartbeat_content_effectively_empty_matches_python():
-    template = (
-        Path(os.environ["OPENCLAW_ORACLE_REPO"]) / "src/agents/templates/HEARTBEAT.md"
-    ).read_bytes().decode("utf-8")
-    texts = [*HEARTBEAT_EMPTY_CONTENT_CASES, template]
+    # The stock template is a case only where the checkout ships it: v2026.9.6 deleted
+    # src/agents/templates/HEARTBEAT.md (9b7c95a0f0f, #129513) and applies the check to the
+    # heartbeat monitor scratch instead.
+    template_path = Path(os.environ["OPENCLAW_ORACLE_REPO"]) / "src/agents/templates/HEARTBEAT.md"
+    templates = [template_path.read_bytes().decode("utf-8")] if template_path.is_file() else []
+    texts = [*HEARTBEAT_EMPTY_CONTENT_CASES, *templates]
 
     result = _oracle().run({"operation": "heartbeatContentEffectivelyEmpty", "texts": texts})
 
@@ -5163,9 +5177,11 @@ def test_real_openclaw_oracle_heartbeat_content_effectively_empty_matches_python
     assert result["result"] == [
         heartbeat_module.is_heartbeat_content_effectively_empty(text) for text in texts
     ]
-    assert result["result"][-1] is True
+    if templates:
+        assert result["result"][-1] is True
 
 
+@retired_upstream("parseHeartbeatTasks")
 def test_real_openclaw_oracle_parse_heartbeat_tasks_matches_python():
     result = _oracle().run({"operation": "parseHeartbeatTasks", "texts": HEARTBEAT_TASK_FILES})
 
@@ -5179,10 +5195,20 @@ def test_real_openclaw_oracle_parse_heartbeat_tasks_matches_python():
     ]
 
 
-def test_real_openclaw_oracle_heartbeat_task_due_and_durations_match_python():
-    cases = [*HEARTBEAT_DUE_CASES, *HEARTBEAT_DURATION_CASES, *HEARTBEAT_INTERVAL_CASES]
+@retired_upstream("heartbeatTaskDue")
+def test_real_openclaw_oracle_heartbeat_task_due_matches_python():
+    result = _oracle().run({"operation": "heartbeatTaskDue", "cases": HEARTBEAT_DUE_CASES})
 
-    result = _oracle().run({"operation": "heartbeatTaskDue", "cases": cases})
+    assert result["ok"] is True, result
+    assert result["result"] == [_python_heartbeat_due_case(case) for case in HEARTBEAT_DUE_CASES]
+
+
+def test_real_openclaw_oracle_heartbeat_durations_match_python():
+    # The duration and interval cases of the pin's heartbeatTaskDue op; their upstream
+    # functions (parseDurationMs, resolveHeartbeatIntervalMs) survive at v2026.9.6.
+    cases = [*HEARTBEAT_DURATION_CASES, *HEARTBEAT_INTERVAL_CASES]
+
+    result = _oracle().run({"operation": "heartbeatDurations", "cases": cases})
 
     assert result["ok"] is True, result
     assert result["result"] == [_python_heartbeat_due_case(case) for case in cases]
@@ -5393,6 +5419,7 @@ HEARTBEAT_SYSTEM_SECTION_CASES = [
 ]
 
 
+@retired_upstream("heartbeatSystemSection")
 def test_real_openclaw_oracle_heartbeat_system_section_matches_python():
     result = _oracle().run(
         {"operation": "heartbeatSystemSection", "cases": HEARTBEAT_SYSTEM_SECTION_CASES}
@@ -6294,6 +6321,7 @@ def _python_session_memory_transcript_case(case: dict, root: Path):
     return None if found is None else os.path.relpath(found, sessions)
 
 
+@retired_upstream("sessionMemoryTranscript")
 def test_real_openclaw_oracle_session_memory_transcript_matches_python(tmp_path: Path):
     result = _oracle().run(
         {"operation": "sessionMemoryTranscript", "cases": SESSION_MEMORY_TRANSCRIPT_CASES}
@@ -6322,10 +6350,18 @@ def test_session_memory_constants_equal_upstream_source():
     assert literals == session_memory.LLM_SPECIAL_TOKEN_LITERALS
     replacement = re.search(r'const SPECIAL_TOKEN_REPLACEMENT = ("[^"]*");', source).group(1)
     assert json.loads(replacement) == session_memory.SPECIAL_TOKEN_REPLACEMENT
+    # The pin applied LLM_SPECIAL_TOKEN_PATTERNS (/.../g regexes) after the literals; v2026.9.6
+    # folds the same reserved-token regex into one LLM_SPECIAL_TOKEN_PATTERN scan
+    # ([...literals, /.../.source]), equivalent because the spellings do not overlap.
     patterns = re.search(r"const LLM_SPECIAL_TOKEN_PATTERNS = \[(.*?)\] as const;", source, re.S)
-    assert re.findall(r"^\s*/(.+)/g,", patterns.group(1), re.M) == [
-        r"<\|reserved_special_token_\d+\|>"
-    ]
+    if patterns is not None:
+        reserved = re.findall(r"^\s*/(.+)/g,", patterns.group(1), re.M)
+    else:
+        combined = re.search(
+            r"const LLM_SPECIAL_TOKEN_PATTERN = new RegExp\((.*?)\n\);", source, re.S
+        )
+        reserved = re.findall(r"/(<[^/]+>)/\.source", combined.group(1))
+    assert reserved == [r"<\|reserved_special_token_\d+\|>"]
     slug_constants = _upstream_numeric_constants(_upstream_source("src/hooks/llm-slug-generator.ts"))
     assert slug_constants["DEFAULT_SLUG_GENERATOR_TIMEOUT_MS"] == (
         session_memory.DEFAULT_SLUG_GENERATOR_TIMEOUT_MS

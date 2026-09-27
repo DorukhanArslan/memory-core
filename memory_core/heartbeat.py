@@ -42,7 +42,15 @@ is skipped and how its reply is read; it never starts a timer. Typical host flow
         decision = decide_heartbeat_reply(reply)
         if decision.deliver:
             deliver(decision.text)
-    store.save_jobs([record_automation_job_run(job, started_at_ms=now_ms) for job in due])
+    in_turn = {task.job_id for task in turn.scheduled_tasks}
+    store.save_jobs(
+        [record_automation_job_run(job, started_at_ms=now_ms) for job in due if job.id in in_turn]
+    )
+
+Only heartbeat-task jobs become scheduled tasks
+(:func:`~memory_core.automation.heartbeat_scheduled_tasks`), so only they are recorded; any other
+due job (a main-session ``systemEvent`` job that is not a heartbeat task, which upstream runs
+through ``executeMainSessionCronJob``) is the host's to run.
 
 Not ported: pending system events (exec completions, cron events, session notices, so an
 exec-event wake without scheduled tasks is always skipped as ``no-pending-event``), the

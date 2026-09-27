@@ -173,7 +173,7 @@ function jobsCard(jobs, now, skipped = []) {
       h('td', { class: 'td-clip', 'data-tip': job.prompt }, job.prompt),
       h('td', { class: 'num nowrap' }, job.lastRunAtMs ? fmtTime(job.lastRunAtMs, { seconds: false }) : '—'),
       h('td', { class: 'num nowrap' }, job.nextRunAtMs ? fmtTime(job.nextRunAtMs, { seconds: false }) : '—'),
-      h('td', { class: 'td-state' }, !job.enabled ? chip({ label: t('hb.jobDisabled'), tone: 'neutral' }) : job.due ? chip({ label: t('hb.due'), tone: 'accent', ic: 'dot' }) : chip({ label: `${t('hb.waiting')} (${fmtRelMin((job.nextRunAtMs ?? now) - now)})`, tone: 'neutral', ic: 'clock' })))))))
+      h('td', { class: 'td-state' }, !job.enabled ? chip({ label: t('hb.jobDisabled'), tone: 'neutral' }) : job.due && !job.heartbeatTask ? chip({ label: t('hb.dueHost'), tone: 'neutral', ic: 'dot', title: t('hb.dueHostTip') }) : job.due ? chip({ label: t('hb.due'), tone: 'accent', ic: 'dot' }) : chip({ label: `${t('hb.waiting')} (${fmtRelMin((job.nextRunAtMs ?? now) - now)})`, tone: 'neutral', ic: 'clock' })))))))
     : h('div', { class: 'muted pad' }, t('hb.noJobs'));
   const skippedChip = skipped.length ? chip({ label: t('hb.skippedRows', { n: skipped.length }), tone: 'warn', cls: 'chip-xs', title: skipped.map((r) => `#${r.index}${r.id ? ` ${r.id}` : ''}: ${r.reason}`).join('\n'), testid: 'hb-skipped-rows' }) : null;
   return card(t('hb.jobs'), table, { ic: 'layers', target: 'hb-jobs', testid: 'hb-jobs', right: h('span', { class: 'chip-wrap' }, skippedChip, h('span', { class: 'muted small mono' }, 'due_automation_jobs · heartbeat_scheduled_tasks')) });

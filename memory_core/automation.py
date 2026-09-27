@@ -53,7 +53,10 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol
 
-from memory_core._heartbeat_constants import CRON_STORE_CANNOT_PERSIST, HEARTBEAT_TASK_DECLARATION_PREFIX
+from memory_core._heartbeat_constants import (
+    CRON_STORE_CANNOT_PERSIST,
+    HEARTBEAT_TASK_DECLARATION_PREFIX,
+)
 from memory_core.bootstrap._js import js_json_stringify, js_trim, locale_sort_key
 from memory_core.heartbeat import HeartbeatScheduledTask
 from memory_core.heartbeat_scratch import (
@@ -166,7 +169,7 @@ class AutomationJob:
         schedule = data.get("schedule") or {}
         payload = data.get("payload") or {}
         state = data.get("state") or {}
-        if not isinstance(schedule, dict) or not isinstance(payload, dict) or not isinstance(state, dict):
+        if not all(isinstance(part, dict) for part in (schedule, payload, state)):
             raise ValueError("job schedule, payload and state must be objects")
         if schedule.get("kind") != "every" or payload.get("kind") != "systemEvent":
             raise ValueError("only every-schedule systemEvent jobs are supported")
@@ -232,7 +235,8 @@ def _persisted_job(job: AutomationJob, *, normalize: bool = True) -> AutomationJ
         return None
     if every == job.every_ms and anchor == job.anchor_ms:
         return job
-    return replace(job, every_ms=int(every), anchor_ms=None if anchor is None else int(anchor))  # type: ignore[arg-type]
+    new_anchor = None if anchor is None else int(anchor)  # type: ignore[call-overload]
+    return replace(job, every_ms=int(every), anchor_ms=new_anchor)  # type: ignore[call-overload]
 
 
 def assert_automation_jobs_can_persist(jobs: Sequence[AutomationJob]) -> list[AutomationJob]:
@@ -371,7 +375,7 @@ def record_automation_job_run(
 
 
 class AutomationStore(HeartbeatScratchStore, Protocol):
-    """Where a host keeps the monitor scratch and the automation jobs (the doctor migrations' store).
+    """Where a host keeps the monitor scratch and the automation jobs (the migrations' store).
 
     :func:`memory_core.heartbeat_migration.migrate_heartbeat_tasks` needs, on top of
     :class:`~memory_core.heartbeat_scratch.HeartbeatScratchStore`:

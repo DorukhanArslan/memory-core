@@ -78,7 +78,11 @@ if turn.skip_reason is None:
     decision = decide_heartbeat_reply(run_model(turn.message))  # host model call
     if decision.deliver:
         deliver(decision.text)  # host delivery
-store.save_jobs([record_automation_job_run(job, started_at_ms=now_ms) for job in due])
+# Only heartbeat-task jobs go into the turn; record those. Other due jobs are the host's to run.
+in_turn = {task.job_id for task in turn.scheduled_tasks}
+store.save_jobs(
+    [record_automation_job_run(job, started_at_ms=now_ms) for job in due if job.id in in_turn]
+)
 ```
 
 `memory_core.heartbeat_migration` moves a leftover HEARTBEAT.md into the scratch and its

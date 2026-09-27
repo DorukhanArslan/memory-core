@@ -389,6 +389,8 @@ export const EN = {
   'hb.jobs': 'Automation jobs',
   'hb.noJobs': 'No automation jobs. A legacy HEARTBEAT.md tasks: block appears here after migration.',
   'hb.jobDisabled': 'disabled',
+  'hb.dueHost': 'due · host runs it',
+  'hb.dueHostTip': 'Not a heartbeat task: it never goes into the heartbeat turn and the Lab never marks it as run (upstream runs it as a main-session cron event, not ported).',
   'hb.skippedRows': '{n} stored job row(s) skipped: not loadable (kept in the store)',
   'hb.legacy': 'Legacy heartbeat format (doctor)',
   'hb.legacyNote': 'v2026.9.6 never reads HEARTBEAT.md and parses no tasks: block at runtime. Migrate: the HEARTBEAT.md text moves into the monitor scratch (the original is archived under .memory-core/backups/heartbeat-migration/), and a tasks: block in the scratch becomes automation jobs.',

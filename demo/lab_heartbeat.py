@@ -13,7 +13,8 @@ the due jobs become scheduled tasks, ``prepare_heartbeat_turn`` builds the promp
 (PROACTIVE_PREFERENCES.md included on the memory-core layout), then the same host tool loop as chat
 turns, so the model can read daily notes with ``memory_search``/``memory_get``. The reply goes
 through ``decide_heartbeat_reply`` (``NO_REPLY`` and a legacy ``HEARTBEAT_OK`` ack are not
-delivered), and every due job is rescheduled from the run. ``POST /api/lab/heartbeat/reply``
+delivered), and the jobs whose tasks went into the turn are rescheduled from the run (a due job
+of another kind is the host's to run and stays due). ``POST /api/lab/heartbeat/reply``
 decides a typed reply without a model.
 
 Demo-only: the virtual clock shifts due checks, job runs and migrated anchors only; the
@@ -132,7 +133,15 @@ def _proactive_state(lab: LabRuntime) -> str:
     return "injected" if path.read_text(encoding="utf-8", errors="replace").strip() else "empty"
 
 
-def _prepare_turn(lab: LabRuntime, store: FileAutomationStore) -> tuple[HeartbeatTurn, list[AutomationJob]]:
+def _prepare_turn(
+    lab: LabRuntime, store: FileAutomationStore
+) -> tuple[HeartbeatTurn, list[AutomationJob], list[AutomationJob]]:
+    """The next turn, the due jobs whose tasks it carries, and the other due jobs.
+
+    Only heartbeat-task jobs reach the turn (``heartbeat_scheduled_tasks``); a due job of
+    another kind is the host's to run (upstream: ``executeMainSessionCronJob``, not ported), so
+    the Lab never marks it as run.
+    """
     now = lab.heartbeat_now_ms()
     due = due_automation_jobs(store.list_jobs(agent_id=HEARTBEAT_AGENT_ID), now)
     turn = prepare_heartbeat_turn(
@@ -141,18 +150,24 @@ def _prepare_turn(lab: LabRuntime, store: FileAutomationStore) -> tuple[Heartbea
         scheduled_tasks=heartbeat_scheduled_tasks(due),
         timezone=LAB_TIMEZONE,
     )
-    return turn, due
+    in_turn = {task.job_id for task in turn.scheduled_tasks}
+    return (
+        turn,
+        [job for job in due if job.id in in_turn],
+        [job for job in due if job.id not in in_turn],
+    )
 
 
 def heartbeat_preview(lab: LabRuntime) -> dict[str, Any]:
     """The prompt the next heartbeat would get (the prompt inspector's heartbeat kind)."""
-    turn, due = _prepare_turn(lab, automation_store(lab))
+    turn, due, host_due = _prepare_turn(lab, automation_store(lab))
     return {
         "skipReason": turn.skip_reason,
         "prompt": turn.prompt,
         "message": turn.message,
         "dueTasks": [task.name for task in turn.scheduled_tasks],
         "dueJobs": [job.id for job in due],
+        "hostDueJobs": [job.id for job in host_due],
         "scratchShown": turn.scratch_content is not None,
         "scratchRevision": turn.scratch_revision,
     }
@@ -318,8 +333,9 @@ def _run(
     try:
         lab.ensure()
         store = automation_store(lab)
-        turn, due = _prepare_turn(lab, store)
+        turn, due, host_due = _prepare_turn(lab, store)
         run["dueTasks"] = [task.name for task in turn.scheduled_tasks]
+        run["hostDueJobs"] = [job.id for job in host_due]
         run["scratchRevision"] = turn.scratch_revision
         decision = flush_decision(lab, session, turn.message, is_heartbeat=True)
         run["flush"] = decision
@@ -387,6 +403,7 @@ def _run(
             "replyChars": utf16_len(reply or ""),
         }
         ended = lab.heartbeat_now_ms()
+        # Only the jobs whose tasks went into this turn ran; other due jobs stay due (host).
         ran = [record_automation_job_run(job, started_at_ms=now, ended_at_ms=ended) for job in due]
         if ran:
             store.save_jobs(ran)

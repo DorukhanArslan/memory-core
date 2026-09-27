@@ -19,6 +19,7 @@ from demo.app import SHELL_CONTENT_SECURITY_POLICY, create_app
 from demo.lab_runtime import LAB_WORKSPACE_DIRNAME, LabRuntime
 from demo.parity_results import build_parity_results, classify_test_source
 from demo.workspace_context import DEMO_WORKSPACE_TEMPLATES
+from memory_core.automation import AutomationJob, FileAutomationStore
 
 KEY_ENV_NAMES = (
     "MEMORY_CORE_DEMO_OPENAI_API_KEY",
@@ -1505,6 +1506,33 @@ def test_heartbeat_runs_due_jobs_through_the_tool_loop_and_decides_delivery(clie
     assert {"heartbeat.run", "heartbeat.llm", "heartbeat.decided", "automation.jobs_ran", "clock.changed"} <= set(
         event_types(client)
     )
+
+
+def test_heartbeat_run_records_only_the_jobs_in_its_turn(client, lab, monkeypatch):
+    # A due job that is not a heartbeat task never reaches the turn (heartbeat_scheduled_tasks)
+    # and stays due for the host (upstream runs it through executeMainSessionCronJob).
+    use_engine(monkeypatch, StubEngine([("NO_REPLY", [])]))
+    client.get("/api/lab/state")
+    put_scratch(client, TASKS.lstrip("\n"), expectedRevision=0)
+    client.post("/api/lab/heartbeat/migrate")
+    now = client.get("/api/lab/heartbeat").json()["clock"]["nowMs"]
+    FileAutomationStore(lab.root).save_jobs([AutomationJob(
+        id="host-job", name="host-job", agent_id="main", every_ms=60_000, text="x",
+        anchor_ms=now, created_at_ms=now, next_run_at_ms=now,
+    )])
+    client.post("/api/lab/clock", json={"offsetMs": 1000})
+    before = client.get("/api/lab/heartbeat").json()
+
+    run = frames_of(heartbeat_run(client), "done")[0]["run"]
+
+    assert before["preflight"]["dueTasks"] == ["gunluk-takip"]
+    assert before["preflight"]["hostDueJobs"] == ["host-job"]
+    assert run["dueTasks"] == ["gunluk-takip"] and run["hostDueJobs"] == ["host-job"]
+    [task_job] = [job for job in before["jobs"] if job["heartbeatTask"]]
+    assert run["jobsRun"] == [task_job["id"]]
+    after = {job["id"]: job for job in client.get("/api/lab/heartbeat").json()["jobs"]}
+    assert after["host-job"]["due"] is True and after["host-job"]["lastRunAtMs"] is None
+    assert after[task_job["id"]]["due"] is False
 
 
 def test_heartbeat_light_context_injects_no_bootstrap_file(client, lab, monkeypatch):

@@ -434,6 +434,34 @@ def test_real_openclaw_oracle_flush_plan_parses_force_flush_bytes_like_python(
     assert result["result"]["prompt"] == python_plan.prompt
 
 
+@pytest.mark.parametrize("user_timezone", ["+03:00", "-05:30", "+0300", "\u221203:00"])
+def test_real_openclaw_oracle_flush_plan_accepts_offset_time_zones(user_timezone: str):
+    # resolveUserTimezone (src/agents/date-time.ts) keeps any zone Intl accepts, so an ECMA-402
+    # offset names the daily file's date and the prompt's "(TZ)" label. 2026-05-03T21:00Z is
+    # already 2026-05-04 at +03:00.
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    now_ms = 1777842000000
+    config = {"agents": {"defaults": {"userTimezone": user_timezone}}}
+
+    result = oracle.run({"operation": "flushPlan", "nowMs": now_ms, "config": config})
+    python_plan = build_memory_flush_plan_from_config(
+        workspace_dir=None, cfg=config, now_ms=now_ms, time_format=result["hostTimeFormat"]
+    )
+
+    assert result["ok"] is True
+    assert python_plan is not None
+    assert f"({user_timezone})" in result["result"]["prompt"]
+    assert result["result"] == {
+        "softThresholdTokens": python_plan.soft_threshold_tokens,
+        "forceFlushTranscriptBytes": python_plan.force_flush_transcript_bytes,
+        "reserveTokensFloor": python_plan.reserve_tokens_floor,
+        "relativePath": python_plan.relative_path,
+        "prompt": python_plan.prompt,
+        "systemPrompt": python_plan.system_prompt,
+        "model": None,
+    }
+
+
 def test_real_openclaw_oracle_preemptive_compaction_routes_match_python():
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
     medium = "alpha beta gamma delta epsilon " * 400

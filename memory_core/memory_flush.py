@@ -21,7 +21,7 @@ decides. Writes stay append-only to ``memory/YYYY-MM-DD.md`` (``memory_core.memo
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone as fixed_offset_zone, tzinfo
 import math
 import re
 from typing import Any
@@ -226,10 +226,10 @@ def build_memory_flush_plan(
         soft_threshold = min(soft_threshold, math.floor((window - reserve_tokens_floor) / 2))
 
     resolved_now_ms = now_ms if now_ms is not None else int(datetime.now(tz=UTC).timestamp() * 1000)
-    user_timezone = _resolve_timezone(timezone)
-    date_stamp = _format_date_stamp_in_timezone(resolved_now_ms, user_timezone)
+    timezone_label, zone = _resolve_timezone(timezone)
+    date_stamp = _format_date_stamp_in_timezone(resolved_now_ms, zone)
     relative_path = validate_daily_memory_target(f"memory/{date_stamp}.md")
-    time_line = _format_current_time_line(resolved_now_ms, user_timezone, time_format)
+    time_line = _format_current_time_line(resolved_now_ms, timezone_label, zone, time_format)
 
     prompt_base = ensure_no_reply_hint(ensure_memory_flush_safety_hints(DEFAULT_MEMORY_FLUSH_PROMPT))
     system_prompt = ensure_no_reply_hint(
@@ -701,27 +701,49 @@ def _optional_text(value: Any) -> str | None:
     return stripped or None
 
 
-def _resolve_timezone(timezone: str) -> str:
-    trimmed = timezone.strip()
-    if not trimmed:
-        return "UTC"
-    try:
-        ZoneInfo(trimmed)
-    except ZoneInfoNotFoundError:
-        return "UTC"
-    return trimmed
+# ECMA-402 offset time zone identifiers (``UTCOffset`` without seconds, as Node's Intl accepts
+# them): ``+03``, ``+0300`` or ``+03:00``, hours 00-23, minutes 00-59; the sign may be U+2212.
+_OFFSET_TIME_ZONE_RE = re.compile("([+\\-\u2212])([01][0-9]|2[0-3])(?::?([0-5][0-9]))?")
 
 
-def _format_date_stamp_in_timezone(now_ms: int, timezone: str) -> str:
-    instant = datetime.fromtimestamp(now_ms / 1000, tz=UTC)
-    local = instant.astimezone(ZoneInfo(timezone))
-    return local.strftime("%Y-%m-%d")
+def _offset_time_zone(name: str) -> tzinfo | None:
+    match = _OFFSET_TIME_ZONE_RE.fullmatch(name)
+    if match is None:
+        return None
+    sign = 1 if match.group(1) == "+" else -1
+    minutes = int(match.group(2)) * 60 + int(match.group(3) or 0)
+    return fixed_offset_zone(sign * timedelta(minutes=minutes))
+
+
+def _resolve_timezone(timezone: str) -> tuple[str, tzinfo]:
+    """``resolveUserTimezone`` (src/agents/date-time.ts:27-39): (label, zone).
+
+    The trimmed configured zone when ``Intl`` accepts it, an IANA name or an ECMA-402 offset
+    such as ``+03:00`` (the label keeps the configured spelling, as upstream prints it).
+    Deviation: a blank or unknown zone falls back to UTC, where upstream takes the host zone.
+    """
+    trimmed = js_trim(timezone) if isinstance(timezone, str) else ""
+    if trimmed:
+        offset = _offset_time_zone(trimmed)
+        if offset is not None:
+            return trimmed, offset
+        try:
+            return trimmed, ZoneInfo(trimmed)
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    return "UTC", ZoneInfo("UTC")
+
+
+def _format_date_stamp_in_timezone(now_ms: int, zone: tzinfo) -> str:
+    """``formatDateStampInTimezone`` (flush-plan.ts): en-US ``numeric`` year, 2-digit month/day."""
+    local = datetime.fromtimestamp(now_ms / 1000, tz=UTC).astimezone(zone)
+    return f"{local.year}-{local.month:02d}-{local.day:02d}"
 
 
 def format_current_time_line(now_ms: int, timezone: str = "UTC", time_format: str = "24") -> str:
     """The two-line ``Current time: ...`` / ``Reference UTC: ...`` block of
-    ``resolveCronStyleNow`` (``src/agents/current-time.ts:23-32``); an unknown or blank zone
-    falls back to UTC like the flush plan.
+    ``resolveCronStyleNow`` (``src/agents/current-time.ts:23-32``); the zone resolves like the
+    flush plan's (an IANA name or an offset such as ``+03:00``; blank or unknown: UTC).
 
     ``time_format`` is the host's 12/24-hour preference (``"12"`` or ``"24"``). Since
     edecdbd05ef (#111527) upstream ignores the ``timeFormat`` config here and detects the
@@ -729,15 +751,20 @@ def format_current_time_line(now_ms: int, timezone: str = "UTC", time_format: st
     ``AppleICUForce24HourTime``, else ``Intl`` ``hour12``); memory-core does not probe the host,
     so the host passes it (default ``"24"``, a documented deviation).
     """
-    return _format_current_time_line(int(now_ms), _resolve_timezone(timezone), time_format)
+    label, zone = _resolve_timezone(timezone)
+    return _format_current_time_line(int(now_ms), label, zone, time_format)
 
 
-def _format_current_time_line(now_ms: int, timezone: str, time_format: str = "24") -> str:
+def _format_current_time_line(now_ms: int, label: str, zone: tzinfo, time_format: str = "24") -> str:
     instant = datetime.fromtimestamp(now_ms / 1000, tz=UTC)
-    local = instant.astimezone(ZoneInfo(timezone))
+    local = instant.astimezone(zone)
     formatted_time = _format_user_time(local, _resolve_time_format(time_format))
-    utc_time = instant.strftime("%Y-%m-%d %H:%M UTC")
-    return f"Current time: {formatted_time} ({timezone})\nReference UTC: {utc_time}"
+    # Date.prototype.toISOString sliced to minutes: a 4-digit zero-padded year.
+    utc_time = (
+        f"{instant.year:04d}-{instant.month:02d}-{instant.day:02d} "
+        f"{instant.hour:02d}:{instant.minute:02d} UTC"
+    )
+    return f"Current time: {formatted_time} ({label})\nReference UTC: {utc_time}"
 
 
 def _resolve_time_format(time_format: str) -> str:
@@ -746,17 +773,27 @@ def _resolve_time_format(time_format: str) -> str:
     return time_format
 
 
+_EN_US_WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+_EN_US_MONTHS = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)
+
+
 def _format_user_time(local: datetime, time_format: str) -> str:
-    """``formatUserTime`` (date-time.ts:247-290): en-US parts, ``h23`` or ``h12`` cycle."""
+    """``formatUserTime`` (date-time.ts:247-290): en-US parts, ``h23`` or ``h12`` cycle.
+
+    The names are fixed en-US strings (``strftime`` would follow the process locale).
+    """
     day = local.day
     if time_format == "24":
-        time_part = local.strftime("%H:%M")
+        time_part = f"{local.hour:02d}:{local.minute:02d}"
     else:
         hour = local.hour % 12 or 12
         time_part = f"{hour}:{local.minute:02d} {'AM' if local.hour < 12 else 'PM'}"
     return (
-        f"{local.strftime('%A')}, {local.strftime('%B')} {day}{_ordinal_suffix(day)}, "
-        f"{local.year} - {time_part}"
+        f"{_EN_US_WEEKDAYS[local.weekday()]}, {_EN_US_MONTHS[local.month - 1]} "
+        f"{day}{_ordinal_suffix(day)}, {local.year} - {time_part}"
     )
 
 

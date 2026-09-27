@@ -633,6 +633,49 @@ def test_format_current_time_line_supports_the_host_time_format(now_ms, time_for
     assert line.splitlines()[0] == f"Current time: {expected} (Europe/Istanbul)"
 
 
+@pytest.mark.parametrize(
+    ("timezone", "relative_path", "current_time"),
+    [
+        ("+03:00", "memory/2026-05-04.md", "Monday, May 4th, 2026 - 00:00 (+03:00)"),
+        ("+0300", "memory/2026-05-04.md", "Monday, May 4th, 2026 - 00:00 (+0300)"),
+        ("+03", "memory/2026-05-04.md", "Monday, May 4th, 2026 - 00:00 (+03)"),
+        (" +03:00 ", "memory/2026-05-04.md", "Monday, May 4th, 2026 - 00:00 (+03:00)"),
+        ("-05:30", "memory/2026-05-03.md", "Sunday, May 3rd, 2026 - 15:30 (-05:30)"),
+        ("\u221203:00", "memory/2026-05-03.md", "Sunday, May 3rd, 2026 - 18:00 (\u221203:00)"),
+        ("+23:59", "memory/2026-05-04.md", "Monday, May 4th, 2026 - 20:59 (+23:59)"),
+        # Intl rejects these; upstream then takes the host zone, memory-core UTC (deviation).
+        ("+24:00", "memory/2026-05-03.md", "Sunday, May 3rd, 2026 - 21:00 (UTC)"),
+        ("+03:60", "memory/2026-05-03.md", "Sunday, May 3rd, 2026 - 21:00 (UTC)"),
+        ("+3", "memory/2026-05-03.md", "Sunday, May 3rd, 2026 - 21:00 (UTC)"),
+        ("UTC+3", "memory/2026-05-03.md", "Sunday, May 3rd, 2026 - 21:00 (UTC)"),
+        ("/etc/passwd", "memory/2026-05-03.md", "Sunday, May 3rd, 2026 - 21:00 (UTC)"),
+    ],
+)
+def test_flush_plan_accepts_ecma402_offset_time_zones(timezone, relative_path, current_time):
+    # resolveUserTimezone accepts every zone Intl accepts, offsets included; the prompt's label
+    # is the configured (trimmed) spelling. 2026-05-03T21:00Z is midnight at +03:00.
+    plan = build_memory_flush_plan(workspace_dir=None, now_ms=1777842000000, timezone=timezone)
+
+    assert plan.relative_path == relative_path
+    assert f"Current time: {current_time}\nReference UTC: 2026-05-03 21:00 UTC" in plan.prompt
+
+
+def test_current_time_names_do_not_follow_the_process_locale():
+    import locale
+
+    previous = locale.setlocale(locale.LC_TIME)
+    try:
+        locale.setlocale(locale.LC_TIME, "tr_TR.UTF-8")
+    except locale.Error:
+        pytest.skip("tr_TR.UTF-8 locale not installed")
+    try:
+        line = format_current_time_line(NOW_MS, "Europe/Istanbul")
+    finally:
+        locale.setlocale(locale.LC_TIME, previous)
+
+    assert line.splitlines()[0] == "Current time: Sunday, May 3rd, 2026 - 19:00 (Europe/Istanbul)"
+
+
 def test_flush_plan_prompt_uses_the_host_time_format():
     plan = build_memory_flush_plan(
         workspace_dir=None, now_ms=NOW_MS, timezone="Europe/Istanbul", time_format="12"

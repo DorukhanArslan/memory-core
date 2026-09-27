@@ -6555,7 +6555,7 @@ _ARCHIVE_DIR_RE = re.compile(r"^(main-[0-9a-f]{64}\.md)\.[A-Za-z0-9_]+/$")
 # at v2026.9.6 ("previews ... migrates, archives, and reruns idempotently", "leaves a legacy file
 # when operator scratch has different content", the disabled shared owner) plus memory-core probes
 # of the read gates (symlinks, hard link, directory, invalid UTF-8, BOM, oversized, stale claim),
-# the explicit unset and an archive collision.
+# the explicit unset, an archive collision and CRLF line endings (archived byte for byte).
 HEARTBEAT_SCRATCH_MIGRATION_SCENARIOS = [
     pytest.param(
         {"HEARTBEAT.md": _HB_LEGACY_ACTIONABLE},
@@ -6592,7 +6592,18 @@ HEARTBEAT_SCRATCH_MIGRATION_SCENARIOS = [
         {},
         id="same-content-scratch",
     ),
-    pytest.param({"HEARTBEAT.md": "shared checklist\n"}, ["migrate"], {"retainSource": True}, id="disabled-owner-retains"),
+    pytest.param(
+        {"HEARTBEAT.md": "shared checklist\n"},
+        ["findings", "migrate", "findings"],
+        {"retainSource": True},
+        id="disabled-owner-retains",
+    ),
+    pytest.param(
+        {"HEARTBEAT.md": _HB_LEGACY_ACTIONABLE.replace("\n", "\r\n")},
+        ["findings", "migrate"],
+        {},
+        id="crlf",
+    ),
     pytest.param({"HEARTBEAT.md": ""}, ["migrate"], {}, id="empty-file"),
     pytest.param({"HEARTBEAT.md": "﻿- BOM checklist\n"}, ["migrate"], {}, id="bom"),
     pytest.param({"HEARTBEAT.md": b"\xff\xfe bad"}, ["findings", "migrate"], {}, id="invalid-utf8"),
@@ -6659,13 +6670,15 @@ def _python_heartbeat_archives(root: Path) -> dict:
     out: dict = {}
     if not archive_dir.is_dir():
         return out
+    # Bytes, like the runner's fs.readFile(..., "utf-8"): read_text would turn CRLF into LF.
     for entry in archive_dir.iterdir():
         if entry.is_dir():
             out[f"{entry.name}/"] = {
-                inner.name: inner.read_text(encoding="utf-8") for inner in entry.iterdir()
+                inner.name: inner.read_bytes().decode("utf-8", errors="replace")
+                for inner in entry.iterdir()
             }
         else:
-            out[entry.name] = entry.read_text(encoding="utf-8")
+            out[entry.name] = entry.read_bytes().decode("utf-8", errors="replace")
     return out
 
 
@@ -6703,9 +6716,10 @@ def test_real_openclaw_oracle_heartbeat_scratch_migration_matches_python(
                 ).to_json()
             )
         elif step["op"] == "findings":
-            python_steps.append(
-                [finding.to_json() for finding in heartbeat_md_migration_findings(py_root)]
+            findings = heartbeat_md_migration_findings(
+                py_root, retain_source=bool(options.get("retainSource"))
             )
+            python_steps.append([finding.to_json() for finding in findings])
         else:
             run = migrate_heartbeat_md(
                 py_root, store, retain_source=bool(options.get("retainSource"))

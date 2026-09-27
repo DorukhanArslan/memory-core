@@ -104,6 +104,25 @@ def test_operator_scratch_is_never_overwritten(tmp_path):
     assert store.read_scratch("main").content == "operator scratch\n"
 
 
+def test_a_retained_source_reports_no_legacy_finding(tmp_path):
+    # collectHeartbeatScratchMigrationFindings skips a file shared with a disabled owner.
+    store = FileAutomationStore(tmp_path)
+    (tmp_path / "HEARTBEAT.md").write_text("shared checklist\n", encoding="utf-8")
+    assert [f.requirement for f in heartbeat_md_migration_findings(tmp_path)] == [
+        "legacy-heartbeat-file"
+    ]
+    assert heartbeat_md_migration_findings(tmp_path, retain_source=True) == ()
+
+    migrate_heartbeat_md(tmp_path, store, retain_source=True, now_ms=NOW)
+
+    assert (tmp_path / "HEARTBEAT.md").is_file()
+    assert heartbeat_md_migration_findings(tmp_path, retain_source=True) == ()
+    (tmp_path / "HEARTBEAT.md").unlink()
+    (tmp_path / "HEARTBEAT.md").mkdir()
+    [blocked] = heartbeat_md_migration_findings(tmp_path, retain_source=True)
+    assert blocked.requirement == "heartbeat-file-migration-blocked"
+
+
 def test_refused_sources_stay_in_place(tmp_path):
     outside = tmp_path / "outside.md"
     outside.write_text("- outside\n", encoding="utf-8")

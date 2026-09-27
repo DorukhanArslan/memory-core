@@ -25,8 +25,9 @@ a host :class:`~memory_core.heartbeat_scratch.HeartbeatScratchStore` (the defaul
 
 Deviations (documented in docs/parity_matrix.md): archives live under the workspace,
 ``<root>/.memory-core/backups/heartbeat-migration/`` (upstream: ``<state>/backups/``); one call
-migrates the agents sharing one workspace root, and ``retain_source`` stands for upstream's
-"a heartbeat owner of this file is disabled"; the monitor job is implicit (its name is
+migrates the agents sharing one workspace root, and ``retain_source`` (of the migration and
+of its findings) stands for upstream's "a heartbeat owner of this file is disabled"; the monitor
+job is implicit (its name is
 upstream's ``Heartbeat (<agent>)``); fix hints and the job description name the memory-core
 helpers instead of ``openclaw doctor``; the legacy task timestamps come in as
 ``legacy_task_state`` and the cleaned map comes back in the result for the host to persist;
@@ -670,12 +671,15 @@ def _monitor_name(agent_id: str) -> str:
 
 
 def heartbeat_md_migration_findings(
-    root: str | os.PathLike[str], *, agent_id: str = "main"
+    root: str | os.PathLike[str], *, agent_id: str = "main", retain_source: bool = False
 ) -> tuple[HeartbeatMigrationFinding, ...]:
     """Port of ``collectHeartbeatScratchMigrationFindings`` for one agent (read-only).
 
     A HEARTBEAT.md at ``root`` gives a ``legacy-heartbeat-file`` warning (v2026.9.6 never reads
     it); one the migration would refuse gives a ``heartbeat-file-migration-blocked`` error.
+    ``retain_source`` is :func:`migrate_heartbeat_md`'s flag (upstream: a heartbeat owner of the
+    file is disabled): the file is meant to stay, so a readable one reports nothing
+    (``disabledEntryKeys.has(source.entryKey)``); an unreadable one still reports its error.
     """
     workspace = Path(os.path.abspath(os.path.expanduser(os.fspath(root))))
     heartbeat_path = workspace / LEGACY_HEARTBEAT_FILENAME
@@ -696,7 +700,7 @@ def heartbeat_md_migration_findings(
                 fix_hint,
             ),
         )
-    if source is None:
+    if source is None or retain_source:
         return ()
     return (
         HeartbeatMigrationFinding(

@@ -40,7 +40,10 @@ handling of its reply; it never starts a timer. Typical host flow::
 The bootstrap side of a heartbeat run lives in ``memory_core.bootstrap``:
 ``build_workspace_context(root, session_kind="heartbeat")`` (heartbeat run
 kind, bootstrap mode ``none``) and ``context_mode="lightweight"`` for
-upstream's ``heartbeat.lightContext``.
+upstream's ``heartbeat.lightContext``, which at v2026.9.6 injects no bootstrap
+file at all. HEARTBEAT.md itself is read here only (``LEGACY_HEARTBEAT_FILENAME``,
+pending the monitor-scratch port); the ``layout`` parameters below no longer
+change which file is read.
 
 Not ported: exec-completion, cron-event and commitment prompts, the
 ``heartbeat_respond`` tool itself and isolated ``:heartbeat`` sessions.
@@ -60,6 +63,13 @@ from typing import Literal
 from memory_core.bootstrap._js import JS_SPACE_CLASS, js_trim, js_trim_end, js_trim_start
 from memory_core.bootstrap.layout import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
+
+# Pending port (stage-2 area "heartbeat monitor scratch", docs/upstream_port_v2026_9_6.md):
+# v2026.9.6 no longer reads a workspace HEARTBEAT.md (3e2b3ea4d5e #112967, 07e3855b465
+# #113131); the runner follows the per-agent monitor scratch. Until that port lands, this
+# module keeps the pin-era file-based heartbeat, which reads the file directly: HEARTBEAT.md
+# is no longer a bootstrap file of either workspace layout, so it is never injected.
+LEGACY_HEARTBEAT_FILENAME = "HEARTBEAT.md"
 
 # src/auto-reply/tokens.ts:5
 HEARTBEAT_TOKEN = "HEARTBEAT_OK"
@@ -616,7 +626,7 @@ def resolve_heartbeat_preflight(
     """
     if bypass_file_gates:
         return HeartbeatPreflight(None, (), None)
-    path = Path(os.fspath(workspace_dir)) / layout.heartbeat_file
+    path = Path(os.fspath(workspace_dir)) / LEGACY_HEARTBEAT_FILENAME
     try:
         content = path.read_bytes().decode("utf-8", errors="replace")
     except OSError:
@@ -712,7 +722,7 @@ def append_heartbeat_workspace_path_hint(
     """Point a prompt that mentions heartbeat.md at the workspace file (``:1155-1165``)."""
     if not _HEARTBEAT_MD_MENTION_RE.search(prompt):
         return prompt
-    path = _node_path_join(os.fspath(workspace_dir), layout.heartbeat_file).replace("\\", "/")
+    path = _node_path_join(os.fspath(workspace_dir), LEGACY_HEARTBEAT_FILENAME).replace("\\", "/")
     hint = (
         f"When reading HEARTBEAT.md, use workspace file {path} (exact case). "
         "Do not read docs/heartbeat.md."

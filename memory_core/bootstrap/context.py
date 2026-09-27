@@ -1,12 +1,11 @@
 """One-call workspace context assembly for a host turn.
 
-Mirrors the bootstrap part of OpenClaw's embedded attempt
-(``src/agents/embedded-agent-runner/run/attempt.ts:1377-1500`` at pin
-4c42815348): resolve the run's bootstrap files, decide contextInjection,
-apply the per-file/total budget, drop BOOTSTRAP.md unless the bootstrap mode is
-``full``, build the truncation report, and render Project Context. The host
-places ``stable_text`` in the cacheable system prompt and ``dynamic_text``
-below its cache boundary.
+Mirrors the bootstrap part of OpenClaw's embedded attempt at the parity pin v2026.9.6
+(``src/agents/embedded-agent-runner/run/attempt-bootstrap-prepare.ts``,
+``src/agents/bootstrap-routing.ts``): resolve the run's bootstrap files, decide
+contextInjection, apply the per-file/total budget, drop BOOTSTRAP.md unless the bootstrap mode
+is ``full``, build the truncation report, and render Project Context. Everything renders above
+the host's prompt cache boundary (the tag has no dynamic Project Context).
 
 Deviation (transport boundary): the rendered files and texts are passed
 through ``String.prototype.toWellFormed`` semantics, so a surrogate pair that
@@ -84,7 +83,6 @@ class WorkspaceContext:
     """
 
     stable_text: str
-    dynamic_text: str
     workspace_files_text: str
     bootstrap_text: str
     files: tuple[ContextFile, ...]
@@ -103,18 +101,16 @@ class WorkspaceContext:
 
     @property
     def prompt_text(self) -> str:
-        """Bootstrap sections, Workspace Files lines, stable and dynamic Project Context.
+        """Bootstrap sections, Workspace Files lines and Project Context.
 
         One string in upstream order (see
-        :func:`~memory_core.bootstrap.render.render_workspace_prompt`) for hosts
-        without a prompt cache boundary; hosts with one place ``dynamic_text``
-        below it instead.
+        :func:`~memory_core.bootstrap.render.render_workspace_prompt`); hosts with a prompt cache
+        place all of it above the boundary, as upstream does.
         """
         return render_workspace_prompt(
             bootstrap_text=self.bootstrap_text,
             workspace_files_text=self.workspace_files_text,
             stable_text=self.stable_text,
-            dynamic_text=self.dynamic_text,
         )
 
 
@@ -133,7 +129,6 @@ def build_workspace_context(
     session_kind: SessionKind = "main",
     run_kind: BootstrapContextRunKind | None = None,
     context_mode: BootstrapContextMode = "full",
-    include_heartbeat: bool = True,
     exclude_files: Iterable[str] = (),
     context_injection: ContextInjectionMode = "always",
     has_completed_bootstrap_turn: bool = False,
@@ -153,11 +148,11 @@ def build_workspace_context(
     ``run_kind`` defaults from ``session_kind`` (``heartbeat`` -> heartbeat run,
     ``cron`` -> cron run, otherwise default). ``bootstrap_mode`` defaults to
     upstream's ``resolveBootstrapMode`` (``src/agents/bootstrap-mode.ts``) as
-    the attempt routes it (``attempt-bootstrap-routing.ts:36-81``): ``none``
+    the attempt routes it (``src/agents/bootstrap-routing.ts``): ``none``
     unless the workspace is pending on a primary interactive run, then
     ``limited`` without file access or for a non-canonical workspace, else
     ``full``. ``has_bootstrap_file_access`` is upstream's
-    ``bootstrapHasFileAccess`` (``attempt.ts:1370``: the run's tools include
+    ``hasBootstrapFileAccess`` (``attempt-bootstrap-prepare.ts``: the run's tools include
     ``read``); pass ``False`` when the model cannot read workspace files.
     Non-empty BOOTSTRAP.md content counts as pending and as file access, like
     upstream's hook-content rule. ``is_canonical_workspace`` is ``False`` when
@@ -179,6 +174,8 @@ def build_workspace_context(
         total_max_chars, DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS
     )
     effective_run_kind = run_kind or _default_run_kind(session_kind)
+    # resolveWorkspaceBootstrapStatus fails closed on upstream's retired JSON state
+    # (WorkspaceStateMigrationRequiredError), like the upstream run's bootstrap routing.
     status = resolve_bootstrap_status(root, layout)
     setup_completed = is_workspace_setup_completed(root)
     loaded = load_workspace_bootstrap_files(root, layout)
@@ -190,8 +187,6 @@ def build_workspace_context(
         session_kind=session_kind,
         setup_completed=setup_completed,
         context_mode=context_mode,
-        run_kind=effective_run_kind,
-        include_heartbeat=include_heartbeat,
         warn=filter_warnings.append,
     )
     excluded = frozenset((exclude_files,) if isinstance(exclude_files, str) else exclude_files)
@@ -205,7 +200,7 @@ def build_workspace_context(
             and js_trim(file.content)
             for file in filtered
         )
-        # resolveAttemptWorkspaceBootstrapRouting (attempt-bootstrap-routing.ts:63-81):
+        # resolveWorkspaceBootstrapRouting (src/agents/bootstrap-routing.ts):
         # BOOTSTRAP.md content counts as both pending bootstrap and file access.
         bootstrap_mode = resolve_bootstrap_mode(
             bootstrap_pending=status == "pending" or hook_like_bootstrap,
@@ -263,10 +258,9 @@ def build_workspace_context(
         )
         for file in context_files
     ]
-    stable_text, dynamic_text = render_project_context(shown_files, layout)
+    stable_text = render_project_context(shown_files, layout)
     return WorkspaceContext(
         stable_text=stable_text,
-        dynamic_text=dynamic_text,
         workspace_files_text=render_workspace_files_injected(identity),
         bootstrap_text=render_bootstrap_prompt_sections(
             bootstrap_mode, truncation_notice=notice, context_files=shown_files, layout=layout

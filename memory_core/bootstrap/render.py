@@ -1,14 +1,28 @@
 """Project Context rendering for injected workspace files.
 
-Port of OpenClaw ``src/agents/system-prompt.ts`` at pin 4c42815348:
-``CONTEXT_FILE_ORDER`` / dynamic basenames (69-79), context-file sorting and
-sanitizing (161-200), ``buildProjectContextSection`` (202-238),
-``buildAgentBootstrapSystemContext`` / ``buildAgentBootstrapSystemPromptSections``
-(301-356, prompt lines from ``src/agents/bootstrap-prompt.ts``), the
-``## Workspace Files (injected)`` lines (1231-1232) and the blank-line
-filtering of the prompt assembly (``lines.filter(Boolean).join("\\n")``,
-1267 and 1356). The OpenClaw brand in the Workspace Files line goes through
+Port of OpenClaw at the parity pin v2026.9.6:
+
+- ``src/agents/system-prompt-context-files.ts``: ``CONTEXT_FILE_ORDER`` (the layout's render
+  priorities), ``prepareContextFilesForPrompt`` (sort by priority, basename, then path; two
+  ``USER.md`` files keep loader order), the heartbeat-prompt block sanitizer and
+  ``buildProjectContextSection`` (``Loaded project context:`` plus the SOUL.md, MEMORY.md and
+  USER.md guidance lines);
+- ``src/agents/system-prompt.ts``: ``buildAgentBootstrapSystemContext`` /
+  ``buildAgentBootstrapSystemPromptSections`` with the prompt lines of
+  ``src/agents/bootstrap-prompt.ts``, the ``## Workspace Files (injected)`` lines and the
+  blank-line filtering of the stable prefix (``lines.filter(Boolean).join("\\n")``,
+  system-prompt.ts:1143).
+
+The tag has no dynamic Project Context: everything renders in the stable block right before
+the prompt cache boundary (the pin's ``# Dynamic Project Context`` for HEARTBEAT.md went with
+the heartbeat monitor scratch). The OpenClaw brand in the Workspace Files line goes through
 :class:`~memory_core.runtime_identity.RuntimeIdentity`.
+
+Not ported: the authenticated personal ``users/<profile-id>/USER.md`` guidance line (no
+personal USER loader in memory-core) and the per-project curated MEMORY.md entry filter
+(``filterProjectScopedCuratedContextFiles``, ``src/agents/project-memory-bootstrap.ts``,
+d41a56fca1f #115438; stage-2 area "short-term recall and promotion"): with no active project
+keys upstream drops MEMORY.md entries annotated with a project, memory-core renders them.
 """
 
 from __future__ import annotations
@@ -25,60 +39,49 @@ from memory_core.bootstrap.layout import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayo
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 
 PROJECT_CONTEXT_HEADING = "# Project Context"
-DYNAMIC_PROJECT_CONTEXT_HEADING = "# Dynamic Project Context"
-PROJECT_CONTEXT_INTRO_LINE = "The following project context files have been loaded:"
+PROJECT_CONTEXT_INTRO_LINE = "Loaded project context:"
 PROJECT_CONTEXT_SOUL_LINE = (
     "SOUL.md: persona/tone. Follow it unless higher-priority instructions override."
 )
 PROJECT_CONTEXT_MEMORY_LINE = (
-    "MEMORY.md: durable user preferences and behavior guidance. Keep following it "
-    "throughout the session unless higher-priority instructions override."
+    "MEMORY.md: durable non-profile facts and decisions; use when relevant unless "
+    "higher-priority instructions override."
 )
-DYNAMIC_PROJECT_CONTEXT_INTRO_LINE = (
-    "The following frequently-changing project context files are kept below the cache "
-    "boundary when possible:"
+PROJECT_CONTEXT_USER_LINE = (
+    "USER.md: durable user preferences and profile directives; follow unless higher-priority "
+    "instructions override."
 )
 WORKSPACE_FILES_INJECTED_HEADING = "## Workspace Files (injected)"
 BOOTSTRAP_PENDING_HEADING = "## Bootstrap Pending"
 BOOTSTRAP_CONTEXT_NOTICE_HEADING = "## Bootstrap Context Notice"
 WORKSPACE_BOOTSTRAP_COMMIT_REMINDER = "Reminder: commit your changes in this workspace after edits."
-# Stripped from every context file before rendering (system-prompt.ts:80-81,166-171).
-DEFAULT_HEARTBEAT_PROMPT_CONTEXT_BLOCK = (
-    "Default heartbeat prompt:\n`Read HEARTBEAT.md if it exists (workspace context). Follow it "
-    "strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, "
-    "reply HEARTBEAT_OK.`"
+# Stripped from every context file before rendering: the legacy and the monitor-scratch
+# default heartbeat prompts (system-prompt-context-files.ts DEFAULT_HEARTBEAT_PROMPT_CONTEXT_BLOCK).
+DEFAULT_HEARTBEAT_PROMPT_CONTEXT_BLOCK_RE = re.compile(
+    r"Default heartbeat prompt:\r?\n`(?:Read HEARTBEAT\.md if it exists|Follow the heartbeat "
+    r"monitor scratch context when provided\.)[^`\r\n]*HEARTBEAT_OK\.`"
 )
 
+# src/agents/bootstrap-prompt.ts buildFullBootstrapPromptLines / buildLimitedBootstrapPromptLines.
 _BOOTSTRAP_FULL_FIXED_LINES = (
-    "If this run can complete the BOOTSTRAP.md workflow, do so.",
-    "If it cannot, explain the blocker briefly, continue with any bootstrap steps that are still "
-    "possible here, and offer the simplest next step.",
-    "Do not pretend bootstrap is complete when it is not.",
-    "Do not use a generic first greeting or reply normally until after you have handled "
-    "BOOTSTRAP.md.",
-)
-BOOTSTRAP_IN_CONTEXT_READ_LINE = (
-    "BOOTSTRAP.md is included below in Project Context; follow it before replying normally."
-)
-BOOTSTRAP_READ_FILE_LINE = (
-    "Please read BOOTSTRAP.md from the workspace and follow it before replying normally."
-)
-BOOTSTRAP_FIRST_REPLY_LINE = (
-    "Your first user-visible reply for a bootstrap-pending workspace must follow BOOTSTRAP.md, "
-    "not a generic greeting."
-)
-BOOTSTRAP_LIMITED_INTRO_LINE = (
-    "Bootstrap is still pending for this workspace, but this run cannot safely complete the full "
-    "BOOTSTRAP.md workflow here."
+    "Can finish BOOTSTRAP.md here: do it.",
+    "Cannot: brief blocker, safe possible steps, simplest next step.",
+    "Never claim completion early. No generic greeting/normal reply before BOOTSTRAP.md handling.",
 )
 _BOOTSTRAP_LIMITED_FIXED_LINES = (
-    "Do not claim bootstrap is complete, and do not use a generic first greeting.",
-    "Briefly explain the limitation, continue only with any bootstrap steps that are still safely "
-    "possible here, and offer the simplest next step.",
+    "Never claim complete; no generic first greeting.",
+    "Brief limitation; only safe possible steps; simplest next step.",
+)
+# src/agents/system-prompt.ts buildAgentBootstrapSystemContext.
+BOOTSTRAP_IN_CONTEXT_READ_LINE = "BOOTSTRAP.md below; follow before normal reply."
+BOOTSTRAP_READ_FILE_LINE = "Read workspace BOOTSTRAP.md; follow before normal reply."
+BOOTSTRAP_FIRST_REPLY_LINE = "First visible reply must follow BOOTSTRAP.md; no generic greeting."
+BOOTSTRAP_LIMITED_INTRO_LINE = (
+    "Bootstrap pending; this run cannot safely finish full BOOTSTRAP.md."
 )
 BOOTSTRAP_LIMITED_NEXT_STEP_LINE = (
-    "Typical next steps include switching to a primary interactive run with normal workspace "
-    "access or having the user complete the canonical BOOTSTRAP.md deletion afterward."
+    "Next: primary interactive run with normal workspace access, or user deletes canonical "
+    "BOOTSTRAP.md after completion."
 )
 
 _BOOTSTRAP_PATH_RE = re.compile(
@@ -107,14 +110,18 @@ def is_bootstrap_context_path(path: str) -> bool:
 
 def sanitize_context_file_content(content: str) -> str:
     return _TRIPLE_NEWLINE_RE.sub(
-        "\n\n", content.replace(DEFAULT_HEARTBEAT_PROMPT_CONTEXT_BLOCK, "")
+        "\n\n", DEFAULT_HEARTBEAT_PROMPT_CONTEXT_BLOCK_RE.sub("", content)
     )
 
 
 def sort_context_files(
     files: Iterable[ContextFile], layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT
 ) -> list[ContextFile]:
-    """Render order: layout priority, then basename, then path (ICU-like compare)."""
+    """Render order: layout priority, then basename, then path (ICU-like compare).
+
+    Two files with the basename ``user.md`` keep their given order (upstream keeps the shared
+    USER.md before a personal overlay, ``prepareContextFilesForPrompt``); the sort is stable.
+    """
     unknown = 2**53 - 1  # Number.MAX_SAFE_INTEGER
 
     def compare(left: ContextFile, right: ContextFile) -> int:
@@ -128,6 +135,8 @@ def sort_context_files(
             return left_value - right_value
         if left_base != right_base:
             return locale_compare(left_base, right_base)
+        if left_base == "user.md":
+            return 0
         return locale_compare(_normalize_context_path(left.path), _normalize_context_path(right.path))
 
     return sorted(files, key=cmp_to_key(compare))
@@ -136,38 +145,31 @@ def sort_context_files(
 @dataclass(frozen=True)
 class PreparedContextFiles:
     ordered: tuple[ContextFile, ...]
-    stable: tuple[ContextFile, ...]
-    dynamic: tuple[ContextFile, ...]
 
 
 def prepare_context_files(
     files: Iterable[ContextFile], layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT
 ) -> PreparedContextFiles:
-    """Port of ``prepareContextFilesForPrompt`` (system-prompt.ts:191-200)."""
+    """Drop blank paths (system-prompt.ts) and sort (``prepareContextFilesForPrompt``)."""
     ordered = sort_context_files(
         (file for file in files if isinstance(file.path, str) and js_trim(file.path)), layout
     )
-    stable = tuple(f for f in ordered if not layout.is_dynamic(context_file_basename(f.path)))
-    dynamic = tuple(f for f in ordered if layout.is_dynamic(context_file_basename(f.path)))
-    return PreparedContextFiles(tuple(ordered), stable, dynamic)
+    return PreparedContextFiles(tuple(ordered))
 
 
-def build_project_context_lines(
-    files: Sequence[ContextFile], *, heading: str, dynamic: bool
-) -> list[str]:
-    """Port of ``buildProjectContextSection`` (system-prompt.ts:202-238)."""
+def build_project_context_lines(files: Sequence[ContextFile]) -> list[str]:
+    """Port of ``buildProjectContextSection`` (system-prompt-context-files.ts)."""
     if not files:
         return []
-    lines = [heading, ""]
-    if dynamic:
-        lines.extend([DYNAMIC_PROJECT_CONTEXT_INTRO_LINE, ""])
-    else:
-        lines.append(PROJECT_CONTEXT_INTRO_LINE)
-        if any(context_file_basename(file.path) == "soul.md" for file in files):
-            lines.append(PROJECT_CONTEXT_SOUL_LINE)
-        if any(context_file_basename(file.path) == "memory.md" for file in files):
-            lines.append(PROJECT_CONTEXT_MEMORY_LINE)
-        lines.append("")
+    basenames = {context_file_basename(file.path) for file in files}
+    lines = [PROJECT_CONTEXT_HEADING, "", PROJECT_CONTEXT_INTRO_LINE]
+    if "soul.md" in basenames:
+        lines.append(PROJECT_CONTEXT_SOUL_LINE)
+    if "memory.md" in basenames:
+        lines.append(PROJECT_CONTEXT_MEMORY_LINE)
+    if "user.md" in basenames:
+        lines.append(PROJECT_CONTEXT_USER_LINE)
+    lines.append("")
     for file in files:
         lines.extend([f"## {file.path}", "", sanitize_context_file_content(file.content), ""])
     return lines
@@ -175,25 +177,10 @@ def build_project_context_lines(
 
 def render_project_context(
     files: Iterable[ContextFile], layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT
-) -> tuple[str, str]:
-    """Render ``(stable_text, dynamic_text)`` for already-budgeted context files.
-
-    The stable block is ``# Project Context``; dynamic files (HEARTBEAT.md)
-    render below the prompt cache boundary as ``# Dynamic Project Context``, or
-    as ``# Project Context`` when there is no stable file.
-    """
+) -> str:
+    """Render ``# Project Context`` for already-budgeted context files ("" without files)."""
     prepared = prepare_context_files(files, layout)
-    stable = join_prompt_lines(
-        build_project_context_lines(prepared.stable, heading=PROJECT_CONTEXT_HEADING, dynamic=False)
-    )
-    dynamic = join_prompt_lines(
-        build_project_context_lines(
-            prepared.dynamic,
-            heading=DYNAMIC_PROJECT_CONTEXT_HEADING if prepared.stable else PROJECT_CONTEXT_HEADING,
-            dynamic=True,
-        )
-    )
-    return stable, dynamic
+    return join_prompt_lines(build_project_context_lines(prepared.ordered))
 
 
 def workspace_files_injected_lines(
@@ -212,25 +199,23 @@ def render_workspace_prompt(
     bootstrap_text: str = "",
     workspace_files_text: str = "",
     stable_text: str = "",
-    dynamic_text: str = "",
 ) -> str:
     """Join the workspace parts of the system prompt in upstream order.
 
-    ``buildAgentSystemPrompt`` (system-prompt.ts:1230-1278) emits the bootstrap
-    sections, the ``## Workspace Files (injected)`` lines, the stable
-    ``# Project Context`` block, the cache boundary and then the dynamic block,
-    joined with ``lines.filter(Boolean).join("\\n")``. Sections memory-core does
-    not render (output directives, reasoning format, ``## Silent Replies``) and
-    the cache boundary marker are left out, so this is the upstream order and
-    line format of the workspace parts only, not a whole system prompt.
+    ``buildAgentSystemPrompt`` (system-prompt.ts) emits the bootstrap sections, the
+    ``## Workspace Files (injected)`` lines and ``# Project Context`` right before the cache
+    boundary, joined with ``lines.filter(Boolean).join("\\n")``. Sections memory-core does not
+    render (reasoning format, output directives, ``## Silent Replies``) and the cache boundary
+    marker are left out, so this is the upstream order and line format of the workspace parts
+    only, not a whole system prompt.
     """
-    return join_prompt_lines((bootstrap_text, workspace_files_text, stable_text, dynamic_text))
+    return join_prompt_lines((bootstrap_text, workspace_files_text, stable_text))
 
 
 def build_bootstrap_system_context_lines(
     bootstrap_mode: BootstrapMode | None, *, bootstrap_in_context: bool
 ) -> list[str]:
-    """Port of ``buildAgentBootstrapSystemContext`` (system-prompt.ts:301-331)."""
+    """Port of ``buildAgentBootstrapSystemContext`` (system-prompt.ts)."""
     if not bootstrap_mode or bootstrap_mode == "none":
         return []
     if bootstrap_mode == "limited":
@@ -257,7 +242,7 @@ def build_bootstrap_prompt_section_lines(
     context_files: Iterable[ContextFile] = (),
     layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT,
 ) -> list[str]:
-    """Port of ``buildAgentBootstrapSystemPromptSections`` (system-prompt.ts:333-356)."""
+    """Port of ``buildAgentBootstrapSystemPromptSections`` (system-prompt.ts)."""
     in_context = bootstrap_mode == "full" and any(
         is_bootstrap_context_path(file.path) for file in sort_context_files(context_files, layout)
     )

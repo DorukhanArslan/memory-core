@@ -89,7 +89,7 @@ type Payload = {
   runs?: Array<{
     sessionKey?: string;
     contextMode?: "full" | "lightweight";
-    runKind?: "default" | "heartbeat" | "cron" | "commitment-only";
+    runKind?: "default" | "heartbeat" | "cron";
   }>;
   steps?: Array<{
     op: "write" | "remove" | "mkdir" | "ensure";
@@ -99,6 +99,8 @@ type Payload = {
   }>;
   startupContext?: Record<string, unknown>;
   texts?: Array<string | null>;
+  repeat?: number;
+  stateDirIsFile?: boolean;
   cases?: Array<Record<string, any>>;
   scenarios?: Array<Record<string, any>>;
 };
@@ -248,6 +250,71 @@ function bootstrapSectionsText(prompt: string, workspaceIndex: number): string {
     return "";
   }
   return prompt.slice(Math.min(...starts), end).replace(/\n$/, "");
+}
+
+// Workspace-step sandbox shared by workspaceLifecycle and workspaceBootstrapFiles: HOME points
+// at a temp dir, PATH is emptied so git is unavailable (memory-core does not port git init), and
+// one OPENCLAW_STATE_DIR keeps the agent's SQLite setup state across the steps.
+async function withWorkspaceStepSandbox<T>(run: () => Promise<T>): Promise<T> {
+  const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-workspace-"));
+  process.env.HOME = path.join(sandbox, "home");
+  process.env.PATH = "";
+  process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+  await fs.mkdir(process.env.HOME, { recursive: true });
+  try {
+    return await run();
+  } finally {
+    await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+type WorkspaceStep = NonNullable<Payload["steps"]>[number];
+
+// write / remove / mkdir edit the fixture; ensure runs the real ensureAgentWorkspace and
+// snapshots the tree, the fixture's own legacy state file (upstream writes none), the
+// bootstrap status and the setup-completed flag.
+async function runWorkspaceSteps(repoPath: string, workspaceDir: string, steps: WorkspaceStep[]) {
+  const workspace = await importFromRepo(repoPath, "src/agents/workspace.ts");
+  const snapshots = [];
+  for (const step of steps) {
+    const target = step.path ? path.join(workspaceDir, step.path) : workspaceDir;
+    if (step.op === "write") {
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, step.content ?? "", "utf-8");
+      continue;
+    }
+    if (step.op === "remove") {
+      await fs.rm(target, { recursive: true, force: true });
+      continue;
+    }
+    if (step.op === "mkdir") {
+      await fs.mkdir(target, { recursive: true });
+      continue;
+    }
+    const ensured = await captureUpstreamError(() =>
+      workspace.ensureAgentWorkspace({
+        dir: workspaceDir,
+        ensureBootstrapFiles: true,
+        skipOptionalBootstrapFiles: step.skipOptional,
+      }),
+    );
+    let stateRaw: string | null = null;
+    try {
+      stateRaw = await fs.readFile(path.join(workspaceDir, "openclaw-workspace-state.json"), "utf-8");
+    } catch {
+      stateRaw = null;
+    }
+    snapshots.push({
+      ...(isRecord(ensured) && typeof ensured.error === "string" ? { error: ensured.error } : {}),
+      tree: await snapshotWorkspaceTree(workspaceDir),
+      state: normalizeSetupStateTimestamps(stateRaw),
+      status: await captureUpstreamError(() => workspace.resolveWorkspaceBootstrapStatus(workspaceDir)),
+      setupCompleted: await captureUpstreamError(() =>
+        workspace.isWorkspaceSetupCompleted(workspaceDir),
+      ),
+    });
+  }
+  return snapshots;
 }
 
 async function importFromRepo(repoPath: string, relativePath: string) {
@@ -1340,16 +1407,22 @@ async function main() {
   }
 
   if (payload.operation === "workspaceBootstrapFiles") {
-    return withIsolatedRuntimeState("openclaw-oracle-bootstrap-files-", async () => {
-      // src/agents/workspace.ts loadWorkspaceBootstrapFiles/filterBootstrapFilesForSession and
-      // src/agents/bootstrap-files.ts resolveBootstrapFilesForRun/resolveBootstrapContextForRun
-      // on a fixture workspace written by the Python side (no config, no hooks registered).
-      if (!payload.workspaceDir) {
-        throw new Error("workspaceDir is required");
-      }
+    // src/agents/workspace.ts loadWorkspaceBootstrapFiles/filterBootstrapFilesForSession and
+    // src/agents/bootstrap-files.ts resolveBootstrapFilesForRun/resolveBootstrapContextForRun on
+    // a fixture workspace written by the Python side (no config, no hooks registered). At
+    // v2026.9.6 setup completion lives in the SQLite state DB, so `steps` (runWorkspaceSteps,
+    // the lifecycle op's edits and ensures) prepare that state in the same state dir first;
+    // bySessionKey passes the bare session key (no workspaceDir, so every MEMORY.md-named file
+    // is dropped for shared sessions), runs pass the workspace like the attempt does.
+    if (!payload.workspaceDir) {
+      throw new Error("workspaceDir is required");
+    }
+    const workspaceDir = payload.workspaceDir;
+    return withWorkspaceStepSandbox(async () => {
+      const prepared = await runWorkspaceSteps(repoPath, workspaceDir, payload.steps ?? []);
       const workspace = await importFromRepo(repoPath, "src/agents/workspace.ts");
       const bootstrapFilesModule = await importFromRepo(repoPath, "src/agents/bootstrap-files.ts");
-      const loaded = await workspace.loadWorkspaceBootstrapFiles(payload.workspaceDir);
+      const loaded = await workspace.loadWorkspaceBootstrapFiles(workspaceDir);
       const bySessionKey: Record<string, unknown[]> = {};
       for (const key of payload.keys ?? []) {
         bySessionKey[key] = workspace.filterBootstrapFilesForSession(loaded, key);
@@ -1359,7 +1432,7 @@ async function main() {
         const warnings: string[] = [];
         const resolved = await captureUpstreamError(() =>
           bootstrapFilesModule.resolveBootstrapContextForRun({
-            workspaceDir: payload.workspaceDir,
+            workspaceDir,
             sessionKey: run.sessionKey,
             contextMode: run.contextMode,
             runKind: run.runKind,
@@ -1381,14 +1454,15 @@ async function main() {
         ok: true,
         operation: payload.operation,
         result: {
+          prepared,
           loaded,
           bySessionKey,
           runs,
           setupCompleted: await captureUpstreamError(() =>
-            workspace.isWorkspaceSetupCompleted(payload.workspaceDir),
+            workspace.isWorkspaceSetupCompleted(workspaceDir),
           ),
           bootstrapStatus: await captureUpstreamError(() =>
-            workspace.resolveWorkspaceBootstrapStatus(payload.workspaceDir),
+            workspace.resolveWorkspaceBootstrapStatus(workspaceDir),
           ),
         },
       };
@@ -1451,70 +1525,104 @@ async function main() {
 
   if (payload.operation === "workspaceLifecycle") {
     // src/agents/workspace.ts ensureAgentWorkspace + resolveWorkspaceBootstrapStatus over a
-    // scripted sequence of file edits. HOME points at a temp dir and PATH is emptied so git is
-    // unavailable (memory-core does not port git init). At v2026.9.6 setup state and attestations
-    // live in the shared SQLite state DB (no workspace JSON state file; legacy JSON state is
-    // refused until doctor migrates it), so one state dir per scenario plays the agent's
-    // state across ensures (at the pin each ensure got a fresh one so no attestation was ever
-    // "recent"). An ensure that throws records its message in that step's snapshot.
+    // scripted sequence of file edits (runWorkspaceSteps). At v2026.9.6 setup state and
+    // attestations live in the shared SQLite state DB (no workspace JSON state file; legacy JSON
+    // state is refused until doctor migrates it), so one state dir per scenario plays the
+    // agent's state across ensures (at the pin each ensure got a fresh one so no attestation
+    // was ever "recent"). An ensure that throws records its message in that step's snapshot.
     if (!payload.workspaceDir) {
       throw new Error("workspaceDir is required");
     }
-    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-lifecycle-"));
-    process.env.HOME = path.join(sandbox, "home");
-    process.env.PATH = "";
-    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
-    await fs.mkdir(process.env.HOME, { recursive: true });
-    const workspace = await importFromRepo(repoPath, "src/agents/workspace.ts");
-    const snapshots = [];
-    try {
-      for (const step of payload.steps ?? []) {
-        const target = step.path ? path.join(payload.workspaceDir, step.path) : payload.workspaceDir;
-        if (step.op === "write") {
-          await fs.mkdir(path.dirname(target), { recursive: true });
-          await fs.writeFile(target, step.content ?? "", "utf-8");
-          continue;
-        }
-        if (step.op === "remove") {
-          await fs.rm(target, { recursive: true, force: true });
-          continue;
-        }
-        if (step.op === "mkdir") {
-          await fs.mkdir(target, { recursive: true });
-          continue;
-        }
-        const ensured = await captureUpstreamError(() =>
-          workspace.ensureAgentWorkspace({
-            dir: payload.workspaceDir,
-            ensureBootstrapFiles: true,
-            skipOptionalBootstrapFiles: step.skipOptional,
+    const workspaceDir = payload.workspaceDir;
+    return withWorkspaceStepSandbox(async () => {
+      const snapshots = await runWorkspaceSteps(repoPath, workspaceDir, payload.steps ?? []);
+      return { ok: true, operation: payload.operation, result: { snapshots } };
+    });
+  }
+
+  if (payload.operation === "toolsMdMigration") {
+    // src/commands/doctor-tools-md-migration.ts maybeMigrateToolsMd({shouldRepair: true}) on a
+    // fixture workspace written by the Python side, for one default agent "main" whose
+    // workspace is workspaceDir (the upstream test's config shape). The archive lands under the
+    // run's own state dir (<state>/backups/tools-md-migration); stateDirIsFile makes that path a
+    // file, as upstream's "cannot be archived" test does. Doctor notes are suppressed
+    // (OPENCLAW_SUPPRESS_NOTES) so stdout carries only the JSON result.
+    if (!payload.workspaceDir) {
+      throw new Error("workspaceDir is required");
+    }
+    const workspaceDir = payload.workspaceDir;
+    return withIsolatedRuntimeState("openclaw-oracle-tools-md-", async () => {
+      process.env.OPENCLAW_SUPPRESS_NOTES = "1";
+      const stateDir = process.env.OPENCLAW_STATE_DIR as string;
+      if (payload.stateDirIsFile) {
+        await fs.rm(stateDir, { recursive: true, force: true });
+        await fs.writeFile(stateDir, "not a directory", "utf-8");
+      }
+      const migration = await importFromRepo(repoPath, "src/commands/doctor-tools-md-migration.ts");
+      const cfg = { agents: { list: [{ id: "main", default: true, workspace: workspaceDir }] } };
+      const runs = [];
+      for (let index = 0; index < (payload.repeat ?? 1); index += 1) {
+        runs.push(
+          await migration.maybeMigrateToolsMd({
+            cfg,
+            shouldRepair: true,
+            env: { ...process.env, OPENCLAW_STATE_DIR: stateDir },
           }),
         );
-        let stateRaw: string | null = null;
-        try {
-          stateRaw = await fs.readFile(
-            path.join(payload.workspaceDir, "openclaw-workspace-state.json"),
-            "utf-8",
-          );
-        } catch {
-          stateRaw = null;
-        }
-        snapshots.push({
-          ...(isRecord(ensured) && typeof ensured.error === "string" ? { error: ensured.error } : {}),
-          tree: await snapshotWorkspaceTree(payload.workspaceDir),
-          state: normalizeSetupStateTimestamps(stateRaw),
-          status: await captureUpstreamError(() =>
-            workspace.resolveWorkspaceBootstrapStatus(payload.workspaceDir),
-          ),
-          setupCompleted: await captureUpstreamError(() =>
-            workspace.isWorkspaceSetupCompleted(payload.workspaceDir),
-          ),
-        });
       }
-    } finally {
-      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
-    }
-    return { ok: true, operation: payload.operation, result: { snapshots } };
+      const archiveDir = path.join(stateDir, "backups", "tools-md-migration");
+      const archives: Record<string, string> = {};
+      for (const name of await fs.readdir(archiveDir).catch(() => [] as string[])) {
+        archives[name] = await fs.readFile(path.join(archiveDir, name), "utf-8");
+      }
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: { runs, tree: await snapshotWorkspaceTree(workspaceDir), archives },
+      };
+    });
+  }
+
+  if (payload.operation === "toolsMdMergeDecision") {
+    // src/commands/doctor-tools-md-migration-content.ts shouldMergeToolsMd and
+    // src/commands/doctor-tools-md-migration-guidance.ts rewriteLegacyAgentsToolsGuidance.
+    const content = await importFromRepo(repoPath, "src/commands/doctor-tools-md-migration-content.ts");
+    const guidance = await importFromRepo(repoPath, "src/commands/doctor-tools-md-migration-guidance.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.texts ?? []).map((text) => ({
+        shouldMerge: content.shouldMergeToolsMd(text ?? ""),
+        rewritten: guidance.rewriteLegacyAgentsToolsGuidance(text ?? ""),
+      })),
+    };
+  }
+
+  if (payload.operation === "workspaceBootstrapPolicy") {
+    // src/agents/workspace-bootstrap-policy.ts WORKSPACE_BOOTSTRAP_FILENAMES,
+    // GENERATED_WORKSPACE_BOOTSTRAP_FILENAMES and createWorkspaceBootstrapFilePolicy (no config,
+    // so no bootstrap-extra-files patterns), plus src/agents/workspace.ts
+    // isExpectedAbsentBootstrapFile.
+    const policyModule = await importFromRepo(repoPath, "src/agents/workspace-bootstrap-policy.ts");
+    const workspace = await importFromRepo(repoPath, "src/agents/workspace.ts");
+    const policy = policyModule.createWorkspaceBootstrapFilePolicy({
+      workspaceDir: payload.workspaceDir ?? "/w",
+    });
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        filenames: [...policyModule.WORKSPACE_BOOTSTRAP_FILENAMES],
+        generated: [...policyModule.GENERATED_WORKSPACE_BOOTSTRAP_FILENAMES],
+        paths: (payload.keys ?? []).map((relativePath) => ({
+          path: relativePath,
+          canRead: policy.canRead(relativePath),
+          canList: policy.canList(relativePath),
+          canWrite: policy.canWrite(relativePath),
+          expectedAbsent: workspace.isExpectedAbsentBootstrapFile(relativePath),
+        })),
+      },
+    };
   }
 
   if (payload.operation === "startupContext") {

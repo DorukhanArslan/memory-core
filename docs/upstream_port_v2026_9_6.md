@@ -88,7 +88,8 @@ up to 120.
   instead of `.memory-core/workspace-state.json` for the new layout; the shared-session MEMORY.md
   filter; the new render text.
 - Tests: 19 (`workspaceBootstrapFiles` 4, `workspaceLifecycle` 10, `projectContextRender` 5).
-- Worklist areas: "workspace bootstrap map".
+- Worklist areas: none left; the `workspace bootstrap map` entries were removed when
+  the area landed (2026-09-27).
 - New oracle ops: `toolsMdMigration` (`maybeMigrateToolsMd` with `shouldRepair` on a fixture
   workspace and state dir: merged AGENTS.md, archive name, removed source), `toolsMdMergeDecision`
   (`shouldMergeToolsMd`), `workspaceBootstrapPolicy` (`createWorkspaceBootstrapFilePolicy`,

@@ -273,34 +273,6 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
         ),
     ),
     PendingPort(
-        "workspace bootstrap map (AGENTS, SOUL, IDENTITY, USER, BOOTSTRAP, MEMORY: TOOLS.md "
-        "retired into AGENTS.md ## Tools, HEARTBEAT.md into the monitor scratch; setup state in "
-        "SQLite; root MEMORY.md dropped for shared sessions; new Project Context wording)",
-        "669db2968fc (#113966), 3e2b3ea4d5e (#112967), d06fc25a0c5 (#119198), "
-        "78d7a8489cd (#114436), #109147",
-        _oracle(
-            "workspace_bootstrap_files_match_python[all-files]",
-            "workspace_bootstrap_files_match_python[missing-lowercase-memory]",
-            "workspace_bootstrap_files_match_python[setup-completed-drops-bootstrap]",
-            "workspace_bootstrap_files_match_python[guarded-reads]",
-            "project_context_render_matches_python[all-full]",
-            "project_context_render_matches_python[full-without-bootstrap-file]",
-            "project_context_render_matches_python[dynamic-only]",
-            "project_context_render_matches_python[empty]",
-            "project_context_render_matches_python[soul-only]",
-            "workspace_lifecycle_matches_python[fresh-seed-then-reconcile-deletes-bootstrap]",
-            "workspace_lifecycle_matches_python[skip-optional-then-agent-deletes-bootstrap]",
-            "workspace_lifecycle_matches_python[memory-dir-counts-as-configured]",
-            "workspace_lifecycle_matches_python[memory-file-counts-as-configured]",
-            "workspace_lifecycle_matches_python[workspace-skill-counts-as-configured]",
-            "workspace_lifecycle_matches_python[git-dir-counts-as-configured]",
-            "workspace_lifecycle_matches_python[customized-identity-counts-as-configured]",
-            "workspace_lifecycle_matches_python[legacy-onboarding-state-migrates]",
-            "workspace_lifecycle_matches_python[existing-bootstrap-marked-then-reconciled]",
-            "workspace_lifecycle_matches_python[corrupt-state-file]",
-        ),
-    ),
-    PendingPort(
         "heartbeat monitor scratch (prompts follow the scratch and reply NO_REPLY, the runner "
         "never reads HEARTBEAT.md, recurring tasks are cron jobs, heartbeat transcript filter)",
         "3e2b3ea4d5e (#112967), 07e3855b465 (#113131), b23c7bd0f84 (#113165); "

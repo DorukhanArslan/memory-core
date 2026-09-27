@@ -10,7 +10,7 @@ import pytest
 
 from memory_core.bootstrap import (
     MEMORY_CORE_WORKSPACE_LAYOUT,
-    OPENCLAW_PIN_LAYOUT,
+    OPENCLAW_COMPAT_LAYOUT,
     initialize_agent_workspace,
     trim_bootstrap_content,
 )
@@ -59,8 +59,8 @@ def test_identity_loader_renders_project_context_through_bootstrap(tmp_path: Pat
 
     identity = LiveIdentity.from_dir(root)
 
-    # Empty seeded files (TOOLS, IDENTITY, PROACTIVE_PREFERENCES, HEARTBEAT) are
-    # not injected; the rest render in upstream Project Context order.
+    # Empty seeded files (IDENTITY, PROACTIVE_PREFERENCES) are not injected; the rest
+    # render in upstream Project Context order.
     assert identity.sections == (
         (_abs(root, "AGENTS.md"), "You are a support voice agent."),
         (_abs(root, "SOUL.md"), "Speak briefly."),
@@ -69,10 +69,12 @@ def test_identity_loader_renders_project_context_through_bootstrap(tmp_path: Pat
     assert identity.to_prompt_section() == "\n".join(
         [
             "## Workspace Files (injected)",
-            "These user-editable files are loaded by memory-core and included below in Project Context.",
+            "User-editable; memory-core loads below as Project Context.",
             "# Project Context",
-            "The following project context files have been loaded:",
+            "Loaded project context:",
             "SOUL.md: persona/tone. Follow it unless higher-priority instructions override.",
+            "USER.md: durable user preferences and profile directives; follow unless "
+            "higher-priority instructions override.",
             f"## {_abs(root, 'AGENTS.md')}",
             "You are a support voice agent.",
             f"## {_abs(root, 'SOUL.md')}",
@@ -81,7 +83,7 @@ def test_identity_loader_renders_project_context_through_bootstrap(tmp_path: Pat
             "Subject profile.",
         ]
     )
-    assert "loaded by OpenClaw" in identity.to_prompt_section(OPENCLAW_COMPAT_RUNTIME_IDENTITY)
+    assert "OpenClaw loads below" in identity.to_prompt_section(OPENCLAW_COMPAT_RUNTIME_IDENTITY)
     assert identity.warnings == ()
     assert identity.truncated is False
 
@@ -93,18 +95,19 @@ def test_identity_loader_marks_missing_layout_files_like_upstream(tmp_path: Path
 
     identity = LiveIdentity.from_dir(identity_dir, path_style="relative")
 
+    # USER.md (like MEMORY.md) is skipped when absent at v2026.9.6; TOOLS.md and
+    # HEARTBEAT.md are no longer bootstrap files.
     assert dict(identity.sections) == {
         "AGENTS.md": "Rules.",
         "SOUL.md": f"[MISSING] Expected at: {_abs(identity_dir, 'SOUL.md')}",
         "IDENTITY.md": f"[MISSING] Expected at: {_abs(identity_dir, 'IDENTITY.md')}",
-        "USER.md": f"[MISSING] Expected at: {_abs(identity_dir, 'USER.md')}",
-        "TOOLS.md": f"[MISSING] Expected at: {_abs(identity_dir, 'TOOLS.md')}",
-        "HEARTBEAT.md": f"[MISSING] Expected at: {_abs(identity_dir, 'HEARTBEAT.md')}",
     }
     # The extension file has no upstream counterpart: absent, it renders nothing,
-    # so the default layout matches the pin layout for an upstream-shaped workspace.
-    pin = LiveIdentity.from_dir(identity_dir, layout=OPENCLAW_PIN_LAYOUT, path_style="relative")
-    assert pin.to_prompt_section() == identity.to_prompt_section()
+    # so the default layout matches the compat layout for an upstream-shaped workspace.
+    compat = LiveIdentity.from_dir(
+        identity_dir, layout=OPENCLAW_COMPAT_LAYOUT, path_style="relative"
+    )
+    assert compat.to_prompt_section() == identity.to_prompt_section()
 
 
 def test_identity_loader_keeps_agent_memory_out_by_default(tmp_path: Path):
@@ -118,7 +121,7 @@ def test_identity_loader_keeps_agent_memory_out_by_default(tmp_path: Path):
     assert [path for path, _ in default.sections] == ["AGENTS.md"]
     assert "Operator-only fact." not in default.to_prompt_section()
     assert [path for path, _ in with_memory.sections] == ["AGENTS.md", "MEMORY.md"]
-    assert "MEMORY.md: durable user preferences" in with_memory.to_prompt_section()
+    assert "MEMORY.md: durable non-profile facts" in with_memory.to_prompt_section()
 
 
 def test_identity_loader_enforces_required_files(tmp_path: Path):
@@ -258,7 +261,7 @@ def test_identity_loader_follows_bootstrap_pending_unless_overridden(tmp_path: P
 
     assert pending.to_prompt_section().startswith(
         "## Bootstrap Pending\n"
-        "BOOTSTRAP.md is included below in Project Context; follow it before replying normally."
+        "BOOTSTRAP.md below; follow before normal reply."
     )
     assert "BOOTSTRAP.md" in dict(pending.sections)
     assert overridden.bootstrap_text == ""
@@ -719,7 +722,7 @@ def test_prepare_live_turn_wraps_workflow_state_as_openclaw_runtime_context(tmp_
 
     assert prepared.messages[0]["role"] == "system"
     assert "You are a voice support agent." in prepared.messages[0]["content"]
-    assert "files are loaded by OpenClaw and included below" in prepared.messages[0]["content"]
+    assert "User-editable; OpenClaw loads below as Project Context." in prepared.messages[0]["content"]
     assert OPENCLAW_COMPAT_RUNTIME_IDENTITY.runtime_context_begin in prepared.messages[0]["content"]
     assert "workflow_id: address_change" in prepared.messages[0]["content"]
     assert "current_step: verify_identity" in prepared.messages[0]["content"]
@@ -780,7 +783,7 @@ def test_prepare_live_turn_places_workspace_files_before_recall(tmp_path: Path):
     system = prepared.messages[0]["content"]
     assert system.startswith(
         "## Workspace Files (injected)\n"
-        "These user-editable files are loaded by memory-core and included below in Project Context.\n"
+        "User-editable; memory-core loads below as Project Context.\n"
         "# Project Context\n"
     )
     assert "OpenClaw" not in system

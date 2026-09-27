@@ -3,8 +3,8 @@ from pathlib import Path
 
 from memory_core import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.bootstrap import (
+    OPENCLAW_COMPAT_LAYOUT,
     MEMORY_CORE_WORKSPACE_LAYOUT,
-    OPENCLAW_PIN_LAYOUT,
     ContextFile,
     build_bootstrap_prompt_section_lines,
     build_workspace_context,
@@ -16,7 +16,6 @@ from memory_core.bootstrap import (
     render_workspace_prompt,
     sort_context_files,
 )
-from memory_core.bootstrap.render import DEFAULT_HEARTBEAT_PROMPT_CONTEXT_BLOCK
 from memory_core.workspace import MemoryWorkspace
 
 
@@ -43,7 +42,7 @@ def test_render_order_uses_priorities_then_icu_like_names():
         "/w/Zeta.md",
     ]
     # Without the extension priority the file is an unknown basename.
-    assert _paths(sort_context_files(files, OPENCLAW_PIN_LAYOUT))[-3:] == [
+    assert _paths(sort_context_files(files, OPENCLAW_COMPAT_LAYOUT))[-3:] == [
         "/w/alpha.md",
         "/w/PROACTIVE_PREFERENCES.md",
         "/w/Zeta.md",
@@ -51,57 +50,74 @@ def test_render_order_uses_priorities_then_icu_like_names():
 
 
 def test_stable_block_drops_blank_lines_and_adds_guidance_lines():
-    stable, dynamic = render_project_context(
+    stable = render_project_context(
         [
             ContextFile("/w/MEMORY.md", "- fact\n\n- next"),
             ContextFile("/w/SOUL.md", "calm"),
+            ContextFile("/w/USER.md", "Doruk"),
             ContextFile("/w/IDENTITY.md", ""),
         ],
-        OPENCLAW_PIN_LAYOUT,
+        OPENCLAW_COMPAT_LAYOUT,
     )
 
+    # buildProjectContextSection (system-prompt-context-files.ts at v2026.9.6).
     assert stable == (
         "# Project Context\n"
-        "The following project context files have been loaded:\n"
+        "Loaded project context:\n"
         "SOUL.md: persona/tone. Follow it unless higher-priority instructions override.\n"
-        "MEMORY.md: durable user preferences and behavior guidance. Keep following it "
-        "throughout the session unless higher-priority instructions override.\n"
+        "MEMORY.md: durable non-profile facts and decisions; use when relevant unless "
+        "higher-priority instructions override.\n"
+        "USER.md: durable user preferences and profile directives; follow unless "
+        "higher-priority instructions override.\n"
         "## /w/SOUL.md\n"
         "calm\n"
         "## /w/IDENTITY.md\n"
+        "## /w/USER.md\n"
+        "Doruk\n"
         "## /w/MEMORY.md\n"
         "- fact\n\n- next"
     )
-    assert dynamic == ""
+    assert render_project_context([]) == ""
 
 
-def test_heartbeat_is_dynamic_and_sanitized():
-    content = f"tasks\n\n\n{DEFAULT_HEARTBEAT_PROMPT_CONTEXT_BLOCK}\n\n\nafter"
-    stable, dynamic = render_project_context(
-        [ContextFile("/w/AGENTS.md", "rules"), ContextFile("/w/HEARTBEAT.md", content)]
+def test_heartbeat_files_render_in_the_stable_block_and_are_sanitized():
+    # The tag has no dynamic Project Context; a host-supplied HEARTBEAT.md sorts as an
+    # unknown basename, and both default heartbeat prompt blocks are stripped.
+    legacy = (
+        "Default heartbeat prompt:\n`Read HEARTBEAT.md if it exists (workspace context). Follow "
+        "it strictly. If nothing needs attention, reply HEARTBEAT_OK.`"
     )
-    only_stable, only_dynamic = render_project_context([ContextFile("/w/HEARTBEAT.md", "beat")])
-
-    assert "HEARTBEAT" not in stable
-    assert dynamic == (
-        "# Dynamic Project Context\n"
-        "The following frequently-changing project context files are kept below the cache "
-        "boundary when possible:\n"
-        "## /w/HEARTBEAT.md\n"
-        "tasks\n\nafter"
+    scratch = (
+        "Default heartbeat prompt:\r\n`Follow the heartbeat monitor scratch context when "
+        "provided. Reply HEARTBEAT_OK.`"
     )
-    assert only_stable == ""
-    assert only_dynamic.startswith("# Project Context\nThe following frequently-changing")
+    content = f"tasks\n\n\n{legacy}\n\n\n{scratch}\n\n\nafter"
+    stable = render_project_context(
+        [ContextFile("/w/HEARTBEAT.md", content), ContextFile("/w/AGENTS.md", "rules")]
+    )
+
+    assert stable.endswith("## /w/HEARTBEAT.md\ntasks\n\nafter")
+    assert stable.index("## /w/AGENTS.md") < stable.index("## /w/HEARTBEAT.md")
+
+
+def test_two_user_files_keep_loader_order():
+    files = [ContextFile("/w/z/USER.md", "shared"), ContextFile("/w/a/USER.md", "personal")]
+
+    assert _paths(sort_context_files(files)) == ["/w/z/USER.md", "/w/a/USER.md"]
+    assert _paths(sort_context_files([ContextFile("/w/z/SOUL.md", ""), ContextFile("/w/a/SOUL.md", "")])) == [
+        "/w/a/SOUL.md",
+        "/w/z/SOUL.md",
+    ]
 
 
 def test_workspace_files_line_goes_through_runtime_identity():
     assert render_workspace_files_injected() == (
         "## Workspace Files (injected)\n"
-        "These user-editable files are loaded by memory-core and included below in Project Context."
+        "User-editable; memory-core loads below as Project Context."
     )
     assert render_workspace_files_injected(OPENCLAW_COMPAT_RUNTIME_IDENTITY) == (
         "## Workspace Files (injected)\n"
-        "These user-editable files are loaded by OpenClaw and included below in Project Context."
+        "User-editable; OpenClaw loads below as Project Context."
     )
 
 
@@ -112,24 +128,26 @@ def test_bootstrap_pending_variants():
     read_file = render_bootstrap_prompt_sections("full")
     limited = render_bootstrap_prompt_sections("limited", truncation_notice=" notice ")
 
-    assert in_context[:2] == [
+    assert in_context == [
         "## Bootstrap Pending",
-        "BOOTSTRAP.md is included below in Project Context; follow it before replying normally.",
-    ]
-    assert in_context[-2:] == [
-        "Your first user-visible reply for a bootstrap-pending workspace must follow "
-        "BOOTSTRAP.md, not a generic greeting.",
+        "BOOTSTRAP.md below; follow before normal reply.",
+        "Can finish BOOTSTRAP.md here: do it.",
+        "Cannot: brief blocker, safe possible steps, simplest next step.",
+        "Never claim completion early. No generic greeting/normal reply before BOOTSTRAP.md handling.",
+        "First visible reply must follow BOOTSTRAP.md; no generic greeting.",
         "",
     ]
-    assert read_file.splitlines()[1] == (
-        "Please read BOOTSTRAP.md from the workspace and follow it before replying normally."
-    )
-    assert limited.splitlines()[:2] == [
+    assert read_file.splitlines()[1] == "Read workspace BOOTSTRAP.md; follow before normal reply."
+    assert limited.splitlines() == [
         "## Bootstrap Pending",
-        "Bootstrap is still pending for this workspace, but this run cannot safely complete the "
-        "full BOOTSTRAP.md workflow here.",
+        "Bootstrap pending; this run cannot safely finish full BOOTSTRAP.md.",
+        "Never claim complete; no generic first greeting.",
+        "Brief limitation; only safe possible steps; simplest next step.",
+        "Next: primary interactive run with normal workspace access, or user deletes canonical "
+        "BOOTSTRAP.md after completion.",
+        "## Bootstrap Context Notice",
+        "notice",
     ]
-    assert limited.endswith("## Bootstrap Context Notice\nnotice")
     assert render_bootstrap_prompt_sections("none") == ""
 
 
@@ -139,26 +157,23 @@ def test_workspace_context_for_a_pending_memory_core_workspace(tmp_path):
         templates={
             "AGENTS.md": "# Rules\n",
             "PROACTIVE_PREFERENCES.md": "Morning digest\n",
-            "HEARTBEAT.md": "- check calendar\n",
             "BOOTSTRAP.md": "Ask the user's name.\n",
         },
     )
     (tmp_path / "user" / "profile.md").write_text("never injected", encoding="utf-8")
+    # Retired files are never loaded, even when a host still has them.
+    (tmp_path / "HEARTBEAT.md").write_text("- check calendar\n", encoding="utf-8")
+    (tmp_path / "TOOLS.md").write_text("- rg\n", encoding="utf-8")
 
     context = build_workspace_context(tmp_path, path_style="relative")
 
     assert context.bootstrap_status == "pending"
     assert context.bootstrap_mode == "full"
-    assert _paths(context.files) == [
-        "AGENTS.md",
-        "PROACTIVE_PREFERENCES.md",
-        "BOOTSTRAP.md",
-        "HEARTBEAT.md",
-    ]
+    assert _paths(context.files) == ["AGENTS.md", "PROACTIVE_PREFERENCES.md", "BOOTSTRAP.md"]
     assert "## BOOTSTRAP.md\nAsk the user's name." in context.stable_text
     assert "never injected" not in context.stable_text
-    assert context.dynamic_text.endswith("## HEARTBEAT.md\n- check calendar")
-    assert context.bootstrap_text.startswith("## Bootstrap Pending\nBOOTSTRAP.md is included")
+    assert "check calendar" not in context.prompt_text and "- rg" not in context.prompt_text
+    assert context.bootstrap_text.startswith("## Bootstrap Pending\nBOOTSTRAP.md below")
     assert context.workspace_notes == (
         "Reminder: commit your changes in this workspace after edits.",
     )
@@ -177,7 +192,7 @@ def test_workspace_context_drops_bootstrap_unless_mode_is_full(tmp_path):
     assert heartbeat.bootstrap_text == ""
     assert heartbeat.workspace_notes  # BOOTSTRAP.md was loaded before the mode filter
     assert subagent.bootstrap_mode == "none"
-    assert [file.name for file in subagent.bootstrap_files] == ["AGENTS.md", "TOOLS.md"]
+    assert [file.name for file in subagent.bootstrap_files] == ["AGENTS.md"]
     assert subagent.files == ()  # empty templates are never injected
 
 
@@ -228,34 +243,23 @@ def test_extension_dirs_are_never_injected_or_indexed(tmp_path):
 def test_prompt_text_joins_workspace_parts_in_upstream_order(tmp_path):
     initialize_agent_workspace(
         tmp_path,
-        templates={
-            "AGENTS.md": "# Rules\n",
-            "HEARTBEAT.md": "- check\n",
-            "BOOTSTRAP.md": "Ask the name.\n",
-        },
+        templates={"AGENTS.md": "# Rules\n", "BOOTSTRAP.md": "Ask the name.\n"},
     )
 
     context = build_workspace_context(tmp_path, path_style="relative")
     prompt = context.prompt_text
 
-    # system-prompt.ts: bootstrap sections, Workspace Files lines, stable block,
-    # (cache boundary), dynamic block; blank lines vanish.
+    # system-prompt.ts: bootstrap sections, Workspace Files lines, Project Context, then the
+    # cache boundary; blank lines vanish.
     assert prompt == "\n".join(
-        [
-            context.bootstrap_text,
-            context.workspace_files_text,
-            context.stable_text,
-            context.dynamic_text,
-        ]
+        [context.bootstrap_text, context.workspace_files_text, context.stable_text]
     )
     markers = [
-        "## Bootstrap Pending\nBOOTSTRAP.md is included below in Project Context",
-        "## Workspace Files (injected)\nThese user-editable files are loaded by memory-core",
-        "# Project Context\nThe following project context files have been loaded:",
+        "## Bootstrap Pending\nBOOTSTRAP.md below",
+        "## Workspace Files (injected)\nUser-editable; memory-core loads below",
+        "# Project Context\nLoaded project context:",
         "## AGENTS.md\n# Rules",
         "## BOOTSTRAP.md\nAsk the name.",
-        "# Dynamic Project Context\n",
-        "## HEARTBEAT.md\n- check",
     ]
     positions = [prompt.index(marker) for marker in markers]
     assert positions == sorted(positions)
@@ -302,11 +306,11 @@ def test_workspace_context_host_strings_are_well_formed_after_a_surrogate_split(
     root.mkdir()
     (root / "SOUL.md").write_text("😀" * 15_000, encoding="utf-8")  # 30,000 UTF-16 units
 
-    raw = build_bootstrap_context_files(load_workspace_bootstrap_files(root, OPENCLAW_PIN_LAYOUT))
+    raw = build_bootstrap_context_files(load_workspace_bootstrap_files(root, OPENCLAW_COMPAT_LAYOUT))
     raw_soul = next(file for file in raw.files if file.path.endswith("SOUL.md")).content
-    context = build_workspace_context(root, layout=OPENCLAW_PIN_LAYOUT, path_style="relative")
+    context = build_workspace_context(root, layout=OPENCLAW_COMPAT_LAYOUT, path_style="relative")
     soul = dict((file.path, file.content) for file in context.files)["SOUL.md"]
-    identity = LiveIdentity.from_dir(root, layout=OPENCLAW_PIN_LAYOUT)
+    identity = LiveIdentity.from_dir(root, layout=OPENCLAW_COMPAT_LAYOUT)
 
     # The budget stays byte-exact (upstream's plain slice splits the pair)...
     assert _has_lone_surrogate(raw_soul)
@@ -318,7 +322,6 @@ def test_workspace_context_host_strings_are_well_formed_after_a_surrogate_split(
     for text in (
         context.prompt_text,
         context.stable_text,
-        context.dynamic_text,
         context.bootstrap_text,
         identity.to_prompt_section(),
         *(content for _, content in identity.sections),
@@ -335,15 +338,15 @@ def test_workspace_context_routes_bootstrap_by_file_access_like_the_attempt(tmp_
     )
 
     empty = tmp_path / "empty"
-    initialize_agent_workspace(empty, layout=OPENCLAW_PIN_LAYOUT)  # empty BOOTSTRAP.md
+    initialize_agent_workspace(empty, layout=OPENCLAW_COMPAT_LAYOUT)  # empty BOOTSTRAP.md
     ritual = tmp_path / "ritual"
     initialize_agent_workspace(
-        ritual, layout=OPENCLAW_PIN_LAYOUT, templates={"BOOTSTRAP.md": "host ritual\n"}
+        ritual, layout=OPENCLAW_COMPAT_LAYOUT, templates={"BOOTSTRAP.md": "host ritual\n"}
     )
 
     def build(root, **kwargs):
         return build_workspace_context(
-            root, layout=OPENCLAW_PIN_LAYOUT, path_style="relative", **kwargs
+            root, layout=OPENCLAW_COMPAT_LAYOUT, path_style="relative", **kwargs
         )
 
     with_read = build(empty)
@@ -351,14 +354,15 @@ def test_workspace_context_routes_bootstrap_by_file_access_like_the_attempt(tmp_
     sandboxed = build(empty, is_canonical_workspace=False)
     ritual_without_read = build(ritual, has_bootstrap_file_access=False)
 
-    # attempt.ts:1370 bootstrapHasFileAccess and resolveBootstrapMode.
+    # attempt-bootstrap-prepare.ts hasBootstrapFileAccess and resolveBootstrapMode.
     assert with_read.bootstrap_mode == "full"
     assert BOOTSTRAP_READ_FILE_LINE in with_read.bootstrap_text
     for limited in (without_read, sandboxed):
         assert limited.bootstrap_mode == "limited"
         assert BOOTSTRAP_LIMITED_INTRO_LINE in limited.bootstrap_text
         assert "BOOTSTRAP.md" not in [file.path for file in limited.files]
-    # attempt-bootstrap-routing.ts:69-81: BOOTSTRAP.md content counts as file access.
+    # bootstrap-routing.ts resolveWorkspaceBootstrapRouting: BOOTSTRAP.md content counts as
+    # file access.
     assert ritual_without_read.bootstrap_mode == "full"
     assert BOOTSTRAP_IN_CONTEXT_READ_LINE in ritual_without_read.bootstrap_text
     assert "BOOTSTRAP.md" in [file.path for file in ritual_without_read.files]
@@ -388,7 +392,7 @@ def test_workspace_context_resolves_char_limits_like_upstream_config(tmp_path: P
 
     def user_length(**kwargs):
         context = build_workspace_context(
-            root, layout=OPENCLAW_PIN_LAYOUT, path_style="relative", **kwargs
+            root, layout=OPENCLAW_COMPAT_LAYOUT, path_style="relative", **kwargs
         )
         return len(dict((file.path, file.content) for file in context.files)["USER.md"])
 

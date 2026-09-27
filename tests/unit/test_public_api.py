@@ -115,7 +115,7 @@ def test_public_api_exports_workspace_bootstrap_surface(tmp_path):
         "ContextFile",
         "DEFAULT_WORKSPACE_LAYOUT",
         "MEMORY_CORE_WORKSPACE_LAYOUT",
-        "OPENCLAW_PIN_LAYOUT",
+        "OPENCLAW_COMPAT_LAYOUT",
         "WorkspaceBootstrapFile",
         "WorkspaceContext",
         "WorkspaceInitResult",

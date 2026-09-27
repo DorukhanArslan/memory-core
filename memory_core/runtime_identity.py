@@ -13,10 +13,8 @@ class RuntimeIdentity:
     runtime_event_header: str
     runtime_event_user_prompt: str
     # Intro line under "## Workspace Files (injected)" (OpenClaw
-    # src/agents/system-prompt.ts:1232 names the runtime).
-    workspace_files_injected_line: str = (
-        "These user-editable files are loaded by memory-core and included below in Project Context."
-    )
+    # src/agents/system-prompt.ts:1132 at v2026.9.6 names the runtime).
+    workspace_files_injected_line: str = "User-editable; memory-core loads below as Project Context."
     # Last bootstrap truncation warning line (OpenClaw
     # src/agents/bootstrap-budget.ts:312-314 names OpenClaw config keys).
     bootstrap_truncation_limits_line: str = (
@@ -62,9 +60,7 @@ MEMORY_CORE_RUNTIME_IDENTITY = RuntimeIdentity(
     next_turn_runtime_context_header="memory-core runtime context for the immediately preceding user message.",
     runtime_event_header="memory-core runtime event.",
     runtime_event_user_prompt="Continue the memory-core runtime event.",
-    workspace_files_injected_line=(
-        "These user-editable files are loaded by memory-core and included below in Project Context."
-    ),
+    workspace_files_injected_line="User-editable; memory-core loads below as Project Context.",
     bootstrap_truncation_limits_line=(
         "If unintentional, raise the per-file and/or total bootstrap character limits."
     ),
@@ -92,9 +88,7 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
     next_turn_runtime_context_header="OpenClaw runtime context for the immediately preceding user message.",
     runtime_event_header="OpenClaw runtime event.",
     runtime_event_user_prompt="Continue the OpenClaw runtime event.",
-    workspace_files_injected_line=(
-        "These user-editable files are loaded by OpenClaw and included below in Project Context."
-    ),
+    workspace_files_injected_line="User-editable; OpenClaw loads below as Project Context.",
     bootstrap_truncation_limits_line=(
         "If unintentional, raise agents.defaults.bootstrapMaxChars and/or "
         "agents.defaults.bootstrapTotalMaxChars."

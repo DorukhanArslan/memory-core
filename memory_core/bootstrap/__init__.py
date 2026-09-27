@@ -1,9 +1,11 @@
 """Workspace bootstrap files: layout, seeding, loading, budget and rendering.
 
-Ports the OpenClaw workspace bootstrap surface at pin 4c42815348 (see each
+Ports the OpenClaw workspace bootstrap surface at the parity pin v2026.9.6 (see each
 module's docstring for upstream anchors) and adds memory-core's default layout
-(``MEMORY_CORE_WORKSPACE_LAYOUT``) with extensions that have no upstream
-reference.
+(``MEMORY_CORE_WORKSPACE_LAYOUT``) with extensions that have no upstream reference.
+``OPENCLAW_COMPAT_LAYOUT`` is upstream's map alone. ``migrate_tools_md`` retires a
+TOOLS.md into AGENTS.md ``## Tools``; ``migrate_legacy_workspace_state`` imports upstream's
+retired JSON setup state.
 
 Typical host flow, every turn (upstream runs ``ensureAgentWorkspace`` on each
 reply, ``src/auto-reply/reply/get-reply.ts:418-425``, which is where a configured
@@ -14,9 +16,7 @@ reads)::
 
     initialize_agent_workspace(root, templates=host_templates)
     context = build_workspace_context(root, session_kind="main")
-    system_prompt = context.prompt_text  # no prompt cache boundary
-    # With a cache boundary: bootstrap_text, workspace_files_text and
-    # stable_text above it (render_workspace_prompt), dynamic_text below it.
+    system_prompt = context.prompt_text  # above any prompt cache boundary
 """
 
 from memory_core.bootstrap.budget import (
@@ -43,34 +43,49 @@ from memory_core.bootstrap.budget import (
 from memory_core.bootstrap.context import WorkspaceContext, build_workspace_context
 from memory_core.bootstrap.files import (
     MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES,
+    BootstrapFileRead,
     ContextInjectionDecision,
     WorkspaceBootstrapFile,
     apply_context_mode_filter,
     filter_bootstrap_files,
     filter_bootstrap_files_for_session,
     filter_completed_bootstrap_file,
-    filter_heartbeat_bootstrap_file,
+    filter_root_memory_bootstrap_files,
     load_workspace_bootstrap_files,
+    read_workspace_bootstrap_file,
     resolve_bootstrap_mode,
     resolve_context_injection,
 )
 from memory_core.bootstrap.layout import (
     DEFAULT_WORKSPACE_LAYOUT,
-    MEMORY_CORE_WORKSPACE_LAYOUT,
-    OPENCLAW_PIN_LAYOUT,
+    GENERATED_WORKSPACE_BOOTSTRAP_FILENAMES,
+    OPENCLAW_COMPAT_LAYOUT,
     PROACTIVE_PREFERENCES_FILENAME,
+    MEMORY_CORE_WORKSPACE_LAYOUT,
+    WORKSPACE_BOOTSTRAP_FILENAMES,
     WorkspaceLayout,
 )
 from memory_core.bootstrap.lifecycle import (
+    LegacyWorkspaceStateMigration,
     WorkspaceInitResult,
     WorkspaceSetupState,
+    WorkspaceStateMigrationError,
+    WorkspaceStateMigrationRequiredError,
+    assert_no_unmigrated_workspace_state,
     bootstrap_status,
     has_workspace_user_content_evidence,
     initialize_agent_workspace,
     is_workspace_setup_completed,
+    migrate_legacy_workspace_state,
     read_workspace_setup_state,
     strip_template_front_matter,
     workspace_profile_looks_configured,
+)
+from memory_core.bootstrap.tools_md import (
+    ToolsMdMigrationResult,
+    merge_tools_md_into_agents_md,
+    migrate_tools_md,
+    should_merge_tools_md,
 )
 from memory_core.bootstrap.render import (
     build_bootstrap_prompt_section_lines,
@@ -97,27 +112,35 @@ __all__ = [
     "DEFAULT_BOOTSTRAP_MAX_CHARS",
     "DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS",
     "DEFAULT_WORKSPACE_LAYOUT",
+    "GENERATED_WORKSPACE_BOOTSTRAP_FILENAMES",
     "MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES",
-    "MEMORY_CORE_WORKSPACE_LAYOUT",
-    "OPENCLAW_PIN_LAYOUT",
+    "OPENCLAW_COMPAT_LAYOUT",
     "PROACTIVE_PREFERENCES_FILENAME",
+    "MEMORY_CORE_WORKSPACE_LAYOUT",
+    "WORKSPACE_BOOTSTRAP_FILENAMES",
     "BootstrapAnalyzedFile",
     "BootstrapBudgetAnalysis",
     "BootstrapContextFilesResult",
+    "BootstrapFileRead",
     "BootstrapInjectionStat",
     "BootstrapPromptWarning",
     "ContextFile",
     "ContextInjectionDecision",
+    "LegacyWorkspaceStateMigration",
+    "ToolsMdMigrationResult",
     "TrimBootstrapResult",
     "WorkspaceBootstrapFile",
     "WorkspaceContext",
     "WorkspaceInitResult",
     "WorkspaceLayout",
     "WorkspaceSetupState",
+    "WorkspaceStateMigrationError",
+    "WorkspaceStateMigrationRequiredError",
     "analyze_bootstrap_budget",
     "append_bootstrap_prompt_warning",
     "append_cron_style_current_time_line",
     "apply_context_mode_filter",
+    "assert_no_unmigrated_workspace_state",
     "bootstrap_status",
     "build_bare_session_reset_prompt",
     "build_bootstrap_context_files",
@@ -131,13 +154,17 @@ __all__ = [
     "filter_bootstrap_files",
     "filter_bootstrap_files_for_session",
     "filter_completed_bootstrap_file",
-    "filter_heartbeat_bootstrap_file",
+    "filter_root_memory_bootstrap_files",
     "format_bootstrap_truncation_warning_lines",
     "format_session_reset_transcript_prompt",
     "has_workspace_user_content_evidence",
     "initialize_agent_workspace",
     "is_workspace_setup_completed",
     "load_workspace_bootstrap_files",
+    "merge_tools_md_into_agents_md",
+    "migrate_legacy_workspace_state",
+    "migrate_tools_md",
+    "read_workspace_bootstrap_file",
     "read_workspace_setup_state",
     "render_bootstrap_prompt_sections",
     "render_project_context",
@@ -148,6 +175,7 @@ __all__ = [
     "resolve_bootstrap_mode",
     "resolve_context_injection",
     "should_apply_startup_context",
+    "should_merge_tools_md",
     "sort_context_files",
     "strip_template_front_matter",
     "trim_bootstrap_content",

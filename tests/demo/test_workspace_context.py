@@ -25,14 +25,14 @@ def _heading(root: Path, name: str) -> str:
 
 def test_demo_uses_the_default_memory_core_layout():
     assert DEMO_WORKSPACE_LAYOUT is MEMORY_CORE_WORKSPACE_LAYOUT
+    # The v2026.9.6 map plus the PROACTIVE_PREFERENCES.md extension; no TOOLS.md or
+    # HEARTBEAT.md in either order.
     assert workspace_file_names() == [
         "AGENTS.md",
         "SOUL.md",
-        "TOOLS.md",
         "IDENTITY.md",
         "USER.md",
         "PROACTIVE_PREFERENCES.md",
-        "HEARTBEAT.md",
         "BOOTSTRAP.md",
     ]
     assert injected_file_order() == [
@@ -41,11 +41,13 @@ def test_demo_uses_the_default_memory_core_layout():
         "IDENTITY.md",
         "USER.md",
         "PROACTIVE_PREFERENCES.md",
-        "TOOLS.md",
         "BOOTSTRAP.md",
         "MEMORY.md",
-        "HEARTBEAT.md",
     ]
+    assert "TOOLS.md" not in DEMO_WORKSPACE_TEMPLATES
+    assert "HEARTBEAT.md" not in DEMO_WORKSPACE_TEMPLATES
+    # The Lab's former TOOLS.md bullets are the AGENTS.md "## Tools" section.
+    assert "\n## Tools\n\n- Use memory search/get" in DEMO_WORKSPACE_TEMPLATES["AGENTS.md"]
 
 
 def test_workspace_bootstrap_files_are_seeded_without_overwriting(tmp_path):
@@ -53,8 +55,9 @@ def test_workspace_bootstrap_files_are_seeded_without_overwriting(tmp_path):
 
     result = ensure_workspace_bootstrap_files(tmp_path)
 
-    for name in ("AGENTS.md", "IDENTITY.md", "USER.md", "TOOLS.md", "HEARTBEAT.md"):
+    for name in ("AGENTS.md", "IDENTITY.md", "USER.md"):
         assert (tmp_path / name).read_text(encoding="utf-8") == DEMO_WORKSPACE_TEMPLATES[name]
+    assert not (tmp_path / "TOOLS.md").exists() and not (tmp_path / "HEARTBEAT.md").exists()
     assert (tmp_path / "PROACTIVE_PREFERENCES.md").read_text(encoding="utf-8") == ""
     assert (tmp_path / "user").is_dir() and (tmp_path / "workspace").is_dir()
     # A changed profile file is setup evidence: no BOOTSTRAP.md, setup complete.
@@ -93,20 +96,11 @@ def test_workspace_prompt_uses_project_context_order(tmp_path):
     headings = [line for line in context.splitlines() if line.startswith(f"## {tmp_path}")]
     assert headings == [
         _heading(tmp_path, name)
-        for name in (
-            "AGENTS.md",
-            "SOUL.md",
-            "IDENTITY.md",
-            "USER.md",
-            "TOOLS.md",
-            "BOOTSTRAP.md",
-            "MEMORY.md",
-            "HEARTBEAT.md",
-        )
+        for name in ("AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "BOOTSTRAP.md", "MEMORY.md")
     ]
     # PROACTIVE_PREFERENCES.md is seeded empty and empty files are not injected.
     assert "PROACTIVE_PREFERENCES.md" not in context
-    assert context.index("# Project Context\n") < context.index("# Dynamic Project Context\n")
+    assert "Dynamic Project Context" not in context
     assert "/memory/" not in context
 
 
@@ -125,26 +119,28 @@ def test_workspace_prompt_marks_missing_files_and_truncates_agents(tmp_path):
     assert "## Bootstrap Context Notice\n[Bootstrap truncation warning]" in context
 
 
+# v2026.9.6 wording (system-prompt.ts, bootstrap-prompt.ts, system-prompt-context-files.ts).
 BOOTSTRAP_PENDING_FULL_IN_CONTEXT = (
     "## Bootstrap Pending\n"
-    "BOOTSTRAP.md is included below in Project Context; follow it before replying normally.\n"
-    "If this run can complete the BOOTSTRAP.md workflow, do so.\n"
-    "If it cannot, explain the blocker briefly, continue with any bootstrap steps that are "
-    "still possible here, and offer the simplest next step.\n"
-    "Do not pretend bootstrap is complete when it is not.\n"
-    "Do not use a generic first greeting or reply normally until after you have handled "
-    "BOOTSTRAP.md.\n"
-    "Your first user-visible reply for a bootstrap-pending workspace must follow "
-    "BOOTSTRAP.md, not a generic greeting.\n"
+    "BOOTSTRAP.md below; follow before normal reply.\n"
+    "Can finish BOOTSTRAP.md here: do it.\n"
+    "Cannot: brief blocker, safe possible steps, simplest next step.\n"
+    "Never claim completion early. No generic greeting/normal reply before BOOTSTRAP.md "
+    "handling.\n"
+    "First visible reply must follow BOOTSTRAP.md; no generic greeting.\n"
 )
 WORKSPACE_FILES_LINES = (
     "## Workspace Files (injected)\n"
-    "These user-editable files are loaded by memory-core and included below in Project Context.\n"
+    "User-editable; memory-core loads below as Project Context.\n"
 )
-DYNAMIC_INTRO = (
-    "# Dynamic Project Context\n"
-    "The following frequently-changing project context files are kept below the cache "
-    "boundary when possible:\n"
+SOUL_LINE = "SOUL.md: persona/tone. Follow it unless higher-priority instructions override.\n"
+MEMORY_LINE = (
+    "MEMORY.md: durable non-profile facts and decisions; use when relevant unless "
+    "higher-priority instructions override.\n"
+)
+USER_LINE = (
+    "USER.md: durable user preferences and profile directives; follow unless higher-priority "
+    "instructions override.\n"
 )
 
 
@@ -159,8 +155,8 @@ def test_workspace_prompt_matches_golden_snapshot(tmp_path):
     # initialization, so BOOTSTRAP.md and MEMORY.md render together. The Lab
     # itself never reaches this state (demo_config() initializes, which would
     # reconcile BOOTSTRAP.md away); see the snapshots below for reachable ones.
-    # Regenerated 2026-09-26 for the upstream render format (was "### <rel>"
-    # sections in load order).
+    # Regenerated 2026-09-27 for the v2026.9.6 map and wording (TOOLS.md and HEARTBEAT.md
+    # are written but no longer loaded; no dynamic block).
     _write_marker_files(tmp_path)
 
     context = build_workspace_prompt(tmp_path)
@@ -170,48 +166,42 @@ def test_workspace_prompt_matches_golden_snapshot(tmp_path):
         BOOTSTRAP_PENDING_FULL_IN_CONTEXT
         + WORKSPACE_FILES_LINES
         + "# Project Context\n"
-        "The following project context files have been loaded:\n"
-        "SOUL.md: persona/tone. Follow it unless higher-priority instructions override.\n"
-        "MEMORY.md: durable user preferences and behavior guidance. Keep following it "
-        "throughout the session unless higher-priority instructions override.\n"
-        f"## {root}/AGENTS.md\n# A\n"
+        "Loaded project context:\n"
+        + SOUL_LINE
+        + MEMORY_LINE
+        + USER_LINE
+        + f"## {root}/AGENTS.md\n# A\n"
         f"## {root}/SOUL.md\n# S\n"
         f"## {root}/IDENTITY.md\n# I\n"
         f"## {root}/USER.md\n# U\n"
         f"## {root}/PROACTIVE_PREFERENCES.md\n# P\n"
-        f"## {root}/TOOLS.md\n# T\n"
         f"## {root}/BOOTSTRAP.md\n# B\n"
-        f"## {root}/MEMORY.md\n# M\n"
-        + DYNAMIC_INTRO
-        + f"## {root}/HEARTBEAT.md\n# H"
+        f"## {root}/MEMORY.md\n# M"
     )
 
 
-def test_workspace_prompt_pin_layout_snapshot_has_no_extension_file(tmp_path):
-    from memory_core.bootstrap import OPENCLAW_PIN_LAYOUT
+def test_workspace_prompt_compat_layout_snapshot_has_no_extension_file(tmp_path):
+    from memory_core.bootstrap import OPENCLAW_COMPAT_LAYOUT
 
     _write_marker_files(tmp_path)
 
-    context = build_workspace_prompt(tmp_path, layout=OPENCLAW_PIN_LAYOUT)
+    context = build_workspace_prompt(tmp_path, layout=OPENCLAW_COMPAT_LAYOUT)
 
     root = os.path.abspath(tmp_path)
     assert context == (
         BOOTSTRAP_PENDING_FULL_IN_CONTEXT
         + WORKSPACE_FILES_LINES
         + "# Project Context\n"
-        "The following project context files have been loaded:\n"
-        "SOUL.md: persona/tone. Follow it unless higher-priority instructions override.\n"
-        "MEMORY.md: durable user preferences and behavior guidance. Keep following it "
-        "throughout the session unless higher-priority instructions override.\n"
-        f"## {root}/AGENTS.md\n# A\n"
+        "Loaded project context:\n"
+        + SOUL_LINE
+        + MEMORY_LINE
+        + USER_LINE
+        + f"## {root}/AGENTS.md\n# A\n"
         f"## {root}/SOUL.md\n# S\n"
         f"## {root}/IDENTITY.md\n# I\n"
         f"## {root}/USER.md\n# U\n"
-        f"## {root}/TOOLS.md\n# T\n"
         f"## {root}/BOOTSTRAP.md\n# B\n"
-        f"## {root}/MEMORY.md\n# M\n"
-        + DYNAMIC_INTRO
-        + f"## {root}/HEARTBEAT.md\n# H"
+        f"## {root}/MEMORY.md\n# M"
     )
 
 
@@ -232,15 +222,13 @@ def test_workspace_prompt_snapshot_of_a_fresh_lab_workspace(tmp_path):
         BOOTSTRAP_PENDING_FULL_IN_CONTEXT
         + WORKSPACE_FILES_LINES
         + "# Project Context\n"
-        "The following project context files have been loaded:\n"
-        "SOUL.md: persona/tone. Follow it unless higher-priority instructions override.\n"
+        "Loaded project context:\n"
+        + SOUL_LINE
+        + USER_LINE
         + "".join(
-            _template_block(root, name)
-            for name in ("AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md")
+            _template_block(root, name) for name in ("AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md")
         )
-        + _template_block(root, "BOOTSTRAP.md")
-        + DYNAMIC_INTRO
-        + _template_block(root, "HEARTBEAT.md").rstrip("\n")
+        + _template_block(root, "BOOTSTRAP.md").rstrip("\n")
     )
 
 
@@ -258,17 +246,14 @@ def test_workspace_prompt_snapshot_after_the_lab_seeds_memory(tmp_path):
     assert context == (
         WORKSPACE_FILES_LINES
         + "# Project Context\n"
-        "The following project context files have been loaded:\n"
-        "SOUL.md: persona/tone. Follow it unless higher-priority instructions override.\n"
-        "MEMORY.md: durable user preferences and behavior guidance. Keep following it "
-        "throughout the session unless higher-priority instructions override.\n"
+        "Loaded project context:\n"
+        + SOUL_LINE
+        + MEMORY_LINE
+        + USER_LINE
         + "".join(
-            _template_block(root, name)
-            for name in ("AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md")
+            _template_block(root, name) for name in ("AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md")
         )
-        + f"## {root}/MEMORY.md\n# MEMORY.md - Long-Term Memory\n"
-        + DYNAMIC_INTRO
-        + _template_block(root, "HEARTBEAT.md").rstrip("\n")
+        + f"## {root}/MEMORY.md\n# MEMORY.md - Long-Term Memory"
     )
 
 
@@ -295,18 +280,19 @@ def test_workspace_prompt_stops_injecting_at_total_budget(tmp_path):
 
     context = build_workspace_prompt(tmp_path)
 
-    # Load order consumes the 60000 total: AGENTS (digest), SOUL, TOOLS, then
-    # IDENTITY clamped to what is left; later files are not injected at all.
-    for name in ("AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md"):
+    # Load order consumes the 60000 total: AGENTS (digest), SOUL, IDENTITY, then USER
+    # clamped to what is left; later files are not injected at all.
+    for name in ("AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md"):
         assert _heading(tmp_path, name) in context
-    for name in ("USER.md", "PROACTIVE_PREFERENCES.md", "HEARTBEAT.md", "BOOTSTRAP.md", "MEMORY.md"):
+    for name in ("PROACTIVE_PREFERENCES.md", "BOOTSTRAP.md", "MEMORY.md"):
         assert _heading(tmp_path, name) not in context
     # Injected content is trimEnd()ed, so the only trailing newline is the join.
     injected = sum(
         len(block.split("\n", 1)[1].removesuffix("\n"))
         for block in context.split(f"## {os.path.abspath(tmp_path)}/")[1:]
     )
-    assert injected == DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS
+    # USER.md gets the 7,886 units left and its head/tail marker render rounds to 7,885.
+    assert injected == DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS - 1
     assert "## Bootstrap Context Notice\n[Bootstrap truncation warning]" in context
 
 

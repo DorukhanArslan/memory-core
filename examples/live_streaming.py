@@ -99,12 +99,14 @@ def seed_identity(workspace_dir: str | Path) -> None:
     initialize_agent_workspace(
         workspace_dir,
         templates={
+            # Local tool notes live in the AGENTS.md "## Tools" section (OpenClaw v2026.9.6
+            # retired TOOLS.md).
             "AGENTS.md": (
                 "You are a concise live support agent. "
-                "Verify identity before changing account data.\n"
+                "Verify identity before changing account data.\n\n"
+                "## Tools\n\nTool calls are owned by the host runtime.\n"
             ),
             "SOUL.md": "Use short, clear turns suitable for text-to-speech.\n",
-            "TOOLS.md": "Tool calls are owned by the host runtime.\n",
         },
         seed_bootstrap=False,
     )

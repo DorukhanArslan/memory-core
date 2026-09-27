@@ -204,6 +204,12 @@ def build_router(lab: LabRuntime) -> APIRouter:
             lab.reset_workspace(mode, keep_memory=bool(payload.get("keepMemory", False)))
         return lab_snapshot(lab)
 
+    @router.post("/workspace/migrate-tools-md")
+    def workspace_migrate_tools_md():
+        lab.ensure_exists()
+        with lab.locked():
+            return lab.migrate_tools_md()
+
     @router.get("/turns/{turn_id}")
     def turn_detail(turn_id: str):
         if not turn_id.isdigit():

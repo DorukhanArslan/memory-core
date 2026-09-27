@@ -12,7 +12,7 @@ from memory_core.adapters.langgraph import LangGraphMemoryRecall, format_memory_
 from memory_core.bootstrap import (
     DEFAULT_WORKSPACE_LAYOUT,
     MEMORY_CORE_WORKSPACE_LAYOUT,
-    OPENCLAW_PIN_LAYOUT,
+    OPENCLAW_COMPAT_LAYOUT,
     ContextFile,
     WorkspaceBootstrapFile,
     WorkspaceContext,
@@ -204,7 +204,7 @@ __all__ = [
     "ContextFile",
     "DEFAULT_WORKSPACE_LAYOUT",
     "MEMORY_CORE_WORKSPACE_LAYOUT",
-    "OPENCLAW_PIN_LAYOUT",
+    "OPENCLAW_COMPAT_LAYOUT",
     "WorkspaceBootstrapFile",
     "WorkspaceContext",
     "WorkspaceInitResult",

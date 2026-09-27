@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from memory_core.bootstrap import OPENCLAW_PIN_LAYOUT
+from memory_core.bootstrap import OPENCLAW_COMPAT_LAYOUT
 from memory_core.curation import (
     ADD_MEMORY_ENTRY,
     CURATION_OPERATIONS,
@@ -60,7 +60,7 @@ def test_tool_definitions_are_json_schema_specs_for_offered_operations(curator):
 def test_tool_definitions_follow_flag_flush_layout_and_policy(tmp_path, curator):
     assert curator.tool_definitions(memory_flush=True) == []
     assert MemoryCurator(tmp_path, flags=FeatureFlags(curated_memory_writes=False)).tool_definitions() == []
-    pin = MemoryCurator(tmp_path, layout=OPENCLAW_PIN_LAYOUT).tool_definitions()
+    pin = MemoryCurator(tmp_path, layout=OPENCLAW_COMPAT_LAYOUT).tool_definitions()
     assert SET_PROACTIVE_PREFERENCES not in [item["name"] for item in pin]
     narrowed = MemoryCurator(
         tmp_path,
@@ -187,7 +187,7 @@ def test_dispatch_raises_for_tools_not_on_offer(tmp_path, curator):
     disabled = MemoryCurator(tmp_path, flags=FeatureFlags(curated_memory_writes=False))
     with pytest.raises(CurationUnavailableError, match="disabled"):
         disabled.dispatch(ADD_MEMORY_ENTRY, {"section": "A", "text": "b"})
-    pin = MemoryCurator(tmp_path, layout=OPENCLAW_PIN_LAYOUT)
+    pin = MemoryCurator(tmp_path, layout=OPENCLAW_COMPAT_LAYOUT)
     with pytest.raises(CurationUnavailableError, match="may not write PROACTIVE_PREFERENCES.md"):
         pin.dispatch(SET_PROACTIVE_PREFERENCES, {"text": "alpha"})
     assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == MEMORY_MD

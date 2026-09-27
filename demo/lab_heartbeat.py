@@ -35,6 +35,7 @@ from memory_core.bootstrap import append_cron_style_current_time_line
 from memory_core.bootstrap._js import utf16_len
 from memory_core.heartbeat import (
     HEARTBEAT_TRANSCRIPT_PROMPT,
+    LEGACY_HEARTBEAT_FILENAME,
     build_heartbeat_section_lines,
     is_heartbeat_content_effectively_empty,
     is_task_due,
@@ -58,7 +59,7 @@ LABELS = {
 
 
 def _heartbeat_content(lab: LabRuntime) -> str | None:
-    path = lab.root / lab.layout.heartbeat_file
+    path = lab.root / LEGACY_HEARTBEAT_FILENAME
     try:
         return path.read_bytes().decode("utf-8", errors="replace")
     except OSError:
@@ -104,7 +105,7 @@ def heartbeat_state(lab: LabRuntime) -> dict[str, Any]:
     every = lab.settings.heartbeat_every
     return {
         "file": {
-            "path": lab.layout.heartbeat_file,
+            "path": LEGACY_HEARTBEAT_FILENAME,
             "exists": content is not None,
             "effectivelyEmpty": is_heartbeat_content_effectively_empty(content),
         },

@@ -10,7 +10,7 @@ import pytest
 
 from memory_core.bootstrap import (
     DEFAULT_WORKSPACE_LAYOUT,
-    OPENCLAW_PIN_LAYOUT,
+    OPENCLAW_COMPAT_LAYOUT,
     WorkspaceLayout,
     initialize_agent_workspace,
     is_workspace_setup_completed,
@@ -317,12 +317,14 @@ def test_curator_refuses_files_outside_the_root_in_policy_or_layout(tmp_path):
         name="escaping",
         load_order=("AGENTS.md", "MEMORY.md"),
         render_priorities=(),
-        dynamic_files=frozenset(),
         required_files=(),
         optional_files=(),
+        generated_files=(),
         profile_files=(),
         subagent_files=frozenset(),
         cron_files=frozenset(),
+        skip_absent_files=frozenset(),
+        expected_absent_files=frozenset(),
     )
     # WorkspaceLayout itself rejects non-basename entries ...
     with pytest.raises(ValueError, match="plain basenames"):
@@ -438,8 +440,8 @@ def test_policy_can_withdraw_operations(tmp_path):
     assert _curator(tmp_path).available_operations() == CURATION_OPERATIONS
 
 
-def test_pin_layout_offers_everything_but_proactive_preferences(tmp_path):
-    curator = _curator(tmp_path, layout=OPENCLAW_PIN_LAYOUT)
+def test_compat_layout_offers_everything_but_proactive_preferences(tmp_path):
+    curator = _curator(tmp_path, layout=OPENCLAW_COMPAT_LAYOUT)
 
     assert curator.available_operations() == tuple(
         op for op in CURATION_OPERATIONS if op != SET_PROACTIVE_PREFERENCES

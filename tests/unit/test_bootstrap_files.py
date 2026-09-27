@@ -4,8 +4,10 @@ from pathlib import Path
 import pytest
 
 from memory_core.bootstrap import (
+    GENERATED_WORKSPACE_BOOTSTRAP_FILENAMES,
+    OPENCLAW_COMPAT_LAYOUT,
     MEMORY_CORE_WORKSPACE_LAYOUT,
-    OPENCLAW_PIN_LAYOUT,
+    WORKSPACE_BOOTSTRAP_FILENAMES,
     WorkspaceBootstrapFile,
     filter_bootstrap_files,
     filter_bootstrap_files_for_session,
@@ -14,13 +16,12 @@ from memory_core.bootstrap import (
     resolve_context_injection,
 )
 
-PIN_ORDER = [
+# src/agents/workspace-bootstrap-policy.ts WORKSPACE_BOOTSTRAP_FILENAMES at v2026.9.6.
+TAG_ORDER = [
     "AGENTS.md",
     "SOUL.md",
-    "TOOLS.md",
     "IDENTITY.md",
     "USER.md",
-    "HEARTBEAT.md",
     "BOOTSTRAP.md",
     "MEMORY.md",
 ]
@@ -33,9 +34,10 @@ def _write(root: Path, name: str, content: str | bytes) -> Path:
     return path
 
 
-def test_pin_layout_orders_match_the_pin():
-    assert list(OPENCLAW_PIN_LAYOUT.load_order) == PIN_ORDER
-    assert dict(OPENCLAW_PIN_LAYOUT.render_priorities) == {
+def test_compat_layout_is_the_v2026_9_6_map():
+    assert list(WORKSPACE_BOOTSTRAP_FILENAMES) == TAG_ORDER
+    assert list(OPENCLAW_COMPAT_LAYOUT.load_order) == TAG_ORDER
+    assert dict(OPENCLAW_COMPAT_LAYOUT.render_priorities) == {
         "agents.md": 10,
         "soul.md": 20,
         "identity.md": 30,
@@ -44,34 +46,54 @@ def test_pin_layout_orders_match_the_pin():
         "bootstrap.md": 60,
         "memory.md": 70,
     }
-    assert OPENCLAW_PIN_LAYOUT.is_dynamic("HEARTBEAT.md")
-    assert OPENCLAW_PIN_LAYOUT.required_files == ("AGENTS.md", "TOOLS.md")
-    assert OPENCLAW_PIN_LAYOUT.extra_dirs == ()
+    assert OPENCLAW_COMPAT_LAYOUT.required_files == ("AGENTS.md",)
+    assert OPENCLAW_COMPAT_LAYOUT.optional_files == ("SOUL.md", "IDENTITY.md", "USER.md")
+    assert OPENCLAW_COMPAT_LAYOUT.generated_files == GENERATED_WORKSPACE_BOOTSTRAP_FILENAMES
+    assert OPENCLAW_COMPAT_LAYOUT.subagent_files == {"AGENTS.md"}
+    assert OPENCLAW_COMPAT_LAYOUT.cron_files == {"AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md"}
+    assert OPENCLAW_COMPAT_LAYOUT.skip_absent_files == {"USER.md", "MEMORY.md"}
+    assert OPENCLAW_COMPAT_LAYOUT.extra_dirs == ()
+    for layout in (OPENCLAW_COMPAT_LAYOUT, MEMORY_CORE_WORKSPACE_LAYOUT):
+        assert "TOOLS.md" not in layout.load_order
+        assert "HEARTBEAT.md" not in layout.load_order
 
 
 def test_memory_core_layout_adds_proactive_preferences_after_user():
     order = list(MEMORY_CORE_WORKSPACE_LAYOUT.load_order)
+    assert [name for name in order if name != "PROACTIVE_PREFERENCES.md"] == TAG_ORDER
     assert order.index("PROACTIVE_PREFERENCES.md") == order.index("USER.md") + 1
     assert MEMORY_CORE_WORKSPACE_LAYOUT.render_priority("proactive_preferences.md") == 45
     assert "PROACTIVE_PREFERENCES.md" in MEMORY_CORE_WORKSPACE_LAYOUT.optional_files
     assert "PROACTIVE_PREFERENCES.md" in MEMORY_CORE_WORKSPACE_LAYOUT.cron_files
     assert "PROACTIVE_PREFERENCES.md" not in MEMORY_CORE_WORKSPACE_LAYOUT.subagent_files
+    assert "PROACTIVE_PREFERENCES.md" in MEMORY_CORE_WORKSPACE_LAYOUT.skip_absent_files
     assert MEMORY_CORE_WORKSPACE_LAYOUT.extra_dirs == ("user", "workspace")
     assert "MEMORY.md" not in MEMORY_CORE_WORKSPACE_LAYOUT.seed_order
     assert "BOOTSTRAP.md" not in MEMORY_CORE_WORKSPACE_LAYOUT.seed_order
+    assert MEMORY_CORE_WORKSPACE_LAYOUT.is_expected_absent("PROACTIVE_PREFERENCES.md")
+    assert not MEMORY_CORE_WORKSPACE_LAYOUT.is_expected_absent("AGENTS.md")
 
 
-def test_loader_skips_memory_without_exact_name_and_marks_missing(tmp_path):
+def test_loader_skips_absent_user_and_memory_and_marks_the_rest_missing(tmp_path):
     _write(tmp_path, "AGENTS.md", "rules\r\n")
     _write(tmp_path, "memory.md", "lowercase legacy file")
 
-    files = load_workspace_bootstrap_files(tmp_path, OPENCLAW_PIN_LAYOUT)
+    files = load_workspace_bootstrap_files(tmp_path, OPENCLAW_COMPAT_LAYOUT)
 
-    assert [file.name for file in files] == PIN_ORDER[:-1]
+    assert [file.name for file in files] == ["AGENTS.md", "SOUL.md", "IDENTITY.md", "BOOTSTRAP.md"]
     assert files[0] == WorkspaceBootstrapFile(
         "AGENTS.md", os.path.join(os.path.abspath(tmp_path), "AGENTS.md"), "rules\r\n"
     )
     assert all(file.missing for file in files[1:])
+
+
+def test_loader_names_restrict_the_load(tmp_path):
+    _write(tmp_path, "AGENTS.md", "a")
+    _write(tmp_path, "USER.md", "u")
+
+    files = load_workspace_bootstrap_files(tmp_path, OPENCLAW_COMPAT_LAYOUT, names=["USER.md", "AGENTS.md"])
+
+    assert [file.name for file in files] == ["AGENTS.md", "USER.md"]
 
 
 def test_loader_includes_exact_memory_file(tmp_path):
@@ -81,17 +103,17 @@ def test_loader_includes_exact_memory_file(tmp_path):
 
     assert files[-1].name == "MEMORY.md"
     assert files[-1].content == "- fact 記憶\n"
-    # An absent extension file is skipped like an absent MEMORY.md.
+    # An absent extension file is skipped like an absent USER.md or MEMORY.md.
     assert "PROACTIVE_PREFERENCES.md" not in [file.name for file in files]
+    assert "USER.md" not in [file.name for file in files]
 
     _write(tmp_path, "PROACTIVE_PREFERENCES.md", "")
-    files = load_workspace_bootstrap_files(tmp_path, MEMORY_CORE_WORKSPACE_LAYOUT)
-    assert [file.name for file in files][5] == "PROACTIVE_PREFERENCES.md"
-    assert files[5].missing is False
+    files = {file.name: file for file in load_workspace_bootstrap_files(tmp_path, MEMORY_CORE_WORKSPACE_LAYOUT)}
+    assert files["PROACTIVE_PREFERENCES.md"].missing is False
 
 
-def test_loader_marks_a_rejected_extension_file_missing(tmp_path):
-    # Listed but refused by the guarded read: the marker appears, as for MEMORY.md.
+def test_loader_marks_a_refused_extension_file_unreadable(tmp_path):
+    # Listed but refused by the guarded read: upstream's [UNREADABLE: ...] content.
     outside = _write(tmp_path, "outside.md", "secret")
     root = tmp_path / "workspace"
     root.mkdir()
@@ -99,29 +121,51 @@ def test_loader_marks_a_rejected_extension_file_missing(tmp_path):
 
     files = {file.name: file for file in load_workspace_bootstrap_files(root, MEMORY_CORE_WORKSPACE_LAYOUT)}
 
-    assert files["PROACTIVE_PREFERENCES.md"].missing
+    refused = files["PROACTIVE_PREFERENCES.md"]
+    assert refused.missing is False
+    assert refused.content == "[UNREADABLE: symlink path component not allowed]"
+    assert refused.unreadable_reason == "symlink path component not allowed"
 
 
-def test_loader_guards_size_symlink_escape_and_hardlinks(tmp_path):
+def test_loader_guards_size_symlinks_hardlinks_and_file_type(tmp_path):
     root = tmp_path / "workspace"
     root.mkdir()
-    _write(root, "TOOLS.md", b"t" * (2 * 1024 * 1024 + 1))
+    _write(root, "AGENTS.md", b"a" * (2 * 1024 * 1024 + 1))
     outside = _write(tmp_path, "outside.md", "secret")
     (root / "SOUL.md").symlink_to(outside)
-    _write(root, "AGENTS.md", "inside")
-    (root / "USER.md").symlink_to(root / "AGENTS.md")
-    heartbeat = _write(root, "HEARTBEAT.md", "beat")
-    os.link(heartbeat, root / "IDENTITY.md")
+    inside = _write(root, "inside.md", "inside")
+    (root / "USER.md").symlink_to(inside)
+    notes = _write(root, "notes.md", "beat")
+    os.link(notes, root / "IDENTITY.md")
+    (root / "MEMORY.md").mkdir()
     _write(root, "BOOTSTRAP.md", b"bad \xff utf8")
 
-    files = {file.name: file for file in load_workspace_bootstrap_files(root, OPENCLAW_PIN_LAYOUT)}
+    files = {file.name: file for file in load_workspace_bootstrap_files(root, OPENCLAW_COMPAT_LAYOUT)}
 
-    assert files["TOOLS.md"].missing
-    assert files["SOUL.md"].missing
-    assert files["IDENTITY.md"].missing
-    assert files["HEARTBEAT.md"].missing
-    assert files["USER.md"].content == "inside"
-    assert files["BOOTSTRAP.md"].content == "bad � utf8"
+    unreadable = {name: file.content for name, file in files.items() if file.unreadable_reason}
+    assert unreadable == {
+        "AGENTS.md": "[UNREADABLE: File exceeds 2097152 bytes]",
+        "SOUL.md": "[UNREADABLE: symlink path component not allowed]",
+        # Even a symlink that stays inside the root (openRootFile follow-parents-within-root).
+        "USER.md": "[UNREADABLE: symlink path component not allowed]",
+        "IDENTITY.md": "[UNREADABLE: path must not be hardlinked]",
+        "MEMORY.md": "[UNREADABLE: path does not have the required file type]",
+    }
+    assert not any(file.missing for file in files.values())
+    assert files["BOOTSTRAP.md"].content == "bad \ufffd utf8"
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any file")
+def test_loader_reports_a_permission_error_like_node(tmp_path):
+    locked = _write(tmp_path, "AGENTS.md", "rules")
+    locked.chmod(0)
+    try:
+        files = load_workspace_bootstrap_files(tmp_path, OPENCLAW_COMPAT_LAYOUT, names=["AGENTS.md"])
+    finally:
+        locked.chmod(0o600)
+
+    real = os.path.realpath(locked)
+    assert files[0].content == f"[UNREADABLE: EACCES: permission denied, open '{real}']"
 
 
 def _all_files(layout=MEMORY_CORE_WORKSPACE_LAYOUT) -> list[WorkspaceBootstrapFile]:
@@ -130,34 +174,45 @@ def _all_files(layout=MEMORY_CORE_WORKSPACE_LAYOUT) -> list[WorkspaceBootstrapFi
     ]
 
 
-@pytest.mark.parametrize("kind", ["main", "group", "channel", "direct", "heartbeat"])
-def test_session_kinds_that_keep_every_file(kind):
+@pytest.mark.parametrize("kind", ["main", "direct", "heartbeat"])
+def test_private_session_kinds_keep_every_file(kind):
     assert filter_bootstrap_files_for_session(_all_files(), kind, MEMORY_CORE_WORKSPACE_LAYOUT) == _all_files()
+
+
+@pytest.mark.parametrize("kind", ["group", "channel"])
+def test_shared_sessions_drop_the_root_memory_file(kind):
+    # d06fc25a0c5 (#119198): root MEMORY.md is private to main and direct sessions.
+    kept = filter_bootstrap_files_for_session(_all_files(), kind, MEMORY_CORE_WORKSPACE_LAYOUT, root="/w")
+    nested = WorkspaceBootstrapFile("MEMORY.md", "/w/extra/MEMORY.md", "nested")
+    with_nested = filter_bootstrap_files_for_session(
+        [*_all_files(), nested], kind, MEMORY_CORE_WORKSPACE_LAYOUT, root="/w"
+    )
+    no_root = filter_bootstrap_files_for_session(
+        [*_all_files(), nested], kind, MEMORY_CORE_WORKSPACE_LAYOUT
+    )
+
+    assert _names(kept) == [name for name in MEMORY_CORE_WORKSPACE_LAYOUT.load_order if name != "MEMORY.md"]
+    # With the workspace root only the root file goes; without it every MEMORY.md goes.
+    assert nested in with_nested
+    assert "MEMORY.md" not in _names(no_root)
 
 
 def test_subagent_and_cron_allowlists():
     subagent = filter_bootstrap_files_for_session(_all_files(), "subagent", MEMORY_CORE_WORKSPACE_LAYOUT)
     cron = filter_bootstrap_files_for_session(_all_files(), "cron", MEMORY_CORE_WORKSPACE_LAYOUT)
-    pin_cron = filter_bootstrap_files_for_session(
-        _all_files(OPENCLAW_PIN_LAYOUT), "cron", OPENCLAW_PIN_LAYOUT
+    compat_cron = filter_bootstrap_files_for_session(
+        _all_files(OPENCLAW_COMPAT_LAYOUT), "cron", OPENCLAW_COMPAT_LAYOUT
     )
 
-    assert [file.name for file in subagent] == ["AGENTS.md", "TOOLS.md"]
+    assert [file.name for file in subagent] == ["AGENTS.md"]
     assert [file.name for file in cron] == [
         "AGENTS.md",
         "SOUL.md",
-        "TOOLS.md",
         "IDENTITY.md",
         "USER.md",
         "PROACTIVE_PREFERENCES.md",
     ]
-    assert [file.name for file in pin_cron] == [
-        "AGENTS.md",
-        "SOUL.md",
-        "TOOLS.md",
-        "IDENTITY.md",
-        "USER.md",
-    ]
+    assert [file.name for file in compat_cron] == ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md"]
     with pytest.raises(ValueError):
         filter_bootstrap_files_for_session(_all_files(), "unknown", MEMORY_CORE_WORKSPACE_LAYOUT)
 
@@ -167,26 +222,17 @@ def _names(files):
 
 
 def test_run_filters_follow_upstream_order():
-    files = [WorkspaceBootstrapFile(n, f"/w/{n}", "x") for n in PIN_ORDER]
-    common = {"root": "/w", "layout": OPENCLAW_PIN_LAYOUT}
+    files = [WorkspaceBootstrapFile(n, f"/w/{n}", "x") for n in TAG_ORDER]
+    common = {"root": "/w", "layout": OPENCLAW_COMPAT_LAYOUT}
 
     completed = filter_bootstrap_files(files, setup_completed=True, **common)
-    lightweight_heartbeat = filter_bootstrap_files(
-        files, context_mode="lightweight", run_kind="heartbeat", **common
-    )
-    lightweight_default = filter_bootstrap_files(files, context_mode="lightweight", **common)
-    commitment = filter_bootstrap_files(files, run_kind="commitment-only", **common)
-    no_heartbeat = filter_bootstrap_files(files, include_heartbeat=False, **common)
-    heartbeat_run = filter_bootstrap_files(
-        files, run_kind="heartbeat", include_heartbeat=False, **common
-    )
+    lightweight = filter_bootstrap_files(files, context_mode="lightweight", **common)
+    group = filter_bootstrap_files(files, session_kind="group", **common)
 
     assert "BOOTSTRAP.md" not in _names(completed)
-    assert _names(lightweight_heartbeat) == ["HEARTBEAT.md"]
-    assert lightweight_default == []
-    assert "HEARTBEAT.md" not in _names(commitment)
-    assert "HEARTBEAT.md" not in _names(no_heartbeat)
-    assert "HEARTBEAT.md" in _names(heartbeat_run)
+    # applyContextModeFilter: lightweight runs (heartbeat included) get no bootstrap files.
+    assert lightweight == []
+    assert _names(group) == TAG_ORDER[:-1]
 
 
 def test_resolve_bootstrap_mode_matrix():

@@ -4157,8 +4157,9 @@ def test_real_openclaw_oracle_normalize_assistant_replay_content_matches_python(
 # --- workspace bootstrap (memory_core.bootstrap) -------------------------------------------------
 
 from memory_core.bootstrap import (  # noqa: E402
-    OPENCLAW_PIN_LAYOUT,
+    OPENCLAW_COMPAT_LAYOUT,
     WorkspaceBootstrapFile,
+    WorkspaceStateMigrationRequiredError,
     analyze_bootstrap_budget,
     build_bootstrap_context_files,
     build_bootstrap_injection_stats,
@@ -4172,6 +4173,7 @@ from memory_core.bootstrap import (  # noqa: E402
     initialize_agent_workspace,
     is_workspace_setup_completed,
     load_workspace_bootstrap_files,
+    migrate_tools_md,
     render_bootstrap_prompt_sections,
     render_project_context,
     render_workspace_files_injected,
@@ -4179,13 +4181,12 @@ from memory_core.bootstrap import (  # noqa: E402
 from memory_core.bootstrap._js import js_to_well_formed  # noqa: E402
 from memory_core.bootstrap.budget import ContextFile  # noqa: E402
 
+# The templates ensureAgentWorkspace seeds at v2026.9.6 (workspace-templates.ts search dirs).
 UPSTREAM_TEMPLATE_PATHS = {
     "AGENTS.md": "docs/reference/templates/AGENTS.md",
     "SOUL.md": "docs/reference/templates/SOUL.md",
-    "TOOLS.md": "docs/reference/templates/TOOLS.md",
     "IDENTITY.md": "docs/reference/templates/IDENTITY.md",
     "USER.md": "docs/reference/templates/USER.md",
-    "HEARTBEAT.md": "src/agents/templates/HEARTBEAT.md",
     "BOOTSTRAP.md": "docs/reference/templates/BOOTSTRAP.md",
 }
 
@@ -4196,15 +4197,34 @@ def _oracle() -> OpenClawOracle:
 
 def _upstream_templates() -> dict[str, str]:
     # Test-only: the oracle's own template files stand in for host-supplied templates so the
-    # seeding comparison uses identical inputs. Nothing here reaches memory-core defaults. A template
-    # the checkout no longer ships (src/agents/templates/HEARTBEAT.md, deleted in 9b7c95a0f0f
-    # before v2026.9.6) is left out, so memory-core seeds its empty default for it.
+    # seeding comparison uses identical inputs. Nothing here reaches memory-core defaults.
     repo = Path(os.environ["OPENCLAW_ORACLE_REPO"])
     return {
         name: (repo / relative).read_bytes().decode("utf-8")
         for name, relative in UPSTREAM_TEMPLATE_PATHS.items()
-        if (repo / relative).is_file()
     }
+
+
+_MIGRATION_TAIL_RE = re.compile(r"; run .+\.$")
+
+
+def _normalize_migration_error(value, root: Path):
+    # Upstream names its CLI (`openclaw doctor --fix`), memory-core its migration helper; the
+    # refusal itself, and the canonical workspace path it names, must match.
+    if isinstance(value, dict) and set(value) == {"error"}:
+        return {"error": _normalize_migration_error(value["error"], root)}
+    if isinstance(value, str) and value.startswith("Legacy workspace setup state requires"):
+        return _MIGRATION_TAIL_RE.sub("; run <migration>.", value).replace(
+            os.path.realpath(root), "<root>"
+        )
+    return value
+
+
+def _capture_migration_error(call, root: Path):
+    try:
+        return call()
+    except WorkspaceStateMigrationRequiredError as exc:
+        return {"error": _normalize_migration_error(str(exc), root)}
 
 
 def _bootstrap_file_payload(file: WorkspaceBootstrapFile) -> dict:
@@ -4452,11 +4472,16 @@ def test_real_openclaw_oracle_bootstrap_warning_once_mode_matches_python():
 
 
 def _session_kind_for_key(session_key: str) -> str:
+    # The host passes the session kind; these keys are upstream's key shapes for each kind.
     rest = session_key.split(":", 2)[2].lower()
     if rest.startswith("subagent:"):
         return "subagent"
     if rest.startswith("cron:"):
         return "cron"
+    if ":group:" in f":{rest}:":
+        return "group"
+    if ":channel:" in f":{rest}:":
+        return "channel"
     return "main"
 
 
@@ -4475,19 +4500,21 @@ BOOTSTRAP_SESSION_KEYS = [
     "agent:main:telegram:group:42",
     "agent:main:discord:channel:general",
 ]
+# commitment-only runs are gone at v2026.9.6 (BootstrapContextRunKind is default|heartbeat|cron).
 BOOTSTRAP_RUNS = [
     {"sessionKey": "agent:main:main"},
     {"sessionKey": "agent:main:telegram:group:42"},
+    {"sessionKey": "agent:main:discord:channel:general"},
     {"sessionKey": "agent:main:subagent:helper-1"},
     {"sessionKey": "agent:main:cron:nightly", "runKind": "cron"},
     {"sessionKey": "agent:main:main", "runKind": "heartbeat"},
     {"sessionKey": "agent:main:main", "contextMode": "lightweight", "runKind": "heartbeat"},
     {"sessionKey": "agent:main:main", "contextMode": "lightweight", "runKind": "default"},
-    {"sessionKey": "agent:main:main", "runKind": "commitment-only"},
 ]
 
 
 def _full_workspace_files() -> dict[str, str | bytes]:
+    # TOOLS.md and HEARTBEAT.md stay in the fixture: at v2026.9.6 neither is loaded.
     return {
         "AGENTS.md": "# Rules\r\n- Never push.\r\n\r\n\r\n",
         "SOUL.md": "Calm, direct. 🧠\n",
@@ -4502,20 +4529,22 @@ def _full_workspace_files() -> dict[str, str | bytes]:
     }
 
 
-def _python_workspace_bootstrap_result(root: Path, keys: list[str], runs: list[dict]) -> dict:
-    loaded = load_workspace_bootstrap_files(root, OPENCLAW_PIN_LAYOUT)
-    setup_completed = is_workspace_setup_completed(root)
+def _python_workspace_bootstrap_result(
+    root: Path, keys: list[str], runs: list[dict], steps: list[dict]
+) -> dict:
+    prepared = _python_lifecycle_snapshots(root, steps)
+    loaded = load_workspace_bootstrap_files(root, OPENCLAW_COMPAT_LAYOUT)
+    # isWorkspaceSetupCompletedForContext (bootstrap-files.ts): a refused state reads as false.
+    setup_for_context = _capture_migration_error(lambda: is_workspace_setup_completed(root), root)
     python_runs = []
     for run in runs:
         files = filter_bootstrap_files(
             loaded,
             root=root,
-            layout=OPENCLAW_PIN_LAYOUT,
+            layout=OPENCLAW_COMPAT_LAYOUT,
             session_kind=_session_kind_for_key(run["sessionKey"]),
-            setup_completed=setup_completed,
+            setup_completed=setup_for_context is True,
             context_mode=run.get("contextMode", "full"),
-            run_kind=run.get("runKind", "default"),
-            include_heartbeat=True,
         )
         built = build_bootstrap_context_files(files, max_chars=20_000, total_max_chars=60_000)
         python_runs.append(
@@ -4527,35 +4556,41 @@ def _python_workspace_bootstrap_result(root: Path, keys: list[str], runs: list[d
             }
         )
     return {
+        "prepared": prepared,
         "loaded": [_bootstrap_file_payload(file) for file in loaded],
         "bySessionKey": {
             key: [
                 _bootstrap_file_payload(file)
                 for file in filter_bootstrap_files_for_session(
-                    loaded, _session_kind_for_key(key), OPENCLAW_PIN_LAYOUT
+                    loaded, _session_kind_for_key(key), OPENCLAW_COMPAT_LAYOUT
                 )
             ]
             for key in keys
         },
         "runs": python_runs,
-        "setupCompleted": setup_completed,
-        "bootstrapStatus": bootstrap_status(root, OPENCLAW_PIN_LAYOUT),
+        "setupCompleted": setup_for_context,
+        "bootstrapStatus": _capture_migration_error(
+            lambda: bootstrap_status(root, OPENCLAW_COMPAT_LAYOUT), root
+        ),
     }
 
 
-def _workspace_scenario_full(root: Path) -> None:
+def _workspace_scenario_full(root: Path) -> list[dict]:
     _write_bootstrap_workspace(root, _full_workspace_files())
+    return []
 
 
-def _workspace_scenario_missing_and_lowercase_memory(root: Path) -> None:
+def _workspace_scenario_missing_and_lowercase_memory(root: Path) -> list[dict]:
     files = _full_workspace_files()
-    for name in ("SOUL.md", "MEMORY.md", "BOOTSTRAP.md"):
+    for name in ("SOUL.md", "USER.md", "MEMORY.md", "BOOTSTRAP.md"):
         files.pop(name)
     files["memory.md"] = "legacy lowercase memory\n"
     _write_bootstrap_workspace(root, files)
+    return []
 
 
-def _workspace_scenario_completed_setup(root: Path) -> None:
+def _workspace_scenario_legacy_state_file(root: Path) -> list[dict]:
+    # A pin-era completion marker: refused at v2026.9.6 until doctor migrates it (#109147).
     _write_bootstrap_workspace(root, _full_workspace_files())
     (root / "openclaw-workspace-state.json").write_text(
         json.dumps(
@@ -4569,11 +4604,25 @@ def _workspace_scenario_completed_setup(root: Path) -> None:
         + "\n",
         encoding="utf-8",
     )
+    return []
 
 
-def _workspace_scenario_guarded_reads(root: Path) -> None:
+def _workspace_scenario_completed_setup(root: Path) -> list[dict]:
+    # Completion recorded by the real lifecycle, then a BOOTSTRAP.md written again: the run
+    # filter drops the root file once setup is complete.
+    root.mkdir(parents=True)
+    return [
+        {"op": "ensure"},
+        {"op": "write", "path": "USER.md", "content": "Name: Doruk\n"},
+        {"op": "ensure"},
+        {"op": "write", "path": "BOOTSTRAP.md", "content": "Run the ritual again.\n"},
+        {"op": "write", "path": "MEMORY.md", "content": "- Decision: 記憶 stays local.\n"},
+    ]
+
+
+def _workspace_scenario_guarded_reads(root: Path) -> list[dict]:
     files = _full_workspace_files()
-    files["TOOLS.md"] = b"t" * (2 * 1024 * 1024 + 1)
+    files["AGENTS.md"] = b"a" * (2 * 1024 * 1024 + 1)
     files.pop("IDENTITY.md")
     files.pop("USER.md")
     files["SOUL.md"] = b"bad utf8 \xff\xfe tail \xe2\x82\n"
@@ -4582,34 +4631,69 @@ def _workspace_scenario_guarded_reads(root: Path) -> None:
     outside.write_text("outside secret\n", encoding="utf-8")
     (root / "IDENTITY.md").symlink_to(outside)
     os.link(root / "HEARTBEAT.md", root / "USER.md")
+    (root / "BOOTSTRAP.md").unlink()
+    (root / "BOOTSTRAP.md").mkdir()
+    (root / "MEMORY.md").unlink()
+    (root / "MEMORY.md").symlink_to(root / "memory" / "2026-09-26.md")
+    return []
 
 
 WORKSPACE_BOOTSTRAP_SCENARIOS = [
     pytest.param(_workspace_scenario_full, id="all-files"),
     pytest.param(_workspace_scenario_missing_and_lowercase_memory, id="missing-lowercase-memory"),
+    pytest.param(_workspace_scenario_legacy_state_file, id="legacy-state-file-refused"),
     pytest.param(_workspace_scenario_completed_setup, id="setup-completed-drops-bootstrap"),
     pytest.param(_workspace_scenario_guarded_reads, id="guarded-reads"),
 ]
 
 
+def _replace_root(value, root: Path, placeholder: str = "<root>"):
+    real = os.path.realpath(root)
+    lexical = os.path.abspath(root)
+    if isinstance(value, str):
+        return value.replace(real, placeholder).replace(lexical, placeholder)
+    if isinstance(value, list):
+        return [_replace_root(item, root, placeholder) for item in value]
+    if isinstance(value, dict):
+        return {
+            _replace_root(key, root, placeholder): _replace_root(item, root, placeholder)
+            for key, item in value.items()
+        }
+    return value
+
+
 @pytest.mark.parametrize("scenario", WORKSPACE_BOOTSTRAP_SCENARIOS)
 def test_real_openclaw_oracle_workspace_bootstrap_files_match_python(tmp_path: Path, scenario):
-    root = tmp_path / "workspace"
-    scenario(root)
+    ts_root = tmp_path / "ts" / "workspace"
+    py_root = tmp_path / "py" / "workspace"
+    steps = scenario(ts_root)
+    assert scenario(py_root) == steps
 
     result = _oracle().run(
         {
             "operation": "workspaceBootstrapFiles",
-            "workspaceDir": str(root),
+            "workspaceDir": str(ts_root),
             "keys": BOOTSTRAP_SESSION_KEYS,
             "runs": BOOTSTRAP_RUNS,
+            "steps": steps,
         }
     )
 
     assert result["ok"] is True, result
-    assert result["result"] == _python_workspace_bootstrap_result(
-        root, BOOTSTRAP_SESSION_KEYS, BOOTSTRAP_RUNS
+    ts_result = _replace_root(result["result"], ts_root)
+    ts_result["setupCompleted"] = _normalize_migration_error(ts_result["setupCompleted"], ts_root)
+    ts_result["bootstrapStatus"] = _normalize_migration_error(ts_result["bootstrapStatus"], ts_root)
+    for snapshot in ts_result["prepared"]:
+        for key in ("error", "status", "setupCompleted"):
+            if key in snapshot:
+                snapshot[key] = _normalize_migration_error(snapshot[key], ts_root)
+    python_result = _replace_root(
+        _python_workspace_bootstrap_result(py_root, BOOTSTRAP_SESSION_KEYS, BOOTSTRAP_RUNS, steps),
+        py_root,
     )
+    # isWorkspaceSetupCompletedForContext turns a refusal into false inside the run pipeline;
+    # the reported value is the refusal itself on both sides.
+    assert ts_result == python_result
 
 
 HEARTBEAT_PROMPT_BLOCK = (
@@ -4617,10 +4701,17 @@ HEARTBEAT_PROMPT_BLOCK = (
     "strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, "
     "reply HEARTBEAT_OK.`"
 )
+SCRATCH_PROMPT_BLOCK = (
+    "Default heartbeat prompt:\r\n`Follow the heartbeat monitor scratch context when provided. "
+    "Reply HEARTBEAT_OK.`"
+)
 RENDER_CONTEXT_FILES = [
     {"path": "/w/extra/NOTES.md", "content": "extra notes"},
     {"path": "/w/MEMORY.md", "content": "- 記憶\n\n\n\n- two"},
-    {"path": "/w/HEARTBEAT.md", "content": f"tasks\n\n\n{HEARTBEAT_PROMPT_BLOCK}\n\n\nafter"},
+    {
+        "path": "/w/HEARTBEAT.md",
+        "content": f"tasks\n\n\n{HEARTBEAT_PROMPT_BLOCK}\n\n\n{SCRATCH_PROMPT_BLOCK}\n\nafter",
+    },
     {"path": "/w/Zeta.md", "content": "zeta"},
     {"path": "/w/TOOLS.md", "content": "tools"},
     {"path": "/w/BOOTSTRAP.md", "content": "ritual 🧠"},
@@ -4630,9 +4721,12 @@ RENDER_CONTEXT_FILES = [
     {"path": "/w/SOUL.md", "content": "calm\n\nwarm"},
     {"path": "/w/AGENTS.md", "content": "rules"},
     {"path": "/w/nested/AGENTS.md", "content": "nested rules"},
+    {"path": "/w/z/USER.md", "content": "second user file keeps loader order"},
 ]
 PROJECT_CONTEXT_RENDER_CASES = [
-    pytest.param(RENDER_CONTEXT_FILES, "full", "[Bootstrap truncation warning]\nnotice", id="all-full"),
+    pytest.param(
+        RENDER_CONTEXT_FILES, "full", "[Bootstrap truncation warning]\n\nnotice", id="all-full"
+    ),
     pytest.param(
         [file for file in RENDER_CONTEXT_FILES if "BOOTSTRAP" not in file["path"]],
         "full",
@@ -4640,7 +4734,7 @@ PROJECT_CONTEXT_RENDER_CASES = [
         id="full-without-bootstrap-file",
     ),
     pytest.param(
-        [{"path": "/w/HEARTBEAT.md", "content": "only heartbeat"}], "limited", None, id="dynamic-only"
+        [{"path": "/w/HEARTBEAT.md", "content": "only heartbeat"}], "limited", None, id="heartbeat-only"
     ),
     pytest.param([], "none", "  ", id="empty"),
     pytest.param(
@@ -4664,20 +4758,19 @@ def test_real_openclaw_oracle_project_context_render_matches_python(files, mode,
 
     assert result["ok"] is True, result
     context_files = [ContextFile(file["path"], file["content"]) for file in files]
-    stable, dynamic = render_project_context(context_files, OPENCLAW_PIN_LAYOUT)
     sections = build_bootstrap_prompt_section_lines(
-        mode, truncation_notice=notice, context_files=context_files, layout=OPENCLAW_PIN_LAYOUT
+        mode, truncation_notice=notice, context_files=context_files, layout=OPENCLAW_COMPAT_LAYOUT
     )
     # The section builder is private at v2026.9.6, so the runner cuts the sections from the real
     # prompt. Upstream joins that prompt with lines.filter(Boolean).join("\n")
     # (src/agents/system-prompt.ts:1143), so the builder's empty separator lines never reach it;
     # render_bootstrap_prompt_sections applies the same join to Python's lines.
     assert result["result"] == {
-        "stable": stable,
-        "projectContextBelowBoundary": bool(dynamic),
+        "stable": render_project_context(context_files, OPENCLAW_COMPAT_LAYOUT),
+        "projectContextBelowBoundary": False,
         "workspaceFiles": render_workspace_files_injected(OPENCLAW_COMPAT_RUNTIME_IDENTITY),
         "bootstrapSections": render_bootstrap_prompt_sections(
-            mode, truncation_notice=notice, context_files=context_files, layout=OPENCLAW_PIN_LAYOUT
+            mode, truncation_notice=notice, context_files=context_files, layout=OPENCLAW_COMPAT_LAYOUT
         ),
         "bootstrapPendingInPrompt": "## Bootstrap Pending" in sections,
     }
@@ -4703,16 +4796,16 @@ def _python_tree_snapshot(root: Path) -> dict[str, str | None]:
 
 
 def _normalize_state(raw: str | None) -> dict | None:
+    # The runner's normalizeSetupStateTimestamps: the fixture's own legacy file, if any.
     if raw is None:
         return None
-    parsed = json.loads(raw)
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {"unparsed": raw}
     return {
         key: "__iso__"
-        if isinstance(value, str)
-        and len(value) == 24
-        and value[4] == "-"
-        and value[10] == "T"
-        and value.endswith("Z")
+        if isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z", value)
         else value
         for key, value in parsed.items()
     }
@@ -4729,8 +4822,6 @@ def _python_lifecycle_snapshots(root: Path, steps: list[dict]) -> list[dict]:
             continue
         if step["op"] == "remove":
             if target.is_dir():
-                import shutil
-
                 shutil.rmtree(target)
             elif target.exists():
                 target.unlink()
@@ -4738,23 +4829,32 @@ def _python_lifecycle_snapshots(root: Path, steps: list[dict]) -> list[dict]:
         if step["op"] == "mkdir":
             target.mkdir(parents=True, exist_ok=True)
             continue
-        initialize_agent_workspace(
-            root,
-            layout=OPENCLAW_PIN_LAYOUT,
-            templates=templates,
-            skip_optional=step.get("skipOptional") or False,
-        )
-        state_path = root / ".memory-core" / "workspace-state.json"
-        snapshots.append(
+        snapshot: dict = {}
+        try:
+            initialize_agent_workspace(
+                root,
+                layout=OPENCLAW_COMPAT_LAYOUT,
+                templates=templates,
+                skip_optional=step.get("skipOptional") or False,
+            )
+        except WorkspaceStateMigrationRequiredError as exc:
+            snapshot["error"] = _normalize_migration_error(str(exc), root)
+        state_path = root / "openclaw-workspace-state.json"
+        snapshot.update(
             {
                 "tree": _python_tree_snapshot(root),
                 "state": _normalize_state(
                     state_path.read_text(encoding="utf-8") if state_path.exists() else None
                 ),
-                "status": bootstrap_status(root, OPENCLAW_PIN_LAYOUT),
-                "setupCompleted": is_workspace_setup_completed(root),
+                "status": _capture_migration_error(
+                    lambda: bootstrap_status(root, OPENCLAW_COMPAT_LAYOUT), root
+                ),
+                "setupCompleted": _capture_migration_error(
+                    lambda: is_workspace_setup_completed(root), root
+                ),
             }
         )
+        snapshots.append(snapshot)
     return snapshots
 
 
@@ -4809,7 +4909,7 @@ LIFECYCLE_SCENARIOS = [
             {"op": "ensure"},
             {"op": "ensure"},
         ],
-        id="legacy-onboarding-state-migrates",
+        id="legacy-onboarding-state-refused",
     ),
     pytest.param(
         [
@@ -4827,6 +4927,14 @@ LIFECYCLE_SCENARIOS = [
         ],
         id="corrupt-state-file",
     ),
+    pytest.param(
+        [
+            {"op": "write", "path": "TOOLS.md", "content": "## Tools\n- rg\n"},
+            {"op": "write", "path": "HEARTBEAT.md", "content": "- check inbox\n"},
+            {"op": "ensure"},
+        ],
+        id="retired-files-are-kept-and-not-seeded",
+    ),
 ]
 
 
@@ -4842,10 +4950,224 @@ def test_real_openclaw_oracle_workspace_lifecycle_matches_python(tmp_path: Path,
     )
 
     assert result["ok"] is True, result
-    python_snapshots = _python_lifecycle_snapshots(py_root, steps)
-    # Each runtime keeps the setup state in its own file (openclaw-workspace-state.json vs
-    # .memory-core/workspace-state.json); snapshots compare the parsed states.
-    assert result["result"]["snapshots"] == python_snapshots
+    ts_snapshots = result["result"]["snapshots"]
+    for snapshot in ts_snapshots:
+        for key in ("error", "status", "setupCompleted"):
+            if key in snapshot:
+                snapshot[key] = _normalize_migration_error(snapshot[key], ts_root)
+    # Setup state is not a workspace file on either side (upstream: SQLite, memory-core:
+    # .memory-core/workspace-state.json); snapshots compare the tree, the fixture's own legacy file,
+    # the status, the completion flag and the refusal of retired JSON state.
+    assert ts_snapshots == _python_lifecycle_snapshots(py_root, steps)
+
+
+# --- TOOLS.md retirement (memory_core.bootstrap.tools_md) -----------------------------------------
+
+from memory_core.bootstrap._tools_md_constants import (  # noqa: E402
+    LEGACY_AGENTS_TOOLS_GUIDANCE_REWRITES,
+    LEGACY_TOOLS_DEV_FALLBACK,
+    LEGACY_TOOLS_DEV_MD_TEMPLATE,
+    LEGACY_TOOLS_MD_TEMPLATE,
+)
+from memory_core.bootstrap.tools_md import (  # noqa: E402
+    rewrite_legacy_agents_tools_guidance_lines,
+    should_merge_tools_md,
+    tools_md_archive_dir,
+)
+
+# Inputs of src/commands/doctor-tools-md-migration.test.ts at v2026.9.6.
+_TOOLS_AGENTS = "# Agent\n\n## Tools\n\nExisting notes.\n"
+_TOOLS_CAMERAS = "### Cameras\n\n- kitchen → wide angle\n"
+TOOLS_MD_MIGRATION_SCENARIOS = [
+    pytest.param(
+        {
+            "AGENTS.md": "# Agent\n\n## Tools\n\nExisting notes.\n\n## Safety\n\nBe careful.\n",
+            "TOOLS.md": "### Cameras\n\n- kitchen → wide angle\n\nKeep trailing spaces.  \n",
+        },
+        {"repeat": 2},
+        id="merge-under-tools-then-idempotent-rerun",
+    ),
+    pytest.param(
+        {"AGENTS.md": "# Agent\n\nKeep safe.", "TOOLS.md": "Local camera: kitchen → wide angle\n"},
+        {},
+        id="no-tools-heading",
+    ),
+    pytest.param(
+        {
+            "AGENTS.md": _TOOLS_AGENTS,
+            "TOOLS.md": _TOOLS_CAMERAS,
+            "AGENTS.md.doctor-writing-999999-interrupted": "partial merged content",
+        },
+        {},
+        id="interrupted-agents-write",
+    ),
+    pytest.param(
+        {
+            "AGENTS.md": f"{_TOOLS_AGENTS}\n### Local notes (migrated from TOOLS.md)\n\n{_TOOLS_CAMERAS}",
+            "TOOLS.md": _TOOLS_CAMERAS,
+        },
+        {},
+        id="already-merged",
+    ),
+    pytest.param(
+        {"AGENTS.md": "# Agent\n\n## Tools\n\nLocal details stay unchanged.\n", "TOOLS.md": " \n\t"},
+        {},
+        id="whitespace-only-deleted",
+    ),
+    pytest.param(
+        {"AGENTS.md": "# Agent\n\n## Tools\n\nLocal details stay unchanged.\n", "TOOLS.md": ""},
+        {},
+        id="empty-deleted",
+    ),
+    pytest.param(
+        {"TOOLS.md": "Local tool notes.\n", "AGENTS.md": ("symlink", "Private external instructions.\n")},
+        {},
+        id="symlinked-agents-refused",
+    ),
+    pytest.param(
+        {"AGENTS.md": _TOOLS_AGENTS, "TOOLS.md": "Local camera: kitchen → wide angle\n"},
+        {"stateDirIsFile": True},
+        id="archive-blocked",
+    ),
+    pytest.param(
+        {
+            "AGENTS.md": "# A\n\n```\n## Tools\n```\n\n## Tools ##\n\nn\n\n### Local Notes\n\nx\n",
+            "TOOLS.md": "fenced heading check\n",
+        },
+        {},
+        id="fence-and-closed-heading",
+    ),
+    pytest.param({"AGENTS.md": _TOOLS_AGENTS}, {}, id="no-tools-md"),
+    *[
+        pytest.param(
+            {"AGENTS.md": f"# Agent\n\n## Tools\n\n{legacy}\n", "TOOLS.md": LEGACY_TOOLS_MD_TEMPLATE},
+            {},
+            id=f"guidance-rewrite-{index}",
+        )
+        for index, (legacy, _current) in enumerate(LEGACY_AGENTS_TOOLS_GUIDANCE_REWRITES)
+    ],
+]
+
+
+def _write_tools_fixture(root: Path, files: dict, options: dict) -> None:
+    root.mkdir(parents=True)
+    for name, content in files.items():
+        if isinstance(content, tuple):
+            outside = root.parent / "outside-agents.md"
+            outside.write_text(content[1], encoding="utf-8")
+            (root / name).symlink_to(outside)
+        else:
+            (root / name).write_text(content, encoding="utf-8")
+    if options.get("stateDirIsFile"):
+        (root / ".memory-core").write_text("not a directory", encoding="utf-8")
+
+
+_OS_ERROR_TAIL_RE = re.compile(r"(TOOLS\.md was not migrated: ).+$")
+
+
+@pytest.mark.parametrize(("files", "options"), TOOLS_MD_MIGRATION_SCENARIOS)
+def test_real_openclaw_oracle_tools_md_migration_matches_python(tmp_path: Path, files, options):
+    ts_root = tmp_path / "ts" / "workspace"
+    py_root = tmp_path / "py" / "workspace"
+    _write_tools_fixture(ts_root, files, {})
+    _write_tools_fixture(py_root, files, options)
+
+    result = _oracle().run(
+        {"operation": "toolsMdMigration", "workspaceDir": str(ts_root), **options}
+    )
+
+    assert result["ok"] is True, result
+    ts_result = _replace_root(result["result"], ts_root)
+    python_runs = [migrate_tools_md(py_root) for _ in range(options.get("repeat", 1))]
+    archive_dir = tools_md_archive_dir(py_root)
+    python_archives = (
+        {path.name: path.read_text(encoding="utf-8") for path in archive_dir.iterdir()}
+        if archive_dir.is_dir()
+        else {}
+    )
+    python_result = _replace_root(
+        {
+            "runs": [
+                {"changes": list(run.changes), "warnings": list(run.warnings)} for run in python_runs
+            ],
+            "tree": _python_tree_snapshot(py_root),
+            "archives": python_archives,
+        },
+        py_root,
+    )
+    if options.get("stateDirIsFile"):
+        # Deviation: the OS error text is Node's upstream and Python's here; the warning count,
+        # its prefix and the untouched files must match.
+        for side in (ts_result, python_result):
+            for run in side["runs"]:
+                run["warnings"] = [_OS_ERROR_TAIL_RE.sub(r"\1<os error>", w) for w in run["warnings"]]
+    assert ts_result == python_result
+
+
+def test_real_openclaw_oracle_tools_md_merge_decision_matches_python():
+    # The extracted templates themselves, near misses and every legacy guidance line.
+    texts = [
+        LEGACY_TOOLS_MD_TEMPLATE,
+        LEGACY_TOOLS_DEV_MD_TEMPLATE,
+        LEGACY_TOOLS_DEV_FALLBACK,
+        LEGACY_TOOLS_MD_TEMPLATE.rstrip("\n"),
+        LEGACY_TOOLS_DEV_FALLBACK.replace("\n", "\r\n"),
+        "",
+        " \n\t",
+        "　 ",
+        "notes",
+        "\n".join(legacy for legacy, _current in LEGACY_AGENTS_TOOLS_GUIDANCE_REWRITES),
+        *(f"x {legacy} y {legacy}" for legacy, _current in LEGACY_AGENTS_TOOLS_GUIDANCE_REWRITES),
+    ]
+
+    result = _oracle().run({"operation": "toolsMdMergeDecision", "texts": texts})
+
+    assert result["ok"] is True, result
+    assert result["result"] == [
+        {"shouldMerge": should_merge_tools_md(text), "rewritten": rewrite_legacy_agents_tools_guidance_lines(text)}
+        for text in texts
+    ]
+
+
+def test_real_openclaw_oracle_workspace_bootstrap_policy_matches_python():
+    paths = [
+        "AGENTS.md",
+        "SOUL.md",
+        "IDENTITY.md",
+        "USER.md",
+        "BOOTSTRAP.md",
+        "MEMORY.md",
+        "TOOLS.md",
+        "HEARTBEAT.md",
+        "PROACTIVE_PREFERENCES.md",
+        "memory.md",
+        "nested/AGENTS.md",
+        "./AGENTS.md",
+        "../AGENTS.md",
+        "/w/AGENTS.md",
+        "",
+        ".",
+    ]
+
+    result = _oracle().run({"operation": "workspaceBootstrapPolicy", "keys": paths})
+
+    assert result["ok"] is True, result
+    layout = OPENCLAW_COMPAT_LAYOUT
+    assert result["result"] == {
+        "filenames": list(layout.load_order),
+        "generated": list(layout.generated_files),
+        "paths": [
+            {
+                "path": path,
+                "canRead": layout.can_read(path),
+                # No bootstrap-extra-files globs in memory-core, so nothing is listable.
+                "canList": False,
+                "canWrite": layout.can_write(path),
+                "expectedAbsent": layout.is_expected_absent(path),
+            }
+            for path in paths
+        ],
+    }
 
 
 def _write_daily(root: Path, name: str, content: str | bytes, mtime: int | None = None) -> None:

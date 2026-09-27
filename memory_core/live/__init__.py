@@ -44,6 +44,11 @@ IDENTITY_FILE_NAMES = frozenset(DEFAULT_WORKSPACE_LAYOUT.load_order)
 # gateway boot checklist (src/gateway/boot.ts:36), DREAMS.md / dreams.md the
 # dreaming diary (extensions/memory-core/src/dreaming-dreams-file.ts:10).
 NON_INJECTED_WORKSPACE_FILES = frozenset({"BOOT.md", "DREAMS.md", "dreams.md"})
+# Workspace files v2026.9.6 retired but still finds in older workspaces: TOOLS.md waits for
+# memory_core.bootstrap.migrate_tools_md (669db2968fc, #113966), HEARTBEAT.md for the
+# monitor-scratch port (3e2b3ea4d5e, #112967; memory_core.heartbeat still reads it). Neither is
+# injected; the strict unknown-file policy accepts them.
+RETIRED_WORKSPACE_FILES = frozenset({"TOOLS.md", "HEARTBEAT.md"})
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 # Upstream SAFE_SESSION_ID_RE (src/config/sessions/paths.ts:63 at 4c42815348): a leading
 # letter or digit, then up to 127 of [A-Za-z0-9._-]. Applied only where a session id
@@ -117,7 +122,6 @@ class LiveIdentity:
         unknown_files: UnknownIdentityFilePolicy = "ignore",
         layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT,
         include_agent_memory: bool = False,
-        include_heartbeat: bool = True,
         bootstrap_mode: BootstrapMode | None = None,
         has_bootstrap_file_access: bool = False,
         is_canonical_workspace: bool = True,
@@ -126,8 +130,9 @@ class LiveIdentity:
         """Load a workspace's bootstrap files for live prompts.
 
         Missing layout files render upstream's ``[MISSING] Expected at:``
-        marker (MEMORY.md is skipped when absent, empty files are not
-        injected). ``max_chars_per_file`` / ``total_max_chars`` of ``None`` or
+        marker (USER.md, MEMORY.md and PROACTIVE_PREFERENCES.md are skipped when
+        absent, empty files are not injected, a refused read renders
+        ``[UNREADABLE: <reason>]``). ``max_chars_per_file`` / ``total_max_chars`` of ``None`` or
         ``<= 0`` fall back to the defaults, like upstream's config resolution.
 
         Deliberate deviation (decided 2026-09-26): the agent's root MEMORY.md is
@@ -150,7 +155,6 @@ class LiveIdentity:
             root,
             layout=layout,
             session_kind="main",
-            include_heartbeat=include_heartbeat,
             exclude_files=() if include_agent_memory else (layout.memory_file,),
             bootstrap_mode=bootstrap_mode,
             has_bootstrap_file_access=has_bootstrap_file_access,
@@ -174,17 +178,15 @@ class LiveIdentity:
         """Render the injected files in upstream prompt order and line format.
 
         Bootstrap sections, ``## Workspace Files (injected)`` (brand from
-        ``runtime_identity``), ``# Project Context`` and the dynamic block
-        (HEARTBEAT.md), joined without a cache boundary. Unlike upstream, the
-        Workspace Files lines are left out when no file is injected.
+        ``runtime_identity``) and ``# Project Context``, joined without a cache
+        boundary. Unlike upstream, the Workspace Files lines are left out when no
+        file is injected.
         """
         files = [ContextFile(path, content) for path, content in self.sections]
-        stable_text, dynamic_text = render_project_context(files, self.layout)
         return render_workspace_prompt(
             bootstrap_text=self.bootstrap_text,
             workspace_files_text=render_workspace_files_injected(runtime_identity) if files else "",
-            stable_text=stable_text,
-            dynamic_text=dynamic_text,
+            stable_text=render_project_context(files, self.layout),
         )
 
 
@@ -206,7 +208,6 @@ class LiveIdentityStore:
     unknown_files: UnknownIdentityFilePolicy = "ignore"
     layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT
     include_agent_memory: bool = False
-    include_heartbeat: bool = True
     bootstrap_mode: BootstrapMode | None = None
     has_bootstrap_file_access: bool = False
     is_canonical_workspace: bool = True
@@ -223,7 +224,6 @@ class LiveIdentityStore:
         unknown_files: UnknownIdentityFilePolicy = "ignore",
         layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT,
         include_agent_memory: bool = False,
-        include_heartbeat: bool = True,
         bootstrap_mode: BootstrapMode | None = None,
         has_bootstrap_file_access: bool = False,
         is_canonical_workspace: bool = True,
@@ -236,7 +236,6 @@ class LiveIdentityStore:
         self.unknown_files = unknown_files
         self.layout = layout
         self.include_agent_memory = include_agent_memory
-        self.include_heartbeat = include_heartbeat
         self.bootstrap_mode = bootstrap_mode
         self.has_bootstrap_file_access = has_bootstrap_file_access
         self.is_canonical_workspace = is_canonical_workspace
@@ -257,7 +256,6 @@ class LiveIdentityStore:
             unknown_files=self.unknown_files,
             layout=self.layout,
             include_agent_memory=self.include_agent_memory,
-            include_heartbeat=self.include_heartbeat,
             bootstrap_mode=self.bootstrap_mode,
             has_bootstrap_file_access=self.has_bootstrap_file_access,
             is_canonical_workspace=self.is_canonical_workspace,
@@ -812,14 +810,16 @@ def _validate_required_identity_files(
     root: Path, required_files: Iterable[str], layout: WorkspaceLayout
 ) -> None:
     # Fail closed against the loader itself: a file the guarded read rejects
-    # (hard link, over 2 MiB, symlink out of the root) would render as a
-    # "[MISSING]" marker, so it does not satisfy a required file either.
+    # (hard link, over 2 MiB, any symlink) renders as an "[UNREADABLE: ...]"
+    # marker, so it does not satisfy a required file either.
     required = tuple(required_files)
     if not required:
         return
     names = frozenset(layout.load_order)
     loaded = {
-        file.name for file in load_workspace_bootstrap_files(root, layout) if not file.missing
+        file.name
+        for file in load_workspace_bootstrap_files(root, layout)
+        if not file.missing and file.unreadable_reason is None
     }
     missing = [filename for filename in required if filename not in names or filename not in loaded]
     if missing:
@@ -835,7 +835,7 @@ def _validate_unknown_identity_files(
         raise IdentityLoadError(f"unknown identity file policy: {policy}")
     # Root-level Markdown files only; folders (user/, workspace/, memory/,
     # skills/, subjects/) are never workspace bootstrap files.
-    allowed = frozenset(layout.load_order) | NON_INJECTED_WORKSPACE_FILES
+    allowed = frozenset(layout.load_order) | NON_INJECTED_WORKSPACE_FILES | RETIRED_WORKSPACE_FILES
     unknown = sorted(
         path.name
         for path in root.iterdir()
@@ -1144,6 +1144,7 @@ def _pop_complete_sentences(buffer: str) -> tuple[list[str], str]:
 
 __all__ = [
     "IDENTITY_FILE_ORDER",
+    "RETIRED_WORKSPACE_FILES",
     "NON_INJECTED_WORKSPACE_FILES",
     "IdentityLoadError",
     "JsonlTraceSink",

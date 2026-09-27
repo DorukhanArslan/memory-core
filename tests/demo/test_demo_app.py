@@ -218,7 +218,7 @@ def test_files_report_badges_from_the_workspace_context(client, lab):
     assert entries["AGENTS.md"]["badges"] == ["injected"]
     assert entries["AGENTS.md"]["loadIndex"] == 1
     assert entries["AGENTS.md"]["renderIndex"] == 1
-    assert entries["HEARTBEAT.md"]["badges"] == ["injected", "dynamic"]
+    assert "HEARTBEAT.md" not in entries and "TOOLS.md" not in entries
     assert entries["PROACTIVE_PREFERENCES.md"]["badges"] == ["extension", "empty"]
     assert entries["MEMORY.md"]["badges"] == ["absent"]
     assert entries["notes.txt"]["badges"] == ["outside_layout"]
@@ -235,16 +235,55 @@ def test_files_follow_the_session_kind_filter(client):
 
     assert entries["AGENTS.md"]["badges"] == ["injected"]
     assert "excluded" in entries["USER.md"]["badges"]
-    assert entries["USER.md"]["excludedReason"] == "subagent: yalnız AGENTS.md, TOOLS.md"
+    assert entries["USER.md"]["excludedReason"] == "subagent: yalnız AGENTS.md"
 
 
-def test_files_with_the_pin_layout_mark_extensions_outside_the_layout(client):
+def test_files_with_the_openclaw_layout_mark_extensions_outside_the_layout(client):
     client.get("/api/lab/state")
 
-    entries = {entry["path"]: entry for entry in client.get("/api/lab/files", params={"layout": "pin"}).json()}
+    entries = {entry["path"]: entry for entry in client.get("/api/lab/files", params={"layout": "openclaw"}).json()}
 
     assert entries["PROACTIVE_PREFERENCES.md"]["badges"] == ["outside_layout"]
     assert entries["user"]["badges"] == ["outside_layout"]
+
+
+def test_files_name_retired_files_and_unreadable_ones(client, lab):
+    client.get("/api/lab/state")
+    (lab.root / "TOOLS.md").write_text("## Tools\n- rg\n", encoding="utf-8")
+    (lab.root / "HEARTBEAT.md").write_text("- check inbox\n", encoding="utf-8")
+    (lab.root / "IDENTITY.md").unlink()
+    (lab.root / "IDENTITY.md").symlink_to(lab.root / "SOUL.md")
+
+    entries = {entry["path"]: entry for entry in client.get("/api/lab/files").json()}
+
+    assert entries["TOOLS.md"]["badges"] == ["outside_layout", "retired"]
+    assert entries["TOOLS.md"]["migration"] == "tools_md"
+    assert "AGENTS.md ## Tools" in entries["TOOLS.md"]["retiredNote"]
+    assert entries["HEARTBEAT.md"]["badges"] == ["outside_layout", "retired"]
+    assert "migration" not in entries["HEARTBEAT.md"]
+    assert "unreadable" in entries["IDENTITY.md"]["badges"]
+    assert entries["IDENTITY.md"]["unreadableReason"] == "symlink path component not allowed"
+
+
+def test_tools_md_migration_endpoint_merges_into_agents_md(client, lab):
+    client.get("/api/lab/state")
+    agents_before = (lab.root / "AGENTS.md").read_text(encoding="utf-8")
+    (lab.root / "TOOLS.md").write_text("- kitchen camera: wide angle\n", encoding="utf-8")
+
+    result = client.post("/api/lab/workspace/migrate-tools-md").json()
+
+    assert result["merged"] is True and result["warnings"] == []
+    assert result["archivePath"].startswith(".memory-core/backups/tools-md-migration/main-")
+    assert not (lab.root / "TOOLS.md").exists()
+    agents = (lab.root / "AGENTS.md").read_text(encoding="utf-8")
+    assert agents.startswith(agents_before.rstrip("\n"))
+    assert agents.endswith(
+        "### Local notes (migrated from TOOLS.md)\n\n- kitchen camera: wide angle\n"
+    )
+    events = [event["type"] for event in lab.bus.recent()]
+    assert "workspace.tools_md_migrated" in events
+    again = client.post("/api/lab/workspace/migrate-tools-md").json()
+    assert again == {"changes": [], "warnings": [], "archivePath": None, "merged": None}
 
 
 def test_files_reject_an_unknown_layout(client):
@@ -1017,23 +1056,26 @@ def test_prompt_preview_follows_the_upstream_session_filters(client, lab):
     subagent = preview(client, sessionKind="subagent")
     cron = preview(client, sessionKind="cron")
     group = preview(client, sessionKind="group")
-    pin = preview(client, sessionKind="main", layout="pin")
+    compat = preview(client, sessionKind="main", layout="openclaw")
 
-    assert names(main) == [
-        "AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "PROACTIVE_PREFERENCES.md", "TOOLS.md", "MEMORY.md", "HEARTBEAT.md",
-    ]
-    assert [file["section"] for file in main["files"]][-1] == "dynamic"
-    assert main["dynamicText"].startswith("# Dynamic Project Context")
+    assert names(main) == ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "PROACTIVE_PREFERENCES.md", "MEMORY.md"]
+    assert "dynamicText" not in main
     assert main["stableText"].startswith("# Project Context")
     assert main["recall"]["memoryRecallSection"][0] == "## Memory Recall"
     assert main["preview"] is True and "upsert_user_directive" in main["tools"]
-    assert names(subagent) == ["AGENTS.md", "TOOLS.md"]
-    assert {item["name"]: item["reason"] for item in subagent["excluded"]}["USER.md"] == "subagent: yalnız AGENTS.md, TOOLS.md"
+    assert names(subagent) == ["AGENTS.md"]
+    subagent_reasons = {item["name"]: item["reason"] for item in subagent["excluded"]}
+    assert subagent_reasons["USER.md"] == "subagent: yalnız AGENTS.md"
+    assert subagent_reasons["MEMORY.md"].startswith("subagent: kök MEMORY.md")
     assert subagent["recall"]["memoryRecallSection"] == []
-    assert names(cron) == ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "PROACTIVE_PREFERENCES.md", "TOOLS.md"]
-    assert "MEMORY.md" in names(group)
-    assert "PROACTIVE_PREFERENCES.md" not in names(pin)
-    assert pin["layout"] == "pin"
+    assert names(cron) == ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "PROACTIVE_PREFERENCES.md"]
+    # d06fc25a0c5 (#119198): root MEMORY.md stays out of shared sessions.
+    assert "MEMORY.md" not in names(group)
+    assert {item["name"]: item["reason"] for item in group["excluded"]}["MEMORY.md"].startswith(
+        "group: kök MEMORY.md paylaşılan oturumda yüklenmez"
+    )
+    assert "PROACTIVE_PREFERENCES.md" not in names(compat)
+    assert compat["layout"] == "openclaw"
 
 
 def test_prompt_preview_shows_the_pending_bootstrap_only_where_upstream_does(client, lab):
@@ -1053,7 +1095,7 @@ def test_prompt_preview_shows_the_pending_bootstrap_only_where_upstream_does(cli
         assert view["bootstrapMode"] == "none"
         assert "BOOTSTRAP.md" not in names(view)
         assert {item["name"]: item["reason"] for item in view["excluded"]}.get("BOOTSTRAP.md") in {
-            "bootstrap modu none", "cron: yalnız AGENTS.md, IDENTITY.md, PROACTIVE_PREFERENCES.md, SOUL.md, TOOLS.md, USER.md",
+            "bootstrap modu none", "cron: yalnız AGENTS.md, IDENTITY.md, PROACTIVE_PREFERENCES.md, SOUL.md, USER.md",
         }
     assert heartbeat["heartbeatSection"][0] == "## Heartbeats"
 
@@ -1128,7 +1170,7 @@ def test_chat_turn_prompt_matches_the_messages_sent(client, lab, monkeypatch):
     assert detail["prompt"]["messages"] == sent
     assert sent[0]["role"] == "system" and "## Memory Recall" not in sent[0]["content"]
     assert sent[-1] == {"role": "user", "content": "Merhaba"}
-    assert names(detail["prompt"]) == ["AGENTS.md", "TOOLS.md"]
+    assert names(detail["prompt"]) == ["AGENTS.md"]
     assert detail["sessionKey"].startswith("lab:subagent:")
     assert detail["recall"] is None
     assert {stage["name"]: stage["status"] for stage in detail["stages"]}["recall"] == "skip"
@@ -1218,6 +1260,12 @@ def test_session_new_validates_the_command(client):
 
 # --- heartbeat -------------------------------------------------------------------------------
 
+# The Lab no longer seeds HEARTBEAT.md (v2026.9.6 retired it; the heartbeat view still reads
+# one a user writes until the monitor-scratch port). This header is the Lab's former seed text.
+HEARTBEAT_HEADER = """# HEARTBEAT.md - Continuity Check
+
+Before acting, re-read the workspace files that define current identity, user context, tools, and memory.
+"""
 TASKS = """
 tasks:
   - name: gunluk-takip
@@ -1234,7 +1282,7 @@ def heartbeat_run(client, **payload):
 
 def test_heartbeat_state_parses_tasks_and_due_state(client, lab):
     client.get("/api/lab/state")
-    (lab.root / "HEARTBEAT.md").write_text(DEMO_WORKSPACE_TEMPLATES["HEARTBEAT.md"] + TASKS + "  - name: broken\n", encoding="utf-8")
+    (lab.root / "HEARTBEAT.md").write_text(HEARTBEAT_HEADER + TASKS + "  - name: broken\n", encoding="utf-8")
 
     state = client.get("/api/lab/heartbeat").json()
 
@@ -1281,7 +1329,7 @@ def test_heartbeat_without_a_key_reports_no_api_key_when_it_would_call_the_model
 
 def test_heartbeat_runs_the_tool_loop_and_decides_delivery(client, lab, monkeypatch):
     client.get("/api/lab/state")
-    (lab.root / "HEARTBEAT.md").write_text(DEMO_WORKSPACE_TEMPLATES["HEARTBEAT.md"] + TASKS, encoding="utf-8")
+    (lab.root / "HEARTBEAT.md").write_text(HEARTBEAT_HEADER + TASKS, encoding="utf-8")
     (lab.root / "memory" / f"{lab.today()}.md").write_text("- Yarın 09:00 tedarikçiye fatura gönderilecek.\n", encoding="utf-8")
     (lab.root / "PROACTIVE_PREFERENCES.md").write_text("# PROACTIVE_PREFERENCES.md\n\n- Fatura takiplerini bildir.\n", encoding="utf-8")
     engine = use_engine(monkeypatch, StubEngine([
@@ -1297,7 +1345,9 @@ def test_heartbeat_runs_the_tool_loop_and_decides_delivery(client, lab, monkeypa
     assert "After completing all due tasks, reply HEARTBEAT_OK." in prompt["userMessage"]
     assert "\nCurrent time: " in prompt["userMessage"]
     assert prompt["systemSection"].startswith("## Heartbeats")
-    assert prompt["files"].index("USER.md") < prompt["files"].index("PROACTIVE_PREFERENCES.md") < prompt["files"].index("TOOLS.md")
+    assert prompt["files"].index("USER.md") < prompt["files"].index("PROACTIVE_PREFERENCES.md")
+    # HEARTBEAT.md is read by the heartbeat itself, never injected as a bootstrap file.
+    assert "HEARTBEAT.md" not in prompt["files"] and "TOOLS.md" not in prompt["files"]
     assert "BOOTSTRAP.md" not in prompt["files"]
     assert "memory_search" in prompt["tools"]
     assert "## Heartbeats" in engine.calls[0]["messages"][0]["content"]
@@ -1328,13 +1378,14 @@ def test_heartbeat_runs_the_tool_loop_and_decides_delivery(client, lab, monkeypa
     assert {"heartbeat.run", "heartbeat.llm", "heartbeat.decided", "clock.changed"} <= set(event_types(client))
 
 
-def test_heartbeat_light_context_injects_only_heartbeat_md(client, lab, monkeypatch):
+def test_heartbeat_light_context_injects_no_bootstrap_file(client, lab, monkeypatch):
+    # applyContextModeFilter at v2026.9.6: lightweight runs get no bootstrap files at all.
     use_engine(monkeypatch, StubEngine([("HEARTBEAT_OK", [])]))
     client.get("/api/lab/state")
 
     frames = heartbeat_run(client, lightContext=True)
 
-    assert frames_of(frames, "prompt")[0]["files"] == ["HEARTBEAT.md"]
+    assert frames_of(frames, "prompt")[0]["files"] == []
 
 
 @pytest.mark.parametrize(
@@ -1612,7 +1663,7 @@ def test_settings_env_key_is_reported_by_source_only(client, monkeypatch):
 def test_settings_update_applies_and_emits(client, lab):
     updated = client.put("/api/lab/settings", json={
         "chat": {"model": "openai/gpt-6-sol", "baseUrl": "https://llm.example/v1/"},
-        "layout": "pin",
+        "layout": "openclaw",
         "budgets": {"totalMaxChars": 12_000, "warningMode": "once"},
         "contextInjection": "continuation-skip",
         "flush": {"mode": "threshold", "contextWindowTokens": 26_000},
@@ -1621,7 +1672,7 @@ def test_settings_update_applies_and_emits(client, lab):
     }).json()
 
     assert updated["chat"]["model"] == "openai/gpt-6-sol" and updated["chat"]["baseUrl"] == "https://llm.example/v1"
-    assert updated["layout"] == "pin" and lab.layout.name == "openclaw-pin"
+    assert updated["layout"] == "openclaw" and lab.layout.name == "openclaw"
     assert updated["budgets"]["totalMaxChars"] == 12_000 and updated["budgets"]["warningMode"] == "once"
     assert updated["flush"]["threshold"] == 2_000
     assert updated["heartbeat"]["everyMs"] == 600_000

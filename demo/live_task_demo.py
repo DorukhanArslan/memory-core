@@ -23,7 +23,8 @@ DEFAULT_LIVE_TASK_SUBJECT_ID = "demo_subject"
 # Replaces the utterance that verified the subject before a summary is built, so
 # identity data (a birth date, a customer number) never reaches subject memory.
 REDACTED_IDENTITY_PROOF = "[kimlik bilgisi gizlendi]"
-LIVE_TASK_REQUIRED_FILES = ("AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md", "USER.md")
+# The seeded bootstrap files of the v2026.9.6 map (TOOLS.md was retired, 669db2968fc).
+LIVE_TASK_REQUIRED_FILES = ("AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md")
 LIVE_TASK_AGENTS_SECTION_HEADING = "## Live Task Demo: appointment_reschedule"
 
 

@@ -35,12 +35,13 @@ from demo.workspace_context import DEMO_WORKSPACE_TEMPLATES
 from memory_core.bootstrap import (
     DEFAULT_BOOTSTRAP_MAX_CHARS,
     DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
-    OPENCLAW_PIN_LAYOUT,
+    OPENCLAW_COMPAT_LAYOUT,
     MEMORY_CORE_WORKSPACE_LAYOUT,
     WorkspaceInitResult,
     WorkspaceLayout,
     bootstrap_status,
     initialize_agent_workspace,
+    migrate_tools_md,
     read_workspace_setup_state,
 )
 from memory_core.config import MemoryConfig
@@ -60,7 +61,7 @@ SESSION_KINDS = ("main", "group", "channel", "direct", "subagent", "cron", "hear
 MINIMAL_PROMPT_KINDS = frozenset({"subagent", "cron"})
 LAYOUTS: dict[str, WorkspaceLayout] = {
     "memory-core": MEMORY_CORE_WORKSPACE_LAYOUT,
-    "pin": OPENCLAW_PIN_LAYOUT,
+    "openclaw": OPENCLAW_COMPAT_LAYOUT,
 }
 SEARCH_MODES = ("hybrid", "vector", "text")
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
@@ -80,6 +81,15 @@ LAB_FLAGS: dict[str, tuple[bool, str, bool]] = {
     "curation.proactive_preferences": (True, "PROACTIVE_PREFERENCES.md", True),
     "lab_file_editing": (True, "Lab dosya düzenleme", True),
 }
+
+
+def _relative_to_root(root: Path, path: str | None) -> str | None:
+    if path is None:
+        return None
+    try:
+        return Path(path).resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return path
 
 
 class LabError(Exception):
@@ -354,7 +364,7 @@ class LabRuntime:
         if name in (None, ""):
             return self.layout
         if name not in LAYOUTS:
-            raise LabError(400, "layout must be 'memory-core' or 'pin'", code="invalid_layout")
+            raise LabError(400, "layout must be 'memory-core' or 'openclaw'", code="invalid_layout")
         return LAYOUTS[str(name)]
 
     def config(self, *, mode: str = "text") -> MemoryConfig:
@@ -620,6 +630,34 @@ class LabRuntime:
     def ensure_exists(self) -> None:
         if not self.root.is_dir():
             self.reset_workspace("seeded")
+
+    def migrate_tools_md(self) -> dict[str, Any]:
+        """``memory_core.bootstrap.migrate_tools_md`` on the Lab workspace (upstream doctor step).
+
+        v2026.9.6 no longer loads TOOLS.md; this archives it under
+        ``.memory-core/backups/tools-md-migration/`` and merges customised notes into AGENTS.md
+        ``## Tools``. File changes go through the Lab's snapshot tracking like any write.
+        """
+        with self.tracked("tools_md_migration"):
+            result = migrate_tools_md(self.root)
+        payload = {
+            "changes": list(result.changes),
+            "warnings": list(result.warnings),
+            "archivePath": _relative_to_root(self.root, result.archive_path),
+            "merged": result.merged,
+        }
+        if result.changes:
+            summary = (
+                "TOOLS.md AGENTS.md ## Tools bölümüne taşındı, özgün dosya arşivlendi"
+                if result.merged
+                else "dokunulmamış TOOLS.md arşivlendi ve kaldırıldı"
+            )
+        elif result.warnings:
+            summary = "TOOLS.md taşınamadı: " + result.warnings[0]
+        else:
+            summary = "TOOLS.md yok: taşınacak bir şey yok"
+        self.bus.emit("workspace.tools_md_migrated", summary=summary, data=payload)
+        return payload
 
     # sessions and turns
 

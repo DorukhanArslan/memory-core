@@ -2,8 +2,8 @@
 
 Thin views over :func:`memory_core.bootstrap.build_workspace_context`. Exclusion
 reasons are attributed by running the package's own filter functions one at a
-time (``filter_bootstrap_files_for_session``, ``filter_completed_bootstrap_file``,
-``apply_context_mode_filter``, ``filter_heartbeat_bootstrap_file``), never by
+time (``filter_root_memory_bootstrap_files``, ``filter_bootstrap_files_for_session``,
+``filter_completed_bootstrap_file``, ``apply_context_mode_filter``), never by
 re-implementing them. The Lab model gets no generic ``read`` tool, so the
 bootstrap mode is resolved with ``has_bootstrap_file_access=False``; the
 package still counts non-empty BOOTSTRAP.md content as file access (upstream's
@@ -27,19 +27,26 @@ from memory_core.bootstrap import (
     build_workspace_context,
     filter_bootstrap_files_for_session,
     filter_completed_bootstrap_file,
-    filter_heartbeat_bootstrap_file,
+    filter_root_memory_bootstrap_files,
     format_bootstrap_truncation_warning_lines,
     is_workspace_setup_completed,
     load_workspace_bootstrap_files,
 )
 from memory_core.bootstrap._js import utf16_len
+from memory_core.bootstrap.files import NON_PRIVATE_SESSION_KINDS
 from memory_core.bootstrap.render import prepare_context_files
 from memory_core.bootstrap.budget import ContextFile
 from memory_core.session_memory import SESSION_MEMORY_FILE_RE
 from memory_core.workspace import MemoryWorkspace
 
 _DAILY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
-RUN_KINDS = ("default", "heartbeat", "cron", "commitment-only")
+# v2026.9.6 BootstrapContextRunKind (commitment-only is gone).
+RUN_KINDS = ("default", "heartbeat", "cron")
+# v2026.9.6 retired workspace files the explorer names when a workspace still has them.
+RETIRED_FILE_NOTES = {
+    "TOOLS.md": "v2026.9.6: TOOLS.md emekli; yerel araç notları AGENTS.md ## Tools bölümünde (migrate_tools_md)",
+    "HEARTBEAT.md": "v2026.9.6: HEARTBEAT.md bootstrap dosyası değil; heartbeat görünümü okur (monitor scratch portu bekliyor)",
+}
 CONTEXT_MODES = ("full", "lightweight")
 
 
@@ -49,7 +56,6 @@ class PromptOptions:
     run_kind: str | None = None
     context_mode: str = "full"
     context_injection: str | None = None
-    include_heartbeat: bool = True
     max_chars: int | None = None
     total_max_chars: int | None = None
     layout: str | None = None
@@ -75,7 +81,6 @@ def prompt_options(payload: dict[str, Any], *, default_kind: str = "main") -> Pr
         run_kind=run_kind,
         context_mode=context_mode,
         context_injection=injection,
-        include_heartbeat=bool(payload.get("includeHeartbeat", True)),
         max_chars=_optional_positive_int(payload.get("maxChars"), "maxChars"),
         total_max_chars=_optional_positive_int(payload.get("totalMaxChars"), "totalMaxChars"),
         layout=payload.get("layout"),
@@ -119,7 +124,6 @@ def lab_workspace_context(
         session_kind=options.kind,  # type: ignore[arg-type]
         run_kind=options.run_kind,  # type: ignore[arg-type]
         context_mode=options.context_mode,  # type: ignore[arg-type]
-        include_heartbeat=options.include_heartbeat,
         context_injection=(options.context_injection or settings.context_injection),  # type: ignore[arg-type]
         has_completed_bootstrap_turn=bool(session and session.completed_bootstrap_turn),
         has_bootstrap_file_access=False,
@@ -135,7 +139,6 @@ def explain_exclusions(
 ) -> list[dict[str, str]]:
     """Why each layout file that exists is not in Project Context, step by step."""
     layout = lab.layout_for(options.layout)
-    run_kind = _run_kind(options)
     loaded = load_workspace_bootstrap_files(lab.root, layout)
     reasons: dict[str, str] = {}
 
@@ -147,10 +150,16 @@ def explain_exclusions(
         return after
 
     step = list(loaded)
+    if options.kind in NON_PRIVATE_SESSION_KINDS:
+        step = drop(
+            step,
+            filter_root_memory_bootstrap_files(step, lab.root, layout),
+            f"{options.kind}: kök MEMORY.md paylaşılan oturumda yüklenmez (upstream #119198)",
+        )
     allow = sorted(layout.subagent_files if options.kind == "subagent" else layout.cron_files)
     step = drop(
         step,
-        filter_bootstrap_files_for_session(step, options.kind, layout),  # type: ignore[arg-type]
+        filter_bootstrap_files_for_session(step, options.kind, layout, root=lab.root),  # type: ignore[arg-type]
         f"{options.kind}: yalnız {', '.join(allow)}",
     )
     step = drop(
@@ -162,17 +171,8 @@ def explain_exclusions(
     )
     step = drop(
         step,
-        apply_context_mode_filter(
-            step, context_mode=options.context_mode, run_kind=run_kind, layout=layout  # type: ignore[arg-type]
-        ),
-        "lightContext (lightweight): yalnız HEARTBEAT.md",
-    )
-    step = drop(
-        step,
-        filter_heartbeat_bootstrap_file(
-            step, run_kind=run_kind, include_heartbeat=options.include_heartbeat, layout=layout  # type: ignore[arg-type]
-        ),
-        "HEARTBEAT.md bu çalıştırmada hariç",
+        apply_context_mode_filter(step, context_mode=options.context_mode),  # type: ignore[arg-type]
+        "lightContext (lightweight): bootstrap dosyası yok",
     )
     injected = {Path(file.path).name for file in wc.files}
     for file in step:
@@ -241,21 +241,19 @@ def prompt_view(
                 "name": name,
                 "chars": utf16_len(file.content),
                 "truncated": name in truncation,
-                "section": "dynamic" if layout.is_dynamic(name) else "stable",
             }
         )
     view: dict[str, Any] = {
         "sessionKind": options.kind,
         "runKind": _run_kind(options),
         "contextMode": options.context_mode,
-        "layout": "pin" if layout.name == "openclaw-pin" else "memory-core",
+        "layout": layout.name,
         "bootstrapMode": wc.bootstrap_mode,
         "bootstrapModeReason": bootstrap_mode_reason(wc, options),
         "bootstrapStatus": wc.bootstrap_status,
         "bootstrapText": wc.bootstrap_text,
         "workspaceFilesText": wc.workspace_files_text,
         "stableText": wc.stable_text,
-        "dynamicText": wc.dynamic_text,
         "promptText": wc.prompt_text,
         "files": files,
         "excluded": explain_exclusions(lab, options, wc),
@@ -326,7 +324,7 @@ def _file_meta(path: Path) -> dict[str, Any]:
 
 def render_order(layout: WorkspaceLayout) -> list[str]:
     prepared = prepare_context_files((ContextFile(name, "") for name in layout.load_order), layout)
-    return [file.path for file in (*prepared.stable, *prepared.dynamic)]
+    return [file.path for file in prepared.ordered]
 
 
 def file_entries(lab: LabRuntime, options: PromptOptions) -> list[dict[str, Any]]:
@@ -335,6 +333,9 @@ def file_entries(lab: LabRuntime, options: PromptOptions) -> list[dict[str, Any]
     wc = lab_workspace_context(lab, options, session=lab.sessions.get(options.kind))
     injected = {Path(file.path).name for file in wc.files}
     missing = {file.name for file in wc.bootstrap_files if file.missing}
+    unreadable = {
+        file.name: file.unreadable_reason for file in wc.bootstrap_files if file.unreadable_reason
+    }
     excluded = {entry["name"]: entry["reason"] for entry in explain_exclusions(lab, options, wc)}
     truncation = truncation_by_name(wc)
     order = render_order(layout)
@@ -348,10 +349,14 @@ def file_entries(lab: LabRuntime, options: PromptOptions) -> list[dict[str, Any]
             entry["kind"] = "extension"
             badges.append("extension")
         if not meta["exists"]:
-            if name == layout.memory_file or name in layout.extension_files:
+            # USER.md, MEMORY.md and the extensions are skipped when absent (no [MISSING]).
+            if name in layout.skip_absent_files:
                 badges.append("absent")
             else:
                 badges.append("missing")
+        if name in unreadable:
+            badges.append("unreadable")
+            entry["unreadableReason"] = unreadable[name]
         if name in injected:
             badges.insert(0, "injected")
         if name in truncation:
@@ -366,8 +371,6 @@ def file_entries(lab: LabRuntime, options: PromptOptions) -> list[dict[str, Any]
             else:
                 badges.append("excluded")
             entry["excludedReason"] = reason
-        if layout.is_dynamic(name):
-            badges.append("dynamic")
         if name == layout.bootstrap_file and meta["exists"] and wc.bootstrap_status == "pending":
             badges.append("pending")
         entry["badges"] = badges
@@ -393,15 +396,16 @@ def _outside_layout_entries(lab: LabRuntime, layout: WorkspaceLayout) -> list[di
     for path in sorted(lab.root.iterdir()):
         if path.name.startswith(".") or not path.is_file() or path.name in layout.load_order:
             continue
-        entries.append(
-            {
-                "path": path.name,
-                "kind": "bootstrap",
-                **_file_meta(path),
-                "badges": ["outside_layout"],
-                "excludedReason": "etkin düzen bu dosyayı yüklemez",
-            }
-        )
+        badges = ["outside_layout"]
+        entry: dict[str, Any] = {"path": path.name, "kind": "bootstrap", **_file_meta(path)}
+        if path.name in RETIRED_FILE_NOTES:
+            badges.append("retired")
+            entry["retiredNote"] = RETIRED_FILE_NOTES[path.name]
+            if path.name == "TOOLS.md":
+                entry["migration"] = "tools_md"
+        entry["badges"] = badges
+        entry["excludedReason"] = RETIRED_FILE_NOTES.get(path.name, "etkin düzen bu dosyayı yüklemez")
+        entries.append(entry)
     return entries
 
 

@@ -1,14 +1,19 @@
 import json
+from pathlib import Path
 
 import pytest
 
 from memory_core.bootstrap import (
+    OPENCLAW_COMPAT_LAYOUT,
     MEMORY_CORE_WORKSPACE_LAYOUT,
-    OPENCLAW_PIN_LAYOUT,
     WorkspaceSetupState,
+    WorkspaceStateMigrationError,
+    WorkspaceStateMigrationRequiredError,
     bootstrap_status,
+    build_workspace_context,
     initialize_agent_workspace,
     is_workspace_setup_completed,
+    migrate_legacy_workspace_state,
     read_workspace_setup_state,
     strip_template_front_matter,
 )
@@ -26,14 +31,13 @@ def test_fresh_memory_core_workspace_seeds_empty_files_dirs_and_bootstrap(tmp_pa
 
     result = initialize_agent_workspace(root, now_ms=NOW_MS)
 
+    # v2026.9.6 seeds neither TOOLS.md (669db2968fc) nor HEARTBEAT.md (3e2b3ea4d5e).
     assert result.created_files == (
         "AGENTS.md",
         "SOUL.md",
-        "TOOLS.md",
         "IDENTITY.md",
         "USER.md",
         "PROACTIVE_PREFERENCES.md",
-        "HEARTBEAT.md",
         "BOOTSTRAP.md",
     )
     assert result.created_dirs == ("user", "workspace")
@@ -55,7 +59,7 @@ def test_templates_are_host_supplied_and_front_matter_is_stripped(tmp_path):
         "BOOTSTRAP.md": "Host ritual\n",
     }
 
-    initialize_agent_workspace(tmp_path, layout=OPENCLAW_PIN_LAYOUT, templates=templates)
+    initialize_agent_workspace(tmp_path, layout=OPENCLAW_COMPAT_LAYOUT, templates=templates)
 
     assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8") == "# Host rules\n"
     assert (tmp_path / "BOOTSTRAP.md").read_text(encoding="utf-8") == "Host ritual\n"
@@ -63,6 +67,8 @@ def test_templates_are_host_supplied_and_front_matter_is_stripped(tmp_path):
     assert strip_template_front_matter("---\nunterminated") == "---\nunterminated"
     with pytest.raises(ValueError):
         initialize_agent_workspace(tmp_path, templates={"MEMORY.md": "never seeded"})
+    with pytest.raises(ValueError):
+        initialize_agent_workspace(tmp_path, templates={"TOOLS.md": "retired"})
 
 
 def test_existing_files_are_never_overwritten(tmp_path):
@@ -78,7 +84,7 @@ def test_skip_optional_true_and_named(tmp_path):
     all_skipped = initialize_agent_workspace(tmp_path / "a", skip_optional=True)
     named = initialize_agent_workspace(tmp_path / "b", skip_optional=["SOUL.md", "AGENTS.md"])
 
-    assert all_skipped.created_files == ("AGENTS.md", "TOOLS.md", "BOOTSTRAP.md")
+    assert all_skipped.created_files == ("AGENTS.md", "BOOTSTRAP.md")
     # Required files ignore the skip list, like upstream.
     assert "AGENTS.md" in named.created_files
     assert "SOUL.md" not in named.created_files
@@ -155,11 +161,11 @@ def test_completed_setup_does_not_recreate_optional_files(tmp_path):
     initialize_agent_workspace(tmp_path)
     (tmp_path / "SOUL.md").unlink()
     (tmp_path / "PROACTIVE_PREFERENCES.md").unlink()
-    (tmp_path / "TOOLS.md").unlink()
+    (tmp_path / "AGENTS.md").unlink()
 
     result = initialize_agent_workspace(tmp_path)
 
-    assert result.created_files == ("TOOLS.md",)
+    assert result.created_files == ("AGENTS.md",)
     assert not (tmp_path / "SOUL.md").exists()
     assert not (tmp_path / "PROACTIVE_PREFERENCES.md").exists()
 
@@ -194,33 +200,111 @@ def test_seed_bootstrap_false_still_honours_an_existing_bootstrap_file(tmp_path)
     assert result.bootstrap_status == "pending"
 
 
-def test_state_falls_back_to_openclaw_files_and_migrates(tmp_path):
+@pytest.mark.parametrize(
+    "legacy",
+    [
+        "openclaw-workspace-state.json",
+        ".openclaw/workspace-state.json",
+        "openclaw-workspace-state.json.doctor-importing",
+    ],
+)
+def test_upstream_legacy_state_fails_closed_until_migrated(tmp_path, legacy):
+    # workspace-legacy-state.ts assertNoUnmigratedWorkspaceState (#109147): upstream never
+    # parses its retired JSON state at runtime and refuses the workspace instead.
+    path = tmp_path / legacy
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("not even json", encoding="utf-8")
+    real = str(tmp_path.resolve())
+    message = (
+        f"Legacy workspace setup state requires migration for {real}; "
+        "run memory_core.bootstrap.migrate_legacy_workspace_state()."
+    )
+
+    for call in (
+        read_workspace_setup_state,
+        is_workspace_setup_completed,
+        bootstrap_status,
+        build_workspace_context,
+        initialize_agent_workspace,
+    ):
+        with pytest.raises(WorkspaceStateMigrationRequiredError) as raised:
+            call(tmp_path)
+        assert str(raised.value) == message
+    # The refused ensure wrote nothing.
+    assert sorted(item.name for item in tmp_path.iterdir()) == [Path(legacy).parts[0]]
+
+
+def test_migrate_legacy_state_imports_archives_and_removes(tmp_path):
     legacy = tmp_path / ".openclaw" / "workspace-state.json"
     legacy.parent.mkdir()
-    legacy.write_text('{"onboardingCompletedAt": "2026-01-02T03:04:05.006Z"}', encoding="utf-8")
+    raw = '{"onboardingCompletedAt": "2026-01-02T03:04:05.006Z"}'
+    legacy.write_text(raw, encoding="utf-8")
 
-    assert read_workspace_setup_state(tmp_path) == WorkspaceSetupState(
-        setup_completed_at="2026-01-02T03:04:05.006Z"
-    )
-    assert not _state_file(tmp_path).exists()
+    result = migrate_legacy_workspace_state(tmp_path)
 
-    result = initialize_agent_workspace(tmp_path)
-
-    assert result.created_files == ("AGENTS.md", "TOOLS.md")
+    assert result.imported == str(legacy.resolve())
+    assert result.state == WorkspaceSetupState(setup_completed_at="2026-01-02T03:04:05.006Z")
+    assert not legacy.exists()
+    (archive,) = (Path(path) for path in result.archives)
+    assert archive.parent == legacy.resolve().parent
+    assert archive.name.startswith("workspace-state.json.migrated.")
+    assert archive.read_text(encoding="utf-8") == raw
     assert json.loads(_state_file(tmp_path).read_text(encoding="utf-8")) == {
         "version": 1,
         "setupCompletedAt": "2026-01-02T03:04:05.006Z",
     }
+    # The workspace runs again; setup was already complete, so nothing optional is seeded.
+    assert initialize_agent_workspace(tmp_path).created_files == ("AGENTS.md",)
 
 
-def test_upstream_canonical_state_file_is_read(tmp_path):
+def test_migrate_legacy_state_keeps_existing_memory_core_state(tmp_path):
+    initialize_agent_workspace(tmp_path, seed_bootstrap=False, now_ms=NOW_MS)
     (tmp_path / "openclaw-workspace-state.json").write_text(
-        json.dumps({"version": 1, "bootstrapSeededAt": "x"}), encoding="utf-8"
+        json.dumps({"version": 1, "bootstrapSeededAt": "2026-01-01T00:00:00.000Z"}),
+        encoding="utf-8",
     )
-    (tmp_path / "BOOTSTRAP.md").write_text("ritual", encoding="utf-8")
 
-    assert read_workspace_setup_state(tmp_path).bootstrap_seeded_at == "x"
-    assert bootstrap_status(tmp_path) == "pending"
+    result = migrate_legacy_workspace_state(tmp_path)
+
+    # Like upstream's "SQLite owns initialized milestones": cleanup only, no import.
+    assert result.imported is None
+    assert result.state == WorkspaceSetupState(setup_completed_at=NOW_ISO)
+    assert not (tmp_path / "openclaw-workspace-state.json").exists()
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        ("not json", "legacy workspace setup contains invalid JSON"),
+        ("[]", "legacy workspace setup is not an object"),
+        ('{"extra": 1}', "legacy workspace setup has an unexpected field"),
+        ('{"version": 2}', "legacy workspace setup has an unsupported version"),
+        ('{"setupCompletedAt": "2026-01-02"}', "legacy workspace setup completion timestamp is invalid"),
+        (
+            '{"setupCompletedAt": "2026-01-02T03:04:05.006Z", '
+            '"onboardingCompletedAt": "2026-01-02T03:04:05.007Z"}',
+            "legacy workspace setup has conflicting completion timestamps",
+        ),
+    ],
+)
+def test_migrate_legacy_state_refuses_malformed_sources(tmp_path, raw, message):
+    source = tmp_path / "openclaw-workspace-state.json"
+    source.write_text(raw, encoding="utf-8")
+
+    with pytest.raises(WorkspaceStateMigrationError, match=message):
+        migrate_legacy_workspace_state(tmp_path)
+    # Nothing is removed or written when a source does not parse.
+    assert source.read_text(encoding="utf-8") == raw
+    assert not _state_file(tmp_path).exists()
+
+
+def test_migrate_legacy_state_leaves_a_doctor_claim_alone(tmp_path):
+    claim = tmp_path / "openclaw-workspace-state.json.doctor-importing"
+    claim.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(WorkspaceStateMigrationError, match="interrupted doctor claim"):
+        migrate_legacy_workspace_state(tmp_path)
+    assert claim.exists()
 
 
 @pytest.mark.parametrize("raw", ["not json", "null", "42", '"text"', "NaN"])
@@ -284,8 +368,6 @@ def test_reconcile_keeps_completion_when_bootstrap_cleanup_fails(tmp_path, monke
 
 
 def test_memory_core_state_path_that_is_a_file_reads_as_absent(tmp_path):
-    from memory_core.bootstrap import build_workspace_context
-
     (tmp_path / ".memory-core").write_text("not a directory", encoding="utf-8")
     (tmp_path / "AGENTS.md").write_text("rules", encoding="utf-8")
 
@@ -298,8 +380,6 @@ def test_memory_core_state_path_that_is_a_file_reads_as_absent(tmp_path):
 
 
 def test_symlinked_workspace_root_is_loaded(tmp_path):
-    from memory_core.bootstrap import build_workspace_context
-
     real_root = tmp_path / "real"
     initialize_agent_workspace(real_root, templates={"AGENTS.md": "rules\n"}, seed_bootstrap=False)
     link = tmp_path / "link"

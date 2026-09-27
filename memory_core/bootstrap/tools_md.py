@@ -20,12 +20,17 @@ The upstream strings come from ``memory_core/bootstrap/_tools_md_constants.py``,
 ``scripts/extract_upstream_constants.py``. Deviations: the archive lives under the workspace,
 ``<root>/.memory-core/backups/tools-md-migration/<agent>-<sha256>.md`` (upstream:
 ``<OPENCLAW_STATE_DIR>/backups/tools-md-migration/``; memory-core keeps its state in ``.memory-core``);
-OS error texts in warnings are Python's, not Node's; the doctor preview mode, the health
-findings and the per-agent bootstrap-limit findings are not ported (one workspace, one call).
+every missing directory of that path is created ``0o700`` like upstream's recursive
+``fs.mkdir``. Warnings follow upstream's ``formatErrorMessage`` shape (the message, then each
+``cause`` and its error code, joined by `` | ``), but OS error texts are Python's, not Node's,
+and the secret redaction of that formatter is not applied (migration errors carry paths only).
+The doctor preview mode, the health findings and the per-agent bootstrap-limit findings are not
+ported (one workspace, one call).
 """
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import os
 import re
@@ -223,10 +228,57 @@ def _temp_path(target: Path) -> Path:
     return Path(f"{target}{_WRITING_INFIX}{os.getpid()}-{int(time.time() * 1000)}")
 
 
+def _format_error_message(exc: BaseException) -> str:
+    """``formatErrorMessage`` (``packages/normalization-core/src/error-coercion.ts``) for the
+    ``__cause__`` chain: the message, then each cause's message (skipped when the text already
+    contains it) and its errno name, joined by `` | ``; secret redaction is not ported."""
+    formatted = str(exc) or type(exc).__name__
+    seen = {formatted}
+
+    def append(message: str | None) -> None:
+        nonlocal formatted
+        if message and message not in seen:
+            formatted += f" | {message}"
+            seen.add(message)
+
+    visited = {id(exc)}
+    cause = exc.__cause__
+    while cause is not None and id(cause) not in visited:
+        visited.add(id(cause))
+        message = str(cause)
+        if message and message in formatted:
+            seen.add(message)
+        else:
+            append(message)
+        if isinstance(cause, OSError) and cause.errno is not None:
+            append(errno.errorcode.get(cause.errno))
+        cause = cause.__cause__
+    return formatted
+
+
+def _make_private_dirs(path: Path) -> None:
+    """``fs.mkdir(path, {recursive: true, mode: 0o700})``: every missing level gets ``0o700``."""
+    missing: list[Path] = []
+    current = path
+    while not os.path.lexists(current):
+        missing.append(current)
+        if current.parent == current:
+            break
+        current = current.parent
+    for directory in reversed(missing):
+        try:
+            os.mkdir(directory, 0o700)
+        except FileExistsError:
+            if not directory.is_dir():
+                raise
+    if not path.is_dir():
+        os.mkdir(path, 0o700)  # raises the error upstream's mkdir reports (EEXIST, ENOTDIR)
+
+
 def _archive_source(archive_dir: Path, agent_id: str, content: str, digest: str) -> Path:
     safe_agent_id = re.sub(r"[^A-Za-z0-9._-]+", "-", agent_id)
     archive = archive_dir / f"{safe_agent_id}-{digest}.md"
-    archive_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    _make_private_dirs(archive_dir)
     temp = _temp_path(archive)
     try:
         fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -244,12 +296,13 @@ def _archive_source(archive_dir: Path, agent_id: str, content: str, digest: str)
             with open(temp, "rb") as source, open(archive, "xb") as target:
                 shutil.copyfileobj(source, target)
         os.unlink(temp)
-    except FileExistsError:
+    except FileExistsError as exc:
         temp.unlink(missing_ok=True)
         if _sha256(archive.read_bytes().decode("utf-8", errors="replace")) != digest:
+            # Upstream: new Error(..., {cause: error}); the cause reaches the warning text.
             raise ToolsMdMigrationError(
                 f"TOOLS.md migration archive collision at {archive}"
-            ) from None
+            ) from exc
     except BaseException:
         temp.unlink(missing_ok=True)
         raise
@@ -389,7 +442,7 @@ def migrate_tools_md(
         os.unlink(tools_path)
     except Exception as exc:  # upstream collects every failure as a warning
         return ToolsMdMigrationResult(
-            (), (f'Agent "{agent_id}" TOOLS.md was not migrated: {exc}',)
+            (), (f'Agent "{agent_id}" TOOLS.md was not migrated: {_format_error_message(exc)}',)
         )
     shown = _shorten_home_path(str(tools_path))
     change = (

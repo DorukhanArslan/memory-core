@@ -101,6 +101,7 @@ type Payload = {
   texts?: Array<string | null>;
   repeat?: number;
   stateDirIsFile?: boolean;
+  seedArchive?: "same" | "different";
   cases?: Array<Record<string, any>>;
   scenarios?: Array<Record<string, any>>;
 };
@@ -1545,8 +1546,11 @@ async function main() {
     // fixture workspace written by the Python side, for one default agent "main" whose
     // workspace is workspaceDir (the upstream test's config shape). The archive lands under the
     // run's own state dir (<state>/backups/tools-md-migration); stateDirIsFile makes that path a
-    // file, as upstream's "cannot be archived" test does. Doctor notes are suppressed
-    // (OPENCLAW_SUPPRESS_NOTES) so stdout carries only the JSON result.
+    // file, as upstream's "cannot be archived" test does. seedArchive (a memory-core probe; upstream
+    // has no collision test) pre-writes <agent>-<sha256>.md there before the run: "same" holds
+    // TOOLS.md's own text (archiveSource's EEXIST + matching digest path), "different" that text
+    // plus one newline (the "archive collision" error with its EEXIST cause). Doctor notes are
+    // suppressed (OPENCLAW_SUPPRESS_NOTES) so stdout carries only the JSON result.
     if (!payload.workspaceDir) {
       throw new Error("workspaceDir is required");
     }
@@ -1557,6 +1561,17 @@ async function main() {
       if (payload.stateDirIsFile) {
         await fs.rm(stateDir, { recursive: true, force: true });
         await fs.writeFile(stateDir, "not a directory", "utf-8");
+      }
+      const archiveDir = path.join(stateDir, "backups", "tools-md-migration");
+      if (payload.seedArchive) {
+        const tools = await fs.readFile(path.join(workspaceDir, "TOOLS.md"), "utf-8");
+        const digest = crypto.createHash("sha256").update(tools).digest("hex");
+        await fs.mkdir(archiveDir, { recursive: true, mode: 0o700 });
+        await fs.writeFile(
+          path.join(archiveDir, `main-${digest}.md`),
+          payload.seedArchive === "same" ? tools : `${tools}\n`,
+          "utf-8",
+        );
       }
       const migration = await importFromRepo(repoPath, "src/commands/doctor-tools-md-migration.ts");
       const cfg = { agents: { list: [{ id: "main", default: true, workspace: workspaceDir }] } };
@@ -1570,7 +1585,6 @@ async function main() {
           }),
         );
       }
-      const archiveDir = path.join(stateDir, "backups", "tools-md-migration");
       const archives: Record<string, string> = {};
       for (const name of await fs.readdir(archiveDir).catch(() => [] as string[])) {
         archives[name] = await fs.readFile(path.join(archiveDir, name), "utf-8");

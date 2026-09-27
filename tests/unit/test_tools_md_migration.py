@@ -214,7 +214,70 @@ def test_should_merge_and_merge_helpers():
 
 def test_archive_mode_is_private(tmp_path):
     root = _workspace(tmp_path, "# Agent\n", "notes\n")
+    umask = os.umask(0o022)
+    try:
+        migrate_tools_md(root)
+    finally:
+        os.umask(umask)
+
+    assert oct(os.stat(_only_archive(root)).st_mode & 0o777) == oct(0o600)
+    # fs.mkdir(archiveDir, {recursive: true, mode: 0o700}) creates every missing level 0o700.
+    for relative in (".memory-core", ".memory-core/backups", ".memory-core/backups/tools-md-migration"):
+        assert oct(os.stat(root / relative).st_mode & 0o777) == oct(0o700), relative
+
+
+def test_an_existing_state_dir_keeps_its_mode(tmp_path):
+    root = _workspace(tmp_path, "# Agent\n", "notes\n")
+    (root / ".memory-core").mkdir(mode=0o755)
+    os.chmod(root / ".memory-core", 0o755)
 
     migrate_tools_md(root)
 
-    assert oct(os.stat(_only_archive(root)).st_mode & 0o777) == oct(0o600)
+    assert oct(os.stat(root / ".memory-core").st_mode & 0o777) == oct(0o755)
+    assert oct(os.stat(root / ".memory-core" / "backups").st_mode & 0o777) == oct(0o700)
+
+
+def _seed_archive(root: Path, tools: str, content: str) -> Path:
+    digest = hashlib.sha256(tools.encode("utf-8")).hexdigest()
+    archive = tools_md_archive_dir(root) / f"main-{digest}.md"
+    archive.parent.mkdir(parents=True)
+    archive.write_text(content, encoding="utf-8")
+    return archive
+
+
+def test_an_identical_existing_archive_is_reused(tmp_path):
+    # archiveSource: EEXIST from publishFileNoClobber plus a matching SHA-256 is not an error.
+    agents = "# Agent\n\n## Tools\n\nExisting notes.\n"
+    tools = "Local camera: kitchen → wide angle\n"
+    root = _workspace(tmp_path, agents, tools)
+    archive = _seed_archive(root, tools, tools)
+
+    result = migrate_tools_md(root)
+
+    assert result.warnings == ()
+    assert result.archive_path == str(archive)
+    assert sorted(path.name for path in archive.parent.iterdir()) == [archive.name]
+    assert (root / "AGENTS.md").read_text(encoding="utf-8") == f"{agents}\n{MIGRATED}\n\n{tools}"
+    assert not (root / "TOOLS.md").exists()
+
+
+def test_a_different_existing_archive_is_a_collision_with_its_cause(tmp_path):
+    # Upstream throws new Error("... archive collision at <path>", {cause: EEXIST error}) and
+    # formatErrorMessage appends " | <cause message> | EEXIST"; the cause text is Python's here.
+    agents = "# Agent\n\n## Tools\n\nExisting notes.\n"
+    tools = "Local camera: kitchen → wide angle\n"
+    root = _workspace(tmp_path, agents, tools)
+    archive = _seed_archive(root, tools, f"{tools}\n")
+
+    result = migrate_tools_md(root)
+
+    assert result.changes == ()
+    (warning,) = result.warnings
+    prefix = f'Agent "main" TOOLS.md was not migrated: TOOLS.md migration archive collision at {archive} | '
+    assert warning.startswith(prefix)
+    assert warning.endswith(" | EEXIST")
+    assert "File exists" in warning[len(prefix) :]
+    assert archive.read_text(encoding="utf-8") == f"{tools}\n"
+    assert sorted(path.name for path in archive.parent.iterdir()) == [archive.name]
+    assert (root / "AGENTS.md").read_text(encoding="utf-8") == agents
+    assert (root / "TOOLS.md").read_text(encoding="utf-8") == tools

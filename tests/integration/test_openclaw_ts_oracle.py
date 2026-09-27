@@ -1,4 +1,5 @@
 import dataclasses
+import hashlib
 import os
 from pathlib import Path
 import json
@@ -5043,6 +5044,18 @@ TOOLS_MD_MIGRATION_SCENARIOS = [
         id="fence-and-closed-heading",
     ),
     pytest.param({"AGENTS.md": _TOOLS_AGENTS}, {}, id="no-tools-md"),
+    # memory-core probes of archiveSource's EEXIST branch (upstream has no collision test): an
+    # archive with TOOLS.md's own text is reused, one with an extra newline is a collision.
+    pytest.param(
+        {"AGENTS.md": _TOOLS_AGENTS, "TOOLS.md": "Local camera: kitchen → wide angle\n"},
+        {"seedArchive": "same"},
+        id="archive-exists-same",
+    ),
+    pytest.param(
+        {"AGENTS.md": _TOOLS_AGENTS, "TOOLS.md": "Local camera: kitchen → wide angle\n"},
+        {"seedArchive": "different"},
+        id="archive-collision",
+    ),
     *[
         pytest.param(
             {"AGENTS.md": f"# Agent\n\n## Tools\n\n{legacy}\n", "TOOLS.md": LEGACY_TOOLS_MD_TEMPLATE},
@@ -5065,9 +5078,19 @@ def _write_tools_fixture(root: Path, files: dict, options: dict) -> None:
             (root / name).write_text(content, encoding="utf-8")
     if options.get("stateDirIsFile"):
         (root / ".memory-core").write_text("not a directory", encoding="utf-8")
+    if options.get("seedArchive"):
+        tools = files["TOOLS.md"]
+        archive = tools_md_archive_dir(root) / f"main-{hashlib.sha256(tools.encode('utf-8')).hexdigest()}.md"
+        archive.parent.mkdir(parents=True)
+        archive.write_text(tools if options["seedArchive"] == "same" else f"{tools}\n", encoding="utf-8")
 
 
 _OS_ERROR_TAIL_RE = re.compile(r"(TOOLS\.md was not migrated: ).+$")
+# The collision names the archive (upstream: <state>/backups/..., memory-core: <root>/.memory-core/...)
+# and formatErrorMessage appends the EEXIST cause's message (Node's text vs Python's) and code.
+_COLLISION_RE = re.compile(
+    r"(archive collision at )\S+/(main-[0-9a-f]{64}\.md) \| .+ \| (E[A-Z]+)$"
+)
 
 
 @pytest.mark.parametrize(("files", "options"), TOOLS_MD_MIGRATION_SCENARIOS)
@@ -5106,6 +5129,15 @@ def test_real_openclaw_oracle_tools_md_migration_matches_python(tmp_path: Path, 
         for side in (ts_result, python_result):
             for run in side["runs"]:
                 run["warnings"] = [_OS_ERROR_TAIL_RE.sub(r"\1<os error>", w) for w in run["warnings"]]
+    if options.get("seedArchive") == "different":
+        # Deviation: the archive location and the cause's OS text differ; the message up to the
+        # archive name, the " | <cause> | EEXIST" shape and the untouched files must match.
+        for side in (ts_result, python_result):
+            for run in side["runs"]:
+                run["warnings"] = [
+                    _COLLISION_RE.sub(r"\1<archive>/\2 | <os error> | \3", w) for w in run["warnings"]
+                ]
+        assert ts_result["runs"][0]["warnings"][0].endswith("| <os error> | EEXIST"), ts_result
     assert ts_result == python_result
 
 

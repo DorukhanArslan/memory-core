@@ -1370,6 +1370,23 @@ def test_heartbeat_scratch_stores_a_lone_surrogate_as_u_fffd(client, lab):
     assert response.json()["scratch"]["bytes"] == 5
 
 
+def test_heartbeat_state_skips_job_rows_the_store_cannot_load(client, lab):
+    client.get("/api/lab/state")
+    store = lab.root / ".memory-core" / "automation.json"
+    store.parent.mkdir(parents=True, exist_ok=True)
+    store.write_text(json.dumps({"version": 1, "scratch": {}, "jobs": [
+        {"id": "cron-1", "schedule": {"kind": "cron", "expr": "0 * * * *"}, "payload": {"kind": "systemEvent", "text": "x"}},
+    ]}), encoding="utf-8")
+
+    state = client.get("/api/lab/heartbeat")
+
+    assert state.status_code == 200, state.text
+    assert state.json()["jobs"] == []
+    assert state.json()["skippedJobRows"] == [
+        {"index": 0, "id": "cron-1", "reason": "only every-schedule systemEvent jobs are supported"}
+    ]
+
+
 def test_heartbeat_skips_empty_scratch_without_a_model_call(client, lab, monkeypatch):
     engine = use_engine(monkeypatch, StubEngine([("x", [])]))
     client.get("/api/lab/state")

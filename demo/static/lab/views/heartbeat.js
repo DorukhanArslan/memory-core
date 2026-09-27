@@ -165,7 +165,7 @@ function everyLabel(ms) {
   const min = ms / 60000;
   return Number.isInteger(min) ? `${fmtN(min)} ${t('unit.min')}` : fmtMs(ms);
 }
-function jobsCard(jobs, now) {
+function jobsCard(jobs, now, skipped = []) {
   const table = jobs.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
     h('thead', null, h('tr', null, ['task', 'interval', 'prompt', 'last', 'next', 'state'].map((c) => h('th', { scope: 'col' }, t(`hb.col.${c}`))))),
     h('tbody', null, jobs.map((job) => h('tr', { 'data-testid': 'hb-job' },
@@ -175,7 +175,8 @@ function jobsCard(jobs, now) {
       h('td', { class: 'num nowrap' }, job.nextRunAtMs ? fmtTime(job.nextRunAtMs, { seconds: false }) : '—'),
       h('td', { class: 'td-state' }, !job.enabled ? chip({ label: t('hb.jobDisabled'), tone: 'neutral' }) : job.due ? chip({ label: t('hb.due'), tone: 'accent', ic: 'dot' }) : chip({ label: `${t('hb.waiting')} (${fmtRelMin((job.nextRunAtMs ?? now) - now)})`, tone: 'neutral', ic: 'clock' })))))))
     : h('div', { class: 'muted pad' }, t('hb.noJobs'));
-  return card(t('hb.jobs'), table, { ic: 'layers', target: 'hb-jobs', testid: 'hb-jobs', right: h('span', { class: 'muted small mono' }, 'due_automation_jobs · heartbeat_scheduled_tasks') });
+  const skippedChip = skipped.length ? chip({ label: t('hb.skippedRows', { n: skipped.length }), tone: 'warn', cls: 'chip-xs', title: skipped.map((r) => `#${r.index}${r.id ? ` ${r.id}` : ''}: ${r.reason}`).join('\n'), testid: 'hb-skipped-rows' }) : null;
+  return card(t('hb.jobs'), table, { ic: 'layers', target: 'hb-jobs', testid: 'hb-jobs', right: h('span', { class: 'chip-wrap' }, skippedChip, h('span', { class: 'muted small mono' }, 'due_automation_jobs · heartbeat_scheduled_tasks')) });
 }
 function legacyCard(hb) {
   const u = store.ui;
@@ -245,7 +246,7 @@ export function renderHeartbeat(body) {
         lastErr.code === 'no_api_key' ? btn(t('act.goSettings'), { size: 'sm', kind: 'ghost', onClick: () => store.actions.openSettings('chat') }) : null) : null,
       legacyCard(hb),
       scratchCard(sc),
-      jobsCard(hb.jobs || [], now),
+      jobsCard(hb.jobs || [], now, hb.skippedJobRows || []),
       nextPromptCard(pre),
       latest ? runCard(latest, !!running) : emptyState({ title: t('hb.noRuns'), text: t('hb.noRunsText'), level: 3 }),
       historyCard(hb.runs || []),

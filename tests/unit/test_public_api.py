@@ -211,6 +211,7 @@ def test_public_api_exports_heartbeat_helpers():
         "HEARTBEAT_PROMPT",
         "HEARTBEAT_TOKEN",
         "AutomationJob",
+        "AutomationStore",
         "FileAutomationStore",
         "HeartbeatReplyDecision",
         "HeartbeatScheduledTask",

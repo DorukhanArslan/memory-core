@@ -47,7 +47,8 @@ Included:
   `HeartbeatTurn`, `HeartbeatScheduledTask`, `decide_heartbeat_reply`,
   `HeartbeatReplyDecision`, `strip_heartbeat_token`, `resolve_heartbeat_interval_ms`,
   `HEARTBEAT_PROMPT`, `HEARTBEAT_TOKEN`; `HeartbeatScratchState`, `HeartbeatScratchStore`;
-  `AutomationJob`, `FileAutomationStore`, `due_automation_jobs`, `heartbeat_scheduled_tasks`,
+  `AutomationJob`, `AutomationStore`, `FileAutomationStore`, `due_automation_jobs`,
+  `heartbeat_scheduled_tasks`,
   `record_automation_job_run`; the doctor migrations in `memory_core.heartbeat_migration`).
   Heartbeat itself is a runtime feature: the host owns the scheduler (monitor cadence,
   job timers, retries), the model call and delivery; memory-core decides what the heartbeat

@@ -65,6 +65,7 @@ from memory_core.embeddings import (
 from memory_core.flags import FeatureFlags
 from memory_core.automation import (
     AutomationJob,
+    AutomationStore,
     FileAutomationStore,
     due_automation_jobs,
     heartbeat_scheduled_tasks,
@@ -253,6 +254,7 @@ __all__ = [
     "HEARTBEAT_PROMPT",
     "HEARTBEAT_TOKEN",
     "AutomationJob",
+    "AutomationStore",
     "FileAutomationStore",
     "HeartbeatReplyDecision",
     "HeartbeatScheduledTask",

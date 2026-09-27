@@ -170,6 +170,8 @@ def heartbeat_state(lab: LabRuntime) -> dict[str, Any]:
     return {
         "scratch": _scratch_view(store.read_scratch(HEARTBEAT_AGENT_ID)),
         "jobs": [_job_view(job, now) for job in store.list_jobs(agent_id=HEARTBEAT_AGENT_ID)],
+        # Rows list_jobs skips (a shape memory-core does not model, values the cron store refuses).
+        "skippedJobRows": [row.to_json() for row in store.skipped_job_rows()],
         "legacyFile": {"path": LEGACY_HEARTBEAT_FILENAME, "exists": legacy.exists() or legacy.is_symlink()},
         "migrationFindings": [
             {**finding, "path": _relative(lab, finding["path"])} for finding in findings

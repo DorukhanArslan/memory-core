@@ -407,6 +407,7 @@ export const TR = {
   'hb.jobs': 'Otomasyon işleri',
   'hb.noJobs': 'Otomasyon işi yok. Eski bir HEARTBEAT.md\'nin tasks: bloğu taşınınca burada görünür.',
   'hb.jobDisabled': 'kapalı',
+  'hb.skippedRows': '{n} kayıtlı iş satırı atlandı: yüklenemiyor (depoda korunur)',
   'hb.legacy': 'Eski heartbeat biçimi (doctor)',
   'hb.legacyNote': 'v2026.9.6 HEARTBEAT.md\'yi okumaz ve tasks: bloğunu çalışma zamanında ayrıştırmaz. Taşı: HEARTBEAT.md metni monitor scratch\'e (özgün dosya .memory-core/backups/heartbeat-migration/ altına arşivlenir), scratch\'teki tasks: bloğu otomasyon işlerine geçer.',
   'hb.migrate': 'Taşı',

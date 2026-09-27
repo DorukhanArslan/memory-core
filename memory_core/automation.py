@@ -28,8 +28,8 @@ decisions, ported from ``src/cron/service/jobs-scheduling.ts`` and ``src/cron/sc
   ``nextRunAtMs`` is not a non-negative safe integer (``getInvalidPersistedCronJobReason``,
   ``src/cron/persisted-shape.ts``); :class:`FileAutomationStore` applies it on every save.
 
-:class:`FileAutomationStore` is the default store for both the monitor scratch
-(:class:`~memory_core.heartbeat_scratch.HeartbeatScratchStore`) and the jobs: one JSON file,
+:class:`AutomationStore` is the store interface of the monitor scratch and the jobs;
+:class:`FileAutomationStore` is its default implementation: one JSON file,
 ``<root>/.memory-core/automation.json``, written atomically under a lock, so a migration can move
 tasks out of the scratch and into jobs in one write (upstream: one state-DB transaction).
 
@@ -51,13 +51,14 @@ import time
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from memory_core._heartbeat_constants import CRON_STORE_CANNOT_PERSIST, HEARTBEAT_TASK_DECLARATION_PREFIX
 from memory_core.bootstrap._js import js_json_stringify, js_trim, locale_sort_key
 from memory_core.heartbeat import HeartbeatScheduledTask
 from memory_core.heartbeat_scratch import (
     HeartbeatScratchState,
+    HeartbeatScratchStore,
     HeartbeatScratchWrite,
     apply_heartbeat_scratch_delete,
     apply_heartbeat_scratch_write,
@@ -65,7 +66,9 @@ from memory_core.heartbeat_scratch import (
 
 __all__ = [
     "AutomationJob",
+    "AutomationStore",
     "FileAutomationStore",
+    "SkippedAutomationJobRow",
     "assert_automation_jobs_can_persist",
     "compute_job_next_run_at_ms",
     "due_automation_jobs",
@@ -151,9 +154,20 @@ class AutomationJob:
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> AutomationJob:
+        """Read a job in upstream's field names; ``ValueError`` for a shape it does not model.
+
+        Values are taken as they are (the schedule math handles invalid ones like upstream);
+        :meth:`FileAutomationStore.list_jobs` also skips rows the cron store would not load.
+        """
+        if not isinstance(data, dict):
+            raise ValueError("job row is not an object")
+        if not isinstance(data.get("id"), str):
+            raise ValueError("job row has no string id")
         schedule = data.get("schedule") or {}
         payload = data.get("payload") or {}
         state = data.get("state") or {}
+        if not isinstance(schedule, dict) or not isinstance(payload, dict) or not isinstance(state, dict):
+            raise ValueError("job schedule, payload and state must be objects")
         if schedule.get("kind") != "every" or payload.get("kind") != "systemEvent":
             raise ValueError("only every-schedule systemEvent jobs are supported")
         return cls(
@@ -194,22 +208,26 @@ def _floor_schedule_number(value: object, minimum: int) -> object:
     return value
 
 
-def _persisted_job(job: AutomationJob) -> AutomationJob | None:
+def _persisted_job(job: AutomationJob, *, normalize: bool = True) -> AutomationJob | None:
     """``normalizeCronJobForSqlite`` for an every-schedule ``systemEvent`` job (``None``: refused).
 
-    ``normalizeCronJobInput`` floors the schedule numbers, then
-    ``getInvalidPersistedCronJobReason`` checks the id, the state timestamps and the schedule
-    (the payload text is always a string here).
+    ``normalizeCronJobInput`` floors the schedule numbers (``normalize``; the read path of
+    ``rowToCronJob`` checks the stored values as they are), then
+    ``getInvalidPersistedCronJobReason`` checks the id, the state timestamps memory-core models
+    (``lastRunAtMs``, ``nextRunAtMs``) and the schedule (the payload text is always a string
+    here).
     """
     if not js_trim(job.id):
         return None
     for value in (job.next_run_at_ms, job.last_run_at_ms):
         if value is not None and not _as_safe_integer_in_range(value, 0, _MAX_DATE_TIMESTAMP_MS):
             return None
-    every = _floor_schedule_number(job.every_ms, 1)
+    every = _floor_schedule_number(job.every_ms, 1) if normalize else job.every_ms
     if not _as_safe_integer_in_range(every, 1, _MAX_DATE_TIMESTAMP_MS):
         return None
-    anchor = None if job.anchor_ms is None else _floor_schedule_number(job.anchor_ms, 0)
+    anchor = job.anchor_ms
+    if anchor is not None and normalize:
+        anchor = _floor_schedule_number(anchor, 0)
     if anchor is not None and not _as_safe_integer_in_range(anchor, 0, _MAX_DATE_TIMESTAMP_MS):
         return None
     if every == job.every_ms and anchor == job.anchor_ms:
@@ -349,15 +367,62 @@ def record_automation_job_run(
     return replace(ran, next_run_at_ms=compute_job_next_run_at_ms(ran, ended))
 
 
-# --- default file-backed store -----------------------------------------------------------------
+# --- store interface and default file-backed store ---------------------------------------------
+
+
+class AutomationStore(HeartbeatScratchStore, Protocol):
+    """Where a host keeps the monitor scratch and the automation jobs (the doctor migrations' store).
+
+    :func:`memory_core.heartbeat_migration.migrate_heartbeat_tasks` needs, on top of
+    :class:`~memory_core.heartbeat_scratch.HeartbeatScratchStore`:
+
+    - ``list_jobs``: the jobs the store can load (rows it cannot load are skipped, like
+      upstream's ``rowToCronJob`` returning ``null``);
+    - ``save_jobs``: upsert ``jobs`` by id and drop ``remove`` ids in one atomic write. With
+      ``scratch_agent_id`` the same write replaces that agent's scratch through
+      :func:`~memory_core.heartbeat_scratch.apply_heartbeat_scratch_write`, a compare-and-swap on
+      ``scratch_expected_revision``: on a conflict nothing is written and the conflicting
+      :class:`~memory_core.heartbeat_scratch.HeartbeatScratchWrite` is returned, otherwise the
+      scratch write (``None`` without ``scratch_agent_id``). Jobs that
+      :func:`assert_automation_jobs_can_persist` refuses raise ``ValueError`` before anything
+      is written (upstream: one state-DB transaction guarded by ``assertCronStoreCanPersist``).
+    """
+
+    def list_jobs(self, *, agent_id: str | None = None) -> list[AutomationJob]: ...
+
+    def save_jobs(
+        self,
+        jobs: Sequence[AutomationJob],
+        *,
+        remove: Sequence[str] = (),
+        scratch_agent_id: str | None = None,
+        scratch_content: str | None = None,
+        scratch_expected_revision: int | None = None,
+        scratch_source_sha256: str | None = None,
+        now_ms: int | None = None,
+    ) -> HeartbeatScratchWrite | None: ...
+
+
+@dataclass(frozen=True)
+class SkippedAutomationJobRow:
+    """A stored job row :meth:`FileAutomationStore.list_jobs` skipped: its index and why."""
+
+    index: int
+    job_id: str | None
+    reason: str
+
+    def to_json(self) -> dict[str, Any]:
+        return {"index": self.index, "id": self.job_id, "reason": self.reason}
 
 
 class FileAutomationStore:
     """Monitor scratch and automation jobs in ``<root>/.memory-core/automation.json``.
 
-    Implements :class:`~memory_core.heartbeat_scratch.HeartbeatScratchStore` plus ``list_jobs`` /
-    ``save_jobs``. Every change rewrites the file atomically (temp file + rename) under an
-    advisory lock, so concurrent writers see compare-and-swap conflicts instead of lost updates.
+    Implements :class:`AutomationStore`. Every change rewrites the file atomically (temp file +
+    rename) under an advisory lock, so concurrent writers see compare-and-swap conflicts instead
+    of lost updates. A job row it cannot load (a shape memory-core does not model, or values the
+    cron store would not load) is skipped by ``list_jobs``, reported by
+    :meth:`skipped_job_rows` and kept untouched by ``save_jobs``.
     """
 
     def __init__(self, root: str | os.PathLike[str]):
@@ -458,9 +523,31 @@ class FileAutomationStore:
 
     # -- jobs
 
+    def _load_jobs(self) -> tuple[list[AutomationJob], list[SkippedAutomationJobRow]]:
+        jobs: list[AutomationJob] = []
+        skipped: list[SkippedAutomationJobRow] = []
+        for index, item in enumerate(self._load()["jobs"]):
+            raw_id = item.get("id") if isinstance(item, dict) else None
+            job_id = raw_id if isinstance(raw_id, str) else None
+            try:
+                job = AutomationJob.from_json(item)
+            except (ValueError, TypeError) as exc:
+                skipped.append(SkippedAutomationJobRow(index, job_id, str(exc)))
+                continue
+            if _persisted_job(job, normalize=False) is None:
+                # rowToCronJob: getInvalidPersistedCronJobReason rejects the stored values.
+                skipped.append(SkippedAutomationJobRow(index, job_id, "invalid persisted job"))
+                continue
+            jobs.append(job)
+        return jobs, skipped
+
     def list_jobs(self, *, agent_id: str | None = None) -> list[AutomationJob]:
-        jobs = [AutomationJob.from_json(item) for item in self._load()["jobs"]]
+        jobs, _skipped = self._load_jobs()
         return [job for job in jobs if agent_id is None or job.agent_id == agent_id]
+
+    def skipped_job_rows(self) -> list[SkippedAutomationJobRow]:
+        """The stored rows ``list_jobs`` skips (upstream keeps them as ``invalidConfigRows``)."""
+        return self._load_jobs()[1]
 
     def save_jobs(
         self,

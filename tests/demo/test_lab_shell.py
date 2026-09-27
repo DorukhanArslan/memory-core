@@ -291,7 +291,7 @@ def test_contract_heartbeat_fields(lab_client: TestClient) -> None:
     # views/heartbeat.js reads the monitor scratch, the automation jobs, the legacy HEARTBEAT.md
     # findings and the keyless preflight (v2026.9.6 shape; no HEARTBEAT.md tasks: parsing).
     hb = lab_client.get("/api/lab/heartbeat").json()
-    for field in ("scratch", "jobs", "legacyFile", "migrationFindings", "preflight", "labels", "runs", "ackLimit", "store"):
+    for field in ("scratch", "jobs", "skippedJobRows", "legacyFile", "migrationFindings", "preflight", "labels", "runs", "ackLimit", "store"):
         assert field in hb, field
     assert {"skipReason", "dueTasks", "prompt", "message", "scratchShown"} <= set(hb["preflight"])
     assert {"status", "currentRevision", "content", "bytes", "maxBytes"} <= set(hb["scratch"])

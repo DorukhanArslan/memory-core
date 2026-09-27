@@ -7,12 +7,14 @@ Anchors and cadences follow src/commands/doctor-heartbeat-task-migration.test.ts
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 
 import pytest
 
 from memory_core.automation import (
     AutomationJob,
+    AutomationStore,
     FileAutomationStore,
     assert_automation_jobs_can_persist,
     compute_job_next_run_at_ms,
@@ -142,3 +144,27 @@ def test_store_refuses_jobs_the_cron_store_cannot_persist(tmp_path):
     with pytest.raises(ValueError):
         store.save_jobs([inbox, replace(inbox, id="job-2", last_run_at_ms=-5)])
     assert store.list_jobs() == [] and not store.path.exists()
+
+
+def test_store_skips_rows_it_cannot_load_and_keeps_them(tmp_path):
+    # rowToCronJob returns null for a row the cron store cannot load; the rest still load.
+    store: AutomationStore = FileAutomationStore(tmp_path)
+    inbox = _job("job-1", "inbox", 60 * 60_000, NOW)
+    store.save_jobs([inbox])
+    data = json.loads(store.path.read_text(encoding="utf-8"))
+    cron_row = {
+        "id": "cron-1",
+        "schedule": {"kind": "cron", "expr": "0 * * * *"},
+        "payload": {"kind": "systemEvent", "text": "x"},
+    }
+    bad_state = {**data["jobs"][0], "id": "job-2", "state": {"lastRunAtMs": -5}}
+    data["jobs"] += [cron_row, "not a job", bad_state]
+    store.path.write_text(json.dumps(data), encoding="utf-8")
+
+    assert [job.id for job in store.list_jobs()] == ["job-1"]
+    assert [(row.index, row.job_id) for row in store.skipped_job_rows()] == [
+        (1, "cron-1"), (2, None), (3, "job-2"),
+    ]
+    store.save_jobs([record_automation_job_run(inbox, started_at_ms=NOW + 1)])
+    kept = json.loads(store.path.read_text(encoding="utf-8"))["jobs"]
+    assert kept[1:] == [cron_row, "not a job", bad_state]

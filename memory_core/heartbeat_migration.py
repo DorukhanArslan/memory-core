@@ -3,8 +3,9 @@
 v2026.9.6 no longer reads HEARTBEAT.md (3e2b3ea4d5e, #112967; 07e3855b465, #113131) and no
 longer parses ``tasks:`` blocks at runtime (b23c7bd0f84, #113165); ``openclaw doctor --fix``
 migrates old workspaces in two steps. This module ports both for a memory-core workspace root and
-a host :class:`~memory_core.heartbeat_scratch.HeartbeatScratchStore` (the default
-:class:`~memory_core.automation.FileAutomationStore` also keeps the jobs):
+a host store (:class:`~memory_core.heartbeat_scratch.HeartbeatScratchStore` for the file
+migration, :class:`~memory_core.automation.AutomationStore` for the task migration; the default
+:class:`~memory_core.automation.FileAutomationStore` is both):
 
 - :func:`migrate_heartbeat_md` (``maybeMigrateHeartbeatFilesToScratch``,
   ``src/commands/doctor-heartbeat-scratch-migration.ts``): the file is read no-follow with its
@@ -114,6 +115,7 @@ from memory_core._heartbeat_constants import (
 )
 from memory_core.automation import (
     AutomationJob,
+    AutomationStore,
     assert_automation_jobs_can_persist,
     compute_job_next_run_at_ms,
     heartbeat_task_declaration_key,
@@ -1039,7 +1041,7 @@ def _converge_task_job(
 
 
 def migrate_heartbeat_tasks(
-    store: Any,
+    store: AutomationStore,
     *,
     agent_id: str = "main",
     legacy_task_state: Mapping[str, float] | None = None,
@@ -1048,8 +1050,10 @@ def migrate_heartbeat_tasks(
     """Turn the ``tasks:`` block of an agent's monitor scratch into automation jobs.
 
     Port of ``maybeMigrateHeartbeatTasksToCron`` (``shouldRepair``) for one agent. ``store``
-    is a scratch store with ``list_jobs()`` and an atomic ``save_jobs(jobs, scratch_*...)``
-    (:class:`~memory_core.automation.FileAutomationStore`). A block with an incomplete entry, a
+    is an :class:`~memory_core.automation.AutomationStore` (``list_jobs`` plus the atomic
+    scratch-and-jobs ``save_jobs``; :class:`~memory_core.automation.FileAutomationStore` by
+    default); rows the store cannot load are not listed, so they take no part in the
+    declaration-collision check. A block with an incomplete entry, a
     non-positive interval or no complete entry is refused with a warning; each task becomes
     (or converges) a job with an ``every`` schedule, its prompt as the payload, the stable
     ``heartbeat-task:`` declaration key and a first run right after ``now_ms`` or one interval

@@ -29,7 +29,8 @@ export function heartbeatTab() {
     wrap.append(section('hb-tools', t('prompt.tools'), { count: tools.length, empty: !tools.length, body: () => (tools.length ? h('div', { class: 'stack-tight' }, tools.map((tc) => toolCard({ ...tc, status: tc.status || (tc.ok === false ? 'error' : 'ok') }))) : h('div', { class: 'muted' }, t('hb.noTools'))) }));
   }
   const next = store.data.heartbeat?.preflight;
-  if (next) wrap.append(section('hb-next', t('hb.nextPrompt'), { count: (next.message || '').length, copy: next.message || '', empty: !next.message, body: () => (next.message ? promptPre(next.message) : h('div', { class: 'muted' }, `${t('hb.skipped')}: ${next.skipReason} · ${t('hb.noModelCall')}`)) }));
+  if (next) wrap.append(section('hb-next', t('hb.nextPrompt'), { count: (next.message || '').length, copy: next.message || '', empty: !next.message,
+    tags: next.timeFormat ? [{ text: `${next.timeFormat}h`, tone: 'neutral', tip: t('settings.timeFormatNote') }] : [], body: () => (next.message ? promptPre(next.message) : h('div', { class: 'muted' }, `${t('hb.skipped')}: ${next.skipReason} · ${t('hb.noModelCall')}`)) }));
   wrap.append(h('div', { class: 'subhead' }, h('h3', null, t('hb.previewKind'))));
   wrap.append(promptTab(null, { ctx: 'heartbeat' }));
   return wrap;

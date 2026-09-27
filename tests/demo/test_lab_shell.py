@@ -319,6 +319,8 @@ def test_settings_and_heartbeat_inspector_show_the_one_host_time_format(lab_clie
     assert "settings-time-format" in settings_view and "s.timeFormat" in settings_view
     prompt_view = (LAB_ROOT / "inspector" / "prompt.js").read_text(encoding="utf-8")
     assert "hp.timeFormat" in prompt_view
+    heartbeat_inspector = (LAB_ROOT / "inspector" / "heartbeat.js").read_text(encoding="utf-8")
+    assert "next.timeFormat" in heartbeat_inspector
     tr = (LAB_ROOT / "i18n" / "tr.js").read_text(encoding="utf-8")
     en = (LAB_ROOT / "i18n" / "en.js").read_text(encoding="utf-8")
     assert "'settings.timeFormatNote':" in tr and "'settings.timeFormatNote':" in en

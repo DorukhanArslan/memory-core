@@ -1,9 +1,22 @@
+"""The run-loop Vitest oracle (test infrastructure, demo-only).
+
+Accepted exception to "never modify the oracle checkout" (docs/lab.md › Oracle checkout): the
+upstream Vitest project only collects test files inside the checkout, and the case imports
+the run-loop harness by relative path, so one generated file,
+``src/agents/embedded-agent-runner/memory-core-overflow-run-loop.oracle.test.ts``
+(:data:`ORACLE_TEST_FILENAME`), exists there for the duration of one Vitest run and is removed
+in a ``finally`` block. A killed run (SIGKILL, a crash) can leave it behind; the next run
+removes that stale copy before writing its own and reports it (a :class:`RuntimeWarning` and
+``staleTestFileRemoved`` in the result). One run per checkout at a time.
+"""
+
 from __future__ import annotations
 
 import json
 import os
 import subprocess
 import tempfile
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +30,20 @@ class OpenClawRunLoopOracleError(RuntimeError):
 # The upstream Vitest harness needs 150-210 s on this machine (162 s idle and 204 s at load
 # average 7 on 2026-09-26), so 180 s timed out under load; 600 s leaves headroom.
 RUN_LOOP_ORACLE_TIMEOUT_SECONDS = 600.0
+ORACLE_TEST_FILENAME = "memory-core-overflow-run-loop.oracle.test.ts"
+
+
+def _remove_stale_oracle_test_file(test_file: Path) -> bool:
+    """Remove a copy an interrupted run left in the checkout; True if there was one."""
+    if not os.path.lexists(test_file):
+        return False
+    test_file.unlink()
+    warnings.warn(
+        f"removed a stale run-loop oracle test file left in the oracle checkout: {test_file}",
+        RuntimeWarning,
+        stacklevel=3,
+    )
+    return True
 
 
 def run_overflow_run_loop_oracle(
@@ -37,7 +64,8 @@ def run_overflow_run_loop_oracle(
         node_env = oracle_subprocess_env(repo_path)
     except OracleNodeError as exc:
         raise OpenClawRunLoopOracleError(str(exc)) from exc
-    test_file = test_dir / "memory-core-overflow-run-loop.oracle.test.ts"
+    test_file = test_dir / ORACLE_TEST_FILENAME
+    stale_removed = _remove_stale_oracle_test_file(test_file)
     with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-run-loop-oracle-") as tmp_dir:
         output_path = Path(tmp_dir) / "result.json"
         test_file.write_text(_overflow_run_loop_oracle_test_source(), encoding="utf-8")
@@ -66,6 +94,8 @@ def run_overflow_run_loop_oracle(
             raise OpenClawRunLoopOracleError(f"OpenClaw run-loop oracle output missing: {exc}") from exc
         if not isinstance(result, dict):
             raise OpenClawRunLoopOracleError("OpenClaw run-loop oracle output was not an object")
+        if stale_removed:
+            result["staleTestFileRemoved"] = str(test_file)
         return result
 
 

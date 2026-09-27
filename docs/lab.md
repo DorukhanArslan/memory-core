@@ -178,6 +178,15 @@ export OPENCLAW_ORACLE_NODE=<node-dir>/node
 Use a short, fresh `TMPDIR` per run (long paths break tsx's IPC sockets); the runner gives
 every operation its own `OPENCLAW_STATE_DIR` and never touches `~/.openclaw`.
 
+One accepted exception to leaving the checkout untouched: the run-loop oracle
+(`demo/openclaw_run_loop_oracle.py`) writes
+`src/agents/embedded-agent-runner/memory-core-overflow-run-loop.oracle.test.ts` for the length of
+one Vitest run and removes it in a `finally` block, because the checkout's Vitest projects only
+collect test files inside the repo and the case imports the run-loop harness by relative path.
+A killed run can leave the file behind; the next run removes that stale copy and reports it (a
+`RuntimeWarning` and `staleTestFileRemoved` in the result), and `git -C <checkout> status`
+shows it in between. Run one run-loop oracle per checkout at a time.
+
 ## Parity results
 
 ```bash

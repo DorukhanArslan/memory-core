@@ -338,6 +338,11 @@ Total labelled estimate (2026-09-27): about 152-260 engineering hours for areas 
   `shortTermTestState`, `registerEmbeddingProvider`, `SessionManager.inMemory`, the run-loop
   shared integration harness) are upstream test surfaces and will move again; prefer
   `plugin-sdk` exports where they exist.
+- The run-loop oracle is the one accepted write into the oracle checkout: it adds
+  `src/agents/embedded-agent-runner/memory-core-overflow-run-loop.oracle.test.ts` for one Vitest run
+  and removes it in a `finally` block; the next run removes and reports a copy a killed run left
+  (docs/lab.md › Oracle checkout). Moving it outside the checkout would need a Vitest root or
+  config override that the tag's project matrix (`test/vitest/*.config.ts`) does not offer.
 - `memoryFlushGate` derives the threshold with the expression of `agent-runner-memory.ts:1254-1260`
   (inline upstream, not exported) around the real `resolveCompactionThreshold`.
 - A persistent runner that serves many operations per process would cut the 21-minute suite

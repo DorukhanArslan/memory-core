@@ -4,7 +4,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import demo.openclaw_oracle as openclaw_oracle
+from demo.openclaw_run_loop_oracle import ORACLE_TEST_FILENAME, run_overflow_run_loop_oracle
 from demo.openclaw_oracle import OpenClawOracle, OracleError
 
 
@@ -365,3 +368,47 @@ def test_a_relative_oracle_node_path_is_made_absolute(monkeypatch, tmp_path: Pat
 
     assert env is not None
     assert env["PATH"].split(os.pathsep)[0] == str(node.parent)
+
+
+# --- run-loop oracle: the one file it writes into the checkout ---------------------------------
+
+
+def _run_loop_checkout(tmp_path: Path) -> Path:
+    repo = tmp_path / "openclaw"
+    (repo / "src" / "agents" / "embedded-agent-runner").mkdir(parents=True)
+    vitest = repo / "node_modules" / ".bin" / "vitest"
+    vitest.parent.mkdir(parents=True)
+    # Records whether the generated test file exists while "Vitest" runs.
+    vitest.write_text(
+        "#!/bin/sh\n"
+        f"if [ -f src/agents/embedded-agent-runner/{ORACLE_TEST_FILENAME} ]; then seen=true; else seen=false; fi\n"
+        'printf \'{"ok": true, "scenarios": [], "fileSeen": %s}\' "$seen" > "$MEMORY_CORE_OVERFLOW_ORACLE_OUT"\n',
+        encoding="utf-8",
+    )
+    vitest.chmod(0o755)
+    return repo
+
+
+def test_run_loop_oracle_removes_its_file_from_the_checkout(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("OPENCLAW_ORACLE_NODE", raising=False)
+    repo = _run_loop_checkout(tmp_path)
+
+    result = run_overflow_run_loop_oracle(repo_path=repo, timeout_seconds=30)
+
+    assert result == {"ok": True, "scenarios": [], "fileSeen": True}
+    assert not (repo / "src" / "agents" / "embedded-agent-runner" / ORACLE_TEST_FILENAME).exists()
+
+
+def test_run_loop_oracle_removes_and_reports_a_stale_copy(monkeypatch, tmp_path: Path):
+    # A SIGKILL between write and the finally block leaves the file; the next run cleans up.
+    monkeypatch.delenv("OPENCLAW_ORACLE_NODE", raising=False)
+    repo = _run_loop_checkout(tmp_path)
+    stale = repo / "src" / "agents" / "embedded-agent-runner" / ORACLE_TEST_FILENAME
+    stale.write_text("// left by a killed run\n", encoding="utf-8")
+
+    with pytest.warns(RuntimeWarning, match="stale run-loop oracle test file"):
+        result = run_overflow_run_loop_oracle(repo_path=repo, timeout_seconds=30)
+
+    assert result["staleTestFileRemoved"] == str(stale)
+    assert result["fileSeen"] is True
+    assert not stale.exists()

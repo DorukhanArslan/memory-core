@@ -12,7 +12,14 @@ character as a ``\\u`` escape:
   templates whose fields name the upstream expressions);
 - ``memory_core/bootstrap/_bootstrap_constants.py``: the bootstrap budget numbers and the AGENTS.md
   policy-digest keyword sets (src/agents/embedded-agent-helpers/bootstrap.ts,
-  src/agents/bootstrap-budget.ts, src/agents/bootstrap-budget-warning.ts)::
+  src/agents/bootstrap-budget.ts, src/agents/bootstrap-budget-warning.ts);
+- ``memory_core/_memory_flush_constants.py``: the memory-flush hints and default prompts of
+  ``buildMemoryFlushPlan`` (extensions/memory-core/src/flush-plan.ts; the prompt arrays are
+  joined with ``" "`` and ``${SILENT_REPLY_TOKEN}`` is substituted from src/auto-reply/tokens.ts),
+  the flush plan and compaction reserve defaults (src/agents/agent-settings.ts,
+  src/agents/agent-compaction-constants.ts), the flush failure limits
+  (src/auto-reply/reply/agent-runner-memory.ts) and ``SESSION_TOTAL_TOKENS_VERSION``
+  (src/config/sessions/types.ts)::
 
     .venv/bin/python scripts/extract_upstream_constants.py --repo /tmp/openclaw-head
 
@@ -31,6 +38,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "memory-core" / "bootstrap" / "_tools_md_constants.py"
 BOOTSTRAP_OUTPUT = ROOT / "memory-core" / "bootstrap" / "_bootstrap_constants.py"
+FLUSH_OUTPUT = ROOT / "memory-core" / "_memory_flush_constants.py"
 CHECK_TEST = "tests/integration/test_extracted_upstream_constants.py"
 BOOTSTRAP_SOURCE = "src/agents/embedded-agent-helpers/bootstrap.ts"
 BUDGET_SOURCE = "src/agents/bootstrap-budget.ts"
@@ -39,6 +47,12 @@ CONTENT_SOURCE = "src/commands/doctor-tools-md-migration-content.ts"
 GUIDANCE_SOURCE = "src/commands/doctor-tools-md-migration-guidance.ts"
 MIGRATION_SOURCE = "src/commands/doctor-tools-md-migration.ts"
 MIGRATION_BUDGET_SOURCE = "src/commands/doctor-tools-md-migration-budget.ts"
+FLUSH_PLAN_SOURCE = "extensions/memory-core/src/flush-plan.ts"
+TOKENS_SOURCE = "src/auto-reply/tokens.ts"
+AGENT_SETTINGS_SOURCE = "src/agents/agent-settings.ts"
+COMPACTION_CONSTANTS_SOURCE = "src/agents/agent-compaction-constants.ts"
+RUNNER_MEMORY_SOURCE = "src/auto-reply/reply/agent-runner-memory.ts"
+SESSION_TYPES_SOURCE = "src/config/sessions/types.ts"
 # Template-literal expressions of the finding texts -> str.format field names.
 FINDING_TEMPLATE_FIELDS = {
     "target.primaryAgentId": "agent_id",
@@ -267,7 +281,7 @@ def repr_ts(value: str) -> str:
 
 
 _NUMERIC_CONST_RE = re.compile(
-    r"^(?:export )?const ([A-Z0-9_]+) = ([0-9_.]+(?: \* [0-9_.]+)*);", re.MULTILINE
+    r"^(?:export )?const ([A-Z0-9_]+) = ([0-9_.]+(?: \* [0-9_.]+)*)(?: as const)?;", re.MULTILINE
 )
 # /\b(?:word|...)\b|(?:unbounded|...)/iu (bootstrap.ts AGENTS_POLICY_DIGEST_*_PATTERN).
 _KEYWORD_PATTERN_RE = r"const {name} =\s*/\\b\(\?:([^)]*)\)\\b(?:\|\(\?:([^)]*)\))?/iu;"
@@ -348,6 +362,107 @@ def extract_bootstrap(repo: Path) -> dict[str, object]:
     return constants
 
 
+def ts_identifier_array(source: str, name: str, values: dict[str, str]) -> tuple[str, ...]:
+    """Value of ``const NAME = [A, B, ...];`` whose items are known string constants."""
+    match = re.search(rf"\bconst {re.escape(name)}\s*=\s*\[([^\]]*)\];", source)
+    if match is None:
+        raise ValueError(f"constant {name} not found")
+    items = [item.strip() for item in match.group(1).split(",") if item.strip()]
+    unknown = [item for item in items if item not in values]
+    if unknown:
+        raise ValueError(f"{name}: unknown identifiers {unknown}")
+    return tuple(values[item] for item in items)
+
+
+def ts_joined_string_array(
+    source: str, name: str, values: dict[str, str], fields: dict[str, str]
+) -> str:
+    """Value of ``const NAME = [item, ...].join(" ");``.
+
+    An item is a string literal, a known string constant or a template literal whose
+    ``${expression}`` parts are keys of ``fields`` (their values are substituted).
+    """
+    match = re.search(rf"\bconst {re.escape(name)}\s*=\s*\[", source)
+    if match is None:
+        raise ValueError(f"constant {name} not found")
+    index = match.end()
+    parts: list[str] = []
+    while True:
+        index = _skip_space(source, index)
+        char = source[index]
+        if char == "]":
+            break
+        if char in "\"'":
+            value, index = ts_string_expression(source, index)
+        elif char == "`":
+            template, index = ts_template_literal(source, index, {key: key for key in fields})
+            value = template.format(**fields)
+        else:
+            identifier = re.match(r"[A-Za-z_][A-Za-z0-9_]*", source[index:])
+            if identifier is None or identifier.group(0) not in values:
+                raise ValueError(f"{name}: unexpected item at {index}: {source[index:index + 30]!r}")
+            value = values[identifier.group(0)]
+            index += len(identifier.group(0))
+        parts.append(value)
+        index = _skip_space(source, index)
+        if source[index] == ",":
+            index += 1
+    tail = source[index + 1 :]
+    if not tail.startswith('.join(" ")'):
+        raise ValueError(f"{name}: expected .join(\" \") after the array")
+    return " ".join(parts)
+
+
+FLUSH_HINTS = ("MEMORY_FLUSH_TARGET_HINT", "MEMORY_FLUSH_APPEND_ONLY_HINT", "MEMORY_FLUSH_READ_ONLY_HINT")
+
+
+def extract_memory_flush(repo: Path) -> dict[str, object]:
+    flush_plan = (repo / FLUSH_PLAN_SOURCE).read_text(encoding="utf-8")
+    silent = ts_string_constant((repo / TOKENS_SOURCE).read_text(encoding="utf-8"), "SILENT_REPLY_TOKEN")
+    hints = {name: ts_string_constant(flush_plan, name) for name in FLUSH_HINTS}
+    fields = {"SILENT_REPLY_TOKEN": silent}
+    no_reply_at = flush_plan.index("function ensureNoReplyHint(")
+    no_reply_hint, _ = ts_template_literal(
+        flush_plan,
+        flush_plan.index("return `", no_reply_at) + len("return "),
+        {"text": "text", "SILENT_REPLY_TOKEN": "silent_reply_token"},
+    )
+    return {
+        "SILENT_REPLY_TOKEN": silent,
+        **ts_numeric_constants(
+            flush_plan,
+            ("DEFAULT_MEMORY_FLUSH_SOFT_TOKENS", "DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES"),
+        ),
+        **ts_numeric_constants(
+            (repo / AGENT_SETTINGS_SOURCE).read_text(encoding="utf-8"),
+            ("DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR",),
+        ),
+        **ts_numeric_constants(
+            (repo / COMPACTION_CONSTANTS_SOURCE).read_text(encoding="utf-8"),
+            ("MAX_COMPACTION_RESERVE_RATIO",),
+        ),
+        **ts_numeric_constants(
+            (repo / RUNNER_MEMORY_SOURCE).read_text(encoding="utf-8"),
+            ("MAX_FLUSH_FAILURES", "MAX_FLUSH_ERROR_LENGTH"),
+        ),
+        **ts_numeric_constants(
+            (repo / SESSION_TYPES_SOURCE).read_text(encoding="utf-8"),
+            ("SESSION_TOTAL_TOKENS_VERSION",),
+        ),
+        **hints,
+        "MEMORY_FLUSH_REQUIRED_HINTS": ts_identifier_array(
+            flush_plan, "MEMORY_FLUSH_REQUIRED_HINTS", hints
+        ),
+        "DEFAULT_MEMORY_FLUSH_PROMPT": ts_joined_string_array(
+            flush_plan, "DEFAULT_MEMORY_FLUSH_PROMPT", hints, fields
+        ),
+        "DEFAULT_MEMORY_FLUSH_SYSTEM_PROMPT": ts_joined_string_array(
+            flush_plan, "DEFAULT_MEMORY_FLUSH_SYSTEM_PROMPT", hints, fields
+        ),
+        "MEMORY_FLUSH_NO_REPLY_HINT_TEMPLATE": no_reply_hint,
+    }
+
+
 def _git_head(repo: Path) -> str:
     completed = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=False
@@ -411,6 +526,24 @@ def outputs(repo: Path) -> dict[Path, str]:
             note=[
                 "The *_UNBOUNDED_KEYWORDS match without word boundaries (the second alternation",
                 "group of the upstream /\\b(?:...)\\b|(?:...)/iu patterns).",
+            ],
+        ),
+        FLUSH_OUTPUT: render(
+            extract_memory_flush(repo),
+            commit,
+            title="Upstream memory-flush prompts, hints and flush-plan defaults",
+            sources=[
+                FLUSH_PLAN_SOURCE,
+                TOKENS_SOURCE,
+                AGENT_SETTINGS_SOURCE,
+                COMPACTION_CONSTANTS_SOURCE,
+                RUNNER_MEMORY_SOURCE,
+                SESSION_TYPES_SOURCE,
+            ],
+            note=[
+                "The default prompts are the joined upstream arrays with SILENT_REPLY_TOKEN",
+                "substituted; MEMORY_FLUSH_NO_REPLY_HINT_TEMPLATE is the str.format template of",
+                "ensureNoReplyHint (fields: text, silent_reply_token).",
             ],
         ),
     }

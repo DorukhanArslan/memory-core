@@ -717,14 +717,22 @@ async function main() {
   }
 
   if (payload.operation === "flushPlan") {
+    // v2026.9.6 buildMemoryFlushPlan derives the reserve floor and the soft threshold from the
+    // model's context window (6b6f1969c11 #130072); the payload passes it through. Its
+    // resolveCronStyleNow ignores the timeFormat config and detects the host's 12/24-hour
+    // format (edecdbd05ef #111527, date-time.ts resolveUserTimeFormat(undefined)); the runner
+    // reports that detected format as hostTimeFormat so the Python side can pass it on.
     const flushPlan = await importFromRepo(repoPath, "extensions/memory-core/src/flush-plan.ts");
+    const dateTime = await importFromRepo(repoPath, "src/agents/date-time.ts");
     const plan = flushPlan.buildMemoryFlushPlan({
       cfg: payload.config ?? {},
       nowMs,
+      contextWindowTokens: payload.contextWindowTokens,
     });
     return {
       ok: true,
       operation: payload.operation,
+      hostTimeFormat: dateTime.resolveUserTimeFormat(undefined),
       result: plan
         ? {
             softThresholdTokens: plan.softThresholdTokens,
@@ -744,15 +752,32 @@ async function main() {
     // reserve floor and soft threshold. Its only caller (agent-runner-memory.ts:1254-1260
     // runMemoryFlushIfNeeded, inline, not exported) derives it as
     // max(0, resolveCompactionThreshold({contextWindowTokens, reserveTokensFloor}) - soft), so
-    // the runner applies that expression with the real resolveCompactionThreshold.
+    // the runner applies that expression with the real resolveCompactionThreshold. Without an
+    // explicit reserveTokensFloor/softThresholdTokens both come from the real
+    // buildMemoryFlushPlan for the window, as runMemoryFlushIfNeeded takes them from its plan.
+    // Entries use the tag's fields: fresh totals need totalTokensFresh + totalTokensVersion,
+    // the same-cycle guard reads entry.memoryFlush.compactionCount (8ee1d046d33 #115299).
     const memoryFlush = await importFromRepo(repoPath, "src/auto-reply/reply/memory-flush.ts");
     const entry = payload.entry ?? undefined;
+    const contextWindowTokens = payload.contextWindowTokens ?? 100_000;
+    let reserveTokensFloor = payload.reserveTokensFloor;
+    let softThresholdTokens = payload.softThresholdTokens;
+    if (reserveTokensFloor === undefined || softThresholdTokens === undefined) {
+      const flushPlan = await importFromRepo(repoPath, "extensions/memory-core/src/flush-plan.ts");
+      const plan = flushPlan.buildMemoryFlushPlan({
+        cfg: payload.config ?? {},
+        nowMs,
+        contextWindowTokens,
+      });
+      reserveTokensFloor ??= plan.reserveTokensFloor;
+      softThresholdTokens ??= plan.softThresholdTokens;
+    }
     const threshold = Math.max(
       0,
       memoryFlush.resolveCompactionThreshold({
-        contextWindowTokens: payload.contextWindowTokens ?? 100_000,
-        reserveTokensFloor: payload.reserveTokensFloor ?? 20_000,
-      }) - Math.max(0, Math.floor(payload.softThresholdTokens ?? 4_000)),
+        contextWindowTokens,
+        reserveTokensFloor,
+      }) - Math.max(0, Math.floor(softThresholdTokens)),
     );
     return {
       ok: true,
@@ -766,6 +791,9 @@ async function main() {
         hasAlreadyFlushedForCurrentCompaction: entry
           ? memoryFlush.hasAlreadyFlushedForCurrentCompaction(entry)
           : false,
+        threshold,
+        reserveTokensFloor,
+        softThresholdTokens,
       },
     };
   }

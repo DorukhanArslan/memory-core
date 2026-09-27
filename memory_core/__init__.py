@@ -110,10 +110,11 @@ from memory_core.context_engine_lifecycle import (
 )
 from memory_core.history import get_history_limit_from_session_key, limit_history_turns
 from memory_core.memory_flush import (
+    DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR,
     DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES,
     DEFAULT_MEMORY_FLUSH_SOFT_TOKENS,
-    DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR,
     MAX_FLUSH_FAILURES,
+    SESSION_TOTAL_TOKENS_VERSION,
     MemoryFlushFailureOutcome,
     MemoryFlushPlan,
     MemoryFlushTriggerDecision,
@@ -237,7 +238,8 @@ __all__ = [
     "DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES",
     "DEFAULT_MEMORY_FLUSH_SOFT_TOKENS",
     "DEFAULT_MEMORY_MD_TEMPLATE",
-    "DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR",
+    "DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR",
+    "SESSION_TOTAL_TOKENS_VERSION",
     "EmbeddingProvider",
     "FakeEmbeddingProvider",
     "FeatureFlags",

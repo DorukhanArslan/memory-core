@@ -943,7 +943,10 @@ def daily_write(text):
 
 
 def test_flush_runs_before_the_main_turn_once_per_compaction_cycle(client, lab, monkeypatch):
-    lab.settings.context_window_tokens = 26_000  # threshold 26,000 - 20,000 - 4,000 = 2,000
+    # v2026.9.6 derives reserve and soft threshold from the window (flush-plan.ts):
+    # reserve min(20,000, 5,333 // 4) = 1,333; soft min(4,000, (5,333 - 1,333) // 2) = 2,000;
+    # threshold 5,333 - 1,333 - 2,000 = 2,000.
+    lab.settings.context_window_tokens = 5_333
     engine = use_engine(monkeypatch, StubEngine(
         [("Bir.", []), ("İki.", []), ("Üç.", [])],
         usage={"promptTokens": 1_990, "completionTokens": 40, "totalTokens": 2_030},
@@ -959,6 +962,7 @@ def test_flush_runs_before_the_main_turn_once_per_compaction_cycle(client, lab, 
     decisions = [frames_of(frames, "flush")[0]["decision"] for frames in (first, second, third)]
     assert [item["reason"] for item in decisions] == ["missing_tokens", "token_threshold", "already_flushed"]
     assert decisions[1]["threshold"] == 2_000
+    assert (decisions[1]["reserveTokensFloor"], decisions[1]["softThresholdTokens"]) == (1_333, 2_000)
     assert decisions[1]["totalTokens"] == 1_990 + 40 + decisions[1]["promptTokenEstimate"]
     assert decisions[1]["tokenSource"] == "provider usage"
     assert len(engine.flush_calls) == 1
@@ -985,6 +989,9 @@ def test_flush_runs_before_the_main_turn_once_per_compaction_cycle(client, lab, 
     assert third_stages["flush"] == {"name": "flush", "status": "skip", "ms": 0, "detail": "already_flushed"}
     snapshot = client.get("/api/lab/state").json()["flush"]
     assert snapshot["alreadyFlushed"] is True and snapshot["note"].startswith("Lab never compacts")
+    # The tag's session-entry state (8ee1d046d33 #115299): the flushed cycle lives in memoryFlush.
+    assert snapshot["memoryFlush"] == {"kind": "succeeded", "compactionCount": 0}
+    assert snapshot["memoryFlushCompactionCount"] == 0
     types = event_types(client)
     assert types.index("flush.decided") < types.index("flush.written")
 
@@ -992,7 +999,7 @@ def test_flush_runs_before_the_main_turn_once_per_compaction_cycle(client, lab, 
 def test_flush_writes_only_the_daily_file(client, lab, monkeypatch):
     from demo.chat_engine import FlushModelOutput, FlushWriteCall
 
-    lab.settings.context_window_tokens = 26_000
+    lab.settings.context_window_tokens = 5_333
     use_engine(monkeypatch, StubEngine(
         [("Bir.", []), ("İki.", [])],
         usage={"promptTokens": 5_000, "completionTokens": 10, "totalTokens": 5_010},
@@ -1672,6 +1679,8 @@ def test_settings_defaults_follow_d4_and_q9(client):
     assert settings["budgets"] == {"maxChars": 20_000, "totalMaxChars": 60_000, "warningMode": "always",
                                    "defaults": {"maxChars": 20_000, "totalMaxChars": 60_000, "warningMode": "always"}}
     assert settings["flush"]["mode"] == "threshold" and settings["flush"]["threshold"] == 176_000
+    assert (settings["flush"]["reserveTokensFloor"], settings["flush"]["softThresholdTokens"]) == (20_000, 4_000)
+    assert settings["flush"]["defaults"] == {"reserveTokensFloor": 20_000, "softThresholdTokens": 4_000}
     assert settings["heartbeat"] == {"every": "30m", "everyMs": 1_800_000, "ackMaxChars": 300, "lightContext": False}
     assert settings["flags"]["curation.user_md"] == {"on": True, "label": "USER.md direktifleri", "extension": True}
     assert settings["timezone"] == "Europe/Istanbul"
@@ -1692,7 +1701,7 @@ def test_settings_update_applies_and_emits(client, lab):
         "layout": "upstream",
         "budgets": {"totalMaxChars": 12_000, "warningMode": "once"},
         "contextInjection": "continuation-skip",
-        "flush": {"mode": "threshold", "contextWindowTokens": 26_000},
+        "flush": {"mode": "threshold", "contextWindowTokens": 5_333},
         "heartbeat": {"every": "10m", "ackMaxChars": 50, "lightContext": True},
         "flags": {"lab_file_editing": False},
     }).json()
@@ -1701,6 +1710,7 @@ def test_settings_update_applies_and_emits(client, lab):
     assert updated["layout"] == "upstream" and lab.layout.name == "openclaw"
     assert updated["budgets"]["totalMaxChars"] == 12_000 and updated["budgets"]["warningMode"] == "once"
     assert updated["flush"]["threshold"] == 2_000
+    assert (updated["flush"]["reserveTokensFloor"], updated["flush"]["softThresholdTokens"]) == (1_333, 2_000)
     assert updated["heartbeat"]["everyMs"] == 600_000
     assert updated["flags"]["lab_file_editing"]["on"] is False
     assert "settings.changed" in event_types(client)

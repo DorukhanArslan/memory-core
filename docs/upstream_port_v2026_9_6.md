@@ -218,7 +218,8 @@ Doruk wants heartbeat and automation kept, in the tag's shape; nothing here is d
   `memory/YYYY-MM-DD.md`.
 - Python: `memory_core/memory_flush.py` (verbatim hints by extraction), `demo/lab_flush.py`.
 - Tests: 5 (`flushPlan` 2, `memoryFlushGate` 3).
-- Worklist areas: "flush plan", "flush gate".
+- Worklist areas: none left; the `flush plan` and `flush gate` entries were removed when the
+  area landed (2026-09-27).
 - New oracle ops: none; `flushPlan` gains a `contextWindowTokens` payload field, and
   `memoryFlushGate` fixtures switch to the tag's entry fields.
 

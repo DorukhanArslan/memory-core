@@ -60,6 +60,15 @@ lifecycle snapshots compare the stored setup state again; the per-call legacy-st
 documented deviation from upstream's per-process cache; the run-loop oracle's one file in the
 checkout is a documented exception whose stale copy is removed and reported.
 
+After area 3, heartbeat and automation (2026-09-27, `4ccd966`, same checkout and Node, twelve
+chunks with the run-loop included): 218 passed, 86 xfailed, 2 skipped (the retired
+`sessionMemoryTranscript` op and the live-embedding test), 0 failed, 306 collected, about 33
+minutes. Against the area 1 review-fix run (178 passed, 90 xfailed, 5 skipped of 273): the four
+heartbeat worklist entries pass, the three retired heartbeat tests were replaced, and 36 heartbeat
+and automation tests are new. The worklist now holds 14 areas and 86 tests. Offline suite at
+`4ccd966`: 1105 passed, 280 skipped; ruff clean; `scripts/extract_upstream_constants.py --check`
+against the tag rc 0; `/tmp/openclaw-head` clean after the runs.
+
 ## Decisions needed before stage 2
 
 1. Default workspace layout: decided by Doruk 2026-09-27. The default follows the v2026.9.6

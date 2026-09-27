@@ -59,7 +59,7 @@ seconds later as the same model with reasoning mode pro). Recorded in
 | Transcript window | demo-only | Last 40 messages, 24,000 chars. |
 | Embeddings | Q9 | Real endpoint → hybrid; otherwise FTS-only (`fts-only`) and no embedder is built. Never fake vectors. |
 | Session-memory file | upstream (D2) | Raw recent `role: text` lines, no redactor, labelled. |
-| Heartbeat | runtime-only port | No scheduler; the virtual clock (demo-only) shifts due checks only. |
+| Heartbeat | runtime-only port | No scheduler (the host's job upstream); v2026.9.6 shape: monitor scratch and automation jobs in `.memory-core/automation.json` (`FileAutomationStore`; upstream uses its shared state DB). The virtual clock (demo-only) shifts due checks, job runs and migrated anchors only; the prompt's current-time lines use the real clock. |
 | Promotion/dreaming | package | Manual sweeps; the view's evidence label is read from `docs/parity_matrix.md`. |
 | Live task | adapter-only | Real model when a request or `.env` key resolves, else scripted replies; summaries redact the identity proof. |
 
@@ -90,14 +90,16 @@ checked against the configured keys (`redacted: true`). Ids (`sessionId`,
 | POST `/chat/stream` | `{message, sessionKind, reset?, engine?, openai?, embedding?}` | SSE: `turn_started`, `stage`, `flush`, `recall`, `prompt`, `tool_call`, `tool_result`, `curation`, `assistant_delta`, `turn_done {turn, detail}`, `error` |
 | POST `/session/new` | `{command:"new"\|"reset", text?, sessionKind}` | `{sessionId, sessionKey, bare, sessionMemory, startup, resetPrompt}` |
 | GET `/index/status` | — | `{files, chunks, lastReindexAt, mode, identity, embeddings, cooldown, deadlineMs, cooldownMs, stale}` |
-| GET `/heartbeat` | — | `{file, every, everyMs, ackMaxChars, lightContext, tasks[], unparsedTaskEntries, preflight, clock, runs[], proactivePreferences, sessionKey, labels}` |
-| POST `/heartbeat/run` | `{lightContext?, openai?}` | SSE: `flush`, `skipped`, `prompt`, `tool_call`, `tool_result`, `curation`, `assistant_delta`, `decision`, `done {run}`, `error` |
-| POST `/heartbeat/strip` | `{text, ackMaxChars?}` | `{shouldSkip, text, didStrip}` |
+| GET `/heartbeat` | — | `{scratch {status, currentRevision, content, bytes, maxBytes, sourceSha256, updatedAtMs}, jobs[] {id, name, displayName, everyMs, anchorMs, prompt, lastRunAtMs, nextRunAtMs, due, heartbeatTask}, legacyFile, migrationFindings[], every, everyMs, ackLimit, lightContext, preflight {skipReason, prompt, message, dueTasks, dueJobs, scratchShown, scratchRevision}, clock, runs[], proactivePreferences, sessionKey, store, labels}`; `status` is none, unset, empty (the run skips with `empty-heartbeat-file`) or active |
+| PUT `/heartbeat/scratch` | `{content, expectedRevision?}` (`content: null` unsets) | `{write {ok, currentRevision, scratch?, reason?}, scratch}`: compare-and-swap on the revision (`revision-conflict`), `400 scratch_too_large` over 256 KiB; events `heartbeat.scratch_written`, `heartbeat.scratch_conflict` |
+| POST `/heartbeat/migrate` | — | `{scratch {changes, warnings}, tasks {changes, warnings, jobs}}`: `migrate_heartbeat_md` (a leftover HEARTBEAT.md into the scratch, archived under `.memory-core/backups/heartbeat-migration/`) then `migrate_heartbeat_tasks` (the scratch's `tasks:` block into automation jobs, anchored on the virtual clock); event `heartbeat.migrated` |
+| POST `/heartbeat/run` | `{lightContext?, openai?}` | SSE: `flush`, `skipped`, `prompt {userMessage, scratchShown, files, ...}`, `tool_call`, `tool_result`, `curation`, `assistant_delta`, `decision {kind, text?, eventStatus?, silent, delivered, silentReply, replyChars}`, `done {run}`, `error`; the due jobs become the scheduled tasks and are rescheduled from the run (event `automation.jobs_ran`) |
+| POST `/heartbeat/reply` | `{text}` | `decide_heartbeat_reply` without a model: `{kind, text?, eventStatus?, silent, delivered, silentReply, legacyAck {shouldSkip, text, didStrip}}` |
 | POST `/clock` | `{offsetMs}` or `{reset:true}` | `{nowMs, offsetMs}` |
 | GET `/consolidation` | — | `{curated[], shortTerm, candidates[], gates, weights, lastPromotion, lastDreaming, audit, repair, labels, flags}` |
 | POST `/curation/revert` | `{writeId}` | PUT-file shape; `409` when the file changed since the write |
 | GET `/parity` | — | `{pin, oracleRepo, node, resultsPath, results, matrix[], commands[]}` |
-| GET · PUT `/settings` | partial Settings (never a key) | Settings |
+| GET · PUT `/settings` | partial Settings (never a key) | Settings; `heartbeat {every, lightContext}` (`ackMaxChars` is retired at v2026.9.6: `400 retired_setting`) |
 | POST `/provider/check` | `{openai}` or `{embedding}` | `{ok, target, latencyMs, model?, error?, redacted?}` |
 
 ### Kept `/api/*`

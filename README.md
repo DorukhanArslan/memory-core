@@ -52,6 +52,38 @@ Runtime-adapter helpers such as transcript replay cleanup, history windowing,
 runtime-context prompt splitting, and overflow recovery are also exported from
 the package root when host applications need OpenClaw-compatible behavior.
 
+Heartbeat and automation follow the v2026.9.6 shape: the host keeps each agent's
+heartbeat monitor scratch and its recurring automation jobs (`FileAutomationStore`
+is a file-backed default) and owns the scheduler; memory-core builds the heartbeat
+turn and reads its reply:
+
+```python
+from memory_core import (
+    FileAutomationStore,
+    decide_heartbeat_reply,
+    due_automation_jobs,
+    heartbeat_scheduled_tasks,
+    prepare_heartbeat_turn,
+    record_automation_job_run,
+)
+
+store = FileAutomationStore(workspace_root)
+due = due_automation_jobs(store.list_jobs(agent_id="main"), now_ms)
+turn = prepare_heartbeat_turn(
+    now_ms=now_ms,
+    scratch=store.read_scratch("main"),
+    scheduled_tasks=heartbeat_scheduled_tasks(due),
+)
+if turn.skip_reason is None:
+    decision = decide_heartbeat_reply(run_model(turn.message))  # host model call
+    if decision.deliver:
+        deliver(decision.text)  # host delivery
+store.save_jobs([record_automation_job_run(job, started_at_ms=now_ms) for job in due])
+```
+
+`memory_core.heartbeat_migration` moves a leftover HEARTBEAT.md into the scratch and its
+`tasks:` block into automation jobs (the doctor migrations).
+
 Optional capabilities (vector search, MMR, temporal decay) are controlled by
 `FeatureFlags`; `FeatureFlags(vector_search=False)` gives a deterministic
 FTS-only mode that needs no embedding provider. See

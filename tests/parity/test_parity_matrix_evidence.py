@@ -61,3 +61,13 @@ def test_runtime_context_rows_are_not_marked_match_without_runtime_oracle():
     for row in runtime_rows:
         assert row["status"] != "`match`"
         assert "approximation" in row["known_gaps"] or row["oracle"] == "Not added"
+
+
+def test_every_matrix_table_row_has_eight_cells():
+    # _matrix_rows() skips a row whose text holds a stray "|" (it would split into more
+    # cells), which would hide it from the evidence checks above.
+    for line in MATRIX_PATH.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("| ") or line.startswith("| ---"):
+            continue
+        cells = line.strip().strip("|").split("|")
+        assert len(cells) == 8, line[:80]

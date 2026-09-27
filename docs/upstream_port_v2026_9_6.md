@@ -41,6 +41,7 @@ gates).
 | 2 Bootstrap budget and truncation | done (`3bbf0b9`) | 11 worklist entries removed |
 | Infrastructure | done (`39ba67e`, `aa4f7d3`, `1a5e09f`) | worklist xfails fail only on value assertions; oracle defaults point at the pin checkout with a Node engines check |
 | Area 1 review fixes | done (`8f66aa2`, `145ca72`, `84f780d`, `4e771af`, `a6c8b97`, `3f40ecc`, `89cb1de`, `4803d13`) | no worklist change; 13 new tests (`toolsMdMigrationFindings` 10, archive collision probes 2, legacy-gate cache deviation 1) |
+| 3 Heartbeat and automation | done (`0baac86`, `0d43b0d`, `033ef14`, `258f3dd`, docs) | 4 worklist entries removed; the 3 retired heartbeat ops re-ported and their skipped tests removed; 36 new tests (`heartbeatScratchContract`, `automationJobSchedule`, `heartbeatPreflight`, `heartbeatReplyDecision`, `legacyHeartbeatTasks` 1 each, `heartbeatScratchMigration` 17, `heartbeatTaskMigration` 14); `heartbeatRunPrompt` rewritten |
 
 Full `tests/integration` at `afd9965` plus the plan and matrix edits, `/tmp/openclaw-head` at
 `eb377ac59e6`, Node 24.21.0, seven chunks with the run-loop
@@ -86,7 +87,8 @@ checkout is a documented exception whose stale copy is removed and reported.
 Estimates are labelled estimates (2026-09-27, inferred from the measured failure classes and
 source reading, not measured). "Tests" counts worklist tests, and "Worklist areas" names the
 `PendingPort.area` labels of `tests/integration/oracle_worklist.py` that each plan area owns
-(stage 1: 17 labels, 120 tests; after areas 1 and 2: 15 labels, 90 tests); every worklist test
+(stage 1: 17 labels, 120 tests; after areas 1 and 2: 15 labels, 90 tests; after area 3: 14
+labels, 86 tests); every worklist test
 belongs to exactly one plan area, and the stage-1 counts below add up to 120.
 
 ### 1. Workspace and bootstrap map, TOOLS.md migration (estimate 14-24 h)
@@ -163,6 +165,30 @@ the personal-USER skip waits for the overlay.
 ### 3. Heartbeat and automation (estimate 16-28 h)
 
 Doruk wants heartbeat and automation kept, in the tag's shape; nothing here is dropped.
+
+Status: done 2026-09-27 (commits `0baac86`, `0d43b0d`, `033ef14`, `258f3dd`). The SDK shape is
+memory-core's own (the host owns the scheduler, the model call and delivery; memory-core decides what
+the heartbeat turn sends, whether it is skipped and how its reply is read):
+`memory_core.heartbeat_scratch` (the 256 KiB contract, the compare-and-swap write rule and a
+`HeartbeatScratchStore` interface), `memory_core.automation` (`AutomationJob`, the tag's
+`computeJobNextRunAtMs`/`isJobDue`, due jobs as the runner's scheduled tasks, the ok/skipped
+reschedule, `FileAutomationStore` in `<root>/.memory-core/automation.json` as the default store),
+`memory_core.heartbeat` (preflight, run prompt, Body time lines, `decide_heartbeat_reply` with the
+`NO_REPLY` and legacy `HEARTBEAT_OK` rules, the transcript filter) and
+`memory_core.heartbeat_migration` (`analyzeLegacyHeartbeatTasks` and both doctor migrations with their
+findings). The texts are generated into `memory_core/_heartbeat_constants.py`. Every heartbeat op
+passes at the tag; the four worklist entries were removed and the three retired ops re-ported.
+The `## Heartbeats` section, HEARTBEAT.md reading, file task parsing and the layout parameters
+left `memory_core.heartbeat`; `heartbeat.ackMaxChars` left the Lab settings. The session corpus
+drops silent replies like `sanitizeSessionText`. The Lab heartbeat view became the scratch
+editor, the automation job list on the virtual clock, the doctor migration action, the next
+prompt preview and the reply decision; scenario S09 starts from a scratch `tasks:` block (the
+Lab editor cannot write non-layout files such as HEARTBEAT.md). Left (known gaps in the three
+matrix rows): pending system events (exec-completion, cron-event and session-notice prompts),
+the `heartbeat_respond` tool and its `scratch` argument, the 12-hour `auto` time format, job
+conflicts between planning and commit, `applyJobResult` beyond the ok/skipped path, the
+heartbeat monitor job and its cadence migration (the host runs the monitor), the `memory_core.host`
+kit that will wrap these helpers.
 
 - Upstream: HEARTBEAT.md became a per-agent monitor scratch in the shared state DB
   (3e2b3ea4d5e #112967; runtime fallback removed in 07e3855b465 #113131): table
@@ -337,9 +363,9 @@ Total labelled estimate (2026-09-27): about 152-260 engineering hours for areas 
 
 | Operation | Removed upstream | Stage-2 replacement |
 | --- | --- | --- |
-| `parseHeartbeatTasks` | b23c7bd0f84 (#113165) | `analyzeLegacyHeartbeatTasks` (doctor) and cron-owned scheduled tasks in `resolveHeartbeatRunPrompt` |
-| `heartbeatTaskDue` | b23c7bd0f84 (#113165) | none for `isTaskDue` (cron owns due-ness); durations and intervals moved to `heartbeatDurations` |
-| `heartbeatSystemSection` | 6a1dedb00c2 (#129642) | `resolveHeartbeatRunPrompt` (the prompt lives only in the heartbeat user turn) |
+| `parseHeartbeatTasks` | b23c7bd0f84 (#113165) | re-ported 2026-09-27 (area 3): `legacyHeartbeatTasks` (`analyzeLegacyHeartbeatTasks`, the pin's inputs included) and scheduled tasks in `heartbeatRunPrompt` / `heartbeatPreflight`; the skipped test and its `RETIRED_OPS` entry are gone |
+| `heartbeatTaskDue` | b23c7bd0f84 (#113165) | re-ported 2026-09-27 (area 3): `automationJobSchedule` (`computeJobNextRunAtMs`, `isJobDue`; cron owns due-ness) and `heartbeatDurations`; the skipped test and its entry are gone |
+| `heartbeatSystemSection` | 6a1dedb00c2 (#129642) | re-ported 2026-09-27 (area 3): `heartbeatRunPrompt`, `heartbeatPreflight` (the prompt lives only in the heartbeat user turn); the skipped test and its entry are gone |
 | `sessionMemoryTranscript` | 2cc49503a60 (#107412), 4273ca9dbd9 (#113233) | `getRecentSessionProjectionFromEvents`, `countSessionMemoryMessages` |
 
 ## Harness notes for stage 2

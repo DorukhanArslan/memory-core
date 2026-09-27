@@ -43,18 +43,23 @@ Included:
   its own write path, never through the daily-flush target, and after the host
   reindexes, `memory_search` finds it like any `memory/**/*.md`; an LLM slug needs a
   host-supplied generator, and a host redactor can map each stored line
-- heartbeat turn helpers (`prepare_heartbeat_turn`, `HeartbeatTurn`,
-  `strip_heartbeat_token`, `build_heartbeat_section_lines`,
-  `resolve_heartbeat_prompt_for_system_prompt`, `resolve_heartbeat_interval_ms`,
-  `HEARTBEAT_PROMPT`, `HEARTBEAT_TOKEN`; the rest stays in `memory_core.heartbeat`).
-  Heartbeat itself is a runtime feature: the host schedules the turns and
-  delivers replies. The helpers are in core only because heartbeat turns change
-  memory-core behaviour: the session corpus drops heartbeat prompt rows and
-  `HEARTBEAT_OK` replies, which works only when the host writes the same prompt
-  and token; and memory flush skips heartbeat runs. At v2026.9.6 HEARTBEAT.md is
-  no longer a bootstrap file (the heartbeat follows a monitor scratch); the file-based
-  helpers stay until that port (docs/upstream_port_v2026_9_6.md, area 3). Evidence: the
-  "Heartbeat turn inputs and reply handling" row in `docs/parity_matrix.md`
+- heartbeat and automation helpers in the v2026.9.6 shape (`prepare_heartbeat_turn`,
+  `HeartbeatTurn`, `HeartbeatScheduledTask`, `decide_heartbeat_reply`,
+  `HeartbeatReplyDecision`, `strip_heartbeat_token`, `resolve_heartbeat_interval_ms`,
+  `HEARTBEAT_PROMPT`, `HEARTBEAT_TOKEN`; `HeartbeatScratchState`, `HeartbeatScratchStore`;
+  `AutomationJob`, `FileAutomationStore`, `due_automation_jobs`, `heartbeat_scheduled_tasks`,
+  `record_automation_job_run`; the doctor migrations in `memory_core.heartbeat_migration`).
+  Heartbeat itself is a runtime feature: the host owns the scheduler (monitor cadence,
+  job timers, retries), the model call and delivery; memory-core decides what the heartbeat
+  turn sends (the monitor scratch, the due jobs as scheduled tasks), whether it is skipped
+  and how its reply is read, and gives hosts a small scratch/job store interface with a
+  file-backed default (`<root>/.memory-core/automation.json`). The helpers are in core because
+  heartbeat turns change memory-core behaviour: the session corpus drops heartbeat prompt
+  rows, `NO_REPLY` and `HEARTBEAT_OK` replies, which works only when the host writes the
+  same prompt and tokens; and memory flush skips heartbeat runs. A later host kit
+  (`memory_core.host`) is meant to wrap them; it does not exist yet. Evidence: the "Heartbeat
+  turn inputs and reply handling", "Heartbeat monitor scratch" and "Automation jobs and
+  heartbeat migrations" rows in `docs/parity_matrix.md`
 - replay cleanup, history windowing, tool-use repair, and overflow helpers when
   those behaviors are required to preserve OpenClaw-compatible prompt assembly
 - `memory_core.consolidation`: scored consolidation. Short-term recall signals,

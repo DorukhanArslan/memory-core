@@ -42,6 +42,7 @@ gates).
 | Infrastructure | done (`39ba67e`, `aa4f7d3`, `1a5e09f`) | worklist xfails fail only on value assertions; oracle defaults point at the pin checkout with a Node engines check |
 | Area 1 review fixes | done (`8f66aa2`, `145ca72`, `84f780d`, `4e771af`, `a6c8b97`, `3f40ecc`, `89cb1de`, `4803d13`) | no worklist change; 13 new tests (`toolsMdMigrationFindings` 10, archive collision probes 2, legacy-gate cache deviation 1) |
 | 3 Heartbeat and automation | done (`0baac86`, `0d43b0d`, `033ef14`, `258f3dd`, docs) | 4 worklist entries removed; the 3 retired heartbeat ops re-ported and their skipped tests removed; 36 new tests (`heartbeatScratchContract`, `automationJobSchedule`, `heartbeatPreflight`, `heartbeatReplyDecision`, `legacyHeartbeatTasks` 1 each, `heartbeatScratchMigration` 17, `heartbeatTaskMigration` 14); `heartbeatRunPrompt` rewritten |
+| Area 3 review fixes | done (`fb0a5d9`, `a40084c`, `58b8478`, `7e089ec`, `ef257f7`, `387ed5e`, `e0f23d8`, `358662f`, `0fc9bb1`) | no worklist change; 3 new tests (`heartbeatScratchMigration` crlf, `heartbeatTaskMigration` state-float and state-negative) and 3 extended (`heartbeatScratchContract` lone-surrogate steps, the disabled-owner findings steps) |
 
 Full `tests/integration` at `afd9965` plus the plan and matrix edits, `/tmp/openclaw-head` at
 `eb377ac59e6`, Node 24.21.0, seven chunks with the run-loop
@@ -68,6 +69,18 @@ heartbeat worklist entries pass, the three retired heartbeat tests were replaced
 and automation tests are new. The worklist now holds 14 areas and 86 tests. Offline suite at
 `4ccd966`: 1105 passed, 280 skipped; ruff clean; `scripts/extract_upstream_constants.py --check`
 against the tag rc 0; `/tmp/openclaw-head` clean after the runs.
+
+After the area 3 review fixes (2026-09-27, `0fc9bb1`, same checkout and Node, twelve chunks with
+the run-loop included): 221 passed, 86 xfailed, 2 skipped, 0 failed, 309 collected, about 29
+minutes. The fixes: the monitor scratch stores and hashes lone surrogates like Node's UTF-8
+conversion; the legacy-file finding honours `retain_source`; the task migration and
+`FileAutomationStore.save_jobs` run the ported `assertCronStoreCanPersist`; `AutomationStore`
+declares the store contract and `list_jobs` skips rows it cannot load; hosts and the Lab record
+only the jobs whose tasks went into the turn; the Lab scratch editor saves on its draft's base
+revision and a stale save is `409 revision_conflict`; a demo-only legacy HEARTBEAT.md endpoint
+starts scenario S09. Offline suite at `0fc9bb1`: 1114 passed, 283 skipped; ruff clean;
+`scripts/extract_upstream_constants.py --check` against the tag rc 0; `/tmp/openclaw-head`
+clean after the runs.
 
 ## Decisions needed before stage 2
 

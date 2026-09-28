@@ -828,7 +828,10 @@ Doruk's answers):
    so the saved file is searchable at once and a pending bootstrap reconciles before the reset
    prompt is built.
 
-Kept Lab-side and labelled, pending Doruk: `record_daily_memory_flush` after a flush write (Q3).
+The Lab records no `daily` recall signals after a flush write (decision Q3). Nothing else used
+`record_daily_memory_flush` (memory-core's light phase records no daily signals), so it is gone; the
+promotion fixtures record their daily signal with `record_short_term_recalls(signal_type="daily")`,
+upstream's `recordShortTermRecalls` with `signalType: "daily"`.
 
 ## Parity labels
 

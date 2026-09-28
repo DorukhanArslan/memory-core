@@ -20,7 +20,6 @@ from memory_core.consolidation import (  # noqa: E402
     DEFAULT_DEEP_DREAMING_MIN_SCORE,
     DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES,
     evaluate_short_term_promotion_candidates,
-    record_daily_memory_flush,
     record_short_term_recalls,
 )
 
@@ -57,11 +56,15 @@ def build_workspace(root: Path) -> MemoryConfig:
     )
     config = MemoryConfig(workspace_dir=root, store_path=root / "memory.sqlite")
     entry = "- User prefers to be addressed as \"Kudret\" in every conversation.\n"
-    record_daily_memory_flush(
+    # One daily signal, as upstream's light phase records it (signalType "daily").
+    record_short_term_recalls(
         config=config,
-        target="memory/2026-05-08.md",
-        entry=entry,
+        query=entry,
+        results=[
+            {"path": "memory/2026-05-08.md", "startLine": 3, "endLine": 3, "snippet": entry, "score": 1}
+        ],
         now_ms=NOW_MS,
+        signal_type="daily",
     )
     for query in ("call me kudret", "future sessions kudret"):
         record_short_term_recalls(

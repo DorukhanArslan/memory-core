@@ -205,47 +205,6 @@ def record_short_term_phase_signals(
     return changed
 
 
-def record_daily_memory_flush(
-    *,
-    config: MemoryConfig,
-    target: str,
-    entry: str,
-    now_ms: int,
-) -> int:
-    """Record a daily-flush write as ``daily`` signals for the lines it added.
-
-    ``target`` must be an existing ``memory/*.md`` file; each non-heading line
-    of ``entry`` found verbatim (whitespace-normalized) in it counts once.
-    """
-    if not target.startswith("memory/") or not target.endswith(".md"):
-        return 0
-    path = config.workspace_dir / target
-    if not path.exists():
-        return 0
-    file_lines = path.read_text(encoding="utf-8").splitlines()
-    results = []
-    for _, snippet in candidate_lines(entry, 1):
-        line_number = _find_line_number(file_lines, snippet)
-        if line_number is None:
-            continue
-        results.append(
-            {
-                "path": target,
-                "startLine": line_number,
-                "endLine": line_number,
-                "snippet": snippet,
-                "score": 1,
-            }
-        )
-    return record_short_term_recalls(
-        config=config,
-        query=entry,
-        results=results,
-        now_ms=now_ms,
-        signal_type="daily",
-    )
-
-
 def undecorate_search_results(results: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     """Return ``memory_search`` hits without the citation suffix of their snippets.
 
@@ -317,15 +276,6 @@ def candidate_lines(raw: str, start_line: int) -> list[tuple[int, str]]:
         return candidates
     snippet = normalize_snippet(raw)
     return [(start_line, snippet)] if snippet else []
-
-
-def _find_line_number(lines: list[str], snippet: str) -> int | None:
-    normalized = normalize_snippet(snippet)
-    for index, line in enumerate(lines, start=1):
-        candidate = normalize_snippet(line)
-        if candidate == normalized:
-            return index
-    return None
 
 
 def _consume_dreaming_lead_prefix(snippet: str) -> str:

@@ -6,7 +6,6 @@ from pathlib import Path
 from memory_core.config import MemoryConfig
 from memory_core.consolidation import (
     SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH,
-    record_daily_memory_flush,
     record_short_term_recalls,
     run_dreaming_sweep,
 )
@@ -20,6 +19,20 @@ def ms(dt: datetime) -> int:
 
 def fake_store(config: MemoryConfig):
     return SQLiteMemoryStore(config, FakeEmbeddingProvider(dimensions=8))
+
+
+def record_daily_signal(config: MemoryConfig, entry: str, now_ms: int) -> None:
+    """One daily signal for line 3 of memory/2026-05-08.md, as upstream's light phase records
+    it (``recordShortTermRecalls`` with ``signalType: "daily"``, dreaming-phases.ts:760)."""
+    record_short_term_recalls(
+        config=config,
+        query=entry,
+        results=[
+            {"path": "memory/2026-05-08.md", "startLine": 3, "endLine": 3, "snippet": entry, "score": 1}
+        ],
+        now_ms=now_ms,
+        signal_type="daily",
+    )
 
 
 def seed_candidate(config: MemoryConfig, now_ms: int):
@@ -143,18 +156,8 @@ def test_deep_dreaming_keeps_durable_user_preference_behind_openclaw_score_gate(
         encoding="utf-8",
     )
     entry = "- User prefers to be addressed as \"Kudret\" in every conversation.\n"
-    record_daily_memory_flush(
-        config=config,
-        target="memory/2026-05-08.md",
-        entry=entry,
-        now_ms=now,
-    )
-    record_daily_memory_flush(
-        config=config,
-        target="memory/2026-05-08.md",
-        entry=entry,
-        now_ms=now + 1,
-    )
+    record_daily_signal(config, entry, now)
+    record_daily_signal(config, entry, now + 1)
     for query in ("call me kudret", "address me kudret", "future sessions kudret"):
         record_short_term_recalls(
             config=config,
@@ -197,12 +200,7 @@ def test_deep_dreaming_rejects_three_signal_durable_preference_like_openclaw(tmp
         encoding="utf-8",
     )
     entry = "- User prefers to be addressed as \"Kudret\" in every conversation.\n"
-    record_daily_memory_flush(
-        config=config,
-        target="memory/2026-05-08.md",
-        entry=entry,
-        now_ms=now,
-    )
+    record_daily_signal(config, entry, now)
     for query in ("call me kudret", "future sessions kudret"):
         record_short_term_recalls(
             config=config,

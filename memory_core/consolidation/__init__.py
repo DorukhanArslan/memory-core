@@ -6,9 +6,10 @@ Port of the OpenClaw memory-core consolidation pipeline
 ``src/memory-host-sdk/dreaming.ts`` and a simplified ``dreaming-phases.ts``) at
 pin 4c42815348. It is the package's scored consolidation mode:
 
-1. hosts record ``memory_search`` hits (:func:`record_short_term_recalls`) and
-   daily-flush writes (:func:`record_daily_memory_flush`) as recall signals in
-   ``memory/.dreams/short-term-recall.json``;
+1. hosts record ``memory_search`` hits (:func:`record_short_term_recalls`) as
+   recall signals in ``memory/.dreams/short-term-recall.json``
+   (``signal_type="daily"`` counts a daily signal, the kind upstream's light
+   dreaming phase records);
 2. a dreaming sweep (:func:`run_dreaming_sweep`) adds light/REM phase signals,
    and the deep phase or a direct :func:`run_short_term_promotion` call
    promotes the entries that pass the score, signal, diversity and age gates
@@ -71,7 +72,6 @@ from memory_core.consolidation.promotion import (
 )
 from memory_core.consolidation.recall import (
     is_contaminated_dreaming_snippet,
-    record_daily_memory_flush,
     record_short_term_phase_signals,
     record_short_term_recalls,
     undecorate_search_results,
@@ -131,7 +131,6 @@ __all__ = [
     "format_promotion_marker",
     "is_contaminated_dreaming_snippet",
     "rank_short_term_promotion_candidates",
-    "record_daily_memory_flush",
     "record_short_term_phase_signals",
     "record_short_term_recalls",
     "repair_short_term_promotion_artifacts",

@@ -3,8 +3,9 @@
 Status: specification and TDD plan, written 2026-09-28 on `feat/host-kit` (from `main`
 `b829bad`), revised after review the same day. Implemented on that branch the same night:
 Tasks 1-8 and the kit parts of Task 10's docs. Task 9 (the Lab's flush, `/new` and heartbeat run)
-was blocked on Q1, Q3, Q5, Q6 and Q10 until Doruk's decisions of 2026-09-28 ("Decisions"); Task
-10's oracle re-run follows it. Upstream anchors are OpenClaw v2026.9.6 (`eb377ac59e6`, checkout
+followed Doruk's decisions of 2026-09-28 ("Decisions") and landed the same day (`7f78de1`,
+`363d471`, `5ffee1c`, `ca54643`); Task 10's oracle re-run and the real-browser check of Task 9
+are still open. Upstream anchors are OpenClaw v2026.9.6 (`eb377ac59e6`, checkout
 `/tmp/openclaw-head`) unless a line says otherwise.
 
 # Part 1: Specification
@@ -84,7 +85,7 @@ class HostKit:
   `truncation_warning_mode` (`build_workspace_context`); `dreaming_enabled` (recall tracking,
   see `dispatch`); `automation_store` (default `FileAutomationStore(root)`); `now_ms` (epoch-ms
   clock, as `MemoryCurator` takes it). The agent id is `memory.config.agent_id`. The Lab uses
-  each of them except `identity` (memory-core's compat markers) and `now_ms` (deterministic tests).
+  each of them except `identity` (memory-core's compat markers).
 - `seed_bootstrap=None` (default) seeds BOOTSTRAP.md only when `templates` supplies the layout's
   bootstrap file. memory-core has no ritual text of its own, so an empty BOOTSTRAP.md would leave a
   host without a ritual in limited-mode "Bootstrap Pending" on every turn until `memory/`
@@ -396,8 +397,8 @@ with `promptForEstimate: ""` (`src/agents/session-maintenance/run.ts:218-232`), 
 The other call site is the checkpoint before preflight compaction
 (`agent-runner-execute.ts:145-176`), which runs only when that compaction runs
 (`agent-runner-memory.ts:875-889`). `after_turn` is the first site; the second needs host
-compaction and is a non-goal. The Lab's pre-turn flush with the incoming prompt's estimate
-followed the pin-era order and moves to this one with the dogfood switch (decision Q1).
+compaction and is a non-goal. The Lab follows this order since Task 9a (decision Q1); its
+pre-turn flush with the incoming prompt's estimate was the pin-era order.
 
 - Composes:
   1. the token snapshot: `usage.prompt_tokens > 0` becomes a fresh v1 total (`totalTokens`,
@@ -785,51 +786,56 @@ stage, together with the quickstart rewrite and before the first release.
 The Lab keeps what a host keeps (provider resolution, sessions and transcripts, the tool loop over
 its OpenAI-compatible engine, the event bus, snapshots, diffs and reverts, the editor, demo-only
 auto-recall and transcript window, the virtual heartbeat clock) and takes every memory decision
-from the kit.
+from the kit. As built (Tasks 8 and 9, 2026-09-28):
 
-| Lab code today | After the switch |
+| Lab code before the kit | Now |
 | --- | --- |
 | `demo/lab_tools.py`: `lab_curator`, `LabToolbox.definitions`, `_memory_search` (recall recording), `_memory_get`, `_curate`'s dispatch | `kit.tools()`, `kit.dispatch()` with `dreaming_enabled=True`; `_target` builds the daily path from `kit.curator.today()` for the before-snapshot; the toolbox keeps call records, snapshots and events (it reads them from the payloads) |
-| `lab.reindex(store)` bookkeeping (`index_status`, `_index_revisions`, the `index.reindexed` event, read by `index_is_stale`, `demo/lab_kept_api.py:318,370`) | a `LabStore(SQLiteMemoryStore)` whose `reindex` does the bookkeeping and emits the event, so kit writes (curated, flush, session memory) that call `store.reindex` keep the Lab index fresh; the Lab builds `Memory(config, workspace, store=LabStore(...))` |
+| `lab.reindex(store)` bookkeeping (`index_status`, `_index_revisions`, the `index.reindexed` event, read by `index_is_stale`) | a `LabStore(SQLiteMemoryStore)` whose `reindex` does the bookkeeping and emits the event, so kit writes (curated, flush, session memory) that call `store.reindex` keep the Lab index fresh; the Lab builds `Memory(config, workspace, store=LabStore(...))` |
 | `LabRuntime.config()` without `curated_memory_writes` (the flag reached the curator through `lab_curator`) | `LabRuntime.config()` flags carry `curated_memory_writes` from `lab.settings.flags`, since the kit reads `memory.config` flags |
-| `LabRuntime.ensure` (`initialize_agent_workspace` with the Lab templates) | `kit.ensure()` inside the same `tracked("lifecycle")` block with the same `bootstrap.*` events |
+| `LabRuntime.ensure` (`initialize_agent_workspace` with the Lab templates) | `kit.ensure()` inside `LabRuntime.lifecycle`, which tracks the block and emits the `bootstrap.*` events of any kit call that ensures (`ensure`, `on_new_session`, `heartbeat_prompt`) |
 | `demo/lab_prompt.py:lab_workspace_context`, the prompt stage's `build_prompt_section` | `kit.before_turn(state, ensure=False, ...)` at the prompt stage (the ensure stage already ran `kit.ensure()`); `offer_tools=False` for the scripted engine, which offers no tools; the prompt preview and the explorer use `ensure=False` too, so an inspector never seeds or deletes BOOTSTRAP.md |
-| `demo/lab_chat.py` stages `flush_decision` and `flush` before the main run; `_persist`'s token snapshot | `kit.after_turn` after `persist`; the flush turn runs `FlushRequest.messages` and `.tools` through the existing `run_tool_loop` and ends with `complete()` (Task 9a) |
-| `demo/lab_flush.py` (plan, decision, token snapshot, flush run, forced guard, prompt estimate) | deleted except the inspector serializers; the status-bar meter reads the session's last `TurnRecord` (Task 9a) |
-| `demo/memory_flush.py`, `ChatEngine.flush`, `_memory_flush_write_tool`, `_extract_write_tool_calls`, `FlushModelOutput`, `FlushWriteCall` | deleted; the flush is an ordinary tool-loop run (Task 9a) |
-| `/api/chat/flush` (`lab_forced`) | a labelled Lab action over `HostKit.request_flush` if Doruk keeps it (Q6), else removed (Task 9a) |
-| `demo/lab_api.py:start_new_session` composition | `kit.on_new_session`; the endpoint keeps its events and payload (Task 9b) |
-| `demo/lab_heartbeat.py:_prepare_turn`, the run's flush decision, job recording | `kit.heartbeat_prompt` and `HeartbeatRun.complete`; scratch editing, migrations and the legacy-file action stay Lab actions over the core (Task 9c) |
-| `LabSession.flush_entry`, `last_output_tokens`, `seen_truncation_signatures`, `completed_bootstrap_turn` | one `LabSession.state: SessionState` (Task 9a; Task 8 builds the state from the fields and folds `before_turn`'s result back) |
+| `demo/lab_chat.py` stages `flush_decision` and `flush` before the main run; `_persist`'s token snapshot | `kit.after_turn` after `persist` (inside `tracked("flush")`, so the empty target file shows as a flush change); the flush turn runs `FlushRequest.messages` and `.tools` through `run_tool_loop` on the turn's engine and ends with `complete()` (`demo/lab_flush.py:run_flush`); the scripted engine abandons the request |
+| `demo/lab_flush.py` (plan, decision, token snapshot, flush run, forced guard, prompt estimate) | only host code is left: the `TurnUsage` from the provider's usage or the labelled chars/4 estimate, the transcript size, the gate view (the status-bar meter shows the current window's terms, the session's last `TurnRecord` and its `memoryFlush` state), the flush run and its events |
+| `demo/memory_flush.py`, `ChatEngine.flush`, `_memory_flush_write_tool`, `_extract_write_tool_calls`, `FlushModelOutput`, `FlushWriteCall` | deleted; the flush is an ordinary tool-loop run |
+| `/api/chat/flush` (`lab_forced`) | a labelled Lab extension over `HostKit.request_flush` (decision Q6): reason `forced`, `extension: true` and a label in the response, "Lab extension" in the UI |
+| `demo/lab_api.py:start_new_session` composition | `kit.on_new_session` with the Lab's index store; the endpoint keeps its events (`session.new` now carries both session ids) and its payload |
+| `demo/lab_heartbeat.py:_prepare_turn`, the run's flush decision, job recording | `kit.heartbeat_prompt(schedule_now_ms=<virtual clock>)` and `HeartbeatRun.complete`, then `after_turn` for the flush report; the preflight and the prompt inspector use `heartbeat_prompt(ensure=False)`; scratch editing, migrations and the legacy-file action stay Lab actions over the core |
+| `LabSession.flush_entry`, `last_output_tokens`, `seen_truncation_signatures`, `completed_bootstrap_turn` | one `LabSession.state: SessionState` plus `last_turn: TurnRecord` |
 | `demo/lab_runtime.py:DEFAULT_CONTEXT_WINDOW_TOKENS`, `MINIMAL_PROMPT_KINDS` | moved into the kit |
 
-If Doruk keeps `/flush` (Q6), the kit gains one labelled extension method,
-`request_flush(session, *, transcript) -> FlushRequest | None`: it does not touch the token
-snapshot, keeps the heartbeat skip and the one-flush-per-compaction guard (it returns `None` when
-the cycle already flushed) and uses reason `forced`.
+Kit changes Task 9 needed, each tested first: `request_flush` (decision Q6), `FlushRequest.reason`
+(the trigger's reason or `forced`), `ResetTurn.prompt` (the reset prompt alone, which the Lab shows
+next to the startup context) and `heartbeat_prompt(ensure=False)` (the read-only preview). The Lab
+passes the kit its own clock (`now_ms`), so the flush target, the reset prompt and the curator's
+day follow the Lab clock.
 
-Observable Lab changes, each updated with its tests/demo assertions (all in Task 9, blocked on
-Doruk's answers):
+Observable Lab changes (Task 9), each with its tests/demo assertions:
 
 1. The flush is decided and run after the reply (v2026.9.6 maintenance order), without the
-   incoming prompt's estimate. Stage order becomes ensure, compaction (skip), reindex, recall,
-   prompt, stream, persist, flush_decision, flush (Q1).
+   incoming prompt's estimate. Stage order: ensure, compaction (skip), reindex, recall, prompt,
+   stream, persist, flush_decision, flush (Q1). The flush runs in the same request after the
+   reply streamed and before `turn_done`; upstream runs it detached after delivery.
 2. The flush turn gets the Project Context plus the `## Conversation Context` flush section and
-   upstream's `write` tool wording (Q5).
+   upstream's `write` tool wording (Q5); the prompt inspector shows its system message.
 3. A chat turn in a `heartbeat` session and a heartbeat run report `runtime_skip:heartbeat` after
-   the run instead of before it.
-4. The manual `/flush` reason reads `forced` instead of `lab_forced`, or `/flush` goes (Q6).
-5. A due flush creates the empty daily file before the flush run, so a `NO_REPLY` flush leaves an
-   empty `memory/<today>.md` (upstream `ensureMemoryFlushTargetFile`).
+   the run instead of before it; a skipped heartbeat run reports no flush decision.
+4. The manual `/flush` reason reads `forced` instead of `lab_forced`, labelled as a Lab extension
+   (Q6); a heartbeat session gets `runtime_skip:heartbeat` without a run.
+5. A due flush creates the empty daily file before the flush run, so a `NO_REPLY` flush (and a
+   scripted turn's abandoned flush) leaves an empty `memory/<today>.md` (upstream
+   `ensureMemoryFlushTargetFile`).
 6. Without provider usage the Lab passes its labelled chars/4 estimate as `TurnUsage`, so the
    `tokenSource` label stays.
-7. `/new` keeps the session key: the Lab key becomes `lab:<kind>` for every session of a kind, as
-   upstream keeps `sessionKey` across `/new` (today `lab:<kind>:<id>` changes). This shows in the
+7. `/new` keeps the session key: the Lab key is `lab:<kind>` for every session of a kind, as
+   upstream keeps `sessionKey` across `/new` (it was `lab:<kind>:<id>`). This shows in the
    `session.new` event (`oldSessionKey` equals `sessionKey`), in the key line of the saved
    session-memory file and in the fallback key of the `memory_search` cooldown (Q10).
-8. `/new` runs an ensure and a reindex after saving the session memory (today it runs neither),
-   so the saved file is searchable at once and a pending bootstrap reconciles before the reset
-   prompt is built.
+8. `/new` runs an ensure and a reindex after saving the session memory (it ran neither), so the
+   saved file is searchable at once and a pending bootstrap reconciles before the reset prompt is
+   built: a bare `/new` in a fresh workspace now gets bootstrap mode `none`, not `limited`.
+9. A heartbeat run with the scripted engine is offered no tools, as a scripted chat turn; a
+   skipped heartbeat run runs no ensure.
 
 The Lab records no `daily` recall signals after a flush write (decision Q3). Nothing else used
 `record_daily_memory_flush` (memory-core's light phase records no daily signals), so it is gone; the
@@ -914,11 +920,19 @@ Review points not taken, with the reason:
   session's signatures as input and leaves them unchanged.
 - One `before_turn` call at the Lab's ensure stage: replaced by `kit.ensure()` there and
   `before_turn(ensure=False)` at the prompt stage, which keeps the Lab's prompt built after the
-  flush and reindex stages, as today, with the same single ensure and the same events.
+  reindex and recall stages with the same single ensure and the same events.
 
 ## Open questions
 
-None open.
+- Q13. The Lab runs the flush inside the chat request, after the reply has streamed and before
+  `turn_done`, so `turn_done` waits for the flush model call. Upstream runs session maintenance
+  detached after delivery. Keep it in the request (every flush event lands in its turn), or run it
+  on a background thread with its own events (closer to upstream; the next turn may then start
+  before `complete()`, which the kit's lane rule allows)?
+- Q14. After a heartbeat run the Lab calls `after_turn` only to show `runtime_skip:heartbeat`
+  (observable change 3); `HeartbeatRun.complete` has already recorded the token snapshot, and
+  upstream skips maintenance for heartbeats without evaluating the gate. Keep that report, or
+  show "no maintenance (heartbeat)" without the gate call?
 
 # Part 2: TDD plan
 
@@ -1126,6 +1140,20 @@ follows Task 9.
 - Locked CSS strings stay. Done: the rows of the dogfood table are true in the code; tests pass; a
   real-browser check of the chat, flush, `/new` and heartbeat flows on the :8010 preview at 1280,
   820 and 640 px (the Lab's breakpoints), with the scripted engine named as scripted.
+- Landed 2026-09-28: 9a `7f78de1` (with `a5906cf` for Q12, `8a00d00` for `request_flush` and
+  `363d471` removing `record_daily_memory_flush`), 9b `5ffee1c`, 9c `ca54643`. The flush test's
+  window 5,333 flushes after the second turn, the first whose usage (1,990 + 40) passes 2,000.
+  Tests added beyond the list: `test_scripted_turn_decides_the_flush_but_runs_no_flush_turn`,
+  `test_manual_flush_skips_a_heartbeat_session`,
+  `test_bare_new_reconciles_a_pending_bootstrap_before_the_reset_prompt`,
+  `test_heartbeat_preview_writes_nothing_and_the_run_ensures`, and kit tests for `request_flush`,
+  `ResetTurn.prompt`, `heartbeat_prompt(ensure=False)` and a failed reindex after a flush write.
+  Checked over HTTP on a private port (no key; the scripted engine and a local scripted stub of
+  an OpenAI-compatible endpoint): a scripted turn decides `token_threshold` after the reply and
+  abandons the request, a stub turn streams its reply and then writes the daily file, `/flush`
+  reads `already_flushed`, `runtime_skip:heartbeat` or `forced` (and writes after `/new`), `/new`
+  keeps `lab:main` with a new id and an index that is not stale, and a heartbeat run reports
+  `runtime_skip:heartbeat` after its reply. The real-browser check is still open.
 
 ### Task 10: docs, matrix, re-measure
 

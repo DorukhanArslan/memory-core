@@ -155,11 +155,12 @@ Demo-only responsibilities:
 - the host side of a turn over `memory_core.host` (the Lab dogfoods the kit): provider
   resolution (keys request-scoped or from the environment, never stored), the tool loop
   over `HostKit.tools()` and `HostKit.dispatch`, the index bookkeeping (`LabStore`), the
-  pre-turn flush decision inputs (pin-era order until the Lab's flush moves to the kit),
-  sessions, the event log and file snapshots (`demo/lab_*.py`, docs/lab.md)
-- manual flush, promote, dreaming, audit and repair actions (they call
-  `memory_core.consolidation` and `memory_core.memory_flush`; the demo keeps only
-  serializers)
+  host inputs of `HostKit.after_turn` (turn usage or a labelled estimate, the transcript
+  size), the flush run of a `FlushRequest` on its model, `/new` over
+  `HostKit.on_new_session`, the heartbeat run over `HostKit.heartbeat_prompt`, sessions,
+  the event log and file snapshots (`demo/lab_*.py`, docs/lab.md)
+- the `/flush` extension (`HostKit.request_flush`) and the promote, dreaming, audit and
+  repair actions (they call `memory_core.consolidation`; the demo keeps only serializers)
 
 Do not copy demo internals into production integrations. Production hosts should
 depend on the package API and adapter layer.

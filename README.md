@@ -215,9 +215,10 @@ point `MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL` and
 `MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY` (optional `_MODEL`, default
 `text-embedding-3-small`) at an embeddings endpoint.
 
-Every chat turn runs a host tool loop: the model gets `memory_search`,
-`memory_get` and the curation tools, the flush is decided before the turn like
-upstream, and every file change shows up with its source. Endpoints, modes and
+Every chat turn runs a host tool loop over the host kit (`memory_core.host`): the model
+gets `memory_search`, `memory_get` and the curation tools, the flush is decided and
+run after the reply like upstream's session maintenance, and every file change shows
+up with its source. Endpoints, modes and
 what is scripted or real: [docs/lab.md](docs/lab.md).
 
 Smoke test:

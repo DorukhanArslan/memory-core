@@ -121,6 +121,31 @@ def test_flush_transcript_drops_runtime_context_rows(tmp_path):
     assert record.flush.messages[1:-1] == TRANSCRIPT
 
 
+def test_flush_transcript_keeps_the_text_of_content_lists(tmp_path):
+    transcript = (
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": "My cat is "}, {"type": "input_text", "text": "Tom."}],
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "reasoning", "text": "hidden"},
+                {"type": "output_text", "text": "Noted."},
+                {"type": "tool_use", "id": "t1", "name": "memory_search", "input": {}},
+            ],
+        },
+        {"role": "user", "content": [{"type": "image_url", "image_url": {"url": "https://x.test/a.png"}}]},
+    )
+
+    record = _due(_kit(tmp_path), transcript=transcript)
+
+    assert record.flush.messages[1:-1] == (
+        {"role": "user", "content": "My cat is Tom."},
+        {"role": "assistant", "content": "Noted."},
+    )
+
+
 def test_flush_offers_only_the_upstream_write_tool(tmp_path):
     record = _due(_kit(tmp_path))
 

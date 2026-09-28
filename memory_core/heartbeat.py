@@ -135,6 +135,7 @@ __all__ = [
     "resolve_heartbeat_prompt",
     "resolve_heartbeat_prompt_for_response_tool",
     "resolve_heartbeat_wake_flags",
+    "resolve_message_text",
     "strip_heartbeat_token",
 ]
 
@@ -1021,9 +1022,12 @@ HEARTBEAT_TASK_PROMPT_COMPLETIONS = (
 _TEXT_BLOCK_TYPES = frozenset({"text", "input_text", "output_text"})
 
 
-def _resolve_message_text(content: object) -> str:
-    # heartbeat-filter.ts resolveMessageText: string content, or the text blocks of a content
-    # array concatenated without a separator (thinking blocks and other blocks add no text).
+def resolve_message_text(content: object) -> str:
+    """The text of a message's ``content`` (heartbeat-filter.ts ``resolveMessageText``).
+
+    String content as is, or the ``text``, ``input_text`` and ``output_text`` blocks of a content
+    list concatenated without a separator (thinking and other blocks add no text).
+    """
     if isinstance(content, str):
         return content
     if not isinstance(content, list):
@@ -1061,7 +1065,7 @@ def is_heartbeat_user_message(
     """
     if message.get("role") != "user":
         return False
-    trimmed = js_trim(_resolve_message_text(message.get("content")))
+    trimmed = js_trim(resolve_message_text(message.get("content")))
     if not trimmed:
         return False
     transcript_prompts = runtime_identity.internal_wake_transcript_prompts

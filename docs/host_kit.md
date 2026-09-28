@@ -462,8 +462,11 @@ class FlushOutcome:
 The plan, the decision and the session live on `TurnRecord`; the request carries only what the
 flush run needs.
 
-- `messages`: one system message, the transcript's user and assistant text rows (every other role
-  is dropped, runtime-context custom rows included), then `plan.prompt` as the user message.
+- `messages`: one system message, the text of the transcript's user and assistant rows (string
+  content, or the `text`, `input_text` and `output_text` blocks of a content list joined as
+  upstream's `resolveMessageText` joins them, `src/auto-reply/heartbeat-filter.ts:221`; rows
+  without text and every other role are dropped, runtime-context custom rows included), then
+  `plan.prompt` as the user message.
   Upstream's flush turn is a full agent run whose system prompt carries
   `[run.extraSystemPrompt, plan.systemPrompt]` as extra context under `## Conversation Context`
   (`agent-runner-memory.ts:1452-1454`, `system-prompt.ts:1254-1257`; the flush session's key is an
@@ -473,10 +476,10 @@ flush run needs.
   no memory tools, so no Memory Recall section; `seen_truncation_signatures` from the session, as
   upstream passes `bootstrapPromptWarningSignaturesSeen`), then `## Conversation Context` and
   `plan.system_prompt`. The header is script-extracted into `memory_core/_memory_flush_constants.py`.
-  Labelled deviations: text rows only (upstream's bounded view also replays tool calls and results;
-  it fails with `Memory flush exceeds the bounded conversation view.`, a non-goal here), and no host
-  system prompt (upstream prepends the run's `extraSystemPrompt`; a host with one prepends it to the
-  system message itself).
+  Labelled deviations: text only (upstream's bounded view also replays tool calls, tool results and
+  non-text content; it fails with `Memory flush exceeds the bounded conversation view.`, a non-goal
+  here), and no host system prompt (upstream prepends the run's `extraSystemPrompt`; a host with
+  one prepends it to the system message itself).
 - `tools`: upstream offers a flush run only `read` and an append-only `write`
   (`src/agents/agent-tools.ts:91,665-692`). memory-core has no generic `read`, so the kit offers the
   `write` tool alone: upstream's schema and description (`src/agents/sessions/tools/write.ts:42-47,
@@ -514,9 +517,9 @@ flush run needs.
   same cycle. The host runs a session's next `after_turn` only after the pending flush completed or
   was abandoned (an abandoned run records nothing, so that `after_turn` requests the flush again).
   Upstream serializes session maintenance per session key the same way: a maintenance run waits
-  for its predecessors' writes (`src/agents/session-maintenance/run.ts:144`, `coordinator.ts:101-160`)
-  and then reads the stamped entry (`already_flushed`). Replies are not held back: the next turn's
-  `before_turn`, tool calls and model call may run while the flush runs.
+  for its predecessors' writes (`src/agents/session-maintenance/run.ts:144`,
+  `coordinator.ts:101-160`) and then reads the stamped entry (`already_flushed`). Replies are not
+  held back: the next turn's `before_turn`, tool calls and model call may run while the flush runs.
 - Flags: flush never depends on `curated_memory_writes`, and the curation tools are not offered
   during a flush (upstream restricts flush runs; `MemoryCurator` refuses `memory_flush=True`).
 
@@ -811,7 +814,7 @@ Labelled deviations of the flush run (entry point 4):
   ends the entry with `\n`.
 - Empty and `NO_REPLY` content writes nothing (memory-core's write rule; upstream appends it).
 - The missing-parameter messages are memory-core's.
-- Messages carry text rows only, and no host system prompt.
+- Messages carry the rows' text only, and no host system prompt.
 - The target file and the write refuse symlinks and hard links (stricter than upstream).
 
 ## Non-goals

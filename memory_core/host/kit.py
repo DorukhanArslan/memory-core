@@ -50,7 +50,7 @@ from memory_core.consolidation import record_short_term_recalls, undecorate_sear
 from memory_core.current_time import DEFAULT_TIME_FORMAT, TimeFormat, resolve_time_format
 from memory_core.curation import CurationPolicy, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
-from memory_core.heartbeat import prepare_heartbeat_turn
+from memory_core.heartbeat import prepare_heartbeat_turn, resolve_message_text
 from memory_core.host._calls import ToolCallRefused, read_tool_call, tool_error
 from memory_core.host.flush import FlushRequest
 from memory_core.host.heartbeat_run import HeartbeatRun
@@ -623,7 +623,8 @@ class HostKit:
         # The flush turn is a full non-interactive run (bootstrap mode none) whose extra system
         # prompt is the flush system prompt under ## Conversation Context
         # (agent-runner-memory.ts:1452-1454, system-prompt.ts:1254-1257). It offers no memory
-        # tools, so no Memory Recall section; only the visible text rows are replayed.
+        # tools, so no Memory Recall section; only the text of user and assistant rows is
+        # replayed (a content list gives its text blocks).
         context = self._workspace_context(session, is_interactive_user_facing=False)
         system = "\n\n".join(
             part
@@ -633,14 +634,13 @@ class HostKit:
             )
             if part
         )
+        rows = ((row.get("role"), resolve_message_text(row.get("content"))) for row in transcript)
         return (
             {"role": "system", "content": system},
             *(
-                {"role": row["role"], "content": row["content"]}
-                for row in transcript
-                if row.get("role") in ("user", "assistant")
-                and isinstance(row.get("content"), str)
-                and row["content"]
+                {"role": role, "content": text}
+                for role, text in rows
+                if role in ("user", "assistant") and text
             ),
             {"role": "user", "content": plan.prompt},
         )

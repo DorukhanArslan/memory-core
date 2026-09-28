@@ -13,11 +13,13 @@ runtime code spells the name only through that module::
 ``--to`` renames the project from the declared name: the package directory (``git mv``), the
 declaration, the constant module, uv.lock (relocked by ``uv lock --offline`` when uv is
 installed, else its own entries rewritten) and every spelling of the name in the tracked
-files. ``--display`` defaults to the new distribution name. It runs ``--check`` before and
-after, and commits nothing. ``--check`` lists every disagreement between the declaration, the
-package directory, the constant module, pyproject.toml and uv.lock, every tracked symlink or
-non-UTF-8 file that spells the name (a rename rewrites neither) and every string in runtime
-code that spells the name itself, and exits 1 if there is one.
+files. ``--display`` defaults to the new distribution name. It refuses uncommitted changes
+and untracked files (outside UNTOUCHED and the hidden top-level directories, which it never
+changes), runs ``--check`` before and after, and commits nothing. ``--check`` lists every
+disagreement between the declaration, the package directory, the constant module,
+pyproject.toml and uv.lock, every tracked symlink or non-UTF-8 file that spells the name (a
+rename rewrites neither) and every string in runtime code that spells the name itself, and
+exits 1 if there is one.
 
 Spellings. The words of a name (``probe-kit``: probe, kit) give its forms: kebab
 (``probe-kit``: the distribution name and the slug of file and directory names), snake
@@ -326,6 +328,25 @@ def in_scope(path: str) -> bool:
     return path not in UNTOUCHED and not (path.startswith(".") and "/" in path)
 
 
+def uncommitted_paths(root: Path) -> list[str]:
+    """Paths a rename may change that differ from HEAD, or are untracked (``git mv`` of the
+    package would move an untracked file there without rewriting it)."""
+    listing = subprocess.run(
+        ["git", "status", "--porcelain", "-z", "--untracked-files=all"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    ).stdout.decode("utf-8")
+    entries = iter(listing.split("\0"))
+    paths = []
+    for entry in entries:
+        if entry:
+            paths.append(entry[3:])
+            if entry[0] in "RC":
+                paths.append(next(entries))
+    return [path for path in paths if in_scope(path)]
+
+
 def read_texts(root: Path) -> dict[str, str]:
     """The text of every tracked file a rename may change. Symlinks and files that are not
     UTF-8 are skipped: a rename cannot rewrite them (unrewritable_files)."""
@@ -421,6 +442,12 @@ def name_problems(name: ProjectName) -> list[str]:
 
 
 def rename(root: Path, new: ProjectName) -> None:
+    uncommitted = uncommitted_paths(root)
+    if uncommitted:
+        raise SystemExit(
+            "commit or remove these first, so that the diff holds only the rename and a failed"
+            " rename can be undone with git:\n" + "\n".join(uncommitted[:20])
+        )
     problems = check(root)
     if problems:
         raise SystemExit("the name check fails; fix it before renaming:\n" + "\n".join(problems))

@@ -81,7 +81,19 @@ def _copy_tracked_tree(target: Path) -> Path:
             shutil.copy2(source, target / path)
     subprocess.run(["git", "init", "-q"], cwd=target, check=True)
     subprocess.run(["git", "add", "-A", "-f"], cwd=target, check=True)
+    _commit(target)
     return target
+
+
+def _commit(tree: Path) -> None:
+    """Commit the tree as it is: a rename starts from a clean one."""
+    subprocess.run(["git", "add", "-A"], cwd=tree, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=probe", "-c", "user.email=probe@example.invalid"]
+        + ["commit", "-q", "-m", "probe"],
+        cwd=tree,
+        check=True,
+    )
 
 
 def _tree_bytes(tree: Path) -> dict[str, bytes]:
@@ -172,6 +184,7 @@ def test_a_rename_through_the_upstream_component_name_equals_a_direct_one(probe_
     ):
         result = _run(tree, *args)
         assert result.returncode == 0, (args, result.stdout + result.stderr)
+        _commit(tree)
 
     direct, detour = _tree_bytes(probe_tree), _tree_bytes(tree)
     assert sorted(detour) == sorted(direct)
@@ -245,7 +258,7 @@ def test_a_symlink_or_non_utf8_file_that_spells_the_name_stops_the_check_and_a_r
     name = rename_project.read_declaration(tree)
     (tree / "docs" / "package-link").symlink_to(f"../{name.package}")
     (tree / "docs" / "latin1.txt").write_bytes(f"caf\xe9 {name.dist}\n".encode("latin-1"))
-    subprocess.run(["git", "add", "-A"], cwd=tree, check=True)
+    _commit(tree)
 
     check = _run(tree, "--check")
     rename = _run(tree, "--to", PROBE_DIST)
@@ -258,3 +271,22 @@ def test_a_symlink_or_non_utf8_file_that_spells_the_name_stops_the_check_and_a_r
     ]
     assert rename.stderr.splitlines()[1:] == check.stdout.splitlines()
     assert subprocess.run(["git", "diff", "--quiet"], cwd=tree, check=False).returncode == 0
+
+
+def test_a_rename_refuses_uncommitted_changes_and_untracked_files(tmp_path):
+    tree = _copy_tracked_tree(tmp_path)
+    name = rename_project.read_declaration(tree)
+    (tree / name.package / "untracked.py").write_text(
+        f"from {name.package} import flags\n", encoding="utf-8"
+    )
+    with (tree / "README.md").open("a", encoding="utf-8") as handle:
+        handle.write("\nAn uncommitted line.\n")
+    # A hidden top-level directory holds local tool state, which a rename never changes.
+    (tree / ".local").mkdir()
+    (tree / ".local" / "state.json").write_text("{}\n", encoding="utf-8")
+
+    result = _run(tree, "--to", PROBE_DIST)
+
+    assert result.returncode == 1
+    assert sorted(result.stderr.splitlines()[1:]) == ["README.md", f"{name.package}/untracked.py"]
+    assert (tree / name.package / "untracked.py").is_file()

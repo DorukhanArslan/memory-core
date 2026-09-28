@@ -398,18 +398,29 @@ def main(argv: Sequence[str] | None = None) -> None:
     graph = build_graph(kit, model, context_window_tokens=window)
     config: RunnableConfig = {"configurable": {"thread_id": args.thread}}
     print(f"[memory] {root}/, FTS-only search; context window {window} ({source})", file=sys.stderr)
-    while text := input("> "):
-        # Drain the stream: the reply comes with the agent update, maintenance after it.
-        turn = {"messages": [HumanMessage(text)]}
-        for update in graph.stream(turn, config, stream_mode="updates"):
-            for node, values in update.items():
-                if node == "agent" and not has_tool_calls(values["messages"][-1]):
-                    print(values["messages"][-1].text)
-                elif node == "tools":
-                    for message in values["messages"]:
-                        print(f"[tool] {message['name']}: {message['status']}", file=sys.stderr)
-                elif node == "maintain":
-                    print(describe_maintenance(values["memory_maintenance"]), file=sys.stderr)
+    try:
+        while text := input("> "):
+            try:
+                chat_turn(graph, config, text)
+            except Exception as error:  # the thread goes on: the next message starts a new turn
+                print(f"[error] {type(error).__name__}: {error}", file=sys.stderr)
+    except (EOFError, KeyboardInterrupt):  # Ctrl-D, the end of piped input, Ctrl-C
+        print(file=sys.stderr)
+
+
+def chat_turn(graph: CompiledStateGraph, config: RunnableConfig, text: str) -> None:
+    """One terminal turn: the reply to stdout, tool calls and maintenance to stderr."""
+    # Drain the stream: the reply comes with the agent update, maintenance after it.
+    turn = {"messages": [HumanMessage(text)]}
+    for update in graph.stream(turn, config, stream_mode="updates"):
+        for node, values in update.items():
+            if node == "agent" and not has_tool_calls(values["messages"][-1]):
+                print(values["messages"][-1].text)
+            elif node == "tools":
+                for message in values["messages"]:
+                    print(f"[tool] {message['name']}: {message['status']}", file=sys.stderr)
+            elif node == "maintain":
+                print(describe_maintenance(values["memory_maintenance"]), file=sys.stderr)
 
 
 if __name__ == "__main__":

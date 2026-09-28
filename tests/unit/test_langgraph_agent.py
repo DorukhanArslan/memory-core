@@ -750,13 +750,18 @@ class _StubEndpoint:
 
     def __init__(self) -> None:
         self.requests: list[dict] = []
+        self.failures = 0  # the next requests answered with a 400 error
         stub = self
 
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):  # noqa: N802 (http.server's name)
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 stub.requests.append(body)
-                if body.get("stream"):
+                if stub.failures:
+                    stub.failures -= 1
+                    error = {"message": "stub refused", "type": "invalid_request_error"}
+                    self._reply({"error": error}, status=400)
+                elif body.get("stream"):
                     self._stream(body)
                 else:
                     self._reply(
@@ -776,9 +781,9 @@ class _StubEndpoint:
                         }
                     )
 
-            def _reply(self, payload):
+            def _reply(self, payload, status=200):
                 data = json.dumps(payload).encode()
-                self.send_response(200)
+                self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
@@ -892,15 +897,28 @@ def test_example_main_requires_a_window_the_profile_does_not_give(tmp_path: Path
     assert example.context_window(model, 32_000) == (32_000, "--context-window")
 
 
-def test_example_main_chats_against_an_openai_compatible_endpoint(
-    tmp_path: Path, stub_endpoint, monkeypatch, capsys
-):
+def _chat_input(monkeypatch, tmp_path: Path, endpoint: _StubEndpoint, lines, end=None) -> None:
+    """``main``'s environment for ``endpoint`` and its terminal input: ``lines``, then ``end``."""
+    pytest.importorskip("langchain_openai")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("OPENAI_MODEL", "stub-model")
-    monkeypatch.setenv("OPENAI_BASE_URL", stub_endpoint.url)
-    lines = iter(["Hello.", ""])
-    monkeypatch.setattr("builtins.input", lambda prompt: next(lines))
+    monkeypatch.setenv("OPENAI_BASE_URL", endpoint.url)
+    pending = iter(lines)
+
+    def read(prompt: str) -> str:
+        line = next(pending, None)
+        if line is None:
+            raise end
+        return line
+
+    monkeypatch.setattr("builtins.input", read)
+
+
+def test_example_main_chats_against_an_openai_compatible_endpoint(
+    tmp_path: Path, stub_endpoint, monkeypatch, capsys
+):
+    _chat_input(monkeypatch, tmp_path, stub_endpoint, ["Hello.", ""])
 
     example.main(["--context-window", "2000"])
 
@@ -920,6 +938,38 @@ def test_example_main_chats_against_an_openai_compatible_endpoint(
     assert [tool["function"]["name"] for tool in flush["tools"]] == ["write"]
     assert turn["messages"][0]["role"] == "system"
     assert (tmp_path / "my-agent-app" / "MEMORY.md").exists() is False
+
+
+@pytest.mark.parametrize("end", [EOFError, KeyboardInterrupt])
+def test_example_main_exits_cleanly_at_the_end_of_input(
+    tmp_path: Path, stub_endpoint, monkeypatch, capsys, end
+):
+    # Ctrl-D (or the end of piped input) and Ctrl-C end the chat without a traceback.
+    _chat_input(monkeypatch, tmp_path, stub_endpoint, ["Hello."], end=end)
+
+    example.main(["--context-window", "200000"])
+
+    out, err = capsys.readouterr()
+    assert out == "stub reply\n"
+    assert err.endswith("\n\n") and "Traceback" not in err
+
+
+def test_example_main_reports_a_failed_turn_and_goes_on(
+    tmp_path: Path, stub_endpoint, monkeypatch, capsys
+):
+    stub_endpoint.failures = 1
+    _chat_input(monkeypatch, tmp_path, stub_endpoint, ["Hello.", "Hello again.", ""])
+
+    example.main(["--context-window", "200000"])
+
+    out, err = capsys.readouterr()
+    assert out == "stub reply\n"
+    setup, failure, maintenance = err.splitlines()
+    assert re.match(r"\[error\] \w+Error: ", failure) and "stub refused" in failure
+    assert maintenance.startswith("[memory] no flush (under_threshold, ")
+    # The next message started a new turn after the failed one's user message.
+    contents = [message["content"] for message in stub_endpoint.requests[-1]["messages"]]
+    assert contents[1:] == ["Hello.", "Hello again."]
 
 
 def _doc() -> str:

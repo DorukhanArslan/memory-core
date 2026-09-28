@@ -33,8 +33,11 @@ A terminal chat over one thread (`--thread`, default `main`) and the workspace
 `my-agent-app/` (`--workspace`), searched FTS-only. Replies go to stdout; stderr gets one line
 for the setup (the context window and where it came from), one per tool call and one per
 maintenance (the flush decision with its token count and threshold, and what the flush
-appended). `/new` and `/reset` start a new session in the thread. The checkpointer is in
-memory, so a restart starts the thread over; the memory files stay.
+appended). `/new` and `/reset` start a new session in the thread. An empty line, Ctrl-D (or
+the end of piped input) or Ctrl-C ends the chat; a failed turn prints `[error] ...` to stderr
+and the chat goes on, the next message starting a new turn after the failed one's user message
+(F17). The checkpointer is in memory, so a restart starts the thread over; the memory files
+stay.
 
 `--context-window` is required when LangChain's model profile has no window for the model name
 (OpenRouter-style names such as `openai/gpt-4o-mini` have none): the kit's 200,000-token
@@ -772,7 +775,9 @@ As built, beyond the plan: `test_a_command_that_is_not_first_word_is_an_ordinary
 the local stub), and after review `test_tool_rounds_are_bounded_and_the_last_call_has_no_tools`
 and `test_a_reply_that_asks_for_tools_past_the_bound_fails_the_turn` (F25) and
 `test_next_message_after_a_failed_tools_node_drops_the_unanswered_call` (F26) and
-`test_two_threads_on_one_graph_and_kit_are_separate_sessions` (F16). The live test's code was dry-run once against a scripted local endpoint in a
+`test_two_threads_on_one_graph_and_kit_are_separate_sessions` (F16), and for `main`
+`test_example_main_exits_cleanly_at_the_end_of_input` and
+`test_example_main_reports_a_failed_turn_and_goes_on`. The live test's code was dry-run once against a scripted local endpoint in a
 scratch directory; it has not run against a real model on this branch.
 
 ### TDD tasks

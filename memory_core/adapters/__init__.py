@@ -1,8 +1,3 @@
-"""Optional host-framework adapters for OpenClaw memory-core."""
+"""Optional host-framework adapters for memory-core."""
 
-from memory_core.adapters.langgraph import LangGraphMemoryRecall, format_memory_context
-
-__all__ = [
-    "LangGraphMemoryRecall",
-    "format_memory_context",
-]
+__all__: list[str] = []

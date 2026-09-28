@@ -156,7 +156,6 @@ memory = Memory.from_workspace(  # FTS-only; pass embedding_provider= for hybrid
 
 results = memory.search("preferred name", max_results=5)
 memory_file = memory.get("MEMORY.md", from_line=1, lines=20)
-recall_node = memory.langgraph_recall()
 flush_plan = build_memory_flush_plan(workspace_dir=memory.workspace.root)
 ```
 
@@ -233,8 +232,8 @@ FTS-only mode that needs no embedding provider. See
 
 See [Package Boundary](docs/package_boundary.md) for what belongs to core
 memory, runtime adapters, demo code, and out-of-scope host runtime behavior.
-See [LangGraph Integration](docs/integrations/langgraph.md) for a minimal
-`state -> memory_context` adapter example.
+See [LangGraph Integration](docs/integrations/langgraph.md) for the LangGraph host
+integration over the host kit.
 See [Live SDK Integration](docs/integrations/live.md) for streaming turn
 assembly, sentence-level TTS events, subject-scoped memory, and post-session
 summary writes.

@@ -122,9 +122,6 @@ thin.
 
 Included:
 
-- `LangGraphMemoryRecall`: adapter-only auto-recall. It injects search results into
-  the prompt, which upstream never does (upstream's model recalls through the memory
-  tools, as `memory_core.host` offers them); it stays as an explicit, labelled choice
 - `memory_core.live` (subject memory, live turns, session summaries) and
   `SubjectConsolidation`, which only routes a subject's workspace into
   `memory_core.consolidation`
@@ -142,9 +139,8 @@ Adapter non-goals:
 - replacing LangGraph checkpointers
 - pretending to be OpenClaw runtime behavior
 
-Example: a LangGraph node can call `LangGraphMemoryRecall` before the model node
-and inject the returned `memory_context` into the model prompt (auto-recall, not the
-upstream shape; the upstream shape is `HostKit.tools()` and `HostKit.dispatch`).
+The auto-recall node `LangGraphMemoryRecall` was removed in 0.2.0: it injected search
+results into the prompt, which upstream never does (CHANGELOG.md › Removed).
 
 ## Demo App
 

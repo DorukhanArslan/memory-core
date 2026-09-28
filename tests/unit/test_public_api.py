@@ -59,7 +59,7 @@ def test_every_moved_name_is_exported_where_the_changelog_says():
     rows = [re.match(r"\| `([a-z_.]+)` \| (.+) \|$", line) for line in table.splitlines()]
     moved = {row[1]: re.findall(r"`(\w+)`", row[2]) for row in rows if row}
 
-    assert sum(len(names) for names in moved.values()) == 154
+    assert sum(len(names) for names in moved.values()) == 152
     for module_name, names in moved.items():
         module = importlib.import_module(module_name)
         for name in names:
@@ -70,7 +70,18 @@ def test_every_moved_name_is_exported_where_the_changelog_says():
 def test_memory_keeps_only_the_core_handle_methods():
     public = {name for name in vars(memory_core.Memory) if not name.startswith("_")}
 
-    assert public == {"from_workspace", "search", "get", "curator", "langgraph_recall"}
+    assert public == {"from_workspace", "search", "get", "curator"}
+
+
+def test_the_auto_recall_helper_is_gone():
+    # Removed in 0.2.0 (CHANGELOG.md › Removed): it injected search results into the prompt,
+    # which upstream never does; a LangGraph host uses the host kit's tools instead.
+    import memory_core.adapters
+    import memory_core.adapters.langgraph as adapter
+
+    for module in (memory_core.adapters, adapter):
+        assert not hasattr(module, "LangGraphMemoryRecall")
+        assert not hasattr(module, "format_memory_context")
 
 
 def test_the_root_curation_error_covers_its_subclasses():

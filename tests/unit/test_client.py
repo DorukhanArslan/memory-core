@@ -27,24 +27,6 @@ def test_from_workspace_reads_host_memory_files(tmp_path: Path):
     assert "Doruk" in result["results"][0]["snippet"]
 
 
-def test_from_workspace_can_build_langgraph_recall_node(tmp_path: Path):
-    (tmp_path / "memory").mkdir()
-    (tmp_path / "memory" / "2026-05-30.md").write_text(
-        "# 2026-05-30\n\n- User prefers to be addressed as Doruk.\n",
-        encoding="utf-8",
-    )
-
-    memory = Memory.from_workspace(
-        tmp_path,
-        embedding_provider=FakeEmbeddingProvider(),
-        initialize=False,
-    )
-
-    patch = memory.langgraph_recall()({"input": "Bana nasil hitap edeceksin?"})
-
-    assert "Doruk" in patch["memory_context"]
-
-
 def test_from_workspace_initialize_creates_memory_core_files(tmp_path: Path):
     memory = Memory.from_workspace(
         tmp_path,
@@ -159,7 +141,3 @@ def test_blank_queries_raise_through_the_facade(tmp_path: Path):
             "tool": "memory_search",
             "error": "query required",
         }
-    assert memory.langgraph_recall()({"input": "  "}) == {
-        "memory_context": "",
-        "memory_results": [],
-    }

@@ -74,8 +74,7 @@ built on them: `Memory.search("")` and `SubjectMemory.prepare_live_turn` with a
 blank `user_utterance` (a silent ASR turn, for example) raise
 `MemoryToolInputError("query required")`. Before this
 contract port they returned `{"results": [], "disabled": True, "error": "query
-required"}` and recall injected nothing. `LangGraphMemoryRecall` still skips a
-query that is empty after `str.strip()`. Hosts that can pass blank input must
+required"}` and recall injected nothing. Hosts that can pass blank input must
 skip recall for it or catch the error. `tests/unit/test_client.py` pins this;
 whether the facade should return an empty recall instead is an open decision.
 
@@ -140,10 +139,11 @@ lifts the pause). In memory-core the host owns reindexing, so the model relays a
 that an end user of the host app cannot take; whether the memory-core text should
 address the host instead is an open decision.
 
-The recall helpers keep only `results`: `LangGraphMemoryRecall` and
-`SubjectMemory.prepare_live_turn` drop the `disabled`, `warning` and `action` of
-an unavailable or paused result, so recall injects nothing and nobody is told.
-These helpers are adapter-only (no upstream counterpart). The upstream shape is
+The live recall helper keeps only `results`: `SubjectMemory.prepare_live_turn`
+drops the `disabled`, `warning` and `action` of an unavailable or paused result,
+so recall injects nothing and nobody is told. The helper is adapter-only (no
+upstream counterpart; `LangGraphMemoryRecall`, which did the same, was removed in
+0.2.0). The upstream shape is
 the model's own `memory_search` call through `HostKit.tools()` and
 `HostKit.dispatch`, which return the whole payload; a host that needs the signal
 without the kit calls `Memory.search` (or `execute_memory_search_tool`) and

@@ -52,8 +52,8 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   markers written under the earlier name are not read, so entries promoted under it can be
   promoted again (README › Rename the Project).
 - The package root exports 24 names instead of 171 (below): the host kit classes and
-  `WorkspaceStateMigrationRequiredError` are new there, 154 names moved to their submodules
-  (table below) and 5 were removed.
+  `WorkspaceStateMigrationRequiredError` are new there, 152 names moved to their submodules
+  (table below) and 7 were removed.
 - The daily flush write and `MemoryCurator.append_daily_note` skip only content whose stripped
   text is exactly `NO_REPLY` (and empty content): `NO_REPLY_FACTS: ...` and any other text that
   only starts with the token is written now. Upstream's `write` appends even the exact token.
@@ -73,6 +73,12 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   `FlushRequest`.
 - `record_daily_memory_flush`. Record a daily signal with
   `memory_core.consolidation.record_short_term_recalls(..., signal_type="daily")`.
+- `LangGraphMemoryRecall` and `format_memory_context` (`memory_core.adapters.langgraph`,
+  `memory_core.adapters`) and `Memory.langgraph_recall()`. The node injected search results into
+  the prompt, which upstream never does, and read only role dicts, so a LangGraph state of
+  LangChain messages recalled nothing. Use the host kit from a LangGraph graph instead
+  (docs/integrations/langgraph.md): the model recalls through `HostKit.tools()` and
+  `HostKit.dispatch()`. A host that still wants auto-recall calls `Memory.search` itself.
 
 ### Package root
 
@@ -94,7 +100,6 @@ Import each name from the module in its row (for example
 
 | Module | Names |
 | --- | --- |
-| `memory_core.adapters.langgraph` | `format_memory_context`, `LangGraphMemoryRecall` |
 | `memory_core.automation` | `AutomationJob`, `AutomationStore`, `due_automation_jobs`, `FileAutomationStore`, `heartbeat_scheduled_tasks`, `record_automation_job_run` |
 | `memory_core.bootstrap` | `bootstrap_status`, `build_bootstrap_context_files`, `build_startup_context`, `build_workspace_context`, `ContextFile`, `DEFAULT_WORKSPACE_LAYOUT`, `initialize_agent_workspace`, `load_workspace_bootstrap_files`, `WorkspaceBootstrapFile`, `WorkspaceContext`, `WorkspaceInitResult`, `WorkspaceSetupState` |
 | `memory_core.client` | `DEFAULT_MEMORY_MD_TEMPLATE`, `initialize_memory_core_workspace` |

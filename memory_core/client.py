@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from memory_core.adapters.langgraph import LangGraphMemoryRecall
 from memory_core.bootstrap import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
 from memory_core.config import MemoryConfig
 from memory_core.curation import CurationPolicy, CurationResult, MemoryCurator
@@ -114,29 +113,6 @@ class Memory:
             after_write=reindex,
             timezone=timezone,
             now_ms=now_ms,
-        )
-
-    def langgraph_recall(
-        self,
-        *,
-        input_key: str = "input",
-        messages_key: str = "messages",
-        context_key: str = "memory_context",
-        results_key: str = "memory_results",
-        max_results: int = 5,
-        min_score: float = 0.0,
-        corpus: str = "all",
-    ) -> LangGraphMemoryRecall:
-        return LangGraphMemoryRecall(
-            config=self.config,
-            store=self.store,
-            input_key=input_key,
-            messages_key=messages_key,
-            context_key=context_key,
-            results_key=results_key,
-            max_results=max_results,
-            min_score=min_score,
-            corpus=corpus,
         )
 
 

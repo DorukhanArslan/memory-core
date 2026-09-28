@@ -761,12 +761,12 @@ workflow state, trace storage, secret redaction policy (the kit takes the host's
 
 ## `Memory.prepare_turn`, `Memory.chat`, `Memory.record_turn`: removed
 
-Decision: keep `Memory` as the core handle (`from_workspace`, `search`, `get`, `curator`,
-`langgraph_recall`). `prepare_turn`, `chat` and `record_turn` were deprecated in this stage (a
-`DeprecationWarning` naming `memory_core.host`, behaviour unchanged, Task 7) and removed in the
-packaging stage (0.2.0, decision Q7) with `MemoryChatTurn`, `MemoryChatResult`,
-`MemoryRecordResult`, `DEFAULT_CHAT_SYSTEM_PROMPT`, `examples/chatbot_memory.py` and
-`docs/feature_storybook.md`.
+Decision: keep `Memory` as the core handle (`from_workspace`, `search`, `get`, `curator`;
+`langgraph_recall` was removed later in 0.2.0, below). `prepare_turn`, `chat` and
+`record_turn` were deprecated in this stage (a `DeprecationWarning` naming `memory_core.host`,
+behaviour unchanged, Task 7) and removed in the packaging stage (0.2.0, decision Q7) with
+`MemoryChatTurn`, `MemoryChatResult`, `MemoryRecordResult`, `DEFAULT_CHAT_SYSTEM_PROMPT`,
+`examples/chatbot_memory.py` and `docs/feature_storybook.md`.
 
 - `prepare_turn` injected search results as `Relevant memory:` into every prompt. Upstream has no
   such injection; its model recalls through the tools. The kit offers the upstream shape.
@@ -779,10 +779,12 @@ packaging stage (0.2.0, decision Q7) with `MemoryChatTurn`, `MemoryChatResult`,
 - Delegating the three to the kit would have silently changed what they write (plain text versus
   a `write` call, forced versus gated), a breaking change hidden behind old names; the warning and
   then the removal made the change loud.
-- `LangGraphMemoryRecall` (`Memory.langgraph_recall`) injects search results the way
-  `prepare_turn` did. It stays as an explicit, labelled adapter-only auto-recall (not upstream
-  behaviour; a LangGraph host that wants the upstream shape uses the kit's tools instead), as the
-  matrix and docs/package_boundary.md label it.
+- `LangGraphMemoryRecall` (`Memory.langgraph_recall`) injected search results the way
+  `prepare_turn` did. It stayed at first as an explicit, labelled adapter-only auto-recall; on
+  2026-09-29 it was removed in 0.2.0 with `format_memory_context`, since it also read only role
+  dicts (a LangGraph state of LangChain messages recalled nothing) and the LangGraph host
+  integration uses the kit's tools (docs/integrations/langgraph.md › Fate of
+  `LangGraphMemoryRecall`; Doruk confirms it as L1 there).
 
 ## How the Lab dogfoods the kit
 

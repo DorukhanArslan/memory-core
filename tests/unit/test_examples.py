@@ -213,13 +213,3 @@ def test_feature_flags_doc_example_runs(tmp_path: Path, monkeypatch):
 
     assert namespace["memory"].config.flags.vector_search is False
     assert (tmp_path / "MEMORY.md").exists()
-
-
-def test_langgraph_doc_example_runs_without_an_embedder(tmp_path: Path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    namespace: dict = {}
-
-    exec(_python_block("docs/integrations/langgraph.md"), namespace)
-
-    assert namespace["memory"].config.flags.vector_search is False
-    assert set(namespace["state_update"]) == {"memory_context", "memory_results"}

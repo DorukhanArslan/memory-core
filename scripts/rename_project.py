@@ -80,13 +80,15 @@ PROTECTED = (
     r"entries\.memory-core\b",
     r'"entries":\s*\{\s*"memory-core"',
     r'\.get\("entries", \{\}\)\s*\.get\("memory-core"',
-    # Identifiers that name the upstream component, and the local that holds its config.
+    # Identifiers that name the upstream component, and the locals that hold its config entry
+    # (by their context: bare, they are the project's own snake and camel forms).
     r"(?<![\w$])(?:initialize_memory_core_workspace|_memory_core_plugin_config"
     r"|test_runner_resolves_memory_core_plugin_config"
     r"|test_from_workspace_initialize_creates_memory_core_files|resolveMemoryCoreNowMs"
     r"|resolveMemoryCorePluginConfig|configureMemoryCoreDreamingStateForTests"
-    r"|loadMemoryCoreTestHelpers|memoryCoreConfig|memoryCore)(?![\w$])",
+    r"|loadMemoryCoreTestHelpers|memoryCoreConfig)(?![\w$])",
     r'(?<![\w$])memory_core(?= = _as_dict\(entries\.get\(|\.get\("config"\))',
+    r"(?<![\w$])memoryCore(?= = isRecord\(entries|\??\.config\b)",
     # Prose that names the upstream component.
     r"OpenClaw(?:'s)?(?: TypeScript)? [Mm]emory-[Cc]ore\b",
     r"upstream `memory-core`",

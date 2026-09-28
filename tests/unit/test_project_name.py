@@ -188,7 +188,7 @@ def test_a_rename_to_a_name_the_tree_already_spells_is_refused(tmp_path):
     assert subprocess.run(["git", "diff", "--quiet"], cwd=tree, check=False).returncode == 0
 
 
-def test_the_check_reports_a_drifted_constant_module_and_a_spelled_name(tmp_path):
+def test_the_check_reports_a_drifted_constant_module_and_spelled_names(tmp_path):
     tree = _copy_tracked_tree(tmp_path)
     name = rename_project.read_declaration(tree)
     module = tree / name.package / rename_project.CONSTANT_MODULE
@@ -200,11 +200,15 @@ def test_the_check_reports_a_drifted_constant_module_and_a_spelled_name(tmp_path
     )
     with (tree / "demo" / "lab_runtime.py").open("a", encoding="utf-8") as handle:
         handle.write(f'\nSPELLED = "{name.display} Lab"\n')
+    # The camel form too, although the oracle runner's upstream local shares it.
+    with (tree / "demo" / "static" / "lab" / "project.js").open("a", encoding="utf-8") as handle:
+        handle.write(f'\nexport const SPELLED = "{name.spell("camel")}";\n')
 
     result = _run(tree, "--check")
 
     assert result.returncode == 1
     problems = result.stdout.splitlines()
-    assert len(problems) == 2, problems
+    assert len(problems) == 3, problems
     assert "DISPLAY_NAME" in problems[0]
     assert problems[1].startswith("demo/lab_runtime.py:")
+    assert problems[2].startswith("demo/static/lab/project.js:")

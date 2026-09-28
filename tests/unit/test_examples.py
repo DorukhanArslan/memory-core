@@ -1,8 +1,12 @@
 import asyncio
+import json
+import re
 from pathlib import Path
 
 import examples.basic_usage as basic_usage
 import examples.live_streaming as live_streaming
+import examples.quickstart as quickstart
+from memory_core import TurnUsage
 from memory_core.live import LiveIdentityStore
 
 
@@ -80,3 +84,74 @@ def test_live_streaming_example_records_session_summary(tmp_path: Path):
     assert memory_path.startswith("memory/")
     memory_file = tmp_path / "subjects" / "subj_123" / memory_path
     assert "evening delivery" in memory_file.read_text(encoding="utf-8")
+
+
+class _StubLLM:
+    # Stands in for quickstart.call_my_llm: each chat turn makes one memory_search call and
+    # reports a prompt past the default window's 176,000-token flush threshold; the flush run
+    # writes one fact to the target its prompt names, as a model would.
+    FACT = "- The project codename is velvetkiwi."
+
+    def __init__(self):
+        self.turns = []
+        self.searches = []
+        self.flush_runs = []
+        self.writes = []
+
+    def __call__(self, messages, tools, run_tool):
+        names = [tool["name"] for tool in tools]
+        if names == ["write"]:
+            self.flush_runs.append(list(messages))
+            target = re.search(r"memory/\d{4}-\d{2}-\d{2}\.md", messages[-1]["content"])[0]
+            arguments = json.dumps({"path": target, "content": self.FACT})
+            self.writes.append(run_tool("write", arguments))
+            return "NO_REPLY", TurnUsage(None)
+        self.turns.append((list(messages), names))
+        self.searches.append(run_tool("memory_search", {"query": "velvetkiwi codename"}))
+        return f"reply {len(self.turns)}", TurnUsage(180_000, 20)
+
+
+def test_quickstart_runs_the_memory_tools_and_the_flush(tmp_path: Path, monkeypatch, capsys):
+    llm = _StubLLM()
+    lines = iter(["Our codename is velvetkiwi.", "What is our codename?", ""])
+    monkeypatch.setattr(quickstart, "call_my_llm", llm)
+    monkeypatch.setattr("builtins.input", lambda prompt: next(lines))
+    monkeypatch.chdir(tmp_path)
+
+    quickstart.main()
+
+    (first_messages, names), (second_messages, _) = llm.turns
+    assert names[:2] == ["memory_search", "memory_get"]
+    assert first_messages[0]["role"] == "system"
+    assert first_messages[0]["content"].startswith("## Memory Recall")
+    assert first_messages[1:] == [{"role": "user", "content": "Our codename is velvetkiwi."}]
+    assert [message["content"] for message in second_messages[1:]] == [
+        "Our codename is velvetkiwi.",
+        "reply 1",
+        "What is our codename?",
+    ]
+    # Turn 1 finds nothing; its flush appends the fact, which turn 2's search finds.
+    empty = {"results": [], "provider": "none", "model": "fts-only", "citations": "on"}
+    assert llm.searches[0] == empty
+    (write,) = llm.writes
+    target = write["path"]
+    assert write == {
+        "status": "ok",
+        "tool": "write",
+        "path": target,
+        "action": "appended",
+        "text": f"Appended content to {target}.",
+    }
+    assert (tmp_path / "my-agent-app" / target).read_text(encoding="utf-8") == llm.FACT + "\n"
+    (hit,) = llm.searches[1]["results"]
+    assert (hit["path"], hit["startLine"]) == (target, 1)
+    assert hit["citation"] == f"Source: {target}#L1-L2"
+    assert llm.FACT in hit["snippet"]
+    # One flush run over turn 1's text: complete() stamped the compaction cycle and the loop
+    # kept that state, so turn 2, past the threshold too, reads already_flushed.
+    (flush_messages,) = llm.flush_runs
+    roles = [message["role"] for message in flush_messages]
+    assert roles == ["system", "user", "assistant", "user"]
+    assert flush_messages[-1]["content"].startswith("Pre-compaction memory flush.")
+    # The flush run's reply is never delivered.
+    assert capsys.readouterr().out == "reply 1\nreply 2\n"

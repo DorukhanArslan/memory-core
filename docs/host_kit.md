@@ -184,6 +184,7 @@ inbound user message
     flush.complete(current_state, error=None | exc)
                                        ->  record_memory_flush_success / _failure
     <- FlushOutcome(session''')
+  the session's next after_turn runs only after complete() (one maintenance lane per session)
 
 /new or /reset
   on_new_session(state, command, ...)  ->  save_session_memory (+ reindex)
@@ -427,8 +428,11 @@ Flush execution: a returned request object, not a host callable. Reasons:
   never own, and would force one sync or async signature on every host.
 - Upstream runs the flush as detached maintenance after the reply is delivered, in its own
   session view (`src/auto-reply/reply/memory-flush-session.ts:17-47`). A request can be run later
-  and elsewhere (a background task, a worker); a callable inside `after_turn` would sit on the
-  reply path.
+  in the same process (a background task or thread); a callable inside `after_turn` would sit on
+  the reply path. A request holds the workspace's `Memory` and its own appends, so it does not
+  cross processes: a host that hands maintenance to another process (a queue worker) sends the
+  worker the session state (`SessionState.to_json`) and the transcript, and the worker calls
+  `after_turn`, runs the flush and calls `complete()` on its own kit for the same root.
 - The request is data plus two sync methods, so asyncio hosts await their own model between
   them and the kit stays sync; tests assert the request without a stub model.
 
@@ -496,14 +500,23 @@ flush run needs.
     writes do;
   - other names return `tool <name> is not available`; errors of the append are payloads.
 - `complete(session, ...)` writes the session entry of the host's current state for this session
-  (the flush may run detached while later turns update the state; a different `session_id` raises
-  `ValueError`): `record_memory_flush_success(entry, flushed_compaction_count=<the count when the
+  (the flush may run detached while the next turn's `before_turn`, tool calls and model call run and
+  update the state; a different `session_id` raises `ValueError`):
+  `record_memory_flush_success(entry, flushed_compaction_count=<the count when the
   request was made>)`, as upstream stamps `flushedCompactionCount`, or with `error`
   `record_memory_flush_failure(entry, error=..., redact=...)` (three strikes mark the cycle
   flushed). The flush reply's text is never delivered and never enters the transcript (upstream
   also treats an empty reply as silent). A cancelled run is not completed: upstream records nothing
   for a cancelled flush. A second `complete()`, or a `dispatch` after it, raises `RuntimeError`
   (host error).
+- One maintenance lane per session: the kit keeps no pending-flush state, so until `complete()`
+  stamps the cycle, `after_turn` on a session over the threshold returns another request for the
+  same cycle. The host runs a session's next `after_turn` only after the pending flush completed or
+  was abandoned (an abandoned run records nothing, so that `after_turn` requests the flush again).
+  Upstream serializes session maintenance per session key the same way: a maintenance run waits
+  for its predecessors' writes (`src/agents/session-maintenance/run.ts:144`, `coordinator.ts:101-160`)
+  and then reads the stamped entry (`already_flushed`). Replies are not held back: the next turn's
+  `before_turn`, tool calls and model call may run while the flush runs.
 - Flags: flush never depends on `curated_memory_writes`, and the curation tools are not offered
   during a flush (upstream restricts flush runs; `MemoryCurator` refuses `memory_flush=True`).
 
@@ -671,7 +684,9 @@ async twin of any method: the core is synchronous (sqlite3, the sync embedding c
   `SQLiteMemoryStore.reindex`.
 - Different sessions may run in parallel. Calls for one session must be serialized by the host,
   as upstream runs one reply per session lane; `SessionState` is a value, so the last writer wins
-  (the detached flush's `complete(session)` takes the current state for that reason).
+  (the detached flush's `complete(session)` takes the current state for that reason). The detached
+  flush belongs to the session's maintenance lane: the session's next `after_turn` waits for its
+  `complete()` (entry point 4), while the next turn's other calls may run meanwhile.
 - `FlushRequest` and `HeartbeatRun` are used by one run at a time; their tool calls may run in
   parallel (appends are locked).
 - Across processes nothing is locked beyond the core's re-read checks and the automation store's
@@ -842,6 +857,11 @@ packaging, `__all__` shrinking and the quickstart (next stage).
   upstream rule and leave compaction to hosts?
 - Q10. `/new` in the Lab: keep the rotating `lab:<kind>:<id>` key (the Lab passes its own key per
   session) or move to upstream's stable `sessionKey` (observable change 7)?
+- Q11. A pending flush. The kit follows upstream's rule (one maintenance lane per session, entry
+  point 4): a host that calls `after_turn` again before `complete()` gets a second request for the
+  same cycle and both runs append. A kit-level guard would be a pending marker in `SessionState`,
+  plus a way to clear it for an abandoned run and after a crash (a stored marker would otherwise
+  block the cycle). Keep the documented lane rule (implemented), or add the marker?
 
 Review points not taken, with the reason:
 

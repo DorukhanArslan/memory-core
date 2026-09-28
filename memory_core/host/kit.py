@@ -428,7 +428,10 @@ class HostKit:
         gate stays off. Heartbeat sessions never flush. A due flush first creates its empty
         target (``ensure_memory_flush_target_file``, agent-runner-memory.ts:1447-1451), then
         returns the :class:`~memory_core.host.flush.FlushRequest` over ``transcript``, the host's
-        visible messages of the session.
+        visible messages of the session. The kit keeps no pending-flush state: the host runs the
+        session's next ``after_turn`` only after that request's ``complete`` (or after abandoning
+        it), as upstream serializes session maintenance per session key
+        (src/agents/session-maintenance/coordinator.ts).
         """
         window = (
             context_window_tokens

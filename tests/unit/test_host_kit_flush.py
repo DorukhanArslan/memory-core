@@ -230,12 +230,16 @@ def test_flush_write_refuses_a_symlinked_daily_file(tmp_path):
 
 
 def test_flush_complete_marks_the_cycle_flushed(tmp_path):
-    kit = _kit(tmp_path)
+    kit = _kit(
+        tmp_path, templates={"AGENTS.md": "# AGENTS.md\n\n" + "x" * 400}, bootstrap_max_chars=100
+    )
+    kit.ensure()
     record = _due(kit)
     record.flush.dispatch("write", {"path": TARGET, "content": "- first"})
     record.flush.dispatch("write", {"path": TARGET, "content": "- second"})
-    # The flush ran detached; the host's current state has a newer snapshot by now.
-    current = kit.after_turn(record.session, transcript=TRANSCRIPT, usage=TurnUsage(1000)).session
+    # The flush runs detached while the next turn runs; that turn's state is the host's current one.
+    current = kit.before_turn(record.session, ensure=False).session
+    assert current.seen_truncation_signatures != record.session.seen_truncation_signatures
 
     outcome = record.flush.complete(current)
 
@@ -243,7 +247,8 @@ def test_flush_complete_marks_the_cycle_flushed(tmp_path):
         session=outcome.session, wrote=True, entries=("- first", "- second"), failure=None
     )
     assert outcome.session.entry["memoryFlush"] == {"kind": "succeeded", "compactionCount": 0}
-    assert outcome.session.entry["totalTokens"] == 1000
+    assert outcome.session.seen_truncation_signatures == current.seen_truncation_signatures
+    # The next turn's after_turn runs after complete() (one maintenance lane per session).
     after = kit.after_turn(outcome.session, transcript=TRANSCRIPT, usage=DUE)
     assert after.flush is None
     assert after.flush_decision.reason == "already_flushed"
@@ -251,6 +256,22 @@ def test_flush_complete_marks_the_cycle_flushed(tmp_path):
         outcome.session.after_compaction(), transcript=TRANSCRIPT, usage=DUE
     )
     assert next_cycle.flush is not None
+
+
+def test_an_abandoned_flush_is_requested_again(tmp_path):
+    # No pending-flush state: a run the host abandons records nothing, as upstream records nothing
+    # for a cancelled flush, so the session's next after_turn requests the same cycle again.
+    kit = _kit(tmp_path)
+    abandoned = _due(kit)
+
+    retry = kit.after_turn(abandoned.session, transcript=TRANSCRIPT, usage=DUE)
+
+    assert retry.flush is not None
+    assert retry.session.entry == abandoned.session.entry
+    retry.flush.dispatch("write", {"path": TARGET, "content": "- once"})
+    outcome = retry.flush.complete(retry.session)
+    assert kit.after_turn(outcome.session, transcript=TRANSCRIPT, usage=DUE).flush is None
+    assert (tmp_path / TARGET).read_text() == "- once\n"
 
 
 def test_flush_complete_rejects_another_session(tmp_path):

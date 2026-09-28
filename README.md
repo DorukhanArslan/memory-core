@@ -1,13 +1,17 @@
 # memory-core
 
-`memory-core` is a Python memory core for LLM agents: Markdown memory files
-(`MEMORY.md`, `memory/YYYY-MM-DD.md`), the `memory_search` and `memory_get` tools over a
-SQLite index with hybrid search and citations, the memory flush, the `/new` session hook,
-the heartbeat turn and scored promotion, composed for any agent host by the host kit
-(`memory_core.host`). Its memory behaviour is ported from OpenClaw memory-core and tracked
-against release tag `v2026.9.6` by an oracle suite that runs the upstream TypeScript
-functions; the [parity matrix](docs/parity_matrix.md) gives each area's status. It is an
-unofficial port, not affiliated with the OpenClaw project.
+`memory-core` is an unofficial, independent Python port of the memory behaviour of
+OpenClaw memory-core, the memory plugin of [OpenClaw](https://github.com/openclaw/openclaw)
+(`extensions/memory-core` in its repository). It is not affiliated with the OpenClaw project.
+Here "memory-core" on its own means this port; OpenClaw's plugin is written
+"OpenClaw memory-core" or by its path.
+
+For LLM agents it provides Markdown memory files (`MEMORY.md`, `memory/YYYY-MM-DD.md`), the
+`memory_search` and `memory_get` tools over a SQLite index with hybrid search and citations,
+the memory flush, the `/new` session hook, the heartbeat turn and scored promotion, composed
+for any agent host by the host kit (`memory_core.host`). An oracle suite runs the upstream
+TypeScript functions and tracks the port against OpenClaw release tag `v2026.9.6`; the
+[parity matrix](docs/parity_matrix.md) gives each area's status.
 
 ## Install
 

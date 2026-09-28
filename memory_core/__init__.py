@@ -1,4 +1,4 @@
-"""memory-core: a Python memory core for LLM agents.
+"""memory-core: memory for LLM agents, an unofficial Python port of OpenClaw memory-core.
 
 The package root holds what a host needs to run memory for its agent: the host kit
 (:mod:`memory_core.host`), the core handle and its configuration, the embedding provider

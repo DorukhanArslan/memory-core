@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "memory-core"
 dynamic = ["version"]
-description = "memory-core: a Python memory core for LLM agents"
+description = "memory-core: memory for LLM agents, an unofficial Python port of OpenClaw memory-core"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

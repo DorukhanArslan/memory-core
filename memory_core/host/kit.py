@@ -12,14 +12,25 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from memory_core.bootstrap import (
+    DEFAULT_BOOTSTRAP_MAX_CHARS,
+    DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
     DEFAULT_WORKSPACE_LAYOUT,
+    WorkspaceContext,
     WorkspaceInitResult,
     WorkspaceLayout,
+    build_workspace_context,
     initialize_agent_workspace,
+)
+from memory_core.bootstrap.budget import BootstrapPromptWarningMode
+from memory_core.bootstrap.files import (
+    BootstrapContextMode,
+    BootstrapContextRunKind,
+    ContextInjectionMode,
 )
 from memory_core.client import Memory
 from memory_core.config import MemoryConfig
@@ -28,6 +39,8 @@ from memory_core.curation import CurationPolicy, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.host._calls import ToolCallRefused, read_tool_call, tool_error
 from memory_core.host.session import SessionState
+from memory_core.prompt_section import build_prompt_section
+from memory_core.runtime_context_prompt import build_runtime_context_system_context
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.tools.common import MemoryToolInputError, to_tool_error
 from memory_core.tools.memory_get import (
@@ -40,6 +53,32 @@ from memory_core.tools.memory_search import (
     execute_memory_search_tool,
     memory_search_tool_definition,
 )
+
+# Session kinds that get upstream's minimal system prompt, which has no Memory Recall section
+# (src/agents/system-prompt.ts:202-225 buildMemorySection returns nothing when isMinimal).
+MINIMAL_PROMPT_KINDS = frozenset({"subagent", "cron"})
+_RUN_KINDS = (None, "default", "heartbeat", "cron")
+_CONTEXT_MODES = ("full", "lightweight")
+
+
+@dataclass(frozen=True)
+class TurnContext:
+    """What one turn sends the model, and the session state to pass to ``after_turn``.
+
+    ``system_prompt`` is the stable part (Memory Recall, then the workspace's bootstrap
+    sections and Project Context) for above a prompt-cache boundary; ``runtime_context`` the
+    marker-wrapped dynamic block for below it. ``memory_recall`` holds the Memory Recall lines
+    inside ``system_prompt`` and ``workspace`` the core result they were built from.
+    ``workspace_init`` is ``None`` when the call ran no ensure.
+    """
+
+    session: SessionState
+    system_prompt: str
+    runtime_context: str | None
+    tools: tuple[dict[str, Any], ...]
+    memory_recall: tuple[str, ...]
+    workspace: WorkspaceContext
+    workspace_init: WorkspaceInitResult | None
 
 
 class HostKit:
@@ -62,6 +101,10 @@ class HostKit:
         timezone: str = "UTC",
         identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
         curation_policy: CurationPolicy | None = None,
+        bootstrap_max_chars: int = DEFAULT_BOOTSTRAP_MAX_CHARS,
+        bootstrap_total_max_chars: int = DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
+        context_injection: ContextInjectionMode = "always",
+        truncation_warning_mode: BootstrapPromptWarningMode = "always",
         dreaming_enabled: bool = False,
         now_ms: Callable[[], int] | None = None,
     ) -> None:
@@ -75,6 +118,10 @@ class HostKit:
             else layout.bootstrap_file in (self._templates or {})
         )
         self._identity = identity
+        self._bootstrap_max_chars = bootstrap_max_chars
+        self._bootstrap_total_max_chars = bootstrap_total_max_chars
+        self._context_injection = context_injection
+        self._truncation_warning_mode = truncation_warning_mode
         self._dreaming_enabled = dreaming_enabled
         self._clock = now_ms or (lambda: time.time_ns() // 1_000_000)
         # The curator validates the timezone and the policy against the layout.
@@ -147,6 +194,101 @@ class HostKit:
             memory_get_tool_definition(),
             *self._curator.tool_definitions(),
         ]
+
+    def before_turn(
+        self,
+        session: SessionState,
+        *,
+        runtime_context: str | None = None,
+        run_kind: BootstrapContextRunKind | None = None,
+        context_mode: BootstrapContextMode = "full",
+        has_bootstrap_file_access: bool = False,
+        offer_tools: bool = True,
+        ensure: bool = True,
+    ) -> TurnContext:
+        """The system prompt, runtime block and tools of one turn (docs/host_kit.md, entry 3).
+
+        Runs :meth:`ensure` first unless ``ensure=False`` (an inspector, or a host that already
+        ran it for this turn), then ``build_workspace_context`` for the session and the Memory
+        Recall section for the offered tools (none for the minimal kinds, none with
+        ``offer_tools=False``). ``run_kind`` defaults from the session kind. No search results
+        are injected: the model recalls through the tools. Pass the returned ``session`` to
+        ``after_turn`` only for a turn that completed.
+        """
+        if run_kind not in _RUN_KINDS:
+            raise ValueError(f"run_kind must be default, heartbeat or cron, got {run_kind!r}")
+        if context_mode not in _CONTEXT_MODES:
+            raise ValueError(f"context_mode must be full or lightweight, got {context_mode!r}")
+        workspace_init = self.ensure() if ensure else None
+        workspace = self._workspace_context(
+            session,
+            run_kind=run_kind,
+            context_mode=context_mode,
+            has_bootstrap_file_access=has_bootstrap_file_access,
+        )
+        tools = tuple(self.tools()) if offer_tools else ()
+        memory_recall = (
+            ()
+            if session.kind in MINIMAL_PROMPT_KINDS
+            else tuple(
+                build_prompt_section(
+                    {tool["name"] for tool in tools},
+                    citations_mode=self._memory.config.citation_mode,
+                )
+            )
+        )
+        # Upstream puts the memory section before the workspace sections (system-prompt.ts:1059).
+        system_prompt = "\n\n".join(
+            part
+            for part in ("\n".join(memory_recall).strip(), workspace.prompt_text.strip())
+            if part
+        )
+        runtime_text = runtime_context.strip() if runtime_context else ""
+        return TurnContext(
+            session=replace(
+                session,
+                seen_truncation_signatures=tuple(
+                    workspace.prompt_warning.warning_signatures_seen
+                ),
+                completed_bootstrap_turn=(
+                    session.completed_bootstrap_turn or workspace.record_completed_bootstrap_turn
+                ),
+            ),
+            system_prompt=system_prompt,
+            runtime_context=(
+                build_runtime_context_system_context(runtime_text, identity=self._identity)
+                if runtime_text
+                else None
+            ),
+            tools=tools,
+            memory_recall=memory_recall,
+            workspace=workspace,
+            workspace_init=workspace_init,
+        )
+
+    def _workspace_context(
+        self,
+        session: SessionState,
+        *,
+        run_kind: BootstrapContextRunKind | None = None,
+        context_mode: BootstrapContextMode = "full",
+        has_bootstrap_file_access: bool = False,
+    ) -> WorkspaceContext:
+        return build_workspace_context(
+            self._root,
+            layout=self._layout,
+            session_kind=session.kind,
+            run_kind=run_kind,
+            context_mode=context_mode,
+            context_injection=self._context_injection,
+            has_completed_bootstrap_turn=session.completed_bootstrap_turn,
+            has_bootstrap_file_access=has_bootstrap_file_access,
+            max_chars=self._bootstrap_max_chars,
+            total_max_chars=self._bootstrap_total_max_chars,
+            truncation_warning_mode=self._truncation_warning_mode,
+            seen_truncation_signatures=session.seen_truncation_signatures,
+            identity=self._identity,
+        )
 
     def dispatch(
         self,

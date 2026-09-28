@@ -5,7 +5,7 @@ and keeps one :class:`SessionState` per session; the kit returns what to send th
 takes back what came out. Specification: docs/host_kit.md.
 """
 
-from memory_core.host.kit import HostKit
+from memory_core.host.kit import MINIMAL_PROMPT_KINDS, HostKit, TurnContext
 from memory_core.host.session import SessionState, TurnUsage
 
-__all__ = ["HostKit", "SessionState", "TurnUsage"]
+__all__ = ["MINIMAL_PROMPT_KINDS", "HostKit", "SessionState", "TurnContext", "TurnUsage"]

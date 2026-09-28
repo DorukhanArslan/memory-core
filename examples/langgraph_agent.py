@@ -11,13 +11,23 @@ helpers
 (``memory_core.adapters.langgraph``) convert messages and answer tool calls; they import no
 framework. docs/integrations/langgraph.md is the guide, its Findings section what the kit
 lacked.
+
+``main`` is a terminal chat against any OpenAI-compatible endpoint (``pip install
+"memory-core[langgraph]" langchain-openai``): set ``OPENAI_API_KEY`` and ``OPENAI_MODEL``, and
+``OPENAI_BASE_URL`` for an endpoint other than OpenAI's. The workspace is ``my-agent-app/`` in
+the working directory, searched FTS-only (no embedder); the checkpointer is in memory, so a
+restart starts a new thread state.
 """
 
 from __future__ import annotations
 
+import argparse
 import functools
+import os
+import sys
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
@@ -32,7 +42,14 @@ from langgraph.graph.message import REMOVE_ALL_MESSAGES, add_messages
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 
-from memory_core import FlushOutcome, FlushRequest, HostKit, SessionState
+from memory_core import (
+    FeatureFlags,
+    FlushOutcome,
+    FlushRequest,
+    HostKit,
+    MemoryConfig,
+    SessionState,
+)
 from memory_core.adapters.langgraph import (
     PendingTurn,
     has_tool_calls,
@@ -42,6 +59,7 @@ from memory_core.adapters.langgraph import (
 )
 from memory_core.host import DEFAULT_CONTEXT_WINDOW_TOKENS
 from memory_core.memory_flush import MemoryFlushFailureOutcome
+from memory_core.project_name import DIST_NAME
 
 # The flush turn's tool rounds (host policy, like the Lab's tool loop); a flush turn that
 # reaches the bound completes with what it appended.
@@ -276,3 +294,83 @@ def build_graph(
     graph.add_edge("tools", "agent")
     graph.add_edge("maintain", END)
     return graph.compile(checkpointer=checkpointer if checkpointer is not None else InMemorySaver())
+
+
+def context_window(model: BaseChatModel, given: int | None) -> tuple[int, str]:
+    """The flush gate's window: ``given``, else the model's LangChain profile.
+
+    The profile (a beta field) knows the window for some model names only; without either the
+    host must say, since the kit's 200,000-token default would put a smaller model's flush
+    threshold above its window, and the flush would never run.
+    """
+    if given is not None:
+        return given, "--context-window"
+    profile = getattr(model, "profile", None)
+    window = profile.get("max_input_tokens") if isinstance(profile, Mapping) else None
+    if isinstance(window, int) and window > 0:
+        return window, "model profile"
+    raise SystemExit(
+        f"the model profile gives no context window for {getattr(model, 'model_name', model)!r};"
+        " pass --context-window TOKENS"
+    )
+
+
+def describe_maintenance(maintenance: Mapping[str, Any]) -> str:
+    """One status line for what ``maintain`` decided and wrote."""
+    reason = maintenance["flush"]
+    gate = f"{maintenance['tokenCount']} of {maintenance['threshold']} tokens"
+    if maintenance["failure"] is not None:
+        return f"[memory] flush failed ({reason}): {maintenance['failure']['error']}"
+    if maintenance["target"] is not None:
+        count, target = len(maintenance["wrote"]), maintenance["target"]
+        return f"[memory] flush ({reason}, {gate}): {count} entries appended to {target}"
+    if reason == "missing_tokens":
+        return "[memory] no flush: the provider reported no token usage for the reply"
+    return f"[memory] no flush ({reason}, {gate})"
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="A LangGraph agent with memory over the host kit.")
+    parser.add_argument("--workspace", default="my-agent-app", help="the memory workspace root")
+    parser.add_argument("--thread", default="main", help="the LangGraph thread (session key)")
+    parser.add_argument(
+        "--context-window", type=int, help="the model's context window, when its profile has none"
+    )
+    args = parser.parse_args(argv)
+    missing = [name for name in ("OPENAI_API_KEY", "OPENAI_MODEL") if not os.environ.get(name)]
+    if missing:
+        raise SystemExit(f"set {' and '.join(missing)} (OPENAI_BASE_URL is optional)")
+    try:
+        from langchain_openai import ChatOpenAI
+    except ImportError as exc:
+        raise SystemExit(f'pip install "{DIST_NAME}[langgraph]" langchain-openai') from exc
+    # stream_usage: a custom base URL turns streamed usage off, and the flush gate needs it.
+    model = ChatOpenAI(
+        model=os.environ["OPENAI_MODEL"],
+        base_url=os.environ.get("OPENAI_BASE_URL") or None,
+        stream_usage=True,
+    )
+    window, source = context_window(model, args.context_window)
+    root = Path(args.workspace)
+    kit = HostKit.open(
+        root, config=MemoryConfig(workspace_dir=root, flags=FeatureFlags(vector_search=False))
+    )
+    graph = build_graph(kit, model, context_window_tokens=window)
+    config: RunnableConfig = {"configurable": {"thread_id": args.thread}}
+    print(f"[memory] {root}/, FTS-only search; context window {window} ({source})", file=sys.stderr)
+    while text := input("> "):
+        # Drain the stream: the reply comes with the agent update, maintenance after it.
+        turn = {"messages": [HumanMessage(text)]}
+        for update in graph.stream(turn, config, stream_mode="updates"):
+            for node, values in update.items():
+                if node == "agent" and not has_tool_calls(values["messages"][-1]):
+                    print(values["messages"][-1].text)
+                elif node == "tools":
+                    for message in values["messages"]:
+                        print(f"[tool] {message['name']}: {message['status']}", file=sys.stderr)
+                elif node == "maintain":
+                    print(describe_maintenance(values["memory_maintenance"]), file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()

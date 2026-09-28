@@ -12,8 +12,10 @@ import itertools
 import json
 import os
 import re
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
 
@@ -607,3 +609,186 @@ def test_redact_maps_a_flush_target_failure(tmp_path: Path):
     assert "<date>" in failure["error"] and TODAY not in failure["error"]
     assert state["memory_maintenance"]["target"] == DAILY
     assert _flush_calls(model) == []
+
+
+class _StubEndpoint:
+    """A local OpenAI-compatible chat endpoint (127.0.0.1): canned replies, recorded requests.
+
+    Like OpenAI, it reports usage on a plain completion and, when streaming, only if the request
+    asks for it with ``stream_options.include_usage``.
+    """
+
+    USAGE = {"prompt_tokens": 1_234, "completion_tokens": 5, "total_tokens": 1_239}
+
+    def __init__(self) -> None:
+        self.requests: list[dict] = []
+        stub = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802 (http.server's name)
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                stub.requests.append(body)
+                if body.get("stream"):
+                    self._stream(body)
+                else:
+                    self._reply(
+                        {
+                            "id": "stub-1",
+                            "object": "chat.completion",
+                            "created": 0,
+                            "model": body["model"],
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "message": {"role": "assistant", "content": "stub reply"},
+                                    "finish_reason": "stop",
+                                }
+                            ],
+                            "usage": stub.USAGE,
+                        }
+                    )
+
+            def _reply(self, payload):
+                data = json.dumps(payload).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def _stream(self, body):
+                base = {"id": "stub-1", "object": "chat.completion.chunk", "created": 0}
+                base["model"] = body["model"]
+                chunks = [
+                    {**base, "choices": [{"index": 0, "delta": {"role": "assistant"}}]},
+                    {**base, "choices": [{"index": 0, "delta": {"content": "stub reply"}}]},
+                    {**base, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]},
+                ]
+                if (body.get("stream_options") or {}).get("include_usage"):
+                    chunks.append({**base, "choices": [], "usage": stub.USAGE})
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.end_headers()
+                for chunk in chunks:
+                    self.wfile.write(f"data: {json.dumps(chunk)}\n\n".encode())
+                self.wfile.write(b"data: [DONE]\n\n")
+
+            def log_message(self, *args):
+                pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/v1"
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+
+@pytest.fixture
+def stub_endpoint():
+    endpoint = _StubEndpoint()
+    yield endpoint
+    endpoint.close()
+
+
+def _stub_model(endpoint: _StubEndpoint, **options):
+    chat_openai = pytest.importorskip("langchain_openai").ChatOpenAI
+    return chat_openai(model="stub-model", api_key="test-key", base_url=endpoint.url, **options)
+
+
+def test_stream_usage_decides_whether_a_custom_endpoint_reports_usage(
+    tmp_path: Path, stub_endpoint, monkeypatch
+):
+    # F5: under stream_mode="messages" the chat model streams, and ChatOpenAI asks for streamed
+    # usage only for OpenAI's own URL unless stream_usage=True; without usage the flush gate
+    # reads missing_tokens. An "updates" stream calls the model without streaming.
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    outcomes = {}
+    for label, mode, options in (
+        ("messages, default", "messages", {}),
+        ("messages, stream_usage", "messages", {"stream_usage": True}),
+        ("updates, default", "updates", {}),
+    ):
+        root = tmp_path / label.replace(", ", "-")
+        kit = _kit(root)
+        graph = example.build_graph(
+            kit, _stub_model(stub_endpoint, **options), context_window_tokens=WINDOW
+        )
+        request_count = len(stub_endpoint.requests)
+        list(graph.stream({"messages": [HumanMessage("Hello.")]}, THREAD, stream_mode=mode))
+        (request,) = stub_endpoint.requests[request_count:]
+        maintenance = graph.get_state(THREAD).values["memory_maintenance"]
+        outcomes[label] = (
+            request.get("stream", False),
+            request.get("stream_options"),
+            maintenance["flush"],
+            maintenance["tokenCount"],
+        )
+
+    assert outcomes == {
+        "messages, default": (True, None, "missing_tokens", None),
+        "messages, stream_usage": (True, {"include_usage": True}, "under_threshold", 1_239),
+        "updates, default": (False, None, "under_threshold", 1_239),
+    }
+
+
+def test_example_main_requires_the_model_environment(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    for name in ("OPENAI_API_KEY", "OPENAI_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+
+    with pytest.raises(SystemExit, match="set OPENAI_API_KEY and OPENAI_MODEL"):
+        example.main([])
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    with pytest.raises(SystemExit, match="^set OPENAI_MODEL "):
+        example.main([])
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_example_main_requires_a_window_the_profile_does_not_give(tmp_path: Path, monkeypatch):
+    pytest.importorskip("langchain_openai")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_MODEL", "openai/gpt-4o-mini")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://127.0.0.1:9/v1")
+
+    with pytest.raises(SystemExit, match="pass --context-window"):
+        example.main([])
+    assert list(tmp_path.iterdir()) == []
+    # A known model name has a profile window; nothing is written before the check either.
+    model = pytest.importorskip("langchain_openai").ChatOpenAI(model="gpt-4o-mini")
+    assert example.context_window(model, None) == (128_000, "model profile")
+    assert example.context_window(model, 32_000) == (32_000, "--context-window")
+
+
+def test_example_main_chats_against_an_openai_compatible_endpoint(
+    tmp_path: Path, stub_endpoint, monkeypatch, capsys
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_MODEL", "stub-model")
+    monkeypatch.setenv("OPENAI_BASE_URL", stub_endpoint.url)
+    lines = iter(["Hello.", ""])
+    monkeypatch.setattr("builtins.input", lambda prompt: next(lines))
+
+    example.main(["--context-window", "2000"])
+
+    out, err = capsys.readouterr()
+    assert out == "stub reply\n"
+    # 1,239 tokens pass the 2,000-token window's threshold; the stub's flush reply writes nothing.
+    setup, maintenance = err.splitlines()
+    assert setup == (
+        "[memory] my-agent-app/, FTS-only search; context window 2000 (--context-window)"
+    )
+    assert re.fullmatch(
+        r"\[memory\] flush \(token_threshold, 1239 of 750 tokens\): 0 entries appended to"
+        r" memory/\d{4}-\d{2}-\d{2}\.md",
+        maintenance,
+    )
+    (turn, flush) = stub_endpoint.requests
+    assert [tool["function"]["name"] for tool in flush["tools"]] == ["write"]
+    assert turn["messages"][0]["role"] == "system"
+    assert (tmp_path / "my-agent-app" / "MEMORY.md").exists() is False

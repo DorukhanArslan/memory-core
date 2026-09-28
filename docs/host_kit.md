@@ -77,7 +77,7 @@ class HostKit:
   `layout`, `templates`, `seed_bootstrap` (`initialize_agent_workspace`); `timezone` and
   `time_format` (the flush plan, the curator's "today", the session-memory stamp, the startup
   context, the reset prompt and the heartbeat time line all take the one host value, as
-  `memory_core/current_time.py` asks); `identity` (context markers, transcript rows);
+  `memory_core/current_time.py` asks; recall tracking does not, see `dispatch`); `identity` (context markers, transcript rows);
   `curation_policy` (`MemoryCurator`, default `CurationPolicy.for_layout(layout)`); the
   bootstrap caps, `context_injection` and `truncation_warning_mode`
   (`build_workspace_context`); `dreaming_enabled` (recall tracking, see `dispatch`);
@@ -263,7 +263,12 @@ def dispatch(
   `record_short_term_recalls`, as upstream does only when dreaming is enabled and the memory search
   succeeded (`extensions/memory-core/src/tools.ts:491-507`). Upstream records off the reply path and
   swallows recording errors; the kit records synchronously and swallows them too. Off by default
-  (`DEFAULT_DEEP_DREAMING_ENABLED = False`): no `memory/.dreams/` write.
+  (`DEFAULT_DEEP_DREAMING_ENABLED = False`): no `memory/.dreams/` write. Known gap: the recall
+  days are UTC dates, not dates in the kit's timezone. Upstream passes `dreaming.timezone`
+  (`tools.ts:501`) and buckets the day in it (`short-term-promotion-record.ts:192`); the pin-era
+  `record_short_term_recalls` takes no timezone (matrix row "Recall tracking from
+  `memory_search`"), so in Europe/Istanbul a recall between 00:00 and 03:00 counts on the
+  previous day.
 - Returns the tool's payload unchanged, JSON-able, for the host to send back verbatim.
 - Error contract, checked in this order. Model-caused errors come back as payloads, never raised:
   - invalid JSON text: `{"status": "error", "tool": name, "error": "invalid JSON arguments: <msg>"}`
@@ -805,7 +810,8 @@ claims `match` for kit composition. Oracle results must not change: task 10 re-r
 
 Pin-era parts the kit ships until port plan area 5 lands: the `memory_search` and `memory_get`
 tool definitions and the Memory Recall section (`memory_core/prompt_section.py`, pin `4c428153`); the
-tag's `buildMemoryPromptSection` wording differs (entry points 1 and 3).
+tag's `buildMemoryPromptSection` wording differs (entry points 1 and 3). Recall tracking uses the
+pin-era `record_short_term_recalls`, whose recall days are UTC dates (entry point 2).
 
 Labelled deviations of the flush run (entry point 4):
 

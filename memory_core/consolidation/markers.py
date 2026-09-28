@@ -16,9 +16,11 @@ Neutral marker (decision Q22, 2026-09-26): the prefix comes from
 ``MEMORY_CORE_RUNTIME_IDENTITY`` writes ``memory-core-memory-promotion:``;
 ``OPENCLAW_COMPAT_RUNTIME_IDENTITY`` writes upstream's
 ``openclaw-memory-promotion:`` byte for byte. Readers accept both prefixes, so
-files written by OpenClaw, by earlier memory-core versions or in either mode
-reconcile without duplicates, and a snippet carrying either marker is
-pipeline scaffolding (upstream only knows its own prefix).
+files written by OpenClaw or in either mode reconcile without duplicates, and a
+snippet carrying either marker is pipeline scaffolding (upstream only knows its
+own prefix). Markers written under an earlier project name are not read, so
+reconciliation can append their entries a second time (README › Rename the
+Project).
 """
 
 from __future__ import annotations

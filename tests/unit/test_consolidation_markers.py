@@ -119,7 +119,7 @@ def test_compat_identity_writes_the_upstream_marker(tmp_path: Path):
 
 
 def test_upstream_marker_written_before_the_switch_reconciles_without_duplicate(tmp_path: Path):
-    # Migration: a MEMORY.md promoted by OpenClaw or an earlier memory-core keeps its markers.
+    # Migration: a MEMORY.md promoted with upstream's marker keeps its markers.
     config = _workspace(tmp_path)
     legacy = (
         "# Long-Term Memory\n\n"

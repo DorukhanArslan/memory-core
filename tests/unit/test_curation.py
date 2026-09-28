@@ -686,13 +686,19 @@ def test_daily_note_appends_through_the_canonical_append(tmp_path):
     assert curator.append_daily_note("gamma", date="2026-09-25").path == "memory/2026-09-25.md"
 
 
-def test_daily_note_skips_empty_and_silent_text(tmp_path):
+def test_daily_note_skips_empty_text_and_the_exact_no_reply_token(tmp_path):
     curator = _curator(tmp_path, now_ms=lambda: 1790375400000)
 
-    for text in ("", "  \n", "NO_REPLY", "NO_REPLY nothing to keep"):
+    for text in ("", "  \n", "NO_REPLY", "  NO_REPLY\n"):
         result = curator.append_daily_note(text)
         assert (result.action, result.changed) == ("skipped", False)
     assert not (tmp_path / "memory").exists()
+    # Only the exact token is silent (decision Q12): text that merely starts with it is kept.
+    for text in ("NO_REPLY nothing to keep", "NO_REPLY_FACTS: tea"):
+        assert curator.append_daily_note(text).action == "appended"
+    assert (tmp_path / "memory" / "2026-09-25.md").read_text(encoding="utf-8") == (
+        "NO_REPLY nothing to keep\nNO_REPLY_FACTS: tea\n"
+    )
     with pytest.raises(CurationError, match="date must be a YYYY-MM-DD date"):
         curator.append_daily_note("alpha", date="../2026-09-26")
 

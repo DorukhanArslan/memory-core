@@ -26,8 +26,9 @@ extension accepted as Q16 (on by default, gated by
 - ``append_daily_note(text)`` delegates to
   ``memory_core.workspace.append_daily_memory_file`` (``append_daily_memory`` under
   the per-file lock, the append the memory flush's ``write`` tool shares) for
-  today's ``memory/YYYY-MM-DD.md`` (host clock and timezone); empty or
-  ``NO_REPLY`` text writes nothing.
+  today's ``memory/YYYY-MM-DD.md`` (host clock and timezone); empty text and
+  the exact ``NO_REPLY`` token write nothing (text that only starts with it is
+  kept).
 
 Safety rules shared by every operation:
 
@@ -996,8 +997,7 @@ class MemoryCurator:
         raw = _check_text(text, "text")
         day = _clean_date(date, "date") if date is not None else self.today()
         rel_path = f"memory/{day}.md"
-        stripped = raw.strip()
-        if not stripped or stripped.startswith(SILENT_REPLY_TOKEN):
+        if raw.strip() in ("", SILENT_REPLY_TOKEN):
             return CurationResult(APPEND_DAILY_NOTE, rel_path, "skipped", False)
         try:
             append_daily_memory_file(self.root, rel_path, raw)

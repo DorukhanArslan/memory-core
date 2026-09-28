@@ -257,11 +257,10 @@ def test_flush_write_elsewhere_returns_the_upstream_restriction(tmp_path):
     assert (tmp_path / TARGET).read_text() == ""
 
 
-def test_flush_write_skips_empty_and_no_reply_content(tmp_path):
+def test_flush_write_skips_empty_content_and_the_exact_no_reply_token(tmp_path):
     flush = _due(_kit(tmp_path)).flush
 
-    # A prefix match, the curated daily note's rule.
-    for content in ("", "  \n", "NO_REPLY", "  NO_REPLY nothing to keep", "NO_REPLY_FACTS: tea"):
+    for content in ("", "  \n", "NO_REPLY", "  NO_REPLY\n"):
         assert flush.dispatch("write", {"path": TARGET, "content": content}) == {
             "status": "ok",
             "tool": "write",
@@ -269,7 +268,12 @@ def test_flush_write_skips_empty_and_no_reply_content(tmp_path):
             "action": "skipped",
         }
     assert (tmp_path / TARGET).read_text() == ""
-    assert flush.complete(_session()).wrote is False
+    # Only the exact token is silent (decision Q12, the curated daily note's rule too).
+    for content in ("NO_REPLY nothing to keep", "NO_REPLY_FACTS: tea"):
+        assert flush.dispatch("write", {"path": TARGET, "content": content})["action"] == "appended"
+    assert (tmp_path / TARGET).read_text() == "NO_REPLY nothing to keep\nNO_REPLY_FACTS: tea\n"
+    outcome = flush.complete(_session())
+    assert outcome.entries == ("NO_REPLY nothing to keep", "NO_REPLY_FACTS: tea")
 
 
 def test_flush_write_refuses_a_symlinked_daily_file(tmp_path):

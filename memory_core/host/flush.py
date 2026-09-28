@@ -10,9 +10,9 @@ The tool is upstream's ``write`` restricted to appending the daily target
 (src/agents/agent-tools.ts:665-692 keeps ``read`` and an append-only ``write`` for flush runs;
 memory-core has no generic ``read``). Texts are script-extracted from the tag. Labelled deviations:
 the append goes through ``append_daily_memory`` (trailing newlines of the content are stripped
-and the entry always ends with ``\\n``), empty content and content that starts with ``NO_REPLY``
-write nothing (the curated daily note's rule), the missing-parameter messages are memory-core's, and
-symlinked or hard-linked targets are refused.
+and the entry always ends with ``\\n``), empty content and the exact ``NO_REPLY`` token write
+nothing (the curated daily note's rule; upstream appends even the token), the missing-parameter
+messages are memory-core's, and symlinked or hard-linked targets are refused.
 """
 
 from __future__ import annotations
@@ -110,7 +110,7 @@ class FlushRequest:
 
         Only ``write`` of ``{path, content}`` to the target exists: another path (or one
         starting with ``@``) gets upstream's restriction (agent-tools.read.ts:787-790), empty
-        content or content starting with ``NO_REPLY`` is skipped, anything else is appended, the
+        content and the exact ``NO_REPLY`` token are skipped, anything else is appended, the
         store reindexed and upstream's ``Appended content to <target>.`` returned. Errors are
         payloads, as in ``HostKit.dispatch``; a call after :meth:`complete` raises
         ``RuntimeError``.
@@ -135,8 +135,7 @@ class FlushRequest:
             return tool_error(
                 name, MEMORY_FLUSH_WRITE_RESTRICTED_TEMPLATE.format(relative_path=self.target)
             )
-        stripped = content.strip()
-        if not stripped or stripped.startswith(SILENT_REPLY_TOKEN):
+        if content.strip() in ("", SILENT_REPLY_TOKEN):
             return {"status": "ok", "tool": name, "path": self.target, "action": "skipped"}
         try:
             append_daily_memory_file(root, self.target, content)

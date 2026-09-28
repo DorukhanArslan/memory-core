@@ -431,27 +431,29 @@ demo = [
     { name = "jinja2" },
     { name = "uvicorn" },
 ]
+
+[package.dev-dependencies]
 dev = [
-    { name = "fastapi" },
-    { name = "jinja2" },
     { name = "pytest" },
     { name = "ruff" },
-    { name = "uvicorn" },
+    { name = "memory-core", extra = ["demo"] },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "fastapi", marker = "extra == 'demo'", specifier = ">=0.115" },
-    { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", marker = "extra == 'demo'", specifier = ">=3.1" },
-    { name = "jinja2", marker = "extra == 'dev'", specifier = ">=3.1" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "uvicorn", marker = "extra == 'demo'", specifier = ">=0.30" },
-    { name = "uvicorn", marker = "extra == 'dev'", specifier = ">=0.30" },
 ]
-provides-extras = ["demo", "dev"]
+provides-extras = ["demo"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.3" },
+    { name = "ruff", specifier = ">=0.6" },
+    { name = "memory-core", extras = ["demo"] },
+]
 
 [[package]]
 name = "typing-extensions"

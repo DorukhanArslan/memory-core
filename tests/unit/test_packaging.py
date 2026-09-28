@@ -8,8 +8,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _pyproject() -> dict:
+    return tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+
 def _project() -> dict:
-    return tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    return _pyproject()["project"]
 
 
 def _third_party_import_roots() -> set[str]:
@@ -29,11 +33,16 @@ def test_core_dependencies_are_exactly_what_memory_core_imports():
     assert names == _third_party_import_roots() == {"httpx"}
 
 
-def test_demo_dependencies_are_an_extra():
+def test_demo_dependencies_are_the_only_extra_and_dev_tools_a_group():
+    # The wheel's metadata advertises only the demo extra; pytest and ruff are the PEP 735
+    # dev group, which `uv sync` installs in a checkout.
     extras = _project()["optional-dependencies"]
+    groups = _pyproject()["dependency-groups"]
 
+    assert set(extras) == {"demo"}
     assert {spec.split(">=")[0] for spec in extras["demo"]} == {"fastapi", "jinja2", "uvicorn"}
-    assert "memory-core[demo]" in extras["dev"]
+    assert set(groups) == {"dev"}
+    assert {spec.split(">=")[0] for spec in groups["dev"]} == {"memory-core[demo]", "pytest", "ruff"}
 
 
 def test_importing_memory_core_loads_no_demo_dependency():

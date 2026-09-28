@@ -20,10 +20,11 @@ pip install "/path/to/memory-core[demo]"    # adds FastAPI, Jinja2 and uvicorn f
 
 The Lab (`demo/`), the tests, the scripts and the examples stay in the checkout; the
 package holds only `memory_core/`. For development, create the checkout's environment with
-[uv](https://docs.astral.sh/uv/) (an editable install with the demo extra, pytest and ruff):
+[uv](https://docs.astral.sh/uv/) (an editable install with the demo extra, plus pytest and
+ruff from the `dev` dependency group, which is not part of the package's metadata):
 
 ```bash
-uv sync --extra dev
+uv sync
 ```
 
 [CHANGELOG.md](CHANGELOG.md) lists what changed in each version.
@@ -239,7 +240,7 @@ injects.
 
 ## Run Tests
 
-In the environment from `uv sync --extra dev`:
+In the environment from `uv sync`:
 
 ```bash
 uv run pytest -q
@@ -272,7 +273,7 @@ OPENCLAW_ORACLE_REPO=/tmp/openclaw-head uv run pytest tests/integration -v
 ## Run the Lab
 
 The Lab is a FastAPI app over the package (`demo/`); it adds no memory logic of
-its own. It needs the demo extra (included in `uv sync --extra dev`). Run it from the
+its own. It needs the demo extra (included in `uv sync`). Run it from the
 repo root:
 
 ```bash

@@ -21,7 +21,8 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   append the flush write and the curated daily note share; `memory_core.heartbeat.resolve_message_text`
   (upstream's `resolveMessageText`).
 - Packaging: a hatchling build (wheel and sdist). The core depends on `httpx` only; the Lab's
-  `fastapi`, `jinja2` and `uvicorn` are the `demo` extra, and `dev` (pytest, ruff) includes it.
+  `fastapi`, `jinja2` and `uvicorn` are the `demo` extra; the `dev` dependency group (PEP 735:
+  pytest, ruff and the demo extra) is for a checkout and stays out of the package metadata.
 
 ### Changed
 

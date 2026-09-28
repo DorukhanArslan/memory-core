@@ -82,7 +82,10 @@ reply = graph.get_state(config).values["messages"][-1]
 redactor)`: `session_key` maps the thread id to the session key (default: the thread id;
 `lambda thread: f"agent:main:{thread}"` gives upstream-shaped keys), `new_id` makes session and
 message ids (`uuid4` text), `redact` maps a failed flush's error text and `redactor` each line
-`/new` saves from the ending session. The input is the standard `{"messages": [...]}`, so
+`/new` saves from the ending session. `context_window_tokens` is the model's window: without
+it the graph takes the kit's 200,000-token default, which never flushes for a smaller model
+(F12), and only `main` refuses that default (L11). The input is the standard
+`{"messages": [...]}`, so
 LangGraph clients work unchanged; `context=AgentContext(runtime_context=...)` is optional.
 
 ### What one run does
@@ -147,7 +150,8 @@ models convert; it imports no framework, owns no loop and calls no model.
 
 There is no node factory or prebuilt agent: wiring the model and the flush loop would own the
 agent loop, which adapters never do (docs/package_boundary.md). `LangGraphMemoryRecall`, the
-earlier auto-recall node, was removed in 0.2.0 (Design › Fate of `LangGraphMemoryRecall`).
+earlier auto-recall node, was removed in 0.2.0, pending Doruk's answer to L1 (Design › Fate of
+`LangGraphMemoryRecall`).
 
 ### Tests
 
@@ -159,10 +163,12 @@ earlier auto-recall node, was removed in 0.2.0 (Design › Fate of `LangGraphMem
   `MEMORY_CORE_LIVE_OPENAI=1`, `OPENAI_API_KEY` and `OPENAI_MODEL` (`OPENAI_BASE_URL`
   optional); skipped otherwise. It has not run against a real model on this branch yet.
 
-Measured 2026-09-29 on the branch: offline 1387 passed, 312 skipped (baseline at `79a1b5c`:
-1347 passed, 311 skipped), ruff and the name check clean; the oracle suite at `7388ea0`
-(v2026.9.6, Node 24) 254 passed, 81 xfailed, 3 skipped, 0 failed of 338, the reference
-counts plus the skipped live test.
+Measured 2026-09-29 on the branch: offline 1387 passed, 312 skipped at `5171e6e` and 1395
+passed, 312 skipped after the review fixes (`caa244e`..`2b685d9`, eight new tests; baseline at
+`79a1b5c`: 1347 passed, 311 skipped), ruff and the name check clean; the oracle suite at
+`7388ea0` (v2026.9.6, Node 24) 254 passed, 81 xfailed, 3 skipped, 0 failed of 338, the
+reference counts plus the skipped live test. The review fixes change no file under
+`memory_core/`, so the oracle was not rerun for them.
 
 ## Findings
 
@@ -171,7 +177,7 @@ design below (numbers kept from Design; F22-F26 are new). Evidence: **test** is 
 test in `tests/unit/test_langgraph_agent.py` or `tests/unit/test_langgraph_adapter.py`,
 **probe** a scratch run on the tested versions, **source** read but not run. Verdict: the six
 entry points were enough; nothing needed a kit change to work, but a LangGraph host needs about
-170 lines of graph code and five adapter helpers, and the items marked **kit** would remove glue
+200 lines of graph code and five adapter helpers, and the items marked **kit** would remove glue
 or a trap.
 
 ### Awkward or missing in the kit
@@ -184,7 +190,7 @@ or a trap.
 | F7 | a flush turn run inside a graph streams its tokens into `stream_mode="messages"` unless its model run is tagged | test: `test_flush_turn_is_restricted_to_the_write_tool_and_not_streamed` (with the reply present as the positive control) | the example tags it `TAG_NOSTREAM`; **kit** docs: name the need next to `FlushRequest` |
 | F8 | the kit takes a parsed `/new` command and ships no parser; upstream's (`session-reset-command.ts:249`) handles mentions, envelopes, the soft `/reset` and configured triggers | source | the example's `reset_command` is a labelled simplification (first word, any case; `test_a_command_that_is_not_first_word_is_an_ordinary_message`); porting a subset into core needs an oracle op (L6) |
 | F9 | without compaction a session flushes once: every later due turn reads `already_flushed` until `/new` | test: `test_second_turn_past_the_threshold_reads_already_flushed`, `test_new_keeps_the_session_key_and_rotates_the_session_id` (the next session flushes again) | the kit's known gap; LangGraph hosts that trim history change nothing, hosts that summarize skip `maintain` for that turn and call `SessionState.after_compaction` (upstream skips maintenance after an auto-compaction, `agent-runner-maintenance.ts:31`) |
-| F12 | `after_turn`'s default window (upstream's 200,000) silently disables the flush for a smaller model: 128,000 gives a 176,000 threshold. LangChain's profile knows the window for some model names only | probe: `ChatOpenAI(model="gpt-4o-mini").profile["max_input_tokens"] == 128000`, `gpt-6-luna` 1,050,000, none for `openai/gpt-4o-mini` or `openai/gpt-6-luna`; test: `test_example_main_requires_a_window_the_profile_does_not_give` | the example requires `--context-window` when the profile has none and prints the window's source; `memory_maintenance` shows the threshold; **kit** docs: say that the default is only for 200,000-token models |
+| F12 | `after_turn`'s default window (upstream's 200,000) silently disables the flush for a smaller model: 128,000 gives a 176,000 threshold. LangChain's profile knows the window for some model names only | probe: `ChatOpenAI(model="gpt-4o-mini").profile["max_input_tokens"] == 128000`, `gpt-6-luna` 1,050,000, none for `openai/gpt-4o-mini` or `openai/gpt-6-luna`; test: `test_example_main_requires_a_window_the_profile_does_not_give` | the example's `main` requires `--context-window` when the profile has none and prints the window's source; `build_graph` takes the kit's default for `None` and says so in its docstring (L11); `memory_maintenance` shows the threshold; **kit** docs: say that the default is only for 200,000-token models |
 | F21 | `FlushRequest.complete` takes `redact`, but `after_turn` records a flush-target failure's message without one | test: `test_redact_maps_a_flush_target_failure` (the graph redacts it itself), `test_redact_and_redactor_reach_the_kit` | **kit**: a `redact` input on `after_turn` |
 | F22 | the kit does not say where `runtime_context` goes: the Turn lifecycle diagram lists `system_prompt, runtime_context, history, user message`, the block's own header says it is for "the immediately preceding user message", and upstream keeps the carrier immediately before the active user message and sends it as a user message | source: `src/agents/internal-runtime-context.ts:378`, `packages/agent-core/src/harness/messages.ts:139-153`, `attempt-llm-boundary.ts:268`; test: `test_runtime_context_reaches_the_model_and_is_optional` | the example follows upstream (a user message right before the turn's user message, on every model call of the turn); **kit** docs: state the placement and the role, and fix the lifecycle diagram |
 | F24 | `kit.dispatch` needs `session=` as a keyword while `FlushRequest.dispatch` takes two arguments, so a shared tool-answering helper needs `functools.partial` | test: the tools node | documented in `tool_messages`; a `TurnContext.dispatch` bound to its session would remove the partial (**kit**, optional) |
@@ -222,7 +228,7 @@ and starts a new flush cycle; a restart over the same saver continues the thread
 
 ### Open questions for Doruk
 
-L1-L10 are in Design › Open questions. The kit changes the findings recommend (F2 with F3,
+L1-L11 are in Design › Open questions. The kit changes the findings recommend (F2 with F3,
 F7, F12, F21, F22, F24, F26, and the F1 line) are not made on this branch: each changes the kit's
 contract, so they wait for Doruk's go-ahead (L10).
 
@@ -261,7 +267,7 @@ No node factory and no prebuilt agent (`create_memory_agent(kit, model)`): a fac
 the model node and the flush loop would own the agent loop and the tool loop, which adapters never
 do (docs/package_boundary.md › Runtime Adapters; docs/host_kit.md, entry point 4). The example is
 the template a LangGraph host copies, and every piece of glue it needs beyond the kit and the
-adapter is listed under "Findings so far" (L8).
+adapter is listed in the Findings section at the top of this file (L8).
 
 ### Parity labels
 
@@ -429,9 +435,10 @@ def run_flush(request: FlushRequest, session: SessionState) -> FlushOutcome:
   `profile["max_input_tokens"]` when LangChain knows it (read with `getattr(model, "profile",
   None)`: a beta field; 128,000 for `gpt-4o-mini`, none for OpenRouter-style names such as
   `openai/gpt-4o-mini`; probe), else the required `--context-window` input, and prints the window
-  and its source. It never falls back to the kit's 200,000 default, which for a 128,000-token
+  and its source. `main` never falls back to the kit's 200,000 default, which for a 128,000-token
   model puts the threshold (176,000) above the window, so the flush would never run (F12). As
-  built, a given `--context-window` wins over the profile.
+  built, a given `--context-window` wins over the profile, and `build_graph` itself does take
+  the kit's default when `context_window_tokens` is `None` (its docstring says so; L11).
 - `transcript_bytes` is not passed: a checkpointer has no session file, so the transcript-size
   gate stays off (F10, L9).
 - `memory_maintenance` is `{"flush": <decision reason>, "tokenCount": <the gate's token count or
@@ -610,14 +617,14 @@ class PendingTurn:
 
 ### Fate of `LangGraphMemoryRecall`
 
-Decision: remove it in 0.2.0 (still unreleased), with `format_memory_context` and
-`Memory.langgraph_recall`. Reasons:
+Recommendation, implemented on this branch and pending Doruk's answer to L1: remove it in 0.2.0
+(still unreleased), with `format_memory_context` and `Memory.langgraph_recall`. Reasons:
 
 - It injects search results into the prompt, which upstream never does; the same reason removed
   `Memory.prepare_turn` in 0.2.0 (docs/host_kit.md › `Memory.prepare_turn`, `Memory.chat`,
   `Memory.record_turn`: removed). This design is the upstream shape for a LangGraph host.
 - It does not work with LangGraph's own message state: it reads only `Mapping` messages with
-  `role == "user"` (`memory_core/adapters/langgraph.py:80-83`), so a `MessagesState` of
+  `role == "user"` (`memory_core/adapters/langgraph.py:80-83` at `79a1b5c`), so a `MessagesState` of
   `HumanMessage` objects recalls nothing (probe: `{'memory_context': '', 'memory_results': []}`
   for a query whose dict form finds the hit).
 - It drops the `disabled`, `warning` and `action` of an unavailable or paused search
@@ -854,3 +861,6 @@ Each task: tests first (watch them fail), implement, run the offline suite (base
   placement in the kit docs (F22), a session-bound dispatch (F24), a repair of unanswered tool
   calls over host messages (F26), and doc lines for
   `TAG_NOSTREAM` (F7), the default window (F12) and `SessionState` in framework state (F1).
+- L11. Make `build_graph`'s `context_window_tokens` required, so an app that copies the graph
+  cannot fall into the kit's 200,000-token default (F12), or keep the default for `None` with
+  the docstring warning (as built)? Only `main` refuses the default today.

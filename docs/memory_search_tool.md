@@ -143,7 +143,8 @@ The live recall helper keeps only `results`: `SubjectMemory.prepare_live_turn`
 drops the `disabled`, `warning` and `action` of an unavailable or paused result,
 so recall injects nothing and nobody is told. The helper is adapter-only (no
 upstream counterpart; `LangGraphMemoryRecall`, which did the same, was removed in
-0.2.0). The upstream shape is
+0.2.0, pending Doruk's confirmation as L1 in docs/integrations/langgraph.md). The upstream
+shape is
 the model's own `memory_search` call through `HostKit.tools()` and
 `HostKit.dispatch`, which return the whole payload; a host that needs the signal
 without the kit calls `Memory.search` (or `execute_memory_search_tool`) and

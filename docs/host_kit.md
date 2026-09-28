@@ -762,7 +762,7 @@ workflow state, trace storage, secret redaction policy (the kit takes the host's
 ## `Memory.prepare_turn`, `Memory.chat`, `Memory.record_turn`: removed
 
 Decision: keep `Memory` as the core handle (`from_workspace`, `search`, `get`, `curator`;
-`langgraph_recall` was removed later in 0.2.0, below). `prepare_turn`, `chat` and
+`langgraph_recall` was removed later in 0.2.0, pending Doruk's confirmation, below). `prepare_turn`, `chat` and
 `record_turn` were deprecated in this stage (a `DeprecationWarning` naming `memory_core.host`,
 behaviour unchanged, Task 7) and removed in the packaging stage (0.2.0, decision Q7) with
 `MemoryChatTurn`, `MemoryChatResult`, `MemoryRecordResult`, `DEFAULT_CHAT_SYSTEM_PROMPT`,

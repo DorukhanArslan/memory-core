@@ -143,7 +143,8 @@ Adapter non-goals:
 - replacing LangGraph checkpointers
 - pretending to be OpenClaw runtime behavior
 
-The auto-recall node `LangGraphMemoryRecall` was removed in 0.2.0: it injected search
+The auto-recall node `LangGraphMemoryRecall` was removed in 0.2.0, pending Doruk's
+confirmation (docs/integrations/langgraph.md › Open questions, L1): it injected search
 results into the prompt, which upstream never does (CHANGELOG.md › Removed).
 
 ## Demo App

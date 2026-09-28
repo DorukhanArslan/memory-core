@@ -178,7 +178,9 @@ def build_graph(
 
     ``checkpointer`` keeps each thread's state (default: an in-process ``InMemorySaver``);
     every run needs ``config={"configurable": {"thread_id": ...}}``. ``context_window_tokens``
-    is the model's window for the flush gate (the kit's default when ``None``).
+    is the model's window for the flush gate. ``None`` takes the kit's 200,000-token default,
+    which puts a smaller model's flush threshold above its window, so its flush never runs;
+    only ``main`` refuses that default, so pass the model's window.
     ``session_key`` maps the thread id to the session key (default: the thread id itself);
     ``new_id`` makes session and message ids. ``redact`` maps a failed flush's error text
     before it is stored; ``redactor`` maps each line ``/new`` saves from the ending session.

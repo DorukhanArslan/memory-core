@@ -280,10 +280,9 @@ repo root:
 .venv/bin/python -m uvicorn demo.app:app --port 8000
 ```
 
-Open <http://127.0.0.1:8000>. Agent previews use port 8010 (`.claude/launch.json`
-entry `memory-core-demo`). The Lab workspace lives in the system temp directory
-(`memory-core-lab-workspace`; the live task uses `memory-core-live-task-demo-workspace`),
-never in the repo tree.
+Open <http://127.0.0.1:8000>. Agent previews use port 8010. The Lab workspace lives in
+the system temp directory (`memory-core-lab-workspace`; the live task uses
+`memory-core-live-task-demo-workspace`), never in the repo tree.
 
 Configure the chat model with environment variables or a gitignored `.env` in the
 repo root (loaded at startup; names already set win). A key can also be sent per

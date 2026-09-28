@@ -60,7 +60,8 @@ def test_importing_the_langgraph_adapter_loads_no_framework():
     script = (
         "import sys\n"
         "import memory_core.adapters.langgraph\n"
-        "loaded = {'langchain_core', 'langgraph', 'langchain_openai', 'openai'} & set(sys.modules)\n"
+        "frameworks = {'langchain_core', 'langgraph', 'langchain_openai', 'openai'}\n"
+        "loaded = frameworks & set(sys.modules)\n"
         "assert not loaded, loaded\n"
     )
     completed = subprocess.run(

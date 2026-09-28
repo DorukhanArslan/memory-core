@@ -160,7 +160,10 @@ def test_tool_messages_answer_every_call_through_dispatch(tmp_path: Path):
 
     rows = tool_messages(message, recording)
 
-    assert calls == [("memory_search", {"query": "codename"}), ("memory_get", {"path": "MEMORY.md"})]
+    assert calls == [
+        ("memory_search", {"query": "codename"}),
+        ("memory_get", {"path": "MEMORY.md"}),
+    ]
     assert [(row["role"], row["tool_call_id"], row["name"], row["status"]) for row in rows] == [
         ("tool", "call-1", "memory_search", "success"),
         ("tool", "call-2", "memory_get", "success"),

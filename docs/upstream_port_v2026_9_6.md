@@ -252,8 +252,9 @@ matrix rows): pending system events (exec-completion, cron-event and session-not
 the `heartbeat_respond` tool and its `scratch` argument, host time-format detection (the host
 passes one `time_format` for every current-time line, `memory_core/current_time.py`), job
 conflicts between planning and commit, `applyJobResult` beyond the ok/skipped path, the
-heartbeat monitor job and its cadence migration (the host runs the monitor), the `memory_core.host`
-kit that will wrap these helpers.
+heartbeat monitor job and its cadence migration (the host runs the monitor).
+`HostKit.heartbeat_prompt` composes these helpers for a host (docs/host_kit.md, entry point 6);
+the Lab's heartbeat run moves onto it in that plan's Task 9c.
 
 - Upstream: HEARTBEAT.md became a per-agent monitor scratch in the shared state DB
   (3e2b3ea4d5e #112967; runtime fallback removed in 07e3855b465 #113131): table

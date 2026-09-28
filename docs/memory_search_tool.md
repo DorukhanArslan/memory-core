@@ -69,9 +69,10 @@ except MemoryToolInputError as error:
 ### Blank queries
 
 `memory_search` and the facade raise as well, so the change reaches every caller
-built on them: `Memory.search("")`, `Memory.prepare_turn("  ")` and
-`SubjectMemory.prepare_live_turn` with a blank `user_utterance` (a silent ASR
-turn, for example) raise `MemoryToolInputError("query required")`. Before this
+built on them: `Memory.search("")`, `Memory.prepare_turn("  ")` (deprecated,
+removed with the packaging stage) and `SubjectMemory.prepare_live_turn` with a
+blank `user_utterance` (a silent ASR turn, for example) raise
+`MemoryToolInputError("query required")`. Before this
 contract port they returned `{"results": [], "disabled": True, "error": "query
 required"}` and recall injected nothing. `LangGraphMemoryRecall` still skips a
 query that is empty after `str.strip()`. Hosts that can pass blank input must
@@ -139,12 +140,15 @@ lifts the pause). In memory-core the host owns reindexing, so the model relays a
 that an end user of the host app cannot take; whether the memory-core text should
 address the host instead is an open decision.
 
-The recall helpers keep only `results`: `Memory.prepare_turn`,
-`LangGraphMemoryRecall` and `SubjectMemory.prepare_live_turn` drop the
-`disabled`, `warning` and `action` of an unavailable or paused result, so
-recall injects nothing and nobody is told. These helpers are adapter-only (no
-upstream counterpart). A host that needs the signal calls `Memory.search` (or
-`execute_memory_search_tool`) and checks `disabled`.
+The recall helpers keep only `results`: `Memory.prepare_turn` (deprecated,
+removed with the packaging stage), `LangGraphMemoryRecall` and
+`SubjectMemory.prepare_live_turn` drop the `disabled`, `warning` and `action` of
+an unavailable or paused result, so recall injects nothing and nobody is told.
+These helpers are adapter-only (no upstream counterpart). The upstream shape is
+the model's own `memory_search` call through `HostKit.tools()` and
+`HostKit.dispatch`, which return the whole payload; a host that needs the signal
+without the kit calls `Memory.search` (or `execute_memory_search_tool`) and
+checks `disabled`.
 
 ## Deadline and cooldown
 

@@ -13,10 +13,11 @@ runtime code spells the name only through that module::
 ``--to`` renames the project from the declared name: the package directory (``git mv``), the
 declaration, the constant module, uv.lock (relocked by ``uv lock --offline`` when uv is
 installed, else its own entries rewritten) and every spelling of the name in the tracked
-files. ``--display`` defaults to the new distribution name. It commits nothing and ends with
-``--check``, which lists every disagreement between the declaration, the package directory,
-the constant module, pyproject.toml and uv.lock, and every string in runtime code that spells
-the name itself, and exits 1 if there is one.
+files. ``--display`` defaults to the new distribution name. It runs ``--check`` before and
+after, and commits nothing. ``--check`` lists every disagreement between the declaration, the
+package directory, the constant module, pyproject.toml and uv.lock, every tracked symlink or
+non-UTF-8 file that spells the name (a rename rewrites neither) and every string in runtime
+code that spells the name itself, and exits 1 if there is one.
 
 Spellings. The words of a name (``probe-kit``: probe, kit) give its forms: kebab
 (``probe-kit``: the distribution name and the slug of file and directory names), snake
@@ -45,6 +46,7 @@ import ast
 import functools
 import io
 import json
+import os
 import re
 import shutil
 import string
@@ -325,7 +327,8 @@ def in_scope(path: str) -> bool:
 
 
 def read_texts(root: Path) -> dict[str, str]:
-    """The text of every tracked file a rename may change; binary files are skipped."""
+    """The text of every tracked file a rename may change. Symlinks and files that are not
+    UTF-8 are skipped: a rename cannot rewrite them (unrewritable_files)."""
     texts = {}
     for path in tracked_files(root):
         file = root / path
@@ -336,6 +339,32 @@ def read_texts(root: Path) -> dict[str, str]:
         except UnicodeDecodeError:
             continue
     return texts
+
+
+def unrewritable_files(root: Path, name: ProjectName) -> list[str]:
+    """Tracked symlinks whose target spells the name and files that are not UTF-8 but spell
+    it: a rename rewrites neither, and moving the package would leave such a link dangling."""
+    problems = []
+    for path in filter(in_scope, tracked_files(root)):
+        file = root / path
+        if file.is_symlink():
+            target = os.readlink(file)
+            if name_matches(target, name):
+                problems.append(
+                    f"{path}: a symlink to {target}, which spells the name; a rename does not"
+                    " rewrite link targets"
+                )
+        elif file.is_file():
+            data = file.read_bytes()
+            try:
+                data.decode("utf-8")
+            except UnicodeDecodeError:
+                if name_matches(data.decode("utf-8", errors="replace"), name):
+                    problems.append(
+                        f"{path}: not UTF-8 text, and it spells the name; a rename cannot"
+                        " rewrite it"
+                    )
+    return problems
 
 
 # --- the declaration files -----------------------------------------------------------------
@@ -392,6 +421,9 @@ def name_problems(name: ProjectName) -> list[str]:
 
 
 def rename(root: Path, new: ProjectName) -> None:
+    problems = check(root)
+    if problems:
+        raise SystemExit("the name check fails; fix it before renaming:\n" + "\n".join(problems))
     old = read_declaration(root)
     problems = name_problems(new)
     if new.dist == old.dist:
@@ -464,6 +496,7 @@ def check(root: Path) -> list[str]:
         *package_problems(root, name),
         *pyproject_problems(root, name),
         *lockfile_problems(root, name),
+        *unrewritable_files(root, name),
         *runtime_spellings(root, name),
     ]
 

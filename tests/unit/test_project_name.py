@@ -238,3 +238,23 @@ def test_the_check_lists_each_place_a_hand_edited_name_disagrees_with(tmp_path):
         "pyproject.toml: the sdist only-include does not hold 'probe_kit'",
         f"uv.lock: the project's own entry is [{name.dist!r}], not ['probe-kit']",
     ]
+
+
+def test_a_symlink_or_non_utf8_file_that_spells_the_name_stops_the_check_and_a_rename(tmp_path):
+    tree = _copy_tracked_tree(tmp_path)
+    name = rename_project.read_declaration(tree)
+    (tree / "docs" / "package-link").symlink_to(f"../{name.package}")
+    (tree / "docs" / "latin1.txt").write_bytes(f"caf\xe9 {name.dist}\n".encode("latin-1"))
+    subprocess.run(["git", "add", "-A"], cwd=tree, check=True)
+
+    check = _run(tree, "--check")
+    rename = _run(tree, "--to", PROBE_DIST)
+
+    assert (check.returncode, rename.returncode) == (1, 1)
+    assert check.stdout.splitlines() == [
+        "docs/latin1.txt: not UTF-8 text, and it spells the name; a rename cannot rewrite it",
+        f"docs/package-link: a symlink to ../{name.package}, which spells the name; a rename"
+        " does not rewrite link targets",
+    ]
+    assert rename.stderr.splitlines()[1:] == check.stdout.splitlines()
+    assert subprocess.run(["git", "diff", "--quiet"], cwd=tree, check=False).returncode == 0

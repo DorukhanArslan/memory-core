@@ -462,9 +462,9 @@ class FlushOutcome:
 The plan, the decision and the session live on `TurnRecord`; the request carries only what the
 flush run needs.
 
-- `messages`: one system message, the transcript's user and assistant text rows (runtime-context
-  custom rows dropped with `strip_runtime_context_custom_messages`), then `plan.prompt` as the
-  user message. Upstream's flush turn is a full agent run whose system prompt carries
+- `messages`: one system message, the transcript's user and assistant text rows (every other role
+  is dropped, runtime-context custom rows included), then `plan.prompt` as the user message.
+  Upstream's flush turn is a full agent run whose system prompt carries
   `[run.extraSystemPrompt, plan.systemPrompt]` as extra context under `## Conversation Context`
   (`agent-runner-memory.ts:1452-1454`, `system-prompt.ts:1254-1257`; the flush session's key is an
   internal effects key, so the prompt mode is full and the header is not `## Subagent Context`).

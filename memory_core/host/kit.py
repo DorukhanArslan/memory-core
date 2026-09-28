@@ -47,7 +47,6 @@ from memory_core.bootstrap.files import (
 from memory_core.client import Memory
 from memory_core.config import MemoryConfig
 from memory_core.consolidation import record_short_term_recalls, undecorate_search_results
-from memory_core.context_engine_lifecycle import strip_runtime_context_custom_messages
 from memory_core.current_time import DEFAULT_TIME_FORMAT, TimeFormat, resolve_time_format
 from memory_core.curation import CurationPolicy, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
@@ -634,14 +633,11 @@ class HostKit:
             )
             if part
         )
-        rows = strip_runtime_context_custom_messages(
-            [dict(message) for message in transcript], identity=self._identity
-        )
         return (
             {"role": "system", "content": system},
             *(
                 {"role": row["role"], "content": row["content"]}
-                for row in rows
+                for row in transcript
                 if row.get("role") in ("user", "assistant")
                 and isinstance(row.get("content"), str)
                 and row["content"]

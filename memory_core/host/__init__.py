@@ -10,6 +10,8 @@ from memory_core.host.kit import (
     DEFAULT_CONTEXT_WINDOW_TOKENS,
     MINIMAL_PROMPT_KINDS,
     HostKit,
+    NewSession,
+    ResetTurn,
     TurnContext,
     TurnRecord,
 )
@@ -21,6 +23,8 @@ __all__ = [
     "FlushOutcome",
     "FlushRequest",
     "HostKit",
+    "NewSession",
+    "ResetTurn",
     "SessionState",
     "TurnContext",
     "TurnRecord",

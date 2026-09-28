@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from memory_core.bootstrap import (
     DEFAULT_BOOTSTRAP_MAX_CHARS,
@@ -23,13 +23,18 @@ from memory_core.bootstrap import (
     WorkspaceContext,
     WorkspaceInitResult,
     WorkspaceLayout,
+    build_startup_context,
     build_workspace_context,
+    format_session_reset_transcript_prompt,
     initialize_agent_workspace,
+    resolve_bare_session_reset_prompt_state,
+    should_apply_startup_context,
 )
 from memory_core.bootstrap.budget import BootstrapPromptWarningMode
 from memory_core.bootstrap.files import (
     BootstrapContextMode,
     BootstrapContextRunKind,
+    BootstrapMode,
     ContextInjectionMode,
 )
 from memory_core._memory_flush_constants import CONVERSATION_CONTEXT_HEADER
@@ -57,6 +62,7 @@ from memory_core.memory_paths import UnsafeMemoryPathError
 from memory_core.prompt_section import build_prompt_section
 from memory_core.runtime_context_prompt import build_runtime_context_system_context
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
+from memory_core.session_memory import SessionMemoryResult, SlugGenerator, save_session_memory
 from memory_core.tools.common import MemoryToolInputError, to_tool_error
 from memory_core.tools.memory_get import (
     MEMORY_GET_TOOL_NAME,
@@ -114,6 +120,35 @@ class TurnRecord:
     flush_decision: MemoryFlushTriggerDecision
     flush: FlushRequest | None = None
     flush_failure: MemoryFlushFailureOutcome | None = None
+
+
+@dataclass(frozen=True)
+class ResetTurn:
+    """The turn a bare ``/new`` or ``/reset`` starts (upstream prompt-prelude.ts:200-225).
+
+    ``model_prompt`` is the next user message for the model: the startup context (when the
+    bootstrap mode is ``none``) and the reset prompt, joined by a blank line.
+    ``transcript_prompt`` is what the transcript records instead.
+    """
+
+    model_prompt: str
+    transcript_prompt: str
+    bootstrap_mode: BootstrapMode
+    startup_context: str | None
+
+
+@dataclass(frozen=True)
+class NewSession:
+    """A new session after ``/new`` or ``/reset``: same key and kind, new id, fresh entry.
+
+    ``saved`` is the ending session's ``memory/<date>-<slug>.md``; ``reset`` is set for a bare
+    command only.
+    """
+
+    session: SessionState
+    saved: SessionMemoryResult
+    workspace_init: WorkspaceInitResult
+    reset: ResetTurn | None
 
 
 class HostKit:
@@ -377,6 +412,79 @@ class HostKit:
                 target=plan.relative_path,
                 messages=self._flush_messages(recorded, plan, transcript),
             ),
+        )
+
+    def on_new_session(
+        self,
+        ending: SessionState,
+        *,
+        command: Literal["new", "reset"],
+        session_id: str,
+        transcript: Sequence[Mapping[str, Any]] | None = None,
+        session_file: str | os.PathLike[str] | None = None,
+        text: str | None = None,
+        source: str | None = None,
+        slug_generator: SlugGenerator | None = None,
+        redactor: Callable[[str], str] | None = None,
+        has_bootstrap_file_access: bool = False,
+    ) -> NewSession:
+        """Handle ``/new`` or ``/reset``: save the ending session, then prepare the reset turn.
+
+        ``save_session_memory`` of the ending session's ``transcript`` or ``session_file`` (the
+        session-memory hook, raw recent lines unless ``redactor`` maps them), a reindex so
+        ``memory_search`` finds the file, :meth:`ensure` (upstream's ensure runs before the
+        reset reply, get-reply.ts:443-448), and for a bare command (blank ``text``) the reset
+        prompt with the startup context (session-reset-prompt.ts, startup-context.ts). The saved
+        file is written first, so the startup context can quote it. The host sends
+        ``reset.model_prompt`` through :meth:`before_turn` and records
+        ``reset.transcript_prompt``.
+        """
+        if command not in ("new", "reset"):
+            raise ValueError(f"command must be 'new' or 'reset', got {command!r}")
+        now = self._clock()
+        saved = save_session_memory(
+            self._root,
+            session_key=ending.session_key,
+            session_id=ending.session_id,
+            session_file=session_file,
+            messages=list(transcript) if transcript is not None else None,
+            source=source,
+            now_ms=now,
+            timezone=self._timezone,
+            slug_generator=slug_generator,
+            redactor=redactor,
+        )
+        self._memory.store.reindex(self._memory.workspace)
+        workspace_init = self.ensure()
+        reset = None
+        if not (text and text.strip()):
+            state = resolve_bare_session_reset_prompt_state(
+                self._root,
+                now_ms=now,
+                timezone=self._timezone,
+                time_format=self._time_format,
+                layout=self._layout,
+                is_primary_run=ending.kind != "subagent",
+                has_bootstrap_file_access=has_bootstrap_file_access,
+            )
+            startup = (
+                build_startup_context(self._root, now_ms=now, timezone=self._timezone)
+                if state.should_prepend_startup_context and should_apply_startup_context(command)
+                else None
+            )
+            reset = ResetTurn(
+                model_prompt="\n\n".join(part for part in (startup, state.prompt) if part),
+                transcript_prompt=format_session_reset_transcript_prompt(command, self._identity),
+                bootstrap_mode=state.bootstrap_mode,
+                startup_context=startup,
+            )
+        return NewSession(
+            session=SessionState.new(
+                session_key=ending.session_key, session_id=session_id, kind=ending.kind
+            ),
+            saved=saved,
+            workspace_init=workspace_init,
+            reset=reset,
         )
 
     def _flush_messages(

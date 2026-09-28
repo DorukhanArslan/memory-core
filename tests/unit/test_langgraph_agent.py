@@ -336,6 +336,44 @@ def test_session_state_survives_in_the_checkpointer(tmp_path: Path):
     assert len(after["messages"]) == 8
 
 
+def test_two_threads_on_one_graph_and_kit_are_separate_sessions(tmp_path: Path):
+    _, _, graph = _graph(tmp_path, memory_script())
+    a, b = ({"configurable": {"thread_id": name}} for name in ("thread-a", "thread-b"))
+
+    a1 = _say(graph, "Our codename is velvetkiwi.", a)
+    b1 = _say(graph, "What is our codename?", b)
+    a2 = _say(graph, "Anything else?", a)
+
+    assert [(_session(state).session_key, _session(state).session_id) for state in (a1, b1, a2)] == [
+        ("thread-a", "id-1"),
+        ("thread-b", "id-2"),
+        ("thread-a", "id-1"),
+    ]
+    # Each thread has its own flush cycle: B's first due turn flushes although A's did.
+    assert [state["memory_maintenance"]["flush"] for state in (a1, b1, a2)] == [
+        "token_threshold",
+        "token_threshold",
+        "already_flushed",
+    ]
+    # One workspace: B's search finds A's flushed fact; B's transcript holds only B's turn.
+    (hit,) = json.loads(b1["messages"][2].content)["results"]
+    assert FACT in hit["snippet"]
+    assert [message.type for message in b1["messages"]] == ["human", "ai", "tool", "ai"]
+    assert b1["messages"][0].content == "What is our codename?"
+
+    b_before = graph.get_state(b).values
+    after_new = _say(graph, "/new", a)
+
+    assert _session(after_new).session_key == "thread-a"
+    assert _session(after_new).session_id not in ("id-1", "id-2")
+    assert graph.get_state(b).values == b_before
+    (saved,) = _saved_session_files(tmp_path)
+    text = saved.read_text(encoding="utf-8")
+    assert "- **Session Key**: thread-a" in text and "What is our codename?" not in text
+    b2 = _say(graph, "Still there?", b)
+    assert (_session(b2).session_id, b2["memory_maintenance"]["flush"]) == ("id-2", "already_flushed")
+
+
 def test_state_loads_under_a_strict_serializer(tmp_path: Path):
     saver = InMemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=None))
     _, _, graph = _graph(tmp_path, memory_script(), checkpointer=saver)

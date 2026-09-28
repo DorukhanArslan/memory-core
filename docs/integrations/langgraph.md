@@ -199,7 +199,7 @@ or a trap.
 | F13 | `ToolNode` wants `BaseTool`s, whose argument validation would replace the kit's upstream-shaped error payloads | source: `langgraph/prebuilt/tool_node.py:743-757` | a custom tools node over `tool_messages` |
 | F14 | the kit is synchronous; under `ainvoke` LangGraph runs sync nodes in an executor | test: `test_graph_runs_under_ainvoke` | no async twins needed; node timeouts exist only for async nodes (`langgraph/graph/state.py:714-722`, source) |
 | F15 | LangGraph does not serialize two runs of one thread, and the kit's one maintenance lane per session needs that | source; `multitask_strategy` names at `langgraph_sdk/schema.py:81-87` | one run per thread at a time; under LangGraph Server `reject` or `enqueue` keep the lane, `interrupt` cancels a running `maintain` (which records nothing), `rollback` leaves a written daily append behind, so its flush repeats (Server semantics from its docs, unverified: langgraph-api is not installed) |
-| F16 | the kit needs a stable session key; a thread id is one, and the quickstart's upstream-shaped `agent:main:main` is another shape | test: `test_session_key_mapping_names_the_session` | `build_graph(session_key=...)`, default the thread id (L2) |
+| F16 | the kit needs a stable session key; a thread id is one, and the quickstart's upstream-shaped `agent:main:main` is another shape | test: `test_session_key_mapping_names_the_session`; `test_two_threads_on_one_graph_and_kit_are_separate_sessions` (own key, id and flush cycle per thread on one graph and kit; `/new` in one leaves the other's state as it was) | `build_graph(session_key=...)`, default the thread id (L2) |
 | F17 | a failed turn leaves its user message in `messages` without a reply | test: `test_failed_model_call_commits_no_session_state` | `graph.invoke(None, config)` reruns the failed node; the next message otherwise follows the unanswered user message (after F26's repair when the failure was in `tools`) |
 | F18 | `bind_tools(strict=True)` makes every parameter of the kit's tools required (`memory_search`'s `maxResults`, `minScore` and `corpus`, `memory_get`'s `from`, `lines` and `corpus`, the curation tools' optional `section` and `supersede`), which changes what the model must send | probe: `convert_to_openai_tool(tool, strict=True)` on `kit.tools()`; test: `test_tools_are_bound_without_strict_mode` | the example binds without `strict`; strict mode would need nullable optional parameters in the kit's schemas |
 | F19 | langchain-core allows a tool call with `id: None`, but a `ToolMessage` needs a string id | probe (design review); test: `test_tool_messages_reject_a_call_without_an_id` | `tool_messages` raises `ValueError` before dispatching anything: a provider or host error; the next message's `prepare` removes the call (F26) |
@@ -771,7 +771,8 @@ As built, beyond the plan: `test_a_command_that_is_not_first_word_is_an_ordinary
 `test_example_main_chats_against_an_openai_compatible_endpoint` (the whole `main` loop against
 the local stub), and after review `test_tool_rounds_are_bounded_and_the_last_call_has_no_tools`
 and `test_a_reply_that_asks_for_tools_past_the_bound_fails_the_turn` (F25) and
-`test_next_message_after_a_failed_tools_node_drops_the_unanswered_call` (F26). The live test's code was dry-run once against a scripted local endpoint in a
+`test_next_message_after_a_failed_tools_node_drops_the_unanswered_call` (F26) and
+`test_two_threads_on_one_graph_and_kit_are_separate_sessions` (F16). The live test's code was dry-run once against a scripted local endpoint in a
 scratch directory; it has not run against a real model on this branch.
 
 ### TDD tasks

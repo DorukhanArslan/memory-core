@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 
 import pytest
 
@@ -190,6 +191,32 @@ def test_flush_write_appends_to_the_target_and_reindexes(tmp_path):
     assert (tmp_path / TARGET).read_text() == "- velvetkiwi codename\n"
     hits = kit.dispatch("memory_search", {"query": "velvetkiwi"}, session=_session())["results"]
     assert [hit["path"] for hit in hits] == [TARGET]
+
+
+def test_parallel_flush_writes_append_every_entry(tmp_path):
+    flush = _due(_kit(tmp_path)).flush
+    errors: list[BaseException] = []
+    start = threading.Barrier(8)
+
+    def write(index: int) -> None:
+        try:
+            start.wait()
+            for round_ in range(5):
+                result = flush.dispatch("write", {"path": TARGET, "content": f"- fact {index}.{round_}"})
+                assert result["action"] == "appended", result
+        except BaseException as exc:  # surfaced below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=write, args=(index,)) for index in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    expected = sorted(f"- fact {index}.{round_}" for index in range(8) for round_ in range(5))
+    assert sorted((tmp_path / TARGET).read_text().splitlines()) == expected
+    assert sorted(flush.complete(_session()).entries) == expected
 
 
 def test_flush_write_accepts_the_absolute_target_path(tmp_path):

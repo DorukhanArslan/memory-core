@@ -64,22 +64,26 @@ def test_after_turn_without_usage_reports_missing_tokens(tmp_path):
 
 
 CASES = [
-    # (entry, usage, window, transcript bytes)
-    ({}, TurnUsage(1000, 50), None, None),
-    ({}, TurnUsage(176_000), None, None),
-    ({}, TurnUsage(175_900, 100), None, None),
-    ({"memoryFlush": {"kind": "succeeded", "compactionCount": 0}}, TurnUsage(180_000), None, None),
+    # (entry, usage, window, transcript bytes, the token count the kit must pass: total + output)
+    ({}, TurnUsage(1000, 50), None, None, 1050),
+    ({}, TurnUsage(176_000), None, None, 176_000),
+    ({}, TurnUsage(175_900, 100), None, None, 176_000),
+    ({"memoryFlush": {"kind": "succeeded", "compactionCount": 0}}, TurnUsage(180_000), None, None,
+     180_000),
     ({"compactionCount": 1, "memoryFlush": {"kind": "succeeded", "compactionCount": 0}},
-     TurnUsage(180_000), None, None),
-    ({}, TurnUsage(2_100), 5_333, None),
-    ({}, TurnUsage(1_900), 5_333, None),
-    ({}, None, None, 2 * 1024 * 1024),
-    ({"memoryFlush": {"kind": "failed", "failureCount": 2}}, TurnUsage(10), None, 3 * 1024 * 1024),
+     TurnUsage(180_000), None, None, 180_000),
+    ({}, TurnUsage(2_100), 5_333, None, 2_100),
+    ({}, TurnUsage(1_900), 5_333, None, 1_900),
+    ({}, None, None, 2 * 1024 * 1024, None),
+    ({"memoryFlush": {"kind": "failed", "failureCount": 2}}, TurnUsage(10), None, 3 * 1024 * 1024,
+     10),
 ]
 
 
-@pytest.mark.parametrize(("entry", "usage", "window", "size"), CASES)
-def test_after_turn_decision_equals_explain_memory_flush_trigger(tmp_path, entry, usage, window, size):
+@pytest.mark.parametrize(("entry", "usage", "window", "size", "token_count"), CASES)
+def test_after_turn_decision_equals_explain_memory_flush_trigger(
+    tmp_path, entry, usage, window, size, token_count
+):
     session = _session(**entry)
 
     record = _kit(tmp_path, timezone="Europe/Istanbul", time_format="12").after_turn(
@@ -94,8 +98,6 @@ def test_after_turn_decision_equals_explain_memory_flush_trigger(tmp_path, entry
         context_window_tokens=effective_window,
         time_format="12",
     )
-    total = usage.prompt_tokens if usage is not None else None
-    token_count = total + (usage.completion_tokens or 0) if total else None
     assert record.flush_plan == plan
     assert record.flush_plan.relative_path == "memory/2026-09-26.md"
     assert record.flush_decision == explain_memory_flush_trigger(

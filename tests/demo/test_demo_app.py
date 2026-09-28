@@ -1340,6 +1340,28 @@ def test_due_flush_with_an_unsafe_target_records_a_strike(client, lab, monkeypat
     assert client.get("/api/lab/state").json()["flush"]["memoryFlush"] == {"kind": "failed", "failureCount": 1}
 
 
+def test_manual_flush_with_an_unsafe_target_answers_a_lab_error(client, lab, monkeypatch, tmp_path):
+    use_engine(monkeypatch, StubEngine([]))
+    client.get("/api/lab/state")
+    outside = symlink_memory_dir(lab, tmp_path)
+
+    response = client.post("/api/chat/flush", json={"forced": True})
+
+    assert response.status_code == 409
+    body = response.json()
+    assert body["code"] == "flush_target_failed" and body["redacted"] is True
+    assert body["error"].startswith(f"the flush target memory/{lab.today()}.md cannot be created: ")
+    assert "symlink" in body["error"]
+    assert list(outside.iterdir()) == []
+    events = [frame["data"] for frame in parse_sse(client.get("/api/lab/events", params={"once": "true"}).text)]
+    decided = next(event for event in events if event["type"] == "flush.decided")
+    assert decided["data"]["reason"] == "forced" and decided["data"]["shouldRun"] is True
+    failed = next(event for event in events if event["type"] == "flush.failed")
+    assert failed["data"] == {"error": body["error"], "code": "flush_target_failed", "redacted": True}
+    # HostKit.request_flush records nothing for a target it cannot create.
+    assert client.get("/api/lab/state").json()["flush"]["memoryFlush"] is None
+
+
 def test_manual_flush_needs_a_model(client):
     response = client.post("/api/chat/flush", json={"forced": True})
 

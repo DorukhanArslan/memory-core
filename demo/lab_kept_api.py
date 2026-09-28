@@ -34,6 +34,7 @@ from demo.live_task_demo import (
 )
 from demo.parity_trace import build_parity_trace
 from memory_core.live import LIVE_TURN_FAILED
+from memory_core.memory_paths import UnsafeMemoryPathError
 from memory_core.prompt_section import build_prompt_section
 from memory_core.tools.memory_get import memory_get
 from memory_core.tools.common import MemoryToolInputError
@@ -149,7 +150,9 @@ def build_kept_router(lab: LabRuntime) -> APIRouter:
 
         ``HostKit.request_flush`` skips only the token gate: a heartbeat session and a
         compaction cycle that already flushed get no run (``runtime_skip:heartbeat``,
-        ``already_flushed``) and nothing is written. The reason of a run is ``forced``.
+        ``already_flushed``) and nothing is written. The reason of a run is ``forced``. A
+        target the kit cannot create answers 409 ``flush_target_failed``; the kit records
+        nothing then.
         """
         from demo.lab_api import resolve_chat_engine
 
@@ -160,8 +163,21 @@ def build_kept_router(lab: LabRuntime) -> APIRouter:
             raise LabError(400, "the flush turn needs a model; the scripted engine has none", code="no_api_key")
         with lab.locked():
             kit = lab.kit(lab.store(lab.resolve_embedding(payload)))
-            with lab.tracked("flush"):
-                request = kit.request_flush(session.state, transcript=session.messages)
+            try:
+                with lab.tracked("flush"):
+                    request = kit.request_flush(session.state, transcript=session.messages)
+            except (UnsafeMemoryPathError, OSError) as exc:
+                decision = {"shouldRun": True, "reason": "forced", "extension": True,
+                            "label": FORCED_FLUSH_LABEL}
+                lab.bus.emit("flush.decided", summary="flush kararı: forced (/flush, Lab uzantısı)",
+                             data=decision)
+                message = (
+                    f"the flush target memory/{lab.today()}.md cannot be created: "
+                    f"{safe_exception_message(exc, lab.secret_values(payload))}"
+                )
+                lab.bus.emit("flush.failed", summary="flush başarısız: hedef dosya oluşturulamadı",
+                             data={"error": message, "code": "flush_target_failed", "redacted": True})
+                raise LabError(409, message, code="flush_target_failed", redacted=True) from exc
             if request is None:
                 reason = "runtime_skip:heartbeat" if session.kind == "heartbeat" else "already_flushed"
             else:

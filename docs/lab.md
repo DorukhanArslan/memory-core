@@ -189,7 +189,10 @@ get upstream's minimal prompt (no `## Memory Recall`, no auto-recall).
 `/flush` (`POST /api/chat/flush`) is a labelled Lab extension (decision Q6):
 `HostKit.request_flush` makes the same flush run outside the token gate, with reason
 `forced`, and leaves the token snapshot alone; a heartbeat session and a compaction cycle that
-already flushed get no run.
+already flushed get no run. A daily file the kit cannot create (a symlinked `memory/`, for
+example) answers 409 `flush_target_failed` after `flush.decided` and `flush.failed` events; the
+kit records no strike then, while a due flush after a chat turn records one (upstream's
+`recordFailure`).
 
 `/new` and `/reset` (`POST /api/lab/session/new`) run `HostKit.on_new_session`: the
 session-memory hook (`save_session_memory` → `memory/<date>-<HHMM>.md`, raw lines, no

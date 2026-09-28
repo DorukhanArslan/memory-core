@@ -31,6 +31,26 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Changed
 
+- The project name is now memory-core (0.1.0 used an earlier name), and every spelling of it
+  derives from the one declaration: the distribution `memory-core`, the import package
+  `memory_core`, the `MEMORY_CORE_` environment prefix (the Lab's `MEMORY_CORE_DEMO_OPENAI_*`
+  and `MEMORY_CORE_LAB_PARITY_RESULTS`, the run-loop oracle's `MEMORY_CORE_OVERFLOW_ORACLE_OUT`,
+  the live embedding test's `MEMORY_CORE_LIVE_OPENAI`), the workspace state directory
+  `.memory-core/` (index, setup state, automation store, migration backups), the promotion
+  marker prefix `memory-core-memory-promotion:`, the runtime context markers
+  (`<<<BEGIN_MEMORY_CORE_INTERNAL_CONTEXT>>>`, `<<<END_MEMORY_CORE_INTERNAL_CONTEXT>>>`, custom
+  type `memory_core.runtime-context`, source `memory-core-runtime-context`) and prompts, the
+  heartbeat and session transcript rows (`[memory-core heartbeat poll]`,
+  `[memory-core session new]`, `[memory-core session reset]`), the default workspace layout's
+  name, and the Lab's title and `X-Title` header (`memory-core Lab`), persona name and temp
+  workspace directories (`memory-core-lab-workspace`, `memory-core-live-task-demo-workspace`).
+  The names that carry it are `MEMORY_CORE_RUNTIME_IDENTITY`, `MEMORY_CORE_WORKSPACE_LAYOUT`,
+  `MEMORY_CORE_PROMOTION_MARKER_PREFIX`, `MEMORY_CORE_RUNTIME_CONTEXT_CUSTOM_TYPE`,
+  `MEMORY_CORE_WORKSPACE_STATE_FILENAME` and `MemoryCoreSessionCorpus`;
+  `memory_core.project_name.STATE_DIRNAME` replaces the bootstrap lifecycle's own state
+  directory constant. Existing workspaces are not migrated: a state directory or promotion
+  markers written under the earlier name are not read, so entries promoted under it can be
+  promoted again (README › Rename the Project).
 - The package root exports 24 names instead of 171 (below): the host kit classes and
   `WorkspaceStateMigrationRequiredError` are new there, 154 names moved to their submodules
   (table below) and 5 were removed.

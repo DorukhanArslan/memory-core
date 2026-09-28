@@ -142,6 +142,27 @@ def tool_rounds(messages: Sequence[Any]) -> int:
     return rounds
 
 
+def unanswered_tool_calls(messages: Sequence[Any]) -> list[str]:
+    """The ids of the AI messages with a tool call that no tool message answers.
+
+    A turn that failed in or before its tools node leaves one (a call without an id, a
+    dispatch that raised, a crash between the nodes), and a provider rejects a tool call without
+    its tool message. Upstream repairs the replayed history with synthetic error results
+    instead (``repairToolUseResultPairing``, src/agents/session-transcript-repair.ts:391); the
+    example removes the message, since a call without an id can have no tool message.
+    """
+    answered = {message.tool_call_id for message in messages if message.type == "tool"}
+    return [
+        message.id
+        for message in messages
+        if message.type == "ai"
+        and any(
+            call.get("id") not in answered
+            for call in [*message.tool_calls, *message.invalid_tool_calls]
+        )
+    ]
+
+
 def build_graph(
     kit: HostKit,
     model: BaseChatModel,
@@ -223,6 +244,8 @@ def build_graph(
         update: dict[str, Any] = {"memory_turn": pending.to_json(), "memory_reset": None}
         if created:  # a thread's first session keeps its id even if this turn fails
             update["memory_session"] = session.to_json()
+        if orphans := unanswered_tool_calls(state["messages"]):  # left by a failed turn
+            update["messages"] = [RemoveMessage(id=message_id) for message_id in orphans]
         return update
 
     def agent(state: AgentState) -> dict[str, Any]:

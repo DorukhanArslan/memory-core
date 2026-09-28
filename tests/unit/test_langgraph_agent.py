@@ -596,6 +596,42 @@ def test_failed_model_call_commits_no_session_state(tmp_path: Path):
     assert [call.messages[-1].content for call in _chat_calls(model)][-2] == "Are you there?"
 
 
+@pytest.mark.parametrize("failure", ["a call without an id", "dispatch raises"])
+def test_next_message_after_a_failed_tools_node_drops_the_unanswered_call(
+    tmp_path: Path, monkeypatch, failure: str
+):
+    def script(call: Call, calls: list[Call]) -> AIMessage:
+        if len(calls) > 1:
+            return AIMessage("plain reply")
+        call_id = None if failure == "a call without an id" else "call-1"
+        search = {"name": "memory_search", "args": {"query": "x"}, "id": call_id}
+        return AIMessage("", tool_calls=[search])
+
+    kit, model, graph = _graph(tmp_path, script)
+    if failure == "dispatch raises":
+
+        def broken_dispatch(*args, **kwargs):
+            raise OSError("disk unavailable")
+
+        monkeypatch.setattr(kit, "dispatch", broken_dispatch)
+    with pytest.raises((ValueError, OSError)):
+        _say(graph, "Search please.")
+    assert graph.get_state(THREAD).next == ("tools",)
+
+    state = _say(graph, "Are you there?")
+
+    # The provider never gets a tool call without its tool message.
+    sent = model.calls[-1].messages
+    assert _unanswered_calls(sent) == []
+    assert [message.type for message in sent] == ["system", "human", "human"]
+    assert [message.content for message in state["messages"]] == [
+        "Search please.",
+        "Are you there?",
+        "plain reply",
+    ]
+    assert _unanswered_calls(state["messages"]) == []
+
+
 def test_failed_flush_turn_records_a_strike_and_keeps_the_reply(tmp_path: Path):
     script = memory_script()
 

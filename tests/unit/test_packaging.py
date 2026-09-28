@@ -90,3 +90,21 @@ def test_importing_memory_core_loads_no_demo_dependency():
     )
 
     assert completed.returncode == 0, completed.stderr
+
+
+def test_the_adapter_and_the_package_import_in_either_order():
+    # The adapter imports the host kit, so no module the kit imports may import the adapter.
+    for script in (
+        "import memory_core.adapters.langgraph, memory_core",
+        "import memory_core, memory_core.adapters.langgraph",
+        "import memory_core.host, memory_core.adapters",
+    ):
+        completed = subprocess.run(
+            [sys.executable, "-B", "-c", script],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        assert completed.returncode == 0, (script, completed.stderr)

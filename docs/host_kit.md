@@ -3,8 +3,9 @@
 Status: specification and TDD plan, written 2026-09-28 on `feat/host-kit` (from `main`
 `b829bad`), revised after review the same day. Implemented on that branch the same night:
 Tasks 1-8 and the kit parts of Task 10's docs. Task 9 (the Lab's flush, `/new` and heartbeat run)
-is blocked on Q1, Q3, Q5, Q6 and Q10; Task 10's oracle re-run follows it. Upstream anchors are
-OpenClaw v2026.9.6 (`eb377ac59e6`, checkout `/tmp/openclaw-head`) unless a line says otherwise.
+was blocked on Q1, Q3, Q5, Q6 and Q10 until Doruk's decisions of 2026-09-28 ("Decisions"); Task
+10's oracle re-run follows it. Upstream anchors are OpenClaw v2026.9.6 (`eb377ac59e6`, checkout
+`/tmp/openclaw-head`) unless a line says otherwise.
 
 # Part 1: Specification
 
@@ -87,7 +88,7 @@ class HostKit:
 - `seed_bootstrap=None` (default) seeds BOOTSTRAP.md only when `templates` supplies the layout's
   bootstrap file. memory-core has no ritual text of its own, so an empty BOOTSTRAP.md would leave a
   host without a ritual in limited-mode "Bootstrap Pending" on every turn until `memory/`
-  appears (open question Q4). `False` marks setup complete at once (the core extension);
+  appears (decision Q4). `False` marks setup complete at once (the core extension);
   `True` seeds even an empty file. The Lab passes `True` with its templates.
 - `__init__` does no I/O beyond validating the timezone and the curation policy against the
   layout (the curator is built there), so a host whose settings change (the Lab) builds a new
@@ -216,9 +217,8 @@ allows one flush per `compactionCount`, and upstream compacts, which starts the 
 never compacts, so a host that does not call `SessionState.after_compaction()` flushes at most once
 per session: after one flush, or three failed ones, every later turn reads `already_flushed` until
 `/new`. A WhatsApp or Slack session that keeps one `session_key` for weeks then stops flushing after
-the first time. Hosts that compact or window history call `after_compaction()` when they do;
-whether history windowing with `limit_history_turns` should count as compaction is open question
-Q9.
+the first time. Hosts that compact call `after_compaction()` when they do; history windowing with
+`limit_history_turns` does not count as a compaction (decision Q9, upstream's rule).
 
 ## Entry points
 
@@ -396,8 +396,8 @@ with `promptForEstimate: ""` (`src/agents/session-maintenance/run.ts:218-232`), 
 The other call site is the checkpoint before preflight compaction
 (`agent-runner-execute.ts:145-176`), which runs only when that compaction runs
 (`agent-runner-memory.ts:875-889`). `after_turn` is the first site; the second needs host
-compaction and is a non-goal. The Lab's current pre-turn flush with the incoming prompt's
-estimate follows the pin-era order and changes with the dogfood switch (open question Q1).
+compaction and is a non-goal. The Lab's pre-turn flush with the incoming prompt's estimate
+followed the pin-era order and moves to this one with the dogfood switch (decision Q1).
 
 - Composes:
   1. the token snapshot: `usage.prompt_tokens > 0` becomes a fresh v1 total (`totalTokens`,
@@ -849,48 +849,35 @@ workspaces; wiki supplements (`memory_search` supplements stay a core option the
 expose yet); session auto-reset; inbound-context prefixes (`build_current_inbound_prompt`);
 packaging, `__all__` shrinking and the quickstart (next stage).
 
-## Open questions for Doruk
+## Decisions (Doruk, 2026-09-28)
 
-- Q1. Flush timing. The kit follows v2026.9.6: flush after the reply, no prompt estimate. The Lab
-  today flushes before the next turn with the prompt's estimate (pin-era order). The plan switches
-  the Lab in Task 9a once you agree; say if you want the old order kept as a labelled Lab
-  approximation instead.
-- Q2. Compaction. Upstream also flushes as a checkpoint right before preflight compaction. That
-  needs a host that compacts; add it with a compaction adapter later, or never?
-- Q3. The Lab records `daily` recall signals after each flush write
-  (`record_daily_memory_flush`). Upstream records daily signals only in the light dreaming phase
-  (`extensions/memory-core/src/dreaming-phases.ts:760,948,1067`), and they raise promotion scores.
-  The kit does not do it; drop it from the Lab too (recommended), or keep it labelled demo-only?
-- Q4. `seed_bootstrap` default. Upstream seeds BOOTSTRAP.md from its ritual template. memory-core has
-  no ritual text, so seeding by default gives a host without templates an empty BOOTSTRAP.md and
-  the limited-mode "Bootstrap Pending" notice on every turn, with no ritual to follow, until
-  `memory/` appears. Recommended and implemented as the default (`None`): seed only when
-  `templates` supplies BOOTSTRAP.md; the Lab passes `True`. Keep that, or always seed like upstream?
-- Q5. The flush turn with Project Context costs the bootstrap files' tokens on every flush, as
-  upstream. Keep upstream's shape (recommended) or send only the flush system prompt as the Lab
-  does today?
-- Q6. The Lab's `/flush` (`/api/chat/flush`, reason `lab_forced`) has no upstream counterpart, and
-  the kit has no forced flush. Keep `/flush` as a labelled Lab action over one kit extension method
-  `request_flush` (no token-snapshot change, heartbeat skip and same-cycle guard kept, reason
-  `forced`), or drop it? `Memory.chat(force_flush=True)` is unaffected until the facade's removal.
-- Q7. Memory facade: deprecate now and remove at packaging (recommended), or keep
-  `prepare_turn`/`chat`/`record_turn` as labelled adapter-only helpers?
-- Q8. Should `dreaming_enabled` be a `FeatureFlags` field instead of a kit option? It mirrors
-  upstream config rather than a memory-core capability, which is why the spec keeps it on the kit.
-- Q9. A host that never compacts flushes once per session (Turn lifecycle, known gap). Should
-  history windowing with `limit_history_turns` count as a compaction (the host then calls
-  `SessionState.after_compaction()` when the window drops turns), or should the kit stay at the
-  upstream rule and leave compaction to hosts?
-- Q10. `/new` in the Lab: keep the rotating `lab:<kind>:<id>` key (the Lab passes its own key per
-  session) or move to upstream's stable `sessionKey` (observable change 7)?
-- Q11. A pending flush. The kit follows upstream's rule (one maintenance lane per session, entry
-  point 4): a host that calls `after_turn` again before `complete()` gets a second request for the
-  same cycle and both runs append. A kit-level guard would be a pending marker in `SessionState`,
-  plus a way to clear it for an abandoned run and after a crash (a stored marker would otherwise
-  block the cycle). Keep the documented lane rule (implemented), or add the marker?
-- Q12. The flush write skips content that starts with `NO_REPLY` (a prefix, shared with the
-  curated daily note), so `NO_REPLY_FACTS: ...` writes nothing; upstream's `write` appends
-  verbatim. Keep the shared prefix rule (implemented), or skip only the exact token in both?
+Doruk answered Q1-Q12 on 2026-09-28 with the recommendations:
+
+- Q1. Flush timing: the Lab flushes after the reply, as v2026.9.6 (post-reply maintenance, no
+  prompt estimate). The pin-era pre-turn flush goes (Task 9a).
+- Q2. Compaction: no pre-compaction checkpoint flush now; it comes later with a compaction adapter.
+- Q3. The Lab drops its `daily` recall signals after a flush write (`record_daily_memory_flush` on
+  the Lab flush path). The function stays only if something else (light dreaming) still uses it;
+  otherwise it goes with its tests.
+- Q4. `seed_bootstrap`: the implemented default stays (`None`: BOOTSTRAP.md is seeded only when the
+  host's `templates` supply it); the Lab passes `True`.
+- Q5. The flush turn keeps upstream's shape with the Project Context.
+- Q6. The Lab keeps `/flush` as a labelled Lab extension over one kit extension method,
+  `HostKit.request_flush(session, *, transcript) -> FlushRequest | None`: no token-snapshot change,
+  the heartbeat skip and the one-flush-per-cycle guard kept (`None` when the cycle already
+  flushed), reason `forced`. It is labelled as an extension in code, docs and the Lab UI.
+- Q7. The facade's `prepare_turn`, `chat` and `record_turn` are removed in the packaging stage (not
+  in Task 9).
+- Q8. `dreaming_enabled` stays a kit option.
+- Q9. The kit keeps upstream's rule: history windowing does not count as a compaction; hosts that
+  compact call `SessionState.after_compaction()`.
+- Q10. `/new` in the Lab uses upstream's stable `sessionKey` instead of the rotating
+  `lab:<kind>:<id>` key.
+- Q11. The documented lane rule stays (a session's next `after_turn` waits for `complete()`); no
+  pending marker.
+- Q12. The flush write and the curated daily note skip only the exact `NO_REPLY` token
+  (`content.strip() == "NO_REPLY"`), not a prefix, so `NO_REPLY_FACTS: ...` writes. The remaining
+  deviation stays labelled: upstream's `write` appends even the exact token verbatim.
 
 Review points not taken, with the reason:
 
@@ -906,6 +893,10 @@ Review points not taken, with the reason:
   `before_turn(ensure=False)` at the prompt stage, which keeps the Lab's prompt built after the
   flush and reindex stages, as today, with the same single ensure and the same events.
 
+## Open questions
+
+None open.
+
 # Part 2: TDD plan
 
 Each task: write the named tests first and watch them fail, implement, run the offline suite
@@ -915,7 +906,7 @@ core function on the same inputs, which is what "only composes" means in code. T
 and deterministic (`FeatureFlags(vector_search=False)` or `FakeEmbeddingProvider`, stub clocks).
 
 Cut line for the first night (2026-09-28): Tasks 1-7, the kit parts of Task 10's docs, and Task 8
-if time allows. Task 9 is blocked until Doruk answers Q1, Q3, Q5 and Q6; when unblocked it splits
+if time allows. Task 9 waited for Doruk's answers to Q1, Q3, Q5 and Q6 (given 2026-09-28); it splits
 into 9a (flush), 9b (`/new`, with Q10) and 9c (heartbeat), one commit each. Task 10's oracle re-run
 follows Task 9.
 
@@ -1094,7 +1085,7 @@ follows Task 9.
   invalid JSON or non-object arguments and any other exception of the write; before, those came
   back unrecorded or reached the tool loop's generic handler.
 
-### Task 9: Lab switch, part 2 (blocked: Q1, Q3, Q5, Q6, Q10)
+### Task 9: Lab switch, part 2 (after the decisions on Q1, Q3, Q5, Q6, Q10)
 
 - 9a flush: `demo/lab_chat.py`, `demo/lab_flush.py`, `demo/lab_kept_api.py`, `demo/lab_runtime.py`,
   `demo/chat_engine.py`, `demo/memory_flush.py` (deleted), `tests/demo/test_chat_memory_flush.py`

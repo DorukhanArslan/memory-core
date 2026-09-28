@@ -16,6 +16,13 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
+from memory_core._memory_flush_constants import CONVERSATION_CONTEXT_HEADER
+from memory_core.automation import (
+    AutomationStore,
+    FileAutomationStore,
+    due_automation_jobs,
+    heartbeat_scheduled_tasks,
+)
 from memory_core.bootstrap import (
     DEFAULT_BOOTSTRAP_MAX_CHARS,
     DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS,
@@ -37,22 +44,15 @@ from memory_core.bootstrap.files import (
     BootstrapMode,
     ContextInjectionMode,
 )
-from memory_core._memory_flush_constants import CONVERSATION_CONTEXT_HEADER
-from memory_core.automation import (
-    AutomationStore,
-    FileAutomationStore,
-    due_automation_jobs,
-    heartbeat_scheduled_tasks,
-)
 from memory_core.client import Memory
 from memory_core.config import MemoryConfig
-from memory_core.context_engine_lifecycle import strip_runtime_context_custom_messages
 from memory_core.consolidation import record_short_term_recalls, undecorate_search_results
+from memory_core.context_engine_lifecycle import strip_runtime_context_custom_messages
 from memory_core.current_time import DEFAULT_TIME_FORMAT, TimeFormat, resolve_time_format
 from memory_core.curation import CurationPolicy, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
-from memory_core.host._calls import ToolCallRefused, read_tool_call, tool_error
 from memory_core.heartbeat import prepare_heartbeat_turn
+from memory_core.host._calls import ToolCallRefused, read_tool_call, tool_error
 from memory_core.host.flush import FlushRequest
 from memory_core.host.heartbeat_run import HeartbeatRun
 from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
@@ -279,6 +279,63 @@ class HostKit:
             memory_get_tool_definition(),
             *self._curator.tool_definitions(),
         ]
+
+    def dispatch(
+        self,
+        name: str,
+        arguments: Mapping[str, Any] | str | None,
+        *,
+        session: SessionState,
+    ) -> dict[str, Any]:
+        """Run one tool call of the model and return the payload to send back verbatim.
+
+        ``arguments`` is a mapping, its JSON text or ``None``. Every model-caused error is an
+        ``{"status": "error", "tool", "error"}`` payload (docs/host_kit.md, entry point 2):
+        invalid JSON, a non-object, a tool :meth:`tools` does not offer, bad params and refused
+        curated writes (``MemoryToolInputError``), and any other ``Exception`` a tool raises.
+        ``TypeError`` for a non-string name or arguments of another type.
+        """
+        try:
+            args = read_tool_call(name, arguments)
+        except ToolCallRefused as refused:
+            return refused.payload
+        if name not in {tool["name"] for tool in self.tools()}:
+            return tool_error(name, f"tool {name} is not available")
+        try:
+            if name == MEMORY_SEARCH_TOOL_NAME:
+                return self._memory_search(args, session)
+            if name == MEMORY_GET_TOOL_NAME:
+                return execute_memory_get_tool(self._memory.config, args)
+            return self._curator.dispatch(name, args)
+        except MemoryToolInputError as error:
+            return error.to_tool_error(name)
+        except Exception as error:
+            return to_tool_error(error, tool=name)
+
+    def _memory_search(self, args: dict[str, Any], session: SessionState) -> dict[str, Any]:
+        memory = self._memory
+        result = execute_memory_search_tool(
+            memory.config,
+            memory.store,
+            args,
+            agent_session_key=session.session_key,
+            runtime_identity=self._identity,
+        )
+        if self._dreaming_enabled and not result.get("unavailable"):
+            # tools.ts:491-507: with dreaming enabled, a successful search records its
+            # memory-corpus hits (raw, without the Source: citation) off the reply path and
+            # ignores recording errors.
+            hits = [hit for hit in result.get("results") or [] if hit.get("corpus") == "memory"]
+            try:
+                record_short_term_recalls(
+                    config=memory.config,
+                    query=str(args.get("query", "")),
+                    results=undecorate_search_results(hits),
+                    now_ms=self._clock(),
+                )
+            except Exception:
+                pass
+        return result
 
     def before_turn(
         self,
@@ -614,60 +671,3 @@ class HostKit:
             seen_truncation_signatures=session.seen_truncation_signatures,
             identity=self._identity,
         )
-
-    def dispatch(
-        self,
-        name: str,
-        arguments: Mapping[str, Any] | str | None,
-        *,
-        session: SessionState,
-    ) -> dict[str, Any]:
-        """Run one tool call of the model and return the payload to send back verbatim.
-
-        ``arguments`` is a mapping, its JSON text or ``None``. Every model-caused error is an
-        ``{"status": "error", "tool", "error"}`` payload (docs/host_kit.md, entry point 2):
-        invalid JSON, a non-object, a tool :meth:`tools` does not offer, bad params and refused
-        curated writes (``MemoryToolInputError``), and any other ``Exception`` a tool raises.
-        ``TypeError`` for a non-string name or arguments of another type.
-        """
-        try:
-            args = read_tool_call(name, arguments)
-        except ToolCallRefused as refused:
-            return refused.payload
-        if name not in {tool["name"] for tool in self.tools()}:
-            return tool_error(name, f"tool {name} is not available")
-        try:
-            if name == MEMORY_SEARCH_TOOL_NAME:
-                return self._memory_search(args, session)
-            if name == MEMORY_GET_TOOL_NAME:
-                return execute_memory_get_tool(self._memory.config, args)
-            return self._curator.dispatch(name, args)
-        except MemoryToolInputError as error:
-            return error.to_tool_error(name)
-        except Exception as error:
-            return to_tool_error(error, tool=name)
-
-    def _memory_search(self, args: dict[str, Any], session: SessionState) -> dict[str, Any]:
-        memory = self._memory
-        result = execute_memory_search_tool(
-            memory.config,
-            memory.store,
-            args,
-            agent_session_key=session.session_key,
-            runtime_identity=self._identity,
-        )
-        if self._dreaming_enabled and not result.get("unavailable"):
-            # tools.ts:491-507: with dreaming enabled, a successful search records its
-            # memory-corpus hits (raw, without the Source: citation) off the reply path and
-            # ignores recording errors.
-            hits = [hit for hit in result.get("results") or [] if hit.get("corpus") == "memory"]
-            try:
-                record_short_term_recalls(
-                    config=memory.config,
-                    query=str(args.get("query", "")),
-                    results=undecorate_search_results(hits),
-                    now_ms=self._clock(),
-                )
-            except Exception:
-                pass
-        return result

@@ -13,11 +13,13 @@ that do not depend on LangGraph.
 ## Minimal Flow
 
 ```python
-from memory_core import Memory
-from memory_core.embeddings.base import FakeEmbeddingProvider
+from pathlib import Path
 
-memory = Memory.from_workspace(
-    embedding_provider=FakeEmbeddingProvider(),
+from memory_core import FeatureFlags, Memory, MemoryConfig
+
+root = Path(".")
+memory = Memory.from_workspace(  # FTS-only; pass embedding_provider= for hybrid search
+    root, config=MemoryConfig(workspace_dir=root, flags=FeatureFlags(vector_search=False))
 )
 recall_node = memory.langgraph_recall()
 

@@ -12,6 +12,7 @@ import pytest
 
 from memory_core import FeatureFlags, HostKit, MemoryConfig, SessionState, TurnUsage
 from memory_core.adapters.langgraph import (
+    PendingTurn,
     has_tool_calls,
     tool_messages,
     transcript_rows,
@@ -241,3 +242,52 @@ def test_tool_messages_reject_a_call_without_an_id():
         with pytest.raises(ValueError, match="no string id"):
             tool_messages(message, dispatch)
     assert calls == []
+
+
+def test_pending_turn_round_trips_json(tmp_path: Path):
+    turn = _kit(tmp_path).before_turn(_session(), runtime_context="Channel: terminal")
+
+    pending = PendingTurn.from_context(
+        turn, model_prompt="the reset prompt", model_prompt_message_id="message-9"
+    )
+    data = json.loads(json.dumps(pending.to_json()))
+
+    assert (pending.session, pending.system_prompt, pending.runtime_context, pending.tools) == (
+        turn.session,
+        turn.system_prompt,
+        turn.runtime_context,
+        turn.tools,
+    )
+    assert turn.system_prompt.startswith("## Memory Recall")
+    assert "Channel: terminal" in pending.runtime_context
+    assert data["session"] == turn.session.to_json()
+    assert PendingTurn.from_json(data) == pending
+    assert PendingTurn.from_json(PendingTurn.from_context(turn).to_json()).model_prompt is None
+
+
+def test_pending_turn_from_json_rejects_a_bad_shape(tmp_path: Path):
+    good = PendingTurn.from_context(_kit(tmp_path).before_turn(_session())).to_json()
+    bad_shapes = [
+        None,
+        {**good, "session": None},
+        {**good, "session": {**good["session"], "sessionId": 7}},
+        {**good, "systemPrompt": None},
+        {**good, "runtimeContext": 3},
+        {**good, "tools": "memory_search"},
+        {**good, "tools": ["memory_search"]},
+        {**good, "modelPrompt": "a reset prompt"},
+        {key: value for key, value in good.items() if key != "systemPrompt"},
+    ]
+
+    for data in bad_shapes:
+        with pytest.raises(ValueError):
+            PendingTurn.from_json(data)
+
+
+def test_pending_turn_needs_both_reset_fields(tmp_path: Path):
+    turn = _kit(tmp_path).before_turn(_session())
+
+    with pytest.raises(ValueError, match="together"):
+        PendingTurn.from_context(turn, model_prompt="the reset prompt")
+    with pytest.raises(ValueError, match="together"):
+        PendingTurn.from_context(turn, model_prompt_message_id="message-9")

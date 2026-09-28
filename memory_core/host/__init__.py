@@ -6,6 +6,7 @@ takes back what came out. Specification: docs/host_kit.md.
 """
 
 from memory_core.host.flush import FlushOutcome, FlushRequest
+from memory_core.host.heartbeat_run import HeartbeatOutcome, HeartbeatRun
 from memory_core.host.kit import (
     DEFAULT_CONTEXT_WINDOW_TOKENS,
     MINIMAL_PROMPT_KINDS,
@@ -22,6 +23,8 @@ __all__ = [
     "MINIMAL_PROMPT_KINDS",
     "FlushOutcome",
     "FlushRequest",
+    "HeartbeatOutcome",
+    "HeartbeatRun",
     "HostKit",
     "NewSession",
     "ResetTurn",

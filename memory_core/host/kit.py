@@ -38,6 +38,12 @@ from memory_core.bootstrap.files import (
     ContextInjectionMode,
 )
 from memory_core._memory_flush_constants import CONVERSATION_CONTEXT_HEADER
+from memory_core.automation import (
+    AutomationStore,
+    FileAutomationStore,
+    due_automation_jobs,
+    heartbeat_scheduled_tasks,
+)
 from memory_core.client import Memory
 from memory_core.config import MemoryConfig
 from memory_core.context_engine_lifecycle import strip_runtime_context_custom_messages
@@ -46,7 +52,9 @@ from memory_core.current_time import DEFAULT_TIME_FORMAT, TimeFormat, resolve_ti
 from memory_core.curation import CurationPolicy, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.host._calls import ToolCallRefused, read_tool_call, tool_error
+from memory_core.heartbeat import prepare_heartbeat_turn
 from memory_core.host.flush import FlushRequest
+from memory_core.host.heartbeat_run import HeartbeatRun
 from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
 from memory_core.memory_flush import (
     MemoryFlushFailureOutcome,
@@ -177,6 +185,7 @@ class HostKit:
         context_injection: ContextInjectionMode = "always",
         truncation_warning_mode: BootstrapPromptWarningMode = "always",
         dreaming_enabled: bool = False,
+        automation_store: AutomationStore | None = None,
         now_ms: Callable[[], int] | None = None,
     ) -> None:
         self._memory = memory
@@ -196,6 +205,9 @@ class HostKit:
         self._context_injection = context_injection
         self._truncation_warning_mode = truncation_warning_mode
         self._dreaming_enabled = dreaming_enabled
+        self._automation_store = (
+            automation_store if automation_store is not None else FileAutomationStore(self._root)
+        )
         self._clock = now_ms or (lambda: time.time_ns() // 1_000_000)
         # The curator validates the timezone and the policy against the layout.
         self._curator = memory.curator(
@@ -485,6 +497,62 @@ class HostKit:
             saved=saved,
             workspace_init=workspace_init,
             reset=reset,
+        )
+
+    def heartbeat_prompt(
+        self,
+        session: SessionState,
+        *,
+        source: str | None = None,
+        reason: str | None = None,
+        context_mode: BootstrapContextMode = "full",
+        runtime_context: str | None = None,
+        schedule_now_ms: int | None = None,
+    ) -> HeartbeatRun:
+        """Prepare one heartbeat run the host's scheduler decided to start now.
+
+        The due automation jobs at ``schedule_now_ms`` (the scheduler's instant, default the kit
+        clock) become the turn's scheduled tasks when they are heartbeat tasks; other due jobs
+        are the host's (``host_jobs``). ``prepare_heartbeat_turn`` builds the message from the
+        monitor scratch (its ``Current time:`` line uses the kit clock). Unless the turn is
+        skipped, the context is :meth:`before_turn` with run kind ``heartbeat`` (upstream runs
+        heartbeats in the main session under that run kind). Tool calls of the run go through
+        :meth:`dispatch` with ``run.session``.
+        """
+        agent_id = self._memory.config.agent_id
+        started_at = schedule_now_ms if schedule_now_ms is not None else self._clock()
+        store = self._automation_store
+        due = due_automation_jobs(store.list_jobs(agent_id=agent_id), started_at)
+        turn = prepare_heartbeat_turn(
+            now_ms=self._clock(),
+            scratch=store.read_scratch(agent_id),
+            scheduled_tasks=heartbeat_scheduled_tasks(due),
+            source=source,
+            reason=reason,
+            timezone=self._timezone,
+            time_format=self._time_format,
+        )
+        in_turn = {task.job_id for task in turn.scheduled_tasks}
+        context = (
+            None
+            if turn.skip_reason
+            else self.before_turn(
+                session,
+                runtime_context=runtime_context,
+                run_kind="heartbeat",
+                context_mode=context_mode,
+            )
+        )
+        return HeartbeatRun(
+            session=context.session if context is not None else session,
+            turn=turn,
+            jobs=tuple(job for job in due if job.id in in_turn),
+            host_jobs=tuple(job for job in due if job.id not in in_turn),
+            context=context,
+            transcript_prompt=self._identity.heartbeat_transcript_prompt,
+            started_at_ms=started_at,
+            store=store,
+            agent_id=agent_id,
         )
 
     def _flush_messages(

@@ -829,6 +829,20 @@ def test_tool_loop_returns_refusals_and_bad_arguments_to_the_model(client, lab, 
     assert (lab.root / "USER.md").read_text(encoding="utf-8") == DEMO_WORKSPACE_TEMPLATES["USER.md"]
 
 
+def test_tool_loop_counts_disabled_payloads_as_failed_calls(client, monkeypatch):
+    use_engine(monkeypatch, StubEngine([
+        ("", [tool_call("c1", "memory_get", {"path": "AGENTS.md"}),
+              tool_call("c2", "memory_get", {"path": "MEMORY.md"})]),
+        ("Tamam.", []),
+    ]))
+
+    results = {item["id"]: item for item in frames_of(send(client, "Oku."), "tool_result")}
+
+    assert results["c1"]["ok"] is False
+    assert results["c1"]["result"] == {"path": "AGENTS.md", "text": "", "disabled": True, "error": "path required"}
+    assert results["c2"]["ok"] is True
+
+
 def test_tool_loop_is_bounded(client, monkeypatch):
     from demo.lab_tools import MAX_TOOL_ROUNDS
 

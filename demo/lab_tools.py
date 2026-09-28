@@ -81,7 +81,10 @@ class LabToolbox:
         else:
             result = self.kit.dispatch(name, raw_arguments, session=self.session.state())
         record["result"] = result
-        record["ok"] = not (isinstance(result, dict) and result.get("status") == "error")
+        # A refusal the memory tools answer themselves carries ``disabled`` (docs/host_kit.md).
+        record["ok"] = not (
+            isinstance(result, dict) and (result.get("status") == "error" or result.get("disabled"))
+        )
         record["ms"] = int((time.perf_counter() - started) * 1000)
         self.calls.append(record)
         return record

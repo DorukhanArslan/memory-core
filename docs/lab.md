@@ -153,7 +153,8 @@ Stages, in the order the `stage` events stream them:
    (`HostKit.before_turn(ensure=False)` for the session: the Memory Recall section for
    the offered tools, then the workspace context for the session kind; no generic
    `read` tool; the scripted engine is offered no tools and gets no Memory Recall),
-8. `stream` (tool loop over `HostKit.dispatch`), 9. `persist` (transcript, token
+8. `stream` (tool loop over `HostKit.dispatch`; a call counts as failed when its payload has
+   `status: "error"` or `disabled: true`), 9. `persist` (transcript, token
    snapshot, the kit's fold of the seen truncation signatures and the bootstrap turn).
 
 Every reindex goes through `LabStore` (`demo/lab_runtime.py`), including the ones the

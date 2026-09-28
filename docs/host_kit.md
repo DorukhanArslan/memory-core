@@ -281,8 +281,11 @@ def dispatch(
   - any other `Exception` raised inside a tool body: `to_tool_error(exc, tool=name)`, as
     upstream turns every thrown tool error into `{status, tool, error}`
     (`src/agents/agent-tool-definition-adapter.ts:228-284`).
-- Search outages are not errors: `memory_search` already returns its unavailable or paused
-  payload.
+- Refusals and outages the memory tools answer themselves are not error payloads: `memory_get` of
+  a path outside MEMORY.md, dreams.md and `memory/**`, or a failed read, returns upstream's
+  `{"path", "text": "", "disabled": true, "error"}`, and `memory_search` returns its unavailable
+  (`disabled` and `unavailable` true) or paused payload. A host that counts failed calls checks
+  `status == "error"` or `disabled`.
 - Host programming errors raise before a tool runs: `TypeError` for a non-string `name` or an
   `arguments` of another type. `BaseException`s that are not `Exception` (cancellation,
   interrupts) propagate.
@@ -661,6 +664,7 @@ class HeartbeatOutcome:
 | --- | --- |
 | model sends bad tool input, unknown tool, invalid JSON, a tool raises | payload `{"status": "error", "tool", "error"}` |
 | memory search outage, paused index, cooldown | the tool's own unavailable or paused payload |
+| `memory_get` outside the memory files, a failed read | `{"path", "text": "", "disabled": true, "error"}` (upstream's shape) |
 | host passes wrong types, calls `complete()` twice, both transcript sources, another session to `complete()` | raise (`TypeError`, `RuntimeError`, `ValueError`) |
 | retired upstream setup state in the workspace | raise `WorkspaceStateMigrationRequiredError` (fail closed) |
 | filesystem failure outside a tool | raise `OSError` |

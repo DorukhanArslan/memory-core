@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from collections.abc import Iterator
@@ -78,34 +77,6 @@ class OpenAICompatibleChatEngine:
         # Set once the provider refuses function tools with its default reasoning effort
         # (api.openai.com, gpt-6-luna, 2026-09-27: "set reasoning_effort to 'none'").
         self.tool_reasoning_effort: str | None = None
-
-    @classmethod
-    def from_env(cls) -> OpenAICompatibleChatEngine | None:
-        base_url = os.getenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL
-        api_key = os.getenv("MEMORY_CORE_DEMO_OPENAI_API_KEY")
-        model = os.getenv("MEMORY_CORE_DEMO_OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
-        if not api_key:
-            return None
-        return cls(base_url=base_url, api_key=api_key, model=model)
-
-    @classmethod
-    def from_config(
-        cls,
-        *,
-        base_url: str | None,
-        api_key: str | None,
-        model: str | None,
-    ) -> OpenAICompatibleChatEngine | None:
-        resolved_api_key = (api_key or os.getenv("MEMORY_CORE_DEMO_OPENAI_API_KEY") or "").strip()
-        if not resolved_api_key:
-            return None
-        return cls(
-            base_url=(
-                base_url or os.getenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL
-            ).strip(),
-            api_key=resolved_api_key,
-            model=(model or os.getenv("MEMORY_CORE_DEMO_OPENAI_MODEL") or DEFAULT_OPENAI_MODEL).strip(),
-        )
 
     def raw_chat_text(self, messages: list[dict[str, str]]) -> str:
         raw = self._chat(messages)
@@ -335,14 +306,3 @@ def _parse_stream_line(line: str | bytes) -> str | None:
     delta = choices[0].get("delta", {})
     content = delta.get("content")
     return content if isinstance(content, str) else None
-
-
-def engine_status() -> dict:
-    configured = OpenAICompatibleChatEngine.from_env() is not None
-    return {
-        "openai": {
-            "available": configured,
-            "model": os.getenv("MEMORY_CORE_DEMO_OPENAI_MODEL") or DEFAULT_OPENAI_MODEL,
-            "baseUrl": os.getenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL,
-        },
-    }

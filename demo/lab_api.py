@@ -8,7 +8,6 @@ message leaves the server.
 
 from __future__ import annotations
 
-import json
 import re
 import subprocess
 from pathlib import Path
@@ -48,7 +47,6 @@ from demo.lab_runtime import (
     LabRuntime,
     new_session_id,
     optional_text,
-    summarize_turn,
     validate_id,
 )
 from demo.openclaw_oracle import resolve_oracle_node, resolve_oracle_repo
@@ -519,12 +517,4 @@ def _oracle_node(repo: Path) -> dict[str, Any] | None:
     return node.to_json() if node.path else None
 
 
-def turn_summary(detail: dict[str, Any]) -> dict[str, Any]:
-    return summarize_turn(detail)
-
-
-def json_line(data: Any) -> str:
-    return json.dumps(data, ensure_ascii=False)
-
-
-__all__ = ["build_router", "lab_snapshot", "turn_summary", "validate_id"]
+__all__ = ["build_router", "lab_snapshot", "validate_id"]

@@ -280,3 +280,28 @@ def test_parallel_reindexes_leave_a_consistent_index(tmp_path):
     assert kit.memory.store.count_chunks() == chunks
     hits = kit.dispatch("memory_search", {"query": "betatoken7"}, session=SESSION)["results"]
     assert [hit["path"] for hit in hits] == ["memory/2026-09-25.md"]
+
+
+def test_parallel_searches_record_every_recall(tmp_path):
+    _seed(tmp_path)
+    kit = _kit(tmp_path, dreaming_enabled=True)
+    errors: list[BaseException] = []
+    start = threading.Barrier(8)
+
+    def search() -> None:
+        try:
+            start.wait()
+            for _ in range(5):
+                assert kit.dispatch("memory_search", {"query": "quokkabyte"}, session=SESSION)["results"]
+        except BaseException as exc:  # surfaced below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=search) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    entries = json.loads(recall_store_path(tmp_path).read_text())["entries"]
+    assert entries["memory:memory/2026-09-25.md:1:1"]["recallCount"] == 40

@@ -67,6 +67,7 @@ from memory_core.consolidation.store import (
     phase_signal_store_path,
     read_phase_signal_store,
     read_recall_store,
+    recall_store_lock,
     recall_store_path,
     write_recall_store,
 )
@@ -440,7 +441,8 @@ def _run_short_term_promotion_unlocked(
             compacted_dates = _append_to_memory(
                 target_path, entry, memory_file_max_chars=memory_file_max_chars
             )
-        _mark_promoted(recall_store_path(config.workspace_dir), rehydrated_candidates, now_ms)
+        with recall_store_lock(config.workspace_dir):
+            _mark_promoted(recall_store_path(config.workspace_dir), rehydrated_candidates, now_ms)
         if to_append:
             try:
                 indexed_files = store.reindex(workspace)

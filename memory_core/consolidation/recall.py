@@ -37,6 +37,7 @@ from memory_core.consolidation.store import (
     phase_signal_store_path,
     read_phase_signal_store,
     read_recall_store,
+    recall_store_lock,
     recall_store_path,
     truncate_short_term_snippet,
     write_recall_store,
@@ -98,69 +99,71 @@ def record_short_term_recalls(
     ``recallCount`` (or ``dailyCount`` when ``signal_type == "daily"``),
     scores, query hashes (max 32), recall days (max 16) and concept tags are
     updated. Contaminated dreaming snippets are skipped. Returns the number of
-    entries touched; the store is rewritten when any memory hit was seen.
+    entries touched; the store is rewritten when any memory hit was seen. The read and the
+    rewrite hold :func:`~memory_core.consolidation.store.recall_store_lock`.
     """
     store_path = recall_store_path(config.workspace_dir)
-    store = read_recall_store(store_path, now_ms)
-    now_iso = iso_ms(now_ms)
-    query_hash = hash_query(query.lower().strip())
-    changed = 0
-    touched = False
-    for result in results:
-        path = str(result.get("path") or "")
-        if not path.startswith("memory/") or not path.endswith(".md"):
-            continue
-        if not is_workspace_contained_path(config.workspace_dir, path):
-            continue
-        touched = True
-        start_line = to_int(result.get("startLine"), 1)
-        score = clamp_score(float(result.get("score") or 0))
-        for line_number, raw_snippet in candidate_lines(
-            raw=str(result.get("snippet") or ""), start_line=start_line
-        ):
-            if is_contaminated_dreaming_snippet(raw_snippet):
+    with recall_store_lock(config.workspace_dir):
+        store = read_recall_store(store_path, now_ms)
+        now_iso = iso_ms(now_ms)
+        query_hash = hash_query(query.lower().strip())
+        changed = 0
+        touched = False
+        for result in results:
+            path = str(result.get("path") or "")
+            if not path.startswith("memory/") or not path.endswith(".md"):
                 continue
-            snippet = truncate_short_term_snippet(raw_snippet)
-            key = f"memory:{path}:{line_number}:{line_number}"
-            entry = store["entries"].get(key)
-            if entry is None:
-                entry = {
-                    "key": key,
-                    "path": path,
-                    "startLine": line_number,
-                    "endLine": line_number,
-                    "source": "memory",
-                    "snippet": snippet,
-                    "recallCount": 0,
-                    "dailyCount": 0,
-                    "groundedCount": 0,
-                    "totalScore": 0.0,
-                    "maxScore": 0.0,
-                    "firstRecalledAt": now_iso,
-                    "lastRecalledAt": now_iso,
-                    "queryHashes": [],
-                    "recallDays": [],
-                    "conceptTags": derive_concept_tags(path, snippet),
-                }
-                store["entries"][key] = entry
-            entry["totalScore"] = float(entry.get("totalScore") or 0) + score
-            entry["maxScore"] = max(float(entry.get("maxScore") or 0), score)
-            entry["lastRecalledAt"] = now_iso
-            entry["conceptTags"] = entry.get("conceptTags") or derive_concept_tags(path, snippet)
-            entry["queryHashes"] = append_distinct(
-                list(entry.get("queryHashes") or []), query_hash, 32
-            )
-            entry["recallDays"] = append_distinct(
-                list(entry.get("recallDays") or []), now_iso[:10], 16
-            )
-            if signal_type == "daily":
-                entry["dailyCount"] = to_int(entry.get("dailyCount"), 0) + 1
-            else:
-                entry["recallCount"] = to_int(entry.get("recallCount"), 0) + 1
-            changed += 1
-    if changed or touched:
-        store["updatedAt"] = now_iso
-        write_recall_store(store_path, store)
+            if not is_workspace_contained_path(config.workspace_dir, path):
+                continue
+            touched = True
+            start_line = to_int(result.get("startLine"), 1)
+            score = clamp_score(float(result.get("score") or 0))
+            for line_number, raw_snippet in candidate_lines(
+                raw=str(result.get("snippet") or ""), start_line=start_line
+            ):
+                if is_contaminated_dreaming_snippet(raw_snippet):
+                    continue
+                snippet = truncate_short_term_snippet(raw_snippet)
+                key = f"memory:{path}:{line_number}:{line_number}"
+                entry = store["entries"].get(key)
+                if entry is None:
+                    entry = {
+                        "key": key,
+                        "path": path,
+                        "startLine": line_number,
+                        "endLine": line_number,
+                        "source": "memory",
+                        "snippet": snippet,
+                        "recallCount": 0,
+                        "dailyCount": 0,
+                        "groundedCount": 0,
+                        "totalScore": 0.0,
+                        "maxScore": 0.0,
+                        "firstRecalledAt": now_iso,
+                        "lastRecalledAt": now_iso,
+                        "queryHashes": [],
+                        "recallDays": [],
+                        "conceptTags": derive_concept_tags(path, snippet),
+                    }
+                    store["entries"][key] = entry
+                entry["totalScore"] = float(entry.get("totalScore") or 0) + score
+                entry["maxScore"] = max(float(entry.get("maxScore") or 0), score)
+                entry["lastRecalledAt"] = now_iso
+                entry["conceptTags"] = entry.get("conceptTags") or derive_concept_tags(path, snippet)
+                entry["queryHashes"] = append_distinct(
+                    list(entry.get("queryHashes") or []), query_hash, 32
+                )
+                entry["recallDays"] = append_distinct(
+                    list(entry.get("recallDays") or []), now_iso[:10], 16
+                )
+                if signal_type == "daily":
+                    entry["dailyCount"] = to_int(entry.get("dailyCount"), 0) + 1
+                else:
+                    entry["recallCount"] = to_int(entry.get("recallCount"), 0) + 1
+                changed += 1
+        if changed or touched:
+            store["updatedAt"] = now_iso
+            write_recall_store(store_path, store)
     return changed
 
 

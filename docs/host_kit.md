@@ -682,7 +682,10 @@ async twin of any method: the core is synchronous (sqlite3, the sync embedding c
 - Writes in one process are serialized per file: the flush write and the curated daily note
   share one per-file lock (moved out of `memory_core/curation.py:_target_lock` into
   `memory_core/workspace.py`, next to the shared locked daily append), MEMORY.md, USER.md and
-  PROACTIVE_PREFERENCES.md keep curation's per-file locks, `FileAutomationStore` keeps its lock.
+  PROACTIVE_PREFERENCES.md keep curation's per-file locks, `FileAutomationStore` keeps its lock,
+  and every read-modify-write of the short-term recall store (recall recording, the promotion's
+  `promotedAt` marks, repair) holds `memory_core/consolidation/store.py:recall_store_lock`, so parallel
+  `memory_search` calls with `dreaming_enabled` lose no recall.
   Task 2 adds a two-thread reindex test; if it fails, the fix is a per-store lock inside
   `SQLiteMemoryStore.reindex`.
 - Different sessions may run in parallel. Calls for one session must be serialized by the host,

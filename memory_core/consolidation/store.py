@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -32,6 +33,7 @@ from memory_core.consolidation._util import (
     to_int,
     write_json_atomic,
 )
+from memory_core.workspace import workspace_file_lock
 
 SHORT_TERM_STORE_RELATIVE_PATH = Path("memory") / ".dreams" / "short-term-recall.json"
 SHORT_TERM_PHASE_SIGNAL_RELATIVE_PATH = Path("memory") / ".dreams" / "phase-signals.json"
@@ -70,6 +72,19 @@ class _ShortTermLockSnapshot:
 def recall_store_path(workspace_dir: Path) -> Path:
     """Absolute path of the short-term recall store under ``workspace_dir``."""
     return workspace_dir / SHORT_TERM_STORE_RELATIVE_PATH
+
+
+def recall_store_lock(workspace_dir: Path) -> threading.Lock:
+    """The process-wide lock that every read-modify-write of the recall store holds.
+
+    Recording, the promotion's ``promotedAt`` marks and repair each read and rewrite the whole
+    file under it, so parallel ``memory_search`` recordings lose no update. Upstream holds its
+    workspace lock for them (``withMemoryWorkspaceLock``, short-term-promotion-record.ts:193),
+    which also spans processes; this one does not.
+    """
+    return workspace_file_lock(
+        workspace_dir.resolve(), SHORT_TERM_STORE_RELATIVE_PATH.as_posix()
+    )
 
 
 def phase_signal_store_path(workspace_dir: Path) -> Path:

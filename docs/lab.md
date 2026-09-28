@@ -79,7 +79,7 @@ checked against the configured keys (`redacted: true`). Ids (`sessionId`,
 |---|---|---|
 | GET `/state` | `?sessionKind=main` | LabSnapshot: `workspace`, `liveWorkspace`, `pin`, `today`, `yesterday`, `clock`, `identityName`, `bootstrap {status, mode, pendingFile, bootstrapSeededAt, setupCompletedAt}`, `session`, `sessions`, `index`, `flush` (meter), `layoutOrder`, `memoryFiles`, `turns`, `lastEventId` |
 | GET `/events` | `Last-Event-ID` header (or `?lastEventId=`), `?once=true` replays and ends | SSE of LabEvent `{id, ts, type, category, summary, turnId?, data}`; frames have no `event:` line; `lab.resync` when the gap is older than the 1,000-event ring; `: ping` every 15 s |
-| GET `/files` | `?sessionKind=&layout=` | FileEntry[] (badges from `HostKit.before_turn(ensure=False)`, read-only) |
+| GET `/files` | `?sessionKind=&layout=` | FileEntry[] (badges from `HostKit.before_turn(ensure=False)`: no workspace write) |
 | GET `/file` | `?path=` | `{path, content, sha256, chars, bytes, mtimeMs, writable, readOnlyReason?}` |
 | PUT `/file` | `{path, content, baseSha256}` | `{path, sha256, diff, events[]}`; `409 {code:"conflict", current}`; `403 read_only` |
 | POST `/file/diff-preview` | `{path, content}` | `{path, diff, charsBefore, charsAfter, budget}` |
@@ -163,7 +163,10 @@ Stages, in the order the `stage` events stream them:
 Every reindex goes through `LabStore` (`demo/lab_runtime.py`), including the ones the
 kit runs after a curated write and the flush write's, so the index status and
 `index.reindexed` events stay current and `/index/status` does not report a stale
-index after a write.
+index after a write. The Lab builds its kit per request; calls that do not search
+(the ensure, a reset, the prompt views) get the FTS-only `LabStore`, whose
+construction creates `.memory-core/lab-text.sqlite` when it is missing (an index file,
+never a memory or bootstrap file).
 
 A kind change is its own session (`lab:<kind>:<id>`, empty transcript). Subagent
 and cron get upstream's minimal prompt (no `## Memory Recall`, no auto-recall).

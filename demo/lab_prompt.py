@@ -1,7 +1,9 @@
 """What reaches the model, per session kind: TurnContext -> PromptView and FileEntry.
 
-Thin views over ``HostKit.before_turn`` (read-only: ``ensure=False``, so an
-inspector never seeds or deletes BOOTSTRAP.md). Exclusion reasons are
+Thin views over ``HostKit.before_turn`` with ``ensure=False``: an inspector writes
+no workspace file and never seeds or deletes BOOTSTRAP.md (building the Lab's kit
+opens its FTS-only index, which creates ``.memory-core/lab-text.sqlite`` when it is
+missing). Exclusion reasons are
 attributed by running the package's own filter functions one at a time
 (``filter_root_memory_bootstrap_files``, ``filter_bootstrap_files_for_session``,
 ``filter_completed_bootstrap_file``, ``apply_context_mode_filter``), never by
@@ -115,7 +117,7 @@ def _run_kind(options: PromptOptions) -> str:
 def prompt_context(
     lab: LabRuntime, options: PromptOptions, *, session: LabSession | None = None
 ) -> TurnContext:
-    """``HostKit.before_turn`` for a prompt view, without the ensure (read-only).
+    """``HostKit.before_turn`` for a prompt view, without the ensure (no workspace write).
 
     Without a session the view uses a fresh state of the kind (nothing is stored).
     """

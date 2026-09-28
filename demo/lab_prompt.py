@@ -130,7 +130,7 @@ def prompt_context(
         context_injection=options.context_injection,
     )
     state = (
-        session.state()
+        session.state
         if session is not None
         else SessionState.new(session_key="lab:preview", session_id="preview", kind=options.kind)  # type: ignore[arg-type]
     )

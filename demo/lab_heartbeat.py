@@ -12,13 +12,13 @@ scratch. ``POST
 legacy HEARTBEAT.md with the caller's text at the Lab root, since nothing else in the Lab can
 create a retired file, so the migration, its findings and its archive can be seen. ``POST /api/lab/heartbeat/run`` runs one heartbeat now:
 the due jobs become scheduled tasks, ``prepare_heartbeat_turn`` builds the prompt (skip reason
-``empty-heartbeat-file`` makes no model call), the flush decision with ``is_heartbeat=True``
-(``runtime_skip:heartbeat``), the injected context for session kind ``heartbeat``
-(PROACTIVE_PREFERENCES.md included on the memory-core layout), then the same host tool loop as chat
-turns, so the model can read daily notes with ``memory_search``/``memory_get``. The reply goes
-through ``decide_heartbeat_reply`` (``NO_REPLY`` and a legacy ``HEARTBEAT_OK`` ack are not
-delivered), and the jobs whose tasks went into the turn are rescheduled from the run (a due job
-of another kind is the host's to run and stays due). ``POST /api/lab/heartbeat/reply``
+``empty-heartbeat-file`` makes no model call), the injected context for session kind
+``heartbeat`` (PROACTIVE_PREFERENCES.md included on the memory-core layout), then the same host tool
+loop as chat turns, so the model can read daily notes with ``memory_search``/``memory_get``. The
+reply goes through ``decide_heartbeat_reply`` (``NO_REPLY`` and a legacy ``HEARTBEAT_OK`` ack are
+not delivered), the jobs whose tasks went into the turn are rescheduled from the run (a due job
+of another kind is the host's to run and stays due), and ``HostKit.after_turn`` reports the
+flush decision after the run (``runtime_skip:heartbeat``: heartbeats never flush). ``POST /api/lab/heartbeat/reply``
 decides a typed reply without a model.
 
 Demo-only: the virtual clock shifts due checks, job runs and migrated anchors only; the
@@ -35,7 +35,7 @@ from typing import Any
 from demo.chat_engine import ChatEngine, ChatMessage
 from demo.lab_chat import LOCK_TIMEOUT_SECONDS, assemble_messages
 from demo.lab_events import sse_frame
-from demo.lab_flush import flush_decision, update_token_snapshot
+from demo.lab_flush import flush_view, transcript_byte_size, turn_usage
 from demo.lab_prompt import PromptOptions, prompt_view
 from demo.lab_runtime import (
     FILE_MAX_BYTES,
@@ -403,10 +403,6 @@ def _run(
         run["dueTasks"] = [task.name for task in turn.scheduled_tasks]
         run["hostDueJobs"] = [job.id for job in host_due]
         run["scratchRevision"] = turn.scratch_revision
-        decision = flush_decision(lab, session, turn.message, is_heartbeat=True)
-        run["flush"] = decision
-        lab.bus.emit("flush.decided", summary=f"flush kararı: {decision['reason']} (heartbeat)", data=decision)
-        yield sse_frame({"decision": decision}, event="flush")
         if turn.skip_reason:
             run["skipped"] = turn.skip_reason
             run["ms"] = int((time.perf_counter() - started) * 1000)
@@ -427,7 +423,7 @@ def _run(
         lab.reindex(index)
         options = PromptOptions(kind="heartbeat", context_mode="lightweight" if light_context else "full")
         kit = lab.kit(index)
-        context = kit.before_turn(session.state(), context_mode=options.context_mode, ensure=False)  # type: ignore[arg-type]
+        context = kit.before_turn(session.state, context_mode=options.context_mode, ensure=False)  # type: ignore[arg-type]
         wc = context.workspace
         toolbox = LabToolbox(lab, kit, session, turn_id=None)
         tool_names = sorted(tool["name"] for tool in context.tools)
@@ -478,7 +474,21 @@ def _run(
                          data={"jobs": [_job_view(job, ended) for job in ran]})
         session.messages.append({"role": "user", "content": HEARTBEAT_TRANSCRIPT_PROMPT})
         session.messages.append({"role": "assistant", "content": reply})
-        update_token_snapshot(session, outcome.usage, messages=outcome.messages, output_text=reply)
+        # After the run, as after a chat turn: heartbeat sessions never flush (runtime_skip).
+        record = kit.after_turn(
+            context.session,
+            transcript=session.messages,
+            usage=turn_usage(session, outcome.usage, messages=outcome.messages, output_text=reply),
+            context_window_tokens=lab.settings.effective_context_window_tokens,
+            transcript_bytes=transcript_byte_size(session),
+        )
+        session.state = record.session
+        session.last_turn = record
+        run["flush"] = flush_view(lab, session, record)
+        lab.bus.emit(
+            "flush.decided", summary=f"flush kararı: {run['flush']['reason']} (heartbeat)", data=run["flush"]
+        )
+        yield sse_frame({"decision": run["flush"]}, event="flush")
         run.update({
             "reply": reply,
             "decision": result,

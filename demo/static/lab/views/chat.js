@@ -128,8 +128,9 @@ async function forceFlush() {
   ensureChatVisible();
   try {
     const res = await api.post('/api/chat/flush', { forced: true, ...providerBody() });
-    const reason = res?.decision?.reason || res?.flush?.parsed?.reason || res?.reason || '—';
-    const wrote = res?.flush?.parsed?.shouldWrite ?? res?.wrote;
+    // HostKit.request_flush (Lab extension, decision Q6): reason forced, or why no run happened.
+    const reason = res?.decision?.reason || '—';
+    const wrote = res?.flush?.wrote === true;
     pushLocalRow({ kind: 'flush', text: t(wrote ? 'chat.flushWrote' : 'chat.flushNoWrite', { r: reason }), payload: res });
   } catch (err) {
     pushLocalRow({ kind: err.missing ? 'missing' : 'error', text: err.missing ? t('state.waitsFor', { m: err.module || err.path }) : `/flush: ${err.message}`, payload: err.body });

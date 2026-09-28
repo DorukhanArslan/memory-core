@@ -17,7 +17,7 @@ from starlette.concurrency import iterate_in_threadpool
 from demo.chat_engine import OpenAICompatibleChatEngine
 from demo.lab_consolidation import run_audit, run_dreaming, run_promotion, run_repair
 from demo.lab_events import sse_frame
-from demo.lab_flush import LAB_FORCED_REASON, flush_decision, forced_flush_blocked, run_flush_turn
+from demo.lab_flush import FORCED_FLUSH_LABEL, run_flush
 from demo.lab_runtime import (
     LabError,
     LabRuntime,
@@ -145,11 +145,11 @@ def build_kept_router(lab: LabRuntime) -> APIRouter:
 
     @router.post("/chat/flush")
     def chat_flush(payload: dict = Body(default={})):
-        """``/flush``: run the flush turn now (Lab action, reason ``lab_forced``).
+        """``/flush``: a flush run now, a labelled Lab extension (decision Q6).
 
-        It skips only the token gate: like upstream's forced-by-size path it still
-        honours the same-compaction guard, so a second ``/flush`` reports
-        ``already_flushed`` and writes nothing.
+        ``HostKit.request_flush`` skips only the token gate: a heartbeat session and a
+        compaction cycle that already flushed get no run (``runtime_skip:heartbeat``,
+        ``already_flushed``) and nothing is written. The reason of a run is ``forced``.
         """
         from demo.lab_api import resolve_chat_engine
 
@@ -158,21 +158,23 @@ def build_kept_router(lab: LabRuntime) -> APIRouter:
         engine = resolve_chat_engine(lab, payload)
         if getattr(engine, "provider", "") == "scripted":
             raise LabError(400, "the flush turn needs a model; the scripted engine has none", code="no_api_key")
-        trigger = flush_decision(lab, session, None)
-        if forced_flush_blocked(session):
-            decision = {"shouldRun": False, "reason": "already_flushed", "trigger": trigger}
-            lab.bus.emit("flush.decided", summary="flush kararı: already_flushed (/flush)", data=decision)
-            return {"decision": decision, "flush": None, "entry": session.flush_entry}
-        decision = {"shouldRun": True, "reason": LAB_FORCED_REASON, "trigger": trigger}
-        lab.bus.emit("flush.decided", summary="flush kararı: lab_forced (/flush)", data=decision)
-        embedding = lab.resolve_embedding(payload)
-        store = lab.store(embedding)
         with lab.locked():
-            run = run_flush_turn(
-                lab, session, engine, store, turn_id=None, reason=LAB_FORCED_REASON,
-                secrets=lab.secret_values(payload),
+            kit = lab.kit(lab.store(lab.resolve_embedding(payload)))
+            with lab.tracked("flush"):
+                request = kit.request_flush(session.state, transcript=session.messages)
+            if request is None:
+                reason = "runtime_skip:heartbeat" if session.kind == "heartbeat" else "already_flushed"
+            else:
+                reason = request.reason
+            decision = {"shouldRun": request is not None, "reason": reason, "extension": True,
+                        "label": FORCED_FLUSH_LABEL}
+            lab.bus.emit("flush.decided", summary=f"flush kararı: {reason} (/flush, Lab uzantısı)", data=decision)
+            run = (
+                run_flush(lab, session, engine, request, turn_id=None, secrets=lab.secret_values(payload))
+                if request is not None
+                else None
             )
-        return {"decision": decision, "flush": run, "entry": session.flush_entry}
+        return {"decision": decision, "flush": run, "entry": dict(session.state.entry)}
 
     _add_live_task_routes(router, lab)
     return router

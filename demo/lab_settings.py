@@ -70,7 +70,7 @@ def settings_payload(lab: LabRuntime) -> dict[str, Any]:
             },
         },
         "contextInjection": settings.context_injection,
-        "flush": _flush_settings(settings.context_window_tokens, window),
+        "flush": flush_settings(settings.context_window_tokens, window),
         "heartbeat": {
             "every": settings.heartbeat_every,
             "everyMs": resolve_heartbeat_interval_ms(settings.heartbeat_every),
@@ -87,7 +87,7 @@ def settings_payload(lab: LabRuntime) -> dict[str, Any]:
     }
 
 
-def _flush_settings(configured_window: int | None, window: int) -> dict[str, Any]:
+def flush_settings(configured_window: int | None, window: int) -> dict[str, Any]:
     """v2026.9.6 flush thresholds for the window (flush-plan.ts, agent-runner-memory.ts:1254-1260).
 
     The reserve floor and the soft threshold derive from the window; the flush plan has no

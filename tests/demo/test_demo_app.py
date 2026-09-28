@@ -699,33 +699,31 @@ def test_live_task_rejects_unsafe_ids(client):
 
 
 class StubEngine:
-    """Deterministic engine: each round is (content, tool calls); records what it was sent."""
+    """Deterministic engine: each round is (content, tool calls) or an exception to raise.
+
+    It records what every call was sent; chat turns, heartbeat runs and flush runs all take
+    their rounds from the same queue.
+    """
 
     name = "stub"
     provider = "stub"
     model = "stub-model"
 
-    def __init__(self, rounds, *, usage=None, flush_output=None):
+    def __init__(self, rounds, *, usage=None):
         self.rounds = list(rounds)
         self.calls = []
         self.usage = usage if usage is not None else {"promptTokens": 1_000, "completionTokens": 50, "totalTokens": 1_050}
-        self.flush_output = flush_output
-        self.flush_calls = []
 
     def stream_chat(self, messages, *, tools=None):
         self.calls.append({"messages": [dict(message) for message in messages], "tools": tools})
-        content, calls = self.rounds.pop(0) if self.rounds else ("done", [])
+        item = self.rounds.pop(0) if self.rounds else ("done", [])
+        if isinstance(item, BaseException):
+            raise item
+        content, calls = item
         if content:
             yield {"type": "delta", "text": content}
         yield {"type": "message", "content": content, "toolCalls": calls, "usage": self.usage,
                "finishReason": "tool_calls" if calls else "stop"}
-
-    def flush(self, *, system_prompt, prompt, transcript, target):
-        from demo.chat_engine import FlushModelOutput
-
-        self.flush_calls.append({"system_prompt": system_prompt, "prompt": prompt,
-                                 "transcript": transcript, "target": target})
-        return self.flush_output(target) if self.flush_output else FlushModelOutput(raw_text="NO_REPLY")
 
 
 def tool_call(call_id, name, arguments):
@@ -793,8 +791,9 @@ def test_tool_loop_dispatches_curation_and_memory_tools(client, lab, monkeypatch
     }
     assert "- Always answer briefly, in bullet points." in (lab.root / "USER.md").read_text(encoding="utf-8")
     detail = frames_of(frames, "turn_done")[0]["detail"]
+    # The flush follows the reply (v2026.9.6 session maintenance, decision Q1).
     assert [stage["name"] for stage in detail["stages"]] == [
-        "ensure", "compaction", "flush_decision", "flush", "reindex", "recall", "prompt", "stream", "persist",
+        "ensure", "compaction", "reindex", "recall", "prompt", "stream", "persist", "flush_decision", "flush",
     ]
     assert detail["stages"][1] == {"name": "compaction", "status": "skip", "ms": 0, "detail": "Lab compaction yok (bilinen açık)"}
     assert detail["curation"][0]["kind"] == "user_directive"
@@ -1032,61 +1031,77 @@ def test_chat_provider_errors_are_redacted_and_recorded(client, lab, monkeypatch
     assert secret not in client.get("/api/lab/events", params={"once": "true"}).text
 
 
-# --- flush before the turn (D1) ----------------------------------------------------------
+# --- flush after the reply (decision Q1) --------------------------------------------------
 
 
-def daily_write(text):
-    from demo.chat_engine import FlushModelOutput, FlushWriteCall
-
-    def output(target):
-        return FlushModelOutput(raw_text=f"write({target})", writes=(FlushWriteCall(path=target, content=text, call_id="f1"),))
-
-    return output
+def flush_write(lab, text, call_id="f1"):
+    """The flush run's rounds: a write of ``text`` to today's daily file, then NO_REPLY."""
+    return [("", [tool_call(call_id, "write", {"path": f"memory/{lab.today()}.md", "content": text})]),
+            ("NO_REPLY", [])]
 
 
-def test_flush_runs_before_the_main_turn_once_per_compaction_cycle(client, lab, monkeypatch):
+def test_flush_runs_after_the_reply_once_per_compaction_cycle(client, lab, monkeypatch):
     # v2026.9.6 derives reserve and soft threshold from the window (flush-plan.ts):
     # reserve min(20,000, 5,333 // 4) = 1,333; soft min(4,000, (5,333 - 1,333) // 2) = 2,000;
     # threshold 5,333 - 1,333 - 2,000 = 2,000.
     lab.settings.context_window_tokens = 5_333
     engine = use_engine(monkeypatch, StubEngine(
-        [("Bir.", []), ("İki.", []), ("Üç.", [])],
-        usage={"promptTokens": 1_990, "completionTokens": 40, "totalTokens": 2_030},
-        flush_output=daily_write("- Redis 7.2 staging upgrade done."),
+        [("Bir.", []), ("İki.", []), *flush_write(lab, "- Redis 7.2 staging upgrade done."), ("Üç.", [])],
+        usage={"promptTokens": 1_500, "completionTokens": 40, "totalTokens": 1_540},
     ))
     client.get("/api/lab/state")
     before = {name: (lab.root / name).read_text(encoding="utf-8") for name in ("AGENTS.md", "SOUL.md", "USER.md")}
 
     first = send(client, "Bugün staging ortamında Redis'i 7.2 sürümüne yükselttik.")
+    engine.usage = {"promptTokens": 1_990, "completionTokens": 40, "totalTokens": 2_030}
     second = send(client, "CI süresi 14 dakikadan 9 dakikaya indi.")
     third = send(client, "Yarın yük testi var.")
 
     decisions = [frames_of(frames, "flush")[0]["decision"] for frames in (first, second, third)]
-    assert [item["reason"] for item in decisions] == ["missing_tokens", "token_threshold", "already_flushed"]
+    assert [item["reason"] for item in decisions] == ["under_threshold", "token_threshold", "already_flushed"]
     assert decisions[1]["threshold"] == 2_000
     assert (decisions[1]["reserveTokensFloor"], decisions[1]["softThresholdTokens"]) == (1_333, 2_000)
-    assert decisions[1]["totalTokens"] == 1_990 + 40 + decisions[1]["promptTokenEstimate"]
+    # Post-reply maintenance counts no prompt estimate (promptForEstimate: "").
+    assert decisions[1]["totalTokens"] == 1_990 + 40 and "promptTokenEstimate" not in decisions[1]
     assert decisions[1]["tokenSource"] == "provider usage"
-    assert len(engine.flush_calls) == 1
-    flush_call = engine.flush_calls[0]
-    assert flush_call["target"] == f"memory/{lab.today()}.md"
-    assert "NO_REPLY" in flush_call["prompt"] and "read-only" in flush_call["system_prompt"]
-    order = [frame["event"] for frame in second if frame["event"] in {"flush", "assistant_delta"}]
-    assert order == ["flush", "flush", "assistant_delta"]
+    assert decisions[1]["order"].startswith("after the reply")
+    # The reply streams first; the flush turn runs after it and never reaches the chat.
+    order = [frame["event"] for frame in second if frame["event"] in {"flush", "assistant_delta", "turn_done"}]
+    assert order == ["assistant_delta", "flush", "flush", "turn_done"]
+    assert [frame["text"] for frame in frames_of(second, "assistant_delta")] == ["İki."]
+    flush_call = engine.calls[2]
+    assert [tool["function"]["name"] for tool in flush_call["tools"]] == ["write"]
+    assert f"may only append to memory/{lab.today()}.md" in flush_call["tools"][0]["function"]["description"]
+    system = flush_call["messages"][0]["content"]
+    assert "## Conversation Context" in system and "# Project Context" in system and "read-only" in system
+    assert "## Memory Recall" not in system
+    assert flush_call["messages"][1:-1] == [
+        {"role": "user", "content": "Bugün staging ortamında Redis'i 7.2 sürümüne yükselttik."},
+        {"role": "assistant", "content": "Bir."},
+        {"role": "user", "content": "CI süresi 14 dakikadan 9 dakikaya indi."},
+        {"role": "assistant", "content": "İki."},
+    ]
+    assert flush_call["messages"][-1]["role"] == "user" and "NO_REPLY" in flush_call["messages"][-1]["content"]
     detail = frames_of(second, "turn_done")[0]["detail"]
+    assert [stage["name"] for stage in detail["stages"]][-3:] == ["persist", "flush_decision", "flush"]
     stages = {stage["name"]: stage for stage in detail["stages"]}
     assert stages["flush"]["status"] == "ok"
-    assert detail["flush"]["run"]["wrote"] is True
+    run = detail["flush"]["run"]
+    assert run["wrote"] is True and run["reason"] == "token_threshold"
+    assert run["entries"] == ["- Redis 7.2 staging upgrade done."] and run["reply"] == "NO_REPLY"
+    assert run["toolCalls"][0]["result"]["text"] == f"Appended content to memory/{lab.today()}.md."
     assert detail["prompt"]["flush"]["target"] == f"memory/{lab.today()}.md"
+    assert detail["prompt"]["flush"]["prompt"] == flush_call["messages"][-1]["content"]
     assert {"type": "flush", "label": "flush → günlük", "target": f"memory/{lab.today()}.md", "source": "flush"} in detail["chips"]
     visible = [(diff["path"], diff["source"]) for diff in detail["diffs"] if not diff["hidden"]]
     assert visible == [(f"memory/{lab.today()}.md", "flush")]
-    assert ("memory/.dreams/short-term-recall.json", "recall") in [
-        (diff["path"], diff["source"]) for diff in detail["diffs"] if diff["hidden"]
-    ]
-    assert (lab.root / "memory" / f"{lab.today()}.md").read_text(encoding="utf-8").rstrip().endswith("- Redis 7.2 staging upgrade done.")
+    # Decision Q3: a flush write records no daily recall signals.
+    assert not any(diff["path"] == "memory/.dreams/short-term-recall.json" for diff in detail["diffs"])
+    assert (lab.root / "memory" / f"{lab.today()}.md").read_text(encoding="utf-8") == "- Redis 7.2 staging upgrade done.\n"
     assert {name: (lab.root / name).read_text(encoding="utf-8") for name in before} == before
     assert not (lab.root / "MEMORY.md").exists()
+    assert lab.session("main").messages[-1] == {"role": "assistant", "content": "Üç."}
+    assert len(lab.session("main").messages) == 6
     third_stages = {stage["name"]: stage for stage in frames_of(third, "turn_done")[0]["detail"]["stages"]}
     assert third_stages["flush"] == {"name": "flush", "status": "skip", "ms": 0, "detail": "already_flushed"}
     snapshot = client.get("/api/lab/state").json()["flush"]
@@ -1098,32 +1113,43 @@ def test_flush_runs_before_the_main_turn_once_per_compaction_cycle(client, lab, 
     assert types.index("flush.decided") < types.index("flush.written")
 
 
-def test_flush_writes_only_the_daily_file(client, lab, monkeypatch):
-    from demo.chat_engine import FlushModelOutput, FlushWriteCall
-
+def test_flush_write_elsewhere_is_refused_to_the_model(client, lab, monkeypatch):
     lab.settings.context_window_tokens = 5_333
     use_engine(monkeypatch, StubEngine(
-        [("Bir.", []), ("İki.", [])],
+        [("Bir.", []), ("", [tool_call("f1", "write", {"path": "MEMORY.md", "content": "- nope"})]), ("NO_REPLY", [])],
         usage={"promptTokens": 5_000, "completionTokens": 10, "totalTokens": 5_010},
-        flush_output=lambda target: FlushModelOutput(
-            raw_text="write(MEMORY.md)", writes=(FlushWriteCall(path="MEMORY.md", content="- nope", call_id="f1"),)
-        ),
     ))
 
-    send(client, "bir")
-    frames = send(client, "iki")
+    frames = send(client, "bir")
 
     run = frames_of(frames, "turn_done")[0]["detail"]["flush"]["run"]
-    assert run["wrote"] is False and run["parsed"]["error"]
+    assert run["wrote"] is False and run["entries"] == []
+    assert run["toolCalls"][0]["ok"] is False
+    assert run["toolCalls"][0]["result"]["error"] == (
+        f"Memory flush writes are restricted to memory/{lab.today()}.md; use that path only."
+    )
     assert not (lab.root / "MEMORY.md").exists()
     assert "flush.no_write" in event_types(client)
 
 
-def test_flush_decision_without_usage_is_labelled_an_estimate(client, lab, monkeypatch):
-    use_engine(monkeypatch, StubEngine([("Bir.", []), ("İki.", [])], usage={}))
+def test_no_reply_flush_leaves_an_empty_daily_file(client, lab, monkeypatch):
+    # ensureMemoryFlushTargetFile: the target exists before the flush run, even when it writes nothing.
+    lab.settings.context_window_tokens = 5_333
+    use_engine(monkeypatch, StubEngine(
+        [("Bir.", []), ("NO_REPLY", [])], usage={"promptTokens": 5_000, "completionTokens": 10, "totalTokens": 5_010},
+    ))
 
-    send(client, "bir")
-    frames = send(client, "iki")
+    detail = frames_of(send(client, "bir"), "turn_done")[0]["detail"]
+
+    assert detail["flush"]["run"]["wrote"] is False and detail["flush"]["run"]["reply"] == "NO_REPLY"
+    assert (lab.root / "memory" / f"{lab.today()}.md").read_text(encoding="utf-8") == ""
+    assert client.get("/api/lab/state").json()["flush"]["memoryFlush"] == {"kind": "succeeded", "compactionCount": 0}
+
+
+def test_flush_without_usage_uses_the_labelled_estimate(client, lab, monkeypatch):
+    use_engine(monkeypatch, StubEngine([("Bir.", [])], usage={}))
+
+    frames = send(client, "bir")
 
     decision = frames_of(frames, "flush")[0]["decision"]
     assert decision["reason"] == "under_threshold"
@@ -1133,39 +1159,67 @@ def test_flush_decision_without_usage_is_labelled_an_estimate(client, lab, monke
     assert decision["contextWindowSource"] == "upstream DEFAULT_CONTEXT_TOKENS"
 
 
+def test_scripted_turn_decides_the_flush_but_runs_no_flush_turn(client, lab):
+    # The scripted engine sends no usage (chars/4 estimate) and has no model for the flush turn:
+    # the kit's request is abandoned, so nothing is recorded and the next turn requests it again.
+    lab.settings.context_window_tokens = 1_000
+
+    first = frames_of(send(client, "bir", engine="scripted"), "turn_done")[0]["detail"]
+    second = frames_of(send(client, "iki", engine="scripted"), "turn_done")[0]["detail"]
+
+    for detail in (first, second):
+        assert detail["flush"]["decision"]["reason"] == "token_threshold"
+        stages = {stage["name"]: stage for stage in detail["stages"]}
+        assert stages["flush"] == {"name": "flush", "status": "skip", "ms": 0, "detail": "scripted: flush turn needs a model"}
+        assert "run" not in detail["flush"]
+        assert detail["prompt"]["flush"]["reason"] == "token_threshold"
+    assert client.get("/api/lab/state").json()["flush"]["memoryFlush"] is None
+    assert (lab.root / "memory" / f"{lab.today()}.md").read_text(encoding="utf-8") == ""
+
+
 def test_heartbeat_kind_skips_the_flush(client, monkeypatch):
     use_engine(monkeypatch, StubEngine([("ok", [])]))
 
     frames = send(client, "HEARTBEAT", sessionKind="heartbeat")
 
     assert frames_of(frames, "flush")[0]["decision"]["reason"] == "runtime_skip:heartbeat"
+    stages = {stage["name"]: stage for stage in frames_of(frames, "turn_done")[0]["detail"]["stages"]}
+    assert stages["flush"]["detail"] == "runtime_skip:heartbeat"
 
 
 def test_manual_flush_is_forced_once_per_cycle(client, lab, monkeypatch):
-    use_engine(monkeypatch, StubEngine([("Bir.", [])], flush_output=daily_write("- Manual flush note.")))
+    # Decision Q6: /flush is a labelled Lab extension over HostKit.request_flush.
+    use_engine(monkeypatch, StubEngine([("Bir.", []), *flush_write(lab, "- Manual flush note.")]))
     send(client, "Not: yük testi yarın.")
 
     first = client.post("/api/chat/flush", json={"forced": True}).json()
     second = client.post("/api/chat/flush", json={"forced": True}).json()
 
-    assert first["decision"]["reason"] == "lab_forced"
-    assert first["decision"]["trigger"]["reason"] in {"under_threshold", "missing_tokens"}
-    assert first["flush"]["parsed"]["shouldWrite"] is True and first["flush"]["wrote"] is True
+    assert first["decision"]["reason"] == "forced" and first["decision"]["extension"] is True
+    assert "HostKit.request_flush" in first["decision"]["label"]
+    assert first["flush"]["wrote"] is True and first["flush"]["reason"] == "forced"
+    assert first["entry"]["memoryFlush"] == {"kind": "succeeded", "compactionCount": 0}
     assert second["decision"] == {**second["decision"], "shouldRun": False, "reason": "already_flushed"}
     assert second["flush"] is None
     assert (lab.root / "memory" / f"{lab.today()}.md").read_text(encoding="utf-8").count("Manual flush note") == 1
 
 
+def test_manual_flush_skips_a_heartbeat_session(client, lab, monkeypatch):
+    use_engine(monkeypatch, StubEngine([]))
+    client.get("/api/lab/state")
+
+    result = client.post("/api/chat/flush", json={"sessionKind": "heartbeat"}).json()
+
+    assert result["decision"]["reason"] == "runtime_skip:heartbeat" and result["flush"] is None
+    assert not (lab.root / "memory" / f"{lab.today()}.md").exists()
+
+
 def test_failed_flush_reports_the_cause_chain_redacted(client, lab, monkeypatch):
     # recordMemoryFlushFailure: formatErrorMessage joins the cause chain; the Lab passes its key
     # values as the redactor, since redactSensitiveText is not ported.
-    def failing_flush(target):
-        try:
-            raise ConnectionError("provider refused key lab-secret-value")
-        except ConnectionError as exc:
-            raise RuntimeError("flush turn failed") from exc
-
-    use_engine(monkeypatch, StubEngine([("Bir.", [])], flush_output=failing_flush))
+    failure = RuntimeError("flush turn failed")
+    failure.__cause__ = ConnectionError("provider refused key lab-secret-value")
+    use_engine(monkeypatch, StubEngine([("Bir.", []), failure]))
     send(client, "Not: yük testi yarın.")
     monkeypatch.setattr(lab, "secret_values", lambda payload: ("lab-secret-value",))
 
@@ -1174,6 +1228,7 @@ def test_failed_flush_reports_the_cause_chain_redacted(client, lab, monkeypatch)
     assert run["error"]["message"] == "flush turn failed | provider refused key [redacted]"
     assert run["error"]["failureCount"] == 1
     assert "lab-secret-value" not in json.dumps(run)
+    assert "flush.failed" in event_types(client)
 
 
 def test_manual_flush_needs_a_model(client):
@@ -1524,7 +1579,6 @@ def test_heartbeat_scratch_stores_a_lone_surrogate_as_u_fffd(client, lab):
 def test_lab_passes_one_host_time_format_to_flush_heartbeat_and_reset(client, lab, monkeypatch):
     # memory_core.current_time: the Lab host gives the flush plan, the heartbeat turn and the bare
     # /new prompt the same LAB_TIME_FORMAT, so the same instant reads the same in all three.
-    from demo.lab_flush import lab_flush_plan
     from demo.lab_runtime import LAB_TIME_FORMAT, LAB_TIMEZONE
     from memory_core.current_time import format_current_time_line
 
@@ -1540,7 +1594,8 @@ def test_lab_passes_one_host_time_format_to_flush_heartbeat_and_reset(client, la
     assert LAB_TIME_FORMAT == "24" and settings["timeFormat"] == preflight["timeFormat"] == "24"
     assert expected.startswith("Current time: Saturday, September 26th, 2026 - 21:05 (Europe/Istanbul)")
     assert preflight["message"].endswith(f"\n{expected}")
-    assert lab_flush_plan(lab).prompt.endswith(f"\n{expected}")
+    flush = lab.kit().request_flush(lab.session("main").state, transcript=[])
+    assert flush.messages[-1]["content"].endswith(f"\n{expected}")
     assert reset["text"].endswith(f"\n{expected}")
 
 
@@ -1569,7 +1624,8 @@ def test_heartbeat_skips_empty_scratch_without_a_model_call(client, lab, monkeyp
     frames = heartbeat_run(client)
 
     assert frames_of(frames, "skipped") == [{"reason": "empty-heartbeat-file", "runId": 1}]
-    assert frames_of(frames, "flush")[0]["decision"]["reason"] == "runtime_skip:heartbeat"
+    # No run, so no post-run flush decision either.
+    assert frames_of(frames, "flush") == []
     assert engine.calls == []
     types = event_types(client)
     assert "heartbeat.skipped" in types and "heartbeat.llm" not in types

@@ -200,6 +200,22 @@ def test_flush_write_appends_to_the_target_and_reindexes(tmp_path):
     assert [hit["path"] for hit in hits] == [TARGET]
 
 
+def test_flush_write_keeps_the_append_when_the_reindex_fails(tmp_path, monkeypatch):
+    kit = _kit(tmp_path)
+    flush = _due(kit).flush
+
+    def broken(workspace):
+        raise RuntimeError("index broke")
+
+    monkeypatch.setattr(kit.memory.store, "reindex", broken)
+
+    result = flush.dispatch("write", {"path": TARGET, "content": "- kept"})
+
+    assert result["action"] == "appended" and result["afterWriteError"] == "index broke"
+    assert (tmp_path / TARGET).read_text() == "- kept\n"
+    assert flush.complete(_session()).entries == ("- kept",)
+
+
 def test_parallel_flush_writes_append_every_entry(tmp_path):
     flush = _due(_kit(tmp_path)).flush
     errors: list[BaseException] = []

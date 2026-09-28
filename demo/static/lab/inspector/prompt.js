@@ -227,8 +227,10 @@ export function promptTab(turn, { ctx = 'turn' } = {}) {
           dd.memoryFlush ? kvRow(t('flush.state'), h('span', { class: 'mono' }, [dd.memoryFlush.kind, dd.memoryFlush.compactionCount !== undefined ? `compactionCount ${dd.memoryFlush.compactionCount}` : null, dd.memoryFlush.failureCount ? `failureCount ${dd.memoryFlush.failureCount}` : null].filter(Boolean).join(' · '))) : null,
           dd.tokenSource ? kvRow(t('flush.tokenSource'), h('span', { class: 'mono' }, dd.tokenSource)) : null,
           dd.timeFormat ? kvRow(t('flush.timeFormat'), h('span', null, h('span', { class: 'mono' }, `${dd.timeFormat}h`), ' ', h('span', { class: 'muted small' }, t('flush.timeFormatNote')))) : null,
-          kvRow(t('flush.order'), t('flush.beforeTurn'))));
-        if (pv.flush) b.append(kvRow(t('flush.target'), h('span', { class: 'mono' }, pv.flush.target)), h('div', { class: 'muted small' }, 'prompt'), promptPre(pv.flush.prompt));
+          kvRow(t('flush.order'), t('flush.afterReply'))));
+        // The flush turn's own messages (upstream's shape, decision Q5): Project Context with the flush
+        // system prompt under ## Conversation Context, then the transcript rows and the flush prompt.
+        if (pv.flush) b.append(kvRow(t('flush.target'), h('span', { class: 'mono' }, pv.flush.target)), h('div', { class: 'muted small' }, 'system'), promptPre(pv.flush.systemPrompt), h('div', { class: 'muted small' }, 'prompt'), promptPre(pv.flush.prompt));
         if (fl.run) b.append(jsonDisclosure(fl.run, { title: 'flush run' }));
         return b;
       } }));

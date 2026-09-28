@@ -1,12 +1,15 @@
 """One Lab chat turn: the stage pipeline behind ``POST /api/lab/chat/stream``.
 
 Stages (streamed as ``stage`` events in this order): ``ensure``
-(``HostKit.ensure``, upstream runs it on every reply), ``reindex``, ``recall``
-(demo-only auto-recall, see below), ``prompt`` (``HostKit.before_turn`` for the
-session, without a second ensure), ``stream`` (the host tool loop of
-:mod:`demo.lab_tools`) and ``persist``. Other SSE events: ``turn_started``,
+(``HostKit.ensure``, upstream runs it on every reply), ``compaction`` (skipped:
+the Lab never compacts), ``reindex``, ``recall`` (demo-only auto-recall, see
+below), ``prompt`` (``HostKit.before_turn`` for the session, without a second
+ensure), ``stream`` (the host tool loop of :mod:`demo.lab_tools`), ``persist``,
+then the post-reply maintenance of v2026.9.6 (decision Q1): ``flush_decision``
+(``HostKit.after_turn``) and ``flush`` (the ``FlushRequest`` run over the Lab's
+model, :func:`demo.lab_flush.run_flush`). Other SSE events: ``turn_started``,
 ``recall``, ``prompt``, ``assistant_delta``, ``tool_call``, ``tool_result``,
-``curation``, ``turn_done {turn, detail}`` and ``error``.
+``curation``, ``flush``, ``turn_done {turn, detail}`` and ``error``.
 
 Demo-only parts, labelled in the payloads: the auto-recall (``memory_search`` on
 the user message, only MEMORY.md and today's/yesterday's daily file reach the
@@ -24,7 +27,14 @@ import httpx
 
 from demo.chat_engine import ChatEngine, ChatMessage
 from demo.lab_events import diff_snapshots, sse_frame
-from demo.lab_flush import flush_decision, run_flush_turn, update_token_snapshot
+from demo.lab_flush import (
+    flush_view,
+    report_failure,
+    request_view,
+    run_flush,
+    transcript_byte_size,
+    turn_usage,
+)
 from demo.lab_prompt import PromptOptions, prompt_view
 from demo.lab_runtime import (
     LabError,
@@ -37,7 +47,7 @@ from demo.lab_tools import LabToolbox, ToolLoopOutcome, public_write, run_tool_l
 from demo.transcript_context import select_transcript_context
 from memory_core.bootstrap import format_session_reset_transcript_prompt
 from memory_core.consolidation import record_short_term_recalls, undecorate_search_results
-from memory_core.host import MINIMAL_PROMPT_KINDS, TurnContext
+from memory_core.host import MINIMAL_PROMPT_KINDS, TurnContext, TurnRecord
 from memory_core.tools.memory_search import memory_search
 
 TRANSCRIPT_MESSAGE_WINDOW = 40
@@ -308,34 +318,8 @@ def _run_turn(
         store = lab.store(embedding, mode=mode, turn_id=turn.id)
         kit = lab.kit(store)
 
-        # D1: upstream order is preflight compaction, memory flush, then the main run.
+        # Preflight compaction; the flush follows the reply (v2026.9.6 session maintenance).
         yield turn.skip("compaction", "Lab compaction yok (bilinen açık)")
-        yield turn.start("flush_decision")
-        decision = flush_decision(lab, session, user_content, is_heartbeat=kind == "heartbeat")
-        detail["flush"] = {"decision": decision}
-        lab.bus.emit(
-            "flush.decided",
-            summary=f"flush kararı: {decision['reason']} ({decision['totalTokens']}/{decision['threshold']})",
-            data=decision,
-            turn_id=turn.id,
-        )
-        yield sse_frame({"turnId": turn.id, "decision": decision}, event="flush")
-        yield turn.finish(detail=decision["reason"])
-        if not decision["shouldRun"]:
-            yield turn.skip("flush", decision["reason"])
-        elif scripted:
-            yield turn.skip("flush", "scripted: flush turn needs a model")
-        else:
-            yield turn.start("flush")
-            flush_run = run_flush_turn(
-                lab, session, engine, store, turn_id=turn.id, reason=decision["reason"], secrets=secrets
-            )
-            detail["flush"]["run"] = flush_run
-            yield sse_frame({"turnId": turn.id, "decision": decision, "run": flush_run}, event="flush")
-            yield turn.finish(
-                status="fail" if flush_run.get("error") else "ok",
-                detail="günlük dosyaya yazdı" if flush_run.get("wrote") else "yazım yok",
-            )
 
         yield turn.start("reindex")
         index = lab.reindex(store)
@@ -362,7 +346,7 @@ def _run_turn(
         yield turn.start("prompt")
         options = PromptOptions(kind=kind)
         # The scripted engine calls no tools, so the kit offers none and adds no Memory Recall.
-        context = kit.before_turn(session.state(), offer_tools=not scripted, ensure=False)
+        context = kit.before_turn(session.state, offer_tools=not scripted, ensure=False)
         wc = context.workspace
         truncation_shown = wc.prompt_warning.warning_shown
         truncated = len(wc.analysis.truncated_files)
@@ -391,16 +375,8 @@ def _run_turn(
                                "label": "demo-only"},
                 "messages": messages,
                 "startup": detail.get("startup"),
-                "flush": (
-                    {
-                        "prompt": detail["flush"]["run"]["prompt"],
-                        "systemPrompt": detail["flush"]["run"]["systemPrompt"],
-                        "target": detail["flush"]["run"]["target"],
-                        "decision": decision,
-                    }
-                    if detail["flush"].get("run")
-                    else None
-                ),
+                # Set after the reply when the flush is due (the flush turn's messages).
+                "flush": None,
             },
         )
         detail["prompt"] = view
@@ -434,6 +410,29 @@ def _run_turn(
         yield turn.start("persist")
         _persist(session, turn, context, user_content, outcome)
         yield turn.finish()
+
+        yield turn.start("flush_decision")
+        with lab.tracked("flush", turn_id=turn.id):
+            record = kit.after_turn(
+                session.state,
+                transcript=session.messages,
+                usage=turn_usage(session, outcome.usage, messages=outcome.messages, output_text=outcome.text),
+                context_window_tokens=lab.settings.effective_context_window_tokens,
+                transcript_bytes=transcript_byte_size(session),
+            )
+        session.state = record.session
+        session.last_turn = record
+        decision = flush_view(lab, session, record)
+        detail["flush"] = {"decision": decision}
+        lab.bus.emit(
+            "flush.decided",
+            summary=f"flush kararı: {decision['reason']} ({decision['totalTokens']}/{decision['threshold']})",
+            data=decision,
+            turn_id=turn.id,
+        )
+        yield sse_frame({"turnId": turn.id, "decision": decision}, event="flush")
+        yield turn.finish(detail=decision["reason"])
+        yield from _flush_stage(lab, turn, session, engine, record, scripted=scripted, secrets=secrets)
         turn.close()
         detail["chips"] = build_chips(lab, turn, truncation_shown=truncation_shown, truncated=truncated)
         lab.store_turn(detail)
@@ -482,7 +481,38 @@ def _persist(session: LabSession, turn: TurnState, context: TurnContext, user_co
     session.messages.append({"role": "user", "content": turn.detail.get("transcriptUser") or user_content})
     session.messages.append({"role": "assistant", "content": outcome.text})
     # The completed turn keeps the kit's fold of the truncation signatures and bootstrap turn.
-    session.seen_truncation_signatures = list(context.session.seen_truncation_signatures)
-    session.completed_bootstrap_turn = context.session.completed_bootstrap_turn
-    update_token_snapshot(session, outcome.usage, messages=outcome.messages, output_text=outcome.text)
+    session.state = context.session
     session.pending_reset = None
+
+
+def _flush_stage(lab: LabRuntime, turn: TurnState, session: LabSession, engine: ChatEngine,
+                 record: TurnRecord, *, scripted: bool, secrets: tuple[str, ...]) -> Iterator[str]:
+    """The ``flush`` stage: run the kit's request with the Lab's model, or say why not."""
+    detail = turn.detail
+    decision = detail["flush"]["decision"]
+    request = record.flush
+    if record.flush_failure is not None:
+        # The target file could not be created: one strike, as upstream's recordFailure.
+        yield turn.start("flush")
+        failure = record.flush_failure
+        error = report_failure(lab, failure, error_text=failure.error, secrets=secrets, turn_id=turn.id)
+        detail["flush"]["run"] = {"reason": decision["reason"], "target": record.flush_plan.relative_path,
+                                  "wrote": False, "error": error}
+        yield turn.finish(status="fail", detail=error["message"])
+        return
+    if request is None:
+        yield turn.skip("flush", decision["reason"])
+        return
+    detail["prompt"]["flush"] = {**request_view(request), "decision": decision}
+    if scripted:
+        # The request is abandoned: nothing is recorded, so the next turn requests it again.
+        yield turn.skip("flush", "scripted: flush turn needs a model")
+        return
+    yield turn.start("flush")
+    run = run_flush(lab, session, engine, request, turn_id=turn.id, secrets=secrets)
+    detail["flush"]["run"] = run
+    yield sse_frame({"turnId": turn.id, "decision": decision, "run": run}, event="flush")
+    yield turn.finish(
+        status="fail" if run.get("error") else "ok",
+        detail="günlük dosyaya yazdı" if run["wrote"] else "yazım yok",
+    )

@@ -56,7 +56,7 @@ from memory_core.curation import (
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.embeddings.openai_compatible import OpenAICompatibleEmbeddingProvider
 from memory_core.flags import FeatureFlags
-from memory_core.host import DEFAULT_CONTEXT_WINDOW_TOKENS, HostKit, SessionState
+from memory_core.host import DEFAULT_CONTEXT_WINDOW_TOKENS, HostKit, SessionState, TurnRecord
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.workspace import MemoryWorkspace
 
@@ -276,33 +276,29 @@ class LabSettings:
 
 @dataclass
 class LabSession:
-    id: str
+    """One Lab session: the host kit's ``SessionState`` plus what the Lab host keeps.
+
+    ``state`` is the value every kit call takes and returns (key, id, kind, the flush-gate
+    entry, the truncation signatures, the bootstrap turn); ``last_turn`` is the last
+    ``HostKit.after_turn`` result, which the status-bar flush meter shows.
+    """
+
     kind: str
     created_at: int
+    state: SessionState
     messages: list[dict[str, str]] = field(default_factory=list)
     turn_ids: list[int] = field(default_factory=list)
-    flush_entry: dict[str, Any] = field(default_factory=dict)
-    last_output_tokens: int | None = None
     token_source: str | None = None
-    seen_truncation_signatures: list[str] = field(default_factory=list)
-    completed_bootstrap_turn: bool = False
+    last_turn: TurnRecord | None = None
     pending_reset: dict[str, Any] | None = None
 
     @property
-    def key(self) -> str:
-        return f"lab:{self.kind}:{self.id}"
+    def id(self) -> str:
+        return self.state.session_id
 
-    def state(self) -> SessionState:
-        """The session as the host kit reads it, built from the fields the Lab flush mutates."""
-        return SessionState(
-            session_key=self.key,
-            session_id=self.id,
-            kind=self.kind,  # type: ignore[arg-type]
-            entry=self.flush_entry,
-            last_output_tokens=self.last_output_tokens,
-            seen_truncation_signatures=tuple(self.seen_truncation_signatures),
-            completed_bootstrap_turn=self.completed_bootstrap_turn,
-        )
+    @property
+    def key(self) -> str:
+        return self.state.session_key
 
     def public(self) -> dict[str, Any]:
         return {
@@ -319,10 +315,11 @@ class LabSession:
 def new_session(kind: str) -> LabSession:
     session_id = secrets.token_hex(4)
     return LabSession(
-        id=session_id,
         kind=kind,
         created_at=now_ms(),
-        flush_entry={"sessionId": session_id, "compactionCount": 0},
+        state=SessionState.new(
+            session_key=f"lab:{kind}:{session_id}", session_id=session_id, kind=kind  # type: ignore[arg-type]
+        ),
     )
 
 
@@ -602,6 +599,9 @@ class LabRuntime:
             # The Lab shows promotion and dreaming, so memory_search records recalls like
             # upstream with dreaming enabled (tools.ts:491-507).
             dreaming_enabled=True,
+            # One host clock: the flush target, the reset prompt and the curator's day are the
+            # Lab's (the heartbeat's virtual clock only moves due checks, schedule_now_ms).
+            now_ms=lambda: self.now_ms(),
         )
 
     def reindex(self, store: LabStore) -> dict[str, Any]:

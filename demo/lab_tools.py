@@ -16,7 +16,7 @@ import json
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 from demo.chat_engine import ChatEngine
 from demo.lab_events import unified_diff
@@ -70,7 +70,7 @@ class LabToolbox:
         decoded when they are JSON.
         """
         started = time.perf_counter()
-        arguments = _preview_arguments(raw_arguments)
+        arguments = preview_arguments(raw_arguments)
         record: dict[str, Any] = {"id": call_id, "name": name, "arguments": arguments}
         offered = {definition["name"] for definition in self.definitions()}
         if name in offered and name in CURATION_OPERATIONS:
@@ -78,13 +78,8 @@ class LabToolbox:
         elif name == MEMORY_SEARCH_TOOL_NAME:
             result = self._memory_search(raw_arguments, arguments)
         else:
-            result = self.kit.dispatch(name, raw_arguments, session=self.session.state())
-        record["result"] = result
-        # A refusal the memory tools answer themselves carries ``disabled`` (docs/host_kit.md).
-        record["ok"] = not (
-            isinstance(result, dict) and (result.get("status") == "error" or result.get("disabled"))
-        )
-        record["ms"] = int((time.perf_counter() - started) * 1000)
+            result = self.kit.dispatch(name, raw_arguments, session=self.session.state)
+        finish_call(record, result, started)
         self.calls.append(record)
         return record
 
@@ -92,7 +87,7 @@ class LabToolbox:
         # The kit records the hits as short-term recalls (dreaming enabled in the Lab).
         with self.lab.tracked("recall", turn_id=self.turn_id):
             result = self.kit.dispatch(
-                MEMORY_SEARCH_TOOL_NAME, raw_arguments, session=self.session.state()
+                MEMORY_SEARCH_TOOL_NAME, raw_arguments, session=self.session.state
             )
         if result.get("status") == "error":
             return result
@@ -138,7 +133,7 @@ class LabToolbox:
             "extension": True,
         }
         with self.lab.tracked("curation", turn_id=self.turn_id):
-            result = self.kit.dispatch(name, raw_arguments, session=self.session.state())
+            result = self.kit.dispatch(name, raw_arguments, session=self.session.state)
         # Every error payload is a refused write: a refusal, bad or invalid arguments, a failure.
         if result.get("status") == "error":
             reason = str(result.get("error"))
@@ -182,6 +177,16 @@ class LabToolbox:
         return result
 
 
+def finish_call(record: dict[str, Any], result: dict[str, Any], started: float) -> None:
+    """Complete a call record with the payload sent back and the time the call took."""
+    record["result"] = result
+    # A refusal the memory tools answer themselves carries ``disabled`` (docs/host_kit.md).
+    record["ok"] = not (
+        isinstance(result, dict) and (result.get("status") == "error" or result.get("disabled"))
+    )
+    record["ms"] = int((time.perf_counter() - started) * 1000)
+
+
 def public_write(write: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in write.items() if key != "before"}
 
@@ -196,10 +201,20 @@ class ToolLoopOutcome:
     messages: list[dict[str, Any]] = field(default_factory=list)
 
 
+class Toolbox(Protocol):
+    """What the tool loop needs: the offered definitions and a dispatch that records calls."""
+
+    calls: list[dict[str, Any]]
+
+    def definitions(self) -> list[dict[str, Any]]: ...
+
+    def dispatch(self, call_id: str, name: str, raw_arguments: str) -> dict[str, Any]: ...
+
+
 def run_tool_loop(
     engine: ChatEngine,
     messages: list[dict[str, Any]],
-    toolbox: LabToolbox | None,
+    toolbox: Toolbox | None,
     outcome: ToolLoopOutcome,
     *,
     max_rounds: int = MAX_TOOL_ROUNDS,
@@ -254,7 +269,7 @@ def run_tool_loop(
             }
         )
         for call in calls:
-            yield "tool_call", {"id": call["id"], "name": call["name"], "arguments": _preview_arguments(call["arguments"]),
+            yield "tool_call", {"id": call["id"], "name": call["name"], "arguments": preview_arguments(call["arguments"]),
                                 "round": round_index + 1}
             try:
                 record = toolbox.dispatch(call["id"], call["name"], call["arguments"] or "")
@@ -276,7 +291,7 @@ def run_tool_loop(
     outcome.messages = conversation
 
 
-def _preview_arguments(raw: str) -> Any:
+def preview_arguments(raw: str) -> Any:
     try:
         return json.loads(raw) if raw and raw.strip() else {}
     except json.JSONDecodeError:
@@ -287,6 +302,9 @@ __all__ = [
     "MAX_TOOL_ROUNDS",
     "LabToolbox",
     "ToolLoopOutcome",
+    "Toolbox",
+    "finish_call",
+    "preview_arguments",
     "public_write",
     "run_tool_loop",
 ]

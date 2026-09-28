@@ -93,16 +93,19 @@ class _StubLLM:
     # writes one fact to the target its prompt names, as a model would.
     FACT = "- The project codename is velvetkiwi."
 
-    def __init__(self):
+    def __init__(self, stdout_so_far):
+        self.stdout_so_far = stdout_so_far
         self.turns = []
         self.searches = []
         self.flush_runs = []
+        self.printed_before_flush = []
         self.writes = []
 
     def __call__(self, messages, tools, run_tool):
         names = [tool["name"] for tool in tools]
         if names == ["write"]:
             self.flush_runs.append(list(messages))
+            self.printed_before_flush.append(self.stdout_so_far())
             target = re.search(r"memory/\d{4}-\d{2}-\d{2}\.md", messages[-1]["content"])[0]
             arguments = json.dumps({"path": target, "content": self.FACT})
             self.writes.append(run_tool("write", arguments))
@@ -113,7 +116,13 @@ class _StubLLM:
 
 
 def test_quickstart_runs_the_memory_tools_and_the_flush(tmp_path: Path, monkeypatch, capsys):
-    llm = _StubLLM()
+    printed = []
+
+    def stdout_so_far():
+        printed.extend(capsys.readouterr().out.splitlines())
+        return list(printed)
+
+    llm = _StubLLM(stdout_so_far)
     lines = iter(["Our codename is velvetkiwi.", "What is our codename?", ""])
     monkeypatch.setattr(quickstart, "call_my_llm", llm)
     monkeypatch.setattr("builtins.input", lambda prompt: next(lines))
@@ -154,8 +163,9 @@ def test_quickstart_runs_the_memory_tools_and_the_flush(tmp_path: Path, monkeypa
     roles = [message["role"] for message in flush_messages]
     assert roles == ["system", "user", "assistant", "user"]
     assert flush_messages[-1]["content"].startswith("Pre-compaction memory flush.")
-    # The flush run's reply is never delivered.
-    assert capsys.readouterr().out == "reply 1\nreply 2\n"
+    # The reply is delivered before the flush runs (upstream order); the flush run's reply never.
+    assert llm.printed_before_flush == [["reply 1"]]
+    assert stdout_so_far() == ["reply 1", "reply 2"]
 
 
 def test_readme_quickstart_shows_the_example():

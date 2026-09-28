@@ -18,6 +18,16 @@ from typing import Any
 from memory_core.bootstrap.files import SESSION_KINDS, SessionKind
 from memory_core.memory_flush import SESSION_TOTAL_TOKENS_VERSION
 
+# The entry fields the kit reads and the JSON type each has when present and not null.
+_ENTRY_FIELD_TYPES: dict[str, tuple[type, str]] = {
+    "sessionId": (str, "a string"),
+    "compactionCount": (int, "an integer"),
+    "totalTokens": (int, "an integer"),
+    "totalTokensFresh": (bool, "a boolean"),
+    "totalTokensVersion": (int, "an integer"),
+    "memoryFlush": (Mapping, "an object"),
+}
+
 
 @dataclass(frozen=True)
 class TurnUsage:
@@ -109,7 +119,19 @@ class SessionState:
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> SessionState:
-        """Read :meth:`to_json` output; ``ValueError`` for a field of the wrong type."""
+        """Read :meth:`to_json` output; ``ValueError`` for a field of the wrong type.
+
+        The entry's flush-gate fields are checked too (numbers as integers, ``totalTokensFresh``
+        a boolean, ``memoryFlush`` an object; each may be null or absent).
+        """
+        entry = data.get("entry", {})
+        if isinstance(entry, Mapping):
+            for key, (kind, label) in _ENTRY_FIELD_TYPES.items():
+                value = entry.get(key)
+                if value is not None and (
+                    not isinstance(value, kind) or (kind is int and isinstance(value, bool))
+                ):
+                    raise ValueError(f"entry.{key} must be {label} or null")
         signatures = data.get("seenTruncationSignatures", [])
         output = data.get("lastOutputTokens")
         completed = data.get("completedBootstrapTurn", False)
@@ -124,7 +146,7 @@ class SessionState:
                 session_key=data["sessionKey"],
                 session_id=data["sessionId"],
                 kind=data.get("kind", "main"),
-                entry=data.get("entry", {}),
+                entry=entry,
                 last_output_tokens=output,
                 seen_truncation_signatures=tuple(signatures),
                 completed_bootstrap_turn=completed,

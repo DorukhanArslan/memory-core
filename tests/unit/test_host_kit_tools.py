@@ -72,6 +72,28 @@ def test_session_state_round_trips_json():
     assert SessionState.from_json(json.loads(json.dumps(data))) == state
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("lastOutputTokens", "12", "lastOutputTokens"),
+        ("completedBootstrapTurn", "yes", "completedBootstrapTurn"),
+        ("entry", {"compactionCount": "1"}, "entry.compactionCount must be an integer"),
+        ("entry", {"compactionCount": True}, "entry.compactionCount must be an integer"),
+        ("entry", {"totalTokens": 5000.5}, "entry.totalTokens must be an integer"),
+        ("entry", {"totalTokensFresh": "true"}, "entry.totalTokensFresh must be a boolean"),
+        ("entry", {"totalTokensVersion": "1"}, "entry.totalTokensVersion must be an integer"),
+        ("entry", {"memoryFlush": []}, "entry.memoryFlush must be an object"),
+        ("entry", {"sessionId": 7}, "entry.sessionId must be a string"),
+        ("entry", [], "entry must be a mapping"),
+    ],
+)
+def test_session_state_from_json_rejects_wrong_field_types(field, value, message):
+    data = {**SessionState.new(session_key="k", session_id="s1").to_json(), field: value}
+
+    with pytest.raises(ValueError, match=message):
+        SessionState.from_json(data)
+
+
 def test_session_state_new_starts_a_fresh_flush_entry():
     state = SessionState.new(session_key="k", session_id="s1")
 

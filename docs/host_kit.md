@@ -144,6 +144,9 @@ class SessionState:
   `totalTokensVersion` removed) unless `tokens_after` gives the fresh post-compaction total. It is
   for hosts that compact or window their history; the kit itself never compacts.
 - `to_json` / `from_json` round-trip exactly, so a host can keep the state in any store.
+  `from_json` raises `ValueError` for a field of the wrong type, the entry's flush-gate fields
+  included (numbers as integers, `totalTokensFresh` a boolean, `memoryFlush` an object; each
+  may be null or absent), so a lax store cannot hand the kit a string `compactionCount`.
 
 ```python
 @dataclass(frozen=True)

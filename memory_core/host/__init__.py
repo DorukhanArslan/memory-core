@@ -5,6 +5,7 @@ and keeps one :class:`SessionState` per session; the kit returns what to send th
 takes back what came out. Specification: docs/host_kit.md.
 """
 
+from memory_core.host.flush import FlushOutcome, FlushRequest
 from memory_core.host.kit import (
     DEFAULT_CONTEXT_WINDOW_TOKENS,
     MINIMAL_PROMPT_KINDS,
@@ -17,6 +18,8 @@ from memory_core.host.session import SessionState, TurnUsage
 __all__ = [
     "DEFAULT_CONTEXT_WINDOW_TOKENS",
     "MINIMAL_PROMPT_KINDS",
+    "FlushOutcome",
+    "FlushRequest",
     "HostKit",
     "SessionState",
     "TurnContext",

@@ -32,7 +32,7 @@ def _session(kind="main", **entry) -> SessionState:
 def test_after_turn_records_a_fresh_token_snapshot(tmp_path):
     session = _session()
 
-    record = _kit(tmp_path).after_turn(session, usage=TurnUsage(5000, 120))
+    record = _kit(tmp_path).after_turn(session, transcript=(), usage=TurnUsage(5000, 120))
 
     assert dict(record.session.entry) == {
         "sessionId": "s1",
@@ -49,10 +49,10 @@ def test_after_turn_records_a_fresh_token_snapshot(tmp_path):
 
 def test_after_turn_without_usage_reports_missing_tokens(tmp_path):
     kit = _kit(tmp_path)
-    fresh = kit.after_turn(_session(), usage=TurnUsage(5000, 10)).session
+    fresh = kit.after_turn(_session(), transcript=(), usage=TurnUsage(5000, 10)).session
 
-    stale = kit.after_turn(fresh, usage=None)
-    output_only = kit.after_turn(fresh, usage=TurnUsage(prompt_tokens=None, completion_tokens=7))
+    stale = kit.after_turn(fresh, transcript=(), usage=None)
+    output_only = kit.after_turn(fresh, transcript=(), usage=TurnUsage(prompt_tokens=None, completion_tokens=7))
 
     assert stale.flush_decision.reason == "missing_tokens"
     assert stale.session.entry["totalTokensFresh"] is False
@@ -60,7 +60,7 @@ def test_after_turn_without_usage_reports_missing_tokens(tmp_path):
     assert stale.session.last_output_tokens is None
     assert output_only.flush_decision.reason == "missing_tokens"
     assert output_only.session.last_output_tokens == 7
-    assert kit.after_turn(fresh, usage=TurnUsage(0)).flush_decision.reason == "missing_tokens"
+    assert kit.after_turn(fresh, transcript=(), usage=TurnUsage(0)).flush_decision.reason == "missing_tokens"
 
 
 CASES = [
@@ -83,7 +83,7 @@ def test_after_turn_decision_equals_explain_memory_flush_trigger(tmp_path, entry
     session = _session(**entry)
 
     record = _kit(tmp_path, timezone="Europe/Istanbul", time_format="12").after_turn(
-        session, usage=usage, context_window_tokens=window, transcript_bytes=size
+        session, transcript=(), usage=usage, context_window_tokens=window, transcript_bytes=size
     )
 
     effective_window = window if window is not None else 200_000
@@ -109,18 +109,18 @@ def test_after_turn_decision_equals_explain_memory_flush_trigger(tmp_path, entry
 
 def test_after_turn_uses_no_prompt_estimate(tmp_path):
     # Threshold at the default window: 200,000 - 20,000 reserve - 4,000 soft = 176,000.
-    record = _kit(tmp_path).after_turn(_session(), usage=TurnUsage(175_990, 5))
+    record = _kit(tmp_path).after_turn(_session(), transcript=(), usage=TurnUsage(175_990, 5))
 
     assert record.flush_decision.threshold == 176_000
     assert record.flush_decision.total_tokens == 175_995
     assert record.flush_decision.reason == "under_threshold"
-    assert _kit(tmp_path).after_turn(_session(), usage=TurnUsage(175_990, 10)).flush_decision.reason == (
+    assert _kit(tmp_path).after_turn(_session(), transcript=(), usage=TurnUsage(175_990, 10)).flush_decision.reason == (
         "token_threshold"
     )
 
 
 def test_after_turn_defaults_to_the_upstream_context_window(tmp_path):
-    record = _kit(tmp_path).after_turn(_session(), usage=TurnUsage(1))
+    record = _kit(tmp_path).after_turn(_session(), transcript=(), usage=TurnUsage(1))
 
     assert DEFAULT_CONTEXT_WINDOW_TOKENS == 200_000
     assert record.flush_plan == build_memory_flush_plan(
@@ -130,7 +130,7 @@ def test_after_turn_defaults_to_the_upstream_context_window(tmp_path):
 
 def test_heartbeat_sessions_never_flush(tmp_path):
     record = _kit(tmp_path).after_turn(
-        _session("heartbeat"), usage=TurnUsage(199_000), transcript_bytes=5 * 1024 * 1024
+        _session("heartbeat"), transcript=(), usage=TurnUsage(199_000), transcript_bytes=5 * 1024 * 1024
     )
 
     assert record.flush_decision.should_flush is False
@@ -142,17 +142,17 @@ def test_after_turn_is_idempotent(tmp_path):
     kit = _kit(tmp_path)
     session = _session()
 
-    first = kit.after_turn(session, usage=TurnUsage(4000, 30), transcript_bytes=100)
-    second = kit.after_turn(session, usage=TurnUsage(4000, 30), transcript_bytes=100)
+    first = kit.after_turn(session, transcript=(), usage=TurnUsage(4000, 30), transcript_bytes=100)
+    second = kit.after_turn(session, transcript=(), usage=TurnUsage(4000, 30), transcript_bytes=100)
 
     assert first == second
-    assert kit.after_turn(first.session, usage=TurnUsage(4000, 30), transcript_bytes=100) == first
+    assert kit.after_turn(first.session, transcript=(), usage=TurnUsage(4000, 30), transcript_bytes=100) == first
 
 
 def test_after_turn_does_not_share_the_entry(tmp_path):
     session = _session(memoryFlush={"kind": "failed", "failureCount": 1})
 
-    record = _kit(tmp_path).after_turn(session, usage=TurnUsage(10))
+    record = _kit(tmp_path).after_turn(session, transcript=(), usage=TurnUsage(10))
 
     assert record.session.entry["memoryFlush"] == session.entry["memoryFlush"]
     assert record.session.entry["memoryFlush"] is not session.entry["memoryFlush"]

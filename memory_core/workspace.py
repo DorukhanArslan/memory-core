@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import stat
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -146,6 +147,57 @@ def _collect_memory_files_from_dir(directory: Path, files: list[Path]) -> None:
 
     visit(directory)
 
+
+
+# One lock per (workspace root, file) for this process: curated writes and the memory flush's
+# daily append read, check and write under it, so parallel tool calls never interleave.
+_FILE_LOCKS: dict[tuple[str, str], threading.Lock] = {}
+_FILE_LOCKS_GUARD = threading.Lock()
+
+
+def workspace_file_lock(root: Path, rel_path: str) -> threading.Lock:
+    """The process-wide write lock of ``rel_path`` under the (resolved) workspace ``root``."""
+    with _FILE_LOCKS_GUARD:
+        return _FILE_LOCKS.setdefault((str(root), rel_path), threading.Lock())
+
+
+def check_writable_memory_file(root: Path, rel_path: str) -> None:
+    """Refuse a memory write target that a plain append could redirect or share.
+
+    Raises ``UnsafeMemoryPathError`` when a parent directory of ``rel_path`` under ``root`` is a
+    symlink or not a directory, or when the target exists as a symlink, a non-regular file or a
+    file with more than one hard link. Writes never follow or repair such entries.
+    """
+    current = root
+    for part in rel_path.split("/")[:-1]:
+        current = current / part
+        if current.is_symlink():
+            raise UnsafeMemoryPathError(f"{part}/ is a symlink; memory writes never follow symlinks")
+        if os.path.lexists(current) and not current.is_dir():
+            raise UnsafeMemoryPathError(f"{part} is not a directory")
+    target = root / rel_path
+    if not os.path.lexists(target):
+        return
+    info = os.lstat(target)
+    if stat.S_ISLNK(info.st_mode):
+        raise UnsafeMemoryPathError(f"{rel_path} is a symlink; memory writes never follow symlinks")
+    if not stat.S_ISREG(info.st_mode):
+        raise UnsafeMemoryPathError(f"{rel_path} is not a regular file")
+    if info.st_nlink > 1:
+        raise UnsafeMemoryPathError(f"{rel_path} has more than one hard link")
+
+
+def append_daily_memory_file(root: str | os.PathLike[str], rel_path: str, entry: str) -> Path:
+    """:meth:`MemoryWorkspace.append_daily_memory` under the file's write lock.
+
+    The shared daily append of the curated daily note and the memory flush's ``write`` tool:
+    ``rel_path`` must be ``memory/YYYY-MM-DD.md`` and pass :func:`check_writable_memory_file`.
+    """
+    resolved = Path(root).resolve()
+    validate_daily_memory_path(rel_path)
+    with workspace_file_lock(resolved, rel_path):
+        check_writable_memory_file(resolved, rel_path)
+        return MemoryWorkspace(resolved).append_daily_memory(rel_path, entry)
 
 
 @dataclass(frozen=True)

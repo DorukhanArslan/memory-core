@@ -13,6 +13,8 @@ Ported from OpenClaw v2026.9.6 (``eb377ac59e6``):
 - ``src/auto-reply/reply/agent-runner-memory.ts`` ``runMemoryFlushIfNeeded``: the flush
   threshold, the transcript-size force path, the runtime skips and the ``memoryFlush``
   success/failure state.
+- ``src/auto-reply/reply/memory-flush-session.ts`` ``ensureMemoryFlushTargetFile``: the empty
+  target file created before the flush run.
 
 The host supplies the context window, the token snapshot and the transcript size; memory-core
 decides. Writes stay append-only to ``memory/YYYY-MM-DD.md`` (``memory_core.memory_paths``).
@@ -24,6 +26,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import tzinfo
 import math
+import os
+from pathlib import Path
 import re
 from typing import Any
 
@@ -37,10 +41,12 @@ from memory_core._memory_flush_constants import (
     MAX_FLUSH_ERROR_LENGTH,
     MAX_FLUSH_FAILURES,
     MEMORY_FLUSH_APPEND_ONLY_HINT,
+    MEMORY_FLUSH_INVALID_TARGET_ERROR,
     MEMORY_FLUSH_NO_REPLY_HINT_TEMPLATE,
     MEMORY_FLUSH_READ_ONLY_HINT,
     MEMORY_FLUSH_REQUIRED_HINTS,
     MEMORY_FLUSH_TARGET_HINT,
+    MEMORY_FLUSH_TARGET_OUTSIDE_ERROR,
     SESSION_TOTAL_TOKENS_VERSION,
     SILENT_REPLY_TOKEN,
     UNIT_MULTIPLIERS,
@@ -54,6 +60,7 @@ from memory_core.current_time import (
     utc_and_local_instants,
 )
 from memory_core.memory_paths import UnsafeMemoryPathError, validate_daily_memory_path
+from memory_core.workspace import check_writable_memory_file, workspace_file_lock
 
 __all__ = [
     "DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR",
@@ -78,6 +85,7 @@ __all__ = [
     "build_memory_flush_plan",
     "build_memory_flush_plan_from_config",
     "ensure_memory_flush_safety_hints",
+    "ensure_memory_flush_target_file",
     "ensure_no_reply_hint",
     "explain_memory_flush_trigger",
     "followup_uses_cli_runtime",
@@ -589,6 +597,35 @@ def record_memory_flush_failure(
         exhausted=exhausted,
         error=truncated_error,
     )
+
+
+def ensure_memory_flush_target_file(root: str | os.PathLike[str], relative_path: str) -> Path:
+    """Create the flush target empty before the flush run; returns its path.
+
+    Port of ``ensureMemoryFlushTargetFile`` (src/auto-reply/reply/memory-flush-session.ts:64-96,
+    called by agent-runner-memory.ts:1447-1451): a blank or absolute ``relative_path`` raises
+    ``UnsafeMemoryPathError("Invalid memory flush target path")``, one that leaves ``root``
+    ``... "Memory flush target path must stay inside the workspace"``; then the parent
+    directories are created and the file is opened for append. So a flush that answers
+    ``NO_REPLY`` still leaves the empty daily file, and ``memory/`` counts as setup evidence.
+    Deviation (stricter than upstream): under the file's write lock, a symlinked or non-directory
+    parent and a target that is a symlink, not a regular file or hard-linked are refused
+    (``memory_core.workspace.check_writable_memory_file``), as the flush write refuses them.
+    """
+    relative = js_trim(relative_path) if isinstance(relative_path, str) else ""
+    if not relative or os.path.isabs(relative):
+        raise UnsafeMemoryPathError(MEMORY_FLUSH_INVALID_TARGET_ERROR)
+    workspace_root = Path(root).resolve()
+    target = Path(os.path.normpath(workspace_root / relative))
+    inside = os.path.relpath(target, workspace_root).replace(os.sep, "/")
+    if inside == "." or inside.startswith("..") or os.path.isabs(inside):
+        raise UnsafeMemoryPathError(MEMORY_FLUSH_TARGET_OUTSIDE_ERROR)
+    with workspace_file_lock(workspace_root, inside):
+        check_writable_memory_file(workspace_root, inside)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+        os.close(os.open(target, flags, 0o666))
+    return target
 
 
 def followup_uses_cli_runtime(

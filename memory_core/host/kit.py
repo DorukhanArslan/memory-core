@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -32,21 +32,28 @@ from memory_core.bootstrap.files import (
     BootstrapContextRunKind,
     ContextInjectionMode,
 )
+from memory_core._memory_flush_constants import CONVERSATION_CONTEXT_HEADER
 from memory_core.client import Memory
 from memory_core.config import MemoryConfig
+from memory_core.context_engine_lifecycle import strip_runtime_context_custom_messages
 from memory_core.consolidation import record_short_term_recalls, undecorate_search_results
 from memory_core.current_time import DEFAULT_TIME_FORMAT, TimeFormat, resolve_time_format
 from memory_core.curation import CurationPolicy, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.host._calls import ToolCallRefused, read_tool_call, tool_error
+from memory_core.host.flush import FlushRequest
 from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
 from memory_core.memory_flush import (
+    MemoryFlushFailureOutcome,
     MemoryFlushPlan,
     MemoryFlushTriggerDecision,
     build_memory_flush_plan,
+    ensure_memory_flush_target_file,
     explain_memory_flush_trigger,
+    record_memory_flush_failure,
     resolve_fresh_session_total_tokens,
 )
+from memory_core.memory_paths import UnsafeMemoryPathError
 from memory_core.prompt_section import build_prompt_section
 from memory_core.runtime_context_prompt import build_runtime_context_system_context
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
@@ -97,12 +104,16 @@ class TurnRecord:
     """A completed turn: the session with its token snapshot and the flush decision.
 
     ``flush_plan`` is the plan for the turn's context window (the meter's terms);
-    ``flush_decision`` is ``explain_memory_flush_trigger``'s answer.
+    ``flush_decision`` is ``explain_memory_flush_trigger``'s answer. ``flush`` is set when the
+    flush is due; ``flush_failure`` when it was due but its target file could not be created,
+    which counts as one failed flush, as upstream (``session`` then carries that strike).
     """
 
     session: SessionState
     flush_plan: MemoryFlushPlan
     flush_decision: MemoryFlushTriggerDecision
+    flush: FlushRequest | None = None
+    flush_failure: MemoryFlushFailureOutcome | None = None
 
 
 class HostKit:
@@ -297,6 +308,7 @@ class HostKit:
         self,
         session: SessionState,
         *,
+        transcript: Sequence[Mapping[str, Any]],
         usage: TurnUsage | None,
         context_window_tokens: int | None = None,
         transcript_bytes: int | None = None,
@@ -309,7 +321,10 @@ class HostKit:
         count is the fresh total plus the last output (``resolveEffectivePromptTokens`` without
         an estimate, memory-flush.ts:28-39). ``context_window_tokens`` defaults to
         :data:`DEFAULT_CONTEXT_WINDOW_TOKENS`; without ``transcript_bytes`` the transcript-size
-        gate stays off. Heartbeat sessions never flush.
+        gate stays off. Heartbeat sessions never flush. A due flush first creates its empty
+        target (``ensure_memory_flush_target_file``, agent-runner-memory.ts:1447-1451), then
+        returns the :class:`~memory_core.host.flush.FlushRequest` over ``transcript``, the host's
+        visible messages of the session.
         """
         window = (
             context_window_tokens
@@ -337,7 +352,66 @@ class HostKit:
             transcript_byte_size=transcript_bytes,
             is_heartbeat=recorded.kind == "heartbeat",
         )
-        return TurnRecord(session=recorded, flush_plan=plan, flush_decision=decision)
+        if not decision.should_flush:
+            return TurnRecord(session=recorded, flush_plan=plan, flush_decision=decision)
+        try:
+            ensure_memory_flush_target_file(self._root, plan.relative_path)
+        except (UnsafeMemoryPathError, OSError) as error:
+            # A failed flush preparation is a failed flush (agent-runner-memory.ts recordFailure).
+            failure = record_memory_flush_failure(entry, error=error)
+            return TurnRecord(
+                session=replace(recorded, entry=failure.entry),
+                flush_plan=plan,
+                flush_decision=decision,
+                flush_failure=failure,
+            )
+        count = entry.get("compactionCount")
+        return TurnRecord(
+            session=recorded,
+            flush_plan=plan,
+            flush_decision=decision,
+            flush=FlushRequest(
+                self._memory,
+                session_id=recorded.session_id,
+                compaction_count=0 if count is None else count,
+                target=plan.relative_path,
+                messages=self._flush_messages(recorded, plan, transcript),
+            ),
+        )
+
+    def _flush_messages(
+        self,
+        session: SessionState,
+        plan: MemoryFlushPlan,
+        transcript: Sequence[Mapping[str, Any]],
+    ) -> tuple[dict[str, str], ...]:
+        # The flush turn is a full non-interactive run (bootstrap mode none) whose extra system
+        # prompt is the flush system prompt under ## Conversation Context
+        # (agent-runner-memory.ts:1452-1454, system-prompt.ts:1254-1257). It offers no memory
+        # tools, so no Memory Recall section; only the visible text rows are replayed.
+        context = self._workspace_context(session, is_interactive_user_facing=False)
+        system = "\n\n".join(
+            part
+            for part in (
+                context.prompt_text.strip(),
+                f"{CONVERSATION_CONTEXT_HEADER}\n{plan.system_prompt}",
+            )
+            if part
+        )
+        rows = strip_runtime_context_custom_messages(
+            [dict(message) for message in transcript], identity=self._identity
+        )
+        return (
+            {"role": "system", "content": system},
+            *(
+                {"role": row["role"], "content": row["content"]}
+                for row in rows
+                if row.get("role") in ("user", "assistant")
+                and isinstance(row.get("content"), str)
+                and row["content"]
+            ),
+            {"role": "user", "content": plan.prompt},
+        )
 
     def _workspace_context(
         self,
@@ -346,6 +420,7 @@ class HostKit:
         run_kind: BootstrapContextRunKind | None = None,
         context_mode: BootstrapContextMode = "full",
         has_bootstrap_file_access: bool = False,
+        is_interactive_user_facing: bool = True,
     ) -> WorkspaceContext:
         return build_workspace_context(
             self._root,
@@ -355,6 +430,7 @@ class HostKit:
             context_mode=context_mode,
             context_injection=self._context_injection,
             has_completed_bootstrap_turn=session.completed_bootstrap_turn,
+            is_interactive_user_facing=is_interactive_user_facing,
             has_bootstrap_file_access=has_bootstrap_file_access,
             max_chars=self._bootstrap_max_chars,
             total_max_chars=self._bootstrap_total_max_chars,

@@ -4,8 +4,9 @@ Upstream: extensions/memory-core/src/flush-plan.ts (buildMemoryFlushPlan),
 src/agents/agent-compaction-constants.ts (resolveEffectiveCompactionReserveTokens),
 src/auto-reply/reply/memory-flush.ts (resolveCompactionThreshold, shouldRunMemoryFlush,
 shouldRunPreflightCompaction, hasAlreadyFlushedForCurrentCompaction),
-src/config/sessions/types.ts (resolveFreshSessionTotalTokens) and
-src/auto-reply/reply/agent-runner-memory.ts (runMemoryFlushIfNeeded, recordMemoryFlushFailure).
+src/config/sessions/types.ts (resolveFreshSessionTotalTokens),
+src/auto-reply/reply/agent-runner-memory.ts (runMemoryFlushIfNeeded, recordMemoryFlushFailure)
+and src/auto-reply/reply/memory-flush-session.ts (ensureMemoryFlushTargetFile).
 """
 
 from dataclasses import replace
@@ -29,6 +30,7 @@ from memory_core.memory_flush import (
     build_memory_flush_plan,
     build_memory_flush_plan_from_config,
     ensure_memory_flush_safety_hints,
+    ensure_memory_flush_target_file,
     ensure_no_reply_hint,
     explain_memory_flush_trigger,
     followup_uses_cli_runtime,
@@ -754,3 +756,40 @@ def test_flush_plan_prompt_uses_the_host_time_format():
     assert "Current time: Sunday, May 3rd, 2026 - 7:00 PM (Europe/Istanbul)" in plan.prompt
     with pytest.raises(ValueError):
         build_memory_flush_plan(workspace_dir=None, now_ms=NOW_MS, time_format="auto")
+
+
+def test_ensure_memory_flush_target_file_creates_the_empty_target(tmp_path):
+    path = ensure_memory_flush_target_file(tmp_path, "memory/2026-09-25.md")
+
+    assert path == tmp_path.resolve() / "memory" / "2026-09-25.md"
+    assert path.read_bytes() == b""
+    path.write_text("- kept\n")
+    assert ensure_memory_flush_target_file(str(tmp_path), " memory/2026-09-25.md ") == path
+    assert path.read_text() == "- kept\n"
+
+
+def test_flush_target_file_refuses_paths_outside_the_workspace_and_symlinks(tmp_path):
+    root = tmp_path / "ws"
+    root.mkdir()
+    for path in ("", "  ", str(root / "memory" / "x.md")):
+        with pytest.raises(UnsafeMemoryFlushTargetError, match="^Invalid memory flush target path$"):
+            ensure_memory_flush_target_file(root, path)
+    for path in ("../x.md", "memory/../../x.md", "."):
+        with pytest.raises(
+            UnsafeMemoryFlushTargetError,
+            match="^Memory flush target path must stay inside the workspace$",
+        ):
+            ensure_memory_flush_target_file(root, path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (root / "memory").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(UnsafeMemoryFlushTargetError, match="symlink"):
+        ensure_memory_flush_target_file(root, "memory/2026-09-25.md")
+    assert list(outside.iterdir()) == []
+    (root / "memory").unlink()
+    (root / "memory").mkdir()
+    (root / "memory" / "2026-09-25.md").symlink_to(outside / "note.md")
+    with pytest.raises(UnsafeMemoryFlushTargetError, match="symlink"):
+        ensure_memory_flush_target_file(root, "memory/2026-09-25.md")
+    assert not (outside / "note.md").exists()
+    assert extracted.MEMORY_FLUSH_INVALID_TARGET_ERROR == "Invalid memory flush target path"

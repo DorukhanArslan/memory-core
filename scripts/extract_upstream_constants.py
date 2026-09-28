@@ -24,8 +24,12 @@ character as a ``\\u`` escape:
   the flush plan and compaction reserve defaults (src/agents/agent-settings.ts,
   src/agents/agent-compaction-constants.ts), the flush failure limits
   (src/auto-reply/reply/agent-runner-memory.ts), ``SESSION_TOTAL_TOKENS_VERSION``
-  (src/config/sessions/types.ts) and the byte-size unit table of ``forceFlushTranscriptBytes``
-  (src/cli/parse-bytes.ts)::
+  (src/config/sessions/types.ts), the byte-size unit table of ``forceFlushTranscriptBytes``
+  (src/cli/parse-bytes.ts), and the texts of the flush run the host kit builds: the ``write``
+  tool (src/agents/sessions/tools/write.ts), its append-only flush wrapper
+  (src/agents/agent-tools.read.ts ``wrapToolMemoryFlushAppendOnlyWrite``), the target-file
+  errors (src/auto-reply/reply/memory-flush-session.ts ``ensureMemoryFlushTargetFile``) and the
+  ``## Conversation Context`` header (src/agents/system-prompt.ts)::
 
     .venv/bin/python scripts/extract_upstream_constants.py --repo /tmp/openclaw-head
 
@@ -61,6 +65,15 @@ COMPACTION_CONSTANTS_SOURCE = "src/agents/agent-compaction-constants.ts"
 RUNNER_MEMORY_SOURCE = "src/auto-reply/reply/agent-runner-memory.ts"
 SESSION_TYPES_SOURCE = "src/config/sessions/types.ts"
 PARSE_BYTES_SOURCE = "src/cli/parse-bytes.ts"
+WRITE_TOOL_SOURCE = "src/agents/sessions/tools/write.ts"
+AGENT_TOOLS_READ_SOURCE = "src/agents/agent-tools.read.ts"
+FLUSH_SESSION_SOURCE = "src/auto-reply/reply/memory-flush-session.ts"
+SYSTEM_PROMPT_SOURCE = "src/agents/system-prompt.ts"
+# Template-literal expressions of the flush write wrapper -> str.format field names.
+FLUSH_WRITE_TEMPLATE_FIELDS = {
+    "tool.description": "description",
+    "options.relativePath": "relative_path",
+}
 # Template-literal expressions of the finding texts -> str.format field names.
 FINDING_TEMPLATE_FIELDS = {
     "target.primaryAgentId": "agent_id",
@@ -761,6 +774,36 @@ def extract_memory_flush(repo: Path) -> dict[str, object]:
         "UNIT_MULTIPLIERS": ts_numeric_record(
             (repo / PARSE_BYTES_SOURCE).read_text(encoding="utf-8"), "UNIT_MULTIPLIERS"
         ),
+        **extract_flush_run(repo),
+    }
+
+
+def extract_flush_run(repo: Path) -> dict[str, str]:
+    """Texts of the flush run: the write tool, its flush wrapper, target errors, context header."""
+    write = (repo / WRITE_TOOL_SOURCE).read_text(encoding="utf-8")
+    wrapper = (repo / AGENT_TOOLS_READ_SOURCE).read_text(encoding="utf-8")
+    session = (repo / FLUSH_SESSION_SOURCE).read_text(encoding="utf-8")
+    system_prompt = (repo / SYSTEM_PROMPT_SOURCE).read_text(encoding="utf-8")
+    return {
+        "WRITE_TOOL_DESCRIPTION": ts_string_at(write, "Write/overwrite file"),
+        "WRITE_TOOL_PATH_DESCRIPTION": ts_string_at(write, "File path;"),
+        "WRITE_TOOL_CONTENT_DESCRIPTION": ts_string_at(write, "File content."),
+        "MEMORY_FLUSH_WRITE_DESCRIPTION_TEMPLATE": ts_template_at(
+            wrapper, "${tool.description} During memory flush", FLUSH_WRITE_TEMPLATE_FIELDS
+        ),
+        "MEMORY_FLUSH_WRITE_RESTRICTED_TEMPLATE": ts_template_at(
+            wrapper, "Memory flush writes are restricted to", FLUSH_WRITE_TEMPLATE_FIELDS
+        ),
+        "MEMORY_FLUSH_WRITE_APPENDED_TEMPLATE": ts_template_at(
+            wrapper, "Appended content to", FLUSH_WRITE_TEMPLATE_FIELDS
+        ),
+        "MEMORY_FLUSH_INVALID_TARGET_ERROR": ts_string_at(
+            session, "Invalid memory flush target path"
+        ),
+        "MEMORY_FLUSH_TARGET_OUTSIDE_ERROR": ts_string_at(
+            session, "Memory flush target path must stay inside"
+        ),
+        "CONVERSATION_CONTEXT_HEADER": ts_string_at(system_prompt, "## Conversation Context"),
     }
 
 
@@ -857,12 +900,18 @@ def outputs(repo: Path) -> dict[Path, str]:
                 RUNNER_MEMORY_SOURCE,
                 SESSION_TYPES_SOURCE,
                 PARSE_BYTES_SOURCE,
+                WRITE_TOOL_SOURCE,
+                AGENT_TOOLS_READ_SOURCE,
+                FLUSH_SESSION_SOURCE,
+                SYSTEM_PROMPT_SOURCE,
             ],
             note=[
                 "The default prompts are the joined upstream arrays with SILENT_REPLY_TOKEN",
                 "substituted; MEMORY_FLUSH_NO_REPLY_HINT_TEMPLATE is the str.format template of",
                 "ensureNoReplyHint (fields: text, silent_reply_token); UNIT_MULTIPLIERS is the",
-                "byte-size unit table of parseByteSize.",
+                "byte-size unit table of parseByteSize. The MEMORY_FLUSH_WRITE_*_TEMPLATE texts",
+                "are str.format templates of wrapToolMemoryFlushAppendOnlyWrite (fields:",
+                "description, relative_path).",
             ],
         ),
     }

@@ -8,13 +8,19 @@ src/agents/agent-settings.ts,
 src/agents/agent-compaction-constants.ts,
 src/auto-reply/reply/agent-runner-memory.ts,
 src/config/sessions/types.ts,
-src/cli/parse-bytes.ts.
+src/cli/parse-bytes.ts,
+src/agents/sessions/tools/write.ts,
+src/agents/agent-tools.read.ts,
+src/auto-reply/reply/memory-flush-session.ts,
+src/agents/system-prompt.ts.
 Do not edit by hand: re-run the script; tests/integration/test_extracted_upstream_constants.py
 checks these values against the source.
 The default prompts are the joined upstream arrays with SILENT_REPLY_TOKEN
 substituted; MEMORY_FLUSH_NO_REPLY_HINT_TEMPLATE is the str.format template of
 ensureNoReplyHint (fields: text, silent_reply_token); UNIT_MULTIPLIERS is the
-byte-size unit table of parseByteSize.
+byte-size unit table of parseByteSize. The MEMORY_FLUSH_WRITE_*_TEMPLATE texts
+are str.format templates of wrapToolMemoryFlushAppendOnlyWrite (fields:
+description, relative_path).
 """
 
 from __future__ import annotations
@@ -49,3 +55,12 @@ UNIT_MULTIPLIERS: dict[str, int] = {
     'tb': 1099511627776,
     't': 1099511627776,
 }
+WRITE_TOOL_DESCRIPTION = 'Write/overwrite file; creates parent directories.'
+WRITE_TOOL_PATH_DESCRIPTION = 'File path; relative/absolute.'
+WRITE_TOOL_CONTENT_DESCRIPTION = 'File content.'
+MEMORY_FLUSH_WRITE_DESCRIPTION_TEMPLATE = '{description} During memory flush, this tool may only append to {relative_path}.'
+MEMORY_FLUSH_WRITE_RESTRICTED_TEMPLATE = 'Memory flush writes are restricted to {relative_path}; use that path only.'
+MEMORY_FLUSH_WRITE_APPENDED_TEMPLATE = 'Appended content to {relative_path}.'
+MEMORY_FLUSH_INVALID_TARGET_ERROR = 'Invalid memory flush target path'
+MEMORY_FLUSH_TARGET_OUTSIDE_ERROR = 'Memory flush target path must stay inside the workspace'
+CONVERSATION_CONTEXT_HEADER = '## Conversation Context'

@@ -7,10 +7,9 @@ turn and, when the memory flush is due, runs the flush turn on the same model wi
 append-only ``write`` tool. ``/new`` and ``/reset`` save the ending session through the kit
 and start the next one in the same thread. The session's memory state lives in the graph
 state, so the checkpointer keeps it across turns; one thread is one session key. The adapter
-helpers
-(``memory_core.adapters.langgraph``) convert messages and answer tool calls; they import no
-framework. docs/integrations/langgraph.md is the guide, its Findings section what the kit
-lacked.
+helpers (``memory_core.adapters.langgraph``) convert messages and answer tool calls; they
+import no framework. docs/integrations/langgraph.md is the guide, its Findings section what
+the kit lacked.
 
 ``main`` is a terminal chat against any OpenAI-compatible endpoint (``pip install
 "memory-core[langgraph]" langchain-openai``): set ``OPENAI_API_KEY`` and ``OPENAI_MODEL``, and
@@ -27,8 +26,8 @@ import os
 import sys
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from langchain_core.language_models import BaseChatModel

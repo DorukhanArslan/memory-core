@@ -26,8 +26,18 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   project and `--check` checks that the name is spelled consistently (README › Rename the
   Project).
 - Packaging: a hatchling build (wheel and sdist). The core depends on `httpx` only; the Lab's
-  `fastapi`, `jinja2` and `uvicorn` are the `demo` extra; the `dev` dependency group (PEP 735:
-  pytest, ruff and the demo extra) is for a checkout and stays out of the package metadata.
+  `fastapi`, `jinja2` and `uvicorn` are the `demo` extra; `langgraph` and `langchain-core` are
+  the `langgraph` extra (the stack the LangGraph adapter is tested against; the adapter imports
+  neither); the `dev` dependency group (PEP 735: pytest, ruff, langchain-openai and both
+  extras) is for a checkout and stays out of the package metadata.
+- The LangGraph host integration (docs/integrations/langgraph.md):
+  `memory_core.adapters.langgraph` holds `transcript_rows`, `turn_usage`, `has_tool_calls`,
+  `tool_messages` and `PendingTurn`, framework-free helpers for a LangGraph graph over the host
+  kit (adapter-only), and
+  `examples/langgraph_agent.py` is the graph a LangGraph app copies (`build_graph`: the kit's
+  prompt and tools, a tools node over `HostKit.dispatch`, the flush after the reply on the same
+  model, `/new` and `/reset`, the session state in a checkpointer) with a terminal `main` for
+  any OpenAI-compatible endpoint.
 
 ### Changed
 

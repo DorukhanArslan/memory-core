@@ -20,12 +20,14 @@ Python 3.11 or newer. From a checkout (nothing is published to a package index y
 ```bash
 pip install /path/to/memory-core            # the package; its only dependency is httpx
 pip install "/path/to/memory-core[demo]"    # adds FastAPI, Jinja2 and uvicorn for the Lab
+pip install "/path/to/memory-core[langgraph]" langchain-openai  # LangGraph, for its example
 ```
 
 The Lab (`demo/`), the tests, the scripts and the examples stay in the checkout; the
 package holds only `memory_core/`. For development, create the checkout's environment with
-[uv](https://docs.astral.sh/uv/) (an editable install with the demo extra, plus pytest and
-ruff from the `dev` dependency group, which is not part of the package's metadata):
+[uv](https://docs.astral.sh/uv/) (an editable install with the demo and langgraph extras,
+plus langchain-openai, pytest and ruff from the `dev` dependency group, which is not part of
+the package's metadata):
 
 ```bash
 uv sync
@@ -135,6 +137,9 @@ if __name__ == "__main__":
   and `/reset` go through `kit.on_new_session`, the scheduled heartbeat turn through
   `kit.heartbeat_prompt`. The full contract and the upstream sites it follows:
   [docs/host_kit.md](docs/host_kit.md).
+- For LangGraph, [examples/langgraph_agent.py](examples/langgraph_agent.py) is this loop as a
+  `StateGraph` with a checkpointer, one thread per session
+  ([LangGraph Integration](docs/integrations/langgraph.md)).
 
 ## Python API
 
@@ -232,8 +237,9 @@ FTS-only mode that needs no embedding provider. See
 
 See [Package Boundary](docs/package_boundary.md) for what belongs to core
 memory, runtime adapters, demo code, and out-of-scope host runtime behavior.
-See [LangGraph Integration](docs/integrations/langgraph.md) for the LangGraph host
-integration over the host kit.
+See [LangGraph Integration](docs/integrations/langgraph.md) for the LangGraph agent over the
+host kit (`examples/langgraph_agent.py`, the `memory_core.adapters.langgraph` helpers) and
+what the kit's API lacked for it.
 See [Live SDK Integration](docs/integrations/live.md) for streaming turn
 assembly, sentence-level TTS events, subject-scoped memory, and post-session
 summary writes.

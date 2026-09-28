@@ -122,6 +122,10 @@ thin.
 
 Included:
 
+- `memory_core.adapters.langgraph`: framework-free helpers for a LangGraph host over the
+  host kit (`transcript_rows`, `turn_usage`, `has_tool_calls`, `tool_messages`,
+  `PendingTurn`); it imports no framework, owns no loop and calls no model. The graph
+  itself is host code: `examples/langgraph_agent.py` (docs/integrations/langgraph.md)
 - `memory_core.live` (subject memory, live turns, session summaries) and
   `SubjectConsolidation`, which only routes a subject's workspace into
   `memory_core.consolidation`

@@ -12,6 +12,7 @@ import itertools
 import json
 import os
 import re
+import sys
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -792,3 +793,52 @@ def test_example_main_chats_against_an_openai_compatible_endpoint(
     assert [tool["function"]["name"] for tool in flush["tools"]] == ["write"]
     assert turn["messages"][0]["role"] == "system"
     assert (tmp_path / "my-agent-app" / "MEMORY.md").exists() is False
+
+
+def _doc() -> str:
+    return (Path(example.__file__).parents[1] / "docs/integrations/langgraph.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_langgraph_doc_usage_runs_the_graph(tmp_path: Path, monkeypatch, capsys):
+    # The doc's app snippet, with a scripted model in place of ChatOpenAI and the example
+    # module as the reader's copy of it.
+    langchain_openai = pytest.importorskip("langchain_openai")
+    code = _doc().split("```python\n", 1)[1].split("\n```\n", 1)[0]
+    built = []
+
+    def chat_openai(**options):
+        built.append(options)
+        return ScriptedChatModel(script=memory_script())
+
+    monkeypatch.setattr(langchain_openai, "ChatOpenAI", chat_openai)
+    monkeypatch.setitem(sys.modules, "langgraph_agent", example)
+    monkeypatch.setenv("OPENAI_MODEL", "doc-model")
+    monkeypatch.chdir(tmp_path)
+    namespace: dict = {}
+
+    exec(code, namespace)
+
+    assert built == [{"model": "doc-model", "stream_usage": True}]
+    assert namespace["reply"].content == "reply 1"
+    state = namespace["graph"].get_state(namespace["config"]).values
+    assert state["memory_maintenance"]["wrote"] == [FACT]
+    assert str(state["memory_maintenance"]) in capsys.readouterr().out
+    (model,) = [value for value in namespace.values() if isinstance(value, ScriptedChatModel)]
+    assert "Channel: web chat" in model.calls[0].messages[1].content
+
+
+def test_langgraph_doc_lists_the_adapter_exports():
+    import memory_core.adapters as adapters
+
+    table = _doc().split("### Adapter\n", 1)[1].split("\n### ", 1)[0]
+    names = set(re.findall(r"^\| `(\w+)", table, flags=re.MULTILINE))
+
+    assert names == set(adapters.__all__) == {
+        "transcript_rows",
+        "turn_usage",
+        "has_tool_calls",
+        "tool_messages",
+        "PendingTurn",
+    }

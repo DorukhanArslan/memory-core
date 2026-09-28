@@ -230,3 +230,17 @@ def test_heartbeat_complete_twice_raises(tmp_path):
 
     with pytest.raises(RuntimeError, match="already completed"):
         run.complete("NO_REPLY")
+
+
+def test_heartbeat_prompt_without_ensure_writes_nothing(tmp_path):
+    # A preview (the Lab's prompt inspector) must not seed or delete BOOTSTRAP.md.
+    _store(tmp_path, _job("job-a", "inbox"))
+    kit = _kit(tmp_path, templates={"AGENTS.md": "# AGENTS.md\n"}, seed_bootstrap=True)
+    before = sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))
+
+    run = kit.heartbeat_prompt(_session(), ensure=False)
+
+    assert run.context is not None and run.context.workspace_init is None
+    assert [job.id for job in run.jobs] == ["job-a"]
+    assert sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")) == before
+    assert kit.heartbeat_prompt(_session()).context.workspace_init is not None

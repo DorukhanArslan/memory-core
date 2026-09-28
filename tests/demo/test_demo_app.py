@@ -1775,6 +1775,11 @@ def test_heartbeat_runs_due_jobs_through_the_tool_loop_and_decides_delivery(clie
     assert decision["delivered"] is True and decision["text"].startswith("Hatırlatma")
     run = frames_of(first, "done")[0]["run"]
     assert run["dueTasks"] == ["gunluk-takip"] and len(run["jobsRun"]) == 1
+    # HeartbeatRun.complete, then the flush decision after the run: heartbeats never flush.
+    order = [frame["event"] for frame in first if frame["event"] in {"prompt", "assistant_delta", "flush", "decision", "done"}]
+    assert order == ["prompt", "assistant_delta", "flush", "decision", "done"]
+    assert run["flush"]["reason"] == "runtime_skip:heartbeat"
+    assert lab.session("heartbeat").state.entry["totalTokens"] == 1_000
 
     waiting = client.get("/api/lab/heartbeat").json()
     [job] = waiting["jobs"]
@@ -1799,6 +1804,20 @@ def test_heartbeat_runs_due_jobs_through_the_tool_loop_and_decides_delivery(clie
     assert {"heartbeat.run", "heartbeat.llm", "heartbeat.decided", "automation.jobs_ran", "clock.changed"} <= set(
         event_types(client)
     )
+
+
+def test_heartbeat_preview_writes_nothing_and_the_run_ensures(client, lab, monkeypatch):
+    # The preflight is HostKit.heartbeat_prompt(ensure=False); the run's context ensures.
+    use_engine(monkeypatch, StubEngine([("NO_REPLY", [])]))
+    client.get("/api/lab/state")
+    (lab.root / "AGENTS.md").unlink()
+
+    preflight = client.get("/api/lab/heartbeat").json()["preflight"]
+
+    assert preflight["skipReason"] is None and preflight["message"].startswith("Follow the heartbeat monitor scratch")
+    assert not (lab.root / "AGENTS.md").exists()
+    heartbeat_run(client)
+    assert (lab.root / "AGENTS.md").exists()
 
 
 def test_heartbeat_run_records_only_the_jobs_in_its_turn(client, lab, monkeypatch):

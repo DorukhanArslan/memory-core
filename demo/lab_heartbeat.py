@@ -10,16 +10,17 @@ scratch. ``POST
 /api/lab/heartbeat/migrate`` runs both doctor migrations (HEARTBEAT.md into scratch, then its
 ``tasks:`` into automation jobs). ``POST /api/lab/heartbeat/legacy-file`` (demo-only) puts a
 legacy HEARTBEAT.md with the caller's text at the Lab root, since nothing else in the Lab can
-create a retired file, so the migration, its findings and its archive can be seen. ``POST /api/lab/heartbeat/run`` runs one heartbeat now:
-the due jobs become scheduled tasks, ``prepare_heartbeat_turn`` builds the prompt (skip reason
-``empty-heartbeat-file`` makes no model call), the injected context for session kind
-``heartbeat`` (PROACTIVE_PREFERENCES.md included on the memory-core layout), then the same host tool
-loop as chat turns, so the model can read daily notes with ``memory_search``/``memory_get``. The
-reply goes through ``decide_heartbeat_reply`` (``NO_REPLY`` and a legacy ``HEARTBEAT_OK`` ack are
-not delivered), the jobs whose tasks went into the turn are rescheduled from the run (a due job
-of another kind is the host's to run and stays due), and ``HostKit.after_turn`` reports the
-flush decision after the run (``runtime_skip:heartbeat``: heartbeats never flush). ``POST /api/lab/heartbeat/reply``
-decides a typed reply without a model.
+create a retired file, so the migration, its findings and its archive can be seen. ``POST
+/api/lab/heartbeat/run`` runs one heartbeat now through the host kit: ``HostKit.heartbeat_prompt``
+turns the due jobs at the virtual clock into scheduled tasks and builds the prompt (skip reason
+``empty-heartbeat-file`` makes no model call and runs no ensure) and, unless skipped, the
+injected context for session kind ``heartbeat`` (PROACTIVE_PREFERENCES.md included on the
+memory-core layout); the same host tool loop as chat turns runs it, so the model can read daily
+notes with ``memory_search``/``memory_get``. ``HeartbeatRun.complete`` reads the reply
+(``NO_REPLY`` and a legacy ``HEARTBEAT_OK`` ack are not delivered) and reschedules the jobs whose
+tasks went into the turn (a due job of another kind is the host's to run and stays due); then
+``HostKit.after_turn`` reports the flush decision (``runtime_skip:heartbeat``: heartbeats never
+flush). ``POST /api/lab/heartbeat/reply`` decides a typed reply without a model.
 
 Demo-only: the virtual clock shifts due checks, job runs and migrated anchors only; the
 prompt's current-time lines, daily file dates and the flush use the real clock. Scratch and
@@ -40,7 +41,6 @@ from demo.lab_prompt import PromptOptions, prompt_view
 from demo.lab_runtime import (
     FILE_MAX_BYTES,
     LAB_TIME_FORMAT,
-    LAB_TIMEZONE,
     LabError,
     LabRuntime,
     safe_exception_message,
@@ -50,21 +50,15 @@ from demo.transcript_context import select_transcript_context
 from memory_core.automation import (
     AutomationJob,
     FileAutomationStore,
-    due_automation_jobs,
-    heartbeat_scheduled_tasks,
     is_heartbeat_task_job,
     is_job_due,
-    record_automation_job_run,
 )
 from memory_core.bootstrap._js import js_to_well_formed, js_utf8_encode, utf16_len
 from memory_core.heartbeat import (
     DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
-    HEARTBEAT_TRANSCRIPT_PROMPT,
-    HeartbeatTurn,
     decide_heartbeat_reply,
     is_heartbeat_content_effectively_empty,
     is_silent_reply_payload_text,
-    prepare_heartbeat_turn,
     resolve_heartbeat_interval_ms,
     strip_heartbeat_token,
 )
@@ -81,6 +75,7 @@ from memory_core.heartbeat_scratch import (
     HeartbeatScratchState,
     HeartbeatScratchTooLargeError,
 )
+from memory_core.host import HeartbeatRun
 
 HEARTBEAT_RUN_HISTORY = 20
 HEARTBEAT_AGENT_ID = "main"
@@ -144,46 +139,30 @@ def _proactive_state(lab: LabRuntime) -> str:
     return "injected" if path.read_text(encoding="utf-8", errors="replace").strip() else "empty"
 
 
-def _prepare_turn(
-    lab: LabRuntime, store: FileAutomationStore
-) -> tuple[HeartbeatTurn, list[AutomationJob], list[AutomationJob]]:
-    """The next turn, the due jobs whose tasks it carries, and the other due jobs.
-
-    Only heartbeat-task jobs reach the turn (``heartbeat_scheduled_tasks``); a due job of
-    another kind is the host's to run (upstream: ``executeMainSessionCronJob``, not ported), so
-    the Lab never marks it as run.
-    """
-    now = lab.heartbeat_now_ms()
-    due = due_automation_jobs(store.list_jobs(agent_id=HEARTBEAT_AGENT_ID), now)
-    turn = prepare_heartbeat_turn(
-        now_ms=lab.now_ms(),
-        scratch=store.read_scratch(HEARTBEAT_AGENT_ID),
-        scheduled_tasks=heartbeat_scheduled_tasks(due),
-        timezone=LAB_TIMEZONE,
-        time_format=LAB_TIME_FORMAT,
-    )
-    in_turn = {task.job_id for task in turn.scheduled_tasks}
-    return (
-        turn,
-        [job for job in due if job.id in in_turn],
-        [job for job in due if job.id not in in_turn],
-    )
-
-
-def heartbeat_preview(lab: LabRuntime) -> dict[str, Any]:
-    """The prompt the next heartbeat would get (the prompt inspector's heartbeat kind)."""
-    turn, due, host_due = _prepare_turn(lab, automation_store(lab))
+def _turn_view(run: HeartbeatRun) -> dict[str, Any]:
+    turn = run.turn
     return {
         "skipReason": turn.skip_reason,
         "prompt": turn.prompt,
         "message": turn.message,
         "dueTasks": [task.name for task in turn.scheduled_tasks],
-        "dueJobs": [job.id for job in due],
-        "hostDueJobs": [job.id for job in host_due],
+        "dueJobs": [job.id for job in run.jobs],
+        "hostDueJobs": [job.id for job in run.host_jobs],
         "scratchShown": turn.scratch_content is not None,
         "scratchRevision": turn.scratch_revision,
         "timeFormat": LAB_TIME_FORMAT,
     }
+
+
+def heartbeat_preview(lab: LabRuntime) -> dict[str, Any]:
+    """The prompt the next heartbeat would get (the prompt inspector's heartbeat kind).
+
+    ``HostKit.heartbeat_prompt`` without the ensure, never completed: nothing is written.
+    """
+    run = lab.kit().heartbeat_prompt(
+        lab.session("heartbeat").state, schedule_now_ms=lab.heartbeat_now_ms(), ensure=False
+    )
+    return _turn_view(run)
 
 
 def _legacy_archives(lab: LabRuntime) -> list[str]:
@@ -397,13 +376,26 @@ def _run(
         "sessionKey": session.key,
     }
     try:
-        lab.ensure()
-        store = automation_store(lab)
-        turn, due, host_due = _prepare_turn(lab, store)
+        embedding = lab.resolve_embedding(payload)
+        index = lab.store(embedding, mode=lab.default_search_mode(embedding))
+        kit = lab.kit(index)
+        options = PromptOptions(kind="heartbeat", context_mode="lightweight" if light_context else "full")
+        # The scripted engine calls no tools, so the kit offers none (as in chat turns).
+        scripted = getattr(engine, "provider", "") == "scripted"
+        with lab.lifecycle() as report:
+            heartbeat = kit.heartbeat_prompt(
+                session.state,
+                context_mode=options.context_mode,  # type: ignore[arg-type]
+                offer_tools=not scripted,
+                schedule_now_ms=now,
+            )
+            if heartbeat.context is not None:
+                report(heartbeat.context.workspace_init)
+        turn = heartbeat.turn
         run["dueTasks"] = [task.name for task in turn.scheduled_tasks]
-        run["hostDueJobs"] = [job.id for job in host_due]
+        run["hostDueJobs"] = [job.id for job in heartbeat.host_jobs]
         run["scratchRevision"] = turn.scratch_revision
-        if turn.skip_reason:
+        if heartbeat.context is None:
             run["skipped"] = turn.skip_reason
             run["ms"] = int((time.perf_counter() - started) * 1000)
             _record(lab, run)
@@ -417,17 +409,11 @@ def _run(
             yield sse_frame({**error.payload(), "redacted": True}, event="error")
             return
 
-        embedding = lab.resolve_embedding(payload)
-        mode = lab.default_search_mode(embedding)
-        index = lab.store(embedding, mode=mode)
         lab.reindex(index)
-        options = PromptOptions(kind="heartbeat", context_mode="lightweight" if light_context else "full")
-        kit = lab.kit(index)
-        context = kit.before_turn(session.state, context_mode=options.context_mode, ensure=False)  # type: ignore[arg-type]
+        context = heartbeat.context
         wc = context.workspace
-        toolbox = LabToolbox(lab, kit, session, turn_id=None)
+        toolbox = None if scripted else LabToolbox(lab, kit, session, turn_id=None)
         tool_names = sorted(tool["name"] for tool in context.tools)
-        memory_section = list(context.memory_recall)
         user_message = turn.message or ""
         previous = [ChatMessage(role=item["role"], content=item["content"]) for item in session.messages]
         sent, _omitted = select_transcript_context([*previous, ChatMessage(role="user", content=user_message)], max_chars=24_000)
@@ -437,8 +423,8 @@ def _run(
             sent=sent,
         )
         view = prompt_view(lab, options, wc, extras={
-            "heartbeatPrompt": heartbeat_preview(lab), "tools": tool_names, "messages": messages,
-            "recall": {"lines": [], "memoryRecallSection": memory_section, "label": "demo-only"},
+            "heartbeatPrompt": _turn_view(heartbeat), "tools": tool_names, "messages": messages,
+            "recall": {"lines": [], "memoryRecallSection": list(context.memory_recall), "label": "demo-only"},
         })
         run.update({
             "userMessage": user_message,
@@ -452,33 +438,30 @@ def _run(
                          "bootstrapMode": view["bootstrapMode"], "tools": tool_names, "prompt": view}, event="prompt")
         lab.bus.emit("heartbeat.llm", summary=f"heartbeat modeli: {engine.model}",
                      data={"provider": getattr(engine, "provider", engine.name), "model": engine.model})
-        outcome = ToolLoopOutcome()
-        for event, data in run_tool_loop(engine, messages, toolbox, outcome):
+        loop = ToolLoopOutcome()
+        for event, data in run_tool_loop(engine, messages, toolbox, loop):
             yield sse_frame(data, event=event)
             if event == "tool_result" and data.get("curation"):
                 yield sse_frame(data["curation"], event="curation")
-        reply = outcome.text
-        reply_decision = decide_heartbeat_reply(reply)
+        reply = loop.text
+        usage = turn_usage(session, loop.usage, messages=loop.messages, output_text=reply)
+        ended = lab.heartbeat_now_ms()
+        outcome = heartbeat.complete(reply, usage=usage, ended_at_ms=ended)
         result = {
-            **reply_decision.to_json(),
-            "delivered": reply_decision.deliver,
+            **outcome.decision.to_json(),
+            "delivered": outcome.decision.deliver,
             "silentReply": is_silent_reply_payload_text(reply),
             "replyChars": utf16_len(reply or ""),
         }
-        ended = lab.heartbeat_now_ms()
-        # Only the jobs whose tasks went into this turn ran; other due jobs stay due (host).
-        ran = [record_automation_job_run(job, started_at_ms=now, ended_at_ms=ended) for job in due]
-        if ran:
-            store.save_jobs(ran)
-            lab.bus.emit("automation.jobs_ran", summary=f"{len(ran)} otomasyon işi çalıştı, sonraki vadeler güncellendi",
-                         data={"jobs": [_job_view(job, ended) for job in ran]})
-        session.messages.append({"role": "user", "content": HEARTBEAT_TRANSCRIPT_PROMPT})
-        session.messages.append({"role": "assistant", "content": reply})
+        if outcome.jobs_recorded:
+            lab.bus.emit("automation.jobs_ran", summary=f"{len(outcome.jobs_recorded)} otomasyon işi çalıştı, sonraki vadeler güncellendi",
+                         data={"jobs": [_job_view(job, ended) for job in outcome.jobs_recorded]})
+        session.messages.extend(outcome.transcript)
         # After the run, as after a chat turn: heartbeat sessions never flush (runtime_skip).
         record = kit.after_turn(
-            context.session,
+            outcome.session,
             transcript=session.messages,
-            usage=turn_usage(session, outcome.usage, messages=outcome.messages, output_text=reply),
+            usage=usage,
             context_window_tokens=lab.settings.effective_context_window_tokens,
             transcript_bytes=transcript_byte_size(session),
         )
@@ -492,10 +475,10 @@ def _run(
         run.update({
             "reply": reply,
             "decision": result,
-            "jobsRun": [job.id for job in ran],
+            "jobsRun": [job.id for job in outcome.jobs_recorded],
             "engine": {"provider": getattr(engine, "provider", engine.name), "model": engine.model},
-            "toolCalls": toolbox.calls,
-            "curation": [public_write(write) for write in toolbox.curated],
+            "toolCalls": toolbox.calls if toolbox is not None else [],
+            "curation": [public_write(write) for write in toolbox.curated] if toolbox is not None else [],
             "ms": int((time.perf_counter() - started) * 1000),
         })
         _record(lab, run)

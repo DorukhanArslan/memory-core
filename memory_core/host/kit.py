@@ -581,6 +581,7 @@ class HostKit:
         runtime_context: str | None = None,
         offer_tools: bool = True,
         schedule_now_ms: int | None = None,
+        ensure: bool = True,
     ) -> HeartbeatRun:
         """Prepare one heartbeat run the host's scheduler decided to start now.
 
@@ -589,8 +590,9 @@ class HostKit:
         are the host's (``host_jobs``). ``prepare_heartbeat_turn`` builds the message from the
         monitor scratch (its ``Current time:`` line uses the kit clock). Unless the turn is
         skipped, the context is :meth:`before_turn` with run kind ``heartbeat`` (upstream runs
-        heartbeats in the main session under that run kind) and ``offer_tools``. Tool calls of the
-        run go through :meth:`dispatch` with ``run.session``.
+        heartbeats in the main session under that run kind), ``offer_tools`` and ``ensure``
+        (``False`` for a preview that never completes the run: no workspace write). Tool calls of
+        the run go through :meth:`dispatch` with ``run.session``.
         """
         agent_id = self._memory.config.agent_id
         started_at = schedule_now_ms if schedule_now_ms is not None else self._clock()
@@ -615,6 +617,7 @@ class HostKit:
                 run_kind="heartbeat",
                 context_mode=context_mode,
                 offer_tools=offer_tools,
+                ensure=ensure,
             )
         )
         return HeartbeatRun(

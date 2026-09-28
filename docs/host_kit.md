@@ -621,6 +621,7 @@ def heartbeat_prompt(
     runtime_context: str | None = None,
     offer_tools: bool = True,
     schedule_now_ms: int | None = None,
+    ensure: bool = True,
 ) -> HeartbeatRun
 
 class HeartbeatRun:
@@ -654,9 +655,10 @@ class HeartbeatOutcome:
   store.read_scratch(agent_id), scheduled_tasks, source, reason, timezone, time_format)`, and,
   unless skipped, the `before_turn` composition with `run_kind="heartbeat"` for the session's kind
   (the Lab's heartbeat session has kind `heartbeat`; upstream runs heartbeats in the main session,
-  which the run kind covers) and `offer_tools` (`False` for a model without tool calling, as in
-  `before_turn`). There is no `has_bootstrap_file_access`: the heartbeat run kind resolves the
-  bootstrap mode to `none` before file access is read (`resolve_bootstrap_mode` in
+  which the run kind covers), `offer_tools` (`False` for a model without tool calling, as in
+  `before_turn`) and `ensure` (`False` for a preview that never completes the run, as
+  `before_turn(ensure=False)`: no workspace write). There is no `has_bootstrap_file_access`: the
+  heartbeat run kind resolves the bootstrap mode to `none` before file access is read (`resolve_bootstrap_mode` in
   `memory_core/bootstrap/files.py`, upstream `bootstrap-mode.ts`). `schedule_now_ms` is the
   scheduler's instant for due checks and job runs (default: the kit clock); the prompt's
   `Current time:` line always uses the kit clock, which keeps the Lab's virtual heartbeat clock

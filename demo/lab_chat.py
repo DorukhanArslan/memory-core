@@ -7,9 +7,10 @@ below), ``prompt`` (``HostKit.before_turn`` for the session, without a second
 ensure), ``stream`` (the host tool loop of :mod:`demo.lab_tools`), ``persist``,
 then the post-reply maintenance of v2026.9.6 (decision Q1): ``flush_decision``
 (``HostKit.after_turn``) and ``flush`` (the ``FlushRequest`` run over the Lab's
-model, :func:`demo.lab_flush.run_flush`). Other SSE events: ``turn_started``,
-``recall``, ``prompt``, ``assistant_delta``, ``tool_call``, ``tool_result``,
-``curation``, ``flush``, ``turn_done {turn, detail}`` and ``error``.
+model, :func:`demo.lab_flush.run_flush`), which never fail the delivered turn.
+Other SSE events: ``turn_started``, ``recall``, ``prompt``, ``assistant_delta``,
+``tool_call``, ``tool_result``, ``curation``, ``flush``, ``turn_done {turn, detail}``
+and ``error``.
 
 Demo-only parts, labelled in the payloads: the auto-recall (``memory_search`` on
 the user message, only MEMORY.md and today's/yesterday's daily file reach the
@@ -46,7 +47,7 @@ from demo.lab_runtime import (
 from demo.lab_tools import LabToolbox, ToolLoopOutcome, public_write, run_tool_loop
 from demo.transcript_context import select_transcript_context
 from memory_core.consolidation import record_short_term_recalls, undecorate_search_results
-from memory_core.host import MINIMAL_PROMPT_KINDS, TurnContext, TurnRecord
+from memory_core.host import MINIMAL_PROMPT_KINDS, HostKit, TurnContext, TurnRecord
 from memory_core.tools.memory_search import memory_search
 
 TRANSCRIPT_MESSAGE_WINDOW = 40
@@ -408,40 +409,6 @@ def _run_turn(
         yield turn.start("persist")
         _persist(session, turn, context, user_content, outcome)
         yield turn.finish()
-
-        yield turn.start("flush_decision")
-        with lab.tracked("flush", turn_id=turn.id):
-            record = kit.after_turn(
-                session.state,
-                transcript=session.messages,
-                usage=turn_usage(session, outcome.usage, messages=outcome.messages, output_text=outcome.text),
-                context_window_tokens=lab.settings.effective_context_window_tokens,
-                transcript_bytes=transcript_byte_size(session),
-            )
-        session.state = record.session
-        session.last_turn = record
-        decision = flush_view(lab, session, record)
-        detail["flush"] = {"decision": decision}
-        lab.bus.emit(
-            "flush.decided",
-            summary=f"flush kararı: {decision['reason']} ({decision['totalTokens']}/{decision['threshold']})",
-            data=decision,
-            turn_id=turn.id,
-        )
-        yield sse_frame({"turnId": turn.id, "decision": decision}, event="flush")
-        yield turn.finish(detail=decision["reason"])
-        yield from _flush_stage(lab, turn, session, engine, record, scripted=scripted, secrets=secrets)
-        turn.close()
-        detail["chips"] = build_chips(lab, turn, truncation_shown=truncation_shown, truncated=truncated)
-        lab.store_turn(detail)
-        session.turn_ids.append(turn.id)
-        lab.bus.emit(
-            "chat.turn.completed",
-            summary=f"tur #{turn.id} tamam · {detail['ms']} ms",
-            data={"ms": detail["ms"], "chips": detail["chips"]},
-            turn_id=turn.id,
-        )
-        yield sse_frame({"turn": summarize_turn(detail), "detail": detail}, event="turn_done")
     except GeneratorExit:
         _fail(lab, turn, "stopped by the client", code="stopped")
         raise
@@ -454,6 +421,22 @@ def _run_turn(
              "redacted": True},
             event="error",
         )
+        return
+    # The reply is delivered and persisted: the turn completes whatever its maintenance does.
+    try:
+        yield from _maintenance(lab, turn, session, kit, engine, outcome, scripted=scripted, secrets=secrets)
+    finally:
+        turn.close()
+        detail["chips"] = build_chips(lab, turn, truncation_shown=truncation_shown, truncated=truncated)
+        lab.store_turn(detail)
+        session.turn_ids.append(turn.id)
+        lab.bus.emit(
+            "chat.turn.completed",
+            summary=f"tur #{turn.id} tamam · {detail['ms']} ms",
+            data={"ms": detail["ms"], "chips": detail["chips"]},
+            turn_id=turn.id,
+        )
+    yield sse_frame({"turn": summarize_turn(detail), "detail": detail}, event="turn_done")
 
 
 def _fail(lab: LabRuntime, turn: TurnState, message: str, *, code: str) -> None:
@@ -483,6 +466,62 @@ def _persist(session: LabSession, turn: TurnState, context: TurnContext, user_co
     session.pending_reset = None
 
 
+def _maintenance(lab: LabRuntime, turn: TurnState, session: LabSession, kit: HostKit, engine: ChatEngine,
+                 outcome: ToolLoopOutcome, *, scripted: bool, secrets: tuple[str, ...]) -> Iterator[str]:
+    """The post-reply stages ``flush_decision`` and ``flush`` (v2026.9.6 order, decision Q1).
+
+    They run after ``persist``, so they never fail the turn: an error fails the running stage
+    (``flush.failed``), and a client stop (Stop / Esc) skips the stages not done yet, which
+    abandons a flush request not yet run, as a scripted turn does. Each stage records its
+    outcome before it yields its frames, so a stop never lands on work that already ran.
+    """
+    detail = turn.detail
+    try:
+        yield turn.start("flush_decision")
+        with lab.tracked("flush", turn_id=turn.id):
+            record = kit.after_turn(
+                session.state,
+                transcript=session.messages,
+                usage=turn_usage(session, outcome.usage, messages=outcome.messages, output_text=outcome.text),
+                context_window_tokens=lab.settings.effective_context_window_tokens,
+                transcript_bytes=transcript_byte_size(session),
+            )
+        session.state = record.session
+        session.last_turn = record
+        decision = flush_view(lab, session, record)
+        detail["flush"] = {"decision": decision}
+        lab.bus.emit(
+            "flush.decided",
+            summary=f"flush kararı: {decision['reason']} ({decision['totalTokens']}/{decision['threshold']})",
+            data=decision,
+            turn_id=turn.id,
+        )
+        decided = turn.finish(detail=decision["reason"])
+        yield sse_frame({"turnId": turn.id, "decision": decision}, event="flush")
+        yield decided
+        yield from _flush_stage(lab, turn, session, engine, record, scripted=scripted, secrets=secrets)
+    except GeneratorExit:
+        done = {stage["name"] for stage in detail["stages"]}
+        turn.current = None
+        for name in ("flush_decision", "flush"):
+            if name not in done:
+                turn.skip(name, "stopped by the client")
+        raise
+    except Exception as exc:
+        message = f"flush failed: {safe_exception_message(exc, secrets)}"
+        if turn.current is None:
+            turn.start("flush")
+        stage = turn.current
+        failed = turn.finish(status="fail", detail=message)
+        lab.bus.emit(
+            "flush.failed",
+            summary=f"flush başarısız: {stage}",
+            data={"error": message, "code": _error_code(exc), "stage": stage, "redacted": True},
+            turn_id=turn.id,
+        )
+        yield failed
+
+
 def _flush_stage(lab: LabRuntime, turn: TurnState, session: LabSession, engine: ChatEngine,
                  record: TurnRecord, *, scripted: bool, secrets: tuple[str, ...]) -> Iterator[str]:
     """The ``flush`` stage: run the kit's request with the Lab's model, or say why not."""
@@ -491,12 +530,14 @@ def _flush_stage(lab: LabRuntime, turn: TurnState, session: LabSession, engine: 
     request = record.flush
     if record.flush_failure is not None:
         # The target file could not be created: one strike, as upstream's recordFailure.
-        yield turn.start("flush")
+        started = turn.start("flush")
         failure = record.flush_failure
         error = report_failure(lab, failure, error_text=failure.error, secrets=secrets, turn_id=turn.id)
         detail["flush"]["run"] = {"reason": decision["reason"], "target": record.flush_plan.relative_path,
                                   "wrote": False, "error": error}
-        yield turn.finish(status="fail", detail=error["message"])
+        failed = turn.finish(status="fail", detail=error["message"])
+        yield started
+        yield failed
         return
     if request is None:
         yield turn.skip("flush", decision["reason"])
@@ -509,8 +550,9 @@ def _flush_stage(lab: LabRuntime, turn: TurnState, session: LabSession, engine: 
     yield turn.start("flush")
     run = run_flush(lab, session, engine, request, turn_id=turn.id, secrets=secrets)
     detail["flush"]["run"] = run
-    yield sse_frame({"turnId": turn.id, "decision": decision, "run": run}, event="flush")
-    yield turn.finish(
+    finished = turn.finish(
         status="fail" if run.get("error") else "ok",
         detail="günlük dosyaya yazdı" if run["wrote"] else "yazım yok",
     )
+    yield sse_frame({"turnId": turn.id, "decision": decision, "run": run}, event="flush")
+    yield finished

@@ -171,6 +171,10 @@ Stages, in the order the `stage` events stream them:
    turn requests the flush again. The Lab runs the flush in the same request after the reply
    has streamed and before `turn_done` (upstream runs it detached after delivery).
 
+Steps 8 and 9 never fail the delivered turn: an error fails only the running stage (a
+`flush.failed` event with the stage), and Stop (Esc) skips the stages not done yet (`stopped
+by the client`), which abandons a flush request that has not run. The turn keeps its reply.
+
 Every reindex goes through `LabStore` (`demo/lab_runtime.py`), including the ones the
 kit runs after a curated write, the flush write and `/new`, so the index status and
 `index.reindexed` events stay current and `/index/status` does not report a stale

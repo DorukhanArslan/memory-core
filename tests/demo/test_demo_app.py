@@ -1113,6 +1113,75 @@ def test_flush_runs_after_the_reply_once_per_compaction_cycle(client, lab, monke
     assert types.index("flush.decided") < types.index("flush.written")
 
 
+@pytest.mark.parametrize(
+    ("stop_at", "flush_stage", "written"),
+    [
+        # Before the flush run: the request is abandoned, as a scripted turn's.
+        ("running", {"name": "flush", "status": "skip", "ms": 0, "detail": "stopped by the client"}, ""),
+        # After the flush run: the run stays recorded.
+        ("run", {"name": "flush", "status": "ok", "detail": "günlük dosyaya yazdı"}, "- Stop note.\n"),
+    ],
+)
+def test_stop_during_the_flush_keeps_the_delivered_reply(client, lab, monkeypatch, stop_at, flush_stage, written):
+    from demo.lab_chat import chat_turn_frames
+
+    lab.settings.context_window_tokens = 5_333
+    engine = StubEngine([("Bir.", []), *flush_write(lab, "- Stop note.")],
+                        usage={"promptTokens": 5_000, "completionTokens": 10, "totalTokens": 5_010})
+    client.get("/api/lab/state")
+    frames = chat_turn_frames(lab, {}, engine, kind="main", message="bir")
+    for raw in frames:
+        frame = parse_sse(raw)[0]
+        data = frame["data"]
+        if stop_at == "running" and frame["event"] == "stage" and data == {**data, "name": "flush", "status": "running"}:
+            break
+        if stop_at == "run" and frame["event"] == "flush" and "run" in data:
+            break
+    frames.close()  # the client stops reading (Stop / Esc)
+
+    detail = client.get(f"/api/lab/turns/{data['turnId']}").json()
+    assert "error" not in detail and "failedStage" not in detail
+    assert detail["assistant"] == "Bir."
+    stages = {stage["name"]: stage for stage in detail["stages"]}
+    assert stages["flush_decision"]["status"] == "ok"
+    assert {key: stages["flush"][key] for key in flush_stage} == flush_stage
+    assert lab.session("main").turn_ids == [data["turnId"]]
+    assert lab.session("main").messages[-1] == {"role": "assistant", "content": "Bir."}
+    assert (lab.root / "memory" / f"{lab.today()}.md").read_text(encoding="utf-8") == written
+    types = event_types(client)
+    assert "chat.turn.completed" in types and "chat.turn.failed" not in types
+    assert lab.lock.acquire(blocking=False)
+    lab.lock.release()
+
+
+def test_maintenance_failure_fails_only_its_stage(client, lab, monkeypatch):
+    from memory_core.host import HostKit
+
+    def broken_after_turn(self, session, **kwargs):
+        raise RuntimeError("snapshot tracking broke")
+
+    monkeypatch.setattr(HostKit, "after_turn", broken_after_turn)
+    use_engine(monkeypatch, StubEngine([("Bir.", [])]))
+
+    frames = send(client, "bir")
+
+    assert frames_of(frames, "error") == []
+    detail = frames_of(frames, "turn_done")[0]["detail"]
+    assert "error" not in detail and "failedStage" not in detail
+    assert detail["assistant"] == "Bir."
+    stages = {stage["name"]: stage for stage in detail["stages"]}
+    assert stages["flush_decision"]["status"] == "fail"
+    assert stages["flush_decision"]["detail"] == "flush failed: RuntimeError: snapshot tracking broke"
+    assert "flush" not in stages
+    assert not any(chip["type"] == "error" for chip in detail["chips"])
+    assert lab.session("main").turn_ids == [detail["id"]]
+    events = client.get("/api/lab/events", params={"once": "true"}).text
+    failed = [frame["data"] for frame in parse_sse(events) if frame["data"]["type"] == "flush.failed"]
+    assert failed[0]["data"] == {"error": "flush failed: RuntimeError: snapshot tracking broke",
+                                 "code": "turn_failed", "stage": "flush_decision", "redacted": True}
+    assert "chat.turn.failed" not in event_types(client)
+
+
 def test_flush_write_elsewhere_is_refused_to_the_model(client, lab, monkeypatch):
     lab.settings.context_window_tokens = 5_333
     use_engine(monkeypatch, StubEngine(

@@ -45,7 +45,6 @@ from demo.lab_runtime import (
 )
 from demo.lab_tools import LabToolbox, ToolLoopOutcome, public_write, run_tool_loop
 from demo.transcript_context import select_transcript_context
-from memory_core.bootstrap import format_session_reset_transcript_prompt
 from memory_core.consolidation import record_short_term_recalls, undecorate_search_results
 from memory_core.host import MINIMAL_PROMPT_KINDS, TurnContext, TurnRecord
 from memory_core.tools.memory_search import memory_search
@@ -280,11 +279,10 @@ def _run_turn(
     scripted = getattr(engine, "provider", "") == "scripted"
     reset_info = session.pending_reset if reset else None
     if reset_info is not None:
-        # prompt-prelude.ts:212-235: the model gets [startup prelude, reset prompt];
-        # the transcript keeps only the "[... session new]" row.
-        display_user = format_session_reset_transcript_prompt(reset_info["command"])
-        startup_text = (reset_info.get("startup") or {}).get("text")
-        user_content = "\n\n".join(part for part in (startup_text, reset_info["prompt"]) if part)
+        # prompt-prelude.ts:212-235: the model gets [startup prelude, reset prompt] (the kit's
+        # ResetTurn.model_prompt); the transcript keeps only the "[... session new]" row.
+        display_user = reset_info["transcriptPrompt"]
+        user_content = reset_info["modelPrompt"]
     else:
         display_user = message
         user_content = message

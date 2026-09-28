@@ -84,6 +84,7 @@ def test_bare_reset_returns_the_upstream_prompt_and_transcript_row(tmp_path):
     assert result.reset.transcript_prompt == "[memory-core session reset]"
     assert result.reset.transcript_prompt == format_session_reset_transcript_prompt("reset")
     assert result.reset.bootstrap_mode == state.bootstrap_mode == "none"
+    assert result.reset.prompt == state.prompt
     assert result.reset.model_prompt == f"{result.reset.startup_context}\n\n{state.prompt}"
 
 

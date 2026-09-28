@@ -332,7 +332,7 @@ export const EN = {
   'how.chat.4': 'The transcript window is demo-only: last 40 messages, 24,000 chars.',
   'how.chat.5': 'The tool loop is the Lab\'s (host): memory_search, memory_get (upstream definitions) and the curation tools; at most 6 tool rounds plus 1 final round without tools. Curated writes are an extension with per-target flags.',
   'how.chat.6': 'Without a key the chat answers 400 no_api_key; there is no fake model.',
-  'how.chat.7': '/new and /reset run the session-memory hook (memory/<date>-<HHMM>.md, raw lines, no redactor, D2) and start a new session; a bare command sends the reset prompt in its own turn.',
+  'how.chat.7': '/new and /reset run the host kit\'s session-memory hook (memory/<date>-<HHMM>.md, raw lines, no redactor, D2), index the file at once and start a new session: same key (lab:<kind>, upstream sessionKey), new id; a pending bootstrap completes before a bare command sends the reset prompt in its own turn.',
   'how.chat.src': 'docs/lab.md › A chat turn · What is real, what is not',
   'how.heartbeat.1': 'Runtime-only port: the host owns the scheduler; in the Lab the heartbeat runs by hand. memory-core computes the due automation jobs and the prompt.',
   'how.heartbeat.2': 'Instructions live in the monitor scratch (HEARTBEAT.md is never read): empty scratch is skipped (empty-heartbeat-file), no scratch runs the generic prompt, due jobs always run.',

@@ -136,8 +136,8 @@ class TurnRecord:
 class ResetTurn:
     """The turn a bare ``/new`` or ``/reset`` starts (upstream prompt-prelude.ts:200-225).
 
-    ``model_prompt`` is the next user message for the model: the startup context (when the
-    bootstrap mode is ``none``) and the reset prompt, joined by a blank line.
+    ``model_prompt`` is the next user message for the model: ``startup_context`` (when the
+    bootstrap mode is ``none``) and the reset ``prompt``, joined by a blank line.
     ``transcript_prompt`` is what the transcript records instead.
     """
 
@@ -145,6 +145,7 @@ class ResetTurn:
     transcript_prompt: str
     bootstrap_mode: BootstrapMode
     startup_context: str | None
+    prompt: str
 
 
 @dataclass(frozen=True)
@@ -559,6 +560,7 @@ class HostKit:
                 transcript_prompt=format_session_reset_transcript_prompt(command, self._identity),
                 bootstrap_mode=state.bootstrap_mode,
                 startup_context=startup,
+                prompt=state.prompt,
             )
         return NewSession(
             session=SessionState.new(

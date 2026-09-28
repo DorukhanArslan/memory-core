@@ -350,7 +350,7 @@ export const TR = {
   'how.chat.4': 'Konuşma penceresi demo-only: son 40 mesaj, 24.000 karakter.',
   'how.chat.5': 'Araç döngüsü Lab\'in (host): memory_search, memory_get (upstream tanımları) ve küratörlük araçları; en çok 6 araç turu ve araçsız 1 son tur. Küratörlü yazımlar uzantıdır ve hedef başına bayraklarla açılır.',
   'how.chat.6': 'Anahtar yoksa sohbet 400 no_api_key döner; sahte model yok.',
-  'how.chat.7': '/new ve /reset oturum belleği kancasını çalıştırır (memory/<tarih>-<HHMM>.md, ham satırlar, redaktör yok, D2) ve yeni oturum başlatır; metinsiz komutta reset istemi ayrı bir turda gider.',
+  'how.chat.7': '/new ve /reset host kit\'in oturum belleği kancasını çalıştırır (memory/<tarih>-<HHMM>.md, ham satırlar, redaktör yok, D2), dosyayı hemen indeksler ve yeni oturum başlatır: anahtar aynı (lab:<tür>, upstream sessionKey), kimlik yeni; bekleyen bootstrap, metinsiz komutun reset istemi ayrı bir turda gitmeden önce tamamlanır.',
   'how.chat.src': 'docs/lab.md › A chat turn · What is real, what is not',
   'how.heartbeat.1': 'Runtime-only port: zamanlayıcı host\'ta; Lab\'de heartbeat elle çalışır. memory-core vadesi gelen otomasyon işlerini ve istemi hesaplar.',
   'how.heartbeat.2': 'Talimatlar monitor scratch\'tedir (HEARTBEAT.md okunmaz): boş scratch atlanır (empty-heartbeat-file), scratch yoksa genel istem çalışır, vadesi gelen işler her zaman çalışır.',

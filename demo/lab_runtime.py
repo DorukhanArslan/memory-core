@@ -21,7 +21,7 @@ import shutil
 import tempfile
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
@@ -312,13 +312,18 @@ class LabSession:
         }
 
 
+def new_session_id() -> str:
+    return secrets.token_hex(4)
+
+
 def new_session(kind: str) -> LabSession:
-    session_id = secrets.token_hex(4)
+    """A kind's first session. Its key ``lab:<kind>`` stays across ``/new`` (upstream sessionKey,
+    decision Q10); ``/new`` and ``/reset`` give it a new id."""
     return LabSession(
         kind=kind,
         created_at=now_ms(),
         state=SessionState.new(
-            session_key=f"lab:{kind}:{session_id}", session_id=session_id, kind=kind  # type: ignore[arg-type]
+            session_key=f"lab:{kind}", session_id=new_session_id(), kind=kind  # type: ignore[arg-type]
         ),
     )
 
@@ -655,13 +660,18 @@ class LabRuntime:
                 self.snapshots.record(before, self.snapshots.take(), source=source, turn_id=turn_id)
             )
 
-    def ensure(self, *, turn_id: int | None = None) -> WorkspaceInitResult:
-        """``HostKit.ensure`` with the Lab templates (upstream runs it every reply)."""
+    @contextmanager
+    def lifecycle(
+        self, source: str = "lifecycle", *, turn_id: int | None = None
+    ) -> Iterator[Callable[[WorkspaceInitResult], None]]:
+        """Track a block that runs the kit's ensure (``HostKit.ensure``, ``on_new_session``,
+        ``heartbeat_prompt``); the yielded callable emits the ``bootstrap.*`` events of its result.
+        """
         with self._ensure_lock:
             layout = self.layout
             before_status = bootstrap_status(self.root, layout) if self.root.is_dir() else None
-            with self.tracked("lifecycle", turn_id=turn_id):
-                result = self.kit().ensure()
+
+            def report(result: WorkspaceInitResult) -> None:
                 if result.bootstrap_seeded:
                     self.bus.emit(
                         "bootstrap.seeded",
@@ -686,7 +696,16 @@ class LabRuntime:
                         data={"path": layout.bootstrap_file, "source": "lifecycle"},
                         turn_id=turn_id,
                     )
-            return result
+
+            with self.tracked(source, turn_id=turn_id):
+                yield report
+
+    def ensure(self, *, turn_id: int | None = None) -> WorkspaceInitResult:
+        """``HostKit.ensure`` with the Lab templates (upstream runs it every reply)."""
+        with self.lifecycle(turn_id=turn_id) as report:
+            result = self.kit().ensure()
+            report(result)
+        return result
 
     def reset_workspace(self, mode: str, *, keep_memory: bool = False) -> None:
         """``seeded``: Lab templates plus an empty ``memory/`` (setup complete, no invented text).
@@ -783,8 +802,9 @@ class LabRuntime:
             self.sessions[kind] = session
         return session
 
-    def replace_session(self, kind: str) -> LabSession:
-        session = new_session(kind)
+    def replace_session(self, kind: str, state: SessionState) -> LabSession:
+        """The kind's next session after ``/new`` or ``/reset`` (``NewSession.session``)."""
+        session = LabSession(kind=kind, created_at=now_ms(), state=state)
         self.sessions[kind] = session
         self.snapshots.set_baseline("session")
         return session

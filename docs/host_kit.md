@@ -581,6 +581,7 @@ class ResetTurn:
     transcript_prompt: str             # "[memory-core session new]": what the transcript records
     bootstrap_mode: BootstrapMode
     startup_context: str | None
+    prompt: str                        # the reset prompt alone (model_prompt without the prelude)
 ```
 
 - Composes, in the kit's order: `memory_core/session_memory.py:save_session_memory(root,

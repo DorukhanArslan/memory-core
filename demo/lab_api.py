@@ -43,10 +43,10 @@ from demo.lab_prompt import (
 )
 from demo.lab_runtime import (
     LAB_SESSION_SOURCE,
-    LAB_TIME_FORMAT,
     LAB_TIMEZONE,
     LabError,
     LabRuntime,
+    new_session_id,
     optional_text,
     summarize_turn,
     validate_id,
@@ -59,13 +59,7 @@ from demo.parity_results import (
     parse_parity_matrix,
 )
 from demo.workspace_context import workspace_layout_summary
-from memory_core.bootstrap import (
-    build_startup_context,
-    resolve_bare_session_reset_prompt_state,
-    should_apply_startup_context,
-    trim_bootstrap_content,
-)
-from memory_core.session_memory import save_session_memory
+from memory_core.bootstrap import trim_bootstrap_content
 from memory_core.bootstrap._js import utf16_len
 from memory_core.host import TurnContext
 from memory_core.parity.upstream import LATEST_INSPECTED_COMMIT
@@ -330,7 +324,7 @@ def build_router(lab: LabRuntime) -> APIRouter:
             raise LabError(400, "command must be 'new' or 'reset'", code="invalid_command")
         kind = str(payload.get("sessionKind") or "main")
         with lab.locked():
-            return start_new_session(lab, kind=kind, command=command, text=optional_text(payload.get("text")))
+            return start_new_session(lab, payload, kind=kind, command=command, text=optional_text(payload.get("text")))
 
     @router.post("/curation/revert")
     def curation_revert(payload: dict = Body(...)):
@@ -395,72 +389,60 @@ SESSION_MEMORY_LABEL = "ham satırlar (upstream, D2): redaktör yok"
 _STARTUP_FILE_RE = re.compile(r"^\[Untrusted daily memory: (.+)\]$", re.MULTILINE)
 
 
-def start_new_session(lab: LabRuntime, *, kind: str, command: str, text: str | None) -> dict[str, Any]:
-    """``/new`` and ``/reset``: the session-memory hook, a new session and, when bare,
-    the reset prompt with the startup context (upstream get-reply-run.ts:711-752).
+def start_new_session(
+    lab: LabRuntime, payload: dict[str, Any], *, kind: str, command: str, text: str | None
+) -> dict[str, Any]:
+    """``/new`` and ``/reset`` through ``HostKit.on_new_session`` (upstream get-reply-run.ts:711-752).
+
+    The kit saves the ending session's ``memory/<date>-<slug>.md`` (the session-memory hook,
+    handler.ts: raw recent lines; the Lab passes no redactor, D2), reindexes, runs the ensure and,
+    for a bare command, builds the reset prompt with the startup context. The session key stays
+    (``lab:<kind>``, upstream sessionKey, decision Q10); the new session gets a new id and a
+    fresh entry. The Lab model has no read tool (resolveBareResetBootstrapFileAccess: False).
     """
     old = lab.session(kind)
-    now = lab.now_ms()
-    # session-memory hook (handler.ts): always writes memory/<date>-<slug>.md with the
-    # raw recent lines, like upstream; the Lab passes no redactor (D2).
-    with lab.tracked("session_memory"):
-        saved = save_session_memory(
-            lab.root,
-            session_key=old.key,
-            session_id=old.id,
-            messages=old.messages,
+    kit = lab.kit(lab.store(lab.resolve_embedding(payload)))
+    with lab.lifecycle("session_memory") as report:
+        result = kit.on_new_session(
+            old.state,
+            command=command,  # type: ignore[arg-type]
+            session_id=new_session_id(),
+            transcript=old.messages,
+            text=text,
             source=LAB_SESSION_SOURCE,
-            now_ms=now,
-            timezone=LAB_TIMEZONE,
         )
-    lab.bus.emit(
-        "session_memory.written",
-        summary=f"oturum belleği → {saved.rel_path}",
-        data={"path": saved.rel_path, "slug": saved.slug, "lines": len((saved.session_content or "").splitlines()),
-              "label": SESSION_MEMORY_LABEL},
-    )
-    new = lab.replace_session(kind)
-    bare = not text
+        saved = result.saved
+        lab.bus.emit(
+            "session_memory.written",
+            summary=f"oturum belleği → {saved.rel_path}",
+            data={"path": saved.rel_path, "slug": saved.slug,
+                  "lines": len((saved.session_content or "").splitlines()), "label": SESSION_MEMORY_LABEL},
+        )
+        report(result.workspace_init)
+    new = lab.replace_session(kind, result.session)
+    reset = result.reset
     lab.bus.emit(
         "session.new",
-        summary=f"/{command}{'' if bare else ' (metinli)'} · {kind}",
-        data={"command": command, "bare": bare, "oldSessionKey": old.key, "sessionKey": new.key},
+        summary=f"/{command}{'' if reset else ' (metinli)'} · {kind}",
+        data={"command": command, "bare": reset is not None, "oldSessionKey": old.key,
+              "sessionKey": new.key, "oldSessionId": old.id, "sessionId": new.id},
     )
     startup = None
-    reset_prompt = None
-    if bare:
-        state = resolve_bare_session_reset_prompt_state(
-            lab.root,
-            now_ms=now,
-            timezone=LAB_TIMEZONE,
-            time_format=LAB_TIME_FORMAT,
-            layout=lab.layout,
-            is_primary_run=kind != "subagent",
-            # resolveBareResetBootstrapFileAccess: the Lab model has no read tool.
-            has_bootstrap_file_access=False,
+    if reset is not None and reset.startup_context:
+        files = _STARTUP_FILE_RE.findall(reset.startup_context)
+        startup = {"text": reset.startup_context, "files": files}
+        lab.bus.emit(
+            "startup_context.loaded",
+            summary=f"başlangıç bağlamı: {len(files)} dosya",
+            data={"files": files, "chars": utf16_len(reset.startup_context)},
         )
-        startup_text = (
-            build_startup_context(lab.root, now_ms=now, timezone=LAB_TIMEZONE)
-            if state.should_prepend_startup_context and should_apply_startup_context(command)
-            else None
-        )
-        if startup_text:
-            files = _STARTUP_FILE_RE.findall(startup_text)
-            startup = {"text": startup_text, "files": files}
-            lab.bus.emit(
-                "startup_context.loaded",
-                summary=f"başlangıç bağlamı: {len(files)} dosya",
-                data={"files": files, "chars": utf16_len(startup_text)},
-            )
-        reset_prompt = {
-            "text": state.prompt,
-            "bootstrapMode": state.bootstrap_mode,
-            "shouldPrependStartupContext": state.should_prepend_startup_context,
-        }
+    if reset is not None:
         new.pending_reset = {
             "command": command,
-            "prompt": state.prompt,
-            "bootstrapMode": state.bootstrap_mode,
+            "modelPrompt": reset.model_prompt,
+            "transcriptPrompt": reset.transcript_prompt,
+            "prompt": reset.prompt,
+            "bootstrapMode": reset.bootstrap_mode,
             "startup": startup,
         }
     return {
@@ -468,11 +450,13 @@ def start_new_session(lab: LabRuntime, *, kind: str, command: str, text: str | N
         "sessionKey": new.key,
         "sessionKind": kind,
         "command": command,
-        "bare": bare,
+        "bare": reset is not None,
         "sessionMemory": {"path": saved.rel_path, "content": saved.entry, "rawLines": True,
                           "label": SESSION_MEMORY_LABEL},
         "startup": startup,
-        "resetPrompt": reset_prompt,
+        "resetPrompt": (
+            {"text": reset.prompt, "bootstrapMode": reset.bootstrap_mode} if reset is not None else None
+        ),
     }
 
 

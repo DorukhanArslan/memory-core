@@ -271,14 +271,15 @@ function systemRows() {
   const rows = [];
   const evs = store.data.events;
   // One divider per /new: this tab's own row (it carries the session-memory path and the startup
-  // files from the response) replaces the bus session.new event with the same sessionKey.
-  const localKeys = new Set((store.data.localRows || []).filter((r) => r.kind === 'session' && r.sessionKey).map((r) => r.sessionKey));
+  // files from the response) replaces the bus session.new event of the same new session id; the
+  // key stays across /new (upstream sessionKey), so it cannot tell the sessions apart.
+  const localIds = new Set((store.data.localRows || []).filter((r) => r.kind === 'session' && r.sessionId).map((r) => r.sessionId));
   let from = 0;
   for (let i = evs.length - 1; i >= 0; i--) if (evs[i].type === 'workspace.reset' || evs[i].type === 'bootstrap.seeded') { from = i; break; }
   for (const e of evs.slice(from)) {
     if (!SYS_TYPES.has(e.type)) continue;
     if (e.type === 'heartbeat.decided' && !e.data?.delivered) continue;
-    if (e.type === 'session.new' && localKeys.has(e.data?.sessionKey)) continue;
+    if (e.type === 'session.new' && localIds.has(e.data?.sessionId)) continue;
     rows.push({ ts: e.ts, kind: e.type, text: e.summary, data: e.data || {} });
   }
   for (const r of store.data.localRows || []) rows.push({ ...r, kind: `local.${r.kind}` });

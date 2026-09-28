@@ -135,7 +135,7 @@ def test_state_snapshot_shape(client, lab):
     assert snapshot["timezone"] == "Europe/Istanbul"
     assert snapshot["bootstrap"]["status"] == "complete"
     assert snapshot["session"]["kind"] == "main"
-    assert snapshot["session"]["key"].startswith("lab:main:")
+    assert snapshot["session"]["key"] == "lab:main"
     assert snapshot["identityName"] == "memory-core"
     assert snapshot["turns"] == []
     assert isinstance(snapshot["lastEventId"], int)
@@ -1385,7 +1385,7 @@ def test_chat_turn_prompt_matches_the_messages_sent(client, lab, monkeypatch):
     assert sent[0]["role"] == "system" and "## Memory Recall" not in sent[0]["content"]
     assert sent[-1] == {"role": "user", "content": "Merhaba"}
     assert names(detail["prompt"]) == ["AGENTS.md"]
-    assert detail["sessionKey"].startswith("lab:subagent:")
+    assert detail["sessionKey"] == "lab:subagent"
     assert detail["recall"] is None
     assert {stage["name"]: stage["status"] for stage in detail["stages"]}["recall"] == "skip"
 
@@ -1401,7 +1401,8 @@ def test_bare_new_writes_session_memory_and_loads_the_startup_context(client, la
     daily = lab.root / "memory" / f"{lab.today()}.md"
     daily.write_text("- Müşteri demosu 16:00'ya alındı.\n", encoding="utf-8")
     send(client, "Bugün müşteri demosunu 16:00'ya aldık.")
-    old_key = client.get("/api/lab/state").json()["session"]["key"]
+    old = client.get("/api/lab/state").json()["session"]
+    old_key = old["key"]
     daily_before = daily.read_text(encoding="utf-8")
 
     result = client.post("/api/lab/session/new", json={"command": "new", "sessionKind": "main"}).json()
@@ -1417,7 +1418,9 @@ def test_bare_new_writes_session_memory_and_loads_the_startup_context(client, la
     assert "assistant: Not aldım." in content
     assert result["sessionMemory"]["rawLines"] is True and "D2" in result["sessionMemory"]["label"]
     assert daily.read_text(encoding="utf-8") == daily_before
-    assert result["sessionKey"] != old_key and result["bare"] is True
+    # Decision Q10: upstream keeps sessionKey across /new; only the session id changes.
+    assert result["sessionKey"] == old_key == "lab:main" and result["bare"] is True
+    assert result["sessionId"] != old["id"]
     assert result["startup"]["text"].startswith("[Startup context loaded by runtime]\n")
     assert result["startup"]["files"] == [f"memory/{lab.today()}.md", memory_path]
     assert result["resetPrompt"]["text"].startswith(BARE_SESSION_RESET_PROMPT_BASE + "\nCurrent time: ")
@@ -1455,16 +1458,45 @@ def test_new_with_text_writes_the_file_but_loads_no_startup_context(client, lab)
     assert no_pending.status_code == 400 and no_pending.json()["code"] == "no_pending_reset"
 
 
-def test_bare_new_while_bootstrap_is_pending_uses_the_limited_prompt(client, lab):
-    from memory_core.bootstrap.startup import BARE_SESSION_RESET_PROMPT_BOOTSTRAP_LIMITED
-
+def test_bare_new_reconciles_a_pending_bootstrap_before_the_reset_prompt(client, lab):
+    # HostKit.on_new_session saves the session memory, then ensures: memory/ is setup evidence, so
+    # a pending bootstrap completes before the reset prompt reads its mode.
     client.post("/api/lab/workspace/reset", json={"mode": "fresh"})
+    assert (lab.root / "BOOTSTRAP.md").exists()
+    start = client.get("/api/lab/state").json()["lastEventId"]
 
     result = client.post("/api/lab/session/new", json={"command": "new"}).json()
 
-    assert result["resetPrompt"]["bootstrapMode"] == "limited"
-    assert result["resetPrompt"]["text"].startswith(BARE_SESSION_RESET_PROMPT_BOOTSTRAP_LIMITED)
-    assert result["startup"] is None
+    assert result["resetPrompt"]["bootstrapMode"] == "none"
+    assert not (lab.root / "BOOTSTRAP.md").exists()
+    assert result["startup"]["files"] == [result["sessionMemory"]["path"]]
+    types = event_types(client, start)
+    assert types.index("session_memory.written") < types.index("bootstrap.completed")
+    assert "bootstrap.file_deleted" in types
+
+
+def test_session_new_runs_the_host_kit(client, lab, monkeypatch):
+    use_engine(monkeypatch, StubEngine([("Not aldım.", [])]))
+    send(client, "Kod adı velvetkiwi.")
+    old = client.get("/api/lab/state").json()["session"]
+    start = client.get("/api/lab/state").json()["lastEventId"]
+
+    result = client.post("/api/lab/session/new", json={"command": "new", "sessionKind": "main"}).json()
+
+    response = client.get("/api/lab/events", params={"once": "true"}, headers={"Last-Event-ID": str(start)})
+    events = [frame["data"] for frame in parse_sse(response.text)]
+    types = [event["type"] for event in events]
+    # The saved file is indexed at once: the kit reindexes after saving it, before the Lab reports.
+    assert types.index("index.reindexed") < types.index("session_memory.written") < types.index("session.new")
+    assert client.get("/api/lab/index/status").json()["stale"] is False
+    new_event = next(event for event in events if event["type"] == "session.new")
+    assert new_event["data"]["oldSessionKey"] == new_event["data"]["sessionKey"] == "lab:main"
+    assert new_event["data"]["oldSessionId"] == old["id"]
+    assert new_event["data"]["sessionId"] == result["sessionId"] != old["id"]
+    session = lab.session("main")
+    assert (session.key, session.id, session.messages) == ("lab:main", result["sessionId"], [])
+    assert dict(session.state.entry) == {"sessionId": result["sessionId"], "compactionCount": 0}
+    assert "- **Session Key**: lab:main" in (lab.root / result["sessionMemory"]["path"]).read_text(encoding="utf-8")
 
 
 def test_session_new_validates_the_command(client):

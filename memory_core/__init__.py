@@ -28,11 +28,7 @@ from memory_core.bootstrap import (
 )
 from memory_core.runtime_identity import RuntimeIdentity, OPENCLAW_COMPAT_RUNTIME_IDENTITY, MEMORY_CORE_RUNTIME_IDENTITY
 from memory_core.client import (
-    DEFAULT_CHAT_SYSTEM_PROMPT,
     DEFAULT_MEMORY_MD_TEMPLATE,
-    MemoryChatResult,
-    MemoryChatTurn,
-    MemoryRecordResult,
     Memory,
     initialize_memory_core_workspace,
 )
@@ -244,7 +240,6 @@ __all__ = [
     "CurationResult",
     "CurationUnavailableError",
     "MemoryCurator",
-    "DEFAULT_CHAT_SYSTEM_PROMPT",
     "DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES",
     "DEFAULT_MEMORY_FLUSH_SOFT_TOKENS",
     "DEFAULT_MEMORY_MD_TEMPLATE",
@@ -309,15 +304,12 @@ __all__ = [
     "MemoryConfig",
     "MemoryCorpusResult",
     "MemoryCorpusSupplement",
-    "MemoryChatTurn",
-    "MemoryChatResult",
     "MemoryFile",
     "MemoryFlushPlan",
     "MAX_FLUSH_FAILURES",
     "MemoryFlushFailureOutcome",
     "MemoryFlushTriggerDecision",
     "MemoryReadResult",
-    "MemoryRecordResult",
     "MemoryWorkspace",
     "MemoryCoreSessionCorpus",
     "SessionMemoryResult",

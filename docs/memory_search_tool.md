@@ -69,8 +69,7 @@ except MemoryToolInputError as error:
 ### Blank queries
 
 `memory_search` and the facade raise as well, so the change reaches every caller
-built on them: `Memory.search("")`, `Memory.prepare_turn("  ")` (deprecated,
-removed with the packaging stage) and `SubjectMemory.prepare_live_turn` with a
+built on them: `Memory.search("")` and `SubjectMemory.prepare_live_turn` with a
 blank `user_utterance` (a silent ASR turn, for example) raise
 `MemoryToolInputError("query required")`. Before this
 contract port they returned `{"results": [], "disabled": True, "error": "query
@@ -140,8 +139,7 @@ lifts the pause). In memory-core the host owns reindexing, so the model relays a
 that an end user of the host app cannot take; whether the memory-core text should
 address the host instead is an open decision.
 
-The recall helpers keep only `results`: `Memory.prepare_turn` (deprecated,
-removed with the packaging stage), `LangGraphMemoryRecall` and
+The recall helpers keep only `results`: `LangGraphMemoryRecall` and
 `SubjectMemory.prepare_live_turn` drop the `disabled`, `warning` and `action` of
 an unavailable or paused result, so recall injects nothing and nobody is told.
 These helpers are adapter-only (no upstream counterpart). The upstream shape is

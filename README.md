@@ -243,35 +243,6 @@ cd /path/to/my-agent-app
 OPENAI_API_KEY=<your key> python -m examples.basic_usage
 ```
 
-Deprecated (a `DeprecationWarning` since the host kit; removed with the packaging
-stage): `Memory.prepare_turn()`, `Memory.chat()` and `Memory.record_turn()`. Use
-`memory_core.host` instead. `prepare_turn()` injects recall results into the messages,
-which upstream never does:
-
-```python
-turn = memory.prepare_turn("Bana nasil hitap edeceksin?")
-response = llm.chat(turn.messages)
-```
-
-`chat()` runs a managed answer + flush cycle:
-
-```python
-result = memory.chat(
-    "Bana Doruk diye hitap et.",
-    llm=llm.chat,
-    force_flush=True,
-)
-
-print(result.assistant_message)
-print(result.flush_result.path)
-```
-
-This mirrors OpenClaw's memory-flush shape at package level when explicitly
-forced: after the answer, the package runs a separate memory-flush prompt and
-appends non-`NO_REPLY` output only to the canonical `memory/YYYY-MM-DD.md` file,
-then reindexes memory. It is still adapter/runtime glue, not a full OpenClaw
-agent runtime.
-
 Run the opt-in live embedding smoke test:
 
 ```bash

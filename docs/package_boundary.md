@@ -78,7 +78,7 @@ Four paths change memory files; none of them uses keyword triggers.
 
 | Mode | Writes | Decided by | Module | Evidence |
 | --- | --- | --- | --- | --- |
-| Daily capture | `memory/YYYY-MM-DD.md` (append only) | the model's flush pass through the append-only `write` tool (`NO_REPLY` writes nothing) | `memory_core.memory_flush`, `memory_core.host` (`FlushRequest`); deprecated: `Memory.chat(force_flush=True)` | flush plan oracle-backed; the write loop is adapter-only |
+| Daily capture | `memory/YYYY-MM-DD.md` (append only) | the model's flush pass through the append-only `write` tool (`NO_REPLY` writes nothing) | `memory_core.memory_flush`, `memory_core.host` (`FlushRequest`) | flush plan oracle-backed; the write loop is adapter-only |
 | Scored promotion and dreaming | dated `## Promoted From Short-Term Memory (<date>)` sections of `MEMORY.md`, `memory/.dreams/*.json`, `DREAMS.md` | recall signals and the score, signal, diversity and age gates; no LLM | `memory_core.consolidation` | 21 promotion oracle tests assert Python == TS (docs/parity_matrix.md) |
 | Curated writes | the non-promotion blocks of `MEMORY.md`, `USER.md`, `PROACTIVE_PREFERENCES.md`, today's daily note (append only) | the agent, through curation tools (decision Q16, on by default) | `memory_core.curation` (`MemoryCurator`, `Memory.curator()`) | memory-core extension, no upstream counterpart; one oracle test runs curated edits against the real promotion apply |
 | Session snapshot | a new `memory/<date>-<slug>.md` per ending session (never appended to) | the host's `/new` or `/reset` command; the slug comes from a host-supplied generator, else the timestamp | `memory_core.session_memory` (`save_session_memory`) | oracle-backed with named deviations (docs/parity_matrix.md) |
@@ -110,8 +110,8 @@ workspace with six entry points (`tools`, `dispatch`, `before_turn`, `after_turn
 functions, never calls a model and keeps no per-session state; the host owns the agent
 and tool loop, the model call, streaming, compaction, scheduling and session storage.
 It is adapter-only code: the orders and inputs it takes from upstream are
-source-backed and named in `docs/host_kit.md`. `Memory.prepare_turn`, `Memory.chat` and
-`Memory.record_turn` are deprecated in its favour and go with the packaging stage.
+source-backed and named in `docs/host_kit.md`. It replaced the facade's turn helpers
+(`Memory.prepare_turn`, `Memory.chat`, `Memory.record_turn`), removed in 0.2.0.
 
 ## Runtime Adapters
 

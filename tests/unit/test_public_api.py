@@ -4,7 +4,6 @@ import memory_core as memory
 def test_public_api_exports_core_memory_surface():
     expected = {
         "__version__",
-        "DEFAULT_CHAT_SYSTEM_PROMPT",
         "DEFAULT_MEMORY_MD_TEMPLATE",
         "MemoryConfig",
         "FeatureFlags",
@@ -37,9 +36,6 @@ def test_public_api_exports_core_memory_surface():
         "truncate_tool_result_text",
         "decide_provider_overflow_recovery",
         "LangGraphMemoryRecall",
-        "MemoryChatResult",
-        "MemoryChatTurn",
-        "MemoryRecordResult",
         "Memory",
         "IdentityLoadError",
         "JsonlTraceSink",

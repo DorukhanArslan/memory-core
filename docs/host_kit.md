@@ -758,28 +758,30 @@ known gap, a host that never compacts flushes once per session, see Turn lifecyc
 workflow state, trace storage, secret redaction policy (the kit takes the host's `redact` and
 `redactor`), and session storage.
 
-## `Memory.prepare_turn`, `Memory.chat`, `Memory.record_turn`: deprecate
+## `Memory.prepare_turn`, `Memory.chat`, `Memory.record_turn`: removed
 
 Decision: keep `Memory` as the core handle (`from_workspace`, `search`, `get`, `curator`,
-`langgraph_recall`); deprecate `prepare_turn`, `chat` and `record_turn` in this stage (a
-`DeprecationWarning` naming `memory_core.host`, behaviour unchanged) and remove them in the packaging
-stage, together with the quickstart rewrite and before the first release.
+`langgraph_recall`). `prepare_turn`, `chat` and `record_turn` were deprecated in this stage (a
+`DeprecationWarning` naming `memory_core.host`, behaviour unchanged, Task 7) and removed in the
+packaging stage (0.2.0, decision Q7) with `MemoryChatTurn`, `MemoryChatResult`,
+`MemoryRecordResult`, `DEFAULT_CHAT_SYSTEM_PROMPT`, `examples/chatbot_memory.py` and
+`docs/feature_storybook.md`.
 
-- `prepare_turn` injects search results as `Relevant memory:` into every prompt. Upstream has no
+- `prepare_turn` injected search results as `Relevant memory:` into every prompt. Upstream has no
   such injection; its model recalls through the tools. The kit offers the upstream shape.
-- `record_turn` appends the flush model's plain text to the daily file, with no gate, no session
-  entry and no `write` tool. Keeping it next to `FlushRequest` would leave two flush write paths.
-- `chat` owns the model call and is sync-only; the kit never calls a model. Its
-  `force_flush=True` goes through `record_turn` and stays unchanged until the removal; the kit's
-  only forced flush is the labelled `request_flush` extension (decision Q6), which keeps the
-  heartbeat skip and the one-flush-per-cycle guard.
-- Delegating the three to the kit would silently change what they write (plain text versus a
-  `write` call, forced versus gated), a breaking change hidden behind old names. The warning makes
-  the change loud.
-- `LangGraphMemoryRecall` (`Memory.langgraph_recall`) injects search results the same way
-  `prepare_turn` does. It stays as an explicit, labelled adapter-only auto-recall (not upstream
-  behaviour; a LangGraph host that wants the upstream shape uses the kit's tools instead); the
-  matrix and docs/package_boundary.md label it so in Task 10.
+- `record_turn` appended the flush model's plain text to the daily file, with no gate, no session
+  entry and no `write` tool; next to `FlushRequest` it was a second flush write path.
+- `chat` owned the model call and was sync-only; the kit never calls a model. Its
+  `force_flush=True` went through `record_turn`; the kit's only forced flush is the labelled
+  `request_flush` extension (decision Q6), which keeps the heartbeat skip and the
+  one-flush-per-cycle guard.
+- Delegating the three to the kit would have silently changed what they write (plain text versus
+  a `write` call, forced versus gated), a breaking change hidden behind old names; the warning and
+  then the removal made the change loud.
+- `LangGraphMemoryRecall` (`Memory.langgraph_recall`) injects search results the way
+  `prepare_turn` did. It stays as an explicit, labelled adapter-only auto-recall (not upstream
+  behaviour; a LangGraph host that wants the upstream shape uses the kit's tools instead), as the
+  matrix and docs/package_boundary.md label it.
 
 ## How the Lab dogfoods the kit
 
@@ -875,8 +877,7 @@ Compaction and the pre-compaction checkpoint flush; a generic `read` tool; the
 `heartbeat_respond` tool and system events; the upstream bounded flush view
 (`Memory flush exceeds the bounded conversation view.`); auto-recall; async variants; live subject
 workspaces; wiki supplements (`memory_search` supplements stay a core option the kit does not
-expose yet); session auto-reset; inbound-context prefixes (`build_current_inbound_prompt`);
-packaging, `__all__` shrinking and the quickstart (next stage).
+expose yet); session auto-reset; inbound-context prefixes (`build_current_inbound_prompt`).
 
 ## Decisions (Doruk, 2026-09-28)
 
@@ -1092,7 +1093,8 @@ follows Task 9.
   `test_record_turn_warns_deprecated`; the existing facade and example tests run under
   `pytest.deprecated_call()`.
 - Done: tests pass; nothing in `memory_core/` or `demo/` calls the deprecated methods (the examples
-  keep them until the quickstart rewrite).
+  keep them until the quickstart rewrite). The packaging stage removed the three methods, their
+  tests and `examples/chatbot_memory.py` (decision Q7).
 
 ### Task 8: Lab switch, part 1 (tools, dispatch, prompt, index bookkeeping)
 
@@ -1172,8 +1174,8 @@ follows Task 9.
 ## Follow-ups (later stages)
 
 Packaging (`[build-system]`, a demo extra so the core stops depending on FastAPI), the root
-`__all__` shrink with `memory_core.host` exported, the framework quickstart and example rewrite
-(removing the deprecated facade methods), live subject workspaces on the kit, the
+`__all__` shrink with `memory_core.host` exported, the framework quickstart and example rewrite, live
+subject workspaces on the kit, the
 pre-compaction checkpoint flush with a compaction adapter, session auto-reset, memory-search
 supplements on the kit, and port plan area 5 (tool definitions and the Memory Recall section at the
 tag).

@@ -348,10 +348,10 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
   the parts of `date-time.ts` it uses and is the one place that documents the deviation: the
   host passes one `time_format` (`"12"` or `"24"`, default `"24"`, `"auto"` refused) and
   `build_memory_flush_plan`, `prepare_heartbeat_turn`, the bare reset prompt, `Memory.record_turn`
-  / `chat` and the live SDK's session summary pass it through. The `heartbeatRunPrompt` op reports
-  `hostTimeFormat` like `flushPlan`, its test compares the full Body, and
-  `current_time_line_is_one_host_format_for_flush_and_heartbeat` compares both tag paths with
-  both Python paths for one instant. The Lab passes one `LAB_TIME_FORMAT` and shows it.
+  / `chat` (removed in 0.2.0) and the live SDK's session summary pass it through. The
+  `heartbeatRunPrompt` op reports `hostTimeFormat` like `flushPlan`, its test compares the full
+  Body, and `current_time_line_is_one_host_format_for_flush_and_heartbeat` compares both tag
+  paths with both Python paths for one instant. The Lab passes one `LAB_TIME_FORMAT` and shows it.
 
 ### 5. memory_get, memory_search contract, deadline and index identity (estimate 16-26 h)
 

@@ -23,10 +23,23 @@ from memory_core.bootstrap import (
 )
 from memory_core.client import Memory
 from memory_core.config import MemoryConfig
+from memory_core.consolidation import record_short_term_recalls, undecorate_search_results
 from memory_core.curation import CurationPolicy, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
-from memory_core.tools.memory_get import memory_get_tool_definition
-from memory_core.tools.memory_search import memory_search_tool_definition
+from memory_core.host._calls import ToolCallRefused, read_tool_call, tool_error
+from memory_core.host.session import SessionState
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
+from memory_core.tools.common import MemoryToolInputError, to_tool_error
+from memory_core.tools.memory_get import (
+    MEMORY_GET_TOOL_NAME,
+    execute_memory_get_tool,
+    memory_get_tool_definition,
+)
+from memory_core.tools.memory_search import (
+    MEMORY_SEARCH_TOOL_NAME,
+    execute_memory_search_tool,
+    memory_search_tool_definition,
+)
 
 
 class HostKit:
@@ -47,7 +60,9 @@ class HostKit:
         templates: Mapping[str, str] | None = None,
         seed_bootstrap: bool | None = None,
         timezone: str = "UTC",
+        identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
         curation_policy: CurationPolicy | None = None,
+        dreaming_enabled: bool = False,
         now_ms: Callable[[], int] | None = None,
     ) -> None:
         self._memory = memory
@@ -59,6 +74,8 @@ class HostKit:
             if seed_bootstrap is not None
             else layout.bootstrap_file in (self._templates or {})
         )
+        self._identity = identity
+        self._dreaming_enabled = dreaming_enabled
         self._clock = now_ms or (lambda: time.time_ns() // 1_000_000)
         # The curator validates the timezone and the policy against the layout.
         self._curator = memory.curator(
@@ -130,3 +147,60 @@ class HostKit:
             memory_get_tool_definition(),
             *self._curator.tool_definitions(),
         ]
+
+    def dispatch(
+        self,
+        name: str,
+        arguments: Mapping[str, Any] | str | None,
+        *,
+        session: SessionState,
+    ) -> dict[str, Any]:
+        """Run one tool call of the model and return the payload to send back verbatim.
+
+        ``arguments`` is a mapping, its JSON text or ``None``. Every model-caused error is an
+        ``{"status": "error", "tool", "error"}`` payload (docs/host_kit.md, entry point 2):
+        invalid JSON, a non-object, a tool :meth:`tools` does not offer, bad params and refused
+        curated writes (``MemoryToolInputError``), and any other ``Exception`` a tool raises.
+        ``TypeError`` for a non-string name or arguments of another type.
+        """
+        try:
+            args = read_tool_call(name, arguments)
+        except ToolCallRefused as refused:
+            return refused.payload
+        if name not in {tool["name"] for tool in self.tools()}:
+            return tool_error(name, f"tool {name} is not available")
+        try:
+            if name == MEMORY_SEARCH_TOOL_NAME:
+                return self._memory_search(args, session)
+            if name == MEMORY_GET_TOOL_NAME:
+                return execute_memory_get_tool(self._memory.config, args)
+            return self._curator.dispatch(name, args)
+        except MemoryToolInputError as error:
+            return error.to_tool_error(name)
+        except Exception as error:
+            return to_tool_error(error, tool=name)
+
+    def _memory_search(self, args: dict[str, Any], session: SessionState) -> dict[str, Any]:
+        memory = self._memory
+        result = execute_memory_search_tool(
+            memory.config,
+            memory.store,
+            args,
+            agent_session_key=session.session_key,
+            runtime_identity=self._identity,
+        )
+        if self._dreaming_enabled and not result.get("unavailable"):
+            # tools.ts:491-507: with dreaming enabled, a successful search records its
+            # memory-corpus hits (raw, without the Source: citation) off the reply path and
+            # ignores recording errors.
+            hits = [hit for hit in result.get("results") or [] if hit.get("corpus") == "memory"]
+            try:
+                record_short_term_recalls(
+                    config=memory.config,
+                    query=str(args.get("query", "")),
+                    results=undecorate_search_results(hits),
+                    now_ms=self._clock(),
+                )
+            except Exception:
+                pass
+        return result

@@ -1187,6 +1187,7 @@ __all__ = [
     "SubjectPromotionDisabledError",
     "TEXT_DELTA",
     "TraceSink",
+    "UnknownIdentityFilePolicy",
     "LiveTurnContext",
     "LiveTurnEvent",
     "PreparedLiveTurn",

@@ -1,3 +1,5 @@
+import importlib
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -48,6 +50,21 @@ def test_root_exports_every_host_kit_class():
     assert kit_classes <= ROOT_API
     for name in kit_classes:
         assert getattr(memory_core, name) is getattr(host, name)
+
+
+def test_every_moved_name_is_exported_where_the_changelog_says():
+    repo = Path(memory_core.__file__).resolve().parents[1]
+    changelog = (repo / "CHANGELOG.md").read_text(encoding="utf-8")
+    table = changelog.split("### Moved out of the package root", 1)[1].split("\n#", 1)[0]
+    rows = [re.match(r"\| `([a-z_.]+)` \| (.+) \|$", line) for line in table.splitlines()]
+    moved = {row[1]: re.findall(r"`(\w+)`", row[2]) for row in rows if row}
+
+    assert sum(len(names) for names in moved.values()) == 154
+    for module_name, names in moved.items():
+        module = importlib.import_module(module_name)
+        for name in names:
+            assert hasattr(module, name), f"{module_name}.{name}"
+            assert name in getattr(module, "__all__", names), f"{module_name}.{name}"
 
 
 def test_memory_keeps_only_the_core_handle_methods():

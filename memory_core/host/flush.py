@@ -2,9 +2,10 @@
 
 ``HostKit.after_turn`` returns a :class:`FlushRequest` when the flush is due (and the extension
 ``HostKit.request_flush`` one on the host's demand): the messages and the one tool of the flush
-run, a ``dispatch`` for that tool's calls and ``complete`` for the session entry. The host runs the model (later in the same process, detached from the reply, as
-upstream runs flush maintenance) and never delivers or records the flush reply; the session's
-next ``after_turn`` waits for ``complete`` (one maintenance lane per session).
+run, a ``dispatch`` for that tool's calls and ``complete`` for the session entry. The host runs
+the model (later in the same process, detached from the reply, as upstream runs flush
+maintenance) and never delivers or records the flush reply; the session's next ``after_turn``
+waits for ``complete`` (one maintenance lane per session).
 
 The tool is upstream's ``write`` restricted to appending the daily target
 (src/agents/agent-tools.ts:665-692 keeps ``read`` and an append-only ``write`` for flush runs;

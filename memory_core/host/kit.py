@@ -446,7 +446,9 @@ class HostKit:
         plan = self._flush_plan(window)
         total = resolve_fresh_session_total_tokens(entry)
         token_count = (
-            int(total) + (recorded.last_output_tokens or 0) if total is not None and total > 0 else None
+            int(total) + (recorded.last_output_tokens or 0)
+            if total is not None and total > 0
+            else None
         )
         decision = explain_memory_flush_trigger(
             entry=entry,

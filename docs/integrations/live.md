@@ -28,7 +28,7 @@ workspace/
   SOUL.md
   IDENTITY.md
   USER.md                    # skipped when absent; fixed 4000-char cap
-  PROACTIVE_PREFERENCES.md   # memory-core extension
+  PROACTIVE_PREFERENCES.md   # memory-core extension, no upstream counterpart
   BOOTSTRAP.md               # first run only
   MEMORY.md                  # not injected into subject prompts by default
   user/  workspace/          # created by initialize_agent_workspace, never injected

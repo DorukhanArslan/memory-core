@@ -37,7 +37,7 @@ Two presets ship; `DEFAULT_WORKSPACE_LAYOUT` is `MEMORY_CORE_WORKSPACE_LAYOUT`.
 | SOUL.md | 2 | 20 | optional | `[MISSING]` | no | yes |
 | IDENTITY.md | 3 | 30 | optional | `[MISSING]` | no | yes |
 | USER.md | 4 | 40 | optional | skipped | no | yes |
-| PROACTIVE_PREFERENCES.md (memory-core extension) | 5 | 45 | optional | skipped | no | yes |
+| PROACTIVE_PREFERENCES.md (memory-core extension, no upstream counterpart) | 5 | 45 | optional | skipped | no | yes |
 | BOOTSTRAP.md | 6 | 60 | first run only | `[MISSING]` | no | no |
 | MEMORY.md | 7 | 70 | never | skipped | no | no |
 

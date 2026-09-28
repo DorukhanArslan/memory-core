@@ -1,8 +1,9 @@
 # memory-core host kit (`memory_core.host`)
 
 Status: specification and TDD plan, written 2026-09-28 on `feat/host-kit` (from `main`
-`b829bad`). Nothing in this document is implemented yet. Upstream anchors are OpenClaw
-v2026.9.6 (`eb377ac59e6`, checkout `/tmp/openclaw-head`) unless a line says otherwise.
+`b829bad`), revised after review the same day. Nothing in this document is implemented yet.
+Upstream anchors are OpenClaw v2026.9.6 (`eb377ac59e6`, checkout `/tmp/openclaw-head`) unless a
+line says otherwise.
 
 # Part 1: Specification
 
@@ -25,9 +26,10 @@ Rules the kit keeps:
   host's; the kit returns what to send and takes back what came out.
 - It keeps no per-session state. The host stores a small `SessionState` value next to its own
   session record and passes it in; the kit returns updated copies.
-- It writes only through the existing write paths: `MemoryWorkspace.append_daily_memory`, the
-  curation tools behind `FeatureFlags.curated_memory_writes`, `save_session_memory`, the
-  automation store.
+- It writes only through the existing write paths: `MemoryWorkspace.append_daily_memory` (under
+  the shared per-file lock, see Thread safety), the curation tools behind
+  `FeatureFlags.curated_memory_writes`, `save_session_memory`, the automation store, and the
+  flush target's empty-file creation (`ensure_memory_flush_target_file`, entry point 4).
 
 ## Object model
 
@@ -41,7 +43,7 @@ class HostKit:
         *,
         layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT,
         templates: Mapping[str, str] | None = None,
-        seed_bootstrap: bool = True,
+        seed_bootstrap: bool | None = None,
         timezone: str = "UTC",
         time_format: TimeFormat = DEFAULT_TIME_FORMAT,
         identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
@@ -62,13 +64,15 @@ class HostKit:
         *,
         embedding_provider: EmbeddingProvider | None = None,
         config: MemoryConfig | None = None,
-        # plus every keyword option of __init__, spelled out
+        **options,  # the keyword options of __init__
     ) -> HostKit: ...
+
+    memory: Memory            # read-only
+    curator: MemoryCurator    # read-only; the curator dispatch() uses
+    def ensure(self) -> WorkspaceInitResult: ...
 ```
 
-- Every option is an input some core function already takes. The Lab uses each of them except
-  `identity` (memory-core's compat markers), `seed_bootstrap` (hosts without a bootstrap ritual, Q4)
-  and `now_ms` (deterministic tests):
+- Every option is an input some core function already takes:
   `layout`, `templates`, `seed_bootstrap` (`initialize_agent_workspace`); `timezone` and
   `time_format` (the flush plan, the curator's "today", the session-memory stamp, the startup
   context, the reset prompt and the heartbeat time line all take the one host value, as
@@ -77,16 +81,35 @@ class HostKit:
   bootstrap caps, `context_injection` and `truncation_warning_mode`
   (`build_workspace_context`); `dreaming_enabled` (recall tracking, see `dispatch`);
   `automation_store` (default `FileAutomationStore(root)`); `now_ms` (epoch-ms clock, as
-  `MemoryCurator` takes it). The agent id is `memory.config.agent_id`.
+  `MemoryCurator` takes it). The agent id is `memory.config.agent_id`. The Lab uses each of them
+  except `identity` (memory-core's compat markers) and `now_ms` (deterministic tests).
+- `seed_bootstrap=None` (default) seeds BOOTSTRAP.md only when `templates` supplies the layout's
+  bootstrap file. memory-core has no ritual text of its own, so an empty BOOTSTRAP.md would leave a
+  host without a ritual in limited-mode "Bootstrap Pending" on every turn until `memory/`
+  appears (open question Q4). `False` marks setup complete at once (the core extension);
+  `True` seeds even an empty file. The Lab passes `True` with its templates.
 - `__init__` does no I/O beyond validating the timezone and the curation policy against the
-  layout, so a host whose settings change (the Lab) builds a new kit per request.
-- `open` checks the store config first (`validate_store_config`, so a call that raises leaves no
-  file behind), runs `initialize_agent_workspace`, then `Memory.from_workspace(...,
-  initialize=False, reindex=True)`. The order matters: `initialize_memory_core_workspace`
-  writes MEMORY.md, which counts as setup evidence, so opening `Memory` first would stop
-  BOOTSTRAP.md from ever being seeded (`memory_core/bootstrap/lifecycle.py:initialize_agent_workspace`
-  docstring). Hosts that build their own `Memory` (the Lab, one store per search mode) use
-  `HostKit(memory, ...)` and keep the same order themselves.
+  layout (the curator is built there), so a host whose settings change (the Lab) builds a new
+  kit per request.
+- `ensure()` runs `initialize_agent_workspace(root, layout, templates, seed_bootstrap, now_ms)`:
+  upstream runs `ensureAgentWorkspace` on every reply (`src/auto-reply/reply/get-reply.ts:443-448`),
+  which is where BOOTSTRAP.md is reconciled away. `before_turn` runs it first (unless told not
+  to); a host that writes workspace files between turns (the Lab editor) calls it after the write.
+- `open` checks the store config first (`validate_store_config`, so a bad provider/flag
+  combination leaves no file behind), builds `Memory.from_workspace(..., initialize=False,
+  reindex=False)`, then the kit, then runs `ensure()` and one reindex. The order matters:
+  `initialize_memory_core_workspace` writes MEMORY.md, which counts as setup evidence, so
+  initializing `Memory` first would stop BOOTSTRAP.md from ever being seeded
+  (`memory_core/bootstrap/lifecycle.py:initialize_agent_workspace` docstring). Store construction
+  creates only `.memory-core/`, which is not setup evidence. A kit option that fails validation raises
+  after the index file exists (a host error, not a model one).
+- The default `MemoryConfig` is hybrid (`vector_search=True`), so `HostKit.open(root)` without an
+  embedder raises in `validate_store_config` (fail closed). The zero-config FTS-only call is
+  `HostKit.open(root, config=MemoryConfig(workspace_dir=root, flags=FeatureFlags(vector_search=False)))`;
+  the future quickstart shows both.
+- Hosts that build their own `Memory` (the Lab, one store per search mode) use
+  `HostKit(memory, ...)` with `Memory.from_workspace(..., initialize=False)` and call `ensure()`
+  before any memory file is created.
 
 ### `SessionState`: one per session, stored by the host
 
@@ -96,13 +119,14 @@ class SessionState:
     session_key: str                 # upstream sessionKey; stays the same across /new
     session_id: str                  # upstream sessionId; new on /new and /reset
     kind: SessionKind = "main"       # main, group, channel, direct, heartbeat, subagent, cron
-    entry: Mapping[str, Any] = field(default_factory=dict)  # SessionEntry fields of the flush gate
+    entry: Mapping[str, Any] = ...   # read-only SessionEntry fields of the flush gate
     last_output_tokens: int | None = None
     seen_truncation_signatures: tuple[str, ...] = ()
     completed_bootstrap_turn: bool = False
 
     @classmethod
     def new(cls, *, session_key: str, session_id: str, kind: SessionKind = "main") -> SessionState
+    def after_compaction(self, *, tokens_after: int | None = None) -> SessionState
     def to_json(self) -> dict[str, Any]
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> SessionState
@@ -110,9 +134,14 @@ class SessionState:
 
 - `entry` is upstream's `SessionEntry` subset as `memory_core.memory_flush` reads it:
   `sessionId`, `compactionCount`, `totalTokens`, `totalTokensFresh`, `totalTokensVersion`,
-  `memoryFlush`. `new` starts it as `{"sessionId": ..., "compactionCount": 0}`. A host that
-  compacts bumps `compactionCount` itself (upstream `incrementCompactionCount`); the kit never
-  compacts.
+  `memoryFlush`. `new` starts it as `{"sessionId": ..., "compactionCount": 0}`. The state deep-copies
+  `entry` on construction and exposes it read-only (`MappingProxyType`); the kit never mutates it
+  and every state it returns carries its own copy, so two states never share a dict.
+- `after_compaction` is upstream's `incrementCompactionCount` accounting
+  (`src/config/sessions/session-entry-projection.ts:91-131` `projectCompactionAccountingPatch`):
+  `compactionCount + 1`, and the token snapshot becomes stale (`totalTokensFresh: False`,
+  `totalTokensVersion` removed) unless `tokens_after` gives the fresh post-compaction total. It is
+  for hosts that compact or window their history; the kit itself never compacts.
 - `to_json` / `from_json` round-trip exactly, so a host can keep the state in any store.
 
 ```python
@@ -131,7 +160,7 @@ as upstream without a fresh total) or its own estimate. The kit invents no estim
 Host step                                  Kit call, then what it composes (core)
 ---------                                  --------------------------------------
 inbound user message
-  before_turn(state, runtime_context)  ->  initialize_agent_workspace
+  before_turn(state, runtime_context)  ->  initialize_agent_workspace (ensure=True)
                                            build_workspace_context
                                            build_prompt_section
                                            build_runtime_context_system_context
@@ -146,11 +175,13 @@ inbound user message
   after_turn(session', usage, ...)     ->  token snapshot
                                            build_memory_flush_plan
                                            explain_memory_flush_trigger
+                                           ensure_memory_flush_target_file (flush due)
   <- TurnRecord(session'', flush_decision, flush)
   if flush: model run (host, detached, off the reply path) with flush.messages, flush.tools
     each tool call:
     flush.dispatch("write", args)      ->  locked append_daily_memory (+ reindex)
-    flush.complete(error=None | exc)   ->  record_memory_flush_success / _failure
+    flush.complete(current_state, error=None | exc)
+                                       ->  record_memory_flush_success / _failure
     <- FlushOutcome(session''')
 
 /new or /reset
@@ -175,6 +206,15 @@ The host persists every returned `SessionState`. It records in its transcript th
 message (or the reset / heartbeat transcript row), the reply and its own tool rows; never the
 runtime-context block and never the flush turn.
 
+Known gap: one flush per compaction cycle. upstream's guard (`hasAlreadyFlushedForCurrentCompaction`)
+allows one flush per `compactionCount`, and upstream compacts, which starts the next cycle. The kit
+never compacts, so a host that does not call `SessionState.after_compaction()` flushes at most once
+per session: after one flush, or three failed ones, every later turn reads `already_flushed` until
+`/new`. A WhatsApp or Slack session that keeps one `session_key` for weeks then stops flushing after
+the first time. Hosts that compact or window history call `after_compaction()` when they do;
+whether history windowing with `limit_history_turns` should count as compaction is open question
+Q9.
+
 ## Entry points
 
 ### 1. `tools()`
@@ -189,6 +229,10 @@ def tools(self) -> list[dict[str, Any]]
   `memory_core/curation.py:MemoryCurator.tool_definitions` for the operations the policy allows.
   The host wraps them in its format (`{"type": "function", "function": d}` for
   OpenAI-style APIs).
+- The two memory tool definitions are pin-era code (pin `4c428153`): at v2026.9.6 the contract
+  lives in `extensions/memory-core/src/memory-tool-contract.ts` with different descriptions. Port
+  plan area 5 (tool definitions and prompt section) ports them; until then the kit ships the pin-era
+  texts, labelled in "Parity labels".
 - Flags: `curated_memory_writes` off means no curation definitions (the curator returns none).
 - Pure: no I/O, never raises.
 
@@ -206,17 +250,24 @@ def dispatch(
 
 - Composes `execute_memory_search_tool(config, store, args, agent_session_key=session.session_key,
   runtime_identity=identity)`, `execute_memory_get_tool(config, args)` and
-  `MemoryCurator.dispatch(name, args)` on the curator from `Memory.curator(layout, policy,
-  timezone, now_ms)` (whose `after_write` reindexes after MEMORY.md and daily-note writes).
+  `MemoryCurator.dispatch(name, args)` on `HostKit.curator`, built from `Memory.curator(layout,
+  policy, timezone, now_ms)` (whose `after_write` reindexes after MEMORY.md and daily-note writes).
 - Arguments: a mapping, its JSON text (parsed once for every tool) or `None` (read as `{}`).
-- Recall tracking: with `dreaming_enabled`, the memory-corpus hits of a `memory_search` result go
-  through `memory_core/consolidation/recall.py:undecorate_search_results` and
-  `record_short_term_recalls`, as upstream does only when dreaming is enabled
-  (`extensions/memory-core/src/tools.ts:491-507`). Off by default
+  Blank text reads as `{}`. Parsing JSON text is host-transport glue and deliberately differs from
+  the core's `asToolParamsRecord` (`as_tool_params_record`, where a string reads as `{}`): the kit
+  sees the transport's raw text, the core sees an already-decoded value.
+- Recall tracking: with `dreaming_enabled`, the memory-corpus hits of a `memory_search` result that
+  is not unavailable go through `memory_core/consolidation/recall.py:undecorate_search_results` and
+  `record_short_term_recalls`, as upstream does only when dreaming is enabled and the memory search
+  succeeded (`extensions/memory-core/src/tools.ts:491-507`). Upstream records off the reply path and
+  swallows recording errors; the kit records synchronously and swallows them too. Off by default
   (`DEFAULT_DEEP_DREAMING_ENABLED = False`): no `memory/.dreams/` write.
 - Returns the tool's payload unchanged, JSON-able, for the host to send back verbatim.
-- Error contract. Model-caused errors come back as payloads, never raised:
-  - invalid JSON text: `{"status": "error", "tool": name, "error": "invalid JSON arguments: ..."}`;
+- Error contract, checked in this order. Model-caused errors come back as payloads, never raised:
+  - invalid JSON text: `{"status": "error", "tool": name, "error": "invalid JSON arguments: <msg>"}`
+    (`<msg>` is the decoder's message);
+  - JSON text or a value that is not an object (`"[]"`, `"\"q\""`): `... "error": "arguments must be
+    a JSON object"`;
   - a name `tools()` does not offer now (unknown, flag off, policy): `... "error": "tool <name>
     is not available"` (memory-core wording; the host's own loop owns names of its other tools);
   - `MemoryToolInputError` (bad params, refused or failed curated writes): `error.to_tool_error()`;
@@ -239,8 +290,11 @@ def before_turn(
     session: SessionState,
     *,
     runtime_context: str | None = None,
+    run_kind: BootstrapContextRunKind | None = None,
     context_mode: BootstrapContextMode = "full",
     has_bootstrap_file_access: bool = False,
+    offer_tools: bool = True,
+    ensure: bool = True,
 ) -> TurnContext
 
 @dataclass(frozen=True)
@@ -248,31 +302,44 @@ class TurnContext:
     session: SessionState              # pass to after_turn when the turn completes
     system_prompt: str                 # stable part, above any prompt-cache boundary
     runtime_context: str | None        # dynamic part, below it
-    tools: tuple[dict[str, Any], ...]  # tools() at this moment
+    tools: tuple[dict[str, Any], ...]  # what the host offers this turn
+    memory_recall: tuple[str, ...]     # the Memory Recall lines inside system_prompt
     workspace: WorkspaceContext        # the core result (files, truncation, bootstrap mode)
-    workspace_init: WorkspaceInitResult
+    workspace_init: WorkspaceInitResult | None  # None with ensure=False
 ```
 
 - Composes, in order:
-  1. `memory_core/bootstrap/lifecycle.py:initialize_agent_workspace(root, layout, templates,
-     seed_bootstrap, now_ms)`: upstream runs `ensureAgentWorkspace` on every reply
-     (`src/auto-reply/reply/get-reply.ts:443-448`), which is where BOOTSTRAP.md is reconciled away.
+  1. with `ensure=True` (default), `ensure()`. `ensure=False` makes the call read-only: an
+     inspector or prompt preview must not seed or delete BOOTSTRAP.md, and a host that already
+     ran `ensure()` for this turn (the Lab, inside its own event tracking) does not run it twice.
   2. `memory_core/bootstrap/context.py:build_workspace_context(root, layout, session_kind=kind,
-     context_mode, context_injection, has_completed_bootstrap_turn, has_bootstrap_file_access,
-     max_chars, total_max_chars, truncation_warning_mode, seen_truncation_signatures, identity)`.
-  3. `memory_core/prompt_section.py:build_prompt_section(tool names,
+     run_kind, context_mode, context_injection, has_completed_bootstrap_turn,
+     has_bootstrap_file_access, max_chars, total_max_chars, truncation_warning_mode,
+     seen_truncation_signatures, identity)`. `run_kind` defaults from the session kind, as the core
+     does (`heartbeat` -> heartbeat, `cron` -> cron, else default); a host running a cron or
+     heartbeat job in a main session passes it.
+  3. `tools` = `tools()`, or `()` with `offer_tools=False` (a model or transport without tool
+     calling; the Lab's scripted engine).
+  4. `memory_core/prompt_section.py:build_prompt_section(names of tools,
      citations_mode=config.citation_mode)`, skipped for the minimal prompt kinds `subagent` and
      `cron` (upstream `buildMemorySection` returns nothing in minimal mode,
      `src/agents/system-prompt.ts:202-225`; the set moves here from
-     `demo/lab_runtime.py:MINIMAL_PROMPT_KINDS`).
-  4. `system_prompt` = the Memory Recall lines, then `WorkspaceContext.prompt_text` (upstream puts
-     the memory section before the workspace sections, `system-prompt.ts:1059`).
-  5. `runtime_context` = `memory_core/runtime_context_prompt.py:build_runtime_context_system_context`
+     `demo/lab_runtime.py:MINIMAL_PROMPT_KINDS`). No tools, no section.
+  5. `system_prompt` = the Memory Recall lines, then `WorkspaceContext.prompt_text`, joined by a
+     blank line (upstream puts the memory section before the workspace sections,
+     `system-prompt.ts:1059`).
+  6. `runtime_context` = `memory_core/runtime_context_prompt.py:build_runtime_context_system_context`
      of the host's text (the identity's begin/end markers, so strip helpers remove it), or `None`.
-  6. `session` = the input with `seen_truncation_signatures` from
+  7. `session` = the input with `seen_truncation_signatures` from
      `WorkspaceContext.prompt_warning.warning_signatures_seen` and `completed_bootstrap_turn`
      set when `record_completed_bootstrap_turn` asks for it. The host passes this state to
      `after_turn` only for a turn that completed, so a failed turn records nothing.
+- The Memory Recall section is pin-era code: `memory_core/prompt_section.py` does not match the tag's
+  `buildMemoryPromptSection` (`extensions/memory-core/src/memory-tool-contract.ts:110-145`: other
+  guidance wording, the session-hit guidance lines and "Report partial, unavailable, or stale
+  recall"). The matrix row "Prompt memory tool section" is `partial` with the oracle "Not added";
+  port plan area 5 ports it with the planned `memoryPromptSection` op. Until then the kit's section
+  is the pin-era text, labelled in "Parity labels".
 - No recall injection: upstream's model recalls through the memory tools, and so does the kit's.
   Startup context exists upstream only on the bare `/new` / `/reset` turn, so it comes from
   `on_new_session`, not from here.
@@ -283,8 +350,8 @@ class TurnContext:
   (core rule).
 - Errors: `WorkspaceStateMigrationRequiredError` while upstream's retired JSON setup state is in
   the workspace (fail closed, the host runs `migrate_legacy_workspace_state`); `OSError` from the
-  filesystem; `ValueError` for an unknown session kind or context mode (host errors). No model is
-  involved, so nothing is a payload here.
+  filesystem; `ValueError` for an unknown session kind, run kind or context mode (host errors). No
+  model is involved, so nothing is a payload here.
 
 ### 4. `after_turn(session, ...)` and the flush request
 
@@ -297,7 +364,6 @@ def after_turn(
     usage: TurnUsage | None,
     context_window_tokens: int | None = None,
     transcript_bytes: int | None = None,
-    force_flush: bool = False,
 ) -> TurnRecord
 
 @dataclass(frozen=True)
@@ -306,6 +372,7 @@ class TurnRecord:
     flush_plan: MemoryFlushPlan                # the plan for this window (meter terms)
     flush_decision: MemoryFlushTriggerDecision
     flush: FlushRequest | None                 # set when the decision flushes
+    flush_failure: MemoryFlushFailureOutcome | None  # the flush was due but its setup failed
 ```
 
 Where upstream decides the flush. At v2026.9.6 a completed reply schedules session maintenance
@@ -332,20 +399,31 @@ estimate follows the pin-era order and changes with the dogfood switch (open que
      the Lab computes it today). No prompt estimate: maintenance computes
      `resolveEffectivePromptTokens(base, output, undefined)`
      (`src/auto-reply/reply/memory-flush.ts:28-39`). Without `transcript_bytes` the
-     transcript-size gate stays off (unknown size never forces).
-- `force_flush` skips only the token and transcript-size gates; the runtime skips and the
-  one-flush-per-compaction-cycle guard stay; the reason is `forced`. It is the one non-upstream
-  input of `after_turn`, kept because `Memory.chat(force_flush=True)` (b6d4d3f) already offers a
-  forced flush and the facade's deprecation must not drop it (open question Q6). Calling
-  `after_turn` twice with the same inputs is idempotent, which is how the Lab's between-turns
-  `/flush` uses it.
+     transcript-size gate stays off (unknown size never forces);
+  4. when the decision flushes, `ensure_memory_flush_target_file(root, plan.relative_path)`, then
+     the `FlushRequest`. Upstream creates `memory/` and opens the target for append before the flush
+     run (`agent-runner-memory.ts:1447-1451`, `memory-flush-session.ts:64-96`), so an empty daily
+     file exists even when the model answers `NO_REPLY`, and `memory/` is setup evidence: the next
+     ensure completes the bootstrap. If the ensure raises (`UnsafeMemoryPathError`, `OSError`), the
+     kit records a failure strike like upstream's `recordFailure` for a failed preparation:
+     `flush` is `None`, `flush_failure` the outcome, and `session` carries the failed entry.
+- There is no forced flush. `after_turn` has only upstream inputs; the Lab's `/flush` is a labelled
+  Lab action pending Q6 (see "How the Lab dogfoods the kit").
+
+`memory_core/memory_flush.py:ensure_memory_flush_target_file(root, relative_path)` (new port of
+`ensureMemoryFlushTargetFile`): a blank or absolute path raises `UnsafeMemoryPathError("Invalid
+memory flush target path")`, one that resolves outside the root raises `... "Memory flush target
+path must stay inside the workspace"` (upstream messages, script-extracted); it then creates the
+parent directories and opens the file for append, creating it empty. Stricter than upstream
+(documented deviation): it refuses a symlinked or non-directory parent and a target that is a
+symlink, a non-regular file or has more than one hard link, the same refusal as the flush write.
 
 Flush execution: a returned request object, not a host callable. Reasons:
 
-- The host owns the model call, model choice (`plan.model` is only a hint), streaming, tool-call
-  transport, timeouts, cancellation and provider fallback (docs/package_boundary.md). A callable
-  would make the kit run the tool loop, which adapters never own, and would force one sync or
-  async signature on every host.
+- The host owns the model call, model choice (`TurnRecord.flush_plan.model` is only a hint),
+  streaming, tool-call transport, timeouts, cancellation and provider fallback
+  (docs/package_boundary.md). A callable would make the kit run the tool loop, which adapters
+  never own, and would force one sync or async signature on every host.
 - Upstream runs the flush as detached maintenance after the reply is delivered, in its own
   session view (`src/auto-reply/reply/memory-flush-session.ts:17-47`). A request can be run later
   and elsewhere (a background task, a worker); a callable inside `after_turn` would sit on the
@@ -355,16 +433,14 @@ Flush execution: a returned request object, not a host callable. Reasons:
 
 ```python
 class FlushRequest:
-    session: SessionState
-    plan: MemoryFlushPlan
-    decision: MemoryFlushTriggerDecision
     target: str                                 # plan.relative_path, memory/YYYY-MM-DD.md
-    messages: tuple[dict[str, str], ...]        # system, transcript rows, user
+    messages: tuple[dict[str, str], ...]        # system, transcript text rows, user
     tools: tuple[dict[str, Any], ...]           # the append-only write tool only
 
     def dispatch(self, name: str, arguments: Mapping[str, Any] | str | None) -> dict[str, Any]
     def complete(
         self,
+        session: SessionState,
         *,
         error: BaseException | str | None = None,
         redact: Callable[[str], str] | None = None,
@@ -378,31 +454,55 @@ class FlushOutcome:
     failure: MemoryFlushFailureOutcome | None
 ```
 
+The plan, the decision and the session live on `TurnRecord`; the request carries only what the
+flush run needs.
+
 - `messages`: one system message, the transcript's user and assistant text rows (runtime-context
   custom rows dropped with `strip_runtime_context_custom_messages`), then `plan.prompt` as the
-  user message. Upstream's flush turn is a full agent run whose system prompt carries the flush
-  system prompt as extra context (`agent-runner-memory.ts:1452-1454`, `system-prompt.ts:1254-1257`,
-  header `## Conversation Context`), so the system message is the session's Project Context
-  (`build_workspace_context` for the session kind, not interactive, so bootstrap mode `none`)
-  followed by that section. Task 4 confirms the header and prompt mode for trigger `memory` from
-  upstream and takes the header by script (`scripts/extract_upstream_constants.py` into
-  `memory_core/_memory_flush_constants.py`).
+  user message. Upstream's flush turn is a full agent run whose system prompt carries
+  `[run.extraSystemPrompt, plan.systemPrompt]` as extra context under `## Conversation Context`
+  (`agent-runner-memory.ts:1452-1454`, `system-prompt.ts:1254-1257`; the flush session's key is an
+  internal effects key, so the prompt mode is full and the header is not `## Subagent Context`).
+  The kit's system message is the session's Project Context (`build_workspace_context` for the
+  session kind, `is_interactive_user_facing=False`, so bootstrap mode `none`; the flush run offers
+  no memory tools, so no Memory Recall section; `seen_truncation_signatures` from the session, as
+  upstream passes `bootstrapPromptWarningSignaturesSeen`), then `## Conversation Context` and
+  `plan.system_prompt`. The header is script-extracted into `memory_core/_memory_flush_constants.py`.
+  Labelled deviations: text rows only (upstream's bounded view also replays tool calls and results;
+  it fails with `Memory flush exceeds the bounded conversation view.`, a non-goal here), and no host
+  system prompt (upstream prepends the run's `extraSystemPrompt`; a host with one prepends it to the
+  system message itself).
 - `tools`: upstream offers a flush run only `read` and an append-only `write`
   (`src/agents/agent-tools.ts:91,665-692`). memory-core has no generic `read`, so the kit offers the
   `write` tool alone: upstream's schema and description (`src/agents/sessions/tools/write.ts:42-47,
   523-525`) plus the wrapper's suffix `During memory flush, this tool may only append to <target>.`
   (`src/agents/agent-tools.read.ts:760`), script-extracted. It replaces the Lab's own wording in
   `demo/chat_engine.py:_memory_write_tool`.
-- `dispatch("write", {path, content})` appends through the shared locked append of
-  `MemoryCurator.append_daily_note` (task 4 extracts it, so both paths refuse the same symlinks and
-  hard links), then reindexes. A path other than the target returns upstream's
-  `Memory flush writes are restricted to <target>; use that path only.`
-  (`agent-tools.read.ts:787-790`); empty or `NO_REPLY` content writes nothing (the package's write
-  rule). Other names and bad arguments return error payloads like `HostKit.dispatch`.
-- `complete()` writes the session entry: `record_memory_flush_success`, or with `error`
+- `dispatch("write", {path, content})`, after the argument checks of `HostKit.dispatch`:
+  - `path` must be a non-blank string and `content` a string (empty allowed, as upstream's
+    `allowEmpty`); otherwise an error payload (`path required`, `content required`; memory-core wording,
+    upstream's message adds a retry hint and the received keys);
+  - a path starting with `@`, or one that does not resolve to the target (relative to the root, or
+    absolute), returns upstream's `Memory flush writes are restricted to <target>; use that path
+    only.` (`agent-tools.read.ts:787-790`); an absolute path that resolves to the target is accepted;
+  - empty or `NO_REPLY` content writes nothing and returns
+    `{"status": "ok", "tool": "write", "path": target, "action": "skipped"}` (memory-core's write rule);
+  - otherwise the content is appended through the shared locked daily append (the path
+    `MemoryCurator.append_daily_note` uses, so both refuse the same symlinks and hard links), the
+    store is reindexed, and the payload is `{"status": "ok", "tool": "write", "path": target,
+    "action": "appended", "text": "Appended content to <target>."}` (upstream's text, `:828`;
+    script-extracted). A reindex failure keeps the ok payload and adds `afterWriteError`, as curated
+    writes do;
+  - other names return `tool <name> is not available`; errors of the append are payloads.
+- `complete(session, ...)` writes the session entry of the host's current state for this session
+  (the flush may run detached while later turns update the state; a different `session_id` raises
+  `ValueError`): `record_memory_flush_success(entry, flushed_compaction_count=<the count when the
+  request was made>)`, as upstream stamps `flushedCompactionCount`, or with `error`
   `record_memory_flush_failure(entry, error=..., redact=...)` (three strikes mark the cycle
   flushed). The flush reply's text is never delivered and never enters the transcript (upstream
-  also treats an empty reply as silent). A second `complete()` raises `RuntimeError` (host error).
+  also treats an empty reply as silent). A cancelled run is not completed: upstream records nothing
+  for a cancelled flush. A second `complete()`, or a `dispatch` after it, raises `RuntimeError`
+  (host error).
 - Flags: flush never depends on `curated_memory_writes`, and the curation tools are not offered
   during a flush (upstream restricts flush runs; `MemoryCurator` refuses `memory_flush=True`).
 
@@ -439,13 +539,13 @@ class ResetTurn:
     startup_context: str | None
 ```
 
-- Composes, in the Lab's order: `memory_core/session_memory.py:save_session_memory(root,
+- Composes, in the kit's order: `memory_core/session_memory.py:save_session_memory(root,
   session_key, session_id, messages=transcript | session_file, source, now_ms, timezone,
   slug_generator, redactor)`; a reindex, so `memory_search` finds the new file;
-  `initialize_agent_workspace` (upstream's ensure runs before the reset reply,
-  `get-reply.ts:443-448`); for a bare command (`text` empty)
-  `memory_core/bootstrap/startup.py:resolve_bare_session_reset_prompt_state(root, now_ms, timezone,
-  time_format, layout, is_primary_run=kind != "subagent", has_bootstrap_file_access)`,
+  `ensure()` (upstream's ensure runs before the reset reply, `get-reply.ts:443-448`; it stays here
+  because the reset prompt's bootstrap mode must see the file just saved); for a bare command
+  (`text` empty) `memory_core/bootstrap/startup.py:resolve_bare_session_reset_prompt_state(root, now_ms,
+  timezone, time_format, layout, is_primary_run=kind != "subagent", has_bootstrap_file_access)`,
   `build_startup_context(root, now_ms, timezone)` when the state says to prepend and
   `should_apply_startup_context(command)`, and `format_session_reset_transcript_prompt(command,
   identity)`. `model_prompt` joins the startup prelude and the reset prompt with a blank line, as
@@ -453,7 +553,8 @@ class ResetTurn:
 - The saved file is written before the startup context is read, so the next session's prelude
   can quote it. Upstream writes it from a background queue, so its order is not fixed.
 - The reset turn then runs like any turn: the host sends `reset.model_prompt` through
-  `before_turn` and its model, and records `reset.transcript_prompt` instead.
+  `before_turn` and its model, and records `reset.transcript_prompt` instead. That turn's ensure
+  runs again (cheap and idempotent).
 - Errors propagate from `save_session_memory` (documented deviation from upstream's logging:
   `ValueError` for an unknown zone, `UnsafeMemoryPathError`, `OSError`); a slug generator failure
   falls back to the timestamp slug. Passing both `transcript` and `session_file` raises
@@ -515,12 +616,15 @@ class HeartbeatOutcome:
   a stream-error placeholder are not delivered; a trailing `notify=false` line makes it silent);
   `record_automation_job_run(job, started_at_ms, ended_at_ms)` for `jobs` only, saved in one
   `store.save_jobs` call; the token snapshot as `after_turn` writes it, with no flush decision
-  (upstream skips maintenance for heartbeats). `transcript` is what the host records: the
-  identity's heartbeat row and the raw reply, so the session corpus filter drops both. A second
-  `complete()` raises `RuntimeError`.
+  (upstream skips maintenance for heartbeats). Before recording, `complete` re-reads
+  `store.list_jobs(agent_id)` and records a run only for a job that is still present and unchanged
+  (equal to the copy `heartbeat_prompt` loaded, so its `updated_at_ms` too): a job the host edited
+  or removed while the run was in flight is neither written back stale nor brought back.
+  `transcript` is what the host records: the identity's heartbeat row and the raw reply, so the
+  session corpus filter drops both. A second `complete()` raises `RuntimeError`.
 - A skipped turn (`empty-heartbeat-file`, `no-pending-event`) has no due tasks, so nothing is
-  recorded and no model call follows. A failed model call is not reported: the jobs stay due and
-  retry backoff is the host's.
+  recorded, no ensure runs and no model call follows. A failed model call is not reported: the jobs
+  stay due and retry backoff is the host's.
 - Tool calls during the run go through `HostKit.dispatch` with `run.session`.
 
 ## Cross-cutting contracts
@@ -531,10 +635,11 @@ class HeartbeatOutcome:
 | --- | --- |
 | model sends bad tool input, unknown tool, invalid JSON, a tool raises | payload `{"status": "error", "tool", "error"}` |
 | memory search outage, paused index, cooldown | the tool's own unavailable or paused payload |
-| host passes wrong types, calls `complete()` twice, both transcript sources | raise (`TypeError`, `RuntimeError`, `ValueError`) |
+| host passes wrong types, calls `complete()` twice, both transcript sources, another session to `complete()` | raise (`TypeError`, `RuntimeError`, `ValueError`) |
 | retired upstream setup state in the workspace | raise `WorkspaceStateMigrationRequiredError` (fail closed) |
 | filesystem failure outside a tool | raise `OSError` |
-| a reindex fails after a committed curated write | ok payload with `afterWriteError` (core rule) |
+| flush target cannot be created | `TurnRecord.flush_failure`, one strike (upstream `recordFailure`) |
+| a reindex fails after a committed curated or flush write | ok payload with `afterWriteError` (core rule) |
 
 ### Flags
 
@@ -558,12 +663,14 @@ async twin of any method: the core is synchronous (sqlite3, the sync embedding c
 
 - A `HostKit` is immutable after construction and safe to share across threads.
 - Writes in one process are serialized per file: the flush write and the curated daily note
-  share one per-file lock (moved out of `memory_core/curation.py:_target_lock`), MEMORY.md, USER.md and
+  share one per-file lock (moved out of `memory_core/curation.py:_target_lock` into
+  `memory_core/workspace.py`, next to the shared locked daily append), MEMORY.md, USER.md and
   PROACTIVE_PREFERENCES.md keep curation's per-file locks, `FileAutomationStore` keeps its lock.
   Task 2 adds a two-thread reindex test; if it fails, the fix is a per-store lock inside
   `SQLiteMemoryStore.reindex`.
 - Different sessions may run in parallel. Calls for one session must be serialized by the host,
-  as upstream runs one reply per session lane; `SessionState` is a value, so the last writer wins.
+  as upstream runs one reply per session lane; `SessionState` is a value, so the last writer wins
+  (the detached flush's `complete(session)` takes the current state for that reason).
 - `FlushRequest` and `HeartbeatRun` are used by one run at a time; their tool calls may run in
   parallel (appends are locked).
 - Across processes nothing is locked beyond the core's re-read checks and the automation store's
@@ -586,10 +693,11 @@ kits share nothing but the process-wide caches above.
 
 The agent loop and the tool loop, the model call and model choice, streaming, tool-call transport
 and argument validation against the schema, provider fallback and retries, history windowing
-(`limit_history_turns` stays a core helper), compaction, scheduling (heartbeat cadence, active
-hours, job timers, backoff), delivery and visibility, ASR and TTS, workflow state, trace
-storage, secret redaction policy (the kit takes the host's `redact` and `redactor`), and session
-storage.
+(`limit_history_turns` stays a core helper), compaction (and with it `SessionState.after_compaction`:
+known gap, a host that never compacts flushes once per session, see Turn lifecycle), scheduling
+(heartbeat cadence, active hours, job timers, backoff), delivery and visibility, ASR and TTS,
+workflow state, trace storage, secret redaction policy (the kit takes the host's `redact` and
+`redactor`), and session storage.
 
 ## `Memory.prepare_turn`, `Memory.chat`, `Memory.record_turn`: deprecate
 
@@ -602,10 +710,16 @@ stage, together with the quickstart rewrite and before the first release.
   such injection; its model recalls through the tools. The kit offers the upstream shape.
 - `record_turn` appends the flush model's plain text to the daily file, with no gate, no session
   entry and no `write` tool. Keeping it next to `FlushRequest` would leave two flush write paths.
-- `chat` owns the model call and is sync-only; the kit never calls a model.
+- `chat` owns the model call and is sync-only; the kit never calls a model. Its
+  `force_flush=True` goes through `record_turn` and stays unchanged until the removal; the kit has
+  no forced flush (Q6).
 - Delegating the three to the kit would silently change what they write (plain text versus a
   `write` call, forced versus gated), a breaking change hidden behind old names. The warning makes
-  the change loud; `LangGraphMemoryRecall` stays as the explicit recall adapter.
+  the change loud.
+- `LangGraphMemoryRecall` (`Memory.langgraph_recall`) injects search results the same way
+  `prepare_turn` does. It stays as an explicit, labelled adapter-only auto-recall (not upstream
+  behaviour; a LangGraph host that wants the upstream shape uses the kit's tools instead); the
+  matrix and docs/package_boundary.md label it so in Task 10.
 
 ## How the Lab dogfoods the kit
 
@@ -616,38 +730,73 @@ from the kit.
 
 | Lab code today | After the switch |
 | --- | --- |
-| `demo/lab_tools.py`: `lab_curator`, `LabToolbox.definitions`, `_memory_search` (recall recording), `_memory_get`, `_curate`'s dispatch, `_target` | `kit.tools()`, `kit.dispatch()` with `dreaming_enabled=True`; `_target` is replaced by a public `MemoryCurator.target_for` (rename of `_target_for`) for the snapshot; the toolbox keeps call records, snapshots and events |
-| `demo/lab_prompt.py:lab_workspace_context`, the prompt stage's `build_prompt_section` | `kit.before_turn(...).workspace` and `.system_prompt`; the prompt preview uses `before_turn` too, so it shows what the next turn injects (its ensure is the one the next turn would run) |
-| `demo/lab_chat.py` stages `flush_decision` and `flush` before the main run; `_persist`'s token snapshot | `kit.after_turn` after `persist`; the flush turn runs `FlushRequest.messages` and `.tools` through the existing `run_tool_loop` and ends with `complete()` |
-| `demo/lab_flush.py` (plan, decision, token snapshot, flush run, forced guard, prompt estimate) | deleted except the inspector serializers; the status-bar meter reads the session's last `TurnRecord` |
-| `demo/memory_flush.py`, `ChatEngine.flush`, `_memory_flush_write_tool`, `_extract_write_tool_calls`, `FlushModelOutput`, `FlushWriteCall` | deleted; the flush is an ordinary tool-loop run |
-| `demo/lab_api.py:start_new_session` composition | `kit.on_new_session`; the endpoint keeps its events and payload |
-| `demo/lab_heartbeat.py:_prepare_turn`, the run's flush decision, job recording | `kit.heartbeat_prompt` and `HeartbeatRun.complete`; scratch editing, migrations and the legacy-file action stay Lab actions over the core |
-| `LabSession.flush_entry`, `last_output_tokens`, `seen_truncation_signatures`, `completed_bootstrap_turn` | one `LabSession.state: SessionState` |
+| `demo/lab_tools.py`: `lab_curator`, `LabToolbox.definitions`, `_memory_search` (recall recording), `_memory_get`, `_curate`'s dispatch | `kit.tools()`, `kit.dispatch()` with `dreaming_enabled=True`; `_target` builds the daily path from `kit.curator.today()` for the before-snapshot; the toolbox keeps call records, snapshots and events (it reads them from the payloads) |
+| `lab.reindex(store)` bookkeeping (`index_status`, `_index_revisions`, the `index.reindexed` event, read by `index_is_stale`, `demo/lab_kept_api.py:318,370`) | a `LabStore(SQLiteMemoryStore)` whose `reindex` does the bookkeeping and emits the event, so kit writes (curated, flush, session memory) that call `store.reindex` keep the Lab index fresh; the Lab builds `Memory(config, workspace, store=LabStore(...))` |
+| `LabRuntime.config()` without `curated_memory_writes` (the flag reached the curator through `lab_curator`) | `LabRuntime.config()` flags carry `curated_memory_writes` from `lab.settings.flags`, since the kit reads `memory.config` flags |
+| `LabRuntime.ensure` (`initialize_agent_workspace` with the Lab templates) | `kit.ensure()` inside the same `tracked("lifecycle")` block with the same `bootstrap.*` events |
+| `demo/lab_prompt.py:lab_workspace_context`, the prompt stage's `build_prompt_section` | `kit.before_turn(state, ensure=False, ...)` at the prompt stage (the ensure stage already ran `kit.ensure()`); `offer_tools=False` for the scripted engine, which offers no tools; the prompt preview and the explorer use `ensure=False` too, so an inspector never seeds or deletes BOOTSTRAP.md |
+| `demo/lab_chat.py` stages `flush_decision` and `flush` before the main run; `_persist`'s token snapshot | `kit.after_turn` after `persist`; the flush turn runs `FlushRequest.messages` and `.tools` through the existing `run_tool_loop` and ends with `complete()` (Task 9a) |
+| `demo/lab_flush.py` (plan, decision, token snapshot, flush run, forced guard, prompt estimate) | deleted except the inspector serializers; the status-bar meter reads the session's last `TurnRecord` (Task 9a) |
+| `demo/memory_flush.py`, `ChatEngine.flush`, `_memory_flush_write_tool`, `_extract_write_tool_calls`, `FlushModelOutput`, `FlushWriteCall` | deleted; the flush is an ordinary tool-loop run (Task 9a) |
+| `/api/chat/flush` (`lab_forced`) | a labelled Lab action over `HostKit.request_flush` if Doruk keeps it (Q6), else removed (Task 9a) |
+| `demo/lab_api.py:start_new_session` composition | `kit.on_new_session`; the endpoint keeps its events and payload (Task 9b) |
+| `demo/lab_heartbeat.py:_prepare_turn`, the run's flush decision, job recording | `kit.heartbeat_prompt` and `HeartbeatRun.complete`; scratch editing, migrations and the legacy-file action stay Lab actions over the core (Task 9c) |
+| `LabSession.flush_entry`, `last_output_tokens`, `seen_truncation_signatures`, `completed_bootstrap_turn` | one `LabSession.state: SessionState` (Task 9a; Task 8 builds the state from the fields and folds `before_turn`'s result back) |
 | `demo/lab_runtime.py:DEFAULT_CONTEXT_WINDOW_TOKENS`, `MINIMAL_PROMPT_KINDS` | moved into the kit |
 
-Observable Lab changes, each updated with its tests/demo assertions:
+If Doruk keeps `/flush` (Q6), the kit gains one labelled extension method,
+`request_flush(session, *, transcript) -> FlushRequest | None`: it does not touch the token
+snapshot, keeps the heartbeat skip and the one-flush-per-compaction guard (it returns `None` when
+the cycle already flushed) and uses reason `forced`.
+
+Observable Lab changes, each updated with its tests/demo assertions (all in Task 9, blocked on
+Doruk's answers):
 
 1. The flush is decided and run after the reply (v2026.9.6 maintenance order), without the
    incoming prompt's estimate. Stage order becomes ensure, compaction (skip), reindex, recall,
    prompt, stream, persist, flush_decision, flush (Q1).
-2. The flush turn gets the Project Context plus the flush section and upstream's `write` tool
-   wording (Q5).
+2. The flush turn gets the Project Context plus the `## Conversation Context` flush section and
+   upstream's `write` tool wording (Q5).
 3. A chat turn in a `heartbeat` session and a heartbeat run report `runtime_skip:heartbeat` after
    the run instead of before it.
-4. The manual `/flush` reason reads `forced` instead of `lab_forced` (Q6).
-5. The prompt preview runs the per-turn ensure.
+4. The manual `/flush` reason reads `forced` instead of `lab_forced`, or `/flush` goes (Q6).
+5. A due flush creates the empty daily file before the flush run, so a `NO_REPLY` flush leaves an
+   empty `memory/<today>.md` (upstream `ensureMemoryFlushTargetFile`).
 6. Without provider usage the Lab passes its labelled chars/4 estimate as `TurnUsage`, so the
    `tokenSource` label stays.
+7. `/new` keeps the session key: the Lab key becomes `lab:<kind>` for every session of a kind, as
+   upstream keeps `sessionKey` across `/new` (today `lab:<kind>:<id>` changes). This shows in the
+   `session.new` event (`oldSessionKey` equals `sessionKey`), in the key line of the saved
+   session-memory file and in the fallback key of the `memory_search` cooldown (Q10).
+8. `/new` runs an ensure and a reindex after saving the session memory (today it runs neither),
+   so the saved file is searchable at once and a pending bootstrap reconciles before the reset
+   prompt is built.
 
 Kept Lab-side and labelled, pending Doruk: `record_daily_memory_flush` after a flush write (Q3).
 
 ## Parity labels
 
 The kit is adapter-only code. The orders and inputs it takes from upstream (post-reply flush,
-flush-run tool set and wording, recall tracking only with dreaming, minimal kinds without the
-Memory Recall section) are source-backed with the anchors above; no matrix row claims `match` for
-kit composition. Oracle results must not change: task 10 re-runs the suite.
+the flush target file, flush-run tool set and wording, recall tracking only with dreaming, minimal
+kinds without the Memory Recall section) are source-backed with the anchors above; no matrix row
+claims `match` for kit composition. Oracle results must not change: task 10 re-runs the suite.
+
+Pin-era parts the kit ships until port plan area 5 lands: the `memory_search` and `memory_get`
+tool definitions and the Memory Recall section (`memory_core/prompt_section.py`, pin `4c428153`); the
+tag's `buildMemoryPromptSection` wording differs (entry points 1 and 3).
+
+Labelled deviations of the flush run (entry point 4):
+
+- Bytes: upstream appends the content verbatim and inserts one newline only when the file is not
+  empty, lacks a trailing newline and the content does not start with one
+  (`agent-tools.read.ts:716-720`, `@openclaw/fs-safe` `prependNewlineIfNeeded`);
+  `append_daily_memory` inserts the separator whenever a non-empty file lacks a trailing newline
+  (also before content that starts with one), strips the content's trailing newlines and always
+  ends the entry with `\n`.
+- Empty and `NO_REPLY` content writes nothing (memory-core's write rule; upstream appends it).
+- The missing-parameter messages are memory-core's.
+- Messages carry text rows only, and no host system prompt.
+- The target file and the write refuse symlinks and hard links (stricter than upstream).
 
 ## Non-goals
 
@@ -662,25 +811,50 @@ packaging, `__all__` shrinking and the quickstart (next stage).
 
 - Q1. Flush timing. The kit follows v2026.9.6: flush after the reply, no prompt estimate. The Lab
   today flushes before the next turn with the prompt's estimate (pin-era order). The plan switches
-  the Lab; say if you want the old order kept as a labelled Lab approximation instead.
+  the Lab in Task 9a once you agree; say if you want the old order kept as a labelled Lab
+  approximation instead.
 - Q2. Compaction. Upstream also flushes as a checkpoint right before preflight compaction. That
   needs a host that compacts; add it with a compaction adapter later, or never?
 - Q3. The Lab records `daily` recall signals after each flush write
   (`record_daily_memory_flush`). Upstream records daily signals only in the light dreaming phase
   (`extensions/memory-core/src/dreaming-phases.ts:760,948,1067`), and they raise promotion scores.
   The kit does not do it; drop it from the Lab too (recommended), or keep it labelled demo-only?
-- Q4. `seed_bootstrap` default. Upstream seeds BOOTSTRAP.md (the kit's default `True`); a host
-  without a bootstrap ritual then sees the limited-mode Bootstrap Pending notice on every turn until
-  the profile is configured. Keep `True`, or default the kit to `False`?
+- Q4. `seed_bootstrap` default. Upstream seeds BOOTSTRAP.md from its ritual template. memory-core has
+  no ritual text, so seeding by default gives a host without templates an empty BOOTSTRAP.md and
+  the limited-mode "Bootstrap Pending" notice on every turn, with no ritual to follow, until
+  `memory/` appears. Recommended and implemented as the default (`None`): seed only when
+  `templates` supplies BOOTSTRAP.md; the Lab passes `True`. Keep that, or always seed like upstream?
 - Q5. The flush turn with Project Context costs the bootstrap files' tokens on every flush, as
   upstream. Keep upstream's shape (recommended) or send only the flush system prompt as the Lab
   does today?
-- Q6. `force_flush` has no upstream counterpart; it keeps the facade's forced flush and the Lab's
-  `/flush`. Keep it, or drop both with the facade?
+- Q6. The Lab's `/flush` (`/api/chat/flush`, reason `lab_forced`) has no upstream counterpart, and
+  the kit has no forced flush. Keep `/flush` as a labelled Lab action over one kit extension method
+  `request_flush` (no token-snapshot change, heartbeat skip and same-cycle guard kept, reason
+  `forced`), or drop it? `Memory.chat(force_flush=True)` is unaffected until the facade's removal.
 - Q7. Memory facade: deprecate now and remove at packaging (recommended), or keep
   `prepare_turn`/`chat`/`record_turn` as labelled adapter-only helpers?
 - Q8. Should `dreaming_enabled` be a `FeatureFlags` field instead of a kit option? It mirrors
   upstream config rather than a memory-core capability, which is why the spec keeps it on the kit.
+- Q9. A host that never compacts flushes once per session (Turn lifecycle, known gap). Should
+  history windowing with `limit_history_turns` count as a compaction (the host then calls
+  `SessionState.after_compaction()` when the window drops turns), or should the kit stay at the
+  upstream rule and leave compaction to hosts?
+- Q10. `/new` in the Lab: keep the rotating `lab:<kind>:<id>` key (the Lab passes its own key per
+  session) or move to upstream's stable `sessionKey` (observable change 7)?
+
+Review points not taken, with the reason:
+
+- Port `buildMemoryPromptSection` as a Task 0: not taken; it is a parity port with its own oracle
+  op and matrix row, which belongs to port plan area 5 and an oracle run. The kit labels the
+  pin-era section instead.
+- Return the flush run's updated truncation signatures in `FlushOutcome.session`: not taken.
+  Upstream reassigns `bootstrapPromptWarningSignaturesSeen` only across fallback candidates inside
+  the detached flush run (`agent-runner-memory.ts:1640-1650`) and returns only the session entry
+  with `memoryFlush`; the parent session's signatures come from its own runs. The kit takes the
+  session's signatures as input and leaves them unchanged.
+- One `before_turn` call at the Lab's ensure stage: replaced by `kit.ensure()` there and
+  `before_turn(ensure=False)` at the prompt stage, which keeps the Lab's prompt built after the
+  flush and reindex stages, as today, with the same single ensure and the same events.
 
 # Part 2: TDD plan
 
@@ -690,17 +864,26 @@ task alone. Every test that touches a ported algorithm asserts equality with a d
 core function on the same inputs, which is what "only composes" means in code. Tests are offline
 and deterministic (`FeatureFlags(vector_search=False)` or `FakeEmbeddingProvider`, stub clocks).
 
+Cut line for the first night (2026-09-28): Tasks 1-7, the kit parts of Task 10's docs, and Task 8
+if time allows. Task 9 is blocked until Doruk answers Q1, Q3, Q5 and Q6; when unblocked it splits
+into 9a (flush), 9b (`/new`, with Q10) and 9c (heartbeat), one commit each. Task 10's oracle re-run
+follows Task 9.
+
 ### Task 1: session state, construction, `tools()`
 
 - Goal: the package skeleton and the two value types; `HostKit.__init__`, `HostKit.open`,
-  `tools()`.
+  `HostKit.ensure`, `tools()`.
 - Files: `memory_core/host/__init__.py`, `memory_core/host/session.py`, `memory_core/host/kit.py`,
   `tests/unit/test_host_kit_tools.py`.
 - Tests first: `test_session_state_round_trips_json`,
   `test_session_state_new_starts_a_fresh_flush_entry`,
-  `test_open_seeds_bootstrap_before_any_memory_file_exists`,
-  `test_open_with_a_bad_store_config_creates_nothing`, `test_init_does_no_io`,
-  `test_tools_lists_memory_tools_then_the_allowed_curation_tools`,
+  `test_session_state_entry_is_a_private_read_only_copy`,
+  `test_after_compaction_starts_the_next_cycle`,
+  `test_open_seeds_bootstrap_before_any_memory_file_exists` (templates with BOOTSTRAP.md),
+  `test_open_without_bootstrap_template_completes_setup` (`seed_bootstrap=None`),
+  `test_seed_bootstrap_true_seeds_an_empty_file`,
+  `test_open_with_a_bad_store_config_creates_nothing`, `test_open_fts_only_needs_no_embedder`,
+  `test_init_does_no_io`, `test_tools_lists_memory_tools_then_the_allowed_curation_tools`,
   `test_tools_omit_curation_tools_when_the_flag_is_off`, `test_tools_are_json_serializable`.
 - Done: tests pass; `memory_core.host.__all__` lists the kit and its dataclasses; root `memory_core.__all__`
   unchanged.
@@ -712,6 +895,7 @@ and deterministic (`FeatureFlags(vector_search=False)` or `FakeEmbeddingProvider
 - Tests first: `test_dispatch_memory_search_equals_execute_memory_search_tool`,
   `test_dispatch_accepts_mappings_json_text_and_none`,
   `test_dispatch_invalid_json_returns_an_error_payload`,
+  `test_dispatch_non_object_json_returns_an_error_payload`,
   `test_dispatch_bad_params_return_the_upstream_error_payload`,
   `test_dispatch_unoffered_tool_returns_an_error_payload`,
   `test_dispatch_curation_with_the_flag_off_writes_nothing`,
@@ -729,9 +913,12 @@ and deterministic (`FeatureFlags(vector_search=False)` or `FakeEmbeddingProvider
 - Goal: the per-turn ensure, the stable system prompt, the runtime block and the session fold.
 - Files: `memory_core/host/kit.py`, `tests/unit/test_host_kit_before_turn.py`.
 - Tests first: `test_before_turn_runs_the_ensure_every_turn` (BOOTSTRAP.md reconciled away once
-  `memory/` exists), `test_before_turn_prompt_equals_the_core_composition`,
+  `memory/` exists), `test_before_turn_without_ensure_writes_nothing`,
+  `test_before_turn_prompt_equals_the_core_composition`,
   `test_minimal_kinds_get_no_memory_recall_section`,
   `test_memory_recall_section_follows_the_offered_tools`,
+  `test_offer_tools_false_offers_no_tools_and_no_section`,
+  `test_run_kind_overrides_the_session_default`,
   `test_runtime_context_is_wrapped_in_the_identity_markers`,
   `test_before_turn_injects_no_search_results`,
   `test_before_turn_folds_signatures_and_the_bootstrap_turn_into_the_session`,
@@ -739,32 +926,47 @@ and deterministic (`FeatureFlags(vector_search=False)` or `FakeEmbeddingProvider
   `test_retired_workspace_state_fails_closed`.
 - Done: tests pass.
 
-### Task 4: `after_turn()` and `FlushRequest`
+### Task 4a: `after_turn()` snapshot and decision
 
-- Goal: the post-reply flush decision and the flush run's request, write tool and completion.
-- Files: `memory_core/host/flush.py`, `memory_core/host/kit.py`, `memory_core/curation.py` (the shared locked
-  daily append and lock), `scripts/extract_upstream_constants.py`,
-  `memory_core/_memory_flush_constants.py`, `tests/integration/test_extracted_upstream_constants.py`,
-  `tests/unit/test_host_kit_flush.py`.
-- First step: read the tag for the flush run's prompt mode and the `## Conversation Context`
-  header (`system-prompt.ts:1254-1257` with trigger `memory`) and the `write` tool texts; extract
-  them by script. If upstream contradicts this spec, stop and report.
+- Goal: the post-reply token snapshot and flush decision (no flush request yet).
+- Files: `memory_core/host/kit.py`, `memory_core/host/session.py`, `tests/unit/test_host_kit_after_turn.py`.
 - Tests first: `test_after_turn_records_a_fresh_token_snapshot`,
   `test_after_turn_without_usage_reports_missing_tokens`,
   `test_after_turn_decision_equals_explain_memory_flush_trigger` (a table of entries, windows and
   sizes), `test_after_turn_uses_no_prompt_estimate`,
   `test_after_turn_defaults_to_the_upstream_context_window`,
-  `test_heartbeat_sessions_never_flush`, `test_force_flush_skips_only_the_gates`,
-  `test_after_turn_is_idempotent`, `test_flush_messages_carry_context_transcript_and_prompt`,
+  `test_heartbeat_sessions_never_flush`, `test_after_turn_is_idempotent`,
+  `test_after_turn_does_not_share_the_entry`.
+- Done: tests pass; `TurnRecord.flush` is always `None` until 4b.
+
+### Task 4b: `FlushRequest`, the write tool and constant extraction
+
+- Goal: the flush run's request, the target file, the write tool and completion.
+- Files: `memory_core/host/flush.py`, `memory_core/host/kit.py`, `memory_core/memory_flush.py`
+  (`ensure_memory_flush_target_file`), `memory_core/workspace.py` (the shared locked daily append and
+  lock), `memory_core/curation.py` (uses them), `scripts/extract_upstream_constants.py`,
+  `memory_core/_memory_flush_constants.py`, `tests/unit/test_host_kit_flush.py`,
+  `tests/unit/test_memory_flush_plan.py`.
+- First step: read the tag for the flush run's prompt mode and the `## Conversation Context`
+  header (`system-prompt.ts:1254-1257` with trigger `memory`), the `write` tool texts and the
+  target-file messages; extract them by script. If upstream contradicts this spec, stop and report.
+- Tests first: `test_flush_request_creates_the_empty_target_file`,
+  `test_flush_target_file_refuses_paths_outside_the_workspace_and_symlinks`,
+  `test_flush_setup_failure_records_a_strike`,
+  `test_flush_messages_carry_context_transcript_and_prompt`,
   `test_flush_transcript_drops_runtime_context_rows`,
   `test_flush_offers_only_the_upstream_write_tool`,
   `test_flush_write_appends_to_the_target_and_reindexes`,
-  `test_flush_write_elsewhere_returns_the_upstream_restriction`,
+  `test_flush_write_accepts_the_absolute_target_path`,
+  `test_flush_write_elsewhere_returns_the_upstream_restriction` (an `@` prefix too),
   `test_flush_write_skips_empty_and_no_reply_content`,
   `test_flush_write_refuses_a_symlinked_daily_file`,
-  `test_flush_complete_marks_the_cycle_flushed`,
+  `test_flush_complete_marks_the_cycle_flushed` (on the host's current state),
+  `test_flush_complete_rejects_another_session`,
   `test_flush_failures_strike_three_times_and_redact`, `test_flush_complete_twice_raises`.
-- Done: tests pass; the curated daily note keeps its existing tests green on the shared append.
+- Done: tests pass; the curated daily note keeps its existing tests green on the shared append;
+  then `tests/integration/test_extracted_upstream_constants.py` runs with
+  `OPENCLAW_ORACLE_REPO=/tmp/openclaw-head` (a source comparison, no Node run) and passes.
 
 ### Task 5: `on_new_session()`
 
@@ -792,6 +994,7 @@ and deterministic (`FeatureFlags(vector_search=False)` or `FakeEmbeddingProvider
   `test_light_context_injects_no_bootstrap_file`,
   `test_schedule_clock_is_separate_from_the_prompt_clock`,
   `test_complete_records_only_the_jobs_in_the_turn`,
+  `test_complete_skips_jobs_changed_or_removed_during_the_run`,
   `test_no_reply_and_ack_are_not_delivered`, `test_complete_records_usage_without_a_flush`,
   `test_heartbeat_complete_twice_raises`.
 - Done: tests pass.
@@ -807,49 +1010,55 @@ and deterministic (`FeatureFlags(vector_search=False)` or `FakeEmbeddingProvider
 - Done: tests pass; nothing in `memory_core/` or `demo/` calls the deprecated methods (the examples
   keep them until the quickstart rewrite).
 
-### Task 8: Lab switch, part 1 (tools, dispatch, prompt)
+### Task 8: Lab switch, part 1 (tools, dispatch, prompt, index bookkeeping)
 
-- Goal: the Lab's tool loop and prompt stage run on the kit.
+- Goal: the Lab's tool loop, ensure and prompt stage run on the kit.
 - Files: `demo/lab_tools.py`, `demo/lab_prompt.py`, `demo/lab_chat.py`, `demo/lab_api.py`,
-  `demo/lab_kept_api.py`, `demo/lab_runtime.py`, `memory_core/curation.py` (`target_for`),
+  `demo/lab_kept_api.py`, `demo/lab_heartbeat.py`, `demo/lab_runtime.py`,
   `tests/demo/test_demo_app.py`.
+- Wiring: `LabRuntime.config()` flags carry `curated_memory_writes` from the Lab settings;
+  `LabStore` does the index bookkeeping; `LabRuntime.kit(...)` builds the kit per request from the
+  Lab settings (layout, templates, `seed_bootstrap=True`, caps, injection, warning mode,
+  `timezone=LAB_TIMEZONE`, `time_format=LAB_TIME_FORMAT`, `dreaming_enabled=True`); `LabSession`
+  keeps its fields and gives `before_turn` a `SessionState` built from them (Task 9a replaces them).
 - Tests first: `test_lab_tools_come_from_the_host_kit`,
-  `test_lab_prompt_stage_uses_before_turn`, `test_prompt_preview_runs_the_ensure`; every existing
-  tool-loop, curation-flag, recall-recording and prompt-inspector test stays green unchanged.
-- Done: `lab_curator`, `lab_workspace_context`, `LabToolbox._memory_search`, `_memory_get` and
-  `_target` are gone; tests pass.
+  `test_lab_prompt_stage_uses_before_turn`, `test_prompt_preview_writes_nothing`,
+  `test_kit_writes_keep_the_lab_index_fresh`; every existing tool-loop, curation-flag (flag off:
+  no curation tools, no write), recall-recording and prompt-inspector test stays green unchanged.
+- Done: `lab_curator`, `lab_workspace_context`, `LabToolbox._memory_search`, `_memory_get`, the
+  Lab's own `initialize_agent_workspace` call and `build_prompt_section` calls are gone; tests pass.
 
-### Task 9: Lab switch, part 2 (flush, `/new`, heartbeat)
+### Task 9: Lab switch, part 2 (blocked: Q1, Q3, Q5, Q6, Q10)
 
-- Goal: the Lab's flush, session reset and heartbeat run on the kit; the demo flush code goes.
-- Files: `demo/lab_chat.py`, `demo/lab_flush.py`, `demo/lab_heartbeat.py`, `demo/lab_api.py`,
-  `demo/lab_kept_api.py`, `demo/lab_runtime.py`, `demo/chat_engine.py`, `demo/memory_flush.py`
-  (deleted), `demo/static/lab/` and `demo/templates/` where stage order or labels show,
-  `tests/demo/test_demo_app.py`, `tests/demo/test_lab_shell.py`,
-  `tests/demo/test_chat_memory_flush.py` (deleted), `tests/demo/test_chat_engine.py`.
-- Tests first (rewritten expectations): `test_flush_runs_after_the_reply_once_per_compaction_cycle`
-  (S11 window 5,333: the flush follows the first turn over 2,000 tokens),
-  `test_flush_write_elsewhere_is_refused_to_the_model`,
+- 9a flush: `demo/lab_chat.py`, `demo/lab_flush.py`, `demo/lab_kept_api.py`, `demo/lab_runtime.py`,
+  `demo/chat_engine.py`, `demo/memory_flush.py` (deleted), `tests/demo/test_chat_memory_flush.py`
+  (deleted), `tests/demo/test_chat_engine.py`, `tests/demo/test_demo_app.py`, and
+  `demo/static/lab/` / `demo/templates/` where stage order or labels show. Tests first (rewritten
+  expectations): `test_flush_runs_after_the_reply_once_per_compaction_cycle` (S11 window 5,333: the
+  flush follows the first turn over 2,000 tokens), `test_flush_write_elsewhere_is_refused_to_the_model`,
   `test_flush_without_usage_uses_the_labelled_estimate`, `test_heartbeat_kind_skips_the_flush`,
-  `test_manual_flush_is_forced_once_per_cycle` (reason `forced`),
-  `test_failed_flush_reports_the_cause_chain_redacted`,
-  `test_session_new_runs_the_host_kit`, the heartbeat run tests with the decision after the run.
-  Locked CSS strings stay.
-- Done: the rows of the dogfood table are true in the code; tests pass; a real-browser check of the
-  chat, flush, `/new` and heartbeat flows on the :8010 preview at 1280, 820 and 640 px (the Lab's
-  breakpoints), with the scripted engine named as scripted.
+  `test_manual_flush_is_forced_once_per_cycle` (if `/flush` stays),
+  `test_failed_flush_reports_the_cause_chain_redacted`, `test_no_reply_flush_leaves_an_empty_daily_file`.
+- 9b `/new`: `demo/lab_api.py`, `tests/demo/test_demo_app.py`; `test_session_new_runs_the_host_kit`,
+  the key behaviour of Q10.
+- 9c heartbeat: `demo/lab_heartbeat.py`, `tests/demo/test_demo_app.py`; the heartbeat run tests
+  with the decision after the run.
+- Locked CSS strings stay. Done: the rows of the dogfood table are true in the code; tests pass; a
+  real-browser check of the chat, flush, `/new` and heartbeat flows on the :8010 preview at 1280,
+  820 and 640 px (the Lab's breakpoints), with the scripted engine named as scripted.
 
 ### Task 10: docs, matrix, re-measure
 
 - Goal: the docs describe the kit as built; oracle results unchanged.
 - Files: `docs/host_kit.md` (status and labels), `docs/package_boundary.md` (the kit exists; the
-  Lab's host role), `docs/lab.md` (A chat turn), `docs/feature_flags.md` (`curated_memory_writes`
-  and the kit), `docs/parity_matrix.md` (rows Runtime flush trigger, Recall tracking from
-  `memory_search`, Session-memory hook, the heartbeat rows; audit note), `README.md` (a short
-  host-kit section; the deprecated calls marked).
+  Lab's host role; `LangGraphMemoryRecall` labelled adapter-only auto-recall), `docs/lab.md` (A chat
+  turn), `docs/feature_flags.md` (`curated_memory_writes` and the kit), `docs/parity_matrix.md` (rows
+  Runtime flush trigger, Recall tracking from `memory_search`, Session-memory hook, Prompt memory
+  tool section (the kit ships the pin-era section until area 5), the heartbeat rows, the LangGraph
+  row; audit note), `README.md` (a short host-kit section; the deprecated calls marked).
 - Tests: `tests/parity/test_parity_matrix_evidence.py`; the full offline suite; the oracle suite
   (`tests/integration` with `OPENCLAW_ORACLE_REPO=/tmp/openclaw-head` and Node 24) must report
-  254 passed, 81 xfailed, 2 skipped, 0 failed.
+  254 passed, 81 xfailed, 2 skipped, 0 failed, after Task 9.
 - Done: all green with measured numbers in the commit body.
 
 ## Follow-ups (later stages)
@@ -857,5 +1066,6 @@ and deterministic (`FeatureFlags(vector_search=False)` or `FakeEmbeddingProvider
 Packaging (`[build-system]`, a demo extra so the core stops depending on FastAPI), the root
 `__all__` shrink with `memory_core.host` exported, the framework quickstart and example rewrite
 (removing the deprecated facade methods), live subject workspaces on the kit, the
-pre-compaction checkpoint flush with a compaction adapter, session auto-reset, and memory-search
-supplements on the kit.
+pre-compaction checkpoint flush with a compaction adapter, session auto-reset, memory-search
+supplements on the kit, and port plan area 5 (tool definitions and the Memory Recall section at the
+tag).

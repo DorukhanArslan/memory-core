@@ -149,7 +149,9 @@ def record_short_term_recalls(
                 entry["totalScore"] = float(entry.get("totalScore") or 0) + score
                 entry["maxScore"] = max(float(entry.get("maxScore") or 0), score)
                 entry["lastRecalledAt"] = now_iso
-                entry["conceptTags"] = entry.get("conceptTags") or derive_concept_tags(path, snippet)
+                entry["conceptTags"] = entry.get("conceptTags") or derive_concept_tags(
+                    path, snippet
+                )
                 entry["queryHashes"] = append_distinct(
                     list(entry.get("queryHashes") or []), query_hash, 32
                 )

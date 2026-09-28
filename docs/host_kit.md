@@ -77,13 +77,13 @@ class HostKit:
   `layout`, `templates`, `seed_bootstrap` (`initialize_agent_workspace`); `timezone` and
   `time_format` (the flush plan, the curator's "today", the session-memory stamp, the startup
   context, the reset prompt and the heartbeat time line all take the one host value, as
-  `memory_core/current_time.py` asks; recall tracking does not, see `dispatch`); `identity` (context markers, transcript rows);
-  `curation_policy` (`MemoryCurator`, default `CurationPolicy.for_layout(layout)`); the
-  bootstrap caps, `context_injection` and `truncation_warning_mode`
-  (`build_workspace_context`); `dreaming_enabled` (recall tracking, see `dispatch`);
-  `automation_store` (default `FileAutomationStore(root)`); `now_ms` (epoch-ms clock, as
-  `MemoryCurator` takes it). The agent id is `memory.config.agent_id`. The Lab uses each of them
-  except `identity` (memory-core's compat markers) and `now_ms` (deterministic tests).
+  `memory_core/current_time.py` asks; recall tracking does not, see `dispatch`); `identity`
+  (context markers, transcript rows); `curation_policy` (`MemoryCurator`, default
+  `CurationPolicy.for_layout(layout)`); the bootstrap caps, `context_injection` and
+  `truncation_warning_mode` (`build_workspace_context`); `dreaming_enabled` (recall tracking,
+  see `dispatch`); `automation_store` (default `FileAutomationStore(root)`); `now_ms` (epoch-ms
+  clock, as `MemoryCurator` takes it). The agent id is `memory.config.agent_id`. The Lab uses
+  each of them except `identity` (memory-core's compat markers) and `now_ms` (deterministic tests).
 - `seed_bootstrap=None` (default) seeds BOOTSTRAP.md only when `templates` supplies the layout's
   bootstrap file. memory-core has no ritual text of its own, so an empty BOOTSTRAP.md would leave a
   host without a ritual in limited-mode "Bootstrap Pending" on every turn until `memory/`
@@ -641,9 +641,10 @@ class HeartbeatOutcome:
   which the run kind covers) and `offer_tools` (`False` for a model without tool calling, as in
   `before_turn`). There is no `has_bootstrap_file_access`: the heartbeat run kind resolves the
   bootstrap mode to `none` before file access is read (`resolve_bootstrap_mode` in
-  `memory_core/bootstrap/files.py`, upstream `bootstrap-mode.ts`). `schedule_now_ms` is the scheduler's instant for due checks and job
-  runs (default: the kit clock); the prompt's `Current time:` line always uses the kit clock, which
-  keeps the Lab's virtual heartbeat clock working without a Lab concept in the kit.
+  `memory_core/bootstrap/files.py`, upstream `bootstrap-mode.ts`). `schedule_now_ms` is the
+  scheduler's instant for due checks and job runs (default: the kit clock); the prompt's
+  `Current time:` line always uses the kit clock, which keeps the Lab's virtual heartbeat clock
+  working without a Lab concept in the kit.
 - `complete(reply)`: `decide_heartbeat_reply(reply, response_prefix)`; the host delivers only
   when `decision.deliver` (canonical `NO_REPLY`, a legacy `HEARTBEAT_OK` ack within 300 chars and
   a stream-error placeholder are not delivered; a trailing `notify=false` line makes it silent);

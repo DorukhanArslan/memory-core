@@ -292,7 +292,8 @@ def test_parallel_searches_record_every_recall(tmp_path):
         try:
             start.wait()
             for _ in range(5):
-                assert kit.dispatch("memory_search", {"query": "quokkabyte"}, session=SESSION)["results"]
+                result = kit.dispatch("memory_search", {"query": "quokkabyte"}, session=SESSION)
+                assert result["results"]
         except BaseException as exc:  # surfaced below
             errors.append(exc)
 

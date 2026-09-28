@@ -126,7 +126,10 @@ def test_flush_transcript_keeps_the_text_of_content_lists(tmp_path):
     transcript = (
         {
             "role": "user",
-            "content": [{"type": "text", "text": "My cat is "}, {"type": "input_text", "text": "Tom."}],
+            "content": [
+                {"type": "text", "text": "My cat is "},
+                {"type": "input_text", "text": "Tom."},
+            ],
         },
         {
             "role": "assistant",
@@ -136,7 +139,10 @@ def test_flush_transcript_keeps_the_text_of_content_lists(tmp_path):
                 {"type": "tool_use", "id": "t1", "name": "memory_search", "input": {}},
             ],
         },
-        {"role": "user", "content": [{"type": "image_url", "image_url": {"url": "https://x.test/a.png"}}]},
+        {
+            "role": "user",
+            "content": [{"type": "image_url", "image_url": {"url": "https://x.test/a.png"}}],
+        },
     )
 
     record = _due(_kit(tmp_path), transcript=transcript)
@@ -202,7 +208,8 @@ def test_parallel_flush_writes_append_every_entry(tmp_path):
         try:
             start.wait()
             for round_ in range(5):
-                result = flush.dispatch("write", {"path": TARGET, "content": f"- fact {index}.{round_}"})
+                content = f"- fact {index}.{round_}"
+                result = flush.dispatch("write", {"path": TARGET, "content": content})
                 assert result["action"] == "appended", result
         except BaseException as exc:  # surfaced below
             errors.append(exc)

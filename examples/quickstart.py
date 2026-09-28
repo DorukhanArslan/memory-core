@@ -1,4 +1,4 @@
-"""Quickstart: an agent host loop with memory-core memory, for any framework.
+"""Quickstart: an agent host loop with memory from memory-core, for any framework.
 
 A terminal chat over the host kit. Each turn the kit builds the system prompt and offers the
 memory tools, answers the model's tool calls, and after the reply decides the memory flush: a

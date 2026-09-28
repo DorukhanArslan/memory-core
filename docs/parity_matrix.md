@@ -1,4 +1,4 @@
-# memory-core / OpenClaw Memory-Core Parity Matrix
+# Parity Matrix: memory-core against OpenClaw memory-core
 
 Reference target:
 

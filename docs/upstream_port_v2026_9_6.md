@@ -4,8 +4,8 @@ Stage 1 (branch `feat/pin-v2026.9.6`, 2026-09-27) moved the oracle target from p
 (2026-07-05) to release tag `v2026.9.6` = `eb377ac59e6c9fd6c7705028034812becf00271b` (tag
 commit 2026-09-22) and changed no Python behaviour. The oracle runner now calls the tag's
 functions, and every oracle test that fails at the tag is an `xfail(strict=True)` entry in
-`tests/integration/oracle_worklist.py`, grouped by the areas below. Stage 2 ports memory-core's
-Python to the tag area by area; each area is done when its worklist entries are removed, its
+`tests/integration/oracle_worklist.py`, grouped by the areas below. Stage 2 ports the Python
+code to the tag area by area; each area is done when its worklist entries are removed, its
 tests pass against the tag, and its `docs/parity_matrix.md` rows are re-audited.
 
 ## Where stage 1 left the suite (measured 2026-09-27)

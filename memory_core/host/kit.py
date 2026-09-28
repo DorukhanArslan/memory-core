@@ -1,4 +1,4 @@
-"""The host kit: memory-core's memory behaviour for one workspace as a few entry points.
+"""The host kit: the memory behaviour of one workspace as a few entry points.
 
 ``HostKit`` composes the core functions a host would otherwise call in order (workspace
 seeding, the memory tools, the injected context, the memory flush, the session-memory hook,

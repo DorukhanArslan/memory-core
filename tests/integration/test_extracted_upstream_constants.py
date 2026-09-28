@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from memory_core.project_name import PACKAGE_NAME
+
 ROOT = Path(__file__).resolve().parents[2]
 
 pytestmark = pytest.mark.skipif(
@@ -38,10 +40,10 @@ def test_generated_constant_modules_equal_the_upstream_source():
     outputs = _script().outputs(Path(os.environ["OPENCLAW_ORACLE_REPO"]))
 
     assert set(outputs) == {
-        ROOT / "memory-core" / "bootstrap" / "_tools_md_constants.py",
-        ROOT / "memory-core" / "bootstrap" / "_bootstrap_constants.py",
-        ROOT / "memory-core" / "_heartbeat_constants.py",
-        ROOT / "memory-core" / "_memory_flush_constants.py",
+        ROOT / PACKAGE_NAME / "bootstrap" / "_tools_md_constants.py",
+        ROOT / PACKAGE_NAME / "bootstrap" / "_bootstrap_constants.py",
+        ROOT / PACKAGE_NAME / "_heartbeat_constants.py",
+        ROOT / PACKAGE_NAME / "_memory_flush_constants.py",
     }
     for path, text in outputs.items():
         assert path.read_text(encoding="utf-8") == text, path.name

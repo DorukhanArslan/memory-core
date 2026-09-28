@@ -66,6 +66,7 @@ from memory_core.heartbeat_scratch import (
     apply_heartbeat_scratch_delete,
     apply_heartbeat_scratch_write,
 )
+from memory_core.project_name import STATE_DIRNAME
 
 __all__ = [
     "AutomationJob",
@@ -85,7 +86,7 @@ __all__ = [
 # normalization-core number-coercion.ts MAX_DATE_TIMESTAMP_MS (Date's representable range).
 _MAX_DATE_TIMESTAMP_MS = 8_640_000_000_000_000
 _MAX_SAFE_INTEGER = 2**53 - 1
-AUTOMATION_STORE_PARTS = (".memory-core", "automation.json")
+AUTOMATION_STORE_PARTS = (STATE_DIRNAME, "automation.json")
 
 
 def _as_date_timestamp_ms(value: object) -> float | None:

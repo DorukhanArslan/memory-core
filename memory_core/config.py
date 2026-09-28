@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from memory_core.flags import FeatureFlags
+from memory_core.project_name import STATE_DIRNAME
 
 SAFE_AGENT_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
@@ -51,4 +52,4 @@ class MemoryConfig:
             return self.store_path
         if not SAFE_AGENT_ID_RE.match(self.agent_id):
             raise ValueError(f"agent_id is not filename-safe: {self.agent_id}")
-        return self.workspace_dir / ".memory-core" / f"{self.agent_id}.sqlite"
+        return self.workspace_dir / STATE_DIRNAME / f"{self.agent_id}.sqlite"

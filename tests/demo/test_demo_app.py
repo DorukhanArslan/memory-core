@@ -15,11 +15,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 import demo.app as demo_app
+from demo import LAB_TITLE
 from demo.app import SHELL_CONTENT_SECURITY_POLICY, create_app
 from demo.lab_runtime import LAB_WORKSPACE_DIRNAME, LabRuntime
 from demo.parity_results import build_parity_results, classify_test_source
 from demo.workspace_context import DEMO_WORKSPACE_TEMPLATES
 from memory_core.automation import AutomationJob, FileAutomationStore
+from memory_core.project_name import DISPLAY_NAME, DIST_NAME, ENV_PREFIX, PACKAGE_NAME, STATE_DIRNAME
 
 KEY_ENV_NAMES = (
     "MEMORY_CORE_DEMO_OPENAI_API_KEY",
@@ -83,6 +85,17 @@ def test_shell_route_sets_the_content_security_policy(client):
     assert "frame-ancestors 'none'" in SHELL_CONTENT_SECURITY_POLICY
 
 
+def test_the_shell_carries_the_lab_title_and_the_project_names(client):
+    html = client.get("/").text
+
+    assert "<title>memory-core Lab</title>" in html
+    assert (
+        f'data-project-name="{DIST_NAME}" data-project-display="{DISPLAY_NAME}" '
+        f'data-project-package="{PACKAGE_NAME}" data-project-state-dir="{STATE_DIRNAME}" '
+        f'data-project-env-prefix="{ENV_PREFIX}" data-lab-title="{LAB_TITLE}"'
+    ) in html
+
+
 def test_shell_and_static_assets_must_be_revalidated(client):
     # A rebuilt Lab must never run against a stylesheet or module the browser cached earlier.
     for path in ("/", "/static/styles.css", "/static/lab/app.js"):
@@ -136,7 +149,7 @@ def test_state_snapshot_shape(client, lab):
     assert snapshot["bootstrap"]["status"] == "complete"
     assert snapshot["session"]["kind"] == "main"
     assert snapshot["session"]["key"] == "lab:main"
-    assert snapshot["identityName"] == "memory-core"
+    assert snapshot["identityName"] == DISPLAY_NAME
     assert snapshot["turns"] == []
     assert isinstance(snapshot["lastEventId"], int)
     assert snapshot["layoutOrder"]["loadOrder"][0] == "AGENTS.md"

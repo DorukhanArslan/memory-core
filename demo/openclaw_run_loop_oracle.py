@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from demo.openclaw_oracle import OracleNodeError, oracle_subprocess_env
+from memory_core.project_name import DISPLAY_NAME, DIST_NAME, ENV_PREFIX
 
 
 class OpenClawRunLoopOracleError(RuntimeError):
@@ -30,7 +31,9 @@ class OpenClawRunLoopOracleError(RuntimeError):
 # The upstream Vitest harness needs 150-210 s on this machine (162 s idle and 204 s at load
 # average 7 on 2026-09-26), so 180 s timed out under load; 600 s leaves headroom.
 RUN_LOOP_ORACLE_TIMEOUT_SECONDS = 600.0
-ORACLE_TEST_FILENAME = "memory-core-overflow-run-loop.oracle.test.ts"
+ORACLE_TEST_FILENAME = f"{DIST_NAME}-overflow-run-loop.oracle.test.ts"
+# Where the generated test file writes its result.
+ORACLE_OUTPUT_ENV = f"{ENV_PREFIX}OVERFLOW_ORACLE_OUT"
 
 
 def _remove_stale_oracle_test_file(test_file: Path) -> bool:
@@ -66,7 +69,7 @@ def run_overflow_run_loop_oracle(
         raise OpenClawRunLoopOracleError(str(exc)) from exc
     test_file = test_dir / ORACLE_TEST_FILENAME
     stale_removed = _remove_stale_oracle_test_file(test_file)
-    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-run-loop-oracle-") as tmp_dir:
+    with tempfile.TemporaryDirectory(prefix=f"{DIST_NAME}-openclaw-run-loop-oracle-") as tmp_dir:
         output_path = Path(tmp_dir) / "result.json"
         test_file.write_text(_overflow_run_loop_oracle_test_source(), encoding="utf-8")
         try:
@@ -79,7 +82,7 @@ def run_overflow_run_loop_oracle(
                 check=False,
                 env={
                     **(node_env if node_env is not None else os.environ),
-                    "MEMORY_CORE_OVERFLOW_ORACLE_OUT": str(output_path),
+                    ORACLE_OUTPUT_ENV: str(output_path),
                 },
             )
         finally:
@@ -109,7 +112,13 @@ def _overflow_run_loop_oracle_test_source() -> str:
     # truncateOversizedToolResultsInSessionManager). The two pin helpers are inlined from
     # 4c428153 run.overflow-compaction.fixture.ts:110-149 with the same inputs. The cases only
     # record what the real run loop did; the Python test owns every assertion.
-    return r'''
+    return (
+        f"const SUITE_NAME = {json.dumps(f'{DISPLAY_NAME} overflow run-loop oracle')};\n"
+        f"const OUTPUT_ENV = {json.dumps(ORACLE_OUTPUT_ENV)};\n{_RUN_LOOP_TEST_SOURCE}"
+    )
+
+
+_RUN_LOOP_TEST_SOURCE = r'''
 import fs from "node:fs";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, it, type Mock } from "vitest";
 import { makeCompactionSuccess, makeOverflowError } from "./run.overflow-compaction.fixture.js";
@@ -178,7 +187,7 @@ function compactionSuccess(summary = "Compacted session", firstKeptEntryId = "en
   return makeCompactionSuccess({ summary, firstKeptEntryId, tokensBefore: 150000 });
 }
 
-describe("memory-core overflow run-loop oracle", () => {
+describe(SUITE_NAME, () => {
   beforeAll(async () => {
     runEmbeddedAgent = await loadSharedRunIntegrationHarness();
     const truncation = (await import("./tool-result-truncation.js")) as unknown as {
@@ -228,9 +237,9 @@ describe("memory-core overflow run-loop oracle", () => {
 
   afterAll(async () => {
     await cleanupSharedRunIntegrationSessions();
-    const outputPath = process.env.MEMORY_CORE_OVERFLOW_ORACLE_OUT;
+    const outputPath = process.env[OUTPUT_ENV];
     if (!outputPath) {
-      throw new Error("MEMORY_CORE_OVERFLOW_ORACLE_OUT missing");
+      throw new Error(`${OUTPUT_ENV} missing`);
     }
     fs.writeFileSync(outputPath, JSON.stringify({ ok: true, scenarios }), "utf-8");
   });

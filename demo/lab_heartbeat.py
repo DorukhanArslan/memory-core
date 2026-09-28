@@ -48,6 +48,7 @@ from demo.lab_runtime import (
 from demo.lab_tools import LabToolbox, ToolLoopOutcome, public_write, run_tool_loop
 from demo.transcript_context import select_transcript_context
 from memory_core.automation import (
+    AUTOMATION_STORE_PARTS,
     AutomationJob,
     FileAutomationStore,
     is_heartbeat_task_job,
@@ -76,15 +77,17 @@ from memory_core.heartbeat_scratch import (
     HeartbeatScratchTooLargeError,
 )
 from memory_core.host import HeartbeatRun
+from memory_core.project_name import DISPLAY_NAME
 
 HEARTBEAT_RUN_HISTORY = 20
 HEARTBEAT_AGENT_ID = "main"
 MAX_CLOCK_OFFSET_MS = 30 * 24 * 60 * 60 * 1000
+AUTOMATION_STORE_PATH = "/".join(AUTOMATION_STORE_PARTS)
 LABELS = {
     "runtime": "runtime-only port · zamanlayıcı yok (elle çalıştırılır)",
     "clock": "sanal saat (demo-only): vade, iş çalıştırma ve taşıma çapaları; günlük dosya tarihleri, zaman satırı ve flush gerçek saatle",
-    "store": "Lab deposu: .memory-core/automation.json (FileAutomationStore; upstream paylaşılan state DB'de tutar)",
-    "scheduler": "zamanlayıcı host'ta: memory-core yalnız vadesi gelen işleri ve heartbeat istemini hesaplar",
+    "store": f"Lab deposu: {AUTOMATION_STORE_PATH} (FileAutomationStore; upstream paylaşılan state DB'de tutar)",
+    "scheduler": f"zamanlayıcı host'ta: {DISPLAY_NAME} yalnız vadesi gelen işleri ve heartbeat istemini hesaplar",
 }
 
 
@@ -204,7 +207,7 @@ def heartbeat_state(lab: LabRuntime) -> dict[str, Any]:
         "runs": list(reversed(lab.heartbeat_runs[-HEARTBEAT_RUN_HISTORY:])),
         "proactivePreferences": _proactive_state(lab),
         "sessionKey": lab.session("heartbeat").key,
-        "store": ".memory-core/automation.json",
+        "store": AUTOMATION_STORE_PATH,
         "labels": LABELS,
     }
 

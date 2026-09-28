@@ -59,9 +59,9 @@ from typing import Literal
 from memory_core.bootstrap._js import JS_WHITESPACE, js_json_stringify, js_trim, js_utf8_encode
 from memory_core.bootstrap.files import exact_workspace_entry_exists
 from memory_core.bootstrap.layout import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
+from memory_core.project_name import PACKAGE_NAME, STATE_DIRNAME
 
 WORKSPACE_STATE_VERSION = 1
-MEMORY_CORE_WORKSPACE_STATE_DIRNAME = ".memory-core"
 MEMORY_CORE_WORKSPACE_STATE_FILENAME = "workspace-state.json"
 # src/agents/workspace-legacy-state.ts: retired upstream setup files, read only by doctor.
 OPENCLAW_WORKSPACE_STATE_FILENAME = "openclaw-workspace-state.json"
@@ -70,7 +70,7 @@ OPENCLAW_LEGACY_WORKSPACE_STATE_FILENAME = "workspace-state.json"
 WORKSPACE_DOCTOR_CLAIM_SUFFIX = ".doctor-importing"
 # src/infra/state-migrations.workspace-setup-files.ts SETUP_MAX_BYTES.
 LEGACY_WORKSPACE_SETUP_MAX_BYTES = 64 * 1024
-MIGRATE_LEGACY_WORKSPACE_STATE_COMMAND = "memory_core.bootstrap.migrate_legacy_workspace_state()"
+MIGRATE_LEGACY_WORKSPACE_STATE_COMMAND = f"{PACKAGE_NAME}.bootstrap.migrate_legacy_workspace_state()"
 
 BootstrapStatus = Literal["pending", "complete"]
 
@@ -139,7 +139,7 @@ def _root_path(root: str | os.PathLike[str]) -> Path:
 
 
 def _state_path(root: Path) -> Path:
-    return root / MEMORY_CORE_WORKSPACE_STATE_DIRNAME / MEMORY_CORE_WORKSPACE_STATE_FILENAME
+    return root / STATE_DIRNAME / MEMORY_CORE_WORKSPACE_STATE_FILENAME
 
 
 def legacy_workspace_state_paths(root: str | os.PathLike[str]) -> tuple[Path, Path]:

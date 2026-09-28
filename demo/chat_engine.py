@@ -8,6 +8,8 @@ from typing import Protocol
 
 import httpx
 
+from demo import LAB_TITLE
+
 DEFAULT_OPENAI_BASE_URL = "https://openrouter.ai/api/v1"
 # D4 (Q10): the newest OpenAI GPT chat model in OpenRouter's public model list
 # (GET https://openrouter.ai/api/v1/models, no auth), checked 2026-09-26. Rule: the newest
@@ -179,7 +181,7 @@ class OpenAICompatibleChatEngine:
         }
         if "openrouter.ai" in self.base_url:
             headers["HTTP-Referer"] = "http://localhost:8000"
-            headers["X-Title"] = "memory-core Lab"
+            headers["X-Title"] = LAB_TITLE
         return headers
 
     def _chat(self, messages: list[dict], *, max_tokens: int | None = None) -> dict:

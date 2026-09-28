@@ -62,10 +62,11 @@ from memory_core.bootstrap._tools_md_constants import (
 )
 from memory_core.bootstrap.budget import resolve_bootstrap_char_limit
 from memory_core.bootstrap.layout import AGENTS_FILENAME, TOOLS_FILENAME
+from memory_core.project_name import PACKAGE_NAME, STATE_DIRNAME
 
-TOOLS_MD_ARCHIVE_PARTS = (".memory-core", "backups", "tools-md-migration")
+TOOLS_MD_ARCHIVE_PARTS = (STATE_DIRNAME, "backups", "tools-md-migration")
 # Named in the findings' fix hint where upstream names `openclaw doctor --fix`.
-MIGRATE_TOOLS_MD_COMMAND = "memory_core.bootstrap.migrate_tools_md()"
+MIGRATE_TOOLS_MD_COMMAND = f"{PACKAGE_NAME}.bootstrap.migrate_tools_md()"
 LEGACY_TOOLS_MD_REQUIREMENT = "legacy-tools-md"
 TOOLS_MD_MERGED_BOOTSTRAP_LIMIT_REQUIREMENT = "tools-md-merged-bootstrap-limit"
 TOOLS_MD_MIGRATION_BLOCKED_REQUIREMENT = "tools-md-migration-blocked"

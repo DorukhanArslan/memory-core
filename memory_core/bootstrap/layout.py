@@ -35,6 +35,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from memory_core.project_name import DIST_NAME
+
 AGENTS_FILENAME = "AGENTS.md"
 SOUL_FILENAME = "SOUL.md"
 IDENTITY_FILENAME = "IDENTITY.md"
@@ -202,7 +204,7 @@ OPENCLAW_COMPAT_LAYOUT = WorkspaceLayout(
 )
 
 MEMORY_CORE_WORKSPACE_LAYOUT = WorkspaceLayout(
-    name="memory-core",
+    name=DIST_NAME,
     load_order=(
         AGENTS_FILENAME,
         SOUL_FILENAME,

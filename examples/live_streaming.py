@@ -13,6 +13,7 @@ from memory_core.live import (
     LiveTurnContext,
     SubjectMemory,
 )
+from memory_core.project_name import DIST_NAME
 
 
 async def fake_streaming_llm(messages: list[dict[str, str]]) -> AsyncIterator[str]:
@@ -113,7 +114,7 @@ def seed_identity(workspace_dir: str | Path) -> None:
 
 
 async def main() -> None:
-    workspace_dir = Path(".memory-core-live-example")
+    workspace_dir = Path(f".{DIST_NAME}-live-example")
     seed_identity(workspace_dir)
 
     sentences = await run_live_turn(workspace_dir)

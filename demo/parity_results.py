@@ -39,23 +39,27 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from demo import CHAT_API_KEY_ENV, EMBEDDING_API_KEY_ENV
 from demo.openclaw_oracle import PIN_CHECKOUT_PATH
 from memory_core.parity.upstream import LATEST_INSPECTED_COMMIT
+from memory_core.project_name import DISPLAY_NAME, DIST_NAME, ENV_PREFIX, PACKAGE_NAME
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MATRIX_PATH = PROJECT_ROOT / "docs" / "parity_matrix.md"
 ORACLE_MODULES = ("demo.openclaw_oracle", "demo.openclaw_run_loop_oracle")
-PYTHON_MODULE_PREFIXES = ("memory-core", "demo")
+PYTHON_MODULE_PREFIXES = (PACKAGE_NAME, "demo")
 DEFAULT_ORACLE_REPO = str(PIN_CHECKOUT_PATH)
+RESULTS_DIRNAME = f"{DIST_NAME}-lab"
+RESULTS_PATH_ENV = f"{ENV_PREFIX}LAB_PARITY_RESULTS"
 
 PRODUCER_COMMANDS = (
-    "TMPDIR=<scratch> PYTHONDONTWRITEBYTECODE=1 MEMORY_CORE_DEMO_OPENAI_API_KEY= "
-    f"MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY= OPENCLAW_ORACLE_REPO={DEFAULT_ORACLE_REPO} "
+    f"TMPDIR=<scratch> PYTHONDONTWRITEBYTECODE=1 {CHAT_API_KEY_ENV}= "
+    f"{EMBEDDING_API_KEY_ENV}= OPENCLAW_ORACLE_REPO={DEFAULT_ORACLE_REPO} "
     "OPENCLAW_ORACLE_NODE=<node in the checkout's engines range> "
     ".venv/bin/python -m pytest -q -p no:cacheprovider tests/integration/test_openclaw_ts_oracle.py "
-    "tests/integration/test_memory_tools.py --junitxml=<scratch>/memory-core-lab/oracle.xml",
-    ".venv/bin/python -m demo.parity_results <scratch>/memory-core-lab/oracle.xml "
-    "--out <scratch>/memory-core-lab/parity-results.json",
+    f"tests/integration/test_memory_tools.py --junitxml=<scratch>/{RESULTS_DIRNAME}/oracle.xml",
+    f".venv/bin/python -m demo.parity_results <scratch>/{RESULTS_DIRNAME}/oracle.xml "
+    f"--out <scratch>/{RESULTS_DIRNAME}/parity-results.json",
 )
 
 # (area id, label, nodeid keyword pattern); first match wins.
@@ -100,10 +104,10 @@ AREA_RULES: tuple[tuple[str, str, re.Pattern[str]], ...] = tuple(
 
 
 def default_results_path() -> Path:
-    override = os.getenv("MEMORY_CORE_LAB_PARITY_RESULTS")
+    override = os.getenv(RESULTS_PATH_ENV)
     if override:
         return Path(override)
-    return Path(tempfile.gettempdir()) / "memory-core-lab" / "parity-results.json"
+    return Path(tempfile.gettempdir()) / RESULTS_DIRNAME / "parity-results.json"
 
 
 def area_for(test_name: str) -> tuple[str, str]:
@@ -314,7 +318,7 @@ def build_parity_results(
         "totals": totals,
         "byEvidence": by_evidence,
         "evidenceKinds": {
-            "python_eq_ts": "oracle + memory-core in the same test: Python == TS",
+            "python_eq_ts": f"oracle + {DISPLAY_NAME} in the same test: Python == TS",
             "ts_literal": "oracle only: TS vs literals (Python parity is two-hop)",
             "python_eq_source": "no oracle run: Python constants vs the upstream source text",
             "python_literal": "no oracle: Python vs literals",

@@ -33,6 +33,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from memory_core.project_name import STATE_DIRNAME
+
 EVENT_RING_CAPACITY = 1_000
 SSE_HEARTBEAT_SECONDS = 15.0
 SNAPSHOT_MAX_FILE_BYTES = 2 * 1024 * 1024
@@ -236,7 +238,7 @@ Snapshot = dict[str, FileSnapshot]
 
 def _is_excluded(rel_path: str) -> bool:
     parts = rel_path.split("/")
-    if parts[0] in {".memory-core", ".git", ".openclaw"}:
+    if parts[0] in {STATE_DIRNAME, ".git", ".openclaw"}:
         return True
     name = parts[-1]
     return ".sqlite" in name or name.endswith(".lock") or name.endswith(".tmp")

@@ -7,6 +7,7 @@ from typing import Any
 
 from demo.openclaw_oracle import OpenClawOracle
 from memory_core.config import MemoryConfig
+from memory_core.project_name import DIST_NAME
 from memory_core.consolidation import (
     DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT,
     DEFAULT_DEEP_DREAMING_MIN_SCORE,
@@ -203,8 +204,8 @@ def _configured_deep_policy_error_trace(
 
 def build_recall_tracking_trace(oracle: OpenClawOracle | Any) -> dict[str, Any]:
     with (
-        tempfile.TemporaryDirectory(prefix="memory-core-python-recall-") as python_dir,
-        tempfile.TemporaryDirectory(prefix="memory-core-openclaw-recall-") as oracle_dir,
+        tempfile.TemporaryDirectory(prefix=f"{DIST_NAME}-python-recall-") as python_dir,
+        tempfile.TemporaryDirectory(prefix=f"{DIST_NAME}-openclaw-recall-") as oracle_dir,
     ):
         python_workspace = Path(python_dir)
         oracle_workspace = Path(oracle_dir)
@@ -288,8 +289,8 @@ def build_repeated_recall_tracking_trace(oracle: OpenClawOracle | Any) -> dict[s
         },
     ]
     with (
-        tempfile.TemporaryDirectory(prefix="memory-core-python-recall-sequence-") as python_dir,
-        tempfile.TemporaryDirectory(prefix="memory-core-openclaw-recall-sequence-") as oracle_dir,
+        tempfile.TemporaryDirectory(prefix=f"{DIST_NAME}-python-recall-sequence-") as python_dir,
+        tempfile.TemporaryDirectory(prefix=f"{DIST_NAME}-openclaw-recall-sequence-") as oracle_dir,
     ):
         python_workspace = Path(python_dir)
         oracle_workspace = Path(oracle_dir)
@@ -371,8 +372,8 @@ def build_promotion_ranking_trace(oracle: OpenClawOracle | Any) -> dict[str, Any
         for index, query in enumerate(RANKING_QUERIES)
     ]
     with (
-        tempfile.TemporaryDirectory(prefix="memory-core-python-ranking-") as python_dir,
-        tempfile.TemporaryDirectory(prefix="memory-core-openclaw-ranking-") as oracle_dir,
+        tempfile.TemporaryDirectory(prefix=f"{DIST_NAME}-python-ranking-") as python_dir,
+        tempfile.TemporaryDirectory(prefix=f"{DIST_NAME}-openclaw-ranking-") as oracle_dir,
     ):
         python_workspace = Path(python_dir)
         oracle_workspace = Path(oracle_dir)

@@ -11,12 +11,14 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
+from demo import CHAT_API_KEY_ENV, EMBEDDING_API_KEY_ENV
 from demo.chat_engine import DEFAULT_OPENAI_MODEL_SOURCE
 from demo.lab_runtime import (
     CONTEXT_INJECTION_MODES,
     LAB_FLAGS,
     LAB_TIME_FORMAT,
     LAB_TIMEZONE,
+    LAYOUT_CHOICES,
     LAYOUTS,
     WARNING_MODES,
     LabError,
@@ -45,7 +47,7 @@ def settings_payload(lab: LabRuntime) -> dict[str, Any]:
             "baseUrl": chat.base_url,
             "model": chat.model,
             "keySource": "env" if chat.has_key else "none",
-            "keyEnv": "MEMORY_CORE_DEMO_OPENAI_API_KEY",
+            "keyEnv": CHAT_API_KEY_ENV,
             "defaultModel": dict(DEFAULT_OPENAI_MODEL_SOURCE),
             "lastCheck": lab.provider_status.get("chat"),
         },
@@ -53,7 +55,7 @@ def settings_payload(lab: LabRuntime) -> dict[str, Any]:
             "baseUrl": embedding.base_url,
             "model": embedding.model if embedding.available else None,
             "keySource": embedding.key_source if embedding.key_source in {"env", "none"} else "env",
-            "keyEnv": "MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY",
+            "keyEnv": EMBEDDING_API_KEY_ENV,
             "mode": embedding.mode,
             "reason": embedding.reason,
             "lastCheck": lab.provider_status.get("embedding"),
@@ -173,7 +175,7 @@ def update_settings(lab: LabRuntime, payload: dict[str, Any]) -> dict[str, Any]:
         changed.append("embedding.model")
     if "layout" in payload:
         if payload["layout"] not in LAYOUTS:
-            raise LabError(400, "layout must be 'memory-core' or 'upstream'", code="invalid_setting")
+            raise LabError(400, f"layout must be {LAYOUT_CHOICES}", code="invalid_setting")
         settings.layout = payload["layout"]
         changed.append("layout")
     budgets = _section(payload, "budgets")

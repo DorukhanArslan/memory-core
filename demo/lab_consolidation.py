@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from demo.lab_runtime import LAB_TIMEZONE, LabError, LabRuntime, safe_exception_message
+from memory_core.project_name import PACKAGE_NAME
 from memory_core.consolidation import (
     DEFAULT_DEEP_DREAMING_ENABLED,
     DEFAULT_DEEP_DREAMING_LIMIT,
@@ -158,7 +159,8 @@ def _matrix_label(prefixes: tuple[str, ...]) -> str:
 
     rows = [row for row in parse_parity_matrix() if row["area"].startswith(prefixes)]
     statuses = "; ".join(f"{row['area']}: {row['status']}" for row in rows)
-    return f"paket (memory_core.consolidation) · {statuses}" if statuses else "paket (memory_core.consolidation)"
+    package = f"paket ({PACKAGE_NAME}.consolidation)"
+    return f"{package} · {statuses}" if statuses else package
 
 
 def consolidation_view(lab: LabRuntime) -> dict[str, Any]:

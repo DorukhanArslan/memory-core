@@ -134,6 +134,7 @@ from memory_core.heartbeat_scratch import (
     HeartbeatScratchStore,
     hash_heartbeat_scratch_source,
 )
+from memory_core.project_name import PACKAGE_NAME, STATE_DIRNAME
 
 __all__ = [
     "HEARTBEAT_MIGRATION_ARCHIVE_PARTS",
@@ -149,10 +150,10 @@ __all__ = [
     "migrate_heartbeat_tasks",
 ]
 
-HEARTBEAT_MIGRATION_ARCHIVE_PARTS = (".memory-core", "backups", "heartbeat-migration")
+HEARTBEAT_MIGRATION_ARCHIVE_PARTS = (STATE_DIRNAME, "backups", "heartbeat-migration")
 # Named where upstream names `openclaw doctor --fix` / `openclaw doctor`.
-MIGRATE_HEARTBEAT_MD_COMMAND = "memory_core.heartbeat_migration.migrate_heartbeat_md()"
-MIGRATE_HEARTBEAT_TASKS_COMMAND = "memory_core.heartbeat_migration.migrate_heartbeat_tasks()"
+MIGRATE_HEARTBEAT_MD_COMMAND = f"{PACKAGE_NAME}.heartbeat_migration.migrate_heartbeat_md()"
+MIGRATE_HEARTBEAT_TASKS_COMMAND = f"{PACKAGE_NAME}.heartbeat_migration.migrate_heartbeat_tasks()"
 LEGACY_HEARTBEAT_FILE_REQUIREMENT = "legacy-heartbeat-file"
 HEARTBEAT_FILE_MIGRATION_BLOCKED_REQUIREMENT = "heartbeat-file-migration-blocked"
 HEARTBEAT_TASKS_IN_SCRATCH_REQUIREMENT = "heartbeat-tasks-in-scratch"

@@ -5,6 +5,8 @@ import sys
 import tomllib
 from pathlib import Path
 
+from memory_core.project_name import PACKAGE_NAME
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -18,13 +20,13 @@ def _project() -> dict:
 
 def _third_party_import_roots() -> set[str]:
     roots: set[str] = set()
-    for source in (ROOT / "memory-core").rglob("*.py"):
+    for source in (ROOT / PACKAGE_NAME).rglob("*.py"):
         for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Import):
                 roots.update(alias.name.split(".")[0] for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.level == 0:
                 roots.add(node.module.split(".")[0])
-    return roots - set(sys.stdlib_module_names) - {"memory-core"}
+    return roots - set(sys.stdlib_module_names) - {PACKAGE_NAME}
 
 
 def test_core_dependencies_are_exactly_what_memory_core_imports():

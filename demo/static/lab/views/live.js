@@ -8,6 +8,7 @@ import { api, postStream } from '../api.js';
 import { chip, btn, honesty, jsonDisclosure, emptyState, failCard, skeleton, howItWorks } from '../ui/kit.js';
 import { toast } from '../ui/overlay.js';
 import { viewHead, card } from './heartbeat.js';
+import { PROJECT } from '../project.js';
 
 // DESIGN §2.9 step order; the state payload carries only the current step (contract gap).
 const STEPS = ['verify_identity', 'collect_new_time', 'confirm_change', 'completed'];
@@ -100,7 +101,7 @@ export function renderLive(body) {
   replace(body, strip,
     viewHead(t('live.title'), 'waveform', [
       engine ? (scripted ? chip({ label: `SCRIPTED · ${engine.model || '—'}`, tone: 'warn', ic: 'alert-triangle', title: t('live.scriptedTip'), testid: 'engine-chip' }) : chip({ label: `${t('live.realModel')}: ${engine.model || '—'}`, tone: 'ok', ic: 'check', title: engine.fromState ? t('live.engineFromState') : null, testid: 'engine-chip' })) : st ? chip({ label: t('live.engineUnknown'), tone: 'neutral', ic: 'circle', testid: 'engine-chip' }) : null,
-      chip({ label: 'adapter-only · memory_core.live', tone: 'neutral' }),
+      chip({ label: `adapter-only · ${PROJECT.package}.live`, tone: 'neutral' }),
     ]),
     h('div', { class: 'view-scroll' },
       howItWorks('live'),

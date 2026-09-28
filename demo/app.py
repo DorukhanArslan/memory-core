@@ -20,12 +20,32 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 from starlette.responses import Response
 
+from demo import LAB_TITLE
 from demo.lab_api import build_router
 from demo.lab_kept_api import build_kept_router
 from demo.lab_runtime import LabError, LabRuntime, safe_exception_message
+from memory_core.project_name import (
+    DISPLAY_NAME,
+    DIST_NAME,
+    ENV_PREFIX,
+    PACKAGE_NAME,
+    STATE_DIRNAME,
+)
 
 DEMO_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = DEMO_ROOT.parent
+# The name forms the shell page hands the Lab's scripts (data-* attributes of <body>), so the
+# UI spells the project name only through them.
+SHELL_CONTEXT = {
+    "lab_title": LAB_TITLE,
+    "project": {
+        "name": DIST_NAME,
+        "display": DISPLAY_NAME,
+        "package": PACKAGE_NAME,
+        "state_dir": STATE_DIRNAME,
+        "env_prefix": ENV_PREFIX,
+    },
+}
 
 # DESIGN §8.2: model and file text never reach innerHTML, and the shell loads
 # only same-origin scripts and styles.
@@ -61,7 +81,7 @@ def load_env_defaults(path: Path = PROJECT_ROOT / ".env") -> None:
 
 def create_app(lab: LabRuntime | None = None) -> FastAPI:
     lab = lab if lab is not None else LabRuntime()
-    app = FastAPI(title="memory-core Lab")
+    app = FastAPI(title=LAB_TITLE)
     app.state.lab = lab
     app.mount("/static", RevalidatedStaticFiles(directory=DEMO_ROOT / "static"), name="static")
     templates = Jinja2Templates(directory=DEMO_ROOT / "templates")
@@ -85,7 +105,7 @@ def create_app(lab: LabRuntime | None = None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def shell(request: Request):
-        response = templates.TemplateResponse(request, "index.html")
+        response = templates.TemplateResponse(request, "index.html", SHELL_CONTEXT)
         response.headers["Content-Security-Policy"] = SHELL_CONTENT_SECURITY_POLICY
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"

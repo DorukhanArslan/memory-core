@@ -47,6 +47,7 @@ from memory_core.bootstrap._js import js_trim, locale_sort_key
 from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
 from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.project_name import DIST_NAME
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.supplements import MemoryCorpusResult, MemoryCorpusSupplement, sort_corpus_results
 from memory_core.tools.citations import citation_label, clamp_text, source_label
@@ -327,7 +328,7 @@ def _run_with_deadline(
         finally:
             done.set()
 
-    threading.Thread(target=worker, name="memory-core-memory-search", daemon=True).start()
+    threading.Thread(target=worker, name=f"{DIST_NAME}-memory-search", daemon=True).start()
     if not done.wait(_deadline_seconds(timeout_ms)):
         outcome = _DeadlineOutcome(status="unavailable", error=timeout_message)
         signal.abort(timeout_message)

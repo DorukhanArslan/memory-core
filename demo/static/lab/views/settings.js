@@ -8,6 +8,7 @@ import { api } from '../api.js';
 import { chip, btn, iconBtn, segmented, toggle, failCard, skeleton, honesty, flagLabel, flagTip } from '../ui/kit.js';
 import { toast, confirmDialog } from '../ui/overlay.js';
 import { viewHead } from './heartbeat.js';
+import { PROJECT } from '../project.js';
 
 export async function putSettings(patch, { quiet = false } = {}) {
   try {
@@ -84,7 +85,7 @@ function keyField(id, which) {
   const clearBtn = has ? btn(t('settings.keyClear'), { size: 'xs', kind: 'ghost', onClick: () => { setPageKey(which, ''); refresh('top', 'center'); toast(t('settings.keyCleared'), { tone: 'info' }); } }) : null;
   const s = store.data.settings;
   const src = which === 'chat' ? chatKeyState() : (store.keys.embedding ? 'page' : s?.embedding?.keySource === 'env' ? 'env' : 'none');
-  const label = src === 'page' ? t('settings.keyPage') : src === 'env' ? `.env (${which === 'chat' ? 'MEMORY_CORE_DEMO_OPENAI_API_KEY' : 'MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY'})` : t('settings.keyNone');
+  const label = src === 'page' ? t('settings.keyPage') : src === 'env' ? `.env (${s?.[which]?.keyEnv})` : t('settings.keyNone');
   return h('div', { class: 'keyfield' }, input, reveal, clearBtn, h('span', { id: `${id}-src`, class: ['chip', 'chip-xs', src === 'none' ? 'tone-neutral' : 'tone-ok'], 'data-testid': `key-source-${which}` }, icon('key', 10), label));
 }
 function checkLine(which) {
@@ -139,7 +140,7 @@ export function renderSettings(body) {
         row('', checkLine('embedding')),
       ], { ic: 'layers' }),
       group('layout', t('settings.layout'), [
-        row(t('settings.layout'), segmented({ options: [{ value: 'memory-core', label: 'MEMORY-CORE' }, { value: 'upstream', label: t('settings.layoutPin') }], value: s.layout, onChange: (v) => putSettings({ layout: v }), aria: t('settings.layout'), size: 'sm', testid: 'settings-layout-seg' }), t('settings.layoutHelp')),
+        row(t('settings.layout'), segmented({ options: [{ value: PROJECT.name, label: PROJECT.displayUpper }, { value: 'upstream', label: t('settings.layoutPin') }], value: s.layout, onChange: (v) => putSettings({ layout: v }), aria: t('settings.layout'), size: 'sm', testid: 'settings-layout-seg' }), t('settings.layoutHelp')),
       ], { ic: 'layers' }),
       group('budget', t('settings.budget'), [
         row(t('settings.perFile'), numberInput('set-max', bud.maxChars, (v) => putSettings({ budgets: { maxChars: v } }), { step: 1000 }), null, { forId: 'set-max' }),

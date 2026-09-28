@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'">
   <meta name="color-scheme" content="dark light">
-  <title>memory-core Lab</title>
+  <title>{{ lab_title }}</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%23111317'/%3E%3Cg transform='translate(1 1) scale(.875)' fill='none'%3E%3Cpath d='M7.4 3 12.25 5.8 7.4 8.6 2.55 5.8Z' fill='%23BFCAFF' stroke='none'/%3E%3Cpath d='M2.55 5.8 7.4 8.6 7.4 14.2 2.55 11.4Z' fill='%237F8BFF' stroke='none'/%3E%3Cpath d='M7.4 8.6 12.25 5.8 12.25 11.4 7.4 14.2Z' fill='%234F52DA' stroke='none'/%3E%3Cpath d='M3.62 7.42 6.33 8.99 6.33 10.56 3.62 8.99Z' fill='%23241F78' stroke='none'/%3E%3Cpath d='M8.47 11.01 11.18 9.44 11.18 11.01 8.47 12.58Z' fill='%23241F78' stroke='none'/%3E%3Cpath d='M2.55 5.8 7.4 8.6 12.25 5.8M7.4 8.6V14.2' stroke='%23EEF1FF' stroke-width='.35' stroke-opacity='.6' stroke-linecap='butt'/%3E%3Cpath d='M12.9 1.1 14.2 1.85 12.9 2.6 11.6 1.85Z' fill='%23D6DDFF' stroke='none'/%3E%3Cpath d='M11.6 1.85 12.9 2.6 12.9 4.1 11.6 3.35Z' fill='%2398A3FF' stroke='none'/%3E%3Cpath d='M12.9 2.6 14.2 1.85 14.2 3.35 12.9 4.1Z' fill='%236A6EEA' stroke='none'/%3E%3Cpath d='M2.6 12.6 3.73 13.25 2.6 13.9 1.47 13.25Z' fill='%23D6DDFF' stroke='none'/%3E%3Cpath d='M1.47 13.25 2.6 13.9 2.6 15.2 1.47 14.55Z' fill='%2398A3FF' stroke='none'/%3E%3Cpath d='M2.6 13.9 3.73 13.25 3.73 14.55 2.6 15.2Z' fill='%236A6EEA' stroke='none'/%3E%3C/g%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/styles.css">
   <script type="module" src="/static/lab/app.js"></script>
 </head>
-<body>
+<body data-project-name="{{ project.name }}" data-project-display="{{ project.display }}" data-project-package="{{ project.package }}" data-project-state-dir="{{ project.state_dir }}" data-project-env-prefix="{{ project.env_prefix }}" data-lab-title="{{ lab_title }}">
   <a class="skip-link" href="#composer-input" data-testid="skip-link">İçeriğe geç</a>
 
   <svg xmlns="http://www.w3.org/2000/svg" hidden aria-hidden="true">
@@ -86,12 +86,12 @@
   </div>
 
   <div id="boot-fallback" class="boot-fallback" role="status" data-testid="boot-fallback">
-    <strong>memory-core Lab yükleniyor…</strong>
+    <strong>{{ lab_title }} yükleniyor…</strong>
     <span>Arayüz ES modülleri ister; sayfa yüklenmiyorsa tarayıcı konsolunu kontrol et.</span>
   </div>
   <div id="layer-root"></div>
   <div id="live-polite" class="sr-only" aria-live="polite"></div>
   <div id="live-assertive" class="sr-only" aria-live="assertive"></div>
-  <noscript><div class="boot-fallback">memory-core Lab JavaScript ister.</div></noscript>
+  <noscript><div class="boot-fallback">{{ lab_title }} JavaScript ister.</div></noscript>
 </body>
 </html>

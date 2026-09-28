@@ -22,6 +22,7 @@ from memory_core.consolidation import (  # noqa: E402
     evaluate_short_term_promotion_candidates,
     record_short_term_recalls,
 )
+from memory_core.project_name import DISPLAY_NAME, DIST_NAME  # noqa: E402
 
 
 NOW_MS = int(datetime(2026, 5, 8, 12, 0, tzinfo=UTC).timestamp() * 1000)
@@ -113,7 +114,7 @@ def summarize(candidate: Any) -> CandidateSummary:
 def run_fixture(workspace: Path | None = None, *, keep_workspace: bool = False) -> dict[str, Any]:
     temp_dir = None
     if workspace is None:
-        temp_dir = Path(tempfile.mkdtemp(prefix="memory-core-parity-"))
+        temp_dir = Path(tempfile.mkdtemp(prefix=f"{DIST_NAME}-parity-"))
         workspace = temp_dir
     else:
         if workspace.exists():
@@ -146,7 +147,9 @@ def run_fixture(workspace: Path | None = None, *, keep_workspace: bool = False) 
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run the memory-core/OpenClaw promotion fixture.")
+    parser = argparse.ArgumentParser(
+        description=f"Run the {DISPLAY_NAME}/OpenClaw promotion fixture."
+    )
     parser.add_argument("--workspace", type=Path, help="Optional workspace path to write fixture files.")
     parser.add_argument("--keep-workspace", action="store_true")
     args = parser.parse_args(argv)

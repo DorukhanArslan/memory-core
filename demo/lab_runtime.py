@@ -29,6 +29,14 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from demo import (
+    CHAT_API_KEY_ENV,
+    CHAT_BASE_URL_ENV,
+    CHAT_MODEL_ENV,
+    EMBEDDING_API_KEY_ENV,
+    EMBEDDING_BASE_URL_ENV,
+    EMBEDDING_MODEL_ENV,
+)
 from demo.chat_engine import DEFAULT_OPENAI_BASE_URL, DEFAULT_OPENAI_MODEL
 from demo.lab_events import LabEventBus, Snapshot, WorkspaceSnapshots, diff_snapshots
 from demo.live_task_demo import LiveTaskDemo
@@ -58,6 +66,7 @@ from memory_core.embeddings.openai_compatible import OpenAICompatibleEmbeddingPr
 from memory_core.flags import FeatureFlags
 from memory_core.host import DEFAULT_CONTEXT_WINDOW_TOKENS, HostKit, SessionState, TurnRecord
 from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.project_name import DIST_NAME, STATE_DIRNAME
 from memory_core.workspace import MemoryWorkspace
 
 LAB_TIMEZONE = "Europe/Istanbul"
@@ -65,16 +74,17 @@ LAB_TIMEZONE = "Europe/Istanbul"
 # heartbeat turn and the bare /new and /reset prompt): one value, as memory_core.current_time asks
 # of a host. Upstream detects the host OS's format instead (edecdbd05ef #111527).
 LAB_TIME_FORMAT = "24"
-LAB_WORKSPACE_DIRNAME = "memory-core-lab-workspace"
-LIVE_TASK_WORKSPACE_DIRNAME = "memory-core-live-task-demo-workspace"
+LAB_WORKSPACE_DIRNAME = f"{DIST_NAME}-lab-workspace"
+LIVE_TASK_WORKSPACE_DIRNAME = f"{DIST_NAME}-live-task-demo-workspace"
 LAB_SESSION_SOURCE = "lab"
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 SESSION_KINDS = ("main", "group", "channel", "direct", "subagent", "cron", "heartbeat")
 LAYOUTS: dict[str, WorkspaceLayout] = {
-    "memory-core": MEMORY_CORE_WORKSPACE_LAYOUT,
+    MEMORY_CORE_WORKSPACE_LAYOUT.name: MEMORY_CORE_WORKSPACE_LAYOUT,
     # The upstream v2026.9.6 map alone (no OpenClaw brand in the Lab UI).
     "upstream": OPENCLAW_COMPAT_LAYOUT,
 }
+LAYOUT_CHOICES = " or ".join(f"'{name}'" for name in LAYOUTS)
 SEARCH_MODES = ("hybrid", "vector", "text")
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 FILE_MAX_BYTES = 2 * 1024 * 1024
@@ -257,7 +267,7 @@ class LabSettings:
     chat_model: str | None = None
     embedding_base_url: str | None = None
     embedding_model: str | None = None
-    layout: str = "memory-core"
+    layout: str = MEMORY_CORE_WORKSPACE_LAYOUT.name
     max_chars: int = DEFAULT_BOOTSTRAP_MAX_CHARS
     total_max_chars: int = DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS
     warning_mode: str = "always"
@@ -427,7 +437,7 @@ class LabRuntime:
         if name in (None, ""):
             return self.layout
         if name not in LAYOUTS:
-            raise LabError(400, "layout must be 'memory-core' or 'upstream'", code="invalid_layout")
+            raise LabError(400, f"layout must be {LAYOUT_CHOICES}", code="invalid_layout")
         return LAYOUTS[str(name)]
 
     def config(self, *, mode: str = "text") -> MemoryConfig:
@@ -440,7 +450,7 @@ class LabRuntime:
         )
         return MemoryConfig(
             workspace_dir=self.root,
-            store_path=self.root / ".memory-core" / f"lab-{mode}.sqlite",
+            store_path=self.root / STATE_DIRNAME / f"lab-{mode}.sqlite",
             flags=flags,
         )
 
@@ -451,19 +461,17 @@ class LabRuntime:
         base_url = (
             optional_text(body.get("baseUrl"))
             or self.settings.chat_base_url
-            or optional_text(os.getenv("MEMORY_CORE_DEMO_OPENAI_BASE_URL"))
+            or optional_text(os.getenv(CHAT_BASE_URL_ENV))
             or DEFAULT_OPENAI_BASE_URL
         )
         model = (
             optional_text(body.get("model"))
             or self.settings.chat_model
-            or optional_text(os.getenv("MEMORY_CORE_DEMO_OPENAI_MODEL"))
+            or optional_text(os.getenv(CHAT_MODEL_ENV))
             or DEFAULT_OPENAI_MODEL
         )
         request_key = optional_text(body.get("apiKey"))
-        env_key = None if body.get("ignoreEnvKey") else optional_text(
-            os.getenv("MEMORY_CORE_DEMO_OPENAI_API_KEY")
-        )
+        env_key = None if body.get("ignoreEnvKey") else optional_text(os.getenv(CHAT_API_KEY_ENV))
         if request_key:
             return ChatResolution(base_url.rstrip("/"), model, "request", request_key)
         if env_key:
@@ -484,13 +492,13 @@ class LabRuntime:
         explicit = (
             optional_text(body.get("baseUrl"))
             or self.settings.embedding_base_url
-            or optional_text(os.getenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL"))
+            or optional_text(os.getenv(EMBEDDING_BASE_URL_ENV))
         )
         base_url = (explicit or chat.base_url).rstrip("/")
         model = (
             optional_text(body.get("model"))
             or self.settings.embedding_model
-            or optional_text(os.getenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_MODEL"))
+            or optional_text(os.getenv(EMBEDDING_MODEL_ENV))
             or DEFAULT_EMBEDDING_MODEL
         )
         if "openrouter.ai" in base_url:
@@ -502,7 +510,7 @@ class LabRuntime:
                 "openrouter.ai serves no /embeddings endpoint: FTS-only",
             )
         request_key = optional_text(body.get("apiKey"))
-        env_key = optional_text(os.getenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY"))
+        env_key = optional_text(os.getenv(EMBEDDING_API_KEY_ENV))
         if request_key:
             return EmbeddingResolution("hybrid", base_url, model, "request", None, request_key)
         if env_key:
@@ -514,7 +522,7 @@ class LabRuntime:
             base_url,
             model,
             "none",
-            "no embedding API key (MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY or the request): FTS-only",
+            f"no embedding API key ({EMBEDDING_API_KEY_ENV} or the request): FTS-only",
         )
 
     def secret_values(self, payload: dict[str, Any] | None) -> tuple[str, ...]:
@@ -522,8 +530,8 @@ class LabRuntime:
         values = [
             optional_text(_object(payload, "openai").get("apiKey")),
             optional_text(_object(payload, "embedding").get("apiKey")),
-            optional_text(os.getenv("MEMORY_CORE_DEMO_OPENAI_API_KEY")),
-            optional_text(os.getenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY")),
+            optional_text(os.getenv(CHAT_API_KEY_ENV)),
+            optional_text(os.getenv(EMBEDDING_API_KEY_ENV)),
         ]
         return tuple(value for value in values if value)
 

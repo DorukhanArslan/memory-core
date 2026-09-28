@@ -6,6 +6,7 @@ import { t } from '../i18n/index.js';
 import { store, refresh, registerRenderer, setView, chatKeyState } from '../store.js';
 import { chip, iconBtn, segmented, kbd } from '../ui/kit.js';
 import { openMenu } from '../ui/overlay.js';
+import { PROJECT } from '../project.js';
 
 export const VIEWS = [
   { id: 'chat', ic: 'message', key: 'g s' },
@@ -28,7 +29,7 @@ export function layoutLabel() {
     const pin = d.snap?.pin || d.parity?.pin;
     return pin ? `upstream ${String(pin).slice(0, 8)}` : 'upstream';
   }
-  return 'MEMORY-CORE';
+  return PROJECT.displayUpper;
 }
 /** Model health from the latest chat outcome or provider check (no settings field exists for it). */
 export function modelHealth() {
@@ -53,7 +54,7 @@ function statusChips() {
   const d = store.data; const s = d.settings; const snap = d.snap;
   const list = [];
   const lay = layoutLabel();
-  if (lay) list.push(chip({ label: lay, tone: lay.startsWith('upstream') ? 'info' : 'neutral', onClick: () => store.actions.openSettings('layout'), title: lay.startsWith('upstream') ? t('top.layoutPinTip') : t('top.layoutMemoryCoreTip'), testid: 'chip-layout', cls: 'chip-mono' }));
+  if (lay) list.push(chip({ label: lay, tone: lay.startsWith('upstream') ? 'info' : 'neutral', onClick: () => store.actions.openSettings('layout'), title: lay.startsWith('upstream') ? t('top.layoutPinTip') : t('top.layoutProjectTip'), testid: 'chip-layout', cls: 'chip-mono' }));
   const bs = snap?.bootstrap;
   if (bs?.status) {
     const pending = bs.status === 'pending';
@@ -64,7 +65,7 @@ function statusChips() {
     const ks = chatKeyState();
     const health = modelHealth();
     const dot = ks === 'none' ? 'grey' : health === 'error' ? 'danger' : health === 'ok' ? 'ok' : 'warn';
-    const src = ks === 'page' ? t('settings.keyPage') : ks === 'env' ? '.env (MEMORY_CORE_DEMO_OPENAI_API_KEY)' : t('settings.keyNone');
+    const src = ks === 'page' ? t('settings.keyPage') : ks === 'env' ? `.env (${s.chat.keyEnv})` : t('settings.keyNone');
     const healthText = { ok: t('top.lastCallOk'), error: t('top.lastCallError'), untested: t('top.untested') }[health];
     const state = ks === 'none' ? t('top.noKey') : healthText;
     list.push(chip({ label: s.chat.model || '—', dot, tone: dot === 'danger' ? 'danger' : 'neutral', onClick: () => store.actions.openSettings('chat'), title: `${t('top.chatModel')}: ${s.chat.model || '—'} · ${t('settings.keySource')}: ${src} · ${state}`, aria: `${t('top.chatModel')} ${s.chat.model || ''}, ${state}`, testid: 'chip-model', cls: 'chip-mono' }));
@@ -83,7 +84,7 @@ function renderTopbar() {
   const u = store.ui;
   replace(el,
     h('div', { class: 'tb-left' },
-      h('div', { class: 'brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }, icon('mark', 18)), h('h1', { class: 'brand-name' }, 'memory-core Lab')),
+      h('div', { class: 'brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }, icon('mark', 18)), h('h1', { class: 'brand-name' }, PROJECT.labTitle)),
       h('div', { class: 'tb-chips', role: 'group', 'aria-label': t('top.status') }, statusChips())),
     h('div', { class: 'tb-right' },
       h('button', { type: 'button', class: 'tb-status-btn', 'aria-label': t('top.status'), 'aria-haspopup': 'menu', onclick: (e) => openStatusPopover(e.currentTarget), 'data-testid': 'status-popover-btn' }, icon('activity', 14), h('span', null, t('top.status'))),

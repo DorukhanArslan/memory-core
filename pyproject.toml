@@ -26,6 +26,10 @@ dev = [
   "ruff>=0.6",
 ]
 
+# The project name: [project] name above, and the display name prose and the UI write.
+[tool.memory_core]
+display-name = "memory-core"
+
 [tool.hatch.version]
 path = "memory_core/__init__.py"
 

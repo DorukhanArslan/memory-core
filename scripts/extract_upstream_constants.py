@@ -46,10 +46,16 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "memory-core" / "bootstrap" / "_tools_md_constants.py"
-BOOTSTRAP_OUTPUT = ROOT / "memory-core" / "bootstrap" / "_bootstrap_constants.py"
-HEARTBEAT_OUTPUT = ROOT / "memory-core" / "_heartbeat_constants.py"
-FLUSH_OUTPUT = ROOT / "memory-core" / "_memory_flush_constants.py"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from memory_core.project_name import DISPLAY_NAME, PACKAGE_NAME  # noqa: E402
+
+PACKAGE_DIR = ROOT / PACKAGE_NAME
+OUTPUT = PACKAGE_DIR / "bootstrap" / "_tools_md_constants.py"
+BOOTSTRAP_OUTPUT = PACKAGE_DIR / "bootstrap" / "_bootstrap_constants.py"
+HEARTBEAT_OUTPUT = PACKAGE_DIR / "_heartbeat_constants.py"
+FLUSH_OUTPUT = PACKAGE_DIR / "_memory_flush_constants.py"
 CHECK_TEST = "tests/integration/test_extracted_upstream_constants.py"
 BOOTSTRAP_SOURCE = "src/agents/embedded-agent-helpers/bootstrap.ts"
 BUDGET_SOURCE = "src/agents/bootstrap-budget.ts"
@@ -862,7 +868,7 @@ def outputs(repo: Path) -> dict[Path, str]:
             sources=[CONTENT_SOURCE, GUIDANCE_SOURCE, MIGRATION_SOURCE, MIGRATION_BUDGET_SOURCE],
             note=[
                 "The legacy templates are upstream's retired TOOLS.md stock texts, used only to",
-                "recognise an untouched file; memory-core never seeds them. The finding texts are",
+                f"recognise an untouched file; {DISPLAY_NAME} never seeds them. The finding texts are",
                 "str.format templates; their fields stand for upstream template expressions.",
             ],
         ),
@@ -884,7 +890,7 @@ def outputs(repo: Path) -> dict[Path, str]:
             note=[
                 "Template texts are str.format templates; their fields stand for upstream",
                 "template expressions (HEARTBEAT_TEMPLATE_FIELDS in the script). The doctor",
-                "texts name 'openclaw doctor'; memory_core.heartbeat_migration substitutes its own",
+                f"texts name 'openclaw doctor'; {PACKAGE_NAME}.heartbeat_migration substitutes its own",
                 "helper names where they are shown (documented deviation).",
             ],
         ),

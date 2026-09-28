@@ -10,6 +10,7 @@ from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.flags import FeatureFlags
 from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.project_name import DISPLAY_NAME
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY, MEMORY_CORE_RUNTIME_IDENTITY
 from memory_core.tools.common import format_error_message
 from memory_core.tools.memory_search import (
@@ -114,7 +115,7 @@ def test_unavailable_result_classifies_quota_and_sqlite_reasons():
         reason, runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY
     )
     assert memory_core["warning"] == MEMORY_CORE_RUNTIME_IDENTITY.memory_search_sqlite_unavailable_warning
-    assert "memory-core" in memory_core["warning"] and "OpenClaw" not in memory_core["action"]
+    assert DISPLAY_NAME in memory_core["warning"] and "OpenClaw" not in memory_core["action"]
     assert compat["warning"] == (
         "Memory search is unavailable because this OpenClaw Node runtime does not provide "
         "SQLite support."

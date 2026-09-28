@@ -20,6 +20,7 @@ from memory_core.bootstrap import (
     initialize_agent_workspace,
 )
 from memory_core.bootstrap.render import prepare_context_files
+from memory_core.project_name import DISPLAY_NAME
 
 DEMO_WORKSPACE_LAYOUT = DEFAULT_WORKSPACE_LAYOUT
 
@@ -31,9 +32,9 @@ DEMO_WORKSPACE_LAYOUT = DEFAULT_WORKSPACE_LAYOUT
 # #112967), which starts empty; a HEARTBEAT.md a user writes gets the Heartbeat view's
 # migration action (memory_core.heartbeat_migration).
 DEMO_WORKSPACE_TEMPLATES = {
-    "AGENTS.md": """# AGENTS.md - Operating Instructions
+    "AGENTS.md": f"""# AGENTS.md - Operating Instructions
 
-You are memory-core, a private workspace agent.
+You are {DISPLAY_NAME}, a private workspace agent.
 
 - Follow the user's explicit instructions unless they conflict with safety or tool limits.
 - Treat workspace files as durable operator state.
@@ -56,9 +57,9 @@ Be direct, practical, and technically precise.
 - Prefer concise answers unless the user asks for detail.
 - Call out weak assumptions early.
 """,
-    "IDENTITY.md": """# IDENTITY.md - Agent Identity
+    "IDENTITY.md": f"""# IDENTITY.md - Agent Identity
 
-Name: memory-core
+Name: {DISPLAY_NAME}
 Vibe: pragmatic memory lab assistant
 Emoji: none
 """,

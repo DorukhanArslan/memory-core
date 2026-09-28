@@ -10,6 +10,7 @@ from memory_core.config import MemoryConfig
 from memory_core.curation import CurationPolicy, CurationResult, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore, validate_store_config
+from memory_core.project_name import STATE_DIRNAME
 from memory_core.tools.memory_get import memory_get
 from memory_core.tools.memory_search import memory_search
 from memory_core.workspace import MemoryWorkspace
@@ -143,7 +144,7 @@ def initialize_memory_core_workspace(workspace_dir: str | Path) -> None:
     root = Path(workspace_dir)
     root.mkdir(parents=True, exist_ok=True)
     (root / "memory").mkdir(exist_ok=True)
-    (root / ".memory-core").mkdir(exist_ok=True)
+    (root / STATE_DIRNAME).mkdir(exist_ok=True)
     memory_path = root / "MEMORY.md"
     if not memory_path.exists():
         memory_path.write_text(DEFAULT_MEMORY_MD_TEMPLATE, encoding="utf-8")

@@ -16,6 +16,8 @@ import {
   turnErrorCode, turnErrorMatches, errorRedacted, providerCheck,
 } from './checks.js';
 import { sourceNames } from '../ui/diff.js';
+import { escapeRegExp } from '../ui/dom.js';
+import { PROJECT } from '../project.js';
 
 const SESSION_FILE = /^memory\/\d{4}-\d{2}-\d{2}-[a-z0-9-]+\.md$/;
 // v2026.9.6 map plus the extension; TOOLS.md and HEARTBEAT.md are no longer bootstrap files.
@@ -143,7 +145,7 @@ export const SCENARIOS = [
     ],
   },
   {
-    id: 'S08', minutes: 4, view: 'chat', tags: ['upstream-uyumlu', 'uzantı: cron PROACTIVE', 'model'], requires: ['düzen MEMORY-CORE'],
+    id: 'S08', minutes: 4, view: 'chat', tags: ['upstream-uyumlu', 'uzantı: cron PROACTIVE', 'model'], requires: [`düzen ${PROJECT.displayUpper}`],
     steps: [
       { act: 'look', tab: 'prompt', promptKind: 'main', label: 'scn.S08.l0', expect: 'scn.S08.e0',
         checks: [auto('promptFiles(equals, upstream main set)', promptFiles('equals', (ctx) => {
@@ -177,7 +179,7 @@ export const SCENARIOS = [
       { act: 'legacyFile', content: 'tasks:\n  - name: gunluk-takip\n    interval: 30m\n    prompt: Bugünün günlük notunda açık bir takip maddesi var mı kontrol et. Yoksa yalnızca HEARTBEAT_OK yaz.\n', waitFor: 'heartbeat.legacy_file_written', then: 'hb-migrate', label: 'scn.S09.l0', expect: 'scn.S09.e0',
         checks: [auto('legacyFile(HEARTBEAT.md)', hbLegacyFile(true), ['heartbeat']), auto('finding(legacy-heartbeat-file)', hbFinding('legacy-heartbeat-file'), ['heartbeat']), auto('automationJobs(none)', (ctx) => !!ctx.heartbeat && (ctx.heartbeat.jobs || []).length === 0, ['heartbeat'])] },
       { act: 'press', view: 'heartbeat', target: 'hb-migrate', waitFor: 'heartbeat.migrated', label: 'scn.S09.l1', expect: 'scn.S09.e1',
-        checks: [auto('event(heartbeat.migrated)', event('heartbeat.migrated')), auto('legacyFile(absent)', hbLegacyFile(false), ['heartbeat']), auto('archive(.memory-core/backups/heartbeat-migration/…/HEARTBEAT.md)', hbArchive(/^\.memory-core\/backups\/heartbeat-migration\/main-[0-9a-f]{64}\.md\.[^/]+\/HEARTBEAT\.md$/), ['heartbeat']), auto('automationJobs({name:gunluk-takip,everyMs:1800000})', hbJob('gunluk-takip', (x) => x.everyMs === 1_800_000 && x.heartbeatTask), ['heartbeat']), auto('noFinding(legacy-heartbeat-file, heartbeat-tasks-in-scratch)', (ctx) => !!ctx.heartbeat && !hbFinding('legacy-heartbeat-file')(ctx) && !hbFinding('heartbeat-tasks-in-scratch')(ctx), ['heartbeat']), auto('scratch(empty)', hbScratch('empty'), ['heartbeat'])] },
+        checks: [auto('event(heartbeat.migrated)', event('heartbeat.migrated')), auto('legacyFile(absent)', hbLegacyFile(false), ['heartbeat']), auto(`archive(${PROJECT.stateDir}/backups/heartbeat-migration/…/HEARTBEAT.md)`, hbArchive(new RegExp(`^${escapeRegExp(PROJECT.stateDir)}/backups/heartbeat-migration/main-[0-9a-f]{64}\\.md\\.[^/]+/HEARTBEAT\\.md$`)), ['heartbeat']), auto('automationJobs({name:gunluk-takip,everyMs:1800000})', hbJob('gunluk-takip', (x) => x.everyMs === 1_800_000 && x.heartbeatTask), ['heartbeat']), auto('noFinding(legacy-heartbeat-file, heartbeat-tasks-in-scratch)', (ctx) => !!ctx.heartbeat && !hbFinding('legacy-heartbeat-file')(ctx) && !hbFinding('heartbeat-tasks-in-scratch')(ctx), ['heartbeat']), auto('scratch(empty)', hbScratch('empty'), ['heartbeat'])] },
       { act: 'press', view: 'heartbeat', target: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l2', expect: 'scn.S09.e2', blockedIf: needsKey,
         checks: [auto('promptHas(heartbeatUser,/^Run the following periodic tasks/)', hbUserHas(/^Run the following periodic tasks/), ['hbRun']), auto('promptHas(heartbeatUser,/reply NO_REPLY\./)', hbUserHas(/reply NO_REPLY\./), ['hbRun']), auto('event(flush.decided,{reason:runtime_skip:heartbeat})', event('flush.decided', (d) => d.reason === 'runtime_skip:heartbeat')), model('heartbeatDelivered(false)', hbDelivered(false), ['hbRun'])] },
       { act: 'press', view: 'heartbeat', target: 'hb-run', waitFor: 'heartbeat.decided|heartbeat.skipped', label: 'scn.S09.l3', expect: 'scn.S09.e3', blockedIf: needsKey,
@@ -193,7 +195,7 @@ export const SCENARIOS = [
     ],
   },
   {
-    id: 'S10', minutes: 5, view: 'heartbeat', tags: ['uzantı', 'model'], requires: ['S09 görevleri', 'düzen MEMORY-CORE'], blockedIf: needsKey,
+    id: 'S10', minutes: 5, view: 'heartbeat', tags: ['uzantı', 'model'], requires: ['S09 görevleri', `düzen ${PROJECT.displayUpper}`], blockedIf: needsKey,
     steps: [
       { act: 'edit', path: 'PROACTIVE_PREFERENCES.md', content: '# PROACTIVE_PREFERENCES.md\n\n- Fatura ve ödeme takiplerini her zaman bildir.\n- Toplantı hatırlatmaları için bildirim gönderme; HEARTBEAT_OK yaz.\n', waitFor: 'file.saved', label: 'scn.S10.l0', expect: 'scn.S10.e0',
         checks: [auto('badge(PROACTIVE_PREFERENCES.md,injected)', badge('PROACTIVE_PREFERENCES.md', 'injected'), ['files']), auto('promptOrder([USER.md,PROACTIVE_PREFERENCES.md],{kind:heartbeat})', promptOrder(['USER.md', 'PROACTIVE_PREFERENCES.md'], 'heartbeat'), ['prompt:heartbeat'])] },

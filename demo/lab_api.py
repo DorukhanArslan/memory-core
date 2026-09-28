@@ -16,6 +16,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import StreamingResponse
 
+from demo import CHAT_API_KEY_ENV
 from demo.chat_engine import ChatEngine, OpenAICompatibleChatEngine, ScriptedChatEngine
 from demo.lab_chat import chat_turn_frames
 from demo.lab_consolidation import consolidation_view
@@ -489,7 +490,7 @@ def resolve_chat_engine(lab: LabRuntime, payload: dict[str, Any]) -> ChatEngine:
     if not chat.has_key:
         raise LabError(
             400,
-            "no chat model key: set MEMORY_CORE_DEMO_OPENAI_API_KEY or send openai.apiKey "
+            f"no chat model key: set {CHAT_API_KEY_ENV} or send openai.apiKey "
             "(the Lab has no fake chat model; engine 'scripted' runs the pipeline without one)",
             code="no_api_key",
         )

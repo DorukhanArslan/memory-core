@@ -154,8 +154,11 @@ Stages, in the order the `stage` events stream them:
    the offered tools, then the workspace context for the session kind; no generic
    `read` tool; the scripted engine is offered no tools and gets no Memory Recall),
 8. `stream` (tool loop over `HostKit.dispatch`; a call counts as failed when its payload has
-   `status: "error"` or `disabled: true`), 9. `persist` (transcript, token
-   snapshot, the kit's fold of the seen truncation signatures and the bootstrap turn).
+   `status: "error"` or `disabled: true`; every error payload of an offered curated-write tool
+   is recorded as a refused write with a `curation.refused` event: a refusal, bad or invalid
+   JSON arguments, a failed write or any other exception of the write), 9. `persist`
+   (transcript, token snapshot, the kit's fold of the seen truncation signatures and the
+   bootstrap turn).
 
 Every reindex goes through `LabStore` (`demo/lab_runtime.py`), including the ones the
 kit runs after a curated write and the flush write's, so the index status and

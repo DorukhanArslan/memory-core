@@ -64,20 +64,19 @@ class LabToolbox:
         return self.kit.tools()
 
     def dispatch(self, call_id: str, name: str, raw_arguments: str) -> dict[str, Any]:
-        """Run one tool call; returns the call record with the payload sent to the model."""
+        """Run one tool call; returns the call record with the payload sent to the model.
+
+        The raw arguments go to ``HostKit.dispatch``, which decodes them; the record shows them
+        decoded when they are JSON.
+        """
         started = time.perf_counter()
-        record: dict[str, Any] = {"id": call_id, "name": name, "arguments": raw_arguments}
-        try:
-            arguments = json.loads(raw_arguments) if raw_arguments.strip() else {}
-        except json.JSONDecodeError:
-            arguments = None
-        else:
-            record["arguments"] = arguments
+        arguments = _preview_arguments(raw_arguments)
+        record: dict[str, Any] = {"id": call_id, "name": name, "arguments": arguments}
         offered = {definition["name"] for definition in self.definitions()}
-        if isinstance(arguments, dict) and name in offered and name in CURATION_OPERATIONS:
-            result = self._curate(name, arguments, record)
-        elif isinstance(arguments, dict) and name == MEMORY_SEARCH_TOOL_NAME:
-            result = self._memory_search(arguments)
+        if name in offered and name in CURATION_OPERATIONS:
+            result = self._curate(name, raw_arguments, record)
+        elif name == MEMORY_SEARCH_TOOL_NAME:
+            result = self._memory_search(raw_arguments, arguments)
         else:
             result = self.kit.dispatch(name, raw_arguments, session=self.session.state())
         record["result"] = result
@@ -89,11 +88,11 @@ class LabToolbox:
         self.calls.append(record)
         return record
 
-    def _memory_search(self, arguments: dict[str, Any]) -> dict[str, Any]:
+    def _memory_search(self, raw_arguments: str, arguments: Any) -> dict[str, Any]:
         # The kit records the hits as short-term recalls (dreaming enabled in the Lab).
         with self.lab.tracked("recall", turn_id=self.turn_id):
             result = self.kit.dispatch(
-                MEMORY_SEARCH_TOOL_NAME, arguments, session=self.session.state()
+                MEMORY_SEARCH_TOOL_NAME, raw_arguments, session=self.session.state()
             )
         if result.get("status") == "error":
             return result
@@ -107,6 +106,7 @@ class LabToolbox:
             )
             return result
         hits = result.get("results") or []
+        # The search ran, so the arguments were a JSON object.
         self.lab.bus.emit(
             "search.completed",
             summary=f"memory_search (model): {len(hits)} sonuç",
@@ -124,7 +124,7 @@ class LabToolbox:
             return "PROACTIVE_PREFERENCES.md"
         return f"memory/{self.kit.curator.today()}.md"
 
-    def _curate(self, name: str, arguments: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]:
+    def _curate(self, name: str, raw_arguments: str, record: dict[str, Any]) -> dict[str, Any]:
         target = self._target(name)
         path = self.lab.root / target
         before = path.read_text(encoding="utf-8") if path.is_file() else None
@@ -138,7 +138,8 @@ class LabToolbox:
             "extension": True,
         }
         with self.lab.tracked("curation", turn_id=self.turn_id):
-            result = self.kit.dispatch(name, arguments, session=self.session.state())
+            result = self.kit.dispatch(name, raw_arguments, session=self.session.state())
+        # Every error payload is a refused write: a refusal, bad or invalid arguments, a failure.
         if result.get("status") == "error":
             reason = str(result.get("error"))
             refused = {**base, "id": self.lab.allocate_write_id(), "path": target, "refused": True,

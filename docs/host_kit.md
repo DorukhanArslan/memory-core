@@ -1074,7 +1074,12 @@ follows Task 9.
   for any tool set the caller names) still calls `build_prompt_section` directly, like the other
   kept playgrounds over core functions (`/api/search`, `/api/get`). Side effect of `LabStore`: the
   pre-turn flush's reindex now also updates the Lab index status and emits `index.reindexed`
-  for its turn (before, it left the index reported as stale).
+  for its turn (before, it left the index reported as stale). Side effect of the kit's error
+  contract: the Lab records every error payload of an offered curated-write tool as a refused
+  write with `curation.refused`. Besides the curator's refusals and failed writes
+  (`MemoryToolInputError`, `write failed: ...` for an `OSError`, as before) that now includes
+  invalid JSON or non-object arguments and any other exception of the write; before, those came
+  back unrecorded or reached the tool loop's generic handler.
 
 ### Task 9: Lab switch, part 2 (blocked: Q1, Q3, Q5, Q6, Q10)
 

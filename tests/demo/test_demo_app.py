@@ -829,6 +829,32 @@ def test_tool_loop_returns_refusals_and_bad_arguments_to_the_model(client, lab, 
     assert (lab.root / "USER.md").read_text(encoding="utf-8") == DEMO_WORKSPACE_TEMPLATES["USER.md"]
 
 
+def test_tool_loop_records_every_curation_error_as_refused(client, lab, monkeypatch):
+    import memory_core.curation as curation
+
+    def broken_append(root, rel_path, entry):
+        raise RuntimeError("append backend is closed")
+
+    monkeypatch.setattr(curation, "append_daily_memory_file", broken_append)
+    use_engine(monkeypatch, StubEngine([
+        ("", [tool_call("c1", "upsert_user_directive", "{not json"),
+              tool_call("c2", "append_daily_note", {"text": "Kiwi moved to Friday."})]),
+        ("Olmadı.", []),
+    ]))
+
+    results = {item["id"]: item for item in frames_of(send(client, "Not al."), "tool_result")}
+
+    assert results["c1"]["curation"]["reason"].startswith("invalid JSON arguments")
+    assert results["c2"]["result"] == {
+        "status": "error", "tool": "append_daily_note", "error": "append backend is closed",
+    }
+    assert results["c2"]["curation"]["refused"] is True
+    assert [write["operation"] for write in lab.curated_writes if write["refused"]] == [
+        "upsert_user_directive", "append_daily_note",
+    ]
+    assert event_types(client).count("curation.refused") == 2
+
+
 def test_tool_loop_counts_disabled_payloads_as_failed_calls(client, monkeypatch):
     use_engine(monkeypatch, StubEngine([
         ("", [tool_call("c1", "memory_get", {"path": "AGENTS.md"}),

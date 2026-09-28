@@ -7,10 +7,12 @@ must not call its backing provider, alter scores, or leave side effects.
 `test_vector_disabled_never_calls_embedder`).
 
 ```python
+from pathlib import Path
+
 from memory_core import FeatureFlags, Memory, MemoryConfig
 
 config = MemoryConfig(
-    workspace_dir=".",
+    workspace_dir=Path("."),
     flags=FeatureFlags(vector_search=False),  # deterministic FTS-only mode
 )
 memory = Memory.from_workspace(".", config=config)  # no embedding provider needed
@@ -32,7 +34,7 @@ At least one of `vector_search` / `text_search` must stay enabled;
 
 The host kit's `dreaming_enabled` option (default `False`, upstream `dreaming.enabled`) is
 a kit option, not a flag: with it off, `HostKit.dispatch` records no short-term recalls and
-writes nothing under `memory/.dreams/` (docs/host_kit.md, open question Q8).
+writes nothing under `memory/.dreams/` (docs/host_kit.md, decision Q8).
 
 ## Resolution rules
 

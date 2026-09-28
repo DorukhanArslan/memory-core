@@ -176,3 +176,19 @@ def test_readme_quickstart_shows_the_example():
     section = readme.split("\n## Quickstart\n", 1)[1]
 
     assert section.split("```python\n", 1)[1].split("\n```\n", 1)[0] + "\n" == code
+
+
+def _python_block(doc: str) -> str:
+    """The first ``python`` code block of a doc under the repo root."""
+    text = (Path(quickstart.__file__).parents[1] / doc).read_text(encoding="utf-8")
+    return text.split("```python\n", 1)[1].split("\n```\n", 1)[0] + "\n"
+
+
+def test_feature_flags_doc_example_runs(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    namespace: dict = {}
+
+    exec(_python_block("docs/feature_flags.md"), namespace)
+
+    assert namespace["memory"].config.flags.vector_search is False
+    assert (tmp_path / "MEMORY.md").exists()

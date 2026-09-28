@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -37,6 +38,7 @@ from pydantic import Field  # noqa: E402
 import examples.langgraph_agent as example  # noqa: E402
 from memory_core import FeatureFlags, HostKit, MemoryConfig, SessionState  # noqa: E402
 from memory_core.adapters.langgraph import transcript_rows  # noqa: E402
+from memory_core.bootstrap import format_session_reset_transcript_prompt  # noqa: E402
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY  # noqa: E402
 
 NOW_MS = int(datetime(2026, 9, 29, 12, tzinfo=timezone.utc).timestamp() * 1000)
@@ -390,3 +392,218 @@ def test_tools_are_bound_without_strict_mode(tmp_path: Path):
     tools = model.calls[0].kwargs["tools"]
     search = next(tool for tool in tools if tool["function"]["name"] == "memory_search")
     assert search["function"]["parameters"]["required"] == ["query"]
+
+
+def _spy(monkeypatch, kit: HostKit, name: str) -> list:
+    results = []
+    method = getattr(kit, name)
+
+    def spy(*args, **kwargs):
+        results.append(method(*args, **kwargs))
+        return results[-1]
+
+    monkeypatch.setattr(kit, name, spy)
+    return results
+
+
+def _saved_session_files(root: Path) -> list[Path]:
+    return sorted((root / "memory").glob(f"{TODAY}-*.md"))
+
+
+def test_bare_new_saves_session_memory_and_runs_the_reset_turn(tmp_path: Path, monkeypatch):
+    kit, model, graph = _graph(tmp_path, memory_script(usage=1_000))
+    news = _spy(monkeypatch, kit, "on_new_session")
+    _say(graph, "Our codename is velvetkiwi.")
+
+    state = _say(graph, "/new")
+
+    (new,) = news
+    (saved,) = _saved_session_files(tmp_path)
+    assert saved == new.saved.path
+    assert "user: Our codename is velvetkiwi." in saved.read_text(encoding="utf-8")
+    assert "/new" not in saved.read_text(encoding="utf-8")
+    row = format_session_reset_transcript_prompt("new", MEMORY_CORE_RUNTIME_IDENTITY)
+    assert new.reset.transcript_prompt == row
+    assert [(message.type, message.content) for message in state["messages"]][0] == ("human", row)
+    assert state["messages"][-1].content == "reply 2"
+    # Both model calls of the reset turn get the model prompt in place of the row.
+    reset_calls = _chat_calls(model)[2:]
+    assert len(reset_calls) == 2
+    for call in reset_calls:
+        assert call.messages[1].content == new.reset.model_prompt
+        assert not any(message.content == row for message in call.messages)
+    assert new.reset.prompt in new.reset.model_prompt
+    assert state["memory_reset"] is None
+
+
+def test_new_keeps_the_session_key_and_rotates_the_session_id(tmp_path: Path):
+    _, model, graph = _graph(tmp_path, memory_script())
+    before = _say(graph, "Our codename is velvetkiwi.")
+
+    after = _say(graph, "/reset")
+
+    old, new = _session(before), _session(after)
+    assert (old.session_key, old.session_id) == ("thread-1", "id-1")
+    assert (new.session_key, new.session_id) == ("thread-1", "id-2")
+    assert after["messages"][0].id == "id-3"
+    assert after["messages"][0].content == format_session_reset_transcript_prompt(
+        "reset", MEMORY_CORE_RUNTIME_IDENTITY
+    )
+    # The new session is a new compaction cycle: its due turn flushes again.
+    assert old.entry["memoryFlush"] == new.entry["memoryFlush"]
+    assert new.entry["sessionId"] == "id-2"
+    assert after["memory_maintenance"]["flush"] == "token_threshold"
+    assert len(_flush_calls(model)) == 4
+    assert (tmp_path / DAILY).read_text(encoding="utf-8") == f"{FACT}\n{FACT}\n"
+
+
+def test_session_key_mapping_names_the_session(tmp_path: Path):
+    _, _, graph = _graph(
+        tmp_path, memory_script(usage=1_000), session_key=lambda thread: f"agent:main:{thread}"
+    )
+
+    before = _say(graph, "Hello.")
+    after = _say(graph, "/new")
+
+    assert _session(before).session_key == _session(after).session_key == "agent:main:thread-1"
+    (saved,) = _saved_session_files(tmp_path)
+    assert "- **Session Key**: agent:main:thread-1" in saved.read_text(encoding="utf-8")
+
+
+def test_new_with_text_starts_the_new_session_with_that_text(tmp_path: Path, monkeypatch):
+    kit, model, graph = _graph(tmp_path, memory_script(usage=1_000))
+    news = _spy(monkeypatch, kit, "on_new_session")
+    _say(graph, "Our codename is velvetkiwi.")
+
+    state = _say(graph, "/NEW   What is our codename?")
+
+    (new,) = news
+    assert new.reset is None
+    assert [message.type for message in state["messages"]] == ["human", "ai", "tool", "ai"]
+    assert state["messages"][0].content == "What is our codename?"
+    assert _chat_calls(model)[2].messages[1:] == [state["messages"][0]]
+    assert len(_saved_session_files(tmp_path)) == 1
+
+
+def test_reset_prompt_is_not_replayed_on_the_next_turn(tmp_path: Path, monkeypatch):
+    kit, model, graph = _graph(tmp_path, memory_script(usage=1_000))
+    news = _spy(monkeypatch, kit, "on_new_session")
+    _say(graph, "/new")
+
+    _say(graph, "Hello.")
+
+    (new,) = news
+    later = _chat_calls(model)[2]
+    contents = [message.content for message in later.messages]
+    assert contents[1] == new.reset.transcript_prompt
+    assert new.reset.model_prompt not in contents
+    assert contents[-1] == "Hello."
+
+
+def test_a_command_that_is_not_first_word_is_an_ordinary_message(tmp_path: Path, monkeypatch):
+    kit, _, graph = _graph(tmp_path, memory_script(usage=1_000))
+    news = _spy(monkeypatch, kit, "on_new_session")
+
+    state = _say(graph, "please /new")
+
+    assert news == []
+    assert state["messages"][0].content == "please /new"
+
+
+def test_failed_model_call_commits_no_session_state(tmp_path: Path):
+    script = memory_script(usage=1_000)
+    failing = {"on": False}
+
+    def flaky(call: Call, calls: list[Call]) -> AIMessage:
+        if failing["on"]:
+            raise RuntimeError("provider down")
+        return script(call, calls)
+
+    _, model, graph = _graph(tmp_path, flaky)
+    before = _say(graph, "Hello.")
+    failing["on"] = True
+
+    with pytest.raises(RuntimeError, match="provider down"):
+        _say(graph, "Are you there?")
+
+    stuck = graph.get_state(THREAD)
+    assert stuck.next == ("agent",)
+    assert stuck.values["memory_session"] == before["memory_session"]
+    assert stuck.values["messages"][-1].content == "Are you there?"
+    assert stuck.values["memory_turn"] is not None
+    # Resume the failed node; the turn completes and is recorded then.
+    failing["on"] = False
+    resumed = graph.invoke(None, THREAD)
+    assert resumed["messages"][-1].content == "reply 2"
+    assert resumed["memory_turn"] is None
+    assert _session(resumed).entry["totalTokens"] == 1_000
+    assert [call.messages[-1].content for call in _chat_calls(model)][-2] == "Are you there?"
+
+
+def test_failed_flush_turn_records_a_strike_and_keeps_the_reply(tmp_path: Path):
+    script = memory_script()
+
+    def failing_flush(call: Call, calls: list[Call]) -> AIMessage:
+        if call.is_flush:
+            raise RuntimeError("flush model down")
+        return script(call, calls)
+
+    _, _, graph = _graph(tmp_path, failing_flush)
+
+    state = _say(graph, "Our codename is velvetkiwi.")
+
+    assert state["messages"][-1].content == "reply 1"
+    assert _session(state).entry["memoryFlush"] == {"kind": "failed", "failureCount": 1}
+    assert state["memory_maintenance"]["failure"] == {
+        "error": "flush model down",
+        "failureCount": 1,
+        "exhausted": False,
+    }
+    assert state["memory_maintenance"]["wrote"] == []
+    # The target was created before the flush run, as upstream does.
+    assert (tmp_path / DAILY).read_text(encoding="utf-8") == ""
+
+
+def test_redact_and_redactor_reach_the_kit(tmp_path: Path):
+    script = memory_script()
+
+    def leaking_flush(call: Call, calls: list[Call]) -> AIMessage:
+        if call.is_flush:
+            raise RuntimeError("upstream said: token s3cr3t is invalid")
+        return script(call, calls)
+
+    _, _, graph = _graph(
+        tmp_path,
+        leaking_flush,
+        redact=lambda text: text.replace("s3cr3t", "[redacted]"),
+        redactor=lambda line: line.replace("velvetkiwi", "[codename]"),
+    )
+
+    state = _say(graph, "Our codename is velvetkiwi.")
+    _say(graph, "/new")
+
+    assert state["memory_maintenance"]["failure"]["error"] == (
+        "upstream said: token [redacted] is invalid"
+    )
+    (saved,) = _saved_session_files(tmp_path)
+    text = saved.read_text(encoding="utf-8")
+    assert "user: Our codename is [codename]." in text
+    assert "velvetkiwi" not in text
+
+
+def test_redact_maps_a_flush_target_failure(tmp_path: Path):
+    # after_turn records a target it cannot create as a strike, without a redact hook of
+    # its own; the graph applies the host's redact to the stored message.
+    (tmp_path / "memory").mkdir(parents=True, exist_ok=True)
+    os.symlink(tmp_path / "elsewhere.md", tmp_path / DAILY)
+    _, model, graph = _graph(
+        tmp_path, memory_script(), redact=lambda text: text.replace(TODAY, "<date>")
+    )
+
+    state = _say(graph, "Our codename is velvetkiwi.")
+
+    failure = state["memory_maintenance"]["failure"]
+    assert failure["failureCount"] == 1
+    assert "<date>" in failure["error"] and TODAY not in failure["error"]
+    assert state["memory_maintenance"]["target"] == DAILY
+    assert _flush_calls(model) == []

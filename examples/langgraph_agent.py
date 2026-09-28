@@ -4,8 +4,10 @@ The graph is host code a LangGraph app copies. ``prepare`` asks the kit for the 
 prompt and memory tools, ``agent`` calls the host's chat model bound to them, ``tools``
 answers every tool call through the kit, and after the final reply ``maintain`` records the
 turn and, when the memory flush is due, runs the flush turn on the same model with only the
-append-only ``write`` tool. The session's memory state lives in the graph state, so the
-checkpointer keeps it across turns; one thread is one session. The adapter helpers
+append-only ``write`` tool. ``/new`` and ``/reset`` save the ending session through the kit
+and start the next one in the same thread. The session's memory state lives in the graph
+state, so the checkpointer keeps it across turns; one thread is one session key. The adapter
+helpers
 (``memory_core.adapters.langgraph``) convert messages and answer tool calls; they import no
 framework. docs/integrations/langgraph.md is the guide, its Findings section what the kit
 lacked.
@@ -17,16 +19,16 @@ import functools
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Annotated, Any, NotRequired, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AnyMessage
+from langchain_core.messages import AnyMessage, HumanMessage, RemoveMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.constants import TAG_NOSTREAM
 from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
+from langgraph.graph.message import REMOVE_ALL_MESSAGES, add_messages
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 
@@ -71,6 +73,21 @@ class AgentContext:
     runtime_context: str | None = None
 
 
+def reset_command(message: Any) -> tuple[Literal["new", "reset"], str] | None:
+    """``("new" | "reset", rest)`` when a human message starts with ``/new`` or ``/reset``.
+
+    A labelled simplification of upstream's ``resolveSessionResetCommand``
+    (src/auto-reply/reply/session-reset-command.ts:249), which also handles mentions,
+    envelopes, the soft ``/reset`` mode and configured triggers; the kit takes a parsed command.
+    """
+    if getattr(message, "type", None) != "human":
+        return None
+    words = message.text.strip().split(None, 1)
+    if not words or words[0].lower() not in ("/new", "/reset"):
+        return None
+    return ("new" if words[0].lower() == "/new" else "reset"), words[1] if len(words) > 1 else ""
+
+
 def model_input(turn: PendingTurn, messages: Sequence[Any]) -> list[Any]:
     """The model's input: the system prompt, then the transcript with the runtime context.
 
@@ -103,6 +120,7 @@ def build_graph(
     session_key: Callable[[str], str] | None = None,
     new_id: Callable[[], str] | None = None,
     redact: Callable[[str], str] | None = None,
+    redactor: Callable[[str], str] | None = None,
 ) -> CompiledStateGraph:
     """The agent graph for one workspace kit and one chat model.
 
@@ -110,8 +128,8 @@ def build_graph(
     every run needs ``config={"configurable": {"thread_id": ...}}``. ``context_window_tokens``
     is the model's window for the flush gate (the kit's default when ``None``).
     ``session_key`` maps the thread id to the session key (default: the thread id itself);
-    ``new_id`` makes session ids. ``redact`` maps a failed flush's error text before it is
-    stored.
+    ``new_id`` makes session and message ids. ``redact`` maps a failed flush's error text
+    before it is stored; ``redactor`` maps each line ``/new`` saves from the ending session.
     """
     key_of = session_key or (lambda thread_id: thread_id)
     make_id = new_id or (lambda: str(uuid.uuid4()))
@@ -127,6 +145,35 @@ def build_graph(
             return SessionState.from_json(data), False
         thread_id = config["configurable"]["thread_id"]
         return SessionState.new(session_key=key_of(thread_id), session_id=make_id()), True
+
+    def route_input(state: AgentState) -> str:
+        return "new_session" if reset_command(state["messages"][-1]) else "prepare"
+
+    def new_session(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
+        ending, _ = current_session(state, config)
+        command, text = reset_command(state["messages"][-1])
+        session_id, message_id = make_id(), make_id()
+        new = kit.on_new_session(
+            ending,
+            command=command,
+            session_id=session_id,
+            transcript=transcript_rows(state["messages"]),
+            text=text,
+            redactor=redactor,
+        )
+        # The thread's messages become the new session's transcript: its first row is the
+        # reset row of a bare command (the model gets the reset prompt instead) or the text.
+        if new.reset is not None:
+            first = HumanMessage(new.reset.transcript_prompt, id=message_id)
+            reset = {"messageId": message_id, "modelPrompt": new.reset.model_prompt}
+        else:
+            first, reset = HumanMessage(text, id=message_id), None
+        return {
+            "messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), first],
+            "memory_session": new.session.to_json(),
+            "memory_turn": None,
+            "memory_reset": reset,
+        }
 
     def prepare(
         state: AgentState, config: RunnableConfig, runtime: Runtime[AgentContext]
@@ -217,11 +264,13 @@ def build_graph(
         }
 
     graph = StateGraph(AgentState, context_schema=AgentContext)
+    graph.add_node("new_session", new_session)
     graph.add_node("prepare", prepare)
     graph.add_node("agent", agent)
     graph.add_node("tools", tools)
     graph.add_node("maintain", maintain)
-    graph.add_edge(START, "prepare")
+    graph.add_conditional_edges(START, route_input, ["new_session", "prepare"])
+    graph.add_edge("new_session", "prepare")
     graph.add_edge("prepare", "agent")
     graph.add_conditional_edges("agent", after_agent, ["tools", "maintain"])
     graph.add_edge("tools", "agent")

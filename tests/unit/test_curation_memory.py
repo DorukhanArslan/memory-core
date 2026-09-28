@@ -4,16 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from memory_core import (
-    CurationUnavailableError,
-    FakeEmbeddingProvider,
-    FeatureFlags,
-    Memory,
-    MemoryConfig,
-    MemoryCurator,
-    MemoryToolInputError,
-    execute_memory_search_tool,
-)
+from memory_core import FeatureFlags, Memory, MemoryConfig, MemoryToolInputError
+from memory_core.curation import CurationUnavailableError, MemoryCurator
+from memory_core.embeddings import FakeEmbeddingProvider
+from memory_core.tools.memory_search import execute_memory_search_tool
 
 NOW_MS = 1790375400000  # 2026-09-25 22:30 UTC
 

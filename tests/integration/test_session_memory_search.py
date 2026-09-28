@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from memory_core import FeatureFlags, Memory, MemoryConfig, save_session_memory
+from memory_core import FeatureFlags, Memory, MemoryConfig
+from memory_core.session_memory import save_session_memory
 
 NOW_MS = 1790433000000  # 2026-09-26T14:30:00Z
 

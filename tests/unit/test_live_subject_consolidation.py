@@ -7,13 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from memory_core import (
-    FeatureFlags,
-    MemoryConfig,
-    SubjectConsolidation,
-    SubjectPromotionDisabledError,
-)
+from memory_core import FeatureFlags, MemoryConfig
 from memory_core.live import SubjectMemory
+from memory_core.live.consolidation import SubjectConsolidation, SubjectPromotionDisabledError
 
 DAY_MS = 86_400_000
 NOW_MS = 1779811200000  # 2026-05-26T16:00:00Z

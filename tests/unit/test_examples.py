@@ -3,7 +3,7 @@ from pathlib import Path
 
 import examples.basic_usage as basic_usage
 import examples.live_streaming as live_streaming
-from memory_core import LiveIdentityStore
+from memory_core.live import LiveIdentityStore
 
 
 class _FakeProvider:

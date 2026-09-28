@@ -9,17 +9,20 @@ The first implementation slice covers `MEMORY.md`, `memory/YYYY-MM-DD.md`,
 
 ## Python API
 
-The stable package surface is exported from `memory-core`:
+The package root exports what a host needs (the host kit, `Memory`, its configuration,
+the embedding providers, the workspace layouts and the errors a host handles); every
+other helper imports from its submodule ([CHANGELOG.md](CHANGELOG.md) lists where each
+name moved in 0.2.0):
 
 ```python
-from memory_core import (
-    FakeEmbeddingProvider,
-    Memory,
-    build_memory_flush_plan,
-)
+from pathlib import Path
 
-memory = Memory.from_workspace(
-    embedding_provider=FakeEmbeddingProvider(),
+from memory_core import FeatureFlags, Memory, MemoryConfig
+from memory_core.memory_flush import build_memory_flush_plan
+
+root = Path(".")
+memory = Memory.from_workspace(  # FTS-only; pass embedding_provider= for hybrid search
+    root, config=MemoryConfig(workspace_dir=root, flags=FeatureFlags(vector_search=False))
 )
 
 results = memory.search("preferred name", max_results=5)
@@ -79,9 +82,11 @@ runtime/persona files such as `AGENTS.md`, `SOUL.md`, or `USER.md`, and it does
 not overwrite an existing `MEMORY.md`. Pass `initialize=False` to disable file
 creation.
 
-Runtime-adapter helpers such as transcript replay cleanup, history windowing,
-runtime-context prompt splitting, and overflow recovery are also exported from
-the package root when host applications need OpenClaw-compatible behavior.
+Runtime-adapter helpers such as transcript replay cleanup (`memory_core.replay_history`,
+`memory_core.replay_repair`), history windowing (`memory_core.history`), runtime-context prompt
+splitting (`memory_core.runtime_context_prompt`) and overflow recovery
+(`memory_core.overflow_recovery`, `memory_core.preemptive_compaction`) import from their modules
+when host applications need OpenClaw-compatible behavior.
 
 Heartbeat and automation follow the v2026.9.6 shape: the host keeps each agent's
 heartbeat monitor scratch and its recurring automation jobs (`FileAutomationStore`
@@ -89,14 +94,13 @@ is a file-backed default) and owns the scheduler; memory-core builds the heartbe
 turn and reads its reply:
 
 ```python
-from memory_core import (
+from memory_core.automation import (
     FileAutomationStore,
-    decide_heartbeat_reply,
     due_automation_jobs,
     heartbeat_scheduled_tasks,
-    prepare_heartbeat_turn,
     record_automation_job_run,
 )
+from memory_core.heartbeat import decide_heartbeat_reply, prepare_heartbeat_turn
 
 store = FileAutomationStore(workspace_root)
 due = due_automation_jobs(store.list_jobs(agent_id="main"), now_ms)

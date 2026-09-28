@@ -14,7 +14,6 @@ import pytest
 import memory_core.bootstrap.startup as startup
 import memory_core.heartbeat as heartbeat
 import memory_core.memory_flush as memory_flush
-from memory_core import build_memory_flush_plan, prepare_heartbeat_turn
 from memory_core.bootstrap import append_cron_style_current_time_line as bootstrap_append
 from memory_core.bootstrap import build_bare_session_reset_prompt
 from memory_core.current_time import (
@@ -23,7 +22,9 @@ from memory_core.current_time import (
     format_current_time_line,
     resolve_time_format,
 )
+from memory_core.heartbeat import prepare_heartbeat_turn
 from memory_core.heartbeat_scratch import HeartbeatScratch, HeartbeatScratchState
+from memory_core.memory_flush import build_memory_flush_plan
 
 PM_MS = 1_790_445_900_000  # 2026-09-26T18:05:00Z (21:05 in Istanbul)
 AM_MS = 1_790_388_300_000  # 2026-09-26T02:05:00Z (05:05 in Istanbul)

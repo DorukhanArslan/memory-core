@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from memory_core import FakeEmbeddingProvider, FeatureFlags, Memory, MemoryConfig
+from memory_core import FeatureFlags, Memory, MemoryConfig
+from memory_core.embeddings import FakeEmbeddingProvider
 
 
 class SpyEmbeddingProvider:

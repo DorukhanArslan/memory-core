@@ -4,9 +4,9 @@ Status: specification and TDD plan, written 2026-09-28 on `feat/host-kit` (from 
 `b829bad`), revised after review the same day. Implemented on that branch the same night:
 Tasks 1-8 and the kit parts of Task 10's docs. Task 9 (the Lab's flush, `/new` and heartbeat run)
 followed Doruk's decisions of 2026-09-28 ("Decisions") and landed the same day (`7f78de1`,
-`363d471`, `5ffee1c`, `ca54643`); Task 10's oracle re-run and the real-browser check of Task 9
-are still open. Upstream anchors are OpenClaw v2026.9.6 (`eb377ac59e6`, checkout
-`/tmp/openclaw-head`) unless a line says otherwise.
+`363d471`, `5ffee1c`, `ca54643`); the packaging stage (0.2.0) followed. Task 10's oracle re-run
+and the real-browser check of Task 9 are still open. Upstream anchors are OpenClaw v2026.9.6
+(`eb377ac59e6`, checkout `/tmp/openclaw-head`) unless a line says otherwise.
 
 # Part 1: Specification
 
@@ -1173,9 +1173,9 @@ follows Task 9.
 
 ## Follow-ups (later stages)
 
-Packaging (`[build-system]`, a demo extra so the core stops depending on FastAPI), the root
-`__all__` shrink with `memory_core.host` exported, the framework quickstart and example rewrite, live
-subject workspaces on the kit, the
-pre-compaction checkpoint flush with a compaction adapter, session auto-reset, memory-search
-supplements on the kit, and port plan area 5 (tool definitions and the Memory Recall section at the
-tag).
+The packaging stage (0.2.0, CHANGELOG.md) built the package with a `demo` extra, trimmed the
+package root to the kit and the core handle (the kit classes are exported there) and removed the
+facade's turn helpers. Later: the framework quickstart and example rewrite, live subject
+workspaces on the kit, the pre-compaction checkpoint flush with a compaction adapter, session
+auto-reset, memory-search supplements on the kit, and port plan area 5 (tool definitions and the
+Memory Recall section at the tag).

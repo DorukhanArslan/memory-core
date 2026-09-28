@@ -5,13 +5,13 @@ from collections.abc import AsyncIterator
 import json
 from pathlib import Path
 
-from memory_core import (
+from memory_core.bootstrap import initialize_agent_workspace
+from memory_core.live import (
     JsonlTraceSink,
     LiveIdentityStore,
     LiveSDKConfig,
     LiveTurnContext,
     SubjectMemory,
-    initialize_agent_workspace,
 )
 
 

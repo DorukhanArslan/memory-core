@@ -1130,11 +1130,9 @@ def test_identity_file_names_alias_stays_exported():
 def test_session_summary_skip_reasons_are_a_closed_literal():
     import typing
 
-    import memory_core
     from memory_core.live import SessionSummarySkipReason
 
     assert typing.get_args(SessionSummarySkipReason) == ("silent", "empty", "unstructured")
-    assert memory_core.SessionSummarySkipReason is SessionSummarySkipReason
 
 
 def test_stream_live_turn_yields_failure_for_a_blank_utterance(tmp_path: Path):

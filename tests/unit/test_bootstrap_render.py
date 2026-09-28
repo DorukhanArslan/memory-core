@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-from memory_core import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.bootstrap import (
     OPENCLAW_COMPAT_LAYOUT,
     MEMORY_CORE_WORKSPACE_LAYOUT,
@@ -16,6 +15,7 @@ from memory_core.bootstrap import (
     render_workspace_prompt,
     sort_context_files,
 )
+from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.workspace import MemoryWorkspace
 
 

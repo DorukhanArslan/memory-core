@@ -31,7 +31,7 @@ path = "memory_core/__init__.py"
 packages = ["memory_core"]
 
 [tool.hatch.build.targets.sdist]
-only-include = ["memory_core", "README.md", "LICENSE.openclaw"]
+only-include = ["memory_core", "README.md", "CHANGELOG.md", "LICENSE.openclaw"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

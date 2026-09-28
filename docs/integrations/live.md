@@ -200,7 +200,7 @@ reindex deleted the other subjects' chunks, and `memory_get` read from the root.
 ## Streaming Turn
 
 ```python
-from memory_core import JsonlTraceSink, LiveIdentity, LiveSDKConfig, LiveTurnContext, SubjectMemory
+from memory_core.live import JsonlTraceSink, LiveIdentity, LiveSDKConfig, LiveTurnContext, SubjectMemory
 
 identity = LiveIdentity.from_dir("./workspace")
 memory = SubjectMemory.open(
@@ -432,8 +432,9 @@ extension (decision Q16) behind `FeatureFlags.subject_promotion`, off by
 default; with the flag off every call raises `SubjectPromotionDisabledError`.
 
 ```python
-from memory_core import FeatureFlags, SubjectConsolidation
+from memory_core import FeatureFlags
 from memory_core.live import SubjectMemory
+from memory_core.live.consolidation import SubjectConsolidation
 
 memory = SubjectMemory.open(
     workspace_dir="runtime",

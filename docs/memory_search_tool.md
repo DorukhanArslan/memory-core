@@ -57,7 +57,8 @@ Params are read before any search work, in this order
   sends (`src/agents/agent-tool-definition-adapter.ts`):
 
 ```python
-from memory_core import MemoryToolInputError, execute_memory_search_tool
+from memory_core import MemoryToolInputError
+from memory_core.tools.memory_search import execute_memory_search_tool
 
 try:
     result = execute_memory_search_tool(config, store, {"query": "x", "maxResults": 0})

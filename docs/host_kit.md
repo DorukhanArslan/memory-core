@@ -4,9 +4,10 @@ Status: specification and TDD plan, written 2026-09-28 on `feat/host-kit` (from 
 `b829bad`), revised after review the same day. Implemented on that branch the same night:
 Tasks 1-8 and the kit parts of Task 10's docs. Task 9 (the Lab's flush, `/new` and heartbeat run)
 followed Doruk's decisions of 2026-09-28 ("Decisions") and landed the same day (`7f78de1`,
-`363d471`, `5ffee1c`, `ca54643`); the packaging stage (0.2.0) followed. Task 10's oracle re-run
-and the real-browser check of Task 9 are still open. Upstream anchors are OpenClaw v2026.9.6
-(`eb377ac59e6`, checkout `/tmp/openclaw-head`) unless a line says otherwise.
+`363d471`, `5ffee1c`, `ca54643`); the packaging stage (0.2.0) and the quickstart (README,
+`examples/quickstart.py`) followed. Task 10's oracle re-run and the real-browser check of Task 9
+are still open. Upstream anchors are OpenClaw v2026.9.6 (`eb377ac59e6`, checkout
+`/tmp/openclaw-head`) unless a line says otherwise.
 
 # Part 1: Specification
 
@@ -109,7 +110,7 @@ class HostKit:
 - The default `MemoryConfig` is hybrid (`vector_search=True`), so `HostKit.open(root)` without an
   embedder raises in `validate_store_config` (fail closed). The zero-config FTS-only call is
   `HostKit.open(root, config=MemoryConfig(workspace_dir=root, flags=FeatureFlags(vector_search=False)))`;
-  the future quickstart shows both.
+  the README Quickstart shows both (`examples/quickstart.py` opens FTS-only).
 - Hosts that build their own `Memory` (the Lab, one store per search mode) use
   `HostKit(memory, ...)` with `Memory.from_workspace(..., initialize=False)` and call `ensure()`
   before any memory file is created.
@@ -1175,7 +1176,7 @@ follows Task 9.
 
 The packaging stage (0.2.0, CHANGELOG.md) built the package with a `demo` extra, trimmed the
 package root to the kit and the core handle (the kit classes are exported there) and removed the
-facade's turn helpers. Later: the framework quickstart and example rewrite, live subject
-workspaces on the kit, the pre-compaction checkpoint flush with a compaction adapter, session
-auto-reset, memory-search supplements on the kit, and port plan area 5 (tool definitions and the
-Memory Recall section at the tag).
+facade's turn helpers; the quickstart stage added `examples/quickstart.py` and the README
+Quickstart over the kit. Later: live subject workspaces on the kit, the pre-compaction checkpoint
+flush with a compaction adapter, session auto-reset, memory-search supplements on the kit, and
+port plan area 5 (tool definitions and the Memory Recall section at the tag).

@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import json
 import re
@@ -155,3 +156,13 @@ def test_quickstart_runs_the_memory_tools_and_the_flush(tmp_path: Path, monkeypa
     assert flush_messages[-1]["content"].startswith("Pre-compaction memory flush.")
     # The flush run's reply is never delivered.
     assert capsys.readouterr().out == "reply 1\nreply 2\n"
+
+
+def test_readme_quickstart_shows_the_example():
+    source = Path(quickstart.__file__).read_text(encoding="utf-8")
+    readme = (Path(quickstart.__file__).parents[1] / "README.md").read_text(encoding="utf-8")
+    docstring_end = ast.parse(source).body[0].end_lineno
+    code = "".join(source.splitlines(keepends=True)[docstring_end:]).lstrip("\n")
+    section = readme.split("\n## Quickstart\n", 1)[1]
+
+    assert section.split("```python\n", 1)[1].split("\n```\n", 1)[0] + "\n" == code

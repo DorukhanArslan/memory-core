@@ -41,9 +41,10 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 - `Memory.prepare_turn()`, `Memory.chat()` and `Memory.record_turn()`, with
   `MemoryChatTurn`, `MemoryChatResult`, `MemoryRecordResult` and `DEFAULT_CHAT_SYSTEM_PROMPT`.
-  Use `memory_core.host`: the model recalls through the memory tools (`HostKit.tools()`,
-  `HostKit.dispatch()`), and the flush is decided after the reply (`HostKit.after_turn()`) and
-  written through the append-only `write` tool of its `FlushRequest`.
+  Use `memory_core.host` (README Quickstart, `examples/quickstart.py`): the model recalls through
+  the memory tools (`HostKit.tools()`, `HostKit.dispatch()`), and the flush is decided after
+  the reply (`HostKit.after_turn()`) and written through the append-only `write` tool of its
+  `FlushRequest`.
 - `record_daily_memory_flush`. Record a daily signal with
   `memory_core.consolidation.record_short_term_recalls(..., signal_type="daily")`.
 

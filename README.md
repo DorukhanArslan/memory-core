@@ -26,13 +26,106 @@ package holds only `memory_core/`. For development, create the checkout's enviro
 uv sync --extra dev
 ```
 
-Quickstart: the [Host kit](#host-kit) section below shows one turn; a step-by-step
-framework quickstart (`docs/quickstart.md`) comes with the next stage.
 [CHANGELOG.md](CHANGELOG.md) lists what changed in each version.
 
 Licence: memory-core's own licence is not decided yet. Code ported from OpenClaw keeps
 upstream's MIT notice in [LICENSE.openclaw](LICENSE.openclaw), which the wheel and the
 sdist carry.
+
+## Quickstart
+
+The host kit (`memory_core.host`) gives every turn of an agent its memory, in any host: a chat
+app, a channel bot, a voice agent. It seeds the workspace, builds the system prompt, offers
+the memory tools and answers their calls, and after the reply decides the memory flush. The
+host keeps the model call, the tool loop and session storage.
+[examples/quickstart.py](examples/quickstart.py) is a whole host loop as a terminal chat;
+replace `call_my_llm` with your model call:
+
+```python
+import uuid
+from collections.abc import Callable, Sequence
+from pathlib import Path
+from typing import Any
+
+from memory_core import FeatureFlags, HostKit, MemoryConfig, SessionState, TurnUsage
+
+
+def call_my_llm(
+    messages: Sequence[dict[str, str]],
+    tools: Sequence[dict[str, Any]],
+    run_tool: Callable[[str, Any], dict[str, Any]],
+) -> tuple[str, TurnUsage]:
+    """Your model call and its tool loop.
+
+    Send ``messages`` and offer ``tools`` (``{"name", "description", "parameters"}`` specs, to
+    wrap in your provider's format). Answer each tool call with ``run_tool(name, arguments)``,
+    the arguments as JSON text or a dict, and send the payload back until the model replies.
+    Return the reply text and the last call's token usage as the provider reports it.
+    """
+    raise NotImplementedError("replace call_my_llm with your model call")
+
+
+def main() -> None:
+    root = Path("my-agent-app")
+    # FTS-only search; pass embedding_provider= instead of config= for hybrid search.
+    kit = HostKit.open(
+        root, config=MemoryConfig(workspace_dir=root, flags=FeatureFlags(vector_search=False))
+    )
+    state = SessionState.new(session_key="agent:main:main", session_id=str(uuid.uuid4()))
+    history: list[dict[str, str]] = []
+    while text := input("> "):
+        turn = kit.before_turn(state)
+        history.append({"role": "user", "content": text})
+        reply, usage = call_my_llm(
+            [{"role": "system", "content": turn.system_prompt}, *history],
+            turn.tools,
+            lambda name, arguments: kit.dispatch(name, arguments, session=turn.session),
+        )
+        print(reply)  # deliver the reply; the memory flush runs after it
+        history.append({"role": "assistant", "content": reply})
+        record = kit.after_turn(turn.session, transcript=history, usage=usage)
+        state = record.session
+        if record.flush is not None:  # the flush run's own reply is never shown
+            call_my_llm(record.flush.messages, record.flush.tools, record.flush.dispatch)
+            state = record.flush.complete(state).session
+
+
+if __name__ == "__main__":
+    main()
+```
+
+- `HostKit.open` creates `my-agent-app/` with the layout's workspace files (`AGENTS.md`,
+  `SOUL.md`, `USER.md` and the rest, empty unless you pass `templates=`) and indexes the
+  memory files in `.memory-core/main.sqlite`. The default config searches hybrid and refuses to
+  open without an embedder; the example opts into FTS-only search. Hybrid search takes an
+  `OpenAICompatibleEmbeddingProvider` or any other `EmbeddingProvider`:
+
+  ```python
+  kit = HostKit.open(
+      root,
+      embedding_provider=OpenAICompatibleEmbeddingProvider(
+          api_key=os.environ["OPENAI_API_KEY"], model="text-embedding-3-small"
+      ),
+  )
+  ```
+
+- `kit.before_turn(state, runtime_context=text)` also wraps the host's per-turn context
+  (channel, sender) in the runtime-context markers as `turn.runtime_context`, the dynamic
+  part to send after the stable `turn.system_prompt`.
+- The model recalls through `memory_search` and `memory_get`. The curation tools, a memory-core
+  extension (flag `curated_memory_writes`, [Feature Flags](docs/feature_flags.md)), let it
+  edit `MEMORY.md`, `USER.md`, `PROACTIVE_PREFERENCES.md` and today's daily note.
+  `kit.dispatch` returns the payload to send back, errors included.
+- `after_turn` stores the provider's token usage in the session and returns a `FlushRequest`
+  when the session nears the model's context window (`context_window_tokens=`, default
+  upstream's 200,000). Upstream runs the flush after the reply is delivered and never shows
+  its reply. A host may run it later, off the reply path, as long as `complete()` comes
+  before the session's next `after_turn`; a failed run passes its exception as
+  `complete(state, error=...)`.
+- Keep `state` with your session record (`SessionState.to_json()`, `from_json()`). `/new`
+  and `/reset` go through `kit.on_new_session`, the scheduled heartbeat turn through
+  `kit.heartbeat_prompt`. The full contract and the upstream sites it follows:
+  [docs/host_kit.md](docs/host_kit.md).
 
 ## Python API
 
@@ -56,37 +149,6 @@ results = memory.search("preferred name", max_results=5)
 memory_file = memory.get("MEMORY.md", from_line=1, lines=20)
 recall_node = memory.langgraph_recall()
 flush_plan = build_memory_flush_plan(workspace_dir=memory.workspace.root)
-```
-
-## Host kit
-
-`memory_core.host` composes the memory behaviour of one agent turn for any host (a chat
-app, a channel bot, a voice agent): the workspace ensure, the injected context, the
-memory tools and their dispatch, the post-reply memory flush, the `/new` hook and the
-heartbeat turn. The host keeps the model call, the tool loop and session storage; the
-kit returns what to send and takes back what came out (docs/host_kit.md).
-
-```python
-from pathlib import Path
-
-from memory_core import FeatureFlags, HostKit, MemoryConfig, SessionState, TurnUsage
-
-root = Path("my-agent-app")
-kit = HostKit.open(  # FTS-only; pass embedding_provider= for hybrid search
-    root, config=MemoryConfig(workspace_dir=root, flags=FeatureFlags(vector_search=False))
-)
-state = SessionState.new(session_key="agent:main:main", session_id="s1")
-
-turn = kit.before_turn(state)
-# Your model call: turn.system_prompt, turn.runtime_context, the history and the user
-# message, offering turn.tools; answer each tool call with
-# kit.dispatch(name, arguments, session=turn.session).
-record = kit.after_turn(turn.session, transcript=history, usage=TurnUsage(prompt_tokens))
-state = record.session
-if record.flush:  # later, off the reply path
-    # Run record.flush.messages with record.flush.tools; answer its write calls with
-    # record.flush.dispatch(name, arguments).
-    state = record.flush.complete(state).session
 ```
 
 `Memory.from_workspace(...)` reads memory files from the host

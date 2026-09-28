@@ -32,7 +32,7 @@ def call_my_llm(
 
 def main() -> None:
     root = Path("my-agent-app")
-    # FTS-only search; for hybrid search pass embedding_provider= and drop the flag.
+    # FTS-only search; pass embedding_provider= instead of config= for hybrid search.
     kit = HostKit.open(
         root, config=MemoryConfig(workspace_dir=root, flags=FeatureFlags(vector_search=False))
     )

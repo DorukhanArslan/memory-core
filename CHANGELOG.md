@@ -20,6 +20,11 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   `ensureMemoryFlushTargetFile`; `memory_core.workspace.append_daily_memory_file`, the locked daily
   append the flush write and the curated daily note share; `memory_core.heartbeat.resolve_message_text`
   (upstream's `resolveMessageText`).
+- One declaration of the project name: `[project] name` and `display-name` in `[tool.memory_core]`
+  of pyproject.toml. `memory_core.project_name` derives the other forms, which runtime code and
+  the Lab use instead of spelling the name; `scripts/rename_project.py --to <name>` renames the
+  project and `--check` checks that the name is spelled consistently (README › Rename the
+  Project).
 - Packaging: a hatchling build (wheel and sdist). The core depends on `httpx` only; the Lab's
   `fastapi`, `jinja2` and `uvicorn` are the `demo` extra; the `dev` dependency group (PEP 735:
   pytest, ruff and the demo extra) is for a checkout and stays out of the package metadata.

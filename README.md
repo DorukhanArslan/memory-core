@@ -270,6 +270,26 @@ export OPENCLAW_ORACLE_NODE=<node-dir>/node
 OPENCLAW_ORACLE_REPO=/tmp/openclaw-head uv run pytest tests/integration -v
 ```
 
+## Rename the Project
+
+`pyproject.toml` declares the name once: `[project] name` (the distribution name) and
+`display-name` in `[tool.memory_core]`. `memory_core/project_name.py` repeats the two values for the
+installed package and derives the other forms (the package, the `MEMORY_CORE_` environment prefix,
+the `.memory-core/` state directory, the Lab title); runtime code never spells the name itself.
+One command renames the project; review the diff and commit it:
+
+```bash
+.venv/bin/python scripts/rename_project.py --to <dist-name> [--display <text>]
+.venv/bin/python scripts/rename_project.py --check
+```
+
+`--to` moves the package directory with `git mv`, rewrites every spelling of the name in the
+tracked files, relocks `uv.lock` and ends with `--check`, which a test also runs. Spellings
+that name OpenClaw memory-core (its paths, the plugin config key and the identifiers and prose
+the script's `PROTECTED` lists) stay as they are, and a rename to a name the tree already
+spells elsewhere is refused. A rename does not migrate existing workspaces: their state
+directory and promotion markers keep the old name.
+
 ## Run the Lab
 
 The Lab is a FastAPI app over the package (`demo/`); it adds no memory logic of

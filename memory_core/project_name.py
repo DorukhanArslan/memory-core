@@ -3,7 +3,8 @@
 pyproject.toml declares the name: ``[project] name`` is DIST_NAME and ``display-name`` in
 ``[tool.<package>]`` is DISPLAY_NAME. This module repeats those two values, since an installed
 package has no pyproject.toml, and derives the other forms; runtime code spells the name only
-through these constants.
+through these constants. ``scripts/rename_project.py --to`` rewrites both places, and its
+``--check`` (tests/unit/test_project_name.py) fails when they disagree.
 """
 
 # The distribution name (lower-case words joined by "-"), also the slug that starts file and

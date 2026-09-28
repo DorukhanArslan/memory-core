@@ -27,6 +27,7 @@ dev = [
 ]
 
 # The project name: [project] name above, and the display name prose and the UI write.
+# Rename the project with scripts/rename_project.py, never by hand.
 [tool.memory_core]
 display-name = "memory-core"
 

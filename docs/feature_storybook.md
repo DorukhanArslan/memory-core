@@ -8,6 +8,12 @@ not a parity claim by itself; use `docs/parity_matrix.md` for evidence labels.
 Goal: show how a normal chatbot can answer a user and persist durable memory
 without the application manually assembling memory-injection or flush prompts.
 
+Deprecated since 2026-09-28: `Memory.chat` (and `prepare_turn`, `record_turn`) warn and
+go with the packaging stage. The upstream shape is the host kit (`memory_core.host`,
+docs/host_kit.md): the model recalls through the memory tools, and the flush is decided
+after the reply and written through the append-only `write` tool. This story documents
+the deprecated flow until then.
+
 ### Starting Files
 
 ```text

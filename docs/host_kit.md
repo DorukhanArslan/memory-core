@@ -1,9 +1,10 @@
 # memory-core host kit (`memory_core.host`)
 
 Status: specification and TDD plan, written 2026-09-28 on `feat/host-kit` (from `main`
-`b829bad`), revised after review the same day. Nothing in this document is implemented yet.
-Upstream anchors are OpenClaw v2026.9.6 (`eb377ac59e6`, checkout `/tmp/openclaw-head`) unless a
-line says otherwise.
+`b829bad`), revised after review the same day. Implemented on that branch the same night:
+Tasks 1-8 and the kit parts of Task 10's docs. Task 9 (the Lab's flush, `/new` and heartbeat run)
+is blocked on Q1, Q3, Q5, Q6 and Q10; Task 10's oracle re-run follows it. Upstream anchors are
+OpenClaw v2026.9.6 (`eb377ac59e6`, checkout `/tmp/openclaw-head`) unless a line says otherwise.
 
 # Part 1: Specification
 

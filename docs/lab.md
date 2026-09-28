@@ -2,7 +2,10 @@
 
 The Lab is a FastAPI app (`demo/`) over the `memory-core` package. It holds what a
 host holds (paths, settings, sessions, provider keys, an event log, file
-snapshots) and calls the package for every memory decision. The UI talks only to
+snapshots, the index bookkeeping) and calls the package for every memory
+decision; it dogfoods the host kit (`memory_core.host`, docs/host_kit.md) for the
+tools, their dispatch, the per-turn ensure and the prompt. The flush, `/new` and
+the heartbeat run still compose the core directly until Task 9 of that plan. The UI talks only to
 `/api/lab/*` and the kept `/api/*` endpoints below. Design: DESIGN §4 (API
 contract), §8 and §10 of the Lab v2 design.
 
@@ -51,7 +54,7 @@ seconds later as the same model with reasoning mode pro). Recorded in
 |---|---|---|
 | Chat model | real | OpenAI-compatible streaming with tool calls. No key: `400 no_api_key`, no fake model. |
 | `engine: "scripted"` | scripted | Explicit per request only. Fixed text, no model call, no tool call, no flush turn. |
-| Tool loop | host (Lab) | `memory_search`, `memory_get` (upstream definitions), curation tools; ≤ 6 tool rounds + 1 final round without tools. |
+| Tool loop | host (Lab) | `HostKit.tools()` (`memory_search`, `memory_get` with pin-era definitions until port plan area 5, curation tools) and `HostKit.dispatch`; ≤ 6 tool rounds + 1 final round without tools. |
 | Curated writes | extension (Q16, D5) | `MemoryCurator`; per-target flags `curation.memory_md`, `curation.user_md`, `curation.daily_note`, `curation.proactive_preferences`, master flag `curated_memory_writes`. |
 | Flush decision | upstream order (D1) | `explain_memory_flush_trigger` before the main run, with the flush plan built for the Lab's context window (v2026.9.6: reserve min(20,000, ⌊window/4⌋), soft threshold min(4,000, ⌊(window − reserve)/2⌋)). Token counts: provider usage stored as a fresh v1 total, else a chars/4 estimate (labelled). |
 | Compaction | known gap | The Lab never compacts, so after one flush a session reports `already_flushed` until `/new`. |
@@ -76,7 +79,7 @@ checked against the configured keys (`redacted: true`). Ids (`sessionId`,
 |---|---|---|
 | GET `/state` | `?sessionKind=main` | LabSnapshot: `workspace`, `liveWorkspace`, `pin`, `today`, `yesterday`, `clock`, `identityName`, `bootstrap {status, mode, pendingFile, bootstrapSeededAt, setupCompletedAt}`, `session`, `sessions`, `index`, `flush` (meter), `layoutOrder`, `memoryFiles`, `turns`, `lastEventId` |
 | GET `/events` | `Last-Event-ID` header (or `?lastEventId=`), `?once=true` replays and ends | SSE of LabEvent `{id, ts, type, category, summary, turnId?, data}`; frames have no `event:` line; `lab.resync` when the gap is older than the 1,000-event ring; `: ping` every 15 s |
-| GET `/files` | `?sessionKind=&layout=` | FileEntry[] (badges from `build_workspace_context`) |
+| GET `/files` | `?sessionKind=&layout=` | FileEntry[] (badges from `HostKit.before_turn(ensure=False)`, read-only) |
 | GET `/file` | `?path=` | `{path, content, sha256, chars, bytes, mtimeMs, writable, readOnlyReason?}` |
 | PUT `/file` | `{path, content, baseSha256}` | `{path, sha256, diff, events[]}`; `409 {code:"conflict", current}`; `403 read_only` |
 | POST `/file/diff-preview` | `{path, content}` | `{path, diff, charsBefore, charsAfter, budget}` |
@@ -124,8 +127,8 @@ Removed: `/memory-system` (D6), `/api/chat/state`, `/api/chat/reset`,
 
 Stages, in the order the `stage` events stream them:
 
-1. `ensure`: `initialize_agent_workspace` with the Lab templates (upstream runs it
-   on every reply; a configured profile deletes BOOTSTRAP.md here).
+1. `ensure`: `HostKit.ensure` (`initialize_agent_workspace` with the Lab templates;
+   upstream runs it on every reply; a configured profile deletes BOOTSTRAP.md here).
 2. `compaction`: skipped, the Lab never compacts.
 3. `flush_decision`: `explain_memory_flush_trigger` for the session entry, the
    incoming prompt's estimate and the context window (setting, else 200,000), with
@@ -147,9 +150,16 @@ Stages, in the order the `stage` events stream them:
    (run/skip) and the flush turn's outcome apart: the scripted engine decides "run"
    and skips the turn (`scripted: flush turn needs a model`).
 5. `reindex`, 6. `recall` (demo-only auto-recall), 7. `prompt`
-   (`build_workspace_context` for the session kind; no generic `read` tool),
-8. `stream` (tool loop), 9. `persist` (transcript, token snapshot, seen truncation
-   signatures).
+   (`HostKit.before_turn(ensure=False)` for the session: the Memory Recall section for
+   the offered tools, then the workspace context for the session kind; no generic
+   `read` tool; the scripted engine is offered no tools and gets no Memory Recall),
+8. `stream` (tool loop over `HostKit.dispatch`), 9. `persist` (transcript, token
+   snapshot, the kit's fold of the seen truncation signatures and the bootstrap turn).
+
+Every reindex goes through `LabStore` (`demo/lab_runtime.py`), including the ones the
+kit runs after a curated write and the flush write's, so the index status and
+`index.reindexed` events stay current and `/index/status` does not report a stale
+index after a write.
 
 A kind change is its own session (`lab:<kind>:<id>`, empty transcript). Subagent
 and cron get upstream's minimal prompt (no `## Memory Recall`, no auto-recall).

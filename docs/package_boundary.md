@@ -57,8 +57,8 @@ Included:
   file-backed default (`<root>/.memory-core/automation.json`). The helpers are in core because
   heartbeat turns change memory-core behaviour: the session corpus drops heartbeat prompt
   rows, `NO_REPLY` and `HEARTBEAT_OK` replies, which works only when the host writes the
-  same prompt and tokens; and memory flush skips heartbeat runs. A later host kit
-  (`memory_core.host`) is meant to wrap them; it does not exist yet. Evidence: the "Heartbeat
+  same prompt and tokens; and memory flush skips heartbeat runs. The host kit's
+  `HostKit.heartbeat_prompt` composes them for one run (below). Evidence: the "Heartbeat
   turn inputs and reply handling", "Heartbeat monitor scratch" and "Automation jobs and
   heartbeat migrations" rows in `docs/parity_matrix.md`
 - replay cleanup, history windowing, tool-use repair, and overflow helpers when
@@ -78,7 +78,7 @@ Four paths change memory files; none of them uses keyword triggers.
 
 | Mode | Writes | Decided by | Module | Evidence |
 | --- | --- | --- | --- | --- |
-| Daily capture | `memory/YYYY-MM-DD.md` (append only) | the model's flush pass (`NO_REPLY` writes nothing) | `memory_core.memory_flush`, `Memory.chat(force_flush=True)` | flush plan oracle-backed; the write loop is adapter-only |
+| Daily capture | `memory/YYYY-MM-DD.md` (append only) | the model's flush pass through the append-only `write` tool (`NO_REPLY` writes nothing) | `memory_core.memory_flush`, `memory_core.host` (`FlushRequest`); deprecated: `Memory.chat(force_flush=True)` | flush plan oracle-backed; the write loop is adapter-only |
 | Scored promotion and dreaming | dated `## Promoted From Short-Term Memory (<date>)` sections of `MEMORY.md`, `memory/.dreams/*.json`, `DREAMS.md` | recall signals and the score, signal, diversity and age gates; no LLM | `memory_core.consolidation` | 21 promotion oracle tests assert Python == TS (docs/parity_matrix.md) |
 | Curated writes | the non-promotion blocks of `MEMORY.md`, `USER.md`, `PROACTIVE_PREFERENCES.md`, today's daily note (append only) | the agent, through curation tools (decision Q16, on by default) | `memory_core.curation` (`MemoryCurator`, `Memory.curator()`) | memory-core extension, no upstream counterpart; one oracle test runs curated edits against the real promotion apply |
 | Session snapshot | a new `memory/<date>-<slug>.md` per ending session (never appended to) | the host's `/new` or `/reset` command; the slug comes from a host-supplied generator, else the timestamp | `memory_core.session_memory` (`save_session_memory`) | oracle-backed with named deviations (docs/parity_matrix.md) |
@@ -100,6 +100,19 @@ Four paths change memory files; none of them uses keyword triggers.
   one `subjects/<id>/` workspace behind `FeatureFlags.subject_promotion` (off
   by default, decision Q16).
 
+## Host Kit
+
+`memory_core.host` is the composition a host would otherwise copy: one `HostKit` per
+workspace with six entry points (`tools`, `dispatch`, `before_turn`, `after_turn`,
+`on_new_session`, `heartbeat_prompt`) and the handles they return (`TurnContext`,
+`TurnRecord`, `FlushRequest`, `NewSession`, `HeartbeatRun`). The host keeps one
+`SessionState` per session and gets new copies back. The kit only composes core
+functions, never calls a model and keeps no per-session state; the host owns the agent
+and tool loop, the model call, streaming, compaction, scheduling and session storage.
+It is adapter-only code: the orders and inputs it takes from upstream are
+source-backed and named in `docs/host_kit.md`. `Memory.prepare_turn`, `Memory.chat` and
+`Memory.record_turn` are deprecated in its favour and go with the packaging stage.
+
 ## Runtime Adapters
 
 Runtime adapters connect core memory to host applications. They are intentionally
@@ -107,7 +120,9 @@ thin.
 
 Included:
 
-- `LangGraphMemoryRecall`
+- `LangGraphMemoryRecall`: adapter-only auto-recall. It injects search results into
+  the prompt, which upstream never does (upstream's model recalls through the memory
+  tools, as `memory_core.host` offers them); it stays as an explicit, labelled choice
 - `memory_core.live` (subject memory, live turns, session summaries) and
   `SubjectConsolidation`, which only routes a subject's workspace into
   `memory_core.consolidation`
@@ -126,7 +141,8 @@ Adapter non-goals:
 - pretending to be OpenClaw runtime behavior
 
 Example: a LangGraph node can call `LangGraphMemoryRecall` before the model node
-and inject the returned `memory_context` into the model prompt.
+and inject the returned `memory_context` into the model prompt (auto-recall, not the
+upstream shape; the upstream shape is `HostKit.tools()` and `HostKit.dispatch`).
 
 ## Demo App
 
@@ -136,11 +152,11 @@ the package contract.
 Demo-only responsibilities:
 
 - browser controls, the chat lab UI and its inspectors
-- the host side of a turn: provider resolution (keys request-scoped or from
-  the environment, never stored), the tool loop that dispatches the package's
-  `memory_search`/`memory_get` adapters and `MemoryCurator.dispatch`, the
-  pre-turn flush decision inputs, sessions, the event log and file snapshots
-  (`demo/lab_*.py`, docs/lab.md)
+- the host side of a turn over `memory_core.host` (the Lab dogfoods the kit): provider
+  resolution (keys request-scoped or from the environment, never stored), the tool loop
+  over `HostKit.tools()` and `HostKit.dispatch`, the index bookkeeping (`LabStore`), the
+  pre-turn flush decision inputs (pin-era order until the Lab's flush moves to the kit),
+  sessions, the event log and file snapshots (`demo/lab_*.py`, docs/lab.md)
 - manual flush, promote, dreaming, audit and repair actions (they call
   `memory_core.consolidation` and `memory_core.memory_flush`; the demo keeps only
   serializers)

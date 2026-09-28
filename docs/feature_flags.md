@@ -25,10 +25,14 @@ memory = Memory.from_workspace(".", config=config)  # no embedding provider need
 | `mmr` | `False` | No MMR re-ranking of hybrid results. |
 | `temporal_decay` | `False` | Scores are not decayed by memory-file age. |
 | `subject_promotion` | `False` | `memory_core.live.SubjectConsolidation` raises `SubjectPromotionDisabledError` on every call before touching the subject workspace. memory-core extension (decision Q16), no upstream counterpart. Enable per subject with `SubjectMemory.open(..., flags=FeatureFlags(vector_search=False, subject_promotion=True))`. |
-| `curated_memory_writes` | `True` | memory-core extension (Q16), not OpenClaw parity. `MemoryCurator` offers no tools and every curation call raises `CurationUnavailableError` before reading or writing any workspace file; `after_write` hooks never run. |
+| `curated_memory_writes` | `True` | memory-core extension (Q16), not OpenClaw parity. `MemoryCurator` offers no tools and every curation call raises `CurationUnavailableError` before reading or writing any workspace file; `after_write` hooks never run. The host kit reads it from `memory.config`: `HostKit.tools()` lists no curation tools, the Memory Recall section names only the memory tools, and `HostKit.dispatch` answers a curation call with the `tool <name> is not available` payload, writing and reindexing nothing. The memory flush's `write` tool never depends on it. |
 
 At least one of `vector_search` / `text_search` must stay enabled;
 `FeatureFlags(vector_search=False, text_search=False)` raises `ValueError`.
+
+The host kit's `dreaming_enabled` option (default `False`, upstream `dreaming.enabled`) is
+a kit option, not a flag: with it off, `HostKit.dispatch` records no short-term recalls and
+writes nothing under `memory/.dreams/` (docs/host_kit.md, open question Q8).
 
 ## Resolution rules
 

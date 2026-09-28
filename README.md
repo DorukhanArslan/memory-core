@@ -24,9 +24,40 @@ memory = Memory.from_workspace(
 
 results = memory.search("preferred name", max_results=5)
 memory_file = memory.get("MEMORY.md", from_line=1, lines=20)
-turn = memory.prepare_turn("Bana nasil hitap edeceksin?")
 recall_node = memory.langgraph_recall()
 flush_plan = build_memory_flush_plan(workspace_dir=memory.workspace.root)
+```
+
+## Host kit
+
+`memory_core.host` composes the memory behaviour of one agent turn for any host (a chat
+app, a channel bot, a voice agent): the workspace ensure, the injected context, the
+memory tools and their dispatch, the post-reply memory flush, the `/new` hook and the
+heartbeat turn. The host keeps the model call, the tool loop and session storage; the
+kit returns what to send and takes back what came out (docs/host_kit.md).
+
+```python
+from pathlib import Path
+
+from memory_core import FeatureFlags, MemoryConfig
+from memory_core.host import HostKit, SessionState, TurnUsage
+
+root = Path("my-agent-app")
+kit = HostKit.open(  # FTS-only; pass embedding_provider= for hybrid search
+    root, config=MemoryConfig(workspace_dir=root, flags=FeatureFlags(vector_search=False))
+)
+state = SessionState.new(session_key="agent:main:main", session_id="s1")
+
+turn = kit.before_turn(state)
+# Your model call: turn.system_prompt, turn.runtime_context, the history and the user
+# message, offering turn.tools; answer each tool call with
+# kit.dispatch(name, arguments, session=turn.session).
+record = kit.after_turn(turn.session, transcript=history, usage=TurnUsage(prompt_tokens))
+state = record.session
+if record.flush:  # later, off the reply path
+    # Run record.flush.messages with record.flush.tools; answer its write calls with
+    # record.flush.dispatch(name, arguments).
+    state = record.flush.complete(state).session
 ```
 
 `Memory.from_workspace(...)` reads memory files from the host
@@ -211,19 +242,17 @@ cd /path/to/my-agent-app
 OPENAI_API_KEY=<your key> python -m examples.basic_usage
 ```
 
-For chatbot integrations, let the package prepare recall-injected messages and
-pass them to your LLM client:
+Deprecated (a `DeprecationWarning` since the host kit; removed with the packaging
+stage): `Memory.prepare_turn()`, `Memory.chat()` and `Memory.record_turn()`. Use
+`memory_core.host` instead. `prepare_turn()` injects recall results into the messages,
+which upstream never does:
 
 ```python
 turn = memory.prepare_turn("Bana nasil hitap edeceksin?")
 response = llm.chat(turn.messages)
 ```
 
-`prepare_turn()` is adapter ergonomics, not OpenClaw runtime parity. It performs
-memory recall and returns ready chat messages; durable write/flush remains a
-separate post-turn integration step.
-
-For a managed answer + flush cycle, use `chat()`:
+`chat()` runs a managed answer + flush cycle:
 
 ```python
 result = memory.chat(

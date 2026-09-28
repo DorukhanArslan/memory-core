@@ -1,11 +1,38 @@
 # memory-core
 
-`memory-core` is a Python memory core for LLM agents. It tracks OpenClaw
-memory-core behavior against upstream commit
-`7f6798094ce9486a8f463772f4535484aca73fe2`.
+`memory-core` is a Python memory core for LLM agents: Markdown memory files
+(`MEMORY.md`, `memory/YYYY-MM-DD.md`), the `memory_search` and `memory_get` tools over a
+SQLite index with hybrid search and citations, the memory flush, the `/new` session hook,
+the heartbeat turn and scored promotion, composed for any agent host by the host kit
+(`memory_core.host`). Its memory behaviour is ported from OpenClaw memory-core and tracked
+against release tag `v2026.9.6` by an oracle suite that runs the upstream TypeScript
+functions; the [parity matrix](docs/parity_matrix.md) gives each area's status. It is an
+unofficial port, not affiliated with the OpenClaw project.
 
-The first implementation slice covers `MEMORY.md`, `memory/YYYY-MM-DD.md`,
-`memory_search`, `memory_get`, hybrid search, citations, and a local FastAPI demo.
+## Install
+
+Python 3.11 or newer. From a checkout (nothing is published to a package index yet):
+
+```bash
+pip install /path/to/memory-core            # the package; its only dependency is httpx
+pip install "/path/to/memory-core[demo]"    # adds FastAPI, Jinja2 and uvicorn for the Lab
+```
+
+The Lab (`demo/`), the tests, the scripts and the examples stay in the checkout; the
+package holds only `memory_core/`. For development, create the checkout's environment with
+[uv](https://docs.astral.sh/uv/) (an editable install with the demo extra, pytest and ruff):
+
+```bash
+uv sync --extra dev
+```
+
+Quickstart: the [Host kit](#host-kit) section below shows one turn; a step-by-step
+framework quickstart (`docs/quickstart.md`) comes with the next stage.
+[CHANGELOG.md](CHANGELOG.md) lists what changed in each version.
+
+Licence: memory-core's own licence is not decided yet. Code ported from OpenClaw keeps
+upstream's MIT notice in [LICENSE.openclaw](LICENSE.openclaw), which the wheel and the
+sdist carry.
 
 ## Python API
 
@@ -42,8 +69,7 @@ kit returns what to send and takes back what came out (docs/host_kit.md).
 ```python
 from pathlib import Path
 
-from memory_core import FeatureFlags, MemoryConfig
-from memory_core.host import HostKit, SessionState, TurnUsage
+from memory_core import FeatureFlags, HostKit, MemoryConfig, SessionState, TurnUsage
 
 root = Path("my-agent-app")
 kit = HostKit.open(  # FTS-only; pass embedding_provider= for hybrid search
@@ -145,19 +171,13 @@ See [Workspace Layout](docs/workspace_layout.md) for the agent workspace files
 (`memory_core.bootstrap`): seeding, the BOOTSTRAP.md lifecycle, and what each turn
 injects.
 
-## Setup
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
 ## Run Tests
 
+In the environment from `uv sync --extra dev`:
+
 ```bash
-pytest -v
-ruff check .
+uv run pytest -q
+uv run ruff check .
 ```
 
 OpenClaw TypeScript oracle tests are skipped unless `OPENCLAW_ORACLE_REPO`
@@ -180,13 +200,14 @@ git -C /tmp/openclaw-head checkout v2026.9.6
 export OPENCLAW_ORACLE_NODE=<node-dir>/node
 (cd /tmp/openclaw-head && PATH=<node-dir>:$PATH \
   npx --yes pnpm@12.4.0 install --ignore-scripts --frozen-lockfile)
-OPENCLAW_ORACLE_REPO=/tmp/openclaw-head pytest tests/integration -v
+OPENCLAW_ORACLE_REPO=/tmp/openclaw-head uv run pytest tests/integration -v
 ```
 
 ## Run the Lab
 
 The Lab is a FastAPI app over the package (`demo/`); it adds no memory logic of
-its own. Run it from the repo root:
+its own. It needs the demo extra (included in `uv sync --extra dev`). Run it from the
+repo root:
 
 ```bash
 .venv/bin/python -m uvicorn demo.app:app --port 8000
@@ -240,15 +261,17 @@ Tests use deterministic fake embeddings; the Lab never does. To add a live
 provider flow, configure `OPENAI_API_KEY`, optional `OPENAI_BASE_URL`, and model
 `text-embedding-3-small`.
 
-Run the standalone example from another project directory:
+The example writes `MEMORY.md` and `memory/` into the working directory, so run it
+from a scratch directory with the checkout on `PYTHONPATH` (`examples/` is not part of
+the package):
 
 ```bash
-cd /path/to/my-agent-app
-OPENAI_API_KEY=<your key> python -m examples.basic_usage
+cd "$(mktemp -d)"
+OPENAI_API_KEY=<your key> PYTHONPATH=/path/to/memory-core python -m examples.basic_usage
 ```
 
 Run the opt-in live embedding smoke test:
 
 ```bash
-MEMORY_CORE_LIVE_OPENAI=1 OPENAI_API_KEY=<your key> pytest tests/integration/test_openai_embedding_live.py -q
+MEMORY_CORE_LIVE_OPENAI=1 OPENAI_API_KEY=<your key> uv run pytest tests/integration/test_openai_embedding_live.py -q
 ```

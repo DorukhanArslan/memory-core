@@ -246,6 +246,7 @@ def test_the_check_lists_each_place_a_hand_edited_name_disagrees_with(tmp_path):
         f" [tool.{name.package}], not [tool.probe_kit]",
         "the package directory probe_kit/ is missing",
         "pyproject.toml: the dev dependency group does not hold 'probe-kit[demo]'",
+        "pyproject.toml: the dev dependency group does not hold 'probe-kit[langgraph]'",
         "pyproject.toml: [tool.hatch.version] path does not hold 'probe_kit/__init__.py'",
         "pyproject.toml: the wheel packages does not hold 'probe_kit'",
         "pyproject.toml: the sdist only-include does not hold 'probe_kit'",

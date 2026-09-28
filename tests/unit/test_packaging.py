@@ -5,7 +5,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from memory_core.project_name import PACKAGE_NAME
+from memory_core.project_name import DIST_NAME, PACKAGE_NAME
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -35,16 +35,43 @@ def test_core_dependencies_are_exactly_what_memory_core_imports():
     assert names == _third_party_import_roots() == {"httpx"}
 
 
-def test_demo_dependencies_are_the_only_extra_and_dev_tools_a_group():
-    # The wheel's metadata advertises only the demo extra; pytest and ruff are the PEP 735
-    # dev group, which `uv sync` installs in a checkout.
+def test_demo_and_langgraph_are_the_only_extras_and_dev_tools_a_group():
+    # The wheel's metadata advertises the demo extra and the langgraph extra (the stack the
+    # LangGraph adapter is tested against; the adapter imports none of it). The provider the
+    # example uses, pytest and ruff are the PEP 735 dev group, which `uv sync` installs in a
+    # checkout.
     extras = _project()["optional-dependencies"]
     groups = _pyproject()["dependency-groups"]
 
-    assert set(extras) == {"demo"}
+    assert set(extras) == {"demo", "langgraph"}
     assert {spec.split(">=")[0] for spec in extras["demo"]} == {"fastapi", "jinja2", "uvicorn"}
+    assert {spec.split(">=")[0] for spec in extras["langgraph"]} == {"langgraph", "langchain-core"}
     assert set(groups) == {"dev"}
-    assert {spec.split(">=")[0] for spec in groups["dev"]} == {"memory-core[demo]", "pytest", "ruff"}
+    assert {spec.split(">=")[0] for spec in groups["dev"]} == {
+        f"{DIST_NAME}[demo]",
+        f"{DIST_NAME}[langgraph]",
+        "langchain-openai",
+        "pytest",
+        "ruff",
+    }
+
+
+def test_importing_the_langgraph_adapter_loads_no_framework():
+    script = (
+        "import sys\n"
+        "import memory_core.adapters.langgraph\n"
+        "loaded = {'langchain_core', 'langgraph', 'langchain_openai', 'openai'} & set(sys.modules)\n"
+        "assert not loaded, loaded\n"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_importing_memory_core_loads_no_demo_dependency():

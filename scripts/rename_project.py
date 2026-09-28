@@ -422,6 +422,7 @@ def rewrite_pyproject(text: str, old: ProjectName, new: ProjectName) -> str:
         (rf'(?m)^\[tool\.{package}\]$', f"[tool.{new.package}]"),
         (r"(?m)^display-name = .*$", f"display-name = {json.dumps(new.display)}"),
         (rf'"{dist}\[demo\]"', f'"{new.dist}[demo]"'),
+        (rf'"{dist}\[langgraph\]"', f'"{new.dist}[langgraph]"'),
         (rf'(?m)^path = "{package}/__init__\.py"$', f'path = "{new.package}/__init__.py"'),
         (rf'(?m)^packages = \["{package}"\]$', f'packages = ["{new.package}"]'),
         (rf'(?m)^only-include = \["{package}",', f'only-include = ["{new.package}",'),
@@ -581,13 +582,21 @@ def pyproject_problems(root: Path, name: ProjectName) -> list[str]:
     data = tomllib.loads((root / PYPROJECT).read_text(encoding="utf-8"))
     hatch = data.get("tool", {}).get("hatch", {})
     targets = hatch.get("build", {}).get("targets", {})
+    dev = data.get("dependency-groups", {}).get("dev", [])
     fields = (
-        ("the dev dependency group", data.get("dependency-groups", {}).get("dev", [])),
+        ("the dev dependency group", dev),
+        ("the dev dependency group", dev),
         ("[tool.hatch.version] path", [hatch.get("version", {}).get("path")]),
         ("the wheel packages", targets.get("wheel", {}).get("packages", [])),
         ("the sdist only-include", targets.get("sdist", {}).get("only-include", [])),
     )
-    expected = (f"{name.dist}[demo]", f"{name.package}/__init__.py", name.package, name.package)
+    expected = (
+        f"{name.dist}[demo]",
+        f"{name.dist}[langgraph]",
+        f"{name.package}/__init__.py",
+        name.package,
+        name.package,
+    )
     return [
         f"{PYPROJECT}: {field} does not hold {value!r}"
         for (field, values), value in zip(fields, expected)

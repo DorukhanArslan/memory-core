@@ -13,6 +13,7 @@ from memory_core.client import Memory
 from memory_core.config import MemoryConfig
 from memory_core.flags import FeatureFlags
 from memory_core.host import FlushOutcome, HostKit, SessionState, TurnUsage
+from memory_core.memory_paths import UnsafeMemoryPathError
 from memory_core.runtime_context_prompt import build_runtime_context_custom_message
 
 NOW_MS = 1_790_375_400_000  # 2026-09-25 22:30 UTC
@@ -379,3 +380,69 @@ def test_flush_complete_twice_raises(tmp_path):
         flush.complete(_session())
     with pytest.raises(RuntimeError, match="already completed"):
         flush.dispatch("write", {"path": TARGET, "content": "late"})
+
+
+# --- request_flush: the forced flush (memory-core extension, decision Q6) ---------------------
+
+
+def test_after_turn_flush_request_carries_the_trigger_reason(tmp_path):
+    record = _due(_kit(tmp_path))
+
+    assert record.flush.reason == record.flush_decision.reason == "token_threshold"
+
+
+def test_request_flush_is_forced_without_touching_the_token_snapshot(tmp_path):
+    kit = _kit(tmp_path, templates={"AGENTS.md": "# AGENTS.md\n\nBe brief.\n"})
+    kit.ensure()
+    # Under the threshold and with a stale total: after_turn would not flush.
+    session = _session(totalTokens=12, totalTokensFresh=False)
+    assert kit.after_turn(session, transcript=TRANSCRIPT, usage=None).flush is None
+
+    flush = kit.request_flush(session, transcript=TRANSCRIPT)
+
+    assert flush.reason == "forced"
+    assert flush.target == TARGET
+    assert (tmp_path / TARGET).read_bytes() == b""
+    # The same run after_turn would hand over: messages and the write tool.
+    assert flush.messages == _due(kit, session).flush.messages
+    assert [tool["name"] for tool in flush.tools] == ["write"]
+    flush.dispatch("write", {"path": TARGET, "content": "- forced note"})
+    outcome = flush.complete(session)
+    assert outcome.entries == ("- forced note",)
+    assert outcome.session.entry == {
+        **session.entry,
+        "memoryFlush": {"kind": "succeeded", "compactionCount": 0},
+    }
+
+
+def test_request_flush_keeps_the_heartbeat_skip(tmp_path):
+    heartbeat = SessionState.new(session_key="agent:main:heartbeat", session_id="h1", kind="heartbeat")
+
+    assert _kit(tmp_path).request_flush(heartbeat, transcript=TRANSCRIPT) is None
+    assert not (tmp_path / "memory").exists()
+
+
+def test_request_flush_keeps_the_one_flush_per_cycle_guard(tmp_path):
+    kit = _kit(tmp_path)
+    flushed = kit.request_flush(_session(), transcript=TRANSCRIPT).complete(_session()).session
+
+    assert kit.request_flush(flushed, transcript=TRANSCRIPT) is None
+    assert kit.request_flush(flushed.after_compaction(), transcript=TRANSCRIPT) is not None
+    exhausted = _session()
+    for _ in range(3):
+        exhausted = kit.request_flush(exhausted, transcript=TRANSCRIPT).complete(
+            exhausted, error="model timed out"
+        ).session
+    assert kit.request_flush(exhausted, transcript=TRANSCRIPT) is None
+
+
+def test_request_flush_raises_when_the_target_cannot_be_created(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    root = tmp_path / "ws"
+    root.mkdir()
+    (root / "memory").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(UnsafeMemoryPathError, match="symlink"):
+        _kit(root).request_flush(_session(), transcript=TRANSCRIPT)
+    assert list(outside.iterdir()) == []

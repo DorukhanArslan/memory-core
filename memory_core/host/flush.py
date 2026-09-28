@@ -1,8 +1,8 @@
 """The memory flush run a host executes after a turn (docs/host_kit.md, entry point 4).
 
-``HostKit.after_turn`` returns a :class:`FlushRequest` when the flush is due: the messages and
-the one tool of the flush run, a ``dispatch`` for that tool's calls and ``complete`` for the
-session entry. The host runs the model (later in the same process, detached from the reply, as
+``HostKit.after_turn`` returns a :class:`FlushRequest` when the flush is due (and the extension
+``HostKit.request_flush`` one on the host's demand): the messages and the one tool of the flush
+run, a ``dispatch`` for that tool's calls and ``complete`` for the session entry. The host runs the model (later in the same process, detached from the reply, as
 upstream runs flush maintenance) and never delivers or records the flush reply; the session's
 next ``after_turn`` waits for ``complete`` (one maintenance lane per session).
 
@@ -80,10 +80,12 @@ class FlushOutcome:
 
 
 class FlushRequest:
-    """One due memory flush run: ``messages`` and ``tools`` for the host's model.
+    """One memory flush run: ``messages`` and ``tools`` for the host's model.
 
-    Built by ``HostKit.after_turn``. Tool calls of the run go to :meth:`dispatch`; the run ends
-    with one :meth:`complete`. Parallel tool calls are safe (the append is locked).
+    Built by ``HostKit.after_turn`` for a due flush (``reason`` is the trigger's,
+    ``token_threshold`` or ``transcript_size``) or by ``HostKit.request_flush`` (``forced``). Tool
+    calls of the run go to :meth:`dispatch`; the run ends with one :meth:`complete`. Parallel
+    tool calls are safe (the append is locked).
     """
 
     def __init__(
@@ -93,9 +95,11 @@ class FlushRequest:
         session_id: str,
         compaction_count: int,
         target: str,
+        reason: str,
         messages: tuple[dict[str, str], ...],
     ) -> None:
         self.target = target
+        self.reason = reason
         self.messages = messages
         self.tools = (memory_flush_write_tool(target),)
         self._memory = memory

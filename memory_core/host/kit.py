@@ -62,6 +62,7 @@ from memory_core.memory_flush import (
     build_memory_flush_plan,
     ensure_memory_flush_target_file,
     explain_memory_flush_trigger,
+    has_already_flushed_for_current_compaction,
     record_memory_flush_failure,
     resolve_fresh_session_total_tokens,
 )
@@ -88,6 +89,8 @@ MINIMAL_PROMPT_KINDS = frozenset({"subagent", "cron"})
 # Upstream DEFAULT_CONTEXT_TOKENS (src/agents/defaults.ts:6): the flush window when the host
 # does not know the model's context size.
 DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000
+# The reason of a HostKit.request_flush run (memory-core extension, decision Q6).
+_FORCED_FLUSH_REASON = "forced"
 _RUN_KINDS = (None, "default", "heartbeat", "cron")
 _CONTEXT_MODES = ("full", "lightweight")
 
@@ -439,13 +442,7 @@ class HostKit:
         )
         recorded = apply_turn_usage(session, usage)
         entry = dict(recorded.entry)
-        plan = build_memory_flush_plan(
-            workspace_dir=self._root,
-            now_ms=self._clock(),
-            timezone=self._timezone,
-            context_window_tokens=window,
-            time_format=self._time_format,
-        )
+        plan = self._flush_plan(window)
         total = resolve_fresh_session_total_tokens(entry)
         token_count = (
             int(total) + (recorded.last_output_tokens or 0) if total is not None and total > 0 else None
@@ -471,19 +468,33 @@ class HostKit:
                 flush_decision=decision,
                 flush_failure=failure,
             )
-        count = entry.get("compactionCount")
         return TurnRecord(
             session=recorded,
             flush_plan=plan,
             flush_decision=decision,
-            flush=FlushRequest(
-                self._memory,
-                session_id=recorded.session_id,
-                compaction_count=0 if count is None else count,
-                target=plan.relative_path,
-                messages=self._flush_messages(recorded, plan, transcript),
-            ),
+            flush=self._flush_request(recorded, plan, transcript, reason=decision.reason),
         )
+
+    def request_flush(
+        self, session: SessionState, *, transcript: Sequence[Mapping[str, Any]]
+    ) -> FlushRequest | None:
+        """A flush run now, outside the token gate: a memory-core extension (decision Q6).
+
+        Upstream has no forced flush; this serves a host action such as the Lab's ``/flush``.
+        It leaves the token snapshot alone and keeps the guards a forced run must not skip:
+        heartbeat sessions never flush, and a compaction cycle that already flushed (or failed
+        three times) returns ``None`` (``has_already_flushed_for_current_compaction``). Otherwise
+        it is the request ``after_turn`` builds for a due flush, with reason ``forced``. A target
+        that cannot be created raises (``UnsafeMemoryPathError``, ``OSError``) and records
+        nothing.
+        """
+        if session.kind == "heartbeat" or has_already_flushed_for_current_compaction(
+            dict(session.entry)
+        ):
+            return None
+        plan = self._flush_plan(DEFAULT_CONTEXT_WINDOW_TOKENS)
+        ensure_memory_flush_target_file(self._root, plan.relative_path)
+        return self._flush_request(session, plan, transcript, reason=_FORCED_FLUSH_REASON)
 
     def on_new_session(
         self,
@@ -614,6 +625,33 @@ class HostKit:
             started_at_ms=started_at,
             store=store,
             agent_id=agent_id,
+        )
+
+    def _flush_plan(self, context_window_tokens: int) -> MemoryFlushPlan:
+        return build_memory_flush_plan(
+            workspace_dir=self._root,
+            now_ms=self._clock(),
+            timezone=self._timezone,
+            context_window_tokens=context_window_tokens,
+            time_format=self._time_format,
+        )
+
+    def _flush_request(
+        self,
+        session: SessionState,
+        plan: MemoryFlushPlan,
+        transcript: Sequence[Mapping[str, Any]],
+        *,
+        reason: str,
+    ) -> FlushRequest:
+        count = session.entry.get("compactionCount")
+        return FlushRequest(
+            self._memory,
+            session_id=session.session_id,
+            compaction_count=0 if count is None else count,
+            target=plan.relative_path,
+            reason=reason,
+            messages=self._flush_messages(session, plan, transcript),
         )
 
     def _flush_messages(

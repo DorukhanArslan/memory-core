@@ -420,8 +420,21 @@ followed the pin-era order and moves to this one with the dogfood switch (decisi
      ensure completes the bootstrap. If the ensure raises (`UnsafeMemoryPathError`, `OSError`), the
      kit records a failure strike like upstream's `recordFailure` for a failed preparation:
      `flush` is `None`, `flush_failure` the outcome, and `session` carries the failed entry.
-- There is no forced flush. `after_turn` has only upstream inputs; the Lab's `/flush` is a labelled
-  Lab action pending Q6 (see "How the Lab dogfoods the kit").
+- `after_turn` has only upstream inputs. The one forced flush is the extension below.
+
+```python
+def request_flush(
+    self, session: SessionState, *, transcript: Sequence[Mapping[str, Any]]
+) -> FlushRequest | None
+```
+
+A memory-core extension (decision Q6; upstream has no forced flush), for a host action such as the
+Lab's `/flush`. It does not touch the token snapshot and keeps the two guards a forced run must
+not skip: a `heartbeat` session gets `None`, and so does a compaction cycle that already flushed or
+failed three times (`has_already_flushed_for_current_compaction`). Otherwise it returns the
+request `after_turn` builds for a due flush (target file first, the same messages and tool), with
+`reason` `forced`. A target that cannot be created raises (`UnsafeMemoryPathError`, `OSError`) and
+records nothing: the forced run is outside upstream's gate, so there is no strike to mirror.
 
 `memory_core/memory_flush.py:ensure_memory_flush_target_file(root, relative_path)` (new port of
 `ensureMemoryFlushTargetFile`): a blank or absolute path raises `UnsafeMemoryPathError("Invalid
@@ -450,6 +463,7 @@ Flush execution: a returned request object, not a host callable. Reasons:
 ```python
 class FlushRequest:
     target: str                                 # plan.relative_path, memory/YYYY-MM-DD.md
+    reason: str                                 # the trigger's reason, or forced (request_flush)
     messages: tuple[dict[str, str], ...]        # system, transcript text rows, user
     tools: tuple[dict[str, Any], ...]           # the append-only write tool only
 
@@ -674,7 +688,7 @@ class HeartbeatOutcome:
 | host passes wrong types, calls `complete()` twice, both transcript sources, another session to `complete()` | raise (`TypeError`, `RuntimeError`, `ValueError`) |
 | retired upstream setup state in the workspace | raise `WorkspaceStateMigrationRequiredError` (fail closed) |
 | filesystem failure outside a tool | raise `OSError` |
-| flush target cannot be created | `TurnRecord.flush_failure`, one strike (upstream `recordFailure`) |
+| flush target cannot be created | `after_turn`: `TurnRecord.flush_failure`, one strike (upstream `recordFailure`); `request_flush`: raise, no strike |
 | a reindex fails after a committed curated or flush write | ok payload with `afterWriteError` (core rule) |
 
 ### Flags
@@ -752,8 +766,9 @@ stage, together with the quickstart rewrite and before the first release.
 - `record_turn` appends the flush model's plain text to the daily file, with no gate, no session
   entry and no `write` tool. Keeping it next to `FlushRequest` would leave two flush write paths.
 - `chat` owns the model call and is sync-only; the kit never calls a model. Its
-  `force_flush=True` goes through `record_turn` and stays unchanged until the removal; the kit has
-  no forced flush (Q6).
+  `force_flush=True` goes through `record_turn` and stays unchanged until the removal; the kit's
+  only forced flush is the labelled `request_flush` extension (decision Q6), which keeps the
+  heartbeat skip and the one-flush-per-cycle guard.
 - Delegating the three to the kit would silently change what they write (plain text versus a
   `write` call, forced versus gated), a breaking change hidden behind old names. The warning makes
   the change loud.
@@ -821,6 +836,7 @@ The kit is adapter-only code. The orders and inputs it takes from upstream (post
 the flush target file, flush-run tool set and wording, recall tracking only with dreaming, minimal
 kinds without the Memory Recall section) are source-backed with the anchors above; no matrix row
 claims `match` for kit composition. Oracle results must not change: task 10 re-runs the suite.
+`HostKit.request_flush` is a memory-core extension (decision Q6) with no upstream counterpart.
 
 Pin-era parts the kit ships until port plan area 5 lands: the `memory_search` and `memory_get`
 tool definitions and the Memory Recall section (`memory_core/prompt_section.py`, pin `4c428153`); the

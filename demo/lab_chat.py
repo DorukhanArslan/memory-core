@@ -1,10 +1,10 @@
 """One Lab chat turn: the stage pipeline behind ``POST /api/lab/chat/stream``.
 
 Stages (streamed as ``stage`` events in this order): ``ensure``
-(``initialize_agent_workspace``, upstream runs it on every reply), ``reindex``,
-``recall`` (demo-only auto-recall, see below), ``prompt``
-(``build_workspace_context`` for the session kind), ``stream`` (the host tool
-loop of :mod:`demo.lab_tools`) and ``persist``. Other SSE events: ``turn_started``,
+(``HostKit.ensure``, upstream runs it on every reply), ``reindex``, ``recall``
+(demo-only auto-recall, see below), ``prompt`` (``HostKit.before_turn`` for the
+session, without a second ensure), ``stream`` (the host tool loop of
+:mod:`demo.lab_tools`) and ``persist``. Other SSE events: ``turn_started``,
 ``recall``, ``prompt``, ``assistant_delta``, ``tool_call``, ``tool_result``,
 ``curation``, ``turn_done {turn, detail}`` and ``error``.
 
@@ -25,9 +25,8 @@ import httpx
 from demo.chat_engine import ChatEngine, ChatMessage
 from demo.lab_events import diff_snapshots, sse_frame
 from demo.lab_flush import flush_decision, run_flush_turn, update_token_snapshot
-from demo.lab_prompt import PromptOptions, lab_workspace_context, prompt_view
+from demo.lab_prompt import PromptOptions, prompt_view
 from demo.lab_runtime import (
-    MINIMAL_PROMPT_KINDS,
     LabError,
     LabRuntime,
     LabSession,
@@ -38,7 +37,7 @@ from demo.lab_tools import LabToolbox, ToolLoopOutcome, public_write, run_tool_l
 from demo.transcript_context import select_transcript_context
 from memory_core.bootstrap import format_session_reset_transcript_prompt
 from memory_core.consolidation import record_short_term_recalls, undecorate_search_results
-from memory_core.prompt_section import build_prompt_section
+from memory_core.host import MINIMAL_PROMPT_KINDS, TurnContext
 from memory_core.tools.memory_search import memory_search
 
 TRANSCRIPT_MESSAGE_WINDOW = 40
@@ -181,14 +180,13 @@ def auto_recall(lab: LabRuntime, config, store, query: str, *, turn_id: int) -> 
 
 def assemble_messages(
     *,
-    system_sections: list[str],
+    system_prompt: str,
     recall_lines: list[str],
     sent: list[ChatMessage],
 ) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
-    system_text = "\n\n".join(section.strip() for section in system_sections if section and section.strip())
-    if system_text:
-        messages.append({"role": "system", "content": system_text})
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
     if recall_lines:
         messages.append({"role": "system", "content": "Memory context:\n" + "\n".join(recall_lines)})
     messages.extend({"role": message.role, "content": message.content} for message in sent)
@@ -307,7 +305,8 @@ def _run_turn(
         embedding = lab.resolve_embedding(payload)
         mode = lab.default_search_mode(embedding)
         config = lab.config(mode=mode)
-        store = lab.store(embedding, mode=mode)
+        store = lab.store(embedding, mode=mode, turn_id=turn.id)
+        kit = lab.kit(store)
 
         # D1: upstream order is preflight compaction, memory flush, then the main run.
         yield turn.skip("compaction", "Lab compaction yok (bilinen açık)")
@@ -339,7 +338,7 @@ def _run_turn(
             )
 
         yield turn.start("reindex")
-        index = lab.reindex(store, turn_id=turn.id)
+        index = lab.reindex(store)
         yield turn.finish(detail=f"{index['indexedFiles']} dosya · {index['chunks']} parça · {mode}")
 
         if kind in MINIMAL_PROMPT_KINDS or reset:
@@ -362,18 +361,17 @@ def _run_turn(
 
         yield turn.start("prompt")
         options = PromptOptions(kind=kind)
-        wc = lab_workspace_context(lab, options, session=session)
+        # The scripted engine calls no tools, so the kit offers none and adds no Memory Recall.
+        context = kit.before_turn(session.state(), offer_tools=not scripted, ensure=False)
+        wc = context.workspace
         truncation_shown = wc.prompt_warning.warning_shown
         truncated = len(wc.analysis.truncated_files)
-        toolbox = None if scripted else LabToolbox(lab, config, store, session, turn.id)
-        tool_names = sorted(toolbox.names()) if toolbox is not None else []
-        memory_section = (
-            build_prompt_section(set(tool_names), citations_mode=config.citation_mode)
-            if kind not in MINIMAL_PROMPT_KINDS else []
-        )
+        toolbox = None if scripted else LabToolbox(lab, kit, session, turn.id)
+        tool_names = sorted(tool["name"] for tool in context.tools)
+        memory_section = list(context.memory_recall)
         sent, omitted = _transcript_window(session, user_content)
         messages = assemble_messages(
-            system_sections=["\n".join(memory_section), wc.prompt_text],
+            system_prompt=context.system_prompt,
             recall_lines=(recall or {}).get("lines") or [],
             sent=sent,
         )
@@ -434,7 +432,7 @@ def _run_turn(
         )
 
         yield turn.start("persist")
-        _persist(lab, session, turn, wc, user_content, outcome)
+        _persist(session, turn, context, user_content, outcome)
         yield turn.finish()
         turn.close()
         detail["chips"] = build_chips(lab, turn, truncation_shown=truncation_shown, truncated=truncated)
@@ -479,13 +477,12 @@ def _fail(lab: LabRuntime, turn: TurnState, message: str, *, code: str) -> None:
     )
 
 
-def _persist(lab: LabRuntime, session: LabSession, turn: TurnState, wc, user_content: str,
+def _persist(session: LabSession, turn: TurnState, context: TurnContext, user_content: str,
              outcome: ToolLoopOutcome) -> None:
     session.messages.append({"role": "user", "content": turn.detail.get("transcriptUser") or user_content})
     session.messages.append({"role": "assistant", "content": outcome.text})
-    session.seen_truncation_signatures = list(wc.prompt_warning.warning_signatures_seen)
-    if wc.record_completed_bootstrap_turn:
-        session.completed_bootstrap_turn = True
+    # The completed turn keeps the kit's fold of the truncation signatures and bootstrap turn.
+    session.seen_truncation_signatures = list(context.session.seen_truncation_signatures)
+    session.completed_bootstrap_turn = context.session.completed_bootstrap_turn
     update_token_snapshot(session, outcome.usage, messages=outcome.messages, output_text=outcome.text)
     session.pending_reset = None
-    del lab

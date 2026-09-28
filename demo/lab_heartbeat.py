@@ -36,7 +36,7 @@ from demo.chat_engine import ChatEngine, ChatMessage
 from demo.lab_chat import LOCK_TIMEOUT_SECONDS, assemble_messages
 from demo.lab_events import sse_frame
 from demo.lab_flush import flush_decision, update_token_snapshot
-from demo.lab_prompt import PromptOptions, lab_workspace_context, prompt_view
+from demo.lab_prompt import PromptOptions, prompt_view
 from demo.lab_runtime import (
     FILE_MAX_BYTES,
     LAB_TIME_FORMAT,
@@ -81,7 +81,6 @@ from memory_core.heartbeat_scratch import (
     HeartbeatScratchState,
     HeartbeatScratchTooLargeError,
 )
-from memory_core.prompt_section import build_prompt_section
 
 HEARTBEAT_RUN_HISTORY = 20
 HEARTBEAT_AGENT_ID = "main"
@@ -424,19 +423,20 @@ def _run(
 
         embedding = lab.resolve_embedding(payload)
         mode = lab.default_search_mode(embedding)
-        config = lab.config(mode=mode)
         index = lab.store(embedding, mode=mode)
         lab.reindex(index)
         options = PromptOptions(kind="heartbeat", context_mode="lightweight" if light_context else "full")
-        wc = lab_workspace_context(lab, options, session=session)
-        toolbox = LabToolbox(lab, config, index, session, turn_id=None)
-        tool_names = sorted(toolbox.names())
-        memory_section = build_prompt_section(set(tool_names), citations_mode=config.citation_mode)
+        kit = lab.kit(index)
+        context = kit.before_turn(session.state(), context_mode=options.context_mode, ensure=False)  # type: ignore[arg-type]
+        wc = context.workspace
+        toolbox = LabToolbox(lab, kit, session, turn_id=None)
+        tool_names = sorted(tool["name"] for tool in context.tools)
+        memory_section = list(context.memory_recall)
         user_message = turn.message or ""
         previous = [ChatMessage(role=item["role"], content=item["content"]) for item in session.messages]
         sent, _omitted = select_transcript_context([*previous, ChatMessage(role="user", content=user_message)], max_chars=24_000)
         messages = assemble_messages(
-            system_sections=["\n".join(memory_section), wc.prompt_text],
+            system_prompt=context.system_prompt,
             recall_lines=[],
             sent=sent,
         )

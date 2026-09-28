@@ -845,6 +845,67 @@ def test_tool_loop_is_bounded(client, monkeypatch):
     assert detail["assistant"] == "Son."
 
 
+def test_lab_tools_come_from_the_host_kit(client, lab, monkeypatch):
+    engine = use_engine(monkeypatch, StubEngine([("a", [])]))
+    lab.settings.flags["curation.daily_note"] = False
+
+    send(client, "bir")
+
+    assert engine.calls[0]["tools"] == [
+        {"type": "function", "function": definition} for definition in lab.kit().tools()
+    ]
+    assert "append_daily_note" not in [tool["function"]["name"] for tool in engine.calls[0]["tools"]]
+
+
+def test_lab_prompt_stage_uses_before_turn(client, lab, monkeypatch):
+    from memory_core.host import SessionState
+
+    client.get("/api/lab/state")
+    engine = use_engine(monkeypatch, StubEngine([("a", [])]))
+    session = lab.session("main")
+    expected = lab.kit().before_turn(
+        SessionState.new(session_key=session.key, session_id=session.id), ensure=False
+    )
+
+    detail = frames_of(send(client, "bir"), "turn_done")[0]["detail"]
+
+    assert engine.calls[0]["messages"][0] == {"role": "system", "content": expected.system_prompt}
+    assert detail["prompt"]["recall"]["memoryRecallSection"] == list(expected.memory_recall)
+    assert detail["prompt"]["tools"] == sorted(tool["name"] for tool in expected.tools)
+
+
+def test_prompt_preview_writes_nothing(client, lab, monkeypatch):
+    client.post("/api/lab/workspace/reset", json={"mode": "fresh"})
+    (lab.root / "memory").mkdir()
+    before = lab.snapshots.take()
+
+    view = preview(client, sessionKind="main")
+    client.get("/api/lab/files")
+    client.get("/api/lab/state")
+
+    assert view["bootstrapStatus"] == "pending"
+    assert lab.snapshots.take() == before
+    use_engine(monkeypatch, StubEngine([("a", [])]))
+    send(client, "bir")
+    assert not (lab.root / "BOOTSTRAP.md").exists()
+
+
+def test_kit_writes_keep_the_lab_index_fresh(client, lab, monkeypatch):
+    use_engine(monkeypatch, StubEngine([
+        ("", [tool_call("c1", "append_daily_note", {"text": "Kiwi migration moved to Friday."})]),
+        ("Tamam.", []),
+    ]))
+
+    frames = send(client, "Not al.")
+
+    turn_id = frames_of(frames, "turn_done")[0]["turn"]["id"]
+    types = [event["type"] for event in lab.bus.recent(400) if event.get("turnId") == turn_id]
+    # The curator's after-write reindex runs before the Lab reports the write.
+    after_prompt = types.index("prompt.assembled")
+    assert types.index("index.reindexed", after_prompt) < types.index("curation.written")
+    assert client.get("/api/lab/index/status").json()["stale"] is False
+
+
 def test_curation_flags_gate_the_offered_tools(client, lab, monkeypatch):
     engine = use_engine(monkeypatch, StubEngine([("a", [])], usage={}))
     lab.settings.flags["curation.user_md"] = False

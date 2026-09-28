@@ -37,12 +37,10 @@ from demo.lab_settings import provider_check, settings_payload, update_settings
 from demo.lab_prompt import (
     PromptOptions,
     file_entries,
-    lab_workspace_context,
+    prompt_context,
     prompt_options,
     prompt_view,
 )
-from demo.lab_runtime import MINIMAL_PROMPT_KINDS
-from demo.lab_tools import lab_curator
 from demo.lab_runtime import (
     LAB_SESSION_SOURCE,
     LAB_TIME_FORMAT,
@@ -68,10 +66,8 @@ from memory_core.bootstrap import (
     trim_bootstrap_content,
 )
 from memory_core.session_memory import save_session_memory
-from memory_core.prompt_section import build_prompt_section
-from memory_core.tools.memory_get import MEMORY_GET_TOOL_NAME
-from memory_core.tools.memory_search import MEMORY_SEARCH_TOOL_NAME
 from memory_core.bootstrap._js import utf16_len
+from memory_core.host import TurnContext
 from memory_core.parity.upstream import LATEST_INSPECTED_COMMIT
 from memory_core.workspace import MemoryWorkspace
 
@@ -81,8 +77,7 @@ SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 def lab_snapshot(lab: LabRuntime, *, kind: str = "main") -> dict[str, Any]:
     lab.ensure_exists()
     session = lab.session(kind)
-    options = PromptOptions(kind=kind)
-    wc = lab_workspace_context(lab, options, session=session)
+    wc = prompt_context(lab, PromptOptions(kind=kind), session=session).workspace
     layout = lab.layout
     workspace = MemoryWorkspace(lab.root)
     return {
@@ -233,9 +228,10 @@ def build_router(lab: LabRuntime) -> APIRouter:
         """PromptView of the current disk state for a session kind (nothing is sent)."""
         lab.ensure_exists()
         options = prompt_options(payload)
-        session = lab.sessions.get(options.kind)
-        wc = lab_workspace_context(lab, options, session=session)
-        return prompt_view(lab, options, wc, extras=preview_extras(lab, options.kind))
+        context = prompt_context(lab, options, session=lab.sessions.get(options.kind))
+        return prompt_view(
+            lab, options, context.workspace, extras=preview_extras(lab, options.kind, context)
+        )
 
     @router.post("/chat/stream")
     def chat_stream(payload: dict = Body(...)):
@@ -480,24 +476,16 @@ def start_new_session(lab: LabRuntime, *, kind: str, command: str, text: str | N
     }
 
 
-def offered_tool_names(lab: LabRuntime) -> list[str]:
-    names = [MEMORY_SEARCH_TOOL_NAME, MEMORY_GET_TOOL_NAME]
-    names.extend(definition["name"] for definition in lab_curator(lab).tool_definitions())
-    return names
-
-
-def preview_extras(lab: LabRuntime, kind: str) -> dict[str, Any]:
-    tools = offered_tool_names(lab)
-    minimal = kind in MINIMAL_PROMPT_KINDS
-    memory_section = [] if minimal else build_prompt_section(set(tools), citations_mode="on")
+def preview_extras(lab: LabRuntime, kind: str, context: TurnContext) -> dict[str, Any]:
     # v2026.9.6 has no "## Heartbeats" system-prompt section (6a1dedb00c2, #129642): the
     # heartbeat instructions are the user turn built from the monitor scratch and due jobs.
     heartbeat_prompt = heartbeat_preview(lab) if kind == "heartbeat" else None
     return {
         "preview": True,
         "banner": "Önizleme: diskteki güncel durum, gönderilmedi",
-        "tools": sorted(tools),
-        "recall": {"lines": [], "memoryRecallSection": memory_section, "label": "demo-only"},
+        "tools": sorted(tool["name"] for tool in context.tools),
+        "recall": {"lines": [], "memoryRecallSection": list(context.memory_recall),
+                   "label": "demo-only"},
         "heartbeatPrompt": heartbeat_prompt,
         "startup": None,
         "flush": None,

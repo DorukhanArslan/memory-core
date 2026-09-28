@@ -1,13 +1,14 @@
 """The Lab runtime: one in-process Lab over the memory-core package (demo-only glue).
 
-Everything that decides memory behaviour comes from ``memory-core``: workspace
-seeding and the BOOTSTRAP.md lifecycle (``initialize_agent_workspace``), the
-injected context (``build_workspace_context``), search (``memory_search``), the
-flush plan and trigger, curation, the session-memory hook, heartbeat and
-consolidation. This module only holds what a host holds: paths, settings,
-sessions and turns, provider resolution (keys stay request-scoped or in the
-environment and are never returned), file guards for the editor, the event
-bus and the before/after file snapshots.
+Everything that decides memory behaviour comes from ``memory-core``: the host kit
+(``memory_core.host.HostKit``, built per request by :meth:`LabRuntime.kit`) seeds the
+workspace and runs the BOOTSTRAP.md lifecycle, builds the injected context and
+the memory tools; search, the flush plan and trigger, the session-memory hook,
+heartbeat and consolidation come from the core. This module only holds what a
+host holds: paths, settings, sessions and turns, provider resolution (keys stay
+request-scoped or in the environment and are never returned), file guards for
+the editor, the event bus, the index bookkeeping and the before/after file
+snapshots.
 """
 
 from __future__ import annotations
@@ -40,14 +41,22 @@ from memory_core.bootstrap import (
     WorkspaceInitResult,
     WorkspaceLayout,
     bootstrap_status,
-    initialize_agent_workspace,
     migrate_tools_md,
     read_workspace_setup_state,
 )
+from memory_core.client import Memory
 from memory_core.config import MemoryConfig
+from memory_core.curation import (
+    APPEND_DAILY_NOTE,
+    MEMORY_ENTRY_OPERATIONS,
+    SET_PROACTIVE_PREFERENCES,
+    UPSERT_USER_DIRECTIVE,
+    CurationPolicy,
+)
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.embeddings.openai_compatible import OpenAICompatibleEmbeddingProvider
 from memory_core.flags import FeatureFlags
+from memory_core.host import DEFAULT_CONTEXT_WINDOW_TOKENS, HostKit, SessionState
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.workspace import MemoryWorkspace
 
@@ -61,8 +70,6 @@ LIVE_TASK_WORKSPACE_DIRNAME = "memory-core-live-task-demo-workspace"
 LAB_SESSION_SOURCE = "lab"
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 SESSION_KINDS = ("main", "group", "channel", "direct", "subagent", "cron", "heartbeat")
-# Kinds that get upstream's minimal prompt (no Memory Recall section, no demo auto-recall).
-MINIMAL_PROMPT_KINDS = frozenset({"subagent", "cron"})
 LAYOUTS: dict[str, WorkspaceLayout] = {
     "memory-core": MEMORY_CORE_WORKSPACE_LAYOUT,
     # The upstream v2026.9.6 map alone (no OpenClaw brand in the Lab UI).
@@ -70,9 +77,6 @@ LAYOUTS: dict[str, WorkspaceLayout] = {
 }
 SEARCH_MODES = ("hybrid", "vector", "text")
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
-# Upstream DEFAULT_CONTEXT_TOKENS (src/agents/defaults.ts:6), the flush window when the
-# model's context size is unknown; the Lab never knows it, so this is the default.
-DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000
 FILE_MAX_BYTES = 2 * 1024 * 1024
 WARNING_MODES = ("off", "once", "always")
 CONTEXT_INJECTION_MODES = ("always", "continuation-skip", "never")
@@ -85,6 +89,14 @@ LAB_FLAGS: dict[str, tuple[bool, str, bool]] = {
     "curation.daily_note": (True, "Günlük not", True),
     "curation.proactive_preferences": (True, "PROACTIVE_PREFERENCES.md", True),
     "lab_file_editing": (True, "Lab dosya düzenleme", True),
+}
+CURATION_FLAG = "curated_memory_writes"
+# Lab flag -> the curation operations it gates (per-target policy, D5).
+_TARGET_FLAGS = {
+    "curation.memory_md": MEMORY_ENTRY_OPERATIONS,
+    "curation.user_md": (UPSERT_USER_DIRECTIVE,),
+    "curation.daily_note": (APPEND_DAILY_NOTE,),
+    "curation.proactive_preferences": (SET_PROACTIVE_PREFERENCES,),
 }
 
 
@@ -280,6 +292,18 @@ class LabSession:
     def key(self) -> str:
         return f"lab:{self.kind}:{self.id}"
 
+    def state(self) -> SessionState:
+        """The session as the host kit reads it, built from the fields the Lab flush mutates."""
+        return SessionState(
+            session_key=self.key,
+            session_id=self.id,
+            kind=self.kind,  # type: ignore[arg-type]
+            entry=self.flush_entry,
+            last_output_tokens=self.last_output_tokens,
+            seen_truncation_signatures=tuple(self.seen_truncation_signatures),
+            completed_bootstrap_turn=self.completed_bootstrap_turn,
+        )
+
     def public(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -300,6 +324,39 @@ def new_session(kind: str) -> LabSession:
         created_at=now_ms(),
         flush_entry={"sessionId": session_id, "compactionCount": 0},
     )
+
+
+# --- the index -----------------------------------------------------------------------------
+
+
+class LabStore(SQLiteMemoryStore):
+    """The Lab's index for one search mode.
+
+    Every reindex, the Lab's own or the host kit's after a curated, flush or session-memory
+    write, updates the Lab's index status and revisions (``index_is_stale``) and emits
+    ``index.reindexed`` for ``turn_id``; ``last_reindex`` holds the numbers.
+    """
+
+    def __init__(
+        self,
+        config: MemoryConfig,
+        embeddings: EmbeddingProvider | None,
+        *,
+        lab: LabRuntime,
+        turn_id: int | None = None,
+    ) -> None:
+        super().__init__(config, embeddings)
+        self._lab = lab
+        self.turn_id = turn_id
+        self.last_reindex: dict[str, Any] = {}
+
+    def reindex(self, workspace: MemoryWorkspace) -> int:
+        started = time.perf_counter()
+        files = super().reindex(workspace)
+        self.last_reindex = self._lab.record_reindex(
+            self, files, ms=int((time.perf_counter() - started) * 1000)
+        )
+        return files
 
 
 # --- the runtime ---------------------------------------------------------------------------
@@ -374,7 +431,11 @@ class LabRuntime:
     def config(self, *, mode: str = "text") -> MemoryConfig:
         if mode not in SEARCH_MODES:
             raise LabError(400, "mode must be hybrid, vector or text", code="invalid_mode")
-        flags = FeatureFlags(vector_search=mode != "text", text_search=mode != "vector")
+        flags = FeatureFlags(
+            vector_search=mode != "text",
+            text_search=mode != "vector",
+            curated_memory_writes=self.settings.flags.get(CURATION_FLAG, True),
+        )
         return MemoryConfig(
             workspace_dir=self.root,
             store_path=self.root / ".memory-core" / f"lab-{mode}.sqlite",
@@ -476,7 +537,9 @@ class LabRuntime:
     def default_search_mode(self, resolution: EmbeddingResolution) -> str:
         return "hybrid" if resolution.available else "text"
 
-    def store(self, resolution: EmbeddingResolution, *, mode: str | None = None) -> SQLiteMemoryStore:
+    def store(
+        self, resolution: EmbeddingResolution, *, mode: str | None = None, turn_id: int | None = None
+    ) -> LabStore:
         """The index for one search mode; FTS-only never gets (or calls) an embedder."""
         resolved_mode = mode or self.default_search_mode(resolution)
         if resolved_mode not in SEARCH_MODES:
@@ -490,13 +553,64 @@ class LabRuntime:
                 embeddings=resolution.public(),
             )
         provider = self.embedding_provider(resolution) if resolved_mode != "text" else None
-        return SQLiteMemoryStore(self.config(mode=resolved_mode), provider)
+        return LabStore(self.config(mode=resolved_mode), provider, lab=self, turn_id=turn_id)
 
-    def reindex(self, store: SQLiteMemoryStore, *, turn_id: int | None = None) -> dict[str, Any]:
-        started = time.perf_counter()
-        files = store.reindex(MemoryWorkspace(self.root))
+    def curation_policy(self, layout: WorkspaceLayout) -> CurationPolicy:
+        """The Lab's curation flags as a policy for ``layout`` (per-target flags, D5)."""
+        policy = CurationPolicy.for_layout(
+            layout,
+            max_file_chars=self.settings.max_chars,
+            total_max_chars=self.settings.total_max_chars,
+        )
+        disabled = [
+            operation
+            for flag, operations in _TARGET_FLAGS.items()
+            if not self.settings.flags.get(flag, True)
+            for operation in operations
+        ]
+        return policy.without(*disabled) if disabled else policy
+
+    def kit(
+        self,
+        store: LabStore | None = None,
+        *,
+        layout: str | None = None,
+        max_chars: int | None = None,
+        total_max_chars: int | None = None,
+        context_injection: str | None = None,
+    ) -> HostKit:
+        """The host kit over the Lab workspace with the Lab's settings (built per request).
+
+        ``store`` is the turn's index (default: the FTS-only one, for calls that do not
+        search); the other arguments are the prompt inspector's per-request overrides.
+        """
+        store = store or LabStore(self.config(), None, lab=self)
+        resolved_layout = self.layout_for(layout)
+        settings = self.settings
+        return HostKit(
+            Memory(config=store.config, workspace=MemoryWorkspace(self.root), store=store),
+            layout=resolved_layout,
+            templates=DEMO_WORKSPACE_TEMPLATES,
+            seed_bootstrap=True,
+            timezone=LAB_TIMEZONE,
+            time_format=LAB_TIME_FORMAT,
+            curation_policy=self.curation_policy(resolved_layout),
+            bootstrap_max_chars=max_chars or settings.max_chars,
+            bootstrap_total_max_chars=total_max_chars or settings.total_max_chars,
+            context_injection=context_injection or settings.context_injection,  # type: ignore[arg-type]
+            truncation_warning_mode=settings.warning_mode,  # type: ignore[arg-type]
+            # The Lab shows promotion and dreaming, so memory_search records recalls like
+            # upstream with dreaming enabled (tools.ts:491-507).
+            dreaming_enabled=True,
+        )
+
+    def reindex(self, store: LabStore) -> dict[str, Any]:
+        store.reindex(MemoryWorkspace(self.root))
+        return store.last_reindex
+
+    def record_reindex(self, store: LabStore, files: int, *, ms: int) -> dict[str, Any]:
+        """Index bookkeeping after ``store`` reindexed ``files`` files in ``ms`` ms."""
         chunks = store.count_chunks()
-        ms = int((time.perf_counter() - started) * 1000)
         self.index_status = {
             "files": files,
             "chunks": chunks,
@@ -509,7 +623,7 @@ class LabRuntime:
             "index.reindexed",
             summary=f"{files} dosya · {chunks} parça · {ms} ms",
             data={"files": files, "chunks": chunks, "ms": ms, "store": store.path.name},
-            turn_id=turn_id,
+            turn_id=store.turn_id,
         )
         return {"indexedFiles": files, "chunks": chunks, "ms": ms}
 
@@ -542,14 +656,12 @@ class LabRuntime:
             )
 
     def ensure(self, *, turn_id: int | None = None) -> WorkspaceInitResult:
-        """``initialize_agent_workspace`` with the Lab templates (upstream runs it every reply)."""
+        """``HostKit.ensure`` with the Lab templates (upstream runs it every reply)."""
         with self._ensure_lock:
             layout = self.layout
             before_status = bootstrap_status(self.root, layout) if self.root.is_dir() else None
             with self.tracked("lifecycle", turn_id=turn_id):
-                result = initialize_agent_workspace(
-                    self.root, layout=layout, templates=DEMO_WORKSPACE_TEMPLATES
-                )
+                result = self.kit().ensure()
                 if result.bootstrap_seeded:
                     self.bus.emit(
                         "bootstrap.seeded",
@@ -598,9 +710,7 @@ class LabRuntime:
                 target.write_bytes(data)
             if mode == "seeded":
                 (self.root / "memory").mkdir(exist_ok=True)
-            result = initialize_agent_workspace(
-                self.root, layout=self.layout, templates=DEMO_WORKSPACE_TEMPLATES
-            )
+            result = self.kit().ensure()
         self.sessions.clear()
         self.turns.clear()
         self.turn_order.clear()

@@ -1027,8 +1027,13 @@ follows Task 9.
   `test_lab_prompt_stage_uses_before_turn`, `test_prompt_preview_writes_nothing`,
   `test_kit_writes_keep_the_lab_index_fresh`; every existing tool-loop, curation-flag (flag off:
   no curation tools, no write), recall-recording and prompt-inspector test stays green unchanged.
-- Done: `lab_curator`, `lab_workspace_context`, `LabToolbox._memory_search`, `_memory_get`, the
-  Lab's own `initialize_agent_workspace` call and `build_prompt_section` calls are gone; tests pass.
+- Done: `lab_curator`, `lab_workspace_context`, `LabToolbox._memory_get`, the Lab's own recall
+  recording, its `initialize_agent_workspace` calls and the turn prompts' `build_prompt_section`
+  calls are gone; tests pass. The kept `/api/prompt-preview` playground (the Memory Recall lines
+  for any tool set the caller names) still calls `build_prompt_section` directly, like the other
+  kept playgrounds over core functions (`/api/search`, `/api/get`). Side effect of `LabStore`: the
+  pre-turn flush's reindex now also updates the Lab index status and emits `index.reindexed`
+  for its turn (before, it left the index reported as stale).
 
 ### Task 9: Lab switch, part 2 (blocked: Q1, Q3, Q5, Q6, Q10)
 

@@ -1,12 +1,11 @@
-"""The Lab's host tool loop: memory_search, memory_get and the curation tools.
+"""The Lab's host tool loop over the host kit's tools.
 
-A real host loop (critique high #1): the model gets the upstream
-``memory_search``/``memory_get`` definitions (``memory_core.tools``) and
-``MemoryCurator.tool_definitions()``; the Lab dispatches each call through the
-package's ``execute_*`` adapters or ``MemoryCurator.dispatch``, sends the
-result payload back verbatim, and records every curated write with a
-before/after snapshot so it can be reverted (only while the file is
-unchanged). Refused writes are recorded too. The loop is bounded: after
+A real host loop (critique high #1): the model gets ``HostKit.tools()`` (the
+upstream ``memory_search``/``memory_get`` definitions and the curation tools the
+Lab flags allow); every call goes through ``HostKit.dispatch`` and its payload is
+sent back verbatim. The Lab adds what a host adds: call records, events, and a
+before/after snapshot of every curated write so it can be reverted (only while the
+file is unchanged); refused writes are recorded too. The loop is bounded: after
 ``MAX_TOOL_ROUNDS`` rounds with tool calls, one last round runs without tools.
 """
 
@@ -15,15 +14,13 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
 from demo.chat_engine import ChatEngine
 from demo.lab_events import unified_diff
-from demo.lab_runtime import LAB_TIMEZONE, LabRuntime, LabSession, safe_exception_message
-from memory_core.config import MemoryConfig
-from memory_core.consolidation import record_short_term_recalls, undecorate_search_results
+from demo.lab_runtime import CURATION_FLAG, LabRuntime, LabSession, safe_exception_message
 from memory_core.curation import (
     ADD_MEMORY_ENTRY,
     APPEND_DAILY_NOTE,
@@ -33,26 +30,11 @@ from memory_core.curation import (
     REPLACE_MEMORY_ENTRY,
     SET_PROACTIVE_PREFERENCES,
     UPSERT_USER_DIRECTIVE,
-    CurationPolicy,
-    CurationUnavailableError,
-    MemoryCurator,
 )
-from memory_core.flags import FeatureFlags
-from memory_core.index.sqlite_store import SQLiteMemoryStore
-from memory_core.tools.common import MemoryToolInputError
-from memory_core.tools.memory_get import (
-    MEMORY_GET_TOOL_NAME,
-    execute_memory_get_tool,
-    memory_get_tool_definition,
-)
-from memory_core.tools.memory_search import (
-    MEMORY_SEARCH_TOOL_NAME,
-    execute_memory_search_tool,
-    memory_search_tool_definition,
-)
+from memory_core.host import HostKit
+from memory_core.tools.memory_search import MEMORY_SEARCH_TOOL_NAME
 
 MAX_TOOL_ROUNDS = 6
-CURATION_FLAG = "curated_memory_writes"
 _WRITE_KIND = {
     ADD_MEMORY_ENTRY: "memory_entry",
     REPLACE_MEMORY_ENTRY: "memory_entry",
@@ -61,39 +43,6 @@ _WRITE_KIND = {
     APPEND_DAILY_NOTE: "daily_note",
     SET_PROACTIVE_PREFERENCES: "proactive_preferences",
 }
-# Lab flag -> the curation operations it gates (per-target policy, D5).
-_TARGET_FLAGS = {
-    "curation.memory_md": MEMORY_ENTRY_OPERATIONS,
-    "curation.user_md": (UPSERT_USER_DIRECTIVE,),
-    "curation.daily_note": (APPEND_DAILY_NOTE,),
-    "curation.proactive_preferences": (SET_PROACTIVE_PREFERENCES,),
-}
-
-
-def curation_policy(lab: LabRuntime) -> CurationPolicy:
-    policy = CurationPolicy.for_layout(
-        lab.layout,
-        max_file_chars=lab.settings.max_chars,
-        total_max_chars=lab.settings.total_max_chars,
-    )
-    disabled = [
-        operation
-        for flag, operations in _TARGET_FLAGS.items()
-        if not lab.settings.flags.get(flag, True)
-        for operation in operations
-    ]
-    return policy.without(*disabled) if disabled else policy
-
-
-def lab_curator(lab: LabRuntime, *, after_write: Callable[[Any], None] | None = None) -> MemoryCurator:
-    return MemoryCurator(
-        lab.root,
-        layout=lab.layout,
-        policy=curation_policy(lab),
-        flags=FeatureFlags(curated_memory_writes=lab.settings.flags.get(CURATION_FLAG, True)),
-        after_write=after_write,
-        timezone=LAB_TIMEZONE,
-    )
 
 
 def openai_tools(definitions: list[dict]) -> list[dict]:
@@ -102,35 +51,17 @@ def openai_tools(definitions: list[dict]) -> list[dict]:
 
 @dataclass
 class LabToolbox:
-    """Tools offered to one turn and the dispatch of their calls."""
+    """Tools offered to one turn (the kit's) and the Lab's records of their calls."""
 
     lab: LabRuntime
-    config: MemoryConfig
-    store: SQLiteMemoryStore
+    kit: HostKit
     session: LabSession
     turn_id: int | None
-    memory_tools: bool = True
-    curation_tools: bool = True
     curated: list[dict[str, Any]] = field(default_factory=list)
     calls: list[dict[str, Any]] = field(default_factory=list)
 
-    def __post_init__(self) -> None:
-        self.curator = lab_curator(self.lab, after_write=self._after_write)
-
-    def _after_write(self, result: Any) -> None:
-        del result
-        self.lab.reindex(self.store, turn_id=self.turn_id)
-
     def definitions(self) -> list[dict]:
-        definitions: list[dict] = []
-        if self.memory_tools:
-            definitions.extend([memory_search_tool_definition(), memory_get_tool_definition()])
-        if self.curation_tools:
-            definitions.extend(self.curator.tool_definitions())
-        return definitions
-
-    def names(self) -> set[str]:
-        return {definition["name"] for definition in self.definitions()}
+        return self.kit.tools()
 
     def dispatch(self, call_id: str, name: str, raw_arguments: str) -> dict[str, Any]:
         """Run one tool call; returns the call record with the payload sent to the model."""
@@ -138,23 +69,17 @@ class LabToolbox:
         record: dict[str, Any] = {"id": call_id, "name": name, "arguments": raw_arguments}
         try:
             arguments = json.loads(raw_arguments) if raw_arguments.strip() else {}
-        except json.JSONDecodeError as exc:
+        except json.JSONDecodeError:
             arguments = None
-            result = {"status": "error", "tool": name, "error": f"invalid JSON arguments: {exc.msg}"}
-        if arguments is not None:
+        else:
             record["arguments"] = arguments
-            if not isinstance(arguments, dict):
-                result = {"status": "error", "tool": name, "error": "arguments must be a JSON object"}
-            elif name not in self.names():
-                result = {"status": "error", "tool": name, "error": f"tool {name} is not available"}
-            elif name == MEMORY_SEARCH_TOOL_NAME:
-                result = self._memory_search(arguments)
-            elif name == MEMORY_GET_TOOL_NAME:
-                result = self._memory_get(arguments)
-            elif name in CURATION_OPERATIONS:
-                result = self._curate(name, arguments, record)
-            else:
-                result = {"status": "error", "tool": name, "error": f"unknown tool: {name}"}
+        offered = {definition["name"] for definition in self.definitions()}
+        if isinstance(arguments, dict) and name in offered and name in CURATION_OPERATIONS:
+            result = self._curate(name, arguments, record)
+        elif isinstance(arguments, dict) and name == MEMORY_SEARCH_TOOL_NAME:
+            result = self._memory_search(arguments)
+        else:
+            result = self.kit.dispatch(name, raw_arguments, session=self.session.state())
         record["result"] = result
         record["ok"] = not (isinstance(result, dict) and result.get("status") == "error")
         record["ms"] = int((time.perf_counter() - started) * 1000)
@@ -162,12 +87,13 @@ class LabToolbox:
         return record
 
     def _memory_search(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        try:
-            result = execute_memory_search_tool(
-                self.config, self.store, arguments, agent_session_key=self.session.key
+        # The kit records the hits as short-term recalls (dreaming enabled in the Lab).
+        with self.lab.tracked("recall", turn_id=self.turn_id):
+            result = self.kit.dispatch(
+                MEMORY_SEARCH_TOOL_NAME, arguments, session=self.session.state()
             )
-        except MemoryToolInputError as error:
-            return error.to_tool_error(MEMORY_SEARCH_TOOL_NAME)
+        if result.get("status") == "error":
+            return result
         if result.get("unavailable"):
             self.lab.bus.emit(
                 "search.unavailable",
@@ -178,15 +104,6 @@ class LabToolbox:
             )
             return result
         hits = result.get("results") or []
-        if hits:
-            with self.lab.tracked("recall", turn_id=self.turn_id):
-                # tools.ts queueShortTermRecallTracking records the raw hits (dreaming on).
-                record_short_term_recalls(
-                    config=self.config,
-                    query=str(arguments.get("query", "")),
-                    results=undecorate_search_results([hit for hit in hits if hit.get("corpus") == "memory"]),
-                    now_ms=self.lab.now_ms(),
-                )
         self.lab.bus.emit(
             "search.completed",
             summary=f"memory_search (model): {len(hits)} sonuç",
@@ -195,12 +112,6 @@ class LabToolbox:
         )
         return result
 
-    def _memory_get(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        try:
-            return execute_memory_get_tool(self.config, arguments)
-        except MemoryToolInputError as error:
-            return error.to_tool_error(MEMORY_GET_TOOL_NAME)
-
     def _target(self, name: str) -> str:
         if name in MEMORY_ENTRY_OPERATIONS:
             return self.lab.layout.memory_file
@@ -208,7 +119,7 @@ class LabToolbox:
             return "USER.md"
         if name == SET_PROACTIVE_PREFERENCES:
             return "PROACTIVE_PREFERENCES.md"
-        return f"memory/{self.curator.today()}.md"
+        return f"memory/{self.kit.curator.today()}.md"
 
     def _curate(self, name: str, arguments: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]:
         target = self._target(name)
@@ -223,25 +134,22 @@ class LabToolbox:
             "flag": CURATION_FLAG,
             "extension": True,
         }
-        try:
-            with self.lab.tracked("curation", turn_id=self.turn_id):
-                result = self.curator.dispatch(name, arguments)
-        except MemoryToolInputError as error:
-            payload = error.to_tool_error(name)
+        with self.lab.tracked("curation", turn_id=self.turn_id):
+            result = self.kit.dispatch(name, arguments, session=self.session.state())
+        if result.get("status") == "error":
+            reason = str(result.get("error"))
             refused = {**base, "id": self.lab.allocate_write_id(), "path": target, "refused": True,
-                       "reason": str(error), "diff": ""}
+                       "reason": reason, "diff": ""}
             self.lab.curated_writes.append(refused)
             self.curated.append(refused)
             record["curation"] = refused
             self.lab.bus.emit(
                 "curation.refused",
-                summary=f"{target} reddedildi: {error}",
-                data={"path": target, "operation": name, "reason": str(error), "writeId": refused["id"]},
+                summary=f"{target} reddedildi: {reason}",
+                data={"path": target, "operation": name, "reason": reason, "writeId": refused["id"]},
                 turn_id=self.turn_id,
             )
-            return payload
-        except CurationUnavailableError as error:
-            return {"status": "error", "tool": name, "error": str(error)}
+            return result
         written_path = str(result.get("path") or target)
         target_file = self.lab.root / written_path
         after = target_file.read_text(encoding="utf-8") if target_file.is_file() else None
@@ -375,8 +283,6 @@ __all__ = [
     "MAX_TOOL_ROUNDS",
     "LabToolbox",
     "ToolLoopOutcome",
-    "curation_policy",
-    "lab_curator",
     "public_write",
     "run_tool_loop",
 ]

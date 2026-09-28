@@ -1,11 +1,12 @@
-"""What reaches the model, per session kind: WorkspaceContext -> PromptView and FileEntry.
+"""What reaches the model, per session kind: TurnContext -> PromptView and FileEntry.
 
-Thin views over :func:`memory_core.bootstrap.build_workspace_context`. Exclusion
-reasons are attributed by running the package's own filter functions one at a
-time (``filter_root_memory_bootstrap_files``, ``filter_bootstrap_files_for_session``,
+Thin views over ``HostKit.before_turn`` (read-only: ``ensure=False``, so an
+inspector never seeds or deletes BOOTSTRAP.md). Exclusion reasons are
+attributed by running the package's own filter functions one at a time
+(``filter_root_memory_bootstrap_files``, ``filter_bootstrap_files_for_session``,
 ``filter_completed_bootstrap_file``, ``apply_context_mode_filter``), never by
 re-implementing them. The Lab model gets no generic ``read`` tool, so the
-bootstrap mode is resolved with ``has_bootstrap_file_access=False``; the
+bootstrap mode is resolved without file access (the kit's default); the
 package still counts non-empty BOOTSTRAP.md content as file access (upstream's
 hook-content rule), which the payload names.
 """
@@ -19,12 +20,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from demo.lab_runtime import LabError, LabRuntime, LabSession
+from demo.lab_runtime import SESSION_KINDS, LabError, LabRuntime, LabSession
 from memory_core.bootstrap import (
     WorkspaceContext,
     WorkspaceLayout,
     apply_context_mode_filter,
-    build_workspace_context,
     filter_bootstrap_files_for_session,
     filter_completed_bootstrap_file,
     filter_root_memory_bootstrap_files,
@@ -36,6 +36,7 @@ from memory_core.bootstrap._js import utf16_len
 from memory_core.bootstrap.files import NON_PRIVATE_SESSION_KINDS
 from memory_core.bootstrap.render import prepare_context_files
 from memory_core.bootstrap.budget import ContextFile
+from memory_core.host import SessionState, TurnContext
 from memory_core.session_memory import SESSION_MEMORY_FILE_RE
 from memory_core.workspace import MemoryWorkspace
 
@@ -111,26 +112,31 @@ def _run_kind(options: PromptOptions) -> str:
     return "default"
 
 
-def lab_workspace_context(
+def prompt_context(
     lab: LabRuntime, options: PromptOptions, *, session: LabSession | None = None
-) -> WorkspaceContext:
-    layout = lab.layout_for(options.layout)
-    if options.kind not in ("main", "group", "channel", "direct", "subagent", "cron", "heartbeat"):
+) -> TurnContext:
+    """``HostKit.before_turn`` for a prompt view, without the ensure (read-only).
+
+    Without a session the view uses a fresh state of the kind (nothing is stored).
+    """
+    if options.kind not in SESSION_KINDS:
         raise LabError(400, "unknown sessionKind", code="invalid_kind")
-    settings = lab.settings
-    return build_workspace_context(
-        lab.root,
-        layout=layout,
-        session_kind=options.kind,  # type: ignore[arg-type]
+    kit = lab.kit(
+        layout=options.layout,
+        max_chars=options.max_chars,
+        total_max_chars=options.total_max_chars,
+        context_injection=options.context_injection,
+    )
+    state = (
+        session.state()
+        if session is not None
+        else SessionState.new(session_key="lab:preview", session_id="preview", kind=options.kind)  # type: ignore[arg-type]
+    )
+    return kit.before_turn(
+        state,
         run_kind=options.run_kind,  # type: ignore[arg-type]
         context_mode=options.context_mode,  # type: ignore[arg-type]
-        context_injection=(options.context_injection or settings.context_injection),  # type: ignore[arg-type]
-        has_completed_bootstrap_turn=bool(session and session.completed_bootstrap_turn),
-        has_bootstrap_file_access=False,
-        max_chars=options.max_chars or settings.max_chars,
-        total_max_chars=options.total_max_chars or settings.total_max_chars,
-        truncation_warning_mode=settings.warning_mode,  # type: ignore[arg-type]
-        seen_truncation_signatures=tuple(session.seen_truncation_signatures) if session else (),
+        ensure=False,
     )
 
 
@@ -334,7 +340,7 @@ def render_order(layout: WorkspaceLayout) -> list[str]:
 def file_entries(lab: LabRuntime, options: PromptOptions) -> list[dict[str, Any]]:
     """FileEntry[] for the explorer: layout files, memory/, extension folders, hidden stores."""
     layout = lab.layout_for(options.layout)
-    wc = lab_workspace_context(lab, options, session=lab.sessions.get(options.kind))
+    wc = prompt_context(lab, options, session=lab.sessions.get(options.kind)).workspace
     injected = {Path(file.path).name for file in wc.files}
     missing = {file.name for file in wc.bootstrap_files if file.missing}
     unreadable = {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -26,6 +27,18 @@ Keep detailed daily notes in memory/YYYY-MM-DD.md.
 DEFAULT_CHAT_SYSTEM_PROMPT = (
     "Use relevant memory when it helps answer the user. Do not mention memory unless useful."
 )
+# The turn helpers stay unchanged until their removal with the packaging stage: routing them
+# through memory_core.host would silently change what they write (docs/host_kit.md, "deprecate").
+_TURN_HELPER_DEPRECATION = (
+    "Memory.{name} is deprecated: use memory_core.host.HostKit (docs/host_kit.md); "
+    "it will be removed with the packaging stage"
+)
+
+
+def _warn_turn_helper_deprecated(name: str) -> None:
+    warnings.warn(
+        _TURN_HELPER_DEPRECATION.format(name=name), DeprecationWarning, stacklevel=3
+    )
 
 
 @dataclass(frozen=True)
@@ -121,6 +134,25 @@ class Memory:
         min_score: float = 0.0,
         corpus: str = "all",
     ) -> MemoryChatTurn:
+        """Deprecated: injects search results, which upstream never does; use memory_core.host."""
+        _warn_turn_helper_deprecated("prepare_turn")
+        return self._prepare_turn(
+            user_message,
+            system_prompt=system_prompt,
+            max_results=max_results,
+            min_score=min_score,
+            corpus=corpus,
+        )
+
+    def _prepare_turn(
+        self,
+        user_message: str,
+        *,
+        system_prompt: str,
+        max_results: int,
+        min_score: float,
+        corpus: str,
+    ) -> MemoryChatTurn:
         search_result = self.search(
             user_message,
             max_results=max_results,
@@ -149,6 +181,27 @@ class Memory:
         now_ms: int | None = None,
         timezone: str = "UTC",
         time_format: str = DEFAULT_TIME_FORMAT,
+    ) -> MemoryRecordResult:
+        """Deprecated: an ungated plain-text flush write; use memory_core.host's FlushRequest."""
+        _warn_turn_helper_deprecated("record_turn")
+        return self._record_turn(
+            user_message,
+            assistant_message,
+            flush_llm=flush_llm,
+            now_ms=now_ms,
+            timezone=timezone,
+            time_format=time_format,
+        )
+
+    def _record_turn(
+        self,
+        user_message: str,
+        assistant_message: str,
+        *,
+        flush_llm: Callable[[list[dict[str, str]]], str],
+        now_ms: int | None,
+        timezone: str,
+        time_format: str,
     ) -> MemoryRecordResult:
         plan = build_memory_flush_plan(
             workspace_dir=self.workspace.root,
@@ -201,7 +254,9 @@ class Memory:
         timezone: str = "UTC",
         time_format: str = DEFAULT_TIME_FORMAT,
     ) -> MemoryChatResult:
-        turn = self.prepare_turn(
+        """Deprecated: owns the model call, which the host owns; use memory_core.host."""
+        _warn_turn_helper_deprecated("chat")
+        turn = self._prepare_turn(
             user_message,
             system_prompt=system_prompt,
             max_results=max_results,
@@ -210,10 +265,11 @@ class Memory:
         )
         assistant_message = llm(turn.messages)
         if force_flush:
-            flush_result = self.record_turn(
+            flush_result = self._record_turn(
                 user_message,
                 assistant_message,
                 flush_llm=flush_llm or llm,
+                now_ms=None,
                 timezone=timezone,
                 time_format=time_format,
             )

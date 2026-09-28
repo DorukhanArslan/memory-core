@@ -1,3 +1,4 @@
+import warnings
 from pathlib import Path
 
 import pytest
@@ -113,7 +114,8 @@ def test_prepare_turn_injects_recalled_memory_into_chat_messages(tmp_path: Path)
         embedding_provider=FakeEmbeddingProvider(),
     )
 
-    turn = memory.prepare_turn("Bana nasil hitap edeceksin?")
+    with pytest.deprecated_call():
+        turn = memory.prepare_turn("Bana nasil hitap edeceksin?")
 
     assert turn.user_message == "Bana nasil hitap edeceksin?"
     assert turn.memory_results[0]["path"] == "MEMORY.md"
@@ -140,7 +142,8 @@ def test_prepare_turn_omits_memory_message_when_no_results(tmp_path: Path):
         initialize=False,
     )
 
-    turn = memory.prepare_turn("Yeni bir soru")
+    with pytest.deprecated_call():
+        turn = memory.prepare_turn("Yeni bir soru")
 
     assert turn.memory_results == []
     assert turn.memory_context == ""
@@ -169,12 +172,13 @@ def test_chat_runs_answer_then_forced_memory_flush_and_reindexes(tmp_path: Path)
             return "- User prefers to be addressed as Doruk."
         return "Tamam Doruk."
 
-    result = memory.chat(
-        "Bana Doruk diye hitap et.",
-        llm=fake_llm,
-        force_flush=True,
-        timezone="Europe/Istanbul",
-    )
+    with pytest.deprecated_call():
+        result = memory.chat(
+            "Bana Doruk diye hitap et.",
+            llm=fake_llm,
+            force_flush=True,
+            timezone="Europe/Istanbul",
+        )
 
     assert result.assistant_message == "Tamam Doruk."
     assert result.flush_result.wrote is True
@@ -208,13 +212,14 @@ def test_chat_can_use_separate_flush_model(tmp_path: Path):
         flush_calls.append(messages)
         return "- User prefers to be addressed as Doruk."
 
-    result = memory.chat(
-        "Bana Doruk diye hitap et.",
-        llm=answer_llm,
-        flush_llm=flush_llm,
-        force_flush=True,
-        timezone="Europe/Istanbul",
-    )
+    with pytest.deprecated_call():
+        result = memory.chat(
+            "Bana Doruk diye hitap et.",
+            llm=answer_llm,
+            flush_llm=flush_llm,
+            force_flush=True,
+            timezone="Europe/Istanbul",
+        )
 
     assert result.assistant_message == "Tamam Doruk."
     assert result.flush_result.wrote is True
@@ -233,12 +238,13 @@ def test_chat_does_not_flush_without_force_flush(tmp_path: Path):
     )
     flush_calls = []
 
-    result = memory.chat(
-        "Bana Doruk diye hitap et.",
-        llm=lambda messages: "Tamam Doruk.",
-        flush_llm=lambda messages: flush_calls.append(messages) or "- User prefers Doruk.",
-        timezone="Europe/Istanbul",
-    )
+    with pytest.deprecated_call():
+        result = memory.chat(
+            "Bana Doruk diye hitap et.",
+            llm=lambda messages: "Tamam Doruk.",
+            flush_llm=lambda messages: flush_calls.append(messages) or "- User prefers Doruk.",
+            timezone="Europe/Istanbul",
+        )
 
     assert result.assistant_message == "Tamam Doruk."
     assert result.flush_result.wrote is False
@@ -272,13 +278,14 @@ def test_record_turn_skips_write_when_flush_model_returns_no_reply(tmp_path: Pat
         embedding_provider=FakeEmbeddingProvider(),
     )
 
-    result = memory.record_turn(
-        "Selam",
-        "Selam Doruk.",
-        flush_llm=lambda messages: "NO_REPLY",
-        now_ms=1777824000000,
-        timezone="Europe/Istanbul",
-    )
+    with pytest.deprecated_call():
+        result = memory.record_turn(
+            "Selam",
+            "Selam Doruk.",
+            flush_llm=lambda messages: "NO_REPLY",
+            now_ms=1777824000000,
+            timezone="Europe/Istanbul",
+        )
 
     assert result.wrote is False
     assert result.path == "memory/2026-05-03.md"
@@ -338,7 +345,11 @@ def test_blank_queries_raise_through_the_facade(tmp_path: Path):
         lambda: memory.search(" \n\t"),
         lambda: memory.prepare_turn("  "),
     ):
-        with pytest.raises(MemoryToolInputError, match="^query required$") as raised:
+        with (
+            pytest.raises(MemoryToolInputError, match="^query required$") as raised,
+            warnings.catch_warnings(),
+        ):
+            warnings.simplefilter("ignore", DeprecationWarning)
             call()
         assert raised.value.to_tool_error() == {
             "status": "error",
@@ -349,3 +360,40 @@ def test_blank_queries_raise_through_the_facade(tmp_path: Path):
         "memory_context": "",
         "memory_results": [],
     }
+
+
+DEPRECATION = r"^Memory\.{name} is deprecated: use memory-core\.host\.HostKit \(docs/host_kit\.md\)"
+
+
+def _fts_memory(tmp_path: Path) -> Memory:
+    return Memory.from_workspace(tmp_path, embedding_provider=FakeEmbeddingProvider())
+
+
+def test_prepare_turn_warns_deprecated(tmp_path: Path):
+    memory = _fts_memory(tmp_path)
+
+    with pytest.warns(DeprecationWarning, match=DEPRECATION.format(name="prepare_turn")) as caught:
+        memory.prepare_turn("Yeni bir soru")
+
+    assert len(caught) == 1
+    assert caught[0].filename == __file__
+
+
+def test_chat_warns_deprecated(tmp_path: Path):
+    memory = _fts_memory(tmp_path)
+
+    with pytest.warns(DeprecationWarning, match=DEPRECATION.format(name="chat")) as caught:
+        memory.chat("Selam", llm=lambda messages: "- note", force_flush=True)
+
+    assert len(caught) == 1
+    assert caught[0].filename == __file__
+
+
+def test_record_turn_warns_deprecated(tmp_path: Path):
+    memory = _fts_memory(tmp_path)
+
+    with pytest.warns(DeprecationWarning, match=DEPRECATION.format(name="record_turn")) as caught:
+        memory.record_turn("Selam", "Selam.", flush_llm=lambda messages: "NO_REPLY")
+
+    assert len(caught) == 1
+    assert caught[0].filename == __file__

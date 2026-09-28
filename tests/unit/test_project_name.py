@@ -212,3 +212,29 @@ def test_the_check_reports_a_drifted_constant_module_and_spelled_names(tmp_path)
     assert "DISPLAY_NAME" in problems[0]
     assert problems[1].startswith("demo/lab_runtime.py:")
     assert problems[2].startswith("demo/static/lab/project.js:")
+
+
+def test_the_check_lists_each_place_a_hand_edited_name_disagrees_with(tmp_path):
+    tree = _copy_tracked_tree(tmp_path)
+    name = rename_project.read_declaration(tree)
+    pyproject = tree / rename_project.PYPROJECT
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8").replace(
+            f'\nname = "{name.dist}"\n', f'\nname = "{PROBE_DIST}"\n', 1
+        ),
+        encoding="utf-8",
+    )
+
+    result = _run(tree, "--check")
+
+    assert result.returncode == 1
+    assert result.stdout.splitlines() == [
+        f"pyproject.toml: the declared name is {PROBE_DIST}, but the display-name table is"
+        f" [tool.{name.package}], not [tool.probe_kit]",
+        "the package directory probe_kit/ is missing",
+        "pyproject.toml: the dev dependency group does not hold 'probe-kit[demo]'",
+        "pyproject.toml: [tool.hatch.version] path does not hold 'probe_kit/__init__.py'",
+        "pyproject.toml: the wheel packages does not hold 'probe_kit'",
+        "pyproject.toml: the sdist only-include does not hold 'probe_kit'",
+        f"uv.lock: the project's own entry is [{name.dist!r}], not ['probe-kit']",
+    ]

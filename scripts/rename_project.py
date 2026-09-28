@@ -171,9 +171,42 @@ class ProjectName:
 
 
 def read_declaration(root: Path) -> ProjectName:
-    data = tomllib.loads((root / PYPROJECT).read_text(encoding="utf-8"))
-    dist = data["project"]["name"]
-    return ProjectName(dist, data["tool"][ProjectName(dist, "").package]["display-name"])
+    name, problems = declared_name(root)
+    if name is None or problems:
+        raise SystemExit("\n".join(problems))
+    return name
+
+
+def declared_name(root: Path) -> tuple[ProjectName | None, list[str]]:
+    """The declared name and the problems of the declaration itself. With ``[project] name``
+    edited by hand, the display name comes from the one ``[tool.*]`` table that holds it, so
+    the check can still list each place that disagrees; no usable name gives None."""
+    try:
+        data = tomllib.loads((root / PYPROJECT).read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        return None, [f"{PYPROJECT}: {error}"]
+    dist = data.get("project", {}).get("name")
+    if not isinstance(dist, str):
+        return None, [f"{PYPROJECT}: no [project] name"]
+    package, tools = ProjectName(dist, "").package, data.get("tool", {})
+    tables = [key for key, table in tools.items() if isinstance(table, dict)]
+    tables = [key for key in tables if "display-name" in tools[key]]
+    problems = []
+    if package in tables:
+        display = tools[package]["display-name"]
+    elif len(tables) == 1:
+        display = tools[tables[0]]["display-name"]
+        problems.append(
+            f"{PYPROJECT}: the declared name is {dist}, but the display-name table is"
+            f" [tool.{tables[0]}], not [tool.{package}]"
+        )
+    else:
+        return None, [f"{PYPROJECT}: no display-name in [tool.{package}]"]
+    if not isinstance(display, str):
+        return None, [*problems, f"{PYPROJECT}: display-name is not a string"]
+    name = ProjectName(dist, display)
+    invalid = [f"{PYPROJECT}: {problem}" for problem in name_problems(name)]
+    return (None if invalid else name), [*problems, *invalid]
 
 
 # --- finding and rewriting spellings -------------------------------------------------------
@@ -423,14 +456,11 @@ def move_paths(root: Path, old: ProjectName, new: ProjectName) -> None:
 
 
 def check(root: Path) -> list[str]:
-    try:
-        name = read_declaration(root)
-    except (OSError, KeyError, TypeError, tomllib.TOMLDecodeError) as error:
-        return [f"{PYPROJECT}: no [project] name with a [tool.<package>] display-name ({error!r})"]
-    problems = [f"{PYPROJECT}: {problem}" for problem in name_problems(name)]
-    if problems:
+    name, problems = declared_name(root)
+    if name is None:
         return problems
     return [
+        *problems,
         *package_problems(root, name),
         *pyproject_problems(root, name),
         *lockfile_problems(root, name),

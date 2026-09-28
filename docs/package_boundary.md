@@ -104,8 +104,10 @@ Four paths change memory files; none of them uses keyword triggers.
 
 `memory_core.host` is the composition a host would otherwise copy: one `HostKit` per
 workspace with six entry points (`tools`, `dispatch`, `before_turn`, `after_turn`,
-`on_new_session`, `heartbeat_prompt`) and the handles they return (`TurnContext`,
-`TurnRecord`, `FlushRequest`, `NewSession`, `HeartbeatRun`). The host keeps one
+`on_new_session`, `heartbeat_prompt`), `ensure` (the workspace ensure `before_turn` runs
+first), the labelled extension `request_flush` (a flush outside the token gate, decision Q6)
+and the handles they return (`TurnContext`, `TurnRecord`, `FlushRequest`, `FlushOutcome`,
+`NewSession`, `ResetTurn`, `HeartbeatRun`, `HeartbeatOutcome`). The host keeps one
 `SessionState` per session and gets new copies back. The kit only composes core
 functions, never calls a model and keeps no per-session state; the host owns the agent
 and tool loop, the model call, streaming, compaction, scheduling and session storage.

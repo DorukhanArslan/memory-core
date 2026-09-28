@@ -1166,7 +1166,8 @@ follows Task 9.
   turn), `docs/feature_flags.md` (`curated_memory_writes` and the kit), `docs/parity_matrix.md` (rows
   Runtime flush trigger, Recall tracking from `memory_search`, Session-memory hook, Prompt memory
   tool section (the kit ships the pin-era section until area 5), the heartbeat rows, the LangGraph
-  row; audit note), `README.md` (a short host-kit section; the deprecated calls marked).
+  row; audit note), `README.md` (the Install and Quickstart sections over
+  `examples/quickstart.py`).
 - Tests: `tests/parity/test_parity_matrix_evidence.py`; the full offline suite; the oracle suite
   (`tests/integration` with `OPENCLAW_ORACLE_REPO=/tmp/openclaw-head` and Node 24) must report
   254 passed, 81 xfailed, 2 skipped, 0 failed, after Task 9.

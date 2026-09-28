@@ -124,6 +124,16 @@ def test_heartbeat_context_uses_run_kind_heartbeat(tmp_path):
     assert run.session == run.context.session
 
 
+def test_heartbeat_without_tool_calling_offers_no_tools(tmp_path):
+    _store(tmp_path)
+
+    run = _kit(tmp_path).heartbeat_prompt(_session(kind="main"), offer_tools=False)
+
+    assert run.context.tools == ()
+    assert run.context.memory_recall == ()
+    assert "## Memory Recall" not in run.context.system_prompt
+
+
 def test_light_context_injects_no_bootstrap_file(tmp_path):
     _store(tmp_path)
     kit = _kit(tmp_path, templates={"AGENTS.md": "# AGENTS.md\n\nBe brief.\n"})

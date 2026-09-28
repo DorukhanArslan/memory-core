@@ -35,10 +35,18 @@ from memory_core.bootstrap.files import (
 from memory_core.client import Memory
 from memory_core.config import MemoryConfig
 from memory_core.consolidation import record_short_term_recalls, undecorate_search_results
+from memory_core.current_time import DEFAULT_TIME_FORMAT, TimeFormat, resolve_time_format
 from memory_core.curation import CurationPolicy, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.host._calls import ToolCallRefused, read_tool_call, tool_error
-from memory_core.host.session import SessionState
+from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
+from memory_core.memory_flush import (
+    MemoryFlushPlan,
+    MemoryFlushTriggerDecision,
+    build_memory_flush_plan,
+    explain_memory_flush_trigger,
+    resolve_fresh_session_total_tokens,
+)
 from memory_core.prompt_section import build_prompt_section
 from memory_core.runtime_context_prompt import build_runtime_context_system_context
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
@@ -57,6 +65,9 @@ from memory_core.tools.memory_search import (
 # Session kinds that get upstream's minimal system prompt, which has no Memory Recall section
 # (src/agents/system-prompt.ts:202-225 buildMemorySection returns nothing when isMinimal).
 MINIMAL_PROMPT_KINDS = frozenset({"subagent", "cron"})
+# Upstream DEFAULT_CONTEXT_TOKENS (src/agents/defaults.ts:6): the flush window when the host
+# does not know the model's context size.
+DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000
 _RUN_KINDS = (None, "default", "heartbeat", "cron")
 _CONTEXT_MODES = ("full", "lightweight")
 
@@ -81,6 +92,19 @@ class TurnContext:
     workspace_init: WorkspaceInitResult | None
 
 
+@dataclass(frozen=True)
+class TurnRecord:
+    """A completed turn: the session with its token snapshot and the flush decision.
+
+    ``flush_plan`` is the plan for the turn's context window (the meter's terms);
+    ``flush_decision`` is ``explain_memory_flush_trigger``'s answer.
+    """
+
+    session: SessionState
+    flush_plan: MemoryFlushPlan
+    flush_decision: MemoryFlushTriggerDecision
+
+
 class HostKit:
     """The host kit for one workspace root (docs/host_kit.md, "Object model").
 
@@ -99,6 +123,7 @@ class HostKit:
         templates: Mapping[str, str] | None = None,
         seed_bootstrap: bool | None = None,
         timezone: str = "UTC",
+        time_format: TimeFormat = DEFAULT_TIME_FORMAT,
         identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
         curation_policy: CurationPolicy | None = None,
         bootstrap_max_chars: int = DEFAULT_BOOTSTRAP_MAX_CHARS,
@@ -117,6 +142,8 @@ class HostKit:
             if seed_bootstrap is not None
             else layout.bootstrap_file in (self._templates or {})
         )
+        self._timezone = timezone
+        self._time_format = resolve_time_format(time_format)
         self._identity = identity
         self._bootstrap_max_chars = bootstrap_max_chars
         self._bootstrap_total_max_chars = bootstrap_total_max_chars
@@ -265,6 +292,52 @@ class HostKit:
             workspace=workspace,
             workspace_init=workspace_init,
         )
+
+    def after_turn(
+        self,
+        session: SessionState,
+        *,
+        usage: TurnUsage | None,
+        context_window_tokens: int | None = None,
+        transcript_bytes: int | None = None,
+    ) -> TurnRecord:
+        """Record a completed turn and decide the memory flush (docs/host_kit.md, entry 4).
+
+        Upstream v2026.9.6 decides the flush after a delivered reply, in session maintenance
+        (src/auto-reply/reply/agent-runner-result-complete.ts:288, agent-runner-maintenance.ts),
+        with ``promptForEstimate: ""`` (src/agents/session-maintenance/run.ts:218-232): the token
+        count is the fresh total plus the last output (``resolveEffectivePromptTokens`` without
+        an estimate, memory-flush.ts:28-39). ``context_window_tokens`` defaults to
+        :data:`DEFAULT_CONTEXT_WINDOW_TOKENS`; without ``transcript_bytes`` the transcript-size
+        gate stays off. Heartbeat sessions never flush.
+        """
+        window = (
+            context_window_tokens
+            if context_window_tokens is not None
+            else DEFAULT_CONTEXT_WINDOW_TOKENS
+        )
+        recorded = apply_turn_usage(session, usage)
+        entry = dict(recorded.entry)
+        plan = build_memory_flush_plan(
+            workspace_dir=self._root,
+            now_ms=self._clock(),
+            timezone=self._timezone,
+            context_window_tokens=window,
+            time_format=self._time_format,
+        )
+        total = resolve_fresh_session_total_tokens(entry)
+        token_count = (
+            int(total) + (recorded.last_output_tokens or 0) if total is not None and total > 0 else None
+        )
+        decision = explain_memory_flush_trigger(
+            entry=entry,
+            plan=plan,
+            context_window_tokens=window,
+            token_count=token_count,
+            transcript_byte_size=transcript_bytes,
+            is_heartbeat=recorded.kind == "heartbeat",
+        )
+        return TurnRecord(session=recorded, flush_plan=plan, flush_decision=decision)
 
     def _workspace_context(
         self,

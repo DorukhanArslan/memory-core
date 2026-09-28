@@ -131,3 +131,29 @@ class SessionState:
             )
         except (KeyError, TypeError) as exc:
             raise ValueError(f"not a session state: {exc}") from exc
+
+
+def apply_turn_usage(session: SessionState, usage: TurnUsage | None) -> SessionState:
+    """The session after a completed turn: its token snapshot from the provider's usage.
+
+    A positive ``prompt_tokens`` becomes a fresh v1 total (upstream persists the run's prompt
+    usage as ``totalTokens`` with ``totalTokensFresh`` and ``totalTokensVersion``); without one
+    the total goes stale, so the flush gate reports ``missing_tokens``. ``completion_tokens``
+    becomes ``last_output_tokens``. No estimate is invented.
+    """
+    entry = copy.deepcopy(dict(session.entry))
+    prompt = usage.prompt_tokens if usage is not None else None
+    completion = usage.completion_tokens if usage is not None else None
+    if _is_count(prompt) and prompt > 0:
+        entry["totalTokens"] = prompt
+        entry["totalTokensFresh"] = True
+        entry["totalTokensVersion"] = SESSION_TOTAL_TOKENS_VERSION
+    else:
+        entry["totalTokensFresh"] = False
+    return replace(
+        session, entry=entry, last_output_tokens=completion if _is_count(completion) else None
+    )
+
+
+def _is_count(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0

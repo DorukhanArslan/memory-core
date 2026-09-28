@@ -2,12 +2,13 @@ import ast
 import asyncio
 import json
 import re
+import textwrap
 from pathlib import Path
 
 import examples.basic_usage as basic_usage
 import examples.live_streaming as live_streaming
 import examples.quickstart as quickstart
-from memory_core import TurnUsage
+from memory_core import HostKit, TurnUsage
 from memory_core.live import LiveIdentityStore
 
 
@@ -176,6 +177,26 @@ def test_readme_quickstart_shows_the_example():
     section = readme.split("\n## Quickstart\n", 1)[1]
 
     assert section.split("```python\n", 1)[1].split("\n```\n", 1)[0] + "\n" == code
+
+
+def test_readme_hybrid_snippet_imports_what_it_uses(tmp_path: Path, monkeypatch):
+    # The snippet replaces the quickstart's HostKit.open call, so it needs only HostKit and root.
+    import memory_core
+
+    readme = (Path(quickstart.__file__).parents[1] / "README.md").read_text(encoding="utf-8")
+    snippet = readme.split("`OpenAICompatibleEmbeddingProvider` or any other", 1)[1]
+    code = textwrap.dedent(snippet.split("```python\n", 1)[1].split("```\n", 1)[0])
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(
+        memory_core, "OpenAICompatibleEmbeddingProvider", lambda **kwargs: _FakeProvider(base_url="", **kwargs)
+    )
+    namespace = {"HostKit": HostKit, "root": tmp_path / "my-agent-app"}
+
+    exec(code, namespace)
+
+    store = namespace["kit"].memory.store
+    assert store.flags.vector_search is True
+    assert (store.embeddings.api_key, store.embeddings.model) == ("test-key", "text-embedding-3-small")
 
 
 def _python_block(doc: str) -> str:

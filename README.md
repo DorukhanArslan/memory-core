@@ -101,6 +101,10 @@ if __name__ == "__main__":
   `OpenAICompatibleEmbeddingProvider` or any other `EmbeddingProvider`:
 
   ```python
+  import os
+
+  from memory_core import OpenAICompatibleEmbeddingProvider
+
   kit = HostKit.open(
       root,
       embedding_provider=OpenAICompatibleEmbeddingProvider(

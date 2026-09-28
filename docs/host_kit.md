@@ -927,10 +927,11 @@ Review points not taken, with the reason:
 ## Open questions
 
 - Q13. The Lab runs the flush inside the chat request, after the reply has streamed and before
-  `turn_done`, so `turn_done` waits for the flush model call. Upstream runs session maintenance
-  detached after delivery. Keep it in the request (every flush event lands in its turn), or run it
-  on a background thread with its own events (closer to upstream; the next turn may then start
-  before `complete()`, which the kit's lane rule allows)?
+  `turn_done`, so `turn_done` waits for the flush model call, and a Stop before the flush run
+  abandons its request (the turn itself stays completed with its reply). Upstream runs session
+  maintenance detached after delivery. Keep it in the request (every flush event lands in its
+  turn), or run it on a background thread with its own events (closer to upstream; the next turn
+  may then start before `complete()`, which the kit's lane rule allows)?
 - Q14. After a heartbeat run the Lab calls `after_turn` only to show `runtime_skip:heartbeat`
   (observable change 3); `HeartbeatRun.complete` has already recorded the token snapshot, and
   upstream skips maintenance for heartbeats without evaluating the gate. Keep that report, or

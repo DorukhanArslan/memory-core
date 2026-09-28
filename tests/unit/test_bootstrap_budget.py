@@ -234,7 +234,7 @@ def test_truncation_warning_lines_and_notice_are_verbatim():
         "If unintentional, raise agents.defaults.bootstrapMaxChars and/or "
         "agents.defaults.bootstrapTotalMaxChars.",
     )
-    # MEMORY-CORE (default) names no OpenClaw config keys; everything else is identical.
+    # The default MEMORY_CORE_RUNTIME_IDENTITY names no OpenClaw config keys; the rest is equal.
     assert memory_core_warning.lines[:-1] == warning.lines[:-1]
     assert memory_core_warning.lines[-1] == (
         "If unintentional, raise the per-file and/or total bootstrap character limits."

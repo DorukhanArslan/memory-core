@@ -139,11 +139,11 @@ are not rendered.
 `truncation_warning_lines` end with upstream's config hint, which names OpenClaw's
 `agents.defaults.bootstrapMaxChars` and `agents.defaults.bootstrapTotalMaxChars`, when
 a limit the host can raise applied; a USER.md cut by its fixed cap gets upstream's
-"fixed 4000-character bootstrap cap" line instead. With the default MEMORY-CORE runtime
-identity the config line names the per-file and total limits; in memory-core they are
-`max_chars` / `total_max_chars` (`max_chars_per_file` / `total_max_chars` in
-`memory_core.live`). `identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY` keeps the upstream text,
-like the Workspace Files intro line.
+"fixed 4000-character bootstrap cap" line instead. With the default
+`MEMORY_CORE_RUNTIME_IDENTITY` the config line names the per-file and total limits; in
+memory-core they are `max_chars` / `total_max_chars` (`max_chars_per_file` /
+`total_max_chars` in `memory_core.live`). `identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY` keeps
+the upstream text, like the Workspace Files intro line.
 
 `build_startup_context` ports the bare `/new` / `/reset` daily-memory prelude; the
 host passes the timezone (default UTC).

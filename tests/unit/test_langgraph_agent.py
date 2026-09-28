@@ -397,6 +397,59 @@ def test_tools_are_bound_without_strict_mode(tmp_path: Path):
     assert search["function"]["parameters"]["required"] == ["query"]
 
 
+def _searching_forever(*, stop_without_tools: bool) -> Callable:
+    """A model that asks for memory_search on every call; without tools it may reply instead."""
+
+    def script(call: Call, calls: list[Call]) -> AIMessage:
+        if stop_without_tools and not call.tools:
+            return AIMessage("done searching")
+        search = {"name": "memory_search", "args": {"query": "x"}, "id": f"call-{len(calls)}"}
+        return AIMessage("", tool_calls=[search])
+
+    return script
+
+
+def _unanswered_calls(messages: list[BaseMessage]) -> list[Any]:
+    answered = {message.tool_call_id for message in messages if isinstance(message, ToolMessage)}
+    return [
+        call["id"]
+        for message in messages
+        if isinstance(message, AIMessage)
+        for call in [*message.tool_calls, *message.invalid_tool_calls]
+        if call["id"] not in answered
+    ]
+
+
+def test_tool_rounds_are_bounded_and_the_last_call_has_no_tools(tmp_path: Path):
+    # LangGraph's default recursion_limit (10,007) bounds nothing in practice (F25).
+    _, model, graph = _graph(tmp_path, _searching_forever(stop_without_tools=True))
+
+    state = _say(graph, "Search until you find it.")
+
+    rounds = example.MAX_TOOL_ROUNDS
+    assert [bool(call.tools) for call in model.calls] == [True] * rounds + [False]
+    assert [message.type for message in state["messages"]] == (
+        ["human"] + ["ai", "tool"] * rounds + ["ai"]
+    )
+    assert state["messages"][-1].content == "done searching"
+    assert state["memory_turn"] is None and state["memory_maintenance"] is not None
+
+
+def test_a_reply_that_asks_for_tools_past_the_bound_fails_the_turn(tmp_path: Path):
+    _, model, graph = _graph(tmp_path, _searching_forever(stop_without_tools=False))
+
+    with pytest.raises(RuntimeError, match=f"after {example.MAX_TOOL_ROUNDS} tool rounds"):
+        _say(graph, "Search until you find it.")
+
+    assert len(model.calls) == example.MAX_TOOL_ROUNDS + 1
+    stuck = graph.get_state(THREAD)
+    assert stuck.next == ("agent",)
+    # The failed reply is not in state, and every earlier call has its tool message.
+    assert isinstance(stuck.values["messages"][-1], ToolMessage)
+    assert _unanswered_calls(stuck.values["messages"]) == []
+    assert _session(stuck.values).entry == {"sessionId": "id-1", "compactionCount": 0}
+
+
 def _spy(monkeypatch, kit: HostKit, name: str) -> list:
     results = []
     method = getattr(kit, name)

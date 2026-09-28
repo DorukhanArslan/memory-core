@@ -109,6 +109,9 @@ START -> new_session (a human "/new" or "/reset" first word: kit.on_new_session)
   `FlushRequest.messages`, tagged `TAG_NOSTREAM` so none of it reaches a `messages` stream (F7),
   at most `MAX_FLUSH_TOOL_ROUNDS` (6) tool rounds. A failed flush model call is one strike
   (`request.complete(error=...)`); three mark the cycle flushed.
+- A turn gets at most `MAX_TOOL_ROUNDS` (6) model calls that ask for tools; the next call gets
+  no tools, as the Lab's loop does, and a reply that still asks for tools fails the turn. Set no
+  `recursion_limit` for this: LangGraph's default is 10,007 steps (F25).
 - Without compaction a session flushes once: after the flush every later turn reads
   `already_flushed` until `/new` starts the next session (F9).
 - A bare `/new` or `/reset` saves the ending session (`memory/<date>-<slug>.md`), replaces the
@@ -158,7 +161,7 @@ counts plus the skipped live test.
 ## Findings
 
 What building this host showed about the host kit's API, confirmed while implementing the
-design below (numbers kept from Design; F22-F24 are new). Evidence: **test** is a named offline
+design below (numbers kept from Design; F22-F25 are new). Evidence: **test** is a named offline
 test in `tests/unit/test_langgraph_agent.py` or `tests/unit/test_langgraph_adapter.py`,
 **probe** a scratch run on the tested versions, **source** read but not run. Verdict: the six
 entry points were enough; nothing needed a kit change to work, but a LangGraph host needs about
@@ -198,6 +201,7 @@ or a trap.
 | F19 | langchain-core allows a tool call with `id: None`, but a `ToolMessage` needs a string id | probe (design review); test: `test_tool_messages_reject_a_call_without_an_id` | `tool_messages` raises `ValueError` before dispatching anything: a provider or host error |
 | F20 | a stream consumer that stops after the reply cancels `maintain`, and a node reruns on resume, so a crash inside a flush turn repeats its appends | source (LangGraph run semantics) | drain the stream (the example does); the repeat is documented, no dedupe |
 | F23 | `memory_core/client.py` imported the LangGraph adapter at module level, so the adapter could not import `memory_core.host` (`host -> host.flush -> client -> adapters -> host` failed) | probe (design review) | fixed by the recall removal; `test_the_adapter_and_the_package_import_in_either_order` guards it |
+| F25 | LangGraph 1.x's default `recursion_limit` is 10,007 steps (`langgraph/_internal/_config.py:32`), not langchain-core's 25, so it does not bound a model that keeps asking for tools: about 5,000 model calls, each with a longer context, before `GraphRecursionError` | test: `test_tool_rounds_are_bounded_and_the_last_call_has_no_tools` (before the fix it ran into the limit after 161 s) | the example's `MAX_TOOL_ROUNDS` (6): the next call gets no tools, and a reply that still asks for tools fails the turn (`test_a_reply_that_asks_for_tools_past_the_bound_fails_the_turn`) |
 
 ### Worked unchanged
 
@@ -263,7 +267,10 @@ deviations of the example, beyond the kit's:
   Upstream schedules maintenance only after the delivery owner settles, and only for a completed,
   unaborted reply (`src/auto-reply/reply/agent-runner-maintenance.ts:69-71`, `ownerSettlement`).
 - The `/new` and `/reset` parser is a simplification of upstream's (below).
-- `MAX_FLUSH_TOOL_ROUNDS` bounds the flush turn's tool loop (host policy).
+- `MAX_TOOL_ROUNDS` bounds a turn's tool loop and `MAX_FLUSH_TOOL_ROUNDS` the flush turn's
+  (host policy, like the Lab's `MAX_TOOL_ROUNDS`, `demo/lab_tools.py:37`; upstream bounds no
+  round count, and its rolling `tools.loopDetection` is off unless enabled,
+  `src/config/schema.help.runtime.ts:430-431`).
 
 The example opens its workspace FTS-only (`FeatureFlags(vector_search=False)`), as
 `examples/quickstart.py` does; nothing in it is scripted or fake. The scripted chat model exists
@@ -402,8 +409,8 @@ def run_flush(request: FlushRequest, session: SessionState) -> FlushOutcome:
   flush turn's tokens reach the host's stream (F7).
 - `MAX_FLUSH_TOOL_ROUNDS` bounds the flush turn's tool loop (host policy, like the Lab's
   `MAX_TOOL_ROUNDS = 6`, `demo/lab_tools.py:37`); a flush turn that stops at the bound completes
-  as a success with what it appended. The agent's own tool loop is bounded by LangGraph's
-  `recursion_limit` (host config).
+  as a success with what it appended. The agent's own tool loop is bounded by
+  `MAX_TOOL_ROUNDS` (Error handling), not by LangGraph's `recursion_limit` (F25).
 - `session` is `record.session`: maintenance runs inside the turn's run, so it is the current
   state. `complete` stamps the compaction cycle, so the next due turn reads `already_flushed`
   until `/new` (docs/host_kit.md › Turn lifecycle, known gap; F9).
@@ -467,7 +474,7 @@ def run_flush(request: FlushRequest, session: SessionState) -> FlushOutcome:
 | --- | --- | --- |
 | `before_turn` raises (`WorkspaceStateMigrationRequiredError`, `OSError`, `ValueError`) | `prepare` | the run raises; `memory_session` unchanged |
 | the model call raises | `agent` | the run raises; nothing is recorded (the kit's failed-turn rule) |
-| too many tool rounds | graph | `GraphRecursionError` at the host's `recursion_limit`: a failed turn |
+| `MAX_TOOL_ROUNDS` (6) model calls with tool calls in one turn | `agent` | the next model call gets no tools; a reply that still asks for tools raises `RuntimeError` and is not stored, so every call in `messages` keeps its tool message: a failed turn (F25) |
 | a tool call the model got wrong (bad params, invalid JSON, unknown tool, refused write) | `tools` | the kit's error payload as a tool message with `status="error"`; never raises |
 | a tool call without a string id (valid or invalid) | `tools` | `tool_messages` raises `ValueError`: a provider or host error (a `ToolMessage` needs the id, and langchain-openai would send the id-less call back; F19) |
 | `after_turn` raises (`OSError`) | `maintain` | the run raises after the reply is in `messages`; `memory_session` keeps the previous snapshot |
@@ -748,9 +755,10 @@ scripted model: `test_langgraph_doc_usage_runs_the_graph` (the Usage code block 
 scripted model in place of `ChatOpenAI`) and `test_langgraph_doc_lists_the_adapter_exports`.
 
 As built, beyond the plan: `test_a_command_that_is_not_first_word_is_an_ordinary_message`,
-`test_redact_maps_a_flush_target_failure` and
+`test_redact_maps_a_flush_target_failure`,
 `test_example_main_chats_against_an_openai_compatible_endpoint` (the whole `main` loop against
-the local stub). The live test's code was dry-run once against a scripted local endpoint in a
+the local stub), and after review `test_tool_rounds_are_bounded_and_the_last_call_has_no_tools`
+and `test_a_reply_that_asks_for_tools_past_the_bound_fails_the_turn` (F25). The live test's code was dry-run once against a scripted local endpoint in a
 scratch directory; it has not run against a real model on this branch.
 
 ### TDD tasks

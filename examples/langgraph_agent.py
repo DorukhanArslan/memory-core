@@ -60,6 +60,10 @@ from memory_core.host import DEFAULT_CONTEXT_WINDOW_TOKENS
 from memory_core.memory_flush import MemoryFlushFailureOutcome
 from memory_core.project_name import DIST_NAME
 
+# A turn's model calls with tool calls (host policy, like the Lab's MAX_TOOL_ROUNDS): the next
+# call gets no tools, and a reply that still asks for tools fails the turn. LangGraph's default
+# recursion_limit (10,007 steps) bounds nothing in practice.
+MAX_TOOL_ROUNDS = 6
 # The flush turn's tool rounds (host policy, like the Lab's tool loop); a flush turn that
 # reaches the bound completes with what it appended.
 MAX_FLUSH_TOOL_ROUNDS = 6
@@ -126,6 +130,16 @@ def model_input(turn: PendingTurn, messages: Sequence[Any]) -> list[Any]:
         body.insert(users[-1] if users else len(body), runtime)
     system = [{"role": "system", "content": turn.system_prompt}] if turn.system_prompt else []
     return system + body
+
+
+def tool_rounds(messages: Sequence[Any]) -> int:
+    """The current turn's AI messages with tool calls: those after its last human message."""
+    rounds = 0
+    for message in reversed(messages):
+        if message.type == "human":
+            break
+        rounds += message.type == "ai" and has_tool_calls(message)
+    return rounds
 
 
 def build_graph(
@@ -213,8 +227,12 @@ def build_graph(
 
     def agent(state: AgentState) -> dict[str, Any]:
         turn = PendingTurn.from_json(state["memory_turn"])
-        bound = model.bind_tools(list(turn.tools)) if turn.tools else model
-        return {"messages": [bound.invoke(model_input(turn, state["messages"]))]}
+        capped = tool_rounds(state["messages"]) >= MAX_TOOL_ROUNDS
+        bound = model.bind_tools(list(turn.tools)) if turn.tools and not capped else model
+        reply = bound.invoke(model_input(turn, state["messages"]))
+        if capped and has_tool_calls(reply):  # not stored: every call in state stays answered
+            raise RuntimeError(f"the model asked for tools after {MAX_TOOL_ROUNDS} tool rounds")
+        return {"messages": [reply]}
 
     def tools(state: AgentState) -> dict[str, Any]:
         turn = PendingTurn.from_json(state["memory_turn"])

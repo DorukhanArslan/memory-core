@@ -704,7 +704,9 @@ def test_daily_note_refuses_symlinks_and_hard_links(tmp_path):
     root.mkdir()
     (root / "memory").symlink_to(outside, target_is_directory=True)
     curator = _curator(root, now_ms=lambda: 1790375400000)
-    with pytest.raises(CurationError, match="memory/ is a symlink"):
+    with pytest.raises(
+        CurationError, match=r"^memory/ is a symlink; memory writes never follow symlinks$"
+    ):
         curator.append_daily_note("alpha")
     (root / "memory").unlink()
 
@@ -712,7 +714,10 @@ def test_daily_note_refuses_symlinks_and_hard_links(tmp_path):
     target = outside / "notes.md"
     target.write_text("", encoding="utf-8")
     (root / "memory" / "2026-09-25.md").symlink_to(target)
-    with pytest.raises(CurationError, match="symlink"):
+    with pytest.raises(
+        CurationError,
+        match=r"^memory/2026-09-25\.md is a symlink; memory writes never follow symlinks$",
+    ):
         curator.append_daily_note("alpha")
     (root / "memory" / "2026-09-25.md").unlink()
 

@@ -1010,7 +1010,11 @@ follows Task 9.
   `test_flush_complete_marks_the_cycle_flushed` (on the host's current state),
   `test_flush_complete_rejects_another_session`,
   `test_flush_failures_strike_three_times_and_redact`, `test_flush_complete_twice_raises`.
-- Done: tests pass; the curated daily note keeps its existing tests green on the shared append;
+- Done: tests pass; the curated daily note keeps its existing tests green on the shared append,
+  whose checks (`check_writable_memory_file`) now word its model-facing symlink refusals:
+  `memory/ is a symlink; memory writes never follow symlinks` (was `... curated writes never
+  follow symlinks`) and `memory/<date>.md is a symlink; memory writes never follow symlinks` (was
+  `memory path is a symlink: memory/<date>.md`), pinned in `tests/unit/test_curation.py`;
   then `tests/integration/test_extracted_upstream_constants.py` runs with
   `OPENCLAW_ORACLE_REPO=/tmp/openclaw-head` (a source comparison, no Node run) and passes.
 

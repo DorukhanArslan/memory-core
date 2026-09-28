@@ -501,7 +501,8 @@ flush run needs.
   - a path starting with `@`, or one that does not resolve to the target (relative to the root, or
     absolute), returns upstream's `Memory flush writes are restricted to <target>; use that path
     only.` (`agent-tools.read.ts:787-790`); an absolute path that resolves to the target is accepted;
-  - empty or `NO_REPLY` content writes nothing and returns
+  - empty content, and content whose stripped text starts with `NO_REPLY` (a prefix, as in
+    `MemoryCurator.append_daily_note`, which shares the append), writes nothing and returns
     `{"status": "ok", "tool": "write", "path": target, "action": "skipped"}` (memory-core's write rule);
   - otherwise the content is appended through the shared locked daily append (the path
     `MemoryCurator.append_daily_note` uses, so both refuse the same symlinks and hard links), the
@@ -829,7 +830,8 @@ Labelled deviations of the flush run (entry point 4):
   `append_daily_memory` inserts the separator whenever a non-empty file lacks a trailing newline
   (also before content that starts with one), strips the content's trailing newlines and always
   ends the entry with `\n`.
-- Empty and `NO_REPLY` content writes nothing (memory-core's write rule; upstream appends it).
+- Empty content and content starting with `NO_REPLY` write nothing (memory-core's write rule, a
+  prefix match; upstream appends it).
 - The missing-parameter messages are memory-core's.
 - Messages carry the rows' text only, and no host system prompt.
 - The target file and the write refuse symlinks and hard links (stricter than upstream).

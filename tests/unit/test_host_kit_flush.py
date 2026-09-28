@@ -226,7 +226,8 @@ def test_flush_write_elsewhere_returns_the_upstream_restriction(tmp_path):
 def test_flush_write_skips_empty_and_no_reply_content(tmp_path):
     flush = _due(_kit(tmp_path)).flush
 
-    for content in ("", "  \n", "NO_REPLY", "  NO_REPLY nothing to keep"):
+    # A prefix match, the curated daily note's rule.
+    for content in ("", "  \n", "NO_REPLY", "  NO_REPLY nothing to keep", "NO_REPLY_FACTS: tea"):
         assert flush.dispatch("write", {"path": TARGET, "content": content}) == {
             "status": "ok",
             "tool": "write",

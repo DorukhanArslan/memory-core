@@ -37,8 +37,9 @@ spells no project name.
 Upstream names. OpenClaw's memory component is itself called memory-core. A rename never
 touches the spellings PROTECTED matches (its paths and package, the plugin config key, the
 identifiers and prose that name the upstream component), so the project's own occurrences stay
-distinguishable from them, and a rename *to* a name refuses while that name is spelled anywhere
-else in the tree.
+distinguishable from them. A rename *to* a name refuses while that name is spelled anywhere
+else in the tree, and while it would turn the project's own text into a protected spelling
+(which no later rename could change back).
 """
 
 from __future__ import annotations
@@ -56,6 +57,7 @@ import subprocess
 import sys
 import tokenize
 import tomllib
+from collections import Counter
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -218,6 +220,20 @@ def declared_name(root: Path) -> tuple[ProjectName | None, list[str]]:
 
 def protected_spans(text: str) -> list[tuple[int, int]]:
     return [match.span() for match in _PROTECTED_RE.finditer(text)]
+
+
+def added_protected(before: str, after: str) -> list[str]:
+    """``line: spelling`` for each protected upstream spelling that ``after`` holds and
+    ``before`` lacks. A rewrite keeps the lines (no spelling spans a line break), so a line
+    number names the same line in both."""
+
+    def by_line(text: str) -> Counter[tuple[int, str]]:
+        return Counter(
+            (text.count("\n", 0, match.start()) + 1, " ".join(match.group().split()))
+            for match in _PROTECTED_RE.finditer(text)
+        )
+
+    return [f"{line}: {spelling}" for line, spelling in sorted(by_line(after) - by_line(before))]
 
 
 def stands_as_word(text: str, start: int, end: int) -> bool:
@@ -472,6 +488,7 @@ def rename(root: Path, new: ProjectName) -> None:
         )
     constant_module = f"{old.package}/{CONSTANT_MODULE}"
     uv = shutil.which("uv")
+    updates = {}
     for path, text in texts.items():
         if path == LOCKFILE:
             updated = text if uv else rewrite_lockfile(text, old, new)
@@ -483,7 +500,19 @@ def rename(root: Path, new: ProjectName) -> None:
                 updated = rewrite_constant_module(text, new)
             updated = rewrite_text(updated, old, new, python=path.endswith(".py"))
         if updated != text:
-            (root / path).write_bytes(updated.encode("utf-8"))
+            updates[path] = updated
+    frozen = [
+        f"{path}:{spot}"
+        for path, updated in updates.items()
+        for spot in added_protected(texts[path], updated)
+    ]
+    if frozen:
+        raise SystemExit(
+            "the rename would write spellings that PROTECTED keeps for upstream, which no later"
+            " rename could change; reword them first:\n" + "\n".join(frozen[:20])
+        )
+    for path, updated in updates.items():
+        (root / path).write_bytes(updated.encode("utf-8"))
     move_paths(root, old, new)
     relock = [uv, "lock", "--offline", "--quiet"] if uv else None
     if relock and subprocess.run(relock, cwd=root, check=False).returncode:

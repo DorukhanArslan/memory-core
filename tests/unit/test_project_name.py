@@ -290,3 +290,22 @@ def test_a_rename_refuses_uncommitted_changes_and_untracked_files(tmp_path):
     assert result.returncode == 1
     assert sorted(result.stderr.splitlines()[1:]) == ["README.md", f"{name.package}/untracked.py"]
     assert (tree / name.package / "untracked.py").is_file()
+
+
+def test_a_rename_that_would_write_an_upstream_spelling_is_refused(tmp_path):
+    tree = _copy_tracked_tree(tmp_path)
+    assert _run(tree, "--to", "probe-a", "--display", "Probe A").returncode == 0
+    _commit(tree)
+    with (tree / "docs" / "feature_flags.md").open("a", encoding="utf-8") as handle:
+        handle.write("\nOpenClaw probe-a sits here.\n")
+    _commit(tree)
+    lines = (tree / "docs" / "feature_flags.md").read_text(encoding="utf-8").count("\n")
+
+    result = _run(tree, "--to", UPSTREAM_COMPONENT)
+
+    assert result.returncode == 1
+    assert result.stderr.splitlines()[1:] == [
+        f"docs/feature_flags.md:{lines}: OpenClaw {UPSTREAM_COMPONENT}"
+    ]
+    status = ["git", "status", "--porcelain", "--untracked-files=all"]
+    assert subprocess.run(status, cwd=tree, capture_output=True, check=True).stdout == b""

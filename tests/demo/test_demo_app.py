@@ -1300,6 +1300,46 @@ def test_failed_flush_reports_the_cause_chain_redacted(client, lab, monkeypatch)
     assert "flush.failed" in event_types(client)
 
 
+def symlink_memory_dir(lab, tmp_path):
+    """Point the Lab's memory/ at a directory outside the workspace; returns that directory."""
+    import shutil
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    if (lab.root / "memory").exists():
+        shutil.rmtree(lab.root / "memory")
+    (lab.root / "memory").symlink_to(outside, target_is_directory=True)
+    return outside
+
+
+def test_due_flush_with_an_unsafe_target_records_a_strike(client, lab, monkeypatch, tmp_path):
+    lab.settings.context_window_tokens = 5_333
+    engine = use_engine(monkeypatch, StubEngine(
+        [("Bir.", [])], usage={"promptTokens": 5_000, "completionTokens": 10, "totalTokens": 5_010},
+    ))
+    client.get("/api/lab/state")
+    outside = symlink_memory_dir(lab, tmp_path)
+
+    frames = send(client, "bir")
+
+    detail = frames_of(frames, "turn_done")[0]["detail"]
+    assert "error" not in detail and detail["assistant"] == "Bir."
+    stages = {stage["name"]: stage for stage in detail["stages"]}
+    assert detail["flush"]["decision"]["reason"] == "token_threshold"
+    assert stages["flush"]["status"] == "fail" and "symlink" in stages["flush"]["detail"]
+    run = detail["flush"]["run"]
+    assert run["wrote"] is False and run["target"] == f"memory/{lab.today()}.md"
+    assert run["error"]["failureCount"] == 1 and run["error"]["exhausted"] is False
+    assert run["error"]["message"] == stages["flush"]["detail"] and run["error"]["redacted"] is True
+    assert {"type": "flush_skip", "label": "flush: token_threshold", "source": "flush"} in detail["chips"]
+    assert len(engine.calls) == 1  # no flush turn
+    assert list(outside.iterdir()) == []
+    events = parse_sse(client.get("/api/lab/events", params={"once": "true"}).text)
+    failed = [frame["data"]["data"] for frame in events if frame["data"]["type"] == "flush.failed"]
+    assert [item["failureCount"] for item in failed] == [1]
+    assert client.get("/api/lab/state").json()["flush"]["memoryFlush"] == {"kind": "failed", "failureCount": 1}
+
+
 def test_manual_flush_needs_a_model(client):
     response = client.post("/api/chat/flush", json={"forced": True})
 

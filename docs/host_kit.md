@@ -887,6 +887,9 @@ packaging, `__all__` shrinking and the quickstart (next stage).
   same cycle and both runs append. A kit-level guard would be a pending marker in `SessionState`,
   plus a way to clear it for an abandoned run and after a crash (a stored marker would otherwise
   block the cycle). Keep the documented lane rule (implemented), or add the marker?
+- Q12. The flush write skips content that starts with `NO_REPLY` (a prefix, shared with the
+  curated daily note), so `NO_REPLY_FACTS: ...` writes nothing; upstream's `write` appends
+  verbatim. Keep the shared prefix rule (implemented), or skip only the exact token in both?
 
 Review points not taken, with the reason:
 

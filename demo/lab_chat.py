@@ -41,6 +41,7 @@ from demo.lab_runtime import (
     LabError,
     LabRuntime,
     LabSession,
+    redact_payload,
     safe_exception_message,
     summarize_turn,
 )
@@ -152,8 +153,13 @@ def _transcript_window(session: LabSession, user: str) -> tuple[list[ChatMessage
     return sent, [*omitted, *budget_omitted]
 
 
-def auto_recall(lab: LabRuntime, config, store, query: str, *, turn_id: int) -> dict[str, Any]:
-    """Demo-only auto-recall: search the user message, keep MEMORY.md and today/yesterday."""
+def auto_recall(
+    lab: LabRuntime, config, store, query: str, *, turn_id: int, secrets: tuple[str, ...] = ()
+) -> dict[str, Any]:
+    """Demo-only auto-recall: search the user message, keep MEMORY.md and today/yesterday.
+
+    The per-corpus outcome fields leave the server with the keys redacted (a provider error can
+    carry one), like the search playground's payload."""
     recalled: list[dict[str, Any]] = []
     # on_recall gets the memory-corpus hits of a search that was ok or partial (tools.ts:477-508).
     result = memory_search(
@@ -187,13 +193,31 @@ def auto_recall(lab: LabRuntime, config, store, query: str, *, turn_id: int) -> 
         "lines": lines,
         "unavailable": bool(result.get("unavailable")),
         # corpus="all" reports a memory outage or a keyword-only partial per corpus (v2026.9.6).
-        "corpora": result.get("corpora"),
-        "partial": bool(result.get("partial")),
-        "error": result.get("error"),
-        "warning": result.get("warning"),
-        "action": result.get("action"),
+        **redact_payload(
+            {
+                "corpora": result.get("corpora"),
+                "partial": bool(result.get("partial")),
+                "error": result.get("error"),
+                "warning": result.get("warning"),
+                "action": result.get("action"),
+            },
+            secrets,
+        ),
         "label": "demo-only",
     }
+
+
+def recall_event_summary(recall: dict[str, Any]) -> str:
+    """The recall.completed summary; a failed or partial corpus is named after the hit counts."""
+    summary = f"recall {len(recall['used'])} / {len(recall['results'])} isabet"
+    failed = [
+        f"{item.get('corpus')} {item.get('outcome')}"
+        for item in recall.get("corpora") or []
+        if item.get("outcome") in ("unavailable", "partial")
+    ]
+    if recall.get("unavailable"):
+        failed.insert(0, "unavailable")
+    return f"{summary} · {', '.join(failed)}" if failed else summary
 
 
 def assemble_messages(
@@ -338,13 +362,15 @@ def _run_turn(
             recall = None
         else:
             yield turn.start("recall")
-            recall = auto_recall(lab, config, store, user_content, turn_id=turn.id)
+            recall = auto_recall(lab, config, store, user_content, turn_id=turn.id, secrets=secrets)
             detail["recall"] = recall
             lab.bus.emit(
                 "recall.completed",
-                summary=f"recall {len(recall['used'])} / {len(recall['results'])} isabet",
+                summary=recall_event_summary(recall),
                 data={"query": user_content, "used": recall["used"], "hits": len(recall["results"]),
-                      "filtered": recall["filtered"], "unavailable": recall["unavailable"]},
+                      "filtered": recall["filtered"], "unavailable": recall["unavailable"],
+                      "corpora": recall["corpora"], "partial": recall["partial"],
+                      "warning": recall["warning"]},
                 turn_id=turn.id,
             )
             yield sse_frame({"turnId": turn.id, **recall}, event="recall")

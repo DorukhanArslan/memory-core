@@ -94,8 +94,16 @@ export function memoryTab(turn) {
   else if (!rc) wrap.append(h('div', { class: 'muted pad' }, turn.reset ? t('memory.resetNoRecall') : t('memory.noRecall')));
   else {
     wrap.append(h('div', { class: 'query-line' }, icon('search', 12), h('span', { class: 'mono' }, rc.query || '—')));
+    // corpus="all" (D8): a memory outage or a keyword-only partial is a corpus outcome with a
+    // warning, not an empty recall; shown like the playground's (v2026.9.6 per-corpus results).
+    const outcomes = readOutcomeChips(rc, { all: true });
+    if (rc.unavailable) outcomes.unshift(chip({ label: 'unavailable', tone: 'danger', ic: 'alert-octagon', cls: 'chip-xs', title: rc.error || null }));
+    if (outcomes.length) wrap.append(h('div', { class: 'chip-wrap', 'data-testid': 'recall-outcomes' }, ...outcomes));
+    if (rc.warning) wrap.append(h('div', { class: 'error-msg', 'data-testid': 'recall-warning' }, h('b', null, 'warning: '), rc.warning));
+    if (rc.action) wrap.append(h('div', { class: 'error-msg' }, h('b', null, 'action: '), rc.action));
     const results = rc.results || [];
-    if (!results.length) wrap.append(h('div', { class: 'muted pad' }, t('memory.recallZero')));
+    const failed = rc.unavailable || (rc.corpora || []).some((c) => c?.outcome === 'unavailable');
+    if (!results.length && !failed) wrap.append(h('div', { class: 'muted pad' }, t('memory.recallZero')));
     const usedSet = new Set(rc.used || []);
     const filteredBy = new Map((rc.filtered || []).map((x) => [x.path, x.reason]));
     results.forEach((r, i) => wrap.append(resultRow(r, i + 1, { terms: wordTokens(rc.query), used: usedSet.has(r.path) || usedSet.has(r.citation), filtered: filteredBy.get(r.path) || null, compact: true })));

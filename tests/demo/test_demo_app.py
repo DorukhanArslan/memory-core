@@ -2261,6 +2261,54 @@ def test_corpus_all_keeps_the_other_corpus_and_reports_the_memory_outage(client,
     assert "search.corpus_unavailable" in event_types(client, mark)
 
 
+def test_auto_recall_reports_a_memory_outage_per_corpus_in_the_turn_and_its_event(
+    client, lab, embeddings, monkeypatch
+):
+    # The demo auto-recall searches corpus="all" (D8), so a memory outage is the memory corpus's
+    # outcome with a warning, not `unavailable` (tools.ts:436-550); the turn detail, the
+    # recall.completed event and the inspector's "This turn" block show it, keys redacted.
+    seed_notes(client, lab)
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL", "https://embeddings.example/v1")
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY", "embedding-env-key-value")
+
+    def failing_query(self, text):
+        raise RuntimeError("connection refused embedding-env-key-value")
+
+    monkeypatch.setattr(embeddings, "embed_query", failing_query)
+    use_engine(monkeypatch, StubEngine([("tamam", [])]))
+    mark = client.get("/api/lab/state").json()["lastEventId"]
+
+    frames = send(client, "Perşembe toplantısı ne zaman?")
+
+    detail = frames_of(frames, "turn_done")[0]["detail"]
+    recall = detail["recall"]
+    corpora = [
+        {"corpus": "memory", "outcome": "unavailable", "error": "connection refused [redacted]"},
+        {"corpus": "wiki", "outcome": "not-registered"},
+    ]
+    assert recall["unavailable"] is False and recall["results"] == []
+    assert recall["corpora"] == corpora
+    assert recall["partial"] is False
+    assert recall["warning"] == "Memory corpus unavailable: connection refused [redacted]"
+    assert frames_of(frames, "recall")[0]["corpora"] == corpora
+    events = parse_sse(
+        client.get("/api/lab/events", params={"once": "true"}, headers={"Last-Event-ID": str(mark)}).text
+    )
+    completed = [frame["data"] for frame in events if frame["data"]["type"] == "recall.completed"]
+    assert len(completed) == 1
+    assert completed[0]["data"]["corpora"] == corpora
+    assert completed[0]["data"]["partial"] is False
+    assert completed[0]["data"]["warning"] == recall["warning"]
+    assert completed[0]["summary"] == "recall 0 / 0 isabet · memory unavailable"
+    assert "embedding-env-key-value" not in json.dumps(frames)
+    assert "embedding-env-key-value" not in json.dumps(completed)
+    lab_root = Path(demo_app.__file__).resolve().parent / "static" / "lab"
+    memory_js = (lab_root / "inspector" / "memory.js").read_text(encoding="utf-8")
+    assert "readOutcomeChips(rc, { all: true })" in memory_js
+    assert "'data-testid': 'recall-outcomes'" in memory_js
+    assert "'data-testid': 'recall-warning'" in memory_js
+
+
 def test_a_deadline_after_the_keyword_leg_shows_a_partial_search(client, lab, embeddings, monkeypatch):
     import threading
 

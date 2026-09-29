@@ -56,7 +56,6 @@ from memory_core.adapters.langgraph import (
     transcript_rows,
     turn_usage,
 )
-from memory_core.host import DEFAULT_CONTEXT_WINDOW_TOKENS
 from memory_core.memory_flush import MemoryFlushFailureOutcome
 from memory_core.project_name import DIST_NAME
 
@@ -167,8 +166,8 @@ def build_graph(
     kit: HostKit,
     model: BaseChatModel,
     *,
+    context_window_tokens: int,
     checkpointer: BaseCheckpointSaver | None = None,
-    context_window_tokens: int | None = None,
     session_key: Callable[[str], str] | None = None,
     new_id: Callable[[], str] | None = None,
     redact: Callable[[str], str] | None = None,
@@ -176,22 +175,16 @@ def build_graph(
 ) -> CompiledStateGraph:
     """The agent graph for one workspace kit and one chat model.
 
-    ``checkpointer`` keeps each thread's state (default: an in-process ``InMemorySaver``);
-    every run needs ``config={"configurable": {"thread_id": ...}}``. ``context_window_tokens``
-    is the model's window for the flush gate. ``None`` takes the kit's 200,000-token default,
-    which puts a smaller model's flush threshold above its window, so its flush never runs;
-    only ``main`` refuses that default, so pass the model's window.
+    ``context_window_tokens`` is the model's window for the flush gate, with no default: the
+    kit's 200,000-token default puts a smaller model's flush threshold above its window, so its
+    flush would never run. ``checkpointer`` keeps each thread's state (default: an in-process
+    ``InMemorySaver``); every run needs ``config={"configurable": {"thread_id": ...}}``.
     ``session_key`` maps the thread id to the session key (default: the thread id itself);
     ``new_id`` makes session and message ids. ``redact`` maps a failed flush's error text
     before it is stored; ``redactor`` maps each line ``/new`` saves from the ending session.
     """
     key_of = session_key or (lambda thread_id: thread_id)
     make_id = new_id or (lambda: str(uuid.uuid4()))
-    window = (
-        context_window_tokens
-        if context_window_tokens is not None
-        else DEFAULT_CONTEXT_WINDOW_TOKENS
-    )
 
     def current_session(state: AgentState, config: RunnableConfig) -> tuple[SessionState, bool]:
         data = state.get("memory_session")
@@ -289,7 +282,7 @@ def build_graph(
             turn.session,
             transcript=transcript_rows(messages),
             usage=turn_usage(messages[-1]),
-            context_window_tokens=window,
+            context_window_tokens=context_window_tokens,
         )
         decision = record.flush_decision
         session, failure, wrote = record.session, record.flush_failure, ()
@@ -310,7 +303,7 @@ def build_graph(
                 "flush": decision.reason,
                 "tokenCount": decision.total_tokens,
                 "threshold": decision.threshold,
-                "window": window,
+                "window": context_window_tokens,
                 "target": record.flush_plan.relative_path if decision.should_flush else None,
                 "wrote": list(wrote),
                 "failure": None

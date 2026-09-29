@@ -158,6 +158,13 @@ def _flush_calls(model: ScriptedChatModel) -> list[Call]:
     return [call for call in model.calls if call.is_flush]
 
 
+def test_build_graph_requires_the_model_context_window(tmp_path: Path):
+    # The kit's 200,000-token default would put a smaller model's flush threshold above its
+    # window, so its flush would never run (F12, L11): the graph takes no default.
+    with pytest.raises(TypeError, match="context_window_tokens"):
+        example.build_graph(_kit(tmp_path), ScriptedChatModel(script=lambda _messages: None))
+
+
 def test_turn_offers_the_kit_tools_and_answers_memory_search(tmp_path: Path):
     kit, model, graph = _graph(tmp_path, memory_script(usage=1_000))
 

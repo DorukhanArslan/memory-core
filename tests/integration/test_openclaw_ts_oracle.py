@@ -22,6 +22,7 @@ from memory_core.memory_flush import (
 )
 from memory_core.history import get_history_limit_from_session_key, limit_history_turns
 from memory_core.replay_repair import repair_tool_use_result_pairing, sanitize_tool_call_inputs
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.runtime_context_prompt import (
     OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     build_current_inbound_prompt,
@@ -2421,6 +2422,19 @@ MEMORY_SEARCH_UNAVAILABLE_CASES = [
     {"error": "quota exceeded and missing node:sqlite"},
     {"error": "index metadata is missing", "warning": "custom warning", "action": "custom action"},
     {"error": None, "warning": "only a warning"},
+    # d46f9ebf2b2 (#147702): the deadline flag, the agent id and the error code.
+    {"error": "memory_search timed out after 30s", "deadline": True, "agentId": "main"},
+    {"error": "memory_search timed out after 30s", "deadline": True},
+    {"error": "memory_search timed out after 30s", "deadline": True, "agentId": ""},
+    {"error": "memory_search timed out after 30s"},
+    {"error": "memory_search timed out after 30s", "deadline": False, "agentId": "main"},
+    {"error": "HTTP 429 quota", "deadline": True, "agentId": "main"},
+    {"error": "no such built-in module: node:sqlite", "deadline": True},
+    {"error": "catalog", "code": "SESSION_CANONICAL_KEY_MIGRATION_REQUIRED"},
+    {"error": "quota", "code": "SESSION_CANONICAL_KEY_MIGRATION_REQUIRED", "deadline": True},
+    {"error": "catalog", "code": "SESSION_CANONICAL_KEY_MIGRATION_REQUIRED", "action": "custom"},
+    {"error": "boom", "code": "EACCES"},
+    {"error": "late", "deadline": True, "agentId": "ops", "warning": "custom warning"},
 ]
 
 
@@ -2430,29 +2444,29 @@ def test_real_openclaw_oracle_memory_search_unavailable_result_matches_python():
     result = oracle.run(
         {"operation": "memorySearchUnavailableResult", "unavailableCases": MEMORY_SEARCH_UNAVAILABLE_CASES}
     )
-    compat = [
-        build_memory_search_unavailable_result(
+    def python(case: dict, identity: RuntimeIdentity) -> dict:
+        return build_memory_search_unavailable_result(
             case["error"],
             warning=case.get("warning"),
             action=case.get("action"),
-            runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+            agent_id=case.get("agentId"),
+            deadline=case.get("deadline") is True,
+            code=case.get("code"),
+            runtime_identity=identity,
         )
-        for case in MEMORY_SEARCH_UNAVAILABLE_CASES
-    ]
-    default = [
-        build_memory_search_unavailable_result(
-            case["error"], warning=case.get("warning"), action=case.get("action")
-        )
-        for case in MEMORY_SEARCH_UNAVAILABLE_CASES
-    ]
+
+    compat = [python(case, OPENCLAW_COMPAT_RUNTIME_IDENTITY) for case in MEMORY_SEARCH_UNAVAILABLE_CASES]
+    default = [python(case, MEMORY_CORE_RUNTIME_IDENTITY) for case in MEMORY_SEARCH_UNAVAILABLE_CASES]
 
     assert result["ok"] is True
     assert result["operation"] == "memorySearchUnavailableResult"
     assert result["result"] == compat
-    # The default identity only renames the runtime in the SQLite guidance.
+    # The default identity renames the runtime in the SQLite guidance, the deadline action with
+    # an agent and the canonical-key action (decision D4); everything else is equal.
     differing = [index for index, item in enumerate(default) if item != compat[index]]
-    assert differing == [7, 8, 9]
+    assert differing == [7, 8, 9, 13, 19, 20, 21, 24]
     assert "OpenClaw" not in json.dumps(default)
+    assert "openclaw" not in json.dumps(default)
 
 
 class _ScriptedEmbeddingProvider(OpenClawFakeEmbeddingProvider):

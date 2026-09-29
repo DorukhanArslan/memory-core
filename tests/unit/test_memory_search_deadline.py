@@ -131,6 +131,77 @@ def test_unavailable_result_overrides_win():
     assert result["debug"] == {"warning": "W", "action": "A", "error": "quota"}
 
 
+def test_a_deadline_flag_adds_timed_out_and_the_deadline_guidance():
+    # tools.shared.ts:108-140 (d46f9ebf2b2 #147702): the flag, never the text, marks the
+    # tool's own deadline; with an agent the action names the agent's index.
+    compat = build_memory_search_unavailable_result(
+        "memory_search timed out after 30s",
+        agent_id="main",
+        deadline=True,
+        runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+    )
+    assert list(compat) == [
+        "results", "disabled", "unavailable", "timedOut", "timeoutMs", "error", "warning",
+        "action", "debug",
+    ]
+    assert (compat["timedOut"], compat["timeoutMs"]) == (True, 30_000)
+    assert compat["warning"] == "Memory search did not finish within its time limit."
+    assert compat["action"] == (
+        "Retry memory_search after a short wait: a memory-corpus timeout pauses retries for up "
+        "to a minute. If memory-corpus timeouts persist, run: openclaw memory status --deep "
+        "--agent main, and rebuild with openclaw memory index --force --agent main only if it "
+        "reports the index dirty or incomplete"
+    )
+    default = build_memory_search_unavailable_result(
+        "memory_search timed out after 30s", agent_id="main", deadline=True
+    )
+    assert default["action"] == MEMORY_CORE_RUNTIME_IDENTITY.memory_search_deadline_agent_action.format(
+        agent_id="main"
+    )
+    assert "openclaw" not in default["action"].lower()
+    # No agent (or a blank one): the agent-free action, the same under both identities.
+    for agent_id in (None, ""):
+        result = build_memory_search_unavailable_result("x", agent_id=agent_id, deadline=True)
+        assert result["action"] == (
+            "Retry memory_search after a short wait. If memory-corpus timeouts persist, inspect "
+            "this agent's memory index before rebuilding it."
+        )
+    # The same words without the flag are a provider error.
+    text_only = build_memory_search_unavailable_result("memory_search timed out after 30s")
+    assert "timedOut" not in text_only
+    assert text_only["warning"] == "Memory search is unavailable due to an embedding/provider error."
+    # Quota and SQLite reasons keep their guidance; the flag still adds timedOut.
+    quota = build_memory_search_unavailable_result("insufficient_quota", deadline=True)
+    assert quota["timedOut"] is True
+    assert quota["action"] == "Top up or switch embedding provider, then retry memory_search."
+
+
+def test_the_canonical_key_code_wins_over_every_reason():
+    compat = build_memory_search_unavailable_result(
+        "quota",
+        code="SESSION_CANONICAL_KEY_MIGRATION_REQUIRED",
+        runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+    )
+    assert compat["warning"] == (
+        "Memory search is unavailable because the session catalog requires canonical-key "
+        "migration."
+    )
+    assert compat["action"] == (
+        "Stop the Gateway and run openclaw doctor --fix, then restart the Gateway and retry "
+        "memory_search."
+    )
+    default = build_memory_search_unavailable_result(
+        "quota", code="SESSION_CANONICAL_KEY_MIGRATION_REQUIRED"
+    )
+    assert default["warning"] == compat["warning"]
+    assert default["action"] == (
+        MEMORY_CORE_RUNTIME_IDENTITY.memory_search_canonical_key_migration_action
+    )
+    assert "openclaw" not in default["action"].lower()
+    other_code = build_memory_search_unavailable_result("boom", code="EACCES")
+    assert other_code == build_memory_search_unavailable_result("boom")
+
+
 def test_deadline_returns_the_timeout_result_and_abandons_the_search(tmp_path, monkeypatch):
     monkeypatch.setattr(memory_search_module, "_deadline_seconds", lambda ms: 0.05)
     provider = _ControlledProvider()

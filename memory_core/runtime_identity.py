@@ -5,8 +5,10 @@ from dataclasses import dataclass
 from memory_core._heartbeat_constants import INTERNAL_WAKE_TRANSCRIPT_PROMPTS
 from memory_core.project_name import DISPLAY_NAME, DIST_NAME, PACKAGE_NAME, UPPER_NAME
 from memory_core.tools._memory_tool_constants import (
+    MEMORY_SEARCH_DEADLINE_AGENT_ACTION_TEMPLATE,
     MEMORY_SEARCH_MISSING_SQLITE_ACTION,
     MEMORY_SEARCH_MISSING_SQLITE_WARNING,
+    SESSION_CANONICAL_KEY_MIGRATION_ACTION,
 )
 
 # OpenClaw src/auto-reply/heartbeat.ts INTERNAL_WAKE_TRANSCRIPT_PROMPTS (generated).
@@ -47,6 +49,23 @@ class RuntimeIdentity:
     memory_search_sqlite_unavailable_action: str = (
         f"Run {DISPLAY_NAME} with a Python build that includes the sqlite3 module, then retry "
         "memory_search."
+    )
+    # memory_search deadline action when the caller has an agent id (OpenClaw
+    # extensions/memory-core/src/tools.shared.ts:111-113 names two CLI commands with
+    # `--agent`; d46f9ebf2b2 #147702). A str.format template with ``{agent_id}``. The
+    # memory-core wording names the store calls that inspect and rebuild the index (decision
+    # D4 of docs/upstream_port_v2026_9_6.md, proposed, awaiting Doruk's approval).
+    memory_search_deadline_agent_action: str = (
+        "Retry memory_search after a short wait: a memory-corpus timeout pauses retries for up "
+        "to a minute. If memory-corpus timeouts persist, check "
+        "SQLiteMemoryStore.index_identity() for agent {agent_id}, and rebuild with "
+        "SQLiteMemoryStore.reindex(workspace) only if it reports the index missing or mismatched"
+    )
+    # memory_search action for SESSION_CANONICAL_KEY_MIGRATION_REQUIRED (OpenClaw
+    # tools.shared.ts:20-21 names the Gateway and `openclaw doctor --fix`). memory-core never
+    # raises that code itself; the wording is a D4 proposal.
+    memory_search_canonical_key_migration_action: str = (
+        "Migrate the session catalog to canonical session keys, then retry memory_search."
     )
     # memory_search paused-index action (OpenClaw extensions/memory-core/src/tools.ts
     # PAUSED_MEMORY_INDEX_ACTION names two CLI commands that both reindex; memory-core
@@ -98,6 +117,8 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
     promotion_marker_prefix="openclaw-memory-promotion:",
     memory_search_sqlite_unavailable_warning=MEMORY_SEARCH_MISSING_SQLITE_WARNING,
     memory_search_sqlite_unavailable_action=MEMORY_SEARCH_MISSING_SQLITE_ACTION,
+    memory_search_deadline_agent_action=MEMORY_SEARCH_DEADLINE_AGENT_ACTION_TEMPLATE,
+    memory_search_canonical_key_migration_action=SESSION_CANONICAL_KEY_MIGRATION_ACTION,
     memory_search_paused_action=(
         "Tell the user to run: openclaw memory status --index or openclaw memory index --force."
     ),

@@ -62,7 +62,10 @@ from memory_core.tools.common import (
     read_string_param,
 )
 from memory_core.tools._memory_tool_constants import (
+    DEFAULT_MEMORY_SEARCH_TIMEOUT_MS,
     MEMORY_SEARCH_CORPORA,
+    MEMORY_SEARCH_DEADLINE_ACTION,
+    MEMORY_SEARCH_DEADLINE_WARNING,
     MEMORY_SEARCH_MERGE_DEFAULT_MAX_RESULTS,
     MEMORY_SEARCH_MISSING_SQLITE_PATTERN,
     MEMORY_SEARCH_PROVIDER_ERROR_ACTION,
@@ -76,6 +79,8 @@ from memory_core.tools._memory_tool_constants import (
     MEMORY_SEARCH_UNAVAILABLE_REASON,
     MEMORY_SOURCE_FILES,
     MEMORY_SOURCE_SEARCH_TEMPLATE,
+    SESSION_CANONICAL_KEY_MIGRATION_REQUIRED,
+    SESSION_CANONICAL_KEY_MIGRATION_WARNING,
 )
 
 # memory-tool-contract.ts:23-33 MemorySearchSchema (a plain JSON schema since 16bec3c7272).
@@ -151,37 +156,64 @@ def build_memory_search_unavailable_result(
     *,
     warning: str | None = None,
     action: str | None = None,
+    agent_id: str | None = None,
+    deadline: bool = False,
+    code: str | None = None,
     runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> dict:
-    """``buildMemorySearchUnavailableResult`` (tools.shared.ts:112-152).
+    """``buildMemorySearchUnavailableResult`` (tools.shared.ts:92-150, v2026.9.6).
 
-    The warning/action pair is picked from the lower-cased reason (quota,
-    missing SQLite runtime, anything else) unless overridden. The SQLite pair
-    names the runtime, so it comes from ``runtime_identity``.
+    The warning/action pair is picked, unless overridden, in upstream's order: the session
+    catalog's canonical-key ``code``, then the lower-cased reason (quota, missing SQLite
+    runtime), then ``deadline`` (this tool's own deadline, known by the flag and never by the
+    text, d46f9ebf2b2 #147702), else the provider error. A deadline adds ``timedOut`` and
+    ``timeoutMs``, and its action names the agent's index when ``agent_id`` is set. The SQLite
+    pair, the deadline action with an agent and the canonical-key action name the runtime, so
+    they come from ``runtime_identity``.
     """
     reason = js_trim(error if error is not None else MEMORY_SEARCH_UNAVAILABLE_REASON)
     reason = reason or MEMORY_SEARCH_UNAVAILABLE_REASON
     normalized_reason = reason.lower()
     is_quota_error = _QUOTA_ERROR_RE.search(normalized_reason) is not None
     is_missing_sqlite = _MISSING_SQLITE_RE.search(normalized_reason) is not None
+    is_search_deadline = deadline is True
+    is_canonical_key_migration = code == SESSION_CANONICAL_KEY_MIGRATION_REQUIRED
+    deadline_action = (
+        runtime_identity.memory_search_deadline_agent_action.format(agent_id=agent_id)
+        if agent_id
+        else MEMORY_SEARCH_DEADLINE_ACTION
+    )
     if warning is None:
-        if is_quota_error:
+        if is_canonical_key_migration:
+            warning = SESSION_CANONICAL_KEY_MIGRATION_WARNING
+        elif is_quota_error:
             warning = MEMORY_SEARCH_QUOTA_WARNING
         elif is_missing_sqlite:
             warning = runtime_identity.memory_search_sqlite_unavailable_warning
+        elif is_search_deadline:
+            warning = MEMORY_SEARCH_DEADLINE_WARNING
         else:
             warning = MEMORY_SEARCH_PROVIDER_ERROR_WARNING
     if action is None:
-        if is_quota_error:
+        if is_canonical_key_migration:
+            action = runtime_identity.memory_search_canonical_key_migration_action
+        elif is_quota_error:
             action = MEMORY_SEARCH_QUOTA_ACTION
         elif is_missing_sqlite:
             action = runtime_identity.memory_search_sqlite_unavailable_action
+        elif is_search_deadline:
+            action = deadline_action
         else:
             action = MEMORY_SEARCH_PROVIDER_ERROR_ACTION
     return {
         "results": [],
         "disabled": True,
         "unavailable": True,
+        **(
+            {"timedOut": True, "timeoutMs": DEFAULT_MEMORY_SEARCH_TIMEOUT_MS}
+            if is_search_deadline
+            else {}
+        ),
         "error": reason,
         "warning": warning,
         "action": action,

@@ -24,7 +24,14 @@ type Payload = {
     sources?: string[][];
     scopes?: Array<Record<string, unknown>>;
   };
-  unavailableCases?: Array<{ error?: string | null; warning?: string; action?: string }>;
+  unavailableCases?: Array<{
+    error?: string | null;
+    warning?: string;
+    action?: string;
+    agentId?: string;
+    deadline?: boolean;
+    code?: string;
+  }>;
   searchSteps?: Array<{
     rawParams: unknown;
     embedQuery?: string;
@@ -1416,19 +1423,22 @@ async function main() {
 
   if (payload.operation === "memorySearchUnavailableResult") {
     // extensions/memory-core/src/tools.shared.ts buildMemorySearchUnavailableResult;
-    // a null error stands for undefined.
+    // a null error stands for undefined. The overrides object carries only the keys a case
+    // sets (warning, action and, since d46f9ebf2b2 #147702, agentId, deadline, code).
     const shared = await importFromRepo(repoPath, "extensions/memory-core/src/tools.shared.ts");
+    const overrideKeys = ["warning", "action", "agentId", "deadline", "code"] as const;
     return {
       ok: true,
       operation: payload.operation,
-      result: (payload.unavailableCases ?? []).map((entry) =>
-        shared.buildMemorySearchUnavailableResult(
+      result: (payload.unavailableCases ?? []).map((entry) => {
+        const overrides = Object.fromEntries(
+          overrideKeys.filter((key) => entry[key] !== undefined).map((key) => [key, entry[key]]),
+        );
+        return shared.buildMemorySearchUnavailableResult(
           entry.error ?? undefined,
-          entry.warning !== undefined || entry.action !== undefined
-            ? { warning: entry.warning, action: entry.action }
-            : undefined,
-        ),
-      ),
+          Object.keys(overrides).length > 0 ? overrides : undefined,
+        );
+      }),
     };
   }
 

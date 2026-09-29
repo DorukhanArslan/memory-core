@@ -376,6 +376,8 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
   area 6's label under D5(c) while its single-chunk copy passes here; no label is left.
 - Worklist areas: none left; the area-5 labels were removed as their tests passed (the
   deadline/cooldown sequence moved to area 6, see there).
+- Status: Parts A and B done (2026-09-30, see the Part A and Part B status paragraphs under the
+  TDD tasks below); B9, the full oracle run, is open.
 - New oracle ops: `memoryPromptSection` (`buildMemoryPromptSection`) for the prompt-section row;
   `memoryCorpusMetadata`, `memoryIndexSearchDiagnostic` and, with D7, `memoryCorpusSupplements`
   (the plan below).
@@ -823,6 +825,42 @@ Part B: `memory_search` params, errors, deadline, per-corpus outcomes, index ide
   325 skipped), ruff, `scripts/rename_project.py --check`,
   `scripts/extract_upstream_constants.py --check`, `/tmp/openclaw-head` clean; results recorded
   here.
+
+Part B status (2026-09-30, measured): B1-B8 done on `feat/port-area-5`, one commit per task: B1
+`acebe2c` (extraction: the unavailable, cooldown, sessions-not-enabled and partial texts in
+`memory_core/tools/_memory_tool_constants.py`, the new generated
+`memory_core/index/_index_identity_constants.py`), B3 `e5e292b` (the unavailable result's
+`agent_id`/`deadline`/`code`, 12 new op cases), B4 `50abc09` (the supplement search settle), B5
+`dd67ecd` (identity codes, owners and versions, the index search diagnostic and the new
+`memoryIndexSearchDiagnostic` op, the paused result from it), B6 `9516fd0` (the per-corpus
+orchestration under the 30 s deadline, the 1:1 merge, the configuration-bound cooldown keyed by
+agent, the not-enabled sessions result, `on_recall`, the op's `preSync`; the store now breaks score
+ties by path where the tag's manager does, so `breaks_score_ties_with_locale_compare` keeps
+passing after the tool stopped re-sorting), B7 `00395eb` (keyword partials; the single-chunk
+sequence copy), B8 the Lab and docs commit after it. Worklist entries removed:
+`memory_index_identity_matches_python` (B5); `memory_search_deadline_and_cooldown_match_python`
+moved to the area-6 label (B7, D5(c): on the two-line MEMORY.md only steps 5, 8, 9, 11 and 16
+differ, by curated-entry chunking) while its new single-chunk copy passes, so no area-5 label is
+left; none was added. `memory_search_all_balances_memory_and_wiki` was run with `--runxfail` after
+B6: it still fails on area 6's chunking (the tag returns two MEMORY.md chunks), so its entry stays.
+Targeted oracle run at the B7 tree (Node 24.21.0, `/tmp/openclaw-head` at `eb377ac59e6`, `-k`
+memory_search, memory_index, index_search, paused, unavailable_result, memory_get,
+tool_definitions, corpus, prompt_section, recall): 128 passed, 17 xfailed (areas 6 and 7), 0
+failed; offline (B8) 1537 passed, 378 skipped; ruff, `scripts/rename_project.py --check`,
+`scripts/extract_upstream_constants.py --check` and `tests/parity` clean; `/tmp/openclaw-head`
+unmodified. The full oracle suite (B9) was not run in this stage. Browser check of the Lab at 375,
+768, 1024 and 1440 px (FTS-only, no keys): the search playground's per-corpus chips (`memory · ok`,
+`wiki · not-registered` under `corpus=all`), the 30 s deadline chip and the identity chip, no
+horizontal overflow; the partial, stale and corpus-outage chips are checked by tests only (a
+partial needs a hanging embedding provider, and the Lab reindexes a non-valid identity before
+searching). Decisions implemented provisionally, each documented at the code site and in the
+matrix rows, for Doruk to confirm: D1 memory-core keeps searching sessions (`search_sources`
+default memory and sessions; the sequence fixture enables TS session search); D2 memory-core's
+own versions 0/0; D3 no search-time repair (the op pre-syncs); D4 memory-core wording for the
+deadline-with-agent, canonical-key, sessions-not-enabled, rebuild-command, version-change and
+upgrade texts and the stale warning's owner (`memory_core/runtime_identity.py`); D5(c) as above;
+D7 supplements keep their protocol (no plugin ids, no `memoryCorpusSupplements` op, so B4 has
+only its search half); D8 the facade keeps `corpus="all"` and takes the per-corpus side effects.
 
 Labelled estimate (2026-09-29, from this audit, not measured): Part A 9-14 h, Part B 13-20 h,
 above the area's 16-26 h because of the corpus orchestration and keyword partials found here.

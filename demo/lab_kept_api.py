@@ -18,6 +18,7 @@ from demo.chat_engine import OpenAICompatibleChatEngine
 from demo.lab_consolidation import run_audit, run_dreaming, run_promotion, run_repair
 from demo.lab_events import sse_frame
 from demo.lab_flush import FORCED_FLUSH_LABEL, run_flush
+from demo.lab_search_events import emit_search_outcome
 from demo.lab_runtime import (
     LabError,
     LabRuntime,
@@ -349,18 +350,7 @@ def run_search(lab: LabRuntime, payload: dict[str, Any]) -> dict[str, Any]:
     except MemoryToolInputError as error:
         raise LabError(400, str(error), code="tool_input_error", toolError=error.to_tool_error()) from error
     ms = int((time.perf_counter() - started) * 1000)
-    if result.get("unavailable"):
-        lab.bus.emit(
-            "search.unavailable",
-            summary=f"memory_search kullanılamıyor: {redact_secrets(str(result.get('error')), secrets)}",
-            data={"mode": mode, "warning": result.get("warning"), "action": result.get("action")},
-        )
-    else:
-        lab.bus.emit(
-            "search.completed",
-            summary=f"memory_search ({mode}): {len(result.get('results') or [])} sonuç · {ms} ms",
-            data={"mode": mode, "hits": len(result.get("results") or []), "ms": ms},
-        )
+    emit_search_outcome(lab, result, secrets=secrets, data={"mode": mode}, ms=ms)
     return redact_payload({
         **result,
         "mode": mode,

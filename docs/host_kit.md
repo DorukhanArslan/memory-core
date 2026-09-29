@@ -264,18 +264,21 @@ def dispatch(
 ```
 
 - Composes `execute_memory_search_tool(config, store, args, agent_session_key=session.session_key,
-  runtime_identity=identity)`, `execute_memory_get_tool(config, args)` and
+  on_recall=..., runtime_identity=identity)`, `execute_memory_get_tool(config, args)` and
   `MemoryCurator.dispatch(name, args)` on `HostKit.curator`, built from `Memory.curator(layout,
   policy, timezone, now_ms)` (whose `after_write` reindexes after MEMORY.md and daily-note writes).
 - Arguments: a mapping, its JSON text (parsed once for every tool) or `None` (read as `{}`).
   Blank text reads as `{}`. Parsing JSON text is host-transport glue and deliberately differs from
   the core's `asToolParamsRecord` (`as_tool_params_record`, where a string reads as `{}`): the kit
   sees the transport's raw text, the core sees an already-decoded value.
-- Recall tracking: with `dreaming_enabled`, the memory-corpus hits of a `memory_search` result that
-  is not unavailable go through `memory_core/consolidation/recall.py:undecorate_search_results` and
-  `record_short_term_recalls`, as upstream does only when dreaming is enabled and the memory search
-  succeeded (`extensions/memory-core/src/tools.ts:491-507`). Upstream records off the reply path and
-  swallows recording errors; the kit records synchronously and swallows them too. Off by default
+- Recall tracking: with `dreaming_enabled`, the kit passes `on_recall` to the tool, which calls
+  it with the memory-corpus hits the result actually returns, and only when the memory search was
+  ok or partial (v2026.9.6 `extensions/memory-core/src/tools.ts:477-508`: a failed memory corpus
+  under `corpus=all`, a wiki-only call and hits the merge left out earn no recall); the kit keeps
+  the `source: "memory"` hits (upstream's `recordShortTermRecalls` filter) and records them
+  through `memory_core/consolidation/recall.py:undecorate_search_results` and
+  `record_short_term_recalls`. Upstream records off the reply path and swallows recording
+  errors; the tool calls the callback synchronously and swallows them too. Off by default
   (`DEFAULT_DEEP_DREAMING_ENABLED = False`): no `memory/.dreams/` write. Known gap: the recall
   days are UTC dates, not dates in the kit's timezone. Upstream passes `dreaming.timezone`
   (`tools.ts:501`) and buckets the day in it (`short-term-promotion-record.ts:192`); the pin-era
@@ -299,9 +302,11 @@ def dispatch(
   or a failed read, returns upstream's `{"path", "text": "", "status": "error", "code",
   "error"}` (v2026.9.6: `MEMORY_PATH_NOT_ALLOWED`, an fs-safe or errno code, else
   `MEMORY_READ_FAILED`), a missing file `{"status": "not_found", "text": "", "path"}`, and
-  `memory_search` returns its unavailable (`disabled` and `unavailable` true) or paused payload.
-  A host that counts failed calls checks `status == "error"` or `disabled`; `not_found` is a
-  completed read.
+  `memory_search` returns its unavailable (`disabled` and `unavailable` true) or paused payload;
+  under `corpus=wiki`/`all` a failed corpus next to a working one is an entry of `corpora`
+  (`outcome` unavailable or partial) with a `warning`, not an unavailable payload
+  (docs/memory_search_tool.md). A host that counts failed calls checks `status == "error"` or
+  `disabled`; `not_found` is a completed read.
 - Host programming errors raise before a tool runs: `TypeError` for a non-string `name` or an
   `arguments` of another type. `BaseException`s that are not `Exception` (cancellation,
   interrupts) propagate.
@@ -926,7 +931,8 @@ Observable Lab changes (Task 9), each with its tests/demo assertions:
 7. `/new` keeps the session key: the Lab key is `lab:<kind>` for every session of a kind, as
    upstream keeps `sessionKey` across `/new` (it was `lab:<kind>:<id>`). This shows in the
    `session.new` event (`oldSessionKey` equals `sessionKey`), in the key line of the saved
-   session-memory file and in the fallback key of the `memory_search` cooldown (Q10).
+   session-memory file and, until v2026.9.6's port (area 5 B6), in the fallback key of the
+   `memory_search` cooldown (Q10); the cooldown is now keyed by the agent id alone.
 8. `/new` runs an ensure and a reindex after saving the session memory (it ran neither), so the
    saved file is searchable at once and a pending bootstrap reconciles before the reset prompt is
    built: a bare `/new` in a fresh workspace now gets bootstrap mode `none`, not `limited`.
@@ -951,9 +957,10 @@ findings, 2026-09-29) are adapter-only kit code too; `repair_tool_calls` compose
 fixtures at `64770c7`), and its labelled gaps are listed in LangGraph findings › Parity labels.
 
 Port plan area 5 Part A (2026-09-29) brought the `memory_search` and `memory_get` tool
-definitions, the `memory_get` contract and the Memory Recall section to the tag (entry points 1-3).
-Still pin-era: recall tracking uses `record_short_term_recalls`, whose recall days are UTC dates
-(entry point 2), and the `memory_search` corpus orchestration and deadline (area 5 Part B).
+definitions, the `memory_get` contract and the Memory Recall section to the tag (entry points 1-3);
+Part B (2026-09-30) the `memory_search` per-corpus orchestration, the 30 s deadline with keyword
+partials, the cooldown and the index identity, and the recall gate (entry point 2). Still
+pin-era: `record_short_term_recalls`, whose recall days are UTC dates (entry point 2, area 7).
 
 Labelled deviations of the flush run (entry point 4):
 
@@ -1277,9 +1284,8 @@ The packaging stage (0.2.0, CHANGELOG.md) built the package with a `demo` extra,
 package root to the kit and the core handle (the kit classes are exported there) and removed the
 facade's turn helpers; the quickstart stage added `examples/quickstart.py` and the README
 Quickstart over the kit. Later: live subject workspaces on the kit, the pre-compaction checkpoint
-flush with a compaction adapter, session auto-reset, memory-search supplements on the kit, and
-port plan area 5 Part B (the `memory_search` corpora, deadline and index identity at the tag; Part
-A, the tool definitions and the Memory Recall section, landed 2026-09-29).
+flush with a compaction adapter, session auto-reset and memory-search supplements on the kit (port
+plan area 5, Parts A and B, landed 2026-09-29/30).
 
 # LangGraph findings (2026-09-29)
 

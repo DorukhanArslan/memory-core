@@ -134,7 +134,9 @@ export const hybridScores = (wv, wt, tol) => (ctx) => rows(ctx).length > 0 && ro
 export const allScoresAtLeast = (x) => (ctx) => !!ctx.search && !ctx.search.error && rows(ctx).every((r) => r.score >= x);
 export const rowsAtMost = (n) => (ctx) => !!ctx.search && !ctx.search.error && rows(ctx).length <= n;
 export const searchError = (re) => (ctx) => re.test(String(ctx.search?.error || ''));
-export const searchUnavailable = () => (ctx) => !!ctx.search && (ctx.search.unavailable === true || (!!ctx.search.warning && !!ctx.search.action));
+/** memory_search could not search memory: the whole call is unavailable, or (corpus=all, v2026.9.6) the memory corpus is. */
+export const searchUnavailable = () => (ctx) => !!ctx.search && (ctx.search.unavailable === true || (!!ctx.search.warning && !!ctx.search.action)
+  || (ctx.search.corpora || []).some((c) => c?.corpus === 'memory' && c?.outcome === 'unavailable'));
 export const cooldownActive = () => (ctx) => !!ctx.index?.cooldown && (ctx.index.cooldown.until ?? 0) > ctx.now;
 
 /* ---------- heartbeat ---------- */

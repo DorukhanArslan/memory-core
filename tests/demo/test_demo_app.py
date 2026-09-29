@@ -2104,6 +2104,8 @@ class RecordingEmbeddings:
     """Test-only stand-in for the OpenAI-compatible provider (never used at runtime)."""
 
     instances = []
+    error = None
+    hang = None
 
     def __init__(self, *, api_key, model, base_url, timeout=30.0):
         self.api_key = api_key
@@ -2124,6 +2126,8 @@ class RecordingEmbeddings:
         self.calls += 1
         if RecordingEmbeddings.error:
             raise RuntimeError(RecordingEmbeddings.error)
+        if RecordingEmbeddings.hang is not None:
+            RecordingEmbeddings.hang.wait(10)
         return self._vector(text)
 
     def embed_documents(self, texts):
@@ -2139,8 +2143,12 @@ def embeddings(monkeypatch):
 
     RecordingEmbeddings.instances = []
     RecordingEmbeddings.error = None
+    RecordingEmbeddings.hang = None
     monkeypatch.setattr(lab_runtime, "OpenAICompatibleEmbeddingProvider", RecordingEmbeddings)
-    return RecordingEmbeddings
+    yield RecordingEmbeddings
+    if RecordingEmbeddings.hang is not None:
+        RecordingEmbeddings.hang.set()
+    RecordingEmbeddings.hang = None
 
 
 def seed_notes(client, lab):
@@ -2227,6 +2235,64 @@ def test_embedding_failures_put_search_on_cooldown_without_provider_calls(client
     assert sum(instance.calls for instance in embeddings.instances) == calls_before
     later = event_types(client, mark)
     assert "search.cooldown" in later and "embedding.request" not in later
+
+
+def test_corpus_all_keeps_the_other_corpus_and_reports_the_memory_outage(client, lab, embeddings, monkeypatch):
+    # v2026.9.6 tools.ts:436-550: under corpus=all a memory failure is one corpus's outcome, not
+    # an unavailable payload; the Lab shows it and emits search.corpus_unavailable.
+    seed_notes(client, lab)
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL", "https://embeddings.example/v1")
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY", "embedding-env-key-value")
+    client.post("/api/search", json={"query": "demo", "mode": "hybrid"})
+    embeddings.error = "connection refused embedding-env-key-value"
+    mark = client.get("/api/lab/state").json()["lastEventId"]
+
+    result = client.post("/api/search", json={"query": "toplantı", "mode": "hybrid", "corpus": "all"}).json()
+
+    assert "unavailable" not in result and result["results"] == []
+    assert result["corpora"] == [
+        {"corpus": "memory", "outcome": "unavailable", "error": "connection refused [redacted]"},
+        {"corpus": "wiki", "outcome": "not-registered"},
+    ]
+    assert result["warning"] == "Memory corpus unavailable: connection refused [redacted]"
+    assert result["cooldown"]["error"] == "connection refused [redacted]"
+    assert result["cooldown"]["deadline"] is False
+    assert "embedding-env-key-value" not in json.dumps(result)
+    assert "search.corpus_unavailable" in event_types(client, mark)
+
+
+def test_a_deadline_after_the_keyword_leg_shows_a_partial_search(client, lab, embeddings, monkeypatch):
+    import threading
+
+    import memory_core.tools.memory_search as memory_search_module
+
+    seed_notes(client, lab)
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL", "https://embeddings.example/v1")
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY", "embedding-env-key-value")
+    client.post("/api/search", json={"query": "demo", "mode": "hybrid"})
+    monkeypatch.setattr(memory_search_module, "_deadline_wait_seconds", lambda remaining: min(remaining, 0.05))
+    embeddings.hang = threading.Event()
+    mark = client.get("/api/lab/state").json()["lastEventId"]
+
+    result = client.post("/api/search", json={"query": "perşembe", "mode": "hybrid", "corpus": "memory"}).json()
+
+    assert result["partial"] is True and result["timedOut"] is True and result["timeoutMs"] == 30_000
+    assert [hit["path"] for hit in result["results"]] == [f"memory/{lab.today()}.md"]
+    assert result["corpora"] == [
+        {"corpus": "memory", "outcome": "partial", "error": "memory_search timed out after 30s"}
+    ]
+    assert result["cooldown"] is None
+    assert "search.partial" in event_types(client, mark)
+    # The playground and the tool cards show these fields (inspector/memory.js, views/chat.js).
+    lab_root = Path(demo_app.__file__).resolve().parent / "static" / "lab"
+    memory_js = (lab_root / "inspector" / "memory.js").read_text(encoding="utf-8")
+    chat_js = (lab_root / "views" / "chat.js").read_text(encoding="utf-8")
+    checks_js = (lab_root / "scenarios" / "checks.js").read_text(encoding="utf-8")
+    assert "readOutcomeChips(res, { all: true })" in memory_js and "search-warning" in memory_js
+    assert "res.unavailable || res.disabled || res.status === 'error'" in memory_js
+    assert "identity?.code" in memory_js
+    assert "result.partial === true" in chat_js and "result.stale === true" in chat_js
+    assert "c?.corpus === 'memory' && c?.outcome === 'unavailable'" in checks_js
 
 
 @pytest.mark.parametrize(

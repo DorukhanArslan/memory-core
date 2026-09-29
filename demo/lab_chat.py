@@ -186,6 +186,9 @@ def auto_recall(lab: LabRuntime, config, store, query: str, *, turn_id: int) -> 
         "filtered": filtered,
         "lines": lines,
         "unavailable": bool(result.get("unavailable")),
+        # corpus="all" reports a memory outage or a keyword-only partial per corpus (v2026.9.6).
+        "corpora": result.get("corpora"),
+        "partial": bool(result.get("partial")),
         "error": result.get("error"),
         "warning": result.get("warning"),
         "action": result.get("action"),

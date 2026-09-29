@@ -8,6 +8,7 @@ import { api } from '../api.js';
 import { chip, btn, segmented, jsonDisclosure, emptyState, failCard, skeleton, honesty, howItWorks } from '../ui/kit.js';
 import { selectEl } from './common.js';
 import { cooldownLeft } from '../views/shell.js';
+import { readOutcomeChips } from '../views/chat.js';
 
 const MODES = ['hybrid', 'vector', 'text'];
 
@@ -74,7 +75,7 @@ export function memoryTab(turn) {
   wrap.append(howItWorks('memory'));
   const identity = idx?.identity;
   wrap.append(h('div', { class: 'status-strip' },
-    idx ? chip({ label: `${t('memory.identity')}: ${identity?.status ? t(`identity.${identity.status}`) : '—'}`, tone: { valid: 'ok', mismatched: 'danger', missing: 'warn' }[identity?.status] || 'neutral', ic: identity?.status === 'valid' ? 'check' : 'alert-triangle', title: `${identity?.reason || ''}\n${t('memory.identityNotFile')}`.trim(), testid: 'index-identity' }) : null,
+    idx ? chip({ label: `${t('memory.identity')}: ${identity?.status ? t(`identity.${identity.status}`) : '—'}${identity?.code ? ` · ${identity.code}` : ''}`, tone: { valid: 'ok', mismatched: 'danger', missing: 'warn' }[identity?.status] || 'neutral', ic: identity?.status === 'valid' ? 'check' : 'alert-triangle', title: [identity?.reason, identity?.owner ? `${t(identity.owner === 'configuration' ? 'identity.owner.configuration' : 'identity.owner.format')}${identity.versionOrder ? ` · ${identity.versionOrder}` : ''}` : null, t('memory.identityNotFile')].filter(Boolean).join('\n'), testid: 'index-identity' }) : null,
     s?.embedding || idx?.embeddings ? chip({ label: fts ? t('search.ftsOnly') : `${t('search.hybrid')} · ${s?.embedding?.model || idx?.embeddings?.model || '—'}`, title: fts ? (s?.embedding?.reason || idx?.embeddings?.reason || t('search.noEmbedder')) : null, tone: fts ? 'warn' : 'info', ic: 'layers', testid: 'memory-embedding' }) : null,
     idx ? chip({ label: `${fmtN(idx.chunks)} ${t('unit.chunks')} · ${fmtTime(idx.lastReindexAt)}`, tone: 'neutral', ic: 'database' }) : null,
     cd ? chip({ label: `${t('search.cooldown')} ${cd} ${t('unit.sec')}`, tone: 'warn', ic: 'clock', testid: 'chip-cooldown', title: idx?.cooldown?.error || '' }) : null,
@@ -116,7 +117,9 @@ export function memoryTab(turn) {
   const res = q.result;
   if (q.error) wrap.append(failCard(q.error));
   else if (!res) wrap.append(h('div', { class: 'muted pad' }, t('memory.runQuery')));
-  else if (res.error || res.disabled) {
+  // A whole-call failure (unavailable, a tool error); a failed corpus next to a working one keeps
+  // the results and shows its outcome below (v2026.9.6 per-corpus results).
+  else if (res.unavailable || res.disabled || res.status === 'error') {
     wrap.append(h('div', { class: 'error-card is-flat', role: 'alert', 'data-testid': 'search-error' },
       h('div', { class: 'error-title' }, icon('alert-octagon', 14), res.unavailable ? 'unavailable' : t('search.toolError'), res.cooldown ? h('span', { class: 'chip chip-xs tone-warn' }, t('search.cooledDown')) : null),
       h('div', { class: 'error-msg mono' }, String(res.error || '')),
@@ -127,6 +130,10 @@ export function memoryTab(turn) {
     const rows = res.results || [];
     wrap.append(h('div', { class: 'result-meta muted', 'data-testid': 'search-meta' },
       `${rows.length} ${t('search.results')} · ${t(`search.mode.${res.mode || res.request?.mode || 'text'}`)}${res.provider ? ` · ${res.provider}/${res.model}` : ''} · ${fmtMs(res.ms ?? res.clientMs)}`));
+    const outcomes = readOutcomeChips(res, { all: true });
+    if (outcomes.length) wrap.append(h('div', { class: 'chip-wrap', 'data-testid': 'search-outcomes' }, ...outcomes));
+    if (res.warning) wrap.append(h('div', { class: 'error-msg', 'data-testid': 'search-warning' }, h('b', null, 'warning: '), res.warning));
+    if (res.action) wrap.append(h('div', { class: 'error-msg', 'data-testid': 'search-action' }, h('b', null, 'action: '), res.action));
     const hint = [Number(res.request?.minScore) > 0 ? t('search.noMatchMin') : null, res.embeddings?.mode === 'fts-only' || res.provider === 'none' ? t('search.noMatchFts') : null].filter(Boolean).join(' ');
     if (!rows.length) wrap.append(emptyState({ title: t('search.noMatch'), text: hint || null, testid: 'empty-memory', level: 4 }));
     rows.forEach((r, i) => wrap.append(resultRow(r, i + 1, { terms: wordTokens(res.request?.query || ''), minScore: res.request?.minScore, weights: res.weights || null, legs: legsOf(res) })));

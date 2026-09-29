@@ -69,7 +69,7 @@ export const TR = {
   'chip.sessionMemory': 'oturum belleği', 'chip.startup': 'başlangıç bağlamı',
   'stage.ensure': 'ensure', 'stage.flush_decision': 'flush kararı', 'stage.flush': 'flush', 'stage.reindex': 'indeks', 'stage.recall': 'recall', 'stage.prompt': 'prompt', 'stage.stream': 'akış',
   'stage.tools': 'araçlar', 'stage.curation': 'küratör', 'stage.persist': 'kayıt',
-  'get.corpus': 'korpus', 'get.timedOut': 'zaman aşımı {s} sn',
+  'get.corpus': 'korpus', 'get.timedOut': 'zaman aşımı {s} sn', 'search.partial': 'kısmi: yalnız anahtar kelime sonuçları', 'search.stale': 'eski indeks',
   'tool.title': 'araçlar ({n})', 'tool.label': 'araçlar', 'tool.ok': 'tamam', 'tool.error': 'hata', 'tool.refused': 'reddedildi', 'tool.args': 'argümanlar', 'tool.result': 'sonuç', 'tool.detailInInspector': 'Ayrıntı Denetçi › Prompt › Araçlar bölümünde.',
   // composer and slash
   'composer.label': 'Mesaj', 'composer.kind': 'Oturum türü', 'composer.send': 'Gönder', 'composer.stop': 'Durdur', 'composer.sendAria': 'Gönder (Enter)', 'composer.stopAria': 'Durdur (Esc)',
@@ -108,7 +108,7 @@ export const TR = {
   'memory.autoRecallParams': 'otomatik hatırlama · max {m} · minScore {s}', 'memory.noRecall': 'Bu turda otomatik hatırlama kaydı yok.', 'memory.resetNoRecall': 'Reset turunda otomatik hatırlama yok; başlangıç bağlamı yüklenir.',
   'memory.recallZero': 'Eşleşme yok (recall 0).', 'memory.playground': 'Deneme alanı', 'memory.query': 'Sorgu', 'memory.runQuery': 'Bir sorgu çalıştır.',
   'memory.upstreamDefaults': 'upstream varsayılanı: 6 · 0,35', 'memory.upstreamDefaultsTip': "memory_search'ün upstream varsayılanları (maxResults 6, minScore 0,35).",
-  'identity.valid': 'geçerli', 'identity.mismatched': 'uyumsuz', 'identity.missing': 'eksik',
+  'identity.valid': 'geçerli', 'identity.mismatched': 'uyumsuz', 'identity.missing': 'eksik', 'identity.owner.format': 'indeks biçimi', 'identity.owner.configuration': 'yapılandırma',
   'search.ftsOnly': 'yalnız FTS', 'search.hybrid': 'hibrit', 'search.noEmbedder': 'embedding sağlayıcı yok', 'search.hybridTip': 'vektör ve metin skorlarının birleşimi',
   'search.cooldown': 'soğuma', 'search.deadline': 'süre sınırı', 'search.mode.hybrid': 'Hibrit', 'search.mode.vector': 'Vektör', 'search.mode.text': 'Metin', 'search.modeLabel': 'Arama modu',
   'search.ftsOnlyTip': 'yalnız FTS: embedding sağlayıcı yok', 'search.run': 'Ara', 'search.running': 'Aranıyor…', 'search.results': 'sonuç', 'search.noMatch': 'Eşleşme yok.',

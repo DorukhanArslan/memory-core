@@ -131,6 +131,24 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 - `memory_search` and `memory_get` read a blank `maxResults`, `minScore`, `from` or `lines` as
   omitted, and check `corpus` against their enums: an unknown corpus raises `corpus must be one
   of: ...` (it searched every source before).
+- `memory_search` follows v2026.9.6's per-corpus orchestration (docs/memory_search_tool.md, area
+  5 Part B): the deadline is 30 s (`memory_search timed out after 30s`, with `timedOut`/`timeoutMs`
+  and the deadline guidance); `corpus="wiki"`/`"all"` search memory and the supplements at once
+  and report each corpus in `corpora`, so under `all` (the facade default) a memory outage, a
+  cooldown or a paused index keeps the other corpus and is a `corpora` entry with a `warning`
+  instead of an unavailable payload; a deadline after the keyword leg returns the memory-file
+  keyword hits as a `partial` result (no cooldown); the `all` merge keeps each corpus's own order;
+  `corpus="sessions"` without sessions in the new `search_sources=` is the not-enabled result.
+  The cooldown keeps the failure's `deadline`/`code`, belongs to the configuration that recorded
+  it and is keyed by agent id (no session-key fallback). New arguments `search_sources=` and
+  `on_recall=` (the returned memory hits of an ok or partial search; the host kit records recalls
+  through it). Equal scores are ordered by path in the store instead of the tool.
+- The index identity follows v2026.9.6: every difference carries a `code` and an `owner`, the
+  stored meta gains `chunkingVersion` and `provenanceVersion` (memory-core's own versions, 0 and 0,
+  so existing indexes stay valid), a newer or older index format is reported with `versionOrder`,
+  and the paused result's warning and action come from upstream's index search diagnostic (the
+  rebuild command plus whether rebuilding calls an embedding provider); an older chunker on an
+  otherwise matching index searches keyword-only with `stale`.
 
 ### Removed
 
@@ -151,6 +169,14 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   `HostKit.dispatch()`. A host that still wants auto-recall calls `Memory.search` itself.
 - `memory_core.adapters.PendingTurn`, added earlier in 0.2.0: carry a turn in flight with
   `TurnState` (`memory_core.host`), which holds the reset prompts as well.
+- From `memory_core.tools.memory_search`: `resolve_memory_search_tool_cooldown_key` (the cooldown
+  is keyed by agent id), `resolve_paused_memory_index_identity_reason` and the constants
+  `PAUSED_MEMORY_INDEX_WARNING`/`PAUSED_MEMORY_INDEX_REASON` (the paused result comes from the
+  index search diagnostic of `memory_core.index.identity`), and the `agent_session_key` argument
+  of `memory_search_tool_cooldown_key`; `read_memory_search_tool_cooldown` and
+  `record_memory_search_tool_cooldown` take the configuration key and a failure mapping, and
+  `memory_search_tool_cooldown_remaining` returns the failure mapping.
+  `RuntimeIdentity.memory_search_paused_action` is replaced by the rebuild-guidance fields.
 - `MemoryWorkspace.resolve_memory_read_path` and the constants `MEMORY_PATH_REQUIRED_ERROR` and
   `MEMORY_PATH_NOT_REGULAR_FILE_ERROR` of `memory_core.workspace`: the read path is
   `memory_core.memory_read.read_memory_file` (the port of upstream's `readMemoryFile`), whose

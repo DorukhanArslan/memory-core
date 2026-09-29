@@ -21,6 +21,7 @@ from typing import Any, Protocol
 from demo.chat_engine import ChatEngine
 from demo.lab_events import unified_diff
 from demo.lab_runtime import CURATION_FLAG, LabRuntime, LabSession, safe_exception_message
+from demo.lab_search_events import emit_search_outcome
 from memory_core.curation import (
     ADD_MEMORY_ENTRY,
     APPEND_DAILY_NOTE,
@@ -91,22 +92,14 @@ class LabToolbox:
             )
         if result.get("status") == "error":
             return result
-        if result.get("unavailable"):
-            self.lab.bus.emit(
-                "search.unavailable",
-                summary=f"memory_search kullanılamıyor: {result.get('error')}",
-                data={"error": result.get("error"), "warning": result.get("warning"),
-                      "action": result.get("action"), "via": "tool"},
-                turn_id=self.turn_id,
-            )
-            return result
-        hits = result.get("results") or []
         # The search ran, so the arguments were a JSON object.
-        self.lab.bus.emit(
-            "search.completed",
-            summary=f"memory_search (model): {len(hits)} sonuç",
-            data={"query": arguments.get("query"), "hits": len(hits), "via": "tool"},
+        emit_search_outcome(
+            self.lab,
+            result,
+            secrets=(),
+            data={"query": arguments.get("query"), "via": "tool"},
             turn_id=self.turn_id,
+            label="model",
         )
         return result
 

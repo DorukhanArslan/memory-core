@@ -164,8 +164,9 @@ function paintTools() {
   replace(el, store.stream.tools.map((tc) => toolCard(tc)));
 }
 // memory_get and memory_search outcomes (v2026.9.6): a read's `status` and `code`, each corpus's
-// outcome and a deadline. `all` shows every value (the memory_get dialog); otherwise only what
-// differs from a plain success (the tool card summary).
+// outcome, a deadline, a keyword-only partial search and a stale index. `all` shows every value
+// (the memory_get dialog, the search playground); otherwise only what differs from a plain
+// success (the tool card summary).
 const READ_STATUS_TONE = { ok: 'ok', not_found: 'warn', error: 'danger' };
 const CORPUS_OUTCOME_TONE = { ok: 'ok', partial: 'warn', unavailable: 'danger', 'not-registered': 'neutral' };
 export function readOutcomeChips(result, { all = false } = {}) {
@@ -179,6 +180,8 @@ export function readOutcomeChips(result, { all = false } = {}) {
     out.push(chip({ label: `${c?.corpus} · ${c?.outcome}`, tone: CORPUS_OUTCOME_TONE[c?.outcome] || 'neutral', cls: 'chip-mono chip-xs', title: c?.error || null, testid: 'corpus-outcome' }));
   }
   if (result.timedOut) out.push(chip({ label: t('get.timedOut', { s: Math.round((result.timeoutMs || 0) / 1000) }), tone: 'warn', ic: 'clock', cls: 'chip-xs' }));
+  if (result.partial === true) out.push(chip({ label: t('search.partial'), tone: 'warn', ic: 'alert-triangle', cls: 'chip-xs', testid: 'search-partial' }));
+  if (result.stale === true) out.push(chip({ label: t('search.stale'), tone: 'warn', ic: 'alert-triangle', cls: 'chip-xs', title: result.action || null, testid: 'search-stale' }));
   return out;
 }
 

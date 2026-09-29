@@ -372,7 +372,9 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
 - Tests: 31 (`memoryGet` 26, `memoryToolDefinitions` 1, params/deadline 3, identity 1).
 - Worklist areas: "memory_get contract", "memory tool definitions", "memory_search params,
   errors and deadline", "memory index identity".
-- New oracle ops: `memoryPromptSection` (`buildMemoryPromptSection`) for the prompt-section row.
+- New oracle ops: `memoryPromptSection` (`buildMemoryPromptSection`) for the prompt-section row;
+  `memoryCorpusMetadata`, `memoryIndexSearchDiagnostic` and, with D7, `memoryCorpusSupplements`
+  (the plan below).
 
 #### Area 5 port plan (2026-09-29)
 
@@ -454,19 +456,46 @@ Probe findings that no worklist test covers yet:
   `OSError`'s errno name). Results carry `status`, never `disabled`; failures are `{path, text:
   "", status: "error", code, error}`; the budget counts UTF-16 units and cuts pair-safe; the
   trailing-newline sentinel is dropped.
+- Read rules the audit above did not list (review 2026-09-29), each ported with a fixture or
+  documented as a deviation:
+  - the continuation notice is appended when `truncated && (text || hardTruncatedSingleLine)`
+    (`read-file-shared.ts:79`), so an empty pair-safe cut still gets it;
+  - `suggestReadFallback` is set only for workspace reads (`read-file.ts:192`); memory-core has no
+    extra paths, so every read is one, but the rule is ported as a parameter;
+  - a read that fails with `path-mismatch` (the file changed between stat and open) is
+    `not_found` (`read-file.ts:72-82`);
+  - transient reads retry: `EAGAIN`, `EWOULDBLOCK`, `EDEADLK` or errno -11, 3 attempts,
+    25-50 ms (`read-retry.ts`);
+  - the workspace resolve is fs-safe's `RootHandle.resolve` (`root-impl.js:211-214`,
+    `allowFinalSymlink`, `resolveCanonical`) over `root-path.js` `traverseRootPath`: an
+    intermediate symlink leaving the root is `outside-workspace` with the cause
+    `Symlink escapes root (<root realpath>): <link>` (`root-path-errors.js:21`, `shortPath`
+    replaces the home directory with `~`, `error-detail.js:7-13`; core reads no env, so the home
+    directory is a parameter, `None` meaning no shortening, documented); a file used as a
+    directory is `outside-workspace` with `Path component is not a directory: <path>` and
+    `ENOTDIR` (`root-path.js:242-246`); a final symlink is kept and then refused by
+    `statRegularFile` (`path must be a regular file`, `MEMORY_READ_FAILED`); `ENAMETOOLONG` is
+    `invalid-path` / `relative path is too long` (`root-context.js:225-227`);
+  - `formatErrorMessage` skips a cause message the text already contains
+    (`packages/normalization-core/src/error-coercion.ts:152-162`); memory-core's
+    `format_error_message` only skips exact repeats.
 - Flips: the 26 "memory_get contract" entries.
-- New tests: `memoryGet` fixtures for the probe cases (symlinked parent, trailing newline, UTF-16
-  cap, `memory` directory, `USER.md`/`user.md`), the EACCES case only if D6 ports the message.
+- New tests: `memoryGet` fixtures for the probe cases (symlinked parent, file as a directory,
+  final symlink escape, trailing newline, UTF-16 cap, `memory` directory, `USER.md`/`user.md`),
+  the EACCES and ENAMETOOLONG cases only if D6 ports the message (else unit tests of the code).
 - Constants (extract): `path is not an allowed Markdown memory file`, `MEMORY_PATH_NOT_ALLOWED`,
-  `MEMORY_READ_FAILED`, `path required`, `memory search disabled`, the continuation-notice
-  texts, `DEFAULT_MEMORY_READ_LINES`/`DEFAULT_MEMORY_READ_MAX_CHARS`; fs-safe's refusal code and
-  message from `node_modules/@openclaw/fs-safe/dist/root-context.js:229` (fs-safe 0.18.1; the
-  cause text's source is located while porting).
+  `MEMORY_READ_FAILED`, `path required`, the continuation-notice texts,
+  `DEFAULT_MEMORY_READ_LINES`/`DEFAULT_MEMORY_READ_MAX_CHARS`, the transient-read codes; fs-safe's
+  refusal codes and messages from `node_modules/@openclaw/fs-safe/dist/root-context.js:225-229`,
+  `root-path.js:244` and `root-path-errors.js:18-22` (fs-safe 0.18.1). `memory search disabled`
+  (`read-file.ts:206`) has no memory-core counterpart and is not extracted.
 - Host kit and Lab: `HostKit.dispatch` passes the payload through; `demo/lab_tools.py:180-187`
-  (`finish_call`) counts `status == "error"` as failed and drops the `disabled` rule; the Lab tool
-  record and the `/get` playground (`demo/lab_kept_api.py:87`) show `status`/`code` chips;
-  `tests/demo/test_demo_app.py:870-880` and docs/host_kit.md (the refusals paragraph at :297-301,
-  the table row at :781) change with them.
+  (`finish_call`) keeps its rule `status == "error" or disabled`: the tag's `memory_search`
+  unavailable result still carries `disabled: true` and `unavailable: true`
+  (`tools.shared.ts:136-139`), so only the comment changes; the Lab tool record and the `/get`
+  playground (`demo/lab_kept_api.py:87`) show `status`/`code` chips;
+  `tests/demo/test_demo_app.py:870-880` and docs/host_kit.md (the table row at :781) change with
+  them; the refusals paragraph at :297-301 stays correct except for the `memory_get` shape.
 
 5.2 Memory paths (`USER.md`, `DREAMS.md`).
 - Upstream: `internal.ts:157-170` (`isMemoryPath`: `MEMORY.md`, `USER.md`, `dreams.md` in any
@@ -477,11 +506,21 @@ Probe findings that no worklist test covers yet:
   the file is now indexed; `memory_core/memory_paths.py` keeps only the daily-path shapes (no
   change). `DREAMS.md` is already readable in Python; its `system` provenance class
   (`memory/memory-path-provenance.ts:58-67`) belongs to area 7.
+- Also measured while applying the review (2026-09-29, `listMemoryFiles` op): the tag sorts the
+  whole `memory/` walk by path (`internal.ts:246`, `scan.entries.map(...).toSorted()`, UTF-16
+  code-unit order), so `memory/a-b.md`, `memory/a.md`, `memory/a/b.md`; memory-core's pre-order
+  walk gives `memory/a/b.md` first. The existing scenarios pass by coincidence; the sort is
+  ported here with a scenario that separates the two orders. On a case-insensitive file system
+  a lowercase `user.md` is listed as `USER.md` (the tag lstats the joined name); the Python port
+  lstats the same name, so it agrees. Not ported here: the scan now throws
+  `MemorySourceScanError` on an unreadable directory (`internal.ts:191-247`) where memory-core
+  skips it; that changes the reindex contract and goes with area 6.
 - Flips: none on the worklist (`path_gate[dreams.md]` flips with 5.1).
 - New tests: `listMemoryFiles` scenarios with `USER.md` (regular, symlinked, a directory,
-  lowercase `user.md`).
+  lowercase `user.md`, alone) and the sort scenario.
 - Host kit and Lab: `USER.md` lines appear in `memory_search` hits (Lab search panel, the kit's
-  recall signals); docs/workspace_layout.md and the "Memory file discovery" row.
+  recall signals); docs/workspace_layout.md and the "Memory file discovery" row; the
+  `client.py:96-101` docstring ("USER.md writes skip the reindex") changes with the reindex.
 
 5.3 Tool definitions.
 - Upstream: `memory-tool-contract.ts:23-45` (schemas), `:47-64` (`resolveMemorySourceContract`),
@@ -492,7 +531,10 @@ Probe findings that no worklist test covers yet:
 - Python: `memory_search_tool_definition()`/`memory_get_tool_definition()` take the search sources
   (D1) and fill the extracted `describe` templates; both schemas gain `minimum: 1` where upstream
   has it and `additionalProperties: false`. `label` is not added: host specs stay `{name,
-  description, parameters}`.
+  description, parameters}`. The `files` part also depends on `extraPaths` (`configured extra
+  paths` when non-empty, `memory-tool-contract.ts:52-57`); memory-core has none, so that input is
+  fixed to "none" and documented. Until D1 is decided the kit passes memory-core's current
+  search sources (memory and sessions), so no default changes.
 - Flips: `memory_tool_definitions_match_python`.
 - Oracle op change: `memoryToolDefinitions` takes a payload `config` (`memory.search.sources`,
   `memory.search.experimental.sessionMemory`), so both description variants are compared.
@@ -512,8 +554,10 @@ Probe findings that no worklist test covers yet:
   (a pre-existing, documented gap).
 - New oracle op `memoryPromptSection` over the tool sets {none, `memory_search`, `memory_get`,
   both} crossed with {no session tools, `sessions_search`, `sessions_history`, both} and the
-  citation modes {on, off, auto, undefined}; `tests/parity/test_prompt_section.py` keeps offline
-  literals equal to the op's outputs; the "Prompt memory tool section" row can become `match`.
+  citation modes {on, off} (the review dropped `auto` and undefined: Python rejects them, and
+  upstream prints the "on" line for both, so the matrix row names them as the gap);
+  `tests/parity/test_prompt_section.py` keeps offline literals equal to the op's outputs; the
+  "Prompt memory tool section" row can become `match`.
 - Host kit and Lab: `HostKit.before_turn` (`kit.py:432`) offers no `sessions_*` tool, so its
   section says `Session hits are search snippets only; exact session history is unavailable with
   the enabled tools.` plus the line-number and outcome lines; the Lab prompt inspector and
@@ -531,11 +575,18 @@ Probe findings that no worklist test covers yet:
 - Python: `memory_core/tools/common.py:212-255` reads a blank string as omitted; a
   `read_corpus_param(raw, allowed)` raises `MemoryToolInputError` (same payload; upstream's error
   is not a `ToolInputError`, documented) with `memory, wiki, all, sessions` for search and
-  `memory, wiki, all` for get.
+  `memory, wiki, all` for get. The reader trims like `readStringParam` (blank means omitted,
+  `" memory "` is valid) and keeps upstream's error order: query, maxResults, minScore, corpus
+  for search; path, from, lines, corpus for get. The Python-call forms `memory_get(corpus=...)`
+  and `memory_search(corpus=...)` validate through the same reader, so a host cannot bypass it.
 - Flips: the two param entries change tables instead of flipping in place (D5): the unknown
-  corpus becomes an error case, the blank `maxResults` an accepted case, which compares ranked
-  paths and so waits on the area-6 label. Ranking-free coverage lands in area 5: `memoryGet`
-  raw-param fixtures with blank `from`/`lines` and an unknown corpus.
+  corpus becomes the error case `unknown-corpus-rejected`; the blank `maxResults` leaves the error
+  table for a new ranking-free test, `memory_search_blank_params_read_as_omitted`, on a fixture
+  with a single daily file and no `MEMORY.md`, so area 6's curated-entry chunking cannot reach it
+  (measured 2026-09-29: the tag returns the same single `memory/2026-05-26.md#1-3` hit for blank
+  `maxResults`, blank `minScore`, blank `corpus` and the omitted params). No new xfail is added.
+  Further ranking-free coverage: `memoryGet` raw-param fixtures with blank `from`/`lines` and an
+  unknown corpus.
 
 5.6 Unavailable results, deadline and cooldown.
 - Upstream: `tools.shared.ts:92-150` (`buildMemorySearchUnavailableResult` with `agentId`,
@@ -546,16 +597,26 @@ Probe findings that no worklist test covers yet:
   readiness); `tools.ts:73-130` (cooldown entries hold `MemoryCorpusFailure` and the runtime
   config key).
 - Python: `memory_core/tools/memory_search.py:89` (15 s) takes the extracted 30 s;
-  `_run_with_deadline` (`:309`) becomes a deadline runner whose timeout error is a dedicated type;
-  `build_memory_search_unavailable_result` gains `agent_id`, `deadline` and `code`; cooldown
-  entries hold `{error, deadline, code}` plus a configuration fingerprint (the frozen
+  `_run_with_deadline` (`:309`) is replaced by the deadline runner of `memory_core/tools/corpus.py`
+  (built in A5 for `memory_get`, reused here), whose timeout error is a dedicated type known by
+  identity; `build_memory_search_unavailable_result` gains `agent_id`, `deadline` and `code`;
+  cooldown entries hold `{error, deadline, code}` plus a configuration fingerprint (the frozen
   `MemoryConfig` and the store's provider identity, for upstream's `resolveRuntimeConfigCacheKey`)
-  and stay keyed by store path (the documented deviation). Pause/resume is not ported: memory-core
-  has no managed local embedding service.
+  and stay keyed by store path (the documented deviation). The tag keys the cooldown by agent
+  alone (`tools.ts:269`, `readMemorySearchToolCooldown(agentId, cfg)`): the session-key fallback
+  of `resolve_memory_search_tool_cooldown_key` goes, or is documented with the store-path
+  deviation. Pause/resume is not ported: memory-core has no managed local embedding service.
 - New tests: the `memorySearchUnavailableResult` payload gains `agentId`, `deadline` and `code`,
   with cases for a deadline with and without an agent, the canonical-key code, and quota text plus
   a deadline flag.
-- Runtime identity: the deadline action and the canonical-key texts name OpenClaw commands (D4).
+- Runtime identity: the deadline action and the canonical-key texts name OpenClaw commands (D4);
+  `memory_core/runtime_identity.py:47-50, 102` lists the new fields and drops
+  `memory_search_paused_action` when the paused result moves to the ported diagnostic (5.8).
+- Lab and tests that change with it: `demo/lab_kept_api.py:43-46, 314, 386` import
+  `MEMORY_SEARCH_TOOL_TIMEOUT_MS` (the deadline chip, 15 s) and
+  `memory_search_tool_cooldown_remaining` (the entry becomes `{error, deadline, code}` plus the
+  fingerprint); `tests/unit/test_memory_search_deadline.py:145` (15 s) and the cooldown key tests
+  at `:206-309`.
 
 5.7 Per-corpus outcomes (`memory_search` and `memory_get`).
 - Upstream: `memory-corpus.ts:29-109` (attempts ok/unavailable/partial/not-registered,
@@ -567,20 +628,42 @@ Probe findings that no worklist test covers yet:
   `:133-161` (source selection, keyword partials); `manager-search-orchestration.ts:422-446`
   (partials published after the keyword leg, before `embedQueryWithRetry` at :475).
 - Python: a new `memory_core/tools/corpus.py` (attempts, metadata, supplement settle, the deadline
-  runner) serves both tools. `_run_memory_search_tool` (`memory_search.py:452`) runs the memory
+  runner and its error type) serves both tools; A5 builds all of it for `memory_get`, and B3/B6
+  only reuse it. `_run_memory_search_tool` (`memory_search.py:452`) runs the memory
   and wiki attempts on two workers under their own deadlines; a memory failure records the
-  cooldown for any corpus, a wiki failure never does. `_merge_corpus_results` (`:577`) becomes the
-  stream-head merge (the tag no longer re-sorts by score and path); supplement results merge
-  score-descending, then path, sliced to `max(1, maxResults ?? 10)`. `SQLiteMemoryStore.search`
-  (`memory_core/index/sqlite_store.py`) runs the keyword leg first and reports the keyword-only
-  memory hits through an `on_partial_results` callback before embedding the query; a deadline
-  with partials is `partial` (`partial: true`, the extracted warning, no cooldown).
-  `corpus=sessions` returns the not-enabled result when sessions are not searched (D1).
-  `memory_get` `wiki`/`all` follow `memory-read-tool.ts`, with the supplement's own excerpt (D7).
+  cooldown for any corpus, a wiki failure never does. `_merge_corpus_results` (`:577`) becomes a
+  1:1 port of `mergeMemorySearchCorpusResults` (`tools.ts:168-230`, both branches): the balanced
+  branch takes items one at a time up to `ceil(max/2)` per corpus, keeps each stream's own order,
+  then merges the stream heads (the Python branch re-sorts everything, `:577-602`); supplement
+  results merge score-descending, then path, sliced to `max(1, maxResults ?? 10)`.
+  `SQLiteMemoryStore.search` (`memory_core/index/sqlite_store.py`) runs the keyword leg first and
+  reports the keyword-only memory hits through an `on_partial_results` callback before embedding
+  the query; a deadline with partials is `partial` (`partial: true`, the extracted warning, no
+  cooldown). `corpus=sessions` returns the not-enabled result when sessions are not searched
+  (D1). `memory_get` `wiki`/`all` follow `memory-read-tool.ts`; with the supplement's own excerpt
+  only if D7 ports the protocol.
+- Supplement settle (`memory-corpus.ts:223-273`): supplements are sorted by `pluginId`, at most 4
+  run at once, failures are labelled `pluginId: error` and joined with `; ` (a single failure is
+  unlabelled), and completed results survive a failure. `supplement.search` receives `{query,
+  maxResults?, agentId, agentSessionKey, sandboxed}` and no `corpus` (`:283-286`); `get` receives
+  `{lookup, fromLine, lineCount, ...}`. The Python `MemoryCorpusSupplement`
+  (`memory_core/supplements.py:20-25`) has no plugin id and other signatures, so D7 covers the
+  whole registration. Until D7 is decided, A5 ports what does not depend on the protocol
+  (attempts, metadata, deadline, the outcome rules of the wiki and `all` reads with no or one
+  supplement) and documents the rest.
+- `corpus=all` read outcomes (`memory-read-tool.ts:84-93`): when the memory read throws or misses,
+  the result is the wiki result, else `not_found` when either corpus answered ok, else
+  `{status: "error", path, text: ""}` with no `code`; fixtures cover the gate refusal and a
+  missing file under `all`, with and without a supplement.
 - Flips: `memory_search_deadline_and_cooldown_match_python` once area 6 lands the chunking, or
   earlier through the fixture copy of D5; the D3 harness change removes the step-0 difference.
+  After B6, `memory_search_all_balances_memory_and_wiki` (area-6 label) runs with `--runxfail`:
+  if the merge port makes it pass, its entry moves or goes (strict xfail).
 - New tests: a pure op `memoryCorpusMetadata` (`composeMemoryCorpusMetadata` over attempt lists:
-  not-registered alone and with memory, partial, deadline flags, joined plugin failures);
+  not-registered alone and with memory, partial, deadline flags; it can only pass an already
+  joined plugin-failure string through); an op `memoryCorpusSupplements` that runs the real
+  `searchMemoryCorpusSupplements`/`readMemoryCorpusSupplements` over several registered
+  supplements (ok, throwing, null), for the per-plugin join, once D7 gives Python plugin ids;
   `memoryGet` wiki/`all` fixtures (the op registers a supplement as `memorySearchToolSequence`
   does: found, missing, throwing).
 - Host kit and Lab: `HostKit._memory_search` (`kit.py:375`) records recall only when the memory
@@ -608,18 +691,29 @@ Probe findings that no worklist test covers yet:
   and `index_identity()` passes memory-core's versions; `memory_search.py` builds paused results
   through the ported diagnostic, and a chunking-only mismatch searches keyword-only with the
   staleness fields; `resolve_paused_memory_index_identity_reason` and `PAUSED_MEMORY_INDEX_*`
-  (`memory_search.py:114-118, 182-201`) go.
+  (`memory_search.py:114-118, 182-201`) go. Versions compare with JavaScript semantics
+  (`(v ?? 0) > N` on the stored JSON: strings, `null` and a missing key), with fixtures for each;
+  the stored meta keeps the tag's key order (`nextMeta`, `manager-sync-ops.ts:639-643`).
 - Flips: `memory_index_identity_matches_python`, after the fixture meta gains the tag's
   `provenanceVersion: 1` and `chunkingVersion: 5` and new cases (older and newer provenance,
   older chunking with and without a content match, newer chunking, a provider without a model).
-- New oracle op `memoryIndexSearchDiagnostic` (the four `types.ts` exports); a paused-result test
-  for `corpus=memory` and `corpus=all` that compares only the paused payloads, because
+- New oracle op `memoryIndexSearchDiagnostic` (the five `types.ts` exports:
+  `resolveMemoryIndexIdentityReason` at `:239`, `resolveMemoryIndexIdentityDiagnostic`,
+  `formatMemoryIndexRebuildGuidance`, `resolveMemoryIndexSearchDiagnostic`,
+  `resolveMemorySearchStaleness`) with `provider`/`requestedProvider` inputs, so the keyword-only
+  disclosure for provider `none` is compared; the repair-failure branch (`:318-331`, input
+  `lastSyncError`) is either covered by the op with a Python `last_sync_error` input or listed as
+  not ported (memory-core has no background sync). A paused-result test for `corpus=memory` and
+  `corpus=all` compares only the paused payloads, because
   `memory_search_pauses_on_index_model_change` stays on the area-6 label (its built step returns
   two `MEMORY.md` chunks).
+- Matrix: the identity row records the missing search-time repair (D3) as a deviation: upstream
+  repairs `metadata_missing` and older OpenClaw-owned identities in place
+  (`manager-search-orchestration.ts:288-297`), where memory-core returns the paused result.
 - Host kit and Lab: the Lab already reindexes on a non-valid identity before a search
   (`demo/lab_kept_api.py:336`); its identity chip (`demo/static/lab/inspector/memory.js:77`)
-  adds `code`/`owner`. `HostKit.from_workspace` reindexes on open, so an index
-  written before the port (no versions) is rebuilt at the next kit start.
+  adds `code`/`owner`. With D2's stored versions at 0/0, an index written before the port reads
+  as `valid`, so nothing is rebuilt at the next kit start.
 
 ##### TDD tasks
 
@@ -629,50 +723,78 @@ commit after `ruff`, the offline suite and a targeted oracle run (`-k`) of its t
 Part A: `memory_get` contract, memory paths, tool definitions, prompt section.
 
 - A1. Extraction: a new generated module for the memory tools (sources `memory-tool-contract.ts`,
-  `read-file.ts`, `read-file-shared.ts`, the `memory_get` texts of `memory-corpus.ts` and
-  `tools.ts`) in `scripts/extract_upstream_constants.py`, with its set-equality check in
-  `tests/integration/test_extracted_upstream_constants.py`; `--check` rc 0.
-- A2. Param readers: blank numeric strings read as omitted; `read_corpus_param` and the
-  `memory_get` corpus error. Red first: `memoryGet` raw-param fixtures (blank `from`/`lines`,
+  `read-file.ts`, `read-file-shared.ts`, `read-retry.ts`, every text of `memory-corpus.ts` and
+  `memory/search-deadline.ts`, the `memory_get` texts of `tools.ts`, the fs-safe refusal texts)
+  in `scripts/extract_upstream_constants.py`, with its set-equality check in
+  `tests/integration/test_extracted_upstream_constants.py`; `--check` rc 0. The extractor's
+  `ts_template_literal` (`:164-205`) raises on any unmapped `${expr}` and cannot take literals
+  out of ternaries or nested templates, which the guidance and session lines of
+  `buildMemoryPromptSection` (`memory-tool-contract.ts:119-137`) need, and later
+  `deadlineAction` (`tools.shared.ts:111-113`) and the rebuild guidance and paused causes
+  (`types.ts:300-360`, the ` --agent ` suffix at `:304`): A1 first adds a helper for ternary
+  branch literals and nested templates at an anchor, with unit tests
+  (`tests/unit/test_extract_upstream_constants.py`); B1 reuses it.
+- A2. Param readers (5.5, with the old B2): blank numeric strings read as omitted;
+  `read_corpus_param` for both tools, the `memory_get` and `memory_search` corpus errors, the
+  error order; the param tables of D5 (the unknown corpus as the error case
+  `unknown-corpus-rejected`, the blank `maxResults` in the new ranking-free
+  `memory_search_blank_params_read_as_omitted`, the worklist label text corrected); the two
+  area-5 param entries go. Red first: `memoryGet` raw-param fixtures (blank `from`/`lines`,
   unknown corpus) and `tests/unit/test_memory_search_params.py` blank cases.
-- A3. Memory paths: `USER.md` in `is_memory_path` and `list_memory_files`, the curator reindex,
-  `listMemoryFiles` scenarios, docs/workspace_layout.md.
-- A4. `memory_get` read contract (5.1): status, codes and messages, the fs-safe symlink refusal,
-  the read-result rules (sentinel, UTF-16 budget, pair-safe cut); the 26 "memory_get contract"
-  entries go; the probe fixtures are added.
-- A5. `memory_get` corpora (5.7, read half): `memory_core/tools/corpus.py` with the `memory_get`
-  deadline, the wiki and `all` reads, supplement registration in the `memoryGet` op, fixtures.
+- A3. Memory paths: `USER.md` in `is_memory_path` and `list_memory_files`, the walk sorted by
+  path, the curator reindex, `listMemoryFiles` scenarios, docs/workspace_layout.md.
+- A4. `memory_get` read contract (5.1): status, codes and messages, the fs-safe resolve and its
+  refusals, the read-result rules (sentinel, UTF-16 budget, pair-safe cut, notice condition,
+  read fallback, path-mismatch, transient retry), the substring rule of `format_error_message`;
+  the 26 "memory_get contract" entries go (the misnamed
+  `memory_get_disabled_error_matches_python` is renamed, a new node id, when its entry goes);
+  the probe fixtures are added.
+- A5. `memory_get` corpora (5.7, read half) and the shared corpus layer: `memory_core/tools/
+  corpus.py` with the deadline runner (`runMemoryCorpusDeadline`, `memory_get timed out after
+  30s`, `DEFAULT_MEMORY_SEARCH_TIMEOUT_MS`), the dedicated deadline error
+  (`search-deadline.ts:18-32`), the attempts, `composeMemoryCorpusMetadata` and the settle step;
+  the pure `memoryCorpusMetadata` op; the wiki and `all` reads, supplement registration in the
+  `memoryGet` op, fixtures (the protocol-dependent part waits on D7).
 - A6. Tool definitions (5.3): the op's `config` payload, definitions from the source contract,
   `HostKit.tools()`, Lab and test literals; the "memory tool definitions" entry goes.
 - A7. Prompt section (5.4): the `memoryPromptSection` op and fixtures, `prompt_section.py`,
   `HostKit.before_turn`, the Lab preview; the prompt-section row.
-- A8. Host kit and Lab for Part A: tool-record status, `/get` chips, docs/host_kit.md, UI test
-  literals, a browser check at several widths; matrix rows `memory_get`, "Memory file discovery",
-  "Prompt memory tool section" and an audit note.
+- A8. Host kit and Lab for Part A: tool-record status, `/get` takes `corpus` and shows `status`,
+  `code`, `corpora` and `warning` chips (today the per-corpus `memory_get` outcomes cannot be
+  seen in the Lab; the chat tool records already carry the full payload,
+  `demo/static/lab/views/chat.js:50`), docs/host_kit.md (also `:242-249, 372-377, 951-954, 1011,
+  1264, 1279`), UI test literals, a browser check at several widths; matrix rows `memory_get`,
+  "Memory file discovery", "Prompt memory tool section" and an audit note.
 
 Part B: `memory_search` params, errors, deadline, per-corpus outcomes, index identity.
 
-- B1. Extraction for Part B: unavailable texts (deadline, canonical key), the sessions-not-enabled
-  texts, the partial warning, the metadata templates, the timeout template and
-  `DEFAULT_MEMORY_SEARCH_TIMEOUT_MS`, `MEMORY_SEARCH_TOOL_COOLDOWN_MS`, the identity reasons and
-  versions, the diagnostic and rebuild-guidance templates, the rebuild notice.
-- B2. Param tables (5.5, D5): the unknown corpus as an error case, the blank `maxResults` as an
-  accepted case under the area-6 label, the worklist label text corrected; the two area-5 param
-  entries go.
-- B3. Unavailable result (5.6): `agent_id`/`deadline`/`code`, the op payload extension and cases.
-- B4. Corpus metadata (5.7): the `memoryCorpusMetadata` op and fixtures for the search half of
-  `corpus.py` (supplement settle, per-plugin failures).
-- B5. Index identity (5.8): fixture meta and new cases red, `identity.py` codes and versions (D2),
-  the store meta, the `memoryIndexSearchDiagnostic` op and the diagnostic port, the paused-result
-  test; the "memory index identity" entry goes.
-- B6. `memory_search` orchestration (5.6, 5.7): concurrent attempts, the cooldown rule and config
-  fingerprint, the stream merge, the supplement merge, sessions not enabled (D1), the recall
-  filter, the 30 s deadline, the harness pre-sync (D3).
+- B1. Extraction for Part B with A1's helper: unavailable texts (deadline, canonical key), the
+  sessions-not-enabled texts, the partial warning, `MEMORY_SEARCH_TOOL_COOLDOWN_MS`, the identity
+  reasons and versions, the diagnostic and rebuild-guidance templates. The timeout template,
+  `DEFAULT_MEMORY_SEARCH_TIMEOUT_MS` and the metadata templates come from A1. Not extracted
+  (review): the rebuild notice, which the Python side never emits under D3, unless D3 changes.
+- B2. (Moved into A2.)
+- B3. Unavailable result (5.6): `agent_id`/`deadline`/`code`, the op payload extension and cases;
+  A5's deadline error supplies `deadline`.
+- B4. Supplement search (5.7): the search half of the settle step and, once D7 is decided, the
+  `memoryCorpusSupplements` op with the per-plugin failure join.
+- B5. Index identity (5.8): fixture meta and new cases red, `identity.py` codes and versions (D2,
+  JavaScript version comparison), the store meta, the `memoryIndexSearchDiagnostic` op and the
+  diagnostic port, the paused-result test; the "memory index identity" entry goes.
+- B6. `memory_search` orchestration (5.6, 5.7): concurrent attempts on A5's runner, the cooldown
+  rule, key and config fingerprint, the `mergeMemorySearchCorpusResults` port, the supplement
+  merge, sessions not enabled (D1), the default corpus (D8), the recall filter, the 30 s
+  deadline, the harness pre-sync (D3); the callers of the `corpus="all"` default
+  (`memory_core/client.py:58`, `memory_search.py:410`, `memory_core/live/__init__.py:335, 433`,
+  `demo/lab_chat.py:157`) and their tests follow D8; the area-6 balance test runs with
+  `--runxfail` afterwards.
 - B7. Keyword partials (5.7): the store's `on_partial_results`, the partial outcome, the sequence
-  copy of D5; the tool-sequence entry goes here or with area 6.
+  copy of D5 (only if its first run matches; a still-differing copy is not added, never a new
+  xfail to get green); the tool-sequence entry goes here or with area 6.
 - B8. Host kit and Lab for Part B: the recall gate, `/search` events and chips, the scenario check,
   docs/memory_search_tool.md and docs/host_kit.md; matrix rows `memory_search` corpora, params,
-  deadline and identity re-audited with an audit note; this plan's status.
+  deadline, identity and "Recall tracking from `memory_search`" (row 33, the recall gate
+  changes, `tools.ts:477-508`) re-audited with an audit note; this plan's status.
 - B9. Full `tests/integration` at the tag in the foreground (reference at `64770c7`: 268 passed,
   80 xfailed, 3 skipped, 0 failed of 351), the offline suite (baseline at `fc0f6bc`: 1485 passed,
   325 skipped), ruff, `scripts/rename_project.py --check`,
@@ -684,12 +806,20 @@ above the area's 16-26 h because of the corpus orchestration and keyword partial
 
 ##### Decisions needed from Doruk
 
-- D1. Search sources. Upstream searches `memory` only unless sessions are configured (default
-  `searchSources` `["memory"]`); memory-core always indexes and searches memory and sessions
-  (`sqlite_store.py:51` `CONFIGURED_SOURCES`). The source decides the `memory_search` description
-  (`, indexed session transcripts`), the `corpus=sessions` not-enabled result and the identity's
-  `sources`. Options: a `MemoryConfig.search_sources` with upstream's default (sessions off, a
-  default change), or the same knob defaulting to memory and sessions (a documented deviation).
+- D1. Search sources. Upstream has two lists (`src/agents/memory-search-source-policy.ts:26-47`):
+  `sources`, what is indexed, which the identity meta stores (`manager-sync-ops.ts:629`), and
+  `searchSources`, which sets the `memory_search` description (`, indexed session
+  transcripts`) and the `corpus=sessions` not-enabled result; both default to `["memory"]`
+  unless sessions are configured. memory-core always indexes and searches memory and sessions
+  (`sqlite_store.py:51` `CONFIGURED_SOURCES`). The choice is per knob:
+  - keep memory and sessions (a documented deviation): step 7 of the tool sequence can match
+    only if the `memorySearchToolSequence` config sets `memory.search.sources: ["memory",
+    "sessions"]` and `memory.search.experimental.sessionMemory: true`; the tag's step 7 is then a
+    sessions search or the cooldown, not "not enabled", so the fixture expectations change;
+  - adopt upstream's defaults (a default change): existing indexes read `index sources changed`
+    and stay paused until reindexed, and sessions disappear from `Memory.search` and the Lab.
+  Part A's tool definitions take the search sources as a parameter and the kit passes memory and
+  sessions until this is decided.
 - D2. Index version constants. The tag's identity compares `provenanceVersion` with 1 and
   `chunkingVersion` with 5; memory-core has neither the provenance classifier (area 7) nor the v5
   chunker (area 6). Recommended: the versions are parameters of the ported function (the oracle
@@ -712,24 +842,53 @@ above the area's 16-26 h because of the corpus orchestration and keyword partial
   existing pattern (`SQLiteMemoryStore.reindex(workspace)` for rebuilds, `MemoryConfig` field
   names for config), for Doruk to approve text by text.
 - D5. Worklist moves. (a) `param_errors[max-results-empty-string]` leaves the error table because
-  the tag accepts it; as an accepted case it compares ranked paths, so it joins the area-6 label.
-  (b) `param_coercion[unknown-corpus-searches-all-sources]` becomes the error case
+  the tag accepts it. Revised by the review: it moves to the new ranking-free
+  `memory_search_blank_params_read_as_omitted` (A2), so no new strict xfail is needed; adding the
+  case to the accepted table under the area-6 label as well would be a new xfail and needs
+  Doruk's yes. (b) `param_coercion[unknown-corpus-searches-all-sources]` becomes the error case
   `unknown-corpus-rejected` (a new node id). (c) `memory_search_deadline_and_cooldown_match_python`
   also needs area 6's chunking (steps 5, 9, 11, 16): keep it strict and move its entry to the
-  area-6 label, and add a copy of the sequence on a memory file that is one chunk at the tag, which
-  flips in area 5 if the first run shows no ranking difference.
+  area-6 label, and add a copy of the sequence on a memory file that is one chunk at the tag,
+  only if its first run shows no ranking difference (a still-differing copy is not added).
 - D6. OS error messages. The tag reports Node's `code` and message (`EACCES: permission denied,
   open '<abs>'`). Recommended: port the code (the errno name) and keep Python's message as a
   documented deviation; the alternative is a libuv message table in memory-core.
-- D7. Supplement protocol. Upstream passes `fromLine`/`lineCount` to the supplement's `get` and
-  returns its excerpt as is (already so at the pin); Python's `MemoryCorpusSupplement.get(path,
-  corpus)` re-slices the content and adds `from`/`lines`. Porting changes the public protocol
-  (`memory_core/supplements.py:20-25`); keeping it is a documented deviation.
+- D7. Supplement protocol, the whole registration. Upstream registers each supplement under a
+  `pluginId` (the settle step sorts and labels failures by it), calls `search({query,
+  maxResults?, agentId, agentSessionKey, sandboxed})` without a `corpus`, and `get({lookup,
+  fromLine, lineCount, agentId, agentSessionKey, sandboxed})`, returning the excerpt as is
+  (already so at the pin). Python's `MemoryCorpusSupplement` has no plugin id,
+  `search(query, max_results, corpus)` and `get(path, corpus)`, and `memory_get` re-slices the
+  content and adds `from`/`lines`. Porting changes the public protocol
+  (`memory_core/supplements.py:20-25`); keeping it is a documented deviation, and then the
+  per-plugin failure join and the `memoryCorpusSupplements` op stay out.
+- D8. Default corpus of the Python-call forms. `Memory.search()` (`memory_core/client.py:58`),
+  `memory_search()` (`memory_search.py:410`) and the live SDK (`memory_core/live/__init__.py:335,
+  433`) default to `corpus="all"`, and the Lab's auto-recall (`demo/lab_chat.py:157`) inherits
+  it. At the tag `all` adds a wiki attempt, the `balanceCorpora` merge and `corpora` metadata
+  (`tools.ts:469-475, 509-514`), where an omitted corpus does not. Options: default to `None`
+  (upstream's "omitted"), or keep `"all"` and take the new side effects in every caller.
 
 Not ported, to document at the code site and in the matrix: the deadline pause/resume for managed
 local embedding readiness; `lastSyncError` staleness (memory-core has no background sync);
 upstream's caller `AbortSignal` (no Python caller passes one); `debug`, `fallback` and `mode` in
-`memory_search` results; the `auto` citations mode.
+`memory_search` results; the `auto` citations mode; the scan error of `listMemoryFiles` (area 6).
+
+Review applied 2026-09-29 (no blockers; 9 major and 12 minor findings, all anchors and the 13
+cited commits re-checked at `eb377ac59e6`): the `finish_call` rule stays (5.1); D8 added for the
+`corpus="all"` default; D1 split into `sources` and `searchSources` with the test consequences of
+each option; A1 adds the extractor helper; the corpus layer (deadline runner and error,
+metadata, settle, the metadata op) moves from Part B into A5 and B2 into A2; D7 covers the whole
+registration and a `memoryCorpusSupplements` op; B6 ports `mergeMemorySearchCorpusResults` 1:1;
+the Part B Lab and test consequences are listed (5.6); the missing `memory_get` read rules are in
+5.1 and A4. Minor: 5.8's rebuild sentence is corrected and the version comparison specified; the
+diagnostic op gains its fifth export and inputs; the prompt-section op drops `auto`/undefined;
+B8 re-audits row 33; A8 lists the other docs/host_kit.md lines; the cooldown key rule (5.6);
+`read_corpus_param` trimming and order (5.5); `corpus=all` read fixtures (5.7); D3 in the
+identity row (5.8); worklist hygiene (A4, D5); B1 drops texts that are never emitted; 5.3 names
+the extra-paths input. Found while applying it: the `listMemoryFiles` sort (5.2), the fs-safe
+resolve refusals for a file used as a directory and a final symlink (5.1), the
+`formatErrorMessage` substring rule (5.1) and the single-file fixture that resolves D5(a).
 
 ### 6. Hybrid ranking and indexing (estimate 24-40 h)
 

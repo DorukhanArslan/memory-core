@@ -194,7 +194,7 @@ uses have not run yet (ported, oracle-unverified).
 | # | Finding | Evidence | Recommendation |
 | --- | --- | --- | --- |
 | F2 | `TurnContext` does not serialize (it holds a `WorkspaceContext`), but a graph's model, tools and maintenance nodes run in separate supersteps that read their input from the checkpoint | test: every graph test carries the turn in `memory_turn` | **Addressed** (`14dbdcb`, `76dfdd7`): the kit's `TurnState` (`memory_core/host/turn.py`: session, system prompt, runtime context, tools and the reset turn, `to_json` / `from_json`) is the turn in `memory_turn`; the adapter's `PendingTurn` is gone |
-| F3 | a bare `/new` turn has two user prompts, `ResetTurn.model_prompt` for the model and `transcript_prompt` for the transcript, and the model needs the first on every call of the turn, tool rounds included, while a graph keeps one `messages` list | test: `test_bare_new_saves_session_memory_and_runs_the_reset_turn`, `test_reset_turn_substitutes_the_active_user_message_on_every_call`, `test_model_input_replaces_only_the_transcript_prompt` | **Addressed** (`14dbdcb`, `76dfdd7`): `TurnState.reset` carries the `ResetTurn` (`ResetTurn.to_json` / `from_json` in `memory_reset`); `model_input` gives the turn's active user message (upstream's `findActiveUserMessageIndex`) the model prompt under upstream's guard (`installModelPromptTransform`), so the reset row needs no message id |
+| F3 | a bare `/new` turn has two user prompts, `ResetTurn.model_prompt` for the model and `transcript_prompt` for the transcript, and the model needs the first on every call of the turn, tool rounds included, while a graph keeps one `messages` list | test: `test_bare_new_saves_session_memory_and_runs_the_reset_turn`, `test_reset_turn_substitutes_the_active_user_message_on_every_call`, `test_reset_turn_keeps_its_prompt_when_the_repair_drops_an_answered_call`, `test_model_input_replaces_only_the_transcript_prompt` | **Addressed** (`14dbdcb`, `76dfdd7`): `TurnState.reset` carries the `ResetTurn` (`ResetTurn.to_json` / `from_json` in `memory_reset`); `model_input` gives the turn's active user message (upstream's `findActiveUserMessageIndex`) the model prompt under upstream's guard (`installModelPromptTransform`), so the reset row needs no message id |
 | F6 | with maintenance in the graph, `graph.invoke` returns only after a due flush's model call, and the node starts when the reply is in state, not when it is delivered (upstream waits for delivery settlement, `agent-runner-maintenance.ts:69-71`) | test: `test_due_flush_runs_after_the_reply_and_writes_the_daily_file` (the `agent` update streams before the flush call) | labelled deviation; detached maintenance needs no kit change (end the graph after `agent`, run `after_turn` and the flush on a thread with a per-thread future that the next run's `prepare` waits for and merges); one decision with docs/host_kit.md Q13 (L3) |
 | F7 | a flush turn run inside a graph streams its tokens into `stream_mode="messages"` unless its model run is tagged | test: `test_flush_turn_is_restricted_to_the_write_tool_and_not_streamed` (with the reply present as the positive control) | the example tags it `TAG_NOSTREAM`; **Addressed** (the docs after `7e1d23b`): docs/host_kit.md names the need next to `FlushRequest` |
 | F8 | the kit takes a parsed `/new` command and ships no parser; upstream's (`session-reset-command.ts:249`) handles mentions, envelopes, the soft `/reset` and configured triggers | source | the example's `reset_command` is a labelled simplification (first word, any case; `test_a_command_that_is_not_first_word_is_an_ordinary_message`); porting a subset into core needs an oracle op (L6) |
@@ -298,7 +298,11 @@ deviations of the example, beyond the kit's:
 - Every model call of a turn gets a repaired copy of `messages` (F26). Upstream repairs the
   replayed history once per attempt (`run/attempt-history-prepare.ts:78`), and tool rounds
   inside an attempt bypass that path (`run/attempt-stream.ts:243`); the per-call repair is a
-  superset that leaves a well-formed round unchanged. The labelled gaps of the kit's repair
+  superset that leaves a well-formed round unchanged. A round the input repair rewrites (an
+  invalid call without a valid name or without input, which the tools node answered) loses the
+  call and its tool message in later calls' copies, where upstream sends the attempt's own
+  round as it is; the turn's user message is found on the stored messages, so the reset prompt
+  and the runtime context keep their place. The labelled gaps of the kit's repair
   (docs/host_kit.md › LangGraph findings › Parity labels) apply: no stop reason on host rows,
   content tool-call blocks and a legacy `function_call` neither read nor rewritten. Until
   `7e1d23b` the example removed such an AI message instead, a labelled deviation that is gone.
@@ -601,10 +605,11 @@ def repair_tool_calls(
 ```
 
 - Prompt assembly stays host code: the example's `model_input(turn, messages, repair)` sends
-  the system prompt and then the repaired copy of `messages`, whose active user message gets
-  `turn.reset.model_prompt` under upstream's guard on a reset turn. As built, the runtime
-  context goes in as a user message immediately before the turn's user message, where upstream
-  keeps its carrier (F22); the plan had it as a second system message before the history, which
+  the system prompt and then the repaired copy of `messages`, whose active user message (found
+  on the stored messages, then in the copy by identity, as upstream fixes its target prompt
+  once per turn) gets `turn.reset.model_prompt` under upstream's guard on a reset turn. As built,
+  the runtime context goes in as a user message immediately before the turn's user message, where
+  upstream keeps its carrier (F22); the plan had it as a second system message before the history, which
   is where the kit's lifecycle diagram listed it until the kit docs were fixed (F22).
 - Tool schemas need no mapping: `bind_tools` takes `kit.tools()` and `FlushRequest.tools`
   unchanged, since a dict with a `name` is read as an OpenAI function

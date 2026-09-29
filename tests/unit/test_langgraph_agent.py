@@ -567,6 +567,39 @@ def test_reset_turn_substitutes_the_active_user_message_on_every_call(
     assert state["messages"][0].content == new.reset.transcript_prompt
 
 
+def test_reset_turn_keeps_its_prompt_when_the_repair_drops_an_answered_call(
+    tmp_path: Path, monkeypatch
+):
+    # Upstream fixes the target prompt at the turn's first model call and finds it again on
+    # later calls (installModelPromptTransform, attempt-llm-boundary.ts:407-415). The input
+    # repair drops a nameless invalid call although the tools node answered it, which leaves the
+    # copy's AI message without calls; the reset prompt and the runtime context must still go
+    # to the turn's user message.
+    def script(call: Call, calls: list[Call]) -> AIMessage:
+        if isinstance(call.messages[-1], ToolMessage) or len(calls) > 1:
+            return AIMessage("done")
+        nameless = {"name": None, "args": "{", "id": "call-1", "error": None}
+        return AIMessage("thinking", invalid_tool_calls=[nameless])
+
+    kit, model, graph = _graph(tmp_path, script)
+    news = _spy(monkeypatch, kit, "on_new_session")
+
+    state = _say(graph, "/new", context=example.AgentContext(runtime_context="Channel: terminal"))
+
+    (new,) = news
+    first, second = _chat_calls(model)
+    assert [message.type for message in state["messages"]] == ["human", "ai", "tool", "ai"]
+    for call in (first, second):
+        system, runtime, prompt = call.messages[:3]
+        assert isinstance(system, SystemMessage)
+        assert "Channel: terminal" in runtime.content
+        assert (prompt.type, prompt.content) == ("human", new.reset.model_prompt)
+    # The second call's copy: the AI message without its dropped call, the orphaned result gone.
+    assert [message.type for message in second.messages[3:]] == ["ai"]
+    assert second.messages[3].content == "thinking" and not second.messages[3].invalid_tool_calls
+    assert state["messages"][0].content == new.reset.transcript_prompt
+
+
 def _reset_turn(tmp_path: Path, **reset: str):
     kit = _kit(tmp_path)
     context = kit.before_turn(
@@ -792,8 +825,8 @@ def test_next_message_after_a_failed_tools_node_repairs_the_unanswered_call(
 
 
 def test_model_input_repairs_the_history_before_placing_the_prompts(tmp_path: Path):
-    # The active user message is found on the repaired copy, where a synthetic tool dict now
-    # follows the unanswered call.
+    # The active user message is found on the stored messages and placed in the repaired copy,
+    # where a synthetic tool dict now follows the unanswered call.
     turn = _reset_turn(tmp_path)
     kit = _kit(tmp_path)
     call = {"name": "memory_search", "args": {"query": "x"}, "id": "call-1"}

@@ -397,7 +397,11 @@ class TurnContext:
   `attempt-history.ts:350-383`: the last user message unless an assistant reply without tool
   calls follows it) gets `reset.model_prompt` in place of its text while that text is
   `reset.transcript_prompt` and the model prompt is not blank and differs from it (upstream's
-  `installModelPromptTransform`, `attempt-llm-boundary.ts:384-460`).
+  `installModelPromptTransform`, `attempt-llm-boundary.ts:384-460`). Find that message on the
+  stored history and then in `repair_tool_calls`' copy by identity: upstream fixes the target
+  prompt at the turn's first model call and finds it again on later calls (`:407-415`), and the
+  repair can leave a tool round's assistant message without calls, which would end the turn
+  early on the copy.
 - A turn that failed between a tool-call reply and its tool results leaves calls without results;
   send `kit.repair_tool_calls(history).messages` to the model instead of the history (upstream
   repairs the replayed history the same way at the start of each attempt, F26):

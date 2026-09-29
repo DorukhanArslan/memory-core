@@ -117,8 +117,12 @@ def model_input(turn: TurnState, messages: Sequence[Any], repair: ToolCallRepair
     turn left without its tool message gets upstream's synthetic error result, and a call
     without an id is dropped from the copy, as upstream repairs the replayed history
     (``sanitizeToolCallInputs``, ``repairToolUseResultPairing``); the stored messages keep
-    them. The runtime context goes in as a user message immediately before the turn's active user
-    message, where upstream binds its runtime-context carrier
+    them. The turn's active user message is found on the stored messages, where it is the same
+    message on every model call of the turn, and then in the copy by identity: upstream fixes its
+    target prompt at the turn's first model call and finds it again on later ones
+    (attempt-llm-boundary.ts:407-415), so a repair that leaves an AI message without calls does
+    not end the turn early. The runtime context goes in as a user message immediately before
+    that message, where upstream binds its runtime-context carrier
     (src/agents/embedded-agent-runner/run/attempt-llm-boundary.ts:240-268;
     packages/agent-core/src/harness/messages.ts:139-153 sends it as a user message); with no
     active user message it goes last (this example's choice). A bare ``/new`` or ``/reset``
@@ -127,8 +131,15 @@ def model_input(turn: TurnState, messages: Sequence[Any], repair: ToolCallRepair
     that is not blank and differs from the row, and only while the active user message's text
     is the row (the example's row is text).
     """
+    active = active_user_index(messages)
     body = repair_tool_calls(messages, repair)
-    index = active_user_index(body)
+    # The repair returns an unchanged message as the same object, and it never changes a user
+    # message; a target it did not return is not found (upstream: no replacement, context last).
+    index = (
+        None
+        if active is None
+        else next((i for i, message in enumerate(body) if message is messages[active]), None)
+    )
     reset = turn.reset
     if (
         reset is not None

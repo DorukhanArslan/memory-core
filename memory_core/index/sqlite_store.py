@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -300,8 +300,16 @@ class SQLiteMemoryStore:
         min_score: float = 0.0,
         sources: set[str] | None = None,
         signal: CancellationSignal | None = None,
+        on_partial_results: Callable[[list[HybridResult] | None], None] | None = None,
     ) -> list[HybridResult]:
         """Search the index; ``signal`` aborts it at the next checkpoint.
+
+        With an embedding provider the keyword leg runs first (v2026.9.6
+        ``manager-search-orchestration.ts:422-446``, before ``embedQueryWithRetry`` at :475):
+        its memory-file hits, ranked keyword-only, go to ``on_partial_results`` before the query
+        is embedded, so a caller whose deadline ends during the embedding still has them; a
+        failed embedding calls it with ``None`` (unless the search was aborted). Keyword-only
+        searches publish no partials.
 
         Returns no hits while :meth:`index_identity` is not valid (a store
         built with another provider/model/settings, or one never reindexed).
@@ -334,7 +342,27 @@ class SQLiteMemoryStore:
                 signal=signal,
             )
 
-        query_embedding = self.embeddings.embed_query(query)
+        keyword: list[HybridKeywordResult] = []
+        if self.flags.text_search:
+            with self._search_connection(signal) as db:
+                keyword = self._query_keyword_hits_with_fallback(db, query, source_filter, signal)
+            _checkpoint(signal)
+            if on_partial_results is not None:
+                memory_keyword = [item for item in keyword if item.source == "memory"]
+                if memory_keyword:
+                    on_partial_results(
+                        self._finalize_keyword_only(
+                            memory_keyword, max_results=max_results, min_score=min_score
+                        )
+                    )
+        try:
+            query_embedding = self.embeddings.embed_query(query)
+        except Exception:
+            # A failed embedding invalidates the published snapshot unless the caller already
+            # stopped waiting (manager-search-orchestration.ts:486-494).
+            if on_partial_results is not None and not (signal is not None and signal.aborted):
+                on_partial_results(None)
+            raise
         _checkpoint(signal)
         with self._search_connection(signal) as db:
             rows = db.execute(
@@ -354,12 +382,6 @@ class SQLiteMemoryStore:
                 )
                 for row in rows
             ]
-
-            keyword: list[HybridKeywordResult] = []
-            if self.flags.text_search:
-                keyword = self._query_keyword_hits_with_fallback(
-                    db, query, source_filter, signal
-                )
         _checkpoint(signal)
 
         if not self.flags.text_search:
@@ -446,6 +468,13 @@ class SQLiteMemoryStore:
         with self._search_connection(signal) as db:
             keyword = self._query_keyword_hits_with_fallback(db, query, source_filter, signal)
         _checkpoint(signal)
+        return self._finalize_keyword_only(keyword, max_results=max_results, min_score=min_score)
+
+    def _finalize_keyword_only(
+        self, keyword: list[HybridKeywordResult], *, max_results: int, min_score: float
+    ) -> list[HybridResult]:
+        # finalizeKeywordOnlyResults: text scores, temporal decay, the strict min-score pass
+        # relaxed to 0 when it is empty.
         results = [
             HybridResult(
                 path=item.path,

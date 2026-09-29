@@ -91,15 +91,11 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
             "memory_search_pauses_on_index_model_change",
             "memory_search_finds_session_memory_files",
             "memory_search_indexes_invalid_utf8_markdown",
+            # Area 5 ported its contract (the single-chunk copy passes); the two-line MEMORY.md
+            # is two chunks at the tag (steps 5, 8, 9, 11, 16).
+            "memory_search_deadline_and_cooldown_match_python",
         ),
         plan_area=6,
-    ),
-    PendingPort(
-        "memory_search params, errors and deadline (30 s deadline with partial-timeout guidance, "
-        "per-corpus outcomes; the blank-param and corpus-enum cases passed in area 5 A2)",
-        "d46f9ebf2b2 (#147702), 3fe833dfa40 (#126530)",
-        _oracle("memory_search_deadline_and_cooldown_match_python"),
-        plan_area=5,
     ),
     PendingPort(
         "deep dreaming policy (enabled by default, minScore 0.75, integer fields limit, "

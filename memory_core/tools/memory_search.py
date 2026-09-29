@@ -20,8 +20,12 @@ One call runs under the 30 s deadline of :mod:`memory_core.tools.corpus`
 the supplements under a deadline of their own. A memory task still running at the
 deadline is abandoned: its :class:`~memory_core.cancellation.CancellationSignal` is
 aborted, which interrupts the open SQLite statement and stops the store at its next
-checkpoint (the abandoned worker only reads). A memory failure (an error or the
-deadline) records a process-wide 60 s cooldown during which memory is not searched;
+checkpoint (the abandoned worker only reads). When the store's keyword leg had already
+published memory-file hits (``on_partial_results``, before the query embedding), the
+deadline makes the memory corpus ``partial`` instead: those hits, ``partial: true``,
+``timedOut`` and the keyword-only warning, and no cooldown. A memory failure (an error
+or the deadline without partial hits) records a process-wide 60 s cooldown during which
+memory is not searched;
 a supplement failure never does, and ``corpus=wiki`` never reads it. A memory-only
 call returns the unavailable result; ``wiki``/``all`` keep the other corpus and
 report each one in ``corpora`` (``composeMemoryCorpusMetadata``). The cooldown
@@ -498,10 +502,10 @@ def _execute_memory_query(
     store: SQLiteMemoryStore,
     params: MemorySearchParams,
     *,
-    search_sources: tuple[str, ...],
+    sources: set[str] | None,
     signal: CancellationSignal,
+    on_partial_hits: Callable[[list[Any] | None], None],
 ) -> _MemoryQuery:
-    sources = _explicit_memory_sources(params.corpus, search_sources)
     result_limit = (
         params.max_results if params.max_results is not None else DEFAULT_MEMORY_SEARCH_MAX_RESULTS
     )
@@ -513,6 +517,7 @@ def _execute_memory_query(
         ),
         sources=sources,
         signal=signal,
+        on_partial_results=on_partial_hits,
     )
     return _finalize_memory_query(config, store, params, hits, sources=sources)
 
@@ -595,14 +600,51 @@ def _run_memory_search_tool(
                 code=cooldown.get("code"),
                 deadline=cooldown["deadline"],
             )
+        sources = _explicit_memory_sources(requested_corpus, search_sources)
+        partial: dict[str, Any] = {"value": None, "accepting": True}
+        partial_lock = threading.Lock()
+
+        def on_partial_hits(hits: list[Any] | None) -> None:
+            # memory-search-tool-query.ts:133-160: each snapshot first invalidates the previous
+            # one; only memory-file hits survive (session visibility may change while semantic
+            # retrieval waits), finalized like the final results, and only while the deadline
+            # has not ended.
+            with partial_lock:
+                if not partial["accepting"]:
+                    return
+                partial["value"] = None
+            if hits is None:
+                return
+            memory_hits = [hit for hit in hits if hit.source == "memory"]
+            if not memory_hits or deadline.signal.aborted:
+                return
+            finalized = _finalize_memory_query(config, store, params, memory_hits, sources=sources)
+            with partial_lock:
+                if partial["accepting"] and not deadline.signal.aborted and finalized.paused is None:
+                    partial["value"] = finalized
+
+        def partial_value() -> _MemoryQuery | None:
+            # tools.ts:305 getPartialValue: a snapshot with at least one result.
+            with partial_lock:
+                value = partial["value"]
+            return value if value is not None and value.raw_results else None
+
         attempted = attempt_memory_corpus(
             corpus="memory",
             deadline=deadline,
             unavailable_value=None,
+            get_partial_value=partial_value,
             run=lambda: _execute_memory_query(
-                config, store, params, search_sources=search_sources, signal=deadline.signal
+                config,
+                store,
+                params,
+                sources=sources,
+                signal=deadline.signal,
+                on_partial_hits=on_partial_hits,
             ),
         )
+        with partial_lock:
+            partial["accepting"] = False
         if attempted.outcome not in ("ok", "partial"):
             failure = {"error": attempted.error, "deadline": attempted.deadline}
             if attempted.code:

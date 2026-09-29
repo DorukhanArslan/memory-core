@@ -2645,6 +2645,29 @@ def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
     assert python_steps[6]["result"]["error"] == "memory_search timed out after 30s"
 
 
+def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_single_chunk_matches_python(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    # Decision D5(c): the same 17 calls on a MEMORY.md that is one chunk on both sides, so no
+    # ranking or chunking difference reaches it: cooldown record/replay/expiry with the failure's
+    # deadline flag, the corpus=wiki bypass, per-corpus outcomes under corpus=all (memory down,
+    # wiki down, a quota error), the keyword partial at the deadline (d46f9ebf2b2 #147702) and
+    # the session search enabled on both sides (D1).
+    result, python_steps = _run_memory_search_tool_sequence(
+        tmp_path, monkeypatch, "- Glacier storage keeps backups cold."
+    )
+
+    assert [_normalize_memory_search_step(step) for step in result["result"]] == [
+        _normalize_memory_search_step(step) for step in python_steps
+    ]
+    partial = python_steps[6]["result"]
+    assert partial["partial"] is True and partial["timedOut"] is True
+    assert partial["corpora"] == [
+        {"corpus": "memory", "outcome": "partial", "error": "memory_search timed out after 30s"}
+    ]
+    assert python_steps[3]["result"]["corpora"][0]["outcome"] == "unavailable"
+
+
 _IDENTITY_KEY = "k" * 64
 _IDENTITY_SCOPE = "s" * 64
 # The tag's nextMeta (manager-sync-ops.ts:623-645): the index format versions of v2026.9.6.

@@ -218,7 +218,8 @@ def test_deadline_returns_the_timeout_result_and_abandons_the_search(tmp_path, m
     provider.hang = True
 
     try:
-        result = memory_search(cfg, store, query="glacier", corpus="memory")
+        # No keyword hit, so the deadline leaves nothing partial (see the partial test below).
+        result = memory_search(cfg, store, query="zzzunmatched", corpus="memory")
     finally:
         provider.release.set()
 
@@ -243,7 +244,7 @@ def test_timeout_records_a_cooldown_that_skips_the_provider(tmp_path, monkeypatc
     cfg, store = _vector_store(tmp_path, provider)
     provider.hang = True
     try:
-        memory_search(cfg, store, query="glacier", corpus="memory")
+        memory_search(cfg, store, query="zzzunmatched", corpus="memory")
     finally:
         provider.release.set()
     provider.hang = False
@@ -659,3 +660,82 @@ def test_on_recall_gets_the_returned_memory_hits_of_an_ok_search_only(tmp_path, 
     assert [item["path"] for item in recalls[0]] == ["MEMORY.md"]
     assert recalls[0][0] is ok["results"][1]
     assert still_ok["results"]
+
+
+def test_a_deadline_after_the_keyword_leg_is_a_partial_result(tmp_path, monkeypatch, clock):
+    # tools.ts:297-365 and 509-550 with memory-search-tool-query.ts:133-160 (d46f9ebf2b2 #147702):
+    # the keyword leg publishes the memory-file hits before the query is embedded; the deadline
+    # then leaves a partial memory corpus, which records no cooldown.
+    _short_deadline(monkeypatch)
+    provider = _ControlledProvider()
+    cfg, store = _vector_store(tmp_path, provider)
+    provider.hang = True
+    try:
+        partial = memory_search(cfg, store, query="glacier", corpus="memory")
+    finally:
+        provider.release.set()
+    provider.hang = False
+    calls = provider.calls
+    after = memory_search(cfg, store, query="glacier", corpus="memory")
+
+    assert [hit["path"] for hit in partial["results"]] == ["MEMORY.md"]
+    assert partial["partial"] is True and "unavailable" not in partial
+    assert (partial["timedOut"], partial["timeoutMs"]) == (True, 30_000)
+    assert partial["corpora"] == [
+        {"corpus": "memory", "outcome": "partial", "error": "memory_search timed out after 30s"}
+    ]
+    assert partial["warning"] == (
+        "Memory corpus partial: memory_search timed out after 30s Only memory-file keyword "
+        "matches are included; semantic memory retrieval did not finish within the search time "
+        "limit. Session transcript results are not included."
+    )
+    assert (partial["provider"], partial["model"]) == ("fake", "fake-deterministic")
+    assert after["results"] and provider.calls == calls + 1
+
+
+def test_no_keyword_hit_or_no_keyword_leg_leaves_the_deadline_unavailable(tmp_path, monkeypatch):
+    _short_deadline(monkeypatch)
+    provider = _ControlledProvider()
+    cfg, store = _vector_store(tmp_path, provider)
+    vector_only = dataclasses.replace(cfg, flags=FeatureFlags(text_search=False))
+    provider.hang = True
+    try:
+        no_hit = memory_search(cfg, store, query="zzzunmatched", corpus="memory")
+        memory_search_module.reset_memory_search_tool_cooldowns()
+        no_leg = memory_search(
+            vector_only, SQLiteMemoryStore(vector_only, provider), query="glacier",
+            corpus="memory",
+        )
+    finally:
+        provider.release.set()
+
+    assert no_hit["unavailable"] is True and no_hit["timedOut"] is True
+    assert no_leg["unavailable"] is True and no_leg["error"] == "memory_search timed out after 30s"
+
+
+def test_the_store_publishes_memory_keyword_hits_before_embedding(tmp_path):
+    provider = _ControlledProvider()
+    cfg, store = _vector_store(tmp_path, provider)
+    events: list[object] = []
+    provider_embed = provider.embed_query
+    provider.embed_query = lambda text: events.append("embed") or provider_embed(text)
+
+    hits = store.search("glacier", on_partial_results=lambda partial: events.append(partial))
+    provider.error = RuntimeError("provider exploded")
+    with pytest.raises(RuntimeError):
+        store.search("glacier", on_partial_results=lambda partial: events.append(partial))
+
+    first, second, third, fourth, fifth = events
+    assert [item.path for item in first] == ["MEMORY.md"] and second == "embed"
+    # A failed embedding invalidates the snapshot; keyword-only stores publish nothing.
+    assert [item.path for item in third] == ["MEMORY.md"] and fourth == "embed"
+    assert fifth is None
+    assert [item.path for item in hits] == ["MEMORY.md"]
+    fts_cfg = MemoryConfig(
+        workspace_dir=tmp_path, store_path=tmp_path / "fts.sqlite",
+        flags=FeatureFlags(vector_search=False),
+    )
+    fts = SQLiteMemoryStore(fts_cfg, None)
+    fts.reindex(MemoryWorkspace(tmp_path))
+    published: list[object] = []
+    assert fts.search("glacier", on_partial_results=published.append) and published == []

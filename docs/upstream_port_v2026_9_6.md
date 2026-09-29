@@ -372,8 +372,10 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
 - Tests: 31 (`memoryGet` 26, `memoryToolDefinitions` 1, params/deadline 3, identity 1). Done so
   far (2026-09-29): the 2 param entries (A2), the 26 "memory_get contract" entries (A4) and the
   "memory tool definitions" entry (A6); both labels left the worklist. 2026-09-30: the
-  "memory index identity" entry (B5); that label left the worklist too.
-- Worklist areas: "memory_search params, errors and deadline".
+  "memory index identity" entry (B5) and the deadline/cooldown sequence (B7), which moved to
+  area 6's label under D5(c) while its single-chunk copy passes here; no label is left.
+- Worklist areas: none left; the area-5 labels were removed as their tests passed (the
+  deadline/cooldown sequence moved to area 6, see there).
 - New oracle ops: `memoryPromptSection` (`buildMemoryPromptSection`) for the prompt-section row;
   `memoryCorpusMetadata`, `memoryIndexSearchDiagnostic` and, with D7, `memoryCorpusSupplements`
   (the plan below).
@@ -921,8 +923,11 @@ resolve refusals for a file used as a directory and a final symlink (5.1), the
   `memory/keyword-query.ts`; config under `memory.search`.
 - Python: `memory_core/index/{hybrid,fts,keywords,mmr,temporal_decay,chunking,sqlite_store}.py`,
   `memory_core/config.py`.
-- Tests: 14 `memorySearch` fixtures (corpus, text/vector/hybrid scores, wiki balance, 6 param
-  coercion cases, index-model change, session-memory files, invalid UTF-8).
+- Tests: 15: 14 `memorySearch` fixtures (corpus, text/vector/hybrid scores, wiki balance, 6
+  param coercion cases, index-model change, session-memory files, invalid UTF-8) and, since area
+  5 B7 (2026-09-30), the `memorySearchToolSequence` fixture on a two-line MEMORY.md, whose
+  steps 5, 8, 9, 11 and 16 differ only by the curated-entry chunking (its single-chunk copy
+  passes in area 5).
 - Worklist areas: "memory_search ranking and indexing".
 - New oracle ops: `hybridMerge` (`mergeHybridResults`, `selectHybridSearchResults`), `mmrRerank`
   (`applyMMRToHybridResults`), `temporalDecay` (`applyTemporalDecayToHybridResults`),

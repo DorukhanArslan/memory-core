@@ -47,6 +47,12 @@ from typing import Any
 from memory_core.bootstrap._js import js_trim, locale_sort_key
 from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
+from memory_core.index.identity import (
+    is_chunking_upgrade_keyword_only,
+    resolve_memory_index_identity_diagnostic,
+    resolve_memory_index_search_diagnostic,
+    resolve_memory_search_staleness,
+)
 from memory_core.index.sqlite_store import CONFIGURED_SOURCES, SQLiteMemoryStore
 from memory_core.project_name import DIST_NAME
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
@@ -104,13 +110,6 @@ MEMORY_SEARCH_TOOL_TIMEOUT_MS = 15_000
 # memory-core keeps its facade defaults (documented deviation).
 DEFAULT_MEMORY_SEARCH_MAX_RESULTS = 5
 DEFAULT_MEMORY_SEARCH_MIN_SCORE = 0.0
-# tools.ts:168-188 (the action names the runtime's reindex command, so it
-# comes from RuntimeIdentity).
-PAUSED_MEMORY_INDEX_WARNING = (
-    "Tell the user: memory search is paused because the memory index was built with a "
-    "different embedding provider/model/settings."
-)
-PAUSED_MEMORY_INDEX_REASON = "memory index identity is missing or mismatched"
 # tools.shared.ts:104-107, the inline regex literals of buildMemorySearchUnavailableResult.
 _QUOTA_ERROR_RE = re.compile(MEMORY_SEARCH_QUOTA_ERROR_PATTERN)
 _MISSING_SQLITE_RE = re.compile(MEMORY_SEARCH_MISSING_SQLITE_PATTERN)
@@ -221,24 +220,23 @@ def build_memory_search_unavailable_result(
     }
 
 
-def resolve_paused_memory_index_identity_reason(identity: Mapping[str, Any]) -> str | None:
-    """``resolvePausedMemoryIndexIdentityReason`` (tools.ts:173-181)."""
-    if identity.get("status") not in {"mismatched", "missing"}:
-        return None
-    reason = identity.get("reason")
-    if isinstance(reason, str) and js_trim(reason):
-        return js_trim(reason)
-    return PAUSED_MEMORY_INDEX_REASON
-
-
 def build_paused_memory_index_unavailable_result(
-    reason: str, *, runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY
+    diagnostic: Mapping[str, Any],
+    *,
+    status: Mapping[str, Any],
+    agent_id: str | None,
+    runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> dict:
-    """``buildPausedMemoryIndexUnavailableResult`` (tools.ts:183-188)."""
+    """``buildPausedMemoryIndexUnavailableResult`` (memory-search-tool-query.ts:23-39): the
+    unavailable result whose error, warning and action come from the index search diagnostic
+    (``resolveMemoryIndexSearchDiagnostic``, packages/memory-host-sdk/src/host/types.ts)."""
+    guidance = resolve_memory_index_search_diagnostic(
+        diagnostic, status, agent_id, runtime_identity=runtime_identity
+    )
     return build_memory_search_unavailable_result(
-        reason,
-        warning=PAUSED_MEMORY_INDEX_WARNING,
-        action=runtime_identity.memory_search_paused_action,
+        guidance["error"],
+        warning=guidance["warning"],
+        action=guidance["action"],
         runtime_identity=runtime_identity,
     )
 
@@ -521,7 +519,7 @@ def _run_memory_search_tool(
 
         response: dict[str, Any] = {}
         memory_results: list[dict] = []
-        paused: dict[str, str | None] = {"reason": None}
+        paused: dict[str, Any] = {"diagnostic": None, "status": None}
         if should_query_memory:
 
             def search_memory() -> None:
@@ -540,15 +538,23 @@ def _run_memory_search_tool(
                     sources=_memory_sources_for_corpus(requested_corpus),
                     signal=signal,
                 )
-                # tools.ts:563-568: a missing or mismatched index identity pauses
-                # search (no cooldown). Upstream's empty-result forced sync retry
-                # has no counterpart: memory-core reindexes only when the host asks.
-                paused["reason"] = resolve_paused_memory_index_identity_reason(
-                    store.index_identity()
-                )
-                if paused["reason"] is not None:
+                # memory-search-tool-query.ts:207-229: a missing or mismatched index identity
+                # pauses search (no cooldown), except a pending chunking upgrade that searched
+                # keyword-only. Upstream's search-time repair has no counterpart (decision D3):
+                # memory-core reindexes only when the host asks.
+                status = store.search_status()
+                diagnostic = resolve_memory_index_identity_diagnostic(status)
+                if diagnostic is not None and not (
+                    is_chunking_upgrade_keyword_only(diagnostic) and store.flags.text_search
+                ):
+                    paused.update(diagnostic=diagnostic, status=status)
                     return
                 memory_results.extend(_serialize_result(config, item) for item in hits)
+                staleness = resolve_memory_search_staleness(
+                    status, config.agent_id, runtime_identity=runtime_identity
+                )
+                if staleness is not None:
+                    response["staleness"] = staleness
                 # OpenClaw reports FTS-only mode as provider "none" / model
                 # "fts-only" when no embedding provider is configured.
                 embeddings = store.embeddings
@@ -558,9 +564,12 @@ def _run_memory_search_tool(
                 response["model"] = embeddings.model if embeddings is not None else "fts-only"
 
             phases.run("memory", search_memory)
-            if paused["reason"] is not None:
+            if paused["diagnostic"] is not None:
                 return build_paused_memory_index_unavailable_result(
-                    paused["reason"], runtime_identity=runtime_identity
+                    paused["diagnostic"],
+                    status=paused["status"],
+                    agent_id=config.agent_id,
+                    runtime_identity=runtime_identity,
                 )
         supplement_results = (
             phases.run(
@@ -586,8 +595,10 @@ def _run_memory_search_tool(
             ),
             balance_corpora=requested_corpus == "all",
         )
-        # provider/model stay unset when memory was not searched (tools.ts:677-685).
-        return {"results": results, **response, "citations": config.citation_mode}
+        # provider/model stay unset when memory was not searched (tools.ts:537-550); the
+        # staleness of a keyword-only search follows the citations mode.
+        staleness = response.pop("staleness", None) or {}
+        return {"results": results, **response, "citations": config.citation_mode, **staleness}
 
     outcome = _run_with_deadline(timeout_ms=MEMORY_SEARCH_TOOL_TIMEOUT_MS, run=run)
     if outcome.status == "unavailable":

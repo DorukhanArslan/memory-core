@@ -6,7 +6,13 @@ from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.embeddings.openai_compatible import OpenAICompatibleEmbeddingProvider
 from memory_core.flags import FeatureFlags
-from memory_core.index.identity import MEMORY_INDEX_META_KEY, hash_text, resolve_configured_scope_hash
+from memory_core.index.identity import (
+    MEMORY_CORE_INDEX_VERSIONS,
+    MEMORY_INDEX_META_KEY,
+    MemoryIndexVersions,
+    hash_text,
+    resolve_configured_scope_hash,
+)
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.supplements import StaticMemoryCorpusSupplement
@@ -18,9 +24,15 @@ from memory_core.tools.memory_search import (
 from memory_core.workspace import MemoryWorkspace
 
 FTS_ONLY = FeatureFlags(vector_search=False)
+MISSING = {
+    "status": "missing",
+    "reason": "index metadata is missing",
+    "code": "metadata_missing",
+    "owner": "openclaw",
+}
 PAUSED_WARNING = (
-    "Tell the user: memory search is paused because the memory index was built with a "
-    "different embedding provider/model/settings."
+    "Tell the user: memory search is paused because the memory index metadata is missing (index "
+    "metadata is missing); no configuration change is needed."
 )
 
 
@@ -53,9 +65,14 @@ def test_reindex_writes_upstream_shaped_meta_for_fts_only(tmp_path):
         "scopeHash": resolve_configured_scope_hash(),
         "chunkTokens": 400,
         "chunkOverlap": 80,
+        "chunkingVersion": 0,
         "ftsTokenizer": "unicode61",
+        "provenanceVersion": 0,
     }
+    # nextMeta's key order (manager-sync-ops.ts:623-645); memory-core's own format versions.
     assert raw.startswith('{"model":"fts-only","provider":"none","providerKey":')
+    assert '"chunkOverlap":80,"chunkingVersion":0,"ftsTokenizer":"unicode61"' in raw
+    assert raw.endswith(',"provenanceVersion":0}')
     assert store.index_identity() == {"status": "valid"}
 
 
@@ -70,6 +87,7 @@ def test_reindex_records_vector_dims_for_embedded_indexes(tmp_path):
         12,
     )
     assert meta["providerKey"] == hash_text('{"provider":"fake","model":"fake-deterministic"}')
+    assert list(meta)[-3:] == ["ftsTokenizer", "provenanceVersion", "vectorDims"]
 
 
 def test_never_indexed_store_pauses_until_reindex(tmp_path):
@@ -77,9 +95,9 @@ def test_never_indexed_store_pauses_until_reindex(tmp_path):
     workspace = _workspace(tmp_path)
     store = SQLiteMemoryStore(cfg, None)
 
-    assert store.index_identity() == {"status": "missing", "reason": "index metadata is missing"}
+    assert store.index_identity() == MISSING
     assert store.search("glacier") == []
-    paused = memory_search(cfg, store, query="glacier")
+    paused = memory_search(cfg, store, query="glacier", corpus="memory")
     assert paused["error"] == "index metadata is missing"
     assert paused["warning"] == PAUSED_WARNING
     assert paused["unavailable"] is True
@@ -107,8 +125,10 @@ def test_legacy_store_without_meta_table_is_missing_until_reindex(tmp_path):
     cfg = _config(tmp_path, flags=FTS_ONLY)
     store = SQLiteMemoryStore(cfg, None)
 
-    assert store.index_identity()["reason"] == "index metadata is missing"
-    assert memory_search(cfg, store, query="glacier")["error"] == "index metadata is missing"
+    assert store.index_identity() == MISSING
+    assert memory_search(cfg, store, query="glacier", corpus="memory")["error"] == (
+        "index metadata is missing"
+    )
     store.reindex(_workspace(tmp_path))
     assert memory_search(cfg, store, query="glacier")["results"]
 
@@ -147,6 +167,8 @@ def test_embedding_endpoint_change_is_a_provider_settings_change(tmp_path):
     assert SQLiteMemoryStore(cfg, moved).index_identity() == {
         "status": "mismatched",
         "reason": "index provider settings changed",
+        "code": "provider_settings",
+        "owner": "configuration",
     }
     # The API key is not part of the identity.
     assert SQLiteMemoryStore(cfg, same).index_identity() == {"status": "valid"}
@@ -185,15 +207,118 @@ def test_paused_action_names_the_runtime(tmp_path):
     cfg = _config(tmp_path, flags=FTS_ONLY)
     store = SQLiteMemoryStore(cfg, None)
 
-    memory_core = memory_search(cfg, store, query="glacier")
+    memory_core = memory_search(cfg, store, query="glacier", corpus="memory")
     compat = memory_search(
-        cfg, store, query="glacier", runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY
+        cfg,
+        store,
+        query="glacier",
+        corpus="memory",
+        runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     )
 
+    # types.ts:300-311: FTS-only (provider none) rebuilds without an embedding provider.
     assert memory_core["action"] == (
-        "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
+        "Tell the user to run: SQLiteMemoryStore.reindex(workspace). Rebuilding uses keyword "
+        "indexing only and does not call an embedding provider."
     )
     assert compat["action"] == (
-        "Tell the user to run: openclaw memory status --index or openclaw memory index --force."
+        "Tell the user to run: openclaw memory status --index --agent main. Rebuilding uses "
+        "keyword indexing only and does not call an embedding provider."
     )
     assert memory_core["debug"]["action"] == memory_core["action"]
+    assert memory_core["warning"] == compat["warning"] == PAUSED_WARNING
+
+
+def _set_meta(store: SQLiteMemoryStore, **fields) -> None:
+    meta = {**json.loads(_stored_meta(store)), **fields}
+    with sqlite3.connect(store.path) as db:
+        db.execute(
+            "UPDATE memory_index_meta SET value = ? WHERE key = ?",
+            (json.dumps(meta), MEMORY_INDEX_META_KEY),
+        )
+
+
+def test_an_index_from_before_the_format_versions_is_valid(tmp_path):
+    # Decision D2: memory-core compares its own versions (0 and 0), so a stored meta without
+    # provenanceVersion/chunkingVersion (every index written before v2026.9.6's port) is valid.
+    store = SQLiteMemoryStore(_config(tmp_path, flags=FTS_ONLY), None)
+    store.reindex(_workspace(tmp_path))
+    meta = json.loads(_stored_meta(store))
+    del meta["provenanceVersion"], meta["chunkingVersion"]
+    with sqlite3.connect(store.path) as db:
+        db.execute(
+            "UPDATE memory_index_meta SET value = ? WHERE key = ?",
+            (json.dumps(meta), MEMORY_INDEX_META_KEY),
+        )
+
+    assert store.index_identity() == {"status": "valid"}
+
+
+def test_a_newer_index_format_pauses_with_the_upgrade_guidance(tmp_path):
+    cfg = _config(tmp_path, flags=FTS_ONLY)
+    store = SQLiteMemoryStore(cfg, None)
+    store.reindex(_workspace(tmp_path))
+    _set_meta(store, provenanceVersion="1")
+
+    assert store.index_identity() == {
+        "status": "mismatched",
+        "reason": (
+            "the index was written by a newer memory-core version; upgrade memory-core or "
+            "reindex explicitly"
+        ),
+        "code": "provenance_version",
+        "owner": "openclaw",
+        "versionOrder": "newer",
+    }
+    paused = memory_search(cfg, store, query="glacier", corpus="memory")
+    assert paused["warning"] == (
+        "Tell the user: memory search is paused because the index was written by a newer "
+        "memory-core version; upgrade memory-core or reindex explicitly."
+    )
+    assert paused["action"] == (
+        "Tell the user to upgrade memory-core or reindex explicitly: "
+        "SQLiteMemoryStore.reindex(workspace). Rebuilding uses keyword indexing only and does "
+        "not call an embedding provider."
+    )
+
+
+class _ChunkerV1Store(SQLiteMemoryStore):
+    # A memory-core whose chunker moved on: the stored chunkingVersion 0 is older.
+    index_versions = MemoryIndexVersions(
+        provenance=0, chunking=1, newer_reason=MEMORY_CORE_INDEX_VERSIONS.newer_reason
+    )
+
+
+def test_an_older_chunker_searches_keyword_only_and_reports_staleness(tmp_path):
+    # memory-search-tool-query.ts:207-229: a pending chunking upgrade on an otherwise matching
+    # index degrades to keyword-only results with the staleness fields instead of pausing.
+    cfg = _config(tmp_path)
+    workspace = _workspace(tmp_path)
+    SQLiteMemoryStore(cfg, FakeEmbeddingProvider()).reindex(workspace)
+    provider = FakeEmbeddingProvider()
+    calls = []
+    provider.embed_query = lambda text: calls.append(text) or [0.0] * provider.dimensions
+    store = _ChunkerV1Store(cfg, provider)
+
+    identity = store.index_identity()
+    result = memory_search(cfg, store, query="glacier", corpus="memory")
+
+    assert identity["code"] == "chunking_version" and identity["chunkingVersionOnly"] is True
+    assert [hit["path"] for hit in result["results"]] == ["MEMORY.md"]
+    assert calls == []  # keyword-only: no query embedding
+    assert result["stale"] is True
+    assert result["warning"] == (
+        "Memory index is stale: index chunking implementation changed (owner: memory-core, code: "
+        "chunking_version). Search results may be incomplete."
+    )
+    assert result["action"] == (
+        "Run: SQLiteMemoryStore.reindex(workspace). Rebuilding may call the configured embedding "
+        "provider and can incur provider cost."
+    )
+    # Without FTS there is no keyword path: the search pauses.
+    no_fts = _ChunkerV1Store(
+        _config(tmp_path, flags=FeatureFlags(text_search=False)), FakeEmbeddingProvider()
+    )
+    assert memory_search(no_fts.config, no_fts, query="glacier", corpus="memory")["error"] == (
+        "index chunking implementation changed"
+    )

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import errno
 import json
+import math
 import re
 import unicodedata
 from collections.abc import Callable
@@ -54,6 +55,61 @@ def js_truthy(value: object) -> bool:
     if isinstance(value, str):
         return value != ""
     return True
+
+
+# ECMAScript StringToNumber after the trim: a StrDecimalLiteral (optional sign, Infinity or a
+# decimal with an optional exponent) or an unsigned 0x/0o/0b integer literal.
+_JS_DECIMAL_LITERAL_RE = re.compile(
+    r"[+-]?(?:Infinity|(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?)"
+)
+_JS_NON_DECIMAL_LITERAL_RE = re.compile(r"0(?:[xX][0-9a-fA-F]+|[oO][0-7]+|[bB][01]+)")
+_JS_RADIX = {"x": 16, "o": 8, "b": 2}
+
+
+def js_to_number(value: object) -> float:
+    """ECMAScript ``ToNumber`` of a JSON value, as a relational comparison with a number applies
+    it: ``null`` is 0, booleans 0/1, strings go through ``StringToNumber`` (trimmed, blank is 0,
+    ``0x``/``0o``/``0b`` literals, ``Infinity``, anything else ``NaN``), an array through its
+    ``join(",")`` string and an object is ``NaN``."""
+    if value is None:
+        return 0.0
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        text = js_trim(value)
+        if not text:
+            return 0.0
+        if _JS_NON_DECIMAL_LITERAL_RE.fullmatch(text):
+            return float(int(text[2:], _JS_RADIX[text[1].lower()]))
+        if _JS_DECIMAL_LITERAL_RE.fullmatch(text):
+            return float(text.replace("Infinity", "inf"))
+        return math.nan
+    if isinstance(value, list):
+        return js_to_number(",".join(_js_array_item_string(item) for item in value))
+    return math.nan
+
+
+def _js_array_item_string(item: object) -> str:
+    # Array.prototype.join: null and undefined are "", everything else its String().
+    if item is None:
+        return ""
+    if isinstance(item, bool):
+        return "true" if item else "false"
+    if isinstance(item, int):
+        return str(item)
+    if isinstance(item, float):
+        if math.isnan(item):
+            return "NaN"
+        if math.isinf(item):
+            return "Infinity" if item > 0 else "-Infinity"
+        return str(int(item)) if item.is_integer() and abs(item) < 1e21 else repr(item)
+    if isinstance(item, str):
+        return item
+    if isinstance(item, list):
+        return ",".join(_js_array_item_string(inner) for inner in item)
+    return "[object Object]"
 
 
 def reject_json_constant(name: str) -> object:

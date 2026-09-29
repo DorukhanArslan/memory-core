@@ -58,10 +58,16 @@ from memory_core.consolidation import (
 )
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.identity import (
+    UPSTREAM_INDEX_VERSIONS,
+    format_memory_index_rebuild_guidance,
     resolve_configured_scope_hash,
     resolve_configured_sources_for_meta,
+    resolve_memory_index_identity_diagnostic,
+    resolve_memory_index_identity_reason,
     resolve_memory_index_identity_state,
     resolve_memory_index_provider_identities,
+    resolve_memory_index_search_diagnostic,
+    resolve_memory_search_staleness,
 )
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.flags import FeatureFlags
@@ -2616,6 +2622,7 @@ def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
 
 _IDENTITY_KEY = "k" * 64
 _IDENTITY_SCOPE = "s" * 64
+# The tag's nextMeta (manager-sync-ops.ts:623-645): the index format versions of v2026.9.6.
 _IDENTITY_META = {
     "model": "m1",
     "provider": "p1",
@@ -2624,8 +2631,10 @@ _IDENTITY_META = {
     "scopeHash": _IDENTITY_SCOPE,
     "chunkTokens": 400,
     "chunkOverlap": 80,
-    "vectorDims": 8,
+    "chunkingVersion": 5,
     "ftsTokenizer": "unicode61",
+    "provenanceVersion": 1,
+    "vectorDims": 8,
 }
 _IDENTITY_PARAMS = {
     "meta": _IDENTITY_META,
@@ -2683,6 +2692,49 @@ MEMORY_INDEX_IDENTITY_STATE_CASES = {
     "empty-meta-object": _identity_case(meta={}),
     "null-model": _identity_case(meta={**_IDENTITY_META, "model": None}),
     "provider-missing-in-meta": _identity_case(drop_meta=("provider",)),
+    # 28630a9a650 (#114819): the index format versions, compared as `(v ?? 0) > N` / `< N`.
+    "provenance-missing": _identity_case(drop_meta=("provenanceVersion",)),
+    "provenance-older": _identity_case(meta={**_IDENTITY_META, "provenanceVersion": 0}),
+    "provenance-null": _identity_case(meta={**_IDENTITY_META, "provenanceVersion": None}),
+    "provenance-newer": _identity_case(meta={**_IDENTITY_META, "provenanceVersion": 2}),
+    "provenance-newer-string": _identity_case(meta={**_IDENTITY_META, "provenanceVersion": "2"}),
+    "provenance-not-a-number": _identity_case(meta={**_IDENTITY_META, "provenanceVersion": "x"}),
+    "provenance-true": _identity_case(meta={**_IDENTITY_META, "provenanceVersion": True}),
+    "provenance-list": _identity_case(meta={**_IDENTITY_META, "provenanceVersion": [1]}),
+    "chunking-missing": _identity_case(drop_meta=("chunkingVersion",)),
+    "chunking-older": _identity_case(meta={**_IDENTITY_META, "chunkingVersion": 4}),
+    "chunking-older-scope-changed": _identity_case(
+        meta={**_IDENTITY_META, "chunkingVersion": 4}, configuredScopeHash="other"
+    ),
+    "chunking-older-model-changed": _identity_case(
+        meta={**_IDENTITY_META, "chunkingVersion": 4, "model": "m0"}
+    ),
+    "chunking-older-tokenizer-changed": _identity_case(
+        meta={**_IDENTITY_META, "chunkingVersion": 4}, ftsTokenizer="trigram"
+    ),
+    "chunking-newer": _identity_case(meta={**_IDENTITY_META, "chunkingVersion": 6}),
+    "chunking-newer-hex-string": _identity_case(meta={**_IDENTITY_META, "chunkingVersion": "0x6"}),
+    "both-newer": _identity_case(
+        meta={**_IDENTITY_META, "provenanceVersion": 2, "chunkingVersion": 6}
+    ),
+    "older-provenance-newer-chunking": _identity_case(
+        meta={**_IDENTITY_META, "provenanceVersion": 0, "chunkingVersion": 6}
+    ),
+    "older-provenance-older-chunking": _identity_case(
+        meta={**_IDENTITY_META, "provenanceVersion": 0, "chunkingVersion": 4}
+    ),
+    # A provider without a model (`expectedModel` undefined) skips the model and settings checks.
+    "provider-without-model": _identity_case(provider={"id": "p1"}),
+    "provider-without-model-other-key": _identity_case(provider={"id": "p1"}, providerKey="other"),
+    "provider-without-model-other-provider": _identity_case(provider={"id": "p2"}),
+    "provider-null-model": _identity_case(provider={"id": "p1", "model": None}),
+    # The configuration checks run in the tag's order: content scope before vector dims.
+    "sources-changed-and-vector-dims-missing": _identity_case(
+        drop_meta=("vectorDims",), configuredSources=["memory"]
+    ),
+    "tokenizer-changed-and-vector-dims-missing": _identity_case(
+        drop_meta=("vectorDims",), ftsTokenizer="trigram"
+    ),
 }
 
 MEMORY_INDEX_PROVIDER_IDENTITY_CASES = [
@@ -2729,6 +2781,7 @@ def _python_identity_state(case: dict) -> dict:
         vector_ready=case["vectorReady"],
         has_indexed_chunks=case.get("hasIndexedChunks"),
         fts_tokenizer=case["ftsTokenizer"],
+        versions=UPSTREAM_INDEX_VERSIONS,
     )
 
 
@@ -2776,8 +2829,167 @@ def test_real_openclaw_oracle_memory_index_identity_matches_python():
     assert result["result"]["scopes"][0] == resolve_configured_scope_hash()
 
 
+def _status(identity: dict, **fields) -> dict:
+    return {**fields, "custom": {"indexIdentity": identity}}
+
+
+_CONFIGURATION_MISMATCH = {
+    "status": "mismatched",
+    "reason": "index was built for model m0, expected m1",
+    "code": "model",
+    "owner": "configuration",
+}
+_OLDER_CHUNKING = {
+    "status": "mismatched",
+    "reason": "index chunking implementation changed",
+    "code": "chunking_version",
+    "owner": "openclaw",
+    "versionOrder": "older",
+    "chunkingVersionOnly": True,
+}
+# types.ts:239-380 over provider statuses: every diagnostic shape, the owner/code filters,
+# the rebuild command with and without an agent, and both disclosures.
+MEMORY_INDEX_SEARCH_DIAGNOSTIC_CASES = [
+    {"status": _status({"status": "valid"}, provider="p1")},
+    {"status": {"provider": "p1"}},
+    {"status": _status({"status": "missing", "reason": "index metadata is missing",
+                        "code": "metadata_missing", "owner": "openclaw"}, provider="p1"),
+     "agentId": "main"},
+    {"status": _status({"status": "missing", "reason": "  ", "code": "metadata_missing",
+                        "owner": "openclaw"}, provider="p1")},
+    {"status": _status({"status": "missing", "reason": "lost"}, provider="p1")},
+    {"status": _status(_CONFIGURATION_MISMATCH, provider="p1", requestedProvider="p1"),
+     "agentId": " ops "},
+    {"status": _status(_CONFIGURATION_MISMATCH, provider="none"), "agentId": "main"},
+    {"status": _status(_CONFIGURATION_MISMATCH, provider="p1", requestedProvider=" none "),
+     "agentId": "  "},
+    {"status": _status({**_CONFIGURATION_MISMATCH, "code": "bogus"}, provider="p1")},
+    {"status": _status({**_CONFIGURATION_MISMATCH, "owner": "openclaw"}, provider="p1")},
+    {"status": _status({"status": "mismatched", "reason": "index provenance classifier changed",
+                        "code": "provenance_version", "owner": "openclaw",
+                        "versionOrder": "older"}, provider="p1"), "agentId": "main"},
+    {"status": _status(_OLDER_CHUNKING, provider="none"), "agentId": "main"},
+    {"status": _status({**_OLDER_CHUNKING, "versionOrder": "newer"}, provider="p1")},
+    {"status": _status({**_OLDER_CHUNKING, "chunkingVersionOnly": "yes"}, provider="p1")},
+    {"status": _status({"status": "mismatched", "reason": "the index was written by a newer "
+                        "OpenClaw version; upgrade OpenClaw or reindex explicitly",
+                        "code": "provenance_version", "owner": "openclaw",
+                        "versionOrder": "newer"}, provider="p1"), "agentId": "main"},
+    {"status": _status({"status": "mismatched", "reason": " padded reason ",
+                        "code": "fts_tokenizer", "owner": "configuration"})},
+]
+
+
+def _python_search_diagnostic(case: dict, identity: RuntimeIdentity) -> dict:
+    status, agent_id = case["status"], case.get("agentId")
+    diagnostic = resolve_memory_index_identity_diagnostic(status)
+    return {
+        "reason": resolve_memory_index_identity_reason(status),
+        "diagnostic": diagnostic,
+        "guidance": format_memory_index_rebuild_guidance(
+            status, agent_id, runtime_identity=identity
+        ),
+        "search": (
+            resolve_memory_index_search_diagnostic(
+                diagnostic, status, agent_id, runtime_identity=identity
+            )
+            if diagnostic is not None
+            else None
+        ),
+        "staleness": resolve_memory_search_staleness(status, agent_id, runtime_identity=identity),
+    }
+
+
+def test_real_openclaw_oracle_memory_index_search_diagnostic_matches_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+    result = oracle.run(
+        {
+            "operation": "memoryIndexSearchDiagnostic",
+            "diagnosticCases": MEMORY_INDEX_SEARCH_DIAGNOSTIC_CASES,
+        }
+    )
+    compat = [
+        _python_search_diagnostic(case, OPENCLAW_COMPAT_RUNTIME_IDENTITY)
+        for case in MEMORY_INDEX_SEARCH_DIAGNOSTIC_CASES
+    ]
+    default = [
+        _python_search_diagnostic(case, MEMORY_CORE_RUNTIME_IDENTITY)
+        for case in MEMORY_INDEX_SEARCH_DIAGNOSTIC_CASES
+    ]
+
+    assert result["ok"] is True, result.get("error")
+    assert result["operation"] == "memoryIndexSearchDiagnostic"
+    assert result["result"] == compat
+    # The memory-core identity changes only the runtime's own words (decision D4): the rebuild
+    # command, the version-change cause, the upgrade actions and the owner in the stale warning.
+    # The diagnostics themselves (codes, owners) are equal.
+    assert [item["diagnostic"] for item in default] == [item["diagnostic"] for item in compat]
+    # (The newer-index case echoes its input reason, which names OpenClaw; memory-core's store
+    # writes its own newer reason, MEMORY_CORE_INDEX_VERSIONS.)
+    prose = json.dumps([
+        {key: item[key] for key in ("guidance", "search", "staleness")}
+        for case, item in zip(MEMORY_INDEX_SEARCH_DIAGNOSTIC_CASES, default, strict=True)
+        if "OpenClaw" not in json.dumps(case)
+    ])
+    assert "openclaw" not in prose.lower()
+    assert default[5]["guidance"] == (
+        "SQLiteMemoryStore.reindex(workspace). Rebuilding may call the configured embedding "
+        "provider and can incur provider cost."
+    )
+
+
 class _OtherModelEmbeddingProvider(OpenClawFakeEmbeddingProvider):
     model = "fake-other"
+
+
+def test_real_openclaw_oracle_memory_search_paused_result_matches_python(tmp_path: Path):
+    # The paused payload of a model change for corpus=memory (memory-search-tool-query.ts:23-39
+    # through resolveMemoryIndexSearchDiagnostic). The first TS search only builds its index;
+    # its hits are area 6's ranking and are not compared.
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+    (tmp_path / "MEMORY.md").write_text("- Glacier storage keeps backups cold.", encoding="utf-8")
+    payload = {"operation": "memorySearch", "workspaceDir": str(tmp_path), "query": "glacier",
+               "corpus": "memory"}
+
+    built = oracle.run(payload)
+    paused = oracle.run({**payload, "embeddingModel": "fake-other"})
+
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "python-memory.sqlite",
+        vector_weight=0,
+        text_weight=1,
+    )
+    SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8)).reindex(
+        MemoryWorkspace(tmp_path)
+    )
+    reopened = SQLiteMemoryStore(cfg, _OtherModelEmbeddingProvider(dimensions=8))
+    python_paused = memory_search(
+        cfg,
+        reopened,
+        query="glacier",
+        corpus="memory",
+        runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+    )
+
+    assert built["ok"] is True and paused["ok"] is True, (built, paused)
+    assert paused["result"] == python_paused
+    assert python_paused["error"] == (
+        "index was built for model fake-deterministic, expected fake-other"
+    )
+    assert python_paused["warning"] == (
+        "Tell the user: memory search is paused because the current memory configuration no "
+        "longer matches the index (index was built for model fake-deterministic, expected "
+        "fake-other)."
+    )
+    assert memory_search(cfg, reopened, query="glacier", corpus="memory")["action"] == (
+        "Tell the user to run: SQLiteMemoryStore.reindex(workspace). Rebuilding may call the "
+        "configured embedding provider and can incur provider cost."
+    )
 
 
 def test_real_openclaw_oracle_memory_search_pauses_on_index_model_change(tmp_path: Path):
@@ -2819,7 +3031,8 @@ def test_real_openclaw_oracle_memory_search_pauses_on_index_model_change(tmp_pat
         "index was built for model fake-deterministic, expected fake-other"
     )
     assert memory_search(cfg, reopened, query="glacier")["action"] == (
-        "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
+        "Tell the user to run: SQLiteMemoryStore.reindex(workspace). Rebuilding may call the "
+        "configured embedding provider and can incur provider cost."
     )
 
 

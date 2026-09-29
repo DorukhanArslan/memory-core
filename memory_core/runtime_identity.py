@@ -4,6 +4,13 @@ from dataclasses import dataclass
 
 from memory_core._heartbeat_constants import INTERNAL_WAKE_TRANSCRIPT_PROMPTS
 from memory_core.project_name import DISPLAY_NAME, DIST_NAME, PACKAGE_NAME, UPPER_NAME
+from memory_core.index._index_identity_constants import (
+    MEMORY_INDEX_NEWER_ACTION_TEMPLATE,
+    MEMORY_INDEX_REBUILD_AGENT_CLAUSE,
+    MEMORY_INDEX_REBUILD_COMMAND_TEMPLATE,
+    MEMORY_INDEX_STALE_NEWER_ACTION_TEMPLATE,
+    MEMORY_INDEX_VERSION_CHANGED_CAUSE_TEMPLATE,
+)
 from memory_core.tools._memory_tool_constants import (
     MEMORY_SEARCH_DEADLINE_AGENT_ACTION_TEMPLATE,
     MEMORY_SEARCH_MISSING_SQLITE_ACTION,
@@ -67,12 +74,31 @@ class RuntimeIdentity:
     memory_search_canonical_key_migration_action: str = (
         "Migrate the session catalog to canonical session keys, then retry memory_search."
     )
-    # memory_search paused-index action (OpenClaw extensions/memory-core/src/tools.ts
-    # PAUSED_MEMORY_INDEX_ACTION names two CLI commands that both reindex; memory-core
-    # names its one reindex call, since index_identity() only reports).
-    memory_search_paused_action: str = (
-        "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
+    # Memory index rebuild command of the index search diagnostic (OpenClaw
+    # packages/memory-host-sdk/src/host/types.ts:300-311 formatMemoryIndexRebuildGuidance names
+    # `openclaw memory status --index` plus ` --agent <id>`). str.format templates: the command
+    # with ``{agent_suffix}``, and the suffix with ``{agent_id}`` (used when an agent id is set).
+    # memory-core names its one reindex call, which takes no agent (decision D4, proposed).
+    memory_index_rebuild_command_template: str = "SQLiteMemoryStore.reindex(workspace){agent_suffix}"
+    memory_index_rebuild_agent_clause: str = ""
+    # Paused cause for an older index format (types.ts:343, `this OpenClaw version changed the
+    # memory index format (${reason}); ...`), with ``{reason}`` (D4).
+    memory_index_version_changed_cause_template: str = (
+        f"this {DISPLAY_NAME} version changed the memory index format ({{reason}}); no "
+        "configuration change is needed"
     )
+    # Actions for an index written by a newer version (types.ts:349-350 and 355-356 tell the user
+    # to upgrade OpenClaw), with ``{guidance}`` (D4).
+    memory_index_newer_action_template: str = (
+        f"Tell the user to upgrade {DISPLAY_NAME} or reindex explicitly: {{guidance}}"
+    )
+    memory_index_stale_newer_action_template: str = (
+        f"Upgrade {DISPLAY_NAME} or reindex explicitly: {{guidance}}"
+    )
+    # How the stale-index warning names the owner of the index format (types.ts:354 prints the
+    # identity's `owner`, the protocol value "openclaw"; the returned diagnostic keeps that
+    # value, only the prose changes, D4).
+    memory_index_owner_label: str = DIST_NAME
     # Transcript row recorded for a heartbeat turn instead of the full heartbeat
     # prompt (OpenClaw src/auto-reply/heartbeat.ts INTERNAL_WAKE_TRANSCRIPT_PROMPTS.heartbeat,
     # the pin's HEARTBEAT_TRANSCRIPT_PROMPT; cdda5825f8b, #143866).
@@ -119,9 +145,12 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
     memory_search_sqlite_unavailable_action=MEMORY_SEARCH_MISSING_SQLITE_ACTION,
     memory_search_deadline_agent_action=MEMORY_SEARCH_DEADLINE_AGENT_ACTION_TEMPLATE,
     memory_search_canonical_key_migration_action=SESSION_CANONICAL_KEY_MIGRATION_ACTION,
-    memory_search_paused_action=(
-        "Tell the user to run: openclaw memory status --index or openclaw memory index --force."
-    ),
+    memory_index_rebuild_command_template=MEMORY_INDEX_REBUILD_COMMAND_TEMPLATE,
+    memory_index_rebuild_agent_clause=MEMORY_INDEX_REBUILD_AGENT_CLAUSE,
+    memory_index_version_changed_cause_template=MEMORY_INDEX_VERSION_CHANGED_CAUSE_TEMPLATE,
+    memory_index_newer_action_template=MEMORY_INDEX_NEWER_ACTION_TEMPLATE,
+    memory_index_stale_newer_action_template=MEMORY_INDEX_STALE_NEWER_ACTION_TEMPLATE,
+    memory_index_owner_label="openclaw",
     heartbeat_transcript_prompt=_OPENCLAW_WAKE_PROMPTS["heartbeat"],
     internal_wake_transcript_prompts=tuple(_OPENCLAW_WAKE_PROMPTS.values()),
     session_reset_transcript_prompt="[OpenClaw session {action}]",

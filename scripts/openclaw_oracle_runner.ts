@@ -24,6 +24,7 @@ type Payload = {
     sources?: string[][];
     scopes?: Array<Record<string, unknown>>;
   };
+  diagnosticCases?: Array<{ status?: Record<string, unknown>; agentId?: string | null }>;
   unavailableCases?: Array<{
     error?: string | null;
     warning?: string;
@@ -1418,6 +1419,32 @@ async function main() {
           }),
         ),
       },
+    };
+  }
+
+  if (payload.operation === "memoryIndexSearchDiagnostic") {
+    // packages/memory-host-sdk/src/host/types.ts:239-380 at v2026.9.6 (28630a9a650 #114819):
+    // the five index search diagnostic exports over provider statuses. A case's `status` is the
+    // MemoryProviderStatus subset they read (provider, requestedProvider, custom.indexIdentity);
+    // lastSyncError is not passed (memory-core has no background sync).
+    const types = await importFromRepo(repoPath, "packages/memory-host-sdk/src/host/types.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.diagnosticCases ?? []).map((entry) => {
+        const status = entry.status ?? {};
+        const agentId = entry.agentId ?? undefined;
+        const diagnostic = types.resolveMemoryIndexIdentityDiagnostic(status);
+        return {
+          reason: types.resolveMemoryIndexIdentityReason(status) ?? null,
+          diagnostic: diagnostic ?? null,
+          guidance: types.formatMemoryIndexRebuildGuidance(status, agentId),
+          search: diagnostic
+            ? types.resolveMemoryIndexSearchDiagnostic(diagnostic, status, agentId)
+            : null,
+          staleness: types.resolveMemorySearchStaleness(status, agentId),
+        };
+      }),
     };
   }
 

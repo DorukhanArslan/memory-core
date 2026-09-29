@@ -5,6 +5,7 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
@@ -21,10 +22,14 @@ from memory_core.index.hybrid import (
 from memory_core.index.identity import (
     DEFAULT_FTS_TOKENIZER,
     FTS_ONLY_MODEL,
+    MEMORY_CORE_INDEX_VERSIONS,
     MEMORY_INDEX_META_KEY,
     MEMORY_INDEX_META_TABLE,
     NO_PROVIDER_ID,
+    MemoryIndexVersions,
+    is_chunking_upgrade_keyword_only,
     parse_index_meta,
+    resolve_memory_index_identity_diagnostic,
     resolve_configured_scope_hash,
     resolve_configured_sources_for_meta,
     resolve_memory_index_identity_state,
@@ -68,6 +73,10 @@ def validate_store_config(config: MemoryConfig, embeddings: EmbeddingProvider | 
 
 
 class SQLiteMemoryStore:
+    # The index format versions this store writes and compares (decision D2 of
+    # docs/upstream_port_v2026_9_6.md; memory_core.index.identity.MEMORY_CORE_INDEX_VERSIONS).
+    index_versions: MemoryIndexVersions = MEMORY_CORE_INDEX_VERSIONS
+
     def __init__(self, config: MemoryConfig, embeddings: EmbeddingProvider | None):
         self.path = validate_store_config(config, embeddings)
         self.config = config
@@ -147,13 +156,14 @@ class SQLiteMemoryStore:
         with self.connect() as db:
             return db.execute("SELECT 1 FROM chunks LIMIT 1").fetchone() is not None
 
-    def index_identity(self) -> dict[str, str]:
-        """Whether the index matches this store's provider and settings.
+    def index_identity(self) -> dict[str, Any]:
+        """Whether the index matches this store's provider, settings and index format.
 
-        ``{"status": "valid"}``, or ``missing``/``mismatched`` with an upstream
-        reason (``manager-reindex-state.ts`` ``resolveMemoryIndexIdentityState``).
-        Searches return no hits and ``memory_search`` pauses until
-        :meth:`reindex` writes fresh metadata.
+        ``{"status": "valid"}``, or ``missing``/``mismatched`` with the upstream reason, code
+        and owner (``manager-reindex-state.ts`` ``resolveMemoryIndexIdentityState``, compared
+        at :attr:`index_versions`). Searches return no hits and ``memory_search`` pauses until
+        :meth:`reindex` writes fresh metadata; an older chunking version on an otherwise
+        matching index searches keyword-only instead.
         """
         return resolve_memory_index_identity_state(
             meta=self.read_index_meta(),
@@ -167,7 +177,30 @@ class SQLiteMemoryStore:
             vector_ready=self._index_provider() is not None,
             has_indexed_chunks=self._has_indexed_chunks(),
             fts_tokenizer=DEFAULT_FTS_TOKENIZER,
+            versions=self.index_versions,
         )
+
+    def search_status(self) -> dict[str, Any]:
+        """The part of upstream's ``MemoryProviderStatus`` the index search diagnostic reads
+        (``packages/memory-host-sdk/src/host/types.ts:313-380``): ``provider`` (``none`` for
+        FTS-only), ``requestedProvider`` (memory-core resolves no provider, so the same) and
+        ``custom.indexIdentity``."""
+        provider = self._index_provider()
+        provider_id = provider["id"] if provider is not None else NO_PROVIDER_ID
+        return {
+            "provider": provider_id,
+            "requestedProvider": provider_id,
+            "custom": {"indexIdentity": self.index_identity()},
+        }
+
+    def provider_identity(self) -> dict[str, str]:
+        """``{"provider", "model", "providerKey"}`` this store indexes and searches with."""
+        provider = self._index_provider()
+        return {
+            "provider": provider["id"] if provider is not None else NO_PROVIDER_ID,
+            "model": provider["model"] if provider is not None else FTS_ONLY_MODEL,
+            "providerKey": self._provider_key(),
+        }
 
     def _build_index_meta(self, vector_dims: int | None) -> dict:
         # manager-sync-ops.ts nextMeta (same key order).
@@ -180,7 +213,9 @@ class SQLiteMemoryStore:
             "scopeHash": resolve_configured_scope_hash(),
             "chunkTokens": CHUNK_TOKENS,
             "chunkOverlap": CHUNK_OVERLAP,
+            "chunkingVersion": self.index_versions.chunking,
             "ftsTokenizer": DEFAULT_FTS_TOKENIZER,
+            "provenanceVersion": self.index_versions.provenance,
         }
         if provider is not None and vector_dims:
             meta["vectorDims"] = vector_dims
@@ -277,11 +312,20 @@ class SQLiteMemoryStore:
         """
         source_filter = _source_filter_clause(sources)
         _checkpoint(signal)
-        # memory/manager.ts:680-685: no hits unless the index identity is valid.
-        if self.index_identity()["status"] != "valid":
-            return []
+        # manager-search-orchestration.ts:385-400: no hits unless the index identity is valid,
+        # except a pending chunking upgrade on an otherwise matching index, which searches
+        # keyword-only when FTS is on (chunkingUpgradePendingKeywordOnly).
+        identity = self.index_identity()
+        keyword_only = False
+        if identity["status"] != "valid":
+            diagnostic = resolve_memory_index_identity_diagnostic(
+                {"custom": {"indexIdentity": identity}}
+            )
+            if not (is_chunking_upgrade_keyword_only(diagnostic) and self.flags.text_search):
+                return []
+            keyword_only = True
 
-        if not self.flags.vector_search:
+        if keyword_only or not self.flags.vector_search:
             return self._search_keyword_only(
                 query,
                 max_results=max_results,

@@ -102,12 +102,6 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
         plan_area=5,
     ),
     PendingPort(
-        "memory index identity (provenance_version reason)",
-        "28630a9a650 (#114819)",
-        _oracle("memory_index_identity_matches_python"),
-        plan_area=5,
-    ),
-    PendingPort(
         "deep dreaming policy (enabled by default, minScore 0.75, integer fields limit, "
         "minRecallCount, minUniqueQueries and recencyHalfLifeDays parsed with "
         "parseStrictNonNegativeInteger instead of Number() coercion)",

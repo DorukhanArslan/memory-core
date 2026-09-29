@@ -371,8 +371,9 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
   `memory_core/memory_paths.py`, `memory_core/index/identity.py`, `memory_core/prompt_section.py`.
 - Tests: 31 (`memoryGet` 26, `memoryToolDefinitions` 1, params/deadline 3, identity 1). Done so
   far (2026-09-29): the 2 param entries (A2), the 26 "memory_get contract" entries (A4) and the
-  "memory tool definitions" entry (A6); both labels left the worklist.
-- Worklist areas: "memory_search params, errors and deadline", "memory index identity".
+  "memory tool definitions" entry (A6); both labels left the worklist. 2026-09-30: the
+  "memory index identity" entry (B5); that label left the worklist too.
+- Worklist areas: "memory_search params, errors and deadline".
 - New oracle ops: `memoryPromptSection` (`buildMemoryPromptSection`) for the prompt-section row;
   `memoryCorpusMetadata`, `memoryIndexSearchDiagnostic` and, with D7, `memoryCorpusSupplements`
   (the plan below).

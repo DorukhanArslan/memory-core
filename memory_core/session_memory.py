@@ -81,7 +81,14 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from memory_core._intl_zone_names import en_us_short_time_zone_name
-from memory_core.bootstrap._js import JS_SPACE_CLASS, js_trim, js_utf8_encode, utf16_slice
+from memory_core.bootstrap._js import (
+    JS_SPACE_CLASS,
+    js_trim,
+    js_truthy,
+    js_utf8_encode,
+    reject_json_constant,
+    utf16_slice,
+)
 from memory_core.workspace import UnsafeMemoryPathError
 
 DEFAULT_SESSION_MEMORY_MESSAGE_COUNT = 15
@@ -186,16 +193,6 @@ def sanitize_session_memory_transcript_text(text: str) -> str | None:
     return js_trim(without_artifacts) or None
 
 
-def _js_truthy(value: object) -> bool:
-    if value is None or isinstance(value, bool):
-        return bool(value)
-    if isinstance(value, int | float):
-        return value != 0 and not math.isnan(value)
-    if isinstance(value, str):
-        return value != ""
-    return True  # objects and arrays, even empty ones
-
-
 def _extract_text_message_content(content: object) -> str | None:
     """Port of ``extractTextMessageContent`` (transcript.ts:40-57)."""
     if isinstance(content, str):
@@ -227,13 +224,9 @@ def _is_delivery_mirror_assistant_message(message: Mapping[str, Any]) -> bool:
     )
 
 
-def _reject_json_constant(name: str) -> object:
-    raise ValueError(f"not JSON: {name}")
-
-
 def _parse_jsonl_row(line: str) -> object:
     # JSON.parse: NaN and Infinity are not JSON.
-    return json.loads(line, parse_constant=_reject_json_constant)
+    return json.loads(line, parse_constant=reject_json_constant)
 
 
 def _read_session_file_entries(session_file_path: str) -> list[object] | None:
@@ -286,7 +279,7 @@ def _recent_message_lines(entries: Iterable[object]) -> list[str]:
     for entry in entries:
         if not isinstance(entry, Mapping):
             continue
-        if entry.get("type") != "message" or not _js_truthy(entry.get("message")):
+        if entry.get("type") != "message" or not js_truthy(entry.get("message")):
             continue
         message = entry["message"]
         if not isinstance(message, Mapping):
@@ -294,7 +287,7 @@ def _recent_message_lines(entries: Iterable[object]) -> list[str]:
         role = message.get("role")
         if role not in ("user", "assistant") or not isinstance(role, str):
             continue
-        if "content" not in message or not _js_truthy(message["content"]):
+        if "content" not in message or not js_truthy(message["content"]):
             continue
         if role == "user" and _has_inter_session_user_provenance(message):
             continue

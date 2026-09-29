@@ -1,4 +1,7 @@
+import json
 import unicodedata
+
+import pytest
 
 from memory_core.bootstrap import (
     ContextFile,
@@ -15,8 +18,10 @@ from memory_core.bootstrap._js import (
     JS_WHITESPACE,
     js_json_stringify,
     js_trim_end,
+    js_truthy,
     js_utf8_encode,
     locale_compare,
+    reject_json_constant,
     slice_utf16_safe,
     truncate_utf16_safe,
     utf16_len,
@@ -110,6 +115,18 @@ def test_node_string_encoders():
         '{\n  "a": "x\\ud83d",\n  "b": "\U0001f600",\n  "c": [\n    1,\n    {}\n  ]\n}'
     )
     assert js_json_stringify({"a": "\u00e9", "b": []}) == '{"a":"\u00e9","b":[]}'
+
+
+def test_js_truthy_and_the_json_constant_guard():
+    # Boolean(value) for JSON values; JSON.parse refuses NaN and Infinity.
+    falsy = [None, False, 0, 0.0, -0.0, float("nan"), ""]
+    truthy = [True, 1, -1, 0.5, float("inf"), "0", " ", [], {}, [0]]
+    assert [js_truthy(value) for value in falsy] == [False] * len(falsy)
+    assert [js_truthy(value) for value in truthy] == [True] * len(truthy)
+    for text in ("NaN", "[Infinity]", '{"a": -Infinity}'):
+        with pytest.raises(ValueError):
+            json.loads(text, parse_constant=reject_json_constant)
+    assert json.loads('{"a": 1.5}', parse_constant=reject_json_constant) == {"a": 1.5}
 
 
 def test_clamp_to_budget_small_budgets():

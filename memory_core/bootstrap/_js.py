@@ -44,6 +44,24 @@ def js_trim(value: str) -> str:
     return value.strip(JS_WHITESPACE)
 
 
+def js_truthy(value: object) -> bool:
+    """JavaScript truthiness of a JSON value: ``null``, ``false``, ``0``, ``NaN`` and ``""`` are
+    falsy; objects and arrays are truthy even when empty."""
+    if value is None or isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, int | float):
+        return value != 0 and value == value
+    if isinstance(value, str):
+        return value != ""
+    return True
+
+
+def reject_json_constant(name: str) -> object:
+    """``json.loads(..., parse_constant=reject_json_constant)``: ``JSON.parse`` refuses ``NaN``
+    and ``Infinity``, which ``json.loads`` would accept; ``ValueError`` like a parse error."""
+    raise ValueError(f"not JSON: {name}")
+
+
 def js_trim_end(value: str) -> str:
     return value.rstrip(JS_WHITESPACE)
 

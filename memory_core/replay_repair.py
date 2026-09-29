@@ -31,7 +31,7 @@ from memory_core._transcript_repair_constants import (
     TOOL_CALL_NAME_MAX_CHARS,
     TOOL_CALL_NAME_RE,
 )
-from memory_core.bootstrap._js import js_trim, utf16_len
+from memory_core.bootstrap._js import js_trim, js_truthy, reject_json_constant, utf16_len
 
 AgentMessage = dict[str, Any]
 ErroredAssistantResultPolicy = Literal["preserve", "drop"]
@@ -328,7 +328,7 @@ def is_synthetic_missing_tool_result(message: Mapping[str, Any]) -> bool:
     An error result whose ``details`` carry the synthetic marker, or with a text block that is
     exactly the default missing-result text.
     """
-    if not _truthy(message.get("isError")):
+    if not js_truthy(message.get("isError")):
         return False
     details = message.get("details")
     if (
@@ -569,15 +569,10 @@ def _is_complete_json_object(value: str) -> bool:
     if not _JSON_OBJECT_START.match(value):
         return False
     try:
-        parsed = json.loads(value, parse_constant=_reject_json_constant)
+        parsed = json.loads(value, parse_constant=reject_json_constant)
     except ValueError:
         return False
     return isinstance(parsed, dict)
-
-
-def _reject_json_constant(name: str) -> object:
-    # JSON.parse refuses NaN and Infinity, which json.loads would accept.
-    raise ValueError(name)
 
 
 def _sanitize_tool_call_block(block: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -674,17 +669,6 @@ def _normalize_optional_string(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
     return js_trim(value) or None
-
-
-def _truthy(value: object) -> bool:
-    """JavaScript truthiness of a JSON value."""
-    if value is None or value is False:
-        return False
-    if isinstance(value, int | float) and not isinstance(value, bool):
-        return value == value and value != 0
-    if isinstance(value, str):
-        return value != ""
-    return True
 
 
 def _make_missing_tool_result(

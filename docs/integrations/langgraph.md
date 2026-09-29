@@ -248,7 +248,7 @@ L1-L9 as recommended (Design › Open questions); L11: `build_graph` requires
 F22, F24, F26, and the F1 line) follow on their own branch, since each changes the kit's contract.
 They were built on `feat/kit-langgraph-fixes` on 2026-09-29 (`9b90245`..`0ba1cfc`, review fixes
 `a851890`..`64770c7`; docs/host_kit.md › LangGraph findings), each of that spec's open questions K1-K7 as
-its recommendation, K3 as the recorded decision `f2351d5`; Doruk has not answered K1-K7 yet.
+its recommendation, K3 as the recorded decision `f2351d5`; Doruk accepted K1-K7 on 2026-09-29.
 
 ## Design (2026-09-29)
 

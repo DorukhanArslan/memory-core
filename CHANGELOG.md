@@ -122,6 +122,8 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   LangChain messages recalled nothing. Use the host kit from a LangGraph graph instead
   (docs/integrations/langgraph.md): the model recalls through `HostKit.tools()` and
   `HostKit.dispatch()`. A host that still wants auto-recall calls `Memory.search` itself.
+- `memory_core.adapters.PendingTurn`, added earlier in 0.2.0: carry a turn in flight with
+  `TurnState` (`memory_core.host`), which holds the reset prompts as well.
 
 ### Package root
 

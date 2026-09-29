@@ -1285,7 +1285,7 @@ Status: specification and TDD plan, written 2026-09-29 on `feat/kit-langgraph-fi
 implemented the same day: Task 1 `14dbdcb`, Task 2 `dcba413`, Task 3 `76dfdd7`, Task 4
 `0869989`, Task 5 `89945b3`, Task 6 `9e1b00c`, Task 7 `7e1d23b`, Task 8 (docs) `0ba1cfc`; the
 review fixes after it are `a851890`..`64770c7`. Each open question K1-K7 was built as its
-recommendation, K3 as the recorded decision `f2351d5`; Doruk has not answered them yet. Task 9:
+recommendation, K3 as the recorded decision `f2351d5`; Doruk accepted all of them on 2026-09-29. Task 9:
 offline 1483 passed, 325 skipped at `64770c7`; the oracle suite 268 passed, 80 xfailed, 3 skipped, 0 failed of 351 at `64770c7` (v2026.9.6, Node 24, 43 min, no rerun), the
 expected counts, so both ports are oracle-backed for their fixtures. Doruk's decision L10
 (docs/integrations/langgraph.md › Decisions) takes the kit changes the LangGraph findings
@@ -1862,6 +1862,9 @@ Tasks 4 and 5 run in Task 9 (the implementation stage runs no oracle).
   test.
 
 ## Open questions
+
+Answered on 2026-09-29: Doruk accepted K1-K7 as recommended (K3 as the recorded decision
+`f2351d5`).
 
 - K1. Re-port `repair_tool_use_result_pairing` to the tag in this branch (recommended: the kit
   cannot compose the pin-era port, which breaks histories with repeated provider ids, probe

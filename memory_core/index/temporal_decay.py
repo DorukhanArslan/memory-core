@@ -59,8 +59,11 @@ def _parse_memory_date_from_path(file_path: str) -> datetime | None:
 
 
 def _is_evergreen_memory_path(file_path: str) -> bool:
+    # Port of temporal-decay.ts isEvergreenMemoryPath (:57-66 at v2026.9.6): the root
+    # MEMORY.md and USER.md (added with its indexing, 28630a9a650 #114819) never decay.
+    # Literal names as upstream; importing memory_core.workspace here would be circular.
     normalized = file_path.replace("\\", "/").removeprefix("./")
-    if normalized == "MEMORY.md":
+    if normalized == "MEMORY.md" or normalized == "USER.md":
         return True
     if not normalized.startswith("memory/"):
         return False

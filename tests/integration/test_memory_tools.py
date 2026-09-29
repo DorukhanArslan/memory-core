@@ -593,6 +593,38 @@ def test_undated_and_session_style_notes_are_searchable_and_evergreen(tmp_path: 
     assert scores["memory/2000-01-01.md"] < scores["memory/topics/alpha.md"] * 1e-6
 
 
+def test_root_memory_and_user_files_are_evergreen_under_temporal_decay(tmp_path: Path):
+    # temporal-decay.ts:57-66 isEvergreenMemoryPath: MEMORY.md and USER.md never
+    # decay (USER.md since 28630a9a650 #114819), whatever their mtime; a stale
+    # dated daily file still does.
+    import os
+
+    stale = 946684800  # 2000-01-01T00:00:00Z
+    (tmp_path / "memory").mkdir()
+    for relative in ("MEMORY.md", "USER.md", "memory/2000-01-01.md"):
+        target = tmp_path / relative
+        target.write_text("orbit nebula\n", encoding="utf-8")
+        os.utime(target, (stale, stale))
+    # Non-matching files keep the BM25 scores of the three hits well above zero.
+    for index in range(10):
+        (tmp_path / "memory" / f"filler-{index}.md").write_text("quartz\n", encoding="utf-8")
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "memory.sqlite",
+        flags=FeatureFlags(vector_search=False, temporal_decay=True),
+        temporal_decay_half_life_days=1,
+    )
+    store = SQLiteMemoryStore(cfg, None)
+    store.reindex(MemoryWorkspace(tmp_path))
+
+    results = store.search("orbit nebula", max_results=3, min_score=0.0)
+    scores = {result.path: result.score for result in results}
+
+    assert set(scores) == {"MEMORY.md", "USER.md", "memory/2000-01-01.md"}
+    assert scores["USER.md"] == scores["MEMORY.md"]
+    assert scores["memory/2000-01-01.md"] < scores["USER.md"] * 1e-6
+
+
 def test_mmr_config_is_applied_to_store_search(tmp_path: Path, monkeypatch):
     (tmp_path / "MEMORY.md").write_text("alpha\nbeta\n", encoding="utf-8")
     (tmp_path / "memory").mkdir()

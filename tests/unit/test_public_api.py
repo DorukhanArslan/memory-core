@@ -23,6 +23,7 @@ ROOT_API = {
     "ResetTurn",
     "HeartbeatRun",
     "HeartbeatOutcome",
+    "ToolCallRepair",
     "Memory",
     "MemoryConfig",
     "FeatureFlags",

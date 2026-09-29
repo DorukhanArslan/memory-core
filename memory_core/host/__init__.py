@@ -17,6 +17,7 @@ from memory_core.host.kit import (
     TurnRecord,
 )
 from memory_core.host.session import SessionState, TurnUsage
+from memory_core.host.tool_calls import ToolCallRepair
 from memory_core.host.turn import TurnState
 
 __all__ = [
@@ -30,6 +31,7 @@ __all__ = [
     "NewSession",
     "ResetTurn",
     "SessionState",
+    "ToolCallRepair",
     "TurnContext",
     "TurnRecord",
     "TurnState",

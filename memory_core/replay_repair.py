@@ -39,7 +39,14 @@ ErroredAssistantResultPolicy = Literal["preserve", "drop"]
 # tool-result-pairing.ts TOOL_CALL_TYPES: the block types the pairing reads as tool calls.
 _TOOL_CALL_TYPES = frozenset({"toolCall", "toolUse", "functionCall"})
 # extractToolResultIds: the id keys of a tool result, in order.
-_TOOL_RESULT_ID_KEYS = ("toolCallId", "toolUseId", "tool_call_id", "tool_use_id", "callId", "call_id")
+_TOOL_RESULT_ID_KEYS = (
+    "toolCallId",
+    "toolUseId",
+    "tool_call_id",
+    "tool_use_id",
+    "callId",
+    "call_id",
+)
 # src/shared/tool-block-contract.ts TOOL_CALL_BLOCK_TYPES: the block types the input repair
 # reads as tool calls (the pairing reads the first three only).
 TOOL_CALL_BLOCK_TYPES = frozenset(
@@ -324,7 +331,10 @@ def is_synthetic_missing_tool_result(message: Mapping[str, Any]) -> bool:
     if not _truthy(message.get("isError")):
         return False
     details = message.get("details")
-    if isinstance(details, Mapping) and details.get(SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY) is True:
+    if (
+        isinstance(details, Mapping)
+        and details.get(SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY) is True
+    ):
         return True
     content = message.get("content")
     return isinstance(content, list) and any(
@@ -401,7 +411,10 @@ def _classify_tool_use_result_pairing(
                 if replaceable.source_result is not None:
                     source_index = replaceable.source_result_index
                     dropped_results.append(
-                        (replaceable.source_result, source_index if source_index is not None else index)
+                        (
+                            replaceable.source_result,
+                            source_index if source_index is not None else index,
+                        )
                     )
                 replaceable.result = _normalize_tool_result_name(normalized, replaceable.name)
                 replaceable.source_result = message
@@ -494,7 +507,9 @@ def _normalize_allowed_tool_names(names: Iterable[str] | None) -> set[str] | Non
     """``normalizeAllowedToolNames``: trimmed, lower-cased; ``None`` when none is left."""
     if names is None:
         return None
-    normalized = {js_trim(name).lower() for name in names if isinstance(name, str) and js_trim(name)}
+    normalized = {
+        js_trim(name).lower() for name in names if isinstance(name, str) and js_trim(name)
+    }
     return normalized or None
 
 
@@ -683,7 +698,10 @@ def _make_missing_tool_result(
         "content": [
             {"type": "text", "text": text if text is not None else DEFAULT_MISSING_TOOL_RESULT_TEXT}
         ],
-        "details": {SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY: True, "reason": "missing_tool_result"},
+        "details": {
+            SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY: True,
+            "reason": "missing_tool_result",
+        },
         "isError": True,
         "timestamp": int(time.time() * 1000),
     }

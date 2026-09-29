@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
@@ -55,6 +55,7 @@ from memory_core.host._calls import ToolCallRefused, read_tool_call, tool_error
 from memory_core.host.flush import FlushRequest
 from memory_core.host.heartbeat_run import HeartbeatRun
 from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
+from memory_core.host.tool_calls import ToolCallRepair, repair_tool_calls
 from memory_core.memory_flush import (
     MemoryFlushFailureOutcome,
     MemoryFlushPlan,
@@ -465,6 +466,23 @@ class HostKit:
             workspace=workspace,
             workspace_init=workspace_init,
         )
+
+    def repair_tool_calls(
+        self,
+        messages: Sequence[Mapping[str, Any]],
+        *,
+        allowed_tool_names: Iterable[str] | None = None,
+    ) -> ToolCallRepair:
+        """Upstream's replay repair of the history's tool calls, for the next model call.
+
+        A turn that failed between a tool-call reply and its tool results leaves calls
+        without results; send ``repair_tool_calls(history).messages`` to the model instead of the
+        history (upstream repairs the replayed history the same way at the start of each
+        attempt, replay-history.ts:793,819) and keep the stored transcript as it is. Unchanged
+        rows come back as the host's objects; a missing result becomes a synthetic error row
+        with upstream's text (docs/host_kit.md, F26). Reads no file and writes nothing.
+        """
+        return repair_tool_calls(messages, allowed_tool_names=allowed_tool_names)
 
     def after_turn(
         self,

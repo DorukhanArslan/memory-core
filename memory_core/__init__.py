@@ -27,6 +27,7 @@ from memory_core.host import (
     NewSession,
     ResetTurn,
     SessionState,
+    ToolCallRepair,
     TurnContext,
     TurnRecord,
     TurnState,
@@ -53,6 +54,7 @@ __all__ = [
     "ResetTurn",
     "HeartbeatRun",
     "HeartbeatOutcome",
+    "ToolCallRepair",
     # The core handle a kit is built on, and its configuration.
     "Memory",
     "MemoryConfig",

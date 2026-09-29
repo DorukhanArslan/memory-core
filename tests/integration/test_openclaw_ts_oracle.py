@@ -64,6 +64,7 @@ from memory_core.index.identity import (
 )
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.flags import FeatureFlags
+from memory_core.prompt_section import build_prompt_section
 from memory_core.tools.common import MemoryToolInputError
 from memory_core.tools.corpus import MemoryCorpusAttempt, compose_memory_corpus_metadata
 import memory_core.tools.memory_search as memory_search_module
@@ -1256,6 +1257,31 @@ def test_real_openclaw_oracle_memory_get_corpora_match_python(
 
     assert result["ok"] is True, result
     assert result["result"] == python_result
+
+
+# buildMemoryPromptSection (memory-tool-contract.ts:108-145): every memory tool set crossed with
+# every session tool set, for both citation modes memory-core has.
+MEMORY_PROMPT_SECTION_CASES = [
+    {"availableTools": [*memory_tools, *session_tools, "read"], "citationsMode": citations}
+    for memory_tools in ((), ("memory_search",), ("memory_get",), ("memory_search", "memory_get"))
+    for session_tools in ((), ("sessions_search",), ("sessions_history",),
+                          ("sessions_search", "sessions_history"))
+    for citations in ("on", "off")
+]
+
+
+def test_real_openclaw_oracle_memory_prompt_section_matches_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+    result = oracle.run(
+        {"operation": "memoryPromptSection", "promptSectionCases": MEMORY_PROMPT_SECTION_CASES}
+    )
+
+    assert result["ok"] is True, result
+    assert result["result"] == [
+        build_prompt_section(set(entry["availableTools"]), citations_mode=entry["citationsMode"])
+        for entry in MEMORY_PROMPT_SECTION_CASES
+    ]
 
 
 MEMORY_CORPUS_METADATA_CASES = [

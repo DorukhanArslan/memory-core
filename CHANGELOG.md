@@ -122,6 +122,12 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   a missing wiki result is `not_found`, and no registered supplement is reported as
   `not-registered` with a warning (it was `{"disabled": true, "error": "wiki corpus result not
   found"}`).
+- The `memory_search` and `memory_get` tool definitions and the `## Memory Recall` section are
+  upstream v2026.9.6's (`memory-tool-contract.ts`, script-extracted): the descriptions name
+  `MEMORY.md, USER.md, Markdown files recursively under memory/` and the per-corpus and status
+  outcomes, the schemas carry `minimum: 1` and `additionalProperties: false`, and the section
+  adds the session-hit lines and "Report partial, unavailable, or stale recall ...".
+  `memory_search_tool_definition()` takes `search_sources=` (default memory and sessions).
 - `memory_search` and `memory_get` read a blank `maxResults`, `minScore`, `from` or `lines` as
   omitted, and check `corpus` against their enums: an unknown corpus raises `corpus must be one
   of: ...` (it searched every source before).

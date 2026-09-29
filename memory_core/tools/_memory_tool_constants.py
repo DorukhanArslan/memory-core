@@ -53,6 +53,8 @@ MEMORY_GET_CORPORA: tuple[str, ...] = (
 )
 MEMORY_CORPUS_PARAM_ERROR_TEMPLATE = 'corpus must be one of: {allowed}'
 MEMORY_RECALL_HEADING = '## Memory Recall'
+SESSIONS_SEARCH_TOOL_NAME = 'sessions_search'
+SESSIONS_HISTORY_TOOL_NAME = 'sessions_history'
 MEMORY_RECALL_SEARCH_TEMPLATE = 'Before answering anything about prior work, decisions, dates, people, preferences, or todos: run memory_search{memory_get_clause}. If low confidence after search, say you checked.'
 MEMORY_RECALL_SEARCH_GET_CLAUSE = '; for memory-file hits, use memory_get to pull only the needed lines'
 MEMORY_RECALL_GET_ONLY = 'Before answering anything about prior work, decisions, dates, people, preferences, or todos that point to a specific memory file: run memory_get to pull only the needed lines. If low confidence after reading, say you checked.'

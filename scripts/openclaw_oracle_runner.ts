@@ -37,6 +37,8 @@ type Payload = {
   // memoryGet: a registered wiki supplement whose get() returns null ("missing") or throws
   // ("throw:<message>"); omitted, nothing is registered.
   wikiGet?: string;
+  // memoryPromptSection: tool sets and citation modes for buildMemoryPromptSection.
+  promptSectionCases?: Array<{ availableTools: string[]; citationsMode?: string }>;
   // memoryCorpusMetadata: attempt lists for composeMemoryCorpusMetadata.
   corpusMetadataCases?: Array<{ attempts: Array<Record<string, unknown>>; extraWarnings?: string[] }>;
   sessionTranscripts?: Array<{
@@ -1218,6 +1220,25 @@ async function main() {
     } finally {
       await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
     }
+  }
+
+  if (payload.operation === "memoryPromptSection") {
+    // extensions/memory-core/src/memory-tool-contract.ts buildMemoryPromptSection, the
+    // `## Memory Recall` builder memory-core registers (extensions/memory-core/index.ts).
+    const contract = await importFromRepo(
+      repoPath,
+      "extensions/memory-core/src/memory-tool-contract.ts",
+    );
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.promptSectionCases ?? []).map((entry) =>
+        contract.buildMemoryPromptSection({
+          availableTools: new Set(entry.availableTools),
+          citationsMode: entry.citationsMode,
+        }),
+      ),
+    };
   }
 
   if (payload.operation === "memoryCorpusMetadata") {

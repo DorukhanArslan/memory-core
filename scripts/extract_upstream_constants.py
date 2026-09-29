@@ -1154,6 +1154,8 @@ def extract_memory_tools(repo: Path) -> dict[str, object]:
             tools, "corpus must be one of: ${", {'allowed.join(", ")': "allowed"}
         ),
         "MEMORY_RECALL_HEADING": ts_string_at(contract, "## Memory Recall"),
+        "SESSIONS_SEARCH_TOOL_NAME": ts_string_at(contract, "sessions_search"),
+        "SESSIONS_HISTORY_TOOL_NAME": ts_string_at(contract, "sessions_history"),
         "MEMORY_RECALL_SEARCH_TEMPLATE": recall_search,
         "MEMORY_RECALL_SEARCH_GET_CLAUSE": recall_get_clause,
         "MEMORY_RECALL_GET_ONLY": ts_string_at(contract, "Before answering anything"),

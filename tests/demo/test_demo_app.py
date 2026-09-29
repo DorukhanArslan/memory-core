@@ -677,9 +677,17 @@ def test_parity_endpoint_without_results(client, tmp_path, monkeypatch):
 
 def test_prompt_preview_endpoint(client):
     response = client.post("/api/prompt-preview", json={"tools": ["memory_search"], "citationsMode": "off"})
+    with_sessions = client.post(
+        "/api/prompt-preview", json={"tools": ["memory_search", "sessions_history"]}
+    ).json()["lines"]
 
     assert response.status_code == 200
     assert response.json()["lines"][0] == "## Memory Recall"
+    assert response.json()["lines"][2] == (
+        "Session hits are search snippets only; exact session history is unavailable with the enabled tools."
+    )
+    # The preview accepts upstream's session tool names, which the Lab itself does not offer.
+    assert with_sessions[2].startswith("For session hits, use sessions_history with a known session key")
 
 
 def test_invalid_prompt_preview_payload_returns_json_error(client):
@@ -820,7 +828,15 @@ def test_tool_loop_dispatches_curation_and_memory_tools(client, lab, monkeypatch
     assert "before" not in detail["curation"][0]
     assert {"type": "write", "label": "USER.md +1", "target": "USER.md", "source": "curation", "extension": True} in detail["chips"]
     assert [(diff["path"], diff["source"]) for diff in detail["diffs"]] == [("USER.md", "curation")]
-    assert "## Memory Recall" in engine.calls[0]["messages"][0]["content"]
+    system_prompt = engine.calls[0]["messages"][0]["content"]
+    assert "## Memory Recall" in system_prompt
+    # buildMemoryPromptSection at v2026.9.6: the kit offers no sessions_* tool.
+    assert (
+        "run memory_search; for memory-file hits, use memory_get to pull only the needed lines."
+        in system_prompt
+    )
+    assert "Session hits are search snippets only; exact session history is unavailable with the enabled tools." in system_prompt
+    assert "Report partial, unavailable, or stale recall to the user, including returned warning and action guidance." in system_prompt
     types = event_types(client)
     assert types.index("chat.turn.started") < types.index("curation.written") < types.index("chat.turn.completed")
 

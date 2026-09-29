@@ -111,6 +111,16 @@ def test_before_turn_prompt_equals_the_core_composition(tmp_path):
         ["\n".join(section).strip(), expected.prompt_text.strip()]
     )
     assert turn.system_prompt.startswith("## Memory Recall\n")
+    # buildMemoryPromptSection at v2026.9.6 with the kit's tools (no sessions_* tool).
+    assert turn.memory_recall[1:4] == (
+        "Before answering anything about prior work, decisions, dates, people, preferences, or "
+        "todos: run memory_search; for memory-file hits, use memory_get to pull only the needed "
+        "lines. If low confidence after search, say you checked.",
+        "Session hits are search snippets only; exact session history is unavailable with the "
+        "enabled tools.",
+        "Session search line numbers are not history offsets. Never read raw transcript files to "
+        "expand session hits.",
+    )
     assert "zephyrquartz" in turn.system_prompt
     assert turn.runtime_context is None
 

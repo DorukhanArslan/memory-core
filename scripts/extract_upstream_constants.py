@@ -33,7 +33,16 @@ character as a ``\\u`` escape:
 - ``memory_core/_transcript_repair_constants.py``: the synthetic missing-tool-result text and
   marker of the tool-call replay repair
   (packages/agent-core/src/harness/session/tool-result-pairing.ts) and the tool-call name rules
-  of its input repair (src/agents/tool-call-shared.ts; the regex literal's source as text)::
+  of its input repair (src/agents/tool-call-shared.ts; the regex literal's source as text);
+- ``memory_core/tools/_memory_tool_constants.py``: the ``memory_search``/``memory_get`` tool
+  descriptions and source contract, the ``## Memory Recall`` lines of
+  ``buildMemoryPromptSection`` (extensions/memory-core/src/memory-tool-contract.ts; ternaries
+  inside templates become a template plus its clause literals), the corpus enums and error of
+  ``readCorpusParam`` (tools.ts), the per-corpus outcome texts and the deadline
+  (memory-corpus.ts, memory/search-deadline.ts), the read texts and limits of
+  ``readMemoryFile`` (packages/memory-host-sdk/src/host/read-file*.ts, read-retry.ts) and the
+  refusal texts of the built @openclaw/fs-safe it resolves and reads through (see
+  MEMORY_TOOL_SOURCES and FS_SAFE_SOURCES)::
 
     .venv/bin/python scripts/extract_upstream_constants.py --repo /tmp/openclaw-head
 
@@ -47,6 +56,7 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +71,7 @@ BOOTSTRAP_OUTPUT = PACKAGE_DIR / "bootstrap" / "_bootstrap_constants.py"
 HEARTBEAT_OUTPUT = PACKAGE_DIR / "_heartbeat_constants.py"
 FLUSH_OUTPUT = PACKAGE_DIR / "_memory_flush_constants.py"
 TRANSCRIPT_REPAIR_OUTPUT = PACKAGE_DIR / "_transcript_repair_constants.py"
+MEMORY_TOOLS_OUTPUT = PACKAGE_DIR / "tools" / "_memory_tool_constants.py"
 CHECK_TEST = "tests/integration/test_extracted_upstream_constants.py"
 BOOTSTRAP_SOURCE = "src/agents/embedded-agent-helpers/bootstrap.ts"
 BUDGET_SOURCE = "src/agents/bootstrap-budget.ts"
@@ -147,7 +158,7 @@ def ts_string_expression(source: str, index: int) -> tuple[str, int]:
         value, index = _read_ts_string(source, index)
         parts.append(value)
         index = _skip_space(source, index)
-        if source[index] != "+":
+        if index >= len(source) or source[index] != "+":
             return "".join(parts), index
         index = _skip_space(source, index + 1)
 
@@ -161,10 +172,51 @@ def ts_string_constant(source: str, name: str) -> str:
     return value
 
 
-def ts_template_literal(source: str, index: int, fields: dict[str, str]) -> tuple[str, int]:
+def _expression_end(source: str, index: int) -> int:
+    """End index (after the closing brace) of a ``${...}`` expression whose body starts at
+    ``index``; string and nested template literals inside it are skipped whole."""
+    depth = 1
+    end = index
+    while depth:
+        current = source[end]
+        if current in "\"'":
+            _, end = _read_ts_string(source, end)
+            continue
+        if current == "`":
+            end = _template_end(source, end)
+            continue
+        depth += {"{": 1, "}": -1}.get(current, 0)
+        end += 1
+    return end
+
+
+def _template_end(source: str, index: int) -> int:
+    """End index (after the closing backtick) of the template literal at ``index``."""
+    position = index + 1
+    while True:
+        char = source[position]
+        if char == "`":
+            return position + 1
+        if char == "\\":
+            position += 2
+            continue
+        if char == "$" and source[position + 1] == "{":
+            position = _expression_end(source, position + 2)
+            continue
+        position += 1
+
+
+def ts_template_literal(
+    source: str,
+    index: int,
+    fields: dict[str, str],
+    on_expression: Callable[[str], str] | None = None,
+) -> tuple[str, int]:
     """A backtick template literal at ``index`` as a ``str.format`` template.
 
-    Every ``${expression}`` must be a key of ``fields`` and becomes ``{field}``; literal braces
+    Every ``${expression}`` must be a key of ``fields`` and becomes ``{field}``, unless
+    ``on_expression`` is given: it then receives each unmapped expression's text and returns
+    the template text to put in its place (``{field}`` for a captured ternary). Literal braces
     are doubled. Returns (template, end index).
     """
     index = _skip_space(source, index)
@@ -185,23 +237,109 @@ def ts_template_literal(source: str, index: int, fields: dict[str, str]) -> tupl
             position += 2
             continue
         if char == "$" and source[position + 1] == "{":
-            depth = 1
-            end = position + 2
-            while depth:
-                current = source[end]
-                if current in "\"'":
-                    _, end = _read_ts_string(source, end)
-                    continue
-                depth += {"{": 1, "}": -1}.get(current, 0)
-                end += 1
+            end = _expression_end(source, position + 2)
             expression = source[position + 2 : end - 1].strip()
-            if expression not in fields:
+            if expression in fields:
+                out.append("{" + fields[expression] + "}")
+            elif on_expression is not None:
+                out.append(on_expression(expression))
+            else:
                 raise ValueError(f"unmapped template expression {expression!r} at {position}")
-            out.append("{" + fields[expression] + "}")
             position = end
             continue
         out.append({"{": "{{", "}": "}}"}.get(char, char))
         position += 1
+
+
+def _format_escape(value: str) -> str:
+    return value.replace("{", "{{").replace("}", "}}")
+
+
+def ts_literal_template(source: str, index: int, fields: dict[str, str]) -> tuple[str, int]:
+    """A string literal (or ``+`` concatenation) or a template literal at ``index``, as a
+    ``str.format`` template (a plain string's braces are doubled). Returns (template, end)."""
+    index = _skip_space(source, index)
+    if source[index] == "`":
+        return ts_template_literal(source, index, fields)
+    value, end = ts_string_expression(source, index)
+    return _format_escape(value), end
+
+
+def _top_level_question_mark(expression: str) -> int:
+    depth = 0
+    position = 0
+    while position < len(expression):
+        char = expression[position]
+        if char in "\"'":
+            _, position = _read_ts_string(expression, position)
+            continue
+        if char == "`":
+            position = _template_end(expression, position)
+            continue
+        if char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth -= 1
+        elif char == "?" and depth == 0 and expression[position + 1 : position + 2] not in ("?", "."):
+            return position
+        position += 1
+    raise ValueError(f"not a ternary expression: {expression!r}")
+
+
+def ts_ternary(expression: str, fields: dict[str, str] | None = None) -> tuple[str, str, str]:
+    """(condition, consequent, alternate) of ``cond ? A : B`` whose branches are string or
+    template literals; the branches come back as ``str.format`` templates (``fields`` maps the
+    expressions of a template branch). Nested ternaries in a branch are refused."""
+    question = _top_level_question_mark(expression)
+    condition = expression[:question].strip()
+    consequent, index = ts_literal_template(expression, question + 1, fields or {})
+    index = _skip_space(expression, index)
+    if expression[index : index + 1] != ":":
+        raise ValueError(f"expected ':' in ternary {expression!r}")
+    alternate, index = ts_literal_template(expression, index + 1, fields or {})
+    if _skip_space(expression, index) != len(expression):
+        raise ValueError(f"unexpected text after the ternary in {expression!r}")
+    return condition, consequent, alternate
+
+
+def ts_template_ternary_at(
+    source: str, anchor: str, field: str, fields: dict[str, str] | None = None
+) -> tuple[str, str, str, str]:
+    """The template literal starting with ``anchor`` whose one unmapped ``${...}`` is a
+    ternary: (template with ``{field}``, condition, consequent, alternate).
+
+    Every occurrence of the anchor must give the same parts.
+    """
+    fields = fields or {}
+    found: set[tuple[str, str, str, str]] = set()
+    for match in re.finditer(re.escape("`" + anchor), source):
+        ternaries: list[tuple[str, str, str]] = []
+
+        def capture(expression: str) -> str:
+            ternaries.append(ts_ternary(expression, fields))
+            return "{" + field + "}"
+
+        template, _ = ts_template_literal(source, match.start(), fields, capture)
+        if len(ternaries) != 1:
+            raise ValueError(f"template starting {anchor!r}: {len(ternaries)} ternaries, expected 1")
+        found.add((template, *ternaries[0]))
+    if len(found) != 1:
+        raise ValueError(f"template starting {anchor!r}: {len(found)} distinct values")
+    return found.pop()
+
+
+def ts_ternary_at(source: str, condition: str, fields: dict[str, str] | None = None) -> tuple[str, str]:
+    """(consequent, alternate) of the one ternary ``<condition> ? A : B`` in ``source`` whose
+    condition text is ``condition`` and whose branches are literals."""
+    matches = list(re.finditer(re.escape(condition) + r"\s*\?", source))
+    if len(matches) != 1:
+        raise ValueError(f"ternary on {condition!r}: {len(matches)} occurrences, expected 1")
+    consequent, index = ts_literal_template(source, matches[0].end(), fields or {})
+    index = _skip_space(source, index)
+    if source[index] != ":":
+        raise ValueError(f"expected ':' in the ternary on {condition!r}")
+    alternate, _ = ts_literal_template(source, index + 1, fields or {})
+    return consequent, alternate
 
 
 def _property_value_index(source: str, name: str, *, template: bool = False) -> int:
@@ -862,6 +1000,272 @@ def extract_transcript_repair(repo: Path) -> dict[str, object]:
     }
 
 
+MEMORY_TOOL_SOURCES = {
+    "contract": "extensions/memory-core/src/memory-tool-contract.ts",
+    "tools": "extensions/memory-core/src/tools.ts",
+    "read_tool": "extensions/memory-core/src/memory-read-tool.ts",
+    "corpus": "extensions/memory-core/src/memory-corpus.ts",
+    "deadline": "extensions/memory-core/src/memory/search-deadline.ts",
+    "read_file": "packages/memory-host-sdk/src/host/read-file.ts",
+    "read_shared": "packages/memory-host-sdk/src/host/read-file-shared.ts",
+    "read_retry": "packages/memory-host-sdk/src/host/read-retry.ts",
+}
+# @openclaw/fs-safe (the workspace resolve and regular-file read of readMemoryFile) ships as
+# built JavaScript in the checkout's node_modules; its version is checked.
+FS_SAFE_DIR = "node_modules/@openclaw/fs-safe"
+FS_SAFE_VERSION = "0.18.1"
+FS_SAFE_SOURCES = {
+    "fs_root_context": f"{FS_SAFE_DIR}/dist/root-context.js",
+    "fs_root_path": f"{FS_SAFE_DIR}/dist/root-path.js",
+    "fs_root_path_errors": f"{FS_SAFE_DIR}/dist/root-path-errors.js",
+    "fs_error_detail": f"{FS_SAFE_DIR}/dist/error-detail.js",
+    "fs_regular_file": f"{FS_SAFE_DIR}/dist/regular-file.js",
+    "fs_identity": f"{FS_SAFE_DIR}/dist/strict-file-identity.js",
+}
+
+
+def ts_string_array_at(source: str, anchor: str) -> tuple[str, ...]:
+    """The ``[...]`` array of string literals right after the one occurrence of ``anchor``."""
+    matches = list(re.finditer(re.escape(anchor) + r"\s*\[", source))
+    if len(matches) != 1:
+        raise ValueError(f"array after {anchor!r}: {len(matches)} occurrences, expected 1")
+    index = matches[0].end()
+    items: list[str] = []
+    while True:
+        index = _skip_space(source, index)
+        if source[index] == "]":
+            return tuple(items)
+        value, index = ts_string_expression(source, index)
+        items.append(value)
+        index = _skip_space(source, index)
+        if source[index] == ",":
+            index += 1
+
+
+def ts_regex_literal_at(source: str, name: str) -> tuple[str, str]:
+    """(pattern source, flags) of ``const NAME = /.../flags;``."""
+    match = re.search(rf"\bconst {re.escape(name)}\s*=\s*/", source)
+    if match is None:
+        raise ValueError(f"regex constant {name} not found")
+    index, in_class, out = match.end(), False, []
+    while True:
+        char = source[index]
+        if char == "\\":
+            out.append(source[index : index + 2])
+            index += 2
+            continue
+        if char == "\n":
+            raise ValueError(f"unterminated regex literal {name}")
+        if char == "/" and not in_class:
+            break
+        in_class = (in_class or char == "[") and char != "]"
+        out.append(char)
+        index += 1
+    flags = re.match(r"[a-z]*", source[index + 1 :]).group()
+    return "".join(out), flags
+
+
+def ts_signed_integer_constant(source: str, name: str) -> int:
+    match = re.search(rf"^(?:export )?const {re.escape(name)} = (-?[0-9_]+);", source, re.MULTILINE)
+    if match is None:
+        raise ValueError(f"integer constant {name} not found")
+    return int(match.group(1).replace("_", ""))
+
+
+def ts_number_after(source: str, anchor: str) -> int:
+    """The integer literal right after the one occurrence of ``anchor``."""
+    matches = list(re.finditer(re.escape(anchor) + r"\s*([0-9_]+)", source))
+    if len(matches) != 1:
+        raise ValueError(f"number after {anchor!r}: {len(matches)} occurrences, expected 1")
+    return int(matches[0].group(1).replace("_", ""))
+
+
+def _read_sources(repo: Path, sources: dict[str, str]) -> dict[str, str]:
+    return {key: (repo / path).read_text(encoding="utf-8") for key, path in sources.items()}
+
+
+def extract_memory_tools(repo: Path) -> dict[str, object]:
+    """Texts and limits of memory_search/memory_get, their prompt section and the read path."""
+    src = _read_sources(repo, MEMORY_TOOL_SOURCES)
+    fs = _read_sources(repo, FS_SAFE_SOURCES)
+    fs_version = re.search(
+        r'"version":\s*"([^"]+)"', (repo / FS_SAFE_DIR / "package.json").read_text(encoding="utf-8")
+    )
+    if fs_version is None or fs_version.group(1) != FS_SAFE_VERSION:
+        raise ValueError(f"@openclaw/fs-safe is not {FS_SAFE_VERSION}: {fs_version}")
+    contract = src["contract"]
+    search_guidance = ts_string_constant(contract, "SEARCH_CORPUS_OUTCOME_GUIDANCE")
+    get_guidance = ts_string_constant(contract, "GET_READ_OUTCOME_GUIDANCE")
+    guidance_fields = {
+        "SEARCH_CORPUS_OUTCOME_GUIDANCE": "search_guidance",
+        "GET_READ_OUTCOME_GUIDANCE": "get_guidance",
+    }
+    guidance_values = {
+        "search_guidance": _format_escape(search_guidance),
+        "get_guidance": _format_escape(get_guidance),
+    }
+    search_description = ts_template_at(
+        contract, "Mandatory recall step", {"search": "search", **guidance_fields}
+    ).format(search="{search}", **guidance_values)
+    get_description = ts_template_at(
+        contract, "Safe exact excerpt read from ${", {"files": "files", **guidance_fields}
+    ).format(files="{files}", **guidance_values)
+    recall_search, recall_search_condition, recall_get_clause, recall_no_get = (
+        ts_template_ternary_at(contract, "Before answering anything", "memory_get_clause")
+    )
+    sessions_search, sessions_condition, sessions_history_clause, sessions_no_history_clause = (
+        ts_template_ternary_at(contract, "For session hits, use sessions_search", "history_clause")
+    )
+    if (recall_search_condition, recall_no_get) != ("hasMemoryGet", ""):
+        raise ValueError("buildMemoryPromptSection search guidance changed shape")
+    if sessions_condition != 'availableTools.has("sessions_history")':
+        raise ValueError("buildMemoryPromptSection sessions_search line changed shape")
+    corpus = src["corpus"]
+    memory_label, wiki_label = ts_ternary_at(corpus, 'attempt.corpus === "memory"')
+    read_shared = src["read_shared"]
+    read_retry = src["read_retry"]
+    tools = src["tools"]
+    message_regex, message_flags = ts_regex_literal_at(read_retry, "TRANSIENT_MEMORY_READ_MESSAGE")
+    detail_regex, detail_flags = ts_regex_literal_at(
+        fs["fs_error_detail"], "UNSAFE_ERROR_DETAIL_CHARACTERS"
+    )
+    return {
+        "MEMORY_SEARCH_TOOL_NAME": ts_string_at(contract, "memory_search"),
+        "MEMORY_GET_TOOL_NAME": ts_string_at(contract, "memory_get"),
+        "SEARCH_CORPUS_OUTCOME_GUIDANCE": search_guidance,
+        "GET_READ_OUTCOME_GUIDANCE": get_guidance,
+        "MEMORY_SEARCH_TOOL_DESCRIPTION_TEMPLATE": search_description,
+        "MEMORY_GET_TOOL_DESCRIPTION_TEMPLATE": get_description,
+        "MEMORY_SOURCE_FILES": ts_string_at(contract, "MEMORY.md, USER.md"),
+        "MEMORY_SOURCE_EXTRA_PATHS": ts_string_at(contract, "configured extra paths"),
+        "MEMORY_SOURCE_SEARCH_TEMPLATE": ts_template_at(
+            contract, "${files}, indexed session transcripts", {"files": "files"}
+        ),
+        "MEMORY_SEARCH_CORPORA": ts_string_array_at(
+            tools, "const modelRequestedCorpus = readCorpusParam(rawParams,"
+        ),
+        "MEMORY_GET_CORPORA": ts_string_array_at(
+            tools, "const requestedCorpus = readCorpusParam(rawParams,"
+        ),
+        "MEMORY_CORPUS_PARAM_ERROR_TEMPLATE": ts_template_at(
+            tools, "corpus must be one of: ${", {'allowed.join(", ")': "allowed"}
+        ),
+        "MEMORY_RECALL_HEADING": ts_string_at(contract, "## Memory Recall"),
+        "MEMORY_RECALL_SEARCH_TEMPLATE": recall_search,
+        "MEMORY_RECALL_SEARCH_GET_CLAUSE": recall_get_clause,
+        "MEMORY_RECALL_GET_ONLY": ts_string_at(contract, "Before answering anything"),
+        "MEMORY_RECALL_SESSIONS_SEARCH_TEMPLATE": sessions_search,
+        "MEMORY_RECALL_SESSIONS_HISTORY_CLAUSE": sessions_history_clause,
+        "MEMORY_RECALL_SESSIONS_NO_HISTORY_CLAUSE": sessions_no_history_clause,
+        "MEMORY_RECALL_SESSIONS_HISTORY_ONLY": ts_string_at(
+            contract, "For session hits, use sessions_history"
+        ),
+        "MEMORY_RECALL_SESSIONS_SNIPPETS_ONLY": ts_string_at(
+            contract, "Session hits are search snippets only"
+        ),
+        "MEMORY_RECALL_SESSION_LINE_NUMBERS": ts_string_at(
+            contract, "Session search line numbers"
+        ),
+        "MEMORY_RECALL_OUTCOME": ts_string_at(contract, "Report partial, unavailable"),
+        "MEMORY_RECALL_CITATIONS_OFF": ts_string_at(contract, "Citations are disabled"),
+        "MEMORY_RECALL_CITATIONS_ON": ts_string_at(contract, "Citations: include"),
+        "MEMORY_PATH_REQUIRED_ERROR": ts_string_at(src["read_file"], "path required"),
+        "MEMORY_PATH_NOT_ALLOWED_ERROR": ts_string_at(src["read_file"], "path is not an allowed"),
+        "MEMORY_PATH_NOT_ALLOWED_CODE": ts_string_at(src["read_file"], "MEMORY_PATH_NOT_ALLOWED"),
+        "MEMORY_READ_FAILED_CODE": ts_string_at(src["read_tool"], "MEMORY_READ_FAILED"),
+        **ts_numeric_constants(
+            read_shared, ("DEFAULT_MEMORY_READ_LINES", "DEFAULT_MEMORY_READ_MAX_CHARS")
+        ),
+        "MEMORY_READ_CONTINUE_TEMPLATE": ts_template_at(
+            read_shared, "[More content available. Use from=${", {"params.nextFrom": "next_from"}
+        ),
+        "MEMORY_READ_MAX_CHARS_NOTICE": ts_string_at(
+            read_shared, "[More content available. Requested"
+        ),
+        "MEMORY_READ_FALLBACK_HINT": ts_string_at(read_shared, " If you need the full raw line"),
+        "TRANSIENT_MEMORY_READ_ERRNO": ts_signed_integer_constant(
+            read_retry, "TRANSIENT_MEMORY_READ_ERRNO"
+        ),
+        "TRANSIENT_MEMORY_READ_CODES": ts_string_array_at(
+            read_retry, "const TRANSIENT_MEMORY_READ_CODES = new Set("
+        ),
+        "TRANSIENT_MEMORY_READ_MESSAGE_PATTERN": message_regex,
+        "TRANSIENT_MEMORY_READ_MESSAGE_FLAGS": message_flags,
+        "TRANSIENT_MEMORY_READ_ATTEMPTS": ts_number_after(read_retry, "attempts:"),
+        "TRANSIENT_MEMORY_READ_MIN_DELAY_MS": ts_number_after(read_retry, "minDelayMs:"),
+        "TRANSIENT_MEMORY_READ_MAX_DELAY_MS": ts_number_after(read_retry, "maxDelayMs:"),
+        **ts_numeric_constants(src["deadline"], ("DEFAULT_MEMORY_SEARCH_TIMEOUT_MS",)),
+        "MEMORY_CORPUS_TIMEOUT_TEMPLATE": ts_template_at(
+            corpus,
+            "${params.operation} timed out after ${",
+            {
+                "params.operation": "operation",
+                "DEFAULT_MEMORY_SEARCH_TIMEOUT_MS / 1000": "seconds",
+            },
+        ),
+        "MEMORY_CORPUS_MEMORY_LABEL": memory_label,
+        "MEMORY_CORPUS_WIKI_LABEL": wiki_label,
+        "MEMORY_CORPUS_FAILURE_WARNING_TEMPLATE": ts_template_at(
+            corpus,
+            "${label} corpus ${attempt.outcome}: ${",
+            {"label": "label", "attempt.outcome": "outcome", "attempt.error": "error"},
+        ),
+        "MEMORY_CORPUS_NOT_REGISTERED_WARNING_TEMPLATE": ts_template_at(
+            corpus, "${label} corpus is not registered", {"label": "label"}
+        ),
+        "MEMORY_CORPUS_PLUGIN_FAILURE_TEMPLATE": ts_template_at(
+            corpus, "${entry.pluginId}: ${", {"entry.pluginId": "plugin_id", "entry.error": "error"}
+        ),
+        "MEMORY_CORPUS_SUPPLEMENT_CONCURRENCY": ts_number_after(corpus, "limit: Math.min("),
+        "MEMORY_CORPUS_SUPPLEMENT_DEFAULT_MAX_RESULTS": ts_number_after(
+            corpus, "Math.max(1, params.maxResults ??"
+        ),
+        "FS_SAFE_ROOT_BOUNDARY_LABEL": _fs_root_boundary_label(fs["fs_root_context"]),
+        "FS_SAFE_OUTSIDE_WORKSPACE_CODE": ts_string_at(fs["fs_root_context"], "outside-workspace"),
+        "FS_SAFE_OUTSIDE_WORKSPACE_ERROR": ts_string_at(
+            fs["fs_root_context"], "file is outside workspace root"
+        ),
+        "FS_SAFE_INVALID_PATH_CODE": ts_string_at(fs["fs_root_context"], "invalid-path"),
+        "FS_SAFE_PATH_TOO_LONG_ERROR": ts_string_at(
+            fs["fs_root_context"], "relative path is too long"
+        ),
+        "FS_SAFE_ROOT_NOT_DIRECTORY_ERROR": ts_string_at(
+            fs["fs_root_context"], "root dir is not a directory"
+        ),
+        "FS_SAFE_NOT_DIRECTORY_TEMPLATE": ts_template_at(
+            fs["fs_root_path"], "Path component is not a directory: ${", {"pathname": "path"}
+        ),
+        "FS_SAFE_SYMLINK_ESCAPE_TEMPLATE": ts_template_at(
+            fs["fs_root_path_errors"],
+            "Symlink escapes ${",
+            {
+                "params.boundaryLabel": "boundary",
+                "shortPath(params.rootCanonicalPath)": "root",
+                "shortPath(params.symlinkPath)": "path",
+            },
+        ),
+        "FS_SAFE_UNSAFE_DETAIL_PATTERN": detail_regex,
+        "FS_SAFE_UNSAFE_DETAIL_FLAGS": detail_flags,
+        "FS_SAFE_NOT_REGULAR_FILE_ERROR": ts_string_at(
+            fs["fs_regular_file"], "path must be a regular file"
+        ),
+        "FS_SAFE_PATH_MISMATCH_CODE": ts_string_at(fs["fs_regular_file"], "path-mismatch"),
+        "FS_SAFE_FILE_CHANGED_TEMPLATE": ts_template_at(
+            fs["fs_regular_file"], "File changed during read: ${", {"filePath": "path"}
+        ),
+        "FS_SAFE_IDENTITY_MISMATCH_ERROR": ts_string_at(
+            fs["fs_identity"], "file identity changed"
+        ),
+    }
+
+
+def _fs_root_boundary_label(root_context: str) -> str:
+    match = re.search(r'boundaryLabel: "([^"]+)"', root_context)
+    if match is None or root_context.count("boundaryLabel: ") != 1:
+        raise ValueError("fs-safe root-context.js boundaryLabel changed")
+    return match.group(1)
+
+
 def _git_head(repo: Path) -> str:
     completed = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=False
@@ -979,6 +1383,23 @@ def outputs(repo: Path) -> dict[Path, str]:
                 "parity-bound marker: upstream recognises a stored synthetic result by it.",
                 "TOOL_CALL_NAME_RE is the source of upstream's regex literal (no flags); it",
                 "is applied to a trimmed name, so its $ anchor reads alike in Python.",
+            ],
+        ),
+        MEMORY_TOOLS_OUTPUT: render(
+            extract_memory_tools(repo),
+            commit,
+            title="Upstream constants of the memory_search and memory_get tools",
+            sources=[
+                *MEMORY_TOOL_SOURCES.values(),
+                *(f"{path} (@openclaw/fs-safe {FS_SAFE_VERSION})" for path in FS_SAFE_SOURCES.values()),
+            ],
+            note=[
+                "The *_TEMPLATE texts are str.format templates whose fields stand for upstream",
+                "template expressions; a *_CLAUSE is the literal a ternary inside a template adds.",
+                "The tool descriptions come from memory-tool-contract.ts describe(), the",
+                "## Memory Recall lines from buildMemoryPromptSection, the read texts from",
+                "readMemoryFile / buildMemoryReadResult and the fs-safe refusals from the built",
+                "@openclaw/fs-safe package that readMemoryFile resolves and reads through.",
             ],
         ),
     }

@@ -2,8 +2,8 @@
 
 scripts/extract_upstream_constants.py generates memory_core/bootstrap/_tools_md_constants.py,
 memory_core/bootstrap/_bootstrap_constants.py, memory_core/_heartbeat_constants.py,
-memory_core/_memory_flush_constants.py and memory_core/_transcript_repair_constants.py from the
-oracle checkout; this regenerates them from
+memory_core/_memory_flush_constants.py, memory_core/_transcript_repair_constants.py and
+memory_core/tools/_memory_tool_constants.py from the oracle checkout; this regenerates them from
 ``OPENCLAW_ORACLE_REPO`` and compares them with the committed files (set-equality check of
 AGENTS.md › Parity rules). Needs ``OPENCLAW_ORACLE_REPO`` (no Node run).
 """
@@ -46,6 +46,7 @@ def test_generated_constant_modules_equal_the_upstream_source():
         ROOT / PACKAGE_NAME / "_heartbeat_constants.py",
         ROOT / PACKAGE_NAME / "_memory_flush_constants.py",
         ROOT / PACKAGE_NAME / "_transcript_repair_constants.py",
+        ROOT / PACKAGE_NAME / "tools" / "_memory_tool_constants.py",
     }
     for path, text in outputs.items():
         assert path.read_text(encoding="utf-8") == text, path.name

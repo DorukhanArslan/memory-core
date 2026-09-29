@@ -39,13 +39,23 @@ def test_only_indexed_files_trigger_a_reindex(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(memory.store, "reindex", lambda workspace: calls.append(workspace))
 
-    curator.upsert_user_directive("Prefer delta.")
     curator.set_proactive_preferences("alpha")
-    curator.upsert_user_directive("Prefer delta.")
     assert calls == []
+    # USER.md is indexed since OpenClaw 28630a9a650 (host/internal.ts listMemoryFiles).
+    curator.upsert_user_directive("Prefer delta.")
+    assert calls == [memory.workspace]
     curator.add_memory_entry("Decisions", "delta")
     curator.append_daily_note("alpha")
-    assert calls == [memory.workspace, memory.workspace]
+    assert calls == [memory.workspace, memory.workspace, memory.workspace]
+
+
+def test_a_curated_user_directive_is_searchable_at_once(tmp_path):
+    memory = _memory(tmp_path)
+    curator = memory.curator(now_ms=lambda: NOW_MS)
+
+    curator.upsert_user_directive("Prefer the quartzwhistle release checklist.")
+
+    assert [hit["path"] for hit in memory.search("quartzwhistle")["results"]] == ["USER.md"]
 
 
 def test_the_config_flag_disables_the_curator(tmp_path):

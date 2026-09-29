@@ -1230,6 +1230,24 @@ MEMORY_DISCOVERY_SCENARIOS = {
         "memory/2026-09-26.md": "day\n",
     },
     "empty": {},
+    # USER.md is a memory file at v2026.9.6 (28630a9a650 #114819), listed after MEMORY.md.
+    "user-profile": {
+        "MEMORY.md": "# Root\n",
+        "USER.md": "- Prefer short replies.\n",
+        "memory/2026-09-29.md": "day\n",
+    },
+    "user-profile-alone": {"USER.md": "- Prefer short replies.\n"},
+    "user-profile-lowercase": {"user.md": "lower\n", "memory/2026-09-29.md": "day\n"},
+    "user-profile-symlink": {"notes/user.md": "u\n", "USER.md": {"symlink": "notes/user.md"}},
+    "user-profile-directory": {"USER.md/inner.md": "inner\n", "memory/2026-09-29.md": "day\n"},
+    # internal.ts:246 sorts the walked paths (UTF-16 code units), unlike a pre-order walk.
+    "sorted-walk": {
+        "memory/a.md": "a\n",
+        "memory/a/b.md": "nested\n",
+        "memory/a-b.md": "dash\n",
+        "memory/\uff5e.md": "full-width tilde\n",
+        "memory/\U0001f600.md": "astral\n",
+    },
 }
 
 

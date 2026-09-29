@@ -26,6 +26,66 @@ def test_discovers_root_and_every_markdown_file_under_memory(tmp_path: Path):
     ]
 
 
+def test_discovery_lists_user_md_after_the_root_memory_file(tmp_path: Path):
+    # OpenClaw host/internal.ts listMemoryFiles (28630a9a650 #114819): USER.md is indexed right
+    # after MEMORY.md, before the memory/ walk, when it is a regular .md file.
+    (tmp_path / "memory").mkdir()
+    (tmp_path / "memory" / "2026-09-29.md").write_text("day\n", encoding="utf-8")
+    (tmp_path / "USER.md").write_text("- Prefer short replies.\n", encoding="utf-8")
+    (tmp_path / "MEMORY.md").write_text("# Long\n", encoding="utf-8")
+
+    assert [entry.rel_path for entry in MemoryWorkspace(tmp_path).discover_memory_files()] == [
+        "MEMORY.md",
+        "USER.md",
+        "memory/2026-09-29.md",
+    ]
+
+
+def test_discovery_skips_a_symlinked_or_directory_user_md(tmp_path: Path):
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "user.md").write_text("u\n", encoding="utf-8")
+    try:
+        (tmp_path / "USER.md").symlink_to(tmp_path / "notes" / "user.md")
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symlinks are not supported on this platform: {exc}")
+    assert MemoryWorkspace(tmp_path).discover_memory_files() == []
+
+    (tmp_path / "USER.md").unlink()
+    (tmp_path / "USER.md").mkdir()
+    (tmp_path / "USER.md" / "inner.md").write_text("inner\n", encoding="utf-8")
+    assert MemoryWorkspace(tmp_path).discover_memory_files() == []
+
+
+def test_discovery_finds_a_lowercase_user_md_only_on_a_case_insensitive_file_system(
+    tmp_path: Path,
+):
+    # Upstream lstats path.join(workspaceDir, "USER.md"); the file system decides.
+    (tmp_path / "user.md").write_text("u\n", encoding="utf-8")
+    case_insensitive = (tmp_path / "USER.md").exists()
+
+    assert [entry.rel_path for entry in MemoryWorkspace(tmp_path).discover_memory_files()] == (
+        ["USER.md"] if case_insensitive else []
+    )
+
+
+def test_discovery_sorts_the_memory_walk_by_path(tmp_path: Path):
+    # internal.ts:246 sorts the collected paths (UTF-16 code units): "a-b.md" < "a.md" < "a/b.md"
+    # ('-' 0x2D < '.' 0x2E < '/' 0x2F); a pre-order walk would list memory/a/b.md first. A
+    # supplementary-plane name sorts before U+FF5E in UTF-16 (surrogates are 0xD800-0xDFFF).
+    for relative in ("a.md", "a/b.md", "a-b.md", "\uff5e.md", "\U0001f600.md"):
+        path = tmp_path / "memory" / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x\n", encoding="utf-8")
+
+    assert [entry.rel_path for entry in MemoryWorkspace(tmp_path).discover_memory_files()] == [
+        "memory/a-b.md",
+        "memory/a.md",
+        "memory/a/b.md",
+        "memory/\U0001f600.md",
+        "memory/\uff5e.md",
+    ]
+
+
 def test_discovery_walks_dot_directories_but_not_repair_directories(tmp_path: Path):
     (tmp_path / "memory" / ".dreams").mkdir(parents=True)
     (tmp_path / "memory" / ".openclaw-repair").mkdir()

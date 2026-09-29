@@ -54,6 +54,12 @@ Two presets ship; `DEFAULT_WORKSPACE_LAYOUT` is `MEMORY_CORE_WORKSPACE_LAYOUT`.
   kept apart, not renamed: the AGENTS.md template section "Automations - Be
   Proactive" (PROACTIVE_PREFERENCES.md) and the authenticated personal
   `users/<profile-id>/USER.md` overlay, which memory-core does not port (`user/`).
+- Memory files (what `memory_search` indexes and `memory_get` reads) are a different
+  set from the bootstrap files: `MEMORY.md`, `USER.md` (since OpenClaw 28630a9a650:
+  listed right after `MEMORY.md` and readable by exact name) and every `*.md` under
+  `memory/`; `DREAMS.md` in any case is readable but not indexed. A curated `USER.md`
+  write reindexes the store (`Memory.curator`). PROACTIVE_PREFERENCES.md, `user/` and
+  `workspace/` are neither indexed nor readable through `memory_get`.
 - Load order equals render order at v2026.9.6. Files consume the per-file (20,000)
   and total (60,000) budget in that order; USER.md is capped at
   `min(max_chars, 4000)`. Unknown basenames a host passes render after the known

@@ -19,6 +19,9 @@ from memory_core.session_corpus import MemoryCoreSessionCorpus
 # CANONICAL_ROOT_MEMORY_FILENAME). The legacy lowercase `memory.md` is a
 # doctor/repair concern upstream and is never indexed.
 CANONICAL_ROOT_MEMORY_FILENAME = "MEMORY.md"
+# The user profile file is a memory path and is indexed after the root memory file
+# (host/internal.ts isMemoryPath, listMemoryFiles; 28630a9a650 #114819).
+USER_MEMORY_FILENAME = "USER.md"
 # Directory name memory discovery never descends into: OpenClaw's doctor
 # writes repair copies there (packages/memory-host-sdk/src/host/internal.ts
 # shouldDescendMemoryEntry). Kept under its upstream name so a workspace shared
@@ -34,36 +37,51 @@ _LEADING_DOTS_AND_SLASHES_RE = re.compile(r"^[./]+")
 
 
 def is_memory_path(rel_path: str) -> bool:
-    """Port of OpenClaw ``isMemoryPath`` + ``normalizeRelPath`` (host/internal.ts:76-110)."""
+    """Port of OpenClaw ``isMemoryPath`` + ``normalizeRelPath`` (host/internal.ts:96-99, 157-170).
+
+    ``MEMORY.md``, ``USER.md`` (exact case, 28630a9a650 #114819), ``dreams.md`` in any case, and
+    anything under ``memory/``.
+    """
     normalized = _LEADING_DOTS_AND_SLASHES_RE.sub("", js_trim(rel_path)).replace("\\", "/")
     if not normalized:
         return False
-    if normalized == CANONICAL_ROOT_MEMORY_FILENAME or normalized.lower() == "dreams.md":
+    if (
+        normalized == CANONICAL_ROOT_MEMORY_FILENAME
+        or normalized == USER_MEMORY_FILENAME
+        or normalized.lower() == "dreams.md"
+    ):
         return True
     return normalized.startswith("memory/")
 
 
 def list_memory_files(workspace_dir: Path) -> list[Path]:
-    """Port of OpenClaw ``listMemoryFiles`` (memory-host-sdk host/internal.ts:150-222).
+    """Port of OpenClaw ``listMemoryFiles`` (memory-host-sdk host/internal.ts:249-287, v2026.9.6).
 
     Returns absolute paths in upstream order: the root ``MEMORY.md`` when it is
-    a real file (exact name, not a symlink), then every ``*.md`` under
-    ``memory/`` in a pre-order walk with byte-sorted directory entries (Node
-    ``fs.readdir`` sorts via libuv scandir). Symlinked files and directories are
-    skipped, a symlinked ``memory/`` is ignored, and ``.openclaw-repair``
-    directories are not descended; hidden files and dot-directories such as
-    ``memory/.dreams`` are walked like any other entry. Results are deduplicated
-    by realpath.
+    a real file (exact name, not a symlink), then ``USER.md`` when the joined path
+    lstats as a regular file (28630a9a650 #114819; on a case-insensitive file
+    system a ``user.md`` is found under that name, as upstream), then every
+    ``*.md`` under ``memory/`` sorted by path in UTF-16 code-unit order
+    (``scan.entries.map(...).toSorted()``, internal.ts:246). Symlinked files and
+    directories are skipped, a symlinked ``memory/`` is ignored, and
+    ``.openclaw-repair`` directories are not descended; hidden files and
+    dot-directories such as ``memory/.dreams`` are walked like any other entry.
+    Results are deduplicated by realpath.
 
     Not ported: ``extraPaths`` and multimodal files (memory-core has no config for
-    them), and the ``shouldSkipRootMemoryAuxiliaryPath`` guard, which can only
-    match for extra paths outside ``memory/``.
+    them), the ``shouldSkipRootMemoryAuxiliaryPath`` guard, which can only match
+    for extra paths outside ``memory/``, and the ``MemorySourceScanError`` the tag
+    raises for an unreadable directory (internal.ts:191-247): memory-core skips
+    it (area 6 of docs/upstream_port_v2026_9_6.md).
     """
     root = Path(workspace_dir)
     result: list[Path] = []
     memory_file = _resolve_canonical_root_memory_file(root)
     if memory_file is not None and _is_regular_markdown_file(memory_file):
         result.append(memory_file)
+    user_file = root / USER_MEMORY_FILENAME
+    if _is_regular_markdown_file(user_file):
+        result.append(user_file)
     memory_dir = root / "memory"
     try:
         memory_dir_stat = os.lstat(memory_dir)
@@ -74,7 +92,9 @@ def list_memory_files(workspace_dir: Path) -> list[Path]:
         and not stat.S_ISLNK(memory_dir_stat.st_mode)
         and stat.S_ISDIR(memory_dir_stat.st_mode)
     ):
-        _collect_memory_files_from_dir(memory_dir, result)
+        walked: list[Path] = []
+        _collect_memory_files_from_dir(memory_dir, walked)
+        result.extend(sorted(walked, key=lambda path: _utf16_units(str(path))))
     if len(result) <= 1:
         return result
     seen: set[str] = set()
@@ -89,6 +109,11 @@ def list_memory_files(workspace_dir: Path) -> list[Path]:
         seen.add(key)
         deduped.append(entry)
     return deduped
+
+
+def _utf16_units(value: str) -> bytes:
+    # Array.prototype.toSorted() without a comparator: UTF-16 code-unit order.
+    return value.encode("utf-16-be", "surrogatepass")
 
 
 def _resolve_canonical_root_memory_file(root: Path) -> Path | None:
@@ -118,8 +143,8 @@ def _is_regular_markdown_file(path: Path) -> bool:
 
 def _collect_memory_files_from_dir(directory: Path, files: list[Path]) -> None:
     # collectMemoryFilesFromDir over @openclaw/fs-safe walkDirectory with
-    # `symlinks: "skip"`: each directory is visited once by realpath, entries
-    # are pushed before descending, and unreadable directories are skipped.
+    # `symlinks: "skip"`: each directory is visited once by realpath and
+    # unreadable directories are skipped; the caller sorts the collected paths.
     visited: set[str] = set()
 
     def visit(current: Path) -> None:

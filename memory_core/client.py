@@ -12,7 +12,7 @@ from memory_core.index.sqlite_store import SQLiteMemoryStore, validate_store_con
 from memory_core.project_name import STATE_DIRNAME
 from memory_core.tools.memory_get import memory_get
 from memory_core.tools.memory_search import memory_search
-from memory_core.workspace import MemoryWorkspace
+from memory_core.workspace import USER_MEMORY_FILENAME, MemoryWorkspace
 
 DEFAULT_MEMORY_MD_TEMPLATE = """# MEMORY.md
 
@@ -94,15 +94,19 @@ class Memory:
         """Curated writes for this workspace (memory-core extension, see memory_core.curation).
 
         The curator uses this memory's feature flags and reindexes the store
-        after each write to MEMORY.md or a daily note, the files memory_search
-        indexes; USER.md and PROACTIVE_PREFERENCES.md writes skip the reindex.
+        after each write to MEMORY.md, USER.md or a daily note, the files
+        memory_search indexes (USER.md since OpenClaw 28630a9a650, host/internal.ts
+        listMemoryFiles); PROACTIVE_PREFERENCES.md writes skip the reindex.
         The reindex runs after the write is committed and re-embeds the whole
         corpus synchronously; if it fails, the write stands and the result
         carries ``after_write_error`` (``afterWriteError`` in the tool payload).
         """
 
         def reindex(result: CurationResult) -> None:
-            if result.path == layout.memory_file or result.path.startswith("memory/"):
+            if (
+                result.path in (layout.memory_file, USER_MEMORY_FILENAME)
+                or result.path.startswith("memory/")
+            ):
                 self.store.reindex(self.workspace)
 
         return MemoryCurator(

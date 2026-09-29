@@ -798,10 +798,16 @@ def test_tool_loop_dispatches_curation_and_memory_tools(client, lab, monkeypatch
     offered = [tool["function"]["name"] for tool in engine.calls[0]["tools"]]
     assert offered[:2] == ["memory_search", "memory_get"]
     assert "upsert_user_directive" in offered and "add_memory_entry" in offered
-    assert engine.calls[1]["messages"][-1] == {
-        "role": "tool", "tool_call_id": "c2",
-        "content": json.dumps({"results": [], "provider": "none", "model": "fts-only", "citations": "on"}),
-    }
+    search_message = engine.calls[1]["messages"][-1]
+    assert (search_message["role"], search_message["tool_call_id"]) == ("tool", "c2")
+    search_result = json.loads(search_message["content"])
+    # USER.md is a memory file at v2026.9.6 (host/internal.ts listMemoryFiles, 28630a9a650) and
+    # the curated write reindexes it, so the same turn's search finds the new directive.
+    assert [hit["path"] for hit in search_result["results"]] == ["USER.md"]
+    assert "- Always answer briefly, in bullet points." in search_result["results"][0]["snippet"]
+    assert (search_result["provider"], search_result["model"], search_result["citations"]) == (
+        "none", "fts-only", "on",
+    )
     assert "- Always answer briefly, in bullet points." in (lab.root / "USER.md").read_text(encoding="utf-8")
     detail = frames_of(frames, "turn_done")[0]["detail"]
     # The flush follows the reply (v2026.9.6 session maintenance, decision Q1).

@@ -261,7 +261,9 @@ def test_extension_dirs_are_never_injected_or_indexed(tmp_path):
     assert all(Path(file.path).parent == Path(os.path.abspath(tmp_path)) for file in loaded)
     assert [file.content for file in context.files] == ["root rules"]
     assert "per-user" not in context.stable_text
-    assert indexed == []
+    # Only the root USER.md the initializer writes is a memory file (28630a9a650); nothing under
+    # the user/ or workspace/ extension dirs is indexed.
+    assert [file.rel_path for file in indexed] == ["USER.md"]
 
 
 def test_prompt_text_joins_workspace_parts_in_upstream_order(tmp_path):

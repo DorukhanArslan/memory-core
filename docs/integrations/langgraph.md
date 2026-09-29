@@ -147,6 +147,7 @@ models convert; it imports no framework, owns no loop and calls no model.
 | `turn_usage(message)` | `TurnUsage` from an AI message's `usage_metadata`, else `None` |
 | `has_tool_calls(message)` | valid or invalid tool calls, for routing |
 | `tool_messages(message, dispatch)` | one `{"role": "tool", ...}` dict per tool call, valid and invalid, answered through `kit.dispatcher(session)` or `FlushRequest.dispatch` |
+| `repair_tool_calls(messages, repair)` | the messages for a model call after upstream's replay repair of their tool calls through `kit.repair_tool_calls` (`repair`): unchanged messages are the original objects, a changed AI message is a copy without its dropped calls, and a missing result is a synthetic tool dict with `status="error"`; the stored messages stay as they are |
 
 There is no node factory or prebuilt agent: wiring the model and the flush loop would own the
 agent loop, which adapters never do (docs/package_boundary.md). `LangGraphMemoryRecall`, the

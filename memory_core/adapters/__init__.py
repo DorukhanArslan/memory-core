@@ -2,6 +2,7 @@
 
 from memory_core.adapters.langgraph import (
     has_tool_calls,
+    repair_tool_calls,
     tool_messages,
     transcript_rows,
     turn_usage,
@@ -9,6 +10,7 @@ from memory_core.adapters.langgraph import (
 
 __all__ = [
     "has_tool_calls",
+    "repair_tool_calls",
     "tool_messages",
     "transcript_rows",
     "turn_usage",

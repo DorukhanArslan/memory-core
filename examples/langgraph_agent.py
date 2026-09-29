@@ -48,10 +48,13 @@ from memory_core import (
     MemoryConfig,
     ResetTurn,
     SessionState,
+    ToolCallRepair,
     TurnState,
 )
 from memory_core.adapters.langgraph import (
+    ToolCallRepairer,
     has_tool_calls,
+    repair_tool_calls,
     tool_messages,
     transcript_rows,
     turn_usage,
@@ -107,10 +110,14 @@ def reset_command(message: Any) -> tuple[Literal["new", "reset"], str] | None:
     return ("new" if words[0].lower() == "/new" else "reset"), words[1] if len(words) > 1 else ""
 
 
-def model_input(turn: TurnState, messages: Sequence[Any]) -> list[Any]:
-    """The model's input: the system prompt, then the transcript with the runtime context.
+def model_input(turn: TurnState, messages: Sequence[Any], repair: ToolCallRepairer) -> list[Any]:
+    """The model's input: the system prompt, then the repaired transcript with the runtime context.
 
-    The runtime context goes in as a user message immediately before the turn's active user
+    The transcript goes through ``repair`` (the kit's ``repair_tool_calls``): a call a failed
+    turn left without its tool message gets upstream's synthetic error result, and a call
+    without an id is dropped from the copy, as upstream repairs the replayed history
+    (``sanitizeToolCallInputs``, ``repairToolUseResultPairing``); the stored messages keep
+    them. The runtime context goes in as a user message immediately before the turn's active user
     message, where upstream binds its runtime-context carrier
     (src/agents/embedded-agent-runner/run/attempt-llm-boundary.ts:240-268;
     packages/agent-core/src/harness/messages.ts:139-153 sends it as a user message); with no
@@ -120,7 +127,7 @@ def model_input(turn: TurnState, messages: Sequence[Any]) -> list[Any]:
     that is not blank and differs from the row, and only while the active user message's text
     is the row (the example's row is text).
     """
-    body = list(messages)
+    body = repair_tool_calls(messages, repair)
     index = active_user_index(body)
     reset = turn.reset
     if (
@@ -173,27 +180,6 @@ def tool_rounds(messages: Sequence[Any]) -> int:
             break
         rounds += message.type == "ai" and has_tool_calls(message)
     return rounds
-
-
-def unanswered_tool_calls(messages: Sequence[Any]) -> list[str]:
-    """The ids of the AI messages with a tool call that no tool message answers.
-
-    A turn that failed in or before its tools node leaves one (a call without an id, a
-    dispatch that raised, a crash between the nodes), and a provider rejects a tool call without
-    its tool message. Upstream repairs the replayed history with synthetic error results
-    instead (``repairToolUseResultPairing``, src/agents/session-transcript-repair.ts:391); the
-    example removes the message, since a call without an id can have no tool message.
-    """
-    answered = {message.tool_call_id for message in messages if message.type == "tool"}
-    return [
-        message.id
-        for message in messages
-        if message.type == "ai"
-        and any(
-            call.get("id") not in answered
-            for call in [*message.tool_calls, *message.invalid_tool_calls]
-        )
-    ]
 
 
 def build_graph(
@@ -266,15 +252,20 @@ def build_graph(
         update: dict[str, Any] = {"memory_turn": turn.to_json(), "memory_reset": None}
         if created:  # a thread's first session keeps its id even if this turn fails
             update["memory_session"] = session.to_json()
-        if orphans := unanswered_tool_calls(state["messages"]):  # left by a failed turn
-            update["messages"] = [RemoveMessage(id=message_id) for message_id in orphans]
         return update
 
     def agent(state: AgentState) -> dict[str, Any]:
         turn = TurnState.from_json(state["memory_turn"])
         capped = tool_rounds(state["messages"]) >= MAX_TOOL_ROUNDS
         bound = model.bind_tools(list(turn.tools)) if turn.tools and not capped else model
-        reply = bound.invoke(model_input(turn, state["messages"]))
+        # Upstream's input repair keeps unanswered calls to the run's tools only
+        # (replayAllowedToolNames); a call that has its result stays either way.
+        offered = [tool["name"] for tool in turn.tools]
+
+        def repair(rows: Sequence[Mapping[str, Any]]) -> ToolCallRepair:
+            return kit.repair_tool_calls(rows, allowed_tool_names=offered)
+
+        reply = bound.invoke(model_input(turn, state["messages"], repair))
         if capped and has_tool_calls(reply):  # not stored: every call in state stays answered
             raise RuntimeError(f"the model asked for tools after {MAX_TOOL_ROUNDS} tool rounds")
         return {"messages": [reply]}

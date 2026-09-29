@@ -39,7 +39,14 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer  # noqa: E402
 from pydantic import Field  # noqa: E402
 
 import examples.langgraph_agent as example  # noqa: E402
-from memory_core import FeatureFlags, HostKit, MemoryConfig, SessionState  # noqa: E402
+from memory_core import (  # noqa: E402
+    FeatureFlags,
+    HostKit,
+    MemoryConfig,
+    SessionState,
+    ToolCallRepair,
+)
+from memory_core._transcript_repair_constants import DEFAULT_MISSING_TOOL_RESULT_TEXT  # noqa: E402
 from memory_core.adapters.langgraph import transcript_rows  # noqa: E402
 from memory_core.bootstrap import format_session_reset_transcript_prompt  # noqa: E402
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY  # noqa: E402
@@ -576,6 +583,10 @@ def _reset_turn(tmp_path: Path, **reset: str):
     return example.TurnState.from_context(context, reset=example.ResetTurn(**fields))
 
 
+def _no_repair(rows):
+    return ToolCallRepair(messages=tuple(rows), sources=tuple(range(len(rows))))
+
+
 def test_model_input_replaces_only_the_transcript_prompt(tmp_path: Path):
     # Upstream's guard (attempt-llm-boundary.ts:384-460): only a non-blank model prompt that
     # differs from the row, and only while the active user message's text is the row.
@@ -585,7 +596,7 @@ def test_model_input_replaces_only_the_transcript_prompt(tmp_path: Path):
     def texts(turn, messages):
         return [
             message["content"] if isinstance(message, dict) else message.content
-            for message in example.model_input(turn, messages)[1:]
+            for message in example.model_input(turn, messages, _no_repair)[1:]
         ]
 
     turn = _reset_turn(tmp_path / "a")
@@ -609,7 +620,7 @@ def test_model_input_reads_dict_rows(tmp_path: Path):
         {"role": "tool", "tool_call_id": "call-1", "content": "{}", "name": "memory_search"},
     ]
 
-    sent = example.model_input(turn, messages)
+    sent = example.model_input(turn, messages, _kit(tmp_path / "kit").repair_tool_calls)
 
     assert [getattr(message, "type", None) or message["role"] for message in sent] == [
         "system",
@@ -620,7 +631,7 @@ def test_model_input_reads_dict_rows(tmp_path: Path):
     ]
     assert sent[1]["content"] == turn.runtime_context
     assert sent[2] == {"role": "user", "content": "the model prompt"}
-    assert example.model_input(turn, [{"role": "user", "content": "hi"}])[1:] == [
+    assert example.model_input(turn, [{"role": "user", "content": "hi"}], _no_repair)[1:] == [
         {"role": "user", "content": turn.runtime_context},
         {"role": "user", "content": "hi"},
     ]
@@ -730,9 +741,11 @@ def test_failed_model_call_commits_no_session_state(tmp_path: Path):
 
 
 @pytest.mark.parametrize("failure", ["a call without an id", "dispatch raises"])
-def test_next_message_after_a_failed_tools_node_drops_the_unanswered_call(
+def test_next_message_after_a_failed_tools_node_repairs_the_unanswered_call(
     tmp_path: Path, monkeypatch, failure: str
 ):
+    # Upstream repairs the model's copy of the history (sanitizeToolCallInputs, then
+    # repairToolUseResultPairing): the stored messages keep the failed turn's AI message.
     def script(call: Call, calls: list[Call]) -> AIMessage:
         if len(calls) > 1:
             return AIMessage("plain reply")
@@ -756,13 +769,45 @@ def test_next_message_after_a_failed_tools_node_drops_the_unanswered_call(
     # The provider never gets a tool call without its tool message.
     sent = model.calls[-1].messages
     assert _unanswered_calls(sent) == []
-    assert [message.type for message in sent] == ["system", "human", "human"]
-    assert [message.content for message in state["messages"]] == [
+    stored = state["messages"]
+    assert [message.type for message in stored] == ["human", "ai", "human", "ai"]
+    assert stored[1] is not None and stored[1].tool_calls[0]["name"] == "memory_search"
+    assert [stored[0].content, stored[2].content, stored[3].content] == [
         "Search please.",
         "Are you there?",
         "plain reply",
     ]
-    assert _unanswered_calls(state["messages"]) == []
+    if failure == "dispatch raises":
+        assert [message.type for message in sent] == ["system", "human", "ai", "tool", "human"]
+        synthetic = sent[3]
+        assert (synthetic.tool_call_id, synthetic.name, synthetic.status) == (
+            "call-1",
+            "memory_search",
+            "error",
+        )
+        assert synthetic.content == DEFAULT_MISSING_TOOL_RESULT_TEXT
+        assert sent[2] == stored[1]
+    else:
+        assert [message.type for message in sent] == ["system", "human", "human"]
+
+
+def test_model_input_repairs_the_history_before_placing_the_prompts(tmp_path: Path):
+    # The active user message is found on the repaired copy, where a synthetic tool dict now
+    # follows the unanswered call.
+    turn = _reset_turn(tmp_path)
+    kit = _kit(tmp_path)
+    call = {"name": "memory_search", "args": {"query": "x"}, "id": "call-1"}
+    messages = [HumanMessage("[memory-core session new]"), AIMessage("", tool_calls=[call])]
+
+    sent = example.model_input(turn, messages, kit.repair_tool_calls)
+
+    assert [_kind(message) for message in sent] == ["system", "user", "user", "ai", "tool"]
+    assert sent[2] == {"role": "user", "content": "the model prompt"}
+    assert sent[4]["tool_call_id"] == "call-1" and sent[4]["status"] == "error"
+
+
+def _kind(message) -> str:
+    return message["role"] if isinstance(message, dict) else message.type
 
 
 def test_failed_flush_turn_records_a_strike_and_keeps_the_reply(tmp_path: Path):
@@ -1116,4 +1161,5 @@ def test_langgraph_doc_lists_the_adapter_exports():
         "turn_usage",
         "has_tool_calls",
         "tool_messages",
+        "repair_tool_calls",
     }

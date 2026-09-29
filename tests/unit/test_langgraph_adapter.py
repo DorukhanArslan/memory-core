@@ -10,8 +10,10 @@ from pathlib import Path
 import pytest
 
 from memory_core import FeatureFlags, HostKit, MemoryConfig, SessionState, TurnUsage
+from memory_core._transcript_repair_constants import DEFAULT_MISSING_TOOL_RESULT_TEXT
 from memory_core.adapters.langgraph import (
     has_tool_calls,
+    repair_tool_calls,
     tool_messages,
     transcript_rows,
     turn_usage,
@@ -243,3 +245,132 @@ def test_tool_messages_reject_a_call_without_an_id():
         with pytest.raises(ValueError, match="no string id"):
             tool_messages(message, dispatch)
     assert calls == []
+
+
+def _history() -> list:
+    return [
+        HumanMessage("Search please.", id="h1"),
+        AIMessage("", id="a1", tool_calls=[{"name": "memory_search", "args": {"q": 1}, "id": "call-1"}]),
+        ToolMessage("{}", tool_call_id="call-1", name="memory_search", id="t1"),
+        AIMessage("Found nothing.", id="a2"),
+        HumanMessage("Are you there?", id="h2"),
+    ]
+
+
+def test_repair_tool_calls_returns_the_original_messages_when_nothing_changes(tmp_path: Path):
+    kit = _kit(tmp_path)
+    history = _history()
+    seen = []
+
+    def repair(rows):
+        seen.append(rows)
+        return kit.repair_tool_calls(rows)
+
+    repaired = repair_tool_calls(history, repair)
+
+    assert all(message is original for message, original in zip(repaired, history, strict=True))
+    (rows,) = seen
+    assert [row["role"] for row in rows] == ["user", "assistant", "tool", "assistant", "user"]
+    assert [call["id"] for call in rows[1]["tool_calls"]] == ["call-1"]
+    assert rows[2]["status"] == "success"
+    assert repair_tool_calls([], kit.repair_tool_calls) == []
+
+
+def test_repair_tool_calls_inserts_a_synthetic_tool_message(tmp_path: Path):
+    kit = _kit(tmp_path)
+    ai = AIMessage("", tool_calls=[{"name": "memory_search", "args": {"query": "x"}, "id": "call-1"}])
+    history = [HumanMessage("Search please."), ai, HumanMessage("Are you there?")]
+
+    repaired = repair_tool_calls(history, kit.repair_tool_calls)
+
+    assert repaired[:2] == history[:2] and repaired[1] is ai and repaired[3] is history[2]
+    synthetic = repaired[2]
+    assert synthetic == {
+        "role": "tool",
+        "tool_call_id": "call-1",
+        "content": DEFAULT_MISSING_TOOL_RESULT_TEXT,
+        "name": "memory_search",
+        "status": "error",
+    }
+    (converted,) = messages.convert_to_messages([synthetic])
+    assert isinstance(converted, ToolMessage)
+    assert (converted.tool_call_id, converted.name, converted.status) == (
+        "call-1",
+        "memory_search",
+        "error",
+    )
+
+
+def test_repair_tool_calls_copies_an_ai_message_without_its_dropped_calls(tmp_path: Path):
+    base = pytest.importorskip("langchain_openai.chat_models.base")
+    kit = _kit(tmp_path)
+    raw = [
+        {"id": "call-9", "type": "function", "function": {"name": "memory_search", "arguments": "{}"}},
+        {"id": "call-2", "type": "function", "function": {"name": "memory_get", "arguments": "{}"}},
+    ]
+    ai = AIMessage(
+        "Looking.",
+        id="a1",
+        tool_calls=[
+            {"name": "memory_search", "args": {"query": "x"}, "id": None},
+            {"name": " memory_get ", "args": {"path": "MEMORY.md"}, "id": "call-2"},
+        ],
+        invalid_tool_calls=[{"name": "memory_search", "args": None, "id": "call-3", "error": None}],
+        additional_kwargs={"tool_calls": raw},
+    )
+    history = [HumanMessage("Look it up."), ai, HumanMessage("And?")]
+
+    repaired = repair_tool_calls(history, kit.repair_tool_calls)
+
+    copy = repaired[1]
+    assert isinstance(copy, AIMessage) and copy is not ai
+    assert (copy.id, copy.content) == ("a1", "Looking.")
+    assert [(call["id"], call["name"]) for call in copy.tool_calls] == [("call-2", "memory_get")]
+    assert copy.tool_calls[0]["args"] == {"path": "MEMORY.md"}
+    assert copy.invalid_tool_calls == []
+    assert copy.additional_kwargs == {"tool_calls": [raw[1]]}
+    assert len(ai.tool_calls) == 2 and len(ai.invalid_tool_calls) == 1
+    assert repaired[2]["tool_call_id"] == "call-2" and repaired[2]["name"] == "memory_get"
+    sent = base._convert_message_to_dict(copy)
+    assert [call["id"] for call in sent["tool_calls"]] == ["call-2"]
+    # With no call left, the copy keeps its text and sends no tool calls at all.
+    lone = AIMessage(
+        "Only text left.",
+        tool_calls=[{"name": "memory_search", "args": {}, "id": None}],
+        additional_kwargs={"tool_calls": raw[:1], "function_call": {"name": "memory_search"}},
+    )
+    (_, bare, _) = repair_tool_calls([history[0], lone, history[2]], kit.repair_tool_calls)
+    assert (bare.tool_calls, bare.invalid_tool_calls, bare.additional_kwargs) == ([], [], {})
+    assert "tool_calls" not in base._convert_message_to_dict(bare)
+    assert "function_call" not in base._convert_message_to_dict(bare)
+
+
+def test_repair_tool_calls_reads_role_and_type_dicts(tmp_path: Path):
+    kit = _kit(tmp_path)
+    role_dict = {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+            {"id": "call-1", "type": "function", "function": {"name": "memory_get", "arguments": "{}"}}
+        ],
+    }
+    typed = AIMessage("", tool_calls=[{"name": "memory_get", "args": {}, "id": None}]).model_dump()
+    wrapped = messages.messages_to_dict(
+        [AIMessage("text", tool_calls=[{"name": "memory_get", "args": {}, "id": None}])]
+    )[0]
+    history = [{"role": "user", "content": "hi"}, role_dict, typed, wrapped, HumanMessage("And?")]
+
+    repaired = repair_tool_calls(history, kit.repair_tool_calls)
+
+    assert repaired[0] is history[0] and repaired[1] is role_dict
+    assert repaired[2] == {
+        "role": "tool",
+        "tool_call_id": "call-1",
+        "content": DEFAULT_MISSING_TOOL_RESULT_TEXT,
+        "name": "memory_get",
+        "status": "error",
+    }
+    # The typed dict had no content left and is dropped; the wrapped one keeps its text.
+    assert repaired[3] == {**wrapped, "data": {**wrapped["data"], "tool_calls": [], "invalid_tool_calls": []}}
+    assert repaired[4] is history[4]
+    assert len(repaired) == 5

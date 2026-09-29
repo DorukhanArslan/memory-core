@@ -703,7 +703,47 @@ def test_memory_get_endpoint_reads_workspace_memory(client, lab):
 
     payload = client.post("/api/get", json={"path": "MEMORY.md", "from": 3, "lines": 1}).json()
 
+    assert payload["status"] == "ok"
     assert payload["text"].startswith("- fact one\n")
+
+
+def test_memory_get_endpoint_is_the_tool_call_with_its_outcomes(client, lab):
+    # v2026.9.6 memory_get: status/code, per-corpus outcomes for corpus=all, and bad params as
+    # the tool error payload the model sees.
+    client.get("/api/lab/state")
+
+    refused = client.post("/api/get", json={"path": "AGENTS.md"}).json()
+    both = client.post("/api/get", json={"path": "memory/2020-01-01.md", "corpus": "all"}).json()
+    wiki = client.post("/api/get", json={"path": "MEMORY.md", "corpus": "wiki"}).json()
+    bad = client.post("/api/get", json={"path": "MEMORY.md", "corpus": "sessions"}).json()
+
+    assert (refused["status"], refused["code"]) == ("error", "MEMORY_PATH_NOT_ALLOWED")
+    assert both == {
+        "status": "not_found",
+        "path": "memory/2020-01-01.md",
+        "text": "",
+        "corpora": [
+            {"corpus": "memory", "outcome": "ok"},
+            {"corpus": "wiki", "outcome": "not-registered"},
+        ],
+    }
+    assert wiki["corpora"] == [{"corpus": "wiki", "outcome": "not-registered"}]
+    assert wiki["warning"] == (
+        "Wiki corpus is not registered; results do not cover that requested corpus."
+    )
+    assert bad == {
+        "status": "error",
+        "tool": "memory_get",
+        "error": "corpus must be one of: memory, wiki, all",
+    }
+    # The dialog and the tool cards read these fields (app.js memoryGet, views/chat.js).
+    lab_root = Path(demo_app.__file__).resolve().parent / "static" / "lab"
+    app = (lab_root / "app.js").read_text(encoding="utf-8")
+    chat = (lab_root / "views" / "chat.js").read_text(encoding="utf-8")
+    assert "api.post('/api/get', { path, corpus })" in app
+    assert "memory-get-corpus" in app and "res?.warning" in app
+    for field in ("result.status", "result.code", "result.corpora", "result.timedOut"):
+        assert field in chat, field
 
 
 def test_live_task_rejects_unsafe_ids(client):

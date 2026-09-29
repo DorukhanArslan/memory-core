@@ -767,6 +767,25 @@ Part A: `memory_get` contract, memory paths, tool definitions, prompt section.
   1264, 1279`), UI test literals, a browser check at several widths; matrix rows `memory_get`,
   "Memory file discovery", "Prompt memory tool section" and an audit note.
 
+Part A status (2026-09-30, measured): done on `feat/port-area-5`, one commit per task: A1
+`8603d56`, A2 `79f68ab`, A3 `2129618`, A4 `3e6e358`, A5 `89f7914`, A6 `a0f2390`, A7 `14b95d0`, A8
+the host kit and Lab commit after it. Worklist entries removed: the 26 "memory_get contract"
+entries (A4; `memory_get_disabled_error_matches_python` is now
+`memory_get_refuses_a_non_memory_path_like_python`), `memory_tool_definitions_match_python`
+(A6; now parametrized `[memory-only]`, `[memory-and-sessions]`),
+`memory_search_param_errors_match_python[max-results-empty-string]` and
+`memory_search_param_coercion_matches_python[unknown-corpus-searches-all-sources]` (A2); none was
+added. Targeted oracle run of every Part A test (Node 24.21.0, `/tmp/openclaw-head` at
+`eb377ac59e6`): 115 passed, 6 xfailed (the area-6 ranking cases), 0 failed; offline 1521 passed,
+375 skipped; ruff, `scripts/rename_project.py --check`, `scripts/extract_upstream_constants.py
+--check` and `tests/parity` clean. The full oracle suite was not run in this stage. Differences
+from the plan: the `listMemoryFiles` sort was ported in A3 (found while applying the review);
+`format_error_message` gained the substring rule in A4; the D7-dependent parts stayed out (no
+found-supplement fixture, unlabelled failure join) and D6's recommendation is implemented
+provisionally (Python messages, errno names as codes), both documented at the code site and in
+the `memory_get` row. Browser check of the Lab at 375, 768, 1024 and 1440 px (the `memory_get`
+dialog's corpus switch, status and corpus chips, warning; no horizontal overflow).
+
 Part B: `memory_search` params, errors, deadline, per-corpus outcomes, index identity.
 
 - B1. Extraction for Part B with A1's helper: unavailable texts (deadline, canonical key), the

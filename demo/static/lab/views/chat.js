@@ -163,6 +163,25 @@ function paintTools() {
   const el = document.querySelector('[data-pending] .tool-list'); if (!el || !store.stream) return;
   replace(el, store.stream.tools.map((tc) => toolCard(tc)));
 }
+// memory_get and memory_search outcomes (v2026.9.6): a read's `status` and `code`, each corpus's
+// outcome and a deadline. `all` shows every value (the memory_get dialog); otherwise only what
+// differs from a plain success (the tool card summary).
+const READ_STATUS_TONE = { ok: 'ok', not_found: 'warn', error: 'danger' };
+const CORPUS_OUTCOME_TONE = { ok: 'ok', partial: 'warn', unavailable: 'danger', 'not-registered': 'neutral' };
+export function readOutcomeChips(result, { all = false } = {}) {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return [];
+  const out = [];
+  if (typeof result.status === 'string' && (all || result.status !== 'ok') && READ_STATUS_TONE[result.status])
+    out.push(chip({ label: `status · ${result.status}`, tone: READ_STATUS_TONE[result.status], cls: 'chip-mono chip-xs', testid: 'read-status' }));
+  if (typeof result.code === 'string') out.push(chip({ label: result.code, tone: 'danger', cls: 'chip-mono chip-xs', testid: 'read-code' }));
+  for (const c of Array.isArray(result.corpora) ? result.corpora : []) {
+    if (!all && c?.outcome === 'ok') continue;
+    out.push(chip({ label: `${c?.corpus} · ${c?.outcome}`, tone: CORPUS_OUTCOME_TONE[c?.outcome] || 'neutral', cls: 'chip-mono chip-xs', title: c?.error || null, testid: 'corpus-outcome' }));
+  }
+  if (result.timedOut) out.push(chip({ label: t('get.timedOut', { s: Math.round((result.timeoutMs || 0) / 1000) }), tone: 'warn', ic: 'clock', cls: 'chip-xs' }));
+  return out;
+}
+
 export function toolCard(tc, { onExpand = null } = {}) {
   const status = tc.status || (tc.ok === false ? 'error' : tc.ok === true ? 'ok' : 'running');
   const refused = tc.refused || tc.result?.refused || tc.result?.status === 'refused';
@@ -170,6 +189,7 @@ export function toolCard(tc, { onExpand = null } = {}) {
   const d = h('details', { class: ['tool-card', `tone-${tone}`], 'data-testid': 'tool-call' },
     h('summary', null, icon('tool', 12), h('span', { class: 'tool-name mono' }, tc.name || '?'),
       status === 'running' ? h('span', { class: 'spinner spinner-xs' }) : chip({ label: refused ? t('tool.refused') : status === 'ok' ? t('tool.ok') : t('tool.error'), tone, ic: refused ? 'alert-triangle' : status === 'ok' ? 'check' : 'alert-octagon', cls: 'chip-xs' }),
+      ...(tc.name === 'memory_get' || tc.name === 'memory_search' ? readOutcomeChips(tc.result) : []),
       tc.ms !== undefined ? h('span', { class: 'muted small mono' }, fmtMs(tc.ms)) : null,
       tc.summary ? h('span', { class: 'tool-sum muted small' }, tc.summary) : null),
     h('div', { class: 'tool-body' },

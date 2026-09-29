@@ -244,10 +244,10 @@ def tools(self) -> list[dict[str, Any]]
   `memory_core/curation.py:MemoryCurator.tool_definitions` for the operations the policy allows.
   The host wraps them in its format (`{"type": "function", "function": d}` for
   OpenAI-style APIs).
-- The two memory tool definitions are pin-era code (pin `4c428153`): at v2026.9.6 the contract
-  lives in `extensions/memory-core/src/memory-tool-contract.ts` with different descriptions. Port
-  plan area 5 (tool definitions and prompt section) ports them; until then the kit ships the pin-era
-  texts, labelled in "Parity labels".
+- The two memory tool definitions are the tag's (port plan area 5 A6, 2026-09-29):
+  `extensions/memory-core/src/memory-tool-contract.ts` at v2026.9.6, script-extracted and compared
+  by the `memoryToolDefinitions` op. The `memory_search` description names `indexed session
+  transcripts` because memory-core searches them (`search_sources`, decision D1 of the port plan).
 - Flags: `curated_memory_writes` off means no curation definitions (the curator returns none).
 - Pure: no I/O, never raises.
 
@@ -294,11 +294,14 @@ def dispatch(
   - any other `Exception` raised inside a tool body: `to_tool_error(exc, tool=name)`, as
     upstream turns every thrown tool error into `{status, tool, error}`
     (`src/agents/agent-tool-definition-adapter.ts:228-284`).
-- Refusals and outages the memory tools answer themselves are not error payloads: `memory_get` of
-  a path outside MEMORY.md, dreams.md and `memory/**`, or a failed read, returns upstream's
-  `{"path", "text": "", "disabled": true, "error"}`, and `memory_search` returns its unavailable
-  (`disabled` and `unavailable` true) or paused payload. A host that counts failed calls checks
-  `status == "error"` or `disabled`.
+- Refusals and outages the memory tools answer themselves are not tool-error payloads, but they
+  say what happened: `memory_get` of a path outside MEMORY.md, USER.md, dreams.md and `memory/**`,
+  or a failed read, returns upstream's `{"path", "text": "", "status": "error", "code",
+  "error"}` (v2026.9.6: `MEMORY_PATH_NOT_ALLOWED`, an fs-safe or errno code, else
+  `MEMORY_READ_FAILED`), a missing file `{"status": "not_found", "text": "", "path"}`, and
+  `memory_search` returns its unavailable (`disabled` and `unavailable` true) or paused payload.
+  A host that counts failed calls checks `status == "error"` or `disabled`; `not_found` is a
+  completed read.
 - Host programming errors raise before a tool runs: `TypeError` for a non-string `name` or an
   `arguments` of another type. `BaseException`s that are not `Exception` (cancellation,
   interrupts) propagate.
@@ -369,12 +372,11 @@ class TurnContext:
      `WorkspaceContext.prompt_warning.warning_signatures_seen` and `completed_bootstrap_turn`
      set when `record_completed_bootstrap_turn` asks for it. The host passes this state to
      `after_turn` only for a turn that completed, so a failed turn records nothing.
-- The Memory Recall section is pin-era code: `memory_core/prompt_section.py` does not match the tag's
-  `buildMemoryPromptSection` (`extensions/memory-core/src/memory-tool-contract.ts:110-145`: other
-  guidance wording, the session-hit guidance lines and "Report partial, unavailable, or stale
-  recall"). The matrix row "Prompt memory tool section" is `partial` with the oracle "Not added";
-  port plan area 5 ports it with the planned `memoryPromptSection` op. Until then the kit's section
-  is the pin-era text, labelled in "Parity labels".
+- The Memory Recall section is the tag's `buildMemoryPromptSection`
+  (`extensions/memory-core/src/memory-tool-contract.ts:108-145`, port plan area 5 A7): the matrix
+  row "Prompt memory tool section" is `match` through the `memoryPromptSection` op. The kit offers
+  no `sessions_search`/`sessions_history` tool, so its section says "Session hits are search
+  snippets only; exact session history is unavailable with the enabled tools."
 - No recall injection: upstream's model recalls through the memory tools, and so does the kit's.
   Startup context exists upstream only on the bare `/new` / `/reset` turn, so it comes from
   `on_new_session`, not from here.
@@ -778,7 +780,7 @@ class HeartbeatOutcome:
 | --- | --- |
 | model sends bad tool input, unknown tool, invalid JSON, a tool raises | payload `{"status": "error", "tool", "error"}` |
 | memory search outage, paused index, cooldown | the tool's own unavailable or paused payload |
-| `memory_get` outside the memory files, a failed read | `{"path", "text": "", "disabled": true, "error"}` (upstream's shape) |
+| `memory_get` outside the memory files, a failed read | `{"path", "text": "", "status": "error", "code", "error"}` (upstream's shape at v2026.9.6); a missing file is `status: "not_found"` |
 | host passes wrong types, calls `complete()` twice, both transcript sources, another session to `complete()` | raise (`TypeError`, `RuntimeError`, `ValueError`) |
 | retired upstream setup state in the workspace | raise `WorkspaceStateMigrationRequiredError` (fail closed) |
 | filesystem failure outside a tool | raise `OSError` |
@@ -948,10 +950,10 @@ findings, 2026-09-29) are adapter-only kit code too; `repair_tool_calls` compose
 (`sanitize_tool_call_inputs` and `repair_tool_use_result_pairing`, oracle-backed for their
 fixtures at `64770c7`), and its labelled gaps are listed in LangGraph findings › Parity labels.
 
-Pin-era parts the kit ships until port plan area 5 lands: the `memory_search` and `memory_get`
-tool definitions and the Memory Recall section (`memory_core/prompt_section.py`, pin `4c428153`); the
-tag's `buildMemoryPromptSection` wording differs (entry points 1 and 3). Recall tracking uses the
-pin-era `record_short_term_recalls`, whose recall days are UTC dates (entry point 2).
+Port plan area 5 Part A (2026-09-29) brought the `memory_search` and `memory_get` tool
+definitions, the `memory_get` contract and the Memory Recall section to the tag (entry points 1-3).
+Still pin-era: recall tracking uses `record_short_term_recalls`, whose recall days are UTC dates
+(entry point 2), and the `memory_search` corpus orchestration and deadline (area 5 Part B).
 
 Labelled deviations of the flush run (entry point 4):
 
@@ -1008,8 +1010,8 @@ Doruk answered Q1-Q12 on 2026-09-28 with the recommendations:
 Review points not taken, with the reason:
 
 - Port `buildMemoryPromptSection` as a Task 0: not taken; it is a parity port with its own oracle
-  op and matrix row, which belongs to port plan area 5 and an oracle run. The kit labels the
-  pin-era section instead.
+  op and matrix row, which belongs to port plan area 5 and an oracle run (done there, A7,
+  2026-09-29).
 - Return the flush run's updated truncation signatures in `FlushOutcome.session`: not taken.
   Upstream reassigns `bootstrapPromptWarningSignaturesSeen` only across fallback candidates inside
   the detached flush run (`agent-runner-memory.ts:1640-1650`) and returns only the session entry
@@ -1276,7 +1278,8 @@ package root to the kit and the core handle (the kit classes are exported there)
 facade's turn helpers; the quickstart stage added `examples/quickstart.py` and the README
 Quickstart over the kit. Later: live subject workspaces on the kit, the pre-compaction checkpoint
 flush with a compaction adapter, session auto-reset, memory-search supplements on the kit, and
-port plan area 5 (tool definitions and the Memory Recall section at the tag).
+port plan area 5 Part B (the `memory_search` corpora, deadline and index identity at the tag; Part
+A, the tool definitions and the Memory Recall section, landed 2026-09-29).
 
 # LangGraph findings (2026-09-29)
 

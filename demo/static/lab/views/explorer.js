@@ -10,7 +10,8 @@ import { layoutLabel } from './shell.js';
 import { previewFor } from '../inspector/prompt.js';
 
 const BADGE_ORDER = ['pending', 'missing', 'unreadable', 'truncated', 'retired', 'outside_layout', 'injected', 'empty', 'excluded', 'absent', 'session', 'today', 'yesterday', 'extension'];
-export const isMemoryPath = (p) => p === 'MEMORY.md' || p.startsWith('memory/');
+// host/internal.ts isMemoryPath at v2026.9.6: MEMORY.md, USER.md, dreams.md in any case, memory/...
+export const isMemoryPath = (p) => p === 'MEMORY.md' || p === 'USER.md' || p.toLowerCase() === 'dreams.md' || p.startsWith('memory/');
 
 export function badgeTip(type, e) {
   switch (type) {

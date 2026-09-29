@@ -7,11 +7,11 @@ import { store, refresh, renderNow, registerRenderer, persistUi, setView, refres
 import { api } from './api.js';
 import { connectEvents } from './events.js';
 import { initTooltips, toast, closeTop, topLayerOpen, confirmDialog, announce, openDialog, pulse } from './ui/overlay.js';
-import { jsonDisclosure, btn } from './ui/kit.js';
+import { jsonDisclosure, btn, segmented } from './ui/kit.js';
 import { tabStrip, viewLabel } from './views/shell.js';
 import './views/explorer.js';
 import './inspector/index.js';
-import { renderChat, runTurn as chatRunTurn, runCommand, stopStream, focusTurnRelative, pinFocusedTurn } from './views/chat.js';
+import { renderChat, runTurn as chatRunTurn, runCommand, stopStream, focusTurnRelative, pinFocusedTurn, readOutcomeChips } from './views/chat.js';
 import { composerInsert, focusComposer, updateComposer } from './views/composer.js';
 import { renderEditor, saveActive, startEdit, fixture, applyEdit, openSaveConfirm } from './views/editor.js';
 import { renderHeartbeat, runHeartbeat as hbRun } from './views/heartbeat.js';
@@ -110,10 +110,17 @@ Object.assign(A, {
   focusScenario: () => document.querySelector('.scenario-strip')?.scrollIntoView({ block: 'start' }),
   fixture, applyEdit, openSaveConfirm, runSearch, composerInsert, putSettings, checkProvider, confirmReset, resetWorkspace,
   searchMemory(q) { const u = store.ui; u.search.query = q || ''; A.openInspector('memory'); if (q) runSearch(); },
-  async memoryGet(path) {
+  async memoryGet(path, corpus = 'memory') {
     try {
-      const res = await api.post('/api/get', { path });
-      const d = openDialog({ title: `memory_get · ${path}`, cls: 'dialog-lg', testid: 'memory-get', body: h('div', { class: 'stack' }, h('pre', { class: 'ptext' }, res?.text ?? ''), jsonDisclosure(res, { title: 'memory_get' })), actions: [btn(t('act.open'), { onClick: () => { d.close(); A.openFile(path); } }), btn(t('act.close'), { kind: 'ghost', onClick: () => d.close() })] });
+      // The tool's own call: status ok/not_found/error, a failure code, and per-corpus outcomes
+      // for corpus=all/wiki (the Lab registers no wiki supplement, so wiki is not-registered).
+      const res = await api.post('/api/get', { path, corpus });
+      const corpusSwitch = segmented({ options: ['memory', 'all', 'wiki'].map((v) => ({ value: v, label: v })), value: corpus, size: 'sm', aria: t('get.corpus'), testid: 'memory-get-corpus', onChange: (v) => { d.close(); A.memoryGet(path, v); } });
+      const d = openDialog({ title: `memory_get · ${path}`, cls: 'dialog-lg', testid: 'memory-get', body: h('div', { class: 'stack' },
+        h('div', { class: 'chip-wrap' }, corpusSwitch, ...readOutcomeChips(res, { all: true })),
+        res?.warning ? h('div', { class: 'error-msg', 'data-testid': 'memory-get-warning' }, h('b', null, 'warning: '), res.warning) : null,
+        res?.status === 'error' && res?.error ? h('div', { class: 'error-msg mono', 'data-testid': 'memory-get-error' }, res.error) : null,
+        h('pre', { class: 'ptext' }, res?.text ?? ''), jsonDisclosure(res, { title: 'memory_get' })), actions: [btn(t('act.open'), { onClick: () => { d.close(); A.openFile(path); } }), btn(t('act.close'), { kind: 'ghost', onClick: () => d.close() })] });
     } catch (err) { toast(err.message, { tone: 'danger' }); }
   },
   async reindex() {

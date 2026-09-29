@@ -36,7 +36,7 @@ from demo.parity_trace import build_parity_trace
 from memory_core.live import LIVE_TURN_FAILED
 from memory_core.memory_paths import UnsafeMemoryPathError
 from memory_core.prompt_section import build_prompt_section
-from memory_core.tools.memory_get import memory_get
+from memory_core.tools.memory_get import execute_memory_get_tool
 from memory_core.tools.common import MemoryToolInputError
 from memory_core.tools.memory_search import (
     MEMORY_SEARCH_TOOL_COOLDOWN_MS,
@@ -47,15 +47,6 @@ from memory_core.tools.memory_search import (
 )
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
-
-
-def _optional_int(value: Any, name: str) -> int | None:
-    if value in (None, ""):
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError) as exc:
-        raise LabError(400, f"{name} must be an integer", code="invalid_number") from exc
 
 
 def build_kept_router(lab: LabRuntime) -> APIRouter:
@@ -86,13 +77,16 @@ def build_kept_router(lab: LabRuntime) -> APIRouter:
 
     @router.post("/get")
     def get_memory(payload: dict = Body(...)):
+        """memory_get as the model calls it: ``path`` (default MEMORY.md), ``from``, ``lines`` and
+        ``corpus`` go through the tool's own readers, and a bad param comes back as the tool
+        error payload the model would see (``{"status": "error", "tool", "error"}``)."""
         lab.ensure_exists()
-        return memory_get(
-            lab.config(),
-            path=str(payload.get("path", "MEMORY.md")),
-            from_line=_optional_int(payload.get("from"), "from"),
-            lines=_optional_int(payload.get("lines"), "lines"),
-        )
+        params = {key: payload[key] for key in ("path", "from", "lines", "corpus") if key in payload}
+        params.setdefault("path", "MEMORY.md")
+        try:
+            return execute_memory_get_tool(lab.config(), params)
+        except MemoryToolInputError as error:
+            return error.to_tool_error()
 
     @router.post("/prompt-preview")
     def prompt_preview(payload: dict = Body(...)):

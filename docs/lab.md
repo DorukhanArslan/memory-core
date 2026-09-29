@@ -54,7 +54,7 @@ seconds later as the same model with reasoning mode pro). Recorded in
 |---|---|---|
 | Chat model | real | OpenAI-compatible streaming with tool calls. No key: `400 no_api_key`, no fake model. |
 | `engine: "scripted"` | scripted | Explicit per request only. Fixed text, no model call, no tool call, no flush turn (the kit's flush request is abandoned: nothing recorded). |
-| Tool loop | host (Lab) | `HostKit.tools()` (`memory_search`, `memory_get` with pin-era definitions until port plan area 5, curation tools) and `HostKit.dispatch`; ≤ 6 tool rounds + 1 final round without tools. |
+| Tool loop | host (Lab) | `HostKit.tools()` (`memory_search`, `memory_get` with the v2026.9.6 definitions, curation tools) and `HostKit.dispatch`; ≤ 6 tool rounds + 1 final round without tools. Each tool card shows a `memory_get` `status`/`code` and the per-corpus outcomes that are not ok. |
 | Curated writes | extension (Q16, D5) | `MemoryCurator`; per-target flags `curation.memory_md`, `curation.user_md`, `curation.daily_note`, `curation.proactive_preferences`, master flag `curated_memory_writes`. |
 | Flush decision | upstream v2026.9.6 order (Q1) | `HostKit.after_turn` after the reply, with the flush plan built for the Lab's context window (reserve min(20,000, ⌊window/4⌋), soft threshold min(4,000, ⌊(window − reserve)/2⌋)). Token counts: provider usage stored as a fresh v1 total, else a chars/4 estimate (labelled); no prompt estimate. |
 | Flush turn | host (Lab) | The kit's `FlushRequest` on the Lab's model through the Lab tool loop: Project Context plus the flush prompt, upstream's `write` tool on today's daily file only; the reply is never shown; no daily recall signals (Q3). |
@@ -115,7 +115,7 @@ checked against the configured keys (`redacted: true`). Ids (`sessionId`,
 | POST `/api/seed` | `workspace/reset` in `seeded` mode |
 | POST `/api/reindex` | `{mode?}`; full reindex of that mode's index |
 | POST `/api/search` | `{query, maxResults?, minScore?, corpus?, mode?}`; `mode` hybrid, vector or text; adds `mode`, `flags`, `identity`, `cooldown`, `ms`, `embeddings`; param errors are `400 tool_input_error` with the verbatim tool payload; FTS-only answers `400 fts_only` for hybrid/vector |
-| POST `/api/get` | `memory_get` |
+| POST `/api/get` | `memory_get` as the model calls it (`path`, `from`, `lines`, `corpus` through the tool's readers; a bad param is the tool error payload). The explorer's "Open with memory_get" dialog switches `corpus` (memory, all, wiki) and shows `status`, `code`, the `corpora` outcomes and the warning. |
 | POST `/api/prompt-preview` | `build_prompt_section` |
 | POST `/api/parity/trace` | `build_parity_trace` (5 steps: promotion/dreaming chain only) |
 | POST `/api/chat/flush` | `{sessionKind?, openai?}`; `/flush`, a labelled Lab extension (decision Q6): `HostKit.request_flush` (reason `forced`, token snapshot untouched), then the flush run on the Lab's model; `{decision {shouldRun, reason, extension, label}, flush, entry}`; `already_flushed` in the same compaction cycle and `runtime_skip:heartbeat` for the heartbeat session, both without a run; the scripted engine answers `400 no_api_key` |

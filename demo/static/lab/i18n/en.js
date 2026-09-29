@@ -61,6 +61,7 @@ export const EN = {
   'chip.sessionMemory': 'session memory', 'chip.startup': 'startup context',
   'stage.ensure': 'ensure', 'stage.flush_decision': 'flush decision', 'stage.flush': 'flush', 'stage.reindex': 'index', 'stage.recall': 'recall', 'stage.prompt': 'prompt', 'stage.stream': 'stream',
   'stage.tools': 'tools', 'stage.curation': 'curator', 'stage.persist': 'persist',
+  'get.corpus': 'corpus', 'get.timedOut': 'timeout {s}s',
   'tool.title': 'tools ({n})', 'tool.label': 'tools', 'tool.ok': 'ok', 'tool.error': 'error', 'tool.refused': 'refused', 'tool.args': 'arguments', 'tool.result': 'result', 'tool.detailInInspector': 'Details in Inspector › Prompt › Tools.',
   'composer.label': 'Message', 'composer.kind': 'Session kind', 'composer.send': 'Send', 'composer.stop': 'Stop', 'composer.sendAria': 'Send (Enter)', 'composer.stopAria': 'Stop (Esc)',
   'composer.placeholder': 'Write a message… (/ commands)', 'composer.placeholderShort': 'Write a message…',

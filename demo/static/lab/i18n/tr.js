@@ -69,6 +69,7 @@ export const TR = {
   'chip.sessionMemory': 'oturum belleği', 'chip.startup': 'başlangıç bağlamı',
   'stage.ensure': 'ensure', 'stage.flush_decision': 'flush kararı', 'stage.flush': 'flush', 'stage.reindex': 'indeks', 'stage.recall': 'recall', 'stage.prompt': 'prompt', 'stage.stream': 'akış',
   'stage.tools': 'araçlar', 'stage.curation': 'küratör', 'stage.persist': 'kayıt',
+  'get.corpus': 'korpus', 'get.timedOut': 'zaman aşımı {s} sn',
   'tool.title': 'araçlar ({n})', 'tool.label': 'araçlar', 'tool.ok': 'tamam', 'tool.error': 'hata', 'tool.refused': 'reddedildi', 'tool.args': 'argümanlar', 'tool.result': 'sonuç', 'tool.detailInInspector': 'Ayrıntı Denetçi › Prompt › Araçlar bölümünde.',
   // composer and slash
   'composer.label': 'Mesaj', 'composer.kind': 'Oturum türü', 'composer.send': 'Gönder', 'composer.stop': 'Durdur', 'composer.sendAria': 'Gönder (Enter)', 'composer.stopAria': 'Durdur (Esc)',

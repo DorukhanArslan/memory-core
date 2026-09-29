@@ -12,7 +12,7 @@ from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.index.chunking import MemoryChunk, chunk_markdown
 from memory_core.index.fts import bm25_rank_to_score, build_fts_query
-from memory_core.bootstrap._js import js_json_stringify
+from memory_core.bootstrap._js import js_json_stringify, locale_sort_key
 from memory_core.index.hybrid import (
     HybridKeywordResult,
     HybridResult,
@@ -365,7 +365,9 @@ class SQLiteMemoryStore:
         if not self.flags.text_search:
             # Vector-only mode mirrors OpenClaw's non-hybrid path: raw vector
             # scores, strict min-score filter, no keyword relaxation.
-            ranked_vector = sorted(vector, key=lambda item: item.vector_score, reverse=True)
+            ranked_vector = sorted(
+                vector, key=lambda item: _ranking_key(item.vector_score, item)
+            )
             return [
                 HybridResult(
                     path=item.path,
@@ -395,7 +397,7 @@ class SQLiteMemoryStore:
             ),
             workspace_dir=str(self.config.workspace_dir),
         )
-        ranked = sorted(decayed, key=lambda item: item.score, reverse=True)
+        ranked = sorted(decayed, key=lambda item: _ranking_key(item.score, item))
         if self.flags.mmr:
             by_key = {
                 _mmr_key(item): item
@@ -465,7 +467,7 @@ class SQLiteMemoryStore:
             ),
             workspace_dir=str(self.config.workspace_dir),
         )
-        ranked = sorted(decayed, key=lambda item: item.score, reverse=True)
+        ranked = sorted(decayed, key=lambda item: _ranking_key(item.score, item))
         strict = [item for item in ranked if item.score >= min_score]
         if strict:
             return strict[:max_results]
@@ -531,6 +533,16 @@ class SQLiteMemoryStore:
                 (fts_query, *source_filter.params),
             )
         ]
+
+
+def _ranking_key(score: float, item) -> tuple:
+    # Score descending, then `path.localeCompare`, startLine, endLine: the final tie-break of
+    # upstream's ranked results (v2026.9.6 manager-search-orchestration.ts:589-596, and the
+    # path/line fallback of hybrid.ts:264-269 and manager-keyword-retrieval.ts:94, whose
+    # lexical-rank and path-score keys before it belong to area 6). Until v2026.9.6 the
+    # memory_search tool applied the path tie-break itself (the pin's
+    # sortMemorySearchToolResults); the tag's tool keeps the manager's order.
+    return (-score, locale_sort_key(item.path), item.start_line, item.end_line)
 
 
 def _checkpoint(signal: CancellationSignal | None) -> None:

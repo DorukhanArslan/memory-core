@@ -2167,7 +2167,7 @@ def test_default_lab_is_fts_only_and_never_builds_an_embedder(client, lab, embed
     assert result["identity"]["status"] == "valid"
     assert result["reindexed"] is True and isinstance(result["ms"], int)
     assert hybrid.status_code == 400 and hybrid.json()["code"] == "fts_only"
-    assert status["embeddings"]["mode"] == "fts-only" and status["deadlineMs"] == 15_000
+    assert status["embeddings"]["mode"] == "fts-only" and status["deadlineMs"] == 30_000
     assert embeddings.instances == []
     assert "embedding.request" not in event_types(client)
 

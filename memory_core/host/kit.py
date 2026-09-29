@@ -376,28 +376,29 @@ class HostKit:
 
     def _memory_search(self, args: dict[str, Any], session: SessionState) -> dict[str, Any]:
         memory = self._memory
-        result = execute_memory_search_tool(
+
+        def record(recalled: list[dict[str, Any]]) -> None:
+            # tools.ts:477-508: with dreaming enabled, the memory-corpus hits a search that was
+            # ok or partial actually returned become recall signals (raw, without the Source:
+            # citation; recordShortTermRecalls keeps source "memory"); execute_memory_search_tool
+            # ignores a recording error.
+            record_short_term_recalls(
+                config=memory.config,
+                query=str(args.get("query", "")),
+                results=undecorate_search_results(
+                    hit for hit in recalled if hit.get("source") == "memory"
+                ),
+                now_ms=self._clock(),
+            )
+
+        return execute_memory_search_tool(
             memory.config,
             memory.store,
             args,
             agent_session_key=session.session_key,
+            on_recall=record if self._dreaming_enabled else None,
             runtime_identity=self._identity,
         )
-        if self._dreaming_enabled and not result.get("unavailable"):
-            # tools.ts:491-507: with dreaming enabled, a successful search records its
-            # memory-corpus hits (raw, without the Source: citation) off the reply path and
-            # ignores recording errors.
-            hits = [hit for hit in result.get("results") or [] if hit.get("corpus") == "memory"]
-            try:
-                record_short_term_recalls(
-                    config=memory.config,
-                    query=str(args.get("query", "")),
-                    results=undecorate_search_results(hits),
-                    now_ms=self._clock(),
-                )
-            except Exception:
-                pass
-        return result
 
     def before_turn(
         self,

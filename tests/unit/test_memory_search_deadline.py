@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import threading
 from pathlib import Path
 
@@ -18,11 +19,12 @@ from memory_core.tools.memory_search import (
     MEMORY_SEARCH_TOOL_TIMEOUT_MS,
     build_memory_search_unavailable_result,
     memory_search,
+    memory_search_tool_config_key,
     memory_search_tool_cooldown_key,
     memory_search_tool_cooldown_remaining,
+    merge_memory_search_corpus_results,
     read_memory_search_tool_cooldown,
     record_memory_search_tool_cooldown,
-    resolve_memory_search_tool_cooldown_key,
 )
 from memory_core.workspace import MemoryWorkspace
 
@@ -202,8 +204,15 @@ def test_the_canonical_key_code_wins_over_every_reason():
     assert other_code == build_memory_search_unavailable_result("boom")
 
 
+def _short_deadline(monkeypatch):
+    # Wait 50 ms instead of the 30 s budget; the deadline and its message stay the real ones.
+    monkeypatch.setattr(
+        memory_search_module, "_deadline_wait_seconds", lambda remaining: min(remaining, 0.05)
+    )
+
+
 def test_deadline_returns_the_timeout_result_and_abandons_the_search(tmp_path, monkeypatch):
-    monkeypatch.setattr(memory_search_module, "_deadline_seconds", lambda ms: 0.05)
+    _short_deadline(monkeypatch)
     provider = _ControlledProvider()
     cfg, store = _vector_store(tmp_path, provider, store_cls=_RecordingStore)
     provider.hang = True
@@ -213,17 +222,23 @@ def test_deadline_returns_the_timeout_result_and_abandons_the_search(tmp_path, m
     finally:
         provider.release.set()
 
-    assert MEMORY_SEARCH_TOOL_TIMEOUT_MS == 15_000
+    assert MEMORY_SEARCH_TOOL_TIMEOUT_MS == 30_000
     assert result["unavailable"] is True
-    assert result["error"] == "memory_search timed out after 15s"
+    assert result["error"] == "memory_search timed out after 30s"
+    # d46f9ebf2b2 (#147702): the deadline flag adds timedOut and the deadline guidance.
+    assert (result["timedOut"], result["timeoutMs"]) == (True, 30_000)
+    assert result["warning"] == "Memory search did not finish within its time limit."
+    assert result["action"] == MEMORY_CORE_RUNTIME_IDENTITY.memory_search_deadline_agent_action.format(
+        agent_id="main"
+    )
     # The abandoned worker stops at the checkpoint after the embedding call.
     assert store.finished.wait(5)
     assert isinstance(store.outcomes[-1], OperationAbortedError)
-    assert str(store.outcomes[-1]) == "memory_search timed out after 15s"
+    assert str(store.outcomes[-1]) == "memory_search timed out after 30s"
 
 
 def test_timeout_records_a_cooldown_that_skips_the_provider(tmp_path, monkeypatch, clock):
-    monkeypatch.setattr(memory_search_module, "_deadline_seconds", lambda ms: 0.05)
+    _short_deadline(monkeypatch)
     provider = _ControlledProvider()
     cfg, store = _vector_store(tmp_path, provider)
     provider.hang = True
@@ -236,7 +251,9 @@ def test_timeout_records_a_cooldown_that_skips_the_provider(tmp_path, monkeypatc
 
     paused = memory_search(cfg, store, query="glacier", corpus="memory")
 
-    assert paused["error"] == "memory_search timed out after 15s"
+    # The cooldown keeps the failure's deadline flag (tools.ts:370-378).
+    assert paused["error"] == "memory_search timed out after 30s"
+    assert paused["timedOut"] is True
     assert provider.calls == calls
 
 
@@ -251,12 +268,29 @@ def test_store_errors_become_unavailable_results_with_a_cooldown(tmp_path, clock
     wiki = memory_search(cfg, store, query="glacier", corpus="wiki")
     all_corpora = memory_search(cfg, store, query="glacier", corpus="all")
 
-    assert first["error"] == second["error"] == "provider exploded"
+    memory_down = {
+        "results": [],
+        "citations": "on",
+        "corpora": [
+            {"corpus": "memory", "outcome": "unavailable", "error": "provider exploded"},
+            {"corpus": "wiki", "outcome": "not-registered"},
+        ],
+        "warning": "Memory corpus unavailable: provider exploded",
+        "error": "provider exploded",
+    }
+    # The facade's corpus="all" keeps the other corpus and reports memory per corpus.
+    assert first == memory_down
+    assert second["unavailable"] is True and second["error"] == "provider exploded"
     assert provider.calls == 1
-    # corpus=wiki never reads the cooldown; corpus=all falls back to supplements
-    # only and reports no provider/model because memory was not searched.
-    assert wiki == {"results": [], "citations": "on"}
-    assert all_corpora == {"results": [], "citations": "on"}
+    # corpus=wiki never reads the cooldown; corpus=all skips memory during it and reports no
+    # provider/model because memory was not searched.
+    assert wiki == {
+        "results": [],
+        "citations": "on",
+        "corpora": [{"corpus": "wiki", "outcome": "not-registered"}],
+        "warning": "Wiki corpus is not registered; results do not cover that requested corpus.",
+    }
+    assert all_corpora == memory_down
 
 
 def test_cooldown_expires_when_until_is_reached(tmp_path, clock):
@@ -274,7 +308,12 @@ def test_cooldown_expires_when_until_is_reached(tmp_path, clock):
     assert [hit["path"] for hit in memory_search(cfg, store, query="glacier")["results"]] == [
         "MEMORY.md"
     ]
-    assert read_memory_search_tool_cooldown(memory_search_tool_cooldown_key(cfg, store)) is None
+    assert (
+        read_memory_search_tool_cooldown(
+            memory_search_tool_cooldown_key(cfg, store), memory_search_tool_config_key(cfg, store)
+        )
+        is None
+    )
 
 
 def test_cooldown_is_keyed_by_agent_id(tmp_path, clock):
@@ -316,7 +355,13 @@ def test_cooldown_is_scoped_to_the_store_not_shared_across_workspaces(tmp_path, 
     assert memory_search(cfg_1, store_1, query="glacier", corpus="memory")["error"] == (
         "provider exploded"
     )
-    assert read_memory_search_tool_cooldown(memory_search_tool_cooldown_key(cfg_2, store_2)) is None
+    assert (
+        read_memory_search_tool_cooldown(
+            memory_search_tool_cooldown_key(cfg_2, store_2),
+            memory_search_tool_config_key(cfg_2, store_2),
+        )
+        is None
+    )
 
 
 def test_stores_on_the_same_index_file_share_a_cooldown(tmp_path, clock):
@@ -333,31 +378,47 @@ def test_stores_on_the_same_index_file_share_a_cooldown(tmp_path, clock):
     assert memory_search(cfg, same_index, query="glacier", corpus="memory")["error"] == (
         "provider exploded"
     )
-    assert memory_search_tool_cooldown_key(
-        cfg, store, agent_session_key="agent:main:s"
-    ).endswith("\0main")
+    # v2026.9.6 keys the cooldown by agent alone (tools.ts:269): no session-key fallback.
+    assert memory_search_tool_cooldown_key(cfg, store).endswith("\0main")
+    assert memory_search(
+        cfg, store, query="glacier", corpus="memory", agent_session_key="agent:main:other"
+    )["error"] == "provider exploded"
 
 
-def test_default_corpus_all_hides_a_cooldown_behind_empty_results(tmp_path, clock):
-    # tools.ts: with a cooldown, corpus=all skips memory and returns supplement
-    # hits only. The facade default is corpus="all" (upstream's default is an
-    # omitted corpus, which returns the unavailable result instead).
+def test_default_corpus_all_reports_a_cooldown_per_corpus(tmp_path, clock):
+    # tools.ts:436-550: with a cooldown, corpus=all skips memory, keeps the supplement hits and
+    # marks memory unavailable in `corpora`. The facade default is corpus="all" (decision D8);
+    # upstream's omitted corpus returns the unavailable result instead.
     provider = _ControlledProvider()
     cfg, store = _vector_store(tmp_path, provider)
     provider.error = RuntimeError("provider exploded")
-    assert memory_search(cfg, store, query="glacier")["unavailable"] is True
+    assert memory_search(cfg, store, query="glacier", corpus=None)["unavailable"] is True
     provider.error = None
 
-    assert memory_search(cfg, store, query="glacier") == {"results": [], "citations": "on"}
+    during = memory_search(cfg, store, query="glacier")
+    assert during["results"] == [] and "unavailable" not in during
+    assert during["corpora"][0] == {
+        "corpus": "memory", "outcome": "unavailable", "error": "provider exploded"
+    }
     assert memory_search(cfg, store, query="glacier", corpus=None)["error"] == "provider exploded"
 
 
-def test_cooldown_key_falls_back_to_session_key_then_default():
-    resolve = resolve_memory_search_tool_cooldown_key
-    assert resolve(agent_id="main", agent_session_key="agent:x:s") == "main"
-    assert resolve(agent_id="", agent_session_key="agent:x:s") == ""
-    assert resolve(agent_id=None, agent_session_key="agent:x:s") == "agent:x:s"
-    assert resolve(agent_id=None, agent_session_key=None) == "default"
+def test_a_cooldown_belongs_to_the_configuration_that_recorded_it(tmp_path, clock):
+    # tools.ts:100-118: a cooldown recorded under another runtime configuration is dropped.
+    provider = _ControlledProvider()
+    cfg, store = _vector_store(tmp_path, provider)
+    provider.error = RuntimeError("provider exploded")
+    memory_search(cfg, store, query="glacier", corpus="memory")
+    provider.error = None
+    other = dataclasses.replace(cfg, citation_mode="off")
+    key = memory_search_tool_cooldown_key(cfg, store)
+
+    assert memory_search_tool_config_key(other, store) != memory_search_tool_config_key(cfg, store)
+    assert [hit["path"] for hit in memory_search(other, store, query="glacier", corpus="memory")[
+        "results"
+    ]] == ["MEMORY.md"]
+    # The read under the other configuration dropped the entry.
+    assert read_memory_search_tool_cooldown(key, memory_search_tool_config_key(cfg, store)) is None
 
 
 def test_supplement_failure_under_corpus_all_records_no_cooldown(tmp_path, clock):
@@ -377,10 +438,18 @@ def test_supplement_failure_under_corpus_all_records_no_cooldown(tmp_path, clock
     )
 
     assert failed["error"] == wiki_failed["error"] == "wiki down"
+    assert failed["corpora"] == [
+        {"corpus": "memory", "outcome": "ok"},
+        {"corpus": "wiki", "outcome": "unavailable", "error": "wiki down"},
+    ]
+    assert [hit["path"] for hit in failed["results"]] == ["MEMORY.md"]
     key = memory_search_tool_cooldown_key(cfg, store)
-    assert read_memory_search_tool_cooldown(key) is None
-    record_memory_search_tool_cooldown(key, "x")
-    assert read_memory_search_tool_cooldown(key) == "x"
+    config_key = memory_search_tool_config_key(cfg, store)
+    assert read_memory_search_tool_cooldown(key, config_key) is None
+    record_memory_search_tool_cooldown(key, config_key, {"error": "x", "deadline": False, "code": "E"})
+    assert read_memory_search_tool_cooldown(key, config_key) == {
+        "error": "x", "deadline": False, "code": "E"
+    }
 
 
 def test_deadline_runs_from_an_event_loop_and_from_other_threads(tmp_path):
@@ -462,6 +531,131 @@ def test_cooldown_remaining_reports_the_time_left_and_expires(tmp_path, clock):
     memory_search(cfg, store, query="glacier", corpus="memory")
 
     clock["now"] += 1_000
-    assert memory_search_tool_cooldown_remaining(key) == (MEMORY_SEARCH_TOOL_COOLDOWN_MS - 1_000, "provider exploded")
+    assert memory_search_tool_cooldown_remaining(key) == (
+        MEMORY_SEARCH_TOOL_COOLDOWN_MS - 1_000, {"error": "provider exploded", "deadline": False}
+    )
+    assert memory_search_tool_cooldown_remaining(key, "another configuration") is None
+    assert memory_search_tool_cooldown_remaining(key) is None  # dropped by the read above
+    provider.error = RuntimeError("provider exploded")
+    memory_search(cfg, store, query="glacier", corpus="memory")
     clock["now"] += MEMORY_SEARCH_TOOL_COOLDOWN_MS
     assert memory_search_tool_cooldown_remaining(key) is None
+
+
+def _hit(path: str, score: float | None, corpus: str = "memory") -> dict:
+    return {"corpus": corpus, "path": path, **({} if score is None else {"score": score})}
+
+
+def test_merge_keeps_each_stream_order_and_compares_only_the_heads():
+    # tools.ts:168-230 mergeMemorySearchCorpusResults. Memory scores need not be sorted: each
+    # stream keeps its own order.
+    memory = [_hit("m1", 0.2), _hit("m2", 0.9), _hit("m3", 0.1)]
+    wiki = [_hit("w1", 0.5, "wiki"), _hit("w2", 0.4, "wiki")]
+
+    unbalanced = merge_memory_search_corpus_results(
+        memory_results=memory, supplement_results=wiki, max_results=4, balance_corpora=False
+    )
+    balanced = merge_memory_search_corpus_results(
+        memory_results=memory, supplement_results=wiki, max_results=3, balance_corpora=True
+    )
+    more_budget = merge_memory_search_corpus_results(
+        memory_results=memory, supplement_results=wiki, max_results=5, balance_corpora=True
+    )
+
+    assert [item["path"] for item in unbalanced] == ["w1", "w2", "m1", "m2"]
+    # ceil(3/2) = 2 per corpus; the merge of m1,m2 with w1,w2 by heads, cut to 3.
+    assert [item["path"] for item in balanced] == ["w1", "w2", "m1"]
+    assert [item["path"] for item in more_budget] == ["w1", "w2", "m1", "m2", "m3"]
+
+
+def test_balanced_merge_gives_the_spare_budget_to_the_higher_next_item():
+    memory = [_hit("m1", 0.9), _hit("m2", 0.8), _hit("m3", 0.7), _hit("m4", 0.6)]
+    wiki = [_hit("w1", 0.5, "wiki")]
+    unscored = [_hit("u1", None, "wiki"), _hit("u2", None, "wiki")]
+
+    assert [
+        item["path"]
+        for item in merge_memory_search_corpus_results(
+            memory_results=memory, supplement_results=wiki, max_results=4, balance_corpora=True
+        )
+    ] == ["m1", "m2", "m3", "w1"]
+    # An unscored supplement item never outranks a scored memory item (`>=` with undefined is
+    # false, the stream heads compare `score ?? 0`).
+    assert [
+        item["path"]
+        for item in merge_memory_search_corpus_results(
+            memory_results=memory[:1], supplement_results=unscored, max_results=3,
+            balance_corpora=True,
+        )
+    ] == ["m1", "u1", "u2"]
+    assert merge_memory_search_corpus_results(
+        memory_results=[], supplement_results=wiki, max_results=3, balance_corpora=True
+    ) == wiki
+
+
+def test_sessions_search_needs_sessions_in_the_search_sources(tmp_path):
+    # tools.ts:255-267 (decision D1: memory-core searches sessions by default).
+    provider = _ControlledProvider()
+    cfg, store = _vector_store(tmp_path, provider)
+
+    default = memory_search(cfg, store, query="glacier", corpus="sessions", search_sources=["memory"])
+    compat = memory_search(
+        cfg,
+        store,
+        query="glacier",
+        corpus="sessions",
+        search_sources=["memory"],
+        runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+    )
+    searched = memory_search(cfg, store, query="glacier", corpus="sessions")
+
+    assert provider.calls == 1
+    assert default["error"] == "Session transcript search is not enabled."
+    assert default["warning"] == "Session transcript search is unavailable for this agent."
+    assert default["action"] == MEMORY_CORE_RUNTIME_IDENTITY.session_search_not_enabled_action
+    assert "memory.search" not in default["action"]
+    assert compat["action"] == (
+        "If an exact session-history capability is available for this run, use it. Otherwise, "
+        "ask the operator to enable semantic session search by enabling "
+        'memory.search.experimental.sessionMemory and adding "sessions" to memory.search.sources.'
+    )
+    assert searched["results"] == [] and "unavailable" not in searched
+
+
+def test_on_recall_gets_the_returned_memory_hits_of_an_ok_search_only(tmp_path, clock):
+    # tools.ts:477-508: only memory-corpus evidence actually returned earns a recall signal,
+    # and only when the memory search was ok or partial.
+    provider = _ControlledProvider()
+    cfg, store = _vector_store(tmp_path, provider)
+    (tmp_path / "memory").mkdir()
+    (tmp_path / "memory" / "2026-09-30.md").write_text("- Glacier trip notes.\n", encoding="utf-8")
+    store.reindex(MemoryWorkspace(tmp_path))
+
+    class _Wiki:
+        def search(self, **_):
+            return [{"corpus": "wiki", "path": "w.md", "score": 99, "snippet": "glacier"}]
+
+        def get(self, **_):
+            return None
+
+    recalls: list[list[dict]] = []
+    ok = memory_search(
+        cfg, store, query="glacier", max_results=2, corpus="all", supplements=[_Wiki()],
+        on_recall=recalls.append,
+    )
+    provider.error = RuntimeError("provider exploded")
+    memory_search(cfg, store, query="glacier", corpus="all", supplements=[_Wiki()],
+                  on_recall=recalls.append)
+    provider.error = None
+
+    def boom(_hits):
+        raise RuntimeError("recording failed")
+
+    clock["now"] += MEMORY_SEARCH_TOOL_COOLDOWN_MS
+    still_ok = memory_search(cfg, store, query="glacier", corpus="memory", on_recall=boom)
+
+    assert [item["path"] for item in ok["results"]] == ["w.md", "MEMORY.md"]
+    assert len(recalls) == 1
+    assert [item["path"] for item in recalls[0]] == ["MEMORY.md"]
+    assert recalls[0][0] is ok["results"][1]
+    assert still_ok["results"]

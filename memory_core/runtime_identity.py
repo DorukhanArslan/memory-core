@@ -16,6 +16,7 @@ from memory_core.tools._memory_tool_constants import (
     MEMORY_SEARCH_MISSING_SQLITE_ACTION,
     MEMORY_SEARCH_MISSING_SQLITE_WARNING,
     SESSION_CANONICAL_KEY_MIGRATION_ACTION,
+    SESSION_SEARCH_NOT_ENABLED_ACTION,
 )
 
 # OpenClaw src/auto-reply/heartbeat.ts INTERNAL_WAKE_TRANSCRIPT_PROMPTS (generated).
@@ -73,6 +74,15 @@ class RuntimeIdentity:
     # raises that code itself; the wording is a D4 proposal.
     memory_search_canonical_key_migration_action: str = (
         "Migrate the session catalog to canonical session keys, then retry memory_search."
+    )
+    # memory_search action when corpus=sessions is asked for but sessions are not searched
+    # (OpenClaw extensions/memory-core/src/tools.ts:260-265 names the config keys
+    # memory.search.experimental.sessionMemory and memory.search.sources). memory-core's knob is
+    # the search_sources argument of execute_memory_search_tool (D4, proposed).
+    session_search_not_enabled_action: str = (
+        "If an exact session-history capability is available for this run, use it. Otherwise, "
+        'ask the operator to enable semantic session search by adding "sessions" to the search '
+        "sources memory_search runs with."
     )
     # Memory index rebuild command of the index search diagnostic (OpenClaw
     # packages/memory-host-sdk/src/host/types.ts:300-311 formatMemoryIndexRebuildGuidance names
@@ -145,6 +155,7 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
     memory_search_sqlite_unavailable_action=MEMORY_SEARCH_MISSING_SQLITE_ACTION,
     memory_search_deadline_agent_action=MEMORY_SEARCH_DEADLINE_AGENT_ACTION_TEMPLATE,
     memory_search_canonical_key_migration_action=SESSION_CANONICAL_KEY_MIGRATION_ACTION,
+    session_search_not_enabled_action=SESSION_SEARCH_NOT_ENABLED_ACTION,
     memory_index_rebuild_command_template=MEMORY_INDEX_REBUILD_COMMAND_TEMPLATE,
     memory_index_rebuild_agent_clause=MEMORY_INDEX_REBUILD_AGENT_CLAUSE,
     memory_index_version_changed_cause_template=MEMORY_INDEX_VERSION_CHANGED_CAUSE_TEMPLATE,

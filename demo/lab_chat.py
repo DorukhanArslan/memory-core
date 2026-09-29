@@ -154,10 +154,15 @@ def _transcript_window(session: LabSession, user: str) -> tuple[list[ChatMessage
 
 def auto_recall(lab: LabRuntime, config, store, query: str, *, turn_id: int) -> dict[str, Any]:
     """Demo-only auto-recall: search the user message, keep MEMORY.md and today/yesterday."""
-    result = memory_search(config, store, query=query, max_results=AUTO_RECALL_MAX_RESULTS, min_score=0)
+    recalled: list[dict[str, Any]] = []
+    # on_recall gets the memory-corpus hits of a search that was ok or partial (tools.ts:477-508).
+    result = memory_search(
+        config, store, query=query, max_results=AUTO_RECALL_MAX_RESULTS, min_score=0,
+        on_recall=recalled.extend,
+    )
     hits = result.get("results") or []
     allowed = {lab.layout.memory_file, f"memory/{lab.today()}.md", f"memory/{lab.yesterday()}.md"}
-    used = [hit for hit in hits if str(hit.get("path") or "") in allowed]
+    used = [hit for hit in recalled if str(hit.get("path") or "") in allowed]
     filtered = [
         {"path": hit.get("path"), "reason": AUTO_RECALL_FILTER_REASON}
         for hit in hits if str(hit.get("path") or "") not in allowed

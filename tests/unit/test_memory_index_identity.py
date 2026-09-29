@@ -18,6 +18,7 @@ from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.supplements import StaticMemoryCorpusSupplement
 from memory_core.tools.memory_search import (
     memory_search,
+    memory_search_tool_config_key,
     memory_search_tool_cooldown_key,
     read_memory_search_tool_cooldown,
 )
@@ -186,7 +187,7 @@ def test_corrupt_meta_reads_as_missing(tmp_path):
     assert store.index_identity()["status"] == "missing"
 
 
-def test_paused_search_records_no_cooldown_and_skips_supplements(tmp_path):
+def test_paused_search_records_no_cooldown_and_keeps_the_other_corpus(tmp_path):
     cfg = _config(tmp_path, flags=FTS_ONLY)
     store = SQLiteMemoryStore(cfg, None)
     wiki = StaticMemoryCorpusSupplement(
@@ -196,11 +197,26 @@ def test_paused_search_records_no_cooldown_and_skips_supplements(tmp_path):
     paused_all = memory_search(cfg, store, query="glacier", corpus="all", supplements=[wiki])
     wiki_only = memory_search(cfg, store, query="glacier", corpus="wiki", supplements=[wiki])
 
-    # tools.ts returns the paused result before supplements run.
+    # tools.ts:387-405 and 509-550 at v2026.9.6: under corpus=all the paused memory corpus is
+    # unavailable, the wiki hits stay, and the paused guidance joins the warning and action.
+    assert "unavailable" not in paused_all
+    assert [item["path"] for item in paused_all["results"]] == ["w.md"]
+    assert paused_all["corpora"] == [
+        {"corpus": "memory", "outcome": "unavailable", "error": "index metadata is missing"},
+        {"corpus": "wiki", "outcome": "ok"},
+    ]
     assert paused_all["error"] == "index metadata is missing"
-    assert paused_all["results"] == []
+    assert paused_all["warning"] == (
+        "Memory corpus unavailable: index metadata is missing " + PAUSED_WARNING
+    )
+    assert paused_all["action"] == (
+        "Tell the user to run: SQLiteMemoryStore.reindex(workspace). Rebuilding uses keyword "
+        "indexing only and does not call an embedding provider."
+    )
     assert [item["path"] for item in wiki_only["results"]] == ["w.md"]
-    assert read_memory_search_tool_cooldown(memory_search_tool_cooldown_key(cfg, store)) is None
+    assert read_memory_search_tool_cooldown(
+        memory_search_tool_cooldown_key(cfg, store), memory_search_tool_config_key(cfg, store)
+    ) is None
 
 
 def test_paused_action_names_the_runtime(tmp_path):

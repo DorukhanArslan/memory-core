@@ -2550,27 +2550,37 @@ def _normalize_memory_search_step(step: dict) -> dict:
     return {"result": normalized, "embedQueryCalls": step["embedQueryCalls"]}
 
 
-def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+# Decision D1 of docs/upstream_port_v2026_9_6.md: memory-core searches session transcripts, so
+# the TS side enables session search (memory.search.sources, experimental.sessionMemory);
+# decision D3: both sides index before the first search (the runner's preSync).
+MEMORY_SEARCH_SEQUENCE_CONFIG = {
+    "memory": {
+        "search": {"sources": ["memory", "sessions"], "experimental": {"sessionMemory": True}}
+    }
+}
+MEMORY_SEARCH_SEQUENCE_WIKI_RESULTS = [
+    {"corpus": "wiki", "path": "w1.md", "title": "W1", "kind": "entity", "score": 5,
+     "snippet": "glacier wiki"},
+]
+
+
+def _run_memory_search_tool_sequence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, memory_text: str
+) -> tuple[dict, list[dict]]:
     oracle = OpenClawOracle(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=120,
     )
-    (tmp_path / "MEMORY.md").write_text(
-        "# Long-Term Memory\n\n- Glacier storage keeps backups cold.", encoding="utf-8"
-    )
-    wiki_results = [
-        {"corpus": "wiki", "path": "w1.md", "title": "W1", "kind": "entity", "score": 5,
-         "snippet": "glacier wiki"},
-    ]
+    (tmp_path / "MEMORY.md").write_text(memory_text, encoding="utf-8")
 
     result = oracle.run(
         {
             "operation": "memorySearchToolSequence",
             "workspaceDir": str(tmp_path),
-            "wikiResults": wiki_results,
+            "wikiResults": MEMORY_SEARCH_SEQUENCE_WIKI_RESULTS,
             "searchSteps": MEMORY_SEARCH_TOOL_SEQUENCE,
+            "config": MEMORY_SEARCH_SEQUENCE_CONFIG,
+            "preSync": True,
         }
     )
 
@@ -2581,17 +2591,21 @@ def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
         text_weight=1,
     )
     provider = _ScriptedEmbeddingProvider()
-    wiki = _ScriptedWikiSupplement(wiki_results)
+    wiki = _ScriptedWikiSupplement(MEMORY_SEARCH_SEQUENCE_WIKI_RESULTS)
     store = SQLiteMemoryStore(cfg, provider)
     store.reindex(MemoryWorkspace(tmp_path))
     clock = {"offset": 0.0, "deadline": None}
     monkeypatch.setattr(
         memory_search_module, "_now_ms", lambda: 1_000_000.0 + clock["offset"]
     )
+    # A step's deadlineFireMs fires the 30 s deadline after that many real ms, like the runner's
+    # setTimeout patch (the deadline and its message are untouched).
     monkeypatch.setattr(
         memory_search_module,
-        "_deadline_seconds",
-        lambda ms: (clock["deadline"] if clock["deadline"] is not None else ms) / 1000,
+        "_deadline_wait_seconds",
+        lambda remaining: (
+            min(remaining, clock["deadline"] / 1000) if clock["deadline"] is not None else remaining
+        ),
     )
     python_steps = []
     try:
@@ -2611,13 +2625,24 @@ def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
             )
     finally:
         provider.release.set()
-
     assert result["ok"] is True, result.get("error")
     assert result["operation"] == "memorySearchToolSequence"
+    return result, python_steps
+
+
+def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    # A two-line MEMORY.md: the tag's curated-entry chunking returns two MEMORY.md chunks where
+    # memory-core returns one (area 6), so steps 5, 9, 11 and 16 differ until that port.
+    result, python_steps = _run_memory_search_tool_sequence(
+        tmp_path, monkeypatch, "# Long-Term Memory\n\n- Glacier storage keeps backups cold."
+    )
+
     assert [_normalize_memory_search_step(step) for step in result["result"]] == [
         _normalize_memory_search_step(step) for step in python_steps
     ]
-    assert python_steps[6]["result"]["error"] == "memory_search timed out after 15s"
+    assert python_steps[6]["result"]["error"] == "memory_search timed out after 30s"
 
 
 _IDENTITY_KEY = "k" * 64

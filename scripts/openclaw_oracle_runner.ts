@@ -42,6 +42,7 @@ type Payload = {
   }>;
   results?: unknown[];
   wikiResults?: unknown[];
+  preSync?: boolean;
   // memoryGet: a registered wiki supplement whose get() returns null ("missing") or throws
   // ("throw:<message>"); omitted, nothing is registered.
   wikiGet?: string;
@@ -1538,8 +1539,23 @@ async function main() {
       "extensions/memory-core/src/memory/index.ts",
     );
     try {
+      const config = buildMemorySearchOracleConfig(payload);
+      if (payload.preSync) {
+        // Decision D3 of docs/upstream_port_v2026_9_6.md: memory-core reindexes when the host
+        // asks, so the Python fixture indexes before its first search. Build the TS index the
+        // same way (an explicit `reason: "cli"` sync, as `openclaw memory index` does) so the
+        // first search finds a valid identity instead of repairing it (and warning about it)
+        // itself (manager-search-orchestration.ts:288-297).
+        const { manager } = await memoryIndex.getMemorySearchManager({
+          cfg: config,
+          agentId: "main",
+          purpose: "cli",
+        });
+        await manager?.sync?.({ reason: "cli" });
+        await manager?.close?.();
+      }
       const tool = tools.createMemorySearchTool({
-        config: buildMemorySearchOracleConfig(payload),
+        config,
         agentId: "main",
         agentSessionKey: "agent:main:oracle",
       });

@@ -42,6 +42,7 @@ from memory_core.tools.memory_search import (
     MEMORY_SEARCH_TOOL_COOLDOWN_MS,
     MEMORY_SEARCH_TOOL_TIMEOUT_MS,
     execute_memory_search_tool,
+    memory_search_tool_config_key,
     memory_search_tool_cooldown_key,
     memory_search_tool_cooldown_remaining,
 )
@@ -305,11 +306,19 @@ async def _live_turn_frames(
 
 
 def cooldown_payload(lab: LabRuntime, config, store) -> dict[str, Any] | None:
-    remaining = memory_search_tool_cooldown_remaining(memory_search_tool_cooldown_key(config, store))
+    remaining = memory_search_tool_cooldown_remaining(
+        memory_search_tool_cooldown_key(config, store), memory_search_tool_config_key(config, store)
+    )
     if remaining is None:
         return None
-    remaining_ms, error = remaining
-    return {"remainingMs": int(remaining_ms), "until": lab.now_ms() + int(remaining_ms), "error": error}
+    remaining_ms, failure = remaining
+    return {
+        "remainingMs": int(remaining_ms),
+        "until": lab.now_ms() + int(remaining_ms),
+        "error": failure["error"],
+        "deadline": failure["deadline"],
+        **({"code": failure["code"]} if failure.get("code") else {}),
+    }
 
 
 def run_search(lab: LabRuntime, payload: dict[str, Any]) -> dict[str, Any]:

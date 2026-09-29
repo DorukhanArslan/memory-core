@@ -42,7 +42,13 @@ character as a ``\\u`` escape:
   (memory-corpus.ts, memory/search-deadline.ts), the read texts and limits of
   ``readMemoryFile`` (packages/memory-host-sdk/src/host/read-file*.ts, read-retry.ts) and the
   refusal texts of the built @openclaw/fs-safe it resolves and reads through (see
-  MEMORY_TOOL_SOURCES and FS_SAFE_SOURCES)::
+  MEMORY_TOOL_SOURCES and FS_SAFE_SOURCES), and the ``memory_search`` unavailable, cooldown,
+  sessions-not-enabled and partial-timeout texts (tools.shared.ts, tools.ts);
+- ``memory_core/index/_index_identity_constants.py``: the index identity versions and reasons
+  of ``resolveMemoryIndexIdentityState`` (extensions/memory-core/src/memory/
+  manager-reindex-state.ts, packages/memory-host-sdk/src/host/markdown-chunks.ts) and the
+  rebuild-guidance, paused-cause and staleness texts of the index search diagnostic
+  (packages/memory-host-sdk/src/host/types.ts; see INDEX_IDENTITY_SOURCES)::
 
     .venv/bin/python scripts/extract_upstream_constants.py --repo /tmp/openclaw-head
 
@@ -72,6 +78,7 @@ HEARTBEAT_OUTPUT = PACKAGE_DIR / "_heartbeat_constants.py"
 FLUSH_OUTPUT = PACKAGE_DIR / "_memory_flush_constants.py"
 TRANSCRIPT_REPAIR_OUTPUT = PACKAGE_DIR / "_transcript_repair_constants.py"
 MEMORY_TOOLS_OUTPUT = PACKAGE_DIR / "tools" / "_memory_tool_constants.py"
+INDEX_IDENTITY_OUTPUT = PACKAGE_DIR / "index" / "_index_identity_constants.py"
 CHECK_TEST = "tests/integration/test_extracted_upstream_constants.py"
 BOOTSTRAP_SOURCE = "src/agents/embedded-agent-helpers/bootstrap.ts"
 BUDGET_SOURCE = "src/agents/bootstrap-budget.ts"
@@ -1010,6 +1017,7 @@ MEMORY_TOOL_SOURCES = {
     "read_shared": "packages/memory-host-sdk/src/host/read-file-shared.ts",
     "read_retry": "packages/memory-host-sdk/src/host/read-retry.ts",
     "fs_utils": "packages/memory-host-sdk/src/host/fs-utils.ts",
+    "shared": "extensions/memory-core/src/tools.shared.ts",
 }
 # @openclaw/fs-safe (the workspace resolve and regular-file read of readMemoryFile) ships as
 # built JavaScript in the checkout's node_modules; its version is checked.
@@ -1280,6 +1288,199 @@ def extract_memory_tools(repo: Path) -> dict[str, object]:
         "FS_SAFE_IDENTITY_MISMATCH_ERROR": ts_string_at(
             fs["fs_identity"], "file identity changed"
         ),
+        **_memory_search_unavailable_texts(src["shared"], tools),
+    }
+
+
+def _memory_search_unavailable_texts(shared: str, tools: str) -> dict[str, object]:
+    """buildMemorySearchUnavailableResult (tools.shared.ts:92-150) and the memory_search texts of
+    createMemorySearchTool (tools.ts): cooldown, sessions not enabled, partial timeout."""
+    reason = ts_string_at(shared, "memory search unavailable")
+    if ts_string_at(tools, "memory search unavailable") != reason:
+        raise ValueError("tools.ts and tools.shared.ts disagree on the unavailable reason")
+    quota_regex, quota_flags = ts_regex_literal_at(shared, "isQuotaError")
+    sqlite_regex, sqlite_flags = ts_regex_literal_at(shared, "isMissingNodeSqlite")
+    if (quota_flags, sqlite_flags) != ("", ""):
+        raise ValueError("buildMemorySearchUnavailableResult regexes gained flags")
+    return {
+        "MEMORY_SEARCH_UNAVAILABLE_REASON": reason,
+        "MEMORY_SEARCH_QUOTA_ERROR_PATTERN": quota_regex,
+        "MEMORY_SEARCH_MISSING_SQLITE_PATTERN": sqlite_regex,
+        "SESSION_CANONICAL_KEY_MIGRATION_REQUIRED": ts_string_constant(
+            shared, "SESSION_CANONICAL_KEY_MIGRATION_REQUIRED"
+        ),
+        "SESSION_CANONICAL_KEY_MIGRATION_WARNING": ts_string_constant(
+            shared, "SESSION_CANONICAL_KEY_MIGRATION_WARNING"
+        ),
+        "SESSION_CANONICAL_KEY_MIGRATION_ACTION": ts_string_constant(
+            shared, "SESSION_CANONICAL_KEY_MIGRATION_ACTION"
+        ),
+        "MEMORY_SEARCH_QUOTA_WARNING": ts_string_at(
+            shared, "Memory search is unavailable because the embedding provider quota"
+        ),
+        "MEMORY_SEARCH_QUOTA_ACTION": ts_string_at(shared, "Top up or switch embedding provider"),
+        "MEMORY_SEARCH_MISSING_SQLITE_WARNING": ts_string_at(
+            shared, "Memory search is unavailable because this OpenClaw Node runtime"
+        ),
+        "MEMORY_SEARCH_MISSING_SQLITE_ACTION": ts_string_at(
+            shared, "Run OpenClaw with a Node runtime"
+        ),
+        "MEMORY_SEARCH_DEADLINE_WARNING": ts_string_at(
+            shared, "Memory search did not finish within its time limit."
+        ),
+        "MEMORY_SEARCH_DEADLINE_AGENT_ACTION_TEMPLATE": ts_template_at(
+            shared,
+            "Retry memory_search after a short wait: a memory-corpus timeout",
+            {"overrides.agentId": "agent_id"},
+        ),
+        "MEMORY_SEARCH_DEADLINE_ACTION": ts_string_at(
+            shared, "Retry memory_search after a short wait. If"
+        ),
+        "MEMORY_SEARCH_PROVIDER_ERROR_WARNING": ts_string_at(
+            shared, "Memory search is unavailable due to an embedding/provider error."
+        ),
+        "MEMORY_SEARCH_PROVIDER_ERROR_ACTION": ts_string_at(
+            shared, "Check embedding provider configuration"
+        ),
+        **ts_numeric_constants(tools, ("MEMORY_SEARCH_TOOL_COOLDOWN_MS",)),
+        "MEMORY_SEARCH_MERGE_DEFAULT_MAX_RESULTS": ts_number_after(
+            tools, "maxResults: maxResults ??"
+        ),
+        "SESSION_SEARCH_NOT_ENABLED_ERROR": ts_string_at(
+            tools, "Session transcript search is not enabled."
+        ),
+        "SESSION_SEARCH_NOT_ENABLED_WARNING": ts_string_at(
+            tools, "Session transcript search is unavailable for this agent."
+        ),
+        "SESSION_SEARCH_NOT_ENABLED_ACTION": ts_string_at(
+            tools, "If an exact session-history capability"
+        ),
+        "MEMORY_SEARCH_PARTIAL_WARNING": ts_string_at(
+            tools, "Only memory-file keyword matches are included"
+        ),
+    }
+
+
+INDEX_IDENTITY_SOURCES = {
+    "reindex": "extensions/memory-core/src/memory/manager-reindex-state.ts",
+    "chunks": "packages/memory-host-sdk/src/host/markdown-chunks.ts",
+    "types": "packages/memory-host-sdk/src/host/types.ts",
+}
+
+
+def _identity_codes(types: str, owner: str) -> tuple[str, ...]:
+    """The ``identity.code === "..."`` values ``resolveMemoryIndexIdentityDiagnostic`` accepts for
+    ``owner`` (types.ts:250-298), in source order."""
+    start = types.index("export function resolveMemoryIndexIdentityDiagnostic(")
+    body = types[start : types.index("\n}\n", start)]
+    anchor = body.index(f'identity.owner === "{owner}" &&')
+    block = body[anchor : body.index("return {", anchor)]
+    codes = tuple(re.findall(r'identity\.code === "([a-z_]+)"', block))
+    if not codes:
+        raise ValueError(f"resolveMemoryIndexIdentityDiagnostic codes of {owner} not found")
+    return codes
+
+
+def extract_index_identity(repo: Path) -> dict[str, object]:
+    """Versions, reasons and diagnostic texts of the memory index identity."""
+    src = _read_sources(repo, INDEX_IDENTITY_SOURCES)
+    reindex, types = src["reindex"], src["types"]
+    rebuild_command, agent_condition, agent_suffix, no_agent_suffix = ts_template_ternary_at(
+        types, "openclaw memory status --index", "agent_suffix", {"agentId.trim()": "agent_id"}
+    )
+    if (agent_condition, no_agent_suffix) != ("agentId?.trim()", ""):
+        raise ValueError("formatMemoryIndexRebuildGuidance command changed shape")
+    keyword_only, provider_cost = ts_ternary_at(types, 'configuredProvider === "none"')
+    guidance = {"guidance": "guidance"}
+    return {
+        **ts_numeric_constants(src["chunks"], ("MEMORY_CHUNKING_VERSION",)),
+        **ts_numeric_constants(reindex, ("MEMORY_INDEX_PROVENANCE_VERSION",)),
+        "MEMORY_INDEX_METADATA_MISSING_REASON": ts_string_at(reindex, "index metadata is missing"),
+        "MEMORY_INDEX_NEWER_VERSION_REASON": ts_string_at(
+            reindex, "the index was written by a newer"
+        ),
+        "MEMORY_INDEX_PROVENANCE_CHANGED_REASON": ts_string_at(
+            reindex, "index provenance classifier changed"
+        ),
+        "MEMORY_INDEX_CHUNKING_VERSION_CHANGED_REASON": ts_string_at(
+            reindex, "index chunking implementation changed"
+        ),
+        "MEMORY_INDEX_MODEL_CHANGED_TEMPLATE": ts_template_at(
+            reindex,
+            "index was built for model ${",
+            {"meta.model": "meta_model", "expectedModel": "expected_model"},
+        ),
+        "MEMORY_INDEX_PROVIDER_CHANGED_TEMPLATE": ts_template_at(
+            reindex,
+            "index was built for provider ${",
+            {"meta.provider": "meta_provider", "expectedProvider": "expected_provider"},
+        ),
+        "MEMORY_INDEX_PROVIDER_SETTINGS_CHANGED_REASON": ts_string_at(
+            reindex, "index provider settings changed"
+        ),
+        "MEMORY_INDEX_SOURCES_CHANGED_REASON": ts_string_at(reindex, "index sources changed"),
+        "MEMORY_INDEX_SCOPE_CHANGED_REASON": ts_string_at(reindex, "index scope changed"),
+        "MEMORY_INDEX_CHUNKING_CHANGED_REASON": ts_string_at(reindex, "index chunking changed"),
+        "MEMORY_INDEX_FTS_TOKENIZER_CHANGED_REASON": ts_string_at(
+            reindex, "index FTS tokenizer changed"
+        ),
+        "MEMORY_INDEX_VECTOR_DIMS_MISSING_REASON": ts_string_at(
+            reindex, "index vector dimensions are missing"
+        ),
+        "MEMORY_INDEX_OPENCLAW_CODES": _identity_codes(types, "openclaw"),
+        "MEMORY_INDEX_CONFIGURATION_CODES": _identity_codes(types, "configuration"),
+        "MEMORY_INDEX_IDENTITY_DEFAULT_REASON": ts_string_at(
+            types, "memory index identity is missing or mismatched"
+        ),
+        "MEMORY_INDEX_REBUILD_COMMAND_TEMPLATE": rebuild_command,
+        "MEMORY_INDEX_REBUILD_AGENT_CLAUSE": agent_suffix,
+        "MEMORY_INDEX_REBUILD_KEYWORD_ONLY_DISCLOSURE": keyword_only,
+        "MEMORY_INDEX_REBUILD_PROVIDER_COST_DISCLOSURE": provider_cost,
+        "MEMORY_INDEX_REBUILD_GUIDANCE_TEMPLATE": ts_template_at(
+            types, "${command}. ${", {"command": "command", "disclosure": "disclosure"}
+        ),
+        "MEMORY_INDEX_CONFIGURATION_CAUSE_TEMPLATE": ts_template_at(
+            types,
+            "the current memory configuration no longer matches the index (${",
+            {"diagnostic.reason": "reason"},
+        ),
+        "MEMORY_INDEX_METADATA_MISSING_CAUSE_TEMPLATE": ts_template_at(
+            types, "the memory index metadata is missing (${", {"diagnostic.reason": "reason"}
+        ),
+        "MEMORY_INDEX_VERSION_CHANGED_CAUSE_TEMPLATE": ts_template_at(
+            types,
+            "this OpenClaw version changed the memory index format (${",
+            {"diagnostic.reason": "reason"},
+        ),
+        "MEMORY_INDEX_PAUSED_WARNING_TEMPLATE": ts_template_at(
+            types,
+            "Tell the user: memory search is paused because ${",
+            {"cause": "cause", "priorFailure": "prior_failure"},
+        ),
+        "MEMORY_INDEX_NEWER_ACTION_TEMPLATE": ts_template_at(
+            types, "Tell the user to upgrade OpenClaw or reindex explicitly: ${", guidance
+        ),
+        "MEMORY_INDEX_REBUILD_ACTION_TEMPLATE": ts_template_at(
+            types, "Tell the user to run: ${", guidance
+        ),
+        "MEMORY_INDEX_STALE_WARNING_TEMPLATE": ts_template_at(
+            types,
+            "Memory index is stale: ${diagnostic.reason} (owner: ${",
+            {
+                "diagnostic.reason": "reason",
+                "diagnostic.owner": "owner",
+                "diagnostic.code": "code",
+                "priorFailure": "prior_failure",
+            },
+        ),
+        "MEMORY_INDEX_STALE_NEWER_ACTION_TEMPLATE": ts_template_at(
+            types, "Upgrade OpenClaw or reindex explicitly: ${", guidance
+        ),
+        "MEMORY_INDEX_STALE_REBUILD_ACTION_TEMPLATE": ts_template_at(
+            types,
+            "Run: ${",
+            {**guidance, "formatMemoryIndexRebuildGuidance(status, agentId)": "guidance"},
+        ),
     }
 
 
@@ -1442,6 +1643,23 @@ def outputs(repo: Path) -> dict[Path, str]:
                 "## Memory Recall lines from buildMemoryPromptSection, the read texts from",
                 "readMemoryFile / buildMemoryReadResult and the fs-safe refusals from the built",
                 "@openclaw/fs-safe package that readMemoryFile resolves and reads through.",
+                "The memory_search unavailable texts come from buildMemorySearchUnavailableResult;",
+                "the *_PATTERN values are the sources of its inline regex literals (no flags).",
+            ],
+        ),
+        INDEX_IDENTITY_OUTPUT: render(
+            extract_index_identity(repo),
+            commit,
+            title="Upstream constants of the memory index identity and its search diagnostic",
+            sources=list(INDEX_IDENTITY_SOURCES.values()),
+            note=[
+                "The reasons come from resolveMemoryIndexIdentityState, the *_CODES from the",
+                "codes resolveMemoryIndexIdentityDiagnostic accepts per owner, the rebuild,",
+                "cause, paused and staleness texts from formatMemoryIndexRebuildGuidance and",
+                "resolveMemoryIndexSearchDiagnostic. The *_TEMPLATE texts are str.format",
+                "templates whose fields stand for upstream template expressions; the rebuild",
+                "command's --agent suffix is the *_AGENT_CLAUSE of its ternary. Texts that",
+                "name OpenClaw commands serve the compat runtime identity only.",
             ],
         ),
     }

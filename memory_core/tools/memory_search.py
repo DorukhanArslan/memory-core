@@ -63,8 +63,17 @@ from memory_core.tools.common import (
 )
 from memory_core.tools._memory_tool_constants import (
     MEMORY_SEARCH_CORPORA,
+    MEMORY_SEARCH_MERGE_DEFAULT_MAX_RESULTS,
+    MEMORY_SEARCH_MISSING_SQLITE_PATTERN,
+    MEMORY_SEARCH_PROVIDER_ERROR_ACTION,
+    MEMORY_SEARCH_PROVIDER_ERROR_WARNING,
+    MEMORY_SEARCH_QUOTA_ACTION,
+    MEMORY_SEARCH_QUOTA_ERROR_PATTERN,
+    MEMORY_SEARCH_QUOTA_WARNING,
+    MEMORY_SEARCH_TOOL_COOLDOWN_MS,
     MEMORY_SEARCH_TOOL_DESCRIPTION_TEMPLATE,
     MEMORY_SEARCH_TOOL_NAME,
+    MEMORY_SEARCH_UNAVAILABLE_REASON,
     MEMORY_SOURCE_FILES,
     MEMORY_SOURCE_SEARCH_TEMPLATE,
 )
@@ -82,30 +91,14 @@ MEMORY_SEARCH_TOOL_PARAMETERS: dict[str, Any] = {
     "additionalProperties": False,
 }
 
-# tools.ts:49-50.
+# The pin's tools.ts:49 (the cooldown, tools.ts:73 at v2026.9.6, is extracted).
 MEMORY_SEARCH_TOOL_TIMEOUT_MS = 15_000
-MEMORY_SEARCH_TOOL_COOLDOWN_MS = 60_000
 
 # Used when the caller omits maxResults/minScore. Upstream falls back to the
 # agent's memorySearch.query config (6 / 0.35, src/agents/memory-search.ts);
 # memory-core keeps its facade defaults (documented deviation).
 DEFAULT_MEMORY_SEARCH_MAX_RESULTS = 5
 DEFAULT_MEMORY_SEARCH_MIN_SCORE = 0.0
-# tools.ts: `Math.max(1, maxResults ?? 10)` caps the merged memory+supplement list.
-MEMORY_SEARCH_MERGE_DEFAULT_MAX_RESULTS = 10
-
-# tools.shared.ts buildMemorySearchUnavailableResult (verbatim).
-MEMORY_SEARCH_UNAVAILABLE_REASON = "memory search unavailable"
-MEMORY_SEARCH_QUOTA_WARNING = (
-    "Memory search is unavailable because the embedding provider quota is exhausted."
-)
-MEMORY_SEARCH_QUOTA_ACTION = "Top up or switch embedding provider, then retry memory_search."
-MEMORY_SEARCH_PROVIDER_ERROR_WARNING = (
-    "Memory search is unavailable due to an embedding/provider error."
-)
-MEMORY_SEARCH_PROVIDER_ERROR_ACTION = (
-    "Check embedding provider configuration and retry memory_search."
-)
 # tools.ts:168-188 (the action names the runtime's reindex command, so it
 # comes from RuntimeIdentity).
 PAUSED_MEMORY_INDEX_WARNING = (
@@ -113,8 +106,9 @@ PAUSED_MEMORY_INDEX_WARNING = (
     "different embedding provider/model/settings."
 )
 PAUSED_MEMORY_INDEX_REASON = "memory index identity is missing or mismatched"
-_QUOTA_ERROR_RE = re.compile(r"insufficient_quota|quota|429")
-_MISSING_SQLITE_RE = re.compile(r"missing node:sqlite|no such built-?in module: node:sqlite")
+# tools.shared.ts:104-107, the inline regex literals of buildMemorySearchUnavailableResult.
+_QUOTA_ERROR_RE = re.compile(MEMORY_SEARCH_QUOTA_ERROR_PATTERN)
+_MISSING_SQLITE_RE = re.compile(MEMORY_SEARCH_MISSING_SQLITE_PATTERN)
 
 
 def resolve_memory_source_contract(search_sources: Collection[str]) -> tuple[str, str]:

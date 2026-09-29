@@ -4,6 +4,10 @@ from dataclasses import dataclass
 
 from memory_core._heartbeat_constants import INTERNAL_WAKE_TRANSCRIPT_PROMPTS
 from memory_core.project_name import DISPLAY_NAME, DIST_NAME, PACKAGE_NAME, UPPER_NAME
+from memory_core.tools._memory_tool_constants import (
+    MEMORY_SEARCH_MISSING_SQLITE_ACTION,
+    MEMORY_SEARCH_MISSING_SQLITE_WARNING,
+)
 
 # OpenClaw src/auto-reply/heartbeat.ts INTERNAL_WAKE_TRANSCRIPT_PROMPTS (generated).
 _OPENCLAW_WAKE_PROMPTS = dict(INTERNAL_WAKE_TRANSCRIPT_PROMPTS)
@@ -92,13 +96,8 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
         "agents.defaults.bootstrapTotalMaxChars."
     ),
     promotion_marker_prefix="openclaw-memory-promotion:",
-    memory_search_sqlite_unavailable_warning=(
-        "Memory search is unavailable because this OpenClaw Node runtime does not provide "
-        "SQLite support."
-    ),
-    memory_search_sqlite_unavailable_action=(
-        "Run OpenClaw with a Node runtime that includes node:sqlite, then retry memory_search."
-    ),
+    memory_search_sqlite_unavailable_warning=MEMORY_SEARCH_MISSING_SQLITE_WARNING,
+    memory_search_sqlite_unavailable_action=MEMORY_SEARCH_MISSING_SQLITE_ACTION,
     memory_search_paused_action=(
         "Tell the user to run: openclaw memory status --index or openclaw memory index --force."
     ),

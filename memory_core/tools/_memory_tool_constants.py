@@ -11,6 +11,7 @@ packages/memory-host-sdk/src/host/read-file.ts,
 packages/memory-host-sdk/src/host/read-file-shared.ts,
 packages/memory-host-sdk/src/host/read-retry.ts,
 packages/memory-host-sdk/src/host/fs-utils.ts,
+extensions/memory-core/src/tools.shared.ts,
 node_modules/@openclaw/fs-safe/dist/root-context.js (@openclaw/fs-safe 0.18.1),
 node_modules/@openclaw/fs-safe/dist/root-path.js (@openclaw/fs-safe 0.18.1),
 node_modules/@openclaw/fs-safe/dist/root-path-errors.js (@openclaw/fs-safe 0.18.1),
@@ -27,6 +28,8 @@ The tool descriptions come from memory-tool-contract.ts describe(), the
 ## Memory Recall lines from buildMemoryPromptSection, the read texts from
 readMemoryFile / buildMemoryReadResult and the fs-safe refusals from the built
 @openclaw/fs-safe package that readMemoryFile resolves and reads through.
+The memory_search unavailable texts come from buildMemorySearchUnavailableResult;
+the *_PATTERN values are the sources of its inline regex literals (no flags).
 """
 
 from __future__ import annotations
@@ -131,3 +134,24 @@ MEMORY_FILE_MISSING_CODES: tuple[str, ...] = (
 FS_SAFE_PATH_MISMATCH_CODE = 'path-mismatch'
 FS_SAFE_FILE_CHANGED_TEMPLATE = 'File changed during read: {path}'
 FS_SAFE_IDENTITY_MISMATCH_ERROR = 'file identity changed or could not be verified'
+MEMORY_SEARCH_UNAVAILABLE_REASON = 'memory search unavailable'
+MEMORY_SEARCH_QUOTA_ERROR_PATTERN = 'insufficient_quota|quota|429'
+MEMORY_SEARCH_MISSING_SQLITE_PATTERN = 'missing node:sqlite|no such built-?in module: node:sqlite'
+SESSION_CANONICAL_KEY_MIGRATION_REQUIRED = 'SESSION_CANONICAL_KEY_MIGRATION_REQUIRED'
+SESSION_CANONICAL_KEY_MIGRATION_WARNING = 'Memory search is unavailable because the session catalog requires canonical-key migration.'
+SESSION_CANONICAL_KEY_MIGRATION_ACTION = 'Stop the Gateway and run openclaw doctor --fix, then restart the Gateway and retry memory_search.'
+MEMORY_SEARCH_QUOTA_WARNING = 'Memory search is unavailable because the embedding provider quota is exhausted.'
+MEMORY_SEARCH_QUOTA_ACTION = 'Top up or switch embedding provider, then retry memory_search.'
+MEMORY_SEARCH_MISSING_SQLITE_WARNING = 'Memory search is unavailable because this OpenClaw Node runtime does not provide SQLite support.'
+MEMORY_SEARCH_MISSING_SQLITE_ACTION = 'Run OpenClaw with a Node runtime that includes node:sqlite, then retry memory_search.'
+MEMORY_SEARCH_DEADLINE_WARNING = 'Memory search did not finish within its time limit.'
+MEMORY_SEARCH_DEADLINE_AGENT_ACTION_TEMPLATE = 'Retry memory_search after a short wait: a memory-corpus timeout pauses retries for up to a minute. If memory-corpus timeouts persist, run: openclaw memory status --deep --agent {agent_id}, and rebuild with openclaw memory index --force --agent {agent_id} only if it reports the index dirty or incomplete'
+MEMORY_SEARCH_DEADLINE_ACTION = "Retry memory_search after a short wait. If memory-corpus timeouts persist, inspect this agent's memory index before rebuilding it."
+MEMORY_SEARCH_PROVIDER_ERROR_WARNING = 'Memory search is unavailable due to an embedding/provider error.'
+MEMORY_SEARCH_PROVIDER_ERROR_ACTION = 'Check embedding provider configuration and retry memory_search.'
+MEMORY_SEARCH_TOOL_COOLDOWN_MS = 60000
+MEMORY_SEARCH_MERGE_DEFAULT_MAX_RESULTS = 10
+SESSION_SEARCH_NOT_ENABLED_ERROR = 'Session transcript search is not enabled.'
+SESSION_SEARCH_NOT_ENABLED_WARNING = 'Session transcript search is unavailable for this agent.'
+SESSION_SEARCH_NOT_ENABLED_ACTION = 'If an exact session-history capability is available for this run, use it. Otherwise, ask the operator to enable semantic session search by enabling memory.search.experimental.sessionMemory and adding "sessions" to memory.search.sources.'
+MEMORY_SEARCH_PARTIAL_WARNING = 'Only memory-file keyword matches are included; semantic memory retrieval did not finish within the search time limit. Session transcript results are not included.'

@@ -118,3 +118,29 @@ def test_string_arrays_regex_literals_and_numbers_after_an_anchor(script):
     assert script.ts_number_after(source, "attempts:") == 3
     with pytest.raises(ValueError, match="0 occurrences"):
         script.ts_number_after(source, "maxDelayMs:")
+
+
+def test_inline_regex_tests_and_identity_code_sets(script):
+    source = (
+        "const isQuotaError = /insufficient_quota|quota|429/.test(normalizedReason);\n"
+        "export function resolveMemoryIndexIdentityDiagnostic(\n"
+        "  status: Status,\n"
+        "): Diagnostic | undefined {\n"
+        "  if (\n"
+        '    identity.owner === "openclaw" &&\n'
+        '    (identity.code === "provenance_version" || identity.code === "chunking_version")\n'
+        "  ) {\n"
+        '    return { code: identity.code, owner: "openclaw" };\n'
+        "  }\n"
+        '  if (identity.owner === "configuration" && (identity.code === "model")) {\n'
+        '    return { code: identity.code, owner: "configuration" };\n'
+        "  }\n"
+        "  return undefined;\n"
+        "}\n"
+    )
+
+    assert script.ts_regex_literal_at(source, "isQuotaError") == ("insufficient_quota|quota|429", "")
+    assert script._identity_codes(source, "openclaw") == ("provenance_version", "chunking_version")
+    assert script._identity_codes(source, "configuration") == ("model",)
+    with pytest.raises(ValueError):
+        script._identity_codes(source, "nobody")

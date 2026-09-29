@@ -618,6 +618,30 @@ def test_parity_results_split_python_eq_ts_from_ts_literal(tmp_path):
     assert results["durationS"] == 4.1
 
 
+def test_parity_results_file_every_memory_tool_oracle_test_under_a_tool_area():
+    # Area 5's oracle tests (memoryGet, memorySearch*, memoryToolDefinitions,
+    # memoryPromptSection, memoryCorpusMetadata, memoryIndex*, listMemoryFiles) and the
+    # store's evergreen checks belong to the memory tool areas, never to "Other".
+    from demo.parity_results import area_for
+
+    integration = Path(__file__).resolve().parent.parent / "integration"
+    oracle_names = re.findall(
+        r"^def (test_\w+)", (integration / "test_openclaw_ts_oracle.py").read_text("utf-8"), re.M
+    )
+    area_five = [
+        name for name in oracle_names
+        if re.search(r"memory_(get|search|tool|prompt_section|corpus|index)|list_memory_files", name)
+    ]
+    tool_names = re.findall(
+        r"^def (test_\w+evergreen\w*)", (integration / "test_memory_tools.py").read_text("utf-8"), re.M
+    )
+
+    assert len(area_five) >= 30 and len(tool_names) >= 2
+    assert [name for name in area_five + tool_names if area_for(name)[0] == "other"] == []
+    assert area_for("test_real_openclaw_oracle_memory_prompt_section_matches_python")[0] == "memory_search"
+    assert area_for("test_real_openclaw_oracle_memory_corpus_metadata_matches_python")[0] == "memory_search"
+
+
 def test_evidence_classification_reads_local_imports():
     source = '''
 from demo.openclaw_oracle import OpenClawOracle

@@ -80,7 +80,8 @@ AREA_RULES: tuple[tuple[str, str, re.Pattern[str]], ...] = tuple(
         (
             "memory_search",
             "memory_search and index",
-            r"memory_search|index_identity|list_memory_files|memory_tool|search_",
+            r"memory_search|index_identity|list_memory_files|memory_tool|search_"
+            r"|memory_prompt_section|memory_corpus|evergreen",
         ),
         (
             "consolidation",

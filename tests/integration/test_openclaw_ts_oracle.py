@@ -1385,13 +1385,33 @@ def test_real_openclaw_oracle_memory_get_tool_params_match_python(
     assert result["result"] == _python_memory_get_tool(MemoryConfig(workspace_dir=root), raw_params)
 
 
-def test_real_openclaw_oracle_memory_tool_definitions_match_python():
+@pytest.mark.parametrize(
+    ("config", "search_sources"),
+    [
+        # Upstream's default: memory only (src/agents/memory-search-source-policy.ts).
+        (None, ("memory",)),
+        # Sessions searched, as memory-core always does (decision D1).
+        (
+            {"memory": {"search": {"sources": ["memory", "sessions"],
+                                   "experimental": {"sessionMemory": True}}}},
+            ("memory", "sessions"),
+        ),
+    ],
+    ids=["memory-only", "memory-and-sessions"],
+)
+def test_real_openclaw_oracle_memory_tool_definitions_match_python(config, search_sources):
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    payload = {"operation": "memoryToolDefinitions"}
+    if config is not None:
+        payload["config"] = config
 
-    result = oracle.run({"operation": "memoryToolDefinitions"})
+    result = oracle.run(payload)
 
     assert result["ok"] is True, result
-    assert result["result"] == [memory_search_tool_definition(), memory_get_tool_definition()]
+    assert result["result"] == [
+        memory_search_tool_definition(search_sources=search_sources),
+        memory_get_tool_definition(),
+    ]
 
 
 MEMORY_DISCOVERY_SCENARIOS = {

@@ -18,12 +18,19 @@ purpose; `docs/parity_matrix.md` records the evidence.
 `memory_search_tool_definition()` returns the upstream tool's name, verbatim
 description and JSON schema as `{"name", "description", "parameters"}` (the
 shape `MemoryCurator.tool_definitions()` uses; wrap it in the host's tool
-format). The description tells the model to pass on the `warning` and `action`
-of an unavailable or paused result, so hosts should send it unchanged.
+format). The texts are upstream's `memory-tool-contract.ts` at v2026.9.6,
+script-extracted: the description names the searched files (`MEMORY.md,
+USER.md, Markdown files recursively under memory/`, plus `indexed session
+transcripts` when sessions are searched: `search_sources=`, default memory and
+sessions, as memory-core searches them) and tells the model to surface a
+per-corpus warning and the `warning`/`action` of an unavailable or stale
+result, so hosts should send it unchanged. Both schemas carry `minimum: 1`
+where upstream has it and `additionalProperties: false`.
 `memory_get` has the same pair: `execute_memory_get_tool(config, params)` reads
-`path` (required, JavaScript trim), `from` and `lines` (positive integers) and
-raises `MemoryToolInputError` tagged `memory_get`, and
-`memory_get_tool_definition()` returns its definition.
+`path` (required, JavaScript trim), `from` and `lines` (positive integers;
+blank reads as omitted) and `corpus` (`memory`, `wiki` or `all`) and raises
+`MemoryToolInputError` tagged `memory_get`, and `memory_get_tool_definition()`
+returns its definition, whose description explains `status` ok/not_found/error.
 
 Both tools take the parsed argument mapping. A JSON string, or anything else
 that is not a mapping, reads as `{}` (upstream `asToolParamsRecord`), so the

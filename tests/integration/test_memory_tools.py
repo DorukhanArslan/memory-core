@@ -7,7 +7,6 @@ from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.supplements import StaticMemoryCorpusSupplement
 from memory_core.tools.common import MemoryToolInputError
 from memory_core.tools.memory_get import (
-    MEMORY_GET_TOOL_DESCRIPTION,
     execute_memory_get_tool,
     memory_get,
     memory_get_tool_definition,
@@ -100,33 +99,55 @@ def test_memory_get_reads_blank_numbers_as_omitted_and_checks_the_corpus(tmp_pat
 
 
 def test_memory_tool_definitions_are_upstream_verbatim():
+    # memory-tool-contract.ts at v2026.9.6 (16bec3c7272 #126552, 3fe833dfa40 #126530); the
+    # oracle compares both variants (memoryToolDefinitions).
     search = memory_search_tool_definition()
+    memory_only = memory_search_tool_definition(search_sources=("memory",))
     get = memory_get_tool_definition()
 
     assert search["name"] == "memory_search"
+    assert search["description"].startswith(
+        "Mandatory recall step: semantically search MEMORY.md, USER.md, Markdown files "
+        "recursively under memory/, indexed session transcripts before answering"
+    )
+    assert memory_only["description"].startswith(
+        "Mandatory recall step: semantically search MEMORY.md, USER.md, Markdown files "
+        "recursively under memory/ before answering"
+    )
     assert search["description"].endswith(
-        "If response has disabled=true, memory retrieval is unavailable; you must tell the "
+        "Corpus outcomes cover each requested corpus; a corpus warning means results are partial "
+        "and must be surfaced to the user. If response has disabled=true or stale=true, tell the "
         "user and include the warning/action guidance."
     )
-    assert search["parameters"]["properties"]["corpus"]["enum"] == [
-        "memory",
-        "wiki",
-        "all",
-        "sessions",
-    ]
-    assert get == {
-        "name": "memory_get",
-        "description": MEMORY_GET_TOOL_DESCRIPTION,
-        "parameters": {
-            "type": "object",
-            "required": ["path"],
-            "properties": {
-                "path": {"type": "string"},
-                "from": {"type": "integer"},
-                "lines": {"type": "integer"},
-                "corpus": {"type": "string", "enum": ["memory", "wiki", "all"]},
-            },
+    assert search["parameters"] == {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"},
+            "maxResults": {"type": "integer", "minimum": 1},
+            "minScore": {"type": "number"},
+            "corpus": {"type": "string", "enum": ["memory", "wiki", "all", "sessions"]},
         },
+        "required": ["query"],
+        "additionalProperties": False,
+    }
+    assert get["name"] == "memory_get"
+    assert get["description"].startswith(
+        "Safe exact excerpt read from MEMORY.md, USER.md, Markdown files recursively under "
+        "memory/. Session transcript paths are unsupported;"
+    )
+    assert "status=error means the requested read failed, not that memory is disabled." in (
+        get["description"]
+    )
+    assert get["parameters"] == {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string"},
+            "from": {"type": "integer", "minimum": 1},
+            "lines": {"type": "integer", "minimum": 1},
+            "corpus": {"type": "string", "enum": ["memory", "wiki", "all"]},
+        },
+        "required": ["path"],
+        "additionalProperties": False,
     }
     get["parameters"]["required"].append("x")
     assert memory_get_tool_definition()["parameters"]["required"] == ["path"]

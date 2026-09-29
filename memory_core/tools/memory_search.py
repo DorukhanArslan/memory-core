@@ -39,7 +39,7 @@ import math
 import re
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -47,7 +47,7 @@ from typing import Any
 from memory_core.bootstrap._js import js_trim, locale_sort_key
 from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
-from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.index.sqlite_store import CONFIGURED_SOURCES, SQLiteMemoryStore
 from memory_core.project_name import DIST_NAME
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.supplements import MemoryCorpusResult, MemoryCorpusSupplement, sort_corpus_results
@@ -61,31 +61,25 @@ from memory_core.tools.common import (
     read_positive_integer_param,
     read_string_param,
 )
-from memory_core.tools._memory_tool_constants import MEMORY_SEARCH_CORPORA
-
-MEMORY_SEARCH_TOOL_NAME = "memory_search"
-# tools.ts createMemorySearchTool description (verbatim).
-MEMORY_SEARCH_TOOL_DESCRIPTION = (
-    "Mandatory recall step: semantically search MEMORY.md + memory/*.md (and optional "
-    "session transcripts) before answering questions about prior work, decisions, dates, "
-    "people, preferences, or todos. Optional `corpus=wiki` or `corpus=all` also searches "
-    "registered compiled-wiki supplements. `corpus=memory` restricts hits to indexed memory "
-    "files (excludes session transcript chunks from ranking). `corpus=sessions` restricts "
-    "hits to indexed session transcripts (same visibility rules as session history tools). "
-    "If response has disabled=true, memory retrieval is unavailable; you must tell the user "
-    "and include the warning/action guidance."
+from memory_core.tools._memory_tool_constants import (
+    MEMORY_SEARCH_CORPORA,
+    MEMORY_SEARCH_TOOL_DESCRIPTION_TEMPLATE,
+    MEMORY_SEARCH_TOOL_NAME,
+    MEMORY_SOURCE_FILES,
+    MEMORY_SOURCE_SEARCH_TEMPLATE,
 )
-# tools.shared.ts MemorySearchSchema as JSON Schema (TypeBox output;
-# optionalFiniteNumberSchema is a plain number).
+
+# memory-tool-contract.ts:23-33 MemorySearchSchema (a plain JSON schema since 16bec3c7272).
 MEMORY_SEARCH_TOOL_PARAMETERS: dict[str, Any] = {
     "type": "object",
-    "required": ["query"],
     "properties": {
         "query": {"type": "string"},
         "maxResults": {"type": "integer", "minimum": 1},
         "minScore": {"type": "number"},
-        "corpus": {"type": "string", "enum": ["memory", "wiki", "all", "sessions"]},
+        "corpus": {"type": "string", "enum": list(MEMORY_SEARCH_CORPORA)},
     },
+    "required": ["query"],
+    "additionalProperties": False,
 }
 
 # tools.ts:49-50.
@@ -123,18 +117,37 @@ _QUOTA_ERROR_RE = re.compile(r"insufficient_quota|quota|429")
 _MISSING_SQLITE_RE = re.compile(r"missing node:sqlite|no such built-?in module: node:sqlite")
 
 
-def memory_search_tool_definition() -> dict[str, Any]:
+def resolve_memory_source_contract(search_sources: Collection[str]) -> tuple[str, str]:
+    """``resolveMemorySourceContract`` (memory-tool-contract.ts:47-64): ``(files, search)``.
+
+    ``files`` names the memory files ``memory_get`` reads; ``search`` adds ``indexed session
+    transcripts`` when ``search_sources`` has ``sessions``. Upstream also names ``configured
+    extra paths`` when ``extraPaths`` is set; memory-core has no extra memory roots, so that part
+    is never added.
+    """
+    files = MEMORY_SOURCE_FILES
+    search = (
+        MEMORY_SOURCE_SEARCH_TEMPLATE.format(files=files) if "sessions" in search_sources else files
+    )
+    return files, search
+
+
+def memory_search_tool_definition(
+    *, search_sources: Collection[str] = CONFIGURED_SOURCES
+) -> dict[str, Any]:
     """``{"name", "description", "parameters"}`` of the upstream ``memory_search`` tool.
 
-    Same provider-neutral shape as ``MemoryCurator.tool_definitions()``; wrap it
-    in the host's tool format. The description tells the model to pass on the
-    unavailable/paused ``warning`` and ``action``. The schema's ``corpus`` enum
-    is enforced by the host's argument validation, not by
-    :func:`execute_memory_search_tool`.
+    ``MEMORY_SEARCH_TOOL_CONTRACT`` (memory-tool-contract.ts:88-94, 16bec3c7272 #126552 and
+    3fe833dfa40 #126530): the description names the searched sources and the per-corpus
+    outcome guidance. ``search_sources`` defaults to what memory-core searches (memory files and
+    session transcripts, ``sqlite_store.CONFIGURED_SOURCES``); upstream searches sessions only
+    when configured (decision D1). Same provider-neutral shape as
+    ``MemoryCurator.tool_definitions()`` (no ``label``); wrap it in the host's tool format.
     """
+    _, search = resolve_memory_source_contract(search_sources)
     return {
         "name": MEMORY_SEARCH_TOOL_NAME,
-        "description": MEMORY_SEARCH_TOOL_DESCRIPTION,
+        "description": MEMORY_SEARCH_TOOL_DESCRIPTION_TEMPLATE.format(search=search),
         "parameters": copy.deepcopy(MEMORY_SEARCH_TOOL_PARAMETERS),
     }
 

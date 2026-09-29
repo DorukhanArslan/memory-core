@@ -314,8 +314,10 @@ class HostKit:
     def tools(self) -> list[dict[str, Any]]:
         """Provider-neutral ``{"name", "description", "parameters"}`` specs of the kit's tools.
 
-        ``memory_search`` and ``memory_get`` (pin-era definitions until port plan area 5), then
-        the curation tools the flag and the policy allow.
+        ``memory_search`` and ``memory_get`` (upstream v2026.9.6 ``memory-tool-contract.ts``;
+        the search description names session transcripts because memory-core searches them,
+        decision D1 of docs/upstream_port_v2026_9_6.md), then the curation tools the flag and
+        the policy allow.
         """
         return [
             memory_search_tool_definition(),

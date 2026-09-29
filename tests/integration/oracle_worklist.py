@@ -72,12 +72,6 @@ def _oracle(*names: str) -> tuple[str, ...]:
 
 PENDING_PORTS: tuple[PendingPort, ...] = (
     PendingPort(
-        "memory tool definitions (descriptions name MEMORY.md, USER.md and per-corpus outcomes)",
-        "16bec3c7272 (#126552), 3fe833dfa40 (#126530)",
-        _oracle("memory_tool_definitions_match_python"),
-        plan_area=5,
-    ),
-    PendingPort(
         "memory_search ranking and indexing (hybrid weights fixed at 0.7/0.3, MMR and temporal "
         "decay on by default, filename/path matching, chunk ranges)",
         "783a5d21cfc (#111382), c37b53868d1 (#121224), 28630a9a650 (#114819), "

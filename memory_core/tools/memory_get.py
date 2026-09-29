@@ -49,7 +49,13 @@ from memory_core.tools.common import (
     read_positive_integer_param,
     read_string_param,
 )
-from memory_core.tools._memory_tool_constants import MEMORY_GET_CORPORA, MEMORY_READ_FAILED_CODE
+from memory_core.tools._memory_tool_constants import (
+    MEMORY_GET_CORPORA,
+    MEMORY_GET_TOOL_DESCRIPTION_TEMPLATE,
+    MEMORY_GET_TOOL_NAME,
+    MEMORY_READ_FAILED_CODE,
+    MEMORY_SOURCE_FILES,
+)
 from memory_core.tools.corpus import (
     MemoryCorpusAttempt,
     MemoryCorpusDeadline,
@@ -61,36 +67,32 @@ from memory_core.tools.corpus import (
 )
 from memory_core.workspace import MemoryWorkspace
 
-MEMORY_GET_TOOL_NAME = "memory_get"
-# tools.ts createMemoryGetTool description (verbatim).
-MEMORY_GET_TOOL_DESCRIPTION = (
-    "Safe exact excerpt read from MEMORY.md or memory/*.md. Defaults to a bounded excerpt "
-    "when lines are omitted, includes truncation/continuation info when more content "
-    "exists, and `corpus=wiki` reads from registered compiled-wiki supplements."
-)
-# tools.shared.ts MemoryGetSchema as JSON Schema (TypeBox output).
+# memory-tool-contract.ts:35-45 MemoryGetSchema (a plain JSON schema since 16bec3c7272).
 MEMORY_GET_TOOL_PARAMETERS: dict[str, Any] = {
     "type": "object",
-    "required": ["path"],
     "properties": {
         "path": {"type": "string"},
-        "from": {"type": "integer"},
-        "lines": {"type": "integer"},
-        "corpus": {"type": "string", "enum": ["memory", "wiki", "all"]},
+        "from": {"type": "integer", "minimum": 1},
+        "lines": {"type": "integer", "minimum": 1},
+        "corpus": {"type": "string", "enum": list(MEMORY_GET_CORPORA)},
     },
+    "required": ["path"],
+    "additionalProperties": False,
 }
 
 
 def memory_get_tool_definition() -> dict[str, Any]:
     """``{"name", "description", "parameters"}`` of the upstream ``memory_get`` tool.
 
-    Same provider-neutral shape as ``MemoryCurator.tool_definitions()``; wrap it
-    in the host's tool format. The schema's ``corpus`` enum is enforced by the
-    host's argument validation, not by :func:`execute_memory_get_tool`.
+    ``MEMORY_GET_TOOL_CONTRACT`` (memory-tool-contract.ts:96-102): the description names the
+    readable memory files (``resolveMemorySourceContract``'s ``files``; memory-core has no
+    ``configured extra paths``) and the read and corpus outcome guidance. Same provider-neutral
+    shape as ``MemoryCurator.tool_definitions()`` (no ``label``); wrap it in the host's tool
+    format.
     """
     return {
         "name": MEMORY_GET_TOOL_NAME,
-        "description": MEMORY_GET_TOOL_DESCRIPTION,
+        "description": MEMORY_GET_TOOL_DESCRIPTION_TEMPLATE.format(files=MEMORY_SOURCE_FILES),
         "parameters": copy.deepcopy(MEMORY_GET_TOOL_PARAMETERS),
     }
 

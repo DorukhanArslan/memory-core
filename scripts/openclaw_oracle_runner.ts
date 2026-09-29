@@ -1235,14 +1235,19 @@ async function main() {
   if (payload.operation === "memoryToolDefinitions") {
     // The model-facing name, description and parameter schema of the real
     // memory_search and memory_get tools (tools.ts createMemorySearchTool /
-    // createMemoryGetTool, tools.shared.ts MemorySearchSchema / MemoryGetSchema),
-    // as JSON (TypeBox symbol keys dropped).
+    // createMemoryGetTool through tools.shared.ts createMemoryTool; the contract is
+    // memory-tool-contract.ts since 16bec3c7272), as JSON. `config` is merged into
+    // the tool config (memory.search.sources, memory.search.experimental.sessionMemory
+    // decide whether the search description names session transcripts).
     const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-memory-tools-"));
     process.env.HOME = path.join(sandbox, "home");
     process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
     try {
       const tools = await importFromRepo(repoPath, "extensions/memory-core/src/tools.ts");
-      const cfg = { agents: { defaults: { workspace: path.join(sandbox, "workspace") } } };
+      const cfg = {
+        ...(payload.config ?? {}),
+        agents: { defaults: { workspace: path.join(sandbox, "workspace") } },
+      };
       const describe = (tool: { name: string; description: string; parameters: unknown } | null) => {
         if (!tool) {
           throw new Error("memory tool missing");

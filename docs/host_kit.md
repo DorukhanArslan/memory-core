@@ -421,13 +421,15 @@ class ToolCallRepair:
   `sanitize_tool_use_result_pairing_for_model` (upstream's order, `replay-history.ts:793,819`)
   and maps back (`memory_core/host/tool_calls.py`): unchanged rows are the host's own objects, a
   changed assistant row keeps only its kept calls (trimmed names; no `tool_calls` key when none is
-  left), a tool row paired by its frame's only call gets that call's `tool_call_id`, dropped rows
-  are left out, and a missing result is `{"role": "tool", "tool_call_id", "content"}` with
+  left), a tool row without an id (none, or blank once trimmed) paired by its frame's only call
+  gets that call's `tool_call_id` and, when it has a `status`, `"error"` (upstream's `isError`),
+  dropped rows are left out, and a missing result is `{"role": "tool", "tool_call_id", "content"}` with
   upstream's `DEFAULT_MISSING_TOOL_RESULT_TEXT` for every identity (K3). `allowed_tool_names`
   keeps unanswered calls to those tools only (upstream passes the run's tool names). The host
   keeps its stored transcript as it is; the kit reads no file. Labelled gaps: host rows carry no
   stop reason, tool-call blocks in a content list and a legacy `function_call` are neither read nor
-  rewritten, and the Responses-API steps are not offered (LangGraph findings › Parity labels).
+  rewritten, the Responses-API steps are not offered, and a row without a `status` cannot carry
+  upstream's `isError` (LangGraph findings › Parity labels).
 - `has_bootstrap_file_access` defaults to `False` because no kit tool can read BOOTSTRAP.md
   (`memory_get` reads only MEMORY.md, dreams.md and `memory/**`); upstream's
   `hasBootstrapFileAccess` is "the run's tools include `read`" (`attempt-bootstrap-prepare.ts`).
@@ -1524,8 +1526,11 @@ class ToolCallRepair:
      "name": ...}`, or `function.name` in the OpenAI shape), in their order; when no call is
      kept the copy has no `tool_calls` key (an empty array is rejected by OpenAI); an assistant
      row it dropped, and every dropped orphan or duplicate tool row, is left out; moved tool rows
-     keep their objects; a tool row without `tool_call_id` that the legacy-id normalization
-     (`normalizeLegacyToolResultId`) paired comes back as `{**row, "tool_call_id": <id>}`; a
+     keep their objects; a tool row without an id (no `tool_call_id` string, or a blank one,
+     which `extractToolResultIds` trims to nothing) that the legacy-id normalization
+     (`normalizeLegacyToolResultId`) paired comes back as `{**row, "tool_call_id": <id>}`, with
+     `"status": "error"` when the row has a `status` (upstream returns it with `isError: true`;
+     the review fix after `0ba1cfc`); a
      synthetic result is a new row `{"role": "tool", "tool_call_id", "content": <text>}`, the plain
      chat-completions shape (a strict validator rejects extra keys such as `status`).
 - Nothing to repair: `messages` are the input rows themselves in order, `sources` `0..n-1`.
@@ -1627,6 +1632,9 @@ class ToolCallRepair:
     (langchain-openai 1.6.6 sends `additional_kwargs["tool_calls"]` when both lists are empty,
     `langchain_openai/chat_models/base.py:490-498`); `model_copy(update=...)` for a message
     object, a dict copy for its dict forms, and the kit's row for a role dict;
+  - a tool message without an id (none, or blank) that the kit paired with its frame's only call
+    is a copy with that call's `tool_call_id` and `status: "error"` (the review fix after
+    `0ba1cfc`);
   - a synthetic result is a tool dict with the owning call's `name` and `status: "error"` added
     (the shape `tool_messages` emits; langchain-core 1.6.5 converts it to
     `ToolMessage(status="error")`).
@@ -1679,7 +1687,9 @@ repair are not ported; upstream's Responses-API steps (the `aborted` text,
 offered; a host that stores its transcript does not get upstream's persisted synthetic results for
 Google, Anthropic or Responses-API models (K6); and a stored synthetic row of the kit's plain
 shape (no `status`) reads as a real result on a later repair, since upstream's recognition needs
-`isError`, while the adapter's row (`status: "error"`) is recognised by upstream's text.
+`isError`, while the adapter's row (`status: "error"`) is recognised by upstream's text; likewise
+a paired id-less row without a `status` goes back without upstream's `isError: true` (a row with
+one, and every LangChain `ToolMessage`, gets `status: "error"`).
 
 ## TDD plan
 

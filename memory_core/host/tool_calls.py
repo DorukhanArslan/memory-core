@@ -8,8 +8,10 @@ host's chat-completions rows to upstream's message shape, runs the two core port
 (``memory_core.replay_repair``) in that order and maps the result back, returning the host's own
 row objects wherever nothing changed. The row mapping is adapter-only kit code; the two repairs
 are the ports. Labelled gaps: host rows carry no stop reason (no turn counts as failed), tool-call
-blocks inside a content list and a legacy ``function_call`` are neither read nor rewritten, and
-the Responses-API steps (the ``aborted`` text and the id rewrites after it) are not offered.
+blocks inside a content list and a legacy ``function_call`` are neither read nor rewritten, the
+Responses-API steps (the ``aborted`` text and the id rewrites after it) are not offered, and a row
+without a ``status`` field cannot carry upstream's ``isError`` (a synthetic result, or a paired
+id-less row that had none, goes back in the plain chat-completions shape).
 """
 
 from __future__ import annotations
@@ -54,8 +56,9 @@ def repair_tool_calls(
     ``status``), any other row passes through. ``allowed_tool_names`` restricts which unanswered
     calls survive (upstream passes the run's tool names). Returns the repaired rows: a changed
     assistant row is a shallow copy with its kept calls (trimmed names; no ``tool_calls`` key
-    when none is kept), a tool row paired by its frame's only call gets that call's
-    ``tool_call_id``, dropped rows are left out, and a synthetic result is ``{"role": "tool",
+    when none is kept), a tool row without an id (none, or blank once trimmed) paired by its
+    frame's only call gets that call's ``tool_call_id`` and, when it has a ``status``,
+    ``"error"``, dropped rows are left out, and a synthetic result is ``{"role": "tool",
     "tool_call_id", "content"}`` with upstream's text. ``TypeError`` for a row or a call that is
     not a mapping.
     """
@@ -144,12 +147,17 @@ def _to_host(row: Mapping[str, Any], mapped: dict[str, Any], message: dict[str, 
         if kept:
             copy["tool_calls"] = kept
         return copy
-    # A tool result: the legacy-id normalization paired an id-less row with its frame's only
-    # call (normalizeLegacyToolResultId); a tool-name normalization alone changes nothing here.
+    # A tool result: the legacy-id normalization paired a row without an id (none, not a string,
+    # or blank once trimmed) with its frame's only call and made it an error result
+    # (normalizeLegacyToolResultId, tool-result-pairing.ts:214-231); it is the only step that
+    # changes a result's id. A tool-name normalization alone changes nothing here.
     call_id = message.get("toolCallId")
-    if isinstance(call_id, str) and not isinstance(row.get("tool_call_id"), str):
-        return {**row, "tool_call_id": call_id}
-    return row
+    if not isinstance(call_id, str) or call_id == row.get("tool_call_id"):
+        return row
+    paired = {**row, "tool_call_id": call_id}
+    if "status" in row:  # isError: true; a row without the kit's status field keeps its shape
+        paired["status"] = "error"
+    return paired
 
 
 def _is_host_call(block: object) -> bool:

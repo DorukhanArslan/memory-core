@@ -249,6 +249,38 @@ def test_repair_gives_a_paired_legacy_tool_row_its_call_id(tmp_path):
     assert repair.sources == (0, 1, 2, 3, 4)
 
 
+@pytest.mark.parametrize("blank", ["", "  "])
+def test_repair_gives_a_blank_id_tool_row_its_call_id(tmp_path, blank):
+    # extractToolResultIds trims a blank id to nothing, so the row is id-less upstream and
+    # normalizeLegacyToolResultId pairs it with its frame's only call: the model must get that
+    # call's id, never the blank one.
+    row = _answer(blank)
+    rows = [USER, _ask(_call("call-1")), row]
+
+    repair = _kit(tmp_path).repair_tool_calls(rows)
+
+    assert repair.messages[2] == {**row, "tool_call_id": "call-1"}
+    assert row["tool_call_id"] == blank
+    assert repair.sources == (0, 1, 2)
+
+
+def test_repair_marks_a_paired_legacy_tool_row_with_a_status_as_an_error(tmp_path):
+    # normalizeLegacyToolResultId returns the paired result with isError: true, which a row
+    # carrying the kit's status field reads as status "error"; a row without one keeps its
+    # plain shape (a strict validator rejects extra keys).
+    success = _answer(None, status="success")
+    del success["tool_call_id"]
+    rows = [USER, _ask(_call("call-1")), success]
+
+    repair = _kit(tmp_path).repair_tool_calls(rows)
+
+    assert repair.messages[2] == {**success, "tool_call_id": "call-1", "status": "error"}
+    assert success["status"] == "success"
+    blank = _answer("", status="success")
+    (_, _, paired) = _kit(tmp_path).repair_tool_calls([USER, _ask(_call("call-1")), blank]).messages
+    assert paired == {**blank, "tool_call_id": "call-1", "status": "error"}
+
+
 def test_repair_leaves_content_tool_call_blocks_unread(tmp_path):
     # An Anthropic-style message carries each call as a content block and in tool_calls; only
     # tool_calls is read, so the call counts once and the blocks come back as they were.

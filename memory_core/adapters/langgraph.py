@@ -119,8 +119,10 @@ def repair_tool_calls(messages: Iterable[Any], repair: ToolCallRepairer) -> list
     (``tool_calls`` and ``invalid_tool_calls`` rebuilt, trimmed names applied, and
     ``additional_kwargs["tool_calls"]`` filtered by the kept ids, which langchain-openai sends
     when both lists are empty; ``function_call`` and ``tool_call_chunks`` go when no call is
-    kept), and a synthetic result a tool dict with the owning call's ``name`` and ``status:
-    "error"``, the shape ``tool_messages`` emits. A role dict comes back as the kit's row. The
+    kept), a tool message without an id (none, or blank) that the kit paired with its frame's
+    only call a copy with that call's ``tool_call_id`` and ``status: "error"``, and a synthetic
+    result a tool dict with the owning call's ``name`` and ``status: "error"``, the shape
+    ``tool_messages`` emits. A role dict comes back as the kit's row. The
     host keeps its stored messages as they are (docs/host_kit.md, F26).
     """
     originals = list(messages)
@@ -169,8 +171,11 @@ def _repair_row(message: Any) -> dict[str, Any]:
 def _repaired(message: Any, row: Mapping[str, Any]) -> Any:
     if isinstance(message, Mapping) and "role" in message:
         return row
-    if row.get("role") == "tool":  # the kit paired an id-less result with its call
-        return _updated(message, {"tool_call_id": row["tool_call_id"]})
+    if row.get("role") == "tool":  # the kit paired an id-less result with its call, as an error
+        update = {"tool_call_id": row["tool_call_id"]}
+        if "status" in row:
+            update["status"] = row["status"]
+        return _updated(message, update)
     fields = _fields(message)
     calls = _all_calls(fields)
     valid_count = len(_field(fields, "tool_calls") or ())

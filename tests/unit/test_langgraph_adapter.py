@@ -301,6 +301,28 @@ def test_repair_tool_calls_inserts_a_synthetic_tool_message(tmp_path: Path):
     )
 
 
+@pytest.mark.parametrize("blank", ["", "  "])
+def test_repair_tool_calls_pairs_a_blank_id_tool_message_as_an_error(tmp_path: Path, blank):
+    # normalizeLegacyToolResultId: an id-less result of the frame's only call is that call's
+    # error result (isError: true), so the copy gets the call's id and status "error".
+    kit = _kit(tmp_path)
+    ai = AIMessage("", tool_calls=[{"name": "memory_search", "args": {"query": "x"}, "id": "call-1"}])
+    blank_id = ToolMessage("{}", tool_call_id=blank, name="memory_search", id="t1")
+    history = [HumanMessage("Search please."), ai, blank_id]
+
+    repaired = repair_tool_calls(history, kit.repair_tool_calls)
+
+    assert len(repaired) == 3 and repaired[1] is ai
+    copy = repaired[2]
+    assert isinstance(copy, ToolMessage) and copy is not blank_id
+    assert (copy.tool_call_id, copy.status, copy.id, copy.content) == ("call-1", "error", "t1", "{}")
+    assert (blank_id.tool_call_id, blank_id.status) == (blank, "success")
+    # A role dict without a status keeps its plain shape.
+    role_dict = {"role": "tool", "tool_call_id": blank, "content": "{}"}
+    (_, _, paired) = repair_tool_calls([history[0], ai, role_dict], kit.repair_tool_calls)
+    assert paired == {**role_dict, "tool_call_id": "call-1"}
+
+
 def test_repair_tool_calls_copies_an_ai_message_without_its_dropped_calls(tmp_path: Path):
     base = pytest.importorskip("langchain_openai.chat_models.base")
     kit = _kit(tmp_path)

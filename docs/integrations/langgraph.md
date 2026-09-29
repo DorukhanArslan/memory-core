@@ -594,9 +594,10 @@ def repair_tool_calls(
 
     repair is kit.repair_tool_calls (or a function passing it allowed_tool_names). An unchanged
     message comes back as the original object, a changed AI message as a copy with only its kept
-    calls (tool_calls, invalid_tool_calls and additional_kwargs["tool_calls"] filtered), and a
-    missing result as a synthetic tool dict with the call's name and status "error". The host
-    keeps its stored messages as they are."""
+    calls (tool_calls, invalid_tool_calls and additional_kwargs["tool_calls"] filtered), a tool
+    message without an id that the kit paired with its frame's only call as a copy with that
+    call's id and status "error", and a missing result as a synthetic tool dict with the call's
+    name and status "error". The host keeps its stored messages as they are."""
 ```
 
 - Prompt assembly stays host code: the example's `model_input(turn, messages, repair)` sends

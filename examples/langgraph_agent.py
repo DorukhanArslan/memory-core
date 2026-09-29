@@ -13,7 +13,8 @@ the kit lacked.
 
 ``main`` is a terminal chat against any OpenAI-compatible endpoint (``pip install
 "memory-core[langgraph]" langchain-openai``): set ``OPENAI_API_KEY`` and ``OPENAI_MODEL``, and
-``OPENAI_BASE_URL`` for an endpoint other than OpenAI's. The workspace is ``my-agent-app/`` in
+``OPENAI_BASE_URL`` for an endpoint other than OpenAI's; ``--max-tokens`` caps each reply
+(``DEFAULT_MAX_TOKENS``). The workspace is ``my-agent-app/`` in
 the working directory, searched FTS-only (no embedder); the checkpointer is in memory, so a
 restart starts a new thread state.
 """
@@ -68,6 +69,9 @@ MAX_TOOL_ROUNDS = 6
 # The flush turn's tool rounds (host policy, like the Lab's tool loop); a flush turn that
 # reaches the bound completes with what it appended.
 MAX_FLUSH_TOOL_ROUNDS = 6
+# main's reply cap per model call (host policy): without one an OpenAI-compatible endpoint may
+# reserve the model's whole output (65,536 tokens for some models), which a small balance refuses.
+DEFAULT_MAX_TOKENS = 4096
 
 
 class AgentState(TypedDict):
@@ -393,6 +397,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument(
         "--context-window", type=int, help="the model's context window, when its profile has none"
     )
+    parser.add_argument(
+        "--max-tokens", type=int, default=DEFAULT_MAX_TOKENS, help="the reply cap per model call"
+    )
     args = parser.parse_args(argv)
     missing = [name for name in ("OPENAI_API_KEY", "OPENAI_MODEL") if not os.environ.get(name)]
     if missing:
@@ -406,6 +413,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         model=os.environ["OPENAI_MODEL"],
         base_url=os.environ.get("OPENAI_BASE_URL") or None,
         stream_usage=True,
+        max_tokens=args.max_tokens,
     )
     window, source = context_window(model, args.context_window)
     root = Path(args.workspace)

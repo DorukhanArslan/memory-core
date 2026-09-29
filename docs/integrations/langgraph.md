@@ -44,7 +44,10 @@ stay.
 `--context-window` is required when LangChain's model profile has no window for the model name
 (OpenRouter-style names such as `openai/gpt-4o-mini` have none): the kit's 200,000-token
 default would put a 128,000-token model's flush threshold at 176,000, above its window, and the
-flush would never run (F12).
+flush would never run (F12). `--max-tokens` caps each model call's reply (default 4,096,
+`DEFAULT_MAX_TOKENS`): without a cap an OpenAI-compatible endpoint may reserve the model's whole
+output (65,536 tokens for some models) per call, which a small credit balance refuses (a 402 on
+OpenRouter, 2026-09-29).
 
 ### Use the graph in an app
 

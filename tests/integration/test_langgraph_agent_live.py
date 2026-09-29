@@ -61,6 +61,7 @@ def test_live_langgraph_agent_flushes_and_recalls_across_new(tmp_path: Path):
         model=os.environ["OPENAI_MODEL"],
         base_url=os.environ.get("OPENAI_BASE_URL") or None,
         stream_usage=True,
+        max_tokens=example.DEFAULT_MAX_TOKENS,
     )
     graph = example.build_graph(
         kit, model, context_window_tokens=_window_with_a_one_token_threshold(root)

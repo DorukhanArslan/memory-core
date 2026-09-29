@@ -1117,6 +1117,23 @@ def test_example_main_chats_against_an_openai_compatible_endpoint(
     assert (tmp_path / "my-agent-app" / "MEMORY.md").exists() is False
 
 
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [([], "default"), (["--max-tokens", "512"], 512)],
+)
+def test_example_main_caps_the_reply_tokens(
+    tmp_path: Path, stub_endpoint, monkeypatch, capsys, argv, expected
+):
+    # Without a cap an OpenAI-compatible endpoint may reserve the model's whole output
+    # (65,536 tokens for some models) per call, which a small credit balance refuses.
+    _chat_input(monkeypatch, tmp_path, stub_endpoint, ["Hello.", ""])
+
+    example.main(["--context-window", "2000", *argv])
+
+    cap = example.DEFAULT_MAX_TOKENS if expected == "default" else expected
+    assert [request["max_completion_tokens"] for request in stub_endpoint.requests] == [cap, cap]
+
+
 @pytest.mark.parametrize("end", [EOFError, KeyboardInterrupt])
 def test_example_main_exits_cleanly_at_the_end_of_input(
     tmp_path: Path, stub_endpoint, monkeypatch, capsys, end

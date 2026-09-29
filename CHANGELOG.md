@@ -29,8 +29,11 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   upstream's synthetic error result on the model's copy of the history.
 - `memory_core.replay_repair.sanitize_tool_call_inputs`, the port of upstream's
   `sanitizeToolCallInputs` (its general branch), with
-  `sanitize_tool_use_result_pairing_for_model`, `is_synthetic_missing_tool_result` and
-  `ToolUseRepairReport.discarded`.
+  `sanitize_tool_use_result_pairing_for_model`, `is_synthetic_missing_tool_result`,
+  `ToolUseRepairReport.discarded` and the constant `TOOL_CALL_BLOCK_TYPES` (upstream's six
+  tool-call block types, `src/shared/tool-block-contract.ts`); the module now has an `__all__`
+  (`AgentMessage`, `DEFAULT_MISSING_TOOL_RESULT_TEXT` and `SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY`
+  included), so a star import no longer brings its incidental imports.
 - `memory_core.memory_flush.ensure_memory_flush_target_file`, the port of upstream's
   `ensureMemoryFlushTargetFile`; `memory_core.workspace.append_daily_memory_file`, the locked daily
   append the flush write and the curated daily note share; `memory_core.heartbeat.resolve_message_text`
@@ -48,7 +51,8 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 - The LangGraph host integration (docs/integrations/langgraph.md):
   `memory_core.adapters.langgraph` holds `transcript_rows`, `turn_usage`, `has_tool_calls`,
   `tool_messages` and `repair_tool_calls`, framework-free helpers for a LangGraph graph over
-  the host kit (adapter-only), and
+  the host kit (adapter-only), with the type aliases `ToolDispatch` and `ToolCallRepairer` of
+  their callable arguments, and
   `examples/langgraph_agent.py` is the graph a LangGraph app copies (`build_graph`: the kit's
   prompt and tools, the turn in flight as a `TurnState` in the graph state, a tools node over
   `HostKit.dispatcher`, the kit's tool-call repair on every model call, the flush after the
@@ -87,7 +91,11 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   across frames by the one unresolved call that owns it, a second result within a frame counts
   as a duplicate (`dropped_duplicate_count` is 1 where it was 0), synthetic results carry
   `details.reason` `"missing_tool_result"`, and it takes `preserve_unframed_tool_results` and
-  reports `discarded`.
+  reports `discarded`. Also as upstream: a message that is not a mapping is dropped (the earlier
+  port kept it); tool-result ids and tool names are trimmed with JavaScript's whitespace set
+  instead of `str.strip`; a synthetic result keeps an empty-string tool name or
+  `missing_tool_result_text` (the earlier port replaced it with `"unknown"` or the default
+  text). `sanitize_tool_use_result_pairing` takes `preserve_unframed_tool_results` too.
 - The daily flush write and `MemoryCurator.append_daily_note` skip only content whose stripped
   text is exactly `NO_REPLY` (and empty content): `NO_REPLY_FACTS: ...` and any other text that
   only starts with the token is written now. Upstream's `write` appends even the exact token.

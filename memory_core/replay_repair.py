@@ -13,7 +13,7 @@ later real result replaces a synthetic one, orphans and duplicates are dropped, 
 a non-failed turn without a result gets a synthetic error result. Messages are upstream's
 ``AgentMessage`` dicts (``role`` ``assistant`` with ``toolCall`` content blocks, ``toolResult``
 with ``toolCallId``); nothing here reads a host's chat-completions rows (the host kit maps them,
-memory_core/host/_tool_calls.py).
+memory_core/host/tool_calls.py).
 """
 
 from __future__ import annotations
@@ -59,6 +59,7 @@ _TOOL_CALL_NAME = re.compile(TOOL_CALL_NAME_RE)
 _JSON_OBJECT_START = re.compile(r"[\t\n\r ]*\{")
 
 __all__ = [
+    "AgentMessage",
     "DEFAULT_MISSING_TOOL_RESULT_TEXT",
     "SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY",
     "TOOL_CALL_BLOCK_TYPES",

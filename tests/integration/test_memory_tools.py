@@ -62,6 +62,43 @@ def test_memory_get_tool_reads_params_like_create_memory_get_tool(tmp_path: Path
     assert memory_get(config, path="   ")["error"] == "path required"
 
 
+def test_memory_get_reads_blank_numbers_as_omitted_and_checks_the_corpus(tmp_path: Path):
+    # tools.ts:590-594 at v2026.9.6: path, from, lines, then readCorpusParam; blank from/lines
+    # read as omitted (common.ts isBlankParamValue).
+    (tmp_path / "memory").mkdir()
+    (tmp_path / "memory" / "a.md").write_text("one\ntwo\nthree", encoding="utf-8")
+    config = MemoryConfig(workspace_dir=tmp_path)
+
+    def tool(raw):
+        try:
+            return execute_memory_get_tool(config, raw)
+        except MemoryToolInputError as error:
+            return error.to_tool_error()
+
+    blank = tool({"path": "memory/a.md", "from": "", "lines": "  ", "corpus": " "})
+    corpus_error = {
+        "status": "error",
+        "tool": "memory_get",
+        "error": "corpus must be one of: memory, wiki, all",
+    }
+
+    assert blank == tool({"path": "memory/a.md"})
+    assert blank["text"] == "one\ntwo\nthree"
+    assert tool({"path": "memory/a.md", "corpus": "sessions"}) == corpus_error
+    assert tool({"path": "memory/a.md", "lines": 0, "corpus": "bogus"})["error"] == (
+        "lines must be a positive integer"
+    )
+    assert tool({"path": " ", "corpus": "bogus"})["error"] == "path required"
+    # The Python-call form checks the corpus through the same reader.
+    assert memory_get(config, path="memory/a.md", corpus=" ")["text"] == "one\ntwo\nthree"
+    try:
+        memory_get(config, path="memory/a.md", corpus="MEMORY")
+    except MemoryToolInputError as error:
+        assert error.to_tool_error() == corpus_error
+    else:
+        raise AssertionError("an unknown corpus must raise")
+
+
 def test_memory_tool_definitions_are_upstream_verbatim():
     search = memory_search_tool_definition()
     get = memory_get_tool_definition()
@@ -169,13 +206,20 @@ def test_memory_get_returns_upstream_error_for_session_search_hits(tmp_path: Pat
         "sessions/main/session-nebula.jsonl",
     ]
     for path in paths:
-        for corpus in ("memory", "sessions", "all"):
+        for corpus in ("memory", "all"):
             assert memory_get(cfg, path=path, corpus=corpus) == {
                 "path": path,
                 "text": "",
                 "disabled": True,
                 "error": "path required",
             }
+        # memory_get has no sessions corpus (tools.ts:594 readCorpusParam).
+        try:
+            memory_get(cfg, path=path, corpus="sessions")
+        except MemoryToolInputError as error:
+            assert str(error) == "corpus must be one of: memory, wiki, all"
+        else:
+            raise AssertionError("corpus=sessions must raise")
 
 
 def test_memory_get_all_corpus_falls_back_to_supplement_after_read_failure(tmp_path: Path):

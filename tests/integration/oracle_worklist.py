@@ -135,14 +135,10 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
         plan_area=6,
     ),
     PendingPort(
-        "memory_search params, errors and deadline (empty maxResults rejected, corpus validated, "
-        "30 s deadline with partial-timeout guidance, per-corpus outcomes)",
+        "memory_search params, errors and deadline (30 s deadline with partial-timeout guidance, "
+        "per-corpus outcomes; the blank-param and corpus-enum cases passed in area 5 A2)",
         "d46f9ebf2b2 (#147702), 3fe833dfa40 (#126530)",
-        _oracle(
-            "memory_search_param_errors_match_python[max-results-empty-string]",
-            "memory_search_param_coercion_matches_python[unknown-corpus-searches-all-sources]",
-            "memory_search_deadline_and_cooldown_match_python",
-        ),
+        _oracle("memory_search_deadline_and_cooldown_match_python"),
         plan_area=5,
     ),
     PendingPort(

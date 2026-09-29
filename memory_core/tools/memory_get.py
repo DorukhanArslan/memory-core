@@ -33,9 +33,11 @@ from memory_core.tools.common import (
     MemoryToolInputError,
     as_tool_params_record,
     format_error_message,
+    read_corpus_param,
     read_positive_integer_param,
     read_string_param,
 )
+from memory_core.tools._memory_tool_constants import MEMORY_GET_CORPORA
 from memory_core.workspace import MemoryWorkspace
 
 MEMORY_GET_TOOL_NAME = "memory_get"
@@ -83,13 +85,17 @@ class MemoryGetParams:
 
 
 def read_memory_get_params(params: object) -> MemoryGetParams:
-    """Read tool-call params exactly like ``createMemoryGetTool`` (tools.ts:720-725)."""
+    """Read tool-call params exactly like ``createMemoryGetTool`` (tools.ts:590-594).
+
+    Order: path, from, lines, corpus; blank ``from``/``lines`` read as omitted and the
+    corpus must be one of ``memory, wiki, all``.
+    """
     raw = as_tool_params_record(params)
     try:
         path = read_string_param(raw, "path", required=True)
         from_line = read_positive_integer_param(raw, "from")
         lines = read_positive_integer_param(raw, "lines")
-        corpus = read_string_param(raw, "corpus")
+        corpus = read_corpus_param(raw, MEMORY_GET_CORPORA)
     except MemoryToolInputError as error:
         error.tool = MEMORY_GET_TOOL_NAME
         raise
@@ -153,6 +159,13 @@ def memory_get(
     corpus: str = "memory",
     supplements: list[MemoryCorpusSupplement] | None = None,
 ) -> dict:
+    # The Python-call form validates the corpus like the tool (readCorpusParam): blank reads as
+    # omitted (a memory read), anything outside memory/wiki/all raises MemoryToolInputError.
+    try:
+        corpus = read_corpus_param({"corpus": corpus}, MEMORY_GET_CORPORA) or "memory"
+    except MemoryToolInputError as error:
+        error.tool = MEMORY_GET_TOOL_NAME
+        raise
     workspace = MemoryWorkspace(config.workspace_dir)
     if corpus == "wiki":
         return _memory_get_supplement(

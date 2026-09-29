@@ -4,7 +4,8 @@ Port of OpenClaw's built-in tool helpers:
 
 - ``src/agents/tools/common.ts``: ``ToolInputError`` (status 400),
   ``asToolParamsRecord``, ``readStringParam``, ``readNumberParam`` (strict
-  mode), ``readPositiveIntegerParam`` and ``readFiniteNumberParam``.
+  mode), ``readPositiveIntegerParam`` and ``readFiniteNumberParam`` (blank strings read as
+  omitted), plus ``readCorpusParam`` from extensions/memory-core/src/tools.ts.
 - ``src/param-key.ts``: a camelCase key also resolves its snake_case alias
   (``maxResults`` -> ``max_results``) when the camelCase key is absent.
 - ``packages/normalization-core/src/number-coercion.ts``:
@@ -27,6 +28,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from memory_core.bootstrap._js import js_trim
+from memory_core.tools._memory_tool_constants import MEMORY_CORPUS_PARAM_ERROR_TEMPLATE
 
 # Number.MAX_SAFE_INTEGER.
 MAX_SAFE_INTEGER = 2**53 - 1
@@ -140,6 +142,12 @@ def _is_nullish(raw: Any) -> bool:
     return raw is _MISSING or raw is None
 
 
+def _is_blank_param_value(raw: Any) -> bool:
+    # common.ts isBlankParamValue (b22c36f1125 #100399, aaf5ab910cb #100483): models emit blank
+    # defaults for optional numeric fields, so a blank string reads as omitted.
+    return isinstance(raw, str) and js_trim(raw) == ""
+
+
 def _as_js_number(raw: Any) -> float | int | None:
     """The finite JavaScript number a Python value stands for, else None."""
     if isinstance(raw, bool) or not isinstance(raw, int | float):
@@ -216,11 +224,15 @@ def read_positive_integer_param(
     message: str | None = None,
     max_value: int | None = None,
 ) -> int | None:
-    """``readPositiveIntegerParam``: present but not a positive safe integer raises."""
+    """``readPositiveIntegerParam``: present but not a positive safe integer raises.
+
+    Missing, ``None`` and blank strings read as omitted (``isBlankParamValue``).
+    """
     number = _read_strict_number(params, key)
     value = _as_positive_safe_integer(number) if number is not None else None
     error_message = message or f"{key} must be a positive integer"
-    if value is None and not _is_nullish(_read_param_raw(params, key)):
+    raw = _read_param_raw(params, key)
+    if value is None and not _is_nullish(raw) and not _is_blank_param_value(raw):
         raise MemoryToolInputError(error_message)
     if value is not None and max_value is not None and value > max_value:
         raise MemoryToolInputError(error_message)
@@ -237,11 +249,15 @@ def read_finite_number_param(
     min_exclusive: bool = False,
     max_exclusive: bool = False,
 ) -> float | None:
-    """``readFiniteNumberParam``: present but not a finite number raises."""
+    """``readFiniteNumberParam``: present but not a finite number raises.
+
+    Missing, ``None`` and blank strings read as omitted (``isBlankParamValue``).
+    """
     value = _read_strict_number(params, key)
     error_message = message or f"{key} must be a finite number"
     if value is None:
-        if not _is_nullish(_read_param_raw(params, key)):
+        raw = _read_param_raw(params, key)
+        if not _is_nullish(raw) and not _is_blank_param_value(raw):
             raise MemoryToolInputError(error_message)
         return None
     if min_value is not None:
@@ -253,3 +269,22 @@ def read_finite_number_param(
         if above:
             raise MemoryToolInputError(error_message)
     return float(value)
+
+
+def read_corpus_param(params: Mapping[str, Any], allowed: tuple[str, ...]) -> str | None:
+    """``readCorpusParam`` (extensions/memory-core/src/tools.ts:86-98, 4b3ee5e7eb6 #100140).
+
+    ``readStringParam`` first (non-strings and blank strings read as omitted, the value is
+    trimmed); a value outside ``allowed`` raises ``corpus must be one of: <allowed>``. Upstream
+    throws a plain ``Error`` there, not a ``ToolInputError``; the model sees the same
+    ``{"status": "error", "tool", "error"}`` payload either way, so memory-core raises
+    :class:`MemoryToolInputError`.
+    """
+    raw = read_string_param(params, "corpus")
+    if raw is None:
+        return None
+    if raw in allowed:
+        return raw
+    raise MemoryToolInputError(
+        MEMORY_CORPUS_PARAM_ERROR_TEMPLATE.format(allowed=", ".join(allowed))
+    )

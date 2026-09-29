@@ -7,10 +7,11 @@
 into ``{"status": "error", "tool": "memory_search", "error": ...}`` with
 ``to_tool_error()``.
 
-``corpus`` has no enum check in the tool itself (the schema enum
-``memory|wiki|all|sessions`` in ``tools.shared.ts`` is enforced by the agent
-loop's argument validation, which the host owns). An omitted or unknown corpus
-searches every indexed source and skips supplements, as upstream.
+``corpus`` is checked against the tool's closed enum ``memory|wiki|all|sessions``
+(``readCorpusParam``, tools.ts:86-98): an unknown corpus raises
+``corpus must be one of: memory, wiki, all, sessions``, and a blank or
+non-string one reads as omitted. An omitted corpus searches every indexed
+source and skips supplements.
 
 The search runs under a 15 s deadline in a worker thread. On timeout the
 caller gets the unavailable result at once and the worker's
@@ -55,10 +56,12 @@ from memory_core.tools.common import (
     MemoryToolInputError,
     as_tool_params_record,
     format_error_message,
+    read_corpus_param,
     read_finite_number_param,
     read_positive_integer_param,
     read_string_param,
 )
+from memory_core.tools._memory_tool_constants import MEMORY_SEARCH_CORPORA
 
 MEMORY_SEARCH_TOOL_NAME = "memory_search"
 # tools.ts createMemorySearchTool description (verbatim).
@@ -349,18 +352,20 @@ class MemorySearchParams:
 
 
 def read_memory_search_params(params: object) -> MemorySearchParams:
-    """Read tool-call params exactly like ``createMemorySearchTool`` (tools.ts:402-412).
+    """Read tool-call params exactly like ``createMemorySearchTool`` (tools.ts:239-251).
 
     Accepts camelCase keys and their snake_case aliases (``max_results``,
-    ``min_score``) and strict numeric strings (``"5"``, ``"0.3"``). Raises
-    :class:`MemoryToolInputError` with the upstream message on invalid input.
+    ``min_score``), strict numeric strings (``"5"``, ``"0.3"``) and blank strings
+    as omitted numbers; the corpus must be one of the tool's enum. Raises
+    :class:`MemoryToolInputError` with the upstream message on invalid input, in
+    upstream's order: query, maxResults, minScore, corpus.
     """
     raw = as_tool_params_record(params)
     try:
         query = read_string_param(raw, "query", required=True)
         max_results = read_positive_integer_param(raw, "maxResults")
         min_score = read_finite_number_param(raw, "minScore")
-        corpus = read_string_param(raw, "corpus")
+        corpus = read_corpus_param(raw, MEMORY_SEARCH_CORPORA)
     except MemoryToolInputError as error:
         error.tool = MEMORY_SEARCH_TOOL_NAME
         raise

@@ -38,17 +38,19 @@ text first. (`MemoryCurator.dispatch` also accepts the JSON text.)
 
 Params are read before any search work, in this order
 (`readStringParam` / `readPositiveIntegerParam` / `readFiniteNumberParam`,
-`src/agents/tools/common.ts`):
+`src/agents/tools/common.ts`; `readCorpusParam`, `extensions/memory-core/src/tools.ts:86-98`):
 
 | Param | Accepted | Error message |
 | --- | --- | --- |
 | `query` | a string that is not blank after trimming; the trimmed text is searched | `query required` |
-| `maxResults` / `max_results` | a positive safe integer, or a strict numeric string (`"5"`, `"1e1"`, `" +5 "`, `"5.0"`) | `maxResults must be a positive integer` |
-| `minScore` / `min_score` | a finite number, or a strict numeric string (`"0.3"`, `".5"`, `"-2e-1"`) | `minScore must be a finite number` |
-| `corpus` | any string (trimmed); non-strings and blanks read as omitted | none |
+| `maxResults` / `max_results` | a positive safe integer, or a strict numeric string (`"5"`, `"1e1"`, `" +5 "`, `"5.0"`); a blank string reads as omitted | `maxResults must be a positive integer` |
+| `minScore` / `min_score` | a finite number, or a strict numeric string (`"0.3"`, `".5"`, `"-2e-1"`); a blank string reads as omitted | `minScore must be a finite number` |
+| `corpus` | `memory`, `wiki`, `all` or `sessions` (trimmed); non-strings and blanks read as omitted | `corpus must be one of: memory, wiki, all, sessions` |
 
 - `True`/`False`, lists, `"0x10"`, `"1_000"`, full-width digits, `NaN` and
-  `inf` are rejected. A missing key or `None` reads as omitted.
+  `inf` are rejected. A missing key, `None` or a blank string (`""`, `"  "`, the
+  ECMAScript whitespace set) reads as omitted (`isBlankParamValue`, since
+  b22c36f1125 and aaf5ab910cb).
 - The snake_case alias is read only when the camelCase key is absent:
   `{"maxResults": None, "max_results": 1}` means "maxResults omitted".
 - Invalid input raises `MemoryToolInputError` (`status == 400`), the port of
@@ -80,9 +82,11 @@ whether the facade should return an empty recall instead is an open decision.
 
 ### Corpus
 
-The tool has no corpus enum check. Upstream enforces the schema enum
-(`memory|wiki|all|sessions`) in its agent loop, and in memory-core that loop is
-the host's.
+The corpus is checked against the tool's closed enum (`readCorpusParam`,
+4b3ee5e7eb6): an unknown corpus fails closed with `corpus must be one of:
+memory, wiki, all, sessions` instead of falling through to an unrestricted
+search. Upstream throws a plain `Error` there; the model sees the same payload,
+and memory-core raises `MemoryToolInputError`.
 
 | `corpus` | Memory index | Supplements | Result mix |
 | --- | --- | --- | --- |
@@ -90,7 +94,7 @@ the host's.
 | `sessions` | session transcripts only | no | session hits |
 | `wiki` | not searched | yes | supplement hits |
 | `all` | every source | yes | balanced: up to `ceil(max/2)` per side, then backfill |
-| omitted, blank or anything else | every source | no | memory and session hits |
+| omitted or blank | every source | no | memory and session hits |
 
 ## Results
 
@@ -252,10 +256,10 @@ Each of these runs the real TypeScript export at the pin
 
 | Operation | Fixtures |
 | --- | --- |
-| `memorySearch` with `rawParams` (through the real `toToolDefinitions` wrapper) | 18 invalid-param cases, 7 accepted coercion/alias/corpus cases |
+| `memorySearch` with `rawParams` (through the real `toToolDefinitions` wrapper) | 19 invalid-param cases (incl. the unknown corpus), 6 accepted coercion/alias/corpus cases (xfail at v2026.9.6 on ranking, area 6), 5 blank-param cases on a single daily file |
 | `memorySearchUnavailableResult` | 13 reasons and overrides (compat identity, exact) |
 | `memorySearchToolSequence` | 17 tool calls in one process: cooldown record/replay/expiry, the wiki and all rules, the supplement-phase rule, a timeout |
 | `memoryIndexIdentity` | 26 identity states, 5 provider-key, 4 source and 2 scope-hash cases |
 | `memorySearch` with `embeddingModel` | end-to-end pause after a model change |
 | `memoryToolDefinitions` | the `memory_search` and `memory_get` names, descriptions and schemas |
-| `memoryGet` with `rawParams` (through the real `toToolDefinitions` wrapper) | 19 `memory_get` param cases |
+| `memoryGet` with `rawParams` (through the real `toToolDefinitions` wrapper) | 23 `memory_get` param cases (incl. the corpus enum) |

@@ -1149,6 +1149,11 @@ def _python_memory_get_tool(config: MemoryConfig, raw_params: object) -> dict:
         {"path": "\x1cmemory/a.md"},
         {"path": " memory/../AGENTS.md "},
         {"path": " memory/a.md ", "corpus": " memory "},
+        # readCorpusParam (tools.ts:594): memory, wiki and all only, checked after path/from/lines.
+        {"path": "memory/a.md", "corpus": "sessions"},
+        {"path": "memory/a.md", "corpus": "MEMORY"},
+        {"path": "memory/a.md", "lines": 0, "corpus": "bogus"},
+        {"path": "  ", "corpus": "bogus"},
     ],
 )
 def test_real_openclaw_oracle_memory_get_tool_params_match_python(
@@ -1974,7 +1979,6 @@ MEMORY_SEARCH_PARAM_ERROR_CASES = {
     "max-results-fraction-string": {"query": "x", "maxResults": "2.5"},
     "max-results-word": {"query": "x", "maxResults": "abc"},
     "max-results-hex": {"query": "x", "maxResults": "0x10"},
-    "max-results-empty-string": {"query": "x", "maxResults": ""},
     "max-results-boolean": {"query": "x", "maxResults": True},
     "max-results-array": {"query": "x", "maxResults": [3]},
     "max-results-unsafe-integer": {"query": "x", "maxResults": 9007199254740992},
@@ -1983,6 +1987,10 @@ MEMORY_SEARCH_PARAM_ERROR_CASES = {
     "min-score-word": {"query": "x", "minScore": "abc"},
     "min-score-boolean": {"query": "x", "minScore": False},
     "min-score-overflow": {"query": "x", "min_score": "1e400"},
+    # readCorpusParam (tools.ts:86-98, 4b3ee5e7eb6 #100140): the corpus enum fails closed, after
+    # the numeric params.
+    "unknown-corpus-rejected": {"query": "glacier", "maxResults": 1, "corpus": "MEMORY"},
+    "min-score-before-corpus": {"query": "x", "minScore": "bad", "corpus": "bogus"},
 }
 
 
@@ -2023,7 +2031,6 @@ MEMORY_SEARCH_PARAM_ACCEPTED_CASES = {
     },
     "camel-case-wins": {"query": "glacier", "maxResults": 2, "max_results": 1},
     "null-camel-case-hides-alias": {"query": "glacier", "maxResults": None, "max_results": 1},
-    "unknown-corpus-searches-all-sources": {"query": "glacier", "maxResults": 1, "corpus": "MEMORY"},
     "integral-float": {"query": "glacier", "maxResults": 1.0, "minScore": -0.5},
 }
 
@@ -2067,6 +2074,59 @@ def test_real_openclaw_oracle_memory_search_param_coercion_matches_python(
         (item["corpus"], item["path"], item["startLine"], item["endLine"])
         for item in result["result"]["results"]
     ] == [
+        (item["corpus"], item["path"], item["startLine"], item["endLine"])
+        for item in python_result["results"]
+    ]
+
+
+# Blank optional params read as omitted (common.ts isBlankParamValue, b22c36f1125 #100399 and
+# aaf5ab910cb #100483; readStringParam for the corpus). The fixture is a single daily file with no
+# MEMORY.md, so the tag's curated-entry chunking and hybrid weights (area 6) cannot change which
+# hits come back: every case returns the same one hit on both sides.
+MEMORY_SEARCH_BLANK_PARAM_CASES = {
+    "max-results-empty-string": {"query": "glacier", "maxResults": ""},
+    "max-results-blank-memory-corpus": {"query": "glacier", "maxResults": "  ", "corpus": "memory"},
+    "min-score-blank": {"query": "glacier", "minScore": "\u3000", "corpus": "memory"},
+    "corpus-blank": {"query": "glacier", "corpus": " "},
+    "corpus-non-string": {"query": "glacier", "corpus": 5},
+}
+
+
+@pytest.mark.parametrize("case", sorted(MEMORY_SEARCH_BLANK_PARAM_CASES))
+def test_real_openclaw_oracle_memory_search_blank_params_read_as_omitted(
+    tmp_path: Path, case: str
+):
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+    memory_file = tmp_path / "memory" / "2026-05-26.md"
+    memory_file.parent.mkdir(parents=True, exist_ok=True)
+    memory_file.write_text("# 2026-05-26\n\n- Move glacier backups weekly.", encoding="utf-8")
+    raw_params = MEMORY_SEARCH_BLANK_PARAM_CASES[case]
+
+    result = oracle.run(
+        {"operation": "memorySearch", "workspaceDir": str(tmp_path), "rawParams": raw_params}
+    )
+    cfg = MemoryConfig(
+        workspace_dir=tmp_path,
+        store_path=tmp_path / "python-memory.sqlite",
+        vector_weight=0,
+        text_weight=1,
+    )
+    store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+    python_result = execute_memory_search_tool(cfg, store, raw_params)
+
+    assert result["ok"] is True
+    assert result["operation"] == "memorySearch"
+    assert "results" in result["result"], result["result"]
+    hits = [
+        (item["corpus"], item["path"], item["startLine"], item["endLine"])
+        for item in result["result"]["results"]
+    ]
+    assert hits == [("memory", "memory/2026-05-26.md", 1, 3)]
+    assert hits == [
         (item["corpus"], item["path"], item["startLine"], item["endLine"])
         for item in python_result["results"]
     ]

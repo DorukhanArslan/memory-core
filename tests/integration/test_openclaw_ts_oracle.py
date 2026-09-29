@@ -21,7 +21,7 @@ from memory_core.memory_flush import (
     should_run_memory_flush,
 )
 from memory_core.history import get_history_limit_from_session_key, limit_history_turns
-from memory_core.replay_repair import repair_tool_use_result_pairing
+from memory_core.replay_repair import repair_tool_use_result_pairing, sanitize_tool_call_inputs
 from memory_core.runtime_context_prompt import (
     OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     build_current_inbound_prompt,
@@ -4320,6 +4320,240 @@ def test_real_openclaw_oracle_repair_tool_use_result_pairing_preserve_unframed_m
         ],
         preserve_unframed_tool_results=True,
     )
+
+
+_INPUT_REPAIR_CASES = {
+    # (messages, allowedToolNames or None): the cases of tests/unit/test_replay_repair.py.
+    "without-id-or-input": (
+        [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "toolCall", "id": "call_ok", "name": "read", "arguments": {}},
+                    {"type": "toolCall", "id": "call_null", "name": "read", "arguments": None},
+                    {"type": "toolCall", "id": "call_bare", "name": "read"},
+                    {"type": "toolUse", "id": "call_input", "name": "read", "input": {"p": "a"}},
+                    {"type": "functionCall", "id": "", "name": "exec", "arguments": {}},
+                    {"type": "toolCall", "id": "   ", "name": "exec", "arguments": {}},
+                    {"type": "toolCall", "name": "exec", "arguments": {}},
+                    {"type": "toolCall", "toolCallId": "call_key", "name": "exec", "arguments": "{}"},
+                ],
+            },
+            {"role": "assistant", "content": [{"type": "toolCall", "id": "c", "name": "read"}]},
+            {"role": "user", "content": "hi"},
+        ],
+        None,
+    ),
+    "bad-names": (
+        [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "toolCall", "id": "call_ok", "name": "read", "arguments": {}},
+                    {"type": "toolCall", "id": "call_empty", "name": "", "arguments": {}},
+                    {"type": "toolUse", "id": "call_blank", "name": "   ", "input": {}},
+                    {"type": "toolCall", "id": "call_none", "arguments": {}},
+                    {"type": "toolCall", "id": "call_chars", "name": "a <|b|> c", "arguments": {}},
+                    {"type": "toolUse", "id": "call_long", "name": "read_" + "x" * 80, "input": {}},
+                    {"type": "toolCall", "id": "call_ns", "name": "harbor__status", "arguments": {}},
+                    {"type": "toolUse", "id": "call_dot", "name": "my.server:tool", "input": {}},
+                    {"type": "toolCall", "id": "call_unknown", "name": "write", "arguments": {}},
+                ],
+            }
+        ],
+        ["read", "harbor__status"],
+    ),
+    "allowed-names-case-insensitive": (
+        [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "toolCall", "id": "call_1", "name": "Memory_Search", "arguments": {}},
+                    {"type": "toolCall", "id": "call_2", "name": "memory_get", "arguments": {}},
+                    {"type": "toolCall", "id": "call_3", "name": "write", "arguments": {}},
+                ],
+            }
+        ],
+        [" MEMORY_SEARCH ", "Memory_Get", 7, ""],
+    ),
+    "completed-call-outside-allowed-names": (
+        [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "toolCall", "id": "old", "name": "removed_plugin", "arguments": {}},
+                    {"type": "toolCall", "id": "open", "name": "removed_plugin", "arguments": {}},
+                ],
+            },
+            {
+                "role": "toolResult",
+                "toolCallId": "old",
+                "toolName": "removed_plugin",
+                "content": [{"type": "text", "text": "done"}],
+                "isError": False,
+            },
+            {
+                "role": "toolResult",
+                "toolCallId": "open",
+                "toolName": "removed_plugin",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "[openclaw] missing tool result in session history; inserted "
+                        "synthetic error result for transcript repair.",
+                    }
+                ],
+                "isError": True,
+            },
+        ],
+        ["read"],
+    ),
+    "emptied-assistant-message": (
+        [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "before"},
+                    {"type": "toolUse", "id": "call_ok", "name": "read", "input": {"path": "a"}},
+                    {"type": "toolCall", "id": "call_drop", "name": "read"},
+                ],
+                "stopReason": "toolUse",
+            },
+            {"role": "assistant", "content": [{"type": "toolCall", "name": "read", "arguments": {}}]},
+            "not a message",
+            {"role": "user", "content": "next"},
+        ],
+        None,
+    ),
+    "trimmed-names": (
+        [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "toolCall", "id": "call_1", "name": " read ", "arguments": {"p": 1}},
+                    {"type": "toolUse", "id": "call_2", "name": "\u00a0exec\ufeff", "input": {}},
+                ],
+            }
+        ],
+        ["read", "exec"],
+    ),
+    "finalized-responses-partial-json": (
+        [
+            {
+                "role": "assistant",
+                "stopReason": "toolUse",
+                "content": [
+                    {"type": "toolCall", "id": "call_ok", "name": "read", "arguments": {"path": "/a"}},
+                    {
+                        "type": "toolCall",
+                        "id": "call_partial|fc_123",
+                        "name": "Bash",
+                        "arguments": {"command": "ls"},
+                        "partialJson": '{"command": "ls"}',
+                    },
+                    {
+                        "type": "toolCall",
+                        "id": "call_empty|fc_789",
+                        "name": "status",
+                        "arguments": {},
+                        "partialJson": "",
+                    },
+                    {
+                        "type": "toolCall",
+                        "id": "toolu_123",
+                        "name": "Bash",
+                        "arguments": {},
+                        "partialJson": '{"command":',
+                    },
+                    {
+                        "type": "toolCall",
+                        "id": "call_truncated|fc_456",
+                        "name": "Bash",
+                        "arguments": {"command": "ls"},
+                        "partialJson": '{"command":"ls"',
+                    },
+                    {
+                        "type": "toolUse",
+                        "id": "call_partial2",
+                        "name": "read",
+                        "input": None,
+                        "partialJson": '{"path":',
+                    },
+                ],
+            },
+            {
+                "role": "assistant",
+                "stopReason": "stop",
+                "content": [
+                    {
+                        "type": "toolCall",
+                        "id": "call_stop|fc_1",
+                        "name": "Bash",
+                        "arguments": {"command": "ls"},
+                        "partialJson": '{"command":"ls"}',
+                    }
+                ],
+            },
+            {"role": "user", "content": "retry"},
+        ],
+        None,
+    ),
+    "snake-case-block-types": (
+        [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "before"},
+                    {"type": "tool_use", "id": "tool_1", "name": "read"},
+                    {"type": "tool_call", "tool_call_id": "tool_2", "name": "write", "arguments": {}},
+                    {"type": "function_call", "call_id": "tool_3", "name": "exec", "arguments": "{}"},
+                ],
+            }
+        ],
+        ["write", "exec"],
+    ),
+    "unchanged": (
+        [
+            {"role": "user", "content": "hi"},
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "checking"},
+                    {"type": "toolCall", "id": "call_1", "name": "read", "arguments": {}},
+                ],
+            },
+            {
+                "role": "toolResult",
+                "toolCallId": "call_1",
+                "toolName": "read",
+                "content": [{"type": "text", "text": "ok"}],
+                "isError": False,
+            },
+            {"role": "assistant", "content": "a plain string reply"},
+            {"role": "toolResult", "toolCallId": "orphan", "content": []},
+        ],
+        ["READ"],
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(_INPUT_REPAIR_CASES))
+def test_real_openclaw_oracle_sanitize_tool_call_inputs_matches_python(case):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    messages, allowed = _INPUT_REPAIR_CASES[case]
+    payload = {"operation": "sanitizeToolCallInputs", "messages": messages}
+    if allowed is not None:
+        payload["allowedToolNames"] = allowed
+
+    result = oracle.run(payload)
+    python_result = sanitize_tool_call_inputs(messages, allowed_tool_names=allowed)
+
+    assert result["ok"] is True
+    assert result["operation"] == "sanitizeToolCallInputs"
+    assert result["result"] == {
+        "messages": python_result,
+        "unchanged": python_result is messages,
+    }
 
 
 def test_real_openclaw_oracle_runtime_context_prompt_helpers_match_python():

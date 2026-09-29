@@ -1016,6 +1016,21 @@ async function main() {
     };
   }
 
+  if (payload.operation === "sanitizeToolCallInputs") {
+    const repair = await importFromRepo(repoPath, "src/agents/session-transcript-repair.ts");
+    const messages = payload.messages ?? [];
+    const result = repair.sanitizeToolCallInputs(messages, {
+      ...(Array.isArray(payload.allowedToolNames)
+        ? { allowedToolNames: payload.allowedToolNames }
+        : {}),
+    });
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: { messages: result, unchanged: result === messages },
+    };
+  }
+
   if (payload.operation === "runtimeContextPrompt") {
     const runtimeContextPrompt = await importFromRepo(
       repoPath,

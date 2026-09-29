@@ -10,6 +10,7 @@ from memory_core._transcript_repair_constants import (
 from memory_core.replay_repair import (
     is_synthetic_missing_tool_result,
     repair_tool_use_result_pairing,
+    sanitize_tool_call_inputs,
     sanitize_tool_use_result_pairing_for_model,
 )
 
@@ -410,3 +411,203 @@ def test_a_second_result_within_a_frame_counts_as_a_duplicate():
     assert result.dropped_duplicate_count == 1
     assert result.moved is True
     assert result.discarded == [messages[2]]
+
+
+def _assistant(*blocks: dict, **fields) -> dict:
+    return {"role": "assistant", "content": list(blocks), **fields}
+
+
+def _call_ids(messages: list[dict]) -> list[str]:
+    return [
+        block.get("id")
+        for message in messages
+        if message.get("role") == "assistant"
+        for block in message["content"]
+        if block.get("type") in ("toolCall", "toolUse", "functionCall", "tool_call", "tool_use", "function_call")
+    ]
+
+
+def test_input_repair_drops_calls_without_an_id_or_input():
+    no_input = [_assistant({"type": "toolCall", "id": "call_1", "name": "read"}), {"role": "user", "content": "hi"}]
+    assert sanitize_tool_call_inputs(no_input) == [no_input[1]]
+    blocks = [
+        {"type": "toolCall", "id": "call_ok", "name": "read", "arguments": {}},
+        {"type": "toolCall", "id": "call_null", "name": "read", "arguments": None},
+        {"type": "toolUse", "id": "call_input", "name": "read", "input": {"path": "a"}},
+        {"type": "functionCall", "id": "", "name": "exec", "arguments": {}},
+        {"type": "toolCall", "id": "   ", "name": "exec", "arguments": {}},
+        {"type": "toolCall", "name": "exec", "arguments": {}},
+        {"type": "toolCall", "toolCallId": "call_alt_key", "name": "exec", "arguments": "{}"},
+    ]
+
+    out = sanitize_tool_call_inputs([_assistant(*blocks)])
+
+    assert [block.get("id", block.get("toolCallId")) for block in out[0]["content"]] == [
+        "call_ok",
+        "call_input",
+        "call_alt_key",
+    ]
+    # A non-object message is dropped too.
+    assert sanitize_tool_call_inputs(["not a message", no_input[1]]) == [no_input[1]]
+
+
+def test_input_repair_drops_calls_with_a_bad_name():
+    blocks = [
+        {"type": "toolCall", "id": "call_ok", "name": "read", "arguments": {}},
+        {"type": "toolCall", "id": "call_empty", "name": "", "arguments": {}},
+        {"type": "toolUse", "id": "call_blank", "name": "   ", "input": {}},
+        {"type": "toolCall", "id": "call_none", "arguments": {}},
+        {"type": "toolCall", "id": "call_chars", "name": 'toolu_01 <|begin|> {"command"', "arguments": {}},
+        {"type": "toolUse", "id": "call_long", "name": "read_" + "x" * 80, "input": {}},
+        {"type": "toolCall", "id": "call_ns", "name": "vigil-harbor__memory_status", "arguments": {}},
+        {"type": "toolUse", "id": "call_dotted", "name": "my.server:some_tool", "input": {}},
+        {"type": "toolCall", "id": "call_unknown", "name": "write", "arguments": {}},
+    ]
+
+    unrestricted = sanitize_tool_call_inputs([_assistant(*blocks)])
+    restricted = sanitize_tool_call_inputs(
+        [_assistant(*blocks)], allowed_tool_names=["read", "vigil-harbor__memory_status"]
+    )
+
+    assert _call_ids(unrestricted) == ["call_ok", "call_ns", "call_dotted", "call_unknown"]
+    assert _call_ids(restricted) == ["call_ok", "call_ns"]
+
+
+def test_input_repair_matches_allowed_names_case_insensitively():
+    blocks = [
+        {"type": "toolCall", "id": "call_1", "name": "Memory_Search", "arguments": {}},
+        {"type": "toolCall", "id": "call_2", "name": "memory_get", "arguments": {}},
+        {"type": "toolCall", "id": "call_3", "name": "write", "arguments": {}},
+    ]
+
+    out = sanitize_tool_call_inputs(
+        [_assistant(*blocks)], allowed_tool_names=[" MEMORY_SEARCH ", "Memory_Get", 7, ""]
+    )
+
+    assert _call_ids(out) == ["call_1", "call_2"]
+    # An empty allowlist restricts nothing.
+    assert sanitize_tool_call_inputs(m := [_assistant(*blocks)], allowed_tool_names=[]) is m
+
+
+def test_input_repair_keeps_a_completed_call_outside_the_allowed_names():
+    assistant = _assistant(
+        {"type": "toolCall", "id": "old_call", "name": "removed_plugin", "arguments": {"a": 1}}
+    )
+    result = _tool_result("old_call", "completed", tool_name="removed_plugin")
+    allowed = ["read"]
+
+    completed = [assistant, result]
+    assert sanitize_tool_call_inputs(completed, allowed_tool_names=allowed) is completed
+    assert sanitize_tool_call_inputs([assistant], allowed_tool_names=allowed) == []
+    unrelated = _tool_result("other_call", "unrelated", tool_name="removed_plugin")
+    synthetic = {**_synthetic("old_call"), "toolName": "removed_plugin"}
+    for other in (unrelated, synthetic):
+        assert sanitize_tool_call_inputs([assistant, other], allowed_tool_names=allowed) == [other]
+    later = _assistant({"type": "toolCall", "id": "old_call", "name": "read", "arguments": {}})
+    later_result = _tool_result("old_call", "later")
+    assert sanitize_tool_call_inputs(
+        [assistant, later, later_result], allowed_tool_names=allowed
+    ) == [later, later_result]
+
+
+def test_input_repair_drops_an_emptied_assistant_message():
+    kept_text = _assistant(
+        {"type": "text", "text": "before"},
+        {"type": "toolUse", "id": "call_ok", "name": "read", "input": {"path": "a"}},
+        {"type": "toolCall", "id": "call_drop", "name": "read"},
+        stopReason="toolUse",
+    )
+    emptied = _assistant({"type": "toolCall", "name": "read", "arguments": {}})
+    user = {"role": "user", "content": "next"}
+
+    out = sanitize_tool_call_inputs([kept_text, emptied, user])
+
+    assert out == [{**kept_text, "content": kept_text["content"][:2]}, user]
+    assert out[0]["stopReason"] == "toolUse"
+    assert out[0]["content"][0] is kept_text["content"][0]
+
+
+def test_input_repair_trims_names():
+    block = {"type": "toolCall", "id": "call_1", "name": " read ", "arguments": {"path": "/tmp/x"}}
+    padded = {"type": "toolUse", "id": "call_2", "name": "\u00a0exec\ufeff", "input": {"command": "ls"}}
+
+    out = sanitize_tool_call_inputs([_assistant(block, padded)], allowed_tool_names=["read", "exec"])
+
+    assert out[0]["content"] == [
+        {**block, "name": "read"},
+        {**padded, "name": "exec"},
+    ]
+    assert block["name"] == " read "
+
+
+def test_input_repair_strips_a_finalized_responses_partial_json():
+    blocks = [
+        {"type": "toolCall", "id": "call_ok", "name": "read", "arguments": {"path": "/a"}},
+        {
+            "type": "toolCall",
+            "id": "call_partial|fc_123",
+            "name": "Bash",
+            "arguments": {"command": "ls"},
+            "partialJson": '{"command": "ls"}',
+        },
+        {"type": "toolCall", "id": "call_empty|fc_789", "name": "status", "arguments": {}, "partialJson": ""},
+        {"type": "toolCall", "id": "toolu_123", "name": "Bash", "arguments": {}, "partialJson": '{"command":'},
+        {
+            "type": "toolCall",
+            "id": "call_truncated|fc_456",
+            "name": "Bash",
+            "arguments": {"command": "ls"},
+            "partialJson": '{"command":"ls"',
+        },
+        {"type": "toolUse", "id": "call_partial2", "name": "read", "input": None, "partialJson": '{"path":'},
+    ]
+
+    out = sanitize_tool_call_inputs(
+        [_assistant(*blocks, stopReason="toolUse"), {"role": "user", "content": "retry"}]
+    )
+
+    assert _call_ids(out) == ["call_ok", "call_partial|fc_123", "call_empty|fc_789"]
+    assert out[0]["content"][1] == {
+        key: value for key, value in blocks[1].items() if key != "partialJson"
+    }
+    assert "partialJson" not in out[0]["content"][2]
+    # Not a finalized toolUse turn: every partialJson block is dropped.
+    for stop_reason in ("stop", "aborted", "error", "length"):
+        stopped = sanitize_tool_call_inputs(
+            [_assistant(blocks[1], stopReason=stop_reason), {"role": "user", "content": "retry"}]
+        )
+        assert _call_ids(stopped) == []
+
+
+def test_input_repair_reads_snake_case_block_types():
+    blocks = [
+        {"type": "text", "text": "before"},
+        {"type": "tool_use", "id": "tool_1", "name": "read"},
+        {"type": "tool_call", "tool_call_id": "tool_2", "name": "write", "arguments": {}},
+        {"type": "function_call", "call_id": "tool_3", "name": "exec", "arguments": "{}"},
+    ]
+
+    out = sanitize_tool_call_inputs([_assistant(*blocks)], allowed_tool_names=["write", "exec"])
+
+    assert [(block["type"], block.get("name")) for block in out[0]["content"]] == [
+        ("text", None),
+        ("tool_call", "write"),
+        ("function_call", "exec"),
+    ]
+
+
+def test_input_repair_returns_the_input_list_when_nothing_changes():
+    messages = [
+        {"role": "user", "content": "hi"},
+        _assistant(
+            {"type": "text", "text": "checking"},
+            {"type": "toolCall", "id": "call_1", "name": "read", "arguments": {}},
+        ),
+        _tool_result("call_1"),
+        {"role": "assistant", "content": "a plain string reply"},
+        {"role": "toolResult", "toolCallId": "orphan", "content": []},
+    ]
+
+    assert sanitize_tool_call_inputs(messages) is messages
+    assert sanitize_tool_call_inputs(messages, allowed_tool_names=["READ"]) is messages
+    assert sanitize_tool_call_inputs([]) == []

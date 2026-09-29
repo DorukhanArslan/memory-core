@@ -32,7 +32,8 @@ character as a ``\\u`` escape:
   ``## Conversation Context`` header (src/agents/system-prompt.ts);
 - ``memory_core/_transcript_repair_constants.py``: the synthetic missing-tool-result text and
   marker of the tool-call replay repair
-  (packages/agent-core/src/harness/session/tool-result-pairing.ts)::
+  (packages/agent-core/src/harness/session/tool-result-pairing.ts) and the tool-call name rules
+  of its input repair (src/agents/tool-call-shared.ts; the regex literal's source as text)::
 
     .venv/bin/python scripts/extract_upstream_constants.py --repo /tmp/openclaw-head
 
@@ -80,6 +81,7 @@ AGENT_TOOLS_READ_SOURCE = "src/agents/agent-tools.read.ts"
 FLUSH_SESSION_SOURCE = "src/auto-reply/reply/memory-flush-session.ts"
 SYSTEM_PROMPT_SOURCE = "src/agents/system-prompt.ts"
 TOOL_RESULT_PAIRING_SOURCE = "packages/agent-core/src/harness/session/tool-result-pairing.ts"
+TOOL_CALL_SHARED_SOURCE = "src/agents/tool-call-shared.ts"
 # Template-literal expressions of the flush write wrapper -> str.format field names.
 FLUSH_WRITE_TEMPLATE_FIELDS = {
     "tool.description": "description",
@@ -818,12 +820,45 @@ def extract_flush_run(repo: Path) -> dict[str, str]:
     }
 
 
+def ts_regex_constant(source: str, name: str) -> str:
+    """Pattern text of ``const NAME = /.../;``, a regex literal without flags."""
+    match = re.search(rf"\bconst {re.escape(name)}\s*=\s*/", source)
+    if match is None:
+        raise ValueError(f"regex constant {name} not found")
+    index, in_class, out = match.end(), False, []
+    while True:
+        char = source[index]
+        if char == "\\":
+            out.append(source[index : index + 2])
+            index += 2
+            continue
+        if char == "\n":
+            raise ValueError(f"unterminated regex literal {name}")
+        if char == "/" and not in_class:
+            break
+        in_class = (in_class or char == "[") and char != "]"
+        out.append(char)
+        index += 1
+    flags = re.match(r"[a-z]*", source[index + 1 :]).group()
+    if flags:
+        raise ValueError(f"regex constant {name} has flags {flags!r}")
+    return "".join(out)
+
+
 def extract_transcript_repair(repo: Path) -> dict[str, object]:
-    """The texts of the tool-call replay repair (memory_core.replay_repair)."""
+    """The texts and name rules of the tool-call replay repair (memory_core.replay_repair)."""
     pairing = (repo / TOOL_RESULT_PAIRING_SOURCE).read_text(encoding="utf-8")
+    shared = (repo / TOOL_CALL_SHARED_SOURCE).read_text(encoding="utf-8")
     return {
-        name: ts_string_constant(pairing, name)
-        for name in ("SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY", "DEFAULT_MISSING_TOOL_RESULT_TEXT")
+        **{
+            name: ts_string_constant(pairing, name)
+            for name in (
+                "SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY",
+                "DEFAULT_MISSING_TOOL_RESULT_TEXT",
+            )
+        },
+        **ts_numeric_constants(shared, ("TOOL_CALL_NAME_MAX_CHARS",)),
+        "TOOL_CALL_NAME_RE": ts_regex_constant(shared, "TOOL_CALL_NAME_RE"),
     }
 
 
@@ -938,10 +973,12 @@ def outputs(repo: Path) -> dict[Path, str]:
             extract_transcript_repair(repo),
             commit,
             title="Upstream constants of the tool-call replay repair",
-            sources=[TOOL_RESULT_PAIRING_SOURCE],
+            sources=[TOOL_RESULT_PAIRING_SOURCE, TOOL_CALL_SHARED_SOURCE],
             note=[
                 "DEFAULT_MISSING_TOOL_RESULT_TEXT is the synthetic tool result's text and a",
                 "parity-bound marker: upstream recognises a stored synthetic result by it.",
+                "TOOL_CALL_NAME_RE is the source of upstream's regex literal (no flags); it",
+                "is applied to a trimmed name, so its $ anchor reads alike in Python.",
             ],
         ),
     }

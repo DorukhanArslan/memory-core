@@ -1,5 +1,9 @@
 """Tool-call replay repair of OpenClaw v2026.9.6 (src/agents/session-transcript-repair.ts).
 
+``sanitize_tool_call_inputs`` ports ``sanitizeToolCallInputs`` (over ``repairToolCallInputs``),
+the first step of upstream's model replay: tool-call blocks without an id, without input or with
+a name that is not allowed are dropped, names are trimmed, a finalized Responses call loses its
+``partialJson`` scratch field, and an assistant message left without content is dropped.
 ``repair_tool_use_result_pairing`` ports ``repairToolUseResultPairing`` over the classifier of
 packages/agent-core/src/harness/session/tool-result-pairing.ts (``classifyToolUseResultPairing``):
 each assistant turn with tool calls is a frame, its calls are occurrences paired with results by
@@ -14,16 +18,20 @@ memory_core/host/_tool_calls.py).
 
 from __future__ import annotations
 
+import json
+import re
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from memory_core._transcript_repair_constants import (
     DEFAULT_MISSING_TOOL_RESULT_TEXT,
     SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY,
+    TOOL_CALL_NAME_MAX_CHARS,
+    TOOL_CALL_NAME_RE,
 )
-from memory_core.bootstrap._js import js_trim
+from memory_core.bootstrap._js import js_trim, utf16_len
 
 AgentMessage = dict[str, Any]
 ErroredAssistantResultPolicy = Literal["preserve", "drop"]
@@ -32,14 +40,26 @@ ErroredAssistantResultPolicy = Literal["preserve", "drop"]
 _TOOL_CALL_TYPES = frozenset({"toolCall", "toolUse", "functionCall"})
 # extractToolResultIds: the id keys of a tool result, in order.
 _TOOL_RESULT_ID_KEYS = ("toolCallId", "toolUseId", "tool_call_id", "tool_use_id", "callId", "call_id")
+# src/shared/tool-block-contract.ts TOOL_CALL_BLOCK_TYPES: the block types the input repair
+# reads as tool calls (the pairing reads the first three only).
+TOOL_CALL_BLOCK_TYPES = frozenset(
+    {"toolCall", "toolUse", "functionCall", "tool_call", "tool_use", "function_call"}
+)
+# tool-block-contract.ts collectToolCallIds: the id keys of a tool-call block.
+_TOOL_CALL_ID_KEYS = ("call_id", "tool_call_id", "toolCallId", "tool_use_id", "toolUseId", "id")
+_TOOL_CALL_NAME = re.compile(TOOL_CALL_NAME_RE)
+# normalization-core safeParseJsonRecord: only text that starts as an object is parsed.
+_JSON_OBJECT_START = re.compile(r"[\t\n\r ]*\{")
 
 __all__ = [
     "DEFAULT_MISSING_TOOL_RESULT_TEXT",
     "SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY",
+    "TOOL_CALL_BLOCK_TYPES",
     "ErroredAssistantResultPolicy",
     "ToolUseRepairReport",
     "is_synthetic_missing_tool_result",
     "repair_tool_use_result_pairing",
+    "sanitize_tool_call_inputs",
     "sanitize_tool_use_result_pairing",
     "sanitize_tool_use_result_pairing_for_model",
 ]
@@ -114,6 +134,72 @@ class _OccurrenceQueue:
         if not pending:
             del self._pending[tool_id]
         return occurrence
+
+
+def sanitize_tool_call_inputs(
+    messages: list[AgentMessage], *, allowed_tool_names: Iterable[str] | None = None
+) -> list[AgentMessage]:
+    """Port of ``sanitizeToolCallInputs`` / ``repairToolCallInputs``, the general branch
+    (session-transcript-repair.ts:219-358); the input list itself when nothing changes.
+
+    A tool-call block (any type of :data:`TOOL_CALL_BLOCK_TYPES`) is dropped without an id
+    (``collectToolCallIds``), without input (``hasToolCallInput``: ``input`` or ``arguments``
+    not null) or with a name that is not allowed (``isAllowedToolCallName``: the trimmed name
+    matches ``TOOL_CALL_NAME_RE``, fits ``TOOL_CALL_NAME_MAX_CHARS`` and, when
+    ``allowed_tool_names`` is given, is one of them compared lower-cased, unless the call already
+    has a real result, ``createCompletedToolCallPredicate``). A block with ``partialJson`` is
+    kept only as a finalized Responses call, without the field; names are trimmed; an assistant
+    message left with no content and a non-object message are dropped. Not ported, labelled:
+    the provider-owned thinking replay branch (``allowProviderOwnedThinkingReplay``, :244-277,
+    off by default upstream) and the compaction replay checkpoint rewrite of
+    ``replaceCompactionReplayOwnerContent``: a changed message is ``{**message, "content": ...}``,
+    upstream's result for a message without a ``providerReplay`` checkpoint.
+    """
+    allowed = _normalize_allowed_tool_names(allowed_tool_names)
+    is_completed = _completed_tool_call_predicate(messages)
+    changed = False
+    out: list[AgentMessage] = []
+    for message in messages:
+        if not isinstance(message, Mapping):
+            changed = True
+            continue
+        content = message.get("content")
+        if message.get("role") != "assistant" or not isinstance(content, list):
+            out.append(message)
+            continue
+        next_content: list[Any] = []
+        message_changed = False
+        for block in content:
+            if _is_tool_call_block(block) and (
+                not _has_tool_call_input(block)
+                or not _has_tool_call_id(block)
+                or not _is_allowed_tool_call_name(
+                    block.get("name"), None if is_completed(block) else allowed
+                )
+            ):
+                changed = message_changed = True
+                continue
+            work = block
+            if _is_tool_call_block(block) and isinstance(block.get("partialJson"), str):
+                if not _is_finalized_openai_responses_tool_call(message, block):
+                    changed = message_changed = True
+                    continue
+                # A legacy Responses transport kept the scratch buffer of a finalized call.
+                work = {key: value for key, value in block.items() if key != "partialJson"}
+                changed = message_changed = True
+            if _is_tool_call_block(work):
+                sanitized = _sanitize_tool_call_block(work)
+                if sanitized is not work:
+                    changed = message_changed = True
+                next_content.append(sanitized)
+                continue
+            next_content.append(work)
+        if message_changed:
+            if next_content:
+                out.append({**message, "content": next_content})
+            continue
+        out.append(message)
+    return out if changed else messages
 
 
 def repair_tool_use_result_pairing(
@@ -381,6 +467,113 @@ def _classify_tool_use_result_pairing(
                 ]
 
     return _Pairing(frames, dropped_duplicate_count, dropped_orphan_count, dropped_results)
+
+
+def _completed_tool_call_predicate(
+    messages: list[AgentMessage],
+) -> Callable[[Mapping[str, Any]], bool]:
+    """``createCompletedToolCallPredicate`` over ``collectCompletedToolCallBlocks``
+    (tool-call-shared.ts:54-58, tool-result-pairing.ts:394-407): a block whose occurrence has a
+    real (not synthetic) result, with a syntactically valid name. Blocks compare by identity."""
+    completed: set[int] = set()
+    for frame in _classify_tool_use_result_pairing(messages).frames:
+        for occurrence in frame.occurrences:
+            source = occurrence.source_result
+            if source is not None and not is_synthetic_missing_tool_result(source):
+                block = frame.assistant["content"][occurrence.content_index]
+                if isinstance(block, Mapping):
+                    completed.add(id(block))
+
+    def is_completed(block: Mapping[str, Any]) -> bool:
+        return id(block) in completed and _is_allowed_tool_call_name(block.get("name"), None)
+
+    return is_completed
+
+
+def _normalize_allowed_tool_names(names: Iterable[str] | None) -> set[str] | None:
+    """``normalizeAllowedToolNames``: trimmed, lower-cased; ``None`` when none is left."""
+    if names is None:
+        return None
+    normalized = {js_trim(name).lower() for name in names if isinstance(name, str) and js_trim(name)}
+    return normalized or None
+
+
+def _is_allowed_tool_call_name(name: object, allowed: set[str] | None) -> bool:
+    """``isAllowedToolCallName`` (tool-call-shared.ts:33-51)."""
+    if not isinstance(name, str):
+        return False
+    trimmed = js_trim(name)
+    if not trimmed:
+        return False
+    # The trimmed name has no trailing line terminator, so the pattern's $ reads as in JS.
+    if utf16_len(trimmed) > TOOL_CALL_NAME_MAX_CHARS or not _TOOL_CALL_NAME.search(trimmed):
+        return False
+    return allowed is None or trimmed.lower() in allowed
+
+
+def _is_tool_call_block(block: object) -> bool:
+    """tool-block-contract.ts ``isContractToolCallBlock``."""
+    return isinstance(block, Mapping) and block.get("type") in TOOL_CALL_BLOCK_TYPES
+
+
+def _has_tool_call_id(block: Mapping[str, Any]) -> bool:
+    return any(_normalize_optional_string(block.get(key)) for key in _TOOL_CALL_ID_KEYS)
+
+
+def _has_tool_call_input(block: Mapping[str, Any]) -> bool:
+    """tool-call-id.ts ``hasToolCallInput`` (:91-96): ``input`` or ``arguments`` not null."""
+    return block.get("input") is not None or block.get("arguments") is not None
+
+
+def _is_finalized_openai_responses_tool_call(
+    message: Mapping[str, Any], block: Mapping[str, Any]
+) -> bool:
+    """session-transcript-repair.ts ``isFinalizedOpenAIResponsesToolCall`` (:50-72)."""
+    partial = block.get("partialJson")
+    tool_id = block.get("id")
+    arguments = block.get("arguments")
+    if (
+        message.get("role") != "assistant"
+        or message.get("stopReason") != "toolUse"
+        or not isinstance(partial, str)
+        or not isinstance(tool_id, str)
+        or "input" in block
+        or not isinstance(arguments, Mapping)
+        or (
+            not _is_complete_json_object(partial)
+            and (js_trim(partial) != "" or len(arguments) > 0)
+        )
+    ):
+        return False
+    separator = tool_id.find("|")
+    return 0 < separator < len(tool_id) - 1
+
+
+def _is_complete_json_object(value: str) -> bool:
+    """normalization-core ``safeParseJsonRecord`` is not undefined: a JSON object text."""
+    if not _JSON_OBJECT_START.match(value):
+        return False
+    try:
+        parsed = json.loads(value, parse_constant=_reject_json_constant)
+    except ValueError:
+        return False
+    return isinstance(parsed, dict)
+
+
+def _reject_json_constant(name: str) -> object:
+    # JSON.parse refuses NaN and Infinity, which json.loads would accept.
+    raise ValueError(name)
+
+
+def _sanitize_tool_call_block(block: Mapping[str, Any]) -> Mapping[str, Any]:
+    """``sanitizeToolCallBlock``: a copy with the trimmed name, else the block itself."""
+    raw = block.get("name")
+    if not isinstance(raw, str):
+        return block
+    trimmed = js_trim(raw)
+    if not trimmed or trimmed == raw:
+        return block
+    return {**block, "name": trimmed}
 
 
 def _shift(items: list[_Occurrence] | None) -> _Occurrence | None:

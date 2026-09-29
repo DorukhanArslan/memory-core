@@ -2,14 +2,19 @@
 
 Extracted by scripts/extract_upstream_constants.py.
 Generated from OpenClaw eb377ac59e6c9fd6c7705028034812becf00271b:
-packages/agent-core/src/harness/session/tool-result-pairing.ts.
+packages/agent-core/src/harness/session/tool-result-pairing.ts,
+src/agents/tool-call-shared.ts.
 Do not edit by hand: re-run the script; tests/integration/test_extracted_upstream_constants.py
 checks these values against the source.
 DEFAULT_MISSING_TOOL_RESULT_TEXT is the synthetic tool result's text and a
 parity-bound marker: upstream recognises a stored synthetic result by it.
+TOOL_CALL_NAME_RE is the source of upstream's regex literal (no flags); it
+is applied to a trimmed name, so its $ anchor reads alike in Python.
 """
 
 from __future__ import annotations
 
 SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY = 'openclawSyntheticMissingToolResult'
 DEFAULT_MISSING_TOOL_RESULT_TEXT = '[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair.'
+TOOL_CALL_NAME_MAX_CHARS = 64
+TOOL_CALL_NAME_RE = '^[A-Za-z0-9_:.-]+$'

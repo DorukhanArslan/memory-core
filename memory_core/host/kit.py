@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from memory_core._memory_flush_constants import CONVERSATION_CONTEXT_HEADER
 from memory_core.automation import (
@@ -92,9 +92,10 @@ MINIMAL_PROMPT_KINDS = frozenset({"subagent", "cron"})
 DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000
 # The reason of a HostKit.request_flush run (memory-core extension, decision Q6).
 _FORCED_FLUSH_REASON = "forced"
-_RUN_KINDS = (None, "default", "heartbeat", "cron")
-_CONTEXT_MODES = ("full", "lightweight")
-_BOOTSTRAP_MODES = ("full", "limited", "none")
+# The core's Literal types, so a value check never drifts from them.
+_RUN_KINDS = (None, *get_args(BootstrapContextRunKind))
+_CONTEXT_MODES = get_args(BootstrapContextMode)
+_BOOTSTRAP_MODES = get_args(BootstrapMode)
 
 
 @dataclass(frozen=True)

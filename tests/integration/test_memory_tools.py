@@ -167,8 +167,9 @@ def test_memory_get_reads_wiki_supplement_result(tmp_path: Path):
         supplements=[wiki],
     )
 
-    # Interim: the supplement's content is sliced like a memory file (D7); its terminal newline
-    # is no extra line (read-file-shared.ts, 1b6ad8da8f8).
+    # memory-read-tool.ts executeWikiMemoryReadResult: the supplement's result plus the corpus
+    # metadata. The supplement's content is sliced like a memory file (documented deviation D7:
+    # upstream passes fromLine/lineCount to the supplement); its terminal newline is no extra line.
     assert result == {
         "status": "ok",
         "path": "w1.md",
@@ -176,6 +177,7 @@ def test_memory_get_reads_wiki_supplement_result(tmp_path: Path):
         "from": 2,
         "lines": 1,
         "corpus": "wiki",
+        "corpora": [{"corpus": "wiki", "outcome": "ok"}],
     }
 
 
@@ -212,15 +214,27 @@ def test_memory_get_returns_upstream_error_for_session_search_hits(tmp_path: Pat
         "memory/.dreams/session-corpus/2026-05-07.txt",
         "sessions/main/session-nebula.jsonl",
     ]
+    refusal = "path is not an allowed Markdown memory file"
     for path in paths:
-        for corpus in ("memory", "all"):
-            assert memory_get(cfg, path=path, corpus=corpus) == {
-                "path": path,
-                "text": "",
-                "status": "error",
-                "code": "MEMORY_PATH_NOT_ALLOWED",
-                "error": "path is not an allowed Markdown memory file",
-            }
+        assert memory_get(cfg, path=path, corpus="memory") == {
+            "path": path,
+            "text": "",
+            "status": "error",
+            "code": "MEMORY_PATH_NOT_ALLOWED",
+            "error": refusal,
+        }
+        # corpus=all reports the refusal per corpus, without a code (memory-read-tool.ts:84-93).
+        assert memory_get(cfg, path=path, corpus="all") == {
+            "status": "error",
+            "path": path,
+            "text": "",
+            "corpora": [
+                {"corpus": "memory", "outcome": "unavailable", "error": refusal},
+                {"corpus": "wiki", "outcome": "not-registered"},
+            ],
+            "warning": f"Memory corpus unavailable: {refusal}",
+            "error": refusal,
+        }
         # memory_get has no sessions corpus (tools.ts:594 readCorpusParam).
         try:
             memory_get(cfg, path=path, corpus="sessions")
@@ -231,7 +245,8 @@ def test_memory_get_returns_upstream_error_for_session_search_hits(tmp_path: Pat
 
 
 def test_memory_get_all_corpus_falls_back_to_supplement_after_read_failure(tmp_path: Path):
-    # tools.ts resolveMemoryReadFailureResult: corpus=all retries supplements.
+    # memory-read-tool.ts:71-95: corpus=all reads memory and the supplements together and returns
+    # the wiki result when the memory read fails.
     wiki = StaticMemoryCorpusSupplement(
         [{"corpus": "wiki", "path": "wiki/nebula.txt", "content": "Nebula rule.\n"}]
     )
@@ -242,6 +257,14 @@ def test_memory_get_all_corpus_falls_back_to_supplement_after_read_failure(tmp_p
 
     assert fallback["corpus"] == "wiki"
     assert fallback["text"].startswith("Nebula rule.")
+    assert fallback["corpora"] == [
+        {
+            "corpus": "memory",
+            "outcome": "unavailable",
+            "error": "path is not an allowed Markdown memory file",
+        },
+        {"corpus": "wiki", "outcome": "ok"},
+    ]
     assert no_fallback == {
         "path": "wiki/nebula.txt",
         "text": "",
@@ -259,7 +282,25 @@ def test_memory_get_wiki_supplement_missing_result(tmp_path: Path):
         supplements=[],
     )
 
-    assert result == {"status": "not_found", "text": "", "path": "missing.md"}
+    # No supplement: the wiki corpus is not registered (memory-corpus.ts:203-205).
+    assert result == {
+        "path": "missing.md",
+        "text": "",
+        "corpora": [{"corpus": "wiki", "outcome": "not-registered"}],
+        "warning": "Wiki corpus is not registered; results do not cover that requested corpus.",
+    }
+    missed = memory_get(
+        MemoryConfig(workspace_dir=tmp_path),
+        path="missing.md",
+        corpus="wiki",
+        supplements=[StaticMemoryCorpusSupplement([])],
+    )
+    assert missed == {
+        "status": "not_found",
+        "path": "missing.md",
+        "text": "",
+        "corpora": [{"corpus": "wiki", "outcome": "ok"}],
+    }
 
 
 def test_memory_search_returns_hybrid_results(tmp_path: Path):

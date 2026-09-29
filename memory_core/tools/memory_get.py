@@ -38,8 +38,8 @@ from typing import Any
 
 from memory_core.bootstrap._js import js_trim
 from memory_core.config import MemoryConfig
-from memory_core.supplements import MemoryCorpusSupplement
 from memory_core.memory_read import build_memory_read_result, read_memory_file
+from memory_core.supplements import MemoryCorpusResult, MemoryCorpusSupplement
 from memory_core.tools.common import (
     MemoryToolInputError,
     as_tool_params_record,
@@ -50,6 +50,15 @@ from memory_core.tools.common import (
     read_string_param,
 )
 from memory_core.tools._memory_tool_constants import MEMORY_GET_CORPORA, MEMORY_READ_FAILED_CODE
+from memory_core.tools.corpus import (
+    MemoryCorpusAttempt,
+    MemoryCorpusDeadline,
+    attempt_memory_corpus,
+    compose_memory_corpus_metadata,
+    read_memory_corpus_supplements,
+    run_concurrently,
+    run_memory_corpus_deadline,
+)
 from memory_core.workspace import MemoryWorkspace
 
 MEMORY_GET_TOOL_NAME = "memory_get"
@@ -154,22 +163,15 @@ def memory_get(
         error.tool = MEMORY_GET_TOOL_NAME
         raise
     workspace = MemoryWorkspace(config.workspace_dir)
-    if corpus == "wiki":
-        return _memory_get_supplement(
-            config,
-            path=workspace.normalize_memory_path(path),
-            from_line=from_line,
-            lines=lines,
-            corpus=corpus,
-            supplements=supplements or [],
-        )
-    # Builtin read (tools.ts createMemoryGetTool -> memory-read-tool.ts executeMemoryReadResult
-    # -> readAgentMemoryFile -> readMemoryFile). memory_search session hits
-    # (`sessions/<agent>/*.jsonl` and memory/.dreams/session-corpus/*.txt) are not readable
-    # upstream either: they fail the memory-path/`.md` gate with MEMORY_PATH_NOT_ALLOWED; a
-    # session-corpus `.md` file is an ordinary memory file.
+    # params.relPath: the trimmed path as requested, also for failures and supplement lookups.
     requested_path = js_trim(path)
-    try:
+    registered = list(supplements or [])
+
+    def read() -> dict:
+        # tools.ts createMemoryGetTool -> readAgentMemoryFile -> readMemoryFile. memory_search
+        # session hits (`sessions/<agent>/*.jsonl`, memory/.dreams/session-corpus/*.txt) are not
+        # readable upstream either: they fail the memory-path/`.md` gate with
+        # MEMORY_PATH_NOT_ALLOWED; a session-corpus `.md` file is an ordinary memory file.
         return read_memory_file(
             workspace.root,
             path,
@@ -178,42 +180,71 @@ def memory_get(
             default_lines=config.memory_get_default_lines,
             max_chars=config.memory_get_max_chars,
         )
-    except Exception as error:
-        return _memory_read_failure(
-            config,
-            error=error,
-            path=requested_path,
-            from_line=from_line,
-            lines=lines,
+
+    def read_wiki(deadline: MemoryCorpusDeadline) -> MemoryCorpusAttempt:
+        return read_memory_corpus_supplements(
+            supplements=registered,
+            deadline=deadline,
+            lookup=requested_path,
             corpus=corpus,
-            supplements=supplements or [],
+            to_read_result=lambda result: _supplement_read_result(
+                config, result, path=requested_path, from_line=from_line, lines=lines
+            ),
         )
 
-
-def _memory_read_failure(
-    config: MemoryConfig,
-    *,
-    error: Exception,
-    path: str,
-    from_line: int | None,
-    lines: int | None,
-    corpus: str,
-    supplements: list[MemoryCorpusSupplement],
-) -> dict:
-    # corpus=all retries the registered supplements (interim, before the memory-read-tool.ts
-    # port of the per-corpus outcomes); every other failure is executeMemoryReadResult's error
-    # payload (memory-read-tool.ts:58-69).
-    if corpus == "all":
-        for supplement in supplements:
-            if supplement.get(path=path, corpus=corpus) is not None:
-                return _memory_get_supplement(
-                    config,
-                    path=path,
-                    from_line=from_line,
-                    lines=lines,
-                    corpus=corpus,
-                    supplements=[supplement],
+    if corpus == "wiki":
+        # memory-read-tool.ts:39-53 executeWikiMemoryReadResult.
+        def wiki_result(deadline: MemoryCorpusDeadline) -> dict:
+            wiki = read_wiki(deadline)
+            value = _attempt_value(wiki)
+            if value is None:
+                value = (
+                    {"status": "not_found", "path": requested_path, "text": ""}
+                    if wiki.outcome == "ok"
+                    else {"path": requested_path, "text": ""}
                 )
+            return {**value, **compose_memory_corpus_metadata([wiki])}
+
+        return run_memory_corpus_deadline(MEMORY_GET_TOOL_NAME, wiki_result)
+    if corpus != "all":
+        # memory-read-tool.ts:58-69: a direct read, its failure as the tool's error payload.
+        try:
+            return read()
+        except Exception as error:
+            return _memory_read_failure(requested_path, error)
+
+    # memory-read-tool.ts:71-95: memory and wiki together under one deadline.
+    def all_result(deadline: MemoryCorpusDeadline) -> dict:
+        memory, wiki = run_concurrently(
+            [
+                lambda: attempt_memory_corpus(
+                    corpus="memory", deadline=deadline, unavailable_value=None, run=read
+                ),
+                lambda: read_wiki(deadline),
+            ]
+        )
+        memory_result = _attempt_value(memory)
+        wiki_result = _attempt_value(wiki)
+        if memory_result is not None and memory_result.get("status") != "not_found":
+            result = memory_result
+        elif wiki_result is not None:
+            result = wiki_result
+        elif memory.outcome == "ok" or wiki.outcome == "ok":
+            result = {"status": "not_found", "path": requested_path, "text": ""}
+        else:
+            result = {"status": "error", "path": requested_path, "text": ""}
+        return {**result, **compose_memory_corpus_metadata([memory, wiki])}
+
+    return run_memory_corpus_deadline(MEMORY_GET_TOOL_NAME, all_result)
+
+
+def _attempt_value(attempt: MemoryCorpusAttempt) -> dict | None:
+    # memory-read-tool.ts:35-37 attemptValue.
+    return None if attempt.outcome == "not-registered" else attempt.value
+
+
+def _memory_read_failure(path: str, error: BaseException) -> dict:
+    # memory-read-tool.ts:61-68.
     return {
         "path": path,
         "text": "",
@@ -223,26 +254,19 @@ def _memory_read_failure(
     }
 
 
-def _memory_get_supplement(
+def _supplement_read_result(
     config: MemoryConfig,
+    result: MemoryCorpusResult,
     *,
     path: str,
     from_line: int | None,
     lines: int | None,
-    corpus: str,
-    supplements: list[MemoryCorpusSupplement],
 ) -> dict:
-    # Interim until the memory-read-tool.ts wiki read is ported: the supplement's content is
-    # sliced like a memory file (documented deviation, decision D7).
-    result = None
-    for supplement in supplements:
-        result = supplement.get(path=path, corpus=corpus)
-        if result is not None:
-            break
-    if result is None:
-        return {"status": "not_found", "text": "", "path": path}
+    # Documented deviation (D7): upstream passes fromLine/lineCount to the supplement and returns
+    # {...details, status: "ok", text: content} as the supplement gave it; memory-core's
+    # supplement protocol has no line window, so the content is sliced like a memory file.
     content = result.get("content") or result.get("snippet") or ""
-    text_result = build_memory_read_result(
+    read = build_memory_read_result(
         content=str(content),
         rel_path=path,
         from_line=from_line,
@@ -250,5 +274,5 @@ def _memory_get_supplement(
         default_lines=config.memory_get_default_lines,
         max_chars=config.memory_get_max_chars,
     )
-    text_result["corpus"] = result.get("corpus", corpus)
-    return text_result
+    read["corpus"] = result.get("corpus", "wiki")
+    return read

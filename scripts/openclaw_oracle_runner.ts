@@ -34,6 +34,11 @@ type Payload = {
   }>;
   results?: unknown[];
   wikiResults?: unknown[];
+  // memoryGet: a registered wiki supplement whose get() returns null ("missing") or throws
+  // ("throw:<message>"); omitted, nothing is registered.
+  wikiGet?: string;
+  // memoryCorpusMetadata: attempt lists for composeMemoryCorpusMetadata.
+  corpusMetadataCases?: Array<{ attempts: Array<Record<string, unknown>>; extraWarnings?: string[] }>;
   sessionTranscripts?: Array<{
     fileName?: string;
     entries?: unknown[];
@@ -1166,6 +1171,23 @@ async function main() {
           },
         },
       };
+      if (payload.wikiGet !== undefined) {
+        // src/plugins/memory-state.ts registers the supplement memory-read-tool.ts settles.
+        const memoryState = await importFromRepo(repoPath, "src/plugins/memory-state.ts");
+        const wikiGet = payload.wikiGet;
+        memoryState.registerMemoryCorpusSupplement("memory-wiki", {
+          search: async () => [],
+          get: async () => {
+            if (wikiGet.startsWith("throw:")) {
+              throw new Error(wikiGet.slice("throw:".length));
+            }
+            if (wikiGet !== "missing") {
+              throw new Error(`unknown wikiGet ${wikiGet}`);
+            }
+            return null;
+          },
+        });
+      }
       const tools = await importFromRepo(repoPath, "extensions/memory-core/src/tools.ts");
       const adapter = await importFromRepo(repoPath, "src/agents/agent-tool-definition-adapter.ts");
       const tool = tools.createMemoryGetTool({ config: cfg, agentId: "main" });
@@ -1196,6 +1218,18 @@ async function main() {
     } finally {
       await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
     }
+  }
+
+  if (payload.operation === "memoryCorpusMetadata") {
+    // extensions/memory-core/src/memory-corpus.ts composeMemoryCorpusMetadata, a pure export.
+    const corpus = await importFromRepo(repoPath, "extensions/memory-core/src/memory-corpus.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.corpusMetadataCases ?? []).map((entry) =>
+        corpus.composeMemoryCorpusMetadata(entry.attempts, entry.extraWarnings ?? []),
+      ),
+    };
   }
 
   if (payload.operation === "memoryToolDefinitions") {

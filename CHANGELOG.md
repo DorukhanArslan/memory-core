@@ -115,6 +115,13 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 - `USER.md` is a memory file: `memory_search` indexes it after `MEMORY.md`, `memory_get` reads it,
   and a curated `USER.md` write reindexes the store. The `memory/` walk is sorted by path, so the
   index order of nested files changes.
+- `memory_get` with `corpus="wiki"` or `corpus="all"` reports one outcome per corpus
+  (`corpora`, `warning`, `error`, `timedOut`/`timeoutMs`, `memory_core.tools.corpus`) under a
+  30 s deadline, as upstream v2026.9.6: `all` reads memory and the supplements together and
+  returns the memory result, else the supplement's, else `not_found` or `{"status": "error"}`;
+  a missing wiki result is `not_found`, and no registered supplement is reported as
+  `not-registered` with a warning (it was `{"disabled": true, "error": "wiki corpus result not
+  found"}`).
 - `memory_search` and `memory_get` read a blank `maxResults`, `minScore`, `from` or `lines` as
   omitted, and check `corpus` against their enums: an unknown corpus raises `corpus must be one
   of: ...` (it searched every source before).

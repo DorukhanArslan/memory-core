@@ -65,6 +65,7 @@ from memory_core.index.identity import (
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.flags import FeatureFlags
 from memory_core.tools.common import MemoryToolInputError
+from memory_core.tools.corpus import MemoryCorpusAttempt, compose_memory_corpus_metadata
 import memory_core.tools.memory_search as memory_search_module
 from memory_core.tools.memory_search import (
     build_memory_search_unavailable_result,
@@ -1201,6 +1202,128 @@ def test_real_openclaw_oracle_memory_get_user_profile_as_a_directory_matches_pyt
         "error": "path must be a regular file",
     }
     assert result["result"] == memory_get(MemoryConfig(workspace_dir=root), path="USER.md")
+
+
+class _WikiGetSupplement:
+    """The runner's memoryGet `wikiGet` supplement on the Python side: get() is None or raises."""
+
+    def __init__(self, behaviour: str):
+        self.behaviour = behaviour
+
+    def search(self, *, query: str, max_results: int, corpus: str) -> list:
+        return []
+
+    def get(self, *, path: str, corpus: str):
+        if self.behaviour.startswith("throw:"):
+            raise RuntimeError(self.behaviour.removeprefix("throw:"))
+        return None
+
+
+# memory-read-tool.ts at v2026.9.6 (d46f9ebf2b2 #147702): corpus=wiki and corpus=all report one
+# attempt per corpus (composeMemoryCorpusMetadata). A found supplement result is a protocol case
+# (decision D7: upstream's get() receives fromLine/lineCount) and is not compared here.
+MEMORY_GET_CORPUS_CASES = [
+    (corpus, path, wiki)
+    for corpus, paths in (
+        ("wiki", ["memory/a.md"]),
+        ("all", ["memory/a.md", "memory/missing.md", "notes.txt"]),
+    )
+    for path in paths
+    for wiki in (None, "missing", "throw:wiki store offline")
+]
+
+
+@pytest.mark.parametrize(("corpus", "path", "wiki"), MEMORY_GET_CORPUS_CASES)
+def test_real_openclaw_oracle_memory_get_corpora_match_python(
+    tmp_path: Path, corpus: str, path: str, wiki: str | None
+):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    root = tmp_path / "workspace"
+    (root / "memory").mkdir(parents=True)
+    (root / "memory" / "a.md").write_text("one\ntwo\n", encoding="utf-8")
+    (root / "notes.txt").write_text("not memory\n", encoding="utf-8")
+    raw_params = {"path": path, "corpus": corpus}
+    payload = {"operation": "memoryGet", "workspaceDir": str(root), "rawParams": raw_params}
+    if wiki is not None:
+        payload["wikiGet"] = wiki
+
+    result = oracle.run(payload)
+    python_result = execute_memory_get_tool(
+        MemoryConfig(workspace_dir=root),
+        raw_params,
+        supplements=[] if wiki is None else [_WikiGetSupplement(wiki)],
+    )
+
+    assert result["ok"] is True, result
+    assert result["result"] == python_result
+
+
+MEMORY_CORPUS_METADATA_CASES = [
+    {"attempts": [{"corpus": "wiki", "outcome": "not-registered"}]},
+    {"attempts": [{"corpus": "memory", "outcome": "not-registered"}]},
+    {
+        "attempts": [
+            {"corpus": "wiki", "outcome": "not-registered"},
+            {"corpus": "memory", "outcome": "ok", "value": None},
+        ]
+    },
+    {
+        "attempts": [
+            {"corpus": "wiki", "outcome": "ok", "value": None},
+            {
+                "corpus": "memory",
+                "outcome": "partial",
+                "value": [],
+                "error": "memory_search timed out after 30s",
+                "deadline": True,
+            },
+        ],
+        "extraWarnings": ["Tell the user: results are partial."],
+    },
+    {
+        "attempts": [
+            {"corpus": "memory", "outcome": "unavailable", "value": None, "error": "quota",
+             "code": "E_QUOTA", "deadline": False},
+            {"corpus": "wiki", "outcome": "unavailable", "value": None,
+             "error": "memory-wiki: offline; other-wiki: slow", "deadline": False},
+        ]
+    },
+    {
+        "attempts": [
+            {"corpus": "wiki", "outcome": "unavailable", "value": None,
+             "error": "memory_get timed out after 30s", "deadline": True},
+        ]
+    },
+    {"attempts": [], "extraWarnings": ["only an extra warning"]},
+]
+
+
+def _python_corpus_attempt(entry: dict) -> MemoryCorpusAttempt:
+    return MemoryCorpusAttempt(
+        corpus=entry["corpus"],
+        outcome=entry["outcome"],
+        value=entry.get("value"),
+        error=entry.get("error"),
+        code=entry.get("code"),
+        deadline=entry.get("deadline", False),
+    )
+
+
+def test_real_openclaw_oracle_memory_corpus_metadata_matches_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+    result = oracle.run(
+        {"operation": "memoryCorpusMetadata", "corpusMetadataCases": MEMORY_CORPUS_METADATA_CASES}
+    )
+
+    assert result["ok"] is True, result
+    assert result["result"] == [
+        compose_memory_corpus_metadata(
+            [_python_corpus_attempt(attempt) for attempt in entry["attempts"]],
+            entry.get("extraWarnings", []),
+        )
+        for entry in MEMORY_CORPUS_METADATA_CASES
+    ]
 
 
 def _python_memory_get_tool(config: MemoryConfig, raw_params: object) -> dict:

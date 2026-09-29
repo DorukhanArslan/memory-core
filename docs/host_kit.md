@@ -266,7 +266,8 @@ def dispatch(
 - Composes `execute_memory_search_tool(config, store, args, agent_session_key=session.session_key,
   on_recall=..., runtime_identity=identity)`, `execute_memory_get_tool(config, args)` and
   `MemoryCurator.dispatch(name, args)` on `HostKit.curator`, built from `Memory.curator(layout,
-  policy, timezone, now_ms)` (whose `after_write` reindexes after MEMORY.md and daily-note writes).
+  policy, timezone, now_ms)` (whose `after_write` reindexes after MEMORY.md, USER.md and daily-note
+  writes).
 - Arguments: a mapping, its JSON text (parsed once for every tool) or `None` (read as `{}`).
   Blank text reads as `{}`. Parsing JSON text is host-transport glue and deliberately differs from
   the core's `asToolParamsRecord` (`as_tool_params_record`, where a string reads as `{}`): the kit
@@ -442,7 +443,7 @@ class ToolCallRepair:
   rewritten, the Responses-API steps are not offered, and a row without a `status` cannot carry
   upstream's `isError` (LangGraph findings › Parity labels).
 - `has_bootstrap_file_access` defaults to `False` because no kit tool can read BOOTSTRAP.md
-  (`memory_get` reads only MEMORY.md, dreams.md and `memory/**`); upstream's
+  (`memory_get` reads only MEMORY.md, USER.md, dreams.md and `memory/**`); upstream's
   `hasBootstrapFileAccess` is "the run's tools include `read`" (`attempt-bootstrap-prepare.ts`).
   A host with its own read tool passes `True`. Non-empty BOOTSTRAP.md still counts as access
   (core rule).
@@ -1284,8 +1285,10 @@ The packaging stage (0.2.0, CHANGELOG.md) built the package with a `demo` extra,
 package root to the kit and the core handle (the kit classes are exported there) and removed the
 facade's turn helpers; the quickstart stage added `examples/quickstart.py` and the README
 Quickstart over the kit. Later: live subject workspaces on the kit, the pre-compaction checkpoint
-flush with a compaction adapter, session auto-reset and memory-search supplements on the kit (port
-plan area 5, Parts A and B, landed 2026-09-29/30).
+flush with a compaction adapter, session auto-reset and memory-search supplements on the kit (the
+kit passes no `supplements=`, so its `wiki` corpus is `not-registered`). Port plan area 5 (tool
+definitions, the Memory Recall section, the `memory_get` and `memory_search` contract; Parts A and
+B) landed 2026-09-29/30.
 
 # LangGraph findings (2026-09-29)
 

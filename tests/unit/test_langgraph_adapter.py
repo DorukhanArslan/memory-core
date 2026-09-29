@@ -225,6 +225,32 @@ def test_tool_messages_mark_error_payloads_and_convert_to_tool_messages(tmp_path
     assert converted[1].content == rows[1]["content"]
 
 
+def test_tool_messages_mark_a_refused_memory_get_read_as_an_error(tmp_path: Path):
+    # v2026.9.6 memory_get: a refused or failed read is {"status": "error", "code", ...}
+    # (memory-read-tool.ts:58-69), which upstream's isToolResultError counts as an error
+    # (src/agents/tool-result-error.ts:90-113); a missing memory file is "not_found", not one.
+    (tmp_path / "notes.txt").write_text("not a memory file\n", encoding="utf-8")
+    kit = _kit(tmp_path)
+    message = AIMessage(
+        "",
+        tool_calls=[
+            {"name": "memory_get", "args": {"path": "notes.txt"}, "id": "call-1"},
+            {"name": "memory_get", "args": {"path": "memory/missing.md"}, "id": "call-2"},
+        ],
+    )
+
+    rows = tool_messages(message, kit.dispatcher(_session()))
+    converted = messages.convert_to_messages(rows)
+
+    refused, missing = (json.loads(row["content"]) for row in rows)
+    assert refused["status"] == "error" and refused["code"] == "MEMORY_PATH_NOT_ALLOWED"
+    assert missing == {"status": "not_found", "text": "", "path": "memory/missing.md"}
+    assert [(item.tool_call_id, item.status) for item in converted] == [
+        ("call-1", "error"),
+        ("call-2", "success"),
+    ]
+
+
 def test_tool_messages_reject_a_call_without_an_id():
     # A ToolMessage needs the call's id, so an id-less call is a provider or host error; no
     # call of the message is dispatched.

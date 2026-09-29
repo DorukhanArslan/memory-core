@@ -81,9 +81,17 @@ def tool_messages(message: Any, dispatch: ToolDispatch) -> list[dict[str, Any]]:
     ``tool  is not available`` payload. Pass ``kit.dispatcher(session)`` for a turn and
     ``FlushRequest.dispatch`` for a flush run: both take the two arguments. One
     ``{"role": "tool", "tool_call_id", "name", "content", "status"}`` dict per call:
-    ``content`` is the payload as JSON text and ``status`` is ``"error"`` for the kit's error
-    payload (``{"status": "error", ...}``), else ``"success"``. ``ValueError``, before
-    any call is dispatched, when a call's id is not a string: a tool message needs it.
+    ``content`` is the payload as JSON text and ``status`` is ``"error"`` for any payload with
+    ``"status": "error"``, else ``"success"``: the kit's error payloads (bad arguments, invalid
+    JSON, an unknown tool) and, since v2026.9.6, a refused or failed ``memory_get`` read
+    (``{"status": "error", "code", ...}``, memory-read-tool.ts:58-69), which upstream's
+    ``isToolResultError`` counts as an error too (src/agents/tool-result-error.ts:90-118); a
+    ``memory_get`` ``not_found`` stays ``"success"``. Labelled gap: ``isToolResultError`` also
+    counts a truthy ``error`` or ``timedOut: true`` (:119-123), so upstream flags a result that
+    carries one (a ``memory_search`` unavailable result, a failed corpus, a deadline partial),
+    which stays ``"success"`` here.
+    ``ValueError``, before any call is dispatched, when a call's id is not a string: a tool
+    message needs it.
     """
     calls = _all_calls(message)
     for call in calls:

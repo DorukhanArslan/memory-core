@@ -130,8 +130,15 @@ START -> new_session (a human "/new" or "/reset" first word: kit.on_new_session)
   and later turns replay only the row. `/new <text>` starts the new session with the text.
 - Failures: a failed model call raises out of the run with the user message in `messages` and
   `memory_session` unchanged; `graph.invoke(None, config)` resumes the failed node (F17). The
-  kit's error payloads (bad arguments, invalid JSON, an unknown tool) go back to the model as
-  tool messages with `status="error"`; a tool call without an id raises `ValueError` (F19). A
+  kit's error payloads (bad arguments, invalid JSON, an unknown tool) and, since v2026.9.6, a
+  refused or failed `memory_get` read (`{"status": "error", "code", ...}`, such as
+  `MEMORY_PATH_NOT_ALLOWED` for a non-memory path) go back to the model as tool messages with
+  `status="error"`, which upstream's `isToolResultError` counts as errors too
+  (`src/agents/tool-result-error.ts:90-118`); a `memory_get` `not_found` is a success. Labelled
+  gap: `isToolResultError` also counts a truthy `error` or `timedOut: true` (`:119-123`), so a
+  result that carries one (a `memory_search` unavailable result, a failed corpus, a deadline
+  partial), which upstream flags, stays `status="success"` here. A tool call without an id
+  raises `ValueError` (F19). A
   turn that failed in or before `tools` leaves an AI message whose tool calls have no tool
   message, which a provider rejects: every model call sends a repaired copy of `messages`
   (`repair_tool_calls` over `kit.repair_tool_calls`, upstream's replay repair), where such a

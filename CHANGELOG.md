@@ -83,8 +83,7 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   `FlushRequest`.
 - `record_daily_memory_flush`. Record a daily signal with
   `memory_core.consolidation.record_short_term_recalls(..., signal_type="daily")`.
-- Pending Doruk's confirmation (docs/integrations/langgraph.md › Open questions, L1; if the
-  answer is keep, this removal is reverted): `LangGraphMemoryRecall` and `format_memory_context`
+- `LangGraphMemoryRecall` and `format_memory_context`
   (`memory_core.adapters.langgraph`, `memory_core.adapters`) and `Memory.langgraph_recall()`.
   The node injected search results into
   the prompt, which upstream never does, and read only role dicts, so a LangGraph state of

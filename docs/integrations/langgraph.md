@@ -78,8 +78,9 @@ for update in graph.stream(
 reply = graph.get_state(config).values["messages"][-1]
 ```
 
-`build_graph(kit, model, *, checkpointer, context_window_tokens, session_key, new_id, redact,
-redactor)`: `session_key` maps the thread id to the session key (default: the thread id;
+`build_graph(kit, model, *, context_window_tokens, checkpointer, session_key, new_id, redact,
+redactor)`: `context_window_tokens` is required (L11): the model's window for the flush gate, since the
+kit's 200,000-token default would silence a smaller model's flush (F12). `session_key` maps the thread id to the session key (default: the thread id;
 `lambda thread: f"agent:main:{thread}"` gives upstream-shaped keys), `new_id` makes session and
 message ids (`uuid4` text), `redact` maps a failed flush's error text and `redactor` each line
 `/new` saves from the ending session. `context_window_tokens` is the model's window: without
@@ -150,7 +151,7 @@ models convert; it imports no framework, owns no loop and calls no model.
 
 There is no node factory or prebuilt agent: wiring the model and the flush loop would own the
 agent loop, which adapters never do (docs/package_boundary.md). `LangGraphMemoryRecall`, the
-earlier auto-recall node, was removed in 0.2.0, pending Doruk's answer to L1 (Design › Fate of
+earlier auto-recall node, was removed in 0.2.0 (L1, confirmed by Doruk on 2026-09-29; Design › Fate of
 `LangGraphMemoryRecall`).
 
 ### Tests
@@ -226,11 +227,11 @@ also under a strict serializer; the sync kit runs under `ainvoke`; `/new` keeps 
 and starts a new flush cycle; a restart over the same saver continues the thread
 (`test_session_state_survives_in_the_checkpointer`).
 
-### Open questions for Doruk
+### Decisions (Doruk, 2026-09-29)
 
-L1-L11 are in Design › Open questions. The kit changes the findings recommend (F2 with F3,
-F7, F12, F21, F22, F24, F26, and the F1 line) are not made on this branch: each changes the kit's
-contract, so they wait for Doruk's go-ahead (L10).
+L1-L9 as recommended (Design › Open questions); L11: `build_graph` requires
+`context_window_tokens`. L10: the kit changes the findings recommend (F2 with F3, F7, F12, F21,
+F22, F24, F26, and the F1 line) follow on their own branch, since each changes the kit's contract.
 
 ## Design (2026-09-29)
 
@@ -617,7 +618,7 @@ class PendingTurn:
 
 ### Fate of `LangGraphMemoryRecall`
 
-Recommendation, implemented on this branch and pending Doruk's answer to L1: remove it in 0.2.0
+Decision (Doruk, 2026-09-29, L1): remove it in 0.2.0
 (still unreleased), with `format_memory_context` and `Memory.langgraph_recall`. Reasons:
 
 - It injects search results into the prompt, which upstream never does; the same reason removed
@@ -640,9 +641,8 @@ root" table losing its row (154 to 152 names) and the counts next to it: `LangGr
 and `format_memory_context` (from `memory_core.adapters.langgraph` and `memory_core.adapters`) and
 `Memory.langgraph_recall()`. Replacement: this integration; a host that still wants auto-recall
 calls `Memory.search` itself and labels it. The removal reverses docs/host_kit.md's line
-(2026-09-28) that the helper "stays as an explicit, labelled adapter-only auto-recall", so Doruk
-confirms it (L1). If L1 is "keep", the import moves into `Memory.langgraph_recall`'s body
-instead and the helper is fixed to read LangChain messages. It changes `memory_core/client.py`,
+(2026-09-28) that the helper "stays as an explicit, labelled adapter-only auto-recall", and Doruk
+confirmed it (L1, 2026-09-29). It changes `memory_core/client.py`,
 outside `memory_core/adapters/`, so Task 9 runs the oracle suite.
 
 ### Dependencies
@@ -672,7 +672,7 @@ outside `memory_core/adapters/`, so Task 9 runs the oracle suite.
 ### Findings so far
 
 The design-time table (F1-F21) became the Findings section at the top of this file, with the
-same numbers, the evidence of the implementation and F22-F24.
+same numbers, the evidence of the implementation and F22-F26.
 
 ### Test plan
 
@@ -831,6 +831,9 @@ Each task: tests first (watch them fail), implement, run the offline suite (base
    docs of Task 8 change no code it runs.
 
 ### Open questions for Doruk
+
+Answered on 2026-09-29: every recommendation taken; L11 made `context_window_tokens` required;
+L10's kit changes follow on their own branch (Decisions, at the top).
 
 - L1. Remove `LangGraphMemoryRecall`, `format_memory_context` and `Memory.langgraph_recall` in
   0.2.0 (recommended, above), or keep them as a labelled legacy helper, fixed to read LangChain

@@ -459,7 +459,8 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
 - 2026-09-29, `feat/kit-langgraph-fixes` (docs/host_kit.md › LangGraph findings, F26): the
   tool-use repair (`repairToolUseResultPairing` over `classifyToolUseResultPairing`) is re-ported
   to the tag, with four new fixtures, and the input repair `sanitizeToolCallInputs` is ported
-  (the general branch, nine fixtures); both are oracle-unverified until the branch's oracle run.
+  (the general branch, nine fixtures); both pass the oracle at `64770c7` (268 passed, 80 xfailed,
+  3 skipped, 0 failed of 351).
 
 ### 11. Matrix, docs and re-measure (estimate 6-10 h)
 

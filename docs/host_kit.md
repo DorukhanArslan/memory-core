@@ -945,8 +945,8 @@ claims `match` for kit composition. Oracle results must not change: task 10 re-r
 `HostKit.request_flush` is a memory-core extension (decision Q6) with no upstream counterpart.
 `TurnState`, `HostKit.dispatcher`, `after_turn(redact=)` and `HostKit.repair_tool_calls` (LangGraph
 findings, 2026-09-29) are adapter-only kit code too; `repair_tool_calls` composes two core ports
-(`sanitize_tool_call_inputs` and `repair_tool_use_result_pairing`, ported, oracle-unverified until
-the branch's oracle run), and its labelled gaps are listed in LangGraph findings › Parity labels.
+(`sanitize_tool_call_inputs` and `repair_tool_use_result_pairing`, oracle-backed for their
+fixtures at `64770c7`), and its labelled gaps are listed in LangGraph findings › Parity labels.
 
 Pin-era parts the kit ships until port plan area 5 lands: the `memory_search` and `memory_get`
 tool definitions and the Memory Recall section (`memory_core/prompt_section.py`, pin `4c428153`); the
@@ -1283,10 +1283,11 @@ port plan area 5 (tool definitions and the Memory Recall section at the tag).
 Status: specification and TDD plan, written 2026-09-29 on `feat/kit-langgraph-fixes` (from
 `main` `807508d`; first draft `9b90245`), revised after review the same day (`2d63f20`) and
 implemented the same day: Task 1 `14dbdcb`, Task 2 `dcba413`, Task 3 `76dfdd7`, Task 4
-`0869989`, Task 5 `89945b3`, Task 6 `9e1b00c`, Task 7 `7e1d23b`, Task 8 (docs) after them. Each
-open question K1-K7 was built as its recommendation, K3 as the recorded decision `f2351d5`;
-Doruk has not answered them yet. The oracle fixtures of Tasks 4 and 5 have not run (Task 9's
-oracle run is open), so both ports are ported, oracle-unverified. Doruk's decision L10
+`0869989`, Task 5 `89945b3`, Task 6 `9e1b00c`, Task 7 `7e1d23b`, Task 8 (docs) `0ba1cfc`; the
+review fixes after it are `a851890`..`64770c7`. Each open question K1-K7 was built as its
+recommendation, K3 as the recorded decision `f2351d5`; Doruk has not answered them yet. Task 9:
+offline 1483 passed, 325 skipped at `64770c7`; the oracle suite 268 passed, 80 xfailed, 3 skipped, 0 failed of 351 at `64770c7` (v2026.9.6, Node 24, 43 min, no rerun), the
+expected counts, so both ports are oracle-backed for their fixtures. Doruk's decision L10
 (docs/integrations/langgraph.md › Decisions) takes the kit changes the LangGraph findings
 recommend; `F<n>` are the rows of docs/integrations/langgraph.md › Findings. Upstream anchors are v2026.9.6 (`/tmp/openclaw-head`). Task 1 needs no decision,
 Task 2 needs K4 and K7, Task 3 (the adapter and the example on the turn state) K5; Tasks 4-7
@@ -1677,9 +1678,9 @@ class ToolCallRepair:
 
 `TurnState`, `dispatcher`, `repair_tool_calls` and its row mapping are adapter-only kit code; the
 orders and options they take from upstream are source-backed with the anchors above, and no row
-claims `match` for them. The two core ports are oracle-backed once Task 9 runs their fixtures:
-`repairToolUseResultPairing` (both existing fixtures plus Task 4's) and the new
-`sanitizeToolCallInputs` op; until then they are ported, oracle-unverified. docs/parity_matrix.md
+claims `match` for them. The two core ports are oracle-backed for their fixtures since Task 9
+ran them at `64770c7`: `repairToolUseResultPairing` (both existing fixtures plus Task 4's) and
+the new `sanitizeToolCallInputs` op. docs/parity_matrix.md
 row "Active transcript and context injection" keeps `partial`: its oracle column gains
 `sanitizeToolCallInputs`, its note counts the repair fixtures, and its "Remaining HEAD gaps" lose
 the synthetic-vs-real replacement and the `partialJson` handling. Labelled gaps of the kit's

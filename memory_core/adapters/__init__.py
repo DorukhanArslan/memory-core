@@ -1,7 +1,6 @@
 """Optional host-framework adapters for memory-core."""
 
 from memory_core.adapters.langgraph import (
-    PendingTurn,
     has_tool_calls,
     tool_messages,
     transcript_rows,
@@ -9,7 +8,6 @@ from memory_core.adapters.langgraph import (
 )
 
 __all__ = [
-    "PendingTurn",
     "has_tool_calls",
     "tool_messages",
     "transcript_rows",

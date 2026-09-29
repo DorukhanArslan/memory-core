@@ -93,7 +93,7 @@ LangGraph clients work unchanged; `context=AgentContext(runtime_context=...)` is
 
 ```text
 START -> new_session (a human "/new" or "/reset" first word: kit.on_new_session)
-      -> prepare     (kit.before_turn, into a PendingTurn in the state)
+      -> prepare     (kit.before_turn, into a TurnState in the state)
       -> agent       (the model bound to kit.tools(); has tool calls?) -> tools -> agent ...
       -> maintain    (kit.after_turn; a due FlushRequest runs its flush turn) -> END
 ```
@@ -146,8 +146,7 @@ models convert; it imports no framework, owns no loop and calls no model.
 | `transcript_rows(messages)` | the kit's `{"role", "content"}` rows of LangChain messages (objects or dict forms) for `after_turn` and `on_new_session`; never a `type` key |
 | `turn_usage(message)` | `TurnUsage` from an AI message's `usage_metadata`, else `None` |
 | `has_tool_calls(message)` | valid or invalid tool calls, for routing |
-| `tool_messages(message, dispatch)` | one `{"role": "tool", ...}` dict per tool call, valid and invalid, answered through `functools.partial(kit.dispatch, session=...)` or `FlushRequest.dispatch` |
-| `PendingTurn` | a `TurnContext`'s session, system prompt, runtime context and tools (plus a reset turn's model prompt) as checkpointable JSON |
+| `tool_messages(message, dispatch)` | one `{"role": "tool", ...}` dict per tool call, valid and invalid, answered through `kit.dispatcher(session)` or `FlushRequest.dispatch` |
 
 There is no node factory or prebuilt agent: wiring the model and the flush loop would own the
 agent loop, which adapters never do (docs/package_boundary.md). `LangGraphMemoryRecall`, the

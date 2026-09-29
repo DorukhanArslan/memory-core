@@ -21,7 +21,6 @@ restart starts a new thread state.
 from __future__ import annotations
 
 import argparse
-import functools
 import os
 import sys
 import uuid
@@ -47,16 +46,16 @@ from memory_core import (
     FlushRequest,
     HostKit,
     MemoryConfig,
+    ResetTurn,
     SessionState,
+    TurnState,
 )
 from memory_core.adapters.langgraph import (
-    PendingTurn,
     has_tool_calls,
     tool_messages,
     transcript_rows,
     turn_usage,
 )
-from memory_core.memory_flush import MemoryFlushFailureOutcome
 from memory_core.project_name import DIST_NAME
 
 # A turn's model calls with tool calls (host policy, like the Lab's MAX_TOOL_ROUNDS): the next
@@ -73,8 +72,8 @@ class AgentState(TypedDict):
 
     ``messages`` is the session's visible transcript: never the system prompt, the runtime
     context or the flush turn. The ``memory_*`` values are JSON: the committed
-    ``SessionState``, the turn in flight (``PendingTurn``), the reset prompt a bare ``/new``
-    leaves for ``prepare``, and what the last maintenance decided and wrote.
+    ``SessionState``, the turn in flight (``TurnState``), the reset turn a bare ``/new``
+    leaves for ``prepare`` (``ResetTurn``), and what the last maintenance decided and wrote.
     """
 
     messages: Annotated[list[AnyMessage], add_messages]
@@ -108,27 +107,62 @@ def reset_command(message: Any) -> tuple[Literal["new", "reset"], str] | None:
     return ("new" if words[0].lower() == "/new" else "reset"), words[1] if len(words) > 1 else ""
 
 
-def model_input(turn: PendingTurn, messages: Sequence[Any]) -> list[Any]:
+def model_input(turn: TurnState, messages: Sequence[Any]) -> list[Any]:
     """The model's input: the system prompt, then the transcript with the runtime context.
 
-    The runtime context goes in as a user message immediately before the turn's user message,
-    where upstream keeps its runtime-context carrier (src/agents/internal-runtime-context.ts:378;
-    packages/agent-core/src/harness/messages.ts:139-153 sends it as a user message). A bare
-    ``/new`` or ``/reset`` turn sends its model prompt in place of the transcript row.
+    The runtime context goes in as a user message immediately before the turn's active user
+    message, where upstream binds its runtime-context carrier
+    (src/agents/embedded-agent-runner/run/attempt-llm-boundary.ts:240-268;
+    packages/agent-core/src/harness/messages.ts:139-153 sends it as a user message); with no
+    active user message it goes last (this example's choice). A bare ``/new`` or ``/reset``
+    turn sends its model prompt in place of the transcript row, with upstream's guard
+    (``installModelPromptTransform``, attempt-llm-boundary.ts:384-460): only a model prompt
+    that is not blank and differs from the row, and only while the active user message's text
+    is the row (the example's row is text).
     """
-    body = [
-        {"role": "user", "content": turn.model_prompt}
-        if turn.model_prompt_message_id is not None
-        and getattr(message, "id", None) == turn.model_prompt_message_id
-        else message
-        for message in messages
-    ]
+    body = list(messages)
+    index = active_user_index(body)
+    reset = turn.reset
+    if (
+        reset is not None
+        and reset.model_prompt.strip()
+        and reset.model_prompt != reset.transcript_prompt
+        and index is not None
+        and _content(body[index]) == reset.transcript_prompt
+    ):
+        body[index] = {"role": "user", "content": reset.model_prompt}
     if turn.runtime_context:
-        users = [index for index, message in enumerate(messages) if message.type == "human"]
         runtime = {"role": "user", "content": turn.runtime_context}
-        body.insert(users[-1] if users else len(body), runtime)
+        body.insert(index if index is not None else len(body), runtime)
     system = [{"role": "system", "content": turn.system_prompt}] if turn.system_prompt else []
     return system + body
+
+
+def active_user_index(messages: Sequence[Any]) -> int | None:
+    """The turn's active user message: the last one, unless an assistant reply follows it.
+
+    Upstream's ``findActiveUserMessageIndex``
+    (src/agents/embedded-agent-runner/run/attempt-history.ts:350-383): an assistant message
+    with tool calls is the turn's own scaffolding, one without them ends the turn (``None``).
+    Message objects and role dicts read alike.
+    """
+    for index in range(len(messages) - 1, -1, -1):
+        role = _role(messages[index])
+        if role == "user":
+            return index
+        if role == "assistant" and not has_tool_calls(messages[index]):
+            return None
+    return None
+
+
+def _role(message: Any) -> str | None:
+    if isinstance(message, Mapping):
+        return message.get("role")
+    return {"human": "user", "ai": "assistant"}.get(getattr(message, "type", None))
+
+
+def _content(message: Any) -> Any:
+    return message.get("content") if isinstance(message, Mapping) else message.content
 
 
 def tool_rounds(messages: Sequence[Any]) -> int:
@@ -180,7 +214,7 @@ def build_graph(
     flush would never run. ``checkpointer`` keeps each thread's state (default: an in-process
     ``InMemorySaver``); every run needs ``config={"configurable": {"thread_id": ...}}``.
     ``session_key`` maps the thread id to the session key (default: the thread id itself);
-    ``new_id`` makes session and message ids. ``redact`` maps a failed flush's error text
+    ``new_id`` makes session ids. ``redact`` maps a failed flush's error text
     before it is stored; ``redactor`` maps each line ``/new`` saves from the ending session.
     """
     key_of = session_key or (lambda thread_id: thread_id)
@@ -199,27 +233,22 @@ def build_graph(
     def new_session(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
         ending, _ = current_session(state, config)
         command, text = reset_command(state["messages"][-1])
-        session_id, message_id = make_id(), make_id()
         new = kit.on_new_session(
             ending,
             command=command,
-            session_id=session_id,
+            session_id=make_id(),
             transcript=transcript_rows(state["messages"]),
             text=text,
             redactor=redactor,
         )
         # The thread's messages become the new session's transcript: its first row is the
         # reset row of a bare command (the model gets the reset prompt instead) or the text.
-        if new.reset is not None:
-            first = HumanMessage(new.reset.transcript_prompt, id=message_id)
-            reset = {"messageId": message_id, "modelPrompt": new.reset.model_prompt}
-        else:
-            first, reset = HumanMessage(text, id=message_id), None
+        first = new.reset.transcript_prompt if new.reset is not None else text
         return {
-            "messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), first],
+            "messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), HumanMessage(first)],
             "memory_session": new.session.to_json(),
             "memory_turn": None,
-            "memory_reset": reset,
+            "memory_reset": new.reset.to_json() if new.reset is not None else None,
         }
 
     def prepare(
@@ -227,16 +256,14 @@ def build_graph(
     ) -> dict[str, Any]:
         session, created = current_session(state, config)
         context = runtime.context
-        turn = kit.before_turn(
-            session, runtime_context=context.runtime_context if context is not None else None
-        )
         reset = state.get("memory_reset")
-        pending = PendingTurn.from_context(
-            turn,
-            model_prompt=reset["modelPrompt"] if reset else None,
-            model_prompt_message_id=reset["messageId"] if reset else None,
+        turn = TurnState.from_context(
+            kit.before_turn(
+                session, runtime_context=context.runtime_context if context is not None else None
+            ),
+            reset=ResetTurn.from_json(reset) if reset is not None else None,
         )
-        update: dict[str, Any] = {"memory_turn": pending.to_json(), "memory_reset": None}
+        update: dict[str, Any] = {"memory_turn": turn.to_json(), "memory_reset": None}
         if created:  # a thread's first session keeps its id even if this turn fails
             update["memory_session"] = session.to_json()
         if orphans := unanswered_tool_calls(state["messages"]):  # left by a failed turn
@@ -244,7 +271,7 @@ def build_graph(
         return update
 
     def agent(state: AgentState) -> dict[str, Any]:
-        turn = PendingTurn.from_json(state["memory_turn"])
+        turn = TurnState.from_json(state["memory_turn"])
         capped = tool_rounds(state["messages"]) >= MAX_TOOL_ROUNDS
         bound = model.bind_tools(list(turn.tools)) if turn.tools and not capped else model
         reply = bound.invoke(model_input(turn, state["messages"]))
@@ -253,9 +280,8 @@ def build_graph(
         return {"messages": [reply]}
 
     def tools(state: AgentState) -> dict[str, Any]:
-        turn = PendingTurn.from_json(state["memory_turn"])
-        dispatch = functools.partial(kit.dispatch, session=turn.session)
-        return {"messages": tool_messages(state["messages"][-1], dispatch)}
+        turn = TurnState.from_json(state["memory_turn"])
+        return {"messages": tool_messages(state["messages"][-1], kit.dispatcher(turn.session))}
 
     def after_agent(state: AgentState) -> str:
         return "tools" if has_tool_calls(state["messages"][-1]) else "maintain"
@@ -276,23 +302,17 @@ def build_graph(
         return request.complete(session)
 
     def maintain(state: AgentState) -> dict[str, Any]:
-        turn = PendingTurn.from_json(state["memory_turn"])
+        turn = TurnState.from_json(state["memory_turn"])
         messages = state["messages"]
         record = kit.after_turn(
             turn.session,
             transcript=transcript_rows(messages),
             usage=turn_usage(messages[-1]),
             context_window_tokens=context_window_tokens,
+            redact=redact,
         )
         decision = record.flush_decision
         session, failure, wrote = record.session, record.flush_failure, ()
-        if failure is not None and redact is not None:  # after_turn takes no redact
-            failure = MemoryFlushFailureOutcome(
-                entry=failure.entry,
-                failure_count=failure.failure_count,
-                exhausted=failure.exhausted,
-                error=redact(failure.error),
-            )
         if record.flush is not None:
             outcome = run_flush(record.flush, session)
             session, failure, wrote = outcome.session, outcome.failure, outcome.entries

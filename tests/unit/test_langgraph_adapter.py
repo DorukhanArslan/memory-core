@@ -4,7 +4,6 @@ The adapter reads LangChain messages by their attributes and returns plain dicts
 feed it real ``langchain_core`` messages and check what the kit and LangChain make of its output.
 """
 
-import functools
 import json
 from pathlib import Path
 
@@ -12,7 +11,6 @@ import pytest
 
 from memory_core import FeatureFlags, HostKit, MemoryConfig, SessionState, TurnUsage
 from memory_core.adapters.langgraph import (
-    PendingTurn,
     has_tool_calls,
     tool_messages,
     transcript_rows,
@@ -143,7 +141,7 @@ def test_has_tool_calls_counts_invalid_calls():
 def test_tool_messages_answer_every_call_through_dispatch(tmp_path: Path):
     (tmp_path / "MEMORY.md").write_text("- The project codename is velvetkiwi.\n", encoding="utf-8")
     kit = _kit(tmp_path)
-    dispatch = functools.partial(kit.dispatch, session=_session())
+    dispatch = kit.dispatcher(_session())
     calls = []
 
     def recording(name, arguments):
@@ -176,7 +174,7 @@ def test_tool_messages_answer_every_call_through_dispatch(tmp_path: Path):
 
 def test_tool_messages_answer_invalid_calls_with_the_kit_error_payload(tmp_path: Path):
     kit = _kit(tmp_path)
-    dispatch = functools.partial(kit.dispatch, session=_session())
+    dispatch = kit.dispatcher(_session())
     message = AIMessage(
         "",
         invalid_tool_calls=[
@@ -209,7 +207,7 @@ def test_tool_messages_mark_error_payloads_and_convert_to_tool_messages(tmp_path
         ],
     )
 
-    rows = tool_messages(message, functools.partial(kit.dispatch, session=_session()))
+    rows = tool_messages(message, kit.dispatcher(_session()))
     converted = messages.convert_to_messages(rows)
 
     assert json.loads(rows[0]["content"]) == {
@@ -245,52 +243,3 @@ def test_tool_messages_reject_a_call_without_an_id():
         with pytest.raises(ValueError, match="no string id"):
             tool_messages(message, dispatch)
     assert calls == []
-
-
-def test_pending_turn_round_trips_json(tmp_path: Path):
-    turn = _kit(tmp_path).before_turn(_session(), runtime_context="Channel: terminal")
-
-    pending = PendingTurn.from_context(
-        turn, model_prompt="the reset prompt", model_prompt_message_id="message-9"
-    )
-    data = json.loads(json.dumps(pending.to_json()))
-
-    assert (pending.session, pending.system_prompt, pending.runtime_context, pending.tools) == (
-        turn.session,
-        turn.system_prompt,
-        turn.runtime_context,
-        turn.tools,
-    )
-    assert turn.system_prompt.startswith("## Memory Recall")
-    assert "Channel: terminal" in pending.runtime_context
-    assert data["session"] == turn.session.to_json()
-    assert PendingTurn.from_json(data) == pending
-    assert PendingTurn.from_json(PendingTurn.from_context(turn).to_json()).model_prompt is None
-
-
-def test_pending_turn_from_json_rejects_a_bad_shape(tmp_path: Path):
-    good = PendingTurn.from_context(_kit(tmp_path).before_turn(_session())).to_json()
-    bad_shapes = [
-        None,
-        {**good, "session": None},
-        {**good, "session": {**good["session"], "sessionId": 7}},
-        {**good, "systemPrompt": None},
-        {**good, "runtimeContext": 3},
-        {**good, "tools": "memory_search"},
-        {**good, "tools": ["memory_search"]},
-        {**good, "modelPrompt": "a reset prompt"},
-        {key: value for key, value in good.items() if key != "systemPrompt"},
-    ]
-
-    for data in bad_shapes:
-        with pytest.raises(ValueError):
-            PendingTurn.from_json(data)
-
-
-def test_pending_turn_needs_both_reset_fields(tmp_path: Path):
-    turn = _kit(tmp_path).before_turn(_session())
-
-    with pytest.raises(ValueError, match="together"):
-        PendingTurn.from_context(turn, model_prompt="the reset prompt")
-    with pytest.raises(ValueError, match="together"):
-        PendingTurn.from_context(turn, model_prompt_message_id="message-9")

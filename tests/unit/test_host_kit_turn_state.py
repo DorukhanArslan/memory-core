@@ -174,9 +174,8 @@ def test_turn_state_from_json_reads_missing_optional_keys_as_null_and_ignores_un
     tmp_path,
 ):
     turn = _turn(tmp_path)
-    data = {
-        key: value for key, value in turn.to_json().items() if key not in ("runtimeContext", "reset")
-    }
+    data = turn.to_json()
+    del data["runtimeContext"], data["reset"]
 
     restored = TurnState.from_json({**data, "addedLater": {"any": "value"}})
 

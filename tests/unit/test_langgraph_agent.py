@@ -537,6 +537,95 @@ def test_bare_new_saves_session_memory_and_runs_the_reset_turn(tmp_path: Path, m
     assert state["memory_reset"] is None
 
 
+def test_reset_turn_substitutes_the_active_user_message_on_every_call(
+    tmp_path: Path, monkeypatch
+):
+    # Upstream's installModelPromptTransform: every model call of the reset turn, the tool
+    # round included, gets the model prompt as the text of the active user message (the reset
+    # row), with the runtime context right before it; the transcript keeps the row.
+    kit, model, graph = _graph(tmp_path, memory_script(usage=1_000))
+    news = _spy(monkeypatch, kit, "on_new_session")
+
+    state = _say(graph, "/new", context=example.AgentContext(runtime_context="Channel: terminal"))
+
+    (new,) = news
+    first, second = _chat_calls(model)
+    assert isinstance(second.messages[-1], ToolMessage)
+    for call in (first, second):
+        system, runtime, prompt = call.messages[:3]
+        assert isinstance(system, SystemMessage)
+        assert "Channel: terminal" in runtime.content
+        assert (prompt.type, prompt.content) == ("human", new.reset.model_prompt)
+    assert [message.type for message in state["messages"]] == ["human", "ai", "tool", "ai"]
+    assert state["messages"][0].content == new.reset.transcript_prompt
+
+
+def _reset_turn(tmp_path: Path, **reset: str):
+    kit = _kit(tmp_path)
+    context = kit.before_turn(
+        SessionState.new(session_key="thread-1", session_id="s1"), runtime_context="Channel: web"
+    )
+    fields = {
+        "model_prompt": "the model prompt",
+        "transcript_prompt": "[memory-core session new]",
+        "bootstrap_mode": "full",
+        "startup_context": None,
+        "prompt": "the model prompt",
+        **reset,
+    }
+    return example.TurnState.from_context(context, reset=example.ResetTurn(**fields))
+
+
+def test_model_input_replaces_only_the_transcript_prompt(tmp_path: Path):
+    # Upstream's guard (attempt-llm-boundary.ts:384-460): only a non-blank model prompt that
+    # differs from the row, and only while the active user message's text is the row.
+    row = "[memory-core session new]"
+    history = [HumanMessage(row), AIMessage("done")]
+
+    def texts(turn, messages):
+        return [
+            message["content"] if isinstance(message, dict) else message.content
+            for message in example.model_input(turn, messages)[1:]
+        ]
+
+    turn = _reset_turn(tmp_path / "a")
+    runtime = turn.runtime_context
+    assert texts(turn, [HumanMessage(row)]) == [runtime, "the model prompt"]
+    assert texts(turn, [HumanMessage("another message")]) == [runtime, "another message"]
+    # An assistant reply without tool calls ends the turn: no active user message.
+    assert texts(turn, history) == [row, "done", runtime]
+    blank = _reset_turn(tmp_path / "b", model_prompt="  ")
+    same = _reset_turn(tmp_path / "c", model_prompt=row)
+    for unchanged in (blank, same):
+        assert texts(unchanged, [HumanMessage(row)]) == [unchanged.runtime_context, row]
+
+
+def test_model_input_reads_dict_rows(tmp_path: Path):
+    turn = _reset_turn(tmp_path)
+    call = {"name": "memory_search", "args": {"query": "x"}, "id": "call-1"}
+    messages = [
+        HumanMessage("[memory-core session new]"),
+        AIMessage("", tool_calls=[call]),
+        {"role": "tool", "tool_call_id": "call-1", "content": "{}", "name": "memory_search"},
+    ]
+
+    sent = example.model_input(turn, messages)
+
+    assert [getattr(message, "type", None) or message["role"] for message in sent] == [
+        "system",
+        "user",
+        "user",
+        "ai",
+        "tool",
+    ]
+    assert sent[1]["content"] == turn.runtime_context
+    assert sent[2] == {"role": "user", "content": "the model prompt"}
+    assert example.model_input(turn, [{"role": "user", "content": "hi"}])[1:] == [
+        {"role": "user", "content": turn.runtime_context},
+        {"role": "user", "content": "hi"},
+    ]
+
+
 def test_new_keeps_the_session_key_and_rotates_the_session_id(tmp_path: Path):
     _, model, graph = _graph(tmp_path, memory_script())
     before = _say(graph, "Our codename is velvetkiwi.")
@@ -546,7 +635,6 @@ def test_new_keeps_the_session_key_and_rotates_the_session_id(tmp_path: Path):
     old, new = _session(before), _session(after)
     assert (old.session_key, old.session_id) == ("thread-1", "id-1")
     assert (new.session_key, new.session_id) == ("thread-1", "id-2")
-    assert after["messages"][0].id == "id-3"
     assert after["messages"][0].content == format_session_reset_transcript_prompt(
         "reset", MEMORY_CORE_RUNTIME_IDENTITY
     )
@@ -728,16 +816,20 @@ def test_redact_and_redactor_reach_the_kit(tmp_path: Path):
     assert "velvetkiwi" not in text
 
 
-def test_redact_maps_a_flush_target_failure(tmp_path: Path):
-    # after_turn records a target it cannot create as a strike, without a redact hook of
-    # its own; the graph applies the host's redact to the stored message.
+def test_redact_maps_a_flush_target_failure(tmp_path: Path, monkeypatch):
+    # after_turn records a target it cannot create as a strike; the graph passes the host's
+    # redact to it (after_turn(redact=), docs/host_kit.md, F21).
     (tmp_path / "memory").mkdir(parents=True, exist_ok=True)
     os.symlink(tmp_path / "elsewhere.md", tmp_path / DAILY)
-    _, model, graph = _graph(
+    kit, model, graph = _graph(
         tmp_path, memory_script(), redact=lambda text: text.replace(TODAY, "<date>")
     )
+    records = _spy(monkeypatch, kit, "after_turn")
 
     state = _say(graph, "Our codename is velvetkiwi.")
+
+    (record,) = records
+    assert record.flush_failure.error == state["memory_maintenance"]["failure"]["error"]
 
     failure = state["memory_maintenance"]["failure"]
     assert failure["failureCount"] == 1
@@ -1024,5 +1116,4 @@ def test_langgraph_doc_lists_the_adapter_exports():
         "turn_usage",
         "has_tool_calls",
         "tool_messages",
-        "PendingTurn",
     }

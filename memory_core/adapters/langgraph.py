@@ -9,13 +9,11 @@ LangChain, owns the agent loop or calls a model; the graph is host code
 
 from __future__ import annotations
 
-import copy
 import json
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
 from typing import Any
 
-from memory_core.host import SessionState, TurnContext, TurnUsage
+from memory_core.host import TurnUsage
 
 # BaseMessage.type of each LangChain message class (and of its chunk) and the kit's role.
 _ROLES = {
@@ -77,9 +75,8 @@ def tool_messages(message: Any, dispatch: ToolDispatch) -> list[dict[str, Any]]:
     ``tool_calls`` with their parsed ``args``, then ``invalid_tool_calls`` with their raw
     ``args`` text, which the kit answers with its error payload when it is not a JSON object;
     an invalid call without a name is dispatched as ``""``, so the model gets the kit's
-    ``tool  is not available`` payload. For ``HostKit.dispatch`` pass
-    ``functools.partial(kit.dispatch, session=...)``; ``FlushRequest.dispatch`` takes the two
-    arguments as it is. One ``{"role": "tool", "tool_call_id", "name", "content", "status"}``
+    ``tool  is not available`` payload. Pass ``kit.dispatcher(session)`` for a turn and
+    ``FlushRequest.dispatch`` for a flush run: both take the two arguments. One ``{"role": "tool", "tool_call_id", "name", "content", "status"}``
     dict per call: ``content`` is the payload as JSON text and ``status`` is ``"error"`` for the
     kit's error payload (``{"status": "error", ...}``), else ``"success"``. ``ValueError``, before
     any call is dispatched, when a call's id is not a string: a tool message needs it.
@@ -105,91 +102,6 @@ def tool_messages(message: Any, dispatch: ToolDispatch) -> list[dict[str, Any]]:
             }
         )
     return rows
-
-
-@dataclass(frozen=True)
-class PendingTurn:
-    """The turn in flight between a graph's prepare and maintain nodes, as checkpointable JSON.
-
-    A :class:`~memory_core.host.TurnContext` holds the ``WorkspaceContext`` it was built from and
-    does not serialize, while a graph's model, tools and maintenance nodes run in separate
-    supersteps that read their input from the checkpoint. This keeps what those nodes need: the
-    context's ``session`` (for ``dispatch`` and ``after_turn``), ``system_prompt``,
-    ``runtime_context`` and ``tools``, and for the turn a bare ``/new`` or ``/reset`` starts the
-    ``model_prompt`` (``ResetTurn.model_prompt``) the model gets in place of the transcript row
-    whose message id is ``model_prompt_message_id``. Assembling the model input is the host's.
-    """
-
-    session: SessionState
-    system_prompt: str
-    runtime_context: str | None
-    tools: tuple[dict[str, Any], ...]
-    model_prompt: str | None = None
-    model_prompt_message_id: str | None = None
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.session, SessionState):
-            raise TypeError("session must be a SessionState")
-        if not isinstance(self.system_prompt, str):
-            raise TypeError("system_prompt must be a string")
-        for name in ("runtime_context", "model_prompt", "model_prompt_message_id"):
-            if getattr(self, name) is not None and not isinstance(getattr(self, name), str):
-                raise TypeError(f"{name} must be a string or None")
-        if not all(isinstance(tool, Mapping) for tool in self.tools):
-            raise TypeError("tools must be mappings")
-        if (self.model_prompt is None) != (self.model_prompt_message_id is None):
-            raise ValueError("model_prompt and model_prompt_message_id go together")
-        object.__setattr__(self, "tools", tuple(copy.deepcopy(dict(tool)) for tool in self.tools))
-
-    @classmethod
-    def from_context(
-        cls,
-        context: TurnContext,
-        *,
-        model_prompt: str | None = None,
-        model_prompt_message_id: str | None = None,
-    ) -> PendingTurn:
-        """The pending turn of ``HostKit.before_turn``'s context, with the reset prompt if any."""
-        return cls(
-            session=context.session,
-            system_prompt=context.system_prompt,
-            runtime_context=context.runtime_context,
-            tools=context.tools,
-            model_prompt=model_prompt,
-            model_prompt_message_id=model_prompt_message_id,
-        )
-
-    def to_json(self) -> dict[str, Any]:
-        return {
-            "session": self.session.to_json(),
-            "systemPrompt": self.system_prompt,
-            "runtimeContext": self.runtime_context,
-            "tools": [copy.deepcopy(tool) for tool in self.tools],
-            "modelPrompt": self.model_prompt,
-            "modelPromptMessageId": self.model_prompt_message_id,
-        }
-
-    @classmethod
-    def from_json(cls, data: Mapping[str, Any]) -> PendingTurn:
-        """Read :meth:`to_json` output; ``ValueError`` for anything else."""
-        if not isinstance(data, Mapping):
-            raise ValueError("not a pending turn: expected an object")
-        session, tools = data.get("session"), data.get("tools")
-        if not isinstance(session, Mapping):
-            raise ValueError("not a pending turn: session must be an object")
-        if not isinstance(tools, list):
-            raise ValueError("not a pending turn: tools must be a list")
-        try:
-            return cls(
-                session=SessionState.from_json(session),
-                system_prompt=data["systemPrompt"],
-                runtime_context=data.get("runtimeContext"),
-                tools=tuple(tools),
-                model_prompt=data.get("modelPrompt"),
-                model_prompt_message_id=data.get("modelPromptMessageId"),
-            )
-        except (KeyError, TypeError) as exc:
-            raise ValueError(f"not a pending turn: {exc}") from exc
 
 
 def _row(message: Any) -> dict[str, Any]:

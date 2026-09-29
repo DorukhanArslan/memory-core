@@ -8,7 +8,9 @@ followed Doruk's decisions of 2026-09-28 ("Decisions") and landed the same day (
 `examples/quickstart.py`) followed. Task 10's oracle re-run and the real-browser check of Task 9
 are still open. Upstream anchors are OpenClaw v2026.9.6 (`eb377ac59e6`, checkout
 `/tmp/openclaw-head`) unless a line says otherwise. The kit changes the LangGraph host's findings
-recommend are specified, not yet built, in "LangGraph findings (2026-09-29)" at the end.
+recommend ("LangGraph findings (2026-09-29)" at the end) were built on `feat/kit-langgraph-fixes`
+on 2026-09-29 (`14dbdcb`..`7e1d23b`): `TurnState`, `HostKit.dispatcher`, `after_turn(redact=)`
+and `HostKit.repair_tool_calls`, with the doc lines below.
 
 # Part 1: Specification
 
@@ -151,6 +153,10 @@ class SessionState:
   `from_json` raises `ValueError` for a field of the wrong type, the entry's flush-gate fields
   included (numbers as integers, `totalTokensFresh` a boolean, `memoryFlush` an object; each
   may be null or absent), so a lax store cannot hand the kit a string `compactionCount`.
+- A framework whose state must serialize keeps `to_json()` there and reads it with `from_json`
+  in each step: a LangGraph checkpointer refuses the object itself (`TypeError: Type is not
+  msgpack serializable: SessionState`). `TurnState` and `ResetTurn` carry a turn and a reset the
+  same way (entry point 3; F1).
 
 ```python
 @dataclass(frozen=True)
@@ -173,7 +179,8 @@ inbound user message
                                            build_prompt_section
                                            build_runtime_context_system_context
   <- TurnContext(system_prompt, runtime_context, tools, session')
-  model call (host): system_prompt, runtime_context, history, user message
+     (a host whose steps run apart keeps TurnState.from_context(context).to_json())
+  model call (host): system_prompt, repair_tool_calls(history), runtime_context, user message
     each tool call:
     dispatch(name, args, session)      ->  execute_memory_search_tool (+ recall signals)
                                            execute_memory_get_tool
@@ -298,6 +305,18 @@ def dispatch(
 - Flags: all search flags through `memory.config` (FTS-only, vector-only, MMR, temporal decay);
   `curated_memory_writes` as above; a disabled capability makes no provider call and no write.
 
+```python
+def dispatcher(
+    self, session: SessionState
+) -> Callable[[str, Mapping[str, Any] | str | None], dict[str, Any]]
+```
+
+`dispatch` bound to one session: `kit.dispatcher(turn.session)(name, arguments)` is
+`kit.dispatch(name, arguments, session=turn.session)`, the two-argument shape of
+`FlushRequest.dispatch`, so one tool-answering helper serves a turn and its flush run. It looks
+`dispatch` up at each call and adds nothing to it; a `session` that is not a `SessionState`
+raises `TypeError` at once (F24).
+
 ### 3. `before_turn(session, ...)`
 
 ```python
@@ -359,6 +378,56 @@ class TurnContext:
 - No recall injection: upstream's model recalls through the memory tools, and so does the kit's.
   Startup context exists upstream only on the bare `/new` / `/reset` turn, so it comes from
   `on_new_session`, not from here.
+- Where the runtime context goes (F22): send `runtime_context` as a user-role message
+  immediately before the turn's user message, on every model call of the turn, and never record
+  it in the transcript. Upstream binds its runtime-context carrier to the turn's user message and
+  inserts it before that message (`src/agents/embedded-agent-runner/run/attempt-llm-boundary.ts:240-268`;
+  `findActiveUserMessageIndex` finds the message only on a retry, where none means no carrier),
+  sends that custom message as a user message (`packages/agent-core/src/harness/messages.ts:139-153`)
+  and strips carriers of earlier turns from replays (`src/agents/internal-runtime-context.ts:379-400`).
+  The block's header text ("... for the immediately preceding user message") is upstream's wording
+  and does not change the placement.
+- A turn whose steps run apart (F2, F3): `TurnContext` holds the `WorkspaceContext` and does not
+  serialize, so a host with durable steps (a LangGraph graph, a queue worker) keeps
+  `TurnState.from_context(context, reset=...)` and its `to_json()`, which carries the session,
+  the system prompt, the runtime context, the tools and the reset turn (`memory_core/host/turn.py`;
+  `from_json` needs `session`, `systemPrompt` and `tools`, reads missing optional keys as null and
+  ignores unknown keys; the JSON is unversioned and changes stay additive). On every model call of
+  a reset turn, the turn's active user message (upstream's `findActiveUserMessageIndex`,
+  `attempt-history.ts:350-383`: the last user message unless an assistant reply without tool
+  calls follows it) gets `reset.model_prompt` in place of its text while that text is
+  `reset.transcript_prompt` and the model prompt is not blank and differs from it (upstream's
+  `installModelPromptTransform`, `attempt-llm-boundary.ts:384-460`).
+- A turn that failed between a tool-call reply and its tool results leaves calls without results;
+  send `kit.repair_tool_calls(history).messages` to the model instead of the history (upstream
+  repairs the replayed history the same way at the start of each attempt, F26):
+
+```python
+def repair_tool_calls(
+    self,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    allowed_tool_names: Iterable[str] | None = None,
+) -> ToolCallRepair
+
+@dataclass(frozen=True)
+class ToolCallRepair:
+    messages: tuple[Mapping[str, Any], ...]  # the rows to send the model, in order
+    sources: tuple[int | None, ...]          # per row: the host row it is or copies; None: synthetic
+```
+
+  It maps the chat-completions rows to upstream's message shape, runs
+  `memory_core/replay_repair.py:sanitize_tool_call_inputs` and then
+  `sanitize_tool_use_result_pairing_for_model` (upstream's order, `replay-history.ts:793,819`)
+  and maps back (`memory_core/host/tool_calls.py`): unchanged rows are the host's own objects, a
+  changed assistant row keeps only its kept calls (trimmed names; no `tool_calls` key when none is
+  left), a tool row paired by its frame's only call gets that call's `tool_call_id`, dropped rows
+  are left out, and a missing result is `{"role": "tool", "tool_call_id", "content"}` with
+  upstream's `DEFAULT_MISSING_TOOL_RESULT_TEXT` for every identity (K3). `allowed_tool_names`
+  keeps unanswered calls to those tools only (upstream passes the run's tool names). The host
+  keeps its stored transcript as it is; the kit reads no file. Labelled gaps: host rows carry no
+  stop reason, tool-call blocks in a content list and a legacy `function_call` are neither read nor
+  rewritten, and the Responses-API steps are not offered (LangGraph findings › Parity labels).
 - `has_bootstrap_file_access` defaults to `False` because no kit tool can read BOOTSTRAP.md
   (`memory_get` reads only MEMORY.md, dreams.md and `memory/**`); upstream's
   `hasBootstrapFileAccess` is "the run's tools include `read`" (`attempt-bootstrap-prepare.ts`).
@@ -380,6 +449,7 @@ def after_turn(
     usage: TurnUsage | None,
     context_window_tokens: int | None = None,
     transcript_bytes: int | None = None,
+    redact: Callable[[str], str] | None = None,
 ) -> TurnRecord
 
 @dataclass(frozen=True)
@@ -423,6 +493,14 @@ pre-turn flush with the incoming prompt's estimate was the pin-era order.
      ensure completes the bootstrap. If the ensure raises (`UnsafeMemoryPathError`, `OSError`), the
      kit records a failure strike like upstream's `recordFailure` for a failed preparation:
      `flush` is `None`, `flush_failure` the outcome, and `session` carries the failed entry.
+     `redact` maps that failure's message (`record_memory_flush_failure(..., redact=redact)`, as
+     `FlushRequest.complete(redact=)` does; it is applied before the truncation, upstream's
+     order); only `flush_failure.error` changes (F21).
+- The window (F12): the default is upstream's `DEFAULT_CONTEXT_TOKENS` and is right only for a
+  model with a 200,000-token window. From an 80,000-token window up the flush threshold is the
+  window minus the reserve floor (20,000) and the soft threshold (4,000): the default puts it at
+  176,000, above a 128,000-token model's window (whose own threshold is 104,000), so that model's
+  flush never runs. Pass the model's window.
 - `after_turn` has only upstream inputs. The one forced flush is the extension below.
 
 ```python
@@ -488,7 +566,10 @@ class FlushOutcome:
 ```
 
 The plan, the decision and the session live on `TurnRecord`; the request carries only what the
-flush run needs.
+flush run needs. The flush run's model output is never delivered: a host that streams model output
+(a framework's token stream, server-sent events) tags the flush run's model calls out of that
+stream or runs them outside it (LangGraph: `TAG_NOSTREAM`). Upstream runs the flush as detached
+maintenance whose output no channel sees (F7).
 
 - `messages`: one system message, the text of the transcript's user and assistant rows (string
   content, or the `text`, `input_text` and `output_text` blocks of a content list joined as
@@ -602,7 +683,8 @@ class ResetTurn:
   can quote it. Upstream writes it from a background queue, so its order is not fixed.
 - The reset turn then runs like any turn: the host sends `reset.model_prompt` through
   `before_turn` and its model, and records `reset.transcript_prompt` instead. That turn's ensure
-  runs again (cheap and idempotent).
+  runs again (cheap and idempotent). `ResetTurn.to_json` / `from_json` carry it to the step that
+  runs the turn, and `TurnState.reset` carries it through the turn's model calls (entry point 3).
 - Errors propagate from `save_session_memory` (documented deviation from upstream's logging:
   `ValueError` for an unknown zone, `UnsafeMemoryPathError`, `OSError`); a slug generator failure
   falls back to the timestamp slug. Passing both `transcript` and `session_file` raises
@@ -855,6 +937,10 @@ the flush target file, flush-run tool set and wording, recall tracking only with
 kinds without the Memory Recall section) are source-backed with the anchors above; no matrix row
 claims `match` for kit composition. Oracle results must not change: task 10 re-runs the suite.
 `HostKit.request_flush` is a memory-core extension (decision Q6) with no upstream counterpart.
+`TurnState`, `HostKit.dispatcher`, `after_turn(redact=)` and `HostKit.repair_tool_calls` (LangGraph
+findings, 2026-09-29) are adapter-only kit code too; `repair_tool_calls` composes two core ports
+(`sanitize_tool_call_inputs` and `repair_tool_use_result_pairing`, ported, oracle-unverified until
+the branch's oracle run), and its labelled gaps are listed in LangGraph findings › Parity labels.
 
 Pin-era parts the kit ships until port plan area 5 lands: the `memory_search` and `memory_get`
 tool definitions and the Memory Recall section (`memory_core/prompt_section.py`, pin `4c428153`); the
@@ -1189,10 +1275,14 @@ port plan area 5 (tool definitions and the Memory Recall section at the tag).
 # LangGraph findings (2026-09-29)
 
 Status: specification and TDD plan, written 2026-09-29 on `feat/kit-langgraph-fixes` (from
-`main` `807508d`; first draft `9b90245`) and revised after review the same day; nothing is
-implemented yet. Doruk's decision L10 (docs/integrations/langgraph.md › Decisions) takes the kit
-changes the LangGraph findings recommend; `F<n>` are the rows of docs/integrations/langgraph.md
-› Findings. Upstream anchors are v2026.9.6 (`/tmp/openclaw-head`). Task 1 needs no decision,
+`main` `807508d`; first draft `9b90245`), revised after review the same day (`2d63f20`) and
+implemented the same day: Task 1 `14dbdcb`, Task 2 `dcba413`, Task 3 `76dfdd7`, Task 4
+`0869989`, Task 5 `89945b3`, Task 6 `9e1b00c`, Task 7 `7e1d23b`, Task 8 (docs) after them. Each
+open question K1-K7 was built as its recommendation, K3 as the recorded decision `f2351d5`;
+Doruk has not answered them yet. The oracle fixtures of Tasks 4 and 5 have not run (Task 9's
+oracle run is open), so both ports are ported, oracle-unverified. Doruk's decision L10
+(docs/integrations/langgraph.md › Decisions) takes the kit changes the LangGraph findings
+recommend; `F<n>` are the rows of docs/integrations/langgraph.md › Findings. Upstream anchors are v2026.9.6 (`/tmp/openclaw-head`). Task 1 needs no decision,
 Task 2 needs K4 and K7, Task 3 (the adapter and the example on the turn state) K5; Tasks 4-7
 (the repair) need K1-K3 and K6 (Open questions below). Each task follows its question's
 recommendation (K3: the recorded decision it cites) unless Doruk answers otherwise. The review
@@ -1400,8 +1490,8 @@ class ToolCallRepair:
 
 - A `HostKit` method, next to the other per-turn calls; it reads no file, writes nothing and
   depends on no kit option (K3: the text is upstream's for every identity). Implemented in
-  `memory_core/host/_tool_calls.py` (the row mapping) over the two core functions, as entry
-  point 2 composes the tools. Upstream's Responses-API steps are not offered (Parity labels).
+  `memory_core/host/tool_calls.py` (the row mapping; the plan named it `_tool_calls.py`) over
+  the two core functions, as entry point 2 composes the tools. Upstream's Responses-API steps are not offered (Parity labels).
 - Host rows are the chat-completions message shape the kit already reads:
   - `{"role": "assistant", "content", "tool_calls": [...]}`, each call either
     `{"id", "type": "function", "function": {"name", "arguments"}}` or the flat
@@ -1689,7 +1779,7 @@ Tasks 4 and 5 run in Task 9 (the implementation stage runs no oracle).
 
 ### Task 6: `HostKit.repair_tool_calls` (F26, K3, K6)
 
-- Files: `memory_core/host/_tool_calls.py`, `memory_core/host/kit.py`,
+- Files: `memory_core/host/tool_calls.py` (planned as `_tool_calls.py`), `memory_core/host/kit.py`,
   `memory_core/host/__init__.py`, `memory_core/__init__.py`, `tests/unit/test_host_kit_repair.py`,
   `tests/unit/test_public_api.py`.
 - Tests first: `test_repair_equals_the_core_repair_of_the_mapped_messages` (a table of host

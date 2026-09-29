@@ -105,10 +105,13 @@ Four paths change memory files; none of them uses keyword triggers.
 `memory_core.host` is the composition a host would otherwise copy: one `HostKit` per
 workspace with six entry points (`tools`, `dispatch`, `before_turn`, `after_turn`,
 `on_new_session`, `heartbeat_prompt`), `ensure` (the workspace ensure `before_turn` runs
-first), the labelled extension `request_flush` (a flush outside the token gate, decision Q6)
-and the handles they return (`TurnContext`, `TurnRecord`, `FlushRequest`, `FlushOutcome`,
-`NewSession`, `ResetTurn`, `HeartbeatRun`, `HeartbeatOutcome`). The host keeps one
-`SessionState` per session and gets new copies back. The kit only composes core
+first), the labelled extension `request_flush` (a flush outside the token gate, decision Q6),
+two helpers for framework hosts (`dispatcher`, `dispatch` bound to a session;
+`repair_tool_calls`, which composes the core's ports of upstream's replay repair over the
+host's rows) and the handles they return (`TurnContext`, `TurnState`, `TurnRecord`,
+`FlushRequest`, `FlushOutcome`, `NewSession`, `ResetTurn`, `HeartbeatRun`,
+`HeartbeatOutcome`, `ToolCallRepair`). The host keeps one `SessionState` per session and
+gets new copies back. The kit only composes core
 functions, never calls a model and keeps no per-session state; the host owns the agent
 and tool loop, the model call, streaming, compaction, scheduling and session storage.
 It is adapter-only code: the orders and inputs it takes from upstream are
@@ -124,7 +127,8 @@ Included:
 
 - `memory_core.adapters.langgraph`: framework-free helpers for a LangGraph host over the
   host kit (`transcript_rows`, `turn_usage`, `has_tool_calls`, `tool_messages`,
-  `PendingTurn`); it imports no framework, owns no loop and calls no model. The graph
+  `repair_tool_calls`); it imports no framework, owns no loop and calls no model. The turn
+  in flight crosses the graph's steps as the kit's `TurnState`. The graph
   itself is host code: `examples/langgraph_agent.py` (docs/integrations/langgraph.md)
 - `memory_core.live` (subject memory, live turns, session summaries) and
   `SubjectConsolidation`, which only routes a subject's workspace into

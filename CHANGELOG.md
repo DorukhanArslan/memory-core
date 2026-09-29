@@ -16,6 +16,21 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   (`TurnContext`, `TurnRecord`, `FlushRequest`, `FlushOutcome`, `NewSession`, `ResetTurn`,
   `HeartbeatRun`, `HeartbeatOutcome`, `TurnUsage`). `HostKit.request_flush()` is a labelled
   memory-core extension (a forced flush once per compaction cycle), not upstream behaviour.
+- For framework hosts (docs/host_kit.md › LangGraph findings): `TurnState`, the turn in flight
+  as JSON (session, system prompt, runtime context, tools and the reset turn:
+  `from_context`, `to_json`, `from_json`), with `ResetTurn.to_json()` / `from_json()`, for a
+  host whose steps run apart; `HostKit.dispatcher(session)`, `dispatch` bound to one session
+  in the two-argument shape of `FlushRequest.dispatch`; a `redact` input on
+  `HostKit.after_turn()` for the message of a flush target that cannot be created, as
+  `FlushRequest.complete(redact=)` has; and `HostKit.repair_tool_calls(messages,
+  allowed_tool_names=)` with `ToolCallRepair`, upstream's replay repair of tool calls
+  (`sanitizeToolCallInputs`, then `sanitizeToolUseResultPairingForModel`) over a host's
+  chat-completions rows, which answers a call a failed turn left without its result with
+  upstream's synthetic error result on the model's copy of the history.
+- `memory_core.replay_repair.sanitize_tool_call_inputs`, the port of upstream's
+  `sanitizeToolCallInputs` (its general branch), with
+  `sanitize_tool_use_result_pairing_for_model`, `is_synthetic_missing_tool_result` and
+  `ToolUseRepairReport.discarded`.
 - `memory_core.memory_flush.ensure_memory_flush_target_file`, the port of upstream's
   `ensureMemoryFlushTargetFile`; `memory_core.workspace.append_daily_memory_file`, the locked daily
   append the flush write and the curated daily note share; `memory_core.heartbeat.resolve_message_text`
@@ -32,12 +47,13 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   extras) is for a checkout and stays out of the package metadata.
 - The LangGraph host integration (docs/integrations/langgraph.md):
   `memory_core.adapters.langgraph` holds `transcript_rows`, `turn_usage`, `has_tool_calls`,
-  `tool_messages` and `PendingTurn`, framework-free helpers for a LangGraph graph over the host
-  kit (adapter-only), and
+  `tool_messages` and `repair_tool_calls`, framework-free helpers for a LangGraph graph over
+  the host kit (adapter-only), and
   `examples/langgraph_agent.py` is the graph a LangGraph app copies (`build_graph`: the kit's
-  prompt and tools, a tools node over `HostKit.dispatch`, the flush after the reply on the same
-  model, `/new` and `/reset`, the session state in a checkpointer) with a terminal `main` for
-  any OpenAI-compatible endpoint.
+  prompt and tools, the turn in flight as a `TurnState` in the graph state, a tools node over
+  `HostKit.dispatcher`, the kit's tool-call repair on every model call, the flush after the
+  reply on the same model, `/new` and `/reset`, the session state in a checkpointer) with a
+  terminal `main` for any OpenAI-compatible endpoint.
 
 ### Changed
 
@@ -61,9 +77,17 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   directory constant. Existing workspaces are not migrated: a state directory or promotion
   markers written under the earlier name are not read, so entries promoted under it can be
   promoted again (README › Rename the Project).
-- The package root exports 24 names instead of 171 (below): the host kit classes and
+- The package root exports 26 names instead of 171 (below): the host kit classes and
   `WorkspaceStateMigrationRequiredError` are new there, 152 names moved to their submodules
   (table below) and 7 were removed.
+- `memory_core.replay_repair.repair_tool_use_result_pairing` follows upstream v2026.9.6
+  (`classifyToolUseResultPairing`) instead of the earlier pin: a provider id reused on a later
+  turn pairs by occurrence and keeps its result (the earlier port dropped it and left the call
+  unanswered), a later real result replaces a synthetic one, a displaced result is claimed
+  across frames by the one unresolved call that owns it, a second result within a frame counts
+  as a duplicate (`dropped_duplicate_count` is 1 where it was 0), synthetic results carry
+  `details.reason` `"missing_tool_result"`, and it takes `preserve_unframed_tool_results` and
+  reports `discarded`.
 - The daily flush write and `MemoryCurator.append_daily_note` skip only content whose stripped
   text is exactly `NO_REPLY` (and empty content): `NO_REPLY_FACTS: ...` and any other text that
   only starts with the token is written now. Upstream's `write` appends even the exact token.
@@ -95,8 +119,9 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 `from memory_core import ...` offers:
 
-- the host kit: `HostKit`, `SessionState`, `TurnUsage`, `TurnContext`, `TurnRecord`,
-  `FlushRequest`, `FlushOutcome`, `NewSession`, `ResetTurn`, `HeartbeatRun`, `HeartbeatOutcome`
+- the host kit: `HostKit`, `SessionState`, `TurnUsage`, `TurnContext`, `TurnState`,
+  `TurnRecord`, `FlushRequest`, `FlushOutcome`, `NewSession`, `ResetTurn`, `HeartbeatRun`,
+  `HeartbeatOutcome`, `ToolCallRepair`
 - the core handle and its configuration: `Memory`, `MemoryConfig`, `FeatureFlags`
 - embeddings: `EmbeddingProvider`, `OpenAICompatibleEmbeddingProvider`
 - workspace layouts: `WorkspaceLayout`, `MEMORY_CORE_WORKSPACE_LAYOUT`, `OPENCLAW_COMPAT_LAYOUT`

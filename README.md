@@ -121,20 +121,27 @@ if __name__ == "__main__":
   ```
 
 - `kit.before_turn(state, runtime_context=text)` also wraps the host's per-turn context
-  (channel, sender) in the runtime-context markers as `turn.runtime_context`, the dynamic
-  part to send after the stable `turn.system_prompt`.
+  (channel, sender) in the runtime-context markers as `turn.runtime_context`. Send it as a
+  user message right before the turn's user message, on every model call of the turn, and
+  never record it in the transcript: that is where upstream places it.
 - The model recalls through `memory_search` and `memory_get`. The curation tools, a memory-core
   extension (flag `curated_memory_writes`, [Feature Flags](docs/feature_flags.md)), let it
   edit `MEMORY.md`, `USER.md`, `PROACTIVE_PREFERENCES.md` and today's daily note.
   `kit.dispatcher(turn.session)` answers each tool call with the payload to send back,
   errors included (`kit.dispatch(name, arguments, session=...)` is the same call unbound).
 - `after_turn` stores the provider's token usage in the session and returns a `FlushRequest`
-  when the session nears the model's context window (`context_window_tokens=`, default
-  upstream's 200,000). Upstream runs the flush after the reply is delivered and never shows
-  its reply. A host may run it later, off the reply path, as long as `complete()` comes
-  before the session's next `after_turn`; a failed run passes its exception as
-  `complete(state, error=...)`.
-- Keep `state` with your session record (`SessionState.to_json()`, `from_json()`). `/new`
+  when the session nears the model's context window (`context_window_tokens=`). Pass your
+  model's window: the default, upstream's 200,000, sets the flush threshold at 176,000
+  tokens, above a 128,000-token model's window, so that model's flush never runs. Upstream
+  runs the flush after the reply is delivered and never shows its reply. A host may run it
+  later, off the reply path, as long as `complete()` comes before the session's next
+  `after_turn`; a failed run passes its exception as `complete(state, error=...)`.
+- A turn that failed between a tool-call reply and its tool results leaves calls without
+  results, which providers reject: send `kit.repair_tool_calls(history).messages` to the
+  model instead of `history` (upstream's replay repair; the stored history stays as it is).
+- Keep `state` with your session record (`SessionState.to_json()`, `from_json()`). A host
+  whose turn runs in separate steps (a graph, a queue worker) carries it as
+  `TurnState.from_context(turn).to_json()` and reads it back with `TurnState.from_json`. `/new`
   and `/reset` go through `kit.on_new_session`, the scheduled heartbeat turn through
   `kit.heartbeat_prompt`. The full contract and the upstream sites it follows:
   [docs/host_kit.md](docs/host_kit.md).

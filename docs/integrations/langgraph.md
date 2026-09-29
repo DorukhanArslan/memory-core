@@ -6,7 +6,9 @@ copies, and `memory_core.adapters.langgraph` holds the few framework-free helper
 beyond the kit. The graph and the adapter are adapter-only: the orders and inputs they take from
 upstream come from the kit, and no parity row claims `match` for them (Design › Parity labels).
 Built on `feat/langgraph-agent`, 2026-09-29, against langgraph 1.2.12, langchain-core 1.6.5 and
-langchain-openai 1.6.6; the Findings section below lists what the kit's API lacked for this host.
+langchain-openai 1.6.6; the Findings section below lists what the kit's API lacked for this host,
+and the kit changes it recommends were built on `feat/kit-langgraph-fixes` the same day
+(decision L10; docs/host_kit.md › LangGraph findings).
 
 ## Usage
 
@@ -79,15 +81,13 @@ reply = graph.get_state(config).values["messages"][-1]
 ```
 
 `build_graph(kit, model, *, context_window_tokens, checkpointer, session_key, new_id, redact,
-redactor)`: `context_window_tokens` is required (L11): the model's window for the flush gate, since the
-kit's 200,000-token default would silence a smaller model's flush (F12). `session_key` maps the thread id to the session key (default: the thread id;
-`lambda thread: f"agent:main:{thread}"` gives upstream-shaped keys), `new_id` makes session and
-message ids (`uuid4` text), `redact` maps a failed flush's error text and `redactor` each line
-`/new` saves from the ending session. `context_window_tokens` is the model's window: without
-it the graph takes the kit's 200,000-token default, which never flushes for a smaller model
-(F12), and only `main` refuses that default (L11). The input is the standard
-`{"messages": [...]}`, so
-LangGraph clients work unchanged; `context=AgentContext(runtime_context=...)` is optional.
+redactor)`: `context_window_tokens` is required (L11): the model's window for the flush gate,
+since the kit's 200,000-token default would silence a smaller model's flush (F12).
+`session_key` maps the thread id to the session key (default: the thread id;
+`lambda thread: f"agent:main:{thread}"` gives upstream-shaped keys), `new_id` makes session ids
+(`uuid4` text), `redact` maps a failed flush's error text and `redactor` each line `/new` saves
+from the ending session. The input is the standard `{"messages": [...]}`, so LangGraph clients
+work unchanged; `context=AgentContext(runtime_context=...)` is optional.
 
 ### What one run does
 
@@ -130,8 +130,10 @@ START -> new_session (a human "/new" or "/reset" first word: kit.on_new_session)
   kit's error payloads (bad arguments, invalid JSON, an unknown tool) go back to the model as
   tool messages with `status="error"`; a tool call without an id raises `ValueError` (F19). A
   turn that failed in or before `tools` leaves an AI message whose tool calls have no tool
-  message: the next turn's `prepare` removes it, since a provider rejects an unanswered call
-  and resuming reruns a failure such as a call without an id (F26).
+  message, which a provider rejects: every model call sends a repaired copy of `messages`
+  (`repair_tool_calls` over `kit.repair_tool_calls`, upstream's replay repair), where such a
+  call gets upstream's synthetic error result and a call without an id is dropped; the stored
+  messages keep the AI message (F26).
 - One run per thread at a time: LangGraph does not serialize runs of one thread, and the kit's
   one-maintenance-lane rule needs it (F15).
 
@@ -169,7 +171,10 @@ passed, 312 skipped after the review fixes (`caa244e`..`2b685d9`, eight new test
 `79a1b5c`: 1347 passed, 311 skipped), ruff and the name check clean; the oracle suite at
 `7388ea0` (v2026.9.6, Node 24) 254 passed, 81 xfailed, 3 skipped, 0 failed of 338, the
 reference counts plus the skipped live test. The review fixes change no file under
-`memory_core/`, so the oracle was not rerun for them.
+`memory_core/`, so the oracle was not rerun for them. On `feat/kit-langgraph-fixes` (the L10 kit
+changes, 2026-09-29): offline 1476 passed, 325 skipped at `7e1d23b` and after its docs (baseline
+at `807508d`: 1396 passed, 312 skipped), ruff and the name check clean; the oracle suite has not
+run on that branch yet.
 
 ## Findings
 
@@ -179,29 +184,32 @@ test in `tests/unit/test_langgraph_agent.py` or `tests/unit/test_langgraph_adapt
 **probe** a scratch run on the tested versions, **source** read but not run. Verdict: the six
 entry points were enough; nothing needed a kit change to work, but a LangGraph host needs about
 200 lines of graph code and five adapter helpers, and the items marked **kit** would remove glue
-or a trap.
+or a trap. Addressed on `feat/kit-langgraph-fixes` (2026-09-29, decision L10; docs/host_kit.md ›
+LangGraph findings): F1, F2, F3, F7, F12, F21, F22, F24 and F26, each row naming its commits
+("the docs after `7e1d23b`" is the branch's docs commit). The oracle fixtures of the two ports F26
+uses have not run yet (ported, oracle-unverified).
 
 ### Awkward or missing in the kit
 
 | # | Finding | Evidence | Recommendation |
 | --- | --- | --- | --- |
-| F2 | `TurnContext` does not serialize (it holds a `WorkspaceContext`), but a graph's model, tools and maintenance nodes run in separate supersteps that read their input from the checkpoint | test: every graph test goes through `PendingTurn` | **kit**: a JSON form of a turn (session, system prompt, runtime context, tools; the reset prompt of F3), which any host with durable steps needs (LangGraph, a queue worker); `PendingTurn` then goes |
-| F3 | a bare `/new` turn has two user prompts, `ResetTurn.model_prompt` for the model and `transcript_prompt` for the transcript, and the model needs the first on every call of the turn, tool rounds included, while a graph keeps one `messages` list | test: `test_bare_new_saves_session_memory_and_runs_the_reset_turn` | carried by `PendingTurn` (model prompt and the row's message id) and substituted by the example's `model_input`; **kit**: part of F2's turn |
+| F2 | `TurnContext` does not serialize (it holds a `WorkspaceContext`), but a graph's model, tools and maintenance nodes run in separate supersteps that read their input from the checkpoint | test: every graph test carries the turn in `memory_turn` | **Addressed** (`14dbdcb`, `76dfdd7`): the kit's `TurnState` (`memory_core/host/turn.py`: session, system prompt, runtime context, tools and the reset turn, `to_json` / `from_json`) is the turn in `memory_turn`; the adapter's `PendingTurn` is gone |
+| F3 | a bare `/new` turn has two user prompts, `ResetTurn.model_prompt` for the model and `transcript_prompt` for the transcript, and the model needs the first on every call of the turn, tool rounds included, while a graph keeps one `messages` list | test: `test_bare_new_saves_session_memory_and_runs_the_reset_turn`, `test_reset_turn_substitutes_the_active_user_message_on_every_call`, `test_model_input_replaces_only_the_transcript_prompt` | **Addressed** (`14dbdcb`, `76dfdd7`): `TurnState.reset` carries the `ResetTurn` (`ResetTurn.to_json` / `from_json` in `memory_reset`); `model_input` gives the turn's active user message (upstream's `findActiveUserMessageIndex`) the model prompt under upstream's guard (`installModelPromptTransform`), so the reset row needs no message id |
 | F6 | with maintenance in the graph, `graph.invoke` returns only after a due flush's model call, and the node starts when the reply is in state, not when it is delivered (upstream waits for delivery settlement, `agent-runner-maintenance.ts:69-71`) | test: `test_due_flush_runs_after_the_reply_and_writes_the_daily_file` (the `agent` update streams before the flush call) | labelled deviation; detached maintenance needs no kit change (end the graph after `agent`, run `after_turn` and the flush on a thread with a per-thread future that the next run's `prepare` waits for and merges); one decision with docs/host_kit.md Q13 (L3) |
-| F7 | a flush turn run inside a graph streams its tokens into `stream_mode="messages"` unless its model run is tagged | test: `test_flush_turn_is_restricted_to_the_write_tool_and_not_streamed` (with the reply present as the positive control) | the example tags it `TAG_NOSTREAM`; **kit** docs: name the need next to `FlushRequest` |
+| F7 | a flush turn run inside a graph streams its tokens into `stream_mode="messages"` unless its model run is tagged | test: `test_flush_turn_is_restricted_to_the_write_tool_and_not_streamed` (with the reply present as the positive control) | the example tags it `TAG_NOSTREAM`; **Addressed** (the docs after `7e1d23b`): docs/host_kit.md names the need next to `FlushRequest` |
 | F8 | the kit takes a parsed `/new` command and ships no parser; upstream's (`session-reset-command.ts:249`) handles mentions, envelopes, the soft `/reset` and configured triggers | source | the example's `reset_command` is a labelled simplification (first word, any case; `test_a_command_that_is_not_first_word_is_an_ordinary_message`); porting a subset into core needs an oracle op (L6) |
 | F9 | without compaction a session flushes once: every later due turn reads `already_flushed` until `/new` | test: `test_second_turn_past_the_threshold_reads_already_flushed`, `test_new_keeps_the_session_key_and_rotates_the_session_id` (the next session flushes again) | the kit's known gap; LangGraph hosts that trim history change nothing, hosts that summarize skip `maintain` for that turn and call `SessionState.after_compaction` (upstream skips maintenance after an auto-compaction, `agent-runner-maintenance.ts:31`) |
-| F12 | `after_turn`'s default window (upstream's 200,000) silently disables the flush for a smaller model: 128,000 gives a 176,000 threshold. LangChain's profile knows the window for some model names only | probe: `ChatOpenAI(model="gpt-4o-mini").profile["max_input_tokens"] == 128000`, `gpt-6-luna` 1,050,000, none for `openai/gpt-4o-mini` or `openai/gpt-6-luna`; test: `test_example_main_requires_a_window_the_profile_does_not_give` | the example's `main` requires `--context-window` when the profile has none and prints the window's source; `build_graph` takes the kit's default for `None` and says so in its docstring (L11); `memory_maintenance` shows the threshold; **kit** docs: say that the default is only for 200,000-token models |
-| F21 | `FlushRequest.complete` takes `redact`, but `after_turn` records a flush-target failure's message without one | test: `test_redact_maps_a_flush_target_failure` (the graph redacts it itself), `test_redact_and_redactor_reach_the_kit` | **kit**: a `redact` input on `after_turn` |
-| F22 | the kit does not say where `runtime_context` goes: the Turn lifecycle diagram lists `system_prompt, runtime_context, history, user message`, the block's own header says it is for "the immediately preceding user message", and upstream keeps the carrier immediately before the active user message and sends it as a user message | source: `src/agents/internal-runtime-context.ts:378`, `packages/agent-core/src/harness/messages.ts:139-153`, `attempt-llm-boundary.ts:268`; test: `test_runtime_context_reaches_the_model_and_is_optional` | the example follows upstream (a user message right before the turn's user message, on every model call of the turn); **kit** docs: state the placement and the role, and fix the lifecycle diagram |
-| F24 | `kit.dispatch` needs `session=` as a keyword while `FlushRequest.dispatch` takes two arguments, so a shared tool-answering helper needs `functools.partial` | test: the tools node | documented in `tool_messages`; a `TurnContext.dispatch` bound to its session would remove the partial (**kit**, optional) |
-| F26 | a turn that fails in or before its tools node (a call without an id, a raising `dispatch`, a crash between `agent` and `tools`) leaves an AI message whose tool calls have no tool message. The next message sent it to the model as `[system, human, ai(tool_calls), human]`, which OpenAI-compatible APIs reject (their documented rule; not run here), and `graph.invoke(None)` reran a deterministic failure, so the thread stayed stuck. Upstream repairs the replayed history with synthetic error results (`repairToolUseResultPairing`, `src/agents/session-transcript-repair.ts:391`); the core's port (`memory_core/replay_repair.py`) takes upstream's message shape, and the kit offers no repair for host messages | probe (review); test: `test_next_message_after_a_failed_tools_node_drops_the_unanswered_call` (both causes) | the example's `prepare` removes such a message (`unanswered_tool_calls`, `RemoveMessage`), a labelled deviation; **kit** or adapter: a repair over host messages, so a host inserts upstream's synthetic results for calls with an id |
+| F12 | `after_turn`'s default window (upstream's 200,000) silently disables the flush for a smaller model: 128,000 gives a 176,000 threshold. LangChain's profile knows the window for some model names only | probe: `ChatOpenAI(model="gpt-4o-mini").profile["max_input_tokens"] == 128000`, `gpt-6-luna` 1,050,000, none for `openai/gpt-4o-mini` or `openai/gpt-6-luna`; test: `test_example_main_requires_a_window_the_profile_does_not_give` | the example's `main` requires `--context-window` when the profile has none and prints the window's source; `build_graph` requires the window (L11, `9c8c6b8`); `memory_maintenance` shows the threshold; **Addressed** (the docs after `7e1d23b`): docs/host_kit.md › `after_turn` and README say the default is right only for a 200,000-token model |
+| F21 | `FlushRequest.complete` takes `redact`, but `after_turn` records a flush-target failure's message without one | test: `test_redact_maps_a_flush_target_failure`, `test_redact_and_redactor_reach_the_kit` | **Addressed** (`dcba413`, `76dfdd7`): `after_turn(redact=)`; `maintain` passes `redact` and no longer rebuilds the failure outcome |
+| F22 | the kit does not say where `runtime_context` goes: the Turn lifecycle diagram lists `system_prompt, runtime_context, history, user message`, the block's own header says it is for "the immediately preceding user message", and upstream keeps the carrier immediately before the active user message and sends it as a user message | source: `src/agents/internal-runtime-context.ts:378`, `packages/agent-core/src/harness/messages.ts:139-153`, `attempt-llm-boundary.ts:268`; test: `test_runtime_context_reaches_the_model_and_is_optional` | the example follows upstream (a user message right before the turn's user message, on every model call of the turn); **Addressed** (the docs after `7e1d23b`): docs/host_kit.md › `before_turn` and README state the placement and the role, and the lifecycle diagram is fixed |
+| F24 | `kit.dispatch` needs `session=` as a keyword while `FlushRequest.dispatch` takes two arguments, so a shared tool-answering helper needs `functools.partial` | test: the tools node | **Addressed** (`dcba413`, `76dfdd7`): `HostKit.dispatcher(session)`, on the kit so that a `TurnState` read from JSON can use it (K4); the tools node passes `kit.dispatcher(turn.session)`, and so do the quickstart and README |
+| F26 | a turn that fails in or before its tools node (a call without an id, a raising `dispatch`, a crash between `agent` and `tools`) leaves an AI message whose tool calls have no tool message. The next message sent it to the model as `[system, human, ai(tool_calls), human]`, which OpenAI-compatible APIs reject (their documented rule; not run here), and `graph.invoke(None)` reran a deterministic failure, so the thread stayed stuck. Upstream repairs the replayed history with synthetic error results (`repairToolUseResultPairing`, `src/agents/session-transcript-repair.ts:391`); the core's port (`memory_core/replay_repair.py`) takes upstream's message shape, and the kit offers no repair for host messages | probe (review); test: `test_next_message_after_a_failed_tools_node_repairs_the_unanswered_call` (both causes), `test_model_input_repairs_the_history_before_placing_the_prompts` | **Addressed** (`0869989`, `89945b3`, `9e1b00c`, `7e1d23b`): the core's pairing repair re-ported to the tag and upstream's `sanitizeToolCallInputs` ported (both oracle-unverified), composed by `HostKit.repair_tool_calls` over host rows and by the adapter's `repair_tool_calls` over LangChain messages; every model call gets the repaired copy (a synthetic error result for a call with an id, a call without one dropped), the stored messages keep the AI message, and `unanswered_tool_calls` with its `RemoveMessage` and labelled deviation is gone |
 
 ### LangGraph facts a host must handle (documented, no kit change)
 
 | # | Finding | Evidence | Handling |
 | --- | --- | --- | --- |
-| F1 | `SessionState` cannot live in graph state as an object: the checkpoint serializer refuses it | probe: `TypeError: Type is not msgpack serializable: SessionState`; test: `test_state_loads_under_a_strict_serializer` | `to_json()` in the state, `from_json` in every node; worth a line in docs/host_kit.md › `SessionState` |
+| F1 | `SessionState` cannot live in graph state as an object: the checkpoint serializer refuses it | probe: `TypeError: Type is not msgpack serializable: SessionState`; test: `test_state_loads_under_a_strict_serializer` | `to_json()` in the state, `from_json` in every node; **Addressed** (the docs after `7e1d23b`): docs/host_kit.md › `SessionState` has the line |
 | F4 | malformed tool-call JSON lands in `invalid_tool_calls`, which `tools_condition` and `ToolNode` ignore while langchain-openai sends the calls back to the provider | source: `langgraph/prebuilt/tool_node.py:1657`, `langchain_openai/chat_models/base.py:490-496`; test: `test_invalid_tool_call_gets_the_kit_error_payload` | adapter `has_tool_calls` and `tool_messages`; the kit's JSON-text `dispatch` already answers with its error payload |
 | F5 | under `stream_mode="messages"` the chat model streams, and `ChatOpenAI` asks for streamed usage only for OpenAI's own URL: with a custom `base_url` (OpenRouter) the reply has no `usage_metadata`, the gate reads `missing_tokens` and the flush never runs, silently. An `updates` stream does not stream the call | test: `test_stream_usage_decides_whether_a_custom_endpoint_reports_usage` (a local stub endpoint: no `stream_options` without `stream_usage=True`) | the example sets `stream_usage=True`; `memory_maintenance["flush"]` and the example's status line show `missing_tokens` |
 | F10 | a checkpointer has no session file, so there is no transcript size for the size gate | source | the gate stays off (L9) |
@@ -212,7 +220,7 @@ or a trap.
 | F16 | the kit needs a stable session key; a thread id is one, and the quickstart's upstream-shaped `agent:main:main` is another shape | test: `test_session_key_mapping_names_the_session`; `test_two_threads_on_one_graph_and_kit_are_separate_sessions` (own key, id and flush cycle per thread on one graph and kit; `/new` in one leaves the other's state as it was) | `build_graph(session_key=...)`, default the thread id (L2) |
 | F17 | a failed turn leaves its user message in `messages` without a reply | test: `test_failed_model_call_commits_no_session_state` | `graph.invoke(None, config)` reruns the failed node; the next message otherwise follows the unanswered user message (after F26's repair when the failure was in `tools`) |
 | F18 | `bind_tools(strict=True)` makes every parameter of the kit's tools required (`memory_search`'s `maxResults`, `minScore` and `corpus`, `memory_get`'s `from`, `lines` and `corpus`, the curation tools' optional `section` and `supersede`), which changes what the model must send | probe: `convert_to_openai_tool(tool, strict=True)` on `kit.tools()`; test: `test_tools_are_bound_without_strict_mode` | the example binds without `strict`; strict mode would need nullable optional parameters in the kit's schemas |
-| F19 | langchain-core allows a tool call with `id: None`, but a `ToolMessage` needs a string id | probe (design review); test: `test_tool_messages_reject_a_call_without_an_id` | `tool_messages` raises `ValueError` before dispatching anything: a provider or host error; the next message's `prepare` removes the call (F26) |
+| F19 | langchain-core allows a tool call with `id: None`, but a `ToolMessage` needs a string id | probe (design review); test: `test_tool_messages_reject_a_call_without_an_id` | `tool_messages` raises `ValueError` before dispatching anything: a provider or host error; the next model call's repaired copy drops the call (F26) |
 | F20 | a stream consumer that stops after the reply cancels `maintain`, and a node reruns on resume, so a crash inside a flush turn repeats its appends | source (LangGraph run semantics) | drain the stream (the example does); the repeat is documented, no dedupe |
 | F23 | `memory_core/client.py` imported the LangGraph adapter at module level, so the adapter could not import `memory_core.host` (`host -> host.flush -> client -> adapters -> host` failed) | probe (design review) | fixed by the recall removal; `test_the_adapter_and_the_package_import_in_either_order` guards it |
 | F25 | LangGraph 1.x's default `recursion_limit` is 10,007 steps (`langgraph/_internal/_config.py:32`), not langchain-core's 25, so it does not bound a model that keeps asking for tools: about 5,000 model calls, each with a longer context, before `GraphRecursionError` | test: `test_tool_rounds_are_bounded_and_the_last_call_has_no_tools` (before the fix it ran into the limit after 161 s) | the example's `MAX_TOOL_ROUNDS` (6): the next call gets no tools, and a reply that still asks for tools fails the turn (`test_a_reply_that_asks_for_tools_past_the_bound_fails_the_turn`) |
@@ -232,6 +240,9 @@ and starts a new flush cycle; a restart over the same saver continues the thread
 L1-L9 as recommended (Design › Open questions); L11: `build_graph` requires
 `context_window_tokens`. L10: the kit changes the findings recommend (F2 with F3, F7, F12, F21,
 F22, F24, F26, and the F1 line) follow on their own branch, since each changes the kit's contract.
+They were built on `feat/kit-langgraph-fixes` on 2026-09-29 (`9b90245`..`7e1d23b` and the docs
+after it; docs/host_kit.md › LangGraph findings), each of that spec's open questions K1-K7 as
+its recommendation, K3 as the recorded decision `f2351d5`; Doruk has not answered K1-K7 yet.
 
 ## Design (2026-09-29)
 
@@ -239,7 +250,10 @@ Status: specification and TDD plan, written 2026-09-29 on `feat/langgraph-agent`
 `79a1b5c`), revised after review the same day (`8bf7586` is the first draft, `f43756b` the
 revision), then implemented on the branch (Tasks 1-9, `06b3c0c` onwards); "As built" marks
 where the implementation differs from the plan. The host kit contract is docs/host_kit.md;
-this design adds no kit behaviour.
+this design adds no kit behaviour. Since the kit changes of L10 (`feat/kit-langgraph-fixes`,
+2026-09-29) Who owns what, Parity labels, Graph shape, State schema, Kit calls per node, Flush
+handling, `/new` and `/reset`, Error handling and Adapter surface describe the code after them;
+the Test plan and the TDD tasks stay as planned, with notes.
 Library facts were read from the installed sources of langgraph 1.2.12 (with
 langgraph-checkpoint 4.2.0, langgraph-prebuilt 1.1.0 and langgraph-sdk 0.4.5), langchain-core
 1.6.5 and langchain-openai 1.6.6; the ones marked "probe" were run against those versions.
@@ -261,8 +275,8 @@ beyond the kit is adapter code (below) or a finding.
 | Piece | Where | Label |
 | --- | --- | --- |
 | state schema, nodes, edges, prompt assembly (`model_input`), both model calls (turn and flush), the flush tool loop, `/new` parsing, the session-key mapping, the checkpointer, streaming | `examples/langgraph_agent.py` (`build_graph`, `main`) | host code |
-| message and usage conversion, answering tool calls, the serializable turn that crosses nodes | `memory_core/adapters/langgraph.py` | adapter-only, framework-free |
-| workspace, prompt, tools, dispatch, flush decision and write, session memory | `memory_core.host.HostKit` | kit (docs/host_kit.md) |
+| message and usage conversion, answering tool calls, the tool-call repair of the model's copy of LangChain messages | `memory_core/adapters/langgraph.py` | adapter-only, framework-free |
+| workspace, prompt, tools, dispatch, flush decision and write, session memory, the serializable turn that crosses nodes (`TurnState`), the tool-call repair over host rows (`repair_tool_calls`, composing two core ports) | `memory_core.host.HostKit` | kit (docs/host_kit.md) |
 
 No node factory and no prebuilt agent (`create_memory_agent(kit, model)`): a factory that wires
 the model node and the flush loop would own the agent loop and the tool loop, which adapters never
@@ -281,10 +295,13 @@ deviations of the example, beyond the kit's:
   Upstream schedules maintenance only after the delivery owner settles, and only for a completed,
   unaborted reply (`src/auto-reply/reply/agent-runner-maintenance.ts:69-71`, `ownerSettlement`).
 - The `/new` and `/reset` parser is a simplification of upstream's (below).
-- An AI message whose tool calls a failed turn left unanswered is removed before the next turn;
-  upstream instead inserts synthetic error results into the replayed history
-  (`repairToolUseResultPairing`, `src/agents/session-transcript-repair.ts:391`), which a call
-  without an id cannot get (F26).
+- Every model call of a turn gets a repaired copy of `messages` (F26). Upstream repairs the
+  replayed history once per attempt (`run/attempt-history-prepare.ts:78`), and tool rounds
+  inside an attempt bypass that path (`run/attempt-stream.ts:243`); the per-call repair is a
+  superset that leaves a well-formed round unchanged. The labelled gaps of the kit's repair
+  (docs/host_kit.md › LangGraph findings › Parity labels) apply: no stop reason on host rows,
+  content tool-call blocks and a legacy `function_call` neither read nor rewritten. Until
+  `7e1d23b` the example removed such an AI message instead, a labelled deviation that is gone.
 - `MAX_TOOL_ROUNDS` bounds a turn's tool loop and `MAX_FLUSH_TOOL_ROUNDS` the flush turn's
   (host policy, like the Lab's `MAX_TOOL_ROUNDS`, `demo/lab_tools.py:37`; upstream bounds no
   round count, and its rolling `tools.loopDetection` is off unless enabled,
@@ -306,13 +323,13 @@ new_session ---------------------------> prepare          kit.before_turn (per-t
 kit.on_new_session                        |
                                           v
                                +-------> agent            host model: model.bind_tools(turn.tools)
-                               |          |                 .invoke(model_input(turn, messages))
+                               |          |                 .invoke(model_input(turn, messages, repair))
                                |          |  has_tool_calls(last)? (valid or invalid calls)
                                |     yes  |           no
                                |          v            \
                                +------- tools           +--> maintain ---> END
                                 tool_messages(last,          kit.after_turn; for a FlushRequest
-                                dispatch)                    the flush turn on the same model
+                                kit.dispatcher(session))     the flush turn on the same model
                                                              (write tool only, not streamed),
                                                              request.dispatch, request.complete
 ```
@@ -326,8 +343,8 @@ one run per thread at a time (F15).
 class AgentState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]  # the current session's visible transcript
     memory_session: NotRequired[dict | None]      # SessionState.to_json(), committed
-    memory_turn: NotRequired[dict | None]         # PendingTurn.to_json(), the turn in flight
-    memory_reset: NotRequired[dict | None]        # {"messageId", "modelPrompt"}, for prepare
+    memory_turn: NotRequired[dict | None]         # TurnState.to_json(), the turn in flight
+    memory_reset: NotRequired[dict | None]        # ResetTurn.to_json() of a bare /new, for prepare
     memory_maintenance: NotRequired[dict | None]  # the last maintenance: the gate and the flush
 
 
@@ -358,10 +375,10 @@ class AgentContext:                    # the run context (context_schema)
 | --- | --- | --- | --- |
 | `route_input` (conditional edge from START) | none | the last message | the next node |
 | `new_session` | `kit.on_new_session(ending, command=, session_id=, transcript=transcript_rows(messages), text=, redactor=)` | `memory_session` (or a first `SessionState.new`) | `messages`: remove all, then the new session's first row; `memory_session`: `NewSession.session`; `memory_reset` for a bare command |
-| `prepare` | `kit.before_turn(session, runtime_context=...)` with its per-turn ensure | `memory_session`, `memory_reset`, `runtime.context` (may be `None`), `messages` | `memory_turn`: `PendingTurn.from_context(...)`; `memory_reset`: `None`; `memory_session` only for a thread's first `SessionState.new`; `messages`: a `RemoveMessage` for each AI message a failed turn left with unanswered tool calls (F26) |
-| `agent` | none (the host's model) | `memory_turn`, `messages` | `messages`: the AI message |
-| `tools` | `tool_messages(last, functools.partial(kit.dispatch, session=turn.session))` | `memory_turn`, the last AI message | `messages`: one tool message per call |
-| `maintain` | `kit.after_turn(turn.session, transcript=transcript_rows(messages), usage=turn_usage(last), context_window_tokens=)`; for a request `request.messages`, `.tools`, `.dispatch`, `.complete(session, error=, redact=)` | `memory_turn`, `messages` | `memory_session`, `memory_turn`: `None`, `memory_maintenance` |
+| `prepare` | `kit.before_turn(session, runtime_context=...)` with its per-turn ensure | `memory_session`, `memory_reset`, `runtime.context` (may be `None`) | `memory_turn`: `TurnState.from_context(context, reset=ResetTurn.from_json(memory_reset))`; `memory_reset`: `None`; `memory_session` only for a thread's first `SessionState.new` |
+| `agent` | `kit.repair_tool_calls(rows, allowed_tool_names=<the offered tools' names>)` through the adapter's `repair_tool_calls`, then the host's model | `memory_turn`, `messages` | `messages`: the AI message |
+| `tools` | `tool_messages(last, kit.dispatcher(turn.session))` | `memory_turn`, the last AI message | `messages`: one tool message per call |
+| `maintain` | `kit.after_turn(turn.session, transcript=transcript_rows(messages), usage=turn_usage(last), context_window_tokens=, redact=)`; for a request `request.messages`, `.tools`, `.dispatch`, `.complete(session, error=, redact=)` | `memory_turn`, `messages` | `memory_session`, `memory_turn`: `None`, `memory_maintenance` |
 
 Not wired, on purpose: `heartbeat_prompt` (it needs the host's scheduler; L7), `request_flush`
 (a memory-core extension with no upstream counterpart; the example has no `/flush`) and
@@ -438,8 +455,8 @@ def run_flush(request: FlushRequest, session: SessionState) -> FlushOutcome:
   `openai/gpt-4o-mini`; probe), else the required `--context-window` input, and prints the window
   and its source. `main` never falls back to the kit's 200,000 default, which for a 128,000-token
   model puts the threshold (176,000) above the window, so the flush would never run (F12). As
-  built, a given `--context-window` wins over the profile, and `build_graph` itself does take
-  the kit's default when `context_window_tokens` is `None` (its docstring says so; L11).
+  built, a given `--context-window` wins over the profile, and `build_graph` requires the window
+  (L11): it has no default.
 - `transcript_bytes` is not passed: a checkpointer has no session file, so the transcript-size
   gate stays off (F10, L9).
 - `memory_maintenance` is `{"flush": <decision reason>, "tokenCount": <the gate's token count or
@@ -449,7 +466,7 @@ def run_flush(request: FlushRequest, session: SessionState) -> FlushOutcome:
   `graph.get_state(config)`. The failure's `error` is the redacted, truncated message (`redact`
   below).
 - `build_graph` takes the host's `redact` (passed to `request.complete(error=..., redact=...)`
-  and applied to an `after_turn` `flush_failure` message, which the kit records without one) and
+  and to `after_turn(redact=...)` for a flush target that cannot be created, F21) and
   `redactor` (passed to `on_new_session`, which stores the ending session's raw recent lines
   unless it maps them). Both default to none, as in the kit.
 - Skipped on purpose, as upstream skips maintenance for them: a heartbeat run (upstream skips by
@@ -474,12 +491,13 @@ def run_flush(request: FlushRequest, session: SessionState) -> FlushOutcome:
   `messages` = `[RemoveMessage(id=REMOVE_ALL_MESSAGES), first]`, which drops everything before
   the marker (`langgraph/graph/message.py:38`, `:212-213`), so the thread's `messages` become the
   new session's transcript.
-  - Bare command: `first` is `HumanMessage(reset.transcript_prompt, id=<a fresh message id>)`
-    (from the id generator, separate from the session id) and `memory_reset` is `{"messageId":
-    <that id>, "modelPrompt": reset.model_prompt}`. `prepare` makes it the `PendingTurn`'s model
-    prompt, so every model call of that turn gets `[startup context, reset prompt]` while the
-    transcript keeps the identity's reset row (`format_session_reset_transcript_prompt`); later
-    turns replay only the row, as upstream (docs/host_kit.md, entry point 5).
+  - Bare command: `first` is `HumanMessage(reset.transcript_prompt)` and `memory_reset` is
+    `reset.to_json()`. `prepare` puts it in the `TurnState` (`reset`), and `model_input` gives
+    the turn's active user message `reset.model_prompt` while its text is the reset row
+    (upstream's `installModelPromptTransform` guard), so every model call of that turn gets
+    `[startup context, reset prompt]` while the transcript keeps the identity's reset row
+    (`format_session_reset_transcript_prompt`); later turns replay only the row, as upstream
+    (docs/host_kit.md, entry point 5).
   - With text: `first` is `HumanMessage(text)` and there is no reset prompt; the turn runs like
     any other.
 - The run continues `new_session -> prepare -> agent ...`, so a bare `/new` gets the model's
@@ -495,8 +513,8 @@ def run_flush(request: FlushRequest, session: SessionState) -> FlushOutcome:
 | the model call raises | `agent` | the run raises; nothing is recorded (the kit's failed-turn rule) |
 | `MAX_TOOL_ROUNDS` (6) model calls with tool calls in one turn | `agent` | the next model call gets no tools; a reply that still asks for tools raises `RuntimeError` and is not stored, so every call in `messages` keeps its tool message: a failed turn (F25) |
 | a tool call the model got wrong (bad params, invalid JSON, unknown tool, refused write) | `tools` | the kit's error payload as a tool message with `status="error"`; never raises |
-| a tool call without a string id (valid or invalid) | `tools` | `tool_messages` raises `ValueError`: a provider or host error (a `ToolMessage` needs the id, and langchain-openai would send the id-less call back; F19); the next message's `prepare` removes the call's AI message (F26) |
-| `kit.dispatch` raises (`OSError`), or the process stops between `agent` and `tools` | `tools` | the run raises (or stops) with the AI message's calls unanswered; `graph.invoke(None, config)` reruns `tools`, and the next message's `prepare` removes the AI message instead (F26) |
+| a tool call without a string id (valid or invalid) | `tools` | `tool_messages` raises `ValueError`: a provider or host error (a `ToolMessage` needs the id, and langchain-openai would send the id-less call back; F19); `graph.invoke(None, config)` reruns the failure, and the next message works, since its model calls get a repaired copy without the call (F26) |
+| `kit.dispatch` raises (`OSError`), or the process stops between `agent` and `tools` | `tools` | the run raises (or stops) with the AI message's calls unanswered; `graph.invoke(None, config)` reruns `tools`, or the next message's model calls get a repaired copy with upstream's synthetic error result for each unanswered call (F26) |
 | `after_turn` raises (`OSError`) | `maintain` | the run raises after the reply is in `messages`; `memory_session` keeps the previous snapshot |
 | the flush target cannot be created | `maintain` | `TurnRecord.flush_failure`: one strike in `memory_session`, named in `memory_maintenance` |
 | the flush model call raises (`Exception`) | `maintain` | `request.complete(session, error=exc, redact=redact)`: one strike (three mark the cycle); the run completes |
@@ -508,9 +526,8 @@ def run_flush(request: FlushRequest, session: SessionState) -> FlushOutcome:
   earlier node's writes). The host resumes the failed node with `graph.invoke(None, config)`
   (probe: the failed node reruns, the earlier ones do not) or sends the next message, which then
   follows the unanswered user message (F17). A failure in or before `tools` also leaves an AI
-  message whose tool calls have no tool message; `prepare` removes it before the next turn,
-  since a provider rejects an unanswered call, and a resume would rerun a deterministic failure
-  such as a call without an id (F26).
+  message whose tool calls have no tool message, which a provider rejects; the stored messages
+  keep it, and every later model call gets the repaired copy (F26).
 - Model-caused errors never raise out of the kit; host programming errors do (docs/host_kit.md ›
   Errors). The adapter keeps that split: an invalid tool call without a name is dispatched with
   `""`, so the model gets an error payload, not the host a `TypeError`.
@@ -567,41 +584,27 @@ def tool_messages(
     kit answers invalid JSON with its error payload). One {"role": "tool", "tool_call_id",
     "name", "content": <payload as JSON text>, "status": "error" | "success"} dict per call;
     status is "error" for the kit's error payload. ValueError for a call whose id is not a
-    string. For HostKit.dispatch pass functools.partial(kit.dispatch, session=turn.session)."""
+    string. Pass kit.dispatcher(turn.session) for a turn, FlushRequest.dispatch for a flush."""
 
+def repair_tool_calls(
+    messages: Iterable[Any],
+    repair: Callable[[Sequence[Mapping[str, Any]]], ToolCallRepair],
+) -> list[Any]:
+    """The messages with upstream's replay repair of their tool calls, for the next model call.
 
-@dataclass(frozen=True)
-class PendingTurn:
-    """The turn in flight between prepare and maintain, as checkpointable JSON."""
-
-    session: SessionState                 # TurnContext.session: for dispatch and after_turn
-    system_prompt: str                    # TurnContext.system_prompt
-    runtime_context: str | None           # TurnContext.runtime_context (marker-wrapped)
-    tools: tuple[dict[str, Any], ...]     # TurnContext.tools, for bind_tools
-    model_prompt: str | None = None       # a bare /new or /reset: ResetTurn.model_prompt, sent
-    model_prompt_message_id: str | None = None  # in place of the message with this id
-
-    @classmethod
-    def from_context(
-        cls,
-        context: TurnContext,
-        *,
-        model_prompt: str | None = None,
-        model_prompt_message_id: str | None = None,
-    ) -> PendingTurn: ...  # ValueError when only one of the two reset fields is given
-
-    def to_json(self) -> dict[str, Any]: ...
-
-    @classmethod
-    def from_json(cls, data: Mapping[str, Any]) -> PendingTurn: ...  # ValueError: bad shape
+    repair is kit.repair_tool_calls (or a function passing it allowed_tool_names). An unchanged
+    message comes back as the original object, a changed AI message as a copy with only its kept
+    calls (tool_calls, invalid_tool_calls and additional_kwargs["tool_calls"] filtered), and a
+    missing result as a synthetic tool dict with the call's name and status "error". The host
+    keeps its stored messages as they are."""
 ```
 
-- Prompt assembly stays host code: the example's `model_input(turn, messages)` sends the
-  system prompt and then `messages`, with the reset row replaced by `{"role": "user",
-  "content": turn.model_prompt}`. As built, the runtime context goes in as a user message
-  immediately before the turn's user message, where upstream keeps its carrier (F22); the plan
-  had it as a second system message before the history, which is where the kit's lifecycle
-  diagram lists it.
+- Prompt assembly stays host code: the example's `model_input(turn, messages, repair)` sends
+  the system prompt and then the repaired copy of `messages`, whose active user message gets
+  `turn.reset.model_prompt` under upstream's guard on a reset turn. As built, the runtime
+  context goes in as a user message immediately before the turn's user message, where upstream
+  keeps its carrier (F22); the plan had it as a second system message before the history, which
+  is where the kit's lifecycle diagram listed it until the kit docs were fixed (F22).
 - Tool schemas need no mapping: `bind_tools` takes `kit.tools()` and `FlushRequest.tools`
   unchanged, since a dict with a `name` is read as an OpenAI function
   (`langchain_core/utils/function_calling.py:432`; probe with `ChatOpenAI.bind_tools`).
@@ -611,10 +614,17 @@ class PendingTurn:
   (`langchain_openai/chat_models/base.py:490-496`), each of which then needs a tool message; and
   because `ToolNode` wants `BaseTool`s whose argument validation would replace the kit's
   upstream-shaped error payloads (F4, F13).
-- `PendingTurn` exists because `TurnContext` holds a `WorkspaceContext` and is not serializable
-  while the model node and the tools node run in separate supersteps (F2), and because the reset
-  turn's two prompts have to share one `messages` list (F3).
-- `memory_core/adapters/__init__.py` exports these five names; the package root keeps its 24.
+- The turn in flight is the kit's `TurnState`, because `TurnContext` holds a `WorkspaceContext`
+  and is not serializable while the model node and the tools node run in separate supersteps
+  (F2), and because the reset turn's two prompts have to share one `messages` list (F3). The
+  adapter's `PendingTurn` did this until `76dfdd7`.
+- `repair_tool_calls` exists because the kit's repair takes chat-completions rows, while a
+  LangChain AI message carries its calls in `tool_calls`, `invalid_tool_calls` and
+  `additional_kwargs["tool_calls"]` (langchain-openai sends the last when both lists are empty,
+  `langchain_openai/chat_models/base.py:490-498`), so a copy without a dropped call must filter
+  all three (F26).
+- `memory_core/adapters/__init__.py` exports these five names; the package root has 26 since
+  the kit changes (`TurnState`, `ToolCallRepair`).
 
 ### Fate of `LangGraphMemoryRecall`
 
@@ -686,7 +696,8 @@ call's messages and bound tool names. Neither LangChain fake (`FakeMessagesListC
 FTS-only with a fixed kit clock (`now_ms`), UTC and a fixed id sequence; the checkpointer is
 `InMemorySaver`, which serializes every value it stores. Modules that need LangGraph start with
 `pytest.importorskip`. The tools node's dispatch is exactly
-`functools.partial(kit.dispatch, session=turn.session)`.
+`functools.partial(kit.dispatch, session=turn.session)` (as planned; since `76dfdd7`
+`kit.dispatcher(turn.session)`).
 
 `tests/unit/test_langgraph_adapter.py` (rewritten; the recall tests go with Task 2):
 
@@ -702,9 +713,10 @@ FTS-only with a fixed kit clock (`now_ms`), UTC and a fixed id sequence; the che
 - `test_tool_messages_answer_invalid_calls_with_the_kit_error_payload`
 - `test_tool_messages_mark_error_payloads_and_convert_to_tool_messages`
 - `test_tool_messages_reject_a_call_without_an_id`
-- `test_pending_turn_round_trips_json`
-- `test_pending_turn_from_json_rejects_a_bad_shape`
-- `test_pending_turn_needs_both_reset_fields`
+- `test_pending_turn_round_trips_json`, `test_pending_turn_from_json_rejects_a_bad_shape` and
+  `test_pending_turn_needs_both_reset_fields`, removed with `PendingTurn` in `76dfdd7`
+  (`tests/unit/test_host_kit_turn_state.py` covers `TurnState`); `7e1d23b` added the four
+  `test_repair_tool_calls_*` tests
 
 `tests/unit/test_packaging.py`: `test_demo_and_langgraph_are_the_only_extras_and_dev_tools_a_group`
 (replaces `test_demo_dependencies_are_the_only_extra_and_dev_tools_a_group`),
@@ -781,7 +793,8 @@ As built, beyond the plan: `test_a_command_that_is_not_first_word_is_an_ordinary
 `test_example_main_chats_against_an_openai_compatible_endpoint` (the whole `main` loop against
 the local stub), and after review `test_tool_rounds_are_bounded_and_the_last_call_has_no_tools`
 and `test_a_reply_that_asks_for_tools_past_the_bound_fails_the_turn` (F25) and
-`test_next_message_after_a_failed_tools_node_drops_the_unanswered_call` (F26) and
+`test_next_message_after_a_failed_tools_node_drops_the_unanswered_call` (F26;
+`..._repairs_the_unanswered_call` since `7e1d23b`) and
 `test_two_threads_on_one_graph_and_kit_are_separate_sessions` (F16), and for `main`
 `test_example_main_exits_cleanly_at_the_end_of_input` and
 `test_example_main_reports_a_failed_turn_and_goes_on`. The live test's code was dry-run once against a scripted local endpoint in a
@@ -806,7 +819,7 @@ Each task: tests first (watch them fail), implement, run the offline suite (base
 3. Adapter conversions: `transcript_rows`, `turn_usage`, `has_tool_calls` and `tool_messages` in
    `memory_core/adapters/langgraph.py` and its exports; their tests and the import-order
    subprocess test.
-4. `PendingTurn`: the same files; its three tests.
+4. `PendingTurn`: the same files; its three tests (removed in `76dfdd7`, L10).
 5. The graph: `examples/langgraph_agent.py` (`AgentState`, `AgentContext`, `model_input`,
    `build_graph` with `prepare`, `agent`, `tools` and `maintain`) and
    `tests/unit/test_langgraph_agent.py` (the turn, runtime-context, flush, second-turn,

@@ -29,7 +29,10 @@ character as a ``\\u`` escape:
   tool (src/agents/sessions/tools/write.ts), its append-only flush wrapper
   (src/agents/agent-tools.read.ts ``wrapToolMemoryFlushAppendOnlyWrite``), the target-file
   errors (src/auto-reply/reply/memory-flush-session.ts ``ensureMemoryFlushTargetFile``) and the
-  ``## Conversation Context`` header (src/agents/system-prompt.ts)::
+  ``## Conversation Context`` header (src/agents/system-prompt.ts);
+- ``memory_core/_transcript_repair_constants.py``: the synthetic missing-tool-result text and
+  marker of the tool-call replay repair
+  (packages/agent-core/src/harness/session/tool-result-pairing.ts)::
 
     .venv/bin/python scripts/extract_upstream_constants.py --repo /tmp/openclaw-head
 
@@ -56,6 +59,7 @@ OUTPUT = PACKAGE_DIR / "bootstrap" / "_tools_md_constants.py"
 BOOTSTRAP_OUTPUT = PACKAGE_DIR / "bootstrap" / "_bootstrap_constants.py"
 HEARTBEAT_OUTPUT = PACKAGE_DIR / "_heartbeat_constants.py"
 FLUSH_OUTPUT = PACKAGE_DIR / "_memory_flush_constants.py"
+TRANSCRIPT_REPAIR_OUTPUT = PACKAGE_DIR / "_transcript_repair_constants.py"
 CHECK_TEST = "tests/integration/test_extracted_upstream_constants.py"
 BOOTSTRAP_SOURCE = "src/agents/embedded-agent-helpers/bootstrap.ts"
 BUDGET_SOURCE = "src/agents/bootstrap-budget.ts"
@@ -75,6 +79,7 @@ WRITE_TOOL_SOURCE = "src/agents/sessions/tools/write.ts"
 AGENT_TOOLS_READ_SOURCE = "src/agents/agent-tools.read.ts"
 FLUSH_SESSION_SOURCE = "src/auto-reply/reply/memory-flush-session.ts"
 SYSTEM_PROMPT_SOURCE = "src/agents/system-prompt.ts"
+TOOL_RESULT_PAIRING_SOURCE = "packages/agent-core/src/harness/session/tool-result-pairing.ts"
 # Template-literal expressions of the flush write wrapper -> str.format field names.
 FLUSH_WRITE_TEMPLATE_FIELDS = {
     "tool.description": "description",
@@ -813,6 +818,15 @@ def extract_flush_run(repo: Path) -> dict[str, str]:
     }
 
 
+def extract_transcript_repair(repo: Path) -> dict[str, object]:
+    """The texts of the tool-call replay repair (memory_core.replay_repair)."""
+    pairing = (repo / TOOL_RESULT_PAIRING_SOURCE).read_text(encoding="utf-8")
+    return {
+        name: ts_string_constant(pairing, name)
+        for name in ("SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY", "DEFAULT_MISSING_TOOL_RESULT_TEXT")
+    }
+
+
 def _git_head(repo: Path) -> str:
     completed = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=False
@@ -918,6 +932,16 @@ def outputs(repo: Path) -> dict[Path, str]:
                 "byte-size unit table of parseByteSize. The MEMORY_FLUSH_WRITE_*_TEMPLATE texts",
                 "are str.format templates of wrapToolMemoryFlushAppendOnlyWrite (fields:",
                 "description, relative_path).",
+            ],
+        ),
+        TRANSCRIPT_REPAIR_OUTPUT: render(
+            extract_transcript_repair(repo),
+            commit,
+            title="Upstream constants of the tool-call replay repair",
+            sources=[TOOL_RESULT_PAIRING_SOURCE],
+            note=[
+                "DEFAULT_MISSING_TOOL_RESULT_TEXT is the synthetic tool result's text and a",
+                "parity-bound marker: upstream recognises a stored synthetic result by it.",
             ],
         ),
     }

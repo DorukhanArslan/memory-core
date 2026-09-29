@@ -204,15 +204,14 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
         plan_area=7,
     ),
     PendingPort(
-        "transcript and replay helpers (history-limit hysteresis, tool-use repair, runtime context "
-        "prompt, assistant replay normalization, tool-result truncation, startup context)",
-        "d5dee714c4f (#115281); session-transcript-repair.ts 17, runtime-context-prompt.ts 5, "
+        "transcript and replay helpers (history-limit hysteresis, runtime context prompt, "
+        "assistant replay normalization, tool-result truncation, startup context)",
+        "d5dee714c4f (#115281); runtime-context-prompt.ts 5, "
         "replay-history.ts 23, tool-result-truncation.ts 36 and startup-context.ts 2 commits "
         "after 4c428153",
         (
             *_oracle(
                 "history_limit_helpers_match_python",
-                "repair_tool_use_result_pairing_matches_python",
                 "runtime_context_prompt_helpers_match_python",
                 "normalize_assistant_replay_content_matches_python",
                 "startup_context_matches_python[emoji-at-file-cap]",

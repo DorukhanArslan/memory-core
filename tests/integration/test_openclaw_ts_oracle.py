@@ -4167,84 +4167,159 @@ def test_real_openclaw_oracle_history_limit_helpers_match_python():
     }
 
 
-def test_real_openclaw_oracle_repair_tool_use_result_pairing_matches_python():
+def _repair_pairing_case(messages: list[dict], **options) -> None:
+    """repairToolUseResultPairing at the tag against the port, the whole report compared."""
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
-    messages = [
-        {
-            "role": "assistant",
-            "content": [
-                {"type": "toolCall", "id": "call_1", "name": "read", "arguments": {}},
-                {"type": "toolCall", "id": "call_2", "name": "exec", "arguments": {}},
-            ],
-        },
-        {"role": "user", "content": "this should come after tool results"},
-        {
-            "role": "toolResult",
-            "toolCallId": "call_2",
-            "toolName": "exec",
-            "content": [{"type": "text", "text": "ok"}],
-            "isError": False,
-        },
-    ]
+    payload = {"operation": "repairToolUseResultPairing", "messages": messages}
+    if "missing_tool_result_text" in options:
+        payload["text"] = options["missing_tool_result_text"]
+    if "errored_assistant_result_policy" in options:
+        payload["erroredAssistantResultPolicy"] = options["errored_assistant_result_policy"]
+    if options.get("preserve_unframed_tool_results"):
+        payload["preserveUnframedToolResults"] = True
 
-    result = oracle.run(
-        {
-            "operation": "repairToolUseResultPairing",
-            "messages": messages,
-            "text": "aborted",
-        }
-    )
-    python_result = repair_tool_use_result_pairing(messages, missing_tool_result_text="aborted")
+    result = oracle.run(payload)
+    python_result = repair_tool_use_result_pairing(messages, **options)
 
     assert result["ok"] is True
     assert result["operation"] == "repairToolUseResultPairing"
     assert result["result"] == {
         "messages": _normalize_repair_messages(python_result.messages),
         "added": _normalize_repair_messages(python_result.added),
+        "discarded": _normalize_repair_messages(python_result.discarded),
         "droppedDuplicateCount": python_result.dropped_duplicate_count,
         "droppedOrphanCount": python_result.dropped_orphan_count,
         "moved": python_result.moved,
     }
+
+
+def _repair_call(*calls: tuple[str, str], stop_reason: str | None = None) -> dict:
+    message = {
+        "role": "assistant",
+        "content": [
+            {"type": "toolCall", "id": call_id, "name": name, "arguments": {}}
+            for call_id, name in calls
+        ],
+    }
+    if stop_reason is not None:
+        message["stopReason"] = stop_reason
+    return message
+
+
+def _repair_result(call_id: str, name: str, text: str, *, is_error: bool = False) -> dict:
+    return {
+        "role": "toolResult",
+        "toolCallId": call_id,
+        "toolName": name,
+        "content": [{"type": "text", "text": text}],
+        "isError": is_error,
+    }
+
+
+def test_real_openclaw_oracle_repair_tool_use_result_pairing_matches_python():
+    _repair_pairing_case(
+        [
+            _repair_call(("call_1", "read"), ("call_2", "exec")),
+            {"role": "user", "content": "this should come after tool results"},
+            _repair_result("call_2", "exec", "ok"),
+        ],
+        missing_tool_result_text="aborted",
+    )
 
 
 def test_real_openclaw_oracle_repair_tool_use_result_pairing_drops_aborted_results():
-    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
-    messages = [
-        {
-            "role": "assistant",
-            "content": [{"type": "toolCall", "id": "call_aborted", "name": "exec", "arguments": {}}],
-            "stopReason": "aborted",
-        },
-        {
-            "role": "toolResult",
-            "toolCallId": "call_aborted",
-            "toolName": "exec",
-            "content": [{"type": "text", "text": "partial"}],
-            "isError": False,
-        },
-        {"role": "user", "content": "retry"},
-    ]
-
-    result = oracle.run(
-        {
-            "operation": "repairToolUseResultPairing",
-            "messages": messages,
-            "erroredAssistantResultPolicy": "drop",
-        }
-    )
-    python_result = repair_tool_use_result_pairing(
-        messages,
+    _repair_pairing_case(
+        [
+            _repair_call(("call_aborted", "exec"), stop_reason="aborted"),
+            _repair_result("call_aborted", "exec", "partial"),
+            {"role": "user", "content": "retry"},
+        ],
         errored_assistant_result_policy="drop",
     )
 
-    assert result["ok"] is True
-    assert result["result"] == {
-        "messages": _normalize_repair_messages(python_result.messages),
-        "added": _normalize_repair_messages(python_result.added),
-        "droppedDuplicateCount": python_result.dropped_duplicate_count,
-        "droppedOrphanCount": python_result.dropped_orphan_count,
-        "moved": python_result.moved,
+
+def test_real_openclaw_oracle_repair_tool_use_result_pairing_repeated_ids_match_python():
+    # One provider id on later turns and twice in one turn; an unanswered later occurrence and
+    # a duplicate result within a frame.
+    _repair_pairing_case(
+        [
+            _repair_call(("c1", "exec")),
+            _repair_result("c1", "exec", "first"),
+            {"role": "user", "content": "next"},
+            _repair_call(("c1", "exec")),
+            _repair_result("c1", "exec", "second"),
+            _repair_result("c1", "exec", "duplicate"),
+            {"role": "user", "content": "again"},
+            _repair_call(("c1", "exec"), ("c1", "exec")),
+            _repair_result("c1", "exec", "third"),
+            {"role": "user", "content": "last"},
+            _repair_call(("c1", "exec")),
+        ]
+    )
+
+
+def test_real_openclaw_oracle_repair_tool_use_result_pairing_synthetic_replacement_matches_python():
+    # A stored synthetic result (marker, then default text only) replaced by a later real one,
+    # in the frame and across one; a real error that only contains the marker text stays.
+    marker = {
+        **_repair_result("call_1", "read", "aborted", is_error=True),
+        "details": {"openclawSyntheticMissingToolResult": True},
     }
+    default_text = _repair_result(
+        "call_2",
+        "read",
+        "[openclaw] missing tool result in session history; inserted synthetic error result "
+        "for transcript repair.",
+        is_error=True,
+    )
+    _repair_pairing_case(
+        [
+            _repair_call(("call_1", "read"), ("call_2", "read")),
+            marker,
+            default_text,
+            _repair_result("call_1", "read", "real one"),
+            _repair_call(("call_3", "write")),
+            _repair_result("call_2", "read", "late real two"),
+            _repair_result("call_3", "write", "three"),
+            _repair_call(("call_4", "read")),
+            _repair_result("call_4", "read", "[openclaw] missing tool result (real)", is_error=True),
+            _repair_result("call_4", "read", "real four"),
+        ]
+    )
+
+
+def test_real_openclaw_oracle_repair_tool_use_result_pairing_displaced_across_frames_matches_python():
+    # A late result claimed across a frame, a blank result name, an ambiguous repeated id, and
+    # an unresolved failed occurrence as an ambiguity blocker under the drop policy.
+    _repair_pairing_case(
+        [
+            _repair_call(("call_read", "read")),
+            _repair_call(("call_write", "write")),
+            {**_repair_result("call_read", "read", "late read"), "toolName": "   "},
+            _repair_result("call_write", "write", "write output"),
+            _repair_call(("exec_0", "exec")),
+            _repair_call(("exec_0", "exec"), stop_reason="error"),
+            _repair_call(("write_0", "write")),
+            _repair_result("exec_0", "exec", "ambiguous displaced output"),
+            _repair_result("write_0", "write", "write output"),
+            {"role": "user", "content": "done"},
+        ],
+        errored_assistant_result_policy="drop",
+    )
+
+
+def test_real_openclaw_oracle_repair_tool_use_result_pairing_preserve_unframed_matches_python():
+    _repair_pairing_case(
+        [
+            _repair_result("call_orphan", "read", "before any frame"),
+            _repair_call(("call_1", "read")),
+            _repair_result("call_1", "read", "first real"),
+            _repair_result("call_1", "read", "second real"),
+            _repair_result("call_other", "read", "preserved unframed"),
+            {"role": "user", "content": "next"},
+        ],
+        preserve_unframed_tool_results=True,
+    )
 
 
 def test_real_openclaw_oracle_runtime_context_prompt_helpers_match_python():

@@ -452,9 +452,13 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
 - Python: `memory_core/{history,replay_history,replay_repair,runtime_context_prompt,
   context_engine_lifecycle,preemptive_compaction,overflow_recovery}.py`,
   `memory_core/bootstrap/startup.py`.
-- Tests: 7 (six helper fixtures and the run-loop mid-turn scenario).
+- Tests: 7 (six helper fixtures and the run-loop mid-turn scenario); 6 left after the
+  tool-use repair re-port.
 - Worklist areas: "transcript and replay helpers", "overflow run loop".
 - New oracle ops: none.
+- 2026-09-29, `feat/kit-langgraph-fixes` (docs/host_kit.md › LangGraph findings, F26): the
+  tool-use repair (`repairToolUseResultPairing` over `classifyToolUseResultPairing`) is re-ported
+  to the tag, with four new fixtures; ported, oracle-unverified until the branch's oracle run.
 
 ### 11. Matrix, docs and re-measure (estimate 6-10 h)
 

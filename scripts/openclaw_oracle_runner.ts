@@ -998,6 +998,9 @@ async function main() {
         ? { erroredAssistantResultPolicy: payload.erroredAssistantResultPolicy }
         : {}),
       ...(typeof payload.text === "string" ? { missingToolResultText: payload.text } : {}),
+      ...(payload.preserveUnframedToolResults === true
+        ? { preserveUnframedToolResults: true }
+        : {}),
     });
     return {
       ok: true,
@@ -1005,6 +1008,7 @@ async function main() {
       result: {
         messages: result.messages.map(normalizeRepairMessage),
         added: result.added.map(normalizeRepairMessage),
+        discarded: result.discarded.map(normalizeRepairMessage),
         droppedDuplicateCount: result.droppedDuplicateCount,
         droppedOrphanCount: result.droppedOrphanCount,
         moved: result.moved,

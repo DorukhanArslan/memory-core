@@ -1189,12 +1189,14 @@ port plan area 5 (tool definitions and the Memory Recall section at the tag).
 # LangGraph findings (2026-09-29)
 
 Status: specification and TDD plan, written 2026-09-29 on `feat/kit-langgraph-fixes` (from
-`main` `807508d`); nothing is implemented yet. Doruk's decision L10 (docs/integrations/langgraph.md
-› Decisions) takes the kit changes the LangGraph findings recommend; `F<n>` are the rows of
-docs/integrations/langgraph.md › Findings. Upstream anchors are v2026.9.6 (`/tmp/openclaw-head`).
-Task 1 needs no decision and Task 2 only K4 and K7 (it follows their recommendations unless
-Doruk answers otherwise); Tasks 3-6 wait for K1-K3, Task 6 also for K5 and K6 (Open questions
-below).
+`main` `807508d`; first draft `9b90245`) and revised after review the same day; nothing is
+implemented yet. Doruk's decision L10 (docs/integrations/langgraph.md › Decisions) takes the kit
+changes the LangGraph findings recommend; `F<n>` are the rows of docs/integrations/langgraph.md
+› Findings. Upstream anchors are v2026.9.6 (`/tmp/openclaw-head`). Task 1 needs no decision,
+Task 2 needs K4 and K7, Task 3 (the adapter and the example on the turn state) K5; Tasks 4-7
+(the repair) need K1-K3 and K6 (Open questions below). Each task follows its question's
+recommendation (K3: the recorded decision it cites) unless Doruk answers otherwise. The review
+split the first draft's Task 6 into Tasks 3 and 7, so the branch never holds two turn types.
 
 ## Scope
 
@@ -1203,11 +1205,11 @@ below).
 | F2, F3 | `TurnState`, the turn in flight as JSON (session, system prompt, runtime context, tools, the reset turn), and `ResetTurn.to_json` / `from_json`; the adapter's `PendingTurn` goes | kit, additive; adapter: `PendingTurn` removed (unreleased, 0.2.0) |
 | F21 | `after_turn(..., redact=)` | kit, additive |
 | F24 | `HostKit.dispatcher(session)` | kit, additive |
-| F26 | `HostKit.repair_tool_calls(messages)` over host message rows: upstream's model-replay repair, composed of `repair_tool_use_result_pairing` (the existing port, brought to the tag first, K1) and `sanitize_tool_call_inputs` (a new port, K2); `ToolCallRepair`; `RuntimeIdentity.missing_tool_result_text` (K3) | core: one ported algorithm changes toward the tag and one is added (named below); kit, additive |
+| F26 | `HostKit.repair_tool_calls(messages)` over host message rows: upstream's model-replay repair, composed of `sanitize_tool_call_inputs` (a new port, K2) and `repair_tool_use_result_pairing` (the existing port, brought to the tag first, K1); `ToolCallRepair`; the synthetic result's text is upstream's (K3) | core: one ported algorithm changes toward the tag and one is added (named below); kit, additive |
 | F1, F7, F12, F22 | doc lines in Part 1 of this file (text below) | docs |
 
 Everything else keeps its behaviour: the six entry points' existing parameters and results, every
-other ported algorithm and every oracle result, except that the repair fixture Task 3 re-ports
+other ported algorithm and every oracle result, except that the repair fixture Task 4 re-ports
 turns from a strict xfail into a pass. The package root grows from 24 to 26 names (`TurnState`,
 `ToolCallRepair`): every kit class is exported there (`tests/unit/test_public_api.py`).
 
@@ -1242,23 +1244,35 @@ class ResetTurn:                           # fields unchanged (entry point 5)
   `dispatcher`) and `after_turn` (`session`). Not `memory_recall` (already inside
   `system_prompt`), `workspace` or `workspace_init` (inspection results of `before_turn`, which
   hold a `WorkspaceContext` and do not serialize: F2's cause).
-- `from_context` copies the four context fields (the tools deep-copied, as `PendingTurn` does);
-  `reset` is passed by the host, so `before_turn` stays unchanged and knows nothing of resets.
-  `__post_init__` raises `TypeError` for a field of the wrong type.
+- `from_context` copies the four context fields (the tools deep-copied); `reset` is passed by
+  the host, so `before_turn` stays unchanged and knows nothing of resets. `__post_init__` raises
+  `TypeError` for a field of the wrong type.
 - JSON, camelCase as `SessionState.to_json`: `{"session": <SessionState.to_json()>,
   "systemPrompt", "runtimeContext", "tools": [...], "reset": <ResetTurn.to_json()> | null}` and
   `{"modelPrompt", "transcriptPrompt", "bootstrapMode", "startupContext", "prompt"}`. Both round
-  trip exactly and survive `json.dumps` / `json.loads`. `from_json` raises `ValueError` for a
-  non-object, a missing key, a text that is not a string (`runtimeContext` and `startupContext`
-  may be null), tools that are not a list of objects, a `bootstrapMode` outside `full`,
-  `limited`, `none`, and whatever `SessionState.from_json` refuses.
-- The reset turn (F3): on every model call of the turn, tool rounds included, the model gets
-  `reset.model_prompt` as the content of the turn's active user message, while the transcript
-  keeps `reset.transcript_prompt` there. The active user message is upstream's
-  `findActiveUserMessageIndex` (`src/agents/embedded-agent-runner/run/attempt-history.ts:350-365`):
-  the last user message, unless an assistant reply without tool calls follows it (then none).
-  For the turn a bare `/new` starts that is the reset row, so the adapter's
-  `model_prompt_message_id` goes (K5).
+  trip exactly and survive `json.dumps` / `json.loads`. `from_json` needs `session`,
+  `systemPrompt` and `tools` (a reset turn: `modelPrompt`, `transcriptPrompt`, `bootstrapMode`
+  and `prompt`); a missing `runtimeContext`, `reset` or `startupContext` reads as null and
+  unknown keys are ignored, as `SessionState.from_json` does. It raises `ValueError` for a
+  non-object, a missing required key, a text that is not a string (`runtimeContext` and
+  `startupContext` may be null), tools that are not a list of objects, a `reset` that is neither
+  an object nor null, a `bootstrapMode` outside `full`, `limited`, `none`, and whatever
+  `SessionState.from_json` refuses. The JSON is unversioned, like `SessionState`'s: changes stay
+  additive (new optional keys), and an incompatible change adds a `version` key, since a durable
+  checkpointer keeps these values across an upgrade.
+- The reset turn (F3) follows upstream's `installModelPromptTransform`
+  (`src/agents/embedded-agent-runner/run/attempt-llm-boundary.ts:384-460`): on every model call
+  of the turn, tool rounds included, the turn's active user message gets `reset.model_prompt` in
+  place of its text, while the transcript keeps `reset.transcript_prompt` there. The active user
+  message is upstream's `findActiveUserMessageIndex`
+  (`src/agents/embedded-agent-runner/run/attempt-history.ts:350-383`): the last user message,
+  unless an assistant message without tool calls follows it (then none). The replacement has
+  upstream's guard: nothing happens when `model_prompt` is blank or equals `transcript_prompt`,
+  and the text is replaced only while it is `transcript_prompt` (`replace: text ===
+  params.transcriptPrompt`, via `replaceUserTextPrompt`, `:316-365`), so another active user
+  message is left alone. For the turn a bare `/new` starts, the active user message is the reset
+  row, so the adapter's `model_prompt_message_id` goes (K5). Placing the prompt is the host's (it
+  assembles the model input); the example does it in `model_input`.
 - Not serialized, on purpose: `FlushRequest` (it holds the workspace's `Memory` and its appends,
   so the flush still completes where `after_turn` ran, entry point 4) and `HeartbeatRun` (its
   jobs and `complete`). A heartbeat turn's context carries as `TurnState.from_context(run.context)`.
@@ -1295,7 +1309,8 @@ def dispatcher(
 - Returns `lambda name, arguments: self.dispatch(name, arguments, session=session)`: the same
   two-argument shape as `FlushRequest.dispatch`, so one tool-answering helper serves both runs.
   It looks `self.dispatch` up at each call (a test that replaces `kit.dispatch` still reaches
-  the replacement) and adds no behaviour.
+  the replacement) and adds no behaviour beyond a `TypeError` at once for a `session` that is not
+  a `SessionState` (`dispatch` would fail only at a `memory_search` call).
 - On the kit, not on the turn object: a `TurnState` restored with `from_json` in another step has
   no kit, and a method bound inside `TurnContext` would work only in the process that built it
   (K4).
@@ -1304,25 +1319,35 @@ def dispatcher(
 
 ### What upstream does
 
-- Upstream repairs the history each time it builds a model call, on a copy: the replay pipeline
-  runs `sanitizeToolCallInputs` (`src/agents/embedded-agent-runner/replay-history.ts:793`), then
+- Upstream repairs the replayed session history once per attempt, on a copy, and keeps that copy
+  as the attempt's in-memory messages; the stored transcript is not rewritten.
+  `sanitizeSessionHistory` runs at the start of an attempt
+  (`src/agents/embedded-agent-runner/run/attempt-history-prepare.ts:78`), its result is limited
+  and paired once more (`:165-169`) and becomes `agent.state.messages` (`:173`); tool rounds
+  inside the attempt bypass that path (`run/attempt-stream.ts:243`). The replay pipeline runs
+  `sanitizeToolCallInputs` (`src/agents/embedded-agent-runner/replay-history.ts:793`), then
   `sanitizeToolUseResultPairingForModel(messages, isOpenAIResponsesApi)` (`:803` for the
   Responses API, `:819` otherwise; `repairToolUseResultPairing: true` is the default policy,
   `src/agents/transcript-policy.ts:51`). The model-facing options are
   `erroredAssistantResultPolicy: "drop"` and, for the Responses API only, the missing-result
-  text `aborted` (`src/agents/session-transcript-repair.ts:367-376`).
+  text `aborted` (`src/agents/session-transcript-repair.ts:367-376`); on the Responses path
+  `normalizeOpenAIResponsesToolCallIds` and `downgradeOpenAIFunctionCallReasoningPairs` follow
+  (`replay-history.ts:805-816`).
 - `repairToolUseResultPairing` (`session-transcript-repair.ts:391-480`, over
   `classifyToolUseResultPairing`, `packages/agent-core/src/harness/session/tool-result-pairing.ts:234-391`)
   moves each call's results right after its assistant message, drops orphan and duplicate
   results, pairs repeated provider ids by occurrence, lets a later real result replace a
   synthetic one, and inserts a synthetic error result (`makeMissingToolResult`, `:149-163`) for
   each call without one, except in a failed (`error` or `aborted`) assistant turn.
-- `repairToolCallInputs` (`session-transcript-repair.ts:219-351`) drops a tool-call block without
-  an id, without input (`arguments` or `input`) or with a name that is not allowed (`:285-295`;
-  a name must match `TOOL_CALL_NAME_RE` and fit `TOOL_CALL_NAME_MAX_CHARS`,
-  `src/agents/tool-call-shared.ts:10-11,33-51`, and be in `allowedToolNames` when given, unless
-  the call already has a real result), strips a finalized Responses call's `partialJson`, trims
-  names, and drops an assistant message left with no content (`:327-331`).
+- `repairToolCallInputs` (`session-transcript-repair.ts:219-351`) drops a non-object message
+  (`:234-237`) and a tool-call block (any of the six types of `src/shared/tool-block-contract.ts:3-10`)
+  without an id (`collectToolCallIds`, `:61-70`), without input (`hasToolCallInput`,
+  `src/agents/tool-call-id.ts:91-96`) or with a name that is not allowed (`session-transcript-repair.ts:285-295`; a name must
+  match `TOOL_CALL_NAME_RE` and fit `TOOL_CALL_NAME_MAX_CHARS`, `src/agents/tool-call-shared.ts:10-11,33-51`,
+  and be in `allowedToolNames` when given, compared lower-cased, `:14-30,47-51`, unless the call
+  already has a real result, `:54-58`), strips a finalized Responses call's `partialJson` and drops
+  any other block with one, trims names, and drops an assistant message left with no content
+  (`session-transcript-repair.ts:327-331`).
 - The stored transcript is not repaired for an OpenAI-compatible provider: the session guard
   persists synthetic results only with `allowSyntheticToolResults`, which the default policy
   leaves off and only Google, Anthropic and Responses-API models turn on
@@ -1348,9 +1373,12 @@ function through the oracle runner, Node 24.21.0), three fixtures:
 
 The last row decides it: a repair over the pin-era port breaks a valid history whose provider
 reuses call ids (the port keeps one global id set) and hands the provider exactly the unanswered
-call the repair exists to remove. The kit therefore composes the port only after Task 3 brings it
+call the repair exists to remove. The kit therefore composes the port only after Task 4 brings it
 to the tag. That is a behaviour change of a ported algorithm, required by F26 and taken toward
-upstream, with the tag's oracle as evidence.
+upstream, with the tag's oracle as evidence. Source reading adds one more change: a second result
+for a call within its frame counts in `droppedDuplicateCount` at the tag (upstream's test "changed
+flag is true when duplicates are dropped", `session-transcript-repair.test.ts:827-838`), where the
+pin-era port drops it silently; the existing unit test that pins 0 moves to 1.
 
 ### Signature and composition
 
@@ -1360,7 +1388,6 @@ def repair_tool_calls(
     messages: Sequence[Mapping[str, Any]],
     *,
     allowed_tool_names: Iterable[str] | None = None,
-    openai_responses_api: bool = False,
 ) -> ToolCallRepair
 
 
@@ -1371,75 +1398,96 @@ class ToolCallRepair:
                                              # None for a synthetic tool result
 ```
 
-- A `HostKit` method because the synthetic text comes from the kit's identity; it reads no file
-  and writes nothing. Implemented in `memory_core/host/_tool_calls.py` (the row mapping) over the
-  two core functions, as entry point 2 composes the tools.
+- A `HostKit` method, next to the other per-turn calls; it reads no file, writes nothing and
+  depends on no kit option (K3: the text is upstream's for every identity). Implemented in
+  `memory_core/host/_tool_calls.py` (the row mapping) over the two core functions, as entry
+  point 2 composes the tools. Upstream's Responses-API steps are not offered (Parity labels).
 - Host rows are the chat-completions message shape the kit already reads:
   - `{"role": "assistant", "content", "tool_calls": [...]}`, each call either
     `{"id", "type": "function", "function": {"name", "arguments"}}` or the flat
-    `{"id", "name", "args" | "arguments"}` (LangChain's dict form, which `transcript_rows`
-    emits). Tool calls are read from `tool_calls` only; a content list is carried as it is, and
-    it or a non-empty string counts as content;
-  - `{"role": "tool", "tool_call_id", "name"?, "content", ...}`;
+    `{"id", "name", "args" | "arguments"}` (LangChain's dict form). Tool calls are read from
+    `tool_calls` only (a legacy `function_call` is neither read nor rewritten). The content is a
+    string, which counts as content when it is not empty, or a list whose blocks are carried
+    except the six tool-call block types of `tool-block-contract.ts:3-10`: those are neither read
+    nor rewritten, so a call is never counted twice (an Anthropic-style message carries its calls
+    in both places);
+  - `{"role": "tool", "tool_call_id", "content", "status"?, ...}`;
   - any other row passes through.
   A row that is not a mapping raises `TypeError` (host error).
 - Composition, in upstream's order:
-  1. map each row to upstream's message shape, tagged with its index: an assistant row becomes
-     `{"role": "assistant", "content": [<content blocks>, {"type": "toolCall", "id", "name",
-     "arguments"} ...]}`, a tool row `{"role": "toolResult", "toolCallId", "toolName",
-     "content", "isError": status == "error"}`. Host rows carry no stop reason, so no frame is
-     failed;
+  1. map each row to upstream's message shape: an assistant row becomes `{"role": "assistant",
+     "content": [<a text block of a non-empty string, or the list's other blocks>, {"type":
+     "toolCall", "id", "name", "arguments"} ...]}`, a tool row `{"role": "toolResult",
+     "toolCallId" (when a string), "toolName" (its `name`, when present), "content", "isError":
+     status == "error"}`, any other row a role-less stand-in both repairs pass through. Each
+     mapped message and call carries a private index key, which the repairs' copies keep and
+     the kit never returns. Host rows carry no stop reason, so no frame is failed;
   2. `memory_core/replay_repair.py:sanitize_tool_call_inputs(mapped, allowed_tool_names=...)`
-     (Task 4, upstream `sanitizeToolCallInputs`);
-  3. `repair_tool_use_result_pairing(..., errored_assistant_result_policy="drop",
-     missing_tool_result_text=<"aborted" when openai_responses_api, else
-     identity.missing_tool_result_text>)` (Task 3), as `sanitizeToolUseResultPairingForModel`
-     calls it;
-  4. map back by the tags: an unchanged host row is returned as the same object; an assistant
-     row the input repair changed is a shallow copy `{**row, "tool_calls": <the kept calls, names
-     trimmed>}`; an assistant row it dropped, and every dropped orphan or duplicate tool row, is
-     left out; moved tool rows keep their objects; a synthetic result is a new row
-     `{"role": "tool", "tool_call_id", "name", "content": <text>, "status": "error"}`, the row
-     shape `memory_core.adapters.langgraph.tool_messages` emits.
-- Nothing to repair: `messages` are the input rows in order, `sources` `0..n-1`.
-- Where a host uses it: on the history of every model call, before the runtime context and the
-  reset prompt are placed. The host keeps its stored transcript as it is (upstream's default for
-  OpenAI-compatible providers, K6); `after_turn`, `request_flush` and `on_new_session` read only
-  the text of user and assistant rows, so an unanswered call there changes nothing.
+     (Task 5, upstream `sanitizeToolCallInputs`);
+  3. `repair_tool_use_result_pairing(..., errored_assistant_result_policy="drop")` with
+     upstream's default text (Task 4), as `sanitizeToolUseResultPairingForModel` calls it off
+     the Responses path;
+  4. map back by the index keys: an unchanged host row is returned as the same object, and so is
+     a tool row changed only by the tool-name normalization; an assistant row the input repair
+     changed is a shallow copy `{**row, "tool_calls": <kept calls>}`, the kept calls being the
+     input call mappings when unchanged, else shallow copies with the trimmed name (`{**call,
+     "name": ...}`, or `function.name` in the OpenAI shape), in their order; when no call is
+     kept the copy has no `tool_calls` key (an empty array is rejected by OpenAI); an assistant
+     row it dropped, and every dropped orphan or duplicate tool row, is left out; moved tool rows
+     keep their objects; a tool row without `tool_call_id` that the legacy-id normalization
+     (`normalizeLegacyToolResultId`) paired comes back as `{**row, "tool_call_id": <id>}`; a
+     synthetic result is a new row `{"role": "tool", "tool_call_id", "content": <text>}`, the plain
+     chat-completions shape (a strict validator rejects extra keys such as `status`).
+- Nothing to repair: `messages` are the input rows themselves in order, `sources` `0..n-1`.
+- Where a host uses it: on the history of every model call of a turn, before the runtime
+  context and the reset prompt are placed. That is a superset of upstream's once-per-attempt
+  repair: a well-formed tool round inside the turn comes back unchanged. The host keeps its
+  stored transcript as it is (upstream's default for OpenAI-compatible providers, K6);
+  `after_turn`, `request_flush` and `on_new_session` read only the text of user and assistant
+  rows, so an unanswered call there changes nothing.
 - Kit docs line (entry point 3): "A turn that failed between a tool-call reply and its tool
   results leaves calls without results; send `kit.repair_tool_calls(history).messages` to the
-  model instead of the history (upstream repairs every replayed history the same way)."
+  model instead of the history (upstream repairs the replayed history the same way at the start
+  of each attempt)."
 
 ### Core changes
 
-- Task 3, re-port `repair_tool_use_result_pairing` to v2026.9.6 (port plan area 10):
+- Task 4, re-port `repair_tool_use_result_pairing` to v2026.9.6 (port plan area 10):
   `classifyToolUseResultPairing` with its occurrence queue, synthetic-to-real replacement,
   results displaced into a later frame claimed by the one unresolved occurrence that owns them,
   `preserve_unframed_tool_results` (upstream `preserveUnframedToolResults`), the `discarded`
-  list on `ToolUseRepairReport` (a new field, last, with a default), and `reason:
-  "missing_tool_result"` in the synthetic `details`. `DEFAULT_MISSING_TOOL_RESULT_TEXT` and
-  `SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY` become script-extracted constants
-  (`scripts/extract_upstream_constants.py`, a new output
+  list on `ToolUseRepairReport` (a new field, last, with `field(default_factory=list)`), and
+  `reason: "missing_tool_result"` in the synthetic `details`; also `is_synthetic_missing_tool_result`
+  and `collect_completed_tool_call_blocks` (upstream `isSyntheticMissingToolResult`,
+  `collectCompletedToolCallBlocks`, `tool-result-pairing.ts:165-192,394-407`), which Task 5
+  needs. `DEFAULT_MISSING_TOOL_RESULT_TEXT` and `SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY` become
+  script-extracted constants (`scripts/extract_upstream_constants.py`, a new output
   `memory_core/_transcript_repair_constants.py`, checked by
   `tests/integration/test_extracted_upstream_constants.py`). Named behaviour changes: repeated
   ids pair by occurrence (the probe's third row), a later real result replaces a synthetic one,
-  a displaced result can cross into a later frame, and the synthetic `details` carry `reason`.
-  No caller in `memory_core/` or `demo/` uses the port today, so only its tests move.
-- Task 4, port `sanitize_tool_call_inputs(messages, *, allowed_tool_names=None) -> list` (upstream
-  `sanitizeToolCallInputs` over `repairToolCallInputs`, `session-transcript-repair.ts:219-358`):
-  the general branch (the id, input and name rules with the completed-call exemption over
-  Task 3's classifier, the finalized-Responses `partialJson` strip, name trimming, dropping an
-  emptied assistant message). Not ported, labelled at the code site: the provider-owned thinking
-  replay branch (`allowProviderOwnedThinkingReplay`, `:244-277`) and the compaction replay
-  checkpoint rewrite of `replaceCompactionReplayOwnerContent` (a message without
-  `providerReplay` is `{...message, content}`, which is what the port does). New oracle op
-  `sanitizeToolCallInputs` in `scripts/openclaw_oracle_runner.ts` (the real TS function);
-  `TOOL_CALL_NAME_MAX_CHARS` and `TOOL_CALL_NAME_RE` script-extracted into the same constants file.
-- `RuntimeIdentity.missing_tool_result_text` (Task 5, K3): memory-core's
-  `[memory-core] missing tool result in session history; inserted synthetic error result for
-  transcript repair.` (from `DISPLAY_NAME`, as the heartbeat and reset rows), and in
-  `OPENCLAW_COMPAT_RUNTIME_IDENTITY` upstream's `DEFAULT_MISSING_TOOL_RESULT_TEXT` (the extracted
-  constant). The core port's own default stays upstream's text, which its oracle compares.
+  a displaced result can cross into a later frame, a second result within a frame counts as a
+  duplicate, and the synthetic `details` carry `reason`. No caller in `memory_core/` or `demo/`
+  uses the port today, so only its tests move.
+- Task 5, port `sanitize_tool_call_inputs(messages, *, allowed_tool_names=None) -> list` (upstream
+  `sanitizeToolCallInputs` over `repairToolCallInputs`, `session-transcript-repair.ts:36-92,219-358`,
+  with `collectToolCallIds` and the six block types of `tool-block-contract.ts:3-70`,
+  `hasToolCallInput` of `tool-call-id.ts:91-96`, `normalizeAllowedToolNames`,
+  `isAllowedToolCallName` and `createCompletedToolCallPredicate` of `tool-call-shared.ts:10-58`,
+  and `safeParseJsonRecord` of `packages/normalization-core/src/json-coercion.ts:13-15`): the
+  general branch (the id, input and name rules with the completed-call exemption over Task 4's
+  classifier, the finalized-Responses `partialJson` strip, name trimming, dropping an emptied
+  assistant message and a non-object message). Not ported, labelled at the code site: the
+  provider-owned thinking replay branch (`allowProviderOwnedThinkingReplay`, `:244-277`) and the
+  compaction replay checkpoint rewrite of `replaceCompactionReplayOwnerContent` (a message
+  without `providerReplay` is `{...message, content}`, which is what the port does). New oracle
+  op `sanitizeToolCallInputs` in `scripts/openclaw_oracle_runner.ts` (the real TS function);
+  `TOOL_CALL_NAME_MAX_CHARS` and `TOOL_CALL_NAME_RE` script-extracted into the same constants
+  file.
+- The synthetic text (K3): the kit uses upstream's `DEFAULT_MISSING_TOOL_RESULT_TEXT` for every
+  identity, the port's default. MEMORY.md › Durable decisions (`f2351d5`) keeps
+  "[openclaw] missing tool result" as a parity-bound marker, and upstream recognises a stored
+  synthetic result by that text when its `details` are gone (`isSyntheticMissingToolResult`,
+  `tool-result-pairing.ts:165-192`). No `RuntimeIdentity` field is added.
 
 ## Doc lines in Part 1
 
@@ -1458,78 +1506,99 @@ class ToolCallRepair:
   104,000), so that model's flush never runs. Pass the model's window."
 - F22, under `before_turn` and in the Turn lifecycle diagram (`model call (host): system_prompt,
   history, runtime_context, user message`): "Send `runtime_context` as a user-role message
-  immediately before the turn's active user message, on every model call of the turn, and never
-  record it in the transcript: upstream inserts its runtime-context carrier before the active
-  user message (`src/agents/embedded-agent-runner/run/attempt-llm-boundary.ts:262-268`, with
-  `findActiveUserMessageIndex`), sends that custom message as a user message
-  (`packages/agent-core/src/harness/messages.ts:139-153`) and strips carriers of earlier turns
-  from replays (`src/agents/internal-runtime-context.ts:379-400`). The block's header text
-  ("... for the immediately preceding user message") is upstream's wording and does not change
-  the placement." The README line ("the dynamic part to send after the stable
-  `turn.system_prompt`") gets the same placement.
+  immediately before the turn's user message, on every model call of the turn, and never record
+  it in the transcript: upstream binds its runtime-context carrier to the turn's user message and
+  inserts it before that message (`src/agents/embedded-agent-runner/run/attempt-llm-boundary.ts:240-268`;
+  `findActiveUserMessageIndex` finds the message only on a retry, where none means no carrier),
+  sends that custom message as a user message (`packages/agent-core/src/harness/messages.ts:139-153`)
+  and strips carriers of earlier turns from replays (`src/agents/internal-runtime-context.ts:379-400`).
+  The block's header text ("... for the immediately preceding user message") is upstream's
+  wording and does not change the placement." The README line ("the dynamic part to send after
+  the stable `turn.system_prompt`") gets the same placement.
 
 ## Adapter and example
 
 `memory_core/adapters/langgraph.py`:
 
-- `PendingTurn` is removed (`TurnState` replaces it; sterile, no second turn type).
-- `transcript_rows` adds to an AI message's row its `id` and, when it has calls, `tool_calls`:
-  the valid calls as `{"id", "name", "args"}` and then the invalid ones with their raw `args`
-  text, the order `tool_messages` answers them in. `after_turn`, `on_new_session` and the
-  session-memory file read the same text as before (a test pins the file's bytes).
-- New `repair_tool_calls(messages, repair) -> list[Any]`, with `repair` = `kit.repair_tool_calls`
-  (or a `functools.partial` of it with `allowed_tool_names`): the messages' rows through
-  `repair`, mapped back by `ToolCallRepair.sources`: a row returned unchanged is its original
-  message object, a changed assistant row is a copy of its message with only the kept tool calls
-  (`model_copy(update=...)` for a message object, a dict copy for a dict form), and a synthetic
-  result stays a tool dict, which a LangChain chat model converts to a `ToolMessage` with
-  `status="error"`. The exports stay five names: `transcript_rows`, `turn_usage`,
-  `has_tool_calls`, `tool_messages`, `repair_tool_calls`.
+- `PendingTurn` is removed (Task 3; `TurnState` replaces it; sterile, no second turn type).
+- `transcript_rows` is unchanged: `after_turn`, `on_new_session` and the session-memory file
+  read the same rows as before.
+- New `repair_tool_calls(messages, repair) -> list[Any]` (Task 7), with `repair` =
+  `kit.repair_tool_calls` or a function that passes it `allowed_tool_names`. It maps the messages
+  to host rows (`transcript_rows`' mapping, plus an AI message's calls as `tool_calls`: its valid
+  calls `{"id", "name", "args"}`, then its invalid ones with their raw `args` text, the order
+  `tool_messages` answers them in, each with a private index key; and a tool message's
+  `status`), runs `repair`, and maps back by `ToolCallRepair.sources`:
+  - a row returned unchanged is its original message object;
+  - a changed AI message is a copy with only the kept calls: `tool_calls` and
+    `invalid_tool_calls` rebuilt from the original calls by the index keys (trimmed names
+    applied), `additional_kwargs["tool_calls"]` filtered by the kept ids, and
+    `additional_kwargs["function_call"]` and `tool_call_chunks` dropped when no call is kept
+    (langchain-openai 1.6.6 sends `additional_kwargs["tool_calls"]` when both lists are empty,
+    `langchain_openai/chat_models/base.py:490-498`); `model_copy(update=...)` for a message
+    object, a dict copy for its dict forms, and the kit's row for a role dict;
+  - a synthetic result is a tool dict with the owning call's `name` and `status: "error"` added
+    (the shape `tool_messages` emits; langchain-core 1.6.5 converts it to
+    `ToolMessage(status="error")`).
+  The exports stay five names: `transcript_rows`, `turn_usage`, `has_tool_calls`,
+  `tool_messages`, `repair_tool_calls` (four between Tasks 3 and 7).
 - `tool_messages`' docstring names `kit.dispatcher(session)` instead of `functools.partial`.
 
 `examples/langgraph_agent.py`:
 
-- `memory_turn` holds `TurnState.to_json()`, `memory_reset` holds `NewSession.reset.to_json()`;
-  `prepare` builds `TurnState.from_context(kit.before_turn(...), reset=ResetTurn.from_json(...))`.
-  `new_session` no longer makes a message id for the reset row (one `new_id()` call less per
-  `/new`; the tests' fixed id sequences shift accordingly).
-- `model_input(turn, messages, repair)`: the history is `repair_tool_calls(messages, repair)`;
-  the active user message (upstream's rule, above) gets `turn.reset.model_prompt` when the turn
-  has a reset, and the runtime context goes right before it (at the end when there is none).
-- `tools` answers through `tool_messages(last, kit.dispatcher(turn.session))`; the `functools`
-  import goes.
-- `maintain` passes `redact=redact` to `after_turn` and drops its own rebuild of the
-  `MemoryFlushFailureOutcome` and that import.
-- `unanswered_tool_calls` and the `RemoveMessage` in `prepare` go: the stored `messages` keep a
-  failed turn's AI message, and every model call gets the repaired copy. A call without an id
-  still makes `tool_messages` raise (F19), so `graph.invoke(None, config)` still reruns that
-  failure; the next message works, because the input repair drops the call from the copy.
+- Task 3: `memory_turn` holds `TurnState.to_json()`, `memory_reset` holds
+  `NewSession.reset.to_json()`; `prepare` builds `TurnState.from_context(kit.before_turn(...),
+  reset=ResetTurn.from_json(...))`. `new_session` no longer makes a message id for the reset row
+  (one `new_id()` call less per `/new`; the tests' fixed id sequences shift accordingly).
+  `model_input(turn, messages)` finds the active user message (upstream's rule, above, read on
+  message objects and dicts alike: a user is type `human` or role `user`, an assistant type `ai`
+  or role `assistant`, with tool calls by `has_tool_calls`), gives it `turn.reset.model_prompt`
+  under upstream's guard, and puts the runtime context right before it; with no active user
+  message it appends the runtime context at the end (the example's choice: the agent node always
+  has the turn's user message). `tools` answers through `tool_messages(last,
+  kit.dispatcher(turn.session))`, so the `functools` import goes. `maintain` passes
+  `redact=redact` to `after_turn` and drops its own rebuild of the `MemoryFlushFailureOutcome`
+  and that import.
+- Task 7: `model_input(turn, messages, repair)` starts from `repair_tool_calls(messages,
+  repair)`, and the agent passes `lambda rows: kit.repair_tool_calls(rows,
+  allowed_tool_names=[tool["name"] for tool in turn.tools])`, as upstream passes the run's tool
+  names (`replayAllowedToolNames`). `unanswered_tool_calls` and the `RemoveMessage` in `prepare`
+  go: the stored `messages` keep a failed turn's AI message, and every model call gets the
+  repaired copy. A call without an id still makes `tool_messages` raise (F19), so
+  `graph.invoke(None, config)` still reruns that failure; the next message works, because the
+  input repair drops the call from the copy.
 - The labelled deviation "an AI message whose tool calls a failed turn left unanswered is
-  removed" leaves docs/integrations/langgraph.md › Parity labels and audit note 23 gets a
-  follow-up note.
+  removed" leaves docs/integrations/langgraph.md › Parity labels, and audit note 24 follows note
+  23.
 
 ## Parity labels
 
 `TurnState`, `dispatcher`, `repair_tool_calls` and its row mapping are adapter-only kit code; the
 orders and options they take from upstream are source-backed with the anchors above, and no row
-claims `match` for them. The two core ports are oracle-backed: `repairToolUseResultPairing` (both
-existing fixtures plus Task 3's) and the new `sanitizeToolCallInputs` op. docs/parity_matrix.md
+claims `match` for them. The two core ports are oracle-backed once Task 9 runs their fixtures:
+`repairToolUseResultPairing` (both existing fixtures plus Task 4's) and the new
+`sanitizeToolCallInputs` op; until then they are ported, oracle-unverified. docs/parity_matrix.md
 row "Active transcript and context injection" keeps `partial`: its oracle column gains
 `sanitizeToolCallInputs`, its note counts the repair fixtures, and its "Remaining HEAD gaps" lose
 the synthetic-vs-real replacement and the `partialJson` handling. Labelled gaps of the kit's
-repair: host rows carry no stop reason (no failed frame), tool-call blocks inside a content list
-are not read, the thinking-replay branch of the input repair is not ported, and a host that
-stores its transcript does not get upstream's persisted synthetic results for Google, Anthropic
-or Responses-API models (K6).
+repair: host rows carry no stop reason (no failed frame); tool-call blocks inside a content list
+and a legacy `function_call` are neither read nor rewritten (a dropped call's content block stays
+in the copy); the thinking-replay branch and the compaction replay checkpoint rewrite of the input
+repair are not ported; upstream's Responses-API steps (the `aborted` text,
+`normalizeOpenAIResponsesToolCallIds`, `downgradeOpenAIFunctionCallReasoningPairs`) are not
+offered; a host that stores its transcript does not get upstream's persisted synthetic results for
+Google, Anthropic or Responses-API models (K6); and a stored synthetic row of the kit's plain
+shape (no `status`) reads as a real result on a later repair, since upstream's recognition needs
+`isError`, while the adapter's row (`status: "error"`) is recognised by upstream's text.
 
 ## TDD plan
 
 Each task: the named tests first (watch them fail), implement, the offline suite (baseline at
 `807508d`: 1396 passed, 312 skipped), `ruff check . --no-cache`,
-`scripts/rename_project.py --check`, then one commit. A task that changes `memory_core/replay_repair.py`
-or the runner also runs its oracle tests (`OPENCLAW_ORACLE_REPO=/tmp/openclaw-head`, Node 24) and
-`tests/integration/test_extracted_upstream_constants.py`; a task that changes the matrix runs
-`tests/parity`.
+`scripts/rename_project.py --check`, then one commit. A task that changes the extracted constants
+also runs `tests/integration/test_extracted_upstream_constants.py` (Python only, it needs
+`OPENCLAW_ORACLE_REPO`); a task that changes the matrix runs `tests/parity`. The oracle fixtures of
+Tasks 4 and 5 run in Task 9 (the implementation stage runs no oracle).
 
 ### Task 1: `TurnState` and the reset turn's JSON (F2, F3)
 
@@ -1539,22 +1608,43 @@ or the runner also runs its oracle tests (`OPENCLAW_ORACLE_REPO=/tmp/openclaw-he
 - Tests first: `test_turn_state_round_trips_json`,
   `test_turn_state_survives_json_text`, `test_turn_state_from_context_keeps_what_later_steps_need`,
   `test_turn_state_carries_the_reset_turn`, `test_turn_state_tools_are_private_copies`,
+  `test_turn_state_rejects_a_field_of_the_wrong_type`,
   `test_turn_state_from_json_rejects_a_bad_shape` (parametrized),
-  `test_reset_turn_round_trips_json`, `test_reset_turn_from_json_rejects_an_unknown_bootstrap_mode`,
-  `test_root_exports_exactly_the_host_surface` (with `TurnState`).
+  `test_turn_state_from_json_reads_missing_optional_keys_as_null_and_ignores_unknown_keys`,
+  `test_reset_turn_round_trips_json`, `test_reset_turn_from_json_rejects_a_bad_shape`
+  (an unknown bootstrap mode among them), `test_root_exports_exactly_the_host_surface` (with
+  `TurnState`).
 - Done: tests pass; `before_turn`'s results unchanged.
 
-### Task 2: `dispatcher` and `after_turn(redact=)` (F24, F21)
+### Task 2: `dispatcher` and `after_turn(redact=)` (F24, F21; K4, K7)
 
 - Files: `memory_core/host/kit.py`, `tests/unit/test_host_kit_dispatch.py`,
-  `tests/unit/test_host_kit_after_turn.py`.
+  `tests/unit/test_host_kit_after_turn.py`; with K7 `examples/quickstart.py`, README.md
+  (Quickstart) and `tests/unit/test_examples.py`.
 - Tests first: `test_dispatcher_equals_dispatch_with_the_session` (every error payload of entry
   point 2 too), `test_dispatcher_reaches_a_replaced_dispatch`,
+  `test_dispatcher_rejects_a_session_that_is_not_a_session_state`,
   `test_after_turn_redacts_a_flush_target_failure`,
   `test_after_turn_without_redact_keeps_the_failure_message`.
 - Done: tests pass.
 
-### Task 3: re-port the tool-result pairing repair to the tag (K1)
+### Task 3: the adapter and the example on the turn state (F2, F3, F21, F24; K5)
+
+- Files: `memory_core/adapters/langgraph.py`, `memory_core/adapters/__init__.py`,
+  `examples/langgraph_agent.py`, `tests/unit/test_langgraph_adapter.py`,
+  `tests/unit/test_langgraph_agent.py`, docs/integrations/langgraph.md (the adapter table the
+  doc test reads).
+- Tests first: `test_reset_turn_substitutes_the_active_user_message_on_every_call` (a reset turn
+  with a tool round), `test_model_input_replaces_only_the_transcript_prompt` (another active user
+  message is left alone; a blank model prompt changes nothing),
+  `test_model_input_reads_dict_rows` (a tool dict before the active user message),
+  `test_redact_maps_a_flush_target_failure` (now through `after_turn(redact=)`),
+  `test_langgraph_doc_lists_the_adapter_exports` (four names); the three `PendingTurn` tests go;
+  every other graph test stays green with the shifted ids.
+- Done: tests pass; nothing in the example imports `functools`, `PendingTurn` or
+  `MemoryFlushFailureOutcome`.
+
+### Task 4: re-port the tool-result pairing repair to the tag (K1)
 
 - Files: `memory_core/replay_repair.py`, `scripts/extract_upstream_constants.py`,
   `memory_core/_transcript_repair_constants.py`, `scripts/openclaw_oracle_runner.ts` (pass
@@ -1564,20 +1654,23 @@ or the runner also runs its oracle tests (`OPENCLAW_ORACLE_REPO=/tmp/openclaw-he
   docs/parity_matrix.md (the row and audit note 24), docs/upstream_port_v2026_9_6.md (area 10).
 - First step: re-read `tool-result-pairing.ts` and `session-transcript-repair.ts:391-480` at the
   tag; if either contradicts this section, stop and report.
-- Tests first (unit): `test_repeated_provider_ids_pair_by_occurrence`,
+- Tests first (unit, cases from upstream's `session-transcript-repair.test.ts` where they apply):
+  `test_repeated_provider_ids_pair_by_occurrence`,
   `test_a_later_real_result_replaces_a_synthetic_one`,
   `test_a_displaced_result_is_claimed_by_its_unresolved_call`,
+  `test_ambiguous_displaced_results_are_dropped`,
   `test_unframed_results_are_kept_with_preserve_unframed`,
   `test_synthetic_results_carry_the_missing_result_reason`,
-  `test_discarded_lists_dropped_results_in_source_order`; the four existing tests stay green.
-  Oracle: `repair_tool_use_result_pairing_matches_python` passes (no longer xfail), both existing
-  fixtures compare `discarded` too, and new fixtures
+  `test_discarded_lists_dropped_results_in_source_order`,
+  `test_a_second_result_within_a_frame_counts_as_a_duplicate` (the existing test's 0 becomes 1);
+  the other three existing tests stay green. Oracle: `repair_tool_use_result_pairing_matches_python`
+  passes (no longer xfail), both existing fixtures compare `discarded` too, and new fixtures
   `repair_tool_use_result_pairing_repeated_ids_match_python`,
   `..._synthetic_replacement_matches_python`, `..._displaced_across_frames_matches_python`,
   `..._preserve_unframed_matches_python`.
-- Done: tests pass; the oracle subset and the constants check pass.
+- Done: tests pass; the constants check passes.
 
-### Task 4: port the tool-call input repair (K2)
+### Task 5: port the tool-call input repair (K2)
 
 - Files: `memory_core/replay_repair.py`, `scripts/extract_upstream_constants.py`,
   `memory_core/_transcript_repair_constants.py`, `scripts/openclaw_oracle_runner.ts` (op
@@ -1585,18 +1678,20 @@ or the runner also runs its oracle tests (`OPENCLAW_ORACLE_REPO=/tmp/openclaw-he
   `tests/integration/test_openclaw_ts_oracle.py`, docs/parity_matrix.md.
 - Tests first (unit): `test_input_repair_drops_calls_without_an_id_or_input`,
   `test_input_repair_drops_calls_with_a_bad_name`,
+  `test_input_repair_matches_allowed_names_case_insensitively`,
   `test_input_repair_keeps_a_completed_call_outside_the_allowed_names`,
   `test_input_repair_drops_an_emptied_assistant_message`,
   `test_input_repair_trims_names`, `test_input_repair_strips_a_finalized_responses_partial_json`,
+  `test_input_repair_reads_snake_case_block_types`,
   `test_input_repair_returns_the_input_list_when_nothing_changes`. Oracle:
-  `sanitize_tool_call_inputs_matches_python` (parametrized over those cases).
-- Done: tests pass; the oracle subset and the constants check pass.
+  `sanitize_tool_call_inputs_matches_python` (parametrized over those nine cases).
+- Done: tests pass; the constants check passes.
 
-### Task 5: `HostKit.repair_tool_calls` and the identity text (F26, K3)
+### Task 6: `HostKit.repair_tool_calls` (F26, K3, K6)
 
 - Files: `memory_core/host/_tool_calls.py`, `memory_core/host/kit.py`,
-  `memory_core/host/__init__.py`, `memory_core/__init__.py`, `memory_core/runtime_identity.py`,
-  `tests/unit/test_host_kit_repair.py`, `tests/unit/test_public_api.py`.
+  `memory_core/host/__init__.py`, `memory_core/__init__.py`, `tests/unit/test_host_kit_repair.py`,
+  `tests/unit/test_public_api.py`.
 - Tests first: `test_repair_equals_the_core_repair_of_the_mapped_messages` (a table of host
   transcripts: the mapped output of steps 2-3 called directly),
   `test_repair_answers_an_unanswered_call_after_its_assistant_row`,
@@ -1604,61 +1699,62 @@ or the runner also runs its oracle tests (`OPENCLAW_ORACLE_REPO=/tmp/openclaw-he
   `test_repair_drops_orphan_and_duplicate_tool_rows`,
   `test_repair_keeps_repeated_provider_ids_on_later_turns`,
   `test_repair_drops_a_call_without_an_id_and_an_emptied_assistant_row`,
-  `test_repair_reads_openai_and_flat_tool_call_shapes`,
+  `test_repair_removes_the_tool_calls_key_when_no_call_is_kept`,
+  `test_repair_reads_openai_and_flat_tool_call_shapes` (trimmed names in both),
+  `test_repair_gives_a_paired_legacy_tool_row_its_call_id`,
+  `test_repair_leaves_content_tool_call_blocks_unread`,
+  `test_repair_passes_the_allowed_tool_names`,
   `test_repair_returns_the_host_rows_themselves_when_nothing_changes`,
   `test_repair_sources_point_at_the_host_rows`,
-  `test_repair_uses_aborted_for_the_openai_responses_api`,
-  `test_repair_text_follows_the_kit_identity` (memory-core and compat),
+  `test_repair_synthetic_row_is_plain_chat_completions` (upstream's text under both identities),
   `test_repair_rejects_a_row_that_is_not_a_mapping`, `test_repair_touches_no_file`.
 - Done: tests pass.
 
-### Task 6: the adapter and the example
+### Task 7: the adapter's repair and the example on it (F26; K6)
 
 - Files: `memory_core/adapters/langgraph.py`, `memory_core/adapters/__init__.py`,
   `examples/langgraph_agent.py`, `tests/unit/test_langgraph_adapter.py`,
-  `tests/unit/test_langgraph_agent.py`.
-- Tests first (adapter): `test_transcript_rows_carry_ai_message_ids_and_tool_calls`,
-  `test_transcript_rows_keep_the_session_memory_file_unchanged`,
-  `test_repair_tool_calls_returns_the_original_messages_when_nothing_changes`,
+  `tests/unit/test_langgraph_agent.py`, docs/integrations/langgraph.md (the adapter table).
+- Tests first (adapter): `test_repair_tool_calls_returns_the_original_messages_when_nothing_changes`,
   `test_repair_tool_calls_inserts_a_synthetic_tool_message`,
-  `test_repair_tool_calls_copies_an_ai_message_without_its_dropped_calls`; the three
-  `PendingTurn` tests go.
+  `test_repair_tool_calls_copies_an_ai_message_without_its_dropped_calls` (both call lists and
+  `additional_kwargs`; langchain-openai's request dict of the copy has no dropped call),
+  `test_repair_tool_calls_reads_role_and_type_dicts`.
   Tests first (graph): `test_next_message_after_a_failed_tools_node_repairs_the_unanswered_call`
   (replaces `..._drops_the_unanswered_call`; dispatch raises: the model gets `[system, human,
   ai(call-1), tool(synthetic, status error), human]` and `messages` keep the AI message; a call
   without an id: the model gets `[system, human, human]`),
-  `test_reset_turn_substitutes_the_active_user_message_on_every_call` (a reset turn with a tool
-  round), `test_redact_maps_a_flush_target_failure` (now through `after_turn(redact=)`),
-  `test_langgraph_doc_lists_the_adapter_exports` (the new names); every other graph test stays
+  `test_langgraph_doc_lists_the_adapter_exports` (five names); every other graph test stays
   green.
-- Done: tests pass; nothing in the example imports `functools` or `MemoryFlushFailureOutcome`.
+- Done: tests pass; `unanswered_tool_calls` is gone.
 
-### Task 7: docs
+### Task 8: docs
 
 - docs/host_kit.md: the doc lines above into Part 1, entry-point text for `TurnState`,
   `dispatcher`, `redact` and `repair_tool_calls`, the Status line.
 - docs/integrations/langgraph.md: F2, F3, F7, F12, F21, F22, F24, F26 and F1 marked addressed with
   their commits; Usage, State schema, Kit calls per node, Adapter surface, Error handling and
-  Parity labels follow the new code; the stale line that `build_graph` takes the kit's default for
-  `None` (L11 made the window required).
-- README.md: the runtime-context placement; the Quickstart's `kit.dispatcher` if K7 takes it.
+  Parity labels follow the new code; the stale lines that `build_graph` takes the kit's default
+  for `None` (L11 made the window required).
+- README.md: the runtime-context placement.
 - CHANGELOG.md › 0.2.0: Added (`TurnState`, `ResetTurn.to_json` / `from_json`,
   `HostKit.dispatcher`, `after_turn(redact=)`, `HostKit.repair_tool_calls`, `ToolCallRepair`,
-  `RuntimeIdentity.missing_tool_result_text`, `sanitize_tool_call_inputs`, the adapter's
-  `repair_tool_calls` in place of `PendingTurn`); Changed (the pairing repair's behaviour
-  changes, named); the root count 24 to 26.
-- docs/parity_matrix.md audit note 24 and `tests/parity`.
+  `sanitize_tool_call_inputs`, the adapter's `repair_tool_calls` in place of `PendingTurn`);
+  Changed (the pairing repair's behaviour changes, named); the root count 24 to 26.
+- docs/package_boundary.md (the adapter's names), docs/parity_matrix.md audit note 24 and
+  `tests/parity`.
 
-### Task 8: verify
+### Task 9: verify
 
 - The full offline suite, ruff, the name check, `tests/parity`, and the oracle suite
   (`tests/integration`, `OPENCLAW_ORACLE_REPO=/tmp/openclaw-head`,
   `OPENCLAW_ORACLE_NODE=/opt/homebrew/opt/node@24/bin/node`). Expected against the reference
-  (254 passed, 81 xfailed, 3 skipped, 0 failed of 338): 255 passed and 80 xfailed from Task 3's
-  fixture, plus every new repair and input-repair fixture passing, 3 skipped, 0 failed. A lone
-  20 s runner timeout gets one rerun of that test id, reported as such. The measured numbers go
-  into the commit body, docs/integrations/langgraph.md and the audit note. The main session runs
-  the live LangGraph test.
+  (254 passed, 81 xfailed, 3 skipped, 0 failed of 338): 351 tests, 268 passed (the reference,
+  Task 4's worklist fixture, its four new fixtures and the nine `sanitize_tool_call_inputs`
+  cases), 80 xfailed, 3 skipped, 0 failed. A lone 20 s runner timeout gets one rerun of that test
+  id, reported as such. The measured numbers go into the commit body,
+  docs/integrations/langgraph.md and the audit note. The main session runs the live LangGraph
+  test.
 
 ## Open questions
 
@@ -1670,20 +1766,23 @@ or the runner also runs its oracle tests (`OPENCLAW_ORACLE_REPO=/tmp/openclaw-he
   oracle op; recommended: it is the first step of upstream's replay repair and the only upstream
   treatment of a call without an id), or skip it and have the adapter drop calls without an id
   from the model's copy (a labelled slice of one rule)?
-- K3. The synthetic result's text under memory-core's identity: a new
-  `RuntimeIdentity.missing_tool_result_text` reading `[memory-core] missing tool result ...`
-  (recommended, the pattern of the heartbeat and reset rows; the compat identity keeps
-  upstream's), or upstream's `[openclaw] ...` for every identity? The core port keeps upstream's
-  text as its default either way (a parity-bound marker its oracle compares); the kit's text is
-  what a host's model reads.
+- K3. The synthetic result's text in the kit: upstream's `DEFAULT_MISSING_TOOL_RESULT_TEXT`
+  ("[openclaw] missing tool result ...") for every identity, which the recorded decision
+  `f2351d5` keeps as a parity-bound marker (the implementation follows it), or reverse `f2351d5`
+  for the kit with a `RuntimeIdentity.missing_tool_result_text` reading "[memory-core] missing
+  tool result ..." (the pattern of the heartbeat and reset rows)? The text is model-facing, not
+  user-facing UI (USER.md bans the brand there), though a model may quote it. A memory-core text
+  would also make upstream's `isSyntheticMissingToolResult` miss a stored kit row (it matches the
+  `details` key or that exact text), so a later repair would treat it as a real result.
 - K4. `HostKit.dispatcher(session)` (recommended: it works for a `TurnState` restored from JSON)
   or a `TurnContext.dispatch` bound method (in-process only)?
-- K5. The reset prompt replaces the turn's active user message (upstream's rule; recommended),
-  dropping the adapter's message id, or does `TurnState` keep an opaque host reference to the
-  message?
+- K5. The reset prompt replaces the turn's active user message under upstream's guard
+  (upstream's rule; recommended), dropping the adapter's message id, or does `TurnState` keep an
+  opaque host reference to the message?
 - K6. The kit repairs the model's copy only and the host keeps its transcript (recommended:
   upstream's default policy for OpenAI-compatible providers), or does the kit also offer the
   persisted synthetic results upstream's guard writes for Google, Anthropic and Responses-API
   models?
-- K7. Switch `examples/quickstart.py` (and the README Quickstart that shows it) from its lambda to
-  `kit.dispatcher(turn.session)` in Task 2?
+- K7. Switch `examples/quickstart.py` and the README Quickstart that shows it from its lambda to
+  `kit.dispatcher(turn.session)` in Task 2 (recommended: the quickstart then shows the kit's own
+  idiom; one line each)?

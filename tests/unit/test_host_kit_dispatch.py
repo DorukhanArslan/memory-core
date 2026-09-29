@@ -306,3 +306,48 @@ def test_parallel_searches_record_every_recall(tmp_path):
     assert errors == []
     entries = json.loads(recall_store_path(tmp_path).read_text())["entries"]
     assert entries["memory:memory/2026-09-25.md:1:1"]["recallCount"] == 40
+
+
+def test_dispatcher_equals_dispatch_with_the_session(tmp_path):
+    # HostKit.dispatcher (docs/host_kit.md, F24): FlushRequest.dispatch's two-argument shape.
+    _seed(tmp_path)
+    kit = _kit(tmp_path)
+    run_tool = kit.dispatcher(SESSION)
+    calls = [
+        ("memory_search", {"query": "zephyrquartz", "maxResults": 3}),
+        ("memory_get", '{"path": "MEMORY.md", "from": 3, "lines": 1}'),
+        ("memory_get", None),
+        ("memory_search", '{"query": '),
+        ("memory_search", "[1, 2]"),
+        ("memory_search", {}),
+        ("web_search", {"query": "x"}),
+    ]
+
+    for name, arguments in calls:
+        assert run_tool(name, arguments) == kit.dispatch(name, arguments, session=SESSION)
+    assert run_tool("memory_search", {"query": "zephyrquartz"})["results"]
+    with pytest.raises(TypeError):
+        run_tool(3, {})
+
+
+def test_dispatcher_reaches_a_replaced_dispatch(tmp_path, monkeypatch):
+    kit = _kit(tmp_path)
+    run_tool = kit.dispatcher(SESSION)
+    seen = []
+
+    def spy(name, arguments, *, session):
+        seen.append((name, arguments, session))
+        return {"status": "ok"}
+
+    monkeypatch.setattr(kit, "dispatch", spy)
+
+    assert run_tool("memory_get", {"path": "MEMORY.md"}) == {"status": "ok"}
+    assert seen == [("memory_get", {"path": "MEMORY.md"}, SESSION)]
+
+
+def test_dispatcher_rejects_a_session_that_is_not_a_session_state(tmp_path):
+    kit = _kit(tmp_path)
+
+    for session in (None, SESSION.to_json(), "agent:main:main"):
+        with pytest.raises(TypeError, match="SessionState"):
+            kit.dispatcher(session)

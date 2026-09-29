@@ -158,3 +158,41 @@ def test_after_turn_does_not_share_the_entry(tmp_path):
 
     assert record.session.entry["memoryFlush"] == session.entry["memoryFlush"]
     assert record.session.entry["memoryFlush"] is not session.entry["memoryFlush"]
+
+
+def _target_failure(tmp_path, **options):
+    # A symlinked memory/ directory: the flush target cannot be created (a flush strike).
+    outside = tmp_path / "outside"
+    outside.mkdir(parents=True)
+    root = tmp_path / "ws"
+    root.mkdir()
+    (root / "memory").symlink_to(outside, target_is_directory=True)
+    return _kit(root).after_turn(
+        _session(), transcript=(), usage=TurnUsage(190_000, 100), **options
+    )
+
+
+def test_after_turn_redacts_a_flush_target_failure(tmp_path):
+    # after_turn(redact=) (docs/host_kit.md, F21): the redact FlushRequest.complete takes.
+    seen = []
+
+    def redact(text):
+        seen.append(text)
+        return text.replace("memory/", "<dir>/")
+
+    record = _target_failure(tmp_path / "redacted", redact=redact)
+    plain = _target_failure(tmp_path / "plain")
+
+    assert record.flush is None and record.flush_decision.should_flush
+    assert seen == [plain.flush_failure.error]
+    assert record.flush_failure.error == "<dir>/ is a symlink; memory writes never follow symlinks"
+    # Only the message changes: the entry stores no text.
+    assert record.session.entry == plain.session.entry
+    assert record.flush_failure.entry == plain.flush_failure.entry
+    assert record.flush_failure.failure_count == 1
+
+
+def test_after_turn_without_redact_keeps_the_failure_message(tmp_path):
+    record = _target_failure(tmp_path, redact=None)
+
+    assert record.flush_failure.error == "memory/ is a symlink; memory writes never follow symlinks"

@@ -44,7 +44,7 @@ def main() -> None:
         reply, usage = call_my_llm(
             [{"role": "system", "content": turn.system_prompt}, *history],
             turn.tools,
-            lambda name, arguments: kit.dispatch(name, arguments, session=turn.session),
+            kit.dispatcher(turn.session),
         )
         print(reply)  # deliver the reply; the memory flush runs after it
         history.append({"role": "assistant", "content": reply})

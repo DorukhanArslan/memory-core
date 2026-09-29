@@ -86,7 +86,7 @@ def main() -> None:
         reply, usage = call_my_llm(
             [{"role": "system", "content": turn.system_prompt}, *history],
             turn.tools,
-            lambda name, arguments: kit.dispatch(name, arguments, session=turn.session),
+            kit.dispatcher(turn.session),
         )
         print(reply)  # deliver the reply; the memory flush runs after it
         history.append({"role": "assistant", "content": reply})
@@ -126,7 +126,8 @@ if __name__ == "__main__":
 - The model recalls through `memory_search` and `memory_get`. The curation tools, a memory-core
   extension (flag `curated_memory_writes`, [Feature Flags](docs/feature_flags.md)), let it
   edit `MEMORY.md`, `USER.md`, `PROACTIVE_PREFERENCES.md` and today's daily note.
-  `kit.dispatch` returns the payload to send back, errors included.
+  `kit.dispatcher(turn.session)` answers each tool call with the payload to send back,
+  errors included (`kit.dispatch(name, arguments, session=...)` is the same call unbound).
 - `after_turn` stores the provider's token usage in the session and returns a `FlushRequest`
   when the session nears the model's context window (`context_window_tokens=`, default
   upstream's 200,000). Upstream runs the flush after the reply is delivered and never shows

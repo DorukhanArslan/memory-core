@@ -353,6 +353,23 @@ class HostKit:
         except Exception as error:
             return to_tool_error(error, tool=name)
 
+    def dispatcher(
+        self, session: SessionState
+    ) -> Callable[[str, Mapping[str, Any] | str | None], dict[str, Any]]:
+        """:meth:`dispatch` bound to ``session``: ``FlushRequest.dispatch``'s two-argument shape.
+
+        One tool-answering helper then serves a turn and its flush run. The returned function
+        looks :meth:`dispatch` up at each call and adds nothing to it; ``TypeError`` at once for
+        a ``session`` that is not a :class:`SessionState` (docs/host_kit.md, F24).
+        """
+        if not isinstance(session, SessionState):
+            raise TypeError("session must be a SessionState")
+
+        def run_tool(name: str, arguments: Mapping[str, Any] | str | None) -> dict[str, Any]:
+            return self.dispatch(name, arguments, session=session)
+
+        return run_tool
+
     def _memory_search(self, args: dict[str, Any], session: SessionState) -> dict[str, Any]:
         memory = self._memory
         result = execute_memory_search_tool(
@@ -457,6 +474,7 @@ class HostKit:
         usage: TurnUsage | None,
         context_window_tokens: int | None = None,
         transcript_bytes: int | None = None,
+        redact: Callable[[str], str] | None = None,
     ) -> TurnRecord:
         """Record a completed turn and decide the memory flush (docs/host_kit.md, entry 4).
 
@@ -472,7 +490,9 @@ class HostKit:
         visible messages of the session. The kit keeps no pending-flush state: the host runs the
         session's next ``after_turn`` only after that request's ``complete`` (or after abandoning
         it), as upstream serializes session maintenance per session key
-        (src/agents/session-maintenance/coordinator.ts).
+        (src/agents/session-maintenance/coordinator.ts). ``redact`` maps the message of a target
+        that cannot be created (``TurnRecord.flush_failure.error``), as
+        ``FlushRequest.complete(redact=)`` does for a failed run.
         """
         window = (
             context_window_tokens
@@ -502,7 +522,7 @@ class HostKit:
             ensure_memory_flush_target_file(self._root, plan.relative_path)
         except (UnsafeMemoryPathError, OSError) as error:
             # A failed flush preparation is a failed flush (agent-runner-memory.ts recordFailure).
-            failure = record_memory_flush_failure(entry, error=error)
+            failure = record_memory_flush_failure(entry, error=error, redact=redact)
             return TurnRecord(
                 session=replace(recorded, entry=failure.entry),
                 flush_plan=plan,

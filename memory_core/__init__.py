@@ -29,6 +29,7 @@ from memory_core.host import (
     SessionState,
     TurnContext,
     TurnRecord,
+    TurnState,
     TurnUsage,
 )
 from memory_core.tools.common import MemoryToolInputError
@@ -44,6 +45,7 @@ __all__ = [
     "SessionState",
     "TurnUsage",
     "TurnContext",
+    "TurnState",
     "TurnRecord",
     "FlushRequest",
     "FlushOutcome",

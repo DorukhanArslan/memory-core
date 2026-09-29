@@ -17,6 +17,7 @@ from memory_core.host.kit import (
     TurnRecord,
 )
 from memory_core.host.session import SessionState, TurnUsage
+from memory_core.host.turn import TurnState
 
 __all__ = [
     "DEFAULT_CONTEXT_WINDOW_TOKENS",
@@ -31,5 +32,6 @@ __all__ = [
     "SessionState",
     "TurnContext",
     "TurnRecord",
+    "TurnState",
     "TurnUsage",
 ]

@@ -93,6 +93,7 @@ DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000
 _FORCED_FLUSH_REASON = "forced"
 _RUN_KINDS = (None, "default", "heartbeat", "cron")
 _CONTEXT_MODES = ("full", "lightweight")
+_BOOTSTRAP_MODES = ("full", "limited", "none")
 
 
 @dataclass(frozen=True)
@@ -146,6 +147,43 @@ class ResetTurn:
     bootstrap_mode: BootstrapMode
     startup_context: str | None
     prompt: str
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "modelPrompt": self.model_prompt,
+            "transcriptPrompt": self.transcript_prompt,
+            "bootstrapMode": self.bootstrap_mode,
+            "startupContext": self.startup_context,
+            "prompt": self.prompt,
+        }
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, Any]) -> ResetTurn:
+        """Read :meth:`to_json` output; ``ValueError`` for anything else.
+
+        ``modelPrompt``, ``transcriptPrompt``, ``bootstrapMode`` and ``prompt`` are required; a
+        missing ``startupContext`` reads as null and unknown keys are ignored.
+        """
+        if not isinstance(data, Mapping):
+            raise ValueError("not a reset turn: expected an object")
+        texts = {}
+        for key in ("modelPrompt", "transcriptPrompt", "prompt"):
+            if not isinstance(data.get(key), str):
+                raise ValueError(f"not a reset turn: {key} must be a string")
+            texts[key] = data[key]
+        mode = data.get("bootstrapMode")
+        if mode not in _BOOTSTRAP_MODES:
+            raise ValueError(f"not a reset turn: unknown bootstrapMode {mode!r}")
+        startup = data.get("startupContext")
+        if startup is not None and not isinstance(startup, str):
+            raise ValueError("not a reset turn: startupContext must be a string or null")
+        return cls(
+            model_prompt=texts["modelPrompt"],
+            transcript_prompt=texts["transcriptPrompt"],
+            bootstrap_mode=mode,
+            startup_context=startup,
+            prompt=texts["prompt"],
+        )
 
 
 @dataclass(frozen=True)

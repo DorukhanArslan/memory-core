@@ -15,6 +15,7 @@ ROOT_API = {
     "SessionState",
     "TurnUsage",
     "TurnContext",
+    "TurnState",
     "TurnRecord",
     "FlushRequest",
     "FlushOutcome",

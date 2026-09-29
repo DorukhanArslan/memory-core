@@ -17,6 +17,10 @@ class MemoryConfig:
     store_path: Path | None = None
     citation_mode: str = "on"
     memory_get_max_chars: int = 12_000
+    # Documented deviation: upstream's memory_get always reads DEFAULT_MEMORY_READ_LINES (120)
+    # lines when `lines` is omitted (readAgentMemoryFile passes no defaultLines,
+    # packages/memory-host-sdk/src/host/read-file.ts:211-218) and has no config for it; this
+    # knob defaults to that value, and a host that changes it gets a window the tag cannot.
     memory_get_default_lines: int = 120
     vector_weight: float = 0.5
     text_weight: float = 0.5

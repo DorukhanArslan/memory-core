@@ -24,7 +24,11 @@ refusal messages are shown in full where upstream writes ``~`` for the home dire
 (documented deviation). Operating-system errors keep Python's message text and carry the errno
 name as their code (Node's ``code``); upstream shows Node's message (``EACCES: permission
 denied, open '<path>'``), Python shows ``[Errno 13] Permission denied: '<path>'`` (documented
-deviation, decision D6 of docs/upstream_port_v2026_9_6.md).
+deviation, decision D6 of docs/upstream_port_v2026_9_6.md). The ``default_lines`` option is
+upstream's ``defaultLines``, but the ``memory_get`` tool passes
+``MemoryConfig.memory_get_default_lines`` where the tag's ``readAgentMemoryFile`` passes nothing
+(read-file.ts:211-218): the same 120 lines by default, a host-set window otherwise (documented
+deviation).
 """
 
 from __future__ import annotations

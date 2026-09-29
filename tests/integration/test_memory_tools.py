@@ -28,6 +28,36 @@ def test_memory_get_reads_line_window(tmp_path: Path):
     assert result["nextFrom"] == 3
 
 
+def test_memory_get_default_window_is_upstreams_unless_the_host_overrides_it(tmp_path: Path):
+    # readAgentMemoryFile (read-file.ts:211-218) passes no defaultLines, so an omitted `lines`
+    # is DEFAULT_MEMORY_READ_LINES (read-file-shared.ts:8, 113-117). MemoryConfig's
+    # memory_get_default_lines defaults to that constant; a host override is a documented
+    # memory-core deviation (the tag has no such knob).
+    from memory_core.tools._memory_tool_constants import DEFAULT_MEMORY_READ_LINES
+
+    body = "".join(f"line {index}\n" for index in range(1, 131))
+    (tmp_path / "MEMORY.md").write_text(body, encoding="utf-8")
+
+    default = memory_get(MemoryConfig(workspace_dir=tmp_path), path="MEMORY.md")
+    assert MemoryConfig(workspace_dir=tmp_path).memory_get_default_lines == (
+        DEFAULT_MEMORY_READ_LINES
+    )
+    assert default["lines"] == DEFAULT_MEMORY_READ_LINES
+    assert default["nextFrom"] == DEFAULT_MEMORY_READ_LINES + 1
+
+    override = memory_get(
+        MemoryConfig(workspace_dir=tmp_path, memory_get_default_lines=2), path="MEMORY.md"
+    )
+    assert override["lines"] == 2
+    assert override["nextFrom"] == 3
+    explicit = memory_get(
+        MemoryConfig(workspace_dir=tmp_path, memory_get_default_lines=2),
+        path="MEMORY.md",
+        lines=5,
+    )
+    assert explicit["lines"] == 5
+
+
 def test_memory_get_tool_reads_params_like_create_memory_get_tool(tmp_path: Path):
     # tools.ts:720-725: readStringParam(path, required) with JavaScript trim and
     # readPositiveIntegerParam for from/lines raise before any read.

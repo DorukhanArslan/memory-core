@@ -174,6 +174,8 @@ def memory_get(
         # session hits (`sessions/<agent>/*.jsonl`, memory/.dreams/session-corpus/*.txt) are not
         # readable upstream either: they fail the memory-path/`.md` gate with
         # MEMORY_PATH_NOT_ALLOWED; a session-corpus `.md` file is an ordinary memory file.
+        # default_lines is memory-core's knob (documented deviation, MemoryConfig): upstream's
+        # readAgentMemoryFile passes no defaultLines, so its default is always 120 lines.
         return read_memory_file(
             workspace.root,
             path,

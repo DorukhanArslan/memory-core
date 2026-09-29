@@ -21,6 +21,7 @@ from memory_core.tools.corpus import (
     is_memory_search_deadline_error,
     read_memory_corpus_supplements,
     run_memory_corpus_deadline,
+    search_memory_corpus_supplements,
     settle_memory_supplements,
 )
 
@@ -192,3 +193,67 @@ def test_a_run_that_returns_past_an_unexpired_deadline_fails_with_it():
 
     with pytest.raises(MemorySearchDeadlineError, match="^memory_get timed out after 30s$"):
         run_memory_corpus_deadline("memory_get", lambda deadline: "done", clock=lambda: next(ticks))
+
+
+class _Wiki:
+    def __init__(self, results, *, error: str | None = None):
+        self.results = results
+        self.error = error
+        self.calls: list[dict] = []
+
+    def search(self, *, query: str, max_results: int, corpus: str):
+        self.calls.append({"query": query, "max_results": max_results, "corpus": corpus})
+        if self.error is not None:
+            raise RuntimeError(self.error)
+        return list(self.results)
+
+    def get(self, *, path: str, corpus: str):
+        return None
+
+
+def test_supplement_search_merges_by_score_then_path_and_caps_the_list():
+    # memory-corpus.ts:275-293 searchMemoryCorpusSupplements: flat, score descending, then
+    # path localeCompare, sliced to max(1, maxResults ?? 10); a failing supplement keeps the
+    # others' results and makes the attempt unavailable.
+    first = _Wiki([{"path": "b.md", "score": 1}, {"path": "a.md", "score": 3}])
+    second = _Wiki([{"path": "a.md", "score": 1}, {"path": "c.md", "score": 2}])
+    broken = _Wiki([], error="wiki down")
+
+    ok = run_memory_corpus_deadline(
+        "memory_search",
+        lambda deadline: search_memory_corpus_supplements(
+            supplements=[first, second], deadline=deadline, query="q", max_results=3, corpus="all"
+        ),
+    )
+    capped = run_memory_corpus_deadline(
+        "memory_search",
+        lambda deadline: search_memory_corpus_supplements(
+            supplements=[first, second], deadline=deadline, query="q", max_results=None,
+            corpus="wiki",
+        ),
+    )
+    failed = run_memory_corpus_deadline(
+        "memory_search",
+        lambda deadline: search_memory_corpus_supplements(
+            supplements=[first, broken], deadline=deadline, query="q", max_results=0,
+            corpus="all",
+        ),
+    )
+    none = run_memory_corpus_deadline(
+        "memory_search",
+        lambda deadline: search_memory_corpus_supplements(
+            supplements=[], deadline=deadline, query="q", max_results=None, corpus="all"
+        ),
+    )
+
+    assert ok.outcome == "ok"
+    assert [(item["path"], item["score"]) for item in ok.value] == [
+        ("a.md", 3), ("c.md", 2), ("a.md", 1)
+    ]
+    assert [len(capped.value), capped.outcome] == [4, "ok"]
+    # memory-core's supplement protocol takes an int limit and the corpus (decision D7).
+    assert first.calls[0] == {"query": "q", "max_results": 3, "corpus": "all"}
+    assert first.calls[1]["max_results"] == 10
+    assert (failed.outcome, failed.error, failed.deadline) == ("unavailable", "wiki down", False)
+    assert [item["path"] for item in failed.value] == ["a.md"]
+    assert none.outcome == "not-registered"

@@ -12,13 +12,17 @@ one attempt per corpus instead of failing as a whole (d46f9ebf2b2 #147702, v2026
   call (``runMemoryCorpusDeadline``, ``memory/search-deadline.ts``); a corpus task that does not
   finish in time fails with the deadline error, which is recognised by its type, never by its
   text (``isMemorySearchDeadlineError``: a provider may emit the same words);
-- :func:`read_memory_corpus_supplements`: the settle step over the registered supplements for a
-  ``memory_get`` read (``settleMemorySupplements`` + ``readMemoryCorpusSupplements``).
+- :func:`search_memory_corpus_supplements` / :func:`read_memory_corpus_supplements`: the settle
+  step over the registered supplements for a ``memory_search`` or a ``memory_get`` call
+  (``settleMemorySupplements`` + ``searchMemoryCorpusSupplements`` /
+  ``readMemoryCorpusSupplements``).
 
 Deviations, documented in docs/parity_matrix.md (``memory_get`` row): Python supplements have no
 ``pluginId`` and keep memory-core's ``MemoryCorpusSupplement`` protocol (decision D7 of
 docs/upstream_port_v2026_9_6.md), so the settle step keeps the caller's order instead of sorting
 by plugin id and joins several failures with ``; `` without the ``<pluginId>: `` labels; a
+supplement search receives memory-core's ``max_results`` (an int, ``max(1, maxResults ?? 10)``)
+and the requested corpus instead of upstream's optional ``maxResults`` and agent context; a
 supplement read returns its result re-sliced by memory-core (``memory_get``). The deadline's
 pause/resume for a managed local embedding service is not ported (memory-core has none), and no
 caller ``AbortSignal`` exists in the Python API.
@@ -35,13 +39,18 @@ from typing import Any, Literal, TypeVar
 
 from memory_core.cancellation import CancellationSignal
 from memory_core.project_name import DIST_NAME
-from memory_core.supplements import MemoryCorpusResult, MemoryCorpusSupplement
+from memory_core.supplements import (
+    MemoryCorpusResult,
+    MemoryCorpusSupplement,
+    sort_corpus_results,
+)
 from memory_core.tools._memory_tool_constants import (
     DEFAULT_MEMORY_SEARCH_TIMEOUT_MS,
     MEMORY_CORPUS_FAILURE_WARNING_TEMPLATE,
     MEMORY_CORPUS_MEMORY_LABEL,
     MEMORY_CORPUS_NOT_REGISTERED_WARNING_TEMPLATE,
     MEMORY_CORPUS_SUPPLEMENT_CONCURRENCY,
+    MEMORY_CORPUS_SUPPLEMENT_DEFAULT_MAX_RESULTS,
     MEMORY_CORPUS_TIMEOUT_TEMPLATE,
     MEMORY_CORPUS_WIKI_LABEL,
 )
@@ -341,6 +350,32 @@ def settle_memory_supplements(
     ordered = [message for _, message in sorted(failures)]
     return MemoryCorpusAttempt(
         corpus="wiki", outcome="unavailable", value=value, error="; ".join(ordered), deadline=False
+    )
+
+
+def search_memory_corpus_supplements(
+    *,
+    supplements: Sequence[MemoryCorpusSupplement],
+    deadline: MemoryCorpusDeadline,
+    query: str,
+    max_results: int | None,
+    corpus: str,
+) -> MemoryCorpusAttempt:
+    """``searchMemoryCorpusSupplements`` (memory-corpus.ts:275-293): every supplement's hits in
+    one list, score descending, then ``path.localeCompare``, cut to ``max(1, maxResults ?? 10)``.
+    """
+    limit = max(
+        1, max_results if max_results is not None else MEMORY_CORPUS_SUPPLEMENT_DEFAULT_MAX_RESULTS
+    )
+
+    def search(supplement: MemoryCorpusSupplement) -> list[MemoryCorpusResult]:
+        return list(supplement.search(query=query, max_results=limit, corpus=corpus))
+
+    def merge(results: list[list[MemoryCorpusResult]]) -> list[MemoryCorpusResult]:
+        return sort_corpus_results([hit for hits in results for hit in hits])[:limit]
+
+    return settle_memory_supplements(
+        supplements=supplements, deadline=deadline, run=search, merge=merge
     )
 
 

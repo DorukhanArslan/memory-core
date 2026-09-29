@@ -901,7 +901,16 @@ above the area's 16-26 h because of the corpus orchestration and keyword partial
   `memory.search.sources`) and the canonical-key texts (`openclaw doctor --fix`). The compat
   identity keeps them verbatim; the default identity needs memory-core wording, proposed on the
   existing pattern (`SQLiteMemoryStore.reindex(workspace)` for rebuilds, `MemoryConfig` field
-  names for config), for Doruk to approve text by text.
+  names for config), for Doruk to approve text by text. Also for D4 (review, 2026-09-30): the
+  identity records keep upstream's owner value `openclaw` (`OPENCLAW_OWNER`,
+  `manager-reindex-state.ts:102-108`) under the default identity too. The model-facing texts use
+  the identity's owner label (`owner: memory-core` in the stale warning), `memory_search`
+  payloads and so the tool cards carry no raw owner (probe 2026-09-30), and the Lab chips
+  translate it, but the raw value reaches the Lab's `/api/lab/index/status` and the `identity` of
+  `/api/search`, which the playground's JSON panel shows, while an index is missing or has an
+  older or newer format (the brand stays out of user-facing UI, decision Q11). If D4 is approved
+  as proposed, map it to a neutral value (for example `format`) at the Lab boundary or under the
+  default identity, keeping `openclaw` in compat mode and in the oracle comparison.
 - D5. Worklist moves. (a) `param_errors[max-results-empty-string]` leaves the error table because
   the tag accepts it. Revised by the review: it moves to the new ranking-free
   `memory_search_blank_params_read_as_omitted` (A2), so no new strict xfail is needed; adding the

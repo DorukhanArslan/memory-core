@@ -873,18 +873,29 @@ def test_tool_loop_records_every_curation_error_as_refused(client, lab, monkeypa
     assert event_types(client).count("curation.refused") == 2
 
 
-def test_tool_loop_counts_disabled_payloads_as_failed_calls(client, monkeypatch):
+def test_tool_loop_counts_error_payloads_as_failed_calls(client, monkeypatch):
     use_engine(monkeypatch, StubEngine([
         ("", [tool_call("c1", "memory_get", {"path": "AGENTS.md"}),
-              tool_call("c2", "memory_get", {"path": "MEMORY.md"})]),
+              tool_call("c2", "memory_get", {"path": "USER.md"}),
+              tool_call("c3", "memory_get", {"path": "memory/2020-01-01.md"})]),
         ("Tamam.", []),
     ]))
 
     results = {item["id"]: item for item in frames_of(send(client, "Oku."), "tool_result")}
 
+    # v2026.9.6 memory_get contract (35e0bc22ead, 67f55de5553): status error with a code, no
+    # disabled flag; a missing file is status not_found and still a completed call.
     assert results["c1"]["ok"] is False
-    assert results["c1"]["result"] == {"path": "AGENTS.md", "text": "", "disabled": True, "error": "path required"}
+    assert results["c1"]["result"] == {
+        "path": "AGENTS.md", "text": "", "status": "error", "code": "MEMORY_PATH_NOT_ALLOWED",
+        "error": "path is not an allowed Markdown memory file",
+    }
+    # USER.md is a memory path at v2026.9.6 (28630a9a650).
     assert results["c2"]["ok"] is True
+    assert results["c2"]["result"]["status"] == "ok"
+    assert results["c2"]["result"]["path"] == "USER.md"
+    assert results["c3"]["ok"] is True
+    assert results["c3"]["result"] == {"status": "not_found", "text": "", "path": "memory/2020-01-01.md"}
 
 
 def test_tool_loop_is_bounded(client, monkeypatch):

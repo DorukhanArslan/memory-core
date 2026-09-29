@@ -369,9 +369,11 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
   `index provenance classifier changed` / `provenance_version` (28630a9a650).
 - Python: `memory_core/tools/{memory_get,memory_search,common,citations}.py`,
   `memory_core/memory_paths.py`, `memory_core/index/identity.py`, `memory_core/prompt_section.py`.
-- Tests: 31 (`memoryGet` 26, `memoryToolDefinitions` 1, params/deadline 3, identity 1).
-- Worklist areas: "memory_get contract", "memory tool definitions", "memory_search params,
-  errors and deadline", "memory index identity".
+- Tests: 31 (`memoryGet` 26, `memoryToolDefinitions` 1, params/deadline 3, identity 1). Done so
+  far (2026-09-29): the 2 param entries (A2) and the 26 "memory_get contract" entries (A4), whose
+  label left the worklist.
+- Worklist areas: "memory tool definitions", "memory_search params, errors and deadline",
+  "memory index identity".
 - New oracle ops: `memoryPromptSection` (`buildMemoryPromptSection`) for the prompt-section row;
   `memoryCorpusMetadata`, `memoryIndexSearchDiagnostic` and, with D7, `memoryCorpusSupplements`
   (the plan below).

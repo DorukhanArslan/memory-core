@@ -270,10 +270,25 @@ def locale_compare(left: str, right: str) -> int:
 locale_sort_key = cmp_to_key(locale_compare)
 
 
+def js_error_code(error: BaseException) -> str | None:
+    """The ``code`` a JavaScript error of this failure carries (``readProperty(err, "code")`` in
+    normalization-core error-coercion.ts): a string ``code`` attribute, a number one as its text,
+    else an ``OSError``'s errno name (Node's ``code`` for a system error)."""
+    code = getattr(error, "code", None)
+    if isinstance(code, str):
+        return code
+    if isinstance(code, int | float) and not isinstance(code, bool):
+        return str(int(code)) if float(code).is_integer() else str(code)
+    if isinstance(error, OSError) and error.errno is not None:
+        return errno.errorcode.get(error.errno)
+    return None
+
+
 def format_js_error_message(exc: BaseException, *, redact: Callable[[str], str] | None = None) -> str:
-    """``formatErrorMessage`` (``packages/normalization-core/src/error-coercion.ts``) for the
-    ``__cause__`` chain: the message, then each cause's message (skipped when the text already
-    contains it) and its errno name, joined by `` | ``.
+    """``formatErrorMessage`` (``packages/normalization-core/src/error-coercion.ts:140-190``) for
+    the ``__cause__`` chain: the message (the type name when blank), then each cause's message
+    (skipped when the text already contains it) and its code (:func:`js_error_code`), joined by
+    `` | ``; repeats are skipped.
 
     Upstream then applies ``redactSensitiveText`` (``src/infra/errors.ts``); memory-core does not
     port it, so ``redact`` is the host's redactor (none: the text is returned as is).
@@ -296,7 +311,6 @@ def format_js_error_message(exc: BaseException, *, redact: Callable[[str], str] 
             seen.add(message)
         else:
             append(message)
-        if isinstance(cause, OSError) and cause.errno is not None:
-            append(errno.errorcode.get(cause.errno))
+        append(js_error_code(cause))
         cause = cause.__cause__
     return redact(formatted) if redact is not None else formatted

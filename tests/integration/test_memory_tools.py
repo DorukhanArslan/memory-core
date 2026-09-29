@@ -137,9 +137,14 @@ def test_memory_get_rejects_non_memory_workspace_file(tmp_path: Path):
 
     result = memory_get(MemoryConfig(workspace_dir=tmp_path), path="notes.txt")
 
-    assert result["disabled"] is True
-    assert result["text"] == ""
-    assert result["error"] == "path required"
+    # read-file.ts:35-39 memoryPathNotAllowed (67f55de5553 #144669).
+    assert result == {
+        "path": "notes.txt",
+        "text": "",
+        "status": "error",
+        "code": "MEMORY_PATH_NOT_ALLOWED",
+        "error": "path is not an allowed Markdown memory file",
+    }
 
 
 def test_memory_get_reads_wiki_supplement_result(tmp_path: Path):
@@ -162,20 +167,22 @@ def test_memory_get_reads_wiki_supplement_result(tmp_path: Path):
         supplements=[wiki],
     )
 
+    # Interim: the supplement's content is sliced like a memory file (D7); its terminal newline
+    # is no extra line (read-file-shared.ts, 1b6ad8da8f8).
     assert result == {
+        "status": "ok",
         "path": "w1.md",
-        "text": "Requires security approval.\n\n[More content available. Use from=3 to continue.]",
+        "text": "Requires security approval.",
         "from": 2,
         "lines": 1,
         "corpus": "wiki",
-        "truncated": True,
-        "nextFrom": 3,
     }
 
 
 def test_memory_get_returns_upstream_error_for_session_search_hits(tmp_path: Path):
     # OpenClaw memory_get cannot read session hits either: state-dir transcripts
-    # and session-corpus `.txt` files fail readMemoryFile's `.md` memory-path gate.
+    # and session-corpus `.txt` files fail readMemoryFile's `.md` memory-path gate
+    # (MEMORY_PATH_NOT_ALLOWED since 67f55de5553).
     sessions_dir = tmp_path / ".openclaw-state" / "agents" / "main" / "sessions"
     sessions_dir.mkdir(parents=True)
     (sessions_dir / "session-nebula.jsonl").write_text(
@@ -210,8 +217,9 @@ def test_memory_get_returns_upstream_error_for_session_search_hits(tmp_path: Pat
             assert memory_get(cfg, path=path, corpus=corpus) == {
                 "path": path,
                 "text": "",
-                "disabled": True,
-                "error": "path required",
+                "status": "error",
+                "code": "MEMORY_PATH_NOT_ALLOWED",
+                "error": "path is not an allowed Markdown memory file",
             }
         # memory_get has no sessions corpus (tools.ts:594 readCorpusParam).
         try:
@@ -237,8 +245,9 @@ def test_memory_get_all_corpus_falls_back_to_supplement_after_read_failure(tmp_p
     assert no_fallback == {
         "path": "wiki/nebula.txt",
         "text": "",
-        "disabled": True,
-        "error": "path required",
+        "status": "error",
+        "code": "MEMORY_PATH_NOT_ALLOWED",
+        "error": "path is not an allowed Markdown memory file",
     }
 
 
@@ -250,12 +259,7 @@ def test_memory_get_wiki_supplement_missing_result(tmp_path: Path):
         supplements=[],
     )
 
-    assert result == {
-        "path": "missing.md",
-        "text": "",
-        "disabled": True,
-        "error": "wiki corpus result not found",
-    }
+    assert result == {"status": "not_found", "text": "", "path": "missing.md"}
 
 
 def test_memory_search_returns_hybrid_results(tmp_path: Path):

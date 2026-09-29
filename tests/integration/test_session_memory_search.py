@@ -74,8 +74,10 @@ def test_session_memory_files_are_discovered_searched_and_read(tmp_path: Path):
         assert [(hit["path"], hit["source"]) for hit in hits] == [(saved.rel_path, "memory")]
         assert f"Source: {saved.rel_path}#L" in hits[0]["snippet"]
         read = memory.get(saved.rel_path)
-        assert read["path"] == saved.rel_path
-        assert read["text"] == saved.path.read_text(encoding="utf-8")
+        assert (read["status"], read["path"]) == ("ok", saved.rel_path)
+        # The terminal newline closes the last line; it is not an extra blank line
+        # (read-file-shared.ts buildMemoryReadResult, 1b6ad8da8f8 #115722).
+        assert read["text"] == saved.path.read_text(encoding="utf-8").removesuffix("\n")
         assert query in read["text"]
 
 

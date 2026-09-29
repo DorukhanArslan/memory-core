@@ -27,7 +27,7 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from memory_core.bootstrap._js import js_trim
+from memory_core.bootstrap._js import format_js_error_message, js_error_code, js_trim
 from memory_core.tools._memory_tool_constants import MEMORY_CORPUS_PARAM_ERROR_TEMPLATE
 
 # Number.MAX_SAFE_INTEGER.
@@ -77,40 +77,28 @@ def to_tool_error(error: BaseException, *, tool: str) -> dict[str, str]:
 
 
 def format_error_message(error: object) -> str:
-    """``formatErrorMessage`` (``src/infra/errors.ts:69-111``) without redaction.
+    """``formatErrorMessage`` (``src/infra/errors.ts``, normalization-core
+    ``error-coercion.ts:140-190``) without redaction.
 
-    An exception reads as its message (its type name when blank), followed by
-    each explicit ``raise ... from`` cause message and string/number ``code``
-    as `` | <text>``, skipping repeats. Upstream then runs a best-effort token
-    redaction (``redactSensitiveText``); memory-core does not port it, so hosts
+    An exception reads as its message (its type name when blank), followed by each explicit
+    ``raise ... from`` cause's message (skipped when the text already contains it) and its
+    string/number ``code`` or errno name as `` | <text>``, skipping repeats
+    (:func:`memory_core.bootstrap._js.format_js_error_message`). Upstream then runs a
+    best-effort token redaction (``redactSensitiveText``); memory-core does not port it, so hosts
     whose provider errors can carry secrets should redact tool results.
     """
     if isinstance(error, BaseException):
-        formatted = str(error) or type(error).__name__
-        seen: set[int] = {id(error)}
-        seen_messages = {formatted}
-
-        def append(message: str) -> None:
-            nonlocal formatted
-            if not message or message in seen_messages:
-                return
-            formatted += f" | {message}"
-            seen_messages.add(message)
-
-        cause = error.__cause__
-        while cause is not None and id(cause) not in seen:
-            seen.add(id(cause))
-            append(str(cause))
-            code = getattr(cause, "code", None)
-            if isinstance(code, str):
-                append(code)
-            elif isinstance(code, int | float) and not isinstance(code, bool):
-                append(str(code))
-            cause = cause.__cause__
-        return formatted
+        return format_js_error_message(error)
     if isinstance(error, str):
         return error
     return str(error)
+
+
+def extract_error_code(error: BaseException) -> str | None:
+    """``extractErrorCode`` (normalization-core ``error-coercion.ts:275-287``): the error's
+    string or number ``code``; for an ``OSError`` its errno name, which is the ``code`` Node
+    gives the same system error (:func:`memory_core.bootstrap._js.js_error_code`)."""
+    return js_error_code(error)
 
 
 def as_tool_params_record(params: object) -> Mapping[str, Any]:

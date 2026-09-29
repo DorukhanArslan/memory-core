@@ -104,6 +104,20 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   `memory/<date>.md is a symlink; memory writes never follow symlinks`.
 - Recording short-term recalls, marking promotions and repairing the recall store hold one
   process-wide lock per store file, so parallel recordings lose no update.
+- `memory_get` follows the v2026.9.6 read contract (docs/upstream_port_v2026_9_6.md, area 5):
+  results carry `status` (`"ok"`, `"not_found"` for a missing file, `"error"` with a `code`:
+  `MEMORY_PATH_NOT_ALLOWED` for a path outside the memory files, fs-safe's
+  `outside-workspace`/`invalid-path`, an errno name such as `EACCES`, else
+  `MEMORY_READ_FAILED`), and the `disabled` flag is gone; a terminal newline no longer counts as
+  an extra line, the character budget counts UTF-16 units and never splits a surrogate pair, and a
+  path through a symlinked directory that leaves the workspace is refused with
+  `outside-workspace` (the earlier `path required` refusal was stricter than upstream).
+- `USER.md` is a memory file: `memory_search` indexes it after `MEMORY.md`, `memory_get` reads it,
+  and a curated `USER.md` write reindexes the store. The `memory/` walk is sorted by path, so the
+  index order of nested files changes.
+- `memory_search` and `memory_get` read a blank `maxResults`, `minScore`, `from` or `lines` as
+  omitted, and check `corpus` against their enums: an unknown corpus raises `corpus must be one
+  of: ...` (it searched every source before).
 
 ### Removed
 
@@ -124,6 +138,10 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
   `HostKit.dispatch()`. A host that still wants auto-recall calls `Memory.search` itself.
 - `memory_core.adapters.PendingTurn`, added earlier in 0.2.0: carry a turn in flight with
   `TurnState` (`memory_core.host`), which holds the reset prompts as well.
+- `MemoryWorkspace.resolve_memory_read_path` and the constants `MEMORY_PATH_REQUIRED_ERROR` and
+  `MEMORY_PATH_NOT_REGULAR_FILE_ERROR` of `memory_core.workspace`: the read path is
+  `memory_core.memory_read.read_memory_file` (the port of upstream's `readMemoryFile`), whose
+  texts come from the generated `memory_core.tools._memory_tool_constants`.
 
 ### Package root
 

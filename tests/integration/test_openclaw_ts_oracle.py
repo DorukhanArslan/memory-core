@@ -987,7 +987,7 @@ def test_real_openclaw_oracle_memory_get_reads_root_memory_like_python(tmp_path:
     assert result["result"] == python_result
 
 
-def test_real_openclaw_oracle_memory_get_disabled_error_matches_python(tmp_path: Path):
+def test_real_openclaw_oracle_memory_get_refuses_a_non_memory_path_like_python(tmp_path: Path):
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
     (tmp_path / "notes.txt").write_text("not memory\n", encoding="utf-8")
 
@@ -1113,6 +1113,94 @@ def test_real_openclaw_oracle_memory_get_path_gate_matches_python(tmp_path: Path
     assert _python_memory_get_tool(MemoryConfig(workspace_dir=root), {"path": requested}) == (
         python_result
     )
+
+
+def _write_memory_get_read_rules_workspace(base: Path) -> Path:
+    root = base / "workspace"
+    (root / "memory" / "sub").mkdir(parents=True)
+    (base / "outside").mkdir()
+    (base / "outside" / "x.md").write_text("outside note\n", encoding="utf-8")
+    (base / "outside.md").write_text("outside file\n", encoding="utf-8")
+    files = {
+        "USER.md": "- Prefer short replies.\n",
+        "user.md.bak": "not a memory file\n",
+        "memory/sub/a.md": "in sub\n",
+        "memory/nl.md": "a\nb\n",
+        "memory/nl2.md": "\n\n",
+        "memory/empty.md": "",
+        "memory/emoji.md": "ab\U0001f600cd",
+        "memory/long.md": "x" * 50 + "\nsecond\n",
+    }
+    for relative, content in files.items():
+        (root / relative).write_text(content, encoding="utf-8")
+    try:
+        (root / "memory" / "linkdir").symlink_to(base / "outside")
+        (root / "memory" / "escape.md").symlink_to(base / "outside.md")
+        (root / "memory" / "insidelink").symlink_to(root / "memory" / "sub")
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symlinks are not supported on this platform: {exc}")
+    return root
+
+
+# readMemoryFile at v2026.9.6 (packages/memory-host-sdk/src/host/read-file.ts:85-194) through the
+# built @openclaw/fs-safe 0.18.1 root (RootHandle.resolve, root-path.js traverseRootPath) and
+# buildMemoryReadResult (read-file-shared.ts): (raw params, memoryGetMaxChars or None).
+MEMORY_GET_READ_RULE_CASES = {
+    "symlinked-parent-escape": ({"path": "memory/linkdir/x.md"}, None),
+    "symlinked-parent-escape-missing-file": ({"path": "memory/linkdir/missing.md"}, None),
+    "final-symlink-escape": ({"path": "memory/escape.md"}, None),
+    "symlinked-parent-inside": ({"path": "memory/insidelink/a.md"}, None),
+    "file-as-directory": ({"path": "memory/sub/a.md/x.md"}, None),
+    "missing-directory": ({"path": "memory/nosuchdir/x.md"}, None),
+    "memory-directory-itself": ({"path": "memory/sub"}, None),
+    "trailing-newline-window": ({"path": "memory/nl.md", "lines": 2}, None),
+    "blank-lines-file": ({"path": "memory/nl2.md"}, None),
+    "past-the-end": ({"path": "memory/nl2.md", "from": 5}, None),
+    "empty-file": ({"path": "memory/empty.md"}, None),
+    "empty-file-past-the-end": ({"path": "memory/empty.md", "from": 3}, None),
+    "utf16-cap-keeps-pairs-whole": ({"path": "memory/emoji.md"}, 3),
+    "utf16-cap-after-the-pair": ({"path": "memory/emoji.md"}, 4),
+    "hard-cut-first-line": ({"path": "memory/long.md", "lines": 1}, 10),
+    "hard-cut-default-window": ({"path": "memory/long.md"}, 10),
+    "user-profile": ({"path": "USER.md"}, None),
+    "user-profile-lowercase": ({"path": "user.md"}, None),
+    "blank-from-and-lines": ({"path": "memory/nl.md", "from": "", "lines": "  "}, None),
+}
+
+
+@pytest.mark.parametrize("case", sorted(MEMORY_GET_READ_RULE_CASES))
+def test_real_openclaw_oracle_memory_get_read_rules_match_python(tmp_path: Path, case: str):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    root = _write_memory_get_read_rules_workspace(tmp_path)
+    raw_params, max_chars = MEMORY_GET_READ_RULE_CASES[case]
+    payload = {"operation": "memoryGet", "workspaceDir": str(root), "rawParams": raw_params}
+    config = MemoryConfig(workspace_dir=root)
+    if max_chars is not None:
+        payload["config"] = {"agents": {"defaults": {"contextLimits": {"memoryGetMaxChars": max_chars}}}}
+        config = MemoryConfig(workspace_dir=root, memory_get_max_chars=max_chars)
+
+    result = oracle.run(payload)
+
+    assert result["ok"] is True, result
+    assert result["result"] == _python_memory_get_tool(config, raw_params)
+
+
+def test_real_openclaw_oracle_memory_get_user_profile_as_a_directory_matches_python(tmp_path: Path):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    root = tmp_path / "workspace"
+    (root / "USER.md").mkdir(parents=True)
+
+    result = oracle.run({"operation": "memoryGet", "workspaceDir": str(root), "path": "USER.md"})
+
+    assert result["ok"] is True, result
+    assert result["result"] == {
+        "path": "USER.md",
+        "text": "",
+        "status": "error",
+        "code": "MEMORY_READ_FAILED",
+        "error": "path must be a regular file",
+    }
+    assert result["result"] == memory_get(MemoryConfig(workspace_dir=root), path="USER.md")
 
 
 def _python_memory_get_tool(config: MemoryConfig, raw_params: object) -> dict:

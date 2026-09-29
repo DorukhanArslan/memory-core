@@ -10,9 +10,12 @@ extensions/memory-core/src/memory/search-deadline.ts,
 packages/memory-host-sdk/src/host/read-file.ts,
 packages/memory-host-sdk/src/host/read-file-shared.ts,
 packages/memory-host-sdk/src/host/read-retry.ts,
+packages/memory-host-sdk/src/host/fs-utils.ts,
 node_modules/@openclaw/fs-safe/dist/root-context.js (@openclaw/fs-safe 0.18.1),
 node_modules/@openclaw/fs-safe/dist/root-path.js (@openclaw/fs-safe 0.18.1),
 node_modules/@openclaw/fs-safe/dist/root-path-errors.js (@openclaw/fs-safe 0.18.1),
+node_modules/@openclaw/fs-safe/dist/root-path-existing.js (@openclaw/fs-safe 0.18.1),
+node_modules/@openclaw/fs-safe/dist/path.js (@openclaw/fs-safe 0.18.1),
 node_modules/@openclaw/fs-safe/dist/error-detail.js (@openclaw/fs-safe 0.18.1),
 node_modules/@openclaw/fs-safe/dist/regular-file.js (@openclaw/fs-safe 0.18.1),
 node_modules/@openclaw/fs-safe/dist/strict-file-identity.js (@openclaw/fs-safe 0.18.1).
@@ -102,6 +105,27 @@ FS_SAFE_SYMLINK_ESCAPE_TEMPLATE = 'Symlink escapes {boundary} ({root}): {path}'
 FS_SAFE_UNSAFE_DETAIL_PATTERN = '[\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]'
 FS_SAFE_UNSAFE_DETAIL_FLAGS = 'gu'
 FS_SAFE_NOT_REGULAR_FILE_ERROR = 'path must be a regular file'
+FS_SAFE_NOT_REGULAR_READ_TEMPLATE = 'File is not a regular file: {path}'
+FS_SAFE_FILE_NOT_FOUND_TEMPLATE = 'File not found: {path}'
+FS_SAFE_ROOT_NOT_FOUND_CODE = 'not-found'
+FS_SAFE_ROOT_NOT_FOUND_ERROR = 'root dir not found'
+FS_SAFE_SYMLINK_CODE = 'symlink'
+FS_SAFE_SYMLINK_UNRESOLVED_ERROR = 'symlink path could not be resolved'
+FS_SAFE_NOT_FOUND_CODES: tuple[str, ...] = (
+    'ENOENT',
+    'ENOTDIR',
+)
+FS_SAFE_SYMLINK_OPEN_CODES: tuple[str, ...] = (
+    'ELOOP',
+    'EINVAL',
+    'ENOTSUP',
+)
+MEMORY_FILE_MISSING_CODES: tuple[str, ...] = (
+    'ENOENT',
+    'ENOTDIR',
+    'not-file',
+    'not-found',
+)
 FS_SAFE_PATH_MISMATCH_CODE = 'path-mismatch'
 FS_SAFE_FILE_CHANGED_TEMPLATE = 'File changed during read: {path}'
 FS_SAFE_IDENTITY_MISMATCH_ERROR = 'file identity changed or could not be verified'

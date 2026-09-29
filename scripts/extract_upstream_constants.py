@@ -1009,6 +1009,7 @@ MEMORY_TOOL_SOURCES = {
     "read_file": "packages/memory-host-sdk/src/host/read-file.ts",
     "read_shared": "packages/memory-host-sdk/src/host/read-file-shared.ts",
     "read_retry": "packages/memory-host-sdk/src/host/read-retry.ts",
+    "fs_utils": "packages/memory-host-sdk/src/host/fs-utils.ts",
 }
 # @openclaw/fs-safe (the workspace resolve and regular-file read of readMemoryFile) ships as
 # built JavaScript in the checkout's node_modules; its version is checked.
@@ -1018,6 +1019,8 @@ FS_SAFE_SOURCES = {
     "fs_root_context": f"{FS_SAFE_DIR}/dist/root-context.js",
     "fs_root_path": f"{FS_SAFE_DIR}/dist/root-path.js",
     "fs_root_path_errors": f"{FS_SAFE_DIR}/dist/root-path-errors.js",
+    "fs_root_path_existing": f"{FS_SAFE_DIR}/dist/root-path-existing.js",
+    "fs_path": f"{FS_SAFE_DIR}/dist/path.js",
     "fs_error_detail": f"{FS_SAFE_DIR}/dist/error-detail.js",
     "fs_regular_file": f"{FS_SAFE_DIR}/dist/regular-file.js",
     "fs_identity": f"{FS_SAFE_DIR}/dist/strict-file-identity.js",
@@ -1249,6 +1252,25 @@ def extract_memory_tools(repo: Path) -> dict[str, object]:
         "FS_SAFE_NOT_REGULAR_FILE_ERROR": ts_string_at(
             fs["fs_regular_file"], "path must be a regular file"
         ),
+        "FS_SAFE_NOT_REGULAR_READ_TEMPLATE": ts_template_at(
+            fs["fs_regular_file"], "File is not a regular file: ${", {"filePath": "path"}
+        ),
+        "FS_SAFE_FILE_NOT_FOUND_TEMPLATE": ts_template_at(
+            fs["fs_regular_file"], "File not found: ${", {"filePath": "path"}
+        ),
+        "FS_SAFE_ROOT_NOT_FOUND_CODE": ts_string_at(fs["fs_root_context"], "not-found"),
+        "FS_SAFE_ROOT_NOT_FOUND_ERROR": ts_string_at(fs["fs_root_context"], "root dir not found"),
+        "FS_SAFE_SYMLINK_CODE": _fs_symlink_code(fs["fs_root_context"]),
+        "FS_SAFE_SYMLINK_UNRESOLVED_ERROR": ts_string_at(
+            fs["fs_root_path_existing"], "symlink path could not be resolved"
+        ),
+        "FS_SAFE_NOT_FOUND_CODES": ts_string_array_at(
+            fs["fs_path"], "const NOT_FOUND_CODES = new Set("
+        ),
+        "FS_SAFE_SYMLINK_OPEN_CODES": ts_string_array_at(
+            fs["fs_path"], "const SYMLINK_OPEN_CODES = new Set("
+        ),
+        "MEMORY_FILE_MISSING_CODES": _file_missing_codes(src["fs_utils"]),
         "FS_SAFE_PATH_MISMATCH_CODE": ts_string_at(fs["fs_regular_file"], "path-mismatch"),
         "FS_SAFE_FILE_CHANGED_TEMPLATE": ts_template_at(
             fs["fs_regular_file"], "File changed during read: ${", {"filePath": "path"}
@@ -1257,6 +1279,24 @@ def extract_memory_tools(repo: Path) -> dict[str, object]:
             fs["fs_identity"], "file identity changed"
         ),
     }
+
+
+def _file_missing_codes(fs_utils: str) -> tuple[str, ...]:
+    # fs-utils.ts isFileMissingError: the err.code comparisons of its body, in order.
+    start = fs_utils.index("export function isFileMissingError(")
+    body = fs_utils[start : fs_utils.index("\n}\n", start)]
+    codes = tuple(re.findall(r'err\.code === "([^"]+)"', body))
+    if not codes:
+        raise ValueError("fs-utils.ts isFileMissingError changed")
+    return codes
+
+
+def _fs_symlink_code(root_context: str) -> str:
+    # root-context.js resolvePathInRoot rethrows an FsSafeError whose code is "symlink" as is.
+    match = re.search(r'error instanceof FsSafeError && error\.code === "([^"]+)"', root_context)
+    if match is None:
+        raise ValueError("fs-safe root-context.js symlink rethrow changed")
+    return match.group(1)
 
 
 def _fs_root_boundary_label(root_context: str) -> str:

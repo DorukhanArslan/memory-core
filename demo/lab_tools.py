@@ -180,7 +180,9 @@ class LabToolbox:
 def finish_call(record: dict[str, Any], result: dict[str, Any], started: float) -> None:
     """Complete a call record with the payload sent back and the time the call took."""
     record["result"] = result
-    # A refusal the memory tools answer themselves carries ``disabled`` (docs/host_kit.md).
+    # A failed memory_get read (and any tool error) carries ``status: "error"``; a memory_search
+    # outage still carries ``disabled``/``unavailable`` (tools.shared.ts:136-139). A
+    # ``status: "not_found"`` read is a completed call (docs/host_kit.md).
     record["ok"] = not (
         isinstance(result, dict) and (result.get("status") == "error" or result.get("disabled"))
     )

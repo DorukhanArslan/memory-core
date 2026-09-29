@@ -391,11 +391,14 @@ class HostKit:
                 now_ms=self._clock(),
             )
 
+        # No agent_session_key: at v2026.9.6 the cooldown is keyed by agent (tools.ts:269), and
+        # memory-core has none of upstream's other uses (the session-scoped query, the `auto`
+        # citations mode, supplement context under decision D7; tools.ts:350, 448, 488), so
+        # execute_memory_search_tool reads none; the kit's search is not session-scoped.
         return execute_memory_search_tool(
             memory.config,
             memory.store,
             args,
-            agent_session_key=session.session_key,
             on_recall=record if self._dreaming_enabled else None,
             runtime_identity=self._identity,
         )

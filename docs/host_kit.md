@@ -263,8 +263,11 @@ def dispatch(
 ) -> dict[str, Any]
 ```
 
-- Composes `execute_memory_search_tool(config, store, args, agent_session_key=session.session_key,
-  on_recall=..., runtime_identity=identity)`, `execute_memory_get_tool(config, args)` and
+- Composes `execute_memory_search_tool(config, store, args, on_recall=...,
+  runtime_identity=identity)` (no `agent_session_key`: at v2026.9.6 the cooldown is keyed by agent,
+  and memory-core has none of upstream's other uses, the session-scoped query, the `auto`
+  citations mode and supplement context (D7), so the search is not session-scoped),
+  `execute_memory_get_tool(config, args)` and
   `MemoryCurator.dispatch(name, args)` on `HostKit.curator`, built from `Memory.curator(layout,
   policy, timezone, now_ms)` (whose `after_write` reindexes after MEMORY.md, USER.md and daily-note
   writes).

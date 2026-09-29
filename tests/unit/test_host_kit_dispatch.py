@@ -67,9 +67,7 @@ def test_dispatch_memory_search_equals_execute_memory_search_tool(tmp_path):
 
     result = kit.dispatch("memory_search", args, session=SESSION)
 
-    assert result == execute_memory_search_tool(
-        kit.memory.config, kit.memory.store, args, agent_session_key=SESSION.session_key
-    )
+    assert result == execute_memory_search_tool(kit.memory.config, kit.memory.store, args)
     assert [hit["path"] for hit in result["results"]] == ["MEMORY.md"]
 
 

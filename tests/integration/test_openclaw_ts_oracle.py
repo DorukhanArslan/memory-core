@@ -6840,12 +6840,12 @@ def test_real_openclaw_oracle_heartbeat_session_filter_matches_python(tmp_path: 
         heartbeat_entry["content"] + "\n"
     )
     assert heartbeat_entry["lineMap"] == [3, 4, 11, 12, 13, 14, 16]
-    # A prompt followed by the path hint survives upstream's normalised check too; upstream
-    # indexes the normalised one-line text, memory-core the raw text (documented gap).
+    # A prompt followed by the path hint survives upstream's normalised check too; both index
+    # the normalised one-line text (session_entry port of sanitizeSessionText).
     assert hint_entry["lineMap"] == [1]
     assert hint_entry["content"] == "User: " + " ".join(_HB_PATH_HINT_PROMPT.split("\n"))
     assert corpus.read_index_text(files["session-heartbeat-hint.jsonl"]) == (
-        f"User: {_HB_PATH_HINT_PROMPT}\n"
+        hint_entry["content"] + "\n"
     )
 
 

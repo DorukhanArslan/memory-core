@@ -10,6 +10,14 @@ from collections.abc import Callable
 from typing import Any
 from uuid import uuid4
 
+from memory_core._tool_result_budget import (
+    estimate_string_chars,
+    estimate_string_chars_with_minimum_raw_weight,
+    slice_tool_result_text_tail_to_budget,
+    slice_tool_result_text_to_budget,
+)
+from memory_core.bootstrap._js import slice_utf16_safe, utf16_len
+
 
 ESTIMATED_CHARS_PER_TOKEN = 4
 TOOL_RESULT_CHARS_PER_TOKEN = 2
@@ -50,24 +58,6 @@ BRANCH_SUMMARY_PREFIX = (
 )
 BRANCH_SUMMARY_SUFFIX = "</summary>"
 
-# CJK/Hangul/Kana and East Asian fullwidth ranges that tokenize near 1 token
-# per character; each match is inflated so the chars/4 heuristic stays accurate.
-_NON_LATIN_RE = re.compile(
-    "["
-    "⺀-鿿"
-    "ꀀ-꓿"
-    "가-힯"
-    "豈-﫿"
-    "！-｠"
-    "￠-￦"
-    "\U00020000-\U0002fa1f"
-    "]"
-)
-_ASTRAL_RE = re.compile("[\U00010000-\U0010ffff]")
-# Code points reachable through OpenClaw's D840-D87E high-surrogate window.
-_CJK_EXTENSION_SURROGATE_RE = re.compile("[\U00020000-\U0002fbff]")
-
-
 @dataclass(frozen=True)
 class ToolResultReductionPotential:
     max_chars: int
@@ -99,26 +89,6 @@ class SessionToolResultTruncationResult:
     reason: str | None = None
     tool_texts: tuple[str, ...] = ()
     tool_contents: tuple[str | None, ...] = ()
-
-
-def _utf16_length(text: str) -> int:
-    if text.isascii():
-        return len(text)
-    return len(text) + len(_ASTRAL_RE.findall(text))
-
-
-def estimate_string_chars(text: str) -> int:
-    if not text:
-        return 0
-    if text.isascii():
-        return len(text)
-    non_latin_count = len(_NON_LATIN_RE.findall(text))
-    # OpenClaw counts UTF-16 units, collapsing only CJK Extension B+ surrogate
-    # pairs back to one unit; other astral characters keep their pair weight.
-    code_point_length = _utf16_length(text)
-    if non_latin_count > 0:
-        code_point_length -= len(_CJK_EXTENSION_SURROGATE_RE.findall(text))
-    return code_point_length + non_latin_count * (ESTIMATED_CHARS_PER_TOKEN - 1)
 
 
 def estimate_string_token_pressure(text: str, chars_per_token: int = ESTIMATED_CHARS_PER_TOKEN) -> int:
@@ -175,7 +145,7 @@ def estimate_content_block_token_pressure(
 
 
 def _estimate_tool_result_string_token_pressure(text: str) -> int:
-    conservative_estimate = math.ceil(_utf16_length(text) / TOOL_RESULT_CHARS_PER_TOKEN)
+    conservative_estimate = math.ceil(utf16_len(text) / TOOL_RESULT_CHARS_PER_TOKEN)
     cjk_aware_estimate = estimate_string_token_pressure(text)
     return max(conservative_estimate, cjk_aware_estimate)
 
@@ -361,15 +331,17 @@ def get_tool_result_text_length(message: dict[str, Any]) -> int:
     content = message.get("content")
     if not isinstance(content, list):
         return 0
-    return sum(len(block["text"]) for block in content if _is_tool_result_text_block(block))
+    return sum(
+        estimate_string_chars(block["text"]) for block in content if _is_tool_result_text_block(block)
+    )
 
 
 def _default_suffix_length() -> int:
-    return len(_default_suffix(1))
+    return estimate_string_chars(_default_suffix(1))
 
 
 def _compact_recovery_suffix_length() -> int:
-    return len(_compact_recovery_suffix(1))
+    return estimate_string_chars(_compact_recovery_suffix(1))
 
 
 def _default_suffix(truncated_chars: int) -> str:
@@ -384,12 +356,16 @@ def _compact_recovery_suffix(truncated_chars: int) -> str:
 
 
 def _has_important_tail(text: str) -> bool:
-    tail = text[-2000:].lower().strip()
+    tail = _js_lower(slice_utf16_safe(text, -2000))
     return bool(
         re.search(r"\b(error|exception|failed|fatal|traceback|panic|stack trace|errno|exit code)\b", tail)
-        or re.search(r"}\s*$", tail)
+        or re.search(r"}\s*$", tail.strip())
         or re.search(r"\b(total|summary|result|complete|finished|done)\b", tail)
     )
+
+
+def _js_lower(text: str) -> str:
+    return text.lower()
 
 
 def _resolve_suffix_factory(
@@ -403,9 +379,15 @@ def _resolve_suffix_factory(
 
 
 def _resolve_effective_min_keep_chars(
-    *, max_chars: int, min_keep_chars: int, suffix_factory: Any
-) -> int:
-    suffix_floor = len(suffix_factory(1))
+    *,
+    max_chars: int | float,
+    min_keep_chars: int,
+    suffix_factory: Any,
+    minimum_raw_weight: int | float | None = None,
+) -> int | float:
+    suffix_floor = estimate_string_chars_with_minimum_raw_weight(
+        suffix_factory(1), minimum_raw_weight
+    )
     return max(0, min(min_keep_chars, max(0, max_chars - suffix_floor)))
 
 
@@ -413,118 +395,189 @@ def _append_bounded_truncation_suffix(
     *,
     kept_text: str,
     original_text_length: int,
-    max_chars: int,
+    max_chars: int | float,
     suffix_factory: Any,
+    minimum_raw_weight: int | float | None = None,
 ) -> str:
-    def build(value: str) -> str:
-        return value + suffix_factory(max(1, original_text_length - len(value)))
+    def weigh(value: str) -> int | float:
+        return estimate_string_chars_with_minimum_raw_weight(value, minimum_raw_weight)
 
-    current = kept_text
     while True:
-        final_text = build(current)
-        if len(final_text) <= max_chars:
+        suffix = suffix_factory(max(1, original_text_length - utf16_len(kept_text)))
+        suffix_chars = weigh(suffix)
+        if suffix_chars >= max_chars:
+            full_omission_suffix = suffix_factory(max(1, original_text_length))
+            return slice_tool_result_text_to_budget(
+                full_omission_suffix, max_chars, minimum_raw_weight
+            )
+        next_kept_text = slice_tool_result_text_to_budget(
+            kept_text, max_chars - suffix_chars, minimum_raw_weight
+        )
+        final_text = next_kept_text + suffix
+        if len(next_kept_text) == len(kept_text) and weigh(final_text) <= max_chars:
             return final_text
-        if len(current) == 0:
-            return final_text[:max_chars]
-        overflow = len(final_text) - max_chars
-        next_kept_text = current[: max(0, len(current) - overflow)]
-        current = next_kept_text if len(next_kept_text) < len(current) else current[:-1]
+        if len(next_kept_text) == 0 and len(kept_text) == 0:
+            return slice_tool_result_text_to_budget(final_text, max_chars, minimum_raw_weight)
+        kept_text = next_kept_text
 
 
 def truncate_tool_result_text(
     text: str,
-    max_chars: int,
+    max_chars: int | float,
     *,
     suffix: str | Callable[[int], str] | None = None,
     min_keep_chars: int = MIN_KEEP_CHARS,
+    minimum_raw_weight: int | float | None = None,
 ) -> str:
+    """Truncate text while preserving an important diagnostic tail (budgets are CJK-weighted)."""
+
     suffix_factory = _resolve_suffix_factory(suffix)
+
+    def weigh(value: str) -> int | float:
+        return estimate_string_chars_with_minimum_raw_weight(value, minimum_raw_weight)
+
     effective_min_keep_chars = _resolve_effective_min_keep_chars(
         max_chars=max_chars,
         min_keep_chars=min_keep_chars,
         suffix_factory=suffix_factory,
+        minimum_raw_weight=minimum_raw_weight,
     )
-    if len(text) <= max_chars:
+    text_length = utf16_len(text)
+    if text_length <= max_chars and weigh(text) <= max_chars:
         return text
-    default_suffix = suffix_factory(max(1, len(text) - max_chars))
-    budget = max(effective_min_keep_chars, max_chars - len(default_suffix))
+    initial_kept_text = slice_tool_result_text_to_budget(text, max_chars, minimum_raw_weight)
+    default_suffix = suffix_factory(max(1, text_length - utf16_len(initial_kept_text)))
+    budget = max(effective_min_keep_chars, max_chars - weigh(default_suffix))
 
     if _has_important_tail(text) and budget > effective_min_keep_chars * 2:
         tail_budget = min(math.floor(budget * 0.3), 4_000)
-        head_budget = budget - tail_budget - len(MIDDLE_OMISSION_MARKER)
+        head_budget = budget - tail_budget - weigh(MIDDLE_OMISSION_MARKER)
         if head_budget > effective_min_keep_chars:
-            head_cut = head_budget
-            head_newline = text.rfind("\n", 0, head_budget + 1)
-            if head_newline > head_budget * 0.8:
-                head_cut = head_newline
+            head_text = slice_tool_result_text_to_budget(text, head_budget, minimum_raw_weight)
+            head_newline = _last_index_of_newline(head_text)
+            if head_newline > utf16_len(head_text) * 0.8:
+                head_text = slice_utf16_safe(head_text, 0, head_newline)
 
-            tail_start = len(text) - tail_budget
-            tail_newline = text.find("\n", tail_start)
-            if tail_newline != -1 and tail_newline < tail_start + tail_budget * 0.2:
-                tail_start = tail_newline + 1
+            tail_text = slice_tool_result_text_tail_to_budget(text, tail_budget, minimum_raw_weight)
+            tail_newline = _index_of_newline(tail_text)
+            if tail_newline != -1 and tail_newline < utf16_len(tail_text) * 0.2:
+                tail_text = slice_utf16_safe(tail_text, tail_newline + 1)
 
-            kept_text = text[:head_cut] + MIDDLE_OMISSION_MARKER + text[tail_start:]
-            return _append_bounded_truncation_suffix(
-                kept_text=kept_text,
-                original_text_length=len(text),
-                max_chars=max_chars,
-                suffix_factory=suffix_factory,
-            )
+            if utf16_len(head_text) + utf16_len(tail_text) < text_length:
+                return _append_bounded_truncation_suffix(
+                    kept_text=head_text + MIDDLE_OMISSION_MARKER + tail_text,
+                    original_text_length=text_length,
+                    max_chars=max_chars,
+                    suffix_factory=suffix_factory,
+                    minimum_raw_weight=minimum_raw_weight,
+                )
 
-    cut_point = budget
-    last_newline = text.rfind("\n", 0, budget + 1)
-    if last_newline > budget * 0.8:
-        cut_point = last_newline
-    kept_text = text[:cut_point]
+    kept_text = slice_tool_result_text_to_budget(text, budget, minimum_raw_weight)
+    last_newline = _last_index_of_newline(kept_text)
+    if last_newline > utf16_len(kept_text) * 0.8:
+        kept_text = slice_utf16_safe(kept_text, 0, last_newline)
     return _append_bounded_truncation_suffix(
         kept_text=kept_text,
-        original_text_length=len(text),
+        original_text_length=text_length,
         max_chars=max_chars,
         suffix_factory=suffix_factory,
+        minimum_raw_weight=minimum_raw_weight,
     )
+
+
+def _last_index_of_newline(text: str) -> int:
+    index = text.rfind("\n")
+    return -1 if index < 0 else utf16_len(text[:index])
+
+
+def _index_of_newline(text: str) -> int:
+    index = text.find("\n")
+    return -1 if index < 0 else utf16_len(text[:index])
 
 
 def truncate_tool_result_message(
     message: dict[str, Any],
-    max_chars: int,
+    max_chars: int | float,
     *,
     suffix: str | Callable[[int], str] | None = None,
     min_keep_chars: int = MIN_KEEP_CHARS,
+    minimum_raw_weight: int | float | None = None,
 ) -> dict[str, Any]:
     suffix_factory = _resolve_suffix_factory(suffix)
+
+    def weigh(value: str) -> int | float:
+        return estimate_string_chars_with_minimum_raw_weight(value, minimum_raw_weight)
+
     effective_min_keep_chars = _resolve_effective_min_keep_chars(
         max_chars=max_chars,
         min_keep_chars=min_keep_chars,
         suffix_factory=suffix_factory,
+        minimum_raw_weight=minimum_raw_weight,
     )
     content = message.get("content")
     if not isinstance(content, list):
         return message
-    total_text_chars = get_tool_result_text_length(message)
+
+    block_text_chars = [
+        weigh(block["text"]) if _is_tool_result_text_block(block) else 0 for block in content
+    ]
+    total_text_chars = sum(block_text_chars)
     if total_text_chars <= max_chars:
         return message
 
+    # A caller's raw-text safety floor changes cost, not which semantic blocks are short.
+    # Reserve their actual weighted cost before shrinking larger text.
+    small_blocks = [
+        block_text_chars[index] > 0
+        and _is_tool_result_text_block(block)
+        and utf16_len(block["text"]) <= effective_min_keep_chars
+        and estimate_string_chars(block["text"]) <= effective_min_keep_chars
+        for index, block in enumerate(content)
+    ]
+    block_notice_chars = [
+        weigh(suffix_factory(max(1, utf16_len(block["text"]))))
+        if block_text_chars[index] > 0 and _is_tool_result_text_block(block)
+        else 0
+        for index, block in enumerate(content)
+    ]
+    small_block_chars = sum(c for c, small in zip(block_text_chars, small_blocks) if small)
+    large_block_notice_chars = sum(c for c, small in zip(block_notice_chars, small_blocks) if not small)
+    # Preserve short semantic blocks when larger ones can retain a complete truncation notice.
+    preserve_small_blocks = small_block_chars + large_block_notice_chars <= max_chars
+    preserved_chars = small_block_chars if preserve_small_blocks else 0
+    remaining_budget = max(0, max_chars - preserved_chars)
+    reducible_chars = total_text_chars - preserved_chars
+    reducible_notice_chars = (
+        large_block_notice_chars if preserve_small_blocks else sum(block_notice_chars)
+    )
+    notice_scale = (
+        min(1, remaining_budget / reducible_notice_chars) if reducible_notice_chars > 0 else 0
+    )
+    distributable_budget = max(0, remaining_budget - reducible_notice_chars)
+
     new_content: list[Any] = []
-    for block in content:
+    for index, block in enumerate(content):
         if not _is_tool_result_text_block(block):
             new_content.append(block)
             continue
-        text = block["text"]
-        block_share = len(text) / total_text_chars
-        default_suffix = suffix_factory(max(1, len(text) - math.floor(max_chars * block_share)))
-        proportional_budget = math.floor(max_chars * block_share)
-        block_budget = max(
-            1,
-            min(
-                max_chars,
-                max(effective_min_keep_chars + len(default_suffix), proportional_budget),
-            ),
+        text_chars = block_text_chars[index]
+        preserve_block = preserve_small_blocks and small_blocks[index]
+        block_share = text_chars / reducible_chars if reducible_chars > 0 else 0
+        notice_budget = block_notice_chars[index] * notice_scale
+        block_budget = (
+            text_chars
+            if preserve_block
+            else math.floor(notice_budget + distributable_budget * block_share)
+        )
+        block_min_keep_chars = (
+            text_chars if preserve_block else math.floor(effective_min_keep_chars * block_share)
         )
         truncated_text = truncate_tool_result_text(
-            text,
+            block["text"],
             block_budget,
             suffix=suffix_factory,
-            min_keep_chars=effective_min_keep_chars,
+            min_keep_chars=block_min_keep_chars,
+            minimum_raw_weight=minimum_raw_weight,
         )
         next_block = {**block, "text": truncated_text}
         if isinstance(block.get("content"), str):

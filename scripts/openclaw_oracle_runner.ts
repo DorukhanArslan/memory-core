@@ -891,6 +891,9 @@ async function main() {
         text: truncation.truncateToolResultText(
           payload.text ?? "",
           payload.maxChars ?? payload.toolResultMaxChars ?? 16_000,
+          payload.minimumRawWeight === undefined
+            ? {}
+            : { minimumRawWeight: payload.minimumRawWeight },
         ),
       },
     };

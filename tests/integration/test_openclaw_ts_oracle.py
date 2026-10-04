@@ -688,31 +688,40 @@ def test_real_openclaw_oracle_tool_result_reduction_potential_matches_python():
 
 
 @pytest.mark.parametrize(
-    "text,max_chars",
+    "text,max_chars,minimum_raw_weight",
     [
-        ("normal line\n" * 1000, 5_000),
+        ("normal line\n" * 1000, 5_000, None),
         (
             ("Line 1\n" * 500)
             + ("data data data\n" * 500)
             + "\nError: something failed\nStack trace: at foo.ts:42\n",
             5_000,
+            None,
         ),
+        ("記憶 line with emoji 😀\n" * 900, 6_000, None),
+        ("漢字" * 4_000 + "\nfailed: 結果 error\n", 9_000, None),
+        ("𠀀rare㐀ext 😀 " * 700, 7_000, None),
+        ("normal line\n" * 1000, 5_000, 2),
+        ("記憶 line\n" * 1200 + "tail error 記憶\n", 5_000, 2),
+        ("x" * 9_000, 5_000, 3),
+        ("short", 3, None),
     ],
+    ids=["ascii", "ascii-tail", "cjk-emoji", "cjk-tail", "astral", "floor2", "cjk-floor2", "floor3", "tiny"],
 )
 def test_real_openclaw_oracle_truncate_tool_result_text_matches_python(
     text: str,
     max_chars: int,
+    minimum_raw_weight,
 ):
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
 
-    result = oracle.run(
-        {
-            "operation": "truncateToolResultText",
-            "text": text,
-            "maxChars": max_chars,
-        }
+    payload = {"operation": "truncateToolResultText", "text": text, "maxChars": max_chars}
+    if minimum_raw_weight is not None:
+        payload["minimumRawWeight"] = minimum_raw_weight
+    result = oracle.run(payload)
+    python_text = truncate_tool_result_text(
+        text, max_chars, minimum_raw_weight=minimum_raw_weight
     )
-    python_text = truncate_tool_result_text(text, max_chars)
 
     assert result["ok"] is True
     assert result["operation"] == "truncateToolResultText"

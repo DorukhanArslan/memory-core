@@ -204,34 +204,6 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
         plan_area=7,
     ),
     PendingPort(
-        "transcript and replay helpers (history-limit hysteresis, runtime context prompt, "
-        "assistant replay normalization, tool-result truncation, startup context)",
-        "d5dee714c4f (#115281); runtime-context-prompt.ts 5, "
-        "replay-history.ts 23, tool-result-truncation.ts 36 and startup-context.ts 2 commits "
-        "after 4c428153",
-        (
-            *_oracle(
-                "history_limit_helpers_match_python",
-                "runtime_context_prompt_helpers_match_python",
-                "normalize_assistant_replay_content_matches_python",
-                "startup_context_matches_python[emoji-at-file-cap]",
-            ),
-            "test_openclaw_ts_oracle.py::test_real_openclaw_oracle_truncate_tool_result_text_matches_python[Line 1*",
-        ),
-        plan_area=10,
-    ),
-    PendingPort(
-        "overflow run loop (the mid-turn precheck retry no longer sends the continuation prompt; "
-        "the run loop moved out of run.ts into run/*)",
-        "src/agents/embedded-agent-runner/run.ts, 43 commits after 4c428153 (latest "
-        "9497450511d); the pin's continuation prompt (run.ts:260) is gone",
-        (
-            "test_openclaw_run_loop_oracle.py::"
-            "test_real_openclaw_run_loop_mid_turn_precheck_continuation",
-        ),
-        plan_area=10,
-    ),
-    PendingPort(
         "session-memory hook (transcripts from the SQLite session store, agentId-scoped slug run "
         "and entry rendering, new bare reset prompts)",
         "4273ca9dbd9 (#113233); handler.ts 16, llm-slug-generator.ts 6 and "

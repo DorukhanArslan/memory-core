@@ -490,8 +490,8 @@ def test_temporal_decay_affects_store_search_order(tmp_path: Path):
 
 def test_undated_and_session_style_notes_are_searchable_and_evergreen(tmp_path: Path):
     # Recursive memory/**/*.md discovery (OpenClaw listMemoryFiles) makes these
-    # files searchable; temporal-decay.ts treats non-daily memory/ paths as
-    # evergreen, so only the dated daily file decays.
+    # files searchable; temporal-decay.ts (DATED_MEMORY_PATH_RE, v2026.9.6) dates any
+    # memory/**/YYYY-MM-DD[-suffix].md file, so only the undated topic note is evergreen.
     (tmp_path / "memory" / "topics").mkdir(parents=True)
     for relative in (
         "memory/2000-01-01.md",
@@ -516,8 +516,12 @@ def test_undated_and_session_style_notes_are_searchable_and_evergreen(tmp_path: 
         "memory/2000-01-01-1430.md",
         "memory/topics/alpha.md",
     }
-    assert scores["memory/2000-01-01-1430.md"] == scores["memory/topics/alpha.md"]
+    assert scores["memory/2000-01-01-1430.md"] == scores["memory/2000-01-01.md"]
+    assert scores["memory/topics/alpha.md"] > scores["memory/2000-01-01-1430.md"]
     assert scores["memory/2000-01-01.md"] < scores["memory/topics/alpha.md"] * 1e-6
+
+
+from memory_core.index.mmr import apply_mmr_to_hybrid_results  # noqa: E402
 
 
 def test_mmr_config_is_applied_to_store_search(tmp_path: Path, monkeypatch):
@@ -533,15 +537,17 @@ def test_mmr_config_is_applied_to_store_search(tmp_path: Path, monkeypatch):
     store.reindex(MemoryWorkspace(tmp_path))
     calls = []
 
-    def fake_mmr(items, *, enabled, lambda_):
-        calls.append((enabled, lambda_, len(items)))
-        return list(reversed(items))
+    real_mmr = apply_mmr_to_hybrid_results
 
-    monkeypatch.setattr("memory_core.index.sqlite_store.mmr_rerank", fake_mmr)
+    def spy_mmr(items, *, enabled, lambda_):
+        calls.append((enabled, lambda_))
+        return real_mmr(items, enabled=enabled, lambda_=lambda_)
+
+    monkeypatch.setattr("memory_core.index.hybrid.apply_mmr_to_hybrid_results", spy_mmr)
 
     store.search("alpha", max_results=2, min_score=0.0)
 
-    assert calls == [(True, 0.7, 2)]
+    assert calls and all(call == (True, 0.7) for call in calls)
 
 
 def test_equal_scores_are_ordered_by_locale_compare_not_code_points():

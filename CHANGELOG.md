@@ -61,6 +61,28 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Changed
 
+- Stage 2 of the OpenClaw v2026.9.6 port (docs/upstream_port_v2026_9_6.md), areas 5 to 10, all
+  verified against the real TS oracle; the oracle worklist is empty.
+  - Memory tools and search (areas 5, 6): `memory_get` status/error codes, per-corpus outcomes and
+    the 30 s deadline, index identity diagnostics, MEMORY.md/USER.md/DREAMS.md as memory paths,
+    CJK-weighted chunking, path matching, hybrid merge with MMR and temporal decay. Defaults
+    follow the tag: vector 0.7 / text 0.3, MMR and temporal decay on (the knobs stay).
+  - Promotion (area 7): deep dreaming is on by default with `minScore` 0.75; strict integer
+    parsing; recall entries carry `provenance`, `userQueryHashes` and `claimHash`; the
+    unique-query gate counts provenance-qualified hashes; promotion lines carry `signals=`,
+    trigger and importance annotations and per-project sections; memory-budget compaction bounds
+    prior-entry loss (`max_prior_entry_loss_fraction`, default 0.25) and defers a write that
+    would exceed it; the `qmd` concept tag is gone. Recall keys follow the chunk range
+    (`path:1:4`) now that the chunker returns whole chunks. No LLM consolidation step is ported.
+  - Sessions (areas 8, 9): `session_entry.build_session_entry` and the reworked session-memory
+    hook read host-supplied transcript events, not OpenClaw's SQLite. Not ported:
+    `redactSensitiveText` (a host `redact_text` hook instead).
+  - Transcript and overflow (area 10): history-limit hysteresis, runtime-context prompt with
+    explicit fragments (`resolve_runtime_context_prompt_parts` signature changed), replay
+    normalization, weighted-char tool-result budgets, one shared continuation prompt and the
+    request-size-ceiling overflow check. Open gaps: account-scoped history limits, compaction
+    replay owners, prompt-projection state, parked Code Mode and the overflow fallback tables.
+
 - Search ranking follows OpenClaw v2026.9.6 (port plan area 6): chunks are sized in CJK-weighted
   characters (`tokens * 4`) and `MEMORY.md` / `USER.md` chunk per `- ` entry and heading; keyword
   retrieval searches chunk text and file paths (a query naming a file, basename or stem ranks it in

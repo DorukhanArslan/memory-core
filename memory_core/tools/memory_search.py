@@ -51,42 +51,62 @@ from memory_core.project_name import DIST_NAME
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.supplements import MemoryCorpusResult, MemoryCorpusSupplement, sort_corpus_results
 from memory_core.tools.citations import citation_label, clamp_text, source_label
+from memory_core.tools.corpus import (
+    CorpusAttempt,
+    CorpusFailure,
+    compose_memory_corpus_metadata,
+    error_code,
+    settle_supplements,
+)
+from memory_core.tools.memory_get import (
+    MEMORY_TOOL_CORPUS_OUTCOME_GUIDANCE,
+    MEMORY_TOOL_FILES_DESCRIPTION,
+)
 from memory_core.tools.common import (
     MemoryToolInputError,
     as_tool_params_record,
     format_error_message,
+    read_corpus_param,
     read_finite_number_param,
     read_positive_integer_param,
     read_string_param,
 )
 
 MEMORY_SEARCH_TOOL_NAME = "memory_search"
-# tools.ts createMemorySearchTool description (verbatim).
-MEMORY_SEARCH_TOOL_DESCRIPTION = (
-    "Mandatory recall step: semantically search MEMORY.md + memory/*.md (and optional "
-    "session transcripts) before answering questions about prior work, decisions, dates, "
-    "people, preferences, or todos. Optional `corpus=wiki` or `corpus=all` also searches "
-    "registered compiled-wiki supplements. `corpus=memory` restricts hits to indexed memory "
-    "files (excludes session transcript chunks from ranking). `corpus=sessions` restricts "
-    "hits to indexed session transcripts (same visibility rules as session history tools). "
-    "If response has disabled=true, memory retrieval is unavailable; you must tell the user "
-    "and include the warning/action guidance."
+MEMORY_SEARCH_CORPORA = ("memory", "wiki", "all", "sessions")
+# MEMORY_SEARCH_TOOL_CONTRACT.describe (memory-tool-contract.ts), verbatim; the
+# `{search}` source list is the files, plus ", indexed session transcripts" when the
+# host indexes sessions.
+MEMORY_SEARCH_TOOL_DESCRIPTION_TEMPLATE = (
+    "Mandatory recall step: semantically search {search} before answering questions about "
+    "prior work, decisions, dates, people, preferences, or todos. Session results are "
+    "transcript search references, not readable memory-file paths. Optional `corpus=wiki` or "
+    "`corpus=all` also searches registered compiled-wiki supplements. `corpus=memory` "
+    "restricts hits to indexed memory files (excludes session transcript chunks from "
+    "ranking). `corpus=sessions` searches indexed session transcripts under the same "
+    "visibility rules as session history tools and returns unavailable when semantic session "
+    "indexing is disabled. " + MEMORY_TOOL_CORPUS_OUTCOME_GUIDANCE + " If response has "
+    "disabled=true or stale=true, tell the user and include the warning/action guidance."
 )
-# tools.shared.ts MemorySearchSchema as JSON Schema (TypeBox output;
-# optionalFiniteNumberSchema is a plain number).
+MEMORY_SEARCH_TOOL_DESCRIPTION = MEMORY_SEARCH_TOOL_DESCRIPTION_TEMPLATE.format(
+    search=MEMORY_TOOL_FILES_DESCRIPTION
+)
+# MemorySearchSchema (memory-tool-contract.ts) as JSON Schema.
 MEMORY_SEARCH_TOOL_PARAMETERS: dict[str, Any] = {
     "type": "object",
-    "required": ["query"],
     "properties": {
         "query": {"type": "string"},
         "maxResults": {"type": "integer", "minimum": 1},
         "minScore": {"type": "number"},
         "corpus": {"type": "string", "enum": ["memory", "wiki", "all", "sessions"]},
     },
+    "required": ["query"],
+    "additionalProperties": False,
 }
 
-# tools.ts:49-50.
-MEMORY_SEARCH_TOOL_TIMEOUT_MS = 15_000
+# tools.ts MEMORY_SEARCH_TOOL_COOLDOWN_MS and memory/search-deadline.ts
+# DEFAULT_MEMORY_SEARCH_TIMEOUT_MS (15 s at the pin).
+MEMORY_SEARCH_TOOL_TIMEOUT_MS = 30_000
 MEMORY_SEARCH_TOOL_COOLDOWN_MS = 60_000
 
 # Used when the caller omits maxResults/minScore. Upstream falls back to the
@@ -99,6 +119,15 @@ MEMORY_SEARCH_MERGE_DEFAULT_MAX_RESULTS = 10
 
 # tools.shared.ts buildMemorySearchUnavailableResult (verbatim).
 MEMORY_SEARCH_UNAVAILABLE_REASON = "memory search unavailable"
+MEMORY_SEARCH_DEADLINE_WARNING = "Memory search did not finish within its time limit."
+MEMORY_SEARCH_PARTIAL_WARNING = (
+    "Only memory-file keyword matches are included; semantic memory retrieval did not finish "
+    "within the search time limit. Session transcript results are not included."
+)
+MEMORY_SEARCH_SESSIONS_DISABLED_REASON = "Session transcript search is not enabled."
+MEMORY_SEARCH_SESSIONS_DISABLED_WARNING = (
+    "Session transcript search is unavailable for this agent."
+)
 MEMORY_SEARCH_QUOTA_WARNING = (
     "Memory search is unavailable because the embedding provider quota is exhausted."
 )
@@ -120,7 +149,7 @@ _QUOTA_ERROR_RE = re.compile(r"insufficient_quota|quota|429")
 _MISSING_SQLITE_RE = re.compile(r"missing node:sqlite|no such built-?in module: node:sqlite")
 
 
-def memory_search_tool_definition() -> dict[str, Any]:
+def memory_search_tool_definition(*, index_sessions: bool = False) -> dict[str, Any]:
     """``{"name", "description", "parameters"}`` of the upstream ``memory_search`` tool.
 
     Same provider-neutral shape as ``MemoryCurator.tool_definitions()``; wrap it
@@ -131,7 +160,13 @@ def memory_search_tool_definition() -> dict[str, Any]:
     """
     return {
         "name": MEMORY_SEARCH_TOOL_NAME,
-        "description": MEMORY_SEARCH_TOOL_DESCRIPTION,
+        "description": (
+            MEMORY_SEARCH_TOOL_DESCRIPTION_TEMPLATE.format(
+                search=f"{MEMORY_TOOL_FILES_DESCRIPTION}, indexed session transcripts"
+            )
+            if index_sessions
+            else MEMORY_SEARCH_TOOL_DESCRIPTION
+        ),
         "parameters": copy.deepcopy(MEMORY_SEARCH_TOOL_PARAMETERS),
     }
 
@@ -141,13 +176,17 @@ def build_memory_search_unavailable_result(
     *,
     warning: str | None = None,
     action: str | None = None,
+    agent_id: str | None = None,
+    deadline: bool = False,
     runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> dict:
-    """``buildMemorySearchUnavailableResult`` (tools.shared.ts:112-152).
+    """``buildMemorySearchUnavailableResult`` (tools.shared.ts:92-150).
 
     The warning/action pair is picked from the lower-cased reason (quota,
     missing SQLite runtime, anything else) unless overridden. The SQLite pair
-    names the runtime, so it comes from ``runtime_identity``.
+    and the deadline action name the runtime, so they come from ``runtime_identity``.
+    ``deadline`` is the deadline owner's provenance, never read from the message: a
+    provider error can read exactly like this tool's timeout.
     """
     reason = js_trim(error if error is not None else MEMORY_SEARCH_UNAVAILABLE_REASON)
     reason = reason or MEMORY_SEARCH_UNAVAILABLE_REASON
@@ -159,6 +198,8 @@ def build_memory_search_unavailable_result(
             warning = MEMORY_SEARCH_QUOTA_WARNING
         elif is_missing_sqlite:
             warning = runtime_identity.memory_search_sqlite_unavailable_warning
+        elif deadline:
+            warning = MEMORY_SEARCH_DEADLINE_WARNING
         else:
             warning = MEMORY_SEARCH_PROVIDER_ERROR_WARNING
     if action is None:
@@ -166,12 +207,19 @@ def build_memory_search_unavailable_result(
             action = MEMORY_SEARCH_QUOTA_ACTION
         elif is_missing_sqlite:
             action = runtime_identity.memory_search_sqlite_unavailable_action
+        elif deadline:
+            action = (
+                runtime_identity.memory_search_deadline_action_for_agent.format(agent_id=agent_id)
+                if agent_id
+                else runtime_identity.memory_search_deadline_action
+            )
         else:
             action = MEMORY_SEARCH_PROVIDER_ERROR_ACTION
     return {
         "results": [],
         "disabled": True,
         "unavailable": True,
+        **({"timedOut": True, "timeoutMs": MEMORY_SEARCH_TOOL_TIMEOUT_MS} if deadline else {}),
         "error": reason,
         "warning": warning,
         "action": action,
@@ -201,8 +249,9 @@ def build_paused_memory_index_unavailable_result(
     )
 
 
-# Process-wide cooldowns (tools.ts:52 memorySearchToolCooldowns).
-_cooldowns: dict[str, tuple[float, str]] = {}
+# Process-wide cooldowns (tools.ts memorySearchToolCooldowns): the failure that paused the
+# store, so a repeated call reports the same error, code and deadline provenance.
+_cooldowns: dict[str, tuple[float, CorpusFailure]] = {}
 _cooldowns_lock = threading.Lock()
 
 
@@ -227,12 +276,12 @@ def memory_search_tool_cooldown_key(
 ) -> str:
     """The cooldown key ``memory_search`` reads and records for ``store``.
 
-    Deviation from tools.ts:76-81, which keys by agent alone: upstream's agent
-    stands for one workspace and one index, while memory-core keeps one index per
-    store path, and every ``Memory.from_workspace()`` store defaults to
-    ``agent_id="main"``. Keying by agent alone would let one workspace's
-    provider error or timeout pause every other workspace in the process. The
-    key is the store's resolved path (``config.resolved_store_path()`` for a
+    Deviation from tools.ts, which keys by agent alone (and by the runtime
+    configuration): upstream's agent stands for one workspace and one index, while
+    memory-core keeps one index per store path, and every ``Memory.from_workspace()``
+    store defaults to ``agent_id="main"``. Keying by agent alone would let one
+    workspace's provider error or timeout pause every other workspace in the process.
+    The key is the store's resolved path (``config.resolved_store_path()`` for a
     store object without ``path``), a NUL separator, then
     :func:`resolve_memory_search_tool_cooldown_key`; stores that open the same
     index file share a cooldown.
@@ -246,17 +295,23 @@ def memory_search_tool_cooldown_key(
     return f"{Path(store_path).resolve()}\0{agent_key}"
 
 
-def read_memory_search_tool_cooldown(key: str) -> str | None:
-    """The cooldown error for ``key``, dropping it once expired (tools.ts:83-93)."""
+def read_memory_search_tool_cooldown_failure(key: str) -> CorpusFailure | None:
+    """The failure of an active cooldown for ``key``, dropping it once expired."""
     with _cooldowns_lock:
         entry = _cooldowns.get(key)
         if entry is None:
             return None
-        until, error = entry
+        until, failure = entry
         if until <= _now_ms():
             del _cooldowns[key]
             return None
-        return error
+        return failure
+
+
+def read_memory_search_tool_cooldown(key: str) -> str | None:
+    """The cooldown error for ``key``, dropping it once expired (tools.ts:83-93)."""
+    failure = read_memory_search_tool_cooldown_failure(key)
+    return failure.error if failure is not None else None
 
 
 def memory_search_tool_cooldown_remaining(key: str) -> tuple[float, str] | None:
@@ -269,18 +324,23 @@ def memory_search_tool_cooldown_remaining(key: str) -> tuple[float, str] | None:
         entry = _cooldowns.get(key)
         if entry is None:
             return None
-        until, error = entry
+        until, failure = entry
         remaining = until - _now_ms()
         if remaining <= 0:
             del _cooldowns[key]
             return None
-        return remaining, error
+        return remaining, failure.error
 
 
-def record_memory_search_tool_cooldown(key: str, error: str) -> None:
+def record_memory_search_tool_cooldown(
+    key: str, error: str, *, deadline: bool = False, code: str | None = None
+) -> None:
     """tools.ts:95-100: pause memory search for ``key`` for 60 s."""
     with _cooldowns_lock:
-        _cooldowns[key] = (_now_ms() + MEMORY_SEARCH_TOOL_COOLDOWN_MS, error)
+        _cooldowns[key] = (
+            _now_ms() + MEMORY_SEARCH_TOOL_COOLDOWN_MS,
+            CorpusFailure(error=error, deadline=deadline, code=code),
+        )
 
 
 def reset_memory_search_tool_cooldowns() -> None:
@@ -302,40 +362,52 @@ def _deadline_seconds(timeout_ms: int) -> float:
 @dataclass(frozen=True)
 class _DeadlineOutcome:
     status: str
-    value: dict | None = None
+    value: Any = None
     error: str | None = None
+    code: str | None = None
+    deadline: bool = False
 
 
-def _run_with_deadline(
-    *, timeout_ms: int, run: Callable[[CancellationSignal], dict]
-) -> _DeadlineOutcome:
-    """``runMemorySearchToolWithDeadline`` (tools.ts:126-166) on a worker thread.
+class _DeadlineWorker:
+    """``runMemoryCorpusDeadline`` (memory-corpus.ts) on a worker thread.
 
-    Works from any thread and inside a running event loop (no signals, no
-    loop access). On timeout the result is settled first, then the signal is
-    aborted, so an abort-aware store cannot replace the stable timeout error.
+    Works from any thread and inside a running event loop (no signals, no loop
+    access). :meth:`wait` settles the outcome first and only then aborts the signal,
+    so an abort-aware store cannot replace the stable timeout error.
     """
-    timeout_message = f"memory_search timed out after {_js_round(timeout_ms / 1000)}s"
-    signal = CancellationSignal()
-    done = threading.Event()
-    box: dict[str, Any] = {}
 
-    def worker() -> None:
+    def __init__(self, label: str, run: Callable[[CancellationSignal], Any]) -> None:
+        self.label = label
+        self.signal = CancellationSignal()
+        self._done = threading.Event()
+        self._box: dict[str, Any] = {}
+        self._started_at = time.monotonic()
+        self._run = run
+        threading.Thread(
+            target=self._work, name=f"{DIST_NAME}-memory-{label}", daemon=True
+        ).start()
+
+    def _work(self) -> None:
         try:
-            box["value"] = run(signal)
+            self._box["value"] = self._run(self.signal)
         except BaseException as error:  # reported to the caller as unavailable
-            box["error"] = error
+            self._box["error"] = error
         finally:
-            done.set()
+            self._done.set()
 
-    threading.Thread(target=worker, name=f"{DIST_NAME}-memory-search", daemon=True).start()
-    if not done.wait(_deadline_seconds(timeout_ms)):
-        outcome = _DeadlineOutcome(status="unavailable", error=timeout_message)
-        signal.abort(timeout_message)
-        return outcome
-    if "error" in box:
-        return _DeadlineOutcome(status="unavailable", error=format_error_message(box["error"]))
-    return _DeadlineOutcome(status="ok", value=box["value"])
+    def wait(self, timeout_ms: int) -> _DeadlineOutcome:
+        timeout_message = f"{self.label} timed out after {_js_round(timeout_ms / 1000)}s"
+        remaining = max(0.0, _deadline_seconds(timeout_ms) - (time.monotonic() - self._started_at))
+        if not self._done.wait(remaining):
+            outcome = _DeadlineOutcome(status="unavailable", error=timeout_message, deadline=True)
+            self.signal.abort(timeout_message)
+            return outcome
+        if "error" in self._box:
+            error = self._box["error"]
+            return _DeadlineOutcome(
+                status="unavailable", error=format_error_message(error), code=error_code(error)
+            )
+        return _DeadlineOutcome(status="ok", value=self._box["value"])
 
 
 @dataclass(frozen=True)
@@ -360,7 +432,7 @@ def read_memory_search_params(params: object) -> MemorySearchParams:
         query = read_string_param(raw, "query", required=True)
         max_results = read_positive_integer_param(raw, "maxResults")
         min_score = read_finite_number_param(raw, "minScore")
-        corpus = read_string_param(raw, "corpus")
+        corpus = read_corpus_param(raw, MEMORY_SEARCH_CORPORA)
     except MemoryToolInputError as error:
         error.tool = MEMORY_SEARCH_TOOL_NAME
         raise
@@ -422,31 +494,25 @@ def memory_search(
     )
 
 
-def _memory_sources_for_corpus(corpus: str | None) -> set[str] | None:
+def _memory_sources_for_corpus(corpus: str | None, *, session_search: bool) -> set[str] | None:
     if corpus == "sessions":
         return {"sessions"}
     if corpus == "memory":
         return {"memory"}
-    return None
+    # No corpus (or all): the default sources, which leave sessions out when session
+    # search is off.
+    return None if session_search else {"memory"}
 
 
-class _PhaseTracker:
-    """Which phase ran or failed when the deadline fired (tools.ts:424-441)."""
-
-    def __init__(self) -> None:
-        self.active: str | None = None
-        self.failed: str | None = None
-
-    def run(self, phase: str, task: Callable[[], Any]) -> Any:
-        self.active = phase
-        try:
-            return task()
-        except BaseException:
-            self.failed = phase
-            raise
-        finally:
-            if self.active == phase:
-                self.active = None
+def _failure_attempt(corpus: str, failure: CorpusFailure, value: Any = None) -> CorpusAttempt:
+    return CorpusAttempt(
+        corpus=corpus,
+        outcome="unavailable",
+        value=value,
+        error=failure.error,
+        code=failure.code,
+        deadline=failure.deadline,
+    )
 
 
 def _run_memory_search_tool(
@@ -458,161 +524,301 @@ def _run_memory_search_tool(
     agent_session_key: str | None,
     runtime_identity: RuntimeIdentity,
 ) -> dict:
+    """``createMemorySearchTool``'s execute (tools.ts:402-702).
+
+    Memory and the wiki supplements are separate corpora, each with its own deadline
+    and outcome; the result reports every corpus it covered (``corpora``), so a failed
+    corpus is surfaced next to the results of the other. Deviations: no staleness,
+    rebuild notices or recall recording (the host owns the index), and a deadline
+    leaves the keyword-only pass to a fresh FTS query instead of a snapshot of the
+    manager's first stage.
+    """
     requested_corpus = params.corpus
+    if requested_corpus == "sessions" and not config.session_search:
+        return build_memory_search_unavailable_result(
+            MEMORY_SEARCH_SESSIONS_DISABLED_REASON,
+            warning=MEMORY_SEARCH_SESSIONS_DISABLED_WARNING,
+            action=runtime_identity.memory_search_sessions_disabled_action,
+            runtime_identity=runtime_identity,
+        )
     cooldown_key = memory_search_tool_cooldown_key(
         config, store, agent_session_key=agent_session_key
     )
-    cooldown_error = (
-        None if requested_corpus == "wiki" else read_memory_search_tool_cooldown(cooldown_key)
+    searches_memory = requested_corpus != "wiki"
+    searches_wiki = requested_corpus in {"wiki", "all"}
+    cooldown = (
+        read_memory_search_tool_cooldown_failure(cooldown_key) if searches_memory else None
     )
-    phases = _PhaseTracker()
+    max_results = (
+        params.max_results if params.max_results is not None else DEFAULT_MEMORY_SEARCH_MAX_RESULTS
+    )
+    min_score = (
+        params.min_score if params.min_score is not None else DEFAULT_MEMORY_SEARCH_MIN_SCORE
+    )
 
-    def run(signal: CancellationSignal) -> dict:
-        should_query_supplements = requested_corpus in {"wiki", "all"}
-        should_query_memory = requested_corpus != "wiki" and cooldown_error is None
-        if cooldown_error is not None and not should_query_supplements:
-            return build_memory_search_unavailable_result(
-                cooldown_error, runtime_identity=runtime_identity
-            )
-
-        response: dict[str, Any] = {}
-        memory_results: list[dict] = []
-        paused: dict[str, str | None] = {"reason": None}
-        if should_query_memory:
-
-            def search_memory() -> None:
-                hits = store.search(
-                    params.query,
-                    max_results=(
-                        params.max_results
-                        if params.max_results is not None
-                        else DEFAULT_MEMORY_SEARCH_MAX_RESULTS
-                    ),
-                    min_score=(
-                        params.min_score
-                        if params.min_score is not None
-                        else DEFAULT_MEMORY_SEARCH_MIN_SCORE
-                    ),
-                    sources=_memory_sources_for_corpus(requested_corpus),
-                    signal=signal,
-                )
-                # tools.ts:563-568: a missing or mismatched index identity pauses
-                # search (no cooldown). Upstream's empty-result forced sync retry
-                # has no counterpart: memory-core reindexes only when the host asks.
-                paused["reason"] = resolve_paused_memory_index_identity_reason(
-                    store.index_identity()
-                )
-                if paused["reason"] is not None:
-                    return
-                memory_results.extend(_serialize_result(config, item) for item in hits)
-                # OpenClaw reports FTS-only mode as provider "none" / model
-                # "fts-only" when no embedding provider is configured.
-                embeddings = store.embeddings
-                response["provider"] = (
-                    embeddings.provider_id if embeddings is not None else "none"
-                )
-                response["model"] = embeddings.model if embeddings is not None else "fts-only"
-
-            phases.run("memory", search_memory)
-            if paused["reason"] is not None:
-                return build_paused_memory_index_unavailable_result(
-                    paused["reason"], runtime_identity=runtime_identity
-                )
-        supplement_results = (
-            phases.run(
-                "supplement",
-                lambda: _search_supplements(
-                    supplements,
-                    query=params.query,
-                    max_results=params.max_results,
-                    corpus=requested_corpus,
-                ),
-            )
-            if should_query_supplements
-            else []
+    def search_memory_worker(signal: CancellationSignal) -> dict:
+        hits = store.search(
+            params.query,
+            max_results=max_results,
+            min_score=min_score,
+            sources=_memory_sources_for_corpus(
+                requested_corpus, session_search=config.session_search
+            ),
+            signal=signal,
         )
+        # tools.ts:563-568: a missing or mismatched index identity pauses search
+        # (no cooldown). Upstream's empty-result forced sync retry has no
+        # counterpart: memory-core reindexes only when the host asks.
+        paused = resolve_paused_memory_index_identity_reason(store.index_identity())
+        if paused is not None:
+            return {"paused": paused}
+        # OpenClaw reports FTS-only mode as provider "none" / model "fts-only" when no
+        # embedding provider is configured.
+        embeddings = store.embeddings
+        return {
+            "results": [_serialize_result(config, item) for item in hits],
+            "provider": embeddings.provider_id if embeddings is not None else "none",
+            "model": embeddings.model if embeddings is not None else "fts-only",
+        }
+
+    def wiki_worker(signal: CancellationSignal) -> CorpusAttempt:
+        del signal
+        limit = max(1, params.max_results if params.max_results is not None else 10)
+
+        def run(supplement: MemoryCorpusSupplement) -> list[MemoryCorpusResult]:
+            return supplement.search(query=params.query, max_results=limit, corpus=requested_corpus or "")
+
+        return settle_supplements(
+            supplements,
+            run,
+            lambda batches: sort_corpus_results([item for batch in batches for item in batch])[:limit],
+        )
+
+    memory_worker = (
+        _DeadlineWorker("memory_search", search_memory_worker)
+        if searches_memory and cooldown is None
+        else None
+    )
+    wiki_deadline_worker = (
+        _DeadlineWorker("memory_search", wiki_worker) if searches_wiki else None
+    )
+
+    memory: CorpusAttempt | None = None
+    if searches_memory:
+        if cooldown is not None:
+            memory = _failure_attempt("memory", cooldown)
+        else:
+            assert memory_worker is not None
+            memory = _settle_memory_attempt(
+                memory_worker.wait(MEMORY_SEARCH_TOOL_TIMEOUT_MS),
+                store=store,
+                config=config,
+                params=params,
+                max_results=max_results,
+                min_score=min_score,
+                cooldown_key=cooldown_key,
+                runtime_identity=runtime_identity,
+            )
+    wiki: CorpusAttempt | None = None
+    if wiki_deadline_worker is not None:
+        outcome = wiki_deadline_worker.wait(MEMORY_SEARCH_TOOL_TIMEOUT_MS)
+        wiki = (
+            outcome.value
+            if outcome.status == "ok"
+            else CorpusAttempt(
+                corpus="wiki",
+                outcome="unavailable",
+                value=[],
+                error=outcome.error,
+                code=outcome.code,
+                deadline=outcome.deadline,
+            )
+        )
+
+    memory_value: dict | None = (
+        memory.value if memory is not None and memory.outcome != "not-registered" else None
+    )
+    if searches_memory and not searches_wiki and memory is not None and memory.outcome == "unavailable":
+        return (memory_value or {}).get("unavailableResult") or build_memory_search_unavailable_result(
+            memory.error,
+            agent_id=config.agent_id,
+            deadline=memory.deadline,
+            runtime_identity=runtime_identity,
+        )
+    wiki_results = [] if wiki is None or wiki.outcome == "not-registered" else (wiki.value or [])
+    # Equal scores break by the path's locale order, which the manager's ranking does at the tag
+    # (stage 2 area 6 ports that ranking).
+    memory_results = _sort_by_score_then_path((memory_value or {}).get("results", []))
+    if searches_wiki:
         results = _merge_corpus_results(
             memory_results=memory_results,
-            supplement_results=supplement_results,
-            max_results=max(
-                1,
-                params.max_results
-                if params.max_results is not None
-                else MEMORY_SEARCH_MERGE_DEFAULT_MAX_RESULTS,
-            ),
+            supplement_results=[dict(item) for item in wiki_results],
+            max_results=max(1, params.max_results if params.max_results is not None else 10),
             balance_corpora=requested_corpus == "all",
         )
-        # provider/model stay unset when memory was not searched (tools.ts:677-685).
-        return {"results": results, **response, "citations": config.citation_mode}
+    else:
+        results = memory_results
 
-    outcome = _run_with_deadline(timeout_ms=MEMORY_SEARCH_TOOL_TIMEOUT_MS, run=run)
-    if outcome.status == "unavailable":
-        unavailable_phase = phases.failed or phases.active
-        should_record_cooldown = requested_corpus != "wiki" and (
-            requested_corpus != "all" or unavailable_phase == "memory"
+    attempts = [
+        attempt
+        for attempt in (
+            memory
+            if memory is not None and (requested_corpus == "all" or memory.outcome == "partial")
+            else None,
+            wiki,
         )
-        if should_record_cooldown:
-            record_memory_search_tool_cooldown(cooldown_key, outcome.error or "")
-        return build_memory_search_unavailable_result(
-            outcome.error, runtime_identity=runtime_identity
-        )
-    return outcome.value or {}
-
-
-def _search_supplements(
-    supplements: list[MemoryCorpusSupplement],
-    *,
-    query: str,
-    max_results: int | None,
-    corpus: str | None,
-) -> list[MemoryCorpusResult]:
-    # tools.shared.ts searchMemoryCorpusSupplements.
-    if corpus in {"memory", "sessions"}:
-        return []
-    limit = max(1, max_results if max_results is not None else MEMORY_SEARCH_MERGE_DEFAULT_MAX_RESULTS)
-    results: list[MemoryCorpusResult] = []
-    for supplement in supplements:
-        results.extend(supplement.search(query=query, max_results=limit, corpus=corpus or ""))
-    return sort_corpus_results(results)[:limit]
-def _merge_corpus_results(
-    *,
-    memory_results: list[dict],
-    supplement_results: list[MemoryCorpusResult],
-    max_results: int,
-    balance_corpora: bool,
-) -> list[dict]:
-    sorted_memory = _sort_tool_results(memory_results)
-    sorted_supplements = _sort_tool_results([dict(item) for item in supplement_results])
-    if not balance_corpora or not sorted_memory or not sorted_supplements:
-        return _sort_tool_results([*sorted_memory, *sorted_supplements])[:max_results]
-
-    per_corpus_cap = _ceil_div(max_results, 2)
-    selected_memory = sorted_memory[:per_corpus_cap]
-    selected_supplements = sorted_supplements[:per_corpus_cap]
-    selected = [*selected_memory, *selected_supplements]
-    if len(selected) < max_results:
-        selected.extend(
-            _sort_tool_results(
+        if attempt is not None
+    ]
+    recovery = (memory_value or {}).get("unavailableResult")
+    response: dict[str, Any] = {"results": results}
+    # provider/model stay unset when memory was not searched (tools.ts:677-685).
+    if memory_value is not None and "provider" in memory_value:
+        response["provider"] = memory_value["provider"]
+        response["model"] = memory_value["model"]
+    response["citations"] = config.citation_mode
+    if attempts:
+        response.update(
+            compose_memory_corpus_metadata(
+                attempts,
                 [
-                    *sorted_memory[len(selected_memory):],
-                    *sorted_supplements[len(selected_supplements):],
-                ]
-            )[: max_results - len(selected)]
+                    *([recovery["warning"]] if recovery and recovery.get("warning") else []),
+                    *(
+                        [MEMORY_SEARCH_PARTIAL_WARNING]
+                        if memory is not None and memory.outcome == "partial"
+                        else []
+                    ),
+                ],
+            )
         )
-    return _sort_tool_results(selected)[:max_results]
+    if memory is not None and memory.outcome == "partial":
+        response["partial"] = True
+    # Another corpus can succeed while primary memory still needs repair.
+    if recovery and recovery.get("action"):
+        response["action"] = recovery["action"]
+    return response
 
 
-def _sort_tool_results(results: list[dict]) -> list[dict]:
-    # tools.ts sortMemorySearchToolResults: score descending, then
-    # `left.path.localeCompare(right.path)` (stable, like toSorted).
+def _settle_memory_attempt(
+    outcome: _DeadlineOutcome,
+    *,
+    store: SQLiteMemoryStore,
+    config: MemoryConfig,
+    params: MemorySearchParams,
+    max_results: int,
+    min_score: float,
+    cooldown_key: str,
+    runtime_identity: RuntimeIdentity,
+) -> CorpusAttempt:
+    """The memory corpus's attempt from its worker's outcome (``attemptMemoryCorpus``)."""
+    if outcome.status == "ok":
+        value = outcome.value
+        if "paused" in value:
+            unavailable = build_paused_memory_index_unavailable_result(
+                value["paused"], runtime_identity=runtime_identity
+            )
+            # Neither a cooldown nor a failure of the search itself.
+            return CorpusAttempt(
+                corpus="memory",
+                outcome="unavailable",
+                value={"results": [], "unavailableResult": unavailable},
+                error=unavailable["error"],
+            )
+        return CorpusAttempt(corpus="memory", outcome="ok", value=value)
+    if outcome.deadline:
+        # The keyword pass is what a deadline leaves: memory-file FTS hits without the
+        # query embedding. A failed or empty pass is an ordinary unavailable corpus.
+        try:
+            keyword_hits = store.search_memory_keywords(
+                params.query, max_results=max_results, min_score=min_score
+            )
+        except Exception:
+            keyword_hits = []
+        if keyword_hits:
+            embeddings = store.embeddings
+            return CorpusAttempt(
+                corpus="memory",
+                outcome="partial",
+                value={
+                    "results": [_serialize_result(config, item) for item in keyword_hits],
+                    "provider": embeddings.provider_id if embeddings is not None else "none",
+                    "model": embeddings.model if embeddings is not None else "fts-only",
+                },
+                error=outcome.error,
+                deadline=True,
+            )
+    record_memory_search_tool_cooldown(
+        cooldown_key, outcome.error or "", deadline=outcome.deadline, code=outcome.code
+    )
+    return CorpusAttempt(
+        corpus="memory",
+        outcome="unavailable",
+        value={"results": []},
+        error=outcome.error,
+        code=outcome.code,
+        deadline=outcome.deadline,
+    )
+
+
+def _sort_by_score_then_path(results: list[dict]) -> list[dict]:
+    # Score descending, then `left.path.localeCompare(right.path)` (stable, like toSorted).
     return sorted(
         results,
         key=lambda item: (-float(item.get("score", 0)), locale_sort_key(item.get("path", ""))),
     )
 
 
-def _ceil_div(value: int, divisor: int) -> int:
-    return -(-value // divisor)
+def _merge_ranked_streams(memory_results: list[dict], supplement_results: list[dict]) -> list[dict]:
+    """``mergeRankedMemorySearchToolStreams``: each backend owns its ranking.
+
+    Only the heads of the two streams are compared; a stream is never reordered.
+    """
+    merged: list[dict] = []
+    memory_index = 0
+    supplement_index = 0
+    while memory_index < len(memory_results) and supplement_index < len(supplement_results):
+        if float(memory_results[memory_index].get("score", 0)) >= float(
+            supplement_results[supplement_index].get("score", 0)
+        ):
+            merged.append(memory_results[memory_index])
+            memory_index += 1
+        else:
+            merged.append(supplement_results[supplement_index])
+            supplement_index += 1
+    merged.extend(memory_results[memory_index:])
+    merged.extend(supplement_results[supplement_index:])
+    return merged
+
+
+def _merge_corpus_results(
+    *,
+    memory_results: list[dict],
+    supplement_results: list[dict],
+    max_results: int,
+    balance_corpora: bool,
+) -> list[dict]:
+    """``mergeMemorySearchCorpusResults`` (tools.ts)."""
+    if not balance_corpora or not memory_results or not supplement_results:
+        return _merge_ranked_streams(memory_results, supplement_results)[:max_results]
+    per_corpus_cap = -(-max_results // 2)
+    memory_take = min(per_corpus_cap, len(memory_results))
+    supplement_take = min(per_corpus_cap, len(supplement_results))
+    while memory_take + supplement_take < max_results:
+        memory = memory_results[memory_take] if memory_take < len(memory_results) else None
+        supplement = (
+            supplement_results[supplement_take] if supplement_take < len(supplement_results) else None
+        )
+        if memory is None and supplement is None:
+            break
+        if supplement is None or (
+            memory is not None
+            and float(memory.get("score", 0)) >= float(supplement.get("score", 0))
+        ):
+            memory_take += 1
+        else:
+            supplement_take += 1
+    return _merge_ranked_streams(
+        memory_results[:memory_take], supplement_results[:supplement_take]
+    )[:max_results]
 
 
 def _serialize_result(config: MemoryConfig, item) -> dict:

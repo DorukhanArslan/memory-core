@@ -46,6 +46,7 @@ gates).
 | 4 Flush plan and runtime flush gate | done (`83cbcc3`, `99ef3c9`, `cb3d48b`) | 5 worklist entries removed; 14 new tests (`flushPlan` windows 5, `memoryFlushGate` fixtures 9) |
 | Area 4 review fixes | done (`dfe7e0c`, `d518dbe`, `5a44e11`, `1c9122f`, `a10eb23`, `d727d2e`, `e68f663`) | no worklist change; 13 new tests (`flushPlan` byte sizes 7, offset zones 4, out-of-range `nowMs` 1; `memoryFlushGate` disabled plan 1); flush plan row back to `partial` |
 | Merge of areas 3 and 4 | done (`e656e88` merge, `301cac9`, `299bd1f`, `2316e5f`, `39fc96c`) | 5 more worklist entries gone from the pin branch (12 labels, 81 tests); 1 new test (`current_time_line_is_one_host_format_for_flush_and_heartbeat`); `heartbeatRunPrompt` now compares the full Body with the reported host format |
+| 5 Memory tools and index identity | done (2026-10-04) | all 41 `memoryGet`, `memoryToolDefinitions`, `memorySearchToolSequence` (17 steps), `memoryIndexIdentity` (24 new cases) and the new `memoryPromptSection` (32 combinations) tests pass against the tag; 4 worklist entries removed (31 tests); new oracle op `memoryPromptSection` |
 
 Full `tests/integration` at `afd9965` plus the plan and matrix edits, `/tmp/openclaw-head` at
 `eb377ac59e6`, Node 24.21.0, seven chunks with the run-loop
@@ -369,8 +370,8 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
 - Python: `memory_core/tools/{memory_get,memory_search,common,citations}.py`,
   `memory_core/memory_paths.py`, `memory_core/index/identity.py`, `memory_core/prompt_section.py`.
 - Tests: 31 (`memoryGet` 26, `memoryToolDefinitions` 1, params/deadline 3, identity 1).
-- Worklist areas: "memory_get contract", "memory tool definitions", "memory_search params,
-  errors and deadline", "memory index identity".
+- Worklist areas: none left; the `memory_get contract`, `memory tool definitions`, `memory_search
+  deadline` and `memory index identity` entries were removed when the area landed.
 - New oracle ops: `memoryPromptSection` (`buildMemoryPromptSection`) for the prompt-section row.
 
 ### 6. Hybrid ranking and indexing (estimate 24-40 h)

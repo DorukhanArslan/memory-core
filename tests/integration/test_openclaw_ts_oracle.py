@@ -1,5 +1,6 @@
 import dataclasses
 import hashlib
+import itertools
 import os
 from pathlib import Path
 import json
@@ -57,12 +58,15 @@ from memory_core.consolidation import (
 )
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.identity import (
+    MEMORY_CHUNKING_VERSION,
+    MEMORY_INDEX_PROVENANCE_VERSION,
     resolve_configured_scope_hash,
     resolve_configured_sources_for_meta,
     resolve_memory_index_identity_state,
     resolve_memory_index_provider_identities,
 )
 from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.prompt_section import build_prompt_section
 from memory_core.flags import FeatureFlags
 from memory_core.tools.common import MemoryToolInputError
 import memory_core.tools.memory_search as memory_search_module
@@ -1178,6 +1182,25 @@ def test_real_openclaw_oracle_memory_tool_definitions_match_python():
     assert result["result"] == [memory_search_tool_definition(), memory_get_tool_definition()]
 
 
+def test_real_openclaw_oracle_memory_prompt_section_matches_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    tools = ["memory_search", "memory_get", "sessions_search", "sessions_history"]
+    scenarios = [
+        {"availableTools": list(combo), "citationsMode": mode}
+        for size in range(len(tools) + 1)
+        for combo in itertools.combinations(tools, size)
+        for mode in ("on", "off")
+    ]
+
+    result = oracle.run({"operation": "memoryPromptSection", "scenarios": scenarios})
+
+    assert result["ok"] is True, result
+    assert result["result"] == [
+        build_prompt_section(set(case["availableTools"]), citations_mode=case["citationsMode"])
+        for case in scenarios
+    ]
+
+
 MEMORY_DISCOVERY_SCENARIOS = {
     "recursive-tree": {
         "MEMORY.md": "# Root\n",
@@ -1974,7 +1997,7 @@ MEMORY_SEARCH_PARAM_ERROR_CASES = {
     "max-results-fraction-string": {"query": "x", "maxResults": "2.5"},
     "max-results-word": {"query": "x", "maxResults": "abc"},
     "max-results-hex": {"query": "x", "maxResults": "0x10"},
-    "max-results-empty-string": {"query": "x", "maxResults": ""},
+    "corpus-unknown": {"query": "x", "corpus": "MEMORY"},
     "max-results-boolean": {"query": "x", "maxResults": True},
     "max-results-array": {"query": "x", "maxResults": [3]},
     "max-results-unsafe-integer": {"query": "x", "maxResults": 9007199254740992},
@@ -2023,9 +2046,36 @@ MEMORY_SEARCH_PARAM_ACCEPTED_CASES = {
     },
     "camel-case-wins": {"query": "glacier", "maxResults": 2, "max_results": 1},
     "null-camel-case-hides-alias": {"query": "glacier", "maxResults": None, "max_results": 1},
-    "unknown-corpus-searches-all-sources": {"query": "glacier", "maxResults": 1, "corpus": "MEMORY"},
     "integral-float": {"query": "glacier", "maxResults": 1.0, "minScore": -0.5},
 }
+
+
+def test_real_openclaw_oracle_memory_search_blank_max_results_reads_as_omitted(tmp_path: Path):
+    # isBlankParamValue: an empty-string maxResults is not an error. Omitted, the limit is the
+    # agent's configured one and the ranking is the manager's (stage 2 area 6), so only the
+    # set of hits is compared.
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]), timeout_seconds=60
+    )
+    (tmp_path / "MEMORY.md").write_text("- Glacier storage keeps backups cold.", encoding="utf-8")
+    memory_file = tmp_path / "memory" / "2026-05-26.md"
+    memory_file.parent.mkdir(parents=True, exist_ok=True)
+    memory_file.write_text("- Move glacier backups weekly.", encoding="utf-8")
+    raw_params = {"query": "glacier", "maxResults": "", "corpus": "memory"}
+
+    result = oracle.run(
+        {"operation": "memorySearch", "workspaceDir": str(tmp_path), "rawParams": raw_params}
+    )
+    cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "python-memory.sqlite")
+    store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+    python_result = execute_memory_search_tool(cfg, store, raw_params)
+
+    assert result["ok"] is True
+    assert "results" in result["result"], result["result"]
+    assert sorted(hit["path"] for hit in result["result"]["results"]) == sorted(
+        hit["path"] for hit in python_result["results"]
+    )
 
 
 @pytest.mark.parametrize("case", sorted(MEMORY_SEARCH_PARAM_ACCEPTED_CASES))
@@ -2182,8 +2232,21 @@ MEMORY_SEARCH_TOOL_SEQUENCE = [
 ]
 
 
+# The tag's memory manager repairs a failed index on its own and says so in the first failed
+# search ("Automatic memory index repair was requested ..."). memory-core reindexes only when the
+# host asks, so that warning has no counterpart; it is read as the provider-error default.
+_AUTOMATIC_REPAIR_WARNING = "Automatic memory index repair was requested."
+_PROVIDER_ERROR_WARNING = "Memory search is unavailable due to an embedding/provider error."
+
+
 def _normalize_memory_search_step(step: dict) -> dict:
     result = step["result"]
+    if str(result.get("warning", "")).startswith(_AUTOMATIC_REPAIR_WARNING):
+        result = {
+            **result,
+            "warning": _PROVIDER_ERROR_WARNING,
+            "debug": {**result["debug"], "warning": _PROVIDER_ERROR_WARNING},
+        }
     normalized = {
         key: value
         for key, value in result.items()
@@ -2202,9 +2265,9 @@ def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=120,
     )
-    (tmp_path / "MEMORY.md").write_text(
-        "# Long-Term Memory\n\n- Glacier storage keeps backups cold.", encoding="utf-8"
-    )
+    # One line, so one chunk on both sides: how the tag's chunker splits a file is stage 2
+    # area 6 (a heading and a list item are two chunks there).
+    (tmp_path / "MEMORY.md").write_text("Glacier storage keeps backups cold.", encoding="utf-8")
     wiki_results = [
         {"corpus": "wiki", "path": "w1.md", "title": "W1", "kind": "entity", "score": 5,
          "snippet": "glacier wiki"},
@@ -2219,11 +2282,13 @@ def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
         }
     )
 
+    # The oracle's agent searches memory files only: session search is off there.
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
         vector_weight=0,
         text_weight=1,
+        session_search=False,
     )
     provider = _ScriptedEmbeddingProvider()
     wiki = _ScriptedWikiSupplement(wiki_results)
@@ -2249,7 +2314,11 @@ def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
             python_steps.append(
                 {
                     "result": execute_memory_search_tool(
-                        cfg, store, step["rawParams"], supplements=[wiki]
+                        cfg,
+                        store,
+                        step["rawParams"],
+                        supplements=[wiki],
+                        runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
                     ),
                     "embedQueryCalls": provider.calls - calls_before,
                 }
@@ -2262,7 +2331,7 @@ def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
     assert [_normalize_memory_search_step(step) for step in result["result"]] == [
         _normalize_memory_search_step(step) for step in python_steps
     ]
-    assert python_steps[6]["result"]["error"] == "memory_search timed out after 15s"
+    assert python_steps[6]["result"]["error"] == "memory_search timed out after 30s"
 
 
 _IDENTITY_KEY = "k" * 64
@@ -2275,8 +2344,10 @@ _IDENTITY_META = {
     "scopeHash": _IDENTITY_SCOPE,
     "chunkTokens": 400,
     "chunkOverlap": 80,
+    "chunkingVersion": MEMORY_CHUNKING_VERSION,
     "vectorDims": 8,
     "ftsTokenizer": "unicode61",
+    "provenanceVersion": MEMORY_INDEX_PROVENANCE_VERSION,
 }
 _IDENTITY_PARAMS = {
     "meta": _IDENTITY_META,
@@ -2334,6 +2405,50 @@ MEMORY_INDEX_IDENTITY_STATE_CASES = {
     "empty-meta-object": _identity_case(meta={}),
     "null-model": _identity_case(meta={**_IDENTITY_META, "model": None}),
     "provider-missing-in-meta": _identity_case(drop_meta=("provider",)),
+    # Versions written by the indexer: older and newer, and which one wins.
+    "provenance-missing": _identity_case(drop_meta=("provenanceVersion",)),
+    "provenance-older": _identity_case(meta={**_IDENTITY_META, "provenanceVersion": 0}),
+    "provenance-newer": _identity_case(meta={**_IDENTITY_META, "provenanceVersion": 2}),
+    "provenance-string": _identity_case(meta={**_IDENTITY_META, "provenanceVersion": "1"}),
+    "provenance-null": _identity_case(meta={**_IDENTITY_META, "provenanceVersion": None}),
+    "chunking-version-missing": _identity_case(drop_meta=("chunkingVersion",)),
+    "chunking-version-older": _identity_case(meta={**_IDENTITY_META, "chunkingVersion": 4}),
+    "chunking-version-newer": _identity_case(meta={**_IDENTITY_META, "chunkingVersion": 6}),
+    "chunking-version-older-model-changed": _identity_case(
+        meta={**_IDENTITY_META, "chunkingVersion": 4, "model": "m0"}
+    ),
+    "chunking-version-older-scope-changed": _identity_case(
+        meta={**_IDENTITY_META, "chunkingVersion": 4}, configuredScopeHash="other"
+    ),
+    "chunking-version-older-sources-changed": _identity_case(
+        meta={**_IDENTITY_META, "chunkingVersion": 4}, configuredSources=["memory"]
+    ),
+    "chunking-version-older-tokenizer-changed": _identity_case(
+        meta={**_IDENTITY_META, "chunkingVersion": 4}, ftsTokenizer="trigram"
+    ),
+    "provenance-older-chunking-newer": _identity_case(
+        meta={**_IDENTITY_META, "provenanceVersion": 0, "chunkingVersion": 9}
+    ),
+    "provenance-newer-chunking-older": _identity_case(
+        meta={**_IDENTITY_META, "provenanceVersion": 2, "chunkingVersion": 4}
+    ),
+    "provenance-older-model-changed": _identity_case(
+        meta={**_IDENTITY_META, "provenanceVersion": 0, "model": "m0"}
+    ),
+    # A provider that does not name its model: no model or provider-settings check.
+    "provider-without-model": _identity_case(provider={"id": "p1"}),
+    "provider-without-model-meta-without-model": _identity_case(
+        provider={"id": "p1"}, drop_meta=("model",)
+    ),
+    # Order of the configuration checks: sources before scope before chunking before
+    # tokenizer before vector dimensions.
+    "sources-before-vector-dims": _identity_case(
+        drop_meta=("vectorDims",), configuredSources=["memory"]
+    ),
+    "tokenizer-before-vector-dims": _identity_case(
+        drop_meta=("vectorDims",), ftsTokenizer="trigram"
+    ),
+    "provider-key-before-sources": _identity_case(providerKey="other", configuredSources=["memory"]),
 }
 
 MEMORY_INDEX_PROVIDER_IDENTITY_CASES = [

@@ -80,9 +80,10 @@ whether the facade should return an empty recall instead is an open decision.
 
 ### Corpus
 
-The tool has no corpus enum check. Upstream enforces the schema enum
-(`memory|wiki|all|sessions`) in its agent loop, and in memory-core that loop is
-the host's.
+`corpus` is checked against `memory|wiki|all|sessions` like upstream's `readCorpusParam`: an unknown
+value fails closed with `corpus must be one of: memory, wiki, all, sessions` instead of searching
+every source, and a blank string reads as omitted. (The schema enum is also enforced by the host's
+argument validation.)
 
 | `corpus` | Memory index | Supplements | Result mix |
 | --- | --- | --- | --- |
@@ -90,7 +91,10 @@ the host's.
 | `sessions` | session transcripts only | no | session hits |
 | `wiki` | not searched | yes | supplement hits |
 | `all` | every source | yes | balanced: up to `ceil(max/2)` per side, then backfill |
-| omitted, blank or anything else | every source | no | memory and session hits |
+| omitted or blank | the default sources | no | memory and session hits |
+
+The default sources are memory and sessions; with `MemoryConfig.session_search=False` they are
+memory only and `corpus=sessions` is refused (`Session transcript search is not enabled.`).
 
 ## Results
 
@@ -100,8 +104,36 @@ Success:
 {"results": [...], "provider": "openai-compatible", "model": "text-embedding-3-small", "citations": "on"}
 ```
 
-`provider`/`model` are absent when memory was not searched (`corpus=wiki`, or
-`corpus=all` during a cooldown). FTS-only stores report `none` / `fts-only`.
+`provider`/`model` are absent when memory was not searched (`corpus=wiki`). FTS-only stores report
+`none` / `fts-only`.
+
+`corpus=wiki` and `corpus=all` report each corpus they covered, so a failure of one is not hidden by
+the results of the other:
+
+```python
+{
+    "results": [...],
+    "citations": "on",
+    "corpora": [
+        {"corpus": "memory", "outcome": "unavailable", "error": "provider exploded"},
+        {"corpus": "wiki", "outcome": "ok"},
+    ],
+    "warning": "Memory corpus unavailable: provider exploded",
+    "error": "provider exploded",
+}
+```
+
+`outcome` is `ok`, `partial`, `unavailable` or `not-registered`. With `corpus=all` a failed memory
+corpus is such an outcome and **not** the unavailable result below: a host that calls
+`memory_search()` with its default `corpus="all"` must read `warning`, `error` and `corpora`
+(or pass `corpus="memory"`, or `corpus=None`, to get the unavailable result). The tool's description
+tells the model to surface a corpus warning to the user.
+
+A search that hit its deadline but has memory-file keyword matches returns them as a partial result:
+`partial: true`, `timedOut`, `timeoutMs`, the `partial` outcome of the memory corpus and the warning
+`Only memory-file keyword matches are included; semantic memory retrieval did not finish within the
+search time limit. Session transcript results are not included.` A partial result records no
+cooldown.
 
 Unavailable (a timeout, an error, or an active cooldown):
 
@@ -110,10 +142,12 @@ Unavailable (a timeout, an error, or an active cooldown):
     "results": [],
     "disabled": True,
     "unavailable": True,
-    "error": "memory_search timed out after 15s",
-    "warning": "Memory search is unavailable due to an embedding/provider error.",
-    "action": "Check embedding provider configuration and retry memory_search.",
-    "debug": {"warning": "...", "action": "...", "error": "memory_search timed out after 15s"},
+    "timedOut": True,
+    "timeoutMs": 30000,
+    "error": "memory_search timed out after 30s",
+    "warning": "Memory search did not finish within its time limit.",
+    "action": "Retry memory_search after a short wait: ...",
+    "debug": {"warning": "...", "action": "...", "error": "memory_search timed out after 30s"},
 }
 ```
 
@@ -124,6 +158,7 @@ The warning and action are chosen by the lower-cased reason:
 | --- | --- |
 | `insufficient_quota`, `quota` or `429` | provider quota exhausted / top up or switch provider |
 | `missing node:sqlite`, `no such built-in module: node:sqlite` | runtime lacks SQLite (text from `RuntimeIdentity`) |
+| a deadline (provenance from the deadline owner, not the text) | did not finish within its time limit / retry after a short wait, then inspect the index (text from `RuntimeIdentity`) |
 | anything else | embedding/provider error / check provider configuration |
 
 Paused (the index identity is missing or mismatched): the same shape, with
@@ -152,10 +187,11 @@ checks `disabled`.
 
 ## Deadline and cooldown
 
-- Each search runs on a daemon worker thread with a 15 s deadline
-  (`MEMORY_SEARCH_TOOL_TIMEOUT_MS`). This works from any thread and inside a
-  running event loop. On timeout the caller gets the unavailable result
-  (`memory_search timed out after 15s`) at once. Then the search's
+- Each corpus (memory, and the wiki supplements) runs on its own daemon worker thread with a 30 s
+  deadline (`MEMORY_SEARCH_TOOL_TIMEOUT_MS`; 15 s before v2026.9.6). This works from any thread and
+  inside a running event loop. On timeout the caller gets the unavailable result
+  (`memory_search timed out after 30s`) at once, or a partial result when keyword hits exist (see
+  above). Then the search's
   `CancellationSignal` is aborted: the open SQLite statement is interrupted and
   `SQLiteMemoryStore.search` stops at its next checkpoint (before and after the
   query embedding, and between FTS probes). A search only reads, so the
@@ -165,9 +201,11 @@ checks `disabled`.
   `config.agent_id ?? agent_session_key ?? "default"`
   (`memory_search_tool_cooldown_key`). While a cooldown is active, memory is
   not searched and the unavailable result repeats the recorded error.
+- The cooldown keeps the failure that started it (error, deadline provenance, error code), so a
+  replayed deadline still reads as a deadline.
 - `corpus=wiki` never reads or records a cooldown. `corpus=all` still searches
-  supplements during a cooldown, and records one only when the memory phase
-  failed. A paused index records no cooldown.
+  supplements during a cooldown and reports the memory corpus as unavailable. A paused index and a
+  partial result record no cooldown.
 - Only stores that open the same index file with the same agent id share a
   cooldown. Workspaces and live subjects that all use the default
   `agent_id="main"` have separate indexes, so one failing never pauses the

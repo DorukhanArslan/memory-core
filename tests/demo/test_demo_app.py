@@ -867,7 +867,7 @@ def test_tool_loop_records_every_curation_error_as_refused(client, lab, monkeypa
     assert event_types(client).count("curation.refused") == 2
 
 
-def test_tool_loop_counts_disabled_payloads_as_failed_calls(client, monkeypatch):
+def test_tool_loop_counts_error_payloads_as_failed_calls(client, monkeypatch):
     use_engine(monkeypatch, StubEngine([
         ("", [tool_call("c1", "memory_get", {"path": "AGENTS.md"}),
               tool_call("c2", "memory_get", {"path": "MEMORY.md"})]),
@@ -877,7 +877,10 @@ def test_tool_loop_counts_disabled_payloads_as_failed_calls(client, monkeypatch)
     results = {item["id"]: item for item in frames_of(send(client, "Oku."), "tool_result")}
 
     assert results["c1"]["ok"] is False
-    assert results["c1"]["result"] == {"path": "AGENTS.md", "text": "", "disabled": True, "error": "path required"}
+    assert results["c1"]["result"] == {
+        "path": "AGENTS.md", "text": "", "status": "error", "code": "MEMORY_PATH_NOT_ALLOWED",
+        "error": "path is not an allowed Markdown memory file",
+    }
     assert results["c2"]["ok"] is True
 
 
@@ -2094,7 +2097,7 @@ def test_default_lab_is_fts_only_and_never_builds_an_embedder(client, lab, embed
     assert result["identity"]["status"] == "valid"
     assert result["reindexed"] is True and isinstance(result["ms"], int)
     assert hybrid.status_code == 400 and hybrid.json()["code"] == "fts_only"
-    assert status["embeddings"]["mode"] == "fts-only" and status["deadlineMs"] == 15_000
+    assert status["embeddings"]["mode"] == "fts-only" and status["deadlineMs"] == 30_000
     assert embeddings.instances == []
     assert "embedding.request" not in event_types(client)
 

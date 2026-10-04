@@ -25,6 +25,11 @@ class MemoryConfig:
     temporal_decay_enabled: bool = False
     temporal_decay_half_life_days: float = 30.0
     flags: FeatureFlags | None = None
+    # Whether the memory tools search indexed session transcripts (OpenClaw
+    # `memory.search.sources` containing "sessions"). Off: `corpus=sessions` is refused and a
+    # search without a corpus covers memory files only. The index itself is the host's:
+    # sessions are indexed when the workspace is given a state directory.
+    session_search: bool = True
 
     def effective_flags(self) -> FeatureFlags:
         """Resolve feature flags; explicit `flags` wins over legacy booleans."""

@@ -10,6 +10,7 @@ from pathlib import Path
 from memory_core.bootstrap._js import js_trim
 from memory_core.memory_paths import (
     SESSION_CORPUS_FILE_RE,
+    MemoryPathNotAllowedError,
     UnsafeMemoryPathError,
     validate_daily_memory_path,
 )
@@ -29,16 +30,21 @@ OPENCLAW_REPAIR_DIRNAME = ".openclaw-repair"
 # (packages/memory-host-sdk/src/host/read-file.ts:78,114,117) and fs-safe
 # statRegularFile (symlinked or non-regular target).
 MEMORY_PATH_REQUIRED_ERROR = "path required"
+# read-file.ts memoryPathNotAllowed(): the gate refusal, with its error code.
+MEMORY_PATH_NOT_ALLOWED_ERROR = "path is not an allowed Markdown memory file"
 MEMORY_PATH_NOT_REGULAR_FILE_ERROR = "path must be a regular file"
 _LEADING_DOTS_AND_SLASHES_RE = re.compile(r"^[./]+")
 
 
 def is_memory_path(rel_path: str) -> bool:
-    """Port of OpenClaw ``isMemoryPath`` + ``normalizeRelPath`` (host/internal.ts:76-110)."""
+    """Port of OpenClaw ``isMemoryPath`` + ``normalizeRelPath`` (host/internal.ts:96-170)."""
     normalized = _LEADING_DOTS_AND_SLASHES_RE.sub("", js_trim(rel_path)).replace("\\", "/")
     if not normalized:
         return False
-    if normalized == CANONICAL_ROOT_MEMORY_FILENAME or normalized.lower() == "dreams.md":
+    if (
+        normalized in (CANONICAL_ROOT_MEMORY_FILENAME, "USER.md")
+        or normalized.lower() == "dreams.md"
+    ):
         return True
     return normalized.startswith("memory/")
 
@@ -327,7 +333,7 @@ class MemoryWorkspace:
             rel_path
         )
         if not in_workspace or not is_memory_path(rel_path) or not str(abs_path).endswith(".md"):
-            raise UnsafeMemoryPathError(MEMORY_PATH_REQUIRED_ERROR)
+            raise MemoryPathNotAllowedError(MEMORY_PATH_NOT_ALLOWED_ERROR)
         if not self.root.exists():
             # fs-safe root(): "root dir not found" counts as a missing file.
             return rel_path, None
@@ -340,7 +346,7 @@ class MemoryWorkspace:
         if stat.S_ISLNK(file_stat.st_mode) or not stat.S_ISREG(file_stat.st_mode):
             raise UnsafeMemoryPathError(MEMORY_PATH_NOT_REGULAR_FILE_ERROR)
         if not self.is_path_inside_root(abs_path.resolve()):
-            raise UnsafeMemoryPathError(MEMORY_PATH_REQUIRED_ERROR)
+            raise MemoryPathNotAllowedError(MEMORY_PATH_NOT_ALLOWED_ERROR)
         return rel_path, abs_path
 
     def append_daily_memory(self, rel_path: str, entry: str) -> Path:

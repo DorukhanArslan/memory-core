@@ -1198,6 +1198,26 @@ async function main() {
     }
   }
 
+  if (payload.operation === "memoryPromptSection") {
+    // `## Memory Recall` of the real prompt-section builder (memory-tool-contract.ts
+    // buildMemoryPromptSection): one result per scenario of available tools and citations mode.
+    const contract = await importFromRepo(
+      repoPath,
+      "extensions/memory-core/src/memory-tool-contract.ts",
+    );
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.scenarios as Array<{ availableTools: string[]; citationsMode: string }>).map(
+        (scenario) =>
+          contract.buildMemoryPromptSection({
+            availableTools: new Set(scenario.availableTools),
+            citationsMode: scenario.citationsMode,
+          }),
+      ),
+    };
+  }
+
   if (payload.operation === "memoryToolDefinitions") {
     // The model-facing name, description and parameter schema of the real
     // memory_search and memory_get tools (tools.ts createMemorySearchTool /

@@ -29,6 +29,12 @@ class UnsafeMemoryPathError(ValueError):
     """Raised when a path is not allowed for the requested memory read or write."""
 
 
+class MemoryPathNotAllowedError(UnsafeMemoryPathError):
+    """``memoryPathNotAllowed()`` of read-file.ts: its error code is ``MEMORY_PATH_NOT_ALLOWED``."""
+
+    code = "MEMORY_PATH_NOT_ALLOWED"
+
+
 def is_daily_memory_path(rel_path: str) -> bool:
     return DAILY_MEMORY_PATH_RE.fullmatch(rel_path) is not None
 

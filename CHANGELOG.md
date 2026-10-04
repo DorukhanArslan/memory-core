@@ -61,6 +61,26 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Changed
 
+- The memory tools follow OpenClaw v2026.9.6 (port plan area 5, docs/memory_search_tool.md):
+  - `memory_get` results carry `status` (`ok`, `not_found`, `error`); a refused or failed read is
+    `{"path", "text": "", "status": "error", "code", "error"}` (`MEMORY_PATH_NOT_ALLOWED` for a path
+    outside the memory files) and `disabled` is gone. USER.md is a memory path. `corpus=wiki` and
+    `corpus=all` add `corpora`, `warning` and `error`.
+  - `memory_search` and `memory_get` read an unknown `corpus` as an error instead of searching every
+    source, and a blank `maxResults`, `from` or `lines` as omitted. Their descriptions and schemas
+    are the tag's (USER.md, the outcome guidance, `minimum`, `additionalProperties: false`), and
+    `build_prompt_section` is the tag's `## Memory Recall` with the session-history lines.
+  - The memory deadline is 30 s (was 15 s). With `corpus=all` (the facade's default) or `wiki`, each
+    corpus has its own outcome in `corpora`, so a failed memory corpus is reported next to the wiki
+    hits instead of as the unavailable result; use `corpus="memory"` for that result. A deadline
+    with keyword hits returns them as `partial: true` and records no cooldown. New:
+    `MemoryConfig.session_search` (default on), `SQLiteMemoryStore.search_memory_keywords`.
+  - `SQLiteMemoryStore.index_identity()` returns upstream's diagnostics (`code`, `owner`,
+    `versionOrder`, `chunkingVersionOnly`), and a reindex writes `provenanceVersion` and
+    `chunkingVersion`. **An index written by an earlier memory-core has neither, so search is
+    paused (`index provenance classifier changed`) until `SQLiteMemoryStore.reindex(workspace)`
+    runs.** The recorded chunking version is the tag's before the chunker is re-ported (area 6).
+
 - The project name is now memory-core (0.1.0 used an earlier name), and every spelling of it
   derives from the one declaration: the distribution `memory-core`, the import package
   `memory_core`, the `MEMORY_CORE_` environment prefix (the Lab's `MEMORY_CORE_DEMO_OPENAI_*`

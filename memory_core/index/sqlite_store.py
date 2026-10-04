@@ -5,6 +5,7 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
@@ -21,7 +22,9 @@ from memory_core.index.hybrid import (
 from memory_core.index.identity import (
     DEFAULT_FTS_TOKENIZER,
     FTS_ONLY_MODEL,
+    MEMORY_CHUNKING_VERSION,
     MEMORY_INDEX_META_KEY,
+    MEMORY_INDEX_PROVENANCE_VERSION,
     MEMORY_INDEX_META_TABLE,
     NO_PROVIDER_ID,
     parse_index_meta,
@@ -147,7 +150,7 @@ class SQLiteMemoryStore:
         with self.connect() as db:
             return db.execute("SELECT 1 FROM chunks LIMIT 1").fetchone() is not None
 
-    def index_identity(self) -> dict[str, str]:
+    def index_identity(self) -> dict[str, Any]:
         """Whether the index matches this store's provider and settings.
 
         ``{"status": "valid"}``, or ``missing``/``mismatched`` with an upstream
@@ -180,7 +183,9 @@ class SQLiteMemoryStore:
             "scopeHash": resolve_configured_scope_hash(),
             "chunkTokens": CHUNK_TOKENS,
             "chunkOverlap": CHUNK_OVERLAP,
+            "chunkingVersion": MEMORY_CHUNKING_VERSION,
             "ftsTokenizer": DEFAULT_FTS_TOKENIZER,
+            "provenanceVersion": MEMORY_INDEX_PROVENANCE_VERSION,
         }
         if provider is not None and vector_dims:
             meta["vectorDims"] = vector_dims
@@ -384,6 +389,25 @@ class SQLiteMemoryStore:
             for item in ranked
             if _mmr_key(item) in keyword_keys and item.score >= 0
         ][:max_results]
+
+    def search_memory_keywords(
+        self, query: str, *, max_results: int = 5, min_score: float = 0.0
+    ) -> list[HybridResult]:
+        """Memory-file keyword hits without the query embedding.
+
+        What ``memory_search`` returns as a partial result when semantic retrieval
+        misses its deadline (OpenClaw's ``onPartialResults`` of the memory manager):
+        FTS only, session transcripts excluded, nothing when keyword search is off or
+        the index identity is not valid.
+        """
+        if not self.flags.text_search or self.index_identity()["status"] != "valid":
+            return []
+        return self._search_keyword_only(
+            query,
+            max_results=max_results,
+            min_score=min_score,
+            source_filter=_source_filter_clause({"memory"}),
+        )
 
     def _search_keyword_only(
         self,

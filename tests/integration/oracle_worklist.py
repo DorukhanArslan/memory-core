@@ -72,46 +72,6 @@ def _oracle(*names: str) -> tuple[str, ...]:
 
 PENDING_PORTS: tuple[PendingPort, ...] = (
     PendingPort(
-        "memory_get contract (status ok/not_found/error, MEMORY_PATH_NOT_ALLOWED and read-failure "
-        "codes, `disabled` dropped, USER.md and DREAMS.md as memory paths)",
-        "35e0bc22ead (#125979), 28630a9a650 (#114819)",
-        _oracle(
-            "memory_get_reads_line_window_like_python",
-            "memory_get_reads_root_memory_like_python",
-            "memory_get_disabled_error_matches_python",
-            "memory_get_missing_file_matches_python",
-            "memory_get_char_budget_matches_python",
-            "memory_get_path_gate_matches_python[sessions/main/session-nebula.jsonl]",
-            "memory_get_path_gate_matches_python[memory/.dreams/session-corpus/2026-05-26.txt]",
-            "memory_get_path_gate_matches_python[memory/.dreams/session-corpus/2026-05-27.md]",
-            "memory_get_path_gate_matches_python[memory/../AGENTS.md]",
-            "memory_get_path_gate_matches_python[memory.md]",
-            "memory_get_path_gate_matches_python[dreams.md]",
-            "memory_get_path_gate_matches_python[/MEMORY.md]",
-            "memory_get_path_gate_matches_python[<abs>/memory/2026-05-26.md]",
-            "memory_get_path_gate_matches_python[./memory/2026-05-26.md]",
-            "memory_get_path_gate_matches_python[memory/2026-05-26.md]",
-            "memory_get_path_gate_matches_python[memory/bytes.md]",
-            "memory_get_path_gate_matches_python[memory/link.md]",
-            "memory_get_path_gate_matches_python[memory/dir.md]",
-            "memory_get_path_gate_matches_python[memory/missing.md]",
-            "memory_get_tool_params_match_python[raw_params12]",
-            "memory_get_tool_params_match_python[raw_params13]",
-            "memory_get_tool_params_match_python[raw_params14]",
-            "memory_get_tool_params_match_python[raw_params15]",
-            "memory_get_tool_params_match_python[raw_params16]",
-            "memory_get_tool_params_match_python[raw_params17]",
-            "memory_get_tool_params_match_python[raw_params18]",
-        ),
-        plan_area=5,
-    ),
-    PendingPort(
-        "memory tool definitions (descriptions name MEMORY.md, USER.md and per-corpus outcomes)",
-        "16bec3c7272 (#126552), 3fe833dfa40 (#126530)",
-        _oracle("memory_tool_definitions_match_python"),
-        plan_area=5,
-    ),
-    PendingPort(
         "memory_search ranking and indexing (hybrid weights fixed at 0.7/0.3, MMR and temporal "
         "decay on by default, filename/path matching, chunk ranges)",
         "783a5d21cfc (#111382), c37b53868d1 (#121224), 28630a9a650 (#114819), "
@@ -133,23 +93,6 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
             "memory_search_indexes_invalid_utf8_markdown",
         ),
         plan_area=6,
-    ),
-    PendingPort(
-        "memory_search params, errors and deadline (empty maxResults rejected, corpus validated, "
-        "30 s deadline with partial-timeout guidance, per-corpus outcomes)",
-        "d46f9ebf2b2 (#147702), 3fe833dfa40 (#126530)",
-        _oracle(
-            "memory_search_param_errors_match_python[max-results-empty-string]",
-            "memory_search_param_coercion_matches_python[unknown-corpus-searches-all-sources]",
-            "memory_search_deadline_and_cooldown_match_python",
-        ),
-        plan_area=5,
-    ),
-    PendingPort(
-        "memory index identity (provenance_version reason)",
-        "28630a9a650 (#114819)",
-        _oracle("memory_index_identity_matches_python"),
-        plan_area=5,
     ),
     PendingPort(
         "deep dreaming policy (enabled by default, minScore 0.75, integer fields limit, "

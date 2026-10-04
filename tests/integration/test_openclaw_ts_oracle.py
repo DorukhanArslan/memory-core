@@ -767,6 +767,100 @@ def test_real_openclaw_oracle_truncate_tool_results_in_session_file_matches_pyth
     assert result["result"]["toolTexts"] == list(python_result.tool_texts)
 
 
+def _aggregate_session_cases(tmp_path: Path) -> dict[str, tuple[list[str], dict]]:
+    spill = tmp_path / "spill.txt"
+    spill.write_text("full output", encoding="utf-8")
+    footer = f"\nFull output: {spill}"
+    ascii_block = "alpha beta gamma delta epsilon\n" * 150
+    cjk_block = "記憶 line with 結果 and emoji 😀\n" * 200
+    return {
+        "ascii-aggregate": (
+            [ascii_block, ascii_block, ascii_block, ascii_block],
+            {"maxChars": 100_000, "aggregateMaxChars": 6_000},
+        ),
+        "cjk-aggregate": (
+            [cjk_block, cjk_block, cjk_block],
+            {"maxChars": 100_000, "aggregateMaxChars": 5_000},
+        ),
+        "clear-phase": (
+            [ascii_block, ascii_block, ascii_block, ascii_block],
+            {"maxChars": 100_000, "aggregateMaxChars": 300},
+        ),
+        "protected-trailing": (
+            [ascii_block, ascii_block, ascii_block],
+            {"maxChars": 100_000, "aggregateMaxChars": 5_000, "protectTrailingToolResults": True},
+        ),
+        "oversized-protected": (
+            [ascii_block * 3, ascii_block],
+            {"maxChars": 1_500, "aggregateMaxChars": 100_000, "protectTrailingToolResults": True},
+        ),
+        "flat-spill": (
+            [ascii_block + footer, ascii_block + footer, ascii_block],
+            {
+                "maxChars": 100_000,
+                "aggregateMaxChars": 1_000,
+                "spill": {"fullOutputPath": str(spill), "spilledChars": 4_000},
+            },
+        ),
+        "nested-spill": (
+            [ascii_block + footer, ascii_block + footer, ascii_block],
+            {
+                "maxChars": 100_000,
+                "aggregateMaxChars": 1_000,
+                "spill": {"spill": {"path": str(spill), "truncated": True, "chars": 2_000}},
+            },
+        ),
+    }
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["ascii-aggregate", "cjk-aggregate", "clear-phase", "protected-trailing", "oversized-protected", "flat-spill", "nested-spill"],
+)
+def test_real_openclaw_oracle_truncate_tool_results_aggregate_matches_python(
+    tmp_path: Path, case: str
+):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    texts, options = _aggregate_session_cases(tmp_path)[case]
+    spill_details = options.pop("spill", None)
+    entries = [
+        _session_message("u1", None, {"role": "user", "content": "hello"}),
+        _session_message("a1", "u1", _assistant_history("calling tools")),
+    ]
+    parent = "a1"
+    for index, text in enumerate(texts):
+        message = _tool_result(text)
+        message["toolCallId"] = f"call_{index}"
+        if spill_details is not None and index < 2:
+            message["details"] = spill_details
+        entry_id = f"t{index}"
+        entries.append(_session_message(entry_id, parent, message))
+        parent = entry_id
+    session_file = tmp_path / "session.jsonl"
+    session_file.write_text("".join(f"{json.dumps(e)}\n" for e in entries), encoding="utf-8")
+
+    result = oracle.run(
+        {
+            "operation": "truncateToolResultsInSession",
+            "sessionEntries": entries,
+            "contextWindowTokens": 128_000,
+            **options,
+        }
+    )
+    python_result = truncate_oversized_tool_results_in_session_file(
+        session_file,
+        context_window_tokens=128_000,
+        max_chars_override=options.get("maxChars"),
+        aggregate_max_chars_override=options.get("aggregateMaxChars"),
+        protect_trailing_tool_results=options.get("protectTrailingToolResults", False),
+    )
+
+    assert result["ok"] is True
+    assert result["result"]["truncated"] is python_result.truncated
+    assert result["result"]["truncatedCount"] == python_result.truncated_count
+    assert result["result"]["toolTexts"] == list(python_result.tool_texts)
+
+
 def _fresh(total_tokens: int, **fields) -> dict:
     """A session entry whose totalTokens is a fresh v1 snapshot (tag's SessionEntry fields)."""
     return {

@@ -66,6 +66,7 @@ from memory_core.index.identity import (
     resolve_memory_index_provider_identities,
 )
 from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.index.chunking import chunk_markdown
 from memory_core.prompt_section import build_prompt_section
 from memory_core.flags import FeatureFlags
 from memory_core.tools.common import MemoryToolInputError
@@ -1182,6 +1183,57 @@ def test_real_openclaw_oracle_memory_tool_definitions_match_python():
     assert result["result"] == [memory_search_tool_definition(), memory_get_tool_definition()]
 
 
+MARKDOWN_CHUNK_CASES = [
+    {"content": "# Long-Term Memory\n\n- Glacier storage keeps backups cold.", "tokens": 400,
+     "overlap": 80, "perEntry": True},
+    {"content": "# Long-Term Memory\n\n- Glacier storage keeps backups cold.", "tokens": 400,
+     "overlap": 80},
+    {"content": "\n".join(f"line {i} " + "word " * 12 for i in range(60)), "tokens": 20,
+     "overlap": 5},
+    {"content": "\n".join(f"line {i} " + "word " * 12 for i in range(60)), "tokens": 20,
+     "overlap": 0},
+    {"content": "x" * 500 + "\nshort\n" + "y" * 130, "tokens": 8, "overlap": 2},
+    {"content": "漢字" * 100 + "\nabc\n" + "한국어 텍스트 " * 30, "tokens": 10, "overlap": 3},
+    {"content": "😀" * 90 + "\nok", "tokens": 5, "overlap": 1},
+    {"content": "- a\n- b\ncont\n\n## H\ntext\n- c " + "z" * 300 + "\n#nohead\n- d",
+     "tokens": 10, "overlap": 2, "perEntry": True},
+    {"content": "intro\n- a\n  more\n\n\n# Title\n- b", "tokens": 400, "overlap": 80,
+     "perEntry": True},
+    {"content": "", "tokens": 400, "overlap": 80},
+    {"content": "\n\n\n", "tokens": 400, "overlap": 80, "perEntry": True},
+    {"content": "a\r\nb\r\n- c", "tokens": 400, "overlap": 80, "perEntry": True},
+    {"content": "\n".join(f"p{i} " + "w " * 30 for i in range(40)), "tokens": 16, "overlap": 4,
+     "perEntry": True},
+]
+
+
+def test_real_openclaw_oracle_markdown_chunks_match_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+    result = oracle.run({"operation": "markdownChunks", "cases": MARKDOWN_CHUNK_CASES})
+
+    assert result["ok"] is True, result
+    for case, expected in zip(MARKDOWN_CHUNK_CASES, result["result"], strict=True):
+        got = [
+            {
+                "startLine": chunk.start_line,
+                "endLine": chunk.end_line,
+                "entryStartLine": chunk.entry_start_line,
+                "entryEndLine": chunk.entry_end_line,
+                "text": chunk.text,
+            }
+            for chunk in chunk_markdown(
+                "MEMORY.md",
+                case["content"],
+                target_tokens=case["tokens"],
+                overlap_tokens=case["overlap"],
+                per_entry=case.get("perEntry", False),
+            )
+        ]
+        # The caller drops whitespace-only chunks (manager-index-preparation.ts).
+        assert got == [chunk for chunk in expected if chunk["text"].strip()], case
+
+
 def test_real_openclaw_oracle_memory_prompt_section_matches_python():
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
     tools = ["memory_search", "memory_get", "sessions_search", "sessions_history"]
@@ -1314,8 +1366,6 @@ def test_real_openclaw_oracle_memory_search_memory_corpus_matches_python_paths(
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -1381,8 +1431,6 @@ def test_real_openclaw_oracle_memory_search_relaxes_min_score_for_keyword_hits(
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -1437,8 +1485,6 @@ def test_real_openclaw_oracle_memory_search_text_scores_and_line_ranges_match_py
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -1520,8 +1566,6 @@ def test_real_openclaw_oracle_memory_search_vector_scores_match_python(
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=1,
-        text_weight=0,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -1590,8 +1634,6 @@ def test_real_openclaw_oracle_memory_search_hybrid_weighted_scores_match_python(
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0.7,
-        text_weight=0.3,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -2101,8 +2143,6 @@ def test_real_openclaw_oracle_memory_search_param_coercion_matches_python(
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -2286,8 +2326,6 @@ def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
         session_search=False,
     )
     provider = _ScriptedEmbeddingProvider()
@@ -2563,8 +2601,6 @@ def test_real_openclaw_oracle_memory_search_pauses_on_index_model_change(tmp_pat
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8)).reindex(
         MemoryWorkspace(tmp_path)
@@ -8755,8 +8791,6 @@ def test_real_openclaw_oracle_memory_search_finds_session_memory_files(tmp_path:
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -8829,8 +8863,6 @@ def test_real_openclaw_oracle_memory_search_indexes_invalid_utf8_markdown(tmp_pa
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -8911,8 +8943,6 @@ def test_real_openclaw_oracle_memory_search_breaks_score_ties_with_locale_compar
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))

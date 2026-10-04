@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from memory_core.bootstrap._js import js_trim, locale_sort_key
+from memory_core.bootstrap._js import js_trim
 from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
 from memory_core.index.sqlite_store import SQLiteMemoryStore
@@ -646,9 +646,8 @@ def _run_memory_search_tool(
             runtime_identity=runtime_identity,
         )
     wiki_results = [] if wiki is None or wiki.outcome == "not-registered" else (wiki.value or [])
-    # Equal scores break by the path's locale order, which the manager's ranking does at the tag
-    # (stage 2 area 6 ports that ranking).
-    memory_results = _sort_by_score_then_path((memory_value or {}).get("results", []))
+    # The memory stream keeps the index's ranking (score, then MMR order, then locale path order).
+    memory_results = (memory_value or {}).get("results", [])
     if searches_wiki:
         results = _merge_corpus_results(
             memory_results=memory_results,
@@ -756,14 +755,6 @@ def _settle_memory_attempt(
         error=outcome.error,
         code=outcome.code,
         deadline=outcome.deadline,
-    )
-
-
-def _sort_by_score_then_path(results: list[dict]) -> list[dict]:
-    # Score descending, then `left.path.localeCompare(right.path)` (stable, like toSorted).
-    return sorted(
-        results,
-        key=lambda item: (-float(item.get("score", 0)), locale_sort_key(item.get("path", ""))),
     )
 
 

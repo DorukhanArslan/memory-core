@@ -55,5 +55,7 @@ def test_dated_memory_path_parser_follows_js_end_anchor():
     assert parse_dated_memory_path("memory/2026-05-03.md") == (2026, 5, 3)
     assert parse_dated_memory_path("agents/memory/2026-05-03.md") == (2026, 5, 3)
     assert parse_dated_memory_path("memory/2026-05-03.md\n") is None
-    assert parse_dated_memory_path("memory/2026-05-03-1430.md") is None
-    assert parse_dated_memory_path("memory/topics/2026-05-03.md") is None
+    # v2026.9.6: a suffix and subdirectories still make a dated file.
+    assert parse_dated_memory_path("memory/2026-05-03-1430.md") == (2026, 5, 3)
+    assert parse_dated_memory_path("memory/a/b/2026-05-03-notes.md") == (2026, 5, 3)
+    assert parse_dated_memory_path("memory/topics/2026-05-03.md") == (2026, 5, 3)

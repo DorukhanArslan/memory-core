@@ -1198,6 +1198,49 @@ async function main() {
     }
   }
 
+  if (payload.operation === "markdownChunks") {
+    // chunkMarkdown (packages/memory-host-sdk/src/host/markdown-chunks.ts) on each case:
+    // line spans, entry spans and text, without the embedding input and hash.
+    const chunks = await importFromRepo(
+      repoPath,
+      "packages/memory-host-sdk/src/host/markdown-chunks.ts",
+    );
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (
+        payload.cases as Array<{
+          content: string;
+          tokens: number;
+          overlap: number;
+          perEntry?: boolean;
+        }>
+      ).map((entry) =>
+        chunks
+          .chunkMarkdown(entry.content, {
+            tokens: entry.tokens,
+            overlap: entry.overlap,
+            perEntry: entry.perEntry,
+          })
+          .map(
+            (chunk: {
+              startLine: number;
+              endLine: number;
+              entryStartLine?: number;
+              entryEndLine?: number;
+              text: string;
+            }) => ({
+              startLine: chunk.startLine,
+              endLine: chunk.endLine,
+              entryStartLine: chunk.entryStartLine ?? null,
+              entryEndLine: chunk.entryEndLine ?? null,
+              text: chunk.text,
+            }),
+          ),
+      ),
+    };
+  }
+
   if (payload.operation === "memoryPromptSection") {
     // `## Memory Recall` of the real prompt-section builder (memory-tool-contract.ts
     // buildMemoryPromptSection): one result per scenario of available tools and citations mode.

@@ -45,7 +45,11 @@ def _seed(root) -> None:
 
 
 def _kit(root, *, embedder=None, flags=None, **options) -> HostKit:
-    config = MemoryConfig(workspace_dir=root, flags=flags or FeatureFlags(vector_search=False))
+    # No temporal decay: two calls at different instants would differ in the last digits.
+    config = MemoryConfig(
+        workspace_dir=root,
+        flags=flags or FeatureFlags(vector_search=False, temporal_decay=False),
+    )
     memory = Memory.from_workspace(
         root, embedding_provider=embedder, config=config, initialize=False
     )

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import dataclasses
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -60,7 +62,7 @@ def _parse_memory_date_from_path(file_path: str) -> datetime | None:
 
 def _is_evergreen_memory_path(file_path: str) -> bool:
     normalized = file_path.replace("\\", "/").removeprefix("./")
-    if normalized == "MEMORY.md":
+    if normalized in ("MEMORY.md", "USER.md"):
         return True
     if not normalized.startswith("memory/"):
         return False
@@ -72,7 +74,15 @@ def _extract_timestamp(
     file_path: str,
     source: str | None,
     workspace_dir: str | None,
+    session_source_mtimes: Mapping[str, float | None] | None = None,
 ) -> datetime | None:
+    if source == "sessions":
+        # Session paths are logical identities, not workspace files: ranking uses the indexed
+        # source activity (a host-supplied mtime in ms), never a same-named file.
+        mtime = (session_source_mtimes or {}).get(file_path)
+        if mtime is None or not math.isfinite(mtime):
+            return None
+        return datetime.fromtimestamp(mtime / 1000, tz=UTC)
     from_path = _parse_memory_date_from_path(file_path)
     if from_path is not None:
         return from_path
@@ -102,6 +112,7 @@ def apply_temporal_decay_to_hybrid_results(
     temporal_decay: TemporalDecayConfig | None = None,
     workspace_dir: str | None = None,
     now_ms: int | None = None,
+    session_source_mtimes: Mapping[str, float | None] | None = None,
 ) -> list[T]:
     config = temporal_decay or TemporalDecayConfig()
     if not config.enabled:
@@ -122,6 +133,7 @@ def apply_temporal_decay_to_hybrid_results(
                 file_path=path,
                 source=source,
                 workspace_dir=workspace_dir,
+                session_source_mtimes=session_source_mtimes,
             )
 
         timestamp = timestamp_cache[cache_key]
@@ -134,6 +146,10 @@ def apply_temporal_decay_to_hybrid_results(
             age_in_days=_age_in_days_from_timestamp(timestamp, effective_now_ms),
             half_life_days=config.half_life_days,
         )
-        decayed.append(entry.__class__(**{**entry.__dict__, "score": decayed_score}))
+        if dataclasses.is_dataclass(entry) and not getattr(entry, "__dataclass_params__").frozen:
+            entry.score = decayed_score  # type: ignore[attr-defined]
+            decayed.append(entry)
+        else:
+            decayed.append(dataclasses.replace(entry, score=decayed_score))  # type: ignore[type-var]
 
     return decayed

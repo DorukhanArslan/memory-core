@@ -19,7 +19,10 @@ _SUPPORTED_PROVIDER_IDS = {
 
 
 def limit_history_turns(messages: list[dict[str, Any]], limit: int | None) -> list[dict[str, Any]]:
-    """Keep the last N user turns and following messages, matching OpenClaw history.ts.
+    """Keep recent user turns and following messages, matching OpenClaw history.ts.
+
+    Eviction is lazy: nothing is cut until there are more than ceil(1.5 * limit) user
+    turns, then a full batch goes at once.
 
     Leading non-conversation messages (e.g. compactionSummary, branchSummary)
     are always preserved, since they carry summarized pre-compaction context
@@ -39,13 +42,24 @@ def limit_history_turns(messages: list[dict[str, Any]], limit: int | None) -> li
     if not tail:
         return messages
 
+    user_count = sum(1 for message in tail if message.get("role") == "user")
+
+    # Allow a 50% cushion, then evict a full batch so the prompt-cache prefix stays
+    # stable between cuts (history.ts, d5dee714c4f): up to 1.5x turns before cutting.
+    target_user_turns = int(limit)
+    max_user_turns = -(-target_user_turns * 3 // 2)
+    if user_count <= max_user_turns:
+        return messages
+    eviction_batch_size = max_user_turns - target_user_turns + 1
+    user_turns_to_keep = target_user_turns + ((user_count - target_user_turns) % eviction_batch_size)
+
     user_count = 0
     last_user_index = len(tail)
     for index in range(len(tail) - 1, -1, -1):
         if tail[index].get("role") != "user":
             continue
         user_count += 1
-        if user_count > limit:
+        if user_count > user_turns_to_keep:
             return messages[:conversation_start] + tail[last_user_index:]
         last_user_index = index
     return messages

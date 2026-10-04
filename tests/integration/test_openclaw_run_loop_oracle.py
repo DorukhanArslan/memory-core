@@ -5,6 +5,7 @@ import pytest
 
 from demo.openclaw_run_loop_oracle import run_overflow_run_loop_oracle
 from memory_core.overflow_recovery import (
+    CONTINUATION_PROMPT,
     MAX_OVERFLOW_COMPACTION_ATTEMPTS,
     decide_provider_overflow_recovery,
 )
@@ -105,6 +106,19 @@ def test_real_openclaw_run_loop_assistant_error_overflow(scenarios):
 
 
 def test_real_openclaw_run_loop_mid_turn_precheck_continuation(scenarios):
+    # The mid-turn retry still continues from the transcript (user persistence suppressed) but
+    # sends the shared CONTINUATION_PROMPT, not the pin's mid-turn-only text.
+    decision = decide_provider_overflow_recovery(
+        error_text="Context overflow: prompt too large for the model (precheck).",
+        overflow_compaction_attempts=0,
+        attempt_compaction_count=0,
+        preflight_source="mid-turn",
+        compaction_attempted=True,
+        compaction_succeeded=True,
+    )
+    assert decision.suppress_next_user_message_persistence is True
+    assert decision.next_prompt_override == CONTINUATION_PROMPT
+    assert "Continue from the current transcript" not in CONTINUATION_PROMPT
     assert scenarios["mid_turn_precheck_continues_from_transcript"] == {
         "name": "mid_turn_precheck_continues_from_transcript",
         "attemptCalls": 2,
@@ -112,7 +126,7 @@ def test_real_openclaw_run_loop_mid_turn_precheck_continuation(scenarios):
         "truncateCalls": 0,
         "errorKind": None,
         "payloadIsError": None,
-        "secondPromptIncludesContinuation": True,
+        "secondPromptIncludesContinuation": False,
         "secondSuppressesUserPersistence": True,
     }
 

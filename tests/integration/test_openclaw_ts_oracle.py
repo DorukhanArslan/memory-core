@@ -541,6 +541,8 @@ def test_real_openclaw_oracle_preemptive_compaction_routes_match_python():
         "input length and max_tokens exceed context limit (i.e 156321 + 48384 > 200000)",
         "429 Too Many Requests: request exceeds rate limit",
         "Model context window too small (minimum is 128k tokens)",
+        "Rate limit: TPM limit 30,000, requested 45,000 tokens: context overflow: prompt too large",
+        "Rate limit reached for tokens per minute. Limit 30000, Requested 100",
     ],
 )
 def test_real_openclaw_oracle_overflow_error_helpers_match_python(message: str):

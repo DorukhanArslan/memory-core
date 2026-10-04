@@ -224,13 +224,13 @@ def test_openclaw_session_corpus_drops_heartbeat_rows(tmp_path: Path):
     assert default_corpus.read_index_text(default_corpus.discover_files()[0]) == (
         "User: [OpenClaw heartbeat poll]\n"
         "Assistant: **HEARTBEAT_OK**\n"
-        f"User: {HEARTBEAT_PROMPT}\nAlso check the queue.\n"
+        f"User: {HEARTBEAT_PROMPT} Also check the queue.\n"
         "User: What is Project Nebula?\n"
     )
     assert compat_corpus.read_index_text(compat_corpus.discover_files()[0]) == (
         "User: [memory-core heartbeat poll]\n"
         "Assistant: **HEARTBEAT_OK**\n"
-        f"User: {HEARTBEAT_PROMPT}\nAlso check the queue.\n"
+        f"User: {HEARTBEAT_PROMPT} Also check the queue.\n"
         "User: What is Project Nebula?\n"
     )
 
@@ -253,5 +253,5 @@ def test_openclaw_session_corpus_drops_silent_replies(tmp_path: Path):
 
     assert corpus.read_index_text(corpus.discover_files()[0]) == (
         "User: Check the queue.\n"
-        "Assistant: Here is a helpful response.\n\nNO_REPLY\n"
+        "Assistant: Here is a helpful response. NO_REPLY\n"
     )

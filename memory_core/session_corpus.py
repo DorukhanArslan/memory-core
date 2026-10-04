@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -14,6 +15,7 @@ from memory_core.heartbeat import (
     is_silent_reply_payload_text,
 )
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
+from memory_core.session_entry import build_session_entry, parse_jsonl_records
 
 _NEWLINE_RUN_RE = re.compile(f"[{JS_SPACE_CLASS}]*\n+[{JS_SPACE_CLASS}]*")
 _WHITESPACE_RUN_RE = re.compile(f"[{JS_SPACE_CLASS}]+")
@@ -33,6 +35,7 @@ class MemoryCoreSessionCorpus:
         *,
         agent_id: str = "main",
         runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+        redact_text: Callable[[str], str] | None = None,
     ):
         self.state_dir = state_dir.resolve()
         self.agent_id = agent_id
@@ -40,6 +43,8 @@ class MemoryCoreSessionCorpus:
         # dropped; transcripts written by an OpenClaw runtime need
         # OPENCLAW_COMPAT_RUNTIME_IDENTITY.
         self.runtime_identity = runtime_identity
+        # Host redaction of every indexed text (upstream: redactSensitiveText, mode tools).
+        self.redact_text = redact_text
 
     @property
     def sessions_dir(self) -> Path:
@@ -64,37 +69,25 @@ class MemoryCoreSessionCorpus:
         return files
 
     def read_index_text(self, file: SessionCorpusFile) -> str:
-        # Indexing follows OpenClaw memory ingestion
-        # (packages/memory-host-sdk/src/host/session-files.ts buildSessionEntry):
-        # every user/assistant message row is rendered in file order, including
-        # abandoned and side-append branches; ingestion never calls the
-        # transcript-tree helpers. Readers that want the active branch use
-        # memory_core.transcript_tree.select_session_transcript_leaf_controlled_path
-        # (the src/agents/cli-runner/session-history.ts pattern).
-        # Heartbeat prompt rows, silent replies (isSilentReplyPayloadText: NO_REPLY,
-        # the canonical quiet heartbeat answer at v2026.9.6) and bare HEARTBEAT_OK
-        # replies are dropped like sanitizeSessionText (session-files.ts:529-560 at
-        # v2026.9.6). Not ported from that function: inbound-metadata and
-        # internal-runtime-context stripping before the checks, whitespace
-        # normalisation of the indexed text, the system-wrapper, cron-prompt and
-        # exec-completion drops, redaction and 800-char line wrapping.
-        lines: list[str] = []
-        for entry in _read_jsonl(file.abs_path):
-            message = entry.get("message") if isinstance(entry, dict) else None
-            if not isinstance(message, dict):
-                continue
-            role = message.get("role")
-            if role not in {"user", "assistant"}:
-                continue
-            raw_text = _message_text(message.get("content"))
-            text = raw_text.strip()
-            if not text:
-                continue
-            if self._is_heartbeat_row(raw_text, role):
-                continue
-            label = "User" if role == "user" else "Assistant"
-            lines.append(f"{label}: {text}")
-        return "\n".join(lines).rstrip() + ("\n" if lines else "")
+        # Indexing follows OpenClaw memory ingestion (buildSessionEntry, ported in
+        # memory_core.session_entry): every user/assistant message row in file order, including
+        # abandoned and side-append branches (ingestion never calls the transcript-tree helpers),
+        # rendered as "User:"/"Assistant:" lines with whitespace normalised, long lines wrapped
+        # at 800 characters, and heartbeat, cron, exec-completion, silent-reply, inter-session,
+        # recalled-memory and dreaming-narrative rows dropped. Not ported: redaction (pass
+        # ``redact_text`` to build_session_entry from a host), see session_entry's docstring.
+        try:
+            mtime_ms = file.abs_path.stat().st_mtime * 1000
+        except OSError:
+            mtime_ms = 0
+        entry = build_session_entry(
+            records=parse_jsonl_records(file.abs_path.read_text(encoding="utf-8")),
+            mtime_ms=mtime_ms,
+            session_key=None,
+            runtime_identity=self.runtime_identity,
+            redact_text=self.redact_text,
+        )
+        return entry.content + ("\n" if entry.content else "")
 
     def _is_heartbeat_row(self, raw_text: str, role: str) -> bool:
         # Checks run on normalizeSessionText output (sanitizeSessionText at v2026.9.6), so

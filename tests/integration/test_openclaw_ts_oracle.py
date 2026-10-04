@@ -8234,6 +8234,132 @@ def test_real_openclaw_oracle_session_memory_projection_matches_python():
         assert _python_projection_case(case) == expected, (index, case)
 
 
+_SC_MTIME = 1_800_000_000_000
+
+
+def _sc_msg(role: str, content, **extra) -> dict:
+    return {"type": "message", **{k: extra.pop(k) for k in ("timestamp", "sessionKey") if k in extra},
+            "message": {"role": role, "content": content, **extra}}
+
+
+def _sc_text(text: str) -> list[dict]:
+    return [{"type": "text", "text": text}]
+
+
+def _sc_case(*rows, **opts) -> dict:
+    lines = [row if isinstance(row, str) else json.dumps(row, ensure_ascii=False) for row in rows]
+    return {"jsonl": "\n".join(lines) + "\n", "mtimeMs": _SC_MTIME, **opts}
+
+
+_SC_LONG = ("word " * 400).strip()
+_SC_BLOCKS = "\n".join(
+    [
+        "Conversation info (untrusted metadata) \u27e6openclaw:ctx\u27e7",
+        "```json",
+        '{"sender": "x"}',
+        "```",
+        "",
+        "Real question",
+    ]
+)
+SESSION_CORPUS_ENTRY_CASES = [
+    _sc_case(
+        _sc_msg("user", _sc_text("What is Project Nebula?"), timestamp=1_700_000_000),
+        _sc_msg("assistant", _sc_text("Project Nebula is ORBIT-10."), timestamp="2026-01-02T03:04:05.678Z"),
+        _sc_msg("tool", _sc_text("ignored")),
+        _sc_msg("user", "plain string  with\n\n newlines", timestamp=1_700_000_000_123),
+        _sc_msg("assistant", [{"type": "image"}, {"type": "text", "text": "a"}, {"type": "text", "text": "b"}]),
+    ),
+    _sc_case("not json", "", "{}", _sc_msg("user", "after bad lines"), "[1]"),
+    _sc_case(_sc_msg("user", _SC_LONG), _sc_msg("assistant", "x" * 2000), _sc_msg("user", "\U0001f600" * 700)),
+    _sc_case(_sc_msg("user", _SC_BLOCKS), _sc_msg("user", "[Wed 2026-01-01 10:00 UTC] stamped")),
+    _sc_case(
+        _sc_msg("user", "System: [2026-01-01 10:00:00 UTC] Exec completed (a1, code 0) :: ok"),
+        _sc_msg("user", "[cron:job-1] do the thing"),
+        _sc_msg("user", "System (untrusted): [x] Exec finished (gateway id=1, code 0)"),
+        _sc_msg("assistant", "NO_REPLY"),
+        _sc_msg("assistant", "HEARTBEAT_OK"),
+        _sc_msg("assistant", "kept reply"),
+        _sc_msg("user", "Exec finished: done"),
+        _sc_msg("user", "exec failed (abc, signal SIGKILL) :: boom"),
+    ),
+    _sc_case(
+        _sc_msg("user", "wake up", provenance={"kind": "internal_system", "sourceTool": "heartbeat"}),
+        _sc_msg("assistant", "heartbeat answer"),
+        _sc_msg("assistant", "another"),
+        _sc_msg("user", "real user"),
+        _sc_msg("assistant", "real answer"),
+        _sc_msg("user", "recalled", provenance={"kind": "internal_system", "sourceTool": "memory_search"}),
+        _sc_msg("assistant", "after recall"),
+        _sc_msg("user", "peer", provenance={"kind": "inter_session"}),
+        _sc_msg("assistant", "peer answer"),
+        _sc_msg("user", "owner", **{"__openclaw": {"senderIsOwner": True}}),
+        _sc_msg("assistant", "owner answer"),
+        _sc_msg("assistant", "tainted", **{"__openclaw": {"turnTainted": True}}),
+        _sc_msg("user", "sys", provenance={"kind": "internal_system"}),
+    ),
+    _sc_case(
+        _sc_msg("user", "before"),
+        {"type": "custom", "customType": "openclaw:bootstrap-context:full", "data": {"runId": "dreaming-narrative-1"}},
+        _sc_msg("user", "after"),
+    ),
+    _sc_case(_sc_msg("user", "x", sessionKey="agent:main:dreaming-narrative-7"), _sc_msg("user", "y")),
+    _sc_case(
+        _sc_msg("user", "kept"),
+        _sc_msg("assistant", "a", **{"__openclaw": {"runId": "dreaming-narrative-2"}}),
+        _sc_msg("user", "dropped later"),
+    ),
+    _sc_case(_sc_msg("user", "forced"), generatedByDreamingNarrative=True),
+    _sc_case(_sc_msg("user", "forced"), generatedByCronRun=True),
+    _sc_case(_sc_msg("user", "kind"), sessionKind="main"),
+    _sc_case(
+        _sc_msg("user", "ts", timestamp=0),
+        _sc_msg("user", "ts", timestamp=-5),
+        _sc_msg("user", "ts", timestamp="garbage"),
+        _sc_msg("user", "ts", timestamp="2026-01-02"),
+        _sc_msg("user", "ts", timestamp=1e11),
+        _sc_msg("user", "ts", timestamp=99_999_999_999),
+    ),
+    _sc_case(),
+]
+
+
+def _python_session_corpus_entry(case: dict) -> dict | None:
+    from memory_core.session_entry import build_session_entry, parse_jsonl_records
+
+    observed: list = []
+    entry = build_session_entry(
+        records=parse_jsonl_records(case["jsonl"]),
+        mtime_ms=case["mtimeMs"],
+        session_kind=case.get("sessionKind", "unknown"),
+        generated_by_dreaming_narrative=case.get("generatedByDreamingNarrative", False),
+        generated_by_cron_run=case.get("generatedByCronRun", False),
+        reset_recall_cutoff={"state": "absent"},
+        on_transcript_message=lambda message, at: observed.append(at),
+        strip_runtime_context=lambda text: text,
+    )
+    return {
+        "content": entry.content,
+        "lineMap": entry.line_map,
+        "messageTimestampsMs": entry.message_timestamps_ms,
+        "lineProvenance": entry.line_provenance,
+        "hash": entry.hash,
+        "sessionKind": entry.session_kind,
+        "generatedByDreamingNarrative": entry.generated_by_dreaming_narrative,
+        "generatedByCronRun": entry.generated_by_cron_run,
+        "observed": len(observed),
+    }
+
+
+def test_real_openclaw_oracle_session_corpus_entry_matches_python():
+    result = _oracle().run({"operation": "sessionCorpusEntry", "cases": SESSION_CORPUS_ENTRY_CASES})
+
+    assert result["ok"] is True, result
+    assert len(result["result"]["cases"]) == len(SESSION_CORPUS_ENTRY_CASES)
+    for index, (expected, case) in enumerate(zip(result["result"]["cases"], SESSION_CORPUS_ENTRY_CASES)):
+        assert _python_session_corpus_entry(case) == expected, (index, case)
+
+
 def test_session_memory_constants_equal_upstream_source():
     # Set-equality check (AGENTS.md › Parity rules): the special-token literals are private
     # upstream, so they are extracted from the pinned TS source, not retyped.

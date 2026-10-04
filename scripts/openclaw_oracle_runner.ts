@@ -2464,6 +2464,65 @@ async function main() {
     return { ok: true, operation: payload.operation, result: { cases } };
   }
 
+  if (payload.operation === "sessionCorpusEntry") {
+    // packages/memory-host-sdk/src/host/session-files.ts buildSessionEntryInProcess over a JSONL
+    // transcript file per case (the file branch, whose line map is the raw line ordinal; the SQLite
+    // branch is the same projection). Redaction is the identity (memory-core takes a host hook,
+    // not redactSensitiveText), the store classification is pinned by explicit
+    // generatedBy* flags, and the file's mtime is set to the case's `mtimeMs`. A case's
+    // `fileName` decides the archive handling (cron records classify only in usage-counted
+    // archives such as x.jsonl.reset.<iso>).
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-session-entry-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    process.env.OPENCLAW_LOG_LEVEL = "silent";
+    try {
+      const sessionFiles = await importFromRepo(
+        repoPath,
+        "packages/memory-host-sdk/src/host/session-files.ts",
+      );
+      const cases = [];
+      for (const [index, item] of (payload.cases ?? []).entries()) {
+        const dir = path.join(sandbox, `case-${index}`);
+        await fs.mkdir(dir, { recursive: true });
+        const absPath = path.join(dir, String(item.fileName ?? "session.jsonl"));
+        await fs.writeFile(absPath, String(item.jsonl), "utf-8");
+        const mtime = new Date(Number(item.mtimeMs ?? 1_000_000_000_000));
+        await fs.utimes(absPath, mtime, mtime);
+        const observed: unknown[] = [];
+        const entry = await sessionFiles.buildSessionEntryInProcess(
+          absPath,
+          {
+            generatedByDreamingNarrative: item.generatedByDreamingNarrative ?? false,
+            generatedByCronRun: item.generatedByCronRun ?? false,
+            ...(item.sessionKind ? { sessionKind: item.sessionKind } : {}),
+            onTranscriptMessage: (message: unknown, observedAt: number) =>
+              observed.push([message, observedAt]),
+          },
+          (text: string) => text,
+        );
+        cases.push(
+          entry
+            ? {
+                content: entry.content,
+                lineMap: entry.lineMap,
+                messageTimestampsMs: entry.messageTimestampsMs,
+                lineProvenance: entry.lineProvenance,
+                hash: entry.hash,
+                sessionKind: entry.sessionKind,
+                generatedByDreamingNarrative: entry.generatedByDreamingNarrative === true,
+                generatedByCronRun: entry.generatedByCronRun === true,
+                observed: observed.length,
+              }
+            : null,
+        );
+      }
+      return { ok: true, operation: payload.operation, result: { cases } };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
   if (payload.operation === "sessionMemorySlug") {
     // src/hooks/llm-slug-generator.ts generateSlugViaLLM with only its model run replaced:
     // a module hook resolves its ../agents/embedded-agent.js import to a stub whose

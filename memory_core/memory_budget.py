@@ -27,7 +27,17 @@ from dataclasses import dataclass
 from functools import cmp_to_key
 from typing import Literal
 
-from memory_core.bootstrap._js import JS_SPACE, locale_compare, utf16_len
+from memory_core.bootstrap._js import JS_SPACE, js_trim, locale_compare, utf16_len
+from memory_core.runtime_identity import (
+    MEMORY_CORE_RUNTIME_IDENTITY,
+    OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+)
+
+# Both marker prefixes count (markers.py): files written in either runtime-identity mode.
+_PREFIX_ALTERNATION = "|".join(
+    re.escape(identity.promotion_marker_prefix)
+    for identity in (MEMORY_CORE_RUNTIME_IDENTITY, OPENCLAW_COMPAT_RUNTIME_IDENTITY)
+)
 
 PROMOTION_SECTION_HEADING_RE = re.compile(
     rf"^## Promoted From Short-Term Memory \(([^)]+)\){JS_SPACE}*\Z"
@@ -49,6 +59,7 @@ class MemoryBlock:
     kind: MemoryBlockKind
     text: str
     date: str | None = None
+    entry_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -59,10 +70,75 @@ class CompactMemoryResult:
     dropped_dates: tuple[str, ...]
 
 
+_SUBSECTION_HEADING_RE = re.compile(rf"^### (?:Global|Project: .+?){JS_SPACE}*\Z")
+_ATX_HEADING_RE = re.compile(r"^ {0,3}#{1,6}(?:[ \t]|\Z)")
+_SETEXT_UNDERLINE_RE = re.compile(r"^ {0,3}(?:=+|-+)[ \t]*\Z")
+_ENTRY_MARKER_RE = re.compile(
+    rf"^<!--{JS_SPACE}*(?:{_PREFIX_ALTERNATION}).*-->{JS_SPACE}*\Z", re.IGNORECASE
+)
+
+
+def _is_blank(line: str) -> bool:
+    return js_trim(line) == ""
+
+
+def _is_generated_promotion_block(lines: list[str]) -> bool:
+    """``isGeneratedPromotionBlock``: only marker + bullet pairs (and subsection headings)."""
+    saw_entry = False
+    index = 1
+    while index < len(lines):
+        line = lines[index]
+        if _is_blank(line):
+            index += 1
+            continue
+        if _SUBSECTION_HEADING_RE.match(line):
+            index += 1
+            while index < len(lines) and _is_blank(lines[index]):
+                index += 1
+        if not _ENTRY_MARKER_RE.match(lines[index] if index < len(lines) else ""):
+            return False
+        # A marker owns only the single bullet emitted with it; any other body shape is mixed
+        # user content that compaction must not delete.
+        if not (lines[index + 1] if index + 1 < len(lines) else "").startswith("- "):
+            return False
+        saw_entry = True
+        index += 2
+    return saw_entry
+
+
+def _starts_generated_promotion_subsection(lines: list[str], index: int) -> bool:
+    if not _SUBSECTION_HEADING_RE.match(lines[index]):
+        return False
+    for line in lines[index + 1 :]:
+        if _is_blank(line):
+            continue
+        return _ENTRY_MARKER_RE.match(line) is not None
+    return False
+
+
+def _take_setext_heading_lines(lines: list[str]) -> list[str] | None:
+    start = len(lines)
+    while start > 1 and not _is_blank(lines[start - 1]):
+        start -= 1
+    if start == len(lines):
+        return None
+    heading_lines = lines[start:]
+    if any(_ENTRY_MARKER_RE.match(line) for line in heading_lines):
+        return None
+    del lines[start:]
+    return heading_lines
+
+
 def parse_memory_blocks(content: str) -> list[MemoryBlock]:
-    """Port of ``parseMemoryBlocks`` (memory-budget.ts:42-82)."""
+    """Port of ``parseMemoryBlocks`` (memory-budget.ts at v2026.9.6).
+
+    A block starts at any ATX heading; a ``## Promoted From Short-Term Memory (DATE)`` block counts
+    as generated only when its whole body is marker + bullet entries (with ``### Global`` /
+    ``### Project:`` subsections), a setext heading line ends it, anything else is preserved.
+    """
     if not content:
         return []
+    lines = _LINE_SPLIT_RE.split(content)
     blocks: list[MemoryBlock] = []
     current_lines: list[str] = []
     current_kind: MemoryBlockKind = "preserved"
@@ -73,16 +149,26 @@ def parse_memory_blocks(content: str) -> list[MemoryBlock]:
         if not current_lines:
             return
         text = "\n".join(current_lines)
-        if current_kind == "promotion" and current_date:
-            blocks.append(MemoryBlock("promotion", text, current_date))
+        if current_kind == "promotion" and current_date and _is_generated_promotion_block(current_lines):
+            entry_count = sum(1 for line in current_lines if _ENTRY_MARKER_RE.match(line))
+            blocks.append(MemoryBlock("promotion", text, current_date, entry_count))
         else:
             blocks.append(MemoryBlock("preserved", text))
         current_lines = []
         current_kind = "preserved"
         current_date = None
 
-    for line in _LINE_SPLIT_RE.split(content):
-        if line.startswith("## "):
+    for index, line in enumerate(lines):
+        if current_kind == "promotion" and _SETEXT_UNDERLINE_RE.match(line):
+            heading_lines = _take_setext_heading_lines(current_lines)
+            if heading_lines is not None:
+                flush()
+                current_lines = [*heading_lines, line]
+                continue
+        continues_promotion_body = current_kind == "promotion" and _starts_generated_promotion_subsection(
+            lines, index
+        )
+        if _ATX_HEADING_RE.match(line) and not continues_promotion_body:
             flush()
             match = PROMOTION_SECTION_HEADING_RE.match(line)
             if match:
@@ -102,14 +188,19 @@ def _join_blocks(blocks: list[MemoryBlock]) -> str:
 
 
 def compact_memory_for_budget(
-    *, existing_memory: str, new_section: str, budget_chars: int | float
+    *,
+    existing_memory: str,
+    new_section: str,
+    budget_chars: int | float,
+    max_prior_entry_loss_fraction: float | None = None,
 ) -> CompactMemoryResult:
-    """Port of ``compactMemoryForBudget`` (memory-budget.ts:117-165).
+    """Port of ``compactMemoryForBudget``.
 
-    Drops the oldest promotion sections (by date) until the existing memory
-    plus ``new_section`` fits ``budget_chars`` minus the 21-char writer
-    reserve. Non-promotion content is never dropped; when no promotion section
-    exists, or ``budget_chars <= 0``, the existing memory comes back unchanged.
+    Drops the oldest generated promotion sections (by date) until the existing memory plus
+    ``new_section`` fits ``budget_chars`` minus the 21-char writer reserve, never removing more
+    than ``max_prior_entry_loss_fraction`` of the generated entries (default 1). Non-promotion
+    content is never dropped; when the budget cannot be met within the loss bound the caller owns
+    the final fit check. ``budget_chars <= 0`` returns the memory unchanged.
     """
     if budget_chars <= 0:
         return CompactMemoryResult(existing_memory, ())
@@ -121,7 +212,7 @@ def compact_memory_for_budget(
     blocks = parse_memory_blocks(existing_memory)
     promotion_entries = sorted(
         (
-            (index, block.date or "", utf16_len(block.text))
+            (index, block.date or "", utf16_len(block.text), block.entry_count)
             for index, block in enumerate(blocks)
             if block.kind == "promotion"
         ),
@@ -132,16 +223,45 @@ def compact_memory_for_budget(
 
     dropped_indices: set[int] = set()
     dropped_dates: list[str] = []
+    total_entry_count = sum(entry[3] for entry in promotion_entries)
+    max_loss = max(0.0, min(1.0, 1.0 if max_prior_entry_loss_fraction is None else max_prior_entry_loss_fraction))
+    dropped_entry_count = 0
     projected_size = utf16_len(existing_memory)
     block_separator_cost = 1 if len(blocks) > 1 else 0
-    for index, date, length in promotion_entries:
+    for index, date, length, entry_count in promotion_entries:
         if projected_size + new_length <= effective_budget:
+            break
+        if total_entry_count > 0 and (dropped_entry_count + entry_count) / total_entry_count > max_loss:
             break
         dropped_indices.add(index)
         dropped_dates.append(date)
+        dropped_entry_count += entry_count
         projected_size = max(0, projected_size - length - block_separator_cost)
 
     if not dropped_indices:
         return CompactMemoryResult(existing_memory, ())
     remaining = [block for index, block in enumerate(blocks) if index not in dropped_indices]
     return CompactMemoryResult(_join_blocks(remaining), tuple(dropped_dates))
+
+
+def build_budgeted_memory_append(
+    *,
+    existing_memory: str,
+    new_section: str,
+    budget_chars: int | float,
+    max_prior_entry_loss_fraction: float | None = None,
+) -> tuple[str, tuple[str, ...]]:
+    """``buildBudgetedMemoryAppend``: the complete post-promotion file and the dropped dates."""
+    compaction = compact_memory_for_budget(
+        existing_memory=existing_memory,
+        new_section=new_section,
+        budget_chars=budget_chars,
+        max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
+    )
+    header = "" if js_trim(compaction.compacted) else "# Long-Term Memory\n\n"
+    base = (
+        compaction.compacted
+        if not compaction.compacted or compaction.compacted.endswith("\n")
+        else f"{compaction.compacted}\n"
+    )
+    return f"{header}{base}{new_section}", compaction.dropped_dates

@@ -20,13 +20,15 @@ from typing import Any
 
 from memory_core.bootstrap._js import js_trim
 
-# dreaming.ts:14. Dreaming is off unless a host enables it (sweeps are manual here).
-DEFAULT_DEEP_DREAMING_ENABLED = False
-# dreaming.ts:38-44 DEFAULT_MEMORY_DEEP_DREAMING_*. These are the deep-phase gates, not
-# short-term-promotion.ts's own DEFAULT_PROMOTION_MIN_SCORE / _MIN_RECALL_COUNT /
-# _MIN_UNIQUE_QUERIES (0.75 / 3 / 2), which memory-core does not use (gates 0.8/3/3, 29008e1).
+# dreaming.ts DEFAULT_MEMORY_DREAMING_ENABLED: on at v2026.9.6 (it was off at the pin). A sweep
+# still only runs when the host calls it; this is the policy's `enabled` value.
+DEFAULT_DEEP_DREAMING_ENABLED = True
+# dreaming.ts:42-51 DEFAULT_MEMORY_DEEP_DREAMING_*. These are the deep-phase gates, not
+# short-term-promotion.ts's own DEFAULT_PROMOTION_MIN_RECALL_COUNT / _MIN_UNIQUE_QUERIES (3 / 2).
+# The minimum score is 0.75 at v2026.9.6 (b2cc5f50420 #115715; 0.8 at the pin).
 DEFAULT_DEEP_DREAMING_LIMIT = 10
-DEFAULT_DEEP_DREAMING_MIN_SCORE = 0.8
+DEFAULT_DEEP_DREAMING_MIN_SCORE = 0.75
+DEFAULT_DEEP_DREAMING_MAX_PRIOR_ENTRY_LOSS_FRACTION = 0.25
 DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT = 3
 DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES = 3
 DEFAULT_RECENCY_HALF_LIFE_DAYS = 14
@@ -49,6 +51,7 @@ class DeepDreamingPolicy:
     max_age_days: int = DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS
     recency_half_life_days: int = DEFAULT_RECENCY_HALF_LIFE_DAYS
     max_promoted_snippet_tokens: int = DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS
+    max_prior_entry_loss_fraction: float = DEFAULT_DEEP_DREAMING_MAX_PRIOR_ENTRY_LOSS_FRACTION
 
     def as_dict(self) -> dict[str, Any]:
         """Return the policy with upstream camelCase keys (the ``deepPolicy`` oracle shape)."""
@@ -72,11 +75,12 @@ def resolve_deep_dreaming_policy(config: Mapping[str, Any] | None = None) -> Dee
     ``resolveMemoryCorePluginConfig``. Reads ``dreaming.enabled`` and
     ``dreaming.phases.deep.{enabled, limit, minScore, minRecallCount,
     minUniqueQueries, maxAgeDays, recencyHalfLifeDays, maxPromotedSnippetTokens}``.
-    Values are coerced like the pin's ``normalizeScore``, ``normalizeNonNegativeInt``
-    and ``normalizeOptionalPositiveInt`` (``dreaming.ts:181-230``): JavaScript
-    ``Number()`` conversion (``null`` is 0, a blank string falls back), then a
-    non-finite value, a score outside [0, 1] or a negative (``maxAgeDays``,
-    ``maxPromotedSnippetTokens``: non-positive) integer falls back to the default.
+    Integers are parsed like ``parseStrictNonNegativeInteger`` /
+    ``parseStrictPositiveInteger`` (``dreaming.ts:480-490``): a safe-integer number or a
+    base-10 integer string, nothing else (no ``1.5``, ``"0x10"``, ``null`` or array); a
+    negative (``maxAgeDays``, ``maxPromotedSnippetTokens``: non-positive) value falls back
+    to the default. Scores keep ``normalizeScore``: JavaScript ``Number()`` conversion, a
+    blank string falls back, as does a non-finite value or one outside [0, 1].
     """
     plugin_config = _memory_core_plugin_config(dict(config or {}))
     dreaming = _as_dict(plugin_config.get("dreaming"))
@@ -86,25 +90,29 @@ def resolve_deep_dreaming_policy(config: Mapping[str, Any] | None = None) -> Dee
     deep_enabled = _bool(deep.get("enabled"), True)
     return DeepDreamingPolicy(
         enabled=dreaming_enabled and deep_enabled,
-        limit=_non_negative_int(deep.get("limit", _UNDEFINED), DEFAULT_DEEP_DREAMING_LIMIT),
+        limit=_strict_non_negative_int(deep.get("limit", _UNDEFINED), DEFAULT_DEEP_DREAMING_LIMIT),
         min_score=_score(deep.get("minScore", _UNDEFINED), DEFAULT_DEEP_DREAMING_MIN_SCORE),
-        min_recall_count=_non_negative_int(
+        min_recall_count=_strict_non_negative_int(
             deep.get("minRecallCount", _UNDEFINED), DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT
         ),
-        min_unique_queries=_non_negative_int(
+        min_unique_queries=_strict_non_negative_int(
             deep.get("minUniqueQueries", _UNDEFINED), DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES
         ),
         # dreaming.ts:443-447: a number from normalizeOptionalPositiveInt, else the default.
-        max_age_days=_optional_positive_int(deep.get("maxAgeDays", _UNDEFINED))
+        max_age_days=_strict_integer(deep.get("maxAgeDays", _UNDEFINED), minimum=1)
         or DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS,
-        recency_half_life_days=_non_negative_int(
+        recency_half_life_days=_strict_non_negative_int(
             deep.get("recencyHalfLifeDays", _UNDEFINED), DEFAULT_RECENCY_HALF_LIFE_DAYS
         ),
         # dreaming.ts:448-449: `?? DEFAULT_MEMORY_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS`.
-        max_promoted_snippet_tokens=_optional_positive_int(
-            deep.get("maxPromotedSnippetTokens", _UNDEFINED)
+        max_promoted_snippet_tokens=_strict_integer(
+            deep.get("maxPromotedSnippetTokens", _UNDEFINED), minimum=1
         )
         or DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
+        max_prior_entry_loss_fraction=_score(
+            deep.get("maxPriorEntryLossFraction", _UNDEFINED),
+            DEFAULT_DEEP_DREAMING_MAX_PRIOR_ENTRY_LOSS_FRACTION,
+        ),
     )
 
 
@@ -131,28 +139,31 @@ def _bool(value: Any, fallback: bool) -> bool:
     return fallback
 
 
-def _non_negative_int(value: Any, fallback: int) -> int:
-    # dreaming.ts:181-195 normalizeNonNegativeInt.
-    if isinstance(value, str) and not js_trim(value):
-        return fallback
-    number = _js_number(value)
-    if not math.isfinite(number):
-        return fallback
-    floored = math.floor(number)
-    return floored if floored >= 0 else fallback
+_STRICT_INTEGER_RE = re.compile(r"[+-]?[0-9]+")
+_MAX_SAFE_INTEGER = 2**53 - 1
 
 
-def _optional_positive_int(value: Any) -> int | None:
-    # dreaming.ts:197-214 normalizeOptionalPositiveInt.
-    if value is _UNDEFINED or value is None:
+def _strict_integer(value: Any, *, minimum: int) -> int | None:
+    """``parseStrictInteger`` bounded below: a safe-integer number or a base-10 string."""
+    if isinstance(value, bool):
         return None
-    if isinstance(value, str) and not js_trim(value):
+    if isinstance(value, int | float):
+        if isinstance(value, float) and not value.is_integer():
+            return None
+        number = int(value) if math.isfinite(value) else None
+    elif isinstance(value, str):
+        text = js_trim(value)
+        number = int(text) if _STRICT_INTEGER_RE.fullmatch(text) else None
+    else:
         return None
-    number = _js_number(value)
-    if not math.isfinite(number):
+    if number is None or abs(number) > _MAX_SAFE_INTEGER or number < minimum:
         return None
-    floored = math.floor(number)
-    return floored if floored > 0 else None
+    return number
+
+
+def _strict_non_negative_int(value: Any, fallback: int) -> int:
+    parsed = _strict_integer(value, minimum=0)
+    return fallback if parsed is None else parsed
 
 
 def _score(value: Any, fallback: float) -> float:

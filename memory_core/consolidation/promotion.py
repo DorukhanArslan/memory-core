@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from memory_core.bootstrap._js import js_to_well_formed, js_trim, js_trim_end, utf16_len, utf16_slice
+from memory_core.bootstrap._js import locale_sort_key, js_to_well_formed, js_trim_end, utf16_len, utf16_slice
 from memory_core.config import MemoryConfig
 from memory_core.consolidation._util import (
     DAY_MS,
@@ -54,6 +54,7 @@ from memory_core.consolidation.markers import (
 from memory_core.consolidation.policy import (
     DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
     DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT,
+    DEFAULT_DEEP_DREAMING_MAX_PRIOR_ENTRY_LOSS_FRACTION,
     DEFAULT_DEEP_DREAMING_MIN_SCORE,
     DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES,
     DEFAULT_RECENCY_HALF_LIFE_DAYS,
@@ -71,7 +72,7 @@ from memory_core.consolidation.store import (
     recall_store_path,
     write_recall_store,
 )
-from memory_core.memory_budget import DEFAULT_MEMORY_FILE_MAX_CHARS, compact_memory_for_budget
+from memory_core.memory_budget import DEFAULT_MEMORY_FILE_MAX_CHARS, build_budgeted_memory_append
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.workspace import MemoryWorkspace
 
@@ -120,6 +121,10 @@ class PromotionCandidate:
     age_days: float = 0.0
     concept_tags: tuple[str, ...] = ()
     components: dict[str, float] = field(default_factory=dict)
+    recall_days: tuple[str, ...] = ()
+    claim_hash: str | None = None
+    project_key: str | None = None
+    provenance: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -144,6 +149,12 @@ class PromotionEvaluation:
     age_days: float = 0.0
     concept_tags: tuple[str, ...] = ()
     components: dict[str, float] = field(default_factory=dict)
+    first_recalled_at: str = ""
+    last_recalled_at: str = ""
+    recall_days: tuple[str, ...] = ()
+    claim_hash: str | None = None
+    project_key: str | None = None
+    provenance: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -182,6 +193,10 @@ class MemoryPromotionRun:
     appended: int = 0
     reconciled_existing: int = 0
     compacted_dates: tuple[str, ...] = ()
+    # Candidates the "memory budget" category deferred: the write would have exceeded
+    # ``memory_file_max_chars`` within ``max_prior_entry_loss_fraction``, so MEMORY.md is unchanged.
+    deferred_candidates: tuple[PromotionCandidate, ...] = ()
+    deferred_reason: str | None = None
 
 
 def run_short_term_promotion(
@@ -198,6 +213,7 @@ def run_short_term_promotion(
     recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
     memory_file_max_chars: int = DEFAULT_MEMORY_FILE_MAX_CHARS,
     max_promoted_snippet_tokens: int = DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
+    max_prior_entry_loss_fraction: float = DEFAULT_DEEP_DREAMING_MAX_PRIOR_ENTRY_LOSS_FRACTION,
     identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> MemoryPromotionRun:
     """Promote the top gated recall entries into ``MEMORY.md`` and reindex.
@@ -246,6 +262,7 @@ def run_short_term_promotion(
             recency_half_life_days=recency_half_life_days,
             memory_file_max_chars=memory_file_max_chars,
             max_promoted_snippet_tokens=max_promoted_snippet_tokens,
+            max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
             identity=identity,
         )
 
@@ -279,7 +296,10 @@ def rank_short_term_promotion_candidates(
         )
         if not evaluation.reasons
     ]
-    return sorted(candidates, key=lambda candidate: candidate.score, reverse=True)[:limit]
+    return sorted(
+        candidates,
+        key=lambda c: (-c.score, -c.recall_count, locale_sort_key(c.path)),
+    )[:limit]
 
 
 def evaluate_short_term_promotion_candidates(
@@ -309,15 +329,16 @@ def evaluate_short_term_promotion_candidates(
         signal_count = recall_count + daily_count + grounded_count
         if signal_count <= 0:
             continue
-        query_hashes = [value for value in raw.get("queryHashes", []) if isinstance(value, str)]
-        unique_queries = len(set(query_hashes))
+        # Scheduler and grounded-backfill keys are synthetic: only provenance-qualified
+        # interactive recalls (`userQueryHashes`) satisfy user-query diversity.
+        unique_queries = len(_user_query_hashes(raw))
         total_score = float(raw.get("totalScore") or 0)
         avg_score = clamp_score(total_score / signal_count)
         max_score = clamp_score(float(raw.get("maxScore") or 0))
         last_recalled_at = str(raw.get("lastRecalledAt") or iso_ms(now_ms))
         age_days = max(0.0, (now_ms - parse_ms(last_recalled_at, now_ms)) / DAY_MS)
         recall_days = [value for value in raw.get("recallDays", []) if isinstance(value, str)]
-        context_diversity = max(unique_queries, len(set(recall_days)))
+        context_diversity = unique_queries
         concept_tags = tuple(
             value for value in raw.get("conceptTags", []) if isinstance(value, str) and value
         )
@@ -334,7 +355,7 @@ def evaluate_short_term_promotion_candidates(
         if signal_count < min_recall_count:
             reasons.append(f"signals {signal_count} < {min_recall_count}")
         if context_diversity < min_unique_queries:
-            reasons.append(f"unique queries/days {context_diversity} < {min_unique_queries}")
+            reasons.append(f"unique queries {context_diversity} < {min_unique_queries}")
         if max_age_days >= 0 and age_days > max_age_days:
             reasons.append(f"age {age_days:.3f} > {max_age_days}")
         evaluations.append(
@@ -357,6 +378,12 @@ def evaluate_short_term_promotion_candidates(
                 age_days=age_days,
                 concept_tags=concept_tags,
                 components=components,
+                first_recalled_at=str(raw.get("firstRecalledAt") or ""),
+                last_recalled_at=last_recalled_at,
+                recall_days=tuple(recall_days),
+                claim_hash=raw.get("claimHash") or None,
+                project_key=raw.get("projectKey") or None,
+                provenance=raw.get("provenance") if isinstance(raw.get("provenance"), dict) else None,
             )
         )
     return sorted(evaluations, key=lambda evaluation: evaluation.score, reverse=True)
@@ -391,6 +418,7 @@ def _run_short_term_promotion_unlocked(
     recency_half_life_days: float,
     memory_file_max_chars: int,
     max_promoted_snippet_tokens: int,
+    max_prior_entry_loss_fraction: float,
     identity: RuntimeIdentity,
 ) -> MemoryPromotionRun:
     workspace = MemoryWorkspace(config.workspace_dir)
@@ -429,6 +457,7 @@ def _run_short_term_promotion_unlocked(
     indexed_files = 0
     reindex_error = None
     compacted_dates: tuple[str, ...] = ()
+    deferred_reason: str | None = None
     if rehydrated_candidates:
         entry = (
             _build_promotion_section(
@@ -438,21 +467,32 @@ def _run_short_term_promotion_unlocked(
             else ""
         )
         if to_append:
-            compacted_dates = _append_to_memory(
-                target_path, entry, memory_file_max_chars=memory_file_max_chars
+            compacted_dates, deferred_reason = _append_to_memory(
+                target_path,
+                entry,
+                memory_file_max_chars=memory_file_max_chars,
+                max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
             )
+        deferred_keys = {c.key for c in to_append} if deferred_reason else set()
+        promoted = [c for c in rehydrated_candidates if c.key not in deferred_keys]
         with recall_store_lock(config.workspace_dir):
-            _mark_promoted(recall_store_path(config.workspace_dir), rehydrated_candidates, now_ms)
-        if to_append:
+            _mark_promoted(recall_store_path(config.workspace_dir), promoted, now_ms)
+        if to_append and not deferred_reason:
             try:
                 indexed_files = store.reindex(workspace)
             except Exception as exc:
                 reindex_error = exception_message(exc)
         outcome = PromotionWriteOutcome(
-            should_write=bool(to_append),
+            should_write=bool(to_append) and not deferred_reason,
             target=target,
-            entry=entry.strip(),
-            reason="short-term promotion" if to_append else "short-term promotion reconciled",
+            entry=entry.strip() if not deferred_reason else "",
+            reason=(
+                "short-term promotion deferred: memory budget"
+                if deferred_reason
+                else "short-term promotion"
+                if to_append
+                else "short-term promotion reconciled"
+            ),
         )
     else:
         outcome = PromotionWriteOutcome(
@@ -462,6 +502,7 @@ def _run_short_term_promotion_unlocked(
             reason="no live promotion candidates" if candidates else "no promotion candidates",
         )
     after = read_text_if_exists(target_path)
+    deferred_set = {c.key for c in to_append} if deferred_reason else set()
     return MemoryPromotionRun(
         target=target,
         summary=summary,
@@ -471,10 +512,12 @@ def _run_short_term_promotion_unlocked(
         chunks=store.count_chunks(),
         evaluated_candidates=evaluations,
         reindex_error=reindex_error,
-        applied_candidates=tuple(rehydrated_candidates),
-        appended=len(to_append),
+        applied_candidates=tuple(c for c in rehydrated_candidates if c.key not in deferred_set),
+        appended=0 if deferred_reason else len(to_append),
         reconciled_existing=len(rehydrated_candidates) - len(to_append),
         compacted_dates=compacted_dates,
+        deferred_candidates=tuple(c for c in rehydrated_candidates if c.key in deferred_set),
+        deferred_reason=deferred_reason,
     )
 
 
@@ -493,11 +536,15 @@ def _evaluation_to_candidate(evaluation: PromotionEvaluation) -> PromotionCandid
         max_score=evaluation.max_score,
         unique_queries=evaluation.unique_queries,
         score=evaluation.score,
-        first_recalled_at="",
-        last_recalled_at="",
+        first_recalled_at=evaluation.first_recalled_at,
+        last_recalled_at=evaluation.last_recalled_at,
         age_days=evaluation.age_days,
         concept_tags=evaluation.concept_tags,
         components=dict(evaluation.components),
+        recall_days=evaluation.recall_days,
+        claim_hash=evaluation.claim_hash,
+        project_key=evaluation.project_key,
+        provenance=evaluation.provenance,
     )
 
 
@@ -514,9 +561,8 @@ def _candidate_components(
     signal_count = recall_count + daily_count + grounded_count
     total_score = float(entry.get("totalScore") or 0)
     avg_score = total_score / max(1, signal_count)
-    query_hashes = [value for value in entry.get("queryHashes", []) if isinstance(value, str)]
     recall_days = [value for value in entry.get("recallDays", []) if isinstance(value, str)]
-    context_diversity = max(len(set(query_hashes)), len(set(recall_days)))
+    context_diversity = len(_user_query_hashes(entry))
     last_recalled_at = str(entry.get("lastRecalledAt") or iso_ms(now_ms))
     age_days = max(0.0, (now_ms - parse_ms(last_recalled_at, now_ms)) / DAY_MS)
     half_life_days = (
@@ -538,7 +584,7 @@ def _candidate_components(
         "recency": clamp_score(recency),
         "consolidation": consolidation,
         "conceptual": clamp_score(len(concept_tags) / 6),
-        "phaseBoost": _phase_signal_boost(phase_entries.get(key)),
+        "phaseBoost": _phase_signal_boost(phase_entries.get(key), now_ms),
     }
 
 
@@ -552,14 +598,50 @@ def _candidate_score(components: dict[str, float]) -> float:
     return clamp_score(weighted + float(components.get("phaseBoost") or 0))
 
 
-def _phase_signal_boost(entry: Any) -> float:
+def _phase_signal_age_days(last_seen_at: Any, now_ms: int) -> float | None:
+    if not isinstance(last_seen_at, str) or not last_seen_at:
+        return None
+    try:
+        parsed = int(datetime.fromisoformat(last_seen_at.replace("Z", "+00:00")).timestamp() * 1000)
+    except ValueError:
+        return None
+    return max(0.0, (now_ms - parsed) / DAY_MS)
+
+
+def _recency_component(age_days: float, half_life_days: float) -> float:
+    # calculateRecencyComponent: a bad age or half-life reads as fully recent.
+    if not math.isfinite(age_days) or age_days < 0:
+        return 1.0
+    if not math.isfinite(half_life_days) or half_life_days <= 0:
+        return 1.0
+    return math.exp(-(math.log(2) / half_life_days) * age_days)
+
+
+def _phase_signal_boost(entry: Any, now_ms: int = 0) -> float:
+    """``calculatePhaseSignalBoost``: log-scaled light and REM hits, decayed by their age."""
     if not isinstance(entry, dict):
         return 0.0
-    light_hits = to_int(entry.get("lightHits"), 0)
-    rem_hits = to_int(entry.get("remHits"), 0)
-    light = min(0.06, max(0, light_hits) * 0.02)
-    rem = min(0.09, max(0, rem_hits) * 0.03)
-    return min(0.09, light + rem)
+    light_strength = clamp_score(math.log1p(max(0, to_int(entry.get("lightHits"), 0))) / math.log1p(6))
+    rem_strength = clamp_score(math.log1p(max(0, to_int(entry.get("remHits"), 0))) / math.log1p(6))
+    light_age = _phase_signal_age_days(entry.get("lastLightAt"), now_ms)
+    rem_age = _phase_signal_age_days(entry.get("lastRemAt"), now_ms)
+    light_recency = 0.0 if light_age is None else clamp_score(_recency_component(light_age, 14))
+    rem_recency = 0.0 if rem_age is None else clamp_score(_recency_component(rem_age, 14))
+    return clamp_score(0.06 * light_strength * light_recency + 0.09 * rem_strength * rem_recency)
+
+
+def _user_query_hashes(entry: dict[str, Any]) -> list[str]:
+    """The entry's ``userQueryHashes``; legacy rows with only recall signals read as ``queryHashes``."""
+    stored = entry.get("userQueryHashes")
+    if isinstance(stored, list):
+        return [value for value in dict.fromkeys(stored) if isinstance(value, str) and value.strip()]
+    if to_int(entry.get("dailyCount"), 0) == 0 and to_int(entry.get("groundedCount"), 0) == 0:
+        return [
+            value
+            for value in dict.fromkeys(entry.get("queryHashes") or [])
+            if isinstance(value, str) and value.strip()
+        ]
+    return []
 
 
 def _calculate_consolidation_component(recall_days: list[str]) -> float:
@@ -578,6 +660,43 @@ def _calculate_consolidation_component(recall_days: list[str]) -> float:
     return clamp_score(0.55 * spacing + 0.45 * span)
 
 
+_MAX_PROMOTION_TRIGGER_PHRASE_CHARS = 64
+
+
+def _normalize_promotion_trigger_phrase(value: str) -> str:
+    single_line = re.sub(r"\s+", " ", re.sub(r"[\r\n,;]+", " ", re.sub(r"<!--|-->", " ", value))).strip()
+    return "".join(list(single_line)[:_MAX_PROMOTION_TRIGGER_PHRASE_CHARS]).rstrip()
+
+
+def _promotion_project_key(candidate: PromotionCandidate) -> str | None:
+    key = candidate.project_key
+    return key if key and not re.search(r"[\r\n<>]", key) else None
+
+
+def build_promotion_recall_annotations(candidate: PromotionCandidate) -> str:
+    """``buildPromotionRecallAnnotations``: the trigger phrases, importance and project of a line."""
+    triggers = ", ".join(
+        phrase
+        for phrase in (_normalize_promotion_trigger_phrase(tag) for tag in candidate.concept_tags[:3])
+        if phrase
+    )
+    # Math.round: halves round up.
+    importance = min(10, max(3, math.floor(candidate.score * 10 + 0.5)))
+    project_key = _promotion_project_key(candidate)
+    project = f" <!-- project: {project_key} -->" if project_key else ""
+    return f"<!-- trigger: {triggers} --> <!-- importance: {importance} -->{project}"
+
+
+def group_promotion_candidates_by_project_key(
+    candidates: list[PromotionCandidate],
+) -> list[tuple[str | None, list[PromotionCandidate]]]:
+    """``groupPromotionCandidatesByProjectKey``: stable key order, the global group first."""
+    groups: dict[str, list[PromotionCandidate]] = {}
+    for candidate in candidates:
+        groups.setdefault(_promotion_project_key(candidate) or "", []).append(candidate)
+    return [(key or None, groups[key]) for key in sorted(groups)]
+
+
 def _build_promotion_section(
     candidates: list[PromotionCandidate],
     now_ms: int,
@@ -587,23 +706,26 @@ def _build_promotion_section(
 ) -> str:
     section_date = format_memory_dreaming_day(now_ms, timezone)
     lines = ["", f"## {PROMOTION_SECTION_TITLE} ({section_date})", ""]
-    for candidate in candidates:
-        source = f"{candidate.path}:{candidate.start_line}-{candidate.end_line}"
-        lines.append(format_promotion_marker(candidate.key, identity))
-        # Cap only the visible MEMORY.md text; the recall store keeps the full
-        # rehydrated snippet for ranking and provenance.
-        snippet = _format_promoted_snippet_for_memory(
-            candidate.snippet, max_promoted_snippet_tokens
-        )
-        lines.append(
-            "- "
-            + snippet
-            + (
-                # short-term-promotion.ts:2326 formats both with toFixed(3).
-                f" [score={js_to_fixed(candidate.score, 3)} recalls={candidate.recall_count} "
-                f"avg={js_to_fixed(candidate.avg_score, 3)} source={source}]"
+    groups = group_promotion_candidates_by_project_key(candidates)
+    for project_key, group in groups:
+        if len(groups) > 1:
+            lines.extend([f"### Project: {project_key}" if project_key else "### Global", ""])
+        for candidate in group:
+            source = f"{candidate.path}:{candidate.start_line}-{candidate.end_line}"
+            lines.append(format_promotion_marker(candidate.key, identity))
+            # Cap only the visible MEMORY.md text; the recall store keeps the full
+            # rehydrated snippet for ranking and provenance.
+            snippet = _format_promoted_snippet_for_memory(
+                candidate.snippet, max_promoted_snippet_tokens
             )
-        )
+            metadata = (
+                f"[score={js_to_fixed(candidate.score, 3)} signals={candidate.signal_count} "
+                f"recalls={candidate.recall_count} avg={js_to_fixed(candidate.avg_score, 3)} "
+                f"source={source}]"
+            )
+            lines.append(f"- {snippet} {metadata} {build_promotion_recall_annotations(candidate)}")
+        if len(groups) > 1:
+            lines.append("")
     lines.append("")
     return "\n".join(lines)
 
@@ -673,14 +795,19 @@ def _mark_promoted(path: Path, candidates: list[PromotionCandidate], now_ms: int
 
 
 def _append_to_memory(
-    path: Path, section: str, memory_file_max_chars: int = DEFAULT_MEMORY_FILE_MAX_CHARS
-) -> tuple[str, ...]:
-    """Write ``section`` below the budget-compacted MEMORY.md; returns dropped section dates.
+    path: Path,
+    section: str,
+    memory_file_max_chars: int = DEFAULT_MEMORY_FILE_MAX_CHARS,
+    max_prior_entry_loss_fraction: float = DEFAULT_DEEP_DREAMING_MAX_PRIOR_ENTRY_LOSS_FRACTION,
+) -> tuple[tuple[str, ...], str | None]:
+    """Write ``section`` below the budget-compacted MEMORY.md.
 
-    Mirrors the write in upstream ``applyShortTermPromotions``: older promotion
-    sections are dropped until the file fits ``memory_file_max_chars``, an
-    empty (or whitespace-only) result gets the ``# Long-Term Memory`` header,
-    and the section (which starts with a blank line) follows the kept text.
+    Returns ``(dropped section dates, deferred reason)``. Mirrors the append fallback of upstream
+    ``applyShortTermPromotions``: the oldest generated promotion sections are dropped until the
+    file fits ``memory_file_max_chars``, without losing more than
+    ``max_prior_entry_loss_fraction`` of the generated entries; an empty (or whitespace-only)
+    result gets the ``# Long-Term Memory`` header. When the result still exceeds the budget
+    nothing is written and the reason is returned (the "memory budget" rejection).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = read_text_if_exists(path)
@@ -689,14 +816,16 @@ def _append_to_memory(
         if isinstance(memory_file_max_chars, int | float) and math.isfinite(memory_file_max_chars)
         else DEFAULT_MEMORY_FILE_MAX_CHARS
     )
-    compaction = compact_memory_for_budget(
-        existing_memory=existing, new_section=section, budget_chars=budget_chars
+    content, dropped_dates = build_budgeted_memory_append(
+        existing_memory=existing,
+        new_section=section,
+        budget_chars=budget_chars,
+        max_prior_entry_loss_fraction=max(0.0, min(1.0, max_prior_entry_loss_fraction)),
     )
-    base = compaction.compacted
-    header = "" if js_trim(base) else f"{LONG_TERM_MEMORY_HEADER}\n\n"
-    base_with_newline = base if not base or base.endswith("\n") else f"{base}\n"
-    path.write_text(f"{header}{base_with_newline}{section}", encoding="utf-8")
-    return compaction.dropped_dates
+    if budget_chars > 0 and utf16_len(content) > budget_chars:
+        return (), f"MEMORY.md budget exceeded ({utf16_len(content)} > {budget_chars} chars)"
+    path.write_text(content, encoding="utf-8")
+    return dropped_dates, None
 
 
 def _normalize_memory_path(raw_path: str) -> str:

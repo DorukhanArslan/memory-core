@@ -61,6 +61,7 @@ type Payload = {
   maxAgeDays?: number;
   recencyHalfLifeDays?: number;
   memoryFileMaxChars?: number;
+  maxPriorEntryLossFraction?: number;
   maxPromotedSnippetTokens?: number;
   entry?: Record<string, unknown>;
   tokenCount?: number;
@@ -2761,6 +2762,9 @@ async function main() {
       memoryFileMaxChars:
         typeof payload.memoryFileMaxChars === "number" ? payload.memoryFileMaxChars : undefined,
       maxPromotedSnippetTokens: policy.maxPromotedSnippetTokens,
+      ...(typeof payload.maxPriorEntryLossFraction === "number"
+        ? { maxPriorEntryLossFraction: payload.maxPriorEntryLossFraction }
+        : {}),
     });
     return {
       ok: true,

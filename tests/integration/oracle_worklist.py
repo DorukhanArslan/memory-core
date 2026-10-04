@@ -72,23 +72,6 @@ def _oracle(*names: str) -> tuple[str, ...]:
 
 PENDING_PORTS: tuple[PendingPort, ...] = (
     PendingPort(
-        "deep dreaming policy (enabled by default, minScore 0.75, integer fields limit, "
-        "minRecallCount, minUniqueQueries and recencyHalfLifeDays parsed with "
-        "parseStrictNonNegativeInteger instead of Number() coercion)",
-        "b2cc5f50420 (#115715), 28630a9a650 (#114819); src/memory-host-sdk/dreaming.ts:480-490",
-        _oracle(
-            "deep_policy",
-            "deep_policy_coerces_malformed_values[deep0]",
-            "deep_policy_coerces_malformed_values[deep1]",
-            "deep_policy_coerces_malformed_values[deep3]",
-            "deep_policy_coerces_malformed_values[deep4]",
-            "deep_policy_coerces_malformed_values[deep5]",
-            "deep_policy_coerces_malformed_values[deep6]",
-            "deep_policy_coerces_malformed_values[deep7]",
-        ),
-        plan_area=7,
-    ),
-    PendingPort(
         "concept vocabulary (qmd tag gone with the QMD backend)",
         "8b0735e89f2 (#120936)",
         _oracle("derives_concept_vocabulary_tags"),

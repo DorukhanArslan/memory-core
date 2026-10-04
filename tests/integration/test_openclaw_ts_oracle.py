@@ -151,11 +151,11 @@ def test_real_openclaw_oracle_deep_policy():
 
     assert result["ok"] is True
     assert result["operation"] == "deepPolicy"
-    assert result["result"]["minScore"] == 0.8
+    assert result["result"]["minScore"] == 0.75
     assert result["result"]["minRecallCount"] == 3
     assert result["result"]["minUniqueQueries"] == 3
     assert result["result"]["maxAgeDays"] == 30
-    assert result["result"]["enabled"] is False
+    assert result["result"]["enabled"] is True
     assert result["result"]["limit"] == 10
     assert result["result"]["recencyHalfLifeDays"] == 14
     assert result["result"]["maxPromotedSnippetTokens"] == 160
@@ -1899,10 +1899,17 @@ class _PythonPromotion:
         return [_python_candidate_view(candidate) for candidate in candidates]
 
     def apply(
-        self, now_ms: int, timezone: str, memory_file_max_chars: int | None = None, **payload
+        self,
+        now_ms: int,
+        timezone: str,
+        memory_file_max_chars: int | None = None,
+        max_prior_entry_loss_fraction: float | None = None,
+        **payload,
     ) -> MemoryPromotionRun:
         policy = _runner_policy(payload)
         extra = {} if memory_file_max_chars is None else {"memory_file_max_chars": memory_file_max_chars}
+        if max_prior_entry_loss_fraction is not None:
+            extra["max_prior_entry_loss_fraction"] = max_prior_entry_loss_fraction
         return run_short_term_promotion(
             config=self.config,
             store=SQLiteMemoryStore(self.config, FakeEmbeddingProvider(dimensions=8)),
@@ -2839,7 +2846,7 @@ def test_real_openclaw_oracle_derives_concept_vocabulary_tags():
         (
             "memory/2026-04-03.md",
             "Move backups to S3 Glacier and sync QMD router notes.",
-            ["backup", "backups", "glacier", "qmd", "router", "s3", "sync"],
+            ["backup", "backups", "glacier", "router", "s3", "sync", "qmd"],
         ),
         (
             "memory/2026-04-06.md",
@@ -3640,6 +3647,7 @@ def test_real_openclaw_oracle_compacts_oldest_promotion_section_when_memory_budg
                 "minRecallCount": 0,
                 "minUniqueQueries": 0,
                 "memoryFileMaxChars": 1_400,
+                "maxPriorEntryLossFraction": 1,
             }
         )
 
@@ -3658,8 +3666,103 @@ def test_real_openclaw_oracle_compacts_oldest_promotion_section_when_memory_budg
     python_side.record('rotate creds', [result], 1777456800000)
     assert python_side.rank(1777456800000, **gates) == _ts_candidate_views(ranked)
     python_run = python_side.apply(
+        1777456800000,
+        "Europe/Istanbul",
+        memory_file_max_chars=1_400,
+        max_prior_entry_loss_fraction=1,
+        **gates,
+    )
+    _assert_apply_matches(applied, python_run, python_side)
+
+
+def test_real_openclaw_oracle_defers_promotion_when_compaction_would_lose_too_many_prior_entries(
+    tmp_path: Path,
+):
+    # maxPriorEntryLossFraction (0.25 by default) bounds how many generated entries a write may
+    # drop: fitting the new section here needs one of two (50%), so the candidate is deferred
+    # ("memory budget") and MEMORY.md and the recall entry stay as they are.
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-budget-defer-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        memory_file = workspace / "memory" / "2026-04-29.md"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text(
+            "# 2026-04-29\n\nRotate the staging Postgres credentials before next deploy.\n",
+            encoding="utf-8",
+        )
+        filler = "x" * 600
+        seeded = "\n".join(
+            [
+                "# Long-Term Memory",
+                "",
+                "## Promoted From Short-Term Memory (2026-04-10)",
+                "<!-- openclaw-memory-promotion:legacy-old -->",
+                f"- {filler}",
+                "",
+                "## Promoted From Short-Term Memory (2026-04-20)",
+                "<!-- openclaw-memory-promotion:legacy-newer -->",
+                f"- {filler}",
+                "",
+            ]
+        )
+        (workspace / "MEMORY.md").write_text(seeded, encoding="utf-8")
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
+        result = {
+            "source": "memory",
+            "path": "memory/2026-04-29.md",
+            "startLine": 3,
+            "endLine": 3,
+            "snippet": "Rotate the staging Postgres credentials before next deploy.",
+            "score": 0.96,
+        }
+        oracle.run(
+            {
+                "operation": "recordShortTermRecalls",
+                "workspaceDir": str(workspace),
+                "query": "rotate creds",
+                "results": [result],
+                "nowMs": 1777456800000,
+                "timezone": "Europe/Istanbul",
+            }
+        )
+        gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+        ranked = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1777456800000,
+                "timezone": "Europe/Istanbul",
+                **gates,
+            }
+        )
+        applied = oracle.run(
+            {
+                "operation": "applyShortTermPromotions",
+                "workspaceDir": str(workspace),
+                "nowMs": 1777456800000,
+                "timezone": "Europe/Istanbul",
+                "candidates": ranked["result"]["candidates"],
+                "memoryFileMaxChars": 1_400,
+                **gates,
+            }
+        )
+
+    assert applied["ok"] is True
+    assert applied["result"]["applied"] == 0
+    assert [r["category"] for r in applied["result"]["rejectedCandidates"]] == ["memory budget"]
+    assert applied["files"]["MEMORY.md"] == seeded
+    python_side.record("rotate creds", [result], 1777456800000)
+    python_run = python_side.apply(
         1777456800000, "Europe/Istanbul", memory_file_max_chars=1_400, **gates
     )
+    assert python_run.deferred_reason is not None
+    assert [candidate.key for candidate in python_run.deferred_candidates] == [
+        candidate["key"] for candidate in ranked["result"]["candidates"]
+    ]
     _assert_apply_matches(applied, python_run, python_side)
 
 
@@ -3806,6 +3909,7 @@ def test_real_openclaw_oracle_drops_all_old_promotion_sections_when_budget_canno
                 "minRecallCount": 0,
                 "minUniqueQueries": 0,
                 "memoryFileMaxChars": 700,
+                "maxPriorEntryLossFraction": 1,
             }
         )
 
@@ -3823,7 +3927,11 @@ def test_real_openclaw_oracle_drops_all_old_promotion_sections_when_budget_canno
     python_side.record('fresh material', [result], 1777456800000)
     assert python_side.rank(1777456800000, **gates) == _ts_candidate_views(ranked)
     python_run = python_side.apply(
-        1777456800000, "Europe/Istanbul", memory_file_max_chars=700, **gates
+        1777456800000,
+        "Europe/Istanbul",
+        memory_file_max_chars=700,
+        max_prior_entry_loss_fraction=1,
+        **gates,
     )
     _assert_apply_matches(applied, python_run, python_side)
 

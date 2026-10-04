@@ -330,3 +330,17 @@ def select_session_transcript_leaf_controlled_path(entries: list[Any]) -> list[A
         # logical ancestry normalized while scanning disjoint append cursors.
         selected.append({**entry, "parentId": node.parent_id})
     return selected
+
+
+def select_visible_transcript_events(events: list[Any]) -> list[Any]:
+    """Port of ``selectVisibleTranscriptEvents`` (transcript-visible-events.ts).
+
+    The events on the active visible branch in path order. Without a visible
+    path, a transcript with leaf controls selects nothing and a flat transcript
+    keeps every event.
+    """
+    tree = scan_session_transcript_tree(events)
+    path = select_session_transcript_tree_path_nodes(tree, tree.leaf_id)
+    if path:
+        return [node.entry for node in path]
+    return [] if tree.has_leaf_control else list(events)

@@ -51,7 +51,6 @@ from memory_core.bootstrap.lifecycle import bootstrap_status
 from memory_core.bootstrap.render import (
     _BOOTSTRAP_FULL_FIXED_LINES,
     _BOOTSTRAP_LIMITED_FIXED_LINES,
-    BOOTSTRAP_LIMITED_NEXT_STEP_LINE,
 )
 from memory_core.current_time import DEFAULT_TIME_FORMAT, append_cron_style_current_time_line
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
@@ -311,13 +310,19 @@ BARE_SESSION_RESET_PROMPT_BOOTSTRAP_PENDING = " ".join(
         "Do not mention internal steps, files, tools, or reasoning.",
     ]
 )
+# session-reset-prompt.ts nextStepLine of the limited prompt (v2026.9.6 words it apart from the
+# system prompt's BOOTSTRAP_LIMITED_NEXT_STEP_LINE).
+BARE_SESSION_RESET_LIMITED_NEXT_STEP_LINE = (
+    "Typical next steps include switching to a primary interactive run with normal workspace "
+    "access or having the user complete the canonical BOOTSTRAP.md deletion afterward."
+)
 # session-reset-prompt.ts:27-38: buildLimitedBootstrapPromptLines(...).slice(1).
 BARE_SESSION_RESET_PROMPT_BOOTSTRAP_LIMITED = " ".join(
     [
         "A new session was started via /new or /reset while bootstrap is still pending for this "
         "workspace, but this run cannot safely complete the full BOOTSTRAP.md workflow here.",
         *_BOOTSTRAP_LIMITED_FIXED_LINES,
-        BOOTSTRAP_LIMITED_NEXT_STEP_LINE,
+        BARE_SESSION_RESET_LIMITED_NEXT_STEP_LINE,
         "If the runtime model differs from default_model in the system prompt, mention the default "
         "model only after you have handled this limitation.",
         "Do not mention internal steps, files, tools, or reasoning.",

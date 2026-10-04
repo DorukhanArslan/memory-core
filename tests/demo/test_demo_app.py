@@ -1561,8 +1561,8 @@ def test_bare_new_writes_session_memory_and_loads_the_startup_context(client, la
     assert f"- **Session Key**: {old_key}" in content
     assert "- **Source**: lab" in content
     assert "## Conversation Summary" in content
-    assert "user: Bugün müşteri demosunu 16:00'ya aldık." in content
-    assert "assistant: Not aldım." in content
+    assert 'user: "Bugün müşteri demosunu 16:00\'ya aldık."' in content
+    assert 'assistant: "Not aldım."' in content
     assert result["sessionMemory"]["rawLines"] is True and "D2" in result["sessionMemory"]["label"]
     assert daily.read_text(encoding="utf-8") == daily_before
     # Decision Q10: upstream keeps sessionKey across /new; only the session id changes.

@@ -98,8 +98,8 @@ def test_transcript_rows_read_type_dicts_and_never_emit_a_type_key(tmp_path: Pat
         {"role": "assistant", "content": "Green tea it is."},
     ]
     saved = new.saved.path.read_text(encoding="utf-8")
-    assert "user: I prefer green tea." in saved
-    assert "assistant: Green tea it is." in saved
+    assert 'user: "I prefer green tea."' in saved
+    assert 'assistant: "Green tea it is."' in saved
 
 
 def test_transcript_rows_reject_an_unknown_message_type():

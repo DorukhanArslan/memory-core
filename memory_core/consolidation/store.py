@@ -24,8 +24,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from memory_core.bootstrap._js import js_trim_end, utf16_len, utf16_slice
+from memory_core.bootstrap._js import js_trim_end, utf16_len
 from memory_core.config import MemoryConfig
+from memory_core.index.cjk_chars import truncate_utf16_safe
 from memory_core.consolidation._util import (
     DAY_MS,
     iso_ms,
@@ -222,13 +223,13 @@ def _optional_str(value: Any) -> str | None:
 def truncate_short_term_snippet(snippet: str) -> str:
     """Cap a stored snippet at ``SHORT_TERM_RECALL_MAX_SNIPPET_CHARS`` (trailing space trimmed).
 
-    Upstream ``truncateShortTermSnippet`` counts and slices UTF-16 code units and
-    trims with ``trimEnd``; a cut inside a surrogate pair keeps the lone surrogate,
-    which the store's JSON write escapes like ``JSON.stringify``.
+    Upstream ``truncateShortTermSnippet`` counts UTF-16 code units, cuts with
+    ``truncateUtf16Safe`` (a cut inside a surrogate pair drops the pair, v2026.9.6) and trims
+    with ``trimEnd``.
     """
     if utf16_len(snippet) <= SHORT_TERM_RECALL_MAX_SNIPPET_CHARS:
         return snippet
-    return js_trim_end(utf16_slice(snippet, 0, SHORT_TERM_RECALL_MAX_SNIPPET_CHARS))
+    return js_trim_end(truncate_utf16_safe(snippet, SHORT_TERM_RECALL_MAX_SNIPPET_CHARS))
 
 
 def is_valid_short_term_recall_entry(entry: Any) -> bool:

@@ -65,41 +65,6 @@ def _oracle(*names: str) -> tuple[str, ...]:
 
 PENDING_PORTS: tuple[PendingPort, ...] = (
     PendingPort(
-        "concept vocabulary (qmd tag gone with the QMD backend)",
-        "8b0735e89f2 (#120936)",
-        _oracle("derives_concept_vocabulary_tags"),
-        plan_area=7,
-    ),
-    PendingPort(
-        "short-term recall and promotion (provenance, userQueryHashes and claimHash on recall "
-        "entries, signals/trigger/importance promotion metadata, quarantined captures)",
-        "28630a9a650 (#114819), 20668eed037 (#115818), fe6556b643e (#119624), a7d2f0bd685 (#113223)",
-        _oracle(
-            "records_short_term_recall",
-            "records_short_term_recall_sequence",
-            "first_promotion_write_bootstraps_memory_header",
-            "second_apply_reconciles_existing_marker_without_duplicate",
-            "reconciles_existing_promotion_marker",
-            "reconciles_spaced_case_insensitive_promotion_marker",
-            "compacts_oldest_promotion_section_when_memory_budget_exceeded",
-            "leaves_memory_unchanged_before_append_when_budget_fits",
-            "drops_all_old_promotion_sections_when_budget_cannot_fit_otherwise",
-            "keeps_candidate_like_daily_memory_evidence",
-            "apply_skips_candidate_when_live_note_no_longer_contains_snippet",
-            "promotion_header_uses_dreaming_timezone",
-            "promotion_metadata_rounds_ties_like_to_fixed",
-            "snippet_caps_count_utf16_units[emoji-prefix]",
-            "snippet_caps_count_utf16_units[split-pair]",
-        ),
-        plan_area=7,
-    ),
-    PendingPort(
-        "MEMORY.md budget compaction (bounded prior-entry loss)",
-        "extensions/memory-core/src/memory-budget.ts, 4 commits after 4c428153, latest fc0360dab2e",
-        _oracle("memory_budget_compaction_matches_python"),
-        plan_area=7,
-    ),
-    PendingPort(
         "transcript and replay helpers (history-limit hysteresis, runtime context prompt, "
         "assistant replay normalization, tool-result truncation, startup context)",
         "d5dee714c4f (#115281); runtime-context-prompt.ts 5, "

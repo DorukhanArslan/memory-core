@@ -31,6 +31,9 @@ EXPECTED_RECALL_STORE = """{
       "queryHashes": [
         "aa5368a7c7bd"
       ],
+      "userQueryHashes": [
+        "aa5368a7c7bd"
+      ],
       "recallDays": [
         "2026-05-26"
       ],
@@ -38,7 +41,13 @@ EXPECTED_RECALL_STORE = """{
         "prefers",
         "addressed",
         "dodo"
-      ]
+      ],
+      "provenance": {
+        "originClass": "agent",
+        "sessionKind": "unknown",
+        "observedAt": 1779811200000
+      },
+      "claimHash": "937b1728f28e"
     }
   }
 }
@@ -65,6 +74,10 @@ EXPECTED_REPEATED_RECALL_STORE = """{
         "aa5368a7c7bd",
         "1da206d81a95"
       ],
+      "userQueryHashes": [
+        "aa5368a7c7bd",
+        "1da206d81a95"
+      ],
       "recallDays": [
         "2026-05-26",
         "2026-05-27"
@@ -73,7 +86,13 @@ EXPECTED_REPEATED_RECALL_STORE = """{
         "prefers",
         "addressed",
         "dodo"
-      ]
+      ],
+      "provenance": {
+        "originClass": "agent",
+        "sessionKind": "unknown",
+        "observedAt": 1779897600000
+      },
+      "claimHash": "937b1728f28e"
     }
   }
 }
@@ -115,11 +134,11 @@ class FakeOracle:
                 "ok": True,
                 "operation": "deepPolicy",
                 "result": {
-                    "minScore": 0.8,
+                    "minScore": 0.75,
                     "minRecallCount": 3,
                     "minUniqueQueries": 3,
                     "maxAgeDays": 30,
-                    "enabled": False,
+                    "enabled": True,
                     "limit": 10,
                     "recencyHalfLifeDays": 14,
                     "maxPromotedSnippetTokens": 160,
@@ -233,16 +252,16 @@ def test_build_deep_policy_trace_matches_openclaw_defaults():
 
     assert trace["id"] == "deep-policy"
     assert trace["diff"]["status"] == "match"
-    assert trace["python"]["values"]["minScore"] == 0.8
-    assert trace["openclaw"]["values"]["minScore"] == 0.8
+    assert trace["python"]["values"]["minScore"] == 0.75
+    assert trace["openclaw"]["values"]["minScore"] == 0.75
     assert trace["python"]["values"]["minUniqueQueries"] == 3
     assert trace["openclaw"]["values"]["minUniqueQueries"] == 3
     assert trace["python"]["values"]["limit"] == 10
     assert trace["openclaw"]["values"]["limit"] == 10
     assert trace["python"]["values"]["maxAgeDays"] == 30
     assert trace["openclaw"]["values"]["maxAgeDays"] == 30
-    assert trace["python"]["values"]["enabled"] is False
-    assert trace["openclaw"]["values"]["enabled"] is False
+    assert trace["python"]["values"]["enabled"] is True
+    assert trace["openclaw"]["values"]["enabled"] is True
     assert trace["python"]["values"]["recencyHalfLifeDays"] == 14
 
 

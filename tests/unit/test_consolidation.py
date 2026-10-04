@@ -46,12 +46,12 @@ def test_public_names_resolve():
         assert hasattr(consolidation, name), name
 
 
-def test_deep_dreaming_policy_defaults_are_the_pin_deep_defaults():
-    # src/memory-host-sdk/dreaming.ts:14,38-44 at 4c42815348.
+def test_deep_dreaming_policy_defaults_are_the_tag_deep_defaults():
+    # src/memory-host-sdk/dreaming.ts:22,42-51 at v2026.9.6: dreaming on, minScore 0.75.
     assert resolve_deep_dreaming_policy() == DeepDreamingPolicy(
-        enabled=False,
+        enabled=True,
         limit=10,
-        min_score=0.8,
+        min_score=0.75,
         min_recall_count=3,
         min_unique_queries=3,
         max_age_days=30,
@@ -70,26 +70,30 @@ def test_deep_dreaming_policy_reads_full_or_plugin_config_and_falls_back():
         assert policy.enabled is True
         assert policy.limit == 7
         # dreaming.ts:220-230 normalizeScore: out of range falls back, never clamps.
-        assert policy.min_score == 0.8
+        assert policy.min_score == 0.75
         assert policy.max_age_days == 30
         assert policy.min_recall_count == 3
     assert resolve_deep_dreaming_policy(full_config).as_dict()["limit"] == 7
 
 
-def test_deep_dreaming_policy_uses_javascript_number_coercion():
-    # Pin values measured with the deepPolicy oracle at 4c42815348 (dreaming.ts:181-230).
+def test_deep_dreaming_policy_parses_integers_strictly_and_scores_like_number():
+    # Measured with the deepPolicy oracle at v2026.9.6 (dreaming.ts:480-490): integers go through
+    # parseStrictNonNegativeInteger / parseStrictPositiveInteger, scores keep normalizeScore.
     def resolve(**deep):
         return resolve_deep_dreaming_policy({"dreaming": {"phases": {"deep": deep}}})
 
-    assert resolve(minScore=-0.2).min_score == 0.8
+    assert resolve(minScore=-0.2).min_score == 0.75
     assert resolve(minScore=None).min_score == 0.0
-    assert resolve(limit=None).limit == 0
+    assert resolve(limit=None).limit == 10
     assert resolve(limit="Infinity").limit == 10
     assert resolve(limit=float("inf")).limit == 10
     assert resolve(limit=" 12 ").limit == 12
-    assert resolve(limit=7.9).limit == 7
+    assert resolve(limit=7.9).limit == 10
+    assert resolve(limit="0x10").limit == 10
+    assert resolve(limit=0).limit == 0
     assert resolve(maxAgeDays=float("inf")).max_age_days == 30
     assert resolve(maxAgeDays=None).max_age_days == 30
+    assert resolve(maxAgeDays=0).max_age_days == 30
     assert resolve(maxPromotedSnippetTokens="200").max_promoted_snippet_tokens == 200
 
 
@@ -97,13 +101,13 @@ def test_promotion_append_delegates_budget_compaction_to_memory_budget(
     tmp_path: Path, monkeypatch
 ):
     calls = []
-    real = promotion_module.compact_memory_for_budget
+    real = promotion_module.build_budgeted_memory_append
 
     def spy(**kwargs):
         calls.append(kwargs)
         return real(**kwargs)
 
-    monkeypatch.setattr(promotion_module, "compact_memory_for_budget", spy)
+    monkeypatch.setattr(promotion_module, "build_budgeted_memory_append", spy)
     config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
     (tmp_path / "MEMORY.md").write_text("# MEMORY.md\n", encoding="utf-8")
     daily = tmp_path / "memory" / "2026-05-08.md"
@@ -163,16 +167,15 @@ def test_snippet_caps_count_utf16_code_units(tmp_path: Path):
 
     brain = "\U0001f9e0"
     assert truncate_short_term_snippet(brain * 10 + "a" * 800) == brain * 10 + "a" * 780
-    assert truncate_short_term_snippet("a" * 799 + brain) == "a" * 799 + "\ud83e"
-    assert _format_promoted_snippet_for_memory("x" * 639 + brain + "y", 160) == (
-        "x" * 639 + "�..."
-    )
+    # truncateUtf16Safe (v2026.9.6): a cut inside a surrogate pair drops the pair.
+    assert truncate_short_term_snippet("a" * 799 + brain) == "a" * 799
+    assert _format_promoted_snippet_for_memory("x" * 639 + brain + "y", 160) == "x" * 639 + "..."
 
     config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
     hit = {"path": "memory/2026-05-08.md", "startLine": 3, "snippet": "a" * 799 + brain}
     record_short_term_recalls(config=config, query="a", results=[hit], now_ms=0)
     stored = (tmp_path / "memory" / ".dreams" / "short-term-recall.json").read_text("utf-8")
-    assert '"snippet": "' + "a" * 799 + '\\ud83e"' in stored
+    assert '"snippet": "' + "a" * 799 + '"' in stored
 
 
 def _seed_recalled_daily(tmp_path: Path, now: int) -> MemoryConfig:
@@ -204,7 +207,7 @@ def test_deep_sweep_applies_a_resolved_policy(tmp_path: Path):
             config=config, store=store, phase="deep", now_ms=now, timezone="UTC", policy=policy
         )
 
-    disabled = sweep({})
+    disabled = sweep({"enabled": False})
     assert (disabled.skip_reason, disabled.promotion, disabled.files_changed) == (
         "disabled",
         None,
@@ -212,7 +215,7 @@ def test_deep_sweep_applies_a_resolved_policy(tmp_path: Path):
     )
     assert not (tmp_path / "MEMORY.md").exists()
 
-    enabled = sweep({"enabled": True})
+    enabled = sweep({})  # dreaming is on by default at v2026.9.6
     assert enabled.skip_reason is None
     assert enabled.files_changed == ("MEMORY.md",)
     assert "Move backups to S3 Glacier." in (tmp_path / "MEMORY.md").read_text(encoding="utf-8")

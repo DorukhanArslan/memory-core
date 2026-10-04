@@ -309,7 +309,7 @@ def test_parallel_searches_record_every_recall(tmp_path):
 
     assert errors == []
     entries = json.loads(recall_store_path(tmp_path).read_text())["entries"]
-    assert entries["memory:memory/2026-09-25.md:1:1"]["recallCount"] == 40
+    assert entries["memory:memory/2026-09-25.md:1:2"]["recallCount"] == 40
 
 
 def test_dispatcher_equals_dispatch_with_the_session(tmp_path):

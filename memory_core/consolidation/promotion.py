@@ -33,6 +33,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from memory_core.bootstrap._js import locale_sort_key, js_to_well_formed, js_trim_end, utf16_len, utf16_slice
 from memory_core.config import MemoryConfig
+from memory_core.index.cjk_chars import truncate_utf16_safe
 from memory_core.consolidation._util import (
     DAY_MS,
     clamp_score,
@@ -747,7 +748,7 @@ def _truncate_promoted_snippet(snippet: str, max_tokens: int) -> str:
     limit = _resolve_promoted_snippet_char_limit(max_tokens)
     if limit == 0 or utf16_len(snippet) <= limit:
         return snippet
-    hard_limit = utf16_slice(snippet, 0, limit)
+    hard_limit = truncate_utf16_safe(snippet, limit)
     sentence_boundary = max(
         _utf16_last_index_of(hard_limit, ". "),
         _utf16_last_index_of(hard_limit, "! "),

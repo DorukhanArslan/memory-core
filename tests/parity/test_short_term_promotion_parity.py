@@ -412,7 +412,7 @@ def test_candidate_output_includes_score_components_and_phase_boost(tmp_path: Pa
 
     assert boosted[0].components["frequency"] > 0
     assert boosted[0].components["phaseBoost"] > 0
-    assert boosted[0].components["phaseBoost"] <= 0.09
+    assert boosted[0].components["phaseBoost"] <= 0.15
     assert boosted[0].score >= candidates[0].score
 
 
@@ -745,6 +745,7 @@ def test_promotion_run_compacts_oldest_promotion_section_when_memory_budget_exce
         min_recall_count=0,
         min_unique_queries=0,
         memory_file_max_chars=1_400,
+        max_prior_entry_loss_fraction=1,
     )
     memory_text = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
 
@@ -849,6 +850,7 @@ def test_promotion_run_drops_all_old_promotion_sections_when_budget_cannot_fit_o
         min_recall_count=0,
         min_unique_queries=0,
         memory_file_max_chars=700,
+        max_prior_entry_loss_fraction=1,
     )
     memory_text = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
 
@@ -1261,8 +1263,9 @@ def _promote_ungated(config: MemoryConfig, now_ms: int, **kwargs):
 _GLACIER_SECTION = (
     "\n## Promoted From Short-Term Memory (2026-05-26)\n\n"
     "<!-- openclaw-memory-promotion:memory:memory/2026-05-08.md:3:3 -->\n"
-    "- Move backups to S3 Glacier. [score=0.609 recalls=1 avg=1.000 "
-    "source=memory/2026-05-08.md:3-3]\n"
+    "- Move backups to S3 Glacier. [score=0.609 signals=1 recalls=1 avg=1.000 "
+    "source=memory/2026-05-08.md:3-3] <!-- trigger: backup, backups, glacier --> "
+    "<!-- importance: 6 -->\n"
 )
 
 
@@ -1306,7 +1309,9 @@ def test_promotion_restores_header_when_budget_drops_every_old_section_like_open
     )
     _record_glacier(config, now)
 
-    run = _promote_ungated(config, now, memory_file_max_chars=400)
+    run = _promote_ungated(
+        config, now, memory_file_max_chars=400, max_prior_entry_loss_fraction=1
+    )
 
     assert run.compacted_dates == ("2026-04-10",)
     assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == (
@@ -1314,19 +1319,18 @@ def test_promotion_restores_header_when_budget_drops_every_old_section_like_open
     )
 
 
-def test_concept_tags_keep_decimal_tokens_and_split_dated_file_names_like_openclaw():
+def test_concept_tags_drop_numeric_compounds_and_keep_dated_file_names_like_openclaw():
     assert concepts_module.derive_concept_tags(
         "memory/2026-04-08.md",
         "Candidate: move backups weekly. confidence: 0.76 evidence: memory/2026-04-08.md:1-1",
     ) == [
         "backup",
         "backups",
-        "0.76",
         "memory/2026-04-08.md",
-        "1-1",
         "candidate",
         "weekly",
         "confidence",
+        "evidence",
     ]
     assert concepts_module.derive_concept_tags(
         "memory/2026-05-26.md", "- User prefers to be addressed as dodo."
@@ -1368,6 +1372,7 @@ def test_promotion_metadata_rounds_ties_up_like_openclaw_to_fixed(tmp_path: Path
     assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == (
         "# Long-Term Memory\n\n\n## Promoted From Short-Term Memory (2026-05-08)\n\n"
         "<!-- openclaw-memory-promotion:memory:memory/2026-05-08.md:3:3 -->\n"
-        "- Move backups to S3 Glacier. [score=0.549 recalls=2 avg=0.563 "
-        "source=memory/2026-05-08.md:3-3]\n"
+        "- Move backups to S3 Glacier. [score=0.549 signals=2 recalls=2 avg=0.563 "
+        "source=memory/2026-05-08.md:3-3] <!-- trigger: backup, backups, glacier --> "
+        "<!-- importance: 5 -->\n"
     )

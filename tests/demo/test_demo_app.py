@@ -2190,7 +2190,7 @@ def test_consolidation_view_lists_candidates_gates_and_curated_writes(client, la
     view = client.get("/api/lab/consolidation").json()
 
     assert view["curated"][0]["path"] == "MEMORY.md" and "before" not in view["curated"][0]
-    assert view["gates"]["minScore"] == 0.8 and view["gates"]["minRecallCount"] == 3
+    assert view["gates"]["minScore"] == 0.75 and view["gates"]["minRecallCount"] == 3
     assert view["gates"]["minUniqueQueries"] == 3 and view["gates"]["limit"] == 5
     assert view["weights"] == {"frequency": 0.24, "relevance": 0.30, "diversity": 0.15, "recency": 0.15,
                                "consolidation": 0.10, "conceptual": 0.06}

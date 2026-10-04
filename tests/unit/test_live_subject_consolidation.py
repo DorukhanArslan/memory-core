@@ -77,7 +77,7 @@ def test_subject_promotion_writes_only_the_subject_workspace(tmp_path: Path):
 
     alice_dir = tmp_path / "subjects" / "alice"
     memory = (alice_dir / "MEMORY.md").read_text(encoding="utf-8")
-    key = f"memory:{DAILY}:3:3"
+    key = f"memory:{DAILY}:1:4"
     assert run.appended == 1
     assert [candidate.key for candidate in run.applied_candidates] == [key]
     assert f"<!-- memory-core-memory-promotion:{key} -->" in memory

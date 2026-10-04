@@ -410,8 +410,7 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
   deep dreaming adds an LLM consolidation step (`dreaming-consolidation.ts`).
 - Python: `memory_core/consolidation/*`, `memory_core/memory_budget.py`, `memory_core/curation.py`.
 - Tests: 25 (deep policy 8, concept tags 1, recall and promotion 15, budget 1).
-- Worklist areas: "deep dreaming policy", "concept vocabulary", "short-term recall and
-  promotion", "MEMORY.md budget compaction".
+- Worklist areas: none left; the four area-7 entries were removed when the area landed (2026-10-04).
 - New oracle ops: `consolidateMemory` through `test-helpers.ts` `consolidateMemoryForTests` with a
   stubbed model (only if decision 3 ports it), `recordGroundedShortTermCandidates`.
 
@@ -440,7 +439,7 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
 - Python: `memory_core/session_memory.py`, `memory_core/bootstrap/startup.py` (reset prompts).
 - Tests: 4 (slug 1, hook 2, reset-prompt source check 1), plus the re-port of the retired
   `sessionMemoryTranscript` test.
-- Worklist areas: "session-memory hook".
+- Worklist areas: none left; the `session-memory hook` entries were removed when the area landed (2026-10-04).
 - New oracle ops: `sessionMemoryProjection` (the two exports over event lists); the
   `sessionMemoryHook` op seeds transcripts into SQLite instead of JSONL files.
 

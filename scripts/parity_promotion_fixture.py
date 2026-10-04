@@ -98,7 +98,7 @@ def summarize(candidate: Any) -> CandidateSummary:
         reasons.append(f"signals {candidate.signal_count} < {DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT}")
     if candidate.context_diversity < DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES:
         reasons.append(
-            f"unique queries/days {candidate.context_diversity} < "
+            f"unique queries {candidate.context_diversity} < "
             f"{DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES}"
         )
     return CandidateSummary(

@@ -4737,6 +4737,58 @@ def test_real_openclaw_oracle_normalize_assistant_replay_content_matches_python(
             "model": "delivery-mirror",
             "timestamp": 0,
         },
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "answer"},
+                {"type": "image", "data": "AA==", "mimeType": "image/png"},
+            ],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": {"input": 4, "output": 4, "totalTokens": 8},
+            "stopReason": "stop",
+            "timestamp": 0,
+        },
+        {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "answer"}],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": zero_usage,
+            "stopReason": "stop",
+            "timestamp": 0,
+        },
+        {
+            "role": "assistant",
+            "content": [{"type": "thinking", "thinking": "cut off", "signature": "sig"}],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": {"input": 1, "output": 1, "totalTokens": 2},
+            "stopReason": "length",
+            "timestamp": 0,
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "quiet", "signature": "sig"},
+                {"type": "text", "text": "NO_REPLY"},
+            ],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": {"input": 1, "output": 1, "totalTokens": 2},
+            "stopReason": "stop",
+            "timestamp": 0,
+        },
+        {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "[assistant turn failed before producing content]"}],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": zero_usage,
+            "stopReason": "error",
+            "timestamp": 0,
+        },
+        {"role": "user", "content": "", "timestamp": 0},
     ]
 
     result = oracle.run({"operation": "normalizeAssistantReplayContent", "messages": messages})

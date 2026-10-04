@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from memory_core.memory_flush import SILENT_REPLY_TOKEN
+from memory_core.replay_repair import _extract_tool_calls_from_assistant
 from memory_core.runtime_context_prompt import (
     OPENCLAW_RUNTIME_CONTEXT_NOTICE,
     _find_delimited_token_index,
@@ -13,6 +14,7 @@ from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY, MEMOR
 
 STREAM_ERROR_FALLBACK_TEXT = "[assistant turn failed before producing content]"
 _TRANSCRIPT_ONLY_OPENCLAW_MODELS = {"delivery-mirror", "gateway-injected"}
+_MANAGED_DISPLAY_BLOCK_TYPES = {"attachment", "attachment_error", "audio", "image", "video"}
 
 
 def normalize_assistant_replay_content(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -36,6 +38,15 @@ def normalize_assistant_replay_content(messages: list[dict[str, Any]]) -> list[d
             touched = True
             continue
 
+        # Failed attempts have no model content; discard the legacy placeholder too.
+        # Keep billed silent replies and incomplete tool/length states unchanged.
+        if _is_stream_error_fallback_content(message.get("content")) and (
+            message.get("stopReason") == "error"
+            or _is_zero_usage_empty_stop_assistant_turn({**message, "content": []})
+        ):
+            touched = True
+            continue
+
         replay_content = message.get("content")
         assistant_message = message
         if isinstance(replay_content, str):
@@ -54,29 +65,25 @@ def normalize_assistant_replay_content(messages: list[dict[str, Any]]) -> list[d
             assistant_message,
             replay_content,
         )
-        if normalized_blocks != assistant_message:
-            if normalized_blocks is not None:
-                out.append(normalized_blocks)
+        if normalized_blocks is not assistant_message:
+            touched = True
+            if normalized_blocks is None:
+                continue
+            assistant_message = normalized_blocks
+
+        if _is_reasoning_only_length_assistant_turn(assistant_message):
+            # Token-limited thinking is incomplete provider state; replaying it can
+            # resend a partial signature.
             touched = True
             continue
 
-        if len(replay_content) == 0:
-            stop_reason = assistant_message.get("stopReason")
-            if stop_reason == "error" or _is_zero_usage_empty_stop_assistant_turn(assistant_message):
-                out.append(
-                    {
-                        **assistant_message,
-                        "content": [{"type": "text", "text": STREAM_ERROR_FALLBACK_TEXT}],
-                    }
-                )
-                touched = True
-                continue
+        # Historical side-branch rebuilds could strip every mirror marker while
+        # retaining the zero-usage receipt right after its source reply.
+        if _is_bare_delivery_mirror_duplicate(out, assistant_message):
+            touched = True
+            continue
 
         out.append(assistant_message)
-
-    while out and _is_replay_droppable_trailing_assistant(out[-1]):
-        out.pop()
-        touched = True
 
     return out if touched else messages
 
@@ -84,7 +91,7 @@ def normalize_assistant_replay_content(messages: list[dict[str, Any]]) -> list[d
 def _sanitize_user_replay_content(message: dict[str, Any]) -> dict[str, Any] | None:
     content = message.get("content")
     if isinstance(content, str):
-        return message if content.strip() else None
+        return message if content.strip() or _has_persisted_media(message) else None
     if not isinstance(content, list):
         return message
 
@@ -100,8 +107,34 @@ def _sanitize_user_replay_content(message: dict[str, Any]) -> dict[str, Any] | N
             continue
         touched = True
     if not sanitized:
-        return None
+        return {**message, "content": ""} if _has_persisted_media(message) else None
     return {**message, "content": sanitized} if touched else message
+
+
+def _has_persisted_media(message: dict[str, Any]) -> bool:
+    """Canonical persisted media envelope (``__openclaw.media``), see sessions/user-turn-media.ts.
+
+    Simplified: upstream normalizes each fact through ``normalizeMediaFact``; here an entry is
+    meaningful when it has a non-blank path/url, a content type or a kind other than "unknown".
+    """
+
+    metadata = message.get("__openclaw")
+    media = metadata.get("media") if isinstance(metadata, dict) else None
+    if not isinstance(media, list):
+        return False
+    for entry in media:
+        if not isinstance(entry, dict):
+            continue
+        for key in ("path", "url"):
+            value = entry.get(key)
+            if isinstance(value, str) and value.strip():
+                return True
+        if entry.get("contentType"):
+            return True
+        kind = entry.get("kind")
+        if kind and kind != "unknown":
+            return True
+    return False
 
 
 def _is_transcript_only_openclaw_assistant(message: dict[str, Any]) -> bool:
@@ -128,28 +161,160 @@ def _normalize_assistant_replay_block_content(
     replay_content: list[Any],
 ) -> dict[str, Any] | None:
     touched = False
+    removed_silent_text = False
     sanitized = []
     for block in replay_content:
-        if not isinstance(block, dict) or not isinstance(block.get("text"), str):
+        if not isinstance(block, dict):
             sanitized.append(block)
             continue
-        text = block["text"]
+        block_type = block.get("type")
+        if isinstance(block_type, str) and block_type in _MANAGED_DISPLAY_BLOCK_TYPES:
+            touched = True
+            continue
+        text = block.get("text")
+        if not isinstance(text, str):
+            sanitized.append(block)
+            continue
         stripped = _strip_internal_metadata_for_display(text)
         if stripped == text:
             if not _is_silent_reply_payload_text(text.strip()):
                 sanitized.append(block)
             else:
                 touched = True
+                removed_silent_text = True
             continue
         touched = True
         trimmed = stripped.strip()
-        if trimmed and not _is_silent_reply_payload_text(trimmed):
+        is_silent_text = bool(trimmed) and _is_silent_reply_payload_text(trimmed)
+        if trimmed and not is_silent_text:
             sanitized.append({**block, "text": stripped})
+        removed_silent_text = removed_silent_text or is_silent_text
     if not touched:
         return message
     if not sanitized:
         return None
-    return {**message, "content": sanitized}
+    normalized = {**message, "content": sanitized}
+    # A silent reply has no visible assistant output; do not let its signed reasoning
+    # merge into the next assistant turn during strict replay.
+    if removed_silent_text and _has_only_assistant_reasoning_content(normalized):
+        return None
+    return normalized
+
+
+def _has_only_assistant_reasoning_content(message: dict[str, Any]) -> bool:
+    if message.get("role") != "assistant":
+        return False
+    content = message.get("content")
+    if isinstance(content, list):
+        blocks = content
+    elif isinstance(content, dict):
+        blocks = [content]
+    else:
+        blocks = []
+    has_thinking = False
+    for block in blocks:
+        if not isinstance(block, dict) or "type" not in block:
+            return False
+        if block["type"] in ("thinking", "redacted_thinking"):
+            has_thinking = True
+            continue
+        if (
+            block["type"] == "text"
+            and isinstance(block.get("text"), str)
+            and not block["text"].strip()
+        ):
+            continue
+        return False
+    return has_thinking
+
+
+def _is_reasoning_only_length_assistant_turn(message: dict[str, Any]) -> bool:
+    return message.get("stopReason") == "length" and _has_only_assistant_reasoning_content(message)
+
+
+def _is_stream_error_fallback_content(content: Any) -> bool:
+    if content is None:
+        return True
+    if isinstance(content, str):
+        return not content.strip() or content.strip() == STREAM_ERROR_FALLBACK_TEXT
+    return isinstance(content, list) and all(
+        isinstance(block, dict)
+        and block.get("type") in ("text", "input_text", "output_text")
+        and isinstance(block.get("text"), str)
+        and _is_stream_error_fallback_content(block["text"])
+        for block in content
+    )
+
+
+_USAGE_COUNT_KEYS = (
+    "input",
+    "output",
+    "cacheRead",
+    "cacheWrite",
+    "total",
+    "totalTokens",
+    "total_tokens",
+    "reasoningTokens",
+    "input_tokens",
+    "output_tokens",
+    "inputTokens",
+    "outputTokens",
+    "promptTokens",
+    "prompt_tokens",
+    "completionTokens",
+    "completion_tokens",
+    "cache_read",
+    "cache_write",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+)
+
+
+def _has_nonzero_usage(usage: Any) -> bool:
+    """Simplified ``hasNonzeroUsage(normalizeUsage(usage))``: any known counter above zero.
+
+    Gap: upstream's normalizeUsage also reads nested ``*_details`` objects and subtracts
+    cache buckets from provider input totals; an unavailable ``contextUsage`` counts as usage.
+    """
+
+    if not isinstance(usage, dict):
+        return False
+    context = usage.get("contextUsage")
+    if isinstance(context, dict):
+        if context.get("state") == "unavailable":
+            return True
+        if context.get("state") == "available" and any(
+            (v := _read_finite_number(context.get(k))) is not None and v > 0
+            for k in ("promptTokens", "totalTokens")
+        ):
+            return True
+    return any(
+        (v := _read_finite_number(usage.get(key))) is not None and v > 0
+        for key in _USAGE_COUNT_KEYS
+    )
+
+
+def _is_bare_delivery_mirror_duplicate(out: list[dict[str, Any]], nxt: dict[str, Any]) -> bool:
+    previous = out[-1] if out else None
+    if not previous or previous.get("role") != "assistant":
+        return False
+    usage = nxt.get("usage")
+    if (
+        not isinstance(usage, dict)
+        or _has_nonzero_usage(usage)
+        or nxt.get("stopReason") != "stop"
+        or _extract_tool_calls_from_assistant(previous)
+        or _extract_tool_calls_from_assistant(nxt)
+    ):
+        return False
+    previous_content = previous.get("content")
+    next_content = nxt.get("content")
+    return (
+        isinstance(previous_content, list)
+        and len(previous_content) > 0
+        and isinstance(next_content, list)
+        and previous_content == next_content
+    )
 
 
 def _is_silent_reply_payload_text(text: str) -> bool:
@@ -157,29 +322,6 @@ def _is_silent_reply_payload_text(text: str) -> bool:
     # (src/auto-reply/tokens.ts:217), which also accepts repeated tokens,
     # punctuation wrappers, JSON-string, envelope and reasoning-prefixed forms.
     return text == SILENT_REPLY_TOKEN
-
-
-def _is_replay_droppable_trailing_assistant(message: dict[str, Any] | None) -> bool:
-    if not message or message.get("role") != "assistant":
-        return False
-    content = message.get("content")
-    if not isinstance(content, list):
-        return False
-    if not content:
-        stop_reason = message.get("stopReason")
-        return stop_reason == "error" or _is_zero_usage_empty_stop_assistant_turn(message)
-    if not _is_stream_error_sentinel_content(content):
-        return False
-    stop_reason = message.get("stopReason")
-    if stop_reason == "error":
-        return True
-    return _is_zero_usage_empty_stop_assistant_turn({**message, "content": []})
-
-
-def _is_stream_error_sentinel_content(content: list[Any]) -> bool:
-    if len(content) != 1 or not isinstance(content[0], dict):
-        return False
-    return content[0].get("type") == "text" and content[0].get("text") == STREAM_ERROR_FALLBACK_TEXT
 
 
 def _is_zero_usage_empty_stop_assistant_turn(message: dict[str, Any] | None) -> bool:

@@ -456,7 +456,7 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
   `memory_core/bootstrap/startup.py`.
 - Tests: 7 (six helper fixtures and the run-loop mid-turn scenario); 6 left after the
   tool-use repair re-port.
-- Worklist areas: "transcript and replay helpers", "overflow run loop".
+- Worklist areas: none left; the `transcript and replay helpers` and `overflow run loop` entries were removed when the area landed (2026-10-04).
 - New oracle ops: `sanitizeToolCallInputs` (2026-09-29).
 - 2026-09-29, `feat/kit-langgraph-fixes` (docs/host_kit.md › LangGraph findings, F26): the
   tool-use repair (`repairToolUseResultPairing` over `classifyToolUseResultPairing`) is re-ported

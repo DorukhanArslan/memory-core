@@ -78,7 +78,6 @@ from memory_core.tools.memory_get import (
     memory_get_tool_definition,
 )
 from memory_core.workspace import MemoryWorkspace
-from oracle_worklist import retired_upstream
 
 
 pytestmark = pytest.mark.skipif(
@@ -8129,53 +8128,110 @@ SESSION_MEMORY_TRANSCRIPT_CASES = [
 ]
 
 
-def _python_session_memory_transcript_case(case: dict, root: Path):
+def _sm_reject_constant(name: str):
+    raise ValueError(name)  # NaN and Infinity are not JSON
+
+
+def _sm_text_row(role: str, text: str) -> dict:
+    return _sm_row(role, text)
+
+
+def _sm_projection_cases() -> list[dict]:
+    # Text through sanitizeSessionMemoryTranscriptText (no longer exported): one user and one
+    # assistant row per input; the upstream transcripts of the retired op as event lists.
+    cases: list[dict] = []
+    for item in SESSION_MEMORY_TRANSCRIPT_CASES:
+        if item["kind"] == "sanitize":
+            cases.append({"events": [_sm_text_row("user", item["text"])]})
+            cases.append({"events": [_sm_text_row("assistant", item["text"])]})
+        elif item["kind"] == "recent" and item["content"] is not None:
+            events = []
+            for line in item["content"].split("\n"):
+                try:
+                    events.append(json.loads(line, parse_constant=_sm_reject_constant))
+                except ValueError:
+                    continue  # the old file reader skipped invalid rows; events are parsed
+            case: dict = {"events": events}
+            if "messageCount" in item:
+                case["messageCount"] = item["messageCount"]
+            cases.append(case)
+    separators = "a\u0085b\u2028c\u2029d \u0001 \u007f \ud800 \"q\" \\"
+    cases += [
+        {"events": [_sm_text_row("user", separators), _sm_text_row("assistant", separators)]},
+        # trust classes: owner/untrusted users, tainted and clean assistants, internal_system.
+        {
+            "events": [
+                _sm_row("user", "owner", __openclaw={"senderIsOwner": True}),
+                _sm_row("assistant", "agent reply"),
+            ]
+        },
+        {
+            "events": [
+                _sm_row("user", "owner", __openclaw={"senderIsOwner": True}),
+                _sm_row("assistant", "tainted", __openclaw={"turnTainted": True}),
+            ]
+        },
+        {"events": [_sm_row("user", "plain user"), _sm_row("assistant", "reply")]},
+        {
+            "events": [
+                _sm_row("user", "system note", provenance={"kind": "internal_system"}),
+                _sm_row("assistant", "reply"),
+            ]
+        },
+        {"events": [_sm_row("user", "x", provenance={"kind": "inter_session"})]},
+        {"events": [_sm_row("user", "x", provenance=["inter_session"]), _sm_text_row("user", "y")]},
+        {"events": [_sm_row("user", "x", __openclaw=[{"senderIsOwner": True}])]},
+        # slash commands: a user slash row ends the turn (a later mirror is kept), an assistant
+        # one vanishes.
+        {
+            "events": [
+                _sm_row("assistant", "same"),
+                _sm_row("user", "/status"),
+                _sm_mirror("same"),
+                _sm_text_row("assistant", "/help"),
+                _sm_text_row("assistant", "kept"),
+                _sm_mirror("kept"),
+            ]
+        },
+        {"events": [_sm_row("user", [{"type": "image"}, {"type": "text", "text": "second"}])]},
+        {"events": [_sm_row("user", [])]},
+        {"events": [_sm_row("user", None), {"type": "message", "message": {"role": "user"}}]},
+        {"events": [{"type": "message", "message": "x"}, {"type": "custom"}, 5, None, []]},
+        {"events": [{"type": "message", "message": {"role": "tool", "content": "x"}}]},
+        {"events": [_sm_text_row("user", "one"), _sm_text_row("user", "two")], "messageCount": 1},
+        {"events": [_sm_text_row("user", "one"), _sm_text_row("user", "two")], "messageCount": 1.9},
+        {"events": [_sm_text_row("user", "one")], "messageCount": 0},
+        {"events": [_sm_text_row("user", "one")], "messageCount": -1},
+        {"events": [_sm_text_row("user", "one")], "messageCount": "1"},
+        {"events": []},
+    ]
+    return cases
+
+
+def _python_projection_case(case: dict) -> dict:
     from memory_core.session_memory import (
-        find_previous_session_file,
-        get_recent_session_content,
-        get_recent_session_content_with_reset_fallback,
-        sanitize_session_memory_transcript_text,
+        count_session_memory_messages,
+        get_recent_session_projection_from_events,
     )
 
-    sessions = root / "sessions"
-    sessions.mkdir(parents=True)
-    count = case.get("messageCount")
-    count_args = () if count is None else (count,)
-    if case["kind"] == "sanitize":
-        return sanitize_session_memory_transcript_text(case["text"])
-    if case["kind"] == "recent":
-        if case["content"] is not None:
-            (sessions / "session.jsonl").write_bytes(case["content"].encode("utf-8"))
-        return get_recent_session_content(sessions / "session.jsonl", *count_args)
-    for name, content in case["files"].items():
-        (sessions / name).write_bytes(content.encode("utf-8"))
-    if case["kind"] == "resetFallback":
-        return get_recent_session_content_with_reset_fallback(
-            sessions / case["target"], *count_args
-        )
-    current = case.get("currentSessionFile")
-    found = find_previous_session_file(
-        sessions,
-        current_session_file=str(sessions / current) if current else None,
-        session_id=case.get("sessionId"),
-    )
-    return None if found is None else os.path.relpath(found, sessions)
+    count_args = (case["messageCount"],) if "messageCount" in case else ()
+    projection = get_recent_session_projection_from_events(case["events"], *count_args)
+    return {
+        "projection": None
+        if projection is None
+        else {"content": projection.content, "originClass": projection.origin_class},
+        "count": count_session_memory_messages(case["events"]),
+    }
 
 
-@retired_upstream("sessionMemoryTranscript")
-def test_real_openclaw_oracle_session_memory_transcript_matches_python(tmp_path: Path):
-    result = _oracle().run(
-        {"operation": "sessionMemoryTranscript", "cases": SESSION_MEMORY_TRANSCRIPT_CASES}
-    )
+def test_real_openclaw_oracle_session_memory_projection_matches_python():
+    cases = _sm_projection_cases()
+    result = _oracle().run({"operation": "sessionMemoryProjection", "cases": cases})
 
     assert result["ok"] is True, result
-    python_cases = [
-        _python_session_memory_transcript_case(case, tmp_path / f"case-{index}")
-        for index, case in enumerate(SESSION_MEMORY_TRANSCRIPT_CASES)
-    ]
-    for index, (expected, actual) in enumerate(zip(result["result"]["cases"], python_cases)):
-        assert actual == expected, (index, SESSION_MEMORY_TRANSCRIPT_CASES[index])
-    assert len(result["result"]["cases"]) == len(python_cases)
+    assert len(result["result"]["cases"]) == len(cases)
+    for index, (expected, case) in enumerate(zip(result["result"]["cases"], cases)):
+        assert _python_projection_case(case) == expected, (index, case)
 
 
 def test_session_memory_constants_equal_upstream_source():
@@ -8342,14 +8398,27 @@ def _sm_event(**overrides) -> dict:
     event = {
         "timezone": "UTC",
         "nowMs": _SM_2026_01_01,
-        "previousSessionEntry": {"sessionId": "test-123", "sessionFile": _SM_TEST_SESSION},
+        "previousSessionEntry": {"sessionId": "test-123"},
     }
     event.update(overrides)
     return event
 
 
-def _sm_session(content: str, *events, files: dict | None = None) -> dict:
-    return {"files": {_SM_TEST_SESSION: content, **(files or {})}, "events": list(events)}
+def _sm_events(content: str) -> list[dict]:
+    # The JSONL helpers' rows as transcript events (v2026.9.6 reads them from SQLite; the oracle
+    # seeds them through appendSessionTranscriptMessageByIdentity and memory-core gets them from
+    # the host).
+    return [json.loads(line) for line in content.split("\n") if line.strip()]
+
+
+def _sm_session(
+    content: str, *events, files: dict | None = None, transcripts: dict | None = None
+) -> dict:
+    return {
+        "files": dict(files or {}),
+        "transcripts": {"test-123": _sm_events(content), **(transcripts or {})},
+        "events": list(events),
+    }
 
 
 _SM_TWO_PLUS_TWO = _sm_mock(("user", "What is 2+2?"), ("assistant", "2+2 equals 4"))
@@ -8409,17 +8478,6 @@ SESSION_MEMORY_HOOK_SCENARIOS = [
     _sm_session(_SM_TEN_MESSAGES, _sm_event(messages=3)),
     {"events": [_sm_event(type="agent", action="bootstrap"), _sm_event(action="help")]},
     _sm_session(
-        "",
-        _sm_event(),
-        files={
-            f"sessions/test-session.jsonl.reset.{_SM_RESET_AT}": _sm_mock(
-                ("user", "Message from rotated transcript"),
-                ("assistant", "Recovered from reset fallback"),
-            )
-        },
-    ),
-    # Config, slug, recovery, collision and metadata edges.
-    _sm_session(
         _SM_TWO_PLUS_TWO,
         _sm_event(llmSlug=True, slugReply={"text": "Provider API error (429): quota exceeded"}),
         _sm_event(llmSlug=True, slugReply={"throw": "Provider API error (429): quota exceeded"}),
@@ -8444,38 +8502,6 @@ SESSION_MEMORY_HOOK_SCENARIOS = [
         ),
     ),
     {
-        "files": {"sessions/missing-session-file.jsonl": _SM_TWO_PLUS_TWO},
-        "events": [_sm_event(previousSessionEntry={"sessionId": "missing-session-file"})],
-    },
-    {
-        "files": {"sessions/test-session.jsonl": _SM_TWO_PLUS_TWO},
-        "events": [
-            _sm_event(
-                previousSessionEntry={
-                    "sessionId": "test-123",
-                    "sessionFile": f"sessions/test-session.jsonl.reset.{_SM_RESET_AT}",
-                }
-            )
-        ],
-    },
-    {
-        "files": {"archive/test-session.jsonl": _SM_TWO_PLUS_TWO},
-        "events": [
-            _sm_event(
-                previousSessionEntry={
-                    "sessionId": "test-123",
-                    "sessionFile": f"archive/test-session.jsonl.reset.{_SM_RESET_AT}",
-                }
-            )
-        ],
-    },
-    {
-        "files": {"sessions/other.jsonl": _SM_TWO_PLUS_TWO},
-        "events": [
-            _sm_event(previousSessionEntry={"sessionId": "test-123", "sessionFile": "gone.jsonl"})
-        ],
-    },
-    {
         "files": {"memory/2026-01-01-0430.md": "", "memory/2026-01-01-0430-2.md": ""},
         "events": [_sm_event(previousSessionEntry={})],
     },
@@ -8484,20 +8510,77 @@ SESSION_MEMORY_HOOK_SCENARIOS = [
         "events": [
             {
                 **_sm_event(llmSlug=True, slugReply={"text": "simple-math"}),
-                "previousSessionEntry": {"sessionId": "test-123", "sessionFile": "s.jsonl"},
+                "previousSessionEntry": {"sessionId": "test-123"},
             }
         ],
     },
     {
-        "files": {"s.jsonl": _SM_TWO_PLUS_TWO},
+        "transcripts": {"abc123def456": _sm_events(_SM_TWO_PLUS_TWO)},
         "events": [
             _sm_event(
                 sessionKey="agent:navi:main",
                 commandSource="telegram",
-                previousSessionEntry={"sessionId": "  abc123def456 ", "sessionFile": "s.jsonl"},
+                previousSessionEntry={"sessionId": "  abc123def456 "},
             )
         ],
     },
+    # Automatic rollover (session/auto-reset with reason daily or idle) reads context.sessionEntry
+    # and writes "Reason" instead of "Source"; other reasons and actions do nothing.
+    _sm_session(
+        _SM_TWO_PLUS_TWO,
+        _sm_event(
+            type="session",
+            action="auto-reset",
+            reason="daily",
+            sessionEntry={"sessionId": "test-123"},
+            previousSessionEntry=None,
+        ),
+        _sm_event(
+            type="session",
+            action="auto-reset",
+            reason="idle",
+            commandSource="telegram",
+            sessionEntry={"sessionId": "test-123"},
+            llmSlug=True,
+            slugReply={"text": "simple-math"},
+        ),
+        _sm_event(
+            type="session", action="auto-reset", reason="manual", sessionEntry={"sessionId": "test-123"}
+        ),
+        _sm_event(type="session", action="auto-reset", sessionEntry={"sessionId": "test-123"}),
+        _sm_event(type="session", action="start", reason="daily"),
+        _sm_event(type="session", action="auto-reset", reason="daily", sessionEntry={}),
+    ),
+    # A command event takes previousSessionEntry, then sessionEntry; a session event only
+    # sessionEntry.
+    _sm_session(
+        _SM_TWO_PLUS_TWO,
+        _sm_event(previousSessionEntry=None, sessionEntry={"sessionId": "test-123"}),
+        _sm_event(
+            previousSessionEntry={"sessionId": "unknown-session"},
+            sessionEntry={"sessionId": "test-123"},
+        ),
+        _sm_event(
+            type="session",
+            action="auto-reset",
+            reason="idle",
+            previousSessionEntry={"sessionId": "test-123"},
+        ),
+    ),
+    # Rows are written as JSON strings; slash commands, delivery mirrors and provenance.
+    _sm_session(
+        _sm_mock(
+            ("user", "multi\nline \"quoted\" \u2028 text"),
+            ("assistant", "/help"),
+            ("user", "/status"),
+            ("assistant", "reply"),
+            _sm_mirror("reply"),
+            ("user", "from a peer"),
+            _sm_row("user", "inter session", provenance={"kind": "inter_session"}),
+            ("assistant", [{"type": "image"}, {"type": "text", "text": "second block"}]),
+        ),
+        _sm_event(),
+    ),
     {
         "events": [
             _sm_event(timezone=zone, nowMs=instant, previousSessionEntry={})
@@ -8547,19 +8630,31 @@ def _python_session_hook_scenario(scenario: dict, root: Path) -> dict:
         (root / relative).write_bytes(content.encode("utf-8"))
     prompts: list[str] = []
     for event in scenario["events"]:
-        if not is_session_memory_trigger(event.get("type", "command"), event.get("action", "new")):
+        if not is_session_memory_trigger(
+            event.get("type", "command"), event.get("action", "new"), event.get("reason")
+        ):
             continue
-        previous = event.get("previousSessionEntry") or {}
+        if event.get("type", "command") == "command":
+            previous = event.get("previousSessionEntry") or event.get("sessionEntry") or {}
+        else:
+            previous = event.get("sessionEntry") or {}
         generator = None
         if event.get("llmSlug"):
             generator = _python_slug_generator(event.get("slugReply"))
             generator.prompts = prompts
-        session_file = previous.get("sessionFile")
+        session_id = previous.get("sessionId")
+        host_events = (
+            scenario.get("transcripts", {}).get(session_id)
+            if isinstance(session_id, str)
+            else None
+        )
         save_session_memory(
             root,
             session_key=event.get("sessionKey", "agent:main:main"),
-            session_id=previous.get("sessionId"),
-            session_file=str(root / session_file) if session_file else None,
+            session_id=session_id,
+            events=host_events,
+            event_type=event.get("type", "command"),
+            reason=event.get("reason"),
             source=event.get("commandSource"),
             now_ms=event["nowMs"],
             timezone=event["timezone"],

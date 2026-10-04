@@ -167,7 +167,7 @@ def test_new_session_uses_the_host_timezone_and_time_format(tmp_path):
 def test_both_transcript_sources_raise(tmp_path):
     kit = _kit(tmp_path)
 
-    with pytest.raises(ValueError, match="not both"):
+    with pytest.raises(ValueError, match="at most one"):
         kit.on_new_session(
             _ending(),
             command="new",

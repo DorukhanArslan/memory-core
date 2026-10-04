@@ -51,14 +51,7 @@ class RetiredOp:
         return f"retired upstream in {self.commit} ({ORACLE_TAG}); re-port in stage 2: {self.stage2}"
 
 
-RETIRED_OPS: tuple[RetiredOp, ...] = (
-    RetiredOp(
-        "sessionMemoryTranscript",
-        "2cc49503a60 (#107412) and 4273ca9dbd9 (#113233)",
-        "src/hooks/bundled/session-memory/transcript.ts getRecentSessionProjectionFromEvents "
-        "and countSessionMemoryMessages over SQLite transcript events",
-    ),
-)
+RETIRED_OPS: tuple[RetiredOp, ...] = ()
 RETIRED_BY_OPERATION = {op.operation: op for op in RETIRED_OPS}
 
 
@@ -230,21 +223,6 @@ PENDING_PORTS: tuple[PendingPort, ...] = (
             "test_real_openclaw_run_loop_mid_turn_precheck_continuation",
         ),
         plan_area=10,
-    ),
-    PendingPort(
-        "session-memory hook (transcripts from the SQLite session store, agentId-scoped slug run "
-        "and entry rendering, new bare reset prompts)",
-        "4273ca9dbd9 (#113233); handler.ts 16, llm-slug-generator.ts 6 and "
-        "session-reset-prompt.ts 4 commits after 4c428153",
-        (
-            *_oracle(
-                "session_memory_slug_matches_python",
-                "session_memory_hook_matches_python[scenarios]",
-                "session_memory_hook_matches_python[zone_sweep]",
-            ),
-            "test_session_reset_prompt_source.py::test_bare_session_reset_prompts_equal_upstream_source",
-        ),
-        plan_area=9,
     ),
 )
 

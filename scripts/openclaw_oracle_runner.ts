@@ -2445,12 +2445,24 @@ async function main() {
     return { ok: true, operation: payload.operation, result: { cases: result, keys } };
   }
 
-  // Retired at v2026.9.6: the sessionMemoryTranscript op called
-  // src/hooks/bundled/session-memory/transcript.ts sanitizeSessionMemoryTranscriptText (no longer
-  // exported since 2cc49503a60, #107412) and the file readers getRecentSessionContent,
-  // getRecentSessionContentWithResetFallback and findPreviousSessionFile (removed with the
-  // file-era transcript runtime in 4273ca9dbd9, #113233). The module now projects SQLite
-  // transcript events: getRecentSessionProjectionFromEvents, countSessionMemoryMessages.
+  // Replaces the retired sessionMemoryTranscript op (it called sanitizeSessionMemoryTranscriptText,
+  // no longer exported since 2cc49503a60 #107412, and the file readers getRecentSessionContent,
+  // getRecentSessionContentWithResetFallback and findPreviousSessionFile, removed with the
+  // file-era transcript runtime in 4273ca9dbd9 #113233). The module now projects transcript
+  // events: each case's `events` go through the real getRecentSessionProjectionFromEvents (with
+  // `messageCount` when given) and countSessionMemoryMessages; sanitizeSessionMemoryTranscriptText
+  // is exercised through the rendered text of a one-message case.
+  if (payload.operation === "sessionMemoryProjection") {
+    const transcript = await importFromRepo(repoPath, "src/hooks/bundled/session-memory/transcript.ts");
+    const cases = (payload.cases ?? []).map((item: Record<string, any>) => ({
+      projection:
+        "messageCount" in item
+          ? transcript.getRecentSessionProjectionFromEvents(item.events, item.messageCount)
+          : transcript.getRecentSessionProjectionFromEvents(item.events),
+      count: transcript.countSessionMemoryMessages(item.events),
+    }));
+    return { ok: true, operation: payload.operation, result: { cases } };
+  }
 
   if (payload.operation === "sessionMemorySlug") {
     // src/hooks/llm-slug-generator.ts generateSlugViaLLM with only its model run replaced:
@@ -2497,8 +2509,12 @@ async function main() {
     // src/hooks/internal-hooks.ts createInternalHookEvent. Each scenario gets its own
     // workspace (context.workspaceDir) seeded with `files`, then runs its events in
     // order: process.env.TZ = event.timezone, event.timestamp = new Date(event.nowMs),
-    // hooks.internal.entries["session-memory"] from `messages`/`llmSlug`, and
-    // previousSessionEntry.sessionFile relative to the workspace. With llmSlug the real
+    // hooks.internal.entries["session-memory"] from `messages`/`llmSlug`. At v2026.9.6 the hook
+    // reads the ending session from the agent's SQLite store (captureSessionMemoryTranscript),
+    // so each scenario gets its own agent id (its own store) and `transcripts`
+    // ({sessionId: message events}) are seeded the way writeSessionTranscriptFixtures does
+    // (upsertSessionEntry, then appendSessionTranscriptMessageByIdentity per message) under
+    // every session key the scenario's events use for that id. With llmSlug the real
     // generateSlugViaLLM runs against the embedded-agent stub, which returns
     // `slugReply`. The result is the memory/ tree and the slug prompts per scenario.
     installEmbeddedAgentStub();
@@ -2514,6 +2530,12 @@ async function main() {
     try {
       const handler = await importFromRepo(repoPath, "src/hooks/bundled/session-memory/handler.ts");
       const internalHooks = await importFromRepo(repoPath, "src/hooks/internal-hooks.ts");
+      const sessionPaths = await importFromRepo(repoPath, "src/config/sessions/paths.ts");
+      const sessionStore = await importFromRepo(repoPath, "src/plugin-sdk/session-store-runtime.ts");
+      const transcriptStore = await importFromRepo(
+        repoPath,
+        "src/plugin-sdk/session-transcript-runtime.ts",
+      );
       const scenarios = [];
       for (const [index, scenario] of (payload.scenarios ?? []).entries()) {
         const workspaceDir = path.join(sandbox, `workspace-${index}`);
@@ -2526,6 +2548,44 @@ async function main() {
           await fs.writeFile(path.join(workspaceDir, relative), String(content), "utf-8");
         }
         const prompts: string[] = [];
+        const agentId = `oracle-${index}`;
+        const storePath: string = sessionPaths.resolveSessionStorePathCore(undefined, { agentId });
+        await fs.mkdir(path.dirname(storePath), { recursive: true });
+        const seeded = new Set<string>();
+        for (const event of (scenario.events ?? []) as Array<Record<string, any>>) {
+          const entry =
+            (event.type ?? "command") === "command"
+              ? (event.previousSessionEntry ?? event.sessionEntry)
+              : event.sessionEntry;
+          const sessionId = isRecord(entry) ? entry.sessionId : undefined;
+          // The store refuses keys that are not canonical for the agent, so the rows are keyed
+          // by the scenario agent's main key (the hook reads by session id).
+          const sessionKey = `agent:${agentId}:main`;
+          const transcript =
+            typeof sessionId === "string" ? scenario.transcripts?.[sessionId.trim()] : undefined;
+          if (!transcript || seeded.has(`${sessionId}\n${sessionKey}`)) {
+            continue;
+          }
+          seeded.add(`${sessionId}\n${sessionKey}`);
+          const id = String(sessionId).trim();
+          await sessionStore.upsertSessionEntry({
+            agentId,
+            sessionKey,
+            storePath,
+            entry: { sessionId: id, updatedAt: 1 },
+          });
+          for (const row of transcript) {
+            if (isRecord(row) && row.type === "message" && isRecord(row.message)) {
+              await transcriptStore.appendSessionTranscriptMessageByIdentity({
+                agentId,
+                sessionId: id,
+                sessionKey,
+                storePath,
+                message: row.message,
+              });
+            }
+          }
+        }
         for (const event of (scenario.events ?? []) as Array<Record<string, any>>) {
           process.env.TZ = String(event.timezone);
           const hookConfig: Record<string, unknown> = {};
@@ -2536,12 +2596,7 @@ async function main() {
             hookConfig.llmSlug = true;
           }
           const previous = isRecord(event.previousSessionEntry)
-            ? {
-                ...event.previousSessionEntry,
-                ...(typeof event.previousSessionEntry.sessionFile === "string"
-                  ? { sessionFile: path.join(workspaceDir, event.previousSessionEntry.sessionFile) }
-                  : {}),
-              }
+            ? { ...event.previousSessionEntry }
             : undefined;
           const hookEvent = internalHooks.createInternalHookEvent(
             event.type ?? "command",
@@ -2549,12 +2604,14 @@ async function main() {
             event.sessionKey ?? "agent:main:main",
             {
               // v2026.9.6 requires context.agentId (handler.ts requireSessionMemoryAgentId).
-              agentId: "main",
+              agentId,
               workspaceDir,
               ...(Object.keys(hookConfig).length > 0
                 ? { cfg: { hooks: { internal: { entries: { "session-memory": hookConfig } } } } }
                 : {}),
               ...(previous ? { previousSessionEntry: previous } : {}),
+              ...(isRecord(event.sessionEntry) ? { sessionEntry: { ...event.sessionEntry } } : {}),
+              ...(event.reason !== undefined ? { reason: event.reason } : {}),
               ...(event.commandSource ? { commandSource: event.commandSource } : {}),
             },
           );

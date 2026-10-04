@@ -528,7 +528,7 @@ def test_bare_new_saves_session_memory_and_runs_the_reset_turn(tmp_path: Path, m
     (new,) = news
     (saved,) = _saved_session_files(tmp_path)
     assert saved == new.saved.path
-    assert "user: Our codename is velvetkiwi." in saved.read_text(encoding="utf-8")
+    assert 'user: "Our codename is velvetkiwi."' in saved.read_text(encoding="utf-8")
     assert "/new" not in saved.read_text(encoding="utf-8")
     row = format_session_reset_transcript_prompt("new", MEMORY_CORE_RUNTIME_IDENTITY)
     assert new.reset.transcript_prompt == row
@@ -890,7 +890,7 @@ def test_redact_and_redactor_reach_the_kit(tmp_path: Path):
     )
     (saved,) = _saved_session_files(tmp_path)
     text = saved.read_text(encoding="utf-8")
-    assert "user: Our codename is [codename]." in text
+    assert 'user: "Our codename is [codename]."' in text
     assert "velvetkiwi" not in text
 
 

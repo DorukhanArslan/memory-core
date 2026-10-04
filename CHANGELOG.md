@@ -61,6 +61,17 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Changed
 
+- Search ranking follows OpenClaw v2026.9.6 (port plan area 6): chunks are sized in CJK-weighted
+  characters (`tokens * 4`) and `MEMORY.md` / `USER.md` chunk per `- ` entry and heading; keyword
+  retrieval searches chunk text and file paths (a query naming a file, basename or stem ranks it in
+  an exact-path tier) and scores hits with the tag's lexical boost; the hybrid merge, selection,
+  MMR and temporal decay are the tag's (dated files with a suffix or in subdirectories decay, USER.md
+  is evergreen, snippets are cut at 700 characters). **Defaults change:** `MemoryConfig` weights are
+  0.7 / 0.3 and MMR and temporal decay are on (`FeatureFlags.mmr`, `temporal_decay` default on); all
+  stay configurable. An FTS-only result's `score` is the boosted ranking score, `textScore` the raw
+  BM25 one. The paused-index warning and action are the tag's (`RuntimeIdentity.memory_index_*`).
+  Existing indexes need `SQLiteMemoryStore.reindex` (new path table, new chunks).
+
 - The memory tools follow OpenClaw v2026.9.6 (port plan area 5, docs/memory_search_tool.md):
   - `memory_get` results carry `status` (`ok`, `not_found`, `error`); a refused or failed read is
     `{"path", "text": "", "status": "error", "code", "error"}` (`MEMORY_PATH_NOT_ALLOWED` for a path

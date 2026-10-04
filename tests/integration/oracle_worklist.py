@@ -72,29 +72,6 @@ def _oracle(*names: str) -> tuple[str, ...]:
 
 PENDING_PORTS: tuple[PendingPort, ...] = (
     PendingPort(
-        "memory_search ranking and indexing (hybrid weights fixed at 0.7/0.3, MMR and temporal "
-        "decay on by default, filename/path matching, chunk ranges)",
-        "783a5d21cfc (#111382), c37b53868d1 (#121224), 28630a9a650 (#114819), "
-        "e9b7a9a9127 (#104449)",
-        _oracle(
-            "memory_search_memory_corpus_matches_python_paths",
-            "memory_search_text_scores_and_line_ranges_match_python",
-            "memory_search_vector_scores_match_python",
-            "memory_search_hybrid_weighted_scores_match_python",
-            "memory_search_all_balances_memory_and_wiki",
-            "memory_search_param_coercion_matches_python[camel-case-wins]",
-            "memory_search_param_coercion_matches_python[integral-float]",
-            "memory_search_param_coercion_matches_python[null-camel-case-hides-alias]",
-            "memory_search_param_coercion_matches_python[numeric-strings]",
-            "memory_search_param_coercion_matches_python[scientific-string]",
-            "memory_search_param_coercion_matches_python[snake-case-aliases]",
-            "memory_search_pauses_on_index_model_change",
-            "memory_search_finds_session_memory_files",
-            "memory_search_indexes_invalid_utf8_markdown",
-        ),
-        plan_area=6,
-    ),
-    PendingPort(
         "deep dreaming policy (enabled by default, minScore 0.75, integer fields limit, "
         "minRecallCount, minUniqueQueries and recencyHalfLifeDays parsed with "
         "parseStrictNonNegativeInteger instead of Number() coercion)",

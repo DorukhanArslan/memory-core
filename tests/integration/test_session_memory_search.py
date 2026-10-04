@@ -79,13 +79,13 @@ def test_session_memory_files_are_discovered_searched_and_read(tmp_path: Path):
         assert query in read["text"]
 
 
-def test_session_memory_files_are_evergreen_under_temporal_decay(tmp_path: Path):
+def test_session_memory_files_decay_by_their_date_at_v2026_9_6(tmp_path: Path):
     _memory(tmp_path)
     saved, _ = _save_two_sessions(tmp_path)
     old_daily = tmp_path / "memory" / "2020-01-01.md"
     old_daily.write_text("- zephyrquartz review from the old plan\n", encoding="utf-8")
 
-    plain = _memory(tmp_path, store_name="plain.sqlite")
+    plain = _memory(tmp_path, store_name="plain.sqlite", temporal_decay=False)
     decayed = _memory(tmp_path, store_name="decayed.sqlite", temporal_decay=True)
     plain_scores = {hit["path"]: hit["score"] for hit in plain.search("zephyrquartz")["results"]}
     decayed_scores = {
@@ -93,5 +93,7 @@ def test_session_memory_files_are_evergreen_under_temporal_decay(tmp_path: Path)
     }
 
     assert set(plain_scores) == set(decayed_scores) == {saved.rel_path, "memory/2020-01-01.md"}
-    assert decayed_scores[saved.rel_path] == plain_scores[saved.rel_path]
+    # v2026.9.6 reads a dated file with a suffix (`memory/2026-09-26-1430.md`) as dated, so a
+    # session-memory file decays by its date like a daily note (it was evergreen at the pin).
+    assert decayed_scores[saved.rel_path] < plain_scores[saved.rel_path]
     assert decayed_scores["memory/2020-01-01.md"] < plain_scores["memory/2020-01-01.md"]

@@ -140,10 +140,6 @@ MEMORY_SEARCH_PROVIDER_ERROR_ACTION = (
 )
 # tools.ts:168-188 (the action names the runtime's reindex command, so it
 # comes from RuntimeIdentity).
-PAUSED_MEMORY_INDEX_WARNING = (
-    "Tell the user: memory search is paused because the memory index was built with a "
-    "different embedding provider/model/settings."
-)
 PAUSED_MEMORY_INDEX_REASON = "memory index identity is missing or mismatched"
 _QUOTA_ERROR_RE = re.compile(r"insufficient_quota|quota|429")
 _MISSING_SQLITE_RE = re.compile(r"missing node:sqlite|no such built-?in module: node:sqlite")
@@ -227,24 +223,72 @@ def build_memory_search_unavailable_result(
     }
 
 
-def resolve_paused_memory_index_identity_reason(identity: Mapping[str, Any]) -> str | None:
-    """``resolvePausedMemoryIndexIdentityReason`` (tools.ts:173-181)."""
+def resolve_paused_memory_index_identity(identity: Mapping[str, Any]) -> dict | None:
+    """The index identity diagnostic that pauses search, or ``None`` for a valid index.
+
+    ``resolveMemoryIndexIdentityDiagnostic``: a blank reason is the generic one.
+    """
     if identity.get("status") not in {"mismatched", "missing"}:
         return None
     reason = identity.get("reason")
-    if isinstance(reason, str) and js_trim(reason):
-        return js_trim(reason)
-    return PAUSED_MEMORY_INDEX_REASON
+    reason = js_trim(reason) if isinstance(reason, str) else ""
+    return {**identity, "reason": reason or PAUSED_MEMORY_INDEX_REASON}
+
+
+def resolve_paused_memory_index_identity_reason(identity: Mapping[str, Any]) -> str | None:
+    """``resolvePausedMemoryIndexIdentityReason`` (tools.ts:173-181)."""
+    diagnostic = resolve_paused_memory_index_identity(identity)
+    return diagnostic["reason"] if diagnostic is not None else None
 
 
 def build_paused_memory_index_unavailable_result(
-    reason: str, *, runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY
+    diagnostic: Mapping[str, Any] | str,
+    *,
+    agent_id: str | None = None,
+    keyword_only: bool = False,
+    runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> dict:
-    """``buildPausedMemoryIndexUnavailableResult`` (tools.ts:183-188)."""
+    """``buildPausedMemoryIndexUnavailableResult`` over ``resolveMemoryIndexSearchDiagnostic``.
+
+    The warning names the cause (a configuration change, missing metadata, or an index another
+    version wrote) and the action how to rebuild it; ``keyword_only`` is a store with no
+    embedding provider. A plain reason string reads as a configuration mismatch.
+    """
+    if isinstance(diagnostic, str):
+        diagnostic = {"status": "mismatched", "reason": diagnostic, "owner": "configuration"}
+    reason = diagnostic["reason"]
+    newer_index = (
+        diagnostic.get("owner") == "openclaw"
+        and diagnostic.get("status") == "mismatched"
+        and diagnostic.get("versionOrder") == "newer"
+    )
+    if diagnostic.get("owner") == "configuration":
+        cause = f"the current memory configuration no longer matches the index ({reason})"
+    elif diagnostic.get("code") == "metadata_missing":
+        cause = f"the memory index metadata is missing ({reason}); no configuration change is needed"
+    elif newer_index:
+        cause = reason
+    else:
+        cause = (
+            f"this {runtime_identity.memory_index_product_name} version changed the memory index "
+            f"format ({reason}); no configuration change is needed"
+        )
+    agent = f" --agent {js_trim(agent_id)}" if agent_id and js_trim(agent_id) else ""
+    guidance = (
+        runtime_identity.memory_index_rebuild_guidance_keyword_only
+        if keyword_only
+        else runtime_identity.memory_index_rebuild_guidance
+    ).format(agent=agent)
+    action = (
+        f"Tell the user to upgrade {runtime_identity.memory_index_product_name} or reindex "
+        f"explicitly: {guidance}"
+        if newer_index
+        else f"Tell the user to run: {guidance}"
+    )
     return build_memory_search_unavailable_result(
         reason,
-        warning=PAUSED_MEMORY_INDEX_WARNING,
-        action=runtime_identity.memory_search_paused_action,
+        warning=f"Tell the user: memory search is paused because {cause}.",
+        action=action,
         runtime_identity=runtime_identity,
     )
 
@@ -569,7 +613,7 @@ def _run_memory_search_tool(
         # tools.ts:563-568: a missing or mismatched index identity pauses search
         # (no cooldown). Upstream's empty-result forced sync retry has no
         # counterpart: memory-core reindexes only when the host asks.
-        paused = resolve_paused_memory_index_identity_reason(store.index_identity())
+        paused = resolve_paused_memory_index_identity(store.index_identity())
         if paused is not None:
             return {"paused": paused}
         # OpenClaw reports FTS-only mode as provider "none" / model "fts-only" when no
@@ -713,7 +757,10 @@ def _settle_memory_attempt(
         value = outcome.value
         if "paused" in value:
             unavailable = build_paused_memory_index_unavailable_result(
-                value["paused"], runtime_identity=runtime_identity
+                value["paused"],
+                agent_id=config.agent_id,
+                keyword_only=store.embeddings is None or not store.flags.vector_search,
+                runtime_identity=runtime_identity,
             )
             # Neither a cooldown nor a failure of the search itself.
             return CorpusAttempt(

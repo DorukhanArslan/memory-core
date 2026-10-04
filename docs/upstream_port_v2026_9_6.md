@@ -47,6 +47,7 @@ gates).
 | Area 4 review fixes | done (`dfe7e0c`, `d518dbe`, `5a44e11`, `1c9122f`, `a10eb23`, `d727d2e`, `e68f663`) | no worklist change; 13 new tests (`flushPlan` byte sizes 7, offset zones 4, out-of-range `nowMs` 1; `memoryFlushGate` disabled plan 1); flush plan row back to `partial` |
 | Merge of areas 3 and 4 | done (`e656e88` merge, `301cac9`, `299bd1f`, `2316e5f`, `39fc96c`) | 5 more worklist entries gone from the pin branch (12 labels, 81 tests); 1 new test (`current_time_line_is_one_host_format_for_flush_and_heartbeat`); `heartbeatRunPrompt` now compares the full Body with the reported host format |
 | 5 Memory tools and index identity | done (2026-10-04) | all 41 `memoryGet`, `memoryToolDefinitions`, `memorySearchToolSequence` (17 steps), `memoryIndexIdentity` (24 new cases) and the new `memoryPromptSection` (32 combinations) tests pass against the tag; 4 worklist entries removed (31 tests); new oracle op `memoryPromptSection` |
+| 6 Hybrid ranking and indexing | done (2026-10-04) | 14 `memorySearch` worklist tests removed; new oracle op `markdownChunks` (13 cases incl. CJK and emoji), 10 path-matching fixtures; decision: knobs stay, defaults become the tag's (0.7/0.3, MMR and temporal decay on) |
 
 Full `tests/integration` at `afd9965` plus the plan and matrix edits, `/tmp/openclaw-head` at
 `eb377ac59e6`, Node 24.21.0, seven chunks with the run-loop
@@ -386,7 +387,8 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
   `memory_core/config.py`.
 - Tests: 14 `memorySearch` fixtures (corpus, text/vector/hybrid scores, wiki balance, 6 param
   coercion cases, index-model change, session-memory files, invalid UTF-8).
-- Worklist areas: "memory_search ranking and indexing".
+- Worklist areas: none left; the `memory_search ranking and indexing` entries were removed when the
+  area landed (2026-10-04).
 - New oracle ops: `hybridMerge` (`mergeHybridResults`, `selectHybridSearchResults`), `mmrRerank`
   (`applyMMRToHybridResults`), `temporalDecay` (`applyTemporalDecayToHybridResults`),
   `markdownChunks` (`chunkMarkdown`, `splitCuratedMarkdownEntries`), `ftsQuery`

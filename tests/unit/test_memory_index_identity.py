@@ -24,9 +24,10 @@ from memory_core.tools.memory_search import (
 from memory_core.workspace import MemoryWorkspace
 
 FTS_ONLY = FeatureFlags(vector_search=False)
+# A store that was never indexed: the metadata is missing, no configuration change is needed.
 PAUSED_WARNING = (
-    "Tell the user: memory search is paused because the memory index was built with a "
-    "different embedding provider/model/settings."
+    "Tell the user: memory search is paused because the memory index metadata is missing "
+    "(index metadata is missing); no configuration change is needed."
 )
 
 
@@ -222,6 +223,7 @@ def test_paused_action_names_the_runtime(tmp_path):
         "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
     )
     assert compat["action"] == (
-        "Tell the user to run: openclaw memory status --index or openclaw memory index --force."
+        "Tell the user to run: openclaw memory status --index --agent main. Rebuilding uses "
+        "keyword indexing only and does not call an embedding provider."
     )
     assert memory_core["debug"]["action"] == memory_core["action"]

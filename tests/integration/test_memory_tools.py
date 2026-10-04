@@ -443,8 +443,8 @@ def test_memory_search_corpus_all_balances_memory_and_supplements(tmp_path: Path
         "w1.md",
         "w2.md",
         "w3.md",
-        "w4.md",
     ]
+    # MEMORY.md is two chunks (heading and entry), so the wiki share is 3.
     assert len(paths_by_corpus) == 5
 
 

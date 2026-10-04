@@ -10,6 +10,14 @@ from collections.abc import Callable
 from typing import Any
 from uuid import uuid4
 
+from memory_core._tool_result_budget import (
+    estimate_string_chars,
+    estimate_string_chars_with_minimum_raw_weight,
+    slice_tool_result_text_tail_to_budget,
+    slice_tool_result_text_to_budget,
+)
+from memory_core.bootstrap._js import slice_utf16_safe, utf16_len
+
 
 ESTIMATED_CHARS_PER_TOKEN = 4
 TOOL_RESULT_CHARS_PER_TOKEN = 2
@@ -50,24 +58,6 @@ BRANCH_SUMMARY_PREFIX = (
 )
 BRANCH_SUMMARY_SUFFIX = "</summary>"
 
-# CJK/Hangul/Kana and East Asian fullwidth ranges that tokenize near 1 token
-# per character; each match is inflated so the chars/4 heuristic stays accurate.
-_NON_LATIN_RE = re.compile(
-    "["
-    "⺀-鿿"
-    "ꀀ-꓿"
-    "가-힯"
-    "豈-﫿"
-    "！-｠"
-    "￠-￦"
-    "\U00020000-\U0002fa1f"
-    "]"
-)
-_ASTRAL_RE = re.compile("[\U00010000-\U0010ffff]")
-# Code points reachable through OpenClaw's D840-D87E high-surrogate window.
-_CJK_EXTENSION_SURROGATE_RE = re.compile("[\U00020000-\U0002fbff]")
-
-
 @dataclass(frozen=True)
 class ToolResultReductionPotential:
     max_chars: int
@@ -99,26 +89,6 @@ class SessionToolResultTruncationResult:
     reason: str | None = None
     tool_texts: tuple[str, ...] = ()
     tool_contents: tuple[str | None, ...] = ()
-
-
-def _utf16_length(text: str) -> int:
-    if text.isascii():
-        return len(text)
-    return len(text) + len(_ASTRAL_RE.findall(text))
-
-
-def estimate_string_chars(text: str) -> int:
-    if not text:
-        return 0
-    if text.isascii():
-        return len(text)
-    non_latin_count = len(_NON_LATIN_RE.findall(text))
-    # OpenClaw counts UTF-16 units, collapsing only CJK Extension B+ surrogate
-    # pairs back to one unit; other astral characters keep their pair weight.
-    code_point_length = _utf16_length(text)
-    if non_latin_count > 0:
-        code_point_length -= len(_CJK_EXTENSION_SURROGATE_RE.findall(text))
-    return code_point_length + non_latin_count * (ESTIMATED_CHARS_PER_TOKEN - 1)
 
 
 def estimate_string_token_pressure(text: str, chars_per_token: int = ESTIMATED_CHARS_PER_TOKEN) -> int:
@@ -175,7 +145,7 @@ def estimate_content_block_token_pressure(
 
 
 def _estimate_tool_result_string_token_pressure(text: str) -> int:
-    conservative_estimate = math.ceil(_utf16_length(text) / TOOL_RESULT_CHARS_PER_TOKEN)
+    conservative_estimate = math.ceil(utf16_len(text) / TOOL_RESULT_CHARS_PER_TOKEN)
     cjk_aware_estimate = estimate_string_token_pressure(text)
     return max(conservative_estimate, cjk_aware_estimate)
 
@@ -361,15 +331,17 @@ def get_tool_result_text_length(message: dict[str, Any]) -> int:
     content = message.get("content")
     if not isinstance(content, list):
         return 0
-    return sum(len(block["text"]) for block in content if _is_tool_result_text_block(block))
+    return sum(
+        estimate_string_chars(block["text"]) for block in content if _is_tool_result_text_block(block)
+    )
 
 
 def _default_suffix_length() -> int:
-    return len(_default_suffix(1))
+    return estimate_string_chars(_default_suffix(1))
 
 
 def _compact_recovery_suffix_length() -> int:
-    return len(_compact_recovery_suffix(1))
+    return estimate_string_chars(_compact_recovery_suffix(1))
 
 
 def _default_suffix(truncated_chars: int) -> str:
@@ -384,12 +356,16 @@ def _compact_recovery_suffix(truncated_chars: int) -> str:
 
 
 def _has_important_tail(text: str) -> bool:
-    tail = text[-2000:].lower().strip()
+    tail = _js_lower(slice_utf16_safe(text, -2000))
     return bool(
         re.search(r"\b(error|exception|failed|fatal|traceback|panic|stack trace|errno|exit code)\b", tail)
-        or re.search(r"}\s*$", tail)
+        or re.search(r"}\s*$", tail.strip())
         or re.search(r"\b(total|summary|result|complete|finished|done)\b", tail)
     )
+
+
+def _js_lower(text: str) -> str:
+    return text.lower()
 
 
 def _resolve_suffix_factory(
@@ -403,9 +379,15 @@ def _resolve_suffix_factory(
 
 
 def _resolve_effective_min_keep_chars(
-    *, max_chars: int, min_keep_chars: int, suffix_factory: Any
-) -> int:
-    suffix_floor = len(suffix_factory(1))
+    *,
+    max_chars: int | float,
+    min_keep_chars: int,
+    suffix_factory: Any,
+    minimum_raw_weight: int | float | None = None,
+) -> int | float:
+    suffix_floor = estimate_string_chars_with_minimum_raw_weight(
+        suffix_factory(1), minimum_raw_weight
+    )
     return max(0, min(min_keep_chars, max(0, max_chars - suffix_floor)))
 
 
@@ -413,118 +395,189 @@ def _append_bounded_truncation_suffix(
     *,
     kept_text: str,
     original_text_length: int,
-    max_chars: int,
+    max_chars: int | float,
     suffix_factory: Any,
+    minimum_raw_weight: int | float | None = None,
 ) -> str:
-    def build(value: str) -> str:
-        return value + suffix_factory(max(1, original_text_length - len(value)))
+    def weigh(value: str) -> int | float:
+        return estimate_string_chars_with_minimum_raw_weight(value, minimum_raw_weight)
 
-    current = kept_text
     while True:
-        final_text = build(current)
-        if len(final_text) <= max_chars:
+        suffix = suffix_factory(max(1, original_text_length - utf16_len(kept_text)))
+        suffix_chars = weigh(suffix)
+        if suffix_chars >= max_chars:
+            full_omission_suffix = suffix_factory(max(1, original_text_length))
+            return slice_tool_result_text_to_budget(
+                full_omission_suffix, max_chars, minimum_raw_weight
+            )
+        next_kept_text = slice_tool_result_text_to_budget(
+            kept_text, max_chars - suffix_chars, minimum_raw_weight
+        )
+        final_text = next_kept_text + suffix
+        if len(next_kept_text) == len(kept_text) and weigh(final_text) <= max_chars:
             return final_text
-        if len(current) == 0:
-            return final_text[:max_chars]
-        overflow = len(final_text) - max_chars
-        next_kept_text = current[: max(0, len(current) - overflow)]
-        current = next_kept_text if len(next_kept_text) < len(current) else current[:-1]
+        if len(next_kept_text) == 0 and len(kept_text) == 0:
+            return slice_tool_result_text_to_budget(final_text, max_chars, minimum_raw_weight)
+        kept_text = next_kept_text
 
 
 def truncate_tool_result_text(
     text: str,
-    max_chars: int,
+    max_chars: int | float,
     *,
     suffix: str | Callable[[int], str] | None = None,
     min_keep_chars: int = MIN_KEEP_CHARS,
+    minimum_raw_weight: int | float | None = None,
 ) -> str:
+    """Truncate text while preserving an important diagnostic tail (budgets are CJK-weighted)."""
+
     suffix_factory = _resolve_suffix_factory(suffix)
+
+    def weigh(value: str) -> int | float:
+        return estimate_string_chars_with_minimum_raw_weight(value, minimum_raw_weight)
+
     effective_min_keep_chars = _resolve_effective_min_keep_chars(
         max_chars=max_chars,
         min_keep_chars=min_keep_chars,
         suffix_factory=suffix_factory,
+        minimum_raw_weight=minimum_raw_weight,
     )
-    if len(text) <= max_chars:
+    text_length = utf16_len(text)
+    if text_length <= max_chars and weigh(text) <= max_chars:
         return text
-    default_suffix = suffix_factory(max(1, len(text) - max_chars))
-    budget = max(effective_min_keep_chars, max_chars - len(default_suffix))
+    initial_kept_text = slice_tool_result_text_to_budget(text, max_chars, minimum_raw_weight)
+    default_suffix = suffix_factory(max(1, text_length - utf16_len(initial_kept_text)))
+    budget = max(effective_min_keep_chars, max_chars - weigh(default_suffix))
 
     if _has_important_tail(text) and budget > effective_min_keep_chars * 2:
         tail_budget = min(math.floor(budget * 0.3), 4_000)
-        head_budget = budget - tail_budget - len(MIDDLE_OMISSION_MARKER)
+        head_budget = budget - tail_budget - weigh(MIDDLE_OMISSION_MARKER)
         if head_budget > effective_min_keep_chars:
-            head_cut = head_budget
-            head_newline = text.rfind("\n", 0, head_budget + 1)
-            if head_newline > head_budget * 0.8:
-                head_cut = head_newline
+            head_text = slice_tool_result_text_to_budget(text, head_budget, minimum_raw_weight)
+            head_newline = _last_index_of_newline(head_text)
+            if head_newline > utf16_len(head_text) * 0.8:
+                head_text = slice_utf16_safe(head_text, 0, head_newline)
 
-            tail_start = len(text) - tail_budget
-            tail_newline = text.find("\n", tail_start)
-            if tail_newline != -1 and tail_newline < tail_start + tail_budget * 0.2:
-                tail_start = tail_newline + 1
+            tail_text = slice_tool_result_text_tail_to_budget(text, tail_budget, minimum_raw_weight)
+            tail_newline = _index_of_newline(tail_text)
+            if tail_newline != -1 and tail_newline < utf16_len(tail_text) * 0.2:
+                tail_text = slice_utf16_safe(tail_text, tail_newline + 1)
 
-            kept_text = text[:head_cut] + MIDDLE_OMISSION_MARKER + text[tail_start:]
-            return _append_bounded_truncation_suffix(
-                kept_text=kept_text,
-                original_text_length=len(text),
-                max_chars=max_chars,
-                suffix_factory=suffix_factory,
-            )
+            if utf16_len(head_text) + utf16_len(tail_text) < text_length:
+                return _append_bounded_truncation_suffix(
+                    kept_text=head_text + MIDDLE_OMISSION_MARKER + tail_text,
+                    original_text_length=text_length,
+                    max_chars=max_chars,
+                    suffix_factory=suffix_factory,
+                    minimum_raw_weight=minimum_raw_weight,
+                )
 
-    cut_point = budget
-    last_newline = text.rfind("\n", 0, budget + 1)
-    if last_newline > budget * 0.8:
-        cut_point = last_newline
-    kept_text = text[:cut_point]
+    kept_text = slice_tool_result_text_to_budget(text, budget, minimum_raw_weight)
+    last_newline = _last_index_of_newline(kept_text)
+    if last_newline > utf16_len(kept_text) * 0.8:
+        kept_text = slice_utf16_safe(kept_text, 0, last_newline)
     return _append_bounded_truncation_suffix(
         kept_text=kept_text,
-        original_text_length=len(text),
+        original_text_length=text_length,
         max_chars=max_chars,
         suffix_factory=suffix_factory,
+        minimum_raw_weight=minimum_raw_weight,
     )
+
+
+def _last_index_of_newline(text: str) -> int:
+    index = text.rfind("\n")
+    return -1 if index < 0 else utf16_len(text[:index])
+
+
+def _index_of_newline(text: str) -> int:
+    index = text.find("\n")
+    return -1 if index < 0 else utf16_len(text[:index])
 
 
 def truncate_tool_result_message(
     message: dict[str, Any],
-    max_chars: int,
+    max_chars: int | float,
     *,
     suffix: str | Callable[[int], str] | None = None,
     min_keep_chars: int = MIN_KEEP_CHARS,
+    minimum_raw_weight: int | float | None = None,
 ) -> dict[str, Any]:
     suffix_factory = _resolve_suffix_factory(suffix)
+
+    def weigh(value: str) -> int | float:
+        return estimate_string_chars_with_minimum_raw_weight(value, minimum_raw_weight)
+
     effective_min_keep_chars = _resolve_effective_min_keep_chars(
         max_chars=max_chars,
         min_keep_chars=min_keep_chars,
         suffix_factory=suffix_factory,
+        minimum_raw_weight=minimum_raw_weight,
     )
     content = message.get("content")
     if not isinstance(content, list):
         return message
-    total_text_chars = get_tool_result_text_length(message)
+
+    block_text_chars = [
+        weigh(block["text"]) if _is_tool_result_text_block(block) else 0 for block in content
+    ]
+    total_text_chars = sum(block_text_chars)
     if total_text_chars <= max_chars:
         return message
 
+    # A caller's raw-text safety floor changes cost, not which semantic blocks are short.
+    # Reserve their actual weighted cost before shrinking larger text.
+    small_blocks = [
+        block_text_chars[index] > 0
+        and _is_tool_result_text_block(block)
+        and utf16_len(block["text"]) <= effective_min_keep_chars
+        and estimate_string_chars(block["text"]) <= effective_min_keep_chars
+        for index, block in enumerate(content)
+    ]
+    block_notice_chars = [
+        weigh(suffix_factory(max(1, utf16_len(block["text"]))))
+        if block_text_chars[index] > 0 and _is_tool_result_text_block(block)
+        else 0
+        for index, block in enumerate(content)
+    ]
+    small_block_chars = sum(c for c, small in zip(block_text_chars, small_blocks) if small)
+    large_block_notice_chars = sum(c for c, small in zip(block_notice_chars, small_blocks) if not small)
+    # Preserve short semantic blocks when larger ones can retain a complete truncation notice.
+    preserve_small_blocks = small_block_chars + large_block_notice_chars <= max_chars
+    preserved_chars = small_block_chars if preserve_small_blocks else 0
+    remaining_budget = max(0, max_chars - preserved_chars)
+    reducible_chars = total_text_chars - preserved_chars
+    reducible_notice_chars = (
+        large_block_notice_chars if preserve_small_blocks else sum(block_notice_chars)
+    )
+    notice_scale = (
+        min(1, remaining_budget / reducible_notice_chars) if reducible_notice_chars > 0 else 0
+    )
+    distributable_budget = max(0, remaining_budget - reducible_notice_chars)
+
     new_content: list[Any] = []
-    for block in content:
+    for index, block in enumerate(content):
         if not _is_tool_result_text_block(block):
             new_content.append(block)
             continue
-        text = block["text"]
-        block_share = len(text) / total_text_chars
-        default_suffix = suffix_factory(max(1, len(text) - math.floor(max_chars * block_share)))
-        proportional_budget = math.floor(max_chars * block_share)
-        block_budget = max(
-            1,
-            min(
-                max_chars,
-                max(effective_min_keep_chars + len(default_suffix), proportional_budget),
-            ),
+        text_chars = block_text_chars[index]
+        preserve_block = preserve_small_blocks and small_blocks[index]
+        block_share = text_chars / reducible_chars if reducible_chars > 0 else 0
+        notice_budget = block_notice_chars[index] * notice_scale
+        block_budget = (
+            text_chars
+            if preserve_block
+            else math.floor(notice_budget + distributable_budget * block_share)
+        )
+        block_min_keep_chars = (
+            text_chars if preserve_block else math.floor(effective_min_keep_chars * block_share)
         )
         truncated_text = truncate_tool_result_text(
-            text,
+            block["text"],
             block_budget,
             suffix=suffix_factory,
-            min_keep_chars=effective_min_keep_chars,
+            min_keep_chars=block_min_keep_chars,
+            minimum_raw_weight=minimum_raw_weight,
         )
         next_block = {**block, "text": truncated_text}
         if isinstance(block.get("content"), str):
@@ -548,21 +601,24 @@ def _get_tool_result_spill_details(message: dict[str, Any]) -> dict[str, Any] | 
     details = message.get("details")
     if not isinstance(details, dict):
         return None
-    full_output_path = details.get("fullOutputPath")
-    if not isinstance(full_output_path, str) or not full_output_path:
+    nested = details.get("spill") if isinstance(details.get("spill"), dict) else None
+    # web_fetch owns the nested contract; exec tools still own the flat spill fields.
+    path = (nested or {}).get("path")
+    if path is None:
+        path = details.get("fullOutputPath")
+    if not isinstance(path, str) or not path:
         return None
-    spilled_chars = details.get("spilledChars")
-    normalized_spilled_chars = (
-        max(0, math.floor(spilled_chars))
-        if isinstance(spilled_chars, int | float)
-        and not isinstance(spilled_chars, bool)
-        and math.isfinite(spilled_chars)
-        else None
-    )
+    chars = (nested or {}).get("chars")
+    if chars is None:
+        chars = details.get("spilledChars")
     return {
-        "full_output_path": full_output_path,
-        "spill_truncated": details.get("spillTruncated") is True,
-        "spilled_chars": normalized_spilled_chars,
+        "path": path,
+        "truncated": (nested or {}).get("truncated") is True or details.get("spillTruncated") is True,
+        "chars": (
+            max(0, math.floor(chars))
+            if isinstance(chars, int | float) and not isinstance(chars, bool) and math.isfinite(chars)
+            else None
+        ),
     }
 
 
@@ -587,58 +643,32 @@ def _resolve_aggregate_elision_markers(
     spill = _get_tool_result_spill_details(message)
     if spill is None:
         return None
-    # Details alone are not model-visible. Only preserve paths that already
-    # appeared in the original footer, so elision discloses nothing new.
-    if not _tool_result_text_contains_full_output_footer(message, spill["full_output_path"]):
+    # Preserve only paths already visible in the original footer.
+    if not _tool_result_text_contains_full_output_footer(message, spill["path"]):
         return None
-    # Aggregate elision is a rare recovery path, not a request hot path; one
-    # existence check avoids pointing the model at already-deleted spill files.
-    if not os.path.exists(spill["full_output_path"]):
+    # Avoid pointing recovery at already-deleted spill files.
+    if not os.path.exists(spill["path"]):
         return None
-    path = spill["full_output_path"]
-    if spill["spill_truncated"]:
-        count = (
-            "capped content"
-            if spill["spilled_chars"] is None
-            else f"first {spill['spilled_chars']} chars"
-        )
-        return _AggregateElisionMarkers(
-            full=(
-                f"[tool result elided: partial output preserved at {path} ({count}); "
-                "read it if the output is needed]"
-            ),
-            compact=f"[partial: {path}]",
-            truncation_suffix=lambda truncated_chars: (
-                f"[... {max(1, math.floor(truncated_chars))} chars truncated; "
-                f"partial output at {path}]"
-            ),
-        )
+    path = spill["path"]
+    truncated = spill["truncated"]
+    kind = "partial" if truncated else "full"
+    spilled_chars = spill["chars"]
+    count = (
+        f" ({'capped content' if spilled_chars is None else f'first {spilled_chars} chars'})"
+        if truncated
+        else ""
+    )
+    output = f"{kind} output"
     return _AggregateElisionMarkers(
         full=(
-            f"[tool result elided: full output preserved at {path}; "
+            f"[tool result elided: {output} preserved at {path}{count}; "
             "read it if the output is needed]"
         ),
-        compact=f"[read {path}]",
+        compact=f"[partial: {path}]" if truncated else f"[read {path}]",
         truncation_suffix=lambda truncated_chars: (
-            f"[... {max(1, math.floor(truncated_chars))} chars truncated; "
-            f"full output at {path}]"
+            f"[... {max(1, math.floor(truncated_chars))} chars truncated; {output} at {path}]"
         ),
     )
-
-
-def _format_aggregate_elision_text(
-    remaining_text_budget: int | float,
-    spill_markers: _AggregateElisionMarkers | None,
-) -> str:
-    if remaining_text_budget <= 0:
-        return ""
-    if spill_markers is not None and len(spill_markers.full) <= remaining_text_budget:
-        return spill_markers.full
-    if spill_markers is not None and len(spill_markers.compact) <= remaining_text_budget:
-        return spill_markers.compact
-    if remaining_text_budget >= len(AGGREGATE_ELISION_MARKER):
-        return AGGREGATE_ELISION_MARKER
-    return AGGREGATE_ELISION_MARKER[: math.floor(remaining_text_budget)]
 
 
 def _clear_tool_result_text(
@@ -654,16 +684,32 @@ def _clear_tool_result_text(
     )
     spill_markers = resolved_spill_markers or _resolve_aggregate_elision_markers(message)
     if spill_markers is not None:
-        # The pointer is what makes elision recoverable. ~130 chars per entry is
-        # negligible against the 64k+ aggregate floor, and accounting uses actual lengths.
-        remaining_text_budget = max(remaining_text_budget, len(spill_markers.compact))
+        # Keep recoverable pointers; their ~130 chars are negligible against the 64k+ floor.
+        remaining_text_budget = max(
+            remaining_text_budget, estimate_string_chars(spill_markers.compact)
+        )
     new_content: list[Any] = []
     for block in content:
         if not _is_tool_result_text_block(block):
             new_content.append(block)
             continue
-        replacement_text = _format_aggregate_elision_text(remaining_text_budget, spill_markers)
-        remaining_text_budget = max(0, remaining_text_budget - len(replacement_text))
+        replacement_text = next(
+            (
+                marker
+                for marker in (
+                    (spill_markers.full, spill_markers.compact) if spill_markers is not None else ()
+                )
+                if isinstance(marker, str) and estimate_string_chars(marker) <= remaining_text_budget
+            ),
+            None,
+        )
+        if replacement_text is None:
+            replacement_text = slice_tool_result_text_to_budget(
+                AGGREGATE_ELISION_MARKER, remaining_text_budget
+            )
+        remaining_text_budget = max(
+            0, remaining_text_budget - estimate_string_chars(replacement_text)
+        )
         next_block = {**block, "text": replacement_text}
         if isinstance(block.get("content"), str):
             next_block["content"] = replacement_text
@@ -673,56 +719,59 @@ def _clear_tool_result_text(
 
 def _get_trailing_tool_result_entry_ids(branch: list[dict[str, Any]]) -> set[str]:
     ids: set[str] = set()
-    saw_message = False
     for entry in reversed(branch):
         message = entry.get("message")
-        if entry.get("type") != "message" or not isinstance(message, dict) or not message:
-            if not saw_message:
-                continue
-            break
-        saw_message = True
-        if message.get("role") != "toolResult":
-            break
-        entry_id = entry.get("id")
-        if isinstance(entry_id, str):
-            ids.add(entry_id)
+        # Only an assistant response consumes tool results. Runtime context and queued
+        # steering must not make the pending batch eligible for elision.
+        if entry.get("type") == "message" and isinstance(message, dict):
+            if message.get("role") == "assistant":
+                break
+            if message.get("role") == "toolResult" and isinstance(entry.get("id"), str):
+                ids.add(entry["id"])
     return ids
 
 
 def _build_oversized_tool_result_replacements(
     *,
-    branch: list[dict[str, Any]],
+    branch: list[tuple[dict[str, Any], int | float]],
     max_chars: int,
     min_keep_chars: int = MIN_KEEP_CHARS,
     protected_entry_ids: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     replacements: list[dict[str, Any]] = []
-    for entry in branch:
-        if entry.get("type") != "message":
-            continue
+    for entry, text_length in branch:
         message = entry.get("message")
-        if not isinstance(message, dict) or message.get("role") != "toolResult":
+        if (
+            entry.get("type") != "message"
+            or not isinstance(message, dict)
+            or message.get("role") != "toolResult"
+            or text_length <= max_chars
+        ):
             continue
-        if get_tool_result_text_length(message) <= max_chars:
-            continue
-        replacement_min_keep_chars = (
-            max(min_keep_chars, MIN_KEEP_CHARS)
-            if protected_entry_ids is not None and entry.get("id") in protected_entry_ids
-            else min_keep_chars
-        )
         spill_markers = _resolve_aggregate_elision_markers(message)
         suffix_factory = spill_markers.truncation_suffix if spill_markers is not None else None
         entry_max_chars = max(
-            max_chars, len(suffix_factory(1)) if suffix_factory is not None else 0
+            max_chars,
+            estimate_string_chars(suffix_factory(1)) if suffix_factory is not None else 0,
+        )
+        replacement_message = truncate_tool_result_message(
+            message,
+            entry_max_chars,
+            suffix=suffix_factory,
+            min_keep_chars=(
+                max(min_keep_chars, MIN_KEEP_CHARS)
+                if protected_entry_ids is not None and entry.get("id") in protected_entry_ids
+                else min_keep_chars
+            ),
         )
         replacements.append(
             {
                 "entry_id": entry.get("id"),
-                "message": truncate_tool_result_message(
-                    message,
-                    entry_max_chars,
-                    suffix=suffix_factory,
-                    min_keep_chars=replacement_min_keep_chars,
+                "message": replacement_message,
+                "text_length": (
+                    text_length
+                    if replacement_message is message
+                    else get_tool_result_text_length(replacement_message)
                 ),
             }
         )
@@ -731,24 +780,21 @@ def _build_oversized_tool_result_replacements(
 
 def _build_aggregate_tool_result_replacements(
     *,
-    branch: list[dict[str, Any]],
+    branch: list[tuple[dict[str, Any], int | float]],
     spill_source_branch: list[dict[str, Any]] | None = None,
     aggregate_budget_chars: int,
     min_keep_chars: int = MIN_KEEP_CHARS,
-    protect_trailing_tool_results: bool = False,
+    protected_entry_ids: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
-    protected_entry_ids = (
-        _get_trailing_tool_result_entry_ids(branch) if protect_trailing_tool_results else set()
-    )
     candidates: list[dict[str, Any]] = []
-    for index, entry in enumerate(branch):
-        if entry.get("type") != "message":
-            continue
+    for index, (entry, text_length) in enumerate(branch):
         message = entry.get("message")
-        if not isinstance(message, dict) or message.get("role") != "toolResult":
-            continue
-        text_length = get_tool_result_text_length(message)
-        if text_length <= 0:
+        if (
+            entry.get("type") != "message"
+            or not isinstance(message, dict)
+            or message.get("role") != "toolResult"
+            or not text_length > 0
+        ):
             continue
         spill_source_message = message
         if spill_source_branch is not None and index < len(spill_source_branch):
@@ -757,12 +803,14 @@ def _build_aggregate_tool_result_replacements(
                 spill_source_message = source_message
         candidates.append(
             {
-                "index": index,
                 "entry_id": entry.get("id"),
                 "message": message,
                 "spill_source_message": spill_source_message,
                 "text_length": text_length,
-                "protected": entry.get("id") in protected_entry_ids,
+                "aggregate_eligible": entry.get("aggregateEligible") is not False,
+                "protected": (
+                    protected_entry_ids is not None and entry.get("id") in protected_entry_ids
+                ),
             }
         )
 
@@ -775,122 +823,101 @@ def _build_aggregate_tool_result_replacements(
         and aggregate_budget_chars < len(candidates) * _default_suffix_length()
         else _default_suffix
     )
-    min_truncated_text_chars = min_keep_chars + len(suffix_factory(1))
+    min_truncated_text_chars = min_keep_chars + estimate_string_chars(suffix_factory(1))
 
     total_chars = sum(candidate["text_length"] for candidate in candidates)
     if total_chars <= aggregate_budget_chars:
         return [], False
 
     remaining_reduction = total_chars - aggregate_budget_chars
-    replacements: list[dict[str, Any]] = []
-    # Spend aggregate reduction on older entries first so fresh tool output stays intact.
-    recovery_candidates = sorted(
-        (candidate for candidate in candidates if not candidate["protected"]),
-        key=lambda candidate: (candidate["index"], -candidate["text_length"]),
-    )
+    replacements: dict[Any, dict[str, Any]] = {}
+    # Frozen prompt bytes are immutable. Recover only from unsent tail results; allow budget
+    # overflow when frozen history alone exceeds the aggregate cap.
+    recovery_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate["aggregate_eligible"] and not candidate["protected"]
+    ]
 
-    for candidate in recovery_candidates:
-        if remaining_reduction <= 0:
-            break
-        reducible_chars = max(0, candidate["text_length"] - min_truncated_text_chars)
-        if reducible_chars <= 0:
-            continue
-
-        requested_reduction = min(reducible_chars, remaining_reduction)
-        target_chars = max(min_truncated_text_chars, candidate["text_length"] - requested_reduction)
-        spill_markers = _resolve_aggregate_elision_markers(candidate["spill_source_message"])
-        candidate_suffix_factory = (
-            spill_markers.truncation_suffix if spill_markers is not None else suffix_factory
-        )
-        candidate_target_chars = max(target_chars, len(candidate_suffix_factory(1)))
-        truncated_message = truncate_tool_result_message(
-            candidate["message"],
-            candidate_target_chars,
-            suffix=candidate_suffix_factory,
-            min_keep_chars=min_keep_chars,
-        )
-        new_length = get_tool_result_text_length(truncated_message)
-        actual_reduction = max(0, candidate["text_length"] - new_length)
-        if actual_reduction <= 0:
-            continue
-
-        replacements.append({"entry_id": candidate["entry_id"], "message": truncated_message})
-        remaining_reduction -= actual_reduction
-
-    if remaining_reduction > 0:
+    # Trim all older entries before clearing any, so fresh output and spill pointers stay
+    # recoverable.
+    for clear in (False, True):
         for candidate in recovery_candidates:
             if remaining_reduction <= 0:
                 break
-            existing_index = next(
-                (
-                    index
-                    for index, replacement in enumerate(replacements)
-                    if replacement["entry_id"] == candidate["entry_id"]
-                ),
-                None,
+            existing = replacements.get(candidate["entry_id"])
+            base_text_length = (
+                existing["text_length"] if existing is not None else candidate["text_length"]
             )
-            base_message = (
-                replacements[existing_index]["message"]
-                if existing_index is not None
-                else candidate["message"]
-            )
-            base_text_length = get_tool_result_text_length(base_message)
-            target_text_chars = max(0, base_text_length - remaining_reduction)
-            spill_markers = _resolve_aggregate_elision_markers(candidate["spill_source_message"])
-            empty_message = _clear_tool_result_text(
-                candidate["message"], target_text_chars, spill_markers
-            )
-            actual_reduction = max(
-                0, base_text_length - get_tool_result_text_length(empty_message)
-            )
-            if actual_reduction <= 0 and spill_markers is None:
+            if not clear and base_text_length <= min_truncated_text_chars:
                 continue
-            replacement = {"entry_id": candidate["entry_id"], "message": empty_message}
-            if existing_index is not None:
-                replacements[existing_index] = replacement
+            spill_markers = _resolve_aggregate_elision_markers(candidate["spill_source_message"])
+            if clear:
+                # Cleared fresh results keep a visible elision notice on projection paths;
+                # an empty tool result reads as failure and loses rerun guidance.
+                notice_floor = (
+                    estimate_string_chars(
+                        spill_markers.compact if spill_markers is not None else AGGREGATE_ELISION_MARKER
+                    )
+                    if protected_entry_ids is not None
+                    else 0
+                )
+                message = _clear_tool_result_text(
+                    candidate["message"],
+                    max(notice_floor, base_text_length - remaining_reduction),
+                    spill_markers,
+                )
             else:
-                replacements.append(replacement)
+                suffix = (
+                    spill_markers.truncation_suffix if spill_markers is not None else suffix_factory
+                )
+                target_chars = max(
+                    min_truncated_text_chars,
+                    base_text_length - remaining_reduction,
+                    estimate_string_chars(suffix(1)),
+                )
+                message = truncate_tool_result_message(
+                    candidate["message"],
+                    target_chars,
+                    min_keep_chars=min_keep_chars,
+                    suffix=suffix,
+                )
+            text_length = (
+                candidate["text_length"]
+                if message is candidate["message"]
+                else get_tool_result_text_length(message)
+            )
+            actual_reduction = max(0, base_text_length - text_length)
+            if actual_reduction <= 0 and (not clear or spill_markers is None):
+                continue
+            replacements[candidate["entry_id"]] = {
+                "entry_id": candidate["entry_id"],
+                "message": message,
+                "text_length": text_length,
+            }
             remaining_reduction -= actual_reduction
 
-    return replacements, True
-
-
-def _calculate_replacement_reduction(
-    branch: list[dict[str, Any]], replacements: list[dict[str, Any]]
-) -> int:
-    if not replacements:
-        return 0
-    branch_by_id = {
-        entry.get("id"): entry for entry in branch if isinstance(entry.get("id"), str)
-    }
-    reduction = 0
-    for replacement in replacements:
-        entry = branch_by_id.get(replacement["entry_id"])
-        message = entry.get("message") if entry is not None else None
-        if not isinstance(message, dict):
-            continue
-        reduction += max(
-            0,
-            get_tool_result_text_length(message)
-            - get_tool_result_text_length(replacement["message"]),
-        )
-    return reduction
+    return list(replacements.values()), True
 
 
 def _apply_tool_result_replacements_to_branch(
-    branch: list[dict[str, Any]], replacements: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
+    branch: list[tuple[dict[str, Any], int | float]], replacements: list[dict[str, Any]]
+) -> tuple[list[tuple[dict[str, Any], int | float]], int | float]:
     if not replacements:
-        return branch
+        return branch, 0
     replacements_by_id = {replacement["entry_id"]: replacement for replacement in replacements}
-    next_branch: list[dict[str, Any]] = []
-    for entry in branch:
+    reduced_chars: int | float = 0
+    next_branch: list[tuple[dict[str, Any], int | float]] = []
+    for entry, text_length in branch:
         replacement = replacements_by_id.get(entry.get("id"))
-        if replacement is None or entry.get("type") != "message":
-            next_branch.append(entry)
-        else:
-            next_branch.append({**entry, "message": replacement["message"]})
-    return next_branch
+        if replacement is None or entry.get("type") != "message" or not entry.get("message"):
+            next_branch.append((entry, text_length))
+            continue
+        reduced_chars += max(0, text_length - replacement["text_length"])
+        next_branch.append(
+            ({**entry, "message": replacement["message"]}, replacement["text_length"])
+        )
+    return next_branch, reduced_chars
 
 
 @dataclass(frozen=True)
@@ -915,15 +942,24 @@ def build_tool_result_replacement_plan(
     protected_entry_ids = (
         _get_trailing_tool_result_entry_ids(branch) if protect_trailing_tool_results else None
     )
+    # Measurements belong to this synchronous plan; replacement producers supply the next one.
+    measured_branch: list[tuple[dict[str, Any], int | float]] = [
+        (
+            entry,
+            get_tool_result_text_length(entry["message"])
+            if entry.get("type") == "message" and isinstance(entry.get("message"), dict)
+            else 0,
+        )
+        for entry in branch
+    ]
     oversized_replacements = _build_oversized_tool_result_replacements(
-        branch=branch,
+        branch=measured_branch,
         max_chars=max_chars,
         min_keep_chars=min_keep_chars,
         protected_entry_ids=protected_entry_ids,
     )
-    oversized_reducible_chars = _calculate_replacement_reduction(branch, oversized_replacements)
-    oversized_trimmed_branch = _apply_tool_result_replacements_to_branch(
-        branch, oversized_replacements
+    oversized_trimmed_branch, oversized_reducible_chars = (
+        _apply_tool_result_replacements_to_branch(measured_branch, oversized_replacements)
     )
     aggregate_replacements, aggregate_pressure_exceeded = (
         _build_aggregate_tool_result_replacements(
@@ -931,10 +967,10 @@ def build_tool_result_replacement_plan(
             spill_source_branch=branch,
             aggregate_budget_chars=aggregate_budget_chars,
             min_keep_chars=min_keep_chars,
-            protect_trailing_tool_results=protect_trailing_tool_results,
+            protected_entry_ids=protected_entry_ids,
         )
     )
-    aggregate_reducible_chars = _calculate_replacement_reduction(
+    _, aggregate_reducible_chars = _apply_tool_result_replacements_to_branch(
         oversized_trimmed_branch, aggregate_replacements
     )
     all_replacements = [*oversized_replacements, *aggregate_replacements]

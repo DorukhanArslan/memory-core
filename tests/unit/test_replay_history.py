@@ -38,22 +38,12 @@ def _openclaw_transcript_assistant(model: str) -> dict:
     }
 
 
-def test_normalize_assistant_replay_content_converts_mid_turn_empty_error_to_sentinel():
-    messages = [_user("hello"), _assistant([], "error"), _user("retry")]
-
-    out = normalize_assistant_replay_content(messages)
-
-    assert out[1]["content"] == [{"type": "text", "text": STREAM_ERROR_FALLBACK_TEXT}]
-    assert out[2] == messages[2]
-
-
-def test_normalize_assistant_replay_content_drops_trailing_empty_error_and_zero_usage_stop():
-    assert normalize_assistant_replay_content([_user("hello"), _assistant([], "error")]) == [
-        _user("hello")
-    ]
-    assert normalize_assistant_replay_content([_user("hello"), _assistant([], "stop")]) == [
-        _user("hello")
-    ]
+def test_normalize_assistant_replay_content_drops_failed_turns_and_the_legacy_sentinel():
+    sentinel = [{"type": "text", "text": STREAM_ERROR_FALLBACK_TEXT}]
+    for failed in (_assistant([], "error"), _assistant([], "stop"), _assistant(sentinel, "error")):
+        assert normalize_assistant_replay_content(
+            [_user("hello"), failed, _user("retry")]
+        ) == [_user("hello"), _user("retry")]
 
 
 def test_normalize_assistant_replay_content_preserves_nonzero_silent_stop():
@@ -162,3 +152,37 @@ def test_normalize_assistant_replay_content_strips_memory_core_internal_runtime_
     out = normalize_assistant_replay_content(messages)
 
     assert out[1]["content"] == [{"type": "text", "text": "Visible before\n\nVisible after"}]
+
+
+def test_normalize_assistant_replay_content_drops_reasoning_only_length_turns():
+    thinking = _assistant([{"type": "thinking", "thinking": "partial", "signature": "s"}], "length")
+    assert normalize_assistant_replay_content([_user("hi"), thinking]) == [_user("hi")]
+
+
+def test_normalize_assistant_replay_content_drops_managed_display_blocks_and_bare_mirrors():
+    reply = _assistant([{"type": "text", "text": "answer"}], "stop")
+    with_image = _assistant(
+        [{"type": "image", "data": "AA==", "mimeType": "image/png"}, {"type": "text", "text": "answer"}],
+        "stop",
+    )
+    out = normalize_assistant_replay_content([_user("hi"), with_image])
+    assert out[1]["content"] == [{"type": "text", "text": "answer"}]
+    # a zero-usage receipt right after its source reply is a mirror duplicate
+    assert normalize_assistant_replay_content([_user("hi"), reply, dict(reply)]) == [
+        _user("hi"),
+        reply,
+    ]
+    billed = {**reply, "usage": {"input": 5, "output": 5, "totalTokens": 10}}
+    assert normalize_assistant_replay_content([_user("hi"), reply, billed])[2] == billed
+
+
+def test_normalize_assistant_replay_content_keeps_blank_user_turns_with_persisted_media():
+    media_turn = {
+        "role": "user",
+        "content": "",
+        "__openclaw": {"media": [{"path": "/tmp/a.png"}]},
+        "timestamp": 0,
+    }
+    assert normalize_assistant_replay_content([media_turn])[0] == media_turn
+    only_blank = {"role": "user", "content": [{"type": "text", "text": " "}], "__openclaw": {"media": [{"url": "u"}]}}
+    assert normalize_assistant_replay_content([only_blank])[0]["content"] == ""

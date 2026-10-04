@@ -5,11 +5,14 @@ import re
 
 
 MAX_OVERFLOW_COMPACTION_ATTEMPTS = 3
-MID_TURN_PRECHECK_CONTINUATION_PROMPT = (
-    "Continue from the current transcript after the latest tool result. Do not repeat the "
-    "original user request, and do not rerun completed tools unless the transcript shows they "
-    "are still needed."
+# run/session-prompt-state.ts CONTINUATION_PROMPT: the internal prompt of every transcript
+# continuation (the pin's mid-turn-only "Continue from the current transcript ..." text is gone).
+CONTINUATION_PROMPT = (
+    "Continue the current task from the existing transcript, preserving completed work. If an "
+    "action was interrupted, inspect its state before deciding whether to retry it. Do not "
+    "restart the task or repeat completed actions."
 )
+MID_TURN_PRECHECK_CONTINUATION_PROMPT = CONTINUATION_PROMPT
 OVERFLOW_RECOVERY_TEXT = (
     "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh "
     "session, or use a larger-context model."
@@ -28,6 +31,10 @@ _CONTEXT_OVERFLOW_HINT_RE = re.compile(
 _RATE_LIMIT_HINT_RE = re.compile(
     r"rate limit|too many requests|requests per (?:minute|hour|day)|quota|throttl|429\b|"
     r"tokens per day",
+    re.I,
+)
+_STATED_TOKEN_SIZES_RE = re.compile(
+    r"(?:\btpm\b|tokens per minute)[^.\n]*?\blimit\s+([\d,]+)[^.\n]*?\brequested\s+([\d,]+)",
     re.I,
 )
 _CONFIGURED_CONTEXT_SIZE_OVERFLOW_RE = re.compile(
@@ -50,6 +57,60 @@ _OBSERVED_OVERFLOW_TOKEN_SUM_PATTERNS = (
         r"(?:\s+limit|\s+window)?\s*\(i\.e\s*([\d,]+)\s*\+\s*([\d,]+)\s*>\s*[\d,]+\)",
         re.I,
     ),
+)
+
+
+def _read_stated_token_count(digits: str | None) -> int | None:
+    if not digits:
+        return None
+    value = int(digits.replace(",", ""))
+    return value if value > 0 else None
+
+
+def is_provider_request_size_ceiling_error(error_message: str | None) -> bool:
+    """A request larger than the provider's whole TPM bucket: reset guidance, not compaction."""
+
+    if not error_message:
+        return False
+    match = _STATED_TOKEN_SIZES_RE.search(error_message)
+    if match is None:
+        return False
+    limit = _read_stated_token_count(match.group(1))
+    requested = _read_stated_token_count(match.group(2))
+    return limit is not None and requested is not None and requested > limit
+
+
+def _is_timeout_compaction_reason(reason: str | None) -> bool:
+    """``classifyCompactionReason(reason) === "timeout"`` (compact-reasons.ts)."""
+
+    text = (reason or "").lower()
+    if not text:
+        return False
+    earlier = (
+        "nothing to compact",
+        "no real conversation messages",
+        "below threshold",
+        "already under target",
+        "already compacted",
+        "already_compacted",
+        "deferred to background",
+        "still exceeds target",
+        "guard",
+        "summary",
+    )
+    if text.startswith("no api key found") or (
+        text.startswith("authentication failed for ") and "credentials may have expired" in text
+    ):
+        return False
+    if any(marker in text for marker in earlier):
+        return False
+    if "session transcript" in text and "not persisted" in text:
+        return False
+    return "timed out" in text or "timeout" in text
+
+
+SIDE_EFFECT_CAUTION = (
+    " Completed tool actions were not replayed; verify their effects before retrying."
 )
 
 
@@ -117,7 +178,11 @@ def is_context_overflow_error(error_message: str | None) -> bool:
     if not error_message:
         return False
     lower = _lower(error_message)
-    if _has_rate_limit_tpm_hint(error_message) or _is_reasoning_constraint_error(error_message):
+    # A TPM figure is a rate limit, unless the request alone exceeds the whole limit.
+    if (
+        _has_rate_limit_tpm_hint(error_message)
+        and not is_provider_request_size_ceiling_error(error_message)
+    ) or _is_reasoning_constraint_error(error_message):
         return False
 
     has_request_size_exceeds = "request size exceeds" in lower
@@ -161,6 +226,11 @@ def is_context_overflow_error(error_message: str | None) -> bool:
 def is_likely_context_overflow_error(error_message: str | None) -> bool:
     if not error_message:
         return False
+    # Settle an unsatisfiable request size first: the TPM and rate-limit exclusions below would
+    # otherwise claim the message on its rate-limit wording alone. (Approximates the tables' match with
+    # the explicit overflow check; the provider-fallback candidates are not ported.)
+    if is_provider_request_size_ceiling_error(error_message):
+        return is_context_overflow_error(error_message)
     if (
         _has_rate_limit_tpm_hint(error_message)
         or _is_reasoning_constraint_error(error_message)
@@ -243,6 +313,10 @@ def decide_provider_overflow_recovery(
     compaction_succeeded: bool | None = None,
     has_oversized_tool_results: bool = False,
     tool_result_truncation_attempted: bool = False,
+    current_attempt_replay_safe: bool = True,
+    had_potential_side_effects: bool = False,
+    prompt_error_source: str | None = None,
+    failed_compaction_reason: str | None = None,
     max_attempts: int = MAX_OVERFLOW_COMPACTION_ATTEMPTS,
 ) -> ProviderOverflowRecoveryDecision:
     classification = classify_overflow_error(error_text, context_tokens=context_tokens)
@@ -259,8 +333,29 @@ def decide_provider_overflow_recovery(
             tokens_for_compaction=None,
         )
 
-    continue_from_transcript = preflight_source == "mid-turn"
-    next_prompt_override = MID_TURN_PRECHECK_CONTINUATION_PROMPT if continue_from_transcript else None
+    caution = SIDE_EFFECT_CAUTION if had_potential_side_effects else ""
+    if is_provider_request_size_ceiling_error(error_text):
+        # Compaction cannot make the request fit under the provider's own ceiling.
+        return ProviderOverflowRecoveryDecision(
+            action="give_up",
+            should_retry=False,
+            should_compact=False,
+            should_truncate_tool_results=False,
+            next_overflow_compaction_attempts=overflow_compaction_attempts,
+            continue_from_current_transcript=False,
+            suppress_next_user_message_persistence=False,
+            next_prompt_override=None,
+            tokens_for_compaction=classification.tokens_for_compaction,
+            error_kind=(
+                "compaction_failure" if classification.is_compaction_failure else "context_overflow"
+            ),
+            user_visible_error_text=OVERFLOW_RECOVERY_TEXT + caution,
+        )
+
+    # A mid-turn precheck or an attempt whose side effects cannot be replayed must continue
+    # from the transcript instead of resending the original user message.
+    continue_from_transcript = preflight_source == "mid-turn" or not current_attempt_replay_safe
+    next_prompt_override = CONTINUATION_PROMPT if continue_from_transcript else None
 
     if (
         not classification.is_compaction_failure
@@ -308,7 +403,7 @@ def decide_provider_overflow_recovery(
             next_overflow_compaction_attempts=overflow_compaction_attempts,
             continue_from_current_transcript=continue_from_transcript,
             suppress_next_user_message_persistence=suppress,
-            next_prompt_override=MID_TURN_PRECHECK_CONTINUATION_PROMPT if suppress else None,
+            next_prompt_override=CONTINUATION_PROMPT if suppress else None,
             tokens_for_compaction=classification.tokens_for_compaction,
         )
 
@@ -326,7 +421,23 @@ def decide_provider_overflow_recovery(
             tokens_for_compaction=classification.tokens_for_compaction,
         )
 
-    error_kind = "compaction_failure" if classification.is_compaction_failure else "context_overflow"
+    preflight_compaction_failed = (
+        prompt_error_source == "precheck" and failed_compaction_reason is not None
+    )
+    error_kind = (
+        "compaction_failure"
+        if classification.is_compaction_failure or preflight_compaction_failed
+        else "context_overflow"
+    )
+    if preflight_compaction_failed:
+        lead = (
+            "Auto-compaction timed out"
+            if _is_timeout_compaction_reason(failed_compaction_reason)
+            else "Auto-compaction failed"
+        )
+        user_text = f"{lead} before the next model request. Try again or run /compact.{caution}"
+    else:
+        user_text = OVERFLOW_RECOVERY_TEXT + caution
     return ProviderOverflowRecoveryDecision(
         action="give_up",
         should_retry=False,
@@ -338,5 +449,5 @@ def decide_provider_overflow_recovery(
         next_prompt_override=None,
         tokens_for_compaction=classification.tokens_for_compaction,
         error_kind=error_kind,
-        user_visible_error_text=OVERFLOW_RECOVERY_TEXT,
+        user_visible_error_text=user_text,
     )

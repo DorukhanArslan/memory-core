@@ -5,7 +5,7 @@ def _message(role: str, text: str) -> dict[str, object]:
     return {"role": role, "content": [{"type": "text", "text": text}]}
 
 
-def test_limit_history_turns_keeps_last_n_user_turns_with_assistant_responses():
+def test_limit_history_turns_keeps_everything_within_the_fifty_percent_cushion():
     messages = [
         _message("user", "u1"),
         _message("assistant", "a1"),
@@ -15,7 +15,19 @@ def test_limit_history_turns_keeps_last_n_user_turns_with_assistant_responses():
         _message("user", "u3"),
     ]
 
-    assert limit_history_turns(messages, 2) == messages[2:]
+    assert limit_history_turns(messages, 2) == messages
+
+
+def test_limit_history_turns_evicts_a_batch_once_over_the_cushion():
+    # limit 2 -> cut at more than 3 user turns, keep 2 + (n - 2) % 2
+    messages = []
+    for n in range(1, 5):
+        messages += [_message("user", f"u{n}"), _message("assistant", f"a{n}")]
+    # 4 users: keep 2 + (4-2) % 2 = 2 turns
+    assert limit_history_turns(messages, 2) == messages[4:]
+    # 5 users: keep 2 + (5-2) % 2 = 3 turns, the cache prefix moves in steps
+    messages += [_message("user", "u5"), _message("assistant", "a5")]
+    assert limit_history_turns(messages, 2) == messages[4:]
 
 
 def test_limit_history_turns_preserves_leading_compaction_summary():
@@ -26,11 +38,13 @@ def test_limit_history_turns_preserves_leading_compaction_summary():
         _message("assistant", "a1"),
         _message("user", "u2"),
         _message("assistant", "a2"),
+        _message("user", "u3"),
+        _message("assistant", "a3"),
     ]
 
     limited = limit_history_turns(messages, 1)
 
-    assert limited == messages[:2] + messages[4:]
+    assert limited == messages[:2] + messages[6:]
 
 
 def test_limit_history_turns_returns_all_when_only_leading_summaries():

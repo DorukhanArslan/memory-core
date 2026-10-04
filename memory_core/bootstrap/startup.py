@@ -42,8 +42,8 @@ from memory_core.bootstrap._js import (
     js_to_well_formed,
     js_trim,
     locale_compare,
+    truncate_utf16_safe,
     utf16_len,
-    utf16_slice,
 )
 from memory_core.bootstrap.files import BootstrapMode, read_workspace_file_guarded, resolve_bootstrap_mode
 from memory_core.bootstrap.layout import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
@@ -129,7 +129,7 @@ def _trim_startup_memory_content(content: str, max_chars: int) -> str:
     trimmed = js_trim(content)
     if utf16_len(trimmed) <= max_chars:
         return trimmed
-    return f"{utf16_slice(trimmed, 0, max_chars)}{STARTUP_MEMORY_TRUNCATED_SUFFIX}"
+    return f"{truncate_utf16_safe(trimmed, max_chars)}{STARTUP_MEMORY_TRUNCATED_SUFFIX}"
 
 
 _LABEL_WHITESPACE_RE = re.compile(r"[\r\n\t]+")

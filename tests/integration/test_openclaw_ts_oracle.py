@@ -26,7 +26,9 @@ from memory_core.replay_repair import repair_tool_use_result_pairing, sanitize_t
 from memory_core.runtime_context_prompt import (
     OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     build_current_inbound_prompt,
+    append_current_inbound_context,
     build_runtime_context_custom_message,
+    prepend_runtime_context_for_model,
     resolve_runtime_context_prompt_parts,
 )
 from memory_core.context_engine_lifecycle import (
@@ -543,6 +545,8 @@ def test_real_openclaw_oracle_preemptive_compaction_routes_match_python():
         "input length and max_tokens exceed context limit (i.e 156321 + 48384 > 200000)",
         "429 Too Many Requests: request exceeds rate limit",
         "Model context window too small (minimum is 128k tokens)",
+        "Rate limit: TPM limit 30,000, requested 45,000 tokens: context overflow: prompt too large",
+        "Rate limit reached for tokens per minute. Limit 30000, Requested 100",
     ],
 )
 def test_real_openclaw_oracle_overflow_error_helpers_match_python(message: str):
@@ -690,31 +694,40 @@ def test_real_openclaw_oracle_tool_result_reduction_potential_matches_python():
 
 
 @pytest.mark.parametrize(
-    "text,max_chars",
+    "text,max_chars,minimum_raw_weight",
     [
-        ("normal line\n" * 1000, 5_000),
+        ("normal line\n" * 1000, 5_000, None),
         (
             ("Line 1\n" * 500)
             + ("data data data\n" * 500)
             + "\nError: something failed\nStack trace: at foo.ts:42\n",
             5_000,
+            None,
         ),
+        ("記憶 line with emoji 😀\n" * 900, 6_000, None),
+        ("漢字" * 4_000 + "\nfailed: 結果 error\n", 9_000, None),
+        ("𠀀rare㐀ext 😀 " * 700, 7_000, None),
+        ("normal line\n" * 1000, 5_000, 2),
+        ("記憶 line\n" * 1200 + "tail error 記憶\n", 5_000, 2),
+        ("x" * 9_000, 5_000, 3),
+        ("short", 3, None),
     ],
+    ids=["ascii", "ascii-tail", "cjk-emoji", "cjk-tail", "astral", "floor2", "cjk-floor2", "floor3", "tiny"],
 )
 def test_real_openclaw_oracle_truncate_tool_result_text_matches_python(
     text: str,
     max_chars: int,
+    minimum_raw_weight,
 ):
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
 
-    result = oracle.run(
-        {
-            "operation": "truncateToolResultText",
-            "text": text,
-            "maxChars": max_chars,
-        }
+    payload = {"operation": "truncateToolResultText", "text": text, "maxChars": max_chars}
+    if minimum_raw_weight is not None:
+        payload["minimumRawWeight"] = minimum_raw_weight
+    result = oracle.run(payload)
+    python_text = truncate_tool_result_text(
+        text, max_chars, minimum_raw_weight=minimum_raw_weight
     )
-    python_text = truncate_tool_result_text(text, max_chars)
 
     assert result["ok"] is True
     assert result["operation"] == "truncateToolResultText"
@@ -755,6 +768,100 @@ def test_real_openclaw_oracle_truncate_tool_results_in_session_file_matches_pyth
 
     assert result["ok"] is True
     assert result["operation"] == "truncateToolResultsInSession"
+    assert result["result"]["truncated"] is python_result.truncated
+    assert result["result"]["truncatedCount"] == python_result.truncated_count
+    assert result["result"]["toolTexts"] == list(python_result.tool_texts)
+
+
+def _aggregate_session_cases(tmp_path: Path) -> dict[str, tuple[list[str], dict]]:
+    spill = tmp_path / "spill.txt"
+    spill.write_text("full output", encoding="utf-8")
+    footer = f"\nFull output: {spill}"
+    ascii_block = "alpha beta gamma delta epsilon\n" * 150
+    cjk_block = "記憶 line with 結果 and emoji 😀\n" * 200
+    return {
+        "ascii-aggregate": (
+            [ascii_block, ascii_block, ascii_block, ascii_block],
+            {"maxChars": 100_000, "aggregateMaxChars": 6_000},
+        ),
+        "cjk-aggregate": (
+            [cjk_block, cjk_block, cjk_block],
+            {"maxChars": 100_000, "aggregateMaxChars": 5_000},
+        ),
+        "clear-phase": (
+            [ascii_block, ascii_block, ascii_block, ascii_block],
+            {"maxChars": 100_000, "aggregateMaxChars": 300},
+        ),
+        "protected-trailing": (
+            [ascii_block, ascii_block, ascii_block],
+            {"maxChars": 100_000, "aggregateMaxChars": 5_000, "protectTrailingToolResults": True},
+        ),
+        "oversized-protected": (
+            [ascii_block * 3, ascii_block],
+            {"maxChars": 1_500, "aggregateMaxChars": 100_000, "protectTrailingToolResults": True},
+        ),
+        "flat-spill": (
+            [ascii_block + footer, ascii_block + footer, ascii_block],
+            {
+                "maxChars": 100_000,
+                "aggregateMaxChars": 1_000,
+                "spill": {"fullOutputPath": str(spill), "spilledChars": 4_000},
+            },
+        ),
+        "nested-spill": (
+            [ascii_block + footer, ascii_block + footer, ascii_block],
+            {
+                "maxChars": 100_000,
+                "aggregateMaxChars": 1_000,
+                "spill": {"spill": {"path": str(spill), "truncated": True, "chars": 2_000}},
+            },
+        ),
+    }
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["ascii-aggregate", "cjk-aggregate", "clear-phase", "protected-trailing", "oversized-protected", "flat-spill", "nested-spill"],
+)
+def test_real_openclaw_oracle_truncate_tool_results_aggregate_matches_python(
+    tmp_path: Path, case: str
+):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    texts, options = _aggregate_session_cases(tmp_path)[case]
+    spill_details = options.pop("spill", None)
+    entries = [
+        _session_message("u1", None, {"role": "user", "content": "hello"}),
+        _session_message("a1", "u1", _assistant_history("calling tools")),
+    ]
+    parent = "a1"
+    for index, text in enumerate(texts):
+        message = _tool_result(text)
+        message["toolCallId"] = f"call_{index}"
+        if spill_details is not None and index < 2:
+            message["details"] = spill_details
+        entry_id = f"t{index}"
+        entries.append(_session_message(entry_id, parent, message))
+        parent = entry_id
+    session_file = tmp_path / "session.jsonl"
+    session_file.write_text("".join(f"{json.dumps(e)}\n" for e in entries), encoding="utf-8")
+
+    result = oracle.run(
+        {
+            "operation": "truncateToolResultsInSession",
+            "sessionEntries": entries,
+            "contextWindowTokens": 128_000,
+            **options,
+        }
+    )
+    python_result = truncate_oversized_tool_results_in_session_file(
+        session_file,
+        context_window_tokens=128_000,
+        max_chars_override=options.get("maxChars"),
+        aggregate_max_chars_override=options.get("aggregateMaxChars"),
+        protect_trailing_tool_results=options.get("protectTrailingToolResults", False),
+    )
+
+    assert result["ok"] is True
     assert result["result"]["truncated"] is python_result.truncated
     assert result["result"]["truncatedCount"] == python_result.truncated_count
     assert result["result"]["toolTexts"] == list(python_result.tool_texts)
@@ -4868,47 +4975,98 @@ def test_real_openclaw_oracle_sanitize_tool_call_inputs_matches_python(case):
     }
 
 
-def test_real_openclaw_oracle_runtime_context_prompt_helpers_match_python():
-    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
-    prompt = "\n\n".join(["runtime prefix", "visible ask", "retry instruction"])
-    effective_prompt = "\n\n".join(
-        [
-            prompt,
-            "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nsecret runtime context\n<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
-        ]
-    )
-    current_context = {"text": "Current message:\n#34975 obviyus:", "promptJoiner": " "}
+_RUNTIME_CONTEXT_PROMPT_CASES = {
+    "visible-ask-with-fragment": {
+        "prompt": "model-side prompt\n\nsecret runtime context",
+        "text": "visible ask",
+        "fragments": [
+            {"kind": "runtime-instruction", "text": "secret runtime context"},
+            {"kind": "conversation-data", "text": "  "},
+        ],
+        "entry": {"text": "Current message:\n#34975 obviyus:", "promptJoiner": " "},
+        "modelMessages": [],
+    },
+    "runtime-only-event": {
+        "prompt": "secret runtime context",
+        "text": "",
+        "fragments": [{"kind": "heartbeat-outcome", "text": "secret runtime context"}],
+        "entry": {"text": "full", "resumableText": "resumed", "fragments": []},
+        "preferResumableText": True,
+        "modelMessages": [
+            {"role": "user", "content": "hello", "timestamp": 3},
+        ],
+    },
+    "runtime-only-disallowed": {
+        "prompt": "",
+        "fragments": [{"kind": "runtime-instruction", "text": "secret runtime context"}],
+        "allowRuntimeOnly": False,
+        "entry": {"text": "", "promptJoiner": "\n"},
+        "modelMessages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "data": "x", "mimeType": "image/png"},
+                    {"type": "text", "text": "ask"},
+                ],
+                "runtimeContextCarrier": True,
+                "timestamp": 4,
+            },
+            {"role": "assistant", "content": [], "timestamp": 5},
+        ],
+    },
+    "no-fragments": {
+        "prompt": "plain prompt",
+        "text": "plain prompt",
+        "entry": None,
+        "modelMessages": [
+            {
+                "role": "user",
+                "content": "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nold\n<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+                "runtimeContextCarrier": True,
+                "timestamp": 1,
+            }
+        ],
+    },
+}
 
-    result = oracle.run(
-        {
-            "operation": "runtimeContextPrompt",
-            "prompt": effective_prompt,
-            "text": "visible ask",
-            "systemPrompt": effective_prompt,
-            "entry": current_context,
-        }
-    )
+
+@pytest.mark.parametrize("case", sorted(_RUNTIME_CONTEXT_PROMPT_CASES))
+def test_real_openclaw_oracle_runtime_context_prompt_helpers_match_python(case):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    spec = _RUNTIME_CONTEXT_PROMPT_CASES[case]
+    payload = {"operation": "runtimeContextPrompt", **{k: v for k, v in spec.items() if v is not None}}
+    result = oracle.run(payload)
+
+    identity = OPENCLAW_COMPAT_RUNTIME_IDENTITY
+    fragments = spec.get("fragments")
     python_parts = resolve_runtime_context_prompt_parts(
-        effective_prompt=effective_prompt,
-        transcript_prompt="visible ask",
-        model_prompt=effective_prompt,
-        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+        effective_prompt=spec["prompt"],
+        transcript_prompt=spec.get("text"),
+        fragments=fragments,
+        allow_runtime_only=spec.get("allowRuntimeOnly"),
+        identity=identity,
     )
     python_custom_message = build_runtime_context_custom_message(
-        "secret runtime context",
-        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+        "secret runtime context", fragments, identity=identity
     )
 
     assert result["ok"] is True
     assert result["operation"] == "runtimeContextPrompt"
-    assert result["result"] == {
-        "parts": python_parts,
-        "currentInboundPrompt": build_current_inbound_prompt(
-            context=current_context,
-            prompt="What do you mean hidden?",
-        ),
-        "customMessage": _normalize_runtime_custom_message(python_custom_message),
-    }
+    assert result["result"]["parts"] == python_parts
+    assert result["result"]["currentInboundPrompt"] == build_current_inbound_prompt(
+        context=spec["entry"],
+        prompt="What do you mean hidden?",
+        prefer_resumable_text=spec.get("preferResumableText", False),
+    )
+    assert result["result"]["appendedContext"] == append_current_inbound_context(
+        spec["entry"], fragments or []
+    )
+    assert result["result"]["prependedMessages"] == prepend_runtime_context_for_model(
+        spec["modelMessages"], "secret runtime context", identity=identity
+    )
+    assert result["result"]["customMessage"] == _normalize_runtime_custom_message(
+        python_custom_message
+    )
 
 
 def test_real_openclaw_oracle_context_engine_lifecycle_strips_runtime_context():
@@ -4996,6 +5154,58 @@ def test_real_openclaw_oracle_normalize_assistant_replay_content_matches_python(
             "model": "delivery-mirror",
             "timestamp": 0,
         },
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "answer"},
+                {"type": "image", "data": "AA==", "mimeType": "image/png"},
+            ],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": {"input": 4, "output": 4, "totalTokens": 8},
+            "stopReason": "stop",
+            "timestamp": 0,
+        },
+        {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "answer"}],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": zero_usage,
+            "stopReason": "stop",
+            "timestamp": 0,
+        },
+        {
+            "role": "assistant",
+            "content": [{"type": "thinking", "thinking": "cut off", "signature": "sig"}],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": {"input": 1, "output": 1, "totalTokens": 2},
+            "stopReason": "length",
+            "timestamp": 0,
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "quiet", "signature": "sig"},
+                {"type": "text", "text": "NO_REPLY"},
+            ],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": {"input": 1, "output": 1, "totalTokens": 2},
+            "stopReason": "stop",
+            "timestamp": 0,
+        },
+        {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "[assistant turn failed before producing content]"}],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": zero_usage,
+            "stopReason": "error",
+            "timestamp": 0,
+        },
+        {"role": "user", "content": "", "timestamp": 0},
     ]
 
     result = oracle.run({"operation": "normalizeAssistantReplayContent", "messages": messages})
@@ -6195,7 +6405,8 @@ def _startup_scenario_caps(root: Path) -> None:
 
 
 def _startup_scenario_emoji_at_file_cap(root: Path) -> None:
-    # The 1,200-unit per-file cut (startup-context.ts:97) splits the emoji's surrogate pair.
+    # The 1,200-unit per-file cut (startup-context.ts:98, truncateUtf16Safe) lands inside the
+    # emoji's surrogate pair and backs off instead of splitting it.
     _write_daily(root, "2026-09-26.md", "a" * 1199 + "😀" + "tail\n")
 
 
@@ -6250,9 +6461,8 @@ def test_real_openclaw_oracle_startup_context_matches_python(
         }
     ts_prelude = result["result"]["prelude"]
     if scenario is _startup_scenario_emoji_at_file_cap:
-        assert re.search("[\ud800-\udfff]", ts_prelude)
-    # Transport-boundary deviation: memory-core returns the prelude well-formed
-    # (String.prototype.toWellFormed), upstream returns the lone surrogate.
+        assert not re.search("[\ud800-\udfff]", ts_prelude)
+    # Transport-boundary shim: well-formed output is a no-op now that the cut is surrogate-safe.
     expected = js_to_well_formed(ts_prelude) if ts_prelude is not None else None
     assert expected == build_startup_context(root, now_ms=now_ms, timezone=timezone_name, **kwargs)
 

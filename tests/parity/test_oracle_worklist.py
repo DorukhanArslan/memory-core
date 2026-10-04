@@ -65,11 +65,11 @@ def test_pending_port_reason_matches_exact_and_prefix_entries():
     assert worklist.pending_port_reason(exact).startswith(
         "pending port to v2026.9.6: area 7 deep dreaming policy"
     )
-    long_param = (
-        "test_openclaw_ts_oracle.py::test_real_openclaw_oracle_truncate_tool_result_text_"
-        "matches_python[Line 1\\nLine 1]"
+    prefix_entry = worklist.PendingPort(
+        "wildcard sample", "sample", ("test_sample.py::test_case[Line 1*",), plan_area=1
     )
-    assert worklist.pending_port_reason(long_param) is not None
+    worklist.PENDING_PORTS = (*worklist.PENDING_PORTS, prefix_entry)
+    assert worklist.pending_port_reason("test_sample.py::test_case[Line 1\\nLine 1]") is not None
     assert worklist.pending_port_reason(exact + "_coerces_malformed_values[deep2]") is None
 
 

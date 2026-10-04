@@ -17,105 +17,88 @@ OPENCLAW_RUNTIME_CONTEXT_NOTICE = (
 # Public API (memory_core.__all__).
 MEMORY_CORE_RUNTIME_CONTEXT_CUSTOM_TYPE = MEMORY_CORE_RUNTIME_IDENTITY.runtime_context_custom_type
 
-EmptyTranscriptMode = Literal["model-prompt", "runtime-event"]
+RuntimeContextFragmentKind = Literal["runtime-instruction", "conversation-data", "heartbeat-outcome"]
 
 
-def build_current_inbound_prompt_context_prefix(context: Mapping[str, Any] | None) -> str:
-    text = context.get("text") if context else None
+def build_current_inbound_prompt_context_prefix(
+    context: Mapping[str, Any] | None,
+    *,
+    prefer_resumable_text: bool = False,
+) -> str:
+    """Trimmed inbound context text (``resumableText`` first when asked, run/runtime-context-prompt.ts)."""
+
+    if not context:
+        return ""
+    text = context.get("text")
+    if prefer_resumable_text and context.get("resumableText") is not None:
+        text = context.get("resumableText")
     return text.strip() if isinstance(text, str) else ""
 
 
-def build_current_inbound_prompt(*, context: Mapping[str, Any] | None, prompt: str) -> str:
-    prefix = build_current_inbound_prompt_context_prefix(context)
-    if not prefix:
-        return prompt
-    if not prompt:
-        return prefix
-    prompt_joiner = context.get("promptJoiner") if context else None
-    return str(prompt_joiner if isinstance(prompt_joiner, str) else "\n\n").join([prefix, prompt])
+def build_current_inbound_prompt(
+    *,
+    context: Mapping[str, Any] | None,
+    prompt: str,
+    prefer_resumable_text: bool = False,
+) -> str:
+    prefix = build_current_inbound_prompt_context_prefix(
+        context, prefer_resumable_text=prefer_resumable_text
+    )
+    joiner = context.get("promptJoiner") if context else None
+    return str(joiner if isinstance(joiner, str) else "\n\n").join(
+        part for part in (prefix, prompt) if part
+    )
+
+
+def append_current_inbound_context(
+    context: Mapping[str, Any] | None,
+    fragments: list[Mapping[str, Any]],
+    legacy_text: str | None = None,
+) -> dict[str, Any]:
+    """Append turn additions to the full and resumed projections, keeping provenance."""
+
+    if legacy_text is None:
+        legacy_text = "\n\n".join(str(fragment.get("text", "")) for fragment in fragments)
+    base = dict(context or {})
+
+    def append(text: Any) -> str:
+        return "\n\n".join(part for part in (text, legacy_text) if part)
+
+    out = dict(base)
+    out["text"] = append(base.get("text"))
+    if base.get("resumableText") is not None:
+        out["resumableText"] = append(base["resumableText"])
+    existing = base.get("fragments")
+    if existing is None:
+        existing = (
+            [{"kind": "conversation-data", "text": base["text"]}] if base.get("text") else []
+        )
+    out["fragments"] = [*existing, *fragments]
+    return out
 
 
 def resolve_runtime_context_prompt_parts(
     *,
     effective_prompt: str,
     transcript_prompt: str | None = None,
-    model_prompt: str | None = None,
-    empty_transcript_mode: EmptyTranscriptMode | None = None,
+    fragments: list[Mapping[str, Any]] | None = None,
+    allow_runtime_only: bool | None = None,
     identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> dict[str, Any]:
-    should_extract_internal_runtime_context = transcript_prompt is not None
-    extracted = (
-        _extract_internal_runtime_context(effective_prompt, identity=identity)
-        if should_extract_internal_runtime_context
-        else {"text": effective_prompt}
-    )
-    extracted_model_prompt = (
-        None
-        if model_prompt is None
-        else (
-            _extract_internal_runtime_context(model_prompt, identity=identity)
-            if should_extract_internal_runtime_context
-            else {"text": model_prompt}
-        )
-    )
-    model_prompt_text = (
-        extracted_model_prompt["text"]
-        if extracted_model_prompt is not None
-        else (transcript_prompt if transcript_prompt is not None else extracted["text"])
-    )
-    prompt = transcript_prompt if transcript_prompt is not None else extracted["text"]
+    """Select explicit producer context; prompt text is never interpreted as provenance."""
 
-    if not prompt.strip() and empty_transcript_mode == "model-prompt":
-        out: dict[str, Any] = {"prompt": extracted["text"]}
-        if model_prompt_text.strip() and model_prompt_text != extracted["text"]:
-            out["modelPrompt"] = model_prompt_text
-        if extracted.get("runtimeContext"):
-            out["runtimeContext"] = extracted["runtimeContext"]
-        return out
-
-    hidden_runtime_context = None
-    if extracted_model_prompt is not None:
-        hidden_runtime_context = _remove_last_prompt_occurrence(
-            extracted["text"],
-            extracted_model_prompt["text"],
-        )
-        if hidden_runtime_context is None and transcript_prompt:
-            hidden_runtime_context = _remove_last_prompt_occurrence(extracted["text"], transcript_prompt)
-    elif transcript_prompt:
-        hidden_runtime_context = _remove_last_prompt_occurrence(extracted["text"], transcript_prompt)
-
-    runtime_context = "\n\n".join(
-        value.strip()
-        for value in [hidden_runtime_context, extracted.get("runtimeContext")]
-        if isinstance(value, str) and value.strip()
-    )
-    if not runtime_context and not prompt.strip():
-        runtime_context = extracted["text"].strip()
-
-    if not prompt.strip():
-        if runtime_context:
-            out = {
-                "prompt": identity.runtime_event_user_prompt,
-                "runtimeContext": runtime_context,
-                "runtimeOnly": True,
-                "runtimeSystemContext": build_runtime_event_system_context(
-                    runtime_context,
-                    identity=identity,
-                ),
-            }
-            if model_prompt_text.strip() and model_prompt_text != identity.runtime_event_user_prompt:
-                out["modelPrompt"] = model_prompt_text
-            return out
-        out = {"prompt": ""}
-        if model_prompt_text:
-            out["modelPrompt"] = model_prompt_text
-        return out
-
-    out = {"prompt": prompt}
-    if model_prompt_text.strip() and model_prompt_text != prompt:
-        out["modelPrompt"] = model_prompt_text
+    kept = [f for f in (fragments or []) if str(f.get("text", "")).strip()]
+    runtime_context = "\n\n".join(str(f["text"]) for f in kept)
+    transcript = transcript_prompt if transcript_prompt is not None else effective_prompt
+    runtime_only = not transcript.strip() and bool(runtime_context) and allow_runtime_only is not False
+    prompt = identity.runtime_event_user_prompt if runtime_only else (transcript or effective_prompt)
+    out: dict[str, Any] = {"prompt": prompt}
+    if effective_prompt and effective_prompt != prompt:
+        out["modelPrompt"] = effective_prompt
     if runtime_context:
         out["runtimeContext"] = runtime_context
+    if runtime_only:
+        out["runtimeOnly"] = True
     return out
 
 
@@ -139,22 +122,95 @@ def build_runtime_event_system_context(
     )
 
 
+def build_runtime_context_message_content(
+    runtime_context: str,
+    *,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+) -> str:
+    """Delimited block only; the stable system prompt explains the markers once."""
+
+    return "\n".join([identity.runtime_context_begin, runtime_context, identity.runtime_context_end])
+
+
 def build_runtime_context_custom_message(
     runtime_context: str | None,
+    fragments: list[Mapping[str, Any]] | None = None,
     *,
     identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> dict[str, Any] | None:
     trimmed = runtime_context.strip() if isinstance(runtime_context, str) else ""
     if not trimmed:
         return None
+    details: dict[str, Any] = {
+        "source": identity.runtime_context_source,
+        "runtimeContextCarrier": True,
+    }
+    if fragments:
+        details["fragments"] = [dict(f) for f in fragments]
     return {
         "role": "custom",
         "customType": identity.runtime_context_custom_type,
-        "content": build_runtime_context_system_context(trimmed, identity=identity),
+        "content": build_runtime_context_message_content(trimmed, identity=identity),
         "display": False,
-        "details": {"source": identity.runtime_context_source},
+        "details": details,
         "timestamp": int(time.time() * 1000),
     }
+
+
+def prepend_runtime_context_for_model(
+    messages: list[dict[str, Any]],
+    runtime_context: str,
+    *,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+) -> list[dict[str, Any]]:
+    """Project per-request instructions into the transient carrier without changing history."""
+
+    if not runtime_context.strip():
+        return messages
+    begin = identity.runtime_context_begin
+
+    def prepend(text: str) -> str:
+        if text.startswith(f"{begin}\n"):
+            return f"{begin}\n{runtime_context}\n\n{text[len(begin) + 1 :]}"
+        return build_runtime_context_message_content(
+            "\n\n".join(part for part in (runtime_context, text) if part), identity=identity
+        )
+
+    carrier_index = next(
+        (
+            i
+            for i, m in enumerate(messages)
+            if m.get("role") == "user" and m.get("runtimeContextCarrier") is True
+        ),
+        -1,
+    )
+    if carrier_index == -1:
+        last = messages[-1].get("timestamp", 0) if messages else 0
+        return [
+            *messages,
+            {
+                "role": "user",
+                "content": prepend(""),
+                "runtimeContextCarrier": True,
+                "timestamp": last,
+            },
+        ]
+    carrier = messages[carrier_index]
+    content = carrier.get("content")
+    if isinstance(content, str):
+        updated_content: Any = prepend(content)
+    else:
+        parts = list(content or [])
+        first_text = next((i for i, p in enumerate(parts) if p.get("type") == "text"), -1)
+        if first_text < 0:
+            updated_content = [{"type": "text", "text": prepend("")}, *parts]
+        else:
+            parts[first_text] = {**parts[first_text], "text": prepend(parts[first_text].get("text", ""))}
+            updated_content = parts
+    return [
+        {**carrier, "content": updated_content} if i == carrier_index else m
+        for i, m in enumerate(messages)
+    ]
 
 
 def _build_runtime_context_message_content(
@@ -183,67 +239,9 @@ def _build_runtime_context_message_content(
     )
 
 
-def _remove_last_prompt_occurrence(text: str, prompt: str) -> str | None:
-    index = text.rfind(prompt)
-    if index == -1:
-        return None
-    before = text[:index].rstrip()
-    after = text[index + len(prompt) :].lstrip()
-    return "\n\n".join(part for part in [before, after] if part).strip()
-
-
-def _extract_internal_runtime_context(
-    text: str,
-    *,
-    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
-) -> dict[str, str]:
-    extracted = _extract_delimited_blocks(
-        text,
-        identity.runtime_context_begin,
-        identity.runtime_context_end,
-    )
-    out = {"text": extracted["text"]}
-    if extracted["blocks"]:
-        out["runtimeContext"] = "\n\n".join(extracted["blocks"])
-    return out
-
-
-def _extract_delimited_blocks(text: str, begin: str, end: str) -> dict[str, Any]:
-    next_text = text
-    blocks: list[str] = []
-    while True:
-        start = _find_delimited_token_index(next_text, begin, 0)
-        if start == -1:
-            return {"text": next_text, "blocks": blocks}
-
-        cursor = start + len(begin)
-        depth = 1
-        finish = -1
-        while depth > 0:
-            next_begin = _find_delimited_token_index(next_text, begin, cursor)
-            next_end = _find_delimited_token_index(next_text, end, cursor)
-            if next_end == -1:
-                break
-            if next_begin != -1 and next_begin < next_end:
-                depth += 1
-                cursor = next_begin + len(begin)
-                continue
-            depth -= 1
-            finish = next_end
-            cursor = next_end + len(end)
-
-        before = next_text[:start].rstrip()
-        if finish == -1 or depth != 0:
-            return {"text": before, "blocks": blocks}
-        block_end = finish + len(end)
-        blocks.append(next_text[start:block_end].strip())
-        after = next_text[block_end:].lstrip()
-        next_text = f"{before}\n\n{after}" if before and after else f"{before}{after}"
-
-
 def _find_delimited_token_index(text: str, token: str, start: int) -> int:
-    pattern = re.compile(rf"(?:^|\r?\n){re.escape(token)}(?=\r?\n|$)")
+    pattern = re.compile(rf"(?:^|\r?\n)[ \t]*{re.escape(token)}[ \t]*(?=\r?\n|$)")
     match = pattern.search(text, max(0, start))
     if not match:
         return -1
-    return match.start() + len(match.group(0)) - len(token)
+    return match.start() + match.group(0).index(token)

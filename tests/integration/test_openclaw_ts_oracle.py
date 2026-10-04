@@ -25,7 +25,9 @@ from memory_core.replay_repair import repair_tool_use_result_pairing, sanitize_t
 from memory_core.runtime_context_prompt import (
     OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     build_current_inbound_prompt,
+    append_current_inbound_context,
     build_runtime_context_custom_message,
+    prepend_runtime_context_for_model,
     resolve_runtime_context_prompt_parts,
 )
 from memory_core.context_engine_lifecycle import (
@@ -4556,47 +4558,98 @@ def test_real_openclaw_oracle_sanitize_tool_call_inputs_matches_python(case):
     }
 
 
-def test_real_openclaw_oracle_runtime_context_prompt_helpers_match_python():
-    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
-    prompt = "\n\n".join(["runtime prefix", "visible ask", "retry instruction"])
-    effective_prompt = "\n\n".join(
-        [
-            prompt,
-            "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nsecret runtime context\n<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
-        ]
-    )
-    current_context = {"text": "Current message:\n#34975 obviyus:", "promptJoiner": " "}
+_RUNTIME_CONTEXT_PROMPT_CASES = {
+    "visible-ask-with-fragment": {
+        "prompt": "model-side prompt\n\nsecret runtime context",
+        "text": "visible ask",
+        "fragments": [
+            {"kind": "runtime-instruction", "text": "secret runtime context"},
+            {"kind": "conversation-data", "text": "  "},
+        ],
+        "entry": {"text": "Current message:\n#34975 obviyus:", "promptJoiner": " "},
+        "modelMessages": [],
+    },
+    "runtime-only-event": {
+        "prompt": "secret runtime context",
+        "text": "",
+        "fragments": [{"kind": "heartbeat-outcome", "text": "secret runtime context"}],
+        "entry": {"text": "full", "resumableText": "resumed", "fragments": []},
+        "preferResumableText": True,
+        "modelMessages": [
+            {"role": "user", "content": "hello", "timestamp": 3},
+        ],
+    },
+    "runtime-only-disallowed": {
+        "prompt": "",
+        "fragments": [{"kind": "runtime-instruction", "text": "secret runtime context"}],
+        "allowRuntimeOnly": False,
+        "entry": {"text": "", "promptJoiner": "\n"},
+        "modelMessages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "data": "x", "mimeType": "image/png"},
+                    {"type": "text", "text": "ask"},
+                ],
+                "runtimeContextCarrier": True,
+                "timestamp": 4,
+            },
+            {"role": "assistant", "content": [], "timestamp": 5},
+        ],
+    },
+    "no-fragments": {
+        "prompt": "plain prompt",
+        "text": "plain prompt",
+        "entry": None,
+        "modelMessages": [
+            {
+                "role": "user",
+                "content": "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nold\n<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+                "runtimeContextCarrier": True,
+                "timestamp": 1,
+            }
+        ],
+    },
+}
 
-    result = oracle.run(
-        {
-            "operation": "runtimeContextPrompt",
-            "prompt": effective_prompt,
-            "text": "visible ask",
-            "systemPrompt": effective_prompt,
-            "entry": current_context,
-        }
-    )
+
+@pytest.mark.parametrize("case", sorted(_RUNTIME_CONTEXT_PROMPT_CASES))
+def test_real_openclaw_oracle_runtime_context_prompt_helpers_match_python(case):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    spec = _RUNTIME_CONTEXT_PROMPT_CASES[case]
+    payload = {"operation": "runtimeContextPrompt", **{k: v for k, v in spec.items() if v is not None}}
+    result = oracle.run(payload)
+
+    identity = OPENCLAW_COMPAT_RUNTIME_IDENTITY
+    fragments = spec.get("fragments")
     python_parts = resolve_runtime_context_prompt_parts(
-        effective_prompt=effective_prompt,
-        transcript_prompt="visible ask",
-        model_prompt=effective_prompt,
-        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+        effective_prompt=spec["prompt"],
+        transcript_prompt=spec.get("text"),
+        fragments=fragments,
+        allow_runtime_only=spec.get("allowRuntimeOnly"),
+        identity=identity,
     )
     python_custom_message = build_runtime_context_custom_message(
-        "secret runtime context",
-        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+        "secret runtime context", fragments, identity=identity
     )
 
     assert result["ok"] is True
     assert result["operation"] == "runtimeContextPrompt"
-    assert result["result"] == {
-        "parts": python_parts,
-        "currentInboundPrompt": build_current_inbound_prompt(
-            context=current_context,
-            prompt="What do you mean hidden?",
-        ),
-        "customMessage": _normalize_runtime_custom_message(python_custom_message),
-    }
+    assert result["result"]["parts"] == python_parts
+    assert result["result"]["currentInboundPrompt"] == build_current_inbound_prompt(
+        context=spec["entry"],
+        prompt="What do you mean hidden?",
+        prefer_resumable_text=spec.get("preferResumableText", False),
+    )
+    assert result["result"]["appendedContext"] == append_current_inbound_context(
+        spec["entry"], fragments or []
+    )
+    assert result["result"]["prependedMessages"] == prepend_runtime_context_for_model(
+        spec["modelMessages"], "secret runtime context", identity=identity
+    )
+    assert result["result"]["customMessage"] == _normalize_runtime_custom_message(
+        python_custom_message
+    )
 
 
 def test_real_openclaw_oracle_context_engine_lifecycle_strips_runtime_context():

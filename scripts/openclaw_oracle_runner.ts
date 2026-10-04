@@ -1037,6 +1037,8 @@ async function main() {
       "src/agents/embedded-agent-runner/run/runtime-context-prompt.ts",
     );
     const runtimeContext = "secret runtime context";
+    const fragments = payload.fragments;
+    const modelMessages = payload.modelMessages ?? [];
     return {
       ok: true,
       operation: payload.operation,
@@ -1044,14 +1046,24 @@ async function main() {
         parts: runtimeContextPrompt.resolveRuntimeContextPromptParts({
           effectivePrompt: payload.prompt ?? "",
           transcriptPrompt: payload.text,
-          modelPrompt: payload.systemPrompt,
+          fragments,
+          allowRuntimeOnly: payload.allowRuntimeOnly,
         }),
         currentInboundPrompt: runtimeContextPrompt.buildCurrentInboundPrompt({
           context: payload.entry,
           prompt: "What do you mean hidden?",
+          preferResumableText: payload.preferResumableText,
         }),
+        appendedContext: runtimeContextPrompt.appendCurrentInboundContext(
+          payload.entry,
+          fragments ?? [],
+        ),
+        prependedMessages: runtimeContextPrompt.prependRuntimeContextForModel(
+          modelMessages,
+          runtimeContext,
+        ),
         customMessage: normalizeTimestampedMessage(
-          runtimeContextPrompt.buildRuntimeContextCustomMessage(runtimeContext),
+          runtimeContextPrompt.buildRuntimeContextCustomMessage(runtimeContext, fragments),
         ),
       },
     };

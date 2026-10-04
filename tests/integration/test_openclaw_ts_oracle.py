@@ -5988,7 +5988,8 @@ def _startup_scenario_caps(root: Path) -> None:
 
 
 def _startup_scenario_emoji_at_file_cap(root: Path) -> None:
-    # The 1,200-unit per-file cut (startup-context.ts:97) splits the emoji's surrogate pair.
+    # The 1,200-unit per-file cut (startup-context.ts:98, truncateUtf16Safe) lands inside the
+    # emoji's surrogate pair and backs off instead of splitting it.
     _write_daily(root, "2026-09-26.md", "a" * 1199 + "😀" + "tail\n")
 
 
@@ -6043,9 +6044,8 @@ def test_real_openclaw_oracle_startup_context_matches_python(
         }
     ts_prelude = result["result"]["prelude"]
     if scenario is _startup_scenario_emoji_at_file_cap:
-        assert re.search("[\ud800-\udfff]", ts_prelude)
-    # Transport-boundary deviation: memory-core returns the prelude well-formed
-    # (String.prototype.toWellFormed), upstream returns the lone surrogate.
+        assert not re.search("[\ud800-\udfff]", ts_prelude)
+    # Transport-boundary shim: well-formed output is a no-op now that the cut is surrogate-safe.
     expected = js_to_well_formed(ts_prelude) if ts_prelude is not None else None
     assert expected == build_startup_context(root, now_ms=now_ms, timezone=timezone_name, **kwargs)
 

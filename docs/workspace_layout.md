@@ -151,8 +151,8 @@ host passes the timezone (default UTC).
 Head and tail slices are surrogate-safe at v2026.9.6 (`sliceUtf16Safe`). Every string
 `build_workspace_context` and `build_startup_context` hand to the host still passes
 through `String.prototype.toWellFormed` semantics as a transport guard, because
-Python cannot UTF-8 encode a lone surrogate (the pin-era 1,200-unit startup cut in
-`build_startup_context` can still leave one; its re-port is on the v2026.9.6 worklist).
+Python cannot UTF-8 encode a lone surrogate (the startup cut in `build_startup_context` is
+`truncateUtf16Safe` at v2026.9.6, so the guard is a no-op there).
 
 ## Consumers
 

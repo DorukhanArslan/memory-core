@@ -25,8 +25,8 @@ class FeatureFlags:
 
     vector_search: bool = True
     text_search: bool = True
-    mmr: bool = False
-    temporal_decay: bool = False
+    mmr: bool = True
+    temporal_decay: bool = True
     subject_promotion: bool = False
     curated_memory_writes: bool = True
 

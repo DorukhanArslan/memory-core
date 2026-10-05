@@ -68,8 +68,8 @@ def test_memory_tool_definitions_are_upstream_verbatim():
 
     assert search["name"] == "memory_search"
     assert search["description"].endswith(
-        "If response has disabled=true, memory retrieval is unavailable; you must tell the "
-        "user and include the warning/action guidance."
+        "If response has disabled=true or stale=true, tell the user and include the "
+        "warning/action guidance."
     )
     assert search["parameters"]["properties"]["corpus"]["enum"] == [
         "memory",
@@ -82,13 +82,14 @@ def test_memory_tool_definitions_are_upstream_verbatim():
         "description": MEMORY_GET_TOOL_DESCRIPTION,
         "parameters": {
             "type": "object",
-            "required": ["path"],
             "properties": {
                 "path": {"type": "string"},
-                "from": {"type": "integer"},
-                "lines": {"type": "integer"},
+                "from": {"type": "integer", "minimum": 1},
+                "lines": {"type": "integer", "minimum": 1},
                 "corpus": {"type": "string", "enum": ["memory", "wiki", "all"]},
             },
+            "required": ["path"],
+            "additionalProperties": False,
         },
     }
     get["parameters"]["required"].append("x")
@@ -100,9 +101,13 @@ def test_memory_get_rejects_non_memory_workspace_file(tmp_path: Path):
 
     result = memory_get(MemoryConfig(workspace_dir=tmp_path), path="notes.txt")
 
-    assert result["disabled"] is True
-    assert result["text"] == ""
-    assert result["error"] == "path required"
+    assert result == {
+        "path": "notes.txt",
+        "text": "",
+        "status": "error",
+        "code": "MEMORY_PATH_NOT_ALLOWED",
+        "error": "path is not an allowed Markdown memory file",
+    }
 
 
 def test_memory_get_reads_wiki_supplement_result(tmp_path: Path):
@@ -126,6 +131,7 @@ def test_memory_get_reads_wiki_supplement_result(tmp_path: Path):
     )
 
     assert result == {
+        "status": "ok",
         "path": "w1.md",
         "text": "Requires security approval.\n\n[More content available. Use from=3 to continue.]",
         "from": 2,
@@ -133,6 +139,7 @@ def test_memory_get_reads_wiki_supplement_result(tmp_path: Path):
         "corpus": "wiki",
         "truncated": True,
         "nextFrom": 3,
+        "corpora": [{"corpus": "wiki", "outcome": "ok"}],
     }
 
 
@@ -168,14 +175,28 @@ def test_memory_get_returns_upstream_error_for_session_search_hits(tmp_path: Pat
         "memory/.dreams/session-corpus/2026-05-07.txt",
         "sessions/main/session-nebula.jsonl",
     ]
+    refused = "path is not an allowed Markdown memory file"
     for path in paths:
-        for corpus in ("memory", "sessions", "all"):
+        for corpus in ("memory", "sessions"):
             assert memory_get(cfg, path=path, corpus=corpus) == {
                 "path": path,
                 "text": "",
-                "disabled": True,
-                "error": "path required",
+                "status": "error",
+                "code": "MEMORY_PATH_NOT_ALLOWED",
+                "error": refused,
             }
+        # corpus=all reports each corpus: the memory read failed, no wiki is registered.
+        assert memory_get(cfg, path=path, corpus="all") == {
+            "status": "error",
+            "path": path,
+            "text": "",
+            "corpora": [
+                {"corpus": "memory", "outcome": "unavailable", "error": refused},
+                {"corpus": "wiki", "outcome": "not-registered"},
+            ],
+            "warning": f"Memory corpus unavailable: {refused}",
+            "error": refused,
+        }
 
 
 def test_memory_get_all_corpus_falls_back_to_supplement_after_read_failure(tmp_path: Path):
@@ -189,12 +210,15 @@ def test_memory_get_all_corpus_falls_back_to_supplement_after_read_failure(tmp_p
     no_fallback = memory_get(cfg, path="wiki/nebula.txt", corpus="memory", supplements=[wiki])
 
     assert fallback["corpus"] == "wiki"
+    assert fallback["status"] == "ok"
     assert fallback["text"].startswith("Nebula rule.")
+    assert [c["outcome"] for c in fallback["corpora"]] == ["unavailable", "ok"]
     assert no_fallback == {
         "path": "wiki/nebula.txt",
         "text": "",
-        "disabled": True,
-        "error": "path required",
+        "status": "error",
+        "code": "MEMORY_PATH_NOT_ALLOWED",
+        "error": "path is not an allowed Markdown memory file",
     }
 
 
@@ -206,11 +230,24 @@ def test_memory_get_wiki_supplement_missing_result(tmp_path: Path):
         supplements=[],
     )
 
+    # No supplement is registered: the wiki corpus is reported, not "not found".
     assert result == {
         "path": "missing.md",
         "text": "",
-        "disabled": True,
-        "error": "wiki corpus result not found",
+        "corpora": [{"corpus": "wiki", "outcome": "not-registered"}],
+        "warning": "Wiki corpus is not registered; results do not cover that requested corpus.",
+    }
+    registered = memory_get(
+        MemoryConfig(workspace_dir=tmp_path),
+        path="missing.md",
+        corpus="wiki",
+        supplements=[StaticMemoryCorpusSupplement([])],
+    )
+    assert registered == {
+        "status": "not_found",
+        "path": "missing.md",
+        "text": "",
+        "corpora": [{"corpus": "wiki", "outcome": "ok"}],
     }
 
 
@@ -406,8 +443,8 @@ def test_memory_search_corpus_all_balances_memory_and_supplements(tmp_path: Path
         "w1.md",
         "w2.md",
         "w3.md",
-        "w4.md",
     ]
+    # MEMORY.md is two chunks (heading and entry), so the wiki share is 3.
     assert len(paths_by_corpus) == 5
 
 
@@ -453,8 +490,8 @@ def test_temporal_decay_affects_store_search_order(tmp_path: Path):
 
 def test_undated_and_session_style_notes_are_searchable_and_evergreen(tmp_path: Path):
     # Recursive memory/**/*.md discovery (OpenClaw listMemoryFiles) makes these
-    # files searchable; temporal-decay.ts treats non-daily memory/ paths as
-    # evergreen, so only the dated daily file decays.
+    # files searchable; temporal-decay.ts (DATED_MEMORY_PATH_RE, v2026.9.6) dates any
+    # memory/**/YYYY-MM-DD[-suffix].md file, so only the undated topic note is evergreen.
     (tmp_path / "memory" / "topics").mkdir(parents=True)
     for relative in (
         "memory/2000-01-01.md",
@@ -479,8 +516,12 @@ def test_undated_and_session_style_notes_are_searchable_and_evergreen(tmp_path: 
         "memory/2000-01-01-1430.md",
         "memory/topics/alpha.md",
     }
-    assert scores["memory/2000-01-01-1430.md"] == scores["memory/topics/alpha.md"]
+    assert scores["memory/2000-01-01-1430.md"] == scores["memory/2000-01-01.md"]
+    assert scores["memory/topics/alpha.md"] > scores["memory/2000-01-01-1430.md"]
     assert scores["memory/2000-01-01.md"] < scores["memory/topics/alpha.md"] * 1e-6
+
+
+from memory_core.index.mmr import apply_mmr_to_hybrid_results  # noqa: E402
 
 
 def test_mmr_config_is_applied_to_store_search(tmp_path: Path, monkeypatch):
@@ -496,15 +537,17 @@ def test_mmr_config_is_applied_to_store_search(tmp_path: Path, monkeypatch):
     store.reindex(MemoryWorkspace(tmp_path))
     calls = []
 
-    def fake_mmr(items, *, enabled, lambda_):
-        calls.append((enabled, lambda_, len(items)))
-        return list(reversed(items))
+    real_mmr = apply_mmr_to_hybrid_results
 
-    monkeypatch.setattr("memory_core.index.sqlite_store.mmr_rerank", fake_mmr)
+    def spy_mmr(items, *, enabled, lambda_):
+        calls.append((enabled, lambda_))
+        return real_mmr(items, enabled=enabled, lambda_=lambda_)
+
+    monkeypatch.setattr("memory_core.index.hybrid.apply_mmr_to_hybrid_results", spy_mmr)
 
     store.search("alpha", max_results=2, min_score=0.0)
 
-    assert calls == [(True, 0.7, 2)]
+    assert calls and all(call == (True, 0.7) for call in calls)
 
 
 def test_equal_scores_are_ordered_by_locale_compare_not_code_points():

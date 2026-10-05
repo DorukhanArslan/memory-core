@@ -40,7 +40,9 @@ def _fts_only_memory(tmp_path: Path, **flag_overrides) -> Memory:
     _seed_workspace(tmp_path)
     config = MemoryConfig(
         workspace_dir=tmp_path,
-        flags=FeatureFlags(vector_search=False, **flag_overrides),
+        flags=FeatureFlags(
+            **{"vector_search": False, "mmr": False, "temporal_decay": False, **flag_overrides}
+        ),
     )
     return Memory.from_workspace(tmp_path, config=config)
 
@@ -74,7 +76,9 @@ def test_fts_only_keyword_hits_keep_full_text_score(tmp_path):
 
     assert results
     for item in results:
-        assert item["score"] == item["textScore"] > 0
+        # The raw BM25 score is `textScore`; the ranking score adds the tag's lexical boost
+        # (query overlap, path and length), capped at 1, and no text weight scales it.
+        assert 1 >= item["score"] >= item["textScore"] > 0
         assert item["vectorScore"] == 0
 
 
@@ -136,7 +140,9 @@ def test_unsafe_agent_id_raises_before_creating_any_file(tmp_path):
 
 def test_text_search_disabled_uses_vector_only_scores(tmp_path):
     _seed_workspace(tmp_path)
-    config = MemoryConfig(workspace_dir=tmp_path, flags=FeatureFlags(text_search=False))
+    config = MemoryConfig(
+        workspace_dir=tmp_path, flags=FeatureFlags(text_search=False, temporal_decay=False)
+    )
     memory = Memory.from_workspace(
         tmp_path,
         embedding_provider=FakeEmbeddingProvider(),
@@ -173,7 +179,7 @@ def test_explicit_flags_override_legacy_config_fields(tmp_path):
         workspace_dir=tmp_path,
         mmr_enabled=True,
         temporal_decay_enabled=True,
-        flags=FeatureFlags(),
+        flags=FeatureFlags(mmr=False, temporal_decay=False),
     )
 
     assert config.effective_flags() == FeatureFlags(mmr=False, temporal_decay=False)

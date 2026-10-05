@@ -42,8 +42,6 @@ def test_reads_numeric_strings_with_the_strict_token_regex():
         "５",  # JavaScript \d is ASCII-only
         "\x1c5",  # Python str.strip() would remove it; ECMAScript trim does not
         "5 5",
-        "",
-        "   ",
         True,
         False,
         [5],
@@ -62,6 +60,12 @@ def test_rejects_non_positive_integer_max_results(raw):
 
     assert str(raised.value) == "maxResults must be a positive integer"
     assert raised.value.status == 400
+
+
+@pytest.mark.parametrize("raw", ["", "   ", "\ufeff"])
+def test_blank_string_max_results_reads_as_omitted(raw):
+    # common.ts isBlankParamValue.
+    assert read_positive_integer_param({"maxResults": raw}, "maxResults") is None
 
 
 def test_trims_numeric_strings_with_the_ecmascript_whitespace_set():
@@ -160,8 +164,8 @@ def _write_memory_and_session(tmp_path: Path) -> MemoryWorkspace:
 
 
 def test_unknown_or_omitted_corpus_searches_every_source_without_supplements(tmp_path: Path):
-    # tools.ts has no corpus enum check: anything but memory/sessions/wiki/all
-    # searches all indexed sources and never queries supplements.
+    # An omitted or blank corpus searches the default indexed sources and never queries
+    # supplements; an unknown corpus fails closed (tools.ts readCorpusParam).
     cfg, store = _fts_store(tmp_path)
     store.reindex(_write_memory_and_session(tmp_path))
     wiki = StaticMemoryCorpusSupplement(
@@ -177,8 +181,9 @@ def test_unknown_or_omitted_corpus_searches_every_source_without_supplements(tmp
     assert corpora("wiki") == ["wiki"]
     assert corpora("all") == ["memory", "sessions", "wiki"]
     assert corpora(None) == ["memory", "sessions"]
-    assert corpora("bogus") == ["memory", "sessions"]
     assert corpora("") == ["memory", "sessions"]
+    with pytest.raises(MemoryToolInputError, match="corpus must be one of: memory, wiki, all, sessions"):
+        corpora("bogus")
 
 
 def test_execute_memory_search_tool_accepts_raw_model_arguments(tmp_path: Path):

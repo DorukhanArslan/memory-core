@@ -119,3 +119,64 @@ def mmr_rerank(items: list[T], *, enabled: bool = False, lambda_: float = 0.7) -
         remaining.remove(best_item)
 
     return selected
+
+
+def _normalize_lower(text: str) -> str:
+    return (text or "").lower()
+
+
+def apply_mmr_to_hybrid_results(results: list, *, enabled: bool = False, lambda_: float = 0.7) -> list:
+    """``applyMMRToHybridResults`` (mmr.ts at v2026.9.6) over objects with ``score`` and ``snippet``.
+
+    Same selection as :func:`mmr_rerank`; the difference is the similarity of two items that
+    both tokenize to nothing (Cyrillic, emoji or punctuation only): it is 1 only when their
+    lower-cased snippets are equal, not for every such pair.
+    """
+    if not results:
+        return results
+    if not enabled or len(results) <= 1:
+        return list(results)
+    clamped_lambda = max(0.0, min(1.0, lambda_))
+    if clamped_lambda == 1:
+        return sorted(results, key=lambda item: item.score, reverse=True)
+    prepared = []
+    for item in results:
+        tokens = tokenize(item.snippet)
+        prepared.append(
+            {
+                "item": item,
+                "score": item.score,
+                "tokens": tokens,
+                "empty_text": _normalize_lower(item.snippet) if not tokens else None,
+                "relevance": 0.0,
+                "max_similarity": 0.0,
+            }
+        )
+    max_score = max(entry["score"] for entry in prepared)
+    min_score = min(entry["score"] for entry in prepared)
+    score_range = max_score - min_score
+    for entry in prepared:
+        entry["relevance"] = 1.0 if score_range == 0 else (entry["score"] - min_score) / score_range
+    remaining = list(prepared)
+    selected = []
+    while remaining:
+        best = None
+        best_mmr = float("-inf")
+        for candidate in remaining:
+            mmr = compute_mmr_score(candidate["relevance"], candidate["max_similarity"], clamped_lambda)
+            best_score = best["score"] if best is not None else float("-inf")
+            if mmr > best_mmr or (mmr == best_mmr and candidate["score"] > best_score):
+                best_mmr = mmr
+                best = candidate
+        if best is None:
+            break
+        selected.append(best["item"])
+        remaining.remove(best)
+        for candidate in remaining:
+            if not candidate["tokens"] and not best["tokens"]:
+                similarity = float(candidate["empty_text"] == best["empty_text"])
+            else:
+                similarity = jaccard_similarity(candidate["tokens"], best["tokens"])
+            if similarity > candidate["max_similarity"]:
+                candidate["max_similarity"] = similarity
+    return selected

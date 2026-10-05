@@ -116,3 +116,49 @@ def test_provider_overflow_recovery_gives_up_after_three_compaction_attempts():
     assert decision.error_kind == "context_overflow"
     assert decision.should_retry is False
     assert decision.should_compact is False
+
+
+def test_provider_request_size_ceiling_gives_up_without_compaction():
+    from memory_core.overflow_recovery import is_provider_request_size_ceiling_error
+
+    text = "Rate limit: TPM limit 30,000, requested 45,000 tokens: context overflow: prompt too large"
+    assert is_provider_request_size_ceiling_error(text) is True
+    assert is_provider_request_size_ceiling_error("TPM limit 30000, requested 100") is False
+    decision = decide_provider_overflow_recovery(
+        error_text=text, overflow_compaction_attempts=0, attempt_compaction_count=0
+    )
+    assert decision.action == "give_up"
+    assert decision.should_compact is False
+
+
+def test_replay_unsafe_attempt_continues_from_transcript_and_cautions_on_give_up():
+    from memory_core.overflow_recovery import CONTINUATION_PROMPT, SIDE_EFFECT_CAUTION
+
+    retry = decide_provider_overflow_recovery(
+        error_text="Context overflow: prompt too large for the model.",
+        overflow_compaction_attempts=0,
+        attempt_compaction_count=1,
+        current_attempt_replay_safe=False,
+    )
+    assert retry.action == "retry_without_compaction"
+    assert retry.next_prompt_override == CONTINUATION_PROMPT
+    assert retry.suppress_next_user_message_persistence is True
+    gave_up = decide_provider_overflow_recovery(
+        error_text="Context overflow: prompt too large for the model.",
+        overflow_compaction_attempts=3,
+        attempt_compaction_count=0,
+        had_potential_side_effects=True,
+    )
+    assert gave_up.user_visible_error_text.endswith(SIDE_EFFECT_CAUTION)
+
+
+def test_failed_preflight_compaction_is_a_compaction_failure():
+    decision = decide_provider_overflow_recovery(
+        error_text="Context overflow: prompt too large for the model (precheck).",
+        overflow_compaction_attempts=3,
+        attempt_compaction_count=0,
+        prompt_error_source="precheck",
+        failed_compaction_reason="compaction timed out",
+    )
+    assert decision.error_kind == "compaction_failure"
+    assert decision.user_visible_error_text.startswith("Auto-compaction timed out")

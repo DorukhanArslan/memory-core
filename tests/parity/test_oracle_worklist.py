@@ -60,17 +60,26 @@ def test_pending_port_reasons_follow_the_stage_one_wording():
 
 
 def test_pending_port_reason_matches_exact_and_prefix_entries():
+    # The worklist is empty once every area has landed; a synthetic entry keeps the matcher covered.
     worklist = _worklist()
-    exact = "test_openclaw_ts_oracle.py::test_real_openclaw_oracle_deep_policy"
+    port = worklist.PendingPort(
+        "synthetic area",
+        "none",
+        (
+            "test_openclaw_ts_oracle.py::test_real_openclaw_oracle_exact",
+            "test_openclaw_ts_oracle.py::test_real_openclaw_oracle_prefix[Line 1*",
+        ),
+        plan_area=1,
+    )
+    worklist.PENDING_PORTS = (port,)
+    exact = "test_openclaw_ts_oracle.py::test_real_openclaw_oracle_exact"
     assert worklist.pending_port_reason(exact).startswith(
-        "pending port to v2026.9.6: area 7 deep dreaming policy"
+        "pending port to v2026.9.6: area 1 synthetic area"
     )
-    long_param = (
-        "test_openclaw_ts_oracle.py::test_real_openclaw_oracle_truncate_tool_result_text_"
-        "matches_python[Line 1\\nLine 1]"
+    assert worklist.pending_port_reason(
+        "test_openclaw_ts_oracle.py::test_real_openclaw_oracle_prefix[Line 1\\nLine 1]"
     )
-    assert worklist.pending_port_reason(long_param) is not None
-    assert worklist.pending_port_reason(exact + "_coerces_malformed_values[deep2]") is None
+    assert worklist.pending_port_reason(exact + "_other") is None
 
 
 def test_retired_operations_are_gone_from_the_runner_and_skipped_in_tests():

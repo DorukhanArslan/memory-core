@@ -23,8 +23,9 @@ def test_from_workspace_reads_host_memory_files(tmp_path: Path):
     assert memory.workspace.root == tmp_path
     assert memory.config.workspace_dir == tmp_path
     assert memory.store.path == tmp_path / ".memory-core" / "main.sqlite"
+    # MEMORY.md chunks per entry (the heading and the entry are two chunks).
     assert result["results"][0]["path"] == "MEMORY.md"
-    assert "Doruk" in result["results"][0]["snippet"]
+    assert any("Doruk" in hit["snippet"] for hit in result["results"])
 
 
 def test_from_workspace_initialize_creates_memory_core_files(tmp_path: Path):

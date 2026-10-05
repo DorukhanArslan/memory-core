@@ -18,13 +18,21 @@ class MemoryConfig:
     citation_mode: str = "on"
     memory_get_max_chars: int = 12_000
     memory_get_default_lines: int = 120
-    vector_weight: float = 0.5
-    text_weight: float = 0.5
-    mmr_enabled: bool = False
+    # The defaults are the tag's fixed hybrid weights and its on-by-default MMR and temporal
+    # decay (OpenClaw 783a5d21cfc, c37b53868d1, 28630a9a650). Upstream has no knob for them;
+    # memory-core keeps the knobs (decision of 2026-10-04: defaults change, configurability stays).
+    vector_weight: float = 0.7
+    text_weight: float = 0.3
+    mmr_enabled: bool = True
     mmr_lambda: float = 0.7
-    temporal_decay_enabled: bool = False
+    temporal_decay_enabled: bool = True
     temporal_decay_half_life_days: float = 30.0
     flags: FeatureFlags | None = None
+    # Whether the memory tools search indexed session transcripts (OpenClaw
+    # `memory.search.sources` containing "sessions"). Off: `corpus=sessions` is refused and a
+    # search without a corpus covers memory files only. The index itself is the host's:
+    # sessions are indexed when the workspace is given a state directory.
+    session_search: bool = True
 
     def effective_flags(self) -> FeatureFlags:
         """Resolve feature flags; explicit `flags` wins over legacy booleans."""

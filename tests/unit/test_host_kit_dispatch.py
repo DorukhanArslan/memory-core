@@ -45,7 +45,11 @@ def _seed(root) -> None:
 
 
 def _kit(root, *, embedder=None, flags=None, **options) -> HostKit:
-    config = MemoryConfig(workspace_dir=root, flags=flags or FeatureFlags(vector_search=False))
+    # No temporal decay: two calls at different instants would differ in the last digits.
+    config = MemoryConfig(
+        workspace_dir=root,
+        flags=flags or FeatureFlags(vector_search=False, temporal_decay=False),
+    )
     memory = Memory.from_workspace(
         root, embedding_provider=embedder, config=config, initialize=False
     )
@@ -305,7 +309,7 @@ def test_parallel_searches_record_every_recall(tmp_path):
 
     assert errors == []
     entries = json.loads(recall_store_path(tmp_path).read_text())["entries"]
-    assert entries["memory:memory/2026-09-25.md:1:1"]["recallCount"] == 40
+    assert entries["memory:memory/2026-09-25.md:1:2"]["recallCount"] == 40
 
 
 def test_dispatcher_equals_dispatch_with_the_session(tmp_path):

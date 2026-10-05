@@ -1,64 +1,66 @@
-"""Session-memory hook: save the recent conversation on ``/new`` and ``/reset``.
+"""Session-memory hook: save the recent conversation on ``/new``, ``/reset`` and rollover.
 
-Port of OpenClaw's bundled ``session-memory`` hook at pin 4c42815348
-(``src/hooks/bundled/session-memory/{HOOK.md,handler.ts,transcript.ts}``).
+Port of OpenClaw's bundled ``session-memory`` hook at v2026.9.6
+(``src/hooks/bundled/session-memory/{HOOK.md,handler.ts,capture.ts,transcript.ts}``).
 
-Transcript extraction (``transcript.ts``):
+Transcript projection (``transcript.ts``):
 
 - ``sanitize_session_memory_transcript_text``: ``sanitizeSessionMemoryTranscriptText``
-  (``transcript.ts:8-38``) with ``sanitizeModelSpecialTokens``
-  (``src/security/external-content.ts:116-153,298-307``).
-- ``get_recent_session_content``: ``getRecentSessionContent``
-  (``transcript.ts:40-115``). It keeps ``type: "message"`` rows from user and
-  assistant, takes the first text block, skips user rows with inter-session
-  provenance (``src/sessions/input-provenance.ts:38-112``), drops delivery-mirror
-  rows that repeat the turn's assistant text
-  (``src/shared/transcript-only-openclaw-assistant.ts:33-43``) and texts starting
-  with ``/``, and returns the last N ``role: text`` lines joined by newlines.
-- ``get_recent_session_content_with_reset_fallback`` and
-  ``find_previous_session_file``: ``transcript.ts:117-231``.
+  with ``sanitizeModelSpecialTokens`` (``src/security/external-content.ts``).
+- ``get_recent_session_projection_from_events`` and ``count_session_memory_messages``:
+  ``getRecentSessionProjectionFromEvents`` / ``countSessionMemoryMessages``. They keep
+  ``type: "message"`` rows from user and assistant, take the first text block, skip user
+  rows with inter-session provenance, drop delivery-mirror rows that repeat the turn's
+  assistant text and texts starting with ``/``, and write each row as ``role: <JSON
+  string>`` (one JSON string per record, U+0085/U+2028/U+2029 escaped). The projection
+  also reports the trust class of the kept rows (``classify_session_message_origin``).
+- ``capture_session_memory_events``: the visible-branch selection and budgets of
+  ``captureSessionMemoryTranscript`` over host-supplied events.
 
-Input is an OpenClaw session JSONL path or, as a memory-core addition, a list of
-dicts: session entries (they have a ``type`` key) are read like parsed JSONL
-rows, and plain message dicts (``role``, ``content``, optional ``provenance``,
-``provider``, ``model``) count as ``type: "message"`` rows.
+Storage (decision recorded in docs/upstream_port_v2026_9_6.md, "Decisions needed" 4):
+OpenClaw v2026.9.6 keeps sessions and transcripts in per-agent SQLite and the hook reads
+them from there. memory-core does not couple to that schema: the host passes the ending
+session's transcript events. ``get_recent_session_content`` and the ``.reset.`` file
+helpers (``get_recent_session_content_with_reset_fallback``, ``find_previous_session_file``)
+no longer exist upstream (the file-era runtime was removed in 4273ca9dbd9); they stay as
+legacy file helpers and render through the same projection (``save_session_memory`` does not
+use the ``.reset.`` recovery any more).
 
 Optional LLM filename slug (``src/hooks/llm-slug-generator.ts``):
 ``generate_session_memory_slug`` sends the verbatim prompt
-(``build_session_memory_slug_prompt``) to a host-supplied generator, rejects
-error replies (``is_error_slug_payload`` with ``parseApiErrorPayload`` and
-``extractLeadingHttpStatus`` from ``src/shared/assistant-error-format.ts``) and
-normalizes the reply (``normalize_session_memory_slug``). memory-core never calls a
-model itself; without a generator the slug is the timestamp.
+(``build_session_memory_slug_prompt``, excerpt cut with ``truncateUtf16Safe``) to a
+host-supplied generator, rejects error replies (``is_error_slug_payload`` with
+``parseApiErrorPayload`` and ``extractLeadingHttpStatus`` from
+``src/shared/assistant-error-format.ts``) and normalizes the reply
+(``normalize_session_memory_slug``). memory-core never calls a model itself (upstream also
+admits that run for the agent and passes ``disableTools``; the host's generator owns both);
+without a generator the slug is the timestamp.
 
-The hook (``handler.ts``): ``save_session_memory`` is what the host calls
-on ``/new`` or ``/reset`` (``is_session_memory_trigger``). It resolves the
-ending session's transcript like upstream, keeps the last 15 lines
-(``message_count``, ``hooks.internal.entries["session-memory"].messages``),
-stamps the local time (``format_local_session_timestamp``: ``YYYY-MM-DD``,
-``HH:MM:SS``, the ICU ``en-US`` short zone name, slug ``HHMM``) and writes a
-new ``memory/<date>-<slug>.md`` (``-2``, ``-3``... on a name clash) with the
-verbatim entry of ``build_session_memory_entry``. The write has its own path:
-the file is always new (never appended to, overwritten or written through a
-symlink) and ``memory/`` must stay inside the workspace. The daily-flush
-validator (``MemoryWorkspace.append_daily_memory``) keeps rejecting these
-names.
+The hook (``handler.ts``): ``save_session_memory`` is what the host calls on ``/new``,
+``/reset`` or an automatic rollover (``is_session_memory_trigger``). It keeps the last 15
+rows (``message_count``, ``hooks.internal.entries["session-memory"].messages``), stamps the
+local time (``format_local_session_timestamp``: ``YYYY-MM-DD``, ``HH:MM:SS``, the zone
+name itself in the heading, slug ``HHMM``) and writes a new ``memory/<date>-<slug>.md``
+(``-2``, ``-3``... on a name clash) with the entry of ``build_session_memory_entry``. The
+write has its own path: the file is always new (never appended to, overwritten or written
+through a symlink) and ``memory/`` must stay inside the workspace. The daily-flush validator
+(``MemoryWorkspace.append_daily_memory``) keeps rejecting these names.
 
-The stored lines are the raw recent conversation, like upstream (its
-``## Conversation Summary`` is not an LLM summary); the optional ``redactor``
-(deviation by choice, default off) maps each line before it is written.
+The stored rows are the raw recent conversation, like upstream (its ``## Conversation
+Summary`` is not an LLM summary); the optional ``redactor`` (deviation by choice, default
+off) maps each line before it is written.
 
-Deviations, each named at its code site: an explicit IANA zone (default UTC)
-instead of ``process.env.TZ``; the session key written as given (no
-agent re-keying); errors raised to the caller instead of logged; a name is
-taken by any directory entry. Not ported: the background write queue, the
-agent/workspace resolution from OpenClaw config, and the 15 s model timeout
-(the host's generator owns it). The files reach the next session through
-``memory_core.bootstrap.build_startup_context`` (up to four slugged files per day)
-and, once the host reindexes, through ``memory_search`` and ``memory_get``:
-discovery walks every ``memory/**/*.md`` like upstream ``listMemoryFiles``,
-and temporal decay treats these undated names as evergreen
-(``isEvergreenMemoryPath``).
+Deviations, each named at its code site: an explicit IANA zone (default UTC) instead of
+``process.env.TZ``; the session key written as given (no agent re-keying); errors raised to
+the caller instead of logged; a name is taken by any directory entry; no memory-write
+provenance record (the capture's trust class is returned instead); no ``context.agentId``
+requirement or admission (the host owns agent scoping). Not ported: the background write
+queue, the agent/workspace resolution from OpenClaw config, and the 15 s model timeout (the
+host's generator owns it). The files reach the next session through
+``memory_core.bootstrap.build_startup_context`` (up to four slugged files per day) and, once
+the host reindexes, through ``memory_search`` and ``memory_get``: discovery walks every
+``memory/**/*.md`` like upstream ``listMemoryFiles``, and temporal decay treats these undated
+names as evergreen (``isEvergreenMemoryPath``).
 """
 
 from __future__ import annotations
@@ -80,15 +82,14 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from memory_core._intl_zone_names import en_us_short_time_zone_name
 from memory_core.bootstrap._js import (
     JS_SPACE_CLASS,
     js_trim,
-    js_truthy,
     js_utf8_encode,
     reject_json_constant,
-    utf16_slice,
+    truncate_utf16_safe,
 )
+from memory_core.transcript_tree import select_visible_transcript_events
 from memory_core.workspace import UnsafeMemoryPathError
 
 DEFAULT_SESSION_MEMORY_MESSAGE_COUNT = 15
@@ -144,9 +145,6 @@ _ROLE_DIRECTIVE_BLOCK_RE = re.compile(
 _ROLE_DIRECTIVE_TAG_RE = re.compile(
     r"</?(?:system|assistant|user)\b[^>]*>", re.ASCII | re.IGNORECASE
 )
-_MEDIA_PLACEHOLDER_RE = re.compile(
-    f"(^|\\n){_S}*<media:[^>]+>(?:{_S}*\\([^)]*\\))?{_S}*", re.ASCII | re.IGNORECASE
-)
 _TRAILING_NO_REPLY_RE = re.compile(
     f"(?:^|\\n){_S}*NO_REPLY{_S}*\\Z", re.ASCII | re.IGNORECASE
 )
@@ -179,7 +177,7 @@ def sanitize_session_memory_transcript_text(text: str) -> str | None:
     """Port of ``sanitizeSessionMemoryTranscriptText`` (transcript.ts:25-38).
 
     Drops a bare ``NO_REPLY`` marker, replaces model special tokens, removes
-    tool-call blocks, role directive blocks and tags, media placeholders and a
+    tool-call blocks, role directive blocks and tags and a
     trailing ``NO_REPLY`` line; returns ``None`` when nothing visible is left.
     """
     if _is_no_reply_marker(text):
@@ -188,7 +186,6 @@ def sanitize_session_memory_transcript_text(text: str) -> str | None:
     without_artifacts = _DROP_BLOCK_RE.sub("", without_artifacts)
     without_artifacts = _ROLE_DIRECTIVE_BLOCK_RE.sub("", without_artifacts)
     without_artifacts = _ROLE_DIRECTIVE_TAG_RE.sub("", without_artifacts)
-    without_artifacts = _MEDIA_PLACEHOLDER_RE.sub(r"\1", without_artifacts)
     without_artifacts = _TRAILING_NO_REPLY_RE.sub("", without_artifacts, count=1)
     return js_trim(without_artifacts) or None
 
@@ -256,57 +253,189 @@ def _entries_from_messages(messages: Iterable[object]) -> list[object]:
     return entries
 
 
-def _to_integer_or_infinity(value: float) -> float:
-    if math.isnan(value):
+_JSON_LINE_SEPARATOR_RE = re.compile("[\u0085\u2028\u2029]")
+_LONE_SURROGATE_ESCAPE_RE = re.compile("[\ud800-\udfff]")
+
+
+def _quote_session_memory_text(text: str) -> str:
+    """``quoteSessionMemoryText`` (transcript.ts:20-26): one JSON string per record.
+
+    ``JSON.stringify`` is well-formed (lone surrogates are escaped) and the
+    separators U+0085, U+2028 and U+2029 are escaped on top of it.
+    """
+    quoted = json.dumps(text, ensure_ascii=False)
+    quoted = _LONE_SURROGATE_ESCAPE_RE.sub(lambda m: f"\\u{ord(m.group()):04x}", quoted)
+    return _JSON_LINE_SEPARATOR_RE.sub(lambda m: f"\\u{ord(m.group()):04x}", quoted)
+
+
+def _as_record(value: object) -> Mapping[str, Any] | None:
+    return value if isinstance(value, Mapping) else None
+
+
+def classify_session_message_origin(message: Mapping[str, Any], turn_origin: str) -> str:
+    """``classifySessionMessageOrigin`` (memory-host-sdk host/session-provenance.ts).
+
+    ``owner``, ``agent``, ``untrusted`` or ``system`` from the message's role,
+    ``provenance.kind`` and ``__openclaw`` metadata (``turnTainted``,
+    ``senderIsOwner``).
+    """
+    if message.get("role") == "assistant":
+        metadata = _as_record(message.get("__openclaw"))
+        if metadata is not None and metadata.get("turnTainted") is True:
+            return "untrusted"
+        return "agent" if turn_origin == "owner" else turn_origin
+    provenance = _as_record(message.get("provenance"))
+    if provenance is not None and provenance.get("kind") == "internal_system":
+        return "system"
+    metadata = _as_record(message.get("__openclaw"))
+    return "owner" if metadata is not None and metadata.get("senderIsOwner") is True else "untrusted"
+
+
+def _render_session_memory_message(
+    entry: object, turn_origin: str
+) -> tuple[tuple[bool, str, str, str | None] | None, str]:
+    """``renderSessionMemoryMessage`` (transcript.ts:97-150).
+
+    Returns ``((is_delivery_mirror, origin_class, role, text) | None, turn_origin)``.
+    A user row whose text is a slash command stays as a row without text (it
+    ends the turn but is not written).
+    """
+    record = _as_record(entry)
+    if record is None or record.get("type") != "message":
+        return None, turn_origin
+    message = _as_record(record.get("message"))
+    if message is None:
+        return None, turn_origin
+    role = message.get("role")
+    if role not in ("user", "assistant") or "content" not in message:
+        return None, turn_origin
+    next_turn_origin = (
+        classify_session_message_origin(message, turn_origin) if role == "user" else turn_origin
+    )
+    origin_class = classify_session_message_origin(message, next_turn_origin)
+    if role == "user" and _has_inter_session_user_provenance(message):
+        return None, next_turn_origin
+    text = _extract_text_message_content(message["content"])
+    sanitized = sanitize_session_memory_transcript_text(text) if text else None
+    if not sanitized:
+        return None, next_turn_origin
+    if sanitized.startswith("/"):
+        return ((False, origin_class, role, None) if role == "user" else None), next_turn_origin
+    return (
+        (_is_delivery_mirror_assistant_message(message), origin_class, role, sanitized),
+        next_turn_origin,
+    )
+
+
+def _render_session_memory_records(events: Iterable[object]) -> list[tuple[str, str]]:
+    """``renderSessionMemoryRecords`` (transcript.ts:157-190): ``(line, origin_class)`` pairs."""
+    records: list[tuple[str, str]] = []
+    last_assistant_text: str | None = None
+    turn_origin = "untrusted"
+    for event in events:
+        rendered, turn_origin = _render_session_memory_message(event, turn_origin)
+        if rendered is None:
+            continue
+        is_mirror, origin_class, role, text = rendered
+        if role == "user":
+            # New turn: reset even when slash commands are omitted from memory, so
+            # later standalone delivery mirrors are preserved.
+            last_assistant_text = None
+        if not text:
+            continue
+        # Delivery-mirror rows are skipped only when they repeat the preceding
+        # assistant text; mirrors with unique visible content are preserved.
+        if is_mirror and text == last_assistant_text:
+            continue
+        records.append((f"{role}: {_quote_session_memory_text(text)}", origin_class))
+        if role == "assistant":
+            last_assistant_text = text
+    return records
+
+
+def count_session_memory_messages(events: Iterable[object]) -> int:
+    """``countSessionMemoryMessages`` (transcript.ts:193-195)."""
+    return len(_render_session_memory_records(events))
+
+
+@dataclass(frozen=True)
+class SessionMemoryProjection:
+    """``SessionMemoryProjection``: the quoted lines and their trust class."""
+
+    content: str
+    origin_class: str  # "agent" | "untrusted"
+
+
+def _message_limit(message_count: object) -> int:
+    # Number.isFinite(messageCount) ? Math.max(0, Math.floor(messageCount)) : 0
+    if isinstance(message_count, bool) or not isinstance(message_count, int | float):
         return 0
-    if math.isinf(value):
-        return value
-    return math.trunc(value)
+    if isinstance(message_count, float) and not math.isfinite(message_count):
+        return 0
+    return max(0, math.floor(message_count))
 
 
-def _slice_last(items: list[str], message_count: int | float) -> list[str]:
-    """``items.slice(-message_count)`` with JavaScript index semantics."""
-    start = _to_integer_or_infinity(-message_count)
-    length = len(items)
-    index = max(length + start, 0) if start < 0 else min(start, length)
-    return items[int(index) :]
+def get_recent_session_projection_from_events(
+    events: Iterable[object], message_count: int | float = DEFAULT_SESSION_MEMORY_MESSAGE_COUNT
+) -> SessionMemoryProjection | None:
+    """Port of ``getRecentSessionProjectionFromEvents`` (transcript.ts:201-221).
+
+    ``events`` are host-supplied transcript events (dicts with ``type:
+    "message"`` and a ``message``). Each kept row is ``role: <JSON string>``;
+    the last ``message_count`` rows are joined with newlines. ``None`` when the
+    count is 0 or no row survives; ``origin_class`` is ``untrusted`` as soon as
+    one kept row is untrusted or system.
+    """
+    limit = _message_limit(message_count)
+    if limit == 0:
+        return None
+    records = _render_session_memory_records(events)[-limit:]
+    if not records:
+        return None
+    untrusted = any(origin in ("untrusted", "system") for _, origin in records)
+    return SessionMemoryProjection(
+        content="\n".join(line for line, _ in records),
+        origin_class="untrusted" if untrusted else "agent",
+    )
+
+
+# Capture budget of upstream's authoritative reader (capture.ts SESSION_MEMORY_CAPTURE_*).
+SESSION_MEMORY_CAPTURE_MAX_SCANNED_MESSAGES = 4_096
+SESSION_MEMORY_CAPTURE_MAX_BYTES = 8 * 1024 * 1024
+
+
+def capture_session_memory_events(events: Iterable[object]) -> list[object]:
+    """What ``captureSessionMemoryTranscript`` keeps of a host transcript.
+
+    Port of the visible-branch selection and the authoritative-read budgets of
+    ``captureAuthoritativeMemoryEvents`` (capture.ts:78-110, without the reset
+    window, which only applies to its repair read): events on the active
+    branch (``selectVisibleTranscriptEvents``), ``type: "message"`` rows only,
+    the last 4096 of them, newest first until 8 MiB of JSON is reached.
+    Deviation: upstream first reads bounded pages of the host's SQLite store;
+    the host supplies the events here, so only the budgets of the fallback read
+    apply.
+    """
+    messages = [
+        event
+        for event in select_visible_transcript_events(list(events))
+        if isinstance(event, Mapping) and event.get("type") == "message"
+    ][-SESSION_MEMORY_CAPTURE_MAX_SCANNED_MESSAGES:]
+    captured: list[object] = []
+    total = 0
+    for event in reversed(messages):
+        try:
+            size = len(js_utf8_encode(json.dumps(event, ensure_ascii=False))) + 1
+        except (TypeError, ValueError):
+            size = 1
+        if total + size <= SESSION_MEMORY_CAPTURE_MAX_BYTES:
+            captured.insert(0, event)
+            total += size
+    return captured
 
 
 def _recent_message_lines(entries: Iterable[object]) -> list[str]:
-    """Message loop of ``getRecentSessionContent`` (transcript.ts:67-109)."""
-    all_messages: list[str] = []
-    last_assistant_text: str | None = None
-    for entry in entries:
-        if not isinstance(entry, Mapping):
-            continue
-        if entry.get("type") != "message" or not js_truthy(entry.get("message")):
-            continue
-        message = entry["message"]
-        if not isinstance(message, Mapping):
-            continue
-        role = message.get("role")
-        if role not in ("user", "assistant") or not isinstance(role, str):
-            continue
-        if "content" not in message or not js_truthy(message["content"]):
-            continue
-        if role == "user" and _has_inter_session_user_provenance(message):
-            continue
-        if role == "user":
-            # New turn: reset even when slash commands are omitted from memory,
-            # so later standalone delivery mirrors are preserved.
-            last_assistant_text = None
-        text = _extract_text_message_content(message["content"])
-        sanitized = sanitize_session_memory_transcript_text(text) if text else None
-        # Delivery-mirror rows are skipped only when they repeat the preceding
-        # assistant text of the same turn.
-        if _is_delivery_mirror_assistant_message(message):
-            if sanitized and sanitized == last_assistant_text:
-                continue
-        if sanitized and not sanitized.startswith("/"):
-            all_messages.append(f"{role}: {sanitized}")
-            if role == "assistant":
-                last_assistant_text = sanitized
-    return all_messages
+    return [line for line, _ in _render_session_memory_records(entries)]
 
 
 def _recent_session_lines(
@@ -318,7 +447,8 @@ def _recent_session_lines(
             return None
     else:
         entries = _entries_from_messages(source)
-    return _slice_last(_recent_message_lines(entries), message_count)
+    limit = _message_limit(message_count)
+    return _recent_message_lines(entries)[-limit:] if limit else []
 
 
 def get_recent_session_content(
@@ -328,9 +458,12 @@ def get_recent_session_content(
     """Port of ``getRecentSessionContent`` (transcript.ts:59-115).
 
     ``source`` is a session JSONL path or a list of entries/messages. Returns
-    the last ``message_count`` lines (``slice(-message_count)``: 0 keeps every
-    line), ``""`` when no line survives and ``None`` when the file cannot be
-    read.
+    the last ``message_count`` rows as ``role: <JSON string>`` lines (the
+    projection of ``getRecentSessionProjectionFromEvents``; a count of 0 or
+    infinity gives no rows), ``""`` when no row survives and ``None`` when the
+    file cannot be read. Legacy file input: v2026.9.6 no longer has this
+    function (its transcripts live in SQLite); use
+    ``get_recent_session_projection_from_events`` with host-supplied events.
     """
     lines = _recent_session_lines(source, message_count)
     return None if lines is None else "\n".join(lines)
@@ -532,9 +665,9 @@ _SLUG_EDGE_DASHES_RE = re.compile(r"^-+|-+\Z")
 def build_session_memory_slug_prompt(session_content: str) -> str:
     """The slug prompt of ``generateSlugViaLLM`` (llm-slug-generator.ts:88-93), verbatim.
 
-    Only the first 2000 UTF-16 units of the conversation are included.
+    At most the first 2000 UTF-16 units are included (``truncateUtf16Safe``: a cut never splits a surrogate pair).
     """
-    excerpt = utf16_slice(session_content, 0, SLUG_PROMPT_SESSION_CONTENT_MAX_CHARS)
+    excerpt = truncate_utf16_safe(session_content, SLUG_PROMPT_SESSION_CONTENT_MAX_CHARS)
     return (
         "Based on this conversation, generate a short 1-2 word filename slug (lowercase, "
         "hyphen-separated, no file extension).\n"
@@ -669,6 +802,11 @@ def generate_session_memory_slug(session_content: str, generator: SlugGenerator)
 
 SESSION_MEMORY_EVENT_TYPE = "command"
 SESSION_MEMORY_ACTIONS = ("new", "reset")
+# Automatic rollover (``session`` / ``auto-reset`` with reason daily or idle,
+# session-auto-reset.ts isSessionAutoResetReason).
+SESSION_MEMORY_AUTO_RESET_EVENT_TYPE = "session"
+SESSION_MEMORY_AUTO_RESET_ACTION = "auto-reset"
+SESSION_MEMORY_AUTO_RESET_REASONS = ("daily", "idle")
 # Names this module writes: memory/YYYY-MM-DD-<slug>.md with a timestamp (HHMM) or
 # normalized LLM slug and an optional -N suffix. The daily-flush validator
 # (memory_core.workspace.DAILY_MEMORY_PATH_RE) keeps rejecting these names.
@@ -685,16 +823,28 @@ _NO_HARD_LINK_ERRNOS = frozenset(
 )
 
 
-def is_session_memory_trigger(event_type: str, action: str) -> bool:
-    """The hook's gate (handler.ts:300-313): ``command`` events for ``/new`` and ``/reset``."""
-    return event_type == SESSION_MEMORY_EVENT_TYPE and action in SESSION_MEMORY_ACTIONS
+def is_session_memory_trigger(event_type: str, action: str, reason: object = None) -> bool:
+    """The hook's gate (handler.ts ``saveSessionToMemory``).
+
+    ``command`` events for ``/new`` and ``/reset``, and ``session`` /
+    ``auto-reset`` events whose ``reason`` is ``daily`` or ``idle`` (additive
+    argument, default ``None``: the old two-argument call keeps its meaning).
+    """
+    if event_type == SESSION_MEMORY_EVENT_TYPE and action in SESSION_MEMORY_ACTIONS:
+        return True
+    return (
+        event_type == SESSION_MEMORY_AUTO_RESET_EVENT_TYPE
+        and action == SESSION_MEMORY_AUTO_RESET_ACTION
+        and reason in SESSION_MEMORY_AUTO_RESET_REASONS
+    )
 
 
 def resolve_session_memory_message_count(value: object) -> int | float:
     """``hooks.internal.entries["session-memory"].messages`` rule (handler.ts:207-212).
 
-    A positive number is used as given (fractions truncate in the slice,
-    infinity keeps every line); anything else is 15.
+    A positive number is used as given (fractions are floored; infinity is not
+    finite and projects nothing, like upstream's ``Number.isFinite`` guard);
+    anything else is 15.
     """
     if isinstance(value, int | float) and not isinstance(value, bool) and value > 0:
         return value
@@ -708,7 +858,7 @@ class SessionTimestamp:
     date: str
     time: str
     time_slug: str
-    time_zone_name: str | None
+    time_zone_name: str | None  # the resolved zone as written in the heading (v2026.9.6)
 
 
 def _resolve_timezone(timezone: str) -> tuple[str, ZoneInfo]:
@@ -724,11 +874,11 @@ def format_local_session_timestamp(
 ) -> SessionTimestamp:
     """Port of ``formatLocalSessionTimestamp`` (handler.ts:31-86).
 
-    Upstream formats with ``Intl.DateTimeFormat("en-US")`` in ``process.env.TZ``
-    (h23, short zone name). Deviation: the zone is an explicit IANA name
+    Upstream formats with ``Intl.DateTimeFormat("en-US")`` in the user timezone
+    (``resolveUserTimezone``: h23). Deviation: the zone is an explicit IANA name
     (default UTC) and an unknown zone raises, where upstream falls back to the
-    host zone. The zone name follows ICU's ``en-US`` short names
-    (``memory_core._intl_zone_names``): ``UTC``, ``EST``, ``GMT+3``.
+    host zone. At v2026.9.6 the heading carries that zone name itself
+    (``time_zone_name``), no longer ICU's short name (``EST``, ``GMT+3``).
     """
     zone_name, zone = _resolve_timezone(timezone)
     if isinstance(now_ms, bool) or not isinstance(now_ms, int | float) or not math.isfinite(now_ms):
@@ -742,7 +892,7 @@ def format_local_session_timestamp(
         date=f"{local.year}-{local.month:02d}-{local.day:02d}",
         time=f"{hour}:{minute}:{local.second:02d}",
         time_slug=f"{hour}{minute}",
-        time_zone_name=en_us_short_time_zone_name(zone_name, local),
+        time_zone_name=zone_name or None,
     )
 
 
@@ -770,24 +920,43 @@ def build_session_memory_entry(
     timestamp: SessionTimestamp,
     session_key: str,
     session_id: str | None,
-    source: str | None,
+    source: str | None = None,
     session_content: str | None,
+    reason: str | None = None,
+    event_type: str = SESSION_MEMORY_EVENT_TYPE,
+    unavailable_reason: str | None = None,
 ) -> str:
-    """The Markdown entry of the hook (handler.ts:252-277), verbatim.
+    """The Markdown entry of the hook (handler.ts ``saveSessionMemoryNow``), verbatim.
 
-    The ``## Conversation Summary`` block is present only with content; the
-    entry ends with a newline.
+    The boundary line is ``- **Reason**`` for a ``session`` event and
+    ``- **Source**`` otherwise. ``## Conversation Summary`` is present with
+    content, or with the quoted ``unavailable_reason`` (the host could not read
+    the transcript); the entry ends with a newline.
     """
     time_zone_suffix = f" {timestamp.time_zone_name}" if timestamp.time_zone_name else ""
+    boundary = (
+        f"- **Reason**: {reason or 'unknown'}"
+        if event_type == SESSION_MEMORY_AUTO_RESET_EVENT_TYPE
+        else f"- **Source**: {source or 'unknown'}"
+    )
     parts = [
         f"# Session: {timestamp.date} {timestamp.time}{time_zone_suffix}",
         "",
         f"- **Session Key**: {session_key}",
         f"- **Session ID**: {session_id or 'unknown'}",
-        f"- **Source**: {source or 'unknown'}",
+        boundary,
         "",
     ]
-    if session_content:
+    if unavailable_reason is not None:
+        parts.extend(
+            [
+                "## Conversation Summary",
+                "",
+                f"> Transcript content was unavailable: {json.dumps(unavailable_reason, ensure_ascii=False)}",
+                "",
+            ]
+        )
+    elif session_content:
         parts.extend(["## Conversation Summary", "", session_content, ""])
     return "\n".join(parts)
 
@@ -803,6 +972,7 @@ class SessionMemoryResult:
     session_file: str | None
     session_content: str | None
     entry: str
+    origin_class: str = "agent"
 
 
 def _memory_dir(workspace_dir: str) -> Path:
@@ -879,53 +1049,54 @@ def _write_session_memory_file(memory_dir: Path, date_str: str, slug: str, entry
             return filename
 
 
-def _resolve_session_file(
-    workspace_dir: str, session_file: str | None, session_id: str | None
-) -> str | None:
-    """Session file recovery of the handler (handler.ts:170-200)."""
-    if session_file and ".reset." not in session_file:
-        return session_file
-    sessions_dirs: list[str] = []
-    if session_file:
-        sessions_dirs.append(_node_dirname(session_file))
-    sessions_dirs.append(_node_join(workspace_dir, "sessions"))
-    for sessions_dir in dict.fromkeys(sessions_dirs):
-        recovered = find_previous_session_file(
-            sessions_dir, current_session_file=session_file, session_id=session_id
-        )
-        if recovered:
-            return recovered
-    return session_file
-
-
 def save_session_memory(
     workspace_dir: str | os.PathLike[str],
     *,
     session_key: str,
     session_id: str | None = None,
+    events: Iterable[object] | None = None,
     session_file: str | os.PathLike[str] | None = None,
     messages: Iterable[object] | None = None,
     source: str | None = None,
+    event_type: str = SESSION_MEMORY_EVENT_TYPE,
+    reason: str | None = None,
+    unavailable_reason: str | None = None,
     now_ms: int | float | None = None,
     timezone: str = "UTC",
     message_count: object = DEFAULT_SESSION_MEMORY_MESSAGE_COUNT,
     slug_generator: SlugGenerator | None = None,
     redactor: Callable[[str], str] | None = None,
 ) -> SessionMemoryResult:
-    """Port of the session-memory hook's save (``saveSessionMemoryNow``, handler.ts:136-297).
+    """Port of the session-memory hook's save (``saveSessionMemoryNow``, handler.ts).
 
-    Call it when the host handles ``/new`` or ``/reset``
-    (``is_session_memory_trigger``), with the session that is ending: its
-    ``session_file`` (recovered like upstream when missing or rotated to
-    ``.reset.``, looking next to it and in ``<workspace>/sessions``) or its
-    ``messages``. Writes a new ``memory/<date>-<slug>.md`` with the heading,
-    session key, id and source, and the last ``message_count`` conversation
-    lines. The slug is the local ``HHMM`` unless ``slug_generator`` (off by
-    default, upstream ``llmSlug``) yields one.
+    Call it when the host handles ``/new``, ``/reset`` or an automatic
+    rollover (``is_session_memory_trigger``), with the session that is ending.
+
+    The conversation comes from ``events``: the host-supplied transcript events
+    of the ending session (dicts with ``type: "message"`` and a ``message``;
+    leaf controls pick the active branch). Upstream v2026.9.6 reads them from
+    its per-agent SQLite store (``captureSessionMemoryTranscript``), which
+    memory-core does not couple to: the host owns storage. ``messages`` (plain
+    message dicts) and ``session_file`` (a JSONL path; legacy input, the
+    file-era runtime is gone upstream, including the ``.reset.`` recovery) are
+    convenience inputs that feed the same projection; pass at most one of the
+    three. ``unavailable_reason`` records that the host could not read the
+    transcript (upstream's ``unavailable`` capture status).
+
+    Writes a new ``memory/<date>-<slug>.md`` with the heading (the zone name),
+    session key, id and ``Source`` (or ``Reason`` for ``event_type="session"``),
+    and the last ``message_count`` rows as ``role: <JSON string>`` lines
+    (``get_recent_session_projection_from_events``). The slug is the local
+    ``HHMM`` unless ``slug_generator`` (off by default, upstream ``llmSlug``)
+    yields one; like upstream it is only asked for a non-blank ``session_id``
+    and non-empty content.
 
     ``session_key`` is written as given; upstream shows it re-keyed to the
     agent that owns the workspace (``resolveDisplaySessionKey``), which needs
-    OpenClaw's agent config, so the host passes the key it wants shown.
+    OpenClaw's agent config, so the host passes the key it wants shown. Not
+    ported: the memory-write provenance record (``SessionMemoryResult.
+    origin_class`` carries the capture's trust class for the host), and the
+    ``context.agentId`` requirement (the host owns agent scoping).
 
     Deviation by choice: ``redactor`` (default ``None`` = upstream behaviour)
     maps each selected ``role: text`` line before it is written or sent to the
@@ -938,8 +1109,8 @@ def save_session_memory(
     ``OSError`` from the filesystem). Generator failures still fall back to the
     timestamp slug.
     """
-    if session_file is not None and messages is not None:
-        raise ValueError("pass session_file or messages, not both")
+    if sum(item is not None for item in (events, session_file, messages)) > 1:
+        raise ValueError("pass at most one of events, session_file and messages")
     if not isinstance(session_key, str):
         raise TypeError("session_key must be a string")
     count = resolve_session_memory_message_count(message_count)
@@ -950,17 +1121,20 @@ def save_session_memory(
     memory_dir = _memory_dir(root)
 
     resolved_file: str | None = None
-    if messages is not None:
-        lines: list[str] | None = _recent_session_lines(list(messages), count)
-    else:
-        resolved_file = _resolve_session_file(
-            root, os.fspath(session_file) if session_file else None, session_id
+    projection: SessionMemoryProjection | None = None
+    if session_file is not None:
+        resolved_file = os.fspath(session_file) or None
+        file_events = _read_session_file_entries(resolved_file) if resolved_file else None
+        if file_events is not None:
+            events = file_events
+    elif messages is not None:
+        events = _entries_from_messages(list(messages))
+    if events is not None:
+        projection = get_recent_session_projection_from_events(
+            capture_session_memory_events(list(events)), count
         )
-        lines = (
-            _recent_session_lines_with_reset_fallback(resolved_file, count)
-            if resolved_file
-            else None
-        )
+    lines = projection.content.split("\n") if projection is not None else None
+    origin_class = projection.origin_class if projection is not None else "agent"
     if redactor is not None and lines:
         redacted = [redactor(line) for line in lines]
         if not all(isinstance(line, str) for line in redacted):
@@ -970,7 +1144,10 @@ def save_session_memory(
 
     llm_slug = (
         generate_session_memory_slug(session_content, slug_generator)
-        if session_content and slug_generator is not None
+        if session_content
+        and slug_generator is not None
+        and isinstance(session_id, str)
+        and js_trim(session_id)
         else None
     )
     slug = llm_slug or timestamp.time_slug
@@ -980,6 +1157,9 @@ def save_session_memory(
         session_id=session_id,
         source=source,
         session_content=session_content,
+        reason=reason,
+        event_type=event_type,
+        unavailable_reason=unavailable_reason,
     )
     filename = _write_session_memory_file(memory_dir, timestamp.date, slug, entry)
     return SessionMemoryResult(
@@ -990,4 +1170,5 @@ def save_session_memory(
         session_file=resolved_file,
         session_content=session_content,
         entry=entry,
+        origin_class=origin_class,
     )

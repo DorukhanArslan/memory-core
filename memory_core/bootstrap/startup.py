@@ -42,8 +42,8 @@ from memory_core.bootstrap._js import (
     js_to_well_formed,
     js_trim,
     locale_compare,
+    truncate_utf16_safe,
     utf16_len,
-    utf16_slice,
 )
 from memory_core.bootstrap.files import BootstrapMode, read_workspace_file_guarded, resolve_bootstrap_mode
 from memory_core.bootstrap.layout import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
@@ -51,7 +51,6 @@ from memory_core.bootstrap.lifecycle import bootstrap_status
 from memory_core.bootstrap.render import (
     _BOOTSTRAP_FULL_FIXED_LINES,
     _BOOTSTRAP_LIMITED_FIXED_LINES,
-    BOOTSTRAP_LIMITED_NEXT_STEP_LINE,
 )
 from memory_core.current_time import DEFAULT_TIME_FORMAT, append_cron_style_current_time_line
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
@@ -130,7 +129,7 @@ def _trim_startup_memory_content(content: str, max_chars: int) -> str:
     trimmed = js_trim(content)
     if utf16_len(trimmed) <= max_chars:
         return trimmed
-    return f"{utf16_slice(trimmed, 0, max_chars)}{STARTUP_MEMORY_TRUNCATED_SUFFIX}"
+    return f"{truncate_utf16_safe(trimmed, max_chars)}{STARTUP_MEMORY_TRUNCATED_SUFFIX}"
 
 
 _LABEL_WHITESPACE_RE = re.compile(r"[\r\n\t]+")
@@ -311,13 +310,19 @@ BARE_SESSION_RESET_PROMPT_BOOTSTRAP_PENDING = " ".join(
         "Do not mention internal steps, files, tools, or reasoning.",
     ]
 )
+# session-reset-prompt.ts nextStepLine of the limited prompt (v2026.9.6 words it apart from the
+# system prompt's BOOTSTRAP_LIMITED_NEXT_STEP_LINE).
+BARE_SESSION_RESET_LIMITED_NEXT_STEP_LINE = (
+    "Typical next steps include switching to a primary interactive run with normal workspace "
+    "access or having the user complete the canonical BOOTSTRAP.md deletion afterward."
+)
 # session-reset-prompt.ts:27-38: buildLimitedBootstrapPromptLines(...).slice(1).
 BARE_SESSION_RESET_PROMPT_BOOTSTRAP_LIMITED = " ".join(
     [
         "A new session was started via /new or /reset while bootstrap is still pending for this "
         "workspace, but this run cannot safely complete the full BOOTSTRAP.md workflow here.",
         *_BOOTSTRAP_LIMITED_FIXED_LINES,
-        BOOTSTRAP_LIMITED_NEXT_STEP_LINE,
+        BARE_SESSION_RESET_LIMITED_NEXT_STEP_LINE,
         "If the runtime model differs from default_model in the system prompt, mention the default "
         "model only after you have handled this limitation.",
         "Do not mention internal steps, files, tools, or reasoning.",

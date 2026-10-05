@@ -61,6 +61,59 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Changed
 
+- Stage 2 of the OpenClaw v2026.9.6 port (docs/upstream_port_v2026_9_6.md), areas 5 to 10, all
+  verified against the real TS oracle; the oracle worklist is empty.
+  - Memory tools and search (areas 5, 6): `memory_get` status/error codes, per-corpus outcomes and
+    the 30 s deadline, index identity diagnostics, MEMORY.md/USER.md/DREAMS.md as memory paths,
+    CJK-weighted chunking, path matching, hybrid merge with MMR and temporal decay. Defaults
+    follow the tag: vector 0.7 / text 0.3, MMR and temporal decay on (the knobs stay).
+  - Promotion (area 7): deep dreaming is on by default with `minScore` 0.75; strict integer
+    parsing; recall entries carry `provenance`, `userQueryHashes` and `claimHash`; the
+    unique-query gate counts provenance-qualified hashes; promotion lines carry `signals=`,
+    trigger and importance annotations and per-project sections; memory-budget compaction bounds
+    prior-entry loss (`max_prior_entry_loss_fraction`, default 0.25) and defers a write that
+    would exceed it; the `qmd` concept tag is gone. Recall keys follow the chunk range
+    (`path:1:4`) now that the chunker returns whole chunks. No LLM consolidation step is ported.
+  - Sessions (areas 8, 9): `session_entry.build_session_entry` and the reworked session-memory
+    hook read host-supplied transcript events, not OpenClaw's SQLite. Not ported:
+    `redactSensitiveText` (a host `redact_text` hook instead).
+  - Transcript and overflow (area 10): history-limit hysteresis, runtime-context prompt with
+    explicit fragments (`resolve_runtime_context_prompt_parts` signature changed), replay
+    normalization, weighted-char tool-result budgets, one shared continuation prompt and the
+    request-size-ceiling overflow check. Open gaps: account-scoped history limits, compaction
+    replay owners, prompt-projection state, parked Code Mode and the overflow fallback tables.
+
+- Search ranking follows OpenClaw v2026.9.6 (port plan area 6): chunks are sized in CJK-weighted
+  characters (`tokens * 4`) and `MEMORY.md` / `USER.md` chunk per `- ` entry and heading; keyword
+  retrieval searches chunk text and file paths (a query naming a file, basename or stem ranks it in
+  an exact-path tier) and scores hits with the tag's lexical boost; the hybrid merge, selection,
+  MMR and temporal decay are the tag's (dated files with a suffix or in subdirectories decay, USER.md
+  is evergreen, snippets are cut at 700 characters). **Defaults change:** `MemoryConfig` weights are
+  0.7 / 0.3 and MMR and temporal decay are on (`FeatureFlags.mmr`, `temporal_decay` default on); all
+  stay configurable. An FTS-only result's `score` is the boosted ranking score, `textScore` the raw
+  BM25 one. The paused-index warning and action are the tag's (`RuntimeIdentity.memory_index_*`).
+  Existing indexes need `SQLiteMemoryStore.reindex` (new path table, new chunks).
+
+- The memory tools follow OpenClaw v2026.9.6 (port plan area 5, docs/memory_search_tool.md):
+  - `memory_get` results carry `status` (`ok`, `not_found`, `error`); a refused or failed read is
+    `{"path", "text": "", "status": "error", "code", "error"}` (`MEMORY_PATH_NOT_ALLOWED` for a path
+    outside the memory files) and `disabled` is gone. USER.md is a memory path. `corpus=wiki` and
+    `corpus=all` add `corpora`, `warning` and `error`.
+  - `memory_search` and `memory_get` read an unknown `corpus` as an error instead of searching every
+    source, and a blank `maxResults`, `from` or `lines` as omitted. Their descriptions and schemas
+    are the tag's (USER.md, the outcome guidance, `minimum`, `additionalProperties: false`), and
+    `build_prompt_section` is the tag's `## Memory Recall` with the session-history lines.
+  - The memory deadline is 30 s (was 15 s). With `corpus=all` (the facade's default) or `wiki`, each
+    corpus has its own outcome in `corpora`, so a failed memory corpus is reported next to the wiki
+    hits instead of as the unavailable result; use `corpus="memory"` for that result. A deadline
+    with keyword hits returns them as `partial: true` and records no cooldown. New:
+    `MemoryConfig.session_search` (default on), `SQLiteMemoryStore.search_memory_keywords`.
+  - `SQLiteMemoryStore.index_identity()` returns upstream's diagnostics (`code`, `owner`,
+    `versionOrder`, `chunkingVersionOnly`), and a reindex writes `provenanceVersion` and
+    `chunkingVersion`. **An index written by an earlier memory-core has neither, so search is
+    paused (`index provenance classifier changed`) until `SQLiteMemoryStore.reindex(workspace)`
+    runs.** The recorded chunking version is the tag's before the chunker is re-ported (area 6).
+
 - The project name is now memory-core (0.1.0 used an earlier name), and every spelling of it
   derives from the one declaration: the distribution `memory-core`, the import package
   `memory_core`, the `MEMORY_CORE_` environment prefix (the Lab's `MEMORY_CORE_DEMO_OPENAI_*`

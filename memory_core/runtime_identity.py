@@ -44,11 +44,33 @@ class RuntimeIdentity:
         f"Run {DISPLAY_NAME} with a Python build that includes the sqlite3 module, then retry "
         "memory_search."
     )
-    # memory_search paused-index action (OpenClaw extensions/memory-core/src/tools.ts
-    # PAUSED_MEMORY_INDEX_ACTION names two CLI commands that both reindex; memory-core
-    # names its one reindex call, since index_identity() only reports).
-    memory_search_paused_action: str = (
-        "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
+    # The product named by a paused-index warning for an index another version wrote (OpenClaw
+    # packages/memory-host-sdk/src/host/types.ts resolveMemoryIndexSearchDiagnostic).
+    memory_index_product_name: str = DISPLAY_NAME
+    # `formatMemoryIndexRebuildGuidance`: how to rebuild the index. `{agent}` is
+    # " --agent <id>" or empty. OpenClaw names its CLI and discloses whether the rebuild calls an
+    # embedding provider; memory-core names its one reindex call, since index_identity() only
+    # reports and never lifts the pause.
+    memory_index_rebuild_guidance: str = "SQLiteMemoryStore.reindex(workspace)."
+    memory_index_rebuild_guidance_keyword_only: str = "SQLiteMemoryStore.reindex(workspace)."
+    # memory_search deadline guidance (OpenClaw extensions/memory-core/src/tools.shared.ts
+    # buildMemorySearchUnavailableResult `deadlineAction`, which names two CLI commands);
+    # `{agent_id}` is the agent in the second form.
+    memory_search_deadline_action: str = (
+        "Retry memory_search after a short wait. If memory-corpus timeouts persist, inspect "
+        "this agent's memory index before rebuilding it."
+    )
+    memory_search_deadline_action_for_agent: str = (
+        "Retry memory_search after a short wait: a memory-corpus timeout pauses retries for "
+        "up to a minute. If memory-corpus timeouts persist, inspect the memory index "
+        "(SQLiteMemoryStore.index_identity()) of agent {agent_id}, and rebuild it with "
+        "SQLiteMemoryStore.reindex(workspace) only if it reports the index stale or incomplete"
+    )
+    # memory_search refusal for corpus=sessions when session search is off (OpenClaw
+    # extensions/memory-core/src/tools.ts names its config keys).
+    memory_search_sessions_disabled_action: str = (
+        "If an exact session-history capability is available for this run, use it. Otherwise, "
+        "ask the host to enable session search (MemoryConfig.session_search)."
     )
     # Transcript row recorded for a heartbeat turn instead of the full heartbeat
     # prompt (OpenClaw src/auto-reply/heartbeat.ts INTERNAL_WAKE_TRANSCRIPT_PROMPTS.heartbeat,
@@ -99,8 +121,26 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
     memory_search_sqlite_unavailable_action=(
         "Run OpenClaw with a Node runtime that includes node:sqlite, then retry memory_search."
     ),
-    memory_search_paused_action=(
-        "Tell the user to run: openclaw memory status --index or openclaw memory index --force."
+    memory_index_product_name="OpenClaw",
+    memory_index_rebuild_guidance=(
+        "openclaw memory status --index{agent}. Rebuilding may call the configured embedding "
+        "provider and can incur provider cost."
+    ),
+    memory_index_rebuild_guidance_keyword_only=(
+        "openclaw memory status --index{agent}. Rebuilding uses keyword indexing only and does "
+        "not call an embedding provider."
+    ),
+    memory_search_deadline_action_for_agent=(
+        "Retry memory_search after a short wait: a memory-corpus timeout pauses retries for "
+        "up to a minute. If memory-corpus timeouts persist, run: openclaw memory status --deep "
+        "--agent {agent_id}, and rebuild with openclaw memory index --force --agent {agent_id} "
+        "only if it reports the index dirty or incomplete"
+    ),
+    memory_search_sessions_disabled_action=(
+        "If an exact session-history capability is available for this run, use it. Otherwise, "
+        "ask the operator to enable semantic session search by enabling "
+        "memory.search.experimental.sessionMemory and adding \"sessions\" to "
+        "memory.search.sources."
     ),
     heartbeat_transcript_prompt=_OPENCLAW_WAKE_PROMPTS["heartbeat"],
     internal_wake_transcript_prompts=tuple(_OPENCLAW_WAKE_PROMPTS.values()),

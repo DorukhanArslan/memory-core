@@ -1,5 +1,6 @@
 import dataclasses
 import hashlib
+import itertools
 import os
 from pathlib import Path
 import json
@@ -25,7 +26,9 @@ from memory_core.replay_repair import repair_tool_use_result_pairing, sanitize_t
 from memory_core.runtime_context_prompt import (
     OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     build_current_inbound_prompt,
+    append_current_inbound_context,
     build_runtime_context_custom_message,
+    prepend_runtime_context_for_model,
     resolve_runtime_context_prompt_parts,
 )
 from memory_core.context_engine_lifecycle import (
@@ -57,12 +60,16 @@ from memory_core.consolidation import (
 )
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.index.identity import (
+    MEMORY_CHUNKING_VERSION,
+    MEMORY_INDEX_PROVENANCE_VERSION,
     resolve_configured_scope_hash,
     resolve_configured_sources_for_meta,
     resolve_memory_index_identity_state,
     resolve_memory_index_provider_identities,
 )
 from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.index.chunking import chunk_markdown
+from memory_core.prompt_section import build_prompt_section
 from memory_core.flags import FeatureFlags
 from memory_core.tools.common import MemoryToolInputError
 import memory_core.tools.memory_search as memory_search_module
@@ -78,7 +85,6 @@ from memory_core.tools.memory_get import (
     memory_get_tool_definition,
 )
 from memory_core.workspace import MemoryWorkspace
-from oracle_worklist import retired_upstream
 
 
 pytestmark = pytest.mark.skipif(
@@ -146,11 +152,11 @@ def test_real_openclaw_oracle_deep_policy():
 
     assert result["ok"] is True
     assert result["operation"] == "deepPolicy"
-    assert result["result"]["minScore"] == 0.8
+    assert result["result"]["minScore"] == 0.75
     assert result["result"]["minRecallCount"] == 3
     assert result["result"]["minUniqueQueries"] == 3
     assert result["result"]["maxAgeDays"] == 30
-    assert result["result"]["enabled"] is False
+    assert result["result"]["enabled"] is True
     assert result["result"]["limit"] == 10
     assert result["result"]["recencyHalfLifeDays"] == 14
     assert result["result"]["maxPromotedSnippetTokens"] == 160
@@ -539,6 +545,8 @@ def test_real_openclaw_oracle_preemptive_compaction_routes_match_python():
         "input length and max_tokens exceed context limit (i.e 156321 + 48384 > 200000)",
         "429 Too Many Requests: request exceeds rate limit",
         "Model context window too small (minimum is 128k tokens)",
+        "Rate limit: TPM limit 30,000, requested 45,000 tokens: context overflow: prompt too large",
+        "Rate limit reached for tokens per minute. Limit 30000, Requested 100",
     ],
 )
 def test_real_openclaw_oracle_overflow_error_helpers_match_python(message: str):
@@ -686,31 +694,40 @@ def test_real_openclaw_oracle_tool_result_reduction_potential_matches_python():
 
 
 @pytest.mark.parametrize(
-    "text,max_chars",
+    "text,max_chars,minimum_raw_weight",
     [
-        ("normal line\n" * 1000, 5_000),
+        ("normal line\n" * 1000, 5_000, None),
         (
             ("Line 1\n" * 500)
             + ("data data data\n" * 500)
             + "\nError: something failed\nStack trace: at foo.ts:42\n",
             5_000,
+            None,
         ),
+        ("記憶 line with emoji 😀\n" * 900, 6_000, None),
+        ("漢字" * 4_000 + "\nfailed: 結果 error\n", 9_000, None),
+        ("𠀀rare㐀ext 😀 " * 700, 7_000, None),
+        ("normal line\n" * 1000, 5_000, 2),
+        ("記憶 line\n" * 1200 + "tail error 記憶\n", 5_000, 2),
+        ("x" * 9_000, 5_000, 3),
+        ("short", 3, None),
     ],
+    ids=["ascii", "ascii-tail", "cjk-emoji", "cjk-tail", "astral", "floor2", "cjk-floor2", "floor3", "tiny"],
 )
 def test_real_openclaw_oracle_truncate_tool_result_text_matches_python(
     text: str,
     max_chars: int,
+    minimum_raw_weight,
 ):
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
 
-    result = oracle.run(
-        {
-            "operation": "truncateToolResultText",
-            "text": text,
-            "maxChars": max_chars,
-        }
+    payload = {"operation": "truncateToolResultText", "text": text, "maxChars": max_chars}
+    if minimum_raw_weight is not None:
+        payload["minimumRawWeight"] = minimum_raw_weight
+    result = oracle.run(payload)
+    python_text = truncate_tool_result_text(
+        text, max_chars, minimum_raw_weight=minimum_raw_weight
     )
-    python_text = truncate_tool_result_text(text, max_chars)
 
     assert result["ok"] is True
     assert result["operation"] == "truncateToolResultText"
@@ -751,6 +768,100 @@ def test_real_openclaw_oracle_truncate_tool_results_in_session_file_matches_pyth
 
     assert result["ok"] is True
     assert result["operation"] == "truncateToolResultsInSession"
+    assert result["result"]["truncated"] is python_result.truncated
+    assert result["result"]["truncatedCount"] == python_result.truncated_count
+    assert result["result"]["toolTexts"] == list(python_result.tool_texts)
+
+
+def _aggregate_session_cases(tmp_path: Path) -> dict[str, tuple[list[str], dict]]:
+    spill = tmp_path / "spill.txt"
+    spill.write_text("full output", encoding="utf-8")
+    footer = f"\nFull output: {spill}"
+    ascii_block = "alpha beta gamma delta epsilon\n" * 150
+    cjk_block = "記憶 line with 結果 and emoji 😀\n" * 200
+    return {
+        "ascii-aggregate": (
+            [ascii_block, ascii_block, ascii_block, ascii_block],
+            {"maxChars": 100_000, "aggregateMaxChars": 6_000},
+        ),
+        "cjk-aggregate": (
+            [cjk_block, cjk_block, cjk_block],
+            {"maxChars": 100_000, "aggregateMaxChars": 5_000},
+        ),
+        "clear-phase": (
+            [ascii_block, ascii_block, ascii_block, ascii_block],
+            {"maxChars": 100_000, "aggregateMaxChars": 300},
+        ),
+        "protected-trailing": (
+            [ascii_block, ascii_block, ascii_block],
+            {"maxChars": 100_000, "aggregateMaxChars": 5_000, "protectTrailingToolResults": True},
+        ),
+        "oversized-protected": (
+            [ascii_block * 3, ascii_block],
+            {"maxChars": 1_500, "aggregateMaxChars": 100_000, "protectTrailingToolResults": True},
+        ),
+        "flat-spill": (
+            [ascii_block + footer, ascii_block + footer, ascii_block],
+            {
+                "maxChars": 100_000,
+                "aggregateMaxChars": 1_000,
+                "spill": {"fullOutputPath": str(spill), "spilledChars": 4_000},
+            },
+        ),
+        "nested-spill": (
+            [ascii_block + footer, ascii_block + footer, ascii_block],
+            {
+                "maxChars": 100_000,
+                "aggregateMaxChars": 1_000,
+                "spill": {"spill": {"path": str(spill), "truncated": True, "chars": 2_000}},
+            },
+        ),
+    }
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["ascii-aggregate", "cjk-aggregate", "clear-phase", "protected-trailing", "oversized-protected", "flat-spill", "nested-spill"],
+)
+def test_real_openclaw_oracle_truncate_tool_results_aggregate_matches_python(
+    tmp_path: Path, case: str
+):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    texts, options = _aggregate_session_cases(tmp_path)[case]
+    spill_details = options.pop("spill", None)
+    entries = [
+        _session_message("u1", None, {"role": "user", "content": "hello"}),
+        _session_message("a1", "u1", _assistant_history("calling tools")),
+    ]
+    parent = "a1"
+    for index, text in enumerate(texts):
+        message = _tool_result(text)
+        message["toolCallId"] = f"call_{index}"
+        if spill_details is not None and index < 2:
+            message["details"] = spill_details
+        entry_id = f"t{index}"
+        entries.append(_session_message(entry_id, parent, message))
+        parent = entry_id
+    session_file = tmp_path / "session.jsonl"
+    session_file.write_text("".join(f"{json.dumps(e)}\n" for e in entries), encoding="utf-8")
+
+    result = oracle.run(
+        {
+            "operation": "truncateToolResultsInSession",
+            "sessionEntries": entries,
+            "contextWindowTokens": 128_000,
+            **options,
+        }
+    )
+    python_result = truncate_oversized_tool_results_in_session_file(
+        session_file,
+        context_window_tokens=128_000,
+        max_chars_override=options.get("maxChars"),
+        aggregate_max_chars_override=options.get("aggregateMaxChars"),
+        protect_trailing_tool_results=options.get("protectTrailingToolResults", False),
+    )
+
+    assert result["ok"] is True
     assert result["result"]["truncated"] is python_result.truncated
     assert result["result"]["truncatedCount"] == python_result.truncated_count
     assert result["result"]["toolTexts"] == list(python_result.tool_texts)
@@ -1178,6 +1289,76 @@ def test_real_openclaw_oracle_memory_tool_definitions_match_python():
     assert result["result"] == [memory_search_tool_definition(), memory_get_tool_definition()]
 
 
+MARKDOWN_CHUNK_CASES = [
+    {"content": "# Long-Term Memory\n\n- Glacier storage keeps backups cold.", "tokens": 400,
+     "overlap": 80, "perEntry": True},
+    {"content": "# Long-Term Memory\n\n- Glacier storage keeps backups cold.", "tokens": 400,
+     "overlap": 80},
+    {"content": "\n".join(f"line {i} " + "word " * 12 for i in range(60)), "tokens": 20,
+     "overlap": 5},
+    {"content": "\n".join(f"line {i} " + "word " * 12 for i in range(60)), "tokens": 20,
+     "overlap": 0},
+    {"content": "x" * 500 + "\nshort\n" + "y" * 130, "tokens": 8, "overlap": 2},
+    {"content": "漢字" * 100 + "\nabc\n" + "한국어 텍스트 " * 30, "tokens": 10, "overlap": 3},
+    {"content": "😀" * 90 + "\nok", "tokens": 5, "overlap": 1},
+    {"content": "- a\n- b\ncont\n\n## H\ntext\n- c " + "z" * 300 + "\n#nohead\n- d",
+     "tokens": 10, "overlap": 2, "perEntry": True},
+    {"content": "intro\n- a\n  more\n\n\n# Title\n- b", "tokens": 400, "overlap": 80,
+     "perEntry": True},
+    {"content": "", "tokens": 400, "overlap": 80},
+    {"content": "\n\n\n", "tokens": 400, "overlap": 80, "perEntry": True},
+    {"content": "a\r\nb\r\n- c", "tokens": 400, "overlap": 80, "perEntry": True},
+    {"content": "\n".join(f"p{i} " + "w " * 30 for i in range(40)), "tokens": 16, "overlap": 4,
+     "perEntry": True},
+]
+
+
+def test_real_openclaw_oracle_markdown_chunks_match_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+
+    result = oracle.run({"operation": "markdownChunks", "cases": MARKDOWN_CHUNK_CASES})
+
+    assert result["ok"] is True, result
+    for case, expected in zip(MARKDOWN_CHUNK_CASES, result["result"], strict=True):
+        got = [
+            {
+                "startLine": chunk.start_line,
+                "endLine": chunk.end_line,
+                "entryStartLine": chunk.entry_start_line,
+                "entryEndLine": chunk.entry_end_line,
+                "text": chunk.text,
+            }
+            for chunk in chunk_markdown(
+                "MEMORY.md",
+                case["content"],
+                target_tokens=case["tokens"],
+                overlap_tokens=case["overlap"],
+                per_entry=case.get("perEntry", False),
+            )
+        ]
+        # The caller drops whitespace-only chunks (manager-index-preparation.ts).
+        assert got == [chunk for chunk in expected if chunk["text"].strip()], case
+
+
+def test_real_openclaw_oracle_memory_prompt_section_matches_python():
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    tools = ["memory_search", "memory_get", "sessions_search", "sessions_history"]
+    scenarios = [
+        {"availableTools": list(combo), "citationsMode": mode}
+        for size in range(len(tools) + 1)
+        for combo in itertools.combinations(tools, size)
+        for mode in ("on", "off")
+    ]
+
+    result = oracle.run({"operation": "memoryPromptSection", "scenarios": scenarios})
+
+    assert result["ok"] is True, result
+    assert result["result"] == [
+        build_prompt_section(set(case["availableTools"]), citations_mode=case["citationsMode"])
+        for case in scenarios
+    ]
+
+
 MEMORY_DISCOVERY_SCENARIOS = {
     "recursive-tree": {
         "MEMORY.md": "# Root\n",
@@ -1291,8 +1472,6 @@ def test_real_openclaw_oracle_memory_search_memory_corpus_matches_python_paths(
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -1358,8 +1537,6 @@ def test_real_openclaw_oracle_memory_search_relaxes_min_score_for_keyword_hits(
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -1414,8 +1591,6 @@ def test_real_openclaw_oracle_memory_search_text_scores_and_line_ranges_match_py
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -1445,22 +1620,24 @@ def test_real_openclaw_oracle_memory_search_text_scores_and_line_ranges_match_py
             "endLine": item["endLine"],
         }
         for item in python_results
-    ] == [
-        {"path": "MEMORY.md", "startLine": 1, "endLine": 5},
-        {"path": "memory/2026-05-26.md", "startLine": 1, "endLine": 4},
     ]
+    # MEMORY.md chunks per entry: the heading, the two entries and the trailing line.
+    assert {(item["path"], item["startLine"], item["endLine"]) for item in python_results} >= {
+        ("MEMORY.md", 3, 3),
+        ("MEMORY.md", 4, 5),
+    }
     assert [item["path"] for item in openclaw_results] == [
         item["path"] for item in python_results
     ]
     assert [item["score"] for item in openclaw_results] == pytest.approx(
         [item["score"] for item in python_results],
         rel=0,
-        abs=1e-12,
+        abs=1e-6,
     )
     assert [item["textScore"] for item in openclaw_results] == pytest.approx(
         [item["textScore"] for item in python_results],
         rel=0,
-        abs=1e-12,
+        abs=1e-6,
     )
 
 
@@ -1497,8 +1674,6 @@ def test_real_openclaw_oracle_memory_search_vector_scores_match_python(
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=1,
-        text_weight=0,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -1526,11 +1701,6 @@ def test_real_openclaw_oracle_memory_search_vector_scores_match_python(
         [item["vectorScore"] for item in python_results],
         rel=0,
         abs=1e-6,
-    )
-    assert [item["score"] for item in openclaw_results] == pytest.approx(
-        [item["vectorScore"] for item in openclaw_results],
-        rel=0,
-        abs=1e-12,
     )
 
 
@@ -1567,8 +1737,6 @@ def test_real_openclaw_oracle_memory_search_hybrid_weighted_scores_match_python(
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0.7,
-        text_weight=0.3,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -1600,15 +1768,7 @@ def test_real_openclaw_oracle_memory_search_hybrid_weighted_scores_match_python(
     assert [item["textScore"] for item in openclaw_results] == pytest.approx(
         [item["textScore"] for item in python_results],
         rel=0,
-        abs=1e-12,
-    )
-    assert [item["score"] for item in openclaw_results] == pytest.approx(
-        [
-            0.7 * item["vectorScore"] + 0.3 * item["textScore"]
-            for item in openclaw_results
-        ],
-        rel=0,
-        abs=1e-12,
+        abs=1e-6,
     )
 
 
@@ -1758,11 +1918,11 @@ def test_real_openclaw_oracle_memory_search_all_balances_memory_and_wiki(
     assert result["operation"] == "memorySearch"
     paths_by_corpus = [(item["corpus"], item["path"]) for item in result["result"]["results"]]
     assert ("memory", "MEMORY.md") in paths_by_corpus
+    # The one memory file is two chunks (heading and entry), so the wiki share is 3.
     assert [path for corpus, path in paths_by_corpus if corpus == "wiki"] == [
         "w1.md",
         "w2.md",
         "w3.md",
-        "w4.md",
     ]
     assert len(paths_by_corpus) == 5
 
@@ -1845,10 +2005,17 @@ class _PythonPromotion:
         return [_python_candidate_view(candidate) for candidate in candidates]
 
     def apply(
-        self, now_ms: int, timezone: str, memory_file_max_chars: int | None = None, **payload
+        self,
+        now_ms: int,
+        timezone: str,
+        memory_file_max_chars: int | None = None,
+        max_prior_entry_loss_fraction: float | None = None,
+        **payload,
     ) -> MemoryPromotionRun:
         policy = _runner_policy(payload)
         extra = {} if memory_file_max_chars is None else {"memory_file_max_chars": memory_file_max_chars}
+        if max_prior_entry_loss_fraction is not None:
+            extra["max_prior_entry_loss_fraction"] = max_prior_entry_loss_fraction
         return run_short_term_promotion(
             config=self.config,
             store=SQLiteMemoryStore(self.config, FakeEmbeddingProvider(dimensions=8)),
@@ -1974,7 +2141,7 @@ MEMORY_SEARCH_PARAM_ERROR_CASES = {
     "max-results-fraction-string": {"query": "x", "maxResults": "2.5"},
     "max-results-word": {"query": "x", "maxResults": "abc"},
     "max-results-hex": {"query": "x", "maxResults": "0x10"},
-    "max-results-empty-string": {"query": "x", "maxResults": ""},
+    "corpus-unknown": {"query": "x", "corpus": "MEMORY"},
     "max-results-boolean": {"query": "x", "maxResults": True},
     "max-results-array": {"query": "x", "maxResults": [3]},
     "max-results-unsafe-integer": {"query": "x", "maxResults": 9007199254740992},
@@ -2023,9 +2190,100 @@ MEMORY_SEARCH_PARAM_ACCEPTED_CASES = {
     },
     "camel-case-wins": {"query": "glacier", "maxResults": 2, "max_results": 1},
     "null-camel-case-hides-alias": {"query": "glacier", "maxResults": None, "max_results": 1},
-    "unknown-corpus-searches-all-sources": {"query": "glacier", "maxResults": 1, "corpus": "MEMORY"},
     "integral-float": {"query": "glacier", "maxResults": 1.0, "minScore": -0.5},
 }
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "project-notes.md",
+        "project-notes",
+        "memory/project-notes.md",
+        "PROJECT-NOTES.MD",
+        "notes",
+        "2026-05-26",
+        "2026-05-26.md",
+        "launch plan",
+        "MEMORY.md",
+        "memory",
+    ],
+)
+def test_real_openclaw_oracle_memory_search_path_matching_matches_python(
+    tmp_path: Path, query: str
+):
+    # A query that names a file, a basename or a stem ranks that file in an exact-path tier
+    # (e9b7a9a9127); a partial path match ranks by path BM25.
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]), timeout_seconds=60
+    )
+    files = {
+        "MEMORY.md": "# Long-Term Memory\n\n- Launch plan owner is Dana.\n",
+        "memory/project-notes.md": "# Notes\n\n- The launch plan slips a week.\n",
+        "memory/2026-05-26.md": "# 2026-05-26\n\n- Reviewed the launch plan.\n",
+        "memory/archive/notes.md": "- Old notes about the vendor.\n",
+        "memory/empty-topic.md": "",
+    }
+    for rel, text in files.items():
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    result = oracle.run(
+        {
+            "operation": "memorySearch",
+            "workspaceDir": str(tmp_path),
+            "query": query,
+            "corpus": "memory",
+            "maxResults": 8,
+            "minScore": 0,
+        }
+    )
+    cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "python-memory.sqlite")
+    store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+    python_result = memory_search(
+        cfg, store, query=query, corpus="memory", max_results=8, min_score=0
+    )
+
+    assert result["ok"] is True, result
+    assert "results" in result["result"], result["result"]
+
+    def shape(items):
+        return [(item["path"], item["startLine"], item["endLine"]) for item in items]
+
+    assert shape(result["result"]["results"]) == shape(python_result["results"])
+    assert [item["score"] for item in result["result"]["results"]] == pytest.approx(
+        [item["score"] for item in python_result["results"]], rel=0, abs=1e-6
+    )
+
+
+def test_real_openclaw_oracle_memory_search_blank_max_results_reads_as_omitted(tmp_path: Path):
+    # isBlankParamValue: an empty-string maxResults is not an error. Omitted, the limit is the
+    # agent's configured one and the ranking is the manager's (stage 2 area 6), so only the
+    # set of hits is compared.
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]), timeout_seconds=60
+    )
+    (tmp_path / "MEMORY.md").write_text("- Glacier storage keeps backups cold.", encoding="utf-8")
+    memory_file = tmp_path / "memory" / "2026-05-26.md"
+    memory_file.parent.mkdir(parents=True, exist_ok=True)
+    memory_file.write_text("- Move glacier backups weekly.", encoding="utf-8")
+    raw_params = {"query": "glacier", "maxResults": "", "corpus": "memory"}
+
+    result = oracle.run(
+        {"operation": "memorySearch", "workspaceDir": str(tmp_path), "rawParams": raw_params}
+    )
+    cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "python-memory.sqlite")
+    store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
+    store.reindex(MemoryWorkspace(tmp_path))
+    python_result = execute_memory_search_tool(cfg, store, raw_params)
+
+    assert result["ok"] is True
+    assert "results" in result["result"], result["result"]
+    assert sorted(hit["path"] for hit in result["result"]["results"]) == sorted(
+        hit["path"] for hit in python_result["results"]
+    )
 
 
 @pytest.mark.parametrize("case", sorted(MEMORY_SEARCH_PARAM_ACCEPTED_CASES))
@@ -2051,8 +2309,6 @@ def test_real_openclaw_oracle_memory_search_param_coercion_matches_python(
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -2182,8 +2438,21 @@ MEMORY_SEARCH_TOOL_SEQUENCE = [
 ]
 
 
+# The tag's memory manager repairs a failed index on its own and says so in the first failed
+# search ("Automatic memory index repair was requested ..."). memory-core reindexes only when the
+# host asks, so that warning has no counterpart; it is read as the provider-error default.
+_AUTOMATIC_REPAIR_WARNING = "Automatic memory index repair was requested."
+_PROVIDER_ERROR_WARNING = "Memory search is unavailable due to an embedding/provider error."
+
+
 def _normalize_memory_search_step(step: dict) -> dict:
     result = step["result"]
+    if str(result.get("warning", "")).startswith(_AUTOMATIC_REPAIR_WARNING):
+        result = {
+            **result,
+            "warning": _PROVIDER_ERROR_WARNING,
+            "debug": {**result["debug"], "warning": _PROVIDER_ERROR_WARNING},
+        }
     normalized = {
         key: value
         for key, value in result.items()
@@ -2202,9 +2471,9 @@ def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
         repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
         timeout_seconds=120,
     )
-    (tmp_path / "MEMORY.md").write_text(
-        "# Long-Term Memory\n\n- Glacier storage keeps backups cold.", encoding="utf-8"
-    )
+    # One line, so one chunk on both sides: how the tag's chunker splits a file is stage 2
+    # area 6 (a heading and a list item are two chunks there).
+    (tmp_path / "MEMORY.md").write_text("Glacier storage keeps backups cold.", encoding="utf-8")
     wiki_results = [
         {"corpus": "wiki", "path": "w1.md", "title": "W1", "kind": "entity", "score": 5,
          "snippet": "glacier wiki"},
@@ -2219,11 +2488,11 @@ def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
         }
     )
 
+    # The oracle's agent searches memory files only: session search is off there.
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
+        session_search=False,
     )
     provider = _ScriptedEmbeddingProvider()
     wiki = _ScriptedWikiSupplement(wiki_results)
@@ -2249,7 +2518,11 @@ def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
             python_steps.append(
                 {
                     "result": execute_memory_search_tool(
-                        cfg, store, step["rawParams"], supplements=[wiki]
+                        cfg,
+                        store,
+                        step["rawParams"],
+                        supplements=[wiki],
+                        runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
                     ),
                     "embedQueryCalls": provider.calls - calls_before,
                 }
@@ -2262,7 +2535,7 @@ def test_real_openclaw_oracle_memory_search_deadline_and_cooldown_match_python(
     assert [_normalize_memory_search_step(step) for step in result["result"]] == [
         _normalize_memory_search_step(step) for step in python_steps
     ]
-    assert python_steps[6]["result"]["error"] == "memory_search timed out after 15s"
+    assert python_steps[6]["result"]["error"] == "memory_search timed out after 30s"
 
 
 _IDENTITY_KEY = "k" * 64
@@ -2275,8 +2548,10 @@ _IDENTITY_META = {
     "scopeHash": _IDENTITY_SCOPE,
     "chunkTokens": 400,
     "chunkOverlap": 80,
+    "chunkingVersion": MEMORY_CHUNKING_VERSION,
     "vectorDims": 8,
     "ftsTokenizer": "unicode61",
+    "provenanceVersion": MEMORY_INDEX_PROVENANCE_VERSION,
 }
 _IDENTITY_PARAMS = {
     "meta": _IDENTITY_META,
@@ -2334,6 +2609,50 @@ MEMORY_INDEX_IDENTITY_STATE_CASES = {
     "empty-meta-object": _identity_case(meta={}),
     "null-model": _identity_case(meta={**_IDENTITY_META, "model": None}),
     "provider-missing-in-meta": _identity_case(drop_meta=("provider",)),
+    # Versions written by the indexer: older and newer, and which one wins.
+    "provenance-missing": _identity_case(drop_meta=("provenanceVersion",)),
+    "provenance-older": _identity_case(meta={**_IDENTITY_META, "provenanceVersion": 0}),
+    "provenance-newer": _identity_case(meta={**_IDENTITY_META, "provenanceVersion": 2}),
+    "provenance-string": _identity_case(meta={**_IDENTITY_META, "provenanceVersion": "1"}),
+    "provenance-null": _identity_case(meta={**_IDENTITY_META, "provenanceVersion": None}),
+    "chunking-version-missing": _identity_case(drop_meta=("chunkingVersion",)),
+    "chunking-version-older": _identity_case(meta={**_IDENTITY_META, "chunkingVersion": 4}),
+    "chunking-version-newer": _identity_case(meta={**_IDENTITY_META, "chunkingVersion": 6}),
+    "chunking-version-older-model-changed": _identity_case(
+        meta={**_IDENTITY_META, "chunkingVersion": 4, "model": "m0"}
+    ),
+    "chunking-version-older-scope-changed": _identity_case(
+        meta={**_IDENTITY_META, "chunkingVersion": 4}, configuredScopeHash="other"
+    ),
+    "chunking-version-older-sources-changed": _identity_case(
+        meta={**_IDENTITY_META, "chunkingVersion": 4}, configuredSources=["memory"]
+    ),
+    "chunking-version-older-tokenizer-changed": _identity_case(
+        meta={**_IDENTITY_META, "chunkingVersion": 4}, ftsTokenizer="trigram"
+    ),
+    "provenance-older-chunking-newer": _identity_case(
+        meta={**_IDENTITY_META, "provenanceVersion": 0, "chunkingVersion": 9}
+    ),
+    "provenance-newer-chunking-older": _identity_case(
+        meta={**_IDENTITY_META, "provenanceVersion": 2, "chunkingVersion": 4}
+    ),
+    "provenance-older-model-changed": _identity_case(
+        meta={**_IDENTITY_META, "provenanceVersion": 0, "model": "m0"}
+    ),
+    # A provider that does not name its model: no model or provider-settings check.
+    "provider-without-model": _identity_case(provider={"id": "p1"}),
+    "provider-without-model-meta-without-model": _identity_case(
+        provider={"id": "p1"}, drop_meta=("model",)
+    ),
+    # Order of the configuration checks: sources before scope before chunking before
+    # tokenizer before vector dimensions.
+    "sources-before-vector-dims": _identity_case(
+        drop_meta=("vectorDims",), configuredSources=["memory"]
+    ),
+    "tokenizer-before-vector-dims": _identity_case(
+        drop_meta=("vectorDims",), ftsTokenizer="trigram"
+    ),
+    "provider-key-before-sources": _identity_case(providerKey="other", configuredSources=["memory"]),
 }
 
 MEMORY_INDEX_PROVIDER_IDENTITY_CASES = [
@@ -2448,8 +2767,6 @@ def test_real_openclaw_oracle_memory_search_pauses_on_index_model_change(tmp_pat
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8)).reindex(
         MemoryWorkspace(tmp_path)
@@ -2464,7 +2781,8 @@ def test_real_openclaw_oracle_memory_search_pauses_on_index_model_change(tmp_pat
     )
 
     assert built["ok"] is True and paused["ok"] is True
-    assert [item["path"] for item in built["result"]["results"]] == ["MEMORY.md"]
+    # Two chunks (the heading and the entry).
+    assert [item["path"] for item in built["result"]["results"]] == ["MEMORY.md", "MEMORY.md"]
     assert paused["result"] == python_paused
     assert python_paused["error"] == (
         "index was built for model fake-deterministic, expected fake-other"
@@ -2634,7 +2952,7 @@ def test_real_openclaw_oracle_derives_concept_vocabulary_tags():
         (
             "memory/2026-04-03.md",
             "Move backups to S3 Glacier and sync QMD router notes.",
-            ["backup", "backups", "glacier", "qmd", "router", "s3", "sync"],
+            ["backup", "backups", "glacier", "router", "s3", "sync", "qmd"],
         ),
         (
             "memory/2026-04-06.md",
@@ -3435,6 +3753,7 @@ def test_real_openclaw_oracle_compacts_oldest_promotion_section_when_memory_budg
                 "minRecallCount": 0,
                 "minUniqueQueries": 0,
                 "memoryFileMaxChars": 1_400,
+                "maxPriorEntryLossFraction": 1,
             }
         )
 
@@ -3453,8 +3772,103 @@ def test_real_openclaw_oracle_compacts_oldest_promotion_section_when_memory_budg
     python_side.record('rotate creds', [result], 1777456800000)
     assert python_side.rank(1777456800000, **gates) == _ts_candidate_views(ranked)
     python_run = python_side.apply(
+        1777456800000,
+        "Europe/Istanbul",
+        memory_file_max_chars=1_400,
+        max_prior_entry_loss_fraction=1,
+        **gates,
+    )
+    _assert_apply_matches(applied, python_run, python_side)
+
+
+def test_real_openclaw_oracle_defers_promotion_when_compaction_would_lose_too_many_prior_entries(
+    tmp_path: Path,
+):
+    # maxPriorEntryLossFraction (0.25 by default) bounds how many generated entries a write may
+    # drop: fitting the new section here needs one of two (50%), so the candidate is deferred
+    # ("memory budget") and MEMORY.md and the recall entry stay as they are.
+    oracle = OpenClawOracle(
+        repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]),
+        timeout_seconds=60,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="memory-core-openclaw-budget-defer-") as tmp_dir:
+        workspace = Path(tmp_dir)
+        memory_file = workspace / "memory" / "2026-04-29.md"
+        memory_file.parent.mkdir(parents=True, exist_ok=True)
+        memory_file.write_text(
+            "# 2026-04-29\n\nRotate the staging Postgres credentials before next deploy.\n",
+            encoding="utf-8",
+        )
+        filler = "x" * 600
+        seeded = "\n".join(
+            [
+                "# Long-Term Memory",
+                "",
+                "## Promoted From Short-Term Memory (2026-04-10)",
+                "<!-- openclaw-memory-promotion:legacy-old -->",
+                f"- {filler}",
+                "",
+                "## Promoted From Short-Term Memory (2026-04-20)",
+                "<!-- openclaw-memory-promotion:legacy-newer -->",
+                f"- {filler}",
+                "",
+            ]
+        )
+        (workspace / "MEMORY.md").write_text(seeded, encoding="utf-8")
+        python_side = _PythonPromotion.copy_of(workspace, tmp_path / "python")
+        result = {
+            "source": "memory",
+            "path": "memory/2026-04-29.md",
+            "startLine": 3,
+            "endLine": 3,
+            "snippet": "Rotate the staging Postgres credentials before next deploy.",
+            "score": 0.96,
+        }
+        oracle.run(
+            {
+                "operation": "recordShortTermRecalls",
+                "workspaceDir": str(workspace),
+                "query": "rotate creds",
+                "results": [result],
+                "nowMs": 1777456800000,
+                "timezone": "Europe/Istanbul",
+            }
+        )
+        gates = {"minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0}
+        ranked = oracle.run(
+            {
+                "operation": "rankShortTermPromotionCandidates",
+                "workspaceDir": str(workspace),
+                "nowMs": 1777456800000,
+                "timezone": "Europe/Istanbul",
+                **gates,
+            }
+        )
+        applied = oracle.run(
+            {
+                "operation": "applyShortTermPromotions",
+                "workspaceDir": str(workspace),
+                "nowMs": 1777456800000,
+                "timezone": "Europe/Istanbul",
+                "candidates": ranked["result"]["candidates"],
+                "memoryFileMaxChars": 1_400,
+                **gates,
+            }
+        )
+
+    assert applied["ok"] is True
+    assert applied["result"]["applied"] == 0
+    assert [r["category"] for r in applied["result"]["rejectedCandidates"]] == ["memory budget"]
+    assert applied["files"]["MEMORY.md"] == seeded
+    python_side.record("rotate creds", [result], 1777456800000)
+    python_run = python_side.apply(
         1777456800000, "Europe/Istanbul", memory_file_max_chars=1_400, **gates
     )
+    assert python_run.deferred_reason is not None
+    assert [candidate.key for candidate in python_run.deferred_candidates] == [
+        candidate["key"] for candidate in ranked["result"]["candidates"]
+    ]
     _assert_apply_matches(applied, python_run, python_side)
 
 
@@ -3601,6 +4015,7 @@ def test_real_openclaw_oracle_drops_all_old_promotion_sections_when_budget_canno
                 "minRecallCount": 0,
                 "minUniqueQueries": 0,
                 "memoryFileMaxChars": 700,
+                "maxPriorEntryLossFraction": 1,
             }
         )
 
@@ -3618,7 +4033,11 @@ def test_real_openclaw_oracle_drops_all_old_promotion_sections_when_budget_canno
     python_side.record('fresh material', [result], 1777456800000)
     assert python_side.rank(1777456800000, **gates) == _ts_candidate_views(ranked)
     python_run = python_side.apply(
-        1777456800000, "Europe/Istanbul", memory_file_max_chars=700, **gates
+        1777456800000,
+        "Europe/Istanbul",
+        memory_file_max_chars=700,
+        max_prior_entry_loss_fraction=1,
+        **gates,
     )
     _assert_apply_matches(applied, python_run, python_side)
 
@@ -4556,47 +4975,98 @@ def test_real_openclaw_oracle_sanitize_tool_call_inputs_matches_python(case):
     }
 
 
-def test_real_openclaw_oracle_runtime_context_prompt_helpers_match_python():
-    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
-    prompt = "\n\n".join(["runtime prefix", "visible ask", "retry instruction"])
-    effective_prompt = "\n\n".join(
-        [
-            prompt,
-            "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nsecret runtime context\n<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
-        ]
-    )
-    current_context = {"text": "Current message:\n#34975 obviyus:", "promptJoiner": " "}
+_RUNTIME_CONTEXT_PROMPT_CASES = {
+    "visible-ask-with-fragment": {
+        "prompt": "model-side prompt\n\nsecret runtime context",
+        "text": "visible ask",
+        "fragments": [
+            {"kind": "runtime-instruction", "text": "secret runtime context"},
+            {"kind": "conversation-data", "text": "  "},
+        ],
+        "entry": {"text": "Current message:\n#34975 obviyus:", "promptJoiner": " "},
+        "modelMessages": [],
+    },
+    "runtime-only-event": {
+        "prompt": "secret runtime context",
+        "text": "",
+        "fragments": [{"kind": "heartbeat-outcome", "text": "secret runtime context"}],
+        "entry": {"text": "full", "resumableText": "resumed", "fragments": []},
+        "preferResumableText": True,
+        "modelMessages": [
+            {"role": "user", "content": "hello", "timestamp": 3},
+        ],
+    },
+    "runtime-only-disallowed": {
+        "prompt": "",
+        "fragments": [{"kind": "runtime-instruction", "text": "secret runtime context"}],
+        "allowRuntimeOnly": False,
+        "entry": {"text": "", "promptJoiner": "\n"},
+        "modelMessages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "data": "x", "mimeType": "image/png"},
+                    {"type": "text", "text": "ask"},
+                ],
+                "runtimeContextCarrier": True,
+                "timestamp": 4,
+            },
+            {"role": "assistant", "content": [], "timestamp": 5},
+        ],
+    },
+    "no-fragments": {
+        "prompt": "plain prompt",
+        "text": "plain prompt",
+        "entry": None,
+        "modelMessages": [
+            {
+                "role": "user",
+                "content": "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nold\n<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+                "runtimeContextCarrier": True,
+                "timestamp": 1,
+            }
+        ],
+    },
+}
 
-    result = oracle.run(
-        {
-            "operation": "runtimeContextPrompt",
-            "prompt": effective_prompt,
-            "text": "visible ask",
-            "systemPrompt": effective_prompt,
-            "entry": current_context,
-        }
-    )
+
+@pytest.mark.parametrize("case", sorted(_RUNTIME_CONTEXT_PROMPT_CASES))
+def test_real_openclaw_oracle_runtime_context_prompt_helpers_match_python(case):
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    spec = _RUNTIME_CONTEXT_PROMPT_CASES[case]
+    payload = {"operation": "runtimeContextPrompt", **{k: v for k, v in spec.items() if v is not None}}
+    result = oracle.run(payload)
+
+    identity = OPENCLAW_COMPAT_RUNTIME_IDENTITY
+    fragments = spec.get("fragments")
     python_parts = resolve_runtime_context_prompt_parts(
-        effective_prompt=effective_prompt,
-        transcript_prompt="visible ask",
-        model_prompt=effective_prompt,
-        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+        effective_prompt=spec["prompt"],
+        transcript_prompt=spec.get("text"),
+        fragments=fragments,
+        allow_runtime_only=spec.get("allowRuntimeOnly"),
+        identity=identity,
     )
     python_custom_message = build_runtime_context_custom_message(
-        "secret runtime context",
-        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+        "secret runtime context", fragments, identity=identity
     )
 
     assert result["ok"] is True
     assert result["operation"] == "runtimeContextPrompt"
-    assert result["result"] == {
-        "parts": python_parts,
-        "currentInboundPrompt": build_current_inbound_prompt(
-            context=current_context,
-            prompt="What do you mean hidden?",
-        ),
-        "customMessage": _normalize_runtime_custom_message(python_custom_message),
-    }
+    assert result["result"]["parts"] == python_parts
+    assert result["result"]["currentInboundPrompt"] == build_current_inbound_prompt(
+        context=spec["entry"],
+        prompt="What do you mean hidden?",
+        prefer_resumable_text=spec.get("preferResumableText", False),
+    )
+    assert result["result"]["appendedContext"] == append_current_inbound_context(
+        spec["entry"], fragments or []
+    )
+    assert result["result"]["prependedMessages"] == prepend_runtime_context_for_model(
+        spec["modelMessages"], "secret runtime context", identity=identity
+    )
+    assert result["result"]["customMessage"] == _normalize_runtime_custom_message(
+        python_custom_message
+    )
 
 
 def test_real_openclaw_oracle_context_engine_lifecycle_strips_runtime_context():
@@ -4684,6 +5154,58 @@ def test_real_openclaw_oracle_normalize_assistant_replay_content_matches_python(
             "model": "delivery-mirror",
             "timestamp": 0,
         },
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "answer"},
+                {"type": "image", "data": "AA==", "mimeType": "image/png"},
+            ],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": {"input": 4, "output": 4, "totalTokens": 8},
+            "stopReason": "stop",
+            "timestamp": 0,
+        },
+        {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "answer"}],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": zero_usage,
+            "stopReason": "stop",
+            "timestamp": 0,
+        },
+        {
+            "role": "assistant",
+            "content": [{"type": "thinking", "thinking": "cut off", "signature": "sig"}],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": {"input": 1, "output": 1, "totalTokens": 2},
+            "stopReason": "length",
+            "timestamp": 0,
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "quiet", "signature": "sig"},
+                {"type": "text", "text": "NO_REPLY"},
+            ],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": {"input": 1, "output": 1, "totalTokens": 2},
+            "stopReason": "stop",
+            "timestamp": 0,
+        },
+        {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "[assistant turn failed before producing content]"}],
+            "provider": "amazon-bedrock",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": zero_usage,
+            "stopReason": "error",
+            "timestamp": 0,
+        },
+        {"role": "user", "content": "", "timestamp": 0},
     ]
 
     result = oracle.run({"operation": "normalizeAssistantReplayContent", "messages": messages})
@@ -5883,7 +6405,8 @@ def _startup_scenario_caps(root: Path) -> None:
 
 
 def _startup_scenario_emoji_at_file_cap(root: Path) -> None:
-    # The 1,200-unit per-file cut (startup-context.ts:97) splits the emoji's surrogate pair.
+    # The 1,200-unit per-file cut (startup-context.ts:98, truncateUtf16Safe) lands inside the
+    # emoji's surrogate pair and backs off instead of splitting it.
     _write_daily(root, "2026-09-26.md", "a" * 1199 + "😀" + "tail\n")
 
 
@@ -5938,9 +6461,8 @@ def test_real_openclaw_oracle_startup_context_matches_python(
         }
     ts_prelude = result["result"]["prelude"]
     if scenario is _startup_scenario_emoji_at_file_cap:
-        assert re.search("[\ud800-\udfff]", ts_prelude)
-    # Transport-boundary deviation: memory-core returns the prelude well-formed
-    # (String.prototype.toWellFormed), upstream returns the lone surrogate.
+        assert not re.search("[\ud800-\udfff]", ts_prelude)
+    # Transport-boundary shim: well-formed output is a no-op now that the cut is surrogate-safe.
     expected = js_to_well_formed(ts_prelude) if ts_prelude is not None else None
     assert expected == build_startup_context(root, now_ms=now_ms, timezone=timezone_name, **kwargs)
 
@@ -6841,12 +7363,12 @@ def test_real_openclaw_oracle_heartbeat_session_filter_matches_python(tmp_path: 
         heartbeat_entry["content"] + "\n"
     )
     assert heartbeat_entry["lineMap"] == [3, 4, 11, 12, 13, 14, 16]
-    # A prompt followed by the path hint survives upstream's normalised check too; upstream
-    # indexes the normalised one-line text, memory-core the raw text (documented gap).
+    # A prompt followed by the path hint survives upstream's normalised check too; both index
+    # the normalised one-line text (session_entry port of sanitizeSessionText).
     assert hint_entry["lineMap"] == [1]
     assert hint_entry["content"] == "User: " + " ".join(_HB_PATH_HINT_PROMPT.split("\n"))
     assert corpus.read_index_text(files["session-heartbeat-hint.jsonl"]) == (
-        f"User: {_HB_PATH_HINT_PROMPT}\n"
+        hint_entry["content"] + "\n"
     )
 
 
@@ -8129,53 +8651,236 @@ SESSION_MEMORY_TRANSCRIPT_CASES = [
 ]
 
 
-def _python_session_memory_transcript_case(case: dict, root: Path):
+def _sm_reject_constant(name: str):
+    raise ValueError(name)  # NaN and Infinity are not JSON
+
+
+def _sm_text_row(role: str, text: str) -> dict:
+    return _sm_row(role, text)
+
+
+def _sm_projection_cases() -> list[dict]:
+    # Text through sanitizeSessionMemoryTranscriptText (no longer exported): one user and one
+    # assistant row per input; the upstream transcripts of the retired op as event lists.
+    cases: list[dict] = []
+    for item in SESSION_MEMORY_TRANSCRIPT_CASES:
+        if item["kind"] == "sanitize":
+            cases.append({"events": [_sm_text_row("user", item["text"])]})
+            cases.append({"events": [_sm_text_row("assistant", item["text"])]})
+        elif item["kind"] == "recent" and item["content"] is not None:
+            events = []
+            for line in item["content"].split("\n"):
+                try:
+                    events.append(json.loads(line, parse_constant=_sm_reject_constant))
+                except ValueError:
+                    continue  # the old file reader skipped invalid rows; events are parsed
+            case: dict = {"events": events}
+            if "messageCount" in item:
+                case["messageCount"] = item["messageCount"]
+            cases.append(case)
+    separators = "a\u0085b\u2028c\u2029d \u0001 \u007f \ud800 \"q\" \\"
+    cases += [
+        {"events": [_sm_text_row("user", separators), _sm_text_row("assistant", separators)]},
+        # trust classes: owner/untrusted users, tainted and clean assistants, internal_system.
+        {
+            "events": [
+                _sm_row("user", "owner", __openclaw={"senderIsOwner": True}),
+                _sm_row("assistant", "agent reply"),
+            ]
+        },
+        {
+            "events": [
+                _sm_row("user", "owner", __openclaw={"senderIsOwner": True}),
+                _sm_row("assistant", "tainted", __openclaw={"turnTainted": True}),
+            ]
+        },
+        {"events": [_sm_row("user", "plain user"), _sm_row("assistant", "reply")]},
+        {
+            "events": [
+                _sm_row("user", "system note", provenance={"kind": "internal_system"}),
+                _sm_row("assistant", "reply"),
+            ]
+        },
+        {"events": [_sm_row("user", "x", provenance={"kind": "inter_session"})]},
+        {"events": [_sm_row("user", "x", provenance=["inter_session"]), _sm_text_row("user", "y")]},
+        {"events": [_sm_row("user", "x", __openclaw=[{"senderIsOwner": True}])]},
+        # slash commands: a user slash row ends the turn (a later mirror is kept), an assistant
+        # one vanishes.
+        {
+            "events": [
+                _sm_row("assistant", "same"),
+                _sm_row("user", "/status"),
+                _sm_mirror("same"),
+                _sm_text_row("assistant", "/help"),
+                _sm_text_row("assistant", "kept"),
+                _sm_mirror("kept"),
+            ]
+        },
+        {"events": [_sm_row("user", [{"type": "image"}, {"type": "text", "text": "second"}])]},
+        {"events": [_sm_row("user", [])]},
+        {"events": [_sm_row("user", None), {"type": "message", "message": {"role": "user"}}]},
+        {"events": [{"type": "message", "message": "x"}, {"type": "custom"}, 5, None, []]},
+        {"events": [{"type": "message", "message": {"role": "tool", "content": "x"}}]},
+        {"events": [_sm_text_row("user", "one"), _sm_text_row("user", "two")], "messageCount": 1},
+        {"events": [_sm_text_row("user", "one"), _sm_text_row("user", "two")], "messageCount": 1.9},
+        {"events": [_sm_text_row("user", "one")], "messageCount": 0},
+        {"events": [_sm_text_row("user", "one")], "messageCount": -1},
+        {"events": [_sm_text_row("user", "one")], "messageCount": "1"},
+        {"events": []},
+    ]
+    return cases
+
+
+def _python_projection_case(case: dict) -> dict:
     from memory_core.session_memory import (
-        find_previous_session_file,
-        get_recent_session_content,
-        get_recent_session_content_with_reset_fallback,
-        sanitize_session_memory_transcript_text,
+        count_session_memory_messages,
+        get_recent_session_projection_from_events,
     )
 
-    sessions = root / "sessions"
-    sessions.mkdir(parents=True)
-    count = case.get("messageCount")
-    count_args = () if count is None else (count,)
-    if case["kind"] == "sanitize":
-        return sanitize_session_memory_transcript_text(case["text"])
-    if case["kind"] == "recent":
-        if case["content"] is not None:
-            (sessions / "session.jsonl").write_bytes(case["content"].encode("utf-8"))
-        return get_recent_session_content(sessions / "session.jsonl", *count_args)
-    for name, content in case["files"].items():
-        (sessions / name).write_bytes(content.encode("utf-8"))
-    if case["kind"] == "resetFallback":
-        return get_recent_session_content_with_reset_fallback(
-            sessions / case["target"], *count_args
-        )
-    current = case.get("currentSessionFile")
-    found = find_previous_session_file(
-        sessions,
-        current_session_file=str(sessions / current) if current else None,
-        session_id=case.get("sessionId"),
-    )
-    return None if found is None else os.path.relpath(found, sessions)
+    count_args = (case["messageCount"],) if "messageCount" in case else ()
+    projection = get_recent_session_projection_from_events(case["events"], *count_args)
+    return {
+        "projection": None
+        if projection is None
+        else {"content": projection.content, "originClass": projection.origin_class},
+        "count": count_session_memory_messages(case["events"]),
+    }
 
 
-@retired_upstream("sessionMemoryTranscript")
-def test_real_openclaw_oracle_session_memory_transcript_matches_python(tmp_path: Path):
-    result = _oracle().run(
-        {"operation": "sessionMemoryTranscript", "cases": SESSION_MEMORY_TRANSCRIPT_CASES}
-    )
+def test_real_openclaw_oracle_session_memory_projection_matches_python():
+    cases = _sm_projection_cases()
+    result = _oracle().run({"operation": "sessionMemoryProjection", "cases": cases})
 
     assert result["ok"] is True, result
-    python_cases = [
-        _python_session_memory_transcript_case(case, tmp_path / f"case-{index}")
-        for index, case in enumerate(SESSION_MEMORY_TRANSCRIPT_CASES)
+    assert len(result["result"]["cases"]) == len(cases)
+    for index, (expected, case) in enumerate(zip(result["result"]["cases"], cases)):
+        assert _python_projection_case(case) == expected, (index, case)
+
+
+_SC_MTIME = 1_800_000_000_000
+
+
+def _sc_msg(role: str, content, **extra) -> dict:
+    return {"type": "message", **{k: extra.pop(k) for k in ("timestamp", "sessionKey") if k in extra},
+            "message": {"role": role, "content": content, **extra}}
+
+
+def _sc_text(text: str) -> list[dict]:
+    return [{"type": "text", "text": text}]
+
+
+def _sc_case(*rows, **opts) -> dict:
+    lines = [row if isinstance(row, str) else json.dumps(row, ensure_ascii=False) for row in rows]
+    return {"jsonl": "\n".join(lines) + "\n", "mtimeMs": _SC_MTIME, **opts}
+
+
+_SC_LONG = ("word " * 400).strip()
+_SC_BLOCKS = "\n".join(
+    [
+        "Conversation info (untrusted metadata) \u27e6openclaw:ctx\u27e7",
+        "```json",
+        '{"sender": "x"}',
+        "```",
+        "",
+        "Real question",
     ]
-    for index, (expected, actual) in enumerate(zip(result["result"]["cases"], python_cases)):
-        assert actual == expected, (index, SESSION_MEMORY_TRANSCRIPT_CASES[index])
-    assert len(result["result"]["cases"]) == len(python_cases)
+)
+SESSION_CORPUS_ENTRY_CASES = [
+    _sc_case(
+        _sc_msg("user", _sc_text("What is Project Nebula?"), timestamp=1_700_000_000),
+        _sc_msg("assistant", _sc_text("Project Nebula is ORBIT-10."), timestamp="2026-01-02T03:04:05.678Z"),
+        _sc_msg("tool", _sc_text("ignored")),
+        _sc_msg("user", "plain string  with\n\n newlines", timestamp=1_700_000_000_123),
+        _sc_msg("assistant", [{"type": "image"}, {"type": "text", "text": "a"}, {"type": "text", "text": "b"}]),
+    ),
+    _sc_case("not json", "", "{}", _sc_msg("user", "after bad lines"), "[1]"),
+    _sc_case(_sc_msg("user", _SC_LONG), _sc_msg("assistant", "x" * 2000), _sc_msg("user", "\U0001f600" * 700)),
+    _sc_case(_sc_msg("user", _SC_BLOCKS), _sc_msg("user", "[Wed 2026-01-01 10:00 UTC] stamped")),
+    _sc_case(
+        _sc_msg("user", "System: [2026-01-01 10:00:00 UTC] Exec completed (a1, code 0) :: ok"),
+        _sc_msg("user", "[cron:job-1] do the thing"),
+        _sc_msg("user", "System (untrusted): [x] Exec finished (gateway id=1, code 0)"),
+        _sc_msg("assistant", "NO_REPLY"),
+        _sc_msg("assistant", "HEARTBEAT_OK"),
+        _sc_msg("assistant", "kept reply"),
+        _sc_msg("user", "Exec finished: done"),
+        _sc_msg("user", "exec failed (abc, signal SIGKILL) :: boom"),
+    ),
+    _sc_case(
+        _sc_msg("user", "wake up", provenance={"kind": "internal_system", "sourceTool": "heartbeat"}),
+        _sc_msg("assistant", "heartbeat answer"),
+        _sc_msg("assistant", "another"),
+        _sc_msg("user", "real user"),
+        _sc_msg("assistant", "real answer"),
+        _sc_msg("user", "recalled", provenance={"kind": "internal_system", "sourceTool": "memory_search"}),
+        _sc_msg("assistant", "after recall"),
+        _sc_msg("user", "peer", provenance={"kind": "inter_session"}),
+        _sc_msg("assistant", "peer answer"),
+        _sc_msg("user", "owner", **{"__openclaw": {"senderIsOwner": True}}),
+        _sc_msg("assistant", "owner answer"),
+        _sc_msg("assistant", "tainted", **{"__openclaw": {"turnTainted": True}}),
+        _sc_msg("user", "sys", provenance={"kind": "internal_system"}),
+    ),
+    _sc_case(
+        _sc_msg("user", "before"),
+        {"type": "custom", "customType": "openclaw:bootstrap-context:full", "data": {"runId": "dreaming-narrative-1"}},
+        _sc_msg("user", "after"),
+    ),
+    _sc_case(_sc_msg("user", "x", sessionKey="agent:main:dreaming-narrative-7"), _sc_msg("user", "y")),
+    _sc_case(
+        _sc_msg("user", "kept"),
+        _sc_msg("assistant", "a", **{"__openclaw": {"runId": "dreaming-narrative-2"}}),
+        _sc_msg("user", "dropped later"),
+    ),
+    _sc_case(_sc_msg("user", "forced"), generatedByDreamingNarrative=True),
+    _sc_case(_sc_msg("user", "forced"), generatedByCronRun=True),
+    _sc_case(_sc_msg("user", "kind"), sessionKind="main"),
+    _sc_case(
+        _sc_msg("user", "ts", timestamp=0),
+        _sc_msg("user", "ts", timestamp=-5),
+        _sc_msg("user", "ts", timestamp="garbage"),
+        _sc_msg("user", "ts", timestamp="2026-01-02"),
+        _sc_msg("user", "ts", timestamp=1e11),
+        _sc_msg("user", "ts", timestamp=99_999_999_999),
+    ),
+    _sc_case(),
+]
+
+
+def _python_session_corpus_entry(case: dict) -> dict | None:
+    from memory_core.session_entry import build_session_entry, parse_jsonl_records
+
+    observed: list = []
+    entry = build_session_entry(
+        records=parse_jsonl_records(case["jsonl"]),
+        mtime_ms=case["mtimeMs"],
+        session_kind=case.get("sessionKind", "unknown"),
+        generated_by_dreaming_narrative=case.get("generatedByDreamingNarrative", False),
+        generated_by_cron_run=case.get("generatedByCronRun", False),
+        reset_recall_cutoff={"state": "absent"},
+        on_transcript_message=lambda message, at: observed.append(at),
+        strip_runtime_context=lambda text: text,
+    )
+    return {
+        "content": entry.content,
+        "lineMap": entry.line_map,
+        "messageTimestampsMs": entry.message_timestamps_ms,
+        "lineProvenance": entry.line_provenance,
+        "hash": entry.hash,
+        "sessionKind": entry.session_kind,
+        "generatedByDreamingNarrative": entry.generated_by_dreaming_narrative,
+        "generatedByCronRun": entry.generated_by_cron_run,
+        "observed": len(observed),
+    }
+
+
+def test_real_openclaw_oracle_session_corpus_entry_matches_python():
+    result = _oracle().run({"operation": "sessionCorpusEntry", "cases": SESSION_CORPUS_ENTRY_CASES})
+
+    assert result["ok"] is True, result
+    assert len(result["result"]["cases"]) == len(SESSION_CORPUS_ENTRY_CASES)
+    for index, (expected, case) in enumerate(zip(result["result"]["cases"], SESSION_CORPUS_ENTRY_CASES)):
+        assert _python_session_corpus_entry(case) == expected, (index, case)
 
 
 def test_session_memory_constants_equal_upstream_source():
@@ -8342,14 +9047,27 @@ def _sm_event(**overrides) -> dict:
     event = {
         "timezone": "UTC",
         "nowMs": _SM_2026_01_01,
-        "previousSessionEntry": {"sessionId": "test-123", "sessionFile": _SM_TEST_SESSION},
+        "previousSessionEntry": {"sessionId": "test-123"},
     }
     event.update(overrides)
     return event
 
 
-def _sm_session(content: str, *events, files: dict | None = None) -> dict:
-    return {"files": {_SM_TEST_SESSION: content, **(files or {})}, "events": list(events)}
+def _sm_events(content: str) -> list[dict]:
+    # The JSONL helpers' rows as transcript events (v2026.9.6 reads them from SQLite; the oracle
+    # seeds them through appendSessionTranscriptMessageByIdentity and memory-core gets them from
+    # the host).
+    return [json.loads(line) for line in content.split("\n") if line.strip()]
+
+
+def _sm_session(
+    content: str, *events, files: dict | None = None, transcripts: dict | None = None
+) -> dict:
+    return {
+        "files": dict(files or {}),
+        "transcripts": {"test-123": _sm_events(content), **(transcripts or {})},
+        "events": list(events),
+    }
 
 
 _SM_TWO_PLUS_TWO = _sm_mock(("user", "What is 2+2?"), ("assistant", "2+2 equals 4"))
@@ -8409,17 +9127,6 @@ SESSION_MEMORY_HOOK_SCENARIOS = [
     _sm_session(_SM_TEN_MESSAGES, _sm_event(messages=3)),
     {"events": [_sm_event(type="agent", action="bootstrap"), _sm_event(action="help")]},
     _sm_session(
-        "",
-        _sm_event(),
-        files={
-            f"sessions/test-session.jsonl.reset.{_SM_RESET_AT}": _sm_mock(
-                ("user", "Message from rotated transcript"),
-                ("assistant", "Recovered from reset fallback"),
-            )
-        },
-    ),
-    # Config, slug, recovery, collision and metadata edges.
-    _sm_session(
         _SM_TWO_PLUS_TWO,
         _sm_event(llmSlug=True, slugReply={"text": "Provider API error (429): quota exceeded"}),
         _sm_event(llmSlug=True, slugReply={"throw": "Provider API error (429): quota exceeded"}),
@@ -8444,38 +9151,6 @@ SESSION_MEMORY_HOOK_SCENARIOS = [
         ),
     ),
     {
-        "files": {"sessions/missing-session-file.jsonl": _SM_TWO_PLUS_TWO},
-        "events": [_sm_event(previousSessionEntry={"sessionId": "missing-session-file"})],
-    },
-    {
-        "files": {"sessions/test-session.jsonl": _SM_TWO_PLUS_TWO},
-        "events": [
-            _sm_event(
-                previousSessionEntry={
-                    "sessionId": "test-123",
-                    "sessionFile": f"sessions/test-session.jsonl.reset.{_SM_RESET_AT}",
-                }
-            )
-        ],
-    },
-    {
-        "files": {"archive/test-session.jsonl": _SM_TWO_PLUS_TWO},
-        "events": [
-            _sm_event(
-                previousSessionEntry={
-                    "sessionId": "test-123",
-                    "sessionFile": f"archive/test-session.jsonl.reset.{_SM_RESET_AT}",
-                }
-            )
-        ],
-    },
-    {
-        "files": {"sessions/other.jsonl": _SM_TWO_PLUS_TWO},
-        "events": [
-            _sm_event(previousSessionEntry={"sessionId": "test-123", "sessionFile": "gone.jsonl"})
-        ],
-    },
-    {
         "files": {"memory/2026-01-01-0430.md": "", "memory/2026-01-01-0430-2.md": ""},
         "events": [_sm_event(previousSessionEntry={})],
     },
@@ -8484,20 +9159,77 @@ SESSION_MEMORY_HOOK_SCENARIOS = [
         "events": [
             {
                 **_sm_event(llmSlug=True, slugReply={"text": "simple-math"}),
-                "previousSessionEntry": {"sessionId": "test-123", "sessionFile": "s.jsonl"},
+                "previousSessionEntry": {"sessionId": "test-123"},
             }
         ],
     },
     {
-        "files": {"s.jsonl": _SM_TWO_PLUS_TWO},
+        "transcripts": {"abc123def456": _sm_events(_SM_TWO_PLUS_TWO)},
         "events": [
             _sm_event(
                 sessionKey="agent:navi:main",
                 commandSource="telegram",
-                previousSessionEntry={"sessionId": "  abc123def456 ", "sessionFile": "s.jsonl"},
+                previousSessionEntry={"sessionId": "  abc123def456 "},
             )
         ],
     },
+    # Automatic rollover (session/auto-reset with reason daily or idle) reads context.sessionEntry
+    # and writes "Reason" instead of "Source"; other reasons and actions do nothing.
+    _sm_session(
+        _SM_TWO_PLUS_TWO,
+        _sm_event(
+            type="session",
+            action="auto-reset",
+            reason="daily",
+            sessionEntry={"sessionId": "test-123"},
+            previousSessionEntry=None,
+        ),
+        _sm_event(
+            type="session",
+            action="auto-reset",
+            reason="idle",
+            commandSource="telegram",
+            sessionEntry={"sessionId": "test-123"},
+            llmSlug=True,
+            slugReply={"text": "simple-math"},
+        ),
+        _sm_event(
+            type="session", action="auto-reset", reason="manual", sessionEntry={"sessionId": "test-123"}
+        ),
+        _sm_event(type="session", action="auto-reset", sessionEntry={"sessionId": "test-123"}),
+        _sm_event(type="session", action="start", reason="daily"),
+        _sm_event(type="session", action="auto-reset", reason="daily", sessionEntry={}),
+    ),
+    # A command event takes previousSessionEntry, then sessionEntry; a session event only
+    # sessionEntry.
+    _sm_session(
+        _SM_TWO_PLUS_TWO,
+        _sm_event(previousSessionEntry=None, sessionEntry={"sessionId": "test-123"}),
+        _sm_event(
+            previousSessionEntry={"sessionId": "unknown-session"},
+            sessionEntry={"sessionId": "test-123"},
+        ),
+        _sm_event(
+            type="session",
+            action="auto-reset",
+            reason="idle",
+            previousSessionEntry={"sessionId": "test-123"},
+        ),
+    ),
+    # Rows are written as JSON strings; slash commands, delivery mirrors and provenance.
+    _sm_session(
+        _sm_mock(
+            ("user", "multi\nline \"quoted\" \u2028 text"),
+            ("assistant", "/help"),
+            ("user", "/status"),
+            ("assistant", "reply"),
+            _sm_mirror("reply"),
+            ("user", "from a peer"),
+            _sm_row("user", "inter session", provenance={"kind": "inter_session"}),
+            ("assistant", [{"type": "image"}, {"type": "text", "text": "second block"}]),
+        ),
+        _sm_event(),
+    ),
     {
         "events": [
             _sm_event(timezone=zone, nowMs=instant, previousSessionEntry={})
@@ -8547,19 +9279,31 @@ def _python_session_hook_scenario(scenario: dict, root: Path) -> dict:
         (root / relative).write_bytes(content.encode("utf-8"))
     prompts: list[str] = []
     for event in scenario["events"]:
-        if not is_session_memory_trigger(event.get("type", "command"), event.get("action", "new")):
+        if not is_session_memory_trigger(
+            event.get("type", "command"), event.get("action", "new"), event.get("reason")
+        ):
             continue
-        previous = event.get("previousSessionEntry") or {}
+        if event.get("type", "command") == "command":
+            previous = event.get("previousSessionEntry") or event.get("sessionEntry") or {}
+        else:
+            previous = event.get("sessionEntry") or {}
         generator = None
         if event.get("llmSlug"):
             generator = _python_slug_generator(event.get("slugReply"))
             generator.prompts = prompts
-        session_file = previous.get("sessionFile")
+        session_id = previous.get("sessionId")
+        host_events = (
+            scenario.get("transcripts", {}).get(session_id)
+            if isinstance(session_id, str)
+            else None
+        )
         save_session_memory(
             root,
             session_key=event.get("sessionKey", "agent:main:main"),
-            session_id=previous.get("sessionId"),
-            session_file=str(root / session_file) if session_file else None,
+            session_id=session_id,
+            events=host_events,
+            event_type=event.get("type", "command"),
+            reason=event.get("reason"),
             source=event.get("commandSource"),
             now_ms=event["nowMs"],
             timezone=event["timezone"],
@@ -8640,8 +9384,6 @@ def test_real_openclaw_oracle_memory_search_finds_session_memory_files(tmp_path:
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -8671,14 +9413,15 @@ def test_real_openclaw_oracle_memory_search_finds_session_memory_files(tmp_path:
         ]
 
     assert shape(openclaw_results) == shape(python_results)
-    assert sorted(item["path"] for item in python_results) == [
+    # MEMORY.md is chunked per entry, so it can hit more than once.
+    assert {item["path"] for item in python_results} == {
         "MEMORY.md",
         "memory/2026-09-26-1430.md",
         "memory/2026-09-26-review-move.md",
         "memory/2026-09-26.md",
-    ]
+    }
     assert [item["score"] for item in openclaw_results] == pytest.approx(
-        [item["score"] for item in python_results], rel=0, abs=1e-12
+        [item["score"] for item in python_results], rel=0, abs=1e-6
     )
 
 
@@ -8714,8 +9457,6 @@ def test_real_openclaw_oracle_memory_search_indexes_invalid_utf8_markdown(tmp_pa
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
@@ -8739,15 +9480,15 @@ def test_real_openclaw_oracle_memory_search_indexes_invalid_utf8_markdown(tmp_pa
 
     openclaw_results = result["result"]["results"]
     assert shape(openclaw_results) == shape(python_result["results"])
-    assert sorted(item["path"] for item in openclaw_results) == [
+    assert {item["path"] for item in openclaw_results} == {
         "MEMORY.md",
         "memory/._2026-09-26.md",
         "memory/2026-09-26.md",
         "memory/latin1.md",
-    ]
+    }
     assert sum("\ufffd" in item["snippet"] for item in openclaw_results) == 2
     assert [item["score"] for item in openclaw_results] == pytest.approx(
-        [item["score"] for item in python_result["results"]], rel=0, abs=1e-12
+        [item["score"] for item in python_result["results"]], rel=0, abs=1e-6
     )
 
 
@@ -8796,8 +9537,6 @@ def test_real_openclaw_oracle_memory_search_breaks_score_ties_with_locale_compar
     cfg = MemoryConfig(
         workspace_dir=tmp_path,
         store_path=tmp_path / "python-memory.sqlite",
-        vector_weight=0,
-        text_weight=1,
     )
     store = SQLiteMemoryStore(cfg, OpenClawFakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))

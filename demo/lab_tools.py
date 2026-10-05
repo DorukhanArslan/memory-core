@@ -180,7 +180,8 @@ class LabToolbox:
 def finish_call(record: dict[str, Any], result: dict[str, Any], started: float) -> None:
     """Complete a call record with the payload sent back and the time the call took."""
     record["result"] = result
-    # A refusal the memory tools answer themselves carries ``disabled`` (docs/host_kit.md).
+    # A refusal the memory tools answer themselves carries ``status: error`` (``memory_search``'s
+    # unavailable result still carries ``disabled``; docs/host_kit.md).
     record["ok"] = not (
         isinstance(result, dict) and (result.get("status") == "error" or result.get("disabled"))
     )

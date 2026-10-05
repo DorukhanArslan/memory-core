@@ -6,7 +6,13 @@ from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.embeddings.openai_compatible import OpenAICompatibleEmbeddingProvider
 from memory_core.flags import FeatureFlags
-from memory_core.index.identity import MEMORY_INDEX_META_KEY, hash_text, resolve_configured_scope_hash
+from memory_core.index.identity import (
+    MEMORY_CHUNKING_VERSION,
+    MEMORY_INDEX_META_KEY,
+    MEMORY_INDEX_PROVENANCE_VERSION,
+    hash_text,
+    resolve_configured_scope_hash,
+)
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
 from memory_core.supplements import StaticMemoryCorpusSupplement
@@ -18,9 +24,10 @@ from memory_core.tools.memory_search import (
 from memory_core.workspace import MemoryWorkspace
 
 FTS_ONLY = FeatureFlags(vector_search=False)
+# A store that was never indexed: the metadata is missing, no configuration change is needed.
 PAUSED_WARNING = (
-    "Tell the user: memory search is paused because the memory index was built with a "
-    "different embedding provider/model/settings."
+    "Tell the user: memory search is paused because the memory index metadata is missing "
+    "(index metadata is missing); no configuration change is needed."
 )
 
 
@@ -53,7 +60,9 @@ def test_reindex_writes_upstream_shaped_meta_for_fts_only(tmp_path):
         "scopeHash": resolve_configured_scope_hash(),
         "chunkTokens": 400,
         "chunkOverlap": 80,
+        "chunkingVersion": MEMORY_CHUNKING_VERSION,
         "ftsTokenizer": "unicode61",
+        "provenanceVersion": MEMORY_INDEX_PROVENANCE_VERSION,
     }
     assert raw.startswith('{"model":"fts-only","provider":"none","providerKey":')
     assert store.index_identity() == {"status": "valid"}
@@ -77,15 +86,22 @@ def test_never_indexed_store_pauses_until_reindex(tmp_path):
     workspace = _workspace(tmp_path)
     store = SQLiteMemoryStore(cfg, None)
 
-    assert store.index_identity() == {"status": "missing", "reason": "index metadata is missing"}
+    assert store.index_identity() == {
+        "status": "missing",
+        "reason": "index metadata is missing",
+        "code": "metadata_missing",
+        "owner": "openclaw",
+    }
     assert store.search("glacier") == []
-    paused = memory_search(cfg, store, query="glacier")
+    paused = memory_search(cfg, store, query="glacier", corpus="memory")
     assert paused["error"] == "index metadata is missing"
     assert paused["warning"] == PAUSED_WARNING
     assert paused["unavailable"] is True
 
     store.reindex(workspace)
-    assert [hit["path"] for hit in memory_search(cfg, store, query="glacier")["results"]] == [
+    assert [
+        hit["path"] for hit in memory_search(cfg, store, query="glacier", corpus="memory")["results"]
+    ] == [
         "MEMORY.md"
     ]
 
@@ -147,6 +163,8 @@ def test_embedding_endpoint_change_is_a_provider_settings_change(tmp_path):
     assert SQLiteMemoryStore(cfg, moved).index_identity() == {
         "status": "mismatched",
         "reason": "index provider settings changed",
+        "code": "provider_settings",
+        "owner": "configuration",
     }
     # The API key is not part of the identity.
     assert SQLiteMemoryStore(cfg, same).index_identity() == {"status": "valid"}
@@ -164,7 +182,7 @@ def test_corrupt_meta_reads_as_missing(tmp_path):
     assert store.index_identity()["status"] == "missing"
 
 
-def test_paused_search_records_no_cooldown_and_skips_supplements(tmp_path):
+def test_paused_search_records_no_cooldown_and_still_searches_supplements(tmp_path):
     cfg = _config(tmp_path, flags=FTS_ONLY)
     store = SQLiteMemoryStore(cfg, None)
     wiki = StaticMemoryCorpusSupplement(
@@ -174,9 +192,16 @@ def test_paused_search_records_no_cooldown_and_skips_supplements(tmp_path):
     paused_all = memory_search(cfg, store, query="glacier", corpus="all", supplements=[wiki])
     wiki_only = memory_search(cfg, store, query="glacier", corpus="wiki", supplements=[wiki])
 
-    # tools.ts returns the paused result before supplements run.
-    assert paused_all["error"] == "index metadata is missing"
-    assert paused_all["results"] == []
+    # With corpus=all another corpus can succeed while memory needs repair: the wiki hits
+    # come back, the paused memory corpus is reported with its warning and action.
+    assert [item["path"] for item in paused_all["results"]] == ["w.md"]
+    assert paused_all["corpora"] == [
+        {"corpus": "memory", "outcome": "unavailable", "error": "index metadata is missing"},
+        {"corpus": "wiki", "outcome": "ok"},
+    ]
+    assert PAUSED_WARNING in paused_all["warning"]
+    assert paused_all["action"] == "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
+    assert "unavailable" not in paused_all
     assert [item["path"] for item in wiki_only["results"]] == ["w.md"]
     assert read_memory_search_tool_cooldown(memory_search_tool_cooldown_key(cfg, store)) is None
 
@@ -185,15 +210,20 @@ def test_paused_action_names_the_runtime(tmp_path):
     cfg = _config(tmp_path, flags=FTS_ONLY)
     store = SQLiteMemoryStore(cfg, None)
 
-    memory_core = memory_search(cfg, store, query="glacier")
+    memory_core = memory_search(cfg, store, query="glacier", corpus="memory")
     compat = memory_search(
-        cfg, store, query="glacier", runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY
+        cfg,
+        store,
+        query="glacier",
+        corpus="memory",
+        runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     )
 
     assert memory_core["action"] == (
         "Tell the user to run: SQLiteMemoryStore.reindex(workspace)."
     )
     assert compat["action"] == (
-        "Tell the user to run: openclaw memory status --index or openclaw memory index --force."
+        "Tell the user to run: openclaw memory status --index --agent main. Rebuilding uses "
+        "keyword indexing only and does not call an embedding provider."
     )
     assert memory_core["debug"]["action"] == memory_core["action"]

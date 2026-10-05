@@ -131,6 +131,10 @@ def test_unavailable_result_overrides_win():
     assert result["debug"] == {"warning": "W", "action": "A", "error": "quota"}
 
 
+# A query no memory file matches: the deadline leaves no keyword hits to return.
+NO_KEYWORD_MATCH = "zzzunmatched"
+
+
 def test_deadline_returns_the_timeout_result_and_abandons_the_search(tmp_path, monkeypatch):
     monkeypatch.setattr(memory_search_module, "_deadline_seconds", lambda ms: 0.05)
     provider = _ControlledProvider()
@@ -138,17 +142,50 @@ def test_deadline_returns_the_timeout_result_and_abandons_the_search(tmp_path, m
     provider.hang = True
 
     try:
-        result = memory_search(cfg, store, query="glacier", corpus="memory")
+        result = memory_search(cfg, store, query=NO_KEYWORD_MATCH, corpus="memory")
     finally:
         provider.release.set()
 
-    assert MEMORY_SEARCH_TOOL_TIMEOUT_MS == 15_000
+    assert MEMORY_SEARCH_TOOL_TIMEOUT_MS == 30_000
     assert result["unavailable"] is True
-    assert result["error"] == "memory_search timed out after 15s"
+    assert result["error"] == "memory_search timed out after 30s"
+    # The timeout's provenance comes from the deadline owner: the time-out warning, the
+    # `timedOut` flag, and an action that names the index of the agent.
+    assert result["timedOut"] is True and result["timeoutMs"] == 30_000
+    assert result["warning"] == "Memory search did not finish within its time limit."
+    assert "agent main" in result["action"]
     # The abandoned worker stops at the checkpoint after the embedding call.
     assert store.finished.wait(5)
     assert isinstance(store.outcomes[-1], OperationAbortedError)
-    assert str(store.outcomes[-1]) == "memory_search timed out after 15s"
+    assert str(store.outcomes[-1]) == "memory_search timed out after 30s"
+
+
+def test_deadline_with_keyword_hits_returns_them_as_a_partial_result(
+    tmp_path, monkeypatch, clock
+):
+    monkeypatch.setattr(memory_search_module, "_deadline_seconds", lambda ms: 0.05)
+    provider = _ControlledProvider()
+    cfg, store = _vector_store(tmp_path, provider)
+    provider.hang = True
+    try:
+        result = memory_search(cfg, store, query="glacier", corpus="memory")
+    finally:
+        provider.release.set()
+    provider.hang = False
+
+    assert result["partial"] is True
+    assert [hit["path"] for hit in result["results"]] == ["MEMORY.md"]
+    assert result["timedOut"] is True and result["timeoutMs"] == 30_000
+    assert result["corpora"] == [
+        {"corpus": "memory", "outcome": "partial", "error": "memory_search timed out after 30s"}
+    ]
+    assert result["warning"].endswith(
+        "Only memory-file keyword matches are included; semantic memory retrieval did not "
+        "finish within the search time limit. Session transcript results are not included."
+    )
+    # A partial result is not a failure of the index: no cooldown pauses the next search.
+    assert read_memory_search_tool_cooldown(memory_search_tool_cooldown_key(cfg, store)) is None
+    assert "partial" not in memory_search(cfg, store, query="glacier", corpus="memory")
 
 
 def test_timeout_records_a_cooldown_that_skips_the_provider(tmp_path, monkeypatch, clock):
@@ -157,7 +194,7 @@ def test_timeout_records_a_cooldown_that_skips_the_provider(tmp_path, monkeypatc
     cfg, store = _vector_store(tmp_path, provider)
     provider.hang = True
     try:
-        memory_search(cfg, store, query="glacier", corpus="memory")
+        memory_search(cfg, store, query=NO_KEYWORD_MATCH, corpus="memory")
     finally:
         provider.release.set()
     provider.hang = False
@@ -165,7 +202,9 @@ def test_timeout_records_a_cooldown_that_skips_the_provider(tmp_path, monkeypatc
 
     paused = memory_search(cfg, store, query="glacier", corpus="memory")
 
-    assert paused["error"] == "memory_search timed out after 15s"
+    assert paused["error"] == "memory_search timed out after 30s"
+    # The cooldown keeps the deadline provenance of the failure it replays.
+    assert paused["timedOut"] is True
     assert provider.calls == calls
 
 
@@ -174,18 +213,34 @@ def test_store_errors_become_unavailable_results_with_a_cooldown(tmp_path, clock
     cfg, store = _vector_store(tmp_path, provider)
     provider.error = RuntimeError("provider exploded")
 
-    first = memory_search(cfg, store, query="glacier")
+    first = memory_search(cfg, store, query="glacier", corpus=None)
     provider.error = None
     second = memory_search(cfg, store, query="glacier", corpus="sessions")
     wiki = memory_search(cfg, store, query="glacier", corpus="wiki")
     all_corpora = memory_search(cfg, store, query="glacier", corpus="all")
 
+    assert first["unavailable"] is True
     assert first["error"] == second["error"] == "provider exploded"
     assert provider.calls == 1
     # corpus=wiki never reads the cooldown; corpus=all falls back to supplements
-    # only and reports no provider/model because memory was not searched.
-    assert wiki == {"results": [], "citations": "on"}
-    assert all_corpora == {"results": [], "citations": "on"}
+    # only, reports the failed memory corpus and no provider/model because memory was
+    # not searched.
+    assert wiki == {
+        "results": [],
+        "citations": "on",
+        "corpora": [{"corpus": "wiki", "outcome": "not-registered"}],
+        "warning": "Wiki corpus is not registered; results do not cover that requested corpus.",
+    }
+    assert all_corpora == {
+        "results": [],
+        "citations": "on",
+        "corpora": [
+            {"corpus": "memory", "outcome": "unavailable", "error": "provider exploded"},
+            {"corpus": "wiki", "outcome": "not-registered"},
+        ],
+        "warning": "Memory corpus unavailable: provider exploded",
+        "error": "provider exploded",
+    }
 
 
 def test_cooldown_expires_when_until_is_reached(tmp_path, clock):
@@ -267,18 +322,30 @@ def test_stores_on_the_same_index_file_share_a_cooldown(tmp_path, clock):
     ).endswith("\0main")
 
 
-def test_default_corpus_all_hides_a_cooldown_behind_empty_results(tmp_path, clock):
-    # tools.ts: with a cooldown, corpus=all skips memory and returns supplement
-    # hits only. The facade default is corpus="all" (upstream's default is an
+def test_default_corpus_all_reports_a_failed_memory_corpus_without_the_unavailable_result(
+    tmp_path, clock
+):
+    # tools.ts: with corpus=all another corpus can succeed while memory is down, so the
+    # failure is reported as a corpus outcome (`corpora`, `warning`, `error`), not as the
+    # unavailable result. The facade default is corpus="all" (upstream's default is an
     # omitted corpus, which returns the unavailable result instead).
     provider = _ControlledProvider()
     cfg, store = _vector_store(tmp_path, provider)
     provider.error = RuntimeError("provider exploded")
-    assert memory_search(cfg, store, query="glacier")["unavailable"] is True
+    first = memory_search(cfg, store, query="glacier")
+    assert "unavailable" not in first
+    assert first["error"] == "provider exploded"
+    assert first["corpora"][0] == {
+        "corpus": "memory",
+        "outcome": "unavailable",
+        "error": "provider exploded",
+    }
     provider.error = None
 
-    assert memory_search(cfg, store, query="glacier") == {"results": [], "citations": "on"}
+    replayed = memory_search(cfg, store, query="glacier")
+    assert replayed["results"] == [] and replayed["error"] == "provider exploded"
     assert memory_search(cfg, store, query="glacier", corpus=None)["error"] == "provider exploded"
+    assert memory_search(cfg, store, query="glacier", corpus=None)["unavailable"] is True
 
 
 def test_cooldown_key_falls_back_to_session_key_then_default():

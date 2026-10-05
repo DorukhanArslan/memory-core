@@ -20,13 +20,23 @@ DAILY_MEMORY_PATH_RE = re.compile(rf"memory/{_DAILY_DATE_PATTERN}\.md")
 # Session-corpus basename under memory/.dreams/session-corpus/; ``fullmatch``.
 SESSION_CORPUS_FILE_RE = re.compile(rf"{_DAILY_DATE_PATTERN}\.(?:md|txt)")
 # OpenClaw temporal-decay.ts DATED_MEMORY_PATH_RE
-# (`/(?:^|\/)memory\/(\d{4})-(\d{2})-(\d{2})\.md$/`), used with ``search``. JS
+# (`/(?:^|\/)memory\/(?:[^/]+\/)*(\d{4})-(\d{2})-(\d{2})(?:-[^/]+)?\.md$/`), used with ``search``. JS
 # `$` without the m flag only matches at the end of input, hence ``\Z``.
-DATED_MEMORY_PATH_SEARCH_RE = re.compile(rf"(?:^|/)memory/{_DAILY_DATE_PATTERN}\.md\Z")
+# v2026.9.6 widens it to dated files in subdirectories and with a suffix
+# (`memory/a/2026-05-03-notes.md`).
+DATED_MEMORY_PATH_SEARCH_RE = re.compile(
+    rf"(?:^|/)memory/(?:[^/]+/)*{_DAILY_DATE_PATTERN}(?:-[^/]+)?\.md\Z"
+)
 
 
 class UnsafeMemoryPathError(ValueError):
     """Raised when a path is not allowed for the requested memory read or write."""
+
+
+class MemoryPathNotAllowedError(UnsafeMemoryPathError):
+    """``memoryPathNotAllowed()`` of read-file.ts: its error code is ``MEMORY_PATH_NOT_ALLOWED``."""
+
+    code = "MEMORY_PATH_NOT_ALLOWED"
 
 
 def is_daily_memory_path(rel_path: str) -> bool:

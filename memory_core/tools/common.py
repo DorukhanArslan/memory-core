@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from memory_core.bootstrap._js import js_trim
@@ -140,6 +140,10 @@ def _is_nullish(raw: Any) -> bool:
     return raw is _MISSING or raw is None
 
 
+def _is_blank_string(raw: Any) -> bool:
+    return isinstance(raw, str) and js_trim(raw) == ""
+
+
 def _as_js_number(raw: Any) -> float | int | None:
     """The finite JavaScript number a Python value stands for, else None."""
     if isinstance(raw, bool) or not isinstance(raw, int | float):
@@ -220,7 +224,9 @@ def read_positive_integer_param(
     number = _read_strict_number(params, key)
     value = _as_positive_safe_integer(number) if number is not None else None
     error_message = message or f"{key} must be a positive integer"
-    if value is None and not _is_nullish(_read_param_raw(params, key)):
+    raw = _read_param_raw(params, key)
+    # A blank string reads as omitted (common.ts isBlankParamValue).
+    if value is None and not _is_nullish(raw) and not _is_blank_string(raw):
         raise MemoryToolInputError(error_message)
     if value is not None and max_value is not None and value > max_value:
         raise MemoryToolInputError(error_message)
@@ -253,3 +259,15 @@ def read_finite_number_param(
         if above:
             raise MemoryToolInputError(error_message)
     return float(value)
+
+
+def read_corpus_param(
+    params: Mapping[str, Any], allowed: Sequence[str]
+) -> str | None:
+    """``readCorpusParam`` (tools.ts): an unknown corpus fails closed, not as a wider search."""
+    raw = read_string_param(params, "corpus")
+    if raw is None:
+        return None
+    if raw in allowed:
+        return raw
+    raise MemoryToolInputError(f"corpus must be one of: {', '.join(allowed)}")

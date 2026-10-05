@@ -240,7 +240,6 @@ _PROTECTED_GLOSSARY = [
     "kv",
     "network",
     "openai",
-    "qmd",
     "router",
     "s3",
     "vlan",
@@ -385,22 +384,32 @@ def _normalize_concept_token(raw_token: str, from_glossary: bool = False) -> str
     )
     if not normalized or not any(char.isalnum() for char in normalized) or len(normalized) > 32:
         return None
-    if (
-        normalized.isdigit()
-        or re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized)
-        or re.fullmatch(r"\d{4}-\d{2}-\d{2}\.[^\W_]+", normalized, re.UNICODE)
+    if _is_numeric_compound(normalized) or re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}\.[^\W_]+", normalized, re.UNICODE
     ):
         return None
     script = _classify_concept_tag_script(normalized)
     # Glossary entries are an explicit allowlist of short technical terms
     # (e.g. "kv", "s3"); they bypass the per-script minimum length gate.
-    if not from_glossary and len(normalized) < _minimum_token_length_for_script(script):
+    if (
+        not from_glossary
+        and normalized not in _PROTECTED_GLOSSARY
+        and len(normalized) < _minimum_token_length_for_script(script)
+    ):
         return None
     if _is_kana_only_token(normalized) and len(normalized) < 3:
         return None
     if normalized in _CONCEPT_STOP_WORDS:
         return None
     return normalized
+
+
+def _is_numeric_compound(value: str) -> bool:
+    """``/^\\p{N}+(?:[./-]\\p{N}+)*$/u``: numbers, dates and versions are not concepts."""
+    return bool(value) and all(
+        part and all(unicodedata.category(char).startswith("N") for char in part)
+        for part in re.split(r"[./-]", value)
+    )
 
 
 def _strip_non_alnum_edges(value: str) -> str:

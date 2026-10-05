@@ -46,6 +46,13 @@ gates).
 | 4 Flush plan and runtime flush gate | done (`83cbcc3`, `99ef3c9`, `cb3d48b`) | 5 worklist entries removed; 14 new tests (`flushPlan` windows 5, `memoryFlushGate` fixtures 9) |
 | Area 4 review fixes | done (`dfe7e0c`, `d518dbe`, `5a44e11`, `1c9122f`, `a10eb23`, `d727d2e`, `e68f663`) | no worklist change; 13 new tests (`flushPlan` byte sizes 7, offset zones 4, out-of-range `nowMs` 1; `memoryFlushGate` disabled plan 1); flush plan row back to `partial` |
 | Merge of areas 3 and 4 | done (`e656e88` merge, `301cac9`, `299bd1f`, `2316e5f`, `39fc96c`) | 5 more worklist entries gone from the pin branch (12 labels, 81 tests); 1 new test (`current_time_line_is_one_host_format_for_flush_and_heartbeat`); `heartbeatRunPrompt` now compares the full Body with the reported host format |
+| 5 Memory tools and index identity | done (2026-10-04) | all 41 `memoryGet`, `memoryToolDefinitions`, `memorySearchToolSequence` (17 steps), `memoryIndexIdentity` (24 new cases) and the new `memoryPromptSection` (32 combinations) tests pass against the tag; 4 worklist entries removed (31 tests); new oracle op `memoryPromptSection` |
+| 6 Hybrid ranking and indexing | done (2026-10-04) | 14 `memorySearch` worklist tests removed; new oracle op `markdownChunks` (13 cases incl. CJK and emoji), 10 path-matching fixtures; decision: knobs stay, defaults become the tag's (0.7/0.3, MMR and temporal decay on) |
+| 7 Promotion and dreaming | done (2026-10-04) | 4 worklist entries removed (25 tests): strict policy integers, defaults on (`minScore` 0.75), recall entries with `provenance`/`userQueryHashes`/`claimHash`, unique-query gate, `signals=`/trigger/importance annotations, per-project sections, budget compaction with `maxPriorEntryLossFraction` and the "memory budget" deferral, `qmd` tag dropped; decisions: no LLM consolidation port (deterministic promotion stays), curated project scoping follows the tag |
+| 8 Session corpus | done as far as faithful (2026-10-04) | `buildSessionEntry` ported over host-supplied transcript events (decision 4); new oracle op `sessionCorpusEntry` (13 cases); gaps: `redactSensitiveText` (host `redact_text` hook only), SQLite stats/archives |
+| 9 Session-memory hook | done (2026-10-04) | slug, hook scenarios, zone sweep, reset-prompt source check and the new `sessionMemoryProjection` op (82 cases) pass; worklist entries and the retired op removed |
+| 10 Transcript and overflow helpers | done (2026-10-04) | history-limit hysteresis, runtime context prompt (4), replay normalization, startup emoji-at-file-cap, tool-result truncation (9 + 7 aggregate) and the run-loop mid-turn scenario pass; worklist is now empty; gaps in the CHANGELOG |
+| 11 Matrix and re-measure | done (2026-10-05) | parity matrix re-audited (13 rows to `match`, 14 stay `partial` with explicit gaps); full integration suite at `v2026.9.6` (`OPENCLAW_ORACLE_NODE` node 24.21): 382 passed, 2 skipped (live providers), 0 xfail, 0 failed, 45 min, one run |
 
 Full `tests/integration` at `afd9965` plus the plan and matrix edits, `/tmp/openclaw-head` at
 `eb377ac59e6`, Node 24.21.0, seven chunks with the run-loop
@@ -369,8 +376,8 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
 - Python: `memory_core/tools/{memory_get,memory_search,common,citations}.py`,
   `memory_core/memory_paths.py`, `memory_core/index/identity.py`, `memory_core/prompt_section.py`.
 - Tests: 31 (`memoryGet` 26, `memoryToolDefinitions` 1, params/deadline 3, identity 1).
-- Worklist areas: "memory_get contract", "memory tool definitions", "memory_search params,
-  errors and deadline", "memory index identity".
+- Worklist areas: none left; the `memory_get contract`, `memory tool definitions`, `memory_search
+  deadline` and `memory index identity` entries were removed when the area landed.
 - New oracle ops: `memoryPromptSection` (`buildMemoryPromptSection`) for the prompt-section row.
 
 ### 6. Hybrid ranking and indexing (estimate 24-40 h)
@@ -385,7 +392,8 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
   `memory_core/config.py`.
 - Tests: 14 `memorySearch` fixtures (corpus, text/vector/hybrid scores, wiki balance, 6 param
   coercion cases, index-model change, session-memory files, invalid UTF-8).
-- Worklist areas: "memory_search ranking and indexing".
+- Worklist areas: none left; the `memory_search ranking and indexing` entries were removed when the
+  area landed (2026-10-04).
 - New oracle ops: `hybridMerge` (`mergeHybridResults`, `selectHybridSearchResults`), `mmrRerank`
   (`applyMMRToHybridResults`), `temporalDecay` (`applyTemporalDecayToHybridResults`),
   `markdownChunks` (`chunkMarkdown`, `splitCuratedMarkdownEntries`), `ftsQuery`
@@ -407,8 +415,7 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
   deep dreaming adds an LLM consolidation step (`dreaming-consolidation.ts`).
 - Python: `memory_core/consolidation/*`, `memory_core/memory_budget.py`, `memory_core/curation.py`.
 - Tests: 25 (deep policy 8, concept tags 1, recall and promotion 15, budget 1).
-- Worklist areas: "deep dreaming policy", "concept vocabulary", "short-term recall and
-  promotion", "MEMORY.md budget compaction".
+- Worklist areas: none left; the four area-7 entries were removed when the area landed (2026-10-04).
 - New oracle ops: `consolidateMemory` through `test-helpers.ts` `consolidateMemoryForTests` with a
   stubbed model (only if decision 3 ports it), `recordGroundedShortTermCandidates`.
 
@@ -437,7 +444,7 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
 - Python: `memory_core/session_memory.py`, `memory_core/bootstrap/startup.py` (reset prompts).
 - Tests: 4 (slug 1, hook 2, reset-prompt source check 1), plus the re-port of the retired
   `sessionMemoryTranscript` test.
-- Worklist areas: "session-memory hook".
+- Worklist areas: none left; the `session-memory hook` entries were removed when the area landed (2026-10-04).
 - New oracle ops: `sessionMemoryProjection` (the two exports over event lists); the
   `sessionMemoryHook` op seeds transcripts into SQLite instead of JSONL files.
 
@@ -454,7 +461,7 @@ the Lab's heartbeat run moves onto it in that plan's Task 9c.
   `memory_core/bootstrap/startup.py`.
 - Tests: 7 (six helper fixtures and the run-loop mid-turn scenario); 6 left after the
   tool-use repair re-port.
-- Worklist areas: "transcript and replay helpers", "overflow run loop".
+- Worklist areas: none left; the `transcript and replay helpers` and `overflow run loop` entries were removed when the area landed (2026-10-04).
 - New oracle ops: `sanitizeToolCallInputs` (2026-09-29).
 - 2026-09-29, `feat/kit-langgraph-fixes` (docs/host_kit.md › LangGraph findings, F26): the
   tool-use repair (`repairToolUseResultPairing` over `classifyToolUseResultPairing`) is re-ported

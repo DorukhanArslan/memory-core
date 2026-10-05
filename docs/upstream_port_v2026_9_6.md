@@ -52,6 +52,7 @@ gates).
 | 8 Session corpus | done as far as faithful (2026-10-04) | `buildSessionEntry` ported over host-supplied transcript events (decision 4); new oracle op `sessionCorpusEntry` (13 cases); gaps: `redactSensitiveText` (host `redact_text` hook only), SQLite stats/archives |
 | 9 Session-memory hook | done (2026-10-04) | slug, hook scenarios, zone sweep, reset-prompt source check and the new `sessionMemoryProjection` op (82 cases) pass; worklist entries and the retired op removed |
 | 10 Transcript and overflow helpers | done (2026-10-04) | history-limit hysteresis, runtime context prompt (4), replay normalization, startup emoji-at-file-cap, tool-result truncation (9 + 7 aggregate) and the run-loop mid-turn scenario pass; worklist is now empty; gaps in the CHANGELOG |
+| 11 Matrix and re-measure | done (2026-10-05) | parity matrix re-audited (13 rows to `match`, 14 stay `partial` with explicit gaps); full integration suite at `v2026.9.6` (`OPENCLAW_ORACLE_NODE` node 24.21): 382 passed, 2 skipped (live providers), 0 xfail, 0 failed, 45 min, one run |
 
 Full `tests/integration` at `afd9965` plus the plan and matrix edits, `/tmp/openclaw-head` at
 `eb377ac59e6`, Node 24.21.0, seven chunks with the run-loop

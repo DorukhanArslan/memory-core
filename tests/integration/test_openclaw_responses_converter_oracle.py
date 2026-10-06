@@ -12,7 +12,7 @@ points at one function.
 Tool-result text goes through the built-in :func:`memory_core.redact.redact_model_visible_secrets`
 (no ``redact=`` override), so the fixtures include the structured shapes: field-name masks
 (``{"password": ...}``), ``KEY=value`` lines left alone by the tool-payload patterns, ``code``
-paths, app-specific passwords and numbers under secret keys; see docs/gap5-redaction-notes.md.
+paths, app-specific passwords and numbers under secret keys; see docs/parity_matrix.md audit note 29.
 """
 
 from __future__ import annotations

@@ -18,7 +18,7 @@ An item field that upstream leaves ``undefined`` (``phase``, ``arguments``) is c
 prints it) and dropped from the returned items, as ``JSON.stringify`` would.
 
 Redaction: tool-result text goes through :func:`memory_core.redact.redact_model_visible_secrets`
-by default (the ``redact=`` argument overrides it); see docs/gap5-redaction-notes.md.
+by default (the ``redact=`` argument overrides it); see docs/parity_matrix.md audit note 29.
 """
 
 from __future__ import annotations

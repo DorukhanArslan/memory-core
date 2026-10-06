@@ -1511,6 +1511,50 @@ async function main() {
       "packages/ai/src/transports/provider-replay-context.ts",
     );
     const hash = await importFromRepo(repoPath, "packages/ai/src/utils/hash.ts");
+    const windowModule = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/openai-responses-compaction-window.ts",
+    );
+    const pressure = await importFromRepo(repoPath, "src/agents/sessions/context-token-pressure.ts");
+    const runtimeIndex = await importFromRepo(repoPath, "src/agents/runtime/index.ts");
+    const usageModule = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/openai-responses-context-usage.ts",
+    );
+    const converter = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/openai-responses-replay-messages-internal.ts",
+    );
+    // The real OpenClaw host (endpoint classification, secret sentinels) is what eligibility
+    // runs against in production; the library default host classifies every URL as "default".
+    await importFromRepo(repoPath, "src/llm/ai-transport-host.ts");
+    await importFromRepo(repoPath, "src/agents/ai-transport-runtime-host.ts");
+    const toolCallProviders = new Set([
+      "openai",
+      "opencode",
+      "azure-openai-responses",
+      "github-copilot",
+    ]);
+    const estimator = {
+      text: (value: string) => pressure.estimateStringTokenPressure(value),
+      image: () => runtimeIndex.IMAGE_BLOCK_TOKENS,
+      json: (value: unknown) => pressure.estimateJsonPayloadTokenPressure(value),
+      toolResult: (value: string) =>
+        pressure.estimateStringTokenPressure(
+          value,
+          pressure.ESTIMATED_CHARS_PER_TOKEN,
+          "tool-result",
+        ),
+    };
+    const replayModel = (model: Record<string, unknown>) => ({
+      input: ["text", "image"],
+      contextWindow: 200000,
+      maxTokens: 4096,
+      reasoning: false,
+      name: String(model.id),
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      ...model,
+    });
     return {
       ok: true,
       operation: payload.operation,
@@ -1585,6 +1629,249 @@ async function main() {
                 { ...options, ...(item.mode ? { mode: item.mode } : {}) },
               );
               return { value: { ...plan, messages: plan.messages.map(ref) }, error: null };
+            }
+            case "window":
+              return {
+                value:
+                  windowModule.readOpenAIResponsesCompactionWindow(item.replay, item.model) ?? null,
+                error: null,
+              };
+            case "isOutput":
+              return {
+                value: windowModule.isOpenAIResponsesCompactionOutput(item.value, item.model),
+                error: null,
+              };
+            case "eligibility": {
+              const saved = process.env.ANTHROPIC_BASE_URL;
+              if (item.env && "ANTHROPIC_BASE_URL" in item.env) {
+                process.env.ANTHROPIC_BASE_URL = item.env.ANTHROPIC_BASE_URL;
+              } else {
+                delete process.env.ANTHROPIC_BASE_URL;
+              }
+              try {
+                return {
+                  value: replay.resolveCompactionReplayEligibility(item.model, {
+                    extraParams: item.extraParams,
+                    apiKey: item.apiKey,
+                  }),
+                  error: null,
+                };
+              } finally {
+                if (saved === undefined) {
+                  delete process.env.ANTHROPIC_BASE_URL;
+                } else {
+                  process.env.ANTHROPIC_BASE_URL = saved;
+                }
+              }
+            }
+            case "pressure": {
+              const out = replay.resolveCompactionReplayPressure(
+                messages,
+                replayModel(item.model),
+                identity,
+                estimator,
+                item.systemPrompt,
+              );
+              return {
+                value: out === undefined ? null : { ...out, messages: out.messages.map(ref) },
+                error: null,
+              };
+            }
+            case "projections": {
+              // The converter's wire input per projection and system-prompt flag, over the
+              // provider-role messages; the Python port takes it as a hook result.
+              const providerMessages = messages.filter((message: Record<string, unknown>) =>
+                ["user", "assistant", "toolResult"].includes(message.role as string),
+              );
+              const table: Record<string, unknown> = {};
+              for (const projection of ["transport", "provider"]) {
+                for (const includeSystemPrompt of [false, true]) {
+                  const convert =
+                    projection === "transport"
+                      ? converter.convertResponsesMessages
+                      : converter.convertProviderResponsesMessages;
+                  table[`${projection}:${includeSystemPrompt}`] = convert(
+                    replayModel(item.model),
+                    { messages: providerMessages, systemPrompt: item.systemPrompt },
+                    toolCallProviders,
+                    { ...identity, includeSystemPrompt },
+                  );
+                }
+              }
+              return { value: table, error: null };
+            }
+            case "recordUsage": {
+              // Bind measured usage to the replay prefix exactly as the transport does after a
+              // response: request.input is the wire input before the target assistant message
+              // and the target's own replay output follows it.
+              const target = messages[item.target];
+              const providerBefore = messages
+                .slice(0, item.target)
+                .filter((message: Record<string, unknown>) =>
+                  ["user", "assistant", "toolResult"].includes(message.role as string),
+                );
+              const convert =
+                item.projection === "transport"
+                  ? converter.convertResponsesMessages
+                  : converter.convertProviderResponsesMessages;
+              const model = replayModel(item.model);
+              const input = convert(
+                model,
+                { messages: providerBefore, systemPrompt: item.systemPrompt },
+                toolCallProviders,
+                { ...identity, includeSystemPrompt: item.includeSystemPrompt === true },
+              );
+              target.usage = {
+                ...target.usage,
+                contextUsage: {
+                  state: "available",
+                  promptTokens: item.promptTokens,
+                  totalTokens: item.totalTokens,
+                },
+              };
+              usageModule.recordResponsesContextUsage(
+                target,
+                model,
+                identity,
+                { input: [...(item.requestPrefix ?? []), ...input] },
+                item.output ?? [],
+                item.projection,
+              );
+              return { value: messages, error: null };
+            }
+            case "anthropicCapture": {
+              const output: Record<string, unknown> = structuredClone(item.output ?? {});
+              const capture = anthropic.createCompactionCapture(output, item.model, options);
+              const results = (item.events ?? []).map((event: Record<string, unknown>) =>
+                event.op === "begin"
+                  ? capture.begin(
+                      event.index as number,
+                      event.block as never,
+                      event.replayIndex as number,
+                    )
+                  : event.op === "delta"
+                    ? capture.delta(event.index as number, event.delta as never)
+                    : capture.complete(event.index as number),
+              );
+              return {
+                value: { results, providerReplay: output.providerReplay ?? null },
+                error: null,
+              };
+            }
+            case "anthropicSuppress": {
+              const output: Record<string, unknown> = structuredClone(item.output ?? {});
+              anthropic.suppressAnthropicCompaction(output, item.model, options);
+              return { value: { providerReplay: output.providerReplay ?? null }, error: null };
+            }
+            case "responsesCapture": {
+              const output: Record<string, unknown> = structuredClone(item.output ?? {});
+              responses.captureOpenAIResponsesCompaction(
+                output,
+                item.item,
+                item.boundary,
+                item.model,
+                item.metadata ?? undefined,
+                item.compactedOutput ?? undefined,
+              );
+              return { value: { providerReplay: output.providerReplay ?? null }, error: null };
+            }
+            case "responsesSuppress": {
+              const output: Record<string, unknown> = structuredClone(item.output ?? {});
+              const rejected: unknown[] = [];
+              responses.suppressOpenAIResponsesCompaction(
+                output,
+                item.model,
+                {
+                  ...options,
+                  ...(item.withCallback
+                    ? { onCompactionRejected: (value: unknown) => rejected.push(value) }
+                    : {}),
+                },
+                item.rejected ?? undefined,
+              );
+              return {
+                value: { providerReplay: output.providerReplay ?? null, rejected },
+                error: null,
+              };
+            }
+            case "reasoningMetadata":
+              return {
+                value: responses.buildOpenAIResponsesReasoningReplayMetadata(item.model, options),
+                error: null,
+              };
+            case "replayContextShape":
+              return { value: responses.isOpenAIResponsesReplayContext(item.value), error: null };
+            case "tracker": {
+              const output: Record<string, unknown> = structuredClone(item.output ?? {});
+              const tracker = responses.createCompactionTracker(
+                output,
+                item.model,
+                item.metadata ? { reasoningReplayMetadata: item.metadata } : undefined,
+              );
+              const snapshots = (item.steps ?? []).map((step: Record<string, unknown>) => {
+                if (step.op === "added") {
+                  tracker.added(step.item as never, step.replayIndex as number);
+                } else {
+                  tracker.completed(step.item as never, step.fallback as number);
+                }
+                return structuredClone(output.providerReplay ?? null);
+              });
+              return { value: { snapshots }, error: null };
+            }
+            default:
+              throw new Error(`unknown fn ${item.fn}`);
+          }
+        } catch (err) {
+          return { value: null, error: err instanceof Error ? err.constructor.name : String(err) };
+        }
+      }),
+    };
+  }
+
+  if (payload.operation === "inlineImage") {
+    // The inline image data-URL sanitiser, canonical base64, the signature sniffer and the
+    // Responses image payload sanitiser (undefined is reported as null).
+    const inline = await importFromRepo(
+      repoPath,
+      "packages/media-core/src/inline-image-data-url.ts",
+    );
+    const base64 = await importFromRepo(repoPath, "packages/media-core/src/base64.ts");
+    const sanitizer = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/responses-image-payload-sanitizer.ts",
+    );
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map((item) => {
+        try {
+          switch (item.fn) {
+            case "url":
+              return { value: inline.sanitizeInlineImageDataUrl(item.text) ?? null, error: null };
+            case "storage":
+              return {
+                value: inline.sanitizeInlineImageDataUrlForStorage(item.text) ?? null,
+                error: null,
+              };
+            case "base64":
+              return {
+                value:
+                  inline.sanitizeInlineImageBase64({
+                    mimeType: item.mimeType,
+                    base64: item.text,
+                  }) ?? null,
+                error: null,
+              };
+            case "canonical":
+              return { value: base64.canonicalizeBase64(item.text) ?? null, error: null };
+            case "sniff":
+              return {
+                value: inline.sniffInlineImageMime(Buffer.from(item.hex, "hex")) ?? null,
+                error: null,
+              };
+            case "payload": {
+              const out = sanitizer.sanitizeResponsesImagePayload(item.params);
+              return { value: out, same: out === item.params, error: null };
             }
             default:
               throw new Error(`unknown fn ${item.fn}`);

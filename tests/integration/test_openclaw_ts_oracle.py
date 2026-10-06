@@ -5299,6 +5299,305 @@ def test_real_openclaw_oracle_replay_content_keeps_compaction_owner_matches_pyth
     assert diffs[:3] == []
 
 
+def _usage_fixtures() -> list:
+    fixtures: list = [
+        None,
+        {},
+        [],
+        [1, 2],
+        "",
+        "abc",
+        0,
+        5,
+        True,
+        {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 0},
+        {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0},
+        {"input": 1, "output": 1, "totalTokens": 2},
+        {"input": 3, "output": 4, "cacheRead": 5, "cacheWrite": 6, "total": 18},
+        {"cost": {"total": 0.5}},
+        {"cost": {"total": 0, "input": 0, "output": 0.0, "cacheRead": 0.1}},
+        {"cost": {"total": 0, "input": 0.25, "output": -1, "cacheWrite": 2}},
+        {"cost": {"total": -1}},
+        {"cost": {"total": 1, "totalOrigin": "provider-billed"}},
+        {"cost": {"total": 1, "totalOrigin": "estimated"}},
+        {"cost": {"total": "1"}},
+        {"cost": "free"},
+        {"cost": []},
+        {"cacheWrite1h": 4},
+        {"cacheWrite1h": 0, "input": 0},
+        {"input": 100, "cacheRead": 40},
+        {"input": 100, "cached_tokens": 40},
+        {"input_tokens": 100, "cached_tokens": 40},
+        {"input_tokens": 100, "cached_tokens": 140},
+        {"input_tokens": 100, "cached_tokens": None},
+        {"input_tokens": 100, "cached_tokens": None, "cache_write_input_tokens": None},
+        {"input_tokens": 100, "cached_input_tokens": 40},
+        {"input_tokens": 100, "cached": 40},
+        {"input": 100, "cached": 40},
+        {"input": 100, "cached_input_tokens": 40, "cache_write_input_tokens": 10},
+        {"input_tokens": 100, "cached_input_tokens": 40, "cache_write_input_tokens": 10},
+        {"input_tokens": 100, "cache_write_input_tokens": 100},
+        {"input_tokens": 100, "cache_write_input_tokens": 30, "cacheWrite": 5},
+        {"input_tokens": 100, "cache_creation_input_tokens": 30},
+        {"input_tokens": 100, "cache_read_input_tokens": 30},
+        {"input_tokens": 100, "input_tokens_details": {"cached_tokens": 60}},
+        {"input_tokens": 100, "input_tokens_details": {"cached_tokens": 60, "cache_write_tokens": 10}},
+        {"input_tokens": 100, "input_tokens_details": {"cache_write_tokens": 10}},
+        {"input_tokens": 100, "input_tokens_details": {"cached_tokens": None}},
+        {"input_tokens": 100, "input_tokens_details": None},
+        {"input_tokens": 100, "input_tokens_details": "cached"},
+        {"input_tokens": 100, "input_tokens_details": [1]},
+        {"prompt_tokens": 100, "prompt_tokens_details": {"cached_tokens": 60}},
+        {"prompt_tokens": 100, "prompt_tokens_details": {"cache_write_tokens": 25}},
+        {"prompt_tokens": 100, "prompt_tokens_details": {"cache_creation_input_tokens": 25}},
+        {"prompt_tokens": 100, "prompt_tokens_details": {"cached_tokens": 50, "cache_creation_input_tokens": 25}},
+        {"prompt_tokens": 30, "prompt_tokens_details": {"cached_tokens": 50}},
+        {"prompt_tokens_details": {"cached_tokens": 5}},
+        {"prompt_tokens_details": {"cached_tokens": 0}},
+        {"prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0}},
+        {"prompt_tokens_details": {"cache_write_tokens": 2}},
+        {"input_tokens_details": {"cache_write_tokens": 2}},
+        {"input_tokens_details": {"cached_tokens": 2}},
+        {"completion_tokens_details": {"reasoning_tokens": 3}},
+        {"completion_tokens_details": {"reasoning_tokens": 0}},
+        {"completion_tokens_details": {"reasoning_tokens": "3"}},
+        {"output_tokens_details": {"reasoning_tokens": 3}},
+        {"output_tokens_details": {"thinking_tokens": 3}},
+        {"output_tokens_details": {"reasoning_tokens": None, "thinking_tokens": 3}},
+        {"output_tokens_details": {"reasoning_tokens": 0, "thinking_tokens": 3}},
+        {"reasoningTokens": 2},
+        {"reasoning_tokens": 2},
+        {"reasoning_tokens": 0, "reasoningTokens": None},
+        {"timings": {"prompt_n": 12, "predicted_n": 3}},
+        {"timings": {"prompt_n": 0, "predicted_n": 0}},
+        {"timings": {"predicted_n": 4}},
+        {"timings": None},
+        {"timings": 5},
+        {"prompt_n": 7},
+        {"predicted_n": 7},
+        {"prompt_n": 7, "timings": {"prompt_n": 99}},
+        {"input": 9, "prompt_n": 7},
+        {"input": None, "inputTokens": 3},
+        {"inputTokens": 3},
+        {"outputTokens": 3},
+        {"promptTokens": 3},
+        {"completionTokens": 3},
+        {"completion_tokens": 3},
+        {"output_tokens": 3},
+        {"total_tokens": 3},
+        {"totalTokens": 3},
+        {"total": 3},
+        {"total": None, "totalTokens": 3},
+        {"total": 0, "totalTokens": 3},
+        {"cache_read": 3},
+        {"cache_write": 3},
+        {"contextUsage": {"state": "unavailable"}},
+        {"contextUsage": {"state": "unavailable", "promptTokens": 5}},
+        {"contextUsage": {"state": "available", "promptTokens": 5, "totalTokens": 9}},
+        {"contextUsage": {"state": "available", "promptTokens": 0, "totalTokens": 0}},
+        {"contextUsage": {"state": "available", "promptTokens": 5, "totalTokens": 4}},
+        {"contextUsage": {"state": "available", "promptTokens": 5}},
+        {"contextUsage": {"state": "available", "totalTokens": 5}},
+        {"contextUsage": {"state": "available", "promptTokens": "5", "totalTokens": "9"}},
+        {"contextUsage": {"state": "available", "promptTokens": -2, "totalTokens": 9}},
+        {"contextUsage": {"state": "available", "promptTokens": 0, "totalTokens": 9}},
+        {"contextUsage": {"state": "available", "promptTokens": 2.9, "totalTokens": 3.9}},
+        {"contextUsage": {"state": "other", "promptTokens": 1, "totalTokens": 2}},
+        {"contextUsage": None},
+        {"contextUsage": "unavailable"},
+        {"contextUsage": []},
+        {"input": 0, "contextUsage": {"state": "unavailable"}},
+        {"input": 2.9},
+        {"input": -3},
+        {"input": 1e300},
+        {"input": 1e300, "output": 0},
+        {"input": "5"},
+        {"input": True},
+        {"input": None},
+        {"output": 2.2},
+        {"cacheRead": 0.5},
+        {"cacheRead": -1, "input_tokens": 4, "cached_tokens": 9},
+        {"input": 9, "cached_tokens": 5},
+        {"input": 9, "input_tokens_details": {"cached_tokens": 5}},
+        {"input": 9, "prompt_tokens_details": {"cache_write_tokens": 5}},
+        {"input": 9, "cache_write_input_tokens": 5},
+        {"input": 9, "cached_input_tokens": 5},
+        {"input": None, "input_tokens": 9, "cached_input_tokens": 5},
+        {"input": "x", "input_tokens": 9, "cached_input_tokens": 5},
+        {"input": 9, "input_tokens": 100, "cached_input_tokens": 5},
+        {"total": 1, "input_tokens": None, "output_tokens": None},
+        {"unrelated": 5},
+        {"input": float(2**60)},
+        {"input": 2**60},
+        {"input": 2**53 + 5, "output": 2**53 + 5},
+    ]
+    for key in (
+        "input", "output", "cacheRead", "cacheWrite", "cacheWrite1h", "total", "inputTokens",
+        "outputTokens", "promptTokens", "completionTokens", "input_tokens", "output_tokens",
+        "prompt_tokens", "completion_tokens", "cache_read_input_tokens",
+        "cache_creation_input_tokens", "reasoningTokens", "reasoning_tokens", "cached_tokens",
+        "cached_input_tokens", "cache_write_input_tokens", "cached", "totalTokens", "total_tokens",
+        "cache_read", "cache_write", "prompt_n", "predicted_n",
+    ):
+        for value in (1, 0, -1, 0.5, "5", True, False, None, [1], {"a": 1}):
+            fixtures.append({key: value})
+    return fixtures
+
+
+def test_real_openclaw_oracle_normalize_usage_matches_python():
+    from memory_core.usage_normalization import has_nonzero_usage, normalize_usage
+
+    fixtures = _usage_fixtures()
+    assert len(fixtures) >= 300
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    result = oracle.run(
+        {"operation": "normalizeUsage", "cases": [{"usage": usage} for usage in fixtures]}
+    )
+    assert result["ok"] is True
+    diffs = []
+    for usage, row in zip(fixtures, result["result"], strict=True):
+        normalized = normalize_usage(usage)
+        python_row = {"normalized": normalized, "nonzero": has_nonzero_usage(normalized)}
+        if row != python_row:
+            diffs.append((usage, row, python_row))
+    assert diffs[:5] == []
+
+
+def test_real_openclaw_oracle_replay_mirror_duplicate_usage_matches_python():
+    """The bare delivery-mirror recovery keeps a duplicate reply only with nonzero usage."""
+
+    def pair(usage, stop_reason="stop"):
+        reply = {"type": "text", "text": "same reply"}
+        base = {"role": "assistant", "provider": "amazon-bedrock", "model": "m", "timestamp": 0}
+        return [
+            {**base, "content": [reply], "usage": {"input": 2, "output": 2}, "stopReason": "stop"},
+            {**base, "content": [dict(reply)], "usage": usage, "stopReason": stop_reason},
+        ]
+
+    # Huge counters are echoed back through JSON as floats; keep the echo comparable.
+    small = [usage for usage in _usage_fixtures() if "e+" not in repr(usage) and "2**" not in repr(usage)]
+    messages_by_usage = [
+        pair(usage)
+        for usage in small
+        if isinstance(usage, dict | list) and len(repr(usage)) < 400 and "1152921504606846976" not in repr(usage)
+        and "9007199254740997" not in repr(usage)
+    ]
+    messages_by_usage += [pair(usage) for usage in (None, "x", 5, True)]
+    messages_by_usage += [pair({}, "length"), pair({}, "toolUse"), pair({}, "error")]
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    cases = [{"fn": "normalize", "messages": messages} for messages in messages_by_usage]
+    result = oracle.run({"operation": "replayContentCases", "cases": cases})
+    assert result["ok"] is True
+    diffs = []
+    for messages, row in zip(messages_by_usage, result["result"], strict=True):
+        out = normalize_assistant_replay_content(messages)
+        python_row = {"messages": out, "unchanged": out is messages, "error": None}
+        if row != python_row:
+            diffs.append((messages[1]["usage"], row, python_row))
+    assert diffs[:5] == []
+
+
+def _media_user_messages() -> list[dict]:
+    media_values: list = [
+        [{"path": "/a.png"}],
+        [{"path": "  "}],
+        [{"path": " ﻿"}],
+        [{"path": 5}],
+        [{"url": "https://x/y"}],
+        [{"url": " \t"}],
+        [{"contentType": "image/png"}],
+        [{"contentType": " image/png "}],
+        [{"contentType": " "}],
+        [{"contentType": ""}],
+        [{"contentType": 5}],
+        [{"contentType": True}],
+        [{"contentType": "application/octet-stream"}],
+        [{"contentType": "binary/octet-stream"}],
+        [{"kind": "image"}],
+        [{"kind": "sticker"}],
+        [{"kind": "unknown"}],
+        [{"kind": ""}],
+        [{"kind": 0}],
+        [{"kind": 5}],
+        [{"kind": False}],
+        [{"kind": True}],
+        [{"kind": {}}],
+        [{"kind": []}],
+        [{"kind": None}],
+        [{"kind": None, "contentType": "image/png"}],
+        [{"kind": "unknown", "contentType": "image/png"}],
+        [{"kind": "unknown", "path": "/p"}],
+        [{"fileName": "a.png"}],
+        [{"sizeBytes": 10}],
+        [{"transcribed": True}],
+        [{"messageId": "m1", "workspaceDir": "/w"}],
+        [{"origin": "paste"}],
+        [{}],
+        [None],
+        [None, {"path": "/b"}],
+        [None, None],
+        [[]],
+        [["x"]],
+        ["str"],
+        [5],
+        [True],
+        [],
+        {"path": "/not-an-array"},
+        "str",
+        5,
+        None,
+        [{"path": "  "}, {"url": "u"}],
+        [{"path": "  "}, {"kind": "unknown"}, {"contentType": ""}],
+    ]
+    messages: list[dict] = []
+    for content in ("", "   ", "\n\t", [], [{"type": "text", "text": ""}], [
+        {"type": "text", "text": " "}, {"type": "text", "text": "\n"}
+    ], "hi", [{"type": "text", "text": "hi"}, {"type": "text", "text": " "}], [
+        {"type": "image", "data": "AA==", "mimeType": "image/png"}, {"type": "text", "text": ""}
+    ]):
+        messages.append({"role": "user", "content": content, "timestamp": 0})
+        for media in media_values:
+            messages.append(
+                {"role": "user", "content": content, "timestamp": 0, "__openclaw": {"media": media}}
+            )
+        for carrier in (
+            [],
+            {"media": "x"},
+            "str",
+            None,
+            5,
+            {"other": [{"path": "/a"}]},
+        ):
+            messages.append(
+                {"role": "user", "content": content, "timestamp": 0, "__openclaw": carrier}
+            )
+        for legacy in (
+            {"MediaPath": "/a"},
+            {"MediaPaths": ["/a"], "MediaTypes": ["image/png"]},
+            {"media": [{"path": "/a"}]},
+            {"mediaPath": "/a"},
+        ):
+            messages.append({"role": "user", "content": content, "timestamp": 0, **legacy})
+    return messages
+
+
+def test_real_openclaw_oracle_replay_user_media_facts_match_python():
+    messages = _media_user_messages()
+    assert len(messages) >= 500
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    cases = [{"fn": "normalize", "messages": [message]} for message in messages]
+    result = oracle.run({"operation": "replayContentCases", "cases": cases})
+    assert result["ok"] is True
+    diffs = []
+    for message, row in zip(messages, result["result"], strict=True):
+        single = [message]
+        out = normalize_assistant_replay_content(single)
+        python_row = {"messages": out, "unchanged": out is single, "error": None}
+        if row != python_row:
+            diffs.append((message, row, python_row))
+    assert diffs[:5] == []
+
+
 def _repair_pairing_case(messages: list[dict], **options) -> None:
     """repairToolUseResultPairing at the tag against the port, the whole report compared."""
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))

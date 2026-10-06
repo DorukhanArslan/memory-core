@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from memory_core.bootstrap._js import js_trim, js_truthy
 from memory_core.compaction_replay import replace_compaction_replay_owner_content
 from memory_core.memory_flush import SILENT_REPLY_TOKEN
 from memory_core.replay_repair import _extract_tool_calls_from_assistant
@@ -10,8 +11,12 @@ from memory_core.runtime_context_prompt import (
     OPENCLAW_RUNTIME_CONTEXT_NOTICE,
     _find_delimited_token_index,
 )
-from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY, MEMORY_CORE_RUNTIME_IDENTITY
+from memory_core.runtime_identity import (
+    OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+    MEMORY_CORE_RUNTIME_IDENTITY,
+)
 from memory_core.session_entry import strip_inbound_metadata
+from memory_core.usage_normalization import has_nonzero_normalized_usage
 
 
 STREAM_ERROR_FALLBACK_TEXT = "[assistant turn failed before producing content]"
@@ -114,29 +119,33 @@ def _sanitize_user_replay_content(message: dict[str, Any]) -> dict[str, Any] | N
 
 
 def _has_persisted_media(message: dict[str, Any]) -> bool:
-    """Canonical persisted media envelope (``__openclaw.media``), see sessions/user-turn-media.ts.
+    """``hasPersistedMedia`` (sessions/user-turn-media.ts): a meaningful canonical media fact.
 
-    Simplified: upstream normalizes each fact through ``normalizeMediaFact``; here an entry is
-    meaningful when it has a non-blank path/url, a content type or a kind other than "unknown".
+    Reads the canonical envelope (``__openclaw.media``) only, normalizing each entry like
+    ``normalizeMediaFact`` (media/media-facts.ts): path, url and contentType are trimmed strings
+    (anything else is absent), a ``kind`` counts when truthy and not ``"unknown"``, and a
+    non-object or ``null`` slot is an empty fact. A kind derived from the content type adds
+    nothing, since a non-blank content type is meaningful on its own.
     """
 
+    if not isinstance(message, dict):
+        return False
     metadata = message.get("__openclaw")
     media = metadata.get("media") if isinstance(metadata, dict) else None
     if not isinstance(media, list):
         return False
-    for entry in media:
-        if not isinstance(entry, dict):
-            continue
-        for key in ("path", "url"):
-            value = entry.get(key)
-            if isinstance(value, str) and value.strip():
-                return True
-        if entry.get("contentType"):
+    return any(_is_meaningful_media_input(entry) for entry in media)
+
+
+def _is_meaningful_media_input(entry: Any) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    for key in ("path", "url", "contentType"):
+        value = entry.get(key)
+        if isinstance(value, str) and js_trim(value):
             return True
-        kind = entry.get("kind")
-        if kind and kind != "unknown":
-            return True
-    return False
+    kind = entry.get("kind")
+    return kind is not None and js_truthy(kind) and kind != "unknown"
 
 
 def _is_transcript_only_openclaw_assistant(message: dict[str, Any]) -> bool:
@@ -248,62 +257,14 @@ def _is_stream_error_fallback_content(content: Any) -> bool:
     )
 
 
-_USAGE_COUNT_KEYS = (
-    "input",
-    "output",
-    "cacheRead",
-    "cacheWrite",
-    "total",
-    "totalTokens",
-    "total_tokens",
-    "reasoningTokens",
-    "input_tokens",
-    "output_tokens",
-    "inputTokens",
-    "outputTokens",
-    "promptTokens",
-    "prompt_tokens",
-    "completionTokens",
-    "completion_tokens",
-    "cache_read",
-    "cache_write",
-    "cache_read_input_tokens",
-    "cache_creation_input_tokens",
-)
-
-
-def _has_nonzero_usage(usage: Any) -> bool:
-    """Simplified ``hasNonzeroUsage(normalizeUsage(usage))``: any known counter above zero.
-
-    Gap: upstream's normalizeUsage also reads nested ``*_details`` objects and subtracts
-    cache buckets from provider input totals; an unavailable ``contextUsage`` counts as usage.
-    """
-
-    if not isinstance(usage, dict):
-        return False
-    context = usage.get("contextUsage")
-    if isinstance(context, dict):
-        if context.get("state") == "unavailable":
-            return True
-        if context.get("state") == "available" and any(
-            (v := _read_finite_number(context.get(k))) is not None and v > 0
-            for k in ("promptTokens", "totalTokens")
-        ):
-            return True
-    return any(
-        (v := _read_finite_number(usage.get(key))) is not None and v > 0
-        for key in _USAGE_COUNT_KEYS
-    )
-
-
 def _is_bare_delivery_mirror_duplicate(out: list[dict[str, Any]], nxt: dict[str, Any]) -> bool:
     previous = out[-1] if out else None
     if not previous or previous.get("role") != "assistant":
         return False
     usage = nxt.get("usage")
     if (
-        not isinstance(usage, dict)
-        or _has_nonzero_usage(usage)
+        not isinstance(usage, dict | list)
+        or has_nonzero_normalized_usage(usage)
         or nxt.get("stopReason") != "stop"
         or _extract_tool_calls_from_assistant(previous)
         or _extract_tool_calls_from_assistant(nxt)

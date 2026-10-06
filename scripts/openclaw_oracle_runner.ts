@@ -1089,6 +1089,22 @@ async function main() {
     };
   }
 
+  if (payload.operation === "normalizeUsage") {
+    // normalizeUsage and hasNonzeroUsage over raw provider usage values, undefined as null.
+    const usage = await importFromRepo(repoPath, "src/agents/usage.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map((item) => {
+        const normalized = usage.normalizeUsage(item.usage);
+        return {
+          normalized: normalized ?? null,
+          nonzero: usage.hasNonzeroUsage(normalized),
+        };
+      }),
+    };
+  }
+
   if (payload.operation === "repairToolUseResultPairing") {
     const repair = await importFromRepo(repoPath, "src/agents/session-transcript-repair.ts");
     const result = repair.repairToolUseResultPairing(payload.messages ?? [], {

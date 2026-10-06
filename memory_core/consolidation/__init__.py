@@ -86,9 +86,15 @@ from memory_core.consolidation.file_lock import (
     resolve_memory_promotion_lock_target,
     with_file_lock,
 )
+from memory_core.consolidation.artifact_provenance import (
+    MemoryArtifactProvenance,
+    MemoryArtifactProvenanceStore,
+)
 from memory_core.consolidation.origins import (
     MemoryEntryOrigin,
     MemoryEntryOriginLedger,
+    MemoryIndexRevisionConflictError,
+    MemorySessionTombstone,
     prune_memory_entry_origins,
     reserve_memory_entry_origins,
 )
@@ -132,8 +138,12 @@ __all__ = [
     "FileLockOptions",
     "FileLockStaleError",
     "FileLockTimeoutError",
+    "MemoryArtifactProvenance",
+    "MemoryArtifactProvenanceStore",
     "MemoryEntryOrigin",
     "MemoryEntryOriginLedger",
+    "MemoryIndexRevisionConflictError",
+    "MemorySessionTombstone",
     "MemoryWorkspaceLockHeldError",
     "PromotionRejection",
     "build_promotion_applied_event",

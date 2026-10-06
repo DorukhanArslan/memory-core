@@ -27,7 +27,7 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from decimal import Decimal
@@ -59,6 +59,12 @@ from memory_core.consolidation._util import (
     read_text_if_exists,
     to_int,
     unified_diff,
+)
+from memory_core.consolidation.artifact_provenance import (
+    MemoryArtifactProvenance,
+    MemoryArtifactProvenanceStore,
+    daily_file_quarantine_by_path,
+    with_daily_file_quarantine,
 )
 from memory_core.consolidation.artifacts import read_memory_preimages
 from memory_core.consolidation.file_lock import (
@@ -325,6 +331,7 @@ def run_short_term_promotion(
     agent_id: str | None = None,
     workspace_agent_ids: Sequence[str] = (),
     origins: MemoryEntryOriginLedger | None = None,
+    artifact_provenance: MemoryArtifactProvenanceStore | None = None,
     state_dir: str | Path | None = None,
     on_event: Callable[[dict[str, Any]], None] | None = None,
     lock_observer: Callable[[str, Path], None] | None = None,
@@ -356,6 +363,12 @@ def run_short_term_promotion(
     rehydrated a candidate; nothing is sent over a network. With ``agent_id`` and an ``origins``
     ledger, consolidation reserves the origins of merged entries and the commit prunes the origins
     nothing retains any more (``workspace_agent_ids`` are the sibling agents of the workspace).
+
+    ``artifact_provenance`` (upstream: the plugin-state store behind ``listMemoryArtifactProvenance``)
+    carries the daily-file quarantine: a candidate whose daily file the flush recorded as
+    ``untrusted`` is itself ``untrusted`` and is rejected by the ``origin`` gate, whatever the recall
+    store says (:func:`~memory_core.consolidation.artifact_provenance.with_daily_file_quarantine`).
+    Without a store no file is quarantined.
 
     New markers use ``identity.promotion_marker_prefix`` (the neutral
     ``memory-core-memory-promotion:`` by default; pass
@@ -404,6 +417,9 @@ def run_short_term_promotion(
         ranked=ranked,
         now_ms=now_ms,
         consolidation=consolidation is not None,
+        daily_provenance=daily_file_quarantine_by_path(
+            artifact_provenance.list(config.workspace_dir) if artifact_provenance is not None else []
+        ),
         **gates,
     )
     preplan: _PrePlan | None = None
@@ -596,6 +612,7 @@ def _plan_apply_stage(
     ranked: Sequence[PromotionCandidate],
     now_ms: int,
     consolidation: bool,
+    daily_provenance: Mapping[str, MemoryArtifactProvenance],
     limit: int,
     min_score: float,
     min_recall_count: int,
@@ -632,7 +649,9 @@ def _plan_apply_stage(
                 ),
                 entry.get("provenance") if isinstance(entry.get("provenance"), dict) else None,
             )
-        current.append(candidate)
+        # Flush quarantine is sticky at the daily-file boundary: a trusted line of a mixed file
+        # cannot promote either.
+        current.append(with_daily_file_quarantine(candidate, daily_provenance))
 
     plan = _ApplyPlan(current, {}, [], {}, {})
 

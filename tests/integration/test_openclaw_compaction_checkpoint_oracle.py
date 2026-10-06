@@ -1362,6 +1362,7 @@ _EXTENDED_FNS = frozenset(
         "isOutput",
         "eligibility",
         "pressure",
+        "estimateInput",
         "anthropicCapture",
         "anthropicSuppress",
         "responsesCapture",
@@ -1419,6 +1420,13 @@ def _extended_python_row(
                 projector=projector if table is not None else None,
             )
             value = None if out is None else {**out, "messages": [ref(m) for m in out["messages"]]}
+        elif fn == "estimateInput":
+            estimator = cr.default_replay_pressure_estimator()
+            if case.get("withToolResult") is False:
+                estimator = cr.ReplayPressureEstimator(
+                    estimator.text, estimator.image, estimator.json
+                )
+            value = cr.estimate_responses_input(_clean(case["items"]), estimator)
         elif fn == "anthropicCapture":
             output = _clean(case.get("output") or {})
             capture = cr.CompactionCapture(output, model, identity)
@@ -1521,6 +1529,12 @@ def _py_inline_row(case: dict[str, Any]) -> dict[str, Any]:
         value = ii.canonicalize_base64(case["text"])
     elif fn == "sniff":
         value = ii.sniff_inline_image_mime(bytes.fromhex(case["hex"]))
+    elif fn == "stable":
+        value = cr._stable_stringify(_clean(case["value"]))
+    elif fn == "hostname":
+        from memory_core.js_url import url_hostname
+
+        value = url_hostname(case["text"])
     elif fn == "payload":
         params = _clean(case["params"])
         out = eg.sanitize_responses_image_payload(params)
@@ -2734,3 +2748,819 @@ def test_real_openclaw_oracle_compaction_tracker_matches_python(oracle, contexts
 
 
 _NOTHING = object()
+
+
+# --- replay pressure ---------------------------------------------------------------------------
+
+_COST = {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}
+_SUMMARIES = [
+    "SUMMARY",
+    "",
+    "séß\U0001f600" * 5,
+    "日本語の要約" * 30,
+    "x" * 5000,
+    "line\nbreak\ttab",
+]
+_USAGE_KINDS: list[Any] = [
+    {"input": 1, "output": 2, "totalTokens": 3},
+    {"input": 1, "contextUsage": {"state": "available", "promptTokens": 90, "totalTokens": 100}},
+    {"input": 1, "contextUsage": None},
+    {"contextUsage": {"state": "estimated"}},
+    {},
+    None,
+    "ab",
+    5,
+]
+
+
+def _usage_assistant(content: Any, usage: Any, replay: Any = None) -> dict[str, Any]:
+    message = _assistant(content, replay, usage=usage)
+    if usage is _MISSING_USAGE:
+        del message["usage"]
+    return message
+
+
+_MISSING_USAGE = object()
+
+
+def _tails() -> list[list[dict[str, Any]]]:
+    plain = _usage_assistant(["x"], {"input": 1, "output": 2})
+    measured = _usage_assistant(
+        ["y"], {"input": 1, "contextUsage": {"state": "available", "totalTokens": 5}}
+    )
+    return [
+        [],
+        [_user("t")],
+        [plain],
+        [measured],
+        [_usage_assistant(["z"], None)],
+        [_usage_assistant(["z"], _MISSING_USAGE)],
+        [_tool_result(), measured, _user("t3")],
+        [_usage_assistant(["z"], {"contextUsage": None})],
+        [_usage_assistant(["z"], 5), measured],
+        [{"role": "system", "content": "s"}, plain, measured, plain],
+    ]
+
+
+def _pressure_anthropic_cases(
+    contexts: dict[tuple[str, str], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    cases: list[dict[str, Any]] = []
+    for ident_key in ("none", "both"):
+        ctx = contexts[("anthropic", ident_key)]
+        for s_index, summary in enumerate(_SUMMARIES):
+            for replay_index in (0, 1, 2, 3, 9, None):
+                state = _anthropic_state(ctx, data=summary or "S", replayIndex=replay_index)
+                if replay_index is None:
+                    state = _drop(state, "replayIndex")
+                if s_index == 2:
+                    state["encryptedContent"] = "enc"
+                for u_index, usage in enumerate(_USAGE_KINDS):
+                    owner = _usage_assistant(list(BLOCKS), usage, state)
+                    for t_index, tail in enumerate(_tails()):
+                        if (s_index + u_index + t_index) % 3:
+                            continue
+                        messages = [_user(), owner, *tail]
+                        for enabled in (True, None, False):
+                            identity = {**IDENTS[ident_key], "enabled": enabled}
+                            cases.append(
+                                {
+                                    "fn": "pressure",
+                                    "messages": messages,
+                                    "model": MODELS["anthropic"],
+                                    "identity": identity,
+                                }
+                            )
+    return cases
+
+
+def _pressure_window_outputs() -> list[Any]:
+    png = _image_item(_png_url())
+    return [
+        _window_output(),
+        [
+            {**_window_message(), "content": [{"type": "input_text", "text": "日本語" * 20}]},
+            {"type": "compaction", "encrypted_content": "ENCRYPTED", "id": "rs_1"},
+        ],
+        [
+            {
+                **_window_message(),
+                "content": [
+                    png,
+                    {
+                        "type": "input_text",
+                        "text": "t",
+                        "prompt_cache_breakpoint": {"mode": "explicit"},
+                    },
+                ],
+            },
+            {"type": "compaction", "encrypted_content": "ENCRYPTED"},
+        ],
+        [
+            {
+                **_window_message("developer"),
+                "content": [
+                    _image_item("https://example.com/a.png"),
+                    _image_item(None, file_id="f1"),
+                ],
+            },
+            {"type": "compaction", "encrypted_content": "ENCRYPTED"},
+        ],
+        [
+            {
+                **_window_message(),
+                "content": [
+                    {"type": "input_file", "file_data": "ZGF0YQ==", "filename": "a"},
+                    {"type": "input_file", "file_id": "f"},
+                ],
+            },
+            {"type": "compaction", "encrypted_content": "ENCRYPTED", "created_by": "x"},
+        ],
+        [
+            {**_window_message(status="completed"), "content": []},
+            {**_window_message("system", "\U0001f600" * 40), "id": "m1"},
+            {"type": "compaction", "encrypted_content": "e" * 3000},
+        ],
+        [{"type": "compaction", "encrypted_content": "ENCRYPTED"}],
+    ]
+
+
+def _pressure_responses_cases(
+    contexts: dict[tuple[str, str], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    cases: list[dict[str, Any]] = []
+    for model_key in ("responses", "azure", "chatgpt", "transport"):
+        for ident_key in ("none", "both"):
+            ctx = contexts[(model_key, ident_key)]
+            states: list[tuple[str, dict[str, Any]]] = []
+            for summary in _SUMMARIES[:4]:
+                for replay_index in (0, 1, 3, None):
+                    state = _responses_state(ctx, data=summary or "E", replayIndex=replay_index)
+                    states.append(
+                        ("prefix", _drop(state, "replayIndex") if replay_index is None else state)
+                    )
+            states.append(("prefix_id", _responses_state(ctx, id="rs_1")))
+            for output in _pressure_window_outputs():
+                for replay_index in (0, 1, 2):
+                    states.append(
+                        (
+                            "window",
+                            _with_window(_responses_state(ctx, replayIndex=replay_index), output),
+                        )
+                    )
+                states.append(
+                    ("retained", _drop(_with_window(_retained_state(ctx), output), "replayIndex"))
+                )
+            states += [
+                (
+                    "refresh",
+                    {**_responses_state(ctx), "compactedWindow": {"state": "refresh-required"}},
+                ),
+                ("retained_refresh", _retained_state(ctx)),
+                ("bad_window", _with_window(_responses_state(ctx), "{nope")),
+                (
+                    "suppressed",
+                    _responses_state(
+                        ctx, type="openai-responses-compaction-suppression", data="rejected"
+                    ),
+                ),
+            ]
+            for s_index, (kind, state) in enumerate(states):
+                for u_index, usage in enumerate(_USAGE_KINDS):
+                    owner = _usage_assistant(list(BLOCKS), usage, state)
+                    for t_index, tail in enumerate(_tails()):
+                        if (s_index + u_index + t_index) % 4:
+                            continue
+                        messages = [_user(), owner, *tail]
+                        cases.append(
+                            {
+                                "fn": "pressure",
+                                "messages": messages,
+                                "model": MODELS[model_key],
+                                "identity": {**IDENTS[ident_key], "enabled": None},
+                                "kind": kind,
+                            }
+                        )
+    return cases
+
+
+def _assert_pressure_outcomes(rows: list[Any], errors: set[Any]) -> None:
+    assert {row["error"] for row in rows} >= errors
+    assert any(row["value"] is not None and row["value"]["messages"] for row in rows)
+    assert any(row["value"] is None and row["error"] is None for row in rows)
+
+
+def test_real_openclaw_oracle_anthropic_replay_pressure_matches_python(oracle, contexts):
+    cases = _pressure_anthropic_cases(contexts)
+    assert len(cases) >= 1000
+    rows = _run_op(oracle, "compactionCheckpoint", cases)
+    python_rows = [_python_row(case) for case in cases]
+    assert _first_diffs(cases, rows, python_rows) == []
+    _assert_pressure_outcomes(rows, {None, "TypeError"})
+
+
+def test_real_openclaw_oracle_responses_replay_pressure_matches_python(oracle, contexts):
+    cases = _pressure_responses_cases(contexts)
+    assert len(cases) >= 1500
+    rows = _run_op(oracle, "compactionCheckpoint", cases)
+    python_rows = [_python_row(case) for case in cases]
+    assert _first_diffs(cases, rows, python_rows) == []
+    _assert_pressure_outcomes(rows, {None, "TypeError", "CompactionReplayRefreshRequiredError"})
+
+
+# --- estimateResponsesInput (private upstream; the oracle loads a sibling copy) -----------------
+
+
+def _estimate_items() -> list[list[Any]]:
+    png = _png_url()
+    texts: list[Any] = ["", "abc", "日本語" * 10, "\U0001f600" * 20, "x" * 700, "a\nb"]
+    blocks: list[Any] = [
+        {"type": "input_text", "text": "hello"},
+        {"type": "input_text", "text": "hé日", "extra": [1, 2]},
+        {"type": "output_text", "text": "out", "annotations": [{"a": 1}]},
+        {"type": "input_text", "text": 5},
+        {"type": "output_text"},
+        _image_item(png),
+        _image_item("DATA:image/png;base64,AAAA"),
+        _image_item("https://example.com/a.png"),
+        _image_item(None, file_id="f"),
+        _image_item(5),
+        {"type": "input_image"},
+        {"type": "input_file", "file_data": "ZGF0YQ==", "filename": "a.txt"},
+        {"type": "refusal", "refusal": "no"},
+        {"type": "summary_text", "text": "s"},
+        "a bare string",
+        None,
+        5,
+        True,
+        [1, 2],
+        {},
+        {"nested": {"deep": ["x" * 50]}},
+    ]
+    items: list[list[Any]] = [[]]
+    rng = random.Random(31)
+
+    def content() -> Any:
+        pick = rng.random()
+        if pick < 0.15:
+            return rng.choice(texts)
+        if pick < 0.2:
+            return rng.choice([None, 5, {"a": 1}, True, []])
+        return [rng.choice(blocks) for _ in range(rng.randrange(0, 5))]
+
+    def entry() -> Any:
+        kind = rng.choice(["compaction", "message", "fco", "cto", "other", "bare"])
+        if kind == "compaction":
+            out: dict[str, Any] = {"type": "compaction"}
+            if rng.random() < 0.85:
+                out["encrypted_content"] = rng.choice(["ENC", "", "日本", "e" * 400, 5, None])
+            if rng.random() < 0.5:
+                out["id"] = "rs_1"
+            return out
+        if kind == "message":
+            out = {"type": "message", "role": rng.choice(["user", "assistant", "developer"])}
+            if rng.random() < 0.9:
+                out["content"] = content()
+            if rng.random() < 0.3:
+                out["status"] = "completed"
+                out["id"] = "msg_1"
+            return out
+        if kind in ("fco", "cto"):
+            out = {
+                "type": "function_call_output" if kind == "fco" else "custom_tool_call_output",
+                "call_id": "c1",
+            }
+            if rng.random() < 0.9:
+                out["output"] = content()
+            return out
+        if kind == "other":
+            return rng.choice(
+                [
+                    {"type": "function_call", "name": "f", "arguments": "{}", "call_id": "c"},
+                    {"type": "reasoning", "summary": [], "encrypted_content": "x" * 100},
+                    {"type": "message"},
+                    {"type": "unknown"},
+                    {"role": "user"},
+                    {},
+                ]
+            )
+        return rng.choice(["str", None, 5, True, [1], "日本"])
+
+    for _ in range(520):
+        items.append([entry() for _ in range(rng.randrange(1, 7))])
+    return items
+
+
+def test_real_openclaw_oracle_estimate_responses_input_matches_python(oracle):
+    cases = [
+        {"fn": "estimateInput", "items": value, "withToolResult": flag}
+        for value in _estimate_items()
+        for flag in (True, False)
+    ]
+    assert len(cases) >= 1000
+    rows = _run_op(oracle, "compactionCheckpoint", cases)
+    python_rows = [_python_row(case) for case in cases]
+    assert _first_diffs(cases, rows, python_rows) == []
+    assert len({row["value"] for row in rows}) > 200
+
+
+# --- measured usage boundary -------------------------------------------------------------------
+
+
+def _wire_assistant(
+    model: dict[str, Any], content: list[Any], replay: Any = None, **extra: Any
+) -> dict[str, Any]:
+    message: dict[str, Any] = {
+        "role": "assistant",
+        "content": content,
+        "api": model["api"],
+        "provider": model["provider"],
+        "model": model["id"],
+        "usage": {
+            "input": 10,
+            "output": 5,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 15,
+            "cost": dict(_COST),
+        },
+        "stopReason": "stop",
+        "timestamp": 1,
+        **extra,
+    }
+    if replay is not None:
+        message["providerReplay"] = replay
+    return message
+
+
+def _wire_user(text: str) -> dict[str, Any]:
+    return {"role": "user", "content": text, "timestamp": 1}
+
+
+def _wire_tool_result(call_id: str, content: list[Any]) -> dict[str, Any]:
+    return {
+        "role": "toolResult",
+        "toolCallId": call_id,
+        "toolName": "read",
+        "content": content,
+        "isError": False,
+        "timestamp": 1,
+    }
+
+
+def _measured_tails(model: dict[str, Any]) -> list[tuple[str, list[Any], list[Any]]]:
+    """(name, target content, messages after the target)."""
+
+    call = {"type": "toolCall", "id": "call_1|fc_1", "name": "read", "arguments": {"p": 1}}
+    text = [{"type": "text", "text": "answer"}]
+    del model
+    return [
+        ("none", text, []),
+        ("user", text, [_wire_user("q3")]),
+        (
+            "tool",
+            [*text, call],
+            [
+                _wire_tool_result("call_1|fc_1", [{"type": "text", "text": "result text"}]),
+                _wire_user("q3"),
+            ],
+        ),
+        (
+            "tool_image",
+            [call],
+            [
+                _wire_tool_result(
+                    "call_1|fc_1",
+                    [
+                        {"type": "text", "text": "see"},
+                        {"type": "image", "data": _b64(_png(b"\x00" * 7)), "mimeType": "image/png"},
+                    ],
+                ),
+            ],
+        ),
+        ("unicode", [{"type": "text", "text": "日本語\U0001f600" * 3}], [_wire_user("é" * 40)]),
+    ]
+
+
+def _measured_owner_states(ctx: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    window = _window_output()
+    return [
+        ("prefix1", _responses_state(ctx, replayIndex=1)),
+        ("prefix0", _responses_state(ctx, replayIndex=0)),
+        ("window", _with_window(_responses_state(ctx, replayIndex=1), window)),
+        ("retained", _drop(_with_window(_retained_state(ctx), window), "replayIndex")),
+        ("prefix_id", _responses_state(ctx, id="rs_1", replayIndex=2)),
+    ]
+
+
+def _mutate(messages: list[dict[str, Any]], name: str, target: int) -> list[dict[str, Any]] | None:
+    out = copy.deepcopy(messages)
+    message = out[target]
+    state = message.get("openclawResponsesInputReplay", {}).get("contextUsage")
+    usage = message["usage"]
+    if name == "none":
+        return out
+    if name.startswith("state:") and isinstance(state, dict):
+        _, key, raw = name.split(":", 2)
+        state[key] = json.loads(raw)
+        return out
+    if name == "state_drop_hash":
+        state.pop("baseUrlHash", None)
+    elif name == "state_session":
+        state["sessionHash"] = "zz"
+    elif name == "usage_total":
+        usage["contextUsage"]["totalTokens"] += 1
+    elif name == "usage_prompt":
+        usage["contextUsage"]["promptTokens"] += 1
+    elif name == "usage_state":
+        usage["contextUsage"]["state"] = "estimated"
+    elif name == "usage_nocontext":
+        usage.pop("contextUsage")
+    elif name == "usage_zero":
+        usage["contextUsage"]["totalTokens"] = 0
+        state["totalTokens"] = 0
+    elif name == "usage_float":
+        usage["contextUsage"]["totalTokens"] = 100.5
+        state["totalTokens"] = 100.5
+    elif name == "usage_none":
+        message["usage"] = None
+    elif name == "usage_missing":
+        del message["usage"]
+    elif name == "msg_provider":
+        message["provider"] = "other"
+    elif name == "msg_api":
+        message["api"] = "openai-completions"
+    elif name == "msg_model":
+        message["model"] = "other"
+    elif name == "replay_string":
+        message["openclawResponsesInputReplay"] = "x"
+    elif name == "replay_nocontext":
+        message["openclawResponsesInputReplay"] = {}
+    elif name == "replay_null_context":
+        message["openclawResponsesInputReplay"]["contextUsage"] = None
+    elif name == "edit_early":
+        out[0]["content"] = "q1 edited"
+    elif name == "drop_user":
+        del out[2]
+    elif name == "append_user":
+        out.append(_wire_user("later"))
+    elif name == "later_unstated":
+        later = _wire_assistant(
+            {"provider": message["provider"], "api": message["api"], "id": message["model"]},
+            [{"type": "text", "text": "later"}],
+        )
+        later["usage"]["contextUsage"] = {"state": "available", "promptTokens": 1, "totalTokens": 2}
+        out.append(later)
+    elif name == "later_no_usage":
+        later = _wire_assistant(
+            {"provider": message["provider"], "api": message["api"], "id": message["model"]},
+            [{"type": "text", "text": "later"}],
+        )
+        del later["usage"]
+        out.append(later)
+    elif name == "later_bad_state":
+        later = copy.deepcopy(message)
+        later["content"] = [{"type": "text", "text": "later"}]
+        later["openclawResponsesInputReplay"]["contextUsage"]["prefixHash"] = "bad"
+        out.append(later)
+    else:
+        raise AssertionError(name)
+    return out
+
+
+_MUTATIONS = [
+    "none",
+    "none",
+    "state:prefixLength:0",
+    "state:prefixLength:-1",
+    "state:prefixLength:1.5",
+    'state:prefixLength:"4"',
+    "state:prefixLength:null",
+    "state:prefixLength:1",
+    "state:prefixLength:2",
+    "state:prefixLength:99",
+    'state:prefixHash:"deadbeef"',
+    "state:prefixHash:5",
+    'state:projection:"x"',
+    'state:projection:"provider"',
+    'state:projection:"transport"',
+    "state:promptTokens:1",
+    "state:totalTokens:1",
+    "state:includeSystemPrompt:true",
+    "state:includeSystemPrompt:false",
+    'state:includeSystemPrompt:"true"',
+    'state:provider:"other"',
+    "state:api:5",
+    'state:model:"other"',
+    "state:baseUrlHash:5",
+    "state_drop_hash",
+    "state_session",
+    "usage_total",
+    "usage_prompt",
+    "usage_state",
+    "usage_nocontext",
+    "usage_zero",
+    "usage_float",
+    "usage_none",
+    "usage_missing",
+    "msg_provider",
+    "msg_api",
+    "msg_model",
+    "replay_string",
+    "replay_nocontext",
+    "replay_null_context",
+    "edit_early",
+    "drop_user",
+    "append_user",
+    "later_unstated",
+    "later_no_usage",
+    "later_bad_state",
+]
+
+
+def _measured_base_cases(contexts: dict[tuple[str, str], dict[str, Any]]) -> list[dict[str, Any]]:
+    specs: list[dict[str, Any]] = []
+    for model_key in ("responses", "azure", "transport"):
+        model = MODELS[model_key]
+        for ident_key in ("none", "both"):
+            ctx = contexts[(model_key, ident_key)]
+            for owner_name, state in _measured_owner_states(ctx):
+                for tail_name, target_content, tail in _measured_tails(model):
+                    for projection in ("transport", "provider"):
+                        for system_prompt, include in (
+                            (None, False),
+                            ("You are helpful.", True),
+                            ("You are helpful.", False),
+                        ):
+                            messages = [
+                                _wire_user("q1"),
+                                _wire_assistant(
+                                    model,
+                                    [{"type": "text", "text": "A"}, {"type": "text", "text": "B"}],
+                                    state,
+                                ),
+                                _wire_user("q2"),
+                                _wire_assistant(model, target_content),
+                                *tail,
+                            ]
+                            specs.append(
+                                {
+                                    "messages": messages,
+                                    "model": model,
+                                    "identity": IDENTS[ident_key],
+                                    "target": 3,
+                                    "projection": projection,
+                                    "includeSystemPrompt": include,
+                                    "systemPrompt": system_prompt,
+                                    "promptTokens": 90,
+                                    "totalTokens": 100,
+                                    "name": f"{model_key}/{ident_key}/{owner_name}/{tail_name}/{projection}",
+                                }
+                            )
+    return specs
+
+
+def test_real_openclaw_oracle_measured_usage_pressure_matches_python(oracle, contexts):
+    specs = _measured_base_cases(contexts)
+    recorded = _run_op(
+        oracle,
+        "compactionCheckpoint",
+        [{"fn": "recordUsage", **{k: v for k, v in spec.items() if k != "name"}} for spec in specs],
+    )
+    rng = random.Random(77)
+    pressure_cases: list[dict[str, Any]] = []
+    for spec, row in zip(specs, recorded, strict=True):
+        assert row["error"] is None, (spec["name"], row)
+        messages = row["value"]
+        assert "openclawResponsesInputReplay" in messages[3], spec["name"]
+        for mutation in dict.fromkeys(["none", *rng.sample(_MUTATIONS, 3)]):
+            mutated = _mutate(messages, mutation, 3)
+            for system_prompt in dict.fromkeys(
+                [spec["systemPrompt"], rng.choice([None, "other prompt"])]
+            ):
+                pressure_cases.append(
+                    {
+                        "fn": "pressure",
+                        "messages": mutated,
+                        "model": spec["model"],
+                        "identity": {**spec["identity"], "enabled": rng.choice([True, None])},
+                        "systemPrompt": system_prompt,
+                        "mutation": mutation,
+                    }
+                )
+    assert len(pressure_cases) >= 3000
+    tables = _run_op(
+        oracle,
+        "compactionCheckpoint",
+        [
+            {**{k: v for k, v in case.items() if k != "mutation"}, "fn": "projections"}
+            for case in pressure_cases
+        ],
+    )
+    for case, table in zip(pressure_cases, tables, strict=True):
+        if table["error"] is None:
+            case["projectionTable"] = table["value"]
+    rows = _run_op(
+        oracle,
+        "compactionCheckpoint",
+        [{k: v for k, v in c.items() if k != "projectionTable"} for c in pressure_cases],
+    )
+    # A case whose converter run threw cannot give the Python hook its wire input; when the real
+    # pressure call also fails it is compared on the error only.
+    keep = [
+        index
+        for index, case in enumerate(pressure_cases)
+        if "projectionTable" in case or rows[index]["error"] is None
+    ]
+    cases = [pressure_cases[i] for i in keep]
+    kept_rows = [rows[i] for i in keep]
+    python_rows = [_python_row(case) for case in cases]
+    assert _first_diffs(cases, kept_rows, python_rows) == []
+    assert len(cases) > 0.9 * len(pressure_cases)
+    measured = [row for row in rows if row["value"] and "measuredTokens" in row["value"]]
+    estimated = [row for row in rows if row["value"] and "measuredTokens" not in row["value"]]
+    assert len(measured) > 500
+    assert len(estimated) > 300
+    assert {row["error"] for row in rows} >= {None, "TypeError"}
+
+
+# --- URL host extraction (the endpoint classifiers) ------------------------------------------
+
+_URL_HOSTS = [
+    "api.openai.com",
+    "API.OpenAI.com",
+    "chatgpt.com",
+    "api.x.ai",
+    "a.openai.azure.com",
+    "api.anthropic.com",
+    "127.0.0.1",
+    "0x7f.1",
+    "1.2.3",
+    "1.2.3.4.5",
+    "256.1.1.1",
+    "[::1]",
+    "[2001:db8:0:0:1:0:0:1]",
+    "[::ffff:1.2.3.4]",
+    "[1:0:0:2:0:0:0:3]",
+    "[zz]",
+    "[::1",
+    "",
+    "a b",
+    "a%41.com",
+    "a%2Fb",
+    "a%zz",
+    "ex_ample.com",
+    "exa mple.com",
+    "\u00e9xample.com",
+    "\u65e5\u672c.jp",
+    "a..b",
+    "a.b.",
+    "1.2.3.4.",
+    "4294967295",
+    "4294967296",
+    "0300.0250.1.1",
+    "0x",
+    "08.1.1.1",
+    "user@host",
+    "a<b",
+    "host.com:99999",
+    "host.com:65535",
+    "host.com:abc",
+    "host.com:",
+    "host:80",
+    "[::1]:80",
+    "xn--nxasmq6b.com",
+    "\u00df.de",
+    "a^b",
+    "a|b",
+    "\u00c9xample.com",
+    "fa\u00df.de",
+    "\u03a3\u0391\u03a3.gr",
+    "a\u3002b",
+    "\u2100.com",
+    "\uff41\uff42\uff43.com",
+    "\U0001f600.example",
+    "a\x00b",
+    "a\x7fb",
+    "%00",
+    "%",
+    "-",
+    "_",
+    "localhost",
+    "LOCALHOST",
+    "foo.localhost",
+]
+_URL_TEMPLATES = [
+    "https://{}/v1",
+    "http://{}",
+    "{}/v1",
+    "https://u:p@{}/x",
+    "https:{}",
+    "https:///{}",
+    "ftp://{}",
+    "ws://{}:8080/",
+    "custom://{}/a",
+    "custom:{}",
+    "//{}",
+    "https://{}?x=1",
+    "https://{}#f",
+    "https:\\\\{}\\x",
+    "file://{}/x",
+    "  https://{}  ",
+    "ht\ttps://{}",
+    "{}:443/v1",
+    "https://{}\n/x",
+    "https://a@b@{}/",
+    "https://{}@x.example/",
+]
+
+
+def test_real_openclaw_oracle_url_hostname_matches_python(oracle):
+    texts = [template.format(host) for template in _URL_TEMPLATES for host in _URL_HOSTS]
+    texts += [
+        "",
+        " ",
+        "x",
+        "http",
+        "http:",
+        "https://",
+        "//",
+        ":",
+        "a:b",
+        "1:2",
+        "+x://h",
+        "-x://h",
+    ]
+    cases = [{"fn": "hostname", "text": text} for text in texts]
+    assert len(cases) >= 1000
+    _compare_inline(oracle, cases)
+
+
+# --- stableStringify (the measured-usage fingerprint input) -----------------------------------
+
+
+def _stable_values() -> list[Any]:
+    rng = random.Random(41)
+    keys = [
+        "a",
+        "b",
+        "B",
+        "10",
+        "9",
+        chr(0xE9),
+        chr(0xFFFF),
+        chr(0x10000),
+        chr(0x1F600),
+        chr(0xD7FF),
+        chr(0xE000),
+        "",
+        " ",
+        "a b",
+        '"',
+        "\n",
+    ]
+    scalars: list[Any] = [
+        None,
+        True,
+        False,
+        0,
+        1,
+        -1,
+        2**53 - 1,
+        1.5,
+        0.1,
+        1e21,
+        1e-7,
+        1.5e-7,
+        123456789.123456789,
+        5e-324,
+        1.7976931348623157e308,
+        -0.0,
+        0.000001,
+        1e16,
+        100.0,
+        "",
+        "x",
+        "é\U0001f600",
+        " ",
+        "\x00\x1f",
+        '"q"',
+        "\\",
+    ]
+
+    def build(depth: int) -> Any:
+        pick = rng.random()
+        if depth > 3 or pick < 0.35:
+            return rng.choice(scalars)
+        if pick < 0.65:
+            return [build(depth + 1) for _ in range(rng.randrange(0, 5))]
+        return {rng.choice(keys): build(depth + 1) for _ in range(rng.randrange(0, 6))}
+
+    return [build(0) for _ in range(400)] + scalars
+
+
+def test_real_openclaw_oracle_stable_stringify_matches_python(oracle):
+    values = _stable_values()
+    cases = [{"fn": "stable", "value": value} for value in values]
+    assert len(cases) >= 400
+    _compare_inline(oracle, cases)

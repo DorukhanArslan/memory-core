@@ -1546,6 +1546,24 @@ async function main() {
           "tool-result",
         ),
     };
+    // A sibling copy of provider-compaction-replay.ts that also exports its private estimator;
+    // relative imports resolve from that directory. Removed as soon as it is loaded.
+    const replaySource = await fs.readFile(
+      path.join(repoPath, "packages/ai/src/transports/provider-compaction-replay.ts"),
+      "utf8",
+    );
+    const exposedPath = path.join(
+      repoPath,
+      "packages/ai/src/transports",
+      `provider-compaction-replay.oracle-${process.pid}.ts`,
+    );
+    await fs.writeFile(exposedPath, `${replaySource}\nexport { estimateResponsesInput };\n`);
+    let exposedPressureHelpers: Record<string, any>;
+    try {
+      exposedPressureHelpers = await import(pathToFileURL(exposedPath).href);
+    } finally {
+      await fs.rm(exposedPath, { force: true });
+    }
     const replayModel = (model: Record<string, unknown>) => ({
       input: ["text", "image"],
       contextWindow: 200000,
@@ -1674,6 +1692,19 @@ async function main() {
               );
               return {
                 value: out === undefined ? null : { ...out, messages: out.messages.map(ref) },
+                error: null,
+              };
+            }
+            case "estimateInput": {
+              // estimateResponsesInput is private upstream; its source is the only way in.
+              // exposedPressureHelpers (below) loaded it through a sibling copy of the module.
+              const full = { ...estimator };
+              const noTool = { text: full.text, image: full.image, json: full.json };
+              return {
+                value: exposedPressureHelpers.estimateResponsesInput(
+                  item.items,
+                  item.withToolResult === false ? noTool : full,
+                ),
                 error: null,
               };
             }
@@ -1836,6 +1867,7 @@ async function main() {
       "packages/media-core/src/inline-image-data-url.ts",
     );
     const base64 = await importFromRepo(repoPath, "packages/media-core/src/base64.ts");
+    const stable = await importFromRepo(repoPath, "packages/normalization-core/src/stable-stringify.ts");
     const sanitizer = await importFromRepo(
       repoPath,
       "packages/ai/src/transports/responses-image-payload-sanitizer.ts",
@@ -1869,6 +1901,16 @@ async function main() {
                 value: inline.sniffInlineImageMime(Buffer.from(item.hex, "hex")) ?? null,
                 error: null,
               };
+            case "stable":
+              return { value: stable.stableStringify(item.value), error: null };
+            case "hostname": {
+              // new URL(text).hostname: the endpoint classifiers' host extraction.
+              try {
+                return { value: new URL(item.text).hostname, error: null };
+              } catch {
+                return { value: null, error: null };
+              }
+            }
             case "payload": {
               const out = sanitizer.sanitizeResponsesImagePayload(item.params);
               return { value: out, same: out === item.params, error: null };

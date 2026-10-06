@@ -1270,7 +1270,7 @@ def _stable_stringify(value: Any) -> str:
         return _js_number_to_string(value)
     if isinstance(value, list):
         return "[" + ",".join(_stable_stringify(entry) for entry in value) + "]"
-    keys = sorted(value, key=lambda key: _units(key))
+    keys = sorted(value, key=lambda key: key.encode("utf-16-be", "surrogatepass"))
     return (
         "{"
         + ",".join(f"{js_json_stringify(key)}:{_stable_stringify(value[key])}" for key in keys)

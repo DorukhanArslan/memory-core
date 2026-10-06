@@ -4837,6 +4837,468 @@ def test_real_openclaw_oracle_history_limit_without_config_or_provider_match_pyt
     )
 
 
+_ICTX = "⟦openclaw:ctx⟧"
+
+
+def _ctx_block(label: str, body: str) -> str:
+    return f"{label} {_ICTX}\n{body}"
+
+
+def _json_block(label: str, payload: str) -> str:
+    return _ctx_block(label, f"```json\n{payload}\n```")
+
+
+_INBOUND_BLOCKS = {
+    "conv": _json_block("Conversation info:", '{"message_id":"msg-abc","sender":{"id":"+1555000"}}'),
+    "conv_pretty": _json_block("Conversation info:", '{\n  "message_id": "msg-abc"\n}'),
+    "sender": _json_block("Sender:", '{\n  "label": "Alice",\n  "name": "Alice"\n}'),
+    "reply": _json_block("Reply target of current user message:", '{\n  "body": "What time?"\n}'),
+    "fence_inside": _json_block("Conversation info:", '{"body":"a ``` b"}\n```\nstill json?'),
+    "untrusted": _ctx_block(
+        "Context:",
+        '<<<EXTERNAL_UNTRUSTED_CONTENT id="dead">>>\nSource: Channel metadata\n---\nlabels\n'
+        '<<<END_EXTERNAL_UNTRUSTED_CONTENT id="dead">>>',
+    ),
+    "window": _ctx_block(
+        "Conversation context (chronological, selected for current message):",
+        "#10 2026-07-02T12:00:00Z Alice: prior\n#11 2026-07-02T12:01:00Z Bob: more",
+    ),
+    "prose": _ctx_block("Chat history since last reply:", "#1001 sam: did anyone see\n#1002 lee: yeah"),
+    "unclosed": _ctx_block("Conversation info:", '```json\n{"a":1}\nno closing fence'),
+    "nofence": _ctx_block("Conversation info:", '{"a":1}\nplain line\n\nafter blank'),
+    "spaced_header": f"  Sender: {_ICTX}  \n```json\n{{}}\n```",
+    "crlf": f"Sender: {_ICTX}\r\n```json\r\n{{\"a\":1}}\r\n```\r\n\r\nuser",
+    "empty_label": f" {_ICTX}\n```json\n{{}}\n```",
+    "marker_only": _ICTX,
+}
+_ACTIVE_MEMORY_BLOCK = "Context:\n<active_memory_plugin>\nUser prefers aisle seats.\n</active_memory_plugin>"
+
+
+def _inbound_hints() -> list[str]:
+    from memory_core.session_entry import MESSAGE_TOOL_DELIVERY_HINTS
+
+    return list(MESSAGE_TOOL_DELIVERY_HINTS)
+
+
+def _strip_inbound_texts() -> list[str]:
+    texts: list[str] = [
+        "",
+        "Hello, how are you?",
+        "#35676 Keśava: No wtf",
+        "\nContext: my project uses TypeScript\n",
+        "\nSee the Context: section below\n",
+        "Context:",
+        "Context:\n",
+        "  Context:  \nbody",
+        "Context:\nbody that is not active memory",
+        "Context:\n\nSource: x",
+        "intro\nContext:\n<active_memory_plugin>\nnever closed",
+        _ACTIVE_MEMORY_BLOCK,
+        _ACTIVE_MEMORY_BLOCK + "\n\nWhat now?",
+        "Earlier text\n" + _ACTIVE_MEMORY_BLOCK + "\n\nWhat now?",
+        _ACTIVE_MEMORY_BLOCK + "\n\n" + _ACTIVE_MEMORY_BLOCK + "\nfinal",
+        "Context:\n<active_memory_plugin>\nA\n</active_memory_plugin>   \nsame line tail",
+        "Context:\n <active_memory_plugin> \nA\n </active_memory_plugin> \n\nuser",
+        "Context:\r\n<active_memory_plugin>\r\nA\r\n</active_memory_plugin>\r\n\r\nuser",
+        "Context: <active_memory_plugin>\nA\n</active_memory_plugin>",
+        _inbound_json_with_active_memory(),
+        "[Mon 2026-01-05 10:00 UTC] hello",
+        "[Mon 2026-01-05 10:00] hello",
+        "[Mon 2026-01-05 10:00 GMT+2 extra stuff] hello",
+        "[Mon 2026-01-05 10:00 UTC]hello",
+        "[Mon 2026-01-05 10:00 UTC]   ",
+        "[Mon 2026-01-05 10:00 UTC] [Tue 2026-01-06 11:00 UTC] twice",
+        "[Mo 2026-01-05 10:00 UTC] short weekday",
+        "[Mon 26-01-05 10:00 UTC] bad date",
+        "[note] not a timestamp",
+        "x [Mon 2026-01-05 10:00 UTC] not leading",
+        "٠[Mon 2026-01-05 10:00 UTC] arabic digit prefix",
+    ]
+    for name, block in _INBOUND_BLOCKS.items():
+        for shape in (
+            "{b}",
+            "{b}\n",
+            "{b}\n\n",
+            "{b}\n\nWhat is the weather?",
+            "{b}\nNo blank separator",
+            "user first\n\n{b}",
+            "user first\n{b}\n\nthen more",
+            "\n\n{b}\n\nuser\n\n\n",
+            "  {b}  \n\nuser",
+            "{b}\n\n\n\nuser after many blanks",
+            "[Mon 2026-01-05 10:00 UTC] {b}\n\nuser",
+            "{b}\n\n[Tue 2026-01-06 11:00 UTC] stamp after",
+            "[Mon 2026-01-05 10:00 UTC]\n{b}\n\n[Tue 2026-01-06 11:00 UTC] stamp after",
+        ):
+            texts.append(shape.replace("{b}", block))
+        assert name
+    names = list(_INBOUND_BLOCKS)
+    for i, first in enumerate(names):
+        second = names[(i * 3 + 1) % len(names)]
+        third = names[(i * 5 + 2) % len(names)]
+        texts.append(f"{_INBOUND_BLOCKS[first]}\n\n{_INBOUND_BLOCKS[second]}\n\nuser text")
+        texts.append(
+            f"{_INBOUND_BLOCKS[first]}\n\n{_INBOUND_BLOCKS[second]}\n\n{_INBOUND_BLOCKS[third]}"
+        )
+        texts.append(f"mid {_INBOUND_BLOCKS[first]}\n\nmid2\n\n{_INBOUND_BLOCKS[second]}\ntail")
+    for hint in _inbound_hints():
+        for shape in (
+            "{h}",
+            "{h}\n",
+            "{h}\n\nuser text",
+            "user text\n{h}",
+            "user text\n\n{h}\n\nmore",
+            "  {h}  \nuser",
+            "{h} trailing words",
+            "prefix {h}",
+            "{h}\n{h}\nuser",
+            "{h}\n" + _INBOUND_BLOCKS["conv"] + "\n\nuser",
+            _INBOUND_BLOCKS["conv"] + "\n\n{h}\n\nuser",
+            "[Mon 2026-01-05 10:00 UTC] {h}\nuser",
+            _ACTIVE_MEMORY_BLOCK + "\n{h}\nuser",
+        ):
+            texts.append(shape.replace("{h}", hint))
+    channel = f"Context: {_ICTX}\nbody lines\nmore"
+    texts += [
+        channel,
+        f"user\n\n{channel}",
+        f"user\n\n\n\n{channel}",
+        f"user\n \n\t\n{channel}",
+        f"user\n{channel}\n\n{_INBOUND_BLOCKS['conv']}",
+        f"{_INBOUND_BLOCKS['conv']}\n\n{channel}",
+        f"  Context: {_ICTX}  \nx",
+        f"Context: {_ICTX} extra\nx",
+        f"{channel}\r\n",
+        f"first\r\nsecond\r\n\r\n{channel}",
+        f"a\n{_ICTX}\nb",
+        f"a {_ICTX} b",
+        f"x{_ICTX}",
+        f"x {_ICTX}\n```json\n{{}}\n```\nrest",
+        f"{_ICTX} x\n```json\n{{}}\n```\nrest",
+        f"{_ICTX}\n```json\n{{}}\n```\nrest",
+        "Sender: " + _ICTX + "\n```json\n{}\n```\n```json\nsecond\n```\ntail",
+        "Sender: " + _ICTX + "\n```JSON\n{}\n```\ntail",
+        "Sender: " + _ICTX + "\n ```json \n{}\n  ```  \ntail",
+        "Sender: " + _ICTX + "\n\n```json\n{}\n```\ntail",
+        "Sender: " + _ICTX + "\n```json\n{}\n```x\n```\ntail",
+        "Sender: " + _ICTX + "\n```json\n{}\n```",
+        "Sender: " + _ICTX + "\n```json",
+        "Sender: " + _ICTX + "\n",
+        "Sender: " + _ICTX,
+        "Sender: " + _ICTX + "\n\n\n",
+        "Sender: " + _ICTX + "\ntext\n\n\n\nafter",
+        "Sender: " + _ICTX + "\ntext\r\n\r\nafter",
+        "Sender: " + _ICTX + "\n  \t \nafter\n",
+        "Sender: " + _ICTX + "\n \nafter",
+        "Sender: " + _ICTX + "\n \nafter",
+        " Sender: " + _ICTX + "\nbody\n\nafter",
+        "﻿Sender: " + _ICTX + "\nbody\n\nafter",
+        "emoji \U0001f600\n" + _INBOUND_BLOCKS["conv"] + "\n\n\U0001f600 user \U0001f600",
+        "Keśava\n" + _INBOUND_BLOCKS["sender"] + "\n\nłódź",
+        "\n\n\n" + "plain user text with leading newlines",
+        "plain\n\n\n",
+        "\n\n" + _INBOUND_BLOCKS["conv"] + "\n\n\n\nuser",
+    ]
+    return texts
+
+
+def _inbound_json_with_active_memory() -> str:
+    return _json_block(
+        "Conversation info:", '{"a":"x"}\n' + _ACTIVE_MEMORY_BLOCK + '\n{"b":1}'
+    ) + "\n\nuser"
+
+
+def test_real_openclaw_oracle_strip_inbound_metadata_matches_python():
+    from memory_core.replay_history import _strip_internal_metadata_for_display
+    from memory_core.session_entry import strip_inbound_metadata
+
+    texts = _strip_inbound_texts()
+    assert len(texts) >= 250
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    result = oracle.run(
+        {"operation": "stripInboundMetadata", "cases": [{"text": text} for text in texts]}
+    )
+    assert result["ok"] is True
+    got = result["result"]
+    stripped_diffs = [
+        (text, row["stripped"], strip_inbound_metadata(text))
+        for text, row in zip(texts, got, strict=True)
+        if row["stripped"] != strip_inbound_metadata(text)
+    ]
+    assert stripped_diffs == []
+    display_diffs = [
+        (text, row["display"], _strip_internal_metadata_for_display(text))
+        for text, row in zip(texts, got, strict=True)
+        if row["display"] != _strip_internal_metadata_for_display(text)
+    ]
+    assert display_diffs == []
+
+
+def _owner_blocks() -> list[dict]:
+    return [
+        {"type": "text", "text": "A"},
+        {"type": "thinking", "thinking": "B", "signature": "s"},
+        {"type": "text", "text": "A"},
+        {"type": "toolCall", "id": "t1", "name": "read", "arguments": {}},
+    ]
+
+
+def _owner_replays() -> list[dict | None]:
+    replays: list[dict | None] = [
+        None,
+        {"type": "other-thing", "replayIndex": 2},
+        {"type": "anthropic-compaction"},
+        {"type": "openai-responses-compaction", "replayIndex": None},
+        {"type": "openai-responses-retained-compaction"},
+        {"type": "openai-responses-retained-compaction", "replayIndex": 99},
+        {"type": "anthropic-compaction", "replayIndex": 1.5},
+        {"type": "anthropic-compaction", "replayIndex": -1},
+    ]
+    for index in range(0, 7):
+        replays.append({"type": "anthropic-compaction", "replayIndex": index, "summary": "S"})
+        replays.append(
+            {"type": "openai-responses-compaction", "replayIndex": index, "encrypted": "E"}
+        )
+    return replays
+
+
+def _owner_content_specs() -> list[list[dict]]:
+    ref = lambda i: {"ref": i}  # noqa: E731
+    lit = {"literal": {"type": "text", "text": "A"}}
+    return [
+        [],
+        [ref(0), ref(1), ref(2), ref(3)],
+        [ref(1), ref(2), ref(3)],
+        [ref(0), ref(2), ref(3)],
+        [ref(0), ref(1), ref(3)],
+        [ref(0), ref(1), ref(2)],
+        [ref(2), ref(3)],
+        [ref(0), ref(3)],
+        [ref(3)],
+        [ref(2)],
+        [ref(0)],
+        [ref(1)],
+        [ref(0), ref(1)],
+        [ref(3), ref(2)],
+        [ref(0), ref(0)],
+        [ref(2), ref(0)],
+        [lit],
+        [ref(0), lit, ref(2)],
+        [lit, ref(0)],
+        [ref(0), ref(1), ref(2), ref(3), lit],
+        [{"literal": "A"}],
+        [{"literal": None}],
+    ]
+
+
+def _owner_cases() -> list[dict]:
+    cases = []
+    for replay in _owner_replays():
+        for specs in _owner_content_specs():
+            message = {
+                "role": "assistant",
+                "content": _owner_blocks(),
+                "stopReason": "stop",
+                **({"providerReplay": replay} if replay is not None else {}),
+            }
+            cases.append({"message": message, "content": specs})
+    # Primitive blocks are compared by value (strict equality), objects by identity.
+    primitive = {"type": "anthropic-compaction", "replayIndex": 3}
+    for specs in (
+        [{"ref": 0}, {"ref": 2}],
+        [{"literal": "x"}, {"literal": 1}],
+        [{"literal": True}],
+        [{"literal": "1"}],
+        [{"literal": 1}, {"literal": True}],
+        [{"literal": "x"}, {"literal": "x"}],
+        [{"ref": 1}, {"literal": None}],
+        [{"literal": 1.0}],
+        [{"literal": "y"}, {"literal": "x"}],
+    ):
+        cases.append(
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": ["x", "y", 1, True, None, "x"],
+                    "providerReplay": primitive,
+                },
+                "content": specs,
+            }
+        )
+    # Non-array original content: a string is searched as text, other shapes throw upstream.
+    for original in ("abc", "", {"type": "text", "text": "z"}, 7, None):
+        for specs in ([], [{"literal": {"type": "text", "text": "a"}}], [{"literal": "b"}]):
+            cases.append(
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": original,
+                        "providerReplay": {"type": "anthropic-compaction", "replayIndex": 0},
+                    },
+                    "content": specs,
+                }
+            )
+    return cases
+
+
+def _build_owner_content(message: dict, specs: list[dict]) -> list:
+    return [
+        message["content"][spec["ref"]] if "ref" in spec else spec["literal"] for spec in specs
+    ]
+
+
+def test_real_openclaw_oracle_compaction_replay_owner_content_matches_python():
+    from memory_core.compaction_replay import (
+        is_compaction_replay_checkpoint,
+        replace_compaction_replay_owner_content,
+        strip_compaction_replay_checkpoint,
+    )
+
+    cases = _owner_cases()
+    assert len(cases) >= 300
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    result = oracle.run({"operation": "compactionReplayOwner", "cases": cases})
+    assert result["ok"] is True
+    diffs = []
+    for case, row in zip(cases, result["result"], strict=True):
+        message = case["message"]
+        try:
+            replaced = replace_compaction_replay_owner_content(
+                message, _build_owner_content(message, case["content"])
+            )
+            error = None
+        except Exception as exc:  # noqa: BLE001 - the oracle reports the class name
+            replaced, error = None, type(exc).__name__
+        python_row = {
+            "replaced": replaced,
+            "error": error,
+            "isCheckpoint": is_compaction_replay_checkpoint(message.get("providerReplay")),
+            "stripped": strip_compaction_replay_checkpoint(message),
+        }
+        if row != python_row:
+            diffs.append((case, row, python_row))
+    assert diffs[:3] == []
+
+
+def _checkpoint_replay(index: int) -> dict:
+    return {"type": "anthropic-compaction", "replayIndex": index, "summary": "S"}
+
+
+def _media_block() -> dict:
+    return {"type": "image", "data": "AA==", "mimeType": "image/png"}
+
+
+def _replay_owner_messages() -> list[tuple[str, list[dict]]]:
+    """Replay-normalisation and tool-input fixtures whose owner message carries a checkpoint."""
+
+    def assistant(content, replay_index=None, **extra):
+        message = {
+            "role": "assistant",
+            "content": content,
+            "provider": "anthropic",
+            "model": "claude",
+            "usage": {"input": 3, "output": 4, "totalTokens": 7},
+            "stopReason": "stop",
+            "timestamp": 0,
+            **extra,
+        }
+        if replay_index is not None:
+            message["providerReplay"] = _checkpoint_replay(replay_index)
+        return message
+
+    text = {"type": "text", "text": "kept"}
+    think = {"type": "thinking", "thinking": "t", "signature": "sig"}
+    runtime = {
+        "type": "text",
+        "text": "before\n<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nsecret\n"
+        "<<<END_OPENCLAW_INTERNAL_CONTEXT>>>\nafter",
+    }
+    silent = {"type": "text", "text": "NO_REPLY"}
+    inbound = {
+        "type": "text",
+        "text": _json_block("Conversation info:", '{"a":1}') + "\n\nvisible tail",
+    }
+    call = {"type": "toolCall", "id": "c1", "name": "read", "arguments": {"path": "a"}}
+    bad_call = {"type": "toolCall", "name": "read", "arguments": {}}
+    fixtures: list[tuple[str, list[dict]]] = []
+    for index in range(0, 5):
+        fixtures += [
+            (f"unchanged-{index}", [assistant([text, think, text], index)]),
+            (f"image-first-{index}", [assistant([_media_block(), text, think], index)]),
+            (f"image-middle-{index}", [assistant([text, _media_block(), think], index)]),
+            (f"image-last-{index}", [assistant([text, think, _media_block()], index)]),
+            (f"image-only-{index}", [assistant([_media_block()], index)]),
+            (f"runtime-{index}", [assistant([think, runtime, text], index)]),
+            (f"inbound-{index}", [assistant([think, inbound, text], index)]),
+            (f"silent-{index}", [assistant([think, silent, text], index)]),
+            (f"silent-only-{index}", [assistant([silent], index)]),
+            (f"silent-thinking-{index}", [assistant([think, silent], index)]),
+            (f"string-{index}", [assistant("plain\n<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nx\n"
+                                           "<<<END_OPENCLAW_INTERNAL_CONTEXT>>>", index)]),
+            (f"string-plain-{index}", [assistant("plain", index)]),
+            (f"object-content-{index}", [assistant({"type": "text", "text": "solo"}, index)]),
+            (f"two-owners-{index}", [
+                assistant([_media_block(), text], index),
+                {"role": "user", "content": "next", "timestamp": 1},
+                assistant([text, _media_block(), think], 2),
+            ]),
+            (f"retained-{index}", [assistant([_media_block(), text], None,
+                                              providerReplay={"type": "openai-responses-retained-compaction",
+                                                              "replayIndex": index})]),
+            (f"responses-{index}", [assistant([text, _media_block(), think], None,
+                                              providerReplay={"type": "openai-responses-compaction",
+                                                              "replayIndex": index})]),
+        ]
+    fixtures += [
+        ("no-replay-image", [assistant([text, _media_block()])]),
+        ("other-replay", [assistant([text, _media_block()], None, providerReplay={"type": "x"})]),
+        ("replay-index-beyond", [assistant([_media_block(), text], 9)]),
+    ]
+    return fixtures + [("tools-" + name, messages) for name, messages in _tool_owner_fixtures(
+        assistant, text, think, call, bad_call
+    )]
+
+
+def _tool_owner_fixtures(assistant, text, think, call, bad_call):
+    out = []
+    for index in range(0, 5):
+        out += [
+            (f"bad-first-{index}", [assistant([bad_call, text, think, call], index)]),
+            (f"bad-middle-{index}", [assistant([text, bad_call, think, call], index)]),
+            (f"bad-last-{index}", [assistant([text, think, call, bad_call], index)]),
+            (f"bad-only-{index}", [assistant([bad_call], index)]),
+            (f"clean-{index}", [assistant([text, think, call], index)]),
+        ]
+    return out
+
+
+def test_real_openclaw_oracle_replay_content_keeps_compaction_owner_matches_python():
+    fixtures = _replay_owner_messages()
+    normalize = [(name, messages) for name, messages in fixtures if not name.startswith("tools-")]
+    tools = [(name, messages) for name, messages in fixtures if name.startswith("tools-")]
+    assert len(normalize) >= 80
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    cases = [{"fn": "normalize", "messages": messages} for _, messages in normalize] + [
+        {"fn": "sanitizeToolCalls", "messages": messages} for _, messages in tools
+    ]
+    result = oracle.run({"operation": "replayContentCases", "cases": cases})
+    assert result["ok"] is True
+    names = [name for name, _ in normalize] + [name for name, _ in tools]
+    diffs = []
+    for name, case, row in zip(names, cases, result["result"], strict=True):
+        try:
+            if case["fn"] == "normalize":
+                out = normalize_assistant_replay_content(case["messages"])
+            else:
+                out = sanitize_tool_call_inputs(case["messages"])
+            python_row = {"messages": out, "unchanged": out is case["messages"], "error": None}
+        except Exception as exc:  # noqa: BLE001 - the oracle reports the class name
+            python_row = {"messages": None, "unchanged": False, "error": type(exc).__name__}
+        if row != python_row:
+            diffs.append((name, row, python_row))
+    assert diffs[:3] == []
+
+
 def _repair_pairing_case(messages: list[dict], **options) -> None:
     """repairToolUseResultPairing at the tag against the port, the whole report compared."""
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))

@@ -25,6 +25,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from memory_core.compaction_replay import replace_compaction_replay_owner_content
 from memory_core._transcript_repair_constants import (
     DEFAULT_MISSING_TOOL_RESULT_TEXT,
     SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY,
@@ -159,9 +160,9 @@ def sanitize_tool_call_inputs(
     kept only as a finalized Responses call, without the field; names are trimmed; an assistant
     message left with no content and a non-object message are dropped. Not ported, labelled:
     the provider-owned thinking replay branch (``allowProviderOwnedThinkingReplay``, :244-277,
-    off by default upstream) and the compaction replay checkpoint rewrite of
-    ``replaceCompactionReplayOwnerContent``: a changed message is ``{**message, "content": ...}``,
-    upstream's result for a message without a ``providerReplay`` checkpoint.
+    off by default upstream). A changed message goes through
+    ``replaceCompactionReplayOwnerContent`` (:mod:`memory_core.compaction_replay`), which
+    re-indexes or strips a compaction checkpoint in its ``providerReplay``.
     """
     allowed = _normalize_allowed_tool_names(allowed_tool_names)
     is_completed = _completed_tool_call_predicate(messages)
@@ -204,7 +205,7 @@ def sanitize_tool_call_inputs(
             next_content.append(work)
         if message_changed:
             if next_content:
-                out.append({**message, "content": next_content})
+                out.append(replace_compaction_replay_owner_content(message, next_content))
             continue
         out.append(message)
     return out if changed else messages

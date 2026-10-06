@@ -86,7 +86,10 @@ _ACTIVE_MEMORY_CLOSE = "</active_memory_plugin>"
 _METADATA_TOKENS_RE = re.compile(
     "|".join(re.escape(token) for token in (INBOUND_CONTEXT_MARKER, *MESSAGE_TOOL_DELIVERY_HINTS))
 )
-_BARE_CONTEXT_LINE_RE = re.compile(r"^[ \t]*Context:[ \t]*$", re.MULTILINE)
+# JS /^[ \t]*Context:[ \t]*$/m: ^ and $ also break at \r, U+2028 and U+2029, not only \n.
+_BARE_CONTEXT_LINE_RE = re.compile(
+    r"(?<![^\n\r\u2028\u2029])[ \t]*Context:[ \t]*(?![^\n\r\u2028\u2029])"
+)
 
 
 @dataclass(frozen=True)
@@ -312,9 +315,9 @@ def sanitize_session_text(
 
 
 def _default_strip_runtime_context(text: str) -> str:
-    from memory_core.replay_history import _strip_internal_metadata_for_display
+    from memory_core.replay_history import _strip_runtime_context_and_preface
 
-    return _strip_internal_metadata_for_display(text)
+    return _strip_runtime_context_and_preface(text)
 
 
 # --- classification helpers ------------------------------------------------------------------

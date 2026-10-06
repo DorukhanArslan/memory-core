@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from memory_core.compaction_replay import replace_compaction_replay_owner_content
 from memory_core.memory_flush import SILENT_REPLY_TOKEN
 from memory_core.replay_repair import _extract_tool_calls_from_assistant
 from memory_core.runtime_context_prompt import (
@@ -10,6 +11,7 @@ from memory_core.runtime_context_prompt import (
     _find_delimited_token_index,
 )
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY, MEMORY_CORE_RUNTIME_IDENTITY
+from memory_core.session_entry import strip_inbound_metadata
 
 
 STREAM_ERROR_FALLBACK_TEXT = "[assistant turn failed before producing content]"
@@ -58,7 +60,7 @@ def normalize_assistant_replay_content(messages: list[dict[str, Any]]) -> list[d
 
         if not isinstance(replay_content, list):
             replay_content = [replay_content] if isinstance(replay_content, dict) else []
-            assistant_message = {**message, "content": replay_content}
+            assistant_message = replace_compaction_replay_owner_content(message, replay_content)
             touched = True
 
         normalized_blocks = _normalize_assistant_replay_block_content(
@@ -153,7 +155,7 @@ def _normalize_assistant_replay_text_content(
     trimmed = stripped.strip()
     if not trimmed or _is_silent_reply_payload_text(trimmed):
         return None
-    return {**message, "content": [{"type": "text", "text": stripped}]}
+    return replace_compaction_replay_owner_content(message, [{"type": "text", "text": stripped}])
 
 
 def _normalize_assistant_replay_block_content(
@@ -193,7 +195,7 @@ def _normalize_assistant_replay_block_content(
         return message
     if not sanitized:
         return None
-    normalized = {**message, "content": sanitized}
+    normalized = replace_compaction_replay_owner_content(message, sanitized)
     # A silent reply has no visible assistant output; do not let its signed reasoning
     # merge into the next assistant turn during strict replay.
     if removed_silent_text and _has_only_assistant_reasoning_content(normalized):
@@ -366,6 +368,14 @@ def _read_finite_number(value: Any) -> float | None:
 
 
 def _strip_internal_metadata_for_display(text: str) -> str:
+    """``stripInternalMetadataForDisplay``: ``stripInboundMetadata`` over the runtime-context strip."""
+
+    return strip_inbound_metadata(_strip_runtime_context_and_preface(text))
+
+
+def _strip_runtime_context_and_preface(text: str) -> str:
+    """``stripInternalRuntimeContext``: delimited blocks, then the persisted prompt prefaces."""
+
     return _strip_runtime_context_prompt_preface(_strip_internal_runtime_context(text))
 
 

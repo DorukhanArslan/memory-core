@@ -111,6 +111,8 @@ type Payload = {
   consolidation?: Record<string, any>;
   promotionScenarios?: Array<Record<string, any>>;
   originSteps?: Array<Record<string, any>>;
+  recallScenarios?: Array<Record<string, any>>;
+  backfillScenarios?: Array<Record<string, any>>;
   agentIds?: string[];
   lockProbe?: Record<string, any>;
 };
@@ -1385,19 +1387,82 @@ async function main() {
       repoPath,
       "src/agents/embedded-agent-runner/run/preemptive-compaction.ts",
     );
-    const result = preemptive.shouldPreemptivelyCompactBeforePrompt({
-      messages: payload.messages ?? [],
-      unwindowedMessages: payload.unwindowedMessages,
-      systemPrompt: payload.systemPrompt,
-      prompt: payload.prompt ?? "",
-      contextTokenBudget: payload.contextWindowTokens ?? 100_000,
-      reserveTokens: payload.reserveTokens ?? 0,
-      toolResultMaxChars: payload.toolResultMaxChars,
+    // The real OpenClaw host (endpoint classes, tool-result redaction) backs the replay pressure.
+    await importFromRepo(repoPath, "src/llm/ai-transport-host.ts");
+    await importFromRepo(repoPath, "src/agents/ai-transport-runtime-host.ts");
+    const replayModel = (model: Record<string, unknown>) => ({
+      input: ["text", "image"],
+      contextWindow: 200000,
+      maxTokens: 4096,
+      reasoning: false,
+      name: String(model.id),
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      ...model,
     });
+    const decide = (item: Record<string, any>) => {
+      const replay = item.replay
+        ? { ...item.replay, model: replayModel(item.replay.model) }
+        : undefined;
+      const messages = item.messages ?? [];
+      switch (item.fn) {
+        case "boundaryEstimate":
+          return preemptive.estimateLlmBoundaryTokenPressure({
+            messages,
+            systemPrompt: item.systemPrompt,
+            prompt: item.prompt ?? "",
+            replay,
+            ...(typeof item.toolSchemaTokens === "number"
+              ? { toolSchemaTokens: item.toolSchemaTokens }
+              : {}),
+          });
+        case "renderedBoundary":
+          return preemptive.estimateRenderedLlmBoundaryTokenPressure({
+            systemPrompt: item.systemPrompt,
+            prompt: item.prompt ?? "",
+          });
+        case "toolSchema":
+          return preemptive.estimateToolSchemaTokenPressure(item.tools);
+        case "precheckLog":
+          return preemptive.formatPrePromptPrecheckLog(item.params);
+        case "budgetStatus":
+          return preemptive.buildPrePromptContextBudgetStatus(item.params);
+        case "overflowText":
+          return preemptive.PREEMPTIVE_OVERFLOW_ERROR_TEXT;
+        default:
+          return preemptive.shouldPreemptivelyCompactBeforePrompt({
+            messages,
+            unwindowedMessages: item.unwindowedSame ? messages : item.unwindowedMessages,
+            systemPrompt: item.systemPrompt,
+            prompt: item.prompt ?? "",
+            contextTokenBudget: item.contextWindowTokens ?? 100_000,
+            reserveTokens: item.reserveTokens ?? 0,
+            toolResultMaxChars: item.toolResultMaxChars,
+            toolSchemaTokens: item.toolSchemaTokens,
+            llmBoundaryTokenPressure: item.llmBoundaryTokenPressure,
+            replay,
+          });
+      }
+    };
+    if (Array.isArray(payload.cases)) {
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: payload.cases.map((item: Record<string, any>) => {
+          try {
+            return { value: decide(item) ?? null, error: null };
+          } catch (err) {
+            return {
+              value: null,
+              error: err instanceof Error ? err.constructor.name : String(err),
+            };
+          }
+        }),
+      };
+    }
     return {
       ok: true,
       operation: payload.operation,
-      result,
+      result: decide(payload),
     };
   }
 
@@ -1530,6 +1595,19 @@ async function main() {
       repoPath,
       "packages/ai/src/transports/openai-responses-replay-messages-internal.ts",
     );
+    const toolText = await importFromRepo(repoPath, "packages/ai/src/providers/tool-result-text.ts");
+    const contract = await importFromRepo(
+      repoPath,
+      "packages/ai/src/providers/anthropic-model-contract.ts",
+    );
+    const providerTransform = await importFromRepo(
+      repoPath,
+      "packages/ai/src/provider-transcript-transform.ts",
+    );
+    const transportTransform = await importFromRepo(
+      repoPath,
+      "src/agents/transport-message-transform.ts",
+    );
     // The real OpenClaw host (endpoint classification, secret sentinels) is what eligibility
     // runs against in production; the library default host classifies every URL as "default".
     await importFromRepo(repoPath, "src/llm/ai-transport-host.ts");
@@ -1568,6 +1646,25 @@ async function main() {
       exposedPressureHelpers = await import(pathToFileURL(exposedPath).href);
     } finally {
       await fs.rm(exposedPath, { force: true });
+    }
+    // The same trick for the continuation module's private normalizeAssistantReplayInput.
+    const continuationPath = path.join(
+      repoPath,
+      "packages/ai/src/transports",
+      `openai-responses-continuation.oracle-${process.pid}.ts`,
+    );
+    await fs.writeFile(
+      continuationPath,
+      `${await fs.readFile(
+        path.join(repoPath, "packages/ai/src/transports/openai-responses-continuation.ts"),
+        "utf8",
+      )}\nexport { normalizeAssistantReplayInput };\n`,
+    );
+    let exposedContinuation: Record<string, any>;
+    try {
+      exposedContinuation = await import(pathToFileURL(continuationPath).href);
+    } finally {
+      await fs.rm(continuationPath, { force: true });
     }
     const replayModel = (model: Record<string, unknown>) => ({
       input: ["text", "image"],
@@ -1736,6 +1833,71 @@ async function main() {
               }
               return { value: table, error: null };
             }
+            case "convert": {
+              // The Responses converter itself: the wire input of one projection over the case's
+              // messages as given (every role), with the identity's session and auth profile.
+              const convert =
+                item.projection === "provider"
+                  ? converter.convertProviderResponsesMessages
+                  : converter.convertResponsesMessages;
+              return {
+                value: convert(
+                  replayModel(item.model),
+                  { messages: structuredClone(messages), systemPrompt: item.systemPrompt },
+                  toolCallProviders,
+                  {
+                    ...identity,
+                    ...(item.options ?? {}),
+                    ...(item.includeSystemPrompt === undefined
+                      ? {}
+                      : { includeSystemPrompt: item.includeSystemPrompt }),
+                  },
+                ),
+                error: null,
+              };
+            }
+            case "toolResultText": {
+              return {
+                value: {
+                  text: toolText.extractToolResultText(item.blocks, item.options),
+                  placeholder: toolText.describeToolResultMediaPlaceholder(item.blocks) ?? null,
+                  hasImage: item.blocks.map((block: unknown) =>
+                    toolText.isImageWithMediaPayload(block),
+                  ),
+                  blocks: item.blocks.map(
+                    (block: unknown) => toolText.extractToolResultBlockText(block) ?? null,
+                  ),
+                },
+                error: null,
+              };
+            }
+            case "boundReplayMode": {
+              return {
+                value: contract.resolveModelBoundThinkingReplayMode({
+                  source: item.source,
+                  target: item.target,
+                }),
+                error: null,
+              };
+            }
+            case "transform": {
+              const model = replayModel(item.model);
+              const norm = (id: string) => `n:${id}`;
+              const out =
+                item.style === "provider"
+                  ? providerTransform.transformProviderMessages(
+                      structuredClone(messages),
+                      model,
+                      item.normalize ? norm : undefined,
+                    )
+                  : transportTransform.transformTransportMessages(
+                      structuredClone(messages),
+                      model,
+                      item.normalize ? norm : undefined,
+                      item.options,
+                    );
+              return { value: out, error: null };
+            }
             case "recordUsage": {
               // Bind measured usage to the replay prefix exactly as the transport does after a
               // response: request.input is the wire input before the target assistant message
@@ -1774,6 +1936,36 @@ async function main() {
                 item.projection,
               );
               return { value: messages, error: null };
+            }
+            case "normalizeReplayInput":
+              return {
+                value: exposedContinuation.normalizeAssistantReplayInput(
+                  structuredClone(item.items),
+                  item.fromResponse === true,
+                ),
+                error: null,
+              };
+            case "prefixFingerprint":
+              return {
+                value: exposedContinuation.responsesContinuationPrefixFingerprint(
+                  structuredClone(item.input),
+                  item.output === undefined ? undefined : structuredClone(item.output),
+                ),
+                error: null,
+              };
+            case "recordContextUsage": {
+              // recordResponsesContextUsage over the case's own request and output; the result is
+              // the target's saved input-replay state (JSON, so undefined fields are absent).
+              const target = messages[item.target];
+              usageModule.recordResponsesContextUsage(
+                target,
+                replayModel(item.model),
+                item.identity,
+                structuredClone(item.request),
+                structuredClone(item.output),
+                item.projection,
+              );
+              return { value: target.openclawResponsesInputReplay ?? null, error: null };
             }
             case "anthropicCapture": {
               const output: Record<string, unknown> = structuredClone(item.output ?? {});
@@ -3820,6 +4012,48 @@ async function main() {
     return { ok: true, operation: payload.operation, result };
   }
 
+  if (payload.operation === "redactModelVisibleSecrets") {
+    // src/logging/redact.ts redactModelVisibleSecrets (the host redactor of the Responses
+    // converter's tool-result text): `values` are JSON values redacted one by one, `keys` go
+    // through isSensitiveFieldKey, `fields` ([key, value] pairs) through
+    // redactModelVisibleSensitiveFieldValueWithConfig, and `meta` returns the tool-payload
+    // pattern table. A sandbox HOME keeps readLoggingConfig on its default (no user patterns).
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-model-redact-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    process.env.OPENCLAW_LOG_LEVEL = "silent";
+    try {
+      const redact = await importFromRepo(repoPath, "src/logging/redact.ts");
+      const patterns = await importFromRepo(repoPath, "src/logging/redact-patterns.ts");
+      const body = payload as Record<string, any>;
+      const result: Record<string, unknown> = {
+        values: (body.values ?? []).map((value: unknown) => {
+          try {
+            return { value: redact.redactModelVisibleSecrets(structuredClone(value)) };
+          } catch (error) {
+            return { error: String((error as Error)?.name ?? error) };
+          }
+        }),
+        keys: (body.keys ?? []).map((key: string) => redact.isSensitiveFieldKey(key)),
+        fields: (body.fields ?? []).map(([key, value]: [string, string]) =>
+          redact.redactModelVisibleSensitiveFieldValueWithConfig(key, value),
+        ),
+      };
+      if (body.meta) {
+        result.meta = {
+          toolPayloadStringPatterns: patterns.TOOL_PAYLOAD_REDACT_PATTERNS.filter(
+            (pattern: unknown) => typeof pattern === "string",
+          ),
+          toolPayloadPatternCount: patterns.TOOL_PAYLOAD_REDACT_PATTERNS.length,
+          defaultPatternCount: patterns.DEFAULT_REDACT_PATTERNS.length,
+        };
+      }
+      return { ok: true, operation: payload.operation, result };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
   if (payload.operation === "sessionMemorySlug") {
     // src/hooks/llm-slug-generator.ts generateSlugViaLLM with only its model run replaced:
     // a module hook resolves its ../agents/embedded-agent.js import to a stub whose
@@ -4010,6 +4244,8 @@ async function main() {
     "applyPromotionScenarios",
     "originsLedger",
     "fileLockProbe",
+    "recordRecallScenarios",
+    "sessionBackfillLineage",
   ]);
   if (!promotionOperations.has(payload.operation)) {
     throw new Error(`unsupported operation: ${payload.operation}`);
@@ -4252,6 +4488,21 @@ async function main() {
                 retainedEntryKeys: new Set<string>(step.retainedEntryKeys ?? []),
               })),
             ].toSorted();
+          } else if (step.kind === "tombstone") {
+            // recordMemorySessionTombstonesInDatabase on the agent's real database (the revision
+            // fence bump included).
+            const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId: step.agentId }).db;
+            result = origins.recordMemorySessionTombstonesInDatabase(db, {
+              agentId: step.agentId,
+              sessionIds: step.sessionIds,
+              ...(typeof step.reason === "string" ? { reason: step.reason } : {}),
+              ...(Number.isFinite(step.createdAt) ? { createdAt: Number(step.createdAt) } : {}),
+            });
+          } else if (step.kind === "tombstones") {
+            result = origins.listMemorySessionTombstones({
+              agentId: step.agentId,
+              ...(Array.isArray(step.sessionIds) ? { sessionIds: step.sessionIds } : {}),
+            });
           } else if (step.kind === "list") {
             result = origins.listMemoryEntryOrigins({
               agentId: step.agentId,
@@ -4267,9 +4518,183 @@ async function main() {
           state: Object.fromEntries(
             agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
           ),
+          tombstones: Object.fromEntries(
+            agentIds.map((agentId) => [agentId, origins.listMemorySessionTombstones({ agentId })]),
+          ),
+          // The index revision fence counter (memory_index_state) of every agent database.
+          revisions: Object.fromEntries(
+            agentIds.map((agentId) => [
+              agentId,
+              (
+                sqliteRuntime
+                  .openOpenClawAgentDatabase({ agentId })
+                  .db.prepare("SELECT revision FROM memory_index_state WHERE id = 1")
+                  .get() as { revision: number } | undefined
+              )?.revision ?? null,
+            ]),
+          ),
         });
       }
       return { ok: true, operation: payload.operation, result: { steps } };
+    }
+
+    if (payload.operation === "recordRecallScenarios") {
+      // recordShortTermRecalls with session origins over many seeded workspaces in one process:
+      // each scenario seeds tombstones, replays its recalls and reports the recall store, the
+      // origins ledger and the tombstones of its own agents (agent ids are unique per scenario).
+      const origins = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/memory-entry-origins.ts",
+      );
+      const sqliteRuntime = await importFromRepo(repoPath, "src/plugin-sdk/sqlite-runtime.ts");
+      const scenarioResults: unknown[] = [];
+      for (const scenario of payload.recallScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        const scenarioNowMs = Number.isFinite(scenario.nowMs) ? Number(scenario.nowMs) : nowMs;
+        await seedPromotionStateFromWorkspace(promotionState, workspaceDir);
+        const agentIds: string[] = scenario.agentIds ?? [];
+        for (const agentId of agentIds) {
+          await fs.mkdir(path.dirname(sqliteRuntime.resolveOpenClawAgentSqlitePath({ agentId })), {
+            recursive: true,
+          });
+        }
+        for (const seed of scenario.seedTombstones ?? []) {
+          const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId: seed.agentId }).db;
+          origins.recordMemorySessionTombstonesInDatabase(db, {
+            agentId: seed.agentId,
+            sessionIds: seed.sessionIds,
+            createdAt: 1,
+          });
+        }
+        let error: string | null = null;
+        try {
+          for (const recall of scenario.recalls ?? []) {
+            await promotion.recordShortTermRecalls({
+              workspaceDir,
+              query: recall.query ?? "",
+              results: recall.results ?? [],
+              nowMs: Number.isFinite(recall.nowMs) ? Number(recall.nowMs) : scenarioNowMs,
+              timezone: recall.timezone ?? timezone,
+              ...(typeof recall.signalType === "string" ? { signalType: recall.signalType } : {}),
+              ...(recall.dedupeByQueryPerDay === true ? { dedupeByQueryPerDay: true } : {}),
+              ...(typeof recall.dayBucket === "string" ? { dayBucket: recall.dayBucket } : {}),
+            });
+          }
+        } catch (caught) {
+          error = String((caught as Error).message);
+        }
+        await exportPromotionStateToWorkspace(promotionState, workspaceDir, scenarioNowMs);
+        scenarioResults.push({
+          name: scenario.name,
+          error,
+          files: await snapshotFiles(workspaceDir),
+          origins: Object.fromEntries(
+            agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
+          ),
+          tombstones: Object.fromEntries(
+            agentIds.map((agentId) => [agentId, origins.listMemorySessionTombstones({ agentId })]),
+          ),
+        });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
+    }
+
+    if (payload.operation === "sessionBackfillLineage") {
+      // session-backfill.ts: buildSessionBackfillDiaryEntries and coalesceBackfillClaims are not
+      // exported, so the real source is loaded with one extra export line (from a copy beside it,
+      // removed again) and the grounded-signal half of applySessionBackfillDays runs the exported
+      // recordGroundedShortTermCandidates on the coalesced claims. The origins ledger and the
+      // recall store are reported per scenario (agent ids are unique per scenario).
+      const sourcePath = path.join(repoPath, "extensions/memory-core/src/session-backfill.ts");
+      const patchedPath = path.join(
+        repoPath,
+        `extensions/memory-core/src/session-backfill.oracle-${process.pid}.ts`,
+      );
+      const original = await fs.readFile(sourcePath, "utf-8");
+      await fs.writeFile(
+        patchedPath,
+        `${original}\nexport { buildSessionBackfillDiaryEntries, coalesceBackfillClaims };\n`,
+      );
+      let backfill: Record<string, any>;
+      try {
+        backfill = await import(pathToFileURL(patchedPath).href);
+      } finally {
+        await fs.unlink(patchedPath).catch(() => {});
+      }
+      const origins = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/memory-entry-origins.ts",
+      );
+      const sqliteRuntime = await importFromRepo(repoPath, "src/plugin-sdk/sqlite-runtime.ts");
+      const scenarioResults: unknown[] = [];
+      for (const scenario of payload.backfillScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        const scenarioNowMs = Number.isFinite(scenario.nowMs) ? Number(scenario.nowMs) : nowMs;
+        await seedPromotionStateFromWorkspace(promotionState, workspaceDir);
+        const agentIds: string[] = scenario.agentIds ?? [];
+        for (const agentId of agentIds) {
+          await fs.mkdir(path.dirname(sqliteRuntime.resolveOpenClawAgentSqlitePath({ agentId })), {
+            recursive: true,
+          });
+        }
+        for (const seed of scenario.seedTombstones ?? []) {
+          const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId: seed.agentId }).db;
+          origins.recordMemorySessionTombstonesInDatabase(db, {
+            agentId: seed.agentId,
+            sessionIds: seed.sessionIds,
+            createdAt: 1,
+          });
+        }
+        let error: string | null = null;
+        let diary: unknown = null;
+        const coalesced: unknown[] = [];
+        try {
+          if (Array.isArray(scenario.days)) {
+            diary = backfill.buildSessionBackfillDiaryEntries({
+              agentId: scenario.agentId,
+              days: scenario.days,
+            });
+          }
+          for (const day of scenario.recordDays ?? []) {
+            const grounded = backfill.coalesceBackfillClaims(day.results);
+            coalesced.push(grounded);
+            if (grounded.length === 0) {
+              continue;
+            }
+            await promotion.recordGroundedShortTermCandidates({
+              workspaceDir,
+              query: `__dreaming_session_backfill__:${day.day}`,
+              items: grounded.map((result: Record<string, any>) => ({
+                path: result.path,
+                startLine: result.startLine,
+                endLine: result.endLine,
+                snippet: result.snippet,
+                score: 0.58,
+                dayBucket: day.day,
+                provenance: result.provenance,
+                sessionOrigin: result.sessionOrigin,
+              })),
+              dedupeByQueryPerDay: true,
+              nowMs: scenarioNowMs,
+              timezone,
+            });
+          }
+        } catch (caught) {
+          error = String((caught as Error).message);
+        }
+        await exportPromotionStateToWorkspace(promotionState, workspaceDir, scenarioNowMs);
+        scenarioResults.push({
+          name: scenario.name,
+          error,
+          diary,
+          coalesced,
+          files: await snapshotFiles(workspaceDir),
+          origins: Object.fromEntries(
+            agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
+          ),
+        });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
     }
 
     if (payload.operation === "applyPromotionScenarios") {
@@ -4285,6 +4710,10 @@ async function main() {
       const artifacts = await importFromRepo(
         repoPath,
         "extensions/memory-core/src/dreaming-consolidation-artifacts.ts",
+      );
+      const artifactProvenance = await importFromRepo(
+        repoPath,
+        "src/memory/memory-artifact-provenance.ts",
       );
       const testAgentId = "memory-core-test";
       const results: unknown[] = [];
@@ -4311,6 +4740,23 @@ async function main() {
         }
         for (const seed of scenario.seedOrigins ?? []) {
           origins.recordMemoryEntryOrigins({ agentId: seed.agentId, origins: [seed] });
+        }
+        // Daily-file trust records (the flush's quarantine), written by the real writer one after
+        // another; an optional `rollback` undoes the step the way a failed flush would.
+        for (const seed of scenario.seedArtifactProvenance ?? []) {
+          const rollback = await artifactProvenance.recordMemoryArtifactWriteProvenance({
+            workspaceDir,
+            relativePath: seed.relativePath,
+            contentBefore: seed.contentBefore ?? "",
+            contentAfter: seed.contentAfter ?? "",
+            originClass: seed.originClass,
+            observedAt: seed.observedAt,
+            ...(typeof seed.sessionId === "string" ? { sessionId: seed.sessionId } : {}),
+            ...(typeof seed.sessionKey === "string" ? { sessionKey: seed.sessionKey } : {}),
+          });
+          if (seed.rollback === true && rollback) {
+            await rollback();
+          }
         }
         for (const seed of scenario.seedIndexChunks ?? []) {
           const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId: seed.agentId }).db;
@@ -4463,6 +4909,9 @@ async function main() {
           error,
           applied,
           files,
+          artifactProvenance: await artifactProvenance.listMemoryArtifactProvenance({
+            workspaceDir,
+          }),
           events: memoryHostEvents,
           origins: originRows,
           preimages,

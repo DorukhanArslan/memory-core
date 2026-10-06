@@ -8,7 +8,7 @@ reset-boundary crossing, labels, ``getBranch``), the append methods (``session-m
 ``branch``/``resetLeaf``/``branchWithSummary``, ``appendLeafControl`` and
 ``prepareTranscriptRewrite`` with its commit (``session-manager.ts``).
 
-Deviations from upstream (see docs/gap2-transcript-notes.md):
+Deviations from upstream (see docs/parity_matrix.md audit note 27):
 
 * no persistence target: no SQLite store, bounded-context views, mutation fences, write admission
   or sidecar "pending input" relocation (``withSessionPendingInputRelocation`` is a pass-through

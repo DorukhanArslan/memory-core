@@ -133,15 +133,46 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
           (`consolidation/origins.py`) (`test_promotion_apply_oracle.py`). **Behaviour changes:**
           promotion ranking excludes `untrusted` and `system` origins on every path, and the
           consolidation origin/session filter runs after the rank limit.
-    - Still not ported: the Responses message converter (a `projector` hook) and
-      `normalizeAssistantReplayInput(fromResponse=true)`; the call sites of the pressure and
-      eligibility resolvers (`preemptive_compaction.py`); the rewrite's SQLite, bounded and
-      persisted paths, `iterateSessionContextMessages` and the other `SessionManager` methods; a
-      caller of the cache-TTL transform (host-owned); `reset` in the `transcript_tree.py` entry
-      types; origin recording by the recall recorder and session ingestion, session tombstones and
-      the daily-file quarantine; REM/light narrative consolidation inputs and workspace lock; the
-      exact-secret redaction registry; SQLite session statistics and archives (kept out by
-      decision 4).
+        - Fourth and fifth rounds (2026-10-06), each compared with the real TS oracle:
+          - Origins callers: `record_short_term_recalls(origins=)` (hits may carry `sessionOrigin`;
+            tombstoned sessions are dropped, one origin row per source session),
+            `consolidation/session_backfill.py` (`build_session_backfill_diary_entries`,
+            `coalesce_backfill_claims`, `record_session_backfill_day`), session tombstones and the
+            `memory_index_state` revision fence in `consolidation/origins.py`
+            (`assert_index_revision`, `MemoryIndexRevisionConflictError`)
+            (`test_origins_callers_oracle.py`, 19 tests).
+          - `consolidation/artifact_provenance.py` (`MemoryArtifactProvenanceStore`,
+            `with_daily_file_quarantine`), applied by
+            `run_short_term_promotion(artifact_provenance=...)` (7 scenarios in
+            `test_promotion_apply_oracle.py`). **Behaviour changes:** promotion quarantines untrusted
+            daily files; `record_short_term_recalls` takes `origins=`.
+          - `responses_converter.py` (`convert_responses_messages`,
+            `convert_provider_responses_messages`, `default_responses_input_projector`),
+            `transcript_transform.py` and `tool_result_text.py` replace the `projector` hook
+            (`test_openclaw_responses_converter_oracle.py`: 4,000 generated and 200 fixed
+            histories).
+          - Replay pressure wired into `preemptive_compaction.py`
+            (`should_preemptively_compact_before_prompt(replay=, ...)`, the `compaction_replay`
+            decision, the estimate and log helpers; `test_openclaw_preemptive_replay_oracle.py`).
+            **Behaviour changes:** the effective reserve is capped at a quarter of the window,
+            `excludeFromContext: true` zeroes a message estimate, a missing `summary` on a branch or
+            compaction summary prints `undefined`.
+          - `redact_model_visible_secrets` in `redact.py` (field-name masks, tool-payload pattern
+            table; `test_redact_oracle.py` additions) is the default `redact=` of the converter, and
+            `record_responses_context_usage` with `normalize_assistant_replay_input(from_response=True)`
+            in `compaction_replay.py` (`test_openclaw_compaction_checkpoint_oracle.py` additions).
+    - Still not ported (the parity matrix rows keep the gaps of earlier rounds): tombstone writers
+      (upstream `memory forget`) and the index's use of the revision fence; the daily-file flush that
+      writes trust records and the dreaming daily ingestion that reads them; the
+      `memory.recall.recorded` / `memory.recall.skipped` events; the session transcript scan with its
+      tombstone filter, rewind journal and CLI, and the REM branch of the diary builder
+      (`previewGroundedRemForFile`); the upstream callers of the pre-prompt decision, the
+      replay-pressure guard and the eligibility resolver (`attempt-prompt-preflight.ts`,
+      `tool-result-context-guard.ts`, `compaction-session-execution.ts`,
+      `attempt-stream-settle.ts`) and the transport handler that records Responses context usage; a
+      real `Model` catalogue; the exact-secret redaction registry, `logging.redactPatterns`, the
+      full-context tool-payload mode and `prepareModelVisibleToolTextBlock`; SQLite session
+      statistics and archives (kept out by decision 4).
 
 - Search ranking follows OpenClaw v2026.9.6 (port plan area 6): chunks are sized in CJK-weighted
   characters (`tokens * 4`) and `MEMORY.md` / `USER.md` chunk per `- ` entry and heading; keyword

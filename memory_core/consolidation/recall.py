@@ -33,6 +33,7 @@ from memory_core.consolidation._util import (
 )
 from memory_core.consolidation.concepts import derive_concept_tags
 from memory_core.consolidation.markers import contains_promotion_marker
+from memory_core.consolidation.origins import MemoryEntryOrigin, MemoryEntryOriginLedger
 from memory_core.consolidation.store import (
     normalize_phase_signal_entry,
     phase_signal_store_path,
@@ -223,6 +224,7 @@ def record_short_term_recalls(
     dedupe_by_query_per_day: bool = False,
     day_bucket: str | None = None,
     timezone: str | None = None,
+    origins: MemoryEntryOriginLedger | None = None,
 ) -> int:
     """Record ``memory_search`` hits as short-term recall signals (``recordShortTermRecalls``).
 
@@ -233,8 +235,17 @@ def record_short_term_recalls(
     ``grounded``), scores, query hashes (``userQueryHashes`` only for interactive recalls),
     recall days in the dreaming timezone, concept tags, merged provenance and the claim hash.
     Contaminated dreaming snippets are skipped. A path outside the workspace is skipped (a
-    memory-core hardening). Returns the number of entries written. Not ported: session origins
-    and tombstones, and the ``memory.recall.*`` host events.
+    memory-core hardening). Returns the number of entries written. Not ported: the
+    ``memory.recall.*`` host events.
+
+    Session lineage (``recordShortTermRecalls``, short-term-promotion-record.ts:370): a hit may
+    carry ``sessionOrigin`` (``agentId``, ``sessionId``, optional ``sessionKey``), the session
+    transcript it came from. Under the workspace lock, hits of a tombstoned (forgotten) session
+    are dropped; every other entry written records one ``memory_entry_origins`` row per source
+    session (its ``provenance`` origin class and ``observedAt``) in ``origins`` *before* the
+    recall store is published, so a failed ledger write leaves no staged entry without its
+    lineage. Without an ``origins`` ledger ``sessionOrigin`` is ignored (upstream always has the
+    agent database).
     """
     from memory_core.consolidation.promotion import format_memory_dreaming_day
 
@@ -249,9 +260,29 @@ def record_short_term_recalls(
     now_iso = iso_ms(now_ms)
     today_bucket = format_memory_dreaming_day(now_ms, timezone)
     changed = 0
+    source_sessions: dict[str, set[str]] = {}
+    if origins is not None:
+        for result in relevant:
+            session_origin = _session_origin(result)
+            if session_origin is not None:
+                source_sessions.setdefault(session_origin["agentId"], set()).add(session_origin["sessionId"])
     with recall_store_lock(config.workspace_dir):
         store = read_recall_store(store_path, now_ms)
         entries = store["entries"]
+        if origins is not None and source_sessions:
+            # Revalidate under the lock: a forget can finish while transcripts were being scanned.
+            forgotten = {
+                agent: {t.session_id for t in origins.list_session_tombstones(agent, sorted(ids))}
+                for agent, ids in source_sessions.items()
+            }
+            relevant = [
+                result
+                for result in relevant
+                if (so := _session_origin(result)) is None or so["sessionId"] not in forgotten.get(so["agentId"], ())
+            ]
+            if not relevant:
+                return 0
+        origin_rows: list[MemoryEntryOrigin] = []
         for result in relevant:
             normalized_path = normalize_memory_path(str(result.get("path") or ""))
             if not is_workspace_contained_path(config.workspace_dir, normalized_path):
@@ -406,9 +437,41 @@ def record_short_term_recalls(
                 entry["promotedAt"] = prior["promotedAt"]
             entries[key] = entry
             changed += 1
+            session_origin = _session_origin(result) if origins is not None else None
+            if session_origin is not None:
+                origin_rows.append(
+                    MemoryEntryOrigin(
+                        entry_key=key,
+                        agent_id=session_origin["agentId"],
+                        session_id=session_origin["sessionId"],
+                        session_key=session_origin.get("sessionKey"),
+                        origin_class=source_provenance["originClass"],
+                        observed_at=source_provenance["observedAt"],
+                    )
+                )
+        if origins is not None:
+            # Reserve lineage before publishing the entries.
+            for agent in source_sessions:
+                origins.record(agent, [row for row in origin_rows if row.agent_id == agent])
         store["updatedAt"] = now_iso
         write_recall_store(store_path, store)
     return changed
+
+
+def _session_origin(result: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The ``sessionOrigin`` of a hit when it names an agent and a session, else ``None``."""
+    origin = result.get("sessionOrigin")
+    if not isinstance(origin, Mapping):
+        return None
+    agent_id, session_id = origin.get("agentId"), origin.get("sessionId")
+    if not isinstance(agent_id, str) or not isinstance(session_id, str):
+        return None
+    session_key = origin.get("sessionKey")
+    return {
+        "agentId": agent_id,
+        "sessionId": session_id,
+        **({"sessionKey": session_key} if isinstance(session_key, str) else {}),
+    }
 
 
 def record_grounded_short_term_candidates(
@@ -420,6 +483,7 @@ def record_grounded_short_term_candidates(
     dedupe_by_query_per_day: bool = False,
     day_bucket: str | None = None,
     timezone: str | None = None,
+    origins: MemoryEntryOriginLedger | None = None,
 ) -> int:
     """``recordGroundedShortTermCandidates``: grounded backfill signals (never interactive recalls)."""
     return record_short_term_recalls(
@@ -431,6 +495,7 @@ def record_grounded_short_term_candidates(
         dedupe_by_query_per_day=dedupe_by_query_per_day,
         day_bucket=day_bucket,
         timezone=timezone,
+        origins=origins,
     )
 
 

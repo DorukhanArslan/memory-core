@@ -33,6 +33,7 @@ import pytest
 from demo.openclaw_oracle import OpenClawOracle
 from memory_core.config import MemoryConfig
 from memory_core.consolidation import DeepConsolidation, LlmConsolidationOptions
+from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.consolidation.artifacts import read_memory_preimages, store_memory_preimage
 from memory_core.consolidation.file_lock import (
     FileLockError,
@@ -161,6 +162,108 @@ def origin_row(entry_key: str, session: str, agent: str = TEST_AGENT, klass: str
     }
 
 
+DAILY2_PATH = "memory/2026-05-09.md"
+
+
+def provenance_write(
+    path: str, klass: str, before: str = "", after: str = "", observed: int = 5000, **over: Any
+) -> dict[str, Any]:
+    """One write of the daily-file trust record (``recordMemoryArtifactWriteProvenance``)."""
+    return {
+        "relativePath": path,
+        "contentBefore": before,
+        "contentAfter": after,
+        "originClass": klass,
+        "observedAt": observed,
+        **over,
+    }
+
+
+def _quarantine_scenarios(both: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """The daily-file quarantine of the apply stage: ``withDailyFileQuarantine`` over the trust records."""
+    two_files = {
+        "files": {DAILY2_PATH: daily_text("2026-05-09")},
+        "entries": [store_entry(3), store_entry(4), store_entry(3, DAILY2_PATH), store_entry(4, DAILY2_PATH)],
+        "candidates": [candidate_of(3), candidate_of(4), candidate_of(3, DAILY2_PATH), candidate_of(4, DAILY2_PATH)],
+        **both,
+    }
+    text = daily_text()
+    return {
+        # A quarantined file blocks all of its candidates (a trusted line of a mixed file too); the
+        # file next to it, trusted by its record, still promotes.
+        "quarantine_blocks_whole_file": {
+            **two_files,
+            "seedArtifactProvenance": [
+                provenance_write(DAILY_PATH, "untrusted", "", text, 7777, sessionId="s1", sessionKey="k1"),
+                provenance_write(DAILY2_PATH, "agent", "", text, 8888),
+            ],
+        },
+        # The untrusted verdict is sticky: a later trusted write of the matching content stays untrusted.
+        "quarantine_is_sticky": {
+            **two_files,
+            "seedArtifactProvenance": [
+                provenance_write(DAILY_PATH, "untrusted", "", text, 100),
+                provenance_write(DAILY_PATH, "agent", text, text + "- more\n", 200),
+            ],
+        },
+        # A trusted write over content the previous record does not describe (an edit in between)
+        # is downgraded; one that matches keeps the file trusted.
+        "quarantine_edit_between_writes": {
+            **two_files,
+            "seedArtifactProvenance": [
+                provenance_write(DAILY_PATH, "agent", "", text, 100),
+                provenance_write(DAILY_PATH, "agent", "edited elsewhere\n", text + "- more\n", 200),
+                provenance_write(DAILY2_PATH, "agent", "", text, 100),
+                provenance_write(DAILY2_PATH, "agent", text, text + "- more\n", 200),
+            ],
+        },
+        # A rolled back untrusted write leaves no record (or restores the previous one).
+        "quarantine_rolled_back": {
+            **two_files,
+            "seedArtifactProvenance": [
+                provenance_write(DAILY_PATH, "untrusted", "", text, 100, rollback=True),
+                provenance_write(DAILY2_PATH, "agent", "", text, 100),
+                provenance_write(DAILY2_PATH, "untrusted", text, text, 200, rollback=True),
+            ],
+        },
+        # Records of untracked paths (dreaming output, outside memory/, traversal) are not stored;
+        # the file name of a candidate is matched with backslashes read as slashes.
+        "quarantine_untracked_paths_ignored": {
+            **two_files,
+            "seedArtifactProvenance": [
+                provenance_write("memory/dreaming/2026-05-08.md", "untrusted", "", text),
+                provenance_write("memory/.dreams/2026-05-08.md", "untrusted", "", text),
+                provenance_write("notes/2026-05-08.md", "untrusted", "", text),
+                provenance_write("memory/../2026-05-08.md", "untrusted", "", text),
+                provenance_write("memory\\2026-05-09.md", "untrusted", "", text, 4242),
+            ],
+        },
+        # The quarantine overrides an agent origin from the recall store and from the candidate; the
+        # store's observedAt (1) gives way to the record's, and the session kind is kept.
+        "quarantine_overrides_store_provenance": {
+            "entries": [
+                store_entry(3, provenance={"originClass": "agent", "sessionKind": "cron", "observedAt": 1}),
+                store_entry(4, provenance=None),
+            ],
+            "candidates": [
+                candidate_of(3, provenance={"originClass": "agent", "sessionKind": "cron", "observedAt": 1}),
+                candidate_of(4, provenance=None),
+            ],
+            **both,
+            "seedArtifactProvenance": [provenance_write(DAILY_PATH, "untrusted", "", text, 31337)],
+        },
+        # With consolidation on, the origin gate still comes first for a quarantined candidate.
+        "quarantine_with_consolidation": {
+            **two_files,
+            "agent": True,
+            "consolidation": {
+                "replies": [reply((key_of(3, DAILY2_PATH), "added", []), (key_of(4, DAILY2_PATH), "added", []))]
+            },
+            "seedArtifactProvenance": [provenance_write(DAILY_PATH, "untrusted", "", text, 55)],
+        },
+    }
+
+
 def _scenarios() -> dict[str, dict[str, Any]]:
     both = {"limit": 20, "minScore": 0.75, "minRecallCount": 3, "minUniqueQueries": 3, "maxAgeDays": 30}
     prior_memory = (
@@ -170,6 +273,7 @@ def _scenarios() -> dict[str, dict[str, Any]]:
     )
     merge_reply = reply((key_of(3), "merged", ["- Alpha fact 1."]))
     return {
+        **_quarantine_scenarios(both),
         "applied_two_and_event": {
             "entries": [store_entry(3), store_entry(4)],
             "candidates": [candidate_of(3), candidate_of(4)],
@@ -424,7 +528,7 @@ def _ts_payload(scenario: dict[str, Any], workspace: Path, name: str) -> dict[st
     keys = (
         "candidates", "limit", "minScore", "minRecallCount", "minUniqueQueries", "maxAgeDays",
         "memoryFileMaxChars", "workspaceAgentIds", "seedOrigins", "seedIndexChunks", "consolidation",
-        "agent",
+        "agent", "seedArtifactProvenance",
     )  # fmt: skip
     return {
         "name": name,
@@ -460,6 +564,20 @@ def _run_python(scenario: dict[str, Any], workspace: Path, monkeypatch: pytest.M
     root = workspace.parent
     config = MemoryConfig(workspace_dir=workspace, store_path=root / f"{workspace.name}.sqlite")
     ledger = MemoryEntryOriginLedger(lambda agent: root / "agents" / f"{agent}.sqlite")
+    provenance = MemoryArtifactProvenanceStore(root / f"{workspace.name}-artifact-provenance.sqlite")
+    for seed in scenario.get("seedArtifactProvenance", []):
+        rollback = provenance.record_write(
+            workspace_dir=workspace,
+            relative_path=seed["relativePath"],
+            content_before=seed["contentBefore"],
+            content_after=seed["contentAfter"],
+            origin_class=seed["originClass"],
+            observed_at=seed["observedAt"],
+            session_id=seed.get("sessionId"),
+            session_key=seed.get("sessionKey"),
+        )
+        if seed.get("rollback") and rollback is not None:
+            rollback()
     for seed in scenario.get("seedOrigins", []):
         ledger.record(seed["agentId"], [_origin(seed)])
     for seed in scenario.get("seedIndexChunks", []):
@@ -528,6 +646,7 @@ def _run_python(scenario: dict[str, Any], workspace: Path, monkeypatch: pytest.M
         agent_id=TEST_AGENT if use_agent else None,
         workspace_agent_ids=scenario.get("workspaceAgentIds", ()),
         origins=ledger,
+        artifact_provenance=provenance,
         state_dir=root / "state",
         on_event=events.append,
         lock_observer=timeline.lock,
@@ -537,11 +656,31 @@ def _run_python(scenario: dict[str, Any], workspace: Path, monkeypatch: pytest.M
         "run": run,
         "events": events,
         "origins": {agent: [_origin_json(item) for item in ledger.list(agent)] for agent in agents},
+        "artifactProvenance": _provenance_json(provenance.list(workspace)),
         "calls": calls,
         "warnings": messages.warnings,
         "infos": messages.infos,
         "timeline": _dedupe(timeline.entries),
     }
+
+
+def _provenance_json(records: list[Any]) -> list[dict[str, Any]]:
+    return sorted(
+        (
+            {
+                "relativePath": relative,
+                "provenance": {
+                    "fileHash": record.file_hash,
+                    "originClass": record.origin_class,
+                    "observedAt": record.observed_at,
+                    **({"sessionId": record.session_id} if record.session_id else {}),
+                    **({"sessionKey": record.session_key} if record.session_key else {}),
+                },
+            }
+            for relative, record in records
+        ),
+        key=lambda item: item["relativePath"],
+    )
 
 
 def _origin(raw: dict[str, Any]) -> MemoryEntryOrigin:
@@ -665,6 +804,8 @@ def test_apply_matches_openclaw(name: str, _ts_results, tmp_path: Path, monkeypa
     assert _events_at([run.host_event] if run.host_event else [], py_workspace) == ts_events
 
     assert py["origins"] == ts["origins"]
+    # The trust records the quarantine reads: the real writer and the port agree on every record.
+    assert py["artifactProvenance"] == sorted(ts["artifactProvenance"], key=lambda item: item["relativePath"])
     assert [w.split(": ", 1)[1] for w in py["warnings"]] == [
         w.replace("memory-core: ", "", 1) for w in ts["warnings"]
     ]
@@ -718,6 +859,25 @@ def test_scenarios_exercise_every_category(_ts_results) -> None:
         "memory budget",
         "candidate changed",
     }, categories
+
+
+def test_quarantine_scenarios_reject_by_origin(_ts_results) -> None:
+    """The real apply rejects every candidate of a quarantined file with the origin gate (and no other)."""
+    for name in (
+        "quarantine_blocks_whole_file",
+        "quarantine_is_sticky",
+        "quarantine_edit_between_writes",
+        "quarantine_overrides_store_provenance",
+        "quarantine_with_consolidation",
+        "quarantine_untracked_paths_ignored",
+    ):
+        ts, _workspace = _ts_results[name]
+        rejected = {
+            (item["candidate"]["path"], item["category"]) for item in ts["applied"]["rejectedCandidates"]
+        }
+        assert any(category == "origin" for _path, category in rejected), name
+    untouched = _ts_results["quarantine_rolled_back"][0]["applied"]["rejectedCandidates"]
+    assert untouched == [], untouched
 
 
 # --- the second lock ---------------------------------------------------------------------------
@@ -937,7 +1097,7 @@ def test_origins_ledger_matches_openclaw(tmp_path: Path) -> None:
             }
         )
     for index, (py_step, ts_step) in enumerate(zip(py, ts, strict=True)):
-        assert py_step == ts_step, (index, steps[index]["kind"])
+        assert py_step == {key: ts_step[key] for key in ("result", "state")}, (index, steps[index]["kind"])
 
 
 class _Operation:
@@ -997,7 +1157,7 @@ def test_preimage_rotation_prunes_expired_origins(tmp_path: Path) -> None:
             ledger=ledger,
         )
         py.append({"result": sorted(retained), "state": {"main": [_origin_json(i) for i in ledger.list("main")]}})
-    assert py == ts[1:]
+    assert py == [{key: step[key] for key in ("result", "state")} for step in ts[1:]]
     # key-0 expired and was released; key-1 was named as retained, so it stays.
     assert {row["entryKey"] for row in py[-1]["state"]["main"]} >= {"key-1", "key-9"}
     assert "key-0" not in {row["entryKey"] for row in py[-1]["state"]["main"]}

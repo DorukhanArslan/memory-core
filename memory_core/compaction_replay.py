@@ -24,8 +24,9 @@ plus the Responses payload policy), which ``readOpenAIResponsesCompactionWindow`
 the saved window to survive egress unchanged. ``egress_projection`` stays an optional override of
 that built-in projection.
 
-Host hooks: the Responses message converter that rebuilds the wire input for the measured-usage
-check (``projector``), the plugin-manifest endpoint classes and the secret-sentinel swap of the
+The Responses message converter that rebuilds the wire input for the measured-usage check is
+ported (:mod:`memory_core.responses_converter`) and is the default ``projector``; the hook stays
+an override. Host hooks: the plugin-manifest endpoint classes and the secret-sentinel swap of the
 Anthropic eligibility gate.
 
 ``replaceCompactionReplayOwnerContent`` matches surviving blocks with ``Array.prototype.indexOf``,
@@ -41,7 +42,7 @@ import math
 import os
 import re
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from memory_core.bootstrap._js import (
@@ -188,6 +189,12 @@ class ReplayModel:
     api: str
     id: str
     base_url: str | None = None
+    # What the Responses message converter reads besides the route (``Model.input``,
+    # ``reasoning``, ``compat``, ``params``); the defaults are a plain text-and-image model.
+    input: tuple[str, ...] = ("text", "image")
+    reasoning: bool = False
+    compat: Mapping[str, Any] | None = field(default=None, hash=False)
+    params: Mapping[str, Any] | None = field(default=None, hash=False)
 
 
 @dataclass(frozen=True)
@@ -1260,6 +1267,8 @@ def _stable_stringify(value: Any) -> str:
 
     if value is None:
         return "null"
+    if value is UNDEFINED:
+        return "undefined"
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, str):
@@ -1278,8 +1287,118 @@ def _stable_stringify(value: Any) -> str:
     )
 
 
-def _normalize_assistant_replay_input(items: Sequence[Any]) -> list[Any]:
-    """``normalizeAssistantReplayInput(input)`` (the request side, ``fromResponse`` false)."""
+_MAX_SAFE_INTEGER_TEXT = str(_MAX_SAFE_INTEGER)
+_UNSAFE_INTEGER_HINT_RE = re.compile(r"(?:^|\D)\d{16}", re.ASCII)
+
+
+def _is_ascii_digit(char: str) -> bool:
+    return "0" <= char <= "9" and len(char) == 1
+
+
+def _parse_json_number_token(text: str, start: int) -> tuple[str, int, bool] | None:
+    """``parseJsonNumberToken``: ``(token, end, is_integer)`` or ``None``."""
+
+    idx = start
+    if text[idx : idx + 1] == "-":
+        idx += 1
+    if idx >= len(text):
+        return None
+    if text[idx] == "0":
+        idx += 1
+    elif _is_ascii_digit(text[idx]):
+        while idx < len(text) and _is_ascii_digit(text[idx]):
+            idx += 1
+    else:
+        return None
+    is_integer = True
+    if text[idx : idx + 1] == ".":
+        is_integer = False
+        idx += 1
+        if idx >= len(text) or not _is_ascii_digit(text[idx]):
+            return None
+        while idx < len(text) and _is_ascii_digit(text[idx]):
+            idx += 1
+    if text[idx : idx + 1] in ("e", "E"):
+        is_integer = False
+        idx += 1
+        if text[idx : idx + 1] in ("+", "-"):
+            idx += 1
+        if idx >= len(text) or not _is_ascii_digit(text[idx]):
+            return None
+        while idx < len(text) and _is_ascii_digit(text[idx]):
+            idx += 1
+    return text[start:idx], idx, is_integer
+
+
+def _is_unsafe_integer_literal(token: str) -> bool:
+    digits = token[1:] if token[:1] == "-" else token
+    if len(digits) < len(_MAX_SAFE_INTEGER_TEXT):
+        return False
+    if len(digits) > len(_MAX_SAFE_INTEGER_TEXT):
+        return True
+    return digits > _MAX_SAFE_INTEGER_TEXT
+
+
+def quote_unsafe_integer_literals(text: str) -> str:
+    """``quoteUnsafeIntegerLiterals``: integer literals above ``MAX_SAFE_INTEGER`` become strings."""
+
+    if not _UNSAFE_INTEGER_HINT_RE.search(text):
+        return text
+    out: list[str] = []
+    in_string = False
+    escaped = False
+    idx = 0
+    while idx < len(text):
+        char = text[idx]
+        if in_string:
+            out.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            idx += 1
+            continue
+        if char == '"':
+            in_string = True
+            out.append(char)
+            idx += 1
+            continue
+        if char == "-" or _is_ascii_digit(char):
+            parsed = _parse_json_number_token(text, idx)
+            if parsed is not None:
+                token, end, is_integer = parsed
+                out.append(f'"{token}"' if is_integer and _is_unsafe_integer_literal(token) else token)
+                idx = end
+                continue
+        out.append(char)
+        idx += 1
+    return "".join(out)
+
+
+def parse_json_object_preserving_unsafe_integers(value: Any) -> dict[str, Any] | None:
+    """``parseJsonObjectPreservingUnsafeIntegers``: a record, or a JSON object text, else ``None``."""
+
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(quote_unsafe_integer_literals(value), parse_constant=reject_json_constant)
+        except (ValueError, RecursionError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return value if isinstance(value, dict) else None
+
+
+def normalize_assistant_replay_input(items: Sequence[Any], from_response: bool = False) -> list[Any]:
+    """``normalizeAssistantReplayInput(input, fromResponse)`` of openai-responses-continuation.ts.
+
+    Reasoning items shrink to ``{type: "reasoning"}``; assistant messages and function calls lose
+    ``id`` and ``status`` (and ``output_text`` parts their ``annotations``/``logprobs``). With
+    ``from_response`` (provider output) a function call's ``arguments`` object is re-serialized with
+    unsafe integers kept as strings.
+    """
+
+    from memory_core.tool_result_text import js_stringify  # noqa: PLC0415
 
     out: list[Any] = []
     for item in items:
@@ -1293,6 +1412,10 @@ def _normalize_assistant_replay_input(items: Sequence[Any]) -> list[Any]:
             out.append(item)
         else:
             stable = _without(item, "id", "status")
+            if from_response and item.get("type") == "function_call":
+                args = parse_json_object_preserving_unsafe_integers(stable.get("arguments"))
+                if args is not None:
+                    stable["arguments"] = js_stringify(args)
             if item.get("type") == "message" and isinstance(stable.get("content"), list):
                 stable["content"] = [
                     _without(part, "annotations", "logprobs")
@@ -1304,13 +1427,46 @@ def _normalize_assistant_replay_input(items: Sequence[Any]) -> list[Any]:
     return out
 
 
-def responses_context_fingerprint(items: Sequence[Any]) -> str:
-    """``contextFingerprint(input)``: the sha256 binding measured usage to its replay prefix."""
+_normalize_assistant_replay_input = normalize_assistant_replay_input
 
-    reasoning = [_without(item, "id", "status") for item in items if _is_reasoning(item)]
-    prefix = hashlib.sha256(
-        js_utf8_encode(_stable_stringify(_normalize_assistant_replay_input(items)))
+
+def _json_round_trip(value: Any) -> Any:
+    """``JSON.parse(JSON.stringify(value))``: undefined properties vanish, array holes become null."""
+
+    if value is UNDEFINED:
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: _json_round_trip(v) for k, v in value.items() if v is not UNDEFINED}
+    if isinstance(value, list | tuple):
+        return [_json_round_trip(v) for v in value]
+    return value
+
+
+def responses_continuation_prefix_fingerprint(
+    items: Sequence[Any], output: Sequence[Any] = ()
+) -> str:
+    """``responsesContinuationPrefixFingerprint(input, output)``."""
+
+    normalized = [
+        *normalize_assistant_replay_input(items),
+        *normalize_assistant_replay_input(output, True),
+    ]
+    return hashlib.sha256(
+        js_utf8_encode(_stable_stringify(_json_round_trip(normalized)))
     ).hexdigest()
+
+
+def responses_context_fingerprint(items: Sequence[Any], output: Sequence[Any] = ()) -> str:
+    """``contextFingerprint(input, output)``: the sha256 binding measured usage to its replay prefix.
+
+    Continuation normalizes provider output into replayable input; context accounting also binds
+    the reasoning bytes (everything but ``id`` and ``status``), which continuation ignores.
+    """
+
+    reasoning = [_without(item, "id", "status") for item in (*items, *output) if _is_reasoning(item)]
+    prefix = responses_continuation_prefix_fingerprint(items, output)
     return hashlib.sha256(
         js_utf8_encode(_stable_stringify({"prefix": prefix, "reasoning": reasoning}))
     ).hexdigest()
@@ -1321,7 +1477,13 @@ def _is_reasoning(item: Any) -> bool:
 
 
 class ResponsesProjectionUnavailableError(RuntimeError):
-    """A measured-usage check needs the Responses message converter, which is a host hook."""
+    """Kept for callers that caught it: the built-in converter now answers every projection."""
+
+
+def _default_projector(model: ReplayModel, identity: ReplayIdentity | None) -> Any:
+    from memory_core.responses_converter import default_responses_input_projector  # noqa: PLC0415
+
+    return default_responses_input_projector(model, identity)
 
 
 # ``(projection, provider messages, system prompt, include_system_prompt) -> wire input items``:
@@ -1367,9 +1529,9 @@ def resolve_responses_context_usage_boundary(
     Walks back to the newest assistant message with an available ``contextUsage`` and a saved
     ``openclawResponsesInputReplay.contextUsage`` state; the state must match the identity, the
     message's route, its token counts and the sha256 of the wire-input prefix, which is rebuilt
-    through ``projector``. Returns ``{index, totalTokens, suffix}``, the suffix being the wire
-    items after the measured prefix. Without a ``projector`` a candidate that passes every other
-    check raises :class:`ResponsesProjectionUnavailableError`.
+    through ``projector`` (default: the built-in converter, :mod:`memory_core.responses_converter`).
+    Returns ``{index, totalTokens, suffix}``, the suffix being the wire items after the measured
+    prefix.
     """
 
     context = build_provider_replay_context(model, identity)
@@ -1406,9 +1568,7 @@ def resolve_responses_context_usage_boundary(
         ):
             return None
         if projector is None:
-            raise ResponsesProjectionUnavailableError(
-                "the Responses message converter is a host hook (projector)"
-            )
+            projector = _default_projector(model, identity)
         wire = projector(
             projection,
             [m for m in messages if m and m.get("role") in _PROVIDER_MESSAGE_ROLES],
@@ -1421,6 +1581,93 @@ def resolve_responses_context_usage_boundary(
             return None
         return {"index": index, "totalTokens": total_tokens, "suffix": wire[prefix_length:]}
     return None
+
+
+def record_responses_context_usage(
+    message: dict[str, Any],
+    model: ReplayModel,
+    identity: ReplayIdentity | None,
+    request: Mapping[str, Any],
+    output: Sequence[Any],
+    projection: str,
+) -> None:
+    """``recordResponsesContextUsage``: bind a response's measured usage to its replay prefix.
+
+    Called by the transport once a response completed: ``request`` is the wire request that was
+    sent (``input``, ``instructions``, ``previous_response_id``) and ``output`` the response items.
+    Nothing is recorded unless the message carries an available, positive ``contextUsage``, did not
+    end in ``error``/``aborted``, holds no provider replay checkpoint, was not a
+    ``previous_response_id`` continuation, and the request (but not the output) holds a
+    ``compaction`` item. Otherwise ``message["openclawResponsesInputReplay"]["contextUsage"]``
+    is set to the replay context, the projection, whether the system prompt leads the input,
+    the sha256 of the input plus this message's own replay output (``prefixHash``) and its length,
+    and the prompt/total token counts; the other replay fields are kept. Hashes upstream leaves
+    ``undefined`` are omitted, as persistence would.
+    """
+
+    from memory_core.responses_converter import (  # noqa: PLC0415
+        TOOL_CALL_PROVIDERS,
+        convert_provider_responses_messages,
+        convert_responses_messages,
+    )
+
+    usage = _message_usage(message).get("contextUsage")
+    usage = usage if isinstance(usage, dict) else {}
+    request_input = request.get("input")
+    if (
+        usage.get("state") != "available"
+        or not _is_safe_integer(usage.get("totalTokens"))
+        or usage["totalTokens"] <= 0
+        or message.get("stopReason") in ("error", "aborted")
+        or js_truthy(message.get("providerReplay"))
+        or js_truthy(request.get("previous_response_id"))
+        or not isinstance(request_input, list)
+        or not any(isinstance(item, dict) and item.get("type") == "compaction" for item in request_input)
+        or not isinstance(output, list)
+        or any(isinstance(item, dict) and item.get("type") == "compaction" for item in output)
+    ):
+        return
+    identity = identity or ReplayIdentity()
+    convert = (
+        convert_responses_messages if projection == "transport" else convert_provider_responses_messages
+    )
+    replay_output = [
+        item
+        for item in convert(
+            model,
+            [message],
+            None,
+            TOOL_CALL_PROVIDERS,
+            session_id=identity.session_id,
+            auth_profile_id=identity.auth_profile_id,
+            include_system_prompt=False,
+        )
+        if not (isinstance(item, dict) and item.get("type") == "function_call_output")
+    ]
+    first = request_input[0]
+    context_usage = {
+        key: value
+        for key, value in {
+            **build_provider_replay_context(model, identity),
+            "projection": projection,
+            "includeSystemPrompt": (
+                "instructions" not in request
+                and isinstance(first, dict)
+                and first.get("type") == "message"
+                and first.get("role") in ("developer", "system")
+            ),
+            "prefixHash": responses_context_fingerprint(request_input, replay_output),
+            "prefixLength": len(request_input) + len(replay_output),
+            "promptTokens": usage.get("promptTokens"),
+            "totalTokens": usage["totalTokens"],
+        }.items()
+        if value is not None or key == "promptTokens" and "promptTokens" in usage
+    }
+    existing = message.get("openclawResponsesInputReplay")
+    message["openclawResponsesInputReplay"] = {
+        **(existing if isinstance(existing, dict) else {}),
+        "contextUsage": context_usage,
+    }
 
 
 def _object_rest(value: Any, omit: str) -> dict[str, Any]:

@@ -74,8 +74,8 @@ class MemoryCoreSessionCorpus:
         # abandoned and side-append branches (ingestion never calls the transcript-tree helpers),
         # rendered as "User:"/"Assistant:" lines with whitespace normalised, long lines wrapped
         # at 800 characters, and heartbeat, cron, exec-completion, silent-reply, inter-session,
-        # recalled-memory and dreaming-narrative rows dropped. Not ported: redaction (pass
-        # ``redact_text`` to build_session_entry from a host), see session_entry's docstring.
+        # recalled-memory and dreaming-narrative rows dropped, and every text redacted with
+        # ``redactSensitiveText`` (memory_core.redact; ``redact_text`` extends it).
         try:
             mtime_ms = file.abs_path.stat().st_mtime * 1000
         except OSError:

@@ -9808,6 +9808,12 @@ SESSION_CORPUS_ENTRY_CASES = [
     _sc_case("not json", "", "{}", _sc_msg("user", "after bad lines"), "[1]"),
     _sc_case(_sc_msg("user", _SC_LONG), _sc_msg("assistant", "x" * 2000), _sc_msg("user", "\U0001f600" * 700)),
     _sc_case(_sc_msg("user", _SC_BLOCKS), _sc_msg("user", "[Wed 2026-01-01 10:00 UTC] stamped")),
+    # buildSessionEntry redacts each exported text with redactSensitiveText (tools mode).
+    _sc_case(
+        _sc_msg("user", "export OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz1234 then run"),
+        _sc_msg("assistant", _sc_text("Use Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789 and password=hunter2")),
+        _sc_msg("user", "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg\n-----END PRIVATE KEY----- \U0001f600 ghp_" + "a1B2" * 9),
+    ),
     _sc_case(
         _sc_msg("user", "System: [2026-01-01 10:00:00 UTC] Exec completed (a1, code 0) :: ok"),
         _sc_msg("user", "[cron:job-1] do the thing"),

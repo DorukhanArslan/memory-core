@@ -9,8 +9,10 @@ Differences from upstream, all forced by the package's host-injected design:
 
 - preimages are the JSON file ``memory/.dreams/consolidation-preimages.json`` (upstream: a keyed
   SQLite plugin-state namespace); the entry shape is ``{createdAt, content, contentHash}``;
-- there is no memory-entry origin ledger, so rotation prunes nothing;
-- DREAMS.md updates rely on the caller's promotion lock instead of upstream's workspace lock.
+- rotation prunes the origins ledger (:mod:`memory_core.consolidation.origins`) only when the
+  host passes one;
+- the workspace lock the DREAMS.md writers take is the file lock of
+  :func:`memory_core.consolidation.store.memory_workspace_lock` (upstream: a plugin-state lease).
 """
 
 from __future__ import annotations
@@ -20,12 +22,18 @@ import json
 import os
 import secrets
 import stat
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from pathlib import Path
 from typing import Any, TypeVar
 
 from memory_core.bootstrap._js import js_trim, js_trim_end
 from memory_core.consolidation._util import iso_ms, write_json_atomic
+from memory_core.consolidation.markers import extract_promotion_markers
+from memory_core.consolidation.origins import (
+    MemoryEntryOriginLedger,
+    prune_memory_entry_origins,
+)
+from memory_core.consolidation.store import memory_workspace_lock
 
 CONSOLIDATION_BACKUP_LIMIT = 8
 PREIMAGE_FILE = "consolidation-preimages.json"
@@ -48,18 +56,46 @@ def read_memory_preimages(workspace: str | Path) -> list[dict[str, Any]]:
     return [item for item in entries if isinstance(item, dict)] if isinstance(entries, list) else []
 
 
-def store_memory_preimage(workspace: str | Path, content: str, now_ms: int) -> None:
-    """``storeMemoryPreimage``: keep the last :data:`CONSOLIDATION_BACKUP_LIMIT` MEMORY.md snapshots."""
+def store_memory_preimage(
+    workspace: str | Path,
+    content: str,
+    now_ms: int,
+    *,
+    agent_ids: Iterable[str] = (),
+    retained_entry_keys: Collection[str] = frozenset(),
+    ledger: MemoryEntryOriginLedger | None = None,
+) -> set[str]:
+    """``storeMemoryPreimage``: keep the last :data:`CONSOLIDATION_BACKUP_LIMIT` MEMORY.md snapshots.
+
+    Returns the promotion keys of the snapshots kept. With a ``ledger``, rotation then prunes the
+    origins of the keys the previous snapshots held that neither a kept snapshot nor
+    ``retained_entry_keys`` (nor a diary or index, see :func:`prune_memory_entry_origins`) retains:
+    only expired backup references are released.
+    """
+    current = read_memory_preimages(workspace)
     created_at = iso_ms(now_ms)
     digest = hashlib.sha256(content.encode("utf-8", "surrogatepass")).hexdigest()
     entry = {"createdAt": created_at, "content": content, "contentHash": digest}
-    entries = sorted(
-        [*read_memory_preimages(workspace), entry], key=lambda item: str(item.get("createdAt", ""))
-    )
-    write_json_atomic(
-        preimage_path(workspace),
-        {"version": 1, "entries": entries[-CONSOLIDATION_BACKUP_LIMIT:]},
-    )
+    # Entries are keyed ``<createdAt>:<first 12 hash digits>``; a repeat replaces its predecessor.
+    by_key = {
+        f"{item.get('createdAt')}:{str(item.get('contentHash', ''))[:12]}": item for item in current
+    }
+    by_key[f"{created_at}:{digest[:12]}"] = entry
+    entries = sorted(by_key.values(), key=lambda item: str(item.get("createdAt", "")))
+    kept = entries[-CONSOLIDATION_BACKUP_LIMIT:]
+    write_json_atomic(preimage_path(workspace), {"version": 1, "entries": kept})
+    retained = {key for item in kept for key in extract_promotion_markers(str(item.get("content", "")))}
+    if ledger is not None:
+        prune_memory_entry_origins(
+            ledger,
+            workspace_dir=workspace,
+            agent_ids=agent_ids,
+            entry_keys=[
+                key for item in current for key in extract_promotion_markers(str(item.get("content", "")))
+            ],
+            retained_entry_keys={*retained, *retained_entry_keys},
+        )
+    return retained
 
 
 # --- DREAMS.md -------------------------------------------------------------------------
@@ -115,11 +151,16 @@ def write_dreams_file_atomic(path: Path, content: str) -> None:
 
 
 def update_dreams_file(workspace: str | Path, updater: Callable[[str, Path], tuple[str, T]]) -> T:
-    """``updateDreamsFile``: read, let ``updater`` return ``(content, result)``, write with a final newline."""
-    path = resolve_dreams_path(workspace)
-    content, result = updater(read_dreams_file(path), path)
-    write_dreams_file_atomic(path, content if content.endswith("\n") else f"{content}\n")
-    return result
+    """``updateDreamsFile``: read, let ``updater`` return ``(content, result)``, write with a final newline.
+
+    Takes the workspace lock (``withMemoryWorkspaceLock``), re-entering it when the caller, such
+    as the deep phase, already holds it; waits up to 10 s for another holder.
+    """
+    with memory_workspace_lock(workspace):
+        path = resolve_dreams_path(workspace)
+        content, result = updater(read_dreams_file(path), path)
+        write_dreams_file_atomic(path, content if content.endswith("\n") else f"{content}\n")
+        return result
 
 
 # --- consolidation history -------------------------------------------------------------

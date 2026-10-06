@@ -17,8 +17,8 @@ An item field that upstream leaves ``undefined`` (``phase``, ``arguments``) is c
 :data:`memory_core.compaction_replay.UNDEFINED` while the reconstruction runs (``stableStringify``
 prints it) and dropped from the returned items, as ``JSON.stringify`` would.
 
-Deviations: see :mod:`memory_core.tool_result_text` (secret redaction of structured tool-result
-blocks) and docs/gap4-compaction-notes.md.
+Redaction: tool-result text goes through :func:`memory_core.redact.redact_model_visible_secrets`
+by default (the ``redact=`` argument overrides it); see docs/gap5-redaction-notes.md.
 """
 
 from __future__ import annotations
@@ -42,9 +42,9 @@ from memory_core.compaction_replay import (
     provider_replay_context_matches,
     short_hash,
 )
+from memory_core.redact import redact_model_visible_secrets
 from memory_core.tool_result_text import (
     Redactor,
-    default_redact_model_visible_secrets,
     describe_tool_result_media_placeholder,
     extract_tool_result_text,
     is_image_with_media_payload,
@@ -778,7 +778,7 @@ def convert_responses_messages(
     session_id: str | None = None,
     auth_profile_id: str | None = None,
     replay_mode: str | None = None,
-    redact: Redactor = default_redact_model_visible_secrets,
+    redact: Redactor = redact_model_visible_secrets,
 ) -> list[Any]:
     """``convertResponsesMessages``: the transport projection of the Responses ``input``."""
 
@@ -809,7 +809,7 @@ def convert_provider_responses_messages(
     session_id: str | None = None,
     auth_profile_id: str | None = None,
     replay_mode: str | None = None,
-    redact: Redactor = default_redact_model_visible_secrets,
+    redact: Redactor = redact_model_visible_secrets,
 ) -> list[Any]:
     """``convertProviderResponsesMessages``: the provider projection (no reasoning toggle)."""
 
@@ -833,7 +833,7 @@ def default_responses_input_projector(
     model: ReplayModel,
     identity: ReplayIdentity | None = None,
     *,
-    redact: Redactor = default_redact_model_visible_secrets,
+    redact: Redactor = redact_model_visible_secrets,
 ):
     """The built-in ``projector`` of the measured-usage check, bound to a model and identity.
 

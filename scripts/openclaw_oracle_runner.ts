@@ -1647,6 +1647,25 @@ async function main() {
     } finally {
       await fs.rm(exposedPath, { force: true });
     }
+    // The same trick for the continuation module's private normalizeAssistantReplayInput.
+    const continuationPath = path.join(
+      repoPath,
+      "packages/ai/src/transports",
+      `openai-responses-continuation.oracle-${process.pid}.ts`,
+    );
+    await fs.writeFile(
+      continuationPath,
+      `${await fs.readFile(
+        path.join(repoPath, "packages/ai/src/transports/openai-responses-continuation.ts"),
+        "utf8",
+      )}\nexport { normalizeAssistantReplayInput };\n`,
+    );
+    let exposedContinuation: Record<string, any>;
+    try {
+      exposedContinuation = await import(pathToFileURL(continuationPath).href);
+    } finally {
+      await fs.rm(continuationPath, { force: true });
+    }
     const replayModel = (model: Record<string, unknown>) => ({
       input: ["text", "image"],
       contextWindow: 200000,
@@ -1917,6 +1936,36 @@ async function main() {
                 item.projection,
               );
               return { value: messages, error: null };
+            }
+            case "normalizeReplayInput":
+              return {
+                value: exposedContinuation.normalizeAssistantReplayInput(
+                  structuredClone(item.items),
+                  item.fromResponse === true,
+                ),
+                error: null,
+              };
+            case "prefixFingerprint":
+              return {
+                value: exposedContinuation.responsesContinuationPrefixFingerprint(
+                  structuredClone(item.input),
+                  item.output === undefined ? undefined : structuredClone(item.output),
+                ),
+                error: null,
+              };
+            case "recordContextUsage": {
+              // recordResponsesContextUsage over the case's own request and output; the result is
+              // the target's saved input-replay state (JSON, so undefined fields are absent).
+              const target = messages[item.target];
+              usageModule.recordResponsesContextUsage(
+                target,
+                replayModel(item.model),
+                item.identity,
+                structuredClone(item.request),
+                structuredClone(item.output),
+                item.projection,
+              );
+              return { value: target.openclawResponsesInputReplay ?? null, error: null };
             }
             case "anthropicCapture": {
               const output: Record<string, unknown> = structuredClone(item.output ?? {});
@@ -3961,6 +4010,48 @@ async function main() {
       };
     }
     return { ok: true, operation: payload.operation, result };
+  }
+
+  if (payload.operation === "redactModelVisibleSecrets") {
+    // src/logging/redact.ts redactModelVisibleSecrets (the host redactor of the Responses
+    // converter's tool-result text): `values` are JSON values redacted one by one, `keys` go
+    // through isSensitiveFieldKey, `fields` ([key, value] pairs) through
+    // redactModelVisibleSensitiveFieldValueWithConfig, and `meta` returns the tool-payload
+    // pattern table. A sandbox HOME keeps readLoggingConfig on its default (no user patterns).
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-model-redact-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    process.env.OPENCLAW_LOG_LEVEL = "silent";
+    try {
+      const redact = await importFromRepo(repoPath, "src/logging/redact.ts");
+      const patterns = await importFromRepo(repoPath, "src/logging/redact-patterns.ts");
+      const body = payload as Record<string, any>;
+      const result: Record<string, unknown> = {
+        values: (body.values ?? []).map((value: unknown) => {
+          try {
+            return { value: redact.redactModelVisibleSecrets(structuredClone(value)) };
+          } catch (error) {
+            return { error: String((error as Error)?.name ?? error) };
+          }
+        }),
+        keys: (body.keys ?? []).map((key: string) => redact.isSensitiveFieldKey(key)),
+        fields: (body.fields ?? []).map(([key, value]: [string, string]) =>
+          redact.redactModelVisibleSensitiveFieldValueWithConfig(key, value),
+        ),
+      };
+      if (body.meta) {
+        result.meta = {
+          toolPayloadStringPatterns: patterns.TOOL_PAYLOAD_REDACT_PATTERNS.filter(
+            (pattern: unknown) => typeof pattern === "string",
+          ),
+          toolPayloadPatternCount: patterns.TOOL_PAYLOAD_REDACT_PATTERNS.length,
+          defaultPatternCount: patterns.DEFAULT_REDACT_PATTERNS.length,
+        };
+      }
+      return { ok: true, operation: payload.operation, result };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
   }
 
   if (payload.operation === "sessionMemorySlug") {

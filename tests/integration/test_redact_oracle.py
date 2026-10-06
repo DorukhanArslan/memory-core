@@ -572,3 +572,262 @@ def test_chunk_constants_equal_upstream_source():
         ("DEFAULT_REDACT_KEEP_END", redact.DEFAULT_REDACT_KEEP_END),
     ):
         assert int(re.search(rf"const {name} = (\d+);", redact_source).group(1)) == value
+
+
+# --- redactModelVisibleSecrets (structured, model-visible tool output) --------------------------
+# One oracle call runs every value below through the real ``redactModelVisibleSecrets``; the
+# shapes include the ones the Responses converter oracle used to avoid: field-name masks, the
+# ``KEY=value`` carve-outs of the tool-payload subset, app-specific passwords, ``code`` paths,
+# public-share ids and numbers under sensitive keys.
+_TOKEN = VENDOR_TOKENS["openai-sk"]
+_GHP = VENDOR_TOKENS["github-ghp"]
+_ENV_LINES = f"API_KEY={LONG}\nMY_TOKEN={LONG}\nDB_PASSWORD=hunter2hunter2hunter2\nPATH=/usr/bin\nSECRET: '{LONG}'"
+_SOURCE = f'const apiKey = "{LONG}";\nconfig.password = "{LONG}"\ntoken = {LONG}\nclient_secret: {LONG}'
+_APP_PW = "abcd-efgh-ijkl-mnop"
+
+MODEL_VALUES: list[tuple[str, object]] = [
+    ("str-plain", "nothing to see here"),
+    ("str-empty", ""),
+    ("str-vendor-token", f"key {_TOKEN} end"),
+    ("str-env-lines-kept", _ENV_LINES),
+    ("str-source-assignments-kept", _SOURCE),
+    ("str-bearer", f"Authorization: Bearer {LONG}"),
+    ("str-basic", "Authorization: Basic dXNlcjpwYXNzd29yZA=="),
+    ("str-json-in-text", f'{{"password": "{LONG}", "apiKey": "{LONG}"}}'),
+    ("str-payment-json", '{"cardNumber": "4242424242424242", "cvc": "123"}'),
+    ("str-pem", _pem()),
+    ("str-aws-secret", f"aws_secret_access_key={AWS_SECRET}"),
+    ("str-url-query", f"https://x.test/cb?access_token={LONG}&state=1"),
+    ("str-form-body", f"grant_type=x&client_secret={LONG}&code=abc"),
+    ("str-app-password-text", f"apple pw {_APP_PW} here"),
+    ("str-unicode", f"\U0001f600 {_TOKEN} 中文 \ud83d"),
+    ("num", 5),
+    ("null", None),
+    ("bool", True),
+    ("obj-empty", {}),
+    ("arr-empty", []),
+    ("obj-password-short", {"password": "pw"}),
+    ("obj-password-long", {"password": LONG}),
+    ("obj-apikey-camel", {"apiKey": "k1", "api_key": "k2", "api-key": LONG}),
+    ("obj-token-secret", {"token": SHORT, "secret": LONG, "credential": "abc"}),
+    ("obj-key-session-cookie", {"key": "k", "session": "s", "cookie": LONG, "set-cookie": "a=b", "jwt": "j"}),
+    ("obj-signature", {"signature": LONG, "Signature": "x"}),
+    ("obj-env-style-keys", {"MY_API_KEY": "v", "AWS_SECRET": "v", "DB_PASSWORD": LONG, "FOO-TOKEN": "t", "PASSWD": "x"}),
+    ("obj-payment-keys", {"card_number": "4242424242424242", "cvv": "123", "securityCode": 123, "payment-credential": "p"}),
+    ("obj-aws-key-field", {"aws_secret_access_key": AWS_SECRET, "SecretAccessKey": "s"}),
+    ("obj-numbers-under-secret", {"password": 12345, "token": 1.5, "secret": True, "count": 3, "ok": False}),
+    ("obj-null-under-secret", {"password": None, "token": None}),
+    ("obj-shell-ref-kept", {"API_KEY": "$API_KEY", "TOKEN": "${TOKEN}", "SECRET": "${SECRET:-default}", "X_TOKEN": "$OTHER"}),
+    ("obj-shell-expansion", {"MY_TOKEN": "${MY_TOKEN:-fallbackvalue}", "MY_SECRET": "${MY_SECRET:?msg}"}),
+    ("obj-session-path", {"session": "$WORKSPACE_DIR/sessions/a.jsonl", "other": {"session": "$WORKSPACE_DIR/x/y"}}),
+    ("obj-code-top", {"code": "abc123", "name": "x"}),
+    ("obj-code-nested", {"auth": {"code": "oauthcode123"}, "result": {"code": "x"}}),
+    ("obj-code-error-paths", {"error": {"code": "E1"}, "status": {"code": 404}, "details": {"code": "d"}, "warnings": {"code": "w"}, "nodeError": {"code": "n"}}),
+    ("obj-code-in-array", {"items": [{"code": "c1"}, {"code": "c2"}], "error": [{"code": "ok"}]}),
+    ("obj-code-cause-transport", {"cause": {"code": "ECONNRESET"}, "x": {"cause": {"cause": {"code": "EPIPE"}}}}),
+    ("obj-code-cause-unknown", {"cause": {"code": "SOMETHING"}, "y": {"cause": {"code": "econnrefusedx"}}}),
+    ("obj-code-cause-case", {"cause": {"code": "EconnRefused"}, "z": {"cause": {"code": "ENOTFOUND "}}}),
+    ("obj-code-cause-codes", {"a": {"cause": {"code": "EAI_AGAIN"}}, "b": {"cause": {"code": "ENETUNREACH"}}, "c": {"cause": {"code": "EHOSTDOWN"}}, "d": {"cause": {"code": "ECONNABORTED"}}}),
+    ("obj-code-array-top", [{"code": "t"}, {"nested": {"code": "n"}}]),
+    ("obj-code-number", {"code": 200, "x": {"code": 5}}),
+    ("obj-public-share-id", {"publicShare": {"id": LONG}, "public_share": {"id": "short"}, "public-share": {"id": 3}, "share": {"id": "x"}}),
+    ("obj-public-share-array", {"publicShare": [{"id": LONG}], "publicshare": {"id": [LONG, "z"]}}),
+    ("obj-app-password-field", {"text": f"pw {_APP_PW}", "content": f"{_APP_PW}", "other": f"{_APP_PW}"}),
+    ("obj-app-password-benign", {"text": "demo-file-name-path", "message": "case-open-main-test", "error": "abcd-test-ijkl-mnop"}),
+    ("obj-app-password-with-token", {"message": f"{_TOKEN} and {_APP_PW}", "detail": "abcd-efgh-ijkl-mnop-qrst"}),
+    ("obj-app-password-fields", {"apple": _APP_PW, "icloud": _APP_PW, "appSpecificPassword": _APP_PW, "application-password": _APP_PW, "reason": _APP_PW, "errorMessage": _APP_PW, "details": _APP_PW}),
+    ("obj-sensitive-key-full-patterns", {"token": f"MY_TOKEN={LONG}", "password": "API_KEY=abcdefghijklmnopqrstuvwxyz"}),
+    ("obj-plain-key-subset-patterns", {"note": _ENV_LINES, "src": _SOURCE}),
+    ("obj-plain-key-vendor", {"note": f"x {_GHP} y", "url": f"https://u.test/?token={LONG}"}),
+    ("obj-sensitive-key-source", {"authorization": _SOURCE, "secret": f"const password = '{LONG}'"}),
+    ("obj-sensitive-key-bearer", {"authorization": f"Bearer {LONG}", "Authorization": f"Basic {LONG}"}),
+    ("obj-nested-deep", {"a": {"b": {"c": {"password": LONG, "d": [{"token": SHORT}, {"x": f"sk-{LONG}"}]}}}}),
+    ("obj-array-under-secret-key", {"password": [LONG, "pw", 3, None, {"nested": "x"}], "tokens": [LONG]}),
+    ("obj-array-top", [LONG, {"password": "pw"}, ["a", {"token": "t"}], 7]),
+    ("obj-array-top-env", [_ENV_LINES, f"sk-{LONG}"]),
+    ("obj-key-case", {"PASSWORD": "pw", "Password": "pw", "pAsSwOrD": "pw", "TOKEN": "t", "Api_Key": "k", "apikey": "z"}),
+    ("obj-key-near-misses", {"passwords": "pw", "my_password": "pw", "tokenize": "t", "keys": "k", "apiKeys": "k", "secrets": "s", "key2": "k"}),
+    ("obj-key-env-prefixed", {"FOO_BAR_KEY": "k", "foo_key": "k", "A1_B2-SECRET": "s", "X_PASSWD": "p"}),
+    ("obj-key-unicode", {"paſsword": "pw", "toKen": "t", "passé": "x", "中": "y"}),
+    ("obj-key-newline", {"password\n": "pw", "token\n": "t"}),
+    ("obj-key-index-order", {"b": "x", "2": "two", "1": "one", "a": "y", "10": "ten"}),
+    ("obj-bearer-keys", {"bearerToken": "b", "bearer_token": "b", "bearer-token": LONG}),
+    ("obj-client-app-secret", {"clientSecret": "c", "client_secret": "c", "appSecret": "a", "app-secret": "a", "secretValue": "v", "raw_secret": "r", "secretInput": "i", "keyMaterial": "k", "key-material": "k"}),
+    ("obj-refresh-id-access", {"accessToken": "t", "refresh_token": "t", "idToken": "t", "id-token": "t", "authToken": "t", "auth_token": "t"}),
+    ("obj-private-key", {"privateKey": _pem(), "private_key": "pk", "private-key": LONG}),
+    ("obj-pem-in-plain-key", {"note": f"a\n{_pem()}\nb"}),
+    ("obj-http-headers", {"headers": {"authorization": f"Bearer {LONG}", "x-api-key": LONG, "cookie": "a=b", "accept": "x"}}),
+    ("obj-headers-text", {"text": f"X-Api-Key: {LONG}\nProxy-Authorization: Basic {LONG}"}),
+    ("obj-form-in-text", {"body": f"client_secret={LONG}&grant=x"}),
+    ("obj-json-string-value", {"stdout": f'{{"password": "{LONG}"}}'}),
+    ("obj-stdout-env", {"stdout": _ENV_LINES, "stderr": ""}),
+    ("obj-tool-result-shape", {"type": "toolResult", "content": [{"type": "text", "text": f"token={LONG}"}], "details": {"password": LONG}}),
+    ("obj-mixed-primitives", {"a": 1, "b": "x", "c": None, "d": True, "e": 1.25, "f": [1, 2, 3]}),
+    ("obj-large-string", {"text": ("z" * 40_000) + f" {_TOKEN} " + ("y" * 40_000)}),
+    ("obj-large-app-password", {"text": ("z" * 40_000) + f" {_APP_PW} " + ("y" * 10_000)}),
+    ("obj-lone-surrogate", {"text": "a\ud83d" + _TOKEN, "password": "x\ude00"}),
+    ("obj-astral-mask", {"password": "\U0001f600" * 12, "token": "a" * 5 + "\U0001f600" * 8}),
+    ("obj-duplicate-shape", {"password": "same", "nested": {"password": "same"}, "list": [{"password": "same"}]}),
+    ("obj-key-constructor", {"constructor": {"token": "t"}, "toString": "x"}),
+    ("obj-empty-key", {"": "value", " ": "token"}),
+    ("obj-path-id-in-array", {"publicShare": {"id": LONG}, "list": [{"publicShare": {"id": "x"}}]}),
+    ("arr-nested-arrays", [[LONG, [f"sk-{LONG}"]], {"password": [[LONG]]}]),
+]
+
+_EXTRA_KEYS = {
+    "api_token", "apiToken", "proxy-authorization", "x-api-key", "secret_input", "secret-value", "set_cookie",
+    "setCookie", "Set-Cookie", "COOKIE", "private-key", "KEY", "Key", "key-material", "AWS-SECRET-ACCESS-KEY",
+    "aws_secret_access_key", "awsSecretAccessKey", "SecretAccessKey", "CARD_NUMBER", "CARD-CVV", "SHARED_PAYMENT_TOKEN",
+    "sharedPaymentToken", "MY_KEY", "A-B-TOKEN", "A_B_SECRET", "X_PASSWD", "PASSWD", "passwd", "text", "authorization",
+    "passwordx", "xpassword", "token ", " token", "secret\n", "sſecret", "Key", "",
+}
+_FIELD_CASES: list[tuple[str, str]] = [
+    ("password", "pw"), ("password", LONG), ("token", "MY_TOKEN=" + LONG), ("note", _ENV_LINES), ("note", _SOURCE),
+    ("text", f"x {_APP_PW}"), ("name", _APP_PW), ("session", "$WORKSPACE_DIR/a/b.jsonl"), ("session", "other"),
+    ("MY_TOKEN", "$MY_TOKEN"), ("MY_TOKEN", "${MY_TOKEN:-d}"), ("code", "abc"), ("id", LONG),
+    ("authorization", f"Bearer {LONG}"), ("key", ""), ("secret", ""), ("api_key", _TOKEN), ("plain", _TOKEN),
+]
+
+
+def _walk_keys(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield key
+            yield from _walk_keys(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _walk_keys(child)
+
+
+@functools.cache
+def _model_oracle_run() -> dict:
+    keys = sorted({key for _, value in MODEL_VALUES for key in _walk_keys(value)} | _EXTRA_KEYS)
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    result = oracle.run(
+        {
+            "operation": "redactModelVisibleSecrets",
+            "values": [value for _, value in MODEL_VALUES],
+            "keys": keys,
+            "fields": [list(pair) for pair in _FIELD_CASES],
+            "meta": True,
+        }
+    )
+    assert result["ok"] is True, result
+    return {**result["result"], "keyList": keys}
+
+
+def _model_expected(name: str):
+    names = [n for n, _ in MODEL_VALUES]
+    return _model_oracle_run()["values"][names.index(name)]
+
+
+@pytest.mark.parametrize("name,value", MODEL_VALUES, ids=[n for n, _ in MODEL_VALUES])
+def test_redact_model_visible_secrets_matches_upstream(name: str, value):
+    expected = _model_expected(name)
+    assert "error" not in expected, expected
+    got = redact.redact_model_visible_secrets(value)
+    assert got == expected["value"]
+    if isinstance(got, dict):
+        assert list(got) == list(expected["value"])
+
+
+def test_model_visible_fixture_names_are_unique_and_effective():
+    names = [n for n, _ in MODEL_VALUES]
+    assert len(names) == len(set(names))
+    assert len(names) >= 85
+    changed = sum(1 for n, v in MODEL_VALUES if _model_expected(n)["value"] != v)
+    assert changed >= 55
+
+
+def test_model_visible_does_not_mutate_its_input():
+    value = {"password": LONG, "list": [{"token": LONG}], "text": _ENV_LINES}
+    snapshot = repr(value)
+    redact.redact_model_visible_secrets(value)
+    assert repr(value) == snapshot
+
+
+def test_sensitive_field_keys_match_upstream():
+    run = _model_oracle_run()
+    for key, want in zip(run["keyList"], run["keys"]):
+        assert redact.is_sensitive_field_key(key) is want, key
+    assert sum(run["keys"]) >= 40
+
+
+@pytest.mark.parametrize("index", range(len(_FIELD_CASES)))
+def test_model_visible_field_value_matches_upstream(index: int):
+    key, value = _FIELD_CASES[index]
+    assert redact.redact_model_visible_field_value(key, value) == _model_oracle_run()["fields"][index]
+
+
+def test_tool_payload_patterns_equal_upstream():
+    meta = _model_oracle_run()["meta"]
+    assert list(redact.TOOL_PAYLOAD_REDACT_STRING_PATTERNS) == meta["toolPayloadStringPatterns"]
+    assert meta["toolPayloadPatternCount"] == len(redact.TOOL_PAYLOAD_REDACT_STRING_PATTERNS) + 1
+    assert meta["defaultPatternCount"] == len(redact.DEFAULT_REDACT_STRING_PATTERNS) + 1
+    assert len(redact.TOOL_PAYLOAD_REDACT_STRING_PATTERNS) == len(redact.DEFAULT_REDACT_STRING_PATTERNS) - 12
+
+
+def test_structured_field_regexes_equal_upstream_source():
+    source = _upstream_source("src/logging/redact.ts")
+    field = re.search(r"const STRUCTURED_SECRET_FIELD_RE = new RegExp\(\s*String\.raw`\^\(\?:(.*?)\)\$`", source, re.S)
+    resolved = (
+        field.group(1)
+        .replace("${AWS_SECRET_ACCESS_KEY_FIELD_KEYS}", redact.AWS_SECRET_ACCESS_KEY_FIELD_KEYS)
+        .replace("${PAYMENT_CREDENTIAL_QUERY_KEYS}", redact.PAYMENT_CREDENTIAL_QUERY_KEYS)
+        .replace("${PAYMENT_CREDENTIAL_JSON_KEYS}", redact.PAYMENT_CREDENTIAL_JSON_KEYS)
+    )
+    assert redact.STRUCTURED_SECRET_FIELD_RE.pattern == f"(?:{resolved})"
+    env = re.search(r"const STRUCTURED_SECRET_ENV_FIELD_RE = new RegExp\(\s*String\.raw`\^\(\?:(.*?)\)\$`", source, re.S)
+    env_resolved = env.group(1).replace("${PAYMENT_CREDENTIAL_ENV_KEYS}", redact.PAYMENT_CREDENTIAL_ENV_KEYS)
+    assert redact.STRUCTURED_SECRET_ENV_FIELD_RE.pattern == f"(?:{env_resolved})"
+    app = re.search(r"const STRUCTURED_APP_PASSWORD_FIELD_RE =\s*/\^\(\?:(.*?)\)\$/i;", source, re.S)
+    assert redact.STRUCTURED_APP_PASSWORD_FIELD_RE.pattern == f"(?:{app.group(1)})"
+    benign = re.search(r"const BENIGN_APP_PASSWORD_WORDS = new Set\(\[(.*?)\]\);", source, re.S)
+    assert set(re.findall(r'"([^"]+)"', benign.group(1))) == set(redact._BENIGN_APP_PASSWORD_WORDS)
+
+
+_STRUCT_KEYS = [
+    "password", "token", "secret", "apiKey", "api_key", "authorization", "code", "session", "id", "publicShare", "text",
+    "content", "message", "error", "cause", "details", "status", "warnings", "nodeError", "name", "path", "stdout",
+    "MY_TOKEN", "API_KEY", "key", "cookie", "x", "y", "items", "result", "cardNumber", "privateKey", "apple",
+]
+_STRUCT_STRINGS = [
+    "plain", "", SHORT, LONG, _TOKEN, _GHP, _APP_PW, "demo-file-name-path", _ENV_LINES, _SOURCE, "$MY_TOKEN",
+    "${MY_TOKEN:-d}", "$API_KEY", "${API_KEY}", "$WORKSPACE_DIR/a/b.jsonl", "ECONNRESET", "EPIPE", "ENOTFOUND", "abc",
+    f"Authorization: Bearer {LONG}", f"MY_TOKEN={LONG}", f"password: {LONG}", f'"password": "{LONG}"',
+    "https://a.test/?token=" + LONG, "\U0001f600" * 10, "a\ud83d", _pem(),
+]
+
+
+def _random_value(rnd, depth: int):
+    if depth <= 0 or rnd.random() < 0.45:
+        kind = rnd.random()
+        if kind < 0.7:
+            return rnd.choice(_STRUCT_STRINGS)
+        if kind < 0.8:
+            return rnd.choice([0, 1, 42, -3, 1.5])
+        if kind < 0.9:
+            return rnd.choice([True, False])
+        return None
+    if rnd.random() < 0.7:
+        return {rnd.choice(_STRUCT_KEYS): _random_value(rnd, depth - 1) for _ in range(rnd.randint(1, 5))}
+    return [_random_value(rnd, depth - 1) for _ in range(rnd.randint(0, 4))]
+
+
+@pytest.mark.parametrize("seed,count", [(11, 1500), (12, 600)])
+def test_redact_model_visible_secrets_matches_upstream_on_generated_values(seed: int, count: int):
+    import random
+
+    rnd = random.Random(seed)
+    values = [_random_value(rnd, rnd.randint(1, 4)) for _ in range(count)]
+    result = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"])).run(
+        {"operation": "redactModelVisibleSecrets", "values": values}
+    )
+    assert result["ok"] is True, result
+    mismatches = []
+    for value, want in zip(values, result["result"]["values"]):
+        got = redact.redact_model_visible_secrets(value)
+        if got != want["value"]:
+            mismatches.append((value, want["value"], got))
+    assert not mismatches, mismatches[:3]
+    assert sum(1 for value in values if redact.redact_model_visible_secrets(value) != value) > count // 3

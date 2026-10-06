@@ -6,6 +6,10 @@ Upstream: ``src/logging/redact.ts`` with ``redact-patterns.ts``, ``redact-pem.ts
 ``packages/net-policy/src/redact-sensitive-url.ts``. ``buildSessionEntry`` runs every exported
 session text through it (``session_entry.py`` calls :func:`redact_sensitive_text`).
 
+:func:`redact_model_visible_secrets` (``redactModelVisibleSecrets``, the host redactor of the
+Responses converter's tool-result text) sits on top of it: the tool-payload subset of the same
+patterns plus field-name masks over records (see the section at the end of this module).
+
 The pattern sources are the upstream JavaScript sources verbatim (``DEFAULT_REDACT_STRING_PATTERNS``
 and the prefilter sources); :func:`translate_js_regex` rewrites them into Python ``re`` syntax
 with ECMAScript semantics:
@@ -1631,13 +1635,13 @@ def _apply_pattern(text: str, pattern: _Pattern) -> str:
     return "".join(parts) + text[end:] if parts else text
 
 
-def _redact_text(text: str) -> str:
-    """``redactText(text, defaultPatterns)``."""
+def _redact_text(text: str, patterns: tuple[_Pattern, ...] | None = None) -> str:
+    """``redactText(text, patterns)`` (default: the full default pattern table)."""
     staged = _redact_form_body(
         _redact_assignment_values(redact_structured_auth_headers(text, "***"), "url")
     )
     units = to_units(staged)
-    for pattern in _default_patterns():
+    for pattern in _default_patterns() if patterns is None else patterns:
         units = _apply_pattern(units, pattern)
     return from_units(units)
 
@@ -1654,3 +1658,254 @@ def redact_sensitive_text(text: str) -> str:
     if not _could_match_default_redact_patterns(joined):
         return text
     return _redact_text(joined)
+
+
+# --- redactModelVisibleSecrets (structured, model-visible tool output) ----------------------------
+# ``redactModelVisibleSecrets(value)`` is ``redactSecretsWithOptions(value, {mode: "tools",
+# patterns: TOOL_PAYLOAD_REDACT_PATTERNS, sensitiveFieldPatterns: DEFAULT_REDACT_PATTERNS})``: a
+# string goes through ``redactSensitiveText`` with the tool-payload pattern subset; a record or
+# array is walked, and every string under a key goes through ``redactSensitiveFieldValue`` (the
+# subset, or the full table under a sensitive key, then app-specific passwords, then a whole-value
+# mask for a sensitive key); numbers and booleans under a sensitive key become ``***``.
+# Not ported: the exact-secret registry (``redactRegisteredSecretValues``, empty here) and the
+# ``logging.redactPatterns`` / full-context configuration (none is read, so the defaults apply).
+_JS_I = re.IGNORECASE | re.ASCII
+STRUCTURED_SECRET_FIELD_RE = re.compile(
+    _t(
+        r"(?:api[-_]?key|apiKey|api[-_]?token|apiToken|bearer[-_]?token|bearerToken|token|secret|password|passwd|${AWS_SECRET_ACCESS_KEY_FIELD_KEYS}|credential|authorization|private[-_]?key|privateKey|access[-_]?token|accessToken|refresh[-_]?token|refreshToken|id[-_]?token|idToken|auth[-_]?token|authToken|client[-_]?secret|clientSecret|app[-_]?secret|appSecret|secret[-_]?value|secretValue|raw[-_]?secret|rawSecret|secret[-_]?input|secretInput|key|key[-_]?material|keyMaterial|jwt|session|signature|cookie|set[-_]?cookie|${PAYMENT_CREDENTIAL_QUERY_KEYS}|${PAYMENT_CREDENTIAL_JSON_KEYS})"
+    ),
+    _JS_I,
+)
+STRUCTURED_SECRET_ENV_FIELD_RE = re.compile(
+    _t(
+        r"(?:(?:[A-Z0-9]+[_-])+(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)|API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|${PAYMENT_CREDENTIAL_ENV_KEYS})"
+    ),
+    _JS_I,
+)
+STRUCTURED_APP_PASSWORD_FIELD_RE = re.compile(
+    r"(?:apple|icloud|app[-_]?specific[-_]?password|appSpecificPassword|application[-_]?password"
+    r"|text|content|message|error|errorMessage|detail|details|reason)",
+    _JS_I,
+)
+_STRUCTURED_INTERNAL_SOURCE_PATH_VALUE_RE = re.compile(r"\$WORKSPACE_DIR/[A-Za-z0-9._/-]+\.jsonl")
+_APP_SPECIFIC_PASSWORD_RE = re.compile(r"\b([a-z]{4}-[a-z]{4}-[a-z]{4}-[a-z]{4})\b", re.ASCII)
+_BENIGN_APP_PASSWORD_WORDS = frozenset(
+    ("case", "claw", "demo", "file", "main", "name", "open", "path", "slug", "test")
+)
+_TRANSPORT_CODE_RES = (
+    re.compile(r"\beconnrefused\b", _JS_I),
+    re.compile(r"\beconnreset\b|\beconnaborted\b|\benetreset\b|\bepipe\b", _JS_I),
+    re.compile(r"\benotfound\b|\beai_again\b", _JS_I),
+    re.compile(r"\benetunreach\b|\behostunreach\b|\behostdown\b", _JS_I),
+)
+_TOOL_PAYLOAD_AMBIGUOUS_ASSIGNMENT_PATTERNS = frozenset(
+    (
+        ENV_ASSIGNMENT_REDACT_PATTERN,
+        ESCAPED_ENV_ASSIGNMENT_REDACT_PATTERN,
+        STRUCTURED_JSON_SECRET_REDACT_PATTERN,
+        AMBIGUOUS_QUOTED_SECRET_FIELD_REDACT_PATTERN,
+        AMBIGUOUS_QUOTED_AUTH_FIELD_REDACT_PATTERN,
+        STANDALONE_ASSIGNMENT_QUOTED_REDACT_PATTERN,
+        STANDALONE_ASSIGNMENT_REDACT_PATTERN,
+        CONFIG_QUOTED_ASSIGNMENT_REDACT_PATTERN,
+        CONFIG_ASSIGNMENT_REDACT_PATTERN,
+        CONFIG_DIRECT_ASSIGNMENT_REDACT_PATTERN,
+        CONFIG_PREFIXED_PASSWORD_ASSIGNMENT_REDACT_PATTERN,
+        CONFIG_NAMESPACED_ASSIGNMENT_REDACT_PATTERN,
+    )
+)
+# ``TOOL_PAYLOAD_REDACT_PATTERNS``: model-visible tool output is often source code, so the
+# assignment families that match on key names alone are dropped; recognizable token shapes,
+# headers, PEM blocks, payment JSON and the AWS matcher stay.
+TOOL_PAYLOAD_REDACT_STRING_PATTERNS: tuple[str, ...] = tuple(
+    raw
+    for raw in DEFAULT_REDACT_STRING_PATTERNS
+    if raw not in _TOOL_PAYLOAD_AMBIGUOUS_ASSIGNMENT_PATTERNS
+)
+
+
+@lru_cache(maxsize=1)
+def _tool_payload_patterns() -> tuple[_Pattern, ...]:
+    return (
+        *(_parse_pattern(raw) for raw in TOOL_PAYLOAD_REDACT_STRING_PATTERNS),
+        _Pattern("aws-secret-access-key", matcher=_match_aws_secret_access_keys),
+    )
+
+
+def is_sensitive_field_key(key: str) -> bool:
+    """``isSensitiveFieldKey``."""
+    return (
+        STRUCTURED_SECRET_FIELD_RE.fullmatch(key) is not None
+        or STRUCTURED_SECRET_ENV_FIELD_RE.fullmatch(key) is not None
+    )
+
+
+def _is_known_transport_error_code(value: str) -> bool:
+    for pattern in _TRANSPORT_CODE_RES:
+        found = pattern.search(value)
+        if found is not None and found.group(0) == value:
+            return True
+    return False
+
+
+def _path_ends_with(path: list[str], suffix: tuple[str, ...]) -> bool:
+    return len(path) >= len(suffix) and tuple(path[len(path) - len(suffix) :]) == suffix
+
+
+def _should_redact_structured_authorization_code(
+    normalized_key: str, path: tuple[str, ...], transport_code: str | None = None
+) -> bool:
+    """``shouldRedactStructuredAuthorizationCode`` (structured-authorization-code.ts)."""
+    if normalized_key != "code":
+        return False
+    parts = [part.lower() for part in path]
+    if len(parts) == 1 or any(
+        _path_ends_with(parts, suffix)
+        for suffix in (
+            ("error", "code"),
+            ("nodeerror", "code"),
+            ("status", "code"),
+            ("details", "code"),
+            ("warnings", "code"),
+        )
+    ):
+        return False
+    return not (
+        transport_code is not None
+        and len(parts) > 1
+        and all(part == "cause" for part in parts[:-1])
+        and _is_known_transport_error_code(transport_code)
+    )
+
+
+def _is_public_share_id_path(path: tuple[str, ...]) -> bool:
+    if not path or path[-1].lower() != "id":
+        return False
+    parent = path[-2].lower().replace("-", "").replace("_", "") if len(path) >= 2 else None
+    return parent == "publicshare"
+
+
+def _redact_app_specific_passwords(text: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        token = match.group(1)
+        if any(part.lower() in _BENIGN_APP_PASSWORD_WORDS for part in token.split("-")):
+            return match.group(0)
+        return mask_token(token)
+
+    units = to_units(text)
+    if len(units) <= REDACT_REGEX_CHUNK_THRESHOLD:
+        return from_units(_APP_SPECIFIC_PASSWORD_RE.sub(replace, units))
+    output: list[str] | None = None
+    for index in range(0, len(units), REDACT_REGEX_CHUNK_SIZE):
+        chunk = units[index : index + REDACT_REGEX_CHUNK_SIZE]
+        replaced = _APP_SPECIFIC_PASSWORD_RE.sub(replace, chunk)
+        if output is not None:
+            output.append(replaced)
+        elif replaced != chunk:
+            output = [units[:index], replaced]
+    return from_units("".join(output)) if output is not None else text
+
+
+def _preserves_structured_reference(key: str, value: str) -> bool:
+    return (
+        key.lower() == "session"
+        and _STRUCTURED_INTERNAL_SOURCE_PATH_VALUE_RE.fullmatch(value) is not None
+    ) or _is_shell_reference_to_key(key, value)
+
+
+def _should_redact_structured_string_field(
+    key: str, value: str, path: tuple[str, ...], object_path: bool
+) -> bool:
+    return _should_redact_structured_authorization_code(
+        key.lower(), path, value if object_path else None
+    ) or (is_sensitive_field_key(key) and not _preserves_structured_reference(key, value))
+
+
+def _should_redact_structured_primitive_field(key: str, path: tuple[str, ...]) -> bool:
+    return (
+        _is_public_share_id_path(path)
+        or _should_redact_structured_authorization_code(key.lower(), path)
+        or is_sensitive_field_key(key)
+    )
+
+
+def redact_model_visible_field_value(
+    key: str, value: str, path: tuple[str, ...] | None = None, object_path: bool = True
+) -> str:
+    """``redactSensitiveFieldValueWithOptions`` under the model-visible tool-payload policy."""
+    path = (key,) if path is None else path
+    if _is_public_share_id_path(path):
+        return mask_token(value)
+    patterns = _default_patterns() if is_sensitive_field_key(key) else _tool_payload_patterns()
+    joined = from_units(value)
+    redacted = (
+        _redact_text(joined, patterns) if _could_match_default_redact_patterns(joined) else joined
+    )
+    changed = redacted != joined
+    if changed or STRUCTURED_APP_PASSWORD_FIELD_RE.fullmatch(key) is not None:
+        app_redacted = _redact_app_specific_passwords(redacted)
+        if app_redacted != joined:
+            return app_redacted
+    if changed:
+        return redacted
+    if _should_redact_structured_string_field(key, value, path, object_path):
+        return mask_token(value)
+    return value
+
+
+def _js_object_key_order(keys: list[str]) -> list[str]:
+    """Own property order of a JS object: array-index keys ascending, then insertion order."""
+    index_keys = [
+        key for key in keys if re.fullmatch(r"0|[1-9][0-9]{0,9}", key) and int(key) < 2**32 - 1
+    ]
+    index_set = set(index_keys)
+    return sorted(index_keys, key=int) + [key for key in keys if key not in index_set]
+
+
+def _redact_structured_value(
+    key: str, value: Any, seen: set[int], path: tuple[str, ...], object_path: bool
+) -> Any:
+    if isinstance(value, str):
+        return redact_model_visible_field_value(key, value, path, object_path)
+    if value is None:
+        return value
+    if isinstance(value, bool | int | float):
+        return "***" if _should_redact_structured_primitive_field(key, path) else value
+    if isinstance(value, list | tuple):
+        if id(value) in seen:
+            return "[Circular]"
+        seen.add(id(value))
+        out = [_redact_structured_value(key, entry, seen, path, False) for entry in value]
+        seen.discard(id(value))
+        return out
+    if isinstance(value, dict):
+        if id(value) in seen:
+            return "[Circular]"
+        seen.add(id(value))
+        out_dict = {
+            name: _redact_structured_value(name, value[name], seen, (*path, name), object_path)
+            for name in _js_object_key_order(list(value))
+        }
+        seen.discard(id(value))
+        return out_dict
+    return value
+
+
+def redact_model_visible_secrets(value: Any) -> Any:
+    """``redactModelVisibleSecrets``: tool-payload patterns for strings, field-name masks for records.
+
+    A string is redacted as text (the tool-payload subset of the default patterns, no field
+    context). A dict or list is copied with every string redacted under its key (a sensitive key
+    uses the full pattern table and masks an unchanged value whole), numbers and booleans under a
+    sensitive key replaced by ``***``, and ``None`` kept.
+    """
+    if isinstance(value, str):
+        if not value:
+            return value
+        joined = from_units(value)
+        if not _could_match_default_redact_patterns(joined):
+            return value
+        return _redact_text(joined, _tool_payload_patterns())
+    if value is None or not isinstance(value, dict | list | tuple):
+        return value
+    return _redact_structured_value("", value, set(), (), True)

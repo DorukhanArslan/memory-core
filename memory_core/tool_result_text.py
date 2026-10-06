@@ -5,10 +5,9 @@ transport sends: text blocks verbatim, other blocks as redacted, bounded JSON. A
 ``sanitizeSurrogates`` (utils/sanitize-unicode.ts) and the transport payload text helpers
 (``sanitizeTransportPayloadText``, ``sanitizeNonEmptyTransportPayloadText``).
 
-Deviation: upstream redacts through the host's ``redactModelVisibleSecrets``, whose structured
-mode also masks values under sensitive field names. The built-in default
-(:func:`default_redact_model_visible_secrets`) applies :func:`memory_core.redact.redact_sensitive_text`
-to every string and leaves keys alone; a host passes its own ``redact`` to replace it.
+Redaction: upstream redacts through the host's ``redactModelVisibleSecrets``; the default here is
+:func:`memory_core.redact.redact_model_visible_secrets` (tool-payload patterns, field-name masks);
+a host passes its own ``redact`` to replace it.
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ from memory_core.bootstrap._js import (
     utf16_len,
 )
 from memory_core.compaction_replay import _js_number_to_string
-from memory_core.redact import redact_sensitive_text
+from memory_core.redact import redact_model_visible_secrets
 
 STRUCTURED_TOOL_RESULT_MAX_CHARS = 8000
 EMPTY_TOOL_RESULT_TEXT = "(no output)"
@@ -84,16 +83,7 @@ def sanitize_non_empty_transport_payload_text(
     return sanitized if js_trim(sanitized) else fallback
 
 
-def default_redact_model_visible_secrets(value: Any) -> Any:
-    """Strings through ``redact_sensitive_text``, containers recursively, keys untouched."""
-
-    if isinstance(value, str):
-        return redact_sensitive_text(value)
-    if isinstance(value, list):
-        return [default_redact_model_visible_secrets(item) for item in value]
-    if isinstance(value, dict):
-        return {key: default_redact_model_visible_secrets(item) for key, item in value.items()}
-    return value
+default_redact_model_visible_secrets = redact_model_visible_secrets
 
 
 def _read_mime_type(value: Any) -> str | None:

@@ -9,8 +9,10 @@ same error class). The building blocks (tool-result text extraction, the thinkin
 provider and transport transcript transforms) are compared on their own as well, so a divergence
 points at one function.
 
-Known deviation, left out of the fixtures on purpose: the structured redaction of
-``redactModelVisibleSecrets`` (field-name based masking); see docs/gap4-compaction-notes.md.
+Tool-result text goes through the built-in :func:`memory_core.redact.redact_model_visible_secrets`
+(no ``redact=`` override), so the fixtures include the structured shapes: field-name masks
+(``{"password": ...}``), ``KEY=value`` lines left alone by the tool-payload patterns, ``code``
+paths, app-specific passwords and numbers under secret keys; see docs/gap5-redaction-notes.md.
 """
 
 from __future__ import annotations
@@ -265,6 +267,24 @@ def _thinking(
     return block
 
 
+_SECRET = "a1B2c3D4e5F6g7H8i9J0kLmNoPqRsTuVwXyZ"
+_SECRET_BLOCKS: list[list[Any]] = [
+    [{"type": "json", "v": {"password": "pw", "token": _SECRET, "nested": {"apiKey": "k"}}}],
+    [{"type": "json", "env": f"API_KEY={_SECRET}\nMY_TOKEN={_SECRET}\nPATH=/usr/bin", "ok": True}],
+    [{"type": "json", "headers": {"authorization": f"Bearer {_SECRET}", "x-api-key": _SECRET}}],
+    [{"type": "json", "code": "abc", "auth": {"code": "oauth"}, "error": {"code": "E1"}}],
+    [{"type": "json", "text": "pw abcd-efgh-ijkl-mnop", "other": "abcd-efgh-ijkl-mnop"}],
+    [{"type": "json", "password": 12345, "secret": True, "count": 3, "session": "$WORKSPACE_DIR/a.jsonl"}],
+    [{"type": "json", "MY_TOKEN": "$MY_TOKEN", "DB_PASSWORD": _SECRET, "cookie": "a=b"}],
+    [{"type": "json", "publicShare": {"id": _SECRET}, "cause": {"code": "ECONNRESET"}}],
+    [{"type": "json", "items": [{"password": "x"}, {"token": _SECRET}], "key": None}],
+    [{"type": "json", "cardNumber": "4242424242424242", "stdout": f"export SECRET={_SECRET}"}],
+    [_text(f"sk-{_SECRET[:30]} and MY_TOKEN={_SECRET}"), {"type": "json", "password": "pw"}],
+    [_text(f"const apiKey = \"{_SECRET}\";\nAPI_KEY={_SECRET}")],
+    [_text("Authorization: Bearer " + _SECRET), _text("-----BEGIN PRIVATE KEY-----\nabcd\nefgh\n-----END PRIVATE KEY-----")],
+]
+
+
 # --- tool result text -------------------------------------------------------------------------
 
 
@@ -310,6 +330,7 @@ def _tool_text_cases() -> list[list[Any]]:
         [{"type": "text"}, {"type": "text", "text": 5}, {"type": "text", "text": None}],
         [{"type": "thinking", "thinking": "t"}],
         [{"type": "a", "v": "a" * 8100}, {"type": "b", "v": "b" * 50}],
+        *_SECRET_BLOCKS,
     ]
 
 
@@ -610,6 +631,7 @@ class _Gen:
                 [_text("é\U0001f600 日本"), {"type": "json", "v": 1}],
                 [_text("data:image/png;base64," + "A" * 50)],
                 [_text("lone \ud83d")],
+                *_SECRET_BLOCKS,
             ]
         )
         extra: dict[str, Any] = {}
@@ -922,3 +944,18 @@ def test_real_openclaw_oracle_transcript_transforms_match_python(oracle):
     python_rows = [_py_transform(case) for case in cases]
     assert _first_diffs(cases, rows, python_rows) == []
     assert sum(1 for row in rows if row["error"] is None) > 0.7 * len(rows)
+
+
+def test_structured_tool_text_masks_by_field_name_and_keeps_env_lines():
+    # The shapes the oracle comparison above now covers (they were left out while the default
+    # redactor only knew value patterns): a sensitive key masks its value, a plain key keeps a
+    # ``KEY=value`` line that the tool-payload patterns do not match.
+    masked = trt.extract_tool_result_text(_SECRET_BLOCKS[0], include_structured=True)
+    assert '"password":"***"' in masked and "pw" not in masked.replace("password", "")
+    assert _SECRET not in masked
+    env = trt.extract_tool_result_text(_SECRET_BLOCKS[1], include_structured=True)
+    assert "PATH=/usr/bin" in env
+    override = trt.extract_tool_result_text(
+        _SECRET_BLOCKS[0], include_structured=True, redact=lambda value: value
+    )
+    assert '"password":"pw"' in override

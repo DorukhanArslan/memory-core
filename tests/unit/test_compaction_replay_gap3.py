@@ -219,15 +219,17 @@ def test_measured_usage_boundary_uses_the_projector_and_the_fingerprint():
     assert out["measuredTokens"] == 100
     assert out["prefixTokens"] == 100 + cr.estimate_responses_input(wire[2:], estimator)
     assert calls == [("transport", 3, "sys", False)]
-    # A tampered fingerprint falls back to the estimate; no projector is an error.
+    # A tampered fingerprint falls back to the estimate; no projector means the built-in converter.
     usage_state["prefixHash"] = "0" * 64
     fallback = cr.resolve_compaction_replay_pressure(
         messages, MODEL, identity, estimator, projector=projector
     )
     assert fallback is not None and "measuredTokens" not in fallback
     usage_state["prefixHash"] = cr.responses_context_fingerprint(wire[:2])
-    with pytest.raises(cr.ResponsesProjectionUnavailableError):
-        cr.resolve_compaction_replay_pressure(messages, MODEL, identity, estimator)
+    # The built-in converter's wire input is not the fixture's, so the saved fingerprint no
+    # longer binds and the estimate stands (the measured round trip is in test_responses_converter).
+    builtin = cr.resolve_compaction_replay_pressure(messages, MODEL, identity, estimator)
+    assert builtin is not None and "measuredTokens" not in builtin
 
 
 def test_default_estimator_counts_an_undefined_content_as_one_token():

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 import json
 import math
 import os
 from pathlib import Path
 import re
+import time
 from collections.abc import Callable
 from typing import Any
 from uuid import uuid4
@@ -16,7 +18,13 @@ from memory_core._tool_result_budget import (
     slice_tool_result_text_tail_to_budget,
     slice_tool_result_text_to_budget,
 )
-from memory_core.bootstrap._js import js_json_stringify, slice_utf16_safe, utf16_len
+from memory_core.bootstrap._js import js_json_stringify, js_trim, slice_utf16_safe, utf16_len
+from memory_core.compaction_replay import (
+    ReplayIdentity,
+    ReplayModel,
+    default_replay_pressure_estimator,
+    resolve_compaction_replay_pressure,
+)
 
 
 ESTIMATED_CHARS_PER_TOKEN = 4
@@ -26,8 +34,7 @@ MESSAGE_BOUNDARY_OVERHEAD_TOKENS = 12
 CONTENT_BLOCK_OVERHEAD_TOKENS = 6
 IMAGE_BLOCK_TOKENS = 2_000
 TRUNCATION_ROUTE_BUFFER_TOKENS = 512
-MIN_PROMPT_BUDGET_RATIO = 0.5
-MIN_PROMPT_BUDGET_TOKENS = 8_000
+MAX_COMPACTION_RESERVE_RATIO = 0.25
 SAFETY_MARGIN = 1.2
 MAX_TOOL_RESULT_CONTEXT_SHARE = 0.3
 DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS = 16_000
@@ -95,6 +102,10 @@ class ToolResultReductionPotential:
 
 @dataclass(frozen=True)
 class PreemptiveCompactionDecision:
+    """``PreemptiveCompactionDecision``: the diagnostic maximum, plus the independently selected
+    outgoing checkpoint's budget (``compaction_replay``) when a provider checkpoint replaced the
+    covered history."""
+
     route: str
     should_compact: bool
     estimated_prompt_tokens: int
@@ -103,6 +114,27 @@ class PreemptiveCompactionDecision:
     overflow_tokens: int
     tool_result_reducible_chars: int
     effective_reserve_tokens: int
+    compaction_replay: PreemptiveCompactionDecision | None = None
+
+
+@dataclass(frozen=True)
+class CompactionReplayPressureContext:
+    """``CompactionReplayPressureContext``: the model and identity a provider checkpoint is
+    fenced to; ``enabled`` is the Anthropic server-compaction switch."""
+
+    model: ReplayModel
+    session_id: str | None = None
+    auth_profile_id: str | None = None
+    enabled: bool | None = None
+
+
+@dataclass(frozen=True)
+class LlmBoundaryTokenPressure:
+    """Token pressure reported by the rendered provider-boundary prompt when available."""
+
+    estimated_prompt_tokens: int | float
+    source: str
+    rendered_chars: int | float | None = None
 
 
 @dataclass(frozen=True)
@@ -250,7 +282,27 @@ def bash_execution_to_text(message: dict[str, Any]) -> str:
     return text
 
 
+def _js_concat_text(value: Any) -> str:
+    """A string operand of ``prefix + value + suffix`` (``undefined`` and ``null`` print)."""
+
+    if value is None:
+        return "undefined"
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int | float):
+        from memory_core.compaction_replay import _js_number_to_string  # noqa: PLC0415
+
+        return _js_number_to_string(value)
+    return "[object Object]" if isinstance(value, dict) else ",".join(
+        "" if item is None else _js_concat_text(item) for item in value
+    )
+
+
 def estimate_message_token_pressure(message: dict[str, Any]) -> int:
+    if message.get("excludeFromContext") is True:
+        return 0
     tokens = MESSAGE_BOUNDARY_OVERHEAD_TOKENS
     if _is_tool_result_message(message):
         tokens += estimate_tool_result_content_token_pressure(message.get("content"))
@@ -260,22 +312,18 @@ def estimate_message_token_pressure(message: dict[str, Any]) -> int:
         return tokens
     role = message.get("role")
     if role == "bashExecution":
-        if message.get("excludeFromContext") is True:
-            return 0
         tokens += estimate_string_token_pressure(bash_execution_to_text(message))
         return tokens
     if role == "branchSummary":
-        summary = message.get("summary")
-        summary = summary if isinstance(summary, str) else ""
         tokens += estimate_string_token_pressure(
-            BRANCH_SUMMARY_PREFIX + summary + BRANCH_SUMMARY_SUFFIX
+            BRANCH_SUMMARY_PREFIX + _js_concat_text(message.get("summary")) + BRANCH_SUMMARY_SUFFIX
         )
         return tokens
     if role == "compactionSummary":
-        summary = message.get("summary")
-        summary = summary if isinstance(summary, str) else ""
         tokens += estimate_string_token_pressure(
-            COMPACTION_SUMMARY_PREFIX + summary + COMPACTION_SUMMARY_SUFFIX
+            COMPACTION_SUMMARY_PREFIX
+            + _js_concat_text(message.get("summary"))
+            + COMPACTION_SUMMARY_SUFFIX
         )
         return tokens
     if role == "assistant":
@@ -301,17 +349,240 @@ def estimate_message_token_pressure(message: dict[str, Any]) -> int:
     return tokens
 
 
+def _is_number(value: Any) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
+def _js_ceil(value: int | float) -> int | float:
+    """``Math.ceil``: infinities and ``NaN`` pass through."""
+
+    return value if isinstance(value, float) and not math.isfinite(value) else math.ceil(value)
+
+
+def estimate_rendered_prompt_tokens(*, system_prompt: str | None = None, prompt: str) -> int:
+    """``estimateRenderedPromptTokens``: system prompt and prompt, no safety margin."""
+
+    system_tokens = (
+        MESSAGE_BOUNDARY_OVERHEAD_TOKENS + estimate_string_token_pressure(system_prompt)
+        if isinstance(system_prompt, str) and js_trim(system_prompt)
+        else 0
+    )
+    return (
+        system_tokens + MESSAGE_BOUNDARY_OVERHEAD_TOKENS + estimate_string_token_pressure(prompt)
+    )
+
+
 def estimate_pre_prompt_tokens(
     *, messages: list[dict[str, Any]], system_prompt: str | None = None, prompt: str
 ) -> int:
+    """The local transcript estimate with the safety margin (no replay, no measured usage)."""
+
     history_tokens = sum(estimate_message_token_pressure(message) for message in messages)
-    system_tokens = (
-        MESSAGE_BOUNDARY_OVERHEAD_TOKENS + estimate_string_token_pressure(system_prompt)
-        if isinstance(system_prompt, str) and system_prompt.strip()
-        else 0
+    rendered = estimate_rendered_prompt_tokens(system_prompt=system_prompt, prompt=prompt)
+    return max(0, math.ceil((history_tokens + rendered) * SAFETY_MARGIN))
+
+
+def estimate_tool_schema_tokens(tools: list[dict[str, Any]] | None) -> int:
+    """``estimateToolSchemaTokens``: name, description and parameters of each definition."""
+
+    if not tools:
+        return 0
+    return estimate_json_payload_token_pressure(
+        [
+            {key: tool[key] for key in ("name", "description", "parameters") if key in tool}
+            for tool in tools
+        ]
     )
-    prompt_tokens = MESSAGE_BOUNDARY_OVERHEAD_TOKENS + estimate_string_token_pressure(prompt)
-    return max(0, math.ceil((history_tokens + system_tokens + prompt_tokens) * SAFETY_MARGIN))
+
+
+def estimate_tool_schema_token_pressure(tools: list[dict[str, Any]] | None) -> int:
+    """``estimateToolSchemaTokenPressure``: tool definition tokens with the safety margin."""
+
+    return math.ceil(estimate_tool_schema_tokens(tools) * SAFETY_MARGIN)
+
+
+def estimate_rendered_llm_boundary_token_pressure(
+    *, system_prompt: str | None = None, prompt: str
+) -> int:
+    """``estimateRenderedLlmBoundaryTokenPressure``: only the rendered prompt/system portion."""
+
+    rendered = estimate_rendered_prompt_tokens(system_prompt=system_prompt, prompt=prompt)
+    return max(0, math.ceil(rendered * SAFETY_MARGIN))
+
+
+_MISSING: Any = object()
+
+
+def _usage_number(usage: dict[str, Any], key: str) -> float:
+    """``usage[key]`` as JavaScript arithmetic reads it (missing is ``NaN``, ``null`` is 0)."""
+
+    value = usage.get(key, _MISSING)
+    if value is _MISSING:
+        return math.nan
+    if value is None:
+        return 0
+    return value if _is_number(value) else math.nan
+
+
+def calculate_context_tokens(usage: dict[str, Any]) -> int | float:
+    """``calculateContextTokens``: the provider total, else the four usage counters."""
+
+    context_usage = usage.get("contextUsage")
+    if isinstance(context_usage, dict) and context_usage.get("state") == "available":
+        total = context_usage.get("totalTokens")
+        return total if _is_number(total) else math.nan
+    total = usage.get("totalTokens")
+    if _is_number(total) and total != 0 and total == total:
+        return total
+    return (
+        _usage_number(usage, "input")
+        + _usage_number(usage, "output")
+        + _usage_number(usage, "cacheRead")
+        + _usage_number(usage, "cacheWrite")
+    )
+
+
+def _is_provider_context_usage_barrier(message: dict[str, Any]) -> bool:
+    usage = message.get("usage")
+    if message.get("role") != "assistant" or not usage or not isinstance(usage, dict):
+        return False
+    # Zero unavailable and legacy CLI records describe a newer context without provider
+    # provenance; scanning past them can undercount the active transcript.
+    context_usage = usage.get("contextUsage")
+    return (message.get("api") == "cli" and "contextUsage" not in usage) or (
+        isinstance(context_usage, dict)
+        and context_usage.get("state") == "unavailable"
+        and calculate_context_tokens(usage) == 0
+    )
+
+
+def _resolve_provider_context_boundary(
+    messages: list[dict[str, Any]],
+) -> tuple[int, int] | None:
+    """``resolveProviderContextBoundary``: ``(index, total tokens)`` of the newest measured turn."""
+
+    for index in range(len(messages) - 1, -1, -1):
+        message = messages[index]
+        if message and _is_provider_context_usage_barrier(message):
+            return None
+        usage = message.get("usage") if message and message.get("role") == "assistant" else None
+        context_usage = usage.get("contextUsage") if isinstance(usage, dict) else None
+        if (
+            isinstance(context_usage, dict)
+            and context_usage.get("state") == "available"
+            and _is_number(context_usage.get("totalTokens"))
+            and math.isfinite(context_usage["totalTokens"])
+            and context_usage["totalTokens"] > 0
+        ):
+            return index, math.ceil(context_usage["totalTokens"])
+    return None
+
+
+@dataclass(frozen=True)
+class _TranscriptBoundaryPressure:
+    estimated_prompt_tokens: int
+    source: str
+    messages: list[dict[str, Any]]
+    has_compaction_replay: bool
+
+
+def _estimate_transcript_boundary_token_pressure(
+    *,
+    messages: list[dict[str, Any]],
+    system_prompt: str | None,
+    prompt: str,
+    replay: CompactionReplayPressureContext | None = None,
+    tool_schema_tokens: int | float | None = None,
+) -> _TranscriptBoundaryPressure:
+    """``estimateTranscriptBoundaryTokenPressure``.
+
+    With a ``replay`` context the selected provider checkpoint replaces the covered history
+    (:func:`resolve_compaction_replay_pressure`): measured provider usage bound to the replay
+    prefix, else the prefix estimate plus the later messages.
+    """
+
+    resolved = (
+        resolve_compaction_replay_pressure(
+            messages,
+            replay.model,
+            ReplayIdentity(replay.session_id, replay.auth_profile_id, replay.enabled),
+            default_replay_pressure_estimator(),
+            system_prompt,
+        )
+        if replay is not None
+        else None
+    )
+    effective = resolved["messages"] if resolved is not None else messages
+    boundary = _resolve_provider_context_boundary(effective)
+    measured = resolved.get("measuredTokens") if resolved is not None else None
+    if measured is None and boundary is not None:
+        measured = boundary[1]
+    # The provider total owns transcript items through its assistant record. It has no
+    # system-prompt provenance, so the current rendered prompt stays local too.
+    for_pressure = effective[boundary[0] + 1 :] if boundary is not None else effective
+    local = estimate_rendered_prompt_tokens(system_prompt=system_prompt, prompt=prompt)
+    if boundary is None and resolved is not None:
+        local += resolved["prefixTokens"] - resolved.get("measuredTokens", 0)
+    for message in for_pressure:
+        local += estimate_message_token_pressure(message)
+    schema = tool_schema_tokens if tool_schema_tokens is not None else 0
+    schema = schema if schema != schema else max(0, schema)
+    return _TranscriptBoundaryPressure(
+        estimated_prompt_tokens=(measured or 0)
+        + _js_ceil(local * SAFETY_MARGIN)
+        # A saved replay prefix does not bind today's tool definitions. Reserve their current size
+        # even when covered conversation usage is measured.
+        + (0 if boundary is not None and resolved is None else schema),
+        source=(
+            "provider_context_usage"
+            if measured is not None
+            else "provider_compaction_estimate"
+            if resolved is not None
+            else "transcript_estimate"
+        ),
+        messages=effective,
+        has_compaction_replay=resolved is not None,
+    )
+
+
+def estimate_llm_boundary_token_pressure(
+    *,
+    messages: list[dict[str, Any]],
+    system_prompt: str | None = None,
+    prompt: str,
+    replay: CompactionReplayPressureContext | None = None,
+    tool_schema_tokens: int | float | None = None,
+) -> int:
+    """``estimateLlmBoundaryTokenPressure``: the outgoing prompt estimate for one request."""
+
+    return _estimate_transcript_boundary_token_pressure(
+        messages=messages,
+        system_prompt=system_prompt,
+        prompt=prompt,
+        replay=replay,
+        tool_schema_tokens=tool_schema_tokens,
+    ).estimated_prompt_tokens
+
+
+def _normalize_llm_boundary_token_pressure(
+    pressure: LlmBoundaryTokenPressure | None,
+) -> LlmBoundaryTokenPressure | None:
+    if (
+        pressure is None
+        or not _is_number(pressure.estimated_prompt_tokens)
+        or not math.isfinite(pressure.estimated_prompt_tokens)
+    ):
+        return None
+    rendered = pressure.rendered_chars
+    return LlmBoundaryTokenPressure(
+        estimated_prompt_tokens=max(0, math.ceil(pressure.estimated_prompt_tokens)),
+        source=js_trim(pressure.source) or "rendered_llm_boundary",
+        rendered_chars=(
+            max(0, math.ceil(rendered))
+            if _is_number(rendered) and math.isfinite(rendered)
+            else None
+        ),
+    )
 
 
 def resolve_auto_live_tool_result_max_chars(context_window_tokens: int | float) -> int:
@@ -1299,49 +1570,122 @@ def should_preemptively_compact_before_prompt(
     reserve_tokens: int,
     tool_result_max_chars: int | None = None,
     unwindowed_messages: list[dict[str, Any]] | None = None,
+    tool_schema_tokens: int | float | None = None,
+    llm_boundary_token_pressure: LlmBoundaryTokenPressure | None = None,
+    replay: CompactionReplayPressureContext | None = None,
 ) -> PreemptiveCompactionDecision:
-    estimated_prompt_tokens = estimate_pre_prompt_tokens(
-        messages=messages,
-        system_prompt=system_prompt,
-        prompt=prompt,
+    """``shouldPreemptivelyCompactBeforePrompt``: route a run before it submits the prompt.
+
+    Rendered LLM boundary pressure wins over local transcript estimates when supplied, except
+    where a provider checkpoint (``replay``) owns its covered prefix: then the transcript estimate
+    over the checkpoint-projected window is the outgoing decision (``compaction_replay``), and the
+    returned top-level decision is the diagnostic maximum with the unwindowed history.
+    :class:`~memory_core.compaction_replay.CompactionReplayRefreshRequiredError` propagates for a
+    Responses checkpoint that needs ``/compact``.
+    """
+
+    boundary = _normalize_llm_boundary_token_pressure(llm_boundary_token_pressure)
+    transcript = (
+        None
+        if boundary is not None and replay is None
+        else _estimate_transcript_boundary_token_pressure(
+            messages=messages,
+            system_prompt=system_prompt,
+            prompt=prompt,
+            replay=replay,
+            tool_schema_tokens=tool_schema_tokens,
+        )
     )
-    pressure_source = "transcript_estimate"
-    messages_for_pressure = messages
+    # The selected provider window owns its covered prefix, including when a context engine
+    # supplied an estimate of the raw transcript instead.
+    boundary_pressure = (
+        None if transcript is not None and transcript.has_compaction_replay else boundary
+    )
+    if boundary_pressure is not None:
+        estimated: int | float = boundary_pressure.estimated_prompt_tokens
+        source = boundary_pressure.source
+    elif transcript is not None:
+        estimated, source = transcript.estimated_prompt_tokens, transcript.source
+    else:
+        estimated, source = 0, "transcript_estimate"
+    outgoing = _resolve_compaction_pressure_decision(
+        transcript.messages if transcript is not None else messages,
+        estimated,
+        source,
+        context_token_budget=context_token_budget,
+        reserve_tokens=reserve_tokens,
+        tool_result_max_chars=tool_result_max_chars,
+    )
+    diagnostic = outgoing
     if unwindowed_messages is not None and unwindowed_messages is not messages:
-        unwindowed_estimate = estimate_pre_prompt_tokens(
+        unwindowed = _estimate_transcript_boundary_token_pressure(
             messages=unwindowed_messages,
             system_prompt=system_prompt,
             prompt=prompt,
+            tool_schema_tokens=tool_schema_tokens,
         )
-        if unwindowed_estimate > estimated_prompt_tokens:
-            estimated_prompt_tokens = unwindowed_estimate
-            messages_for_pressure = unwindowed_messages
-            pressure_source = "unwindowed_transcript_estimate"
+        # Unwindowed history is diagnostic: neither its checkpoints nor its larger raw estimate may
+        # authorize recovery of a different outgoing window.
+        if unwindowed.estimated_prompt_tokens > outgoing.estimated_prompt_tokens:
+            diagnostic = _resolve_compaction_pressure_decision(
+                unwindowed.messages,
+                unwindowed.estimated_prompt_tokens,
+                f"unwindowed_{unwindowed.source}",
+                context_token_budget=context_token_budget,
+                reserve_tokens=reserve_tokens,
+                tool_result_max_chars=tool_result_max_chars,
+            )
+    if transcript is not None and transcript.has_compaction_replay:
+        return dataclasses.replace(diagnostic, compaction_replay=outgoing)
+    return diagnostic
+
+
+def resolve_effective_compaction_reserve_tokens(
+    context_token_budget: int | float, reserve_tokens: int | float
+) -> int:
+    """``resolveEffectiveCompactionReserveTokens``: headroom capped at a quarter of the window."""
+
+    budget = max(1, math.floor(context_token_budget))
+    return min(
+        max(0, math.floor(reserve_tokens)),
+        math.floor(budget * MAX_COMPACTION_RESERVE_RATIO),
+    )
+
+
+def _resolve_compaction_pressure_decision(
+    messages: list[dict[str, Any]],
+    estimated_prompt_tokens: int | float,
+    source: str,
+    *,
+    context_token_budget: int,
+    reserve_tokens: int,
+    tool_result_max_chars: int | None,
+) -> PreemptiveCompactionDecision:
+    """``resolveCompactionPressureDecision``."""
 
     context_budget = max(1, math.floor(context_token_budget))
-    requested_reserve = max(0, math.floor(reserve_tokens))
-    min_prompt_budget = min(
-        MIN_PROMPT_BUDGET_TOKENS,
-        max(1, math.floor(context_budget * MIN_PROMPT_BUDGET_RATIO)),
-    )
-    effective_reserve = min(requested_reserve, max(0, context_budget - min_prompt_budget))
+    effective_reserve = resolve_effective_compaction_reserve_tokens(context_budget, reserve_tokens)
     prompt_budget_before_reserve = max(1, context_budget - effective_reserve)
     overflow_tokens = max(0, estimated_prompt_tokens - prompt_budget_before_reserve)
     potential = estimate_tool_result_reduction_potential(
-        messages=messages_for_pressure,
+        messages=messages,
         context_window_tokens=context_token_budget,
         max_chars_override=tool_result_max_chars,
     )
-    overflow_chars = overflow_tokens * ESTIMATED_CHARS_PER_TOKEN
+    try:
+        overflow_chars: int | float = float(overflow_tokens) * ESTIMATED_CHARS_PER_TOKEN
+    except OverflowError:
+        overflow_chars = math.inf
     truncation_buffer_chars = TRUNCATION_ROUTE_BUFFER_TOKENS * ESTIMATED_CHARS_PER_TOKEN
     truncate_only_threshold_chars = max(
         overflow_chars + truncation_buffer_chars,
-        math.ceil(overflow_chars * 1.5),
+        _js_ceil(overflow_chars * 1.5),
     )
     reducible = potential.max_reducible_chars
 
     route = "fits"
     if overflow_tokens > 0:
+        # Choose truncate-only only when available reduction comfortably exceeds the overflow.
         if reducible <= 0:
             route = "compact_only"
         elif reducible >= truncate_only_threshold_chars:
@@ -1352,9 +1696,94 @@ def should_preemptively_compact_before_prompt(
         route=route,
         should_compact=route in {"compact_only", "compact_then_truncate"},
         estimated_prompt_tokens=estimated_prompt_tokens,
-        pressure_source=pressure_source,
+        pressure_source=source,
         prompt_budget_before_reserve=prompt_budget_before_reserve,
         overflow_tokens=overflow_tokens,
         tool_result_reducible_chars=reducible,
         effective_reserve_tokens=effective_reserve,
     )
+
+
+PREEMPTIVE_OVERFLOW_ERROR_TEXT = "Context overflow: prompt too large for the model (precheck)."
+
+
+def _js_text(value: Any) -> str:
+    """Template-literal text of a log field (``undefined`` prints as ``undefined``)."""
+
+    return "undefined" if value is None else _js_concat_text(value)
+
+
+def format_pre_prompt_precheck_log(
+    *,
+    result: PreemptiveCompactionDecision,
+    provider: str,
+    model_id: str,
+    message_count: int,
+    context_token_budget: int | float,
+    reserve_tokens: int | float,
+    session_key: str | None = None,
+    session_id: str | None = None,
+    unwindowed_message_count: int | None = None,
+    session_file: str | None = None,
+) -> str:
+    """``formatPrePromptPrecheckLog``: the compact operator log line for one budget check."""
+
+    unwindowed = message_count if unwindowed_message_count is None else unwindowed_message_count
+    return (
+        f"[context-overflow-precheck] pre-prompt check "
+        f"sessionKey={_js_text(session_key if session_key is not None else session_id if session_id is not None else 'unknown')} "
+        f"provider={provider}/{model_id} "
+        f"route={result.route} "
+        f"estimatedPromptTokens={_js_text(result.estimated_prompt_tokens)} "
+        f"pressureSource={result.pressure_source if result.pressure_source is not None else 'unknown'} "
+        f"promptBudgetBeforeReserve={result.prompt_budget_before_reserve} "
+        f"overflowTokens={_js_text(result.overflow_tokens)} "
+        f"toolResultReducibleChars={result.tool_result_reducible_chars} "
+        f"reserveTokens={_js_text(reserve_tokens)} "
+        f"effectiveReserveTokens={result.effective_reserve_tokens} "
+        f"contextTokenBudget={_js_text(context_token_budget)} "
+        f"messages={message_count} "
+        f"unwindowedMessages={unwindowed} "
+        f"sessionFile={_js_text(session_file)}"
+    )
+
+
+def build_pre_prompt_context_budget_status(
+    *,
+    result: PreemptiveCompactionDecision,
+    provider: str,
+    model_id: str,
+    message_count: int,
+    context_token_budget: int | float,
+    reserve_tokens: int | float,
+    unwindowed_message_count: int | None = None,
+    session_id: str | None = None,
+    now: int | None = None,
+) -> dict[str, Any]:
+    """``buildPrePromptContextBudgetStatus``: the persisted session context-budget record."""
+
+    unwindowed = message_count if unwindowed_message_count is None else unwindowed_message_count
+    status: dict[str, Any] = {
+        "schemaVersion": 1,
+        "source": "pre-prompt-estimate",
+        "updatedAt": now if now is not None else int(time.time() * 1000),
+        "provider": provider,
+        "model": model_id,
+        "route": result.route,
+        "shouldCompact": result.should_compact,
+        "estimatedPromptTokens": result.estimated_prompt_tokens,
+        "contextTokenBudget": max(1, math.floor(context_token_budget)),
+        "promptBudgetBeforeReserve": result.prompt_budget_before_reserve,
+        "reserveTokens": max(0, math.floor(reserve_tokens)),
+        "effectiveReserveTokens": result.effective_reserve_tokens,
+        "remainingPromptBudgetTokens": max(
+            0, result.prompt_budget_before_reserve - result.estimated_prompt_tokens
+        ),
+        "overflowTokens": result.overflow_tokens,
+        "toolResultReducibleChars": result.tool_result_reducible_chars,
+        "messageCount": max(0, math.floor(message_count)),
+        "unwindowedMessageCount": max(0, math.floor(unwindowed)),
+    }
+    if session_id:
+        status["sessionId"] = session_id
+    return status

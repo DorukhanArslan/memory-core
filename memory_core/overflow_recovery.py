@@ -3,6 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
+from memory_core._overflow_tables import (
+    is_billing_error_message,
+    is_rate_limit_error_message,
+    looks_like_provider_context_overflow_candidate,
+    matches_context_overflow_message,
+)
+
 
 MAX_OVERFLOW_COMPACTION_ATTEMPTS = 3
 # run/session-prompt-state.ts CONTINUATION_PROMPT: the internal prompt of every transcript
@@ -19,26 +26,8 @@ OVERFLOW_RECOVERY_TEXT = (
 )
 
 
-_CONTEXT_WINDOW_TOO_SMALL_RE = re.compile(r"context window.*(too small|minimum is)", re.I)
-_CONTEXT_OVERFLOW_HINT_RE = re.compile(
-    r"context.*overflow|"
-    r"context window.*(too (?:large|long)|exceed|over|limit|max(?:imum)?|requested|sent|tokens)|"
-    r"prompt.*(too (?:large|long)|exceed|over|limit|max(?:imum)?)|"
-    r"(?:request|input).*(?:context|window|length|token).*"
-    r"(too (?:large|long)|exceed|over|limit|max(?:imum)?)",
-    re.I,
-)
-_RATE_LIMIT_HINT_RE = re.compile(
-    r"rate limit|too many requests|requests per (?:minute|hour|day)|quota|throttl|429\b|"
-    r"tokens per day",
-    re.I,
-)
 _STATED_TOKEN_SIZES_RE = re.compile(
     r"(?:\btpm\b|tokens per minute)[^.\n]*?\blimit\s+([\d,]+)[^.\n]*?\brequested\s+([\d,]+)",
-    re.I,
-)
-_CONFIGURED_CONTEXT_SIZE_OVERFLOW_RE = re.compile(
-    r"prompt has [\d,]+ tokens?, but the configured context size is [\d,]+ tokens?",
     re.I,
 )
 _OBSERVED_OVERFLOW_TOKEN_PATTERNS = (
@@ -55,6 +44,10 @@ _OBSERVED_OVERFLOW_TOKEN_SUM_PATTERNS = (
     re.compile(
         r"input length(?:\s+and\s+max_tokens)?\s+exceed\s+context"
         r"(?:\s+limit|\s+window)?\s*\(i\.e\s*([\d,]+)\s*\+\s*([\d,]+)\s*>\s*[\d,]+\)",
+        re.I,
+    ),
+    re.compile(
+        r"input length\s+and\s+`max_tokens`\s+exceed\s+context\s+limit:\s*([\d,]+)\s*\+\s*([\d,]+)\s*>\s*[\d,]+",
         re.I,
     ),
 )
@@ -139,6 +132,22 @@ class ProviderOverflowRecoveryDecision:
     protect_trailing_tool_results: bool = False
     error_kind: str | None = None
     user_visible_error_text: str | None = None
+    # A compaction that rotated the session cannot be followed by parked Code Mode work: the
+    # compaction stays committed but the mid-turn continuation is withheld (give_up).
+    parked_work_blocks_continuation: bool = False
+    # The no-real-conversation compaction no-op clears the stale token snapshot and retries.
+    reset_context_snapshot: bool = False
+
+
+NO_REAL_CONVERSATION_MESSAGES_REASON = "no real conversation messages"
+
+
+def is_no_real_conversation_compaction_noop(
+    *, ok: bool | None = None, compacted: bool | None = None, reason: str | None = None
+) -> bool:
+    """``isNoRealConversationCompactionNoop`` (run/session-bootstrap.ts): exact-reason no-op."""
+
+    return ok is True and compacted is False and reason == NO_REAL_CONVERSATION_MESSAGES_REASON
 
 
 def _lower(raw: str | None) -> str:
@@ -146,7 +155,7 @@ def _lower(raw: str | None) -> str:
 
 
 def _has_rate_limit_tpm_hint(raw: str | None) -> bool:
-    return bool(raw and (re.search(r"\btpm\b", raw, re.I) or "tokens per minute" in _lower(raw)))
+    return bool(raw and matches_context_overflow_message(raw, "tpm-rate-limit-hint"))
 
 
 def _is_reasoning_constraint_error(raw: str | None) -> bool:
@@ -159,91 +168,53 @@ def _is_reasoning_constraint_error(raw: str | None) -> bool:
     )
 
 
-def _is_rate_limit_error(raw: str | None) -> bool:
-    return bool(raw and _RATE_LIMIT_HINT_RE.search(raw))
+def is_context_overflow_error_from_tables(error_message: str | None) -> bool:
+    """``isContextOverflowErrorFromTables``: explicit overflow wording, never a TPM rate limit."""
 
-
-def _is_billing_error(raw: str | None) -> bool:
-    lower = _lower(raw)
-    return (
-        "402" in lower
-        or "payment required" in lower
-        or "insufficient credits" in lower
-        or "credit balance" in lower
-        or ("billing" in lower and ("limit" in lower or "plan" in lower))
-    )
-
-
-def is_context_overflow_error(error_message: str | None) -> bool:
     if not error_message:
         return False
-    lower = _lower(error_message)
-    # A TPM figure is a rate limit, unless the request alone exceeds the whole limit.
+    # Groq uses 413 for TPM limits, a rate limit, unless the request alone exceeds the whole limit.
     if (
         _has_rate_limit_tpm_hint(error_message)
         and not is_provider_request_size_ceiling_error(error_message)
     ) or _is_reasoning_constraint_error(error_message):
         return False
+    return matches_context_overflow_message(error_message, "failover-explicit") or (
+        looks_like_provider_context_overflow_candidate(error_message)
+        and matches_context_overflow_message(error_message, "provider-fallback")
+    )
 
-    has_request_size_exceeds = "request size exceeds" in lower
-    has_context_window = (
-        "context window" in lower
-        or "context length" in lower
-        or "maximum context length" in lower
-    )
-    has_context_window_out_of_room = has_context_window and (
-        "ran out of room" in lower or "ran out of space" in lower
-    )
-    return (
-        "request_too_large" in lower
-        or bool(_CONFIGURED_CONTEXT_SIZE_OVERFLOW_RE.search(error_message))
-        or ("invalid_argument" in lower and "maximum number of tokens" in lower)
-        or "request exceeds the maximum size" in lower
-        or "context length exceeded" in lower
-        or "maximum context length" in lower
-        or "prompt is too long" in lower
-        or "prompt too long" in lower
-        or "exceeds model context window" in lower
-        or "model token limit" in lower
-        or ("input exceeds" in lower and "maximum number of tokens" in lower)
-        or has_context_window_out_of_room
-        or (has_request_size_exceeds and has_context_window)
-        or "context overflow:" in lower
-        or "exceed context limit" in lower
-        or "exceeds the model's maximum context" in lower
-        or ("max_tokens" in lower and "exceed" in lower and "context" in lower)
-        or ("input length" in lower and "exceed" in lower and "context" in lower)
-        or ("413" in lower and "too large" in lower)
-        or "context_window_exceeded" in lower
-        or "上下文过长" in error_message
-        or "上下文超出" in error_message
-        or "上下文长度超" in error_message
-        or "超出最大上下文" in error_message
-        or "请压缩上下文" in error_message
-    )
+
+def is_context_overflow_error(error_message: str | None) -> bool:
+    """``isContextOverflowError`` without a prepared provider plugin (none classifies here)."""
+
+    return is_context_overflow_error_from_tables(error_message)
 
 
 def is_likely_context_overflow_error(error_message: str | None) -> bool:
     if not error_message:
         return False
     # Settle an unsatisfiable request size first: the TPM and rate-limit exclusions below would
-    # otherwise claim the message on its rate-limit wording alone. (Approximates the tables' match with
-    # the explicit overflow check; the provider-fallback candidates are not ported.)
+    # otherwise claim the message on its rate-limit wording alone.
     if is_provider_request_size_ceiling_error(error_message):
-        return is_context_overflow_error(error_message)
+        return is_context_overflow_error_from_tables(error_message)
     if (
         _has_rate_limit_tpm_hint(error_message)
         or _is_reasoning_constraint_error(error_message)
-        or _is_billing_error(error_message)
-        or _CONTEXT_WINDOW_TOO_SMALL_RE.search(error_message)
-        or _is_rate_limit_error(error_message)
+        # Billing and quota errors can contain "request size exceeds" style wording.
+        or is_billing_error_message(error_message)
+        or matches_context_overflow_message(error_message, "context-window-too-small")
+        # Rate limits can match the broad hint pattern ("request reached organization TPD ...").
+        or is_rate_limit_error_message(error_message)
     ):
         return False
     if is_context_overflow_error(error_message):
         return True
-    if _RATE_LIMIT_HINT_RE.search(error_message):
+    if "prompt template" in _lower(error_message.strip()):
         return False
-    return bool(_CONTEXT_OVERFLOW_HINT_RE.search(error_message))
+    if matches_context_overflow_message(error_message, "rate-limit-hint"):
+        return False
+    return matches_context_overflow_message(error_message, "failover-hint")
 
 
 def is_compaction_failure_error(error_message: str | None) -> bool:
@@ -318,6 +289,11 @@ def decide_provider_overflow_recovery(
     prompt_error_source: str | None = None,
     failed_compaction_reason: str | None = None,
     max_attempts: int = MAX_OVERFLOW_COMPACTION_ATTEMPTS,
+    previous_session_id: str | None = None,
+    code_mode_suspended: bool = False,
+    compaction_ok: bool | None = None,
+    compaction_reason: str | None = None,
+    has_preflight_recovery: bool | None = None,
 ) -> ProviderOverflowRecoveryDecision:
     classification = classify_overflow_error(error_text, context_tokens=context_tokens)
     if not classification.is_overflow:
@@ -392,7 +368,55 @@ def decide_provider_overflow_recovery(
             tokens_for_compaction=classification.tokens_for_compaction,
         )
 
+    if has_preflight_recovery is None:
+        has_preflight_recovery = preflight_route is not None or preflight_source is not None
+    if (
+        compaction_attempted
+        and not compaction_succeeded
+        and has_preflight_recovery
+        and is_no_real_conversation_compaction_noop(
+            ok=compaction_ok, compacted=False, reason=compaction_reason
+        )
+    ):
+        # Stale token state with nothing to compact: reset the snapshot and retry the prompt.
+        return ProviderOverflowRecoveryDecision(
+            action="reset_snapshot_and_retry",
+            should_retry=True,
+            should_compact=False,
+            should_truncate_tool_results=False,
+            next_overflow_compaction_attempts=overflow_compaction_attempts,
+            continue_from_current_transcript=continue_from_transcript,
+            suppress_next_user_message_persistence=continue_from_transcript,
+            next_prompt_override=next_prompt_override,
+            tokens_for_compaction=classification.tokens_for_compaction,
+            reset_context_snapshot=True,
+        )
+
     if compaction_attempted and compaction_succeeded:
+        if previous_session_id is not None and continue_from_transcript and code_mode_suspended:
+            # A parked Code Mode run is bound to the session it started in and `wait` rejects any
+            # other session, so a compaction that adopts a successor cannot redeem parked nested
+            # work. The compaction stays committed (the compact_then_truncate truncation still
+            # runs); only the mid-turn continuation and the truncation fallback are withheld.
+            return ProviderOverflowRecoveryDecision(
+                action="give_up",
+                should_retry=False,
+                should_compact=False,
+                should_truncate_tool_results=preflight_route == "compact_then_truncate",
+                protect_trailing_tool_results=preflight_route == "compact_then_truncate",
+                next_overflow_compaction_attempts=overflow_compaction_attempts,
+                continue_from_current_transcript=False,
+                suppress_next_user_message_persistence=False,
+                next_prompt_override=None,
+                tokens_for_compaction=classification.tokens_for_compaction,
+                error_kind=(
+                    "compaction_failure"
+                    if classification.is_compaction_failure
+                    else "context_overflow"
+                ),
+                user_visible_error_text=OVERFLOW_RECOVERY_TEXT + caution,
+                parked_work_blocks_continuation=True,
+            )
         suppress = continue_from_transcript or current_message_persisted
         return ProviderOverflowRecoveryDecision(
             action="retry_after_compaction",
@@ -415,9 +439,11 @@ def decide_provider_overflow_recovery(
             should_truncate_tool_results=True,
             protect_trailing_tool_results=preflight_route == "compact_then_truncate",
             next_overflow_compaction_attempts=overflow_compaction_attempts,
-            continue_from_current_transcript=False,
-            suppress_next_user_message_persistence=False,
-            next_prompt_override=None,
+            # A truncation that helps retries like every other recovery: a transcript
+            # continuation when the attempt cannot be replayed (prepareCurrentTranscriptRetry).
+            continue_from_current_transcript=continue_from_transcript,
+            suppress_next_user_message_persistence=continue_from_transcript,
+            next_prompt_override=next_prompt_override,
             tokens_for_compaction=classification.tokens_for_compaction,
         )
 

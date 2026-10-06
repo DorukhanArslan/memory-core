@@ -21,7 +21,8 @@ Nothing here runs on its own: there is no scheduler. Dreaming is off by
 default (:data:`DEFAULT_DEEP_DREAMING_ENABLED`): a deep sweep given a
 resolved :class:`DeepDreamingPolicy` promotes nothing unless the policy
 enables it; a call without a policy runs whenever the host makes it. The
-module knows no web framework, UI or LLM. Evidence per behaviour lives in
+module knows no web framework, UI or LLM client; the opt-in LLM consolidation step
+(:mod:`~memory_core.consolidation.llm_consolidation`) takes a host-injected model callable. Evidence per behaviour lives in
 docs/parity_matrix.md.
 """
 
@@ -38,6 +39,18 @@ from memory_core.consolidation.dreaming import (
     DREAMS_FILE_NAME,
     DreamingSweepResult,
     run_dreaming_sweep,
+)
+from memory_core.consolidation.llm_consolidation import (
+    CONSOLIDATION_SYSTEM_PROMPT,
+    ConsolidationModel,
+    ConsolidationRequest,
+    LlmConsolidationOptions,
+    LlmConsolidationOutcome,
+    MemoryConsolidationPlan,
+    MemoryConsolidationResult,
+    apply_memory_consolidation_plan,
+    consolidate_memory,
+    run_llm_consolidation,
 )
 from memory_core.consolidation.markers import (
     OPENCLAW_PROMOTION_MARKER_PREFIX,
@@ -89,6 +102,16 @@ from memory_core.consolidation.store import (
 from memory_core.memory_budget import DEFAULT_MEMORY_FILE_MAX_CHARS
 
 __all__ = [
+    "CONSOLIDATION_SYSTEM_PROMPT",
+    "ConsolidationModel",
+    "ConsolidationRequest",
+    "LlmConsolidationOptions",
+    "LlmConsolidationOutcome",
+    "MemoryConsolidationPlan",
+    "MemoryConsolidationResult",
+    "apply_memory_consolidation_plan",
+    "consolidate_memory",
+    "run_llm_consolidation",
     "DEFAULT_DEEP_DREAMING_ENABLED",
     "DEFAULT_DEEP_DREAMING_LIMIT",
     "DEFAULT_DEEP_DREAMING_MAX_AGE_DAYS",

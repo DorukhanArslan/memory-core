@@ -73,15 +73,36 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
     trigger and importance annotations and per-project sections; memory-budget compaction bounds
     prior-entry loss (`max_prior_entry_loss_fraction`, default 0.25) and defers a write that
     would exceed it; the `qmd` concept tag is gone. Recall keys follow the chunk range
-    (`path:1:4`) now that the chunker returns whole chunks. No LLM consolidation step is ported.
+    (`path:1:4`) now that the chunker returns whole chunks. The LLM consolidation step is opt-in (see below).
   - Sessions (areas 8, 9): `session_entry.build_session_entry` and the reworked session-memory
-    hook read host-supplied transcript events, not OpenClaw's SQLite. Not ported:
-    `redactSensitiveText` (a host `redact_text` hook instead).
+    hook read host-supplied transcript events, not OpenClaw's SQLite.
   - Transcript and overflow (area 10): history-limit hysteresis, runtime-context prompt with
     explicit fragments (`resolve_runtime_context_prompt_parts` signature changed), replay
     normalization, weighted-char tool-result budgets, one shared continuation prompt and the
-    request-size-ceiling overflow check. Open gaps: account-scoped history limits, compaction
-    replay owners, prompt-projection state, parked Code Mode and the overflow fallback tables.
+    request-size-ceiling overflow check.
+  - Gap ports closed after the stage 2 close-out (2026-10-06), each compared with the real TS
+    oracle:
+    - `memory_core/redact.py`: `redact_sensitive_text` (`redactSensitiveText`, tools mode, 122
+      default patterns, 564 oracle tests). `build_session_entry` redacts by default; the host
+      `redact_text` hook stays an extension applied after it, and
+      `apply_default_redaction=False` turns the built-in pass off.
+    - `memory_core/consolidation/llm_consolidation.py`: opt-in LLM consolidation with a
+      host-injected model (`run_llm_consolidation`, off by default; deterministic promotion is the
+      fallback; 73 oracle scenarios).
+    - `memory_core/compaction_replay.py`, `memory_core/usage_normalization.py` and the full
+      history-limit keys (account scopes, linked peers, `route`; about 190 keys), plus
+      `stripInboundMetadata` in the replay display path (345 texts), `hasPersistedMedia` and
+      `normalizeUsage`-based usage checks (409 values).
+    - `memory_core/tool_result_projection.py` (prompt projection state, cache-TTL pruning),
+      the overflow tables (`_overflow_tables.py`), the parked Code Mode block and the
+      no-real-conversation reset in `decide_provider_overflow_recovery`.
+    - Still not ported: `resolveCompactionSource`, `preserveCompactionReplayWindow` and the
+      provider checkpoint resolvers; `stripLeadingInboundMetadata`, `extractInboundSenderLabel`;
+      the internals of `rewriteTranscriptEntriesInSessionManager`; cache-TTL provider
+      eligibility and its call-site wiring; the assistant-error `isContextOverflow` path;
+      `run_llm_consolidation` in `run_dreaming_sweep` (the host calls it); `DREAMS.md`
+      consolidation-history summaries and the deep-phase lock/commit; the exact-secret
+      redaction registry; SQLite session statistics and archives (kept out by decision 4).
 
 - Search ranking follows OpenClaw v2026.9.6 (port plan area 6): chunks are sized in CJK-weighted
   characters (`tokens * 4`) and `MEMORY.md` / `USER.md` chunk per `- ` entry and heading; keyword

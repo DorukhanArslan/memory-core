@@ -52,6 +52,70 @@ def _remove_stale_oracle_test_file(test_file: Path) -> bool:
 def run_overflow_run_loop_oracle(
     *, repo_path: Path, timeout_seconds: float = RUN_LOOP_ORACLE_TIMEOUT_SECONDS
 ) -> dict[str, Any]:
+    return _run_generated_vitest(
+        repo_path=repo_path,
+        test_filename=ORACLE_TEST_FILENAME,
+        source=_overflow_run_loop_oracle_test_source(),
+        output_env=ORACLE_OUTPUT_ENV,
+        timeout_seconds=timeout_seconds,
+        label="run-loop",
+    )
+
+
+RECOVERY_ORACLE_TEST_FILENAME = f"{DIST_NAME}-overflow-recovery.oracle.test.ts"
+RECOVERY_ORACLE_OUTPUT_ENV = f"{ENV_PREFIX}OVERFLOW_RECOVERY_ORACLE_OUT"
+RECOVERY_ORACLE_TIMEOUT_SECONDS = 300.0
+_UPSTREAM_RECOVERY_TEST = "run.overflow-context-recovery.test.ts"
+_UPSTREAM_RECOVERY_HEADER_END = 'describe("recoverEmbeddedRunOverflow"'
+
+
+def run_overflow_recovery_oracle(
+    *,
+    repo_path: Path,
+    scenarios: list[dict[str, Any]],
+    timeout_seconds: float = RECOVERY_ORACLE_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    """Drive the real ``recoverEmbeddedRunOverflow`` (run/overflow-context-recovery.ts).
+
+    The generated file reuses the mock harness and ``makeInput`` of upstream's own
+    ``run.overflow-context-recovery.test.ts`` (everything before its ``describe``), read from the
+    checkout, and records what the real function decided for each of ``scenarios`` (plain dicts,
+    see ``ScenarioDef`` in the generated source).
+    """
+
+    repo_path = repo_path.resolve()
+    upstream = repo_path / "src" / "agents" / "embedded-agent-runner" / _UPSTREAM_RECOVERY_TEST
+    if not upstream.exists():
+        raise OpenClawRunLoopOracleError(f"OpenClaw recovery test missing: {upstream}")
+    text = upstream.read_text(encoding="utf-8")
+    header_end = text.find(_UPSTREAM_RECOVERY_HEADER_END)
+    if header_end < 0:
+        raise OpenClawRunLoopOracleError(f"{_UPSTREAM_RECOVERY_TEST}: describe block not found")
+    source = (
+        f"const SUITE_NAME = {json.dumps(f'{DISPLAY_NAME} overflow recovery oracle')};\n"
+        f"const OUTPUT_ENV = {json.dumps(RECOVERY_ORACLE_OUTPUT_ENV)};\n"
+        f"const SCENARIO_DEFS = {json.dumps(scenarios)};\n"
+        f"{text[:header_end]}\n{_RECOVERY_TEST_SOURCE}"
+    )
+    return _run_generated_vitest(
+        repo_path=repo_path,
+        test_filename=RECOVERY_ORACLE_TEST_FILENAME,
+        source=source,
+        output_env=RECOVERY_ORACLE_OUTPUT_ENV,
+        timeout_seconds=timeout_seconds,
+        label="recovery",
+    )
+
+
+def _run_generated_vitest(
+    *,
+    repo_path: Path,
+    test_filename: str,
+    source: str,
+    output_env: str,
+    timeout_seconds: float,
+    label: str,
+) -> dict[str, Any]:
     repo_path = repo_path.resolve()
     test_dir = repo_path / "src" / "agents" / "embedded-agent-runner"
     vitest = repo_path / "node_modules" / ".bin" / "vitest"
@@ -67,11 +131,11 @@ def run_overflow_run_loop_oracle(
         node_env = oracle_subprocess_env(repo_path)
     except OracleNodeError as exc:
         raise OpenClawRunLoopOracleError(str(exc)) from exc
-    test_file = test_dir / ORACLE_TEST_FILENAME
+    test_file = test_dir / test_filename
     stale_removed = _remove_stale_oracle_test_file(test_file)
-    with tempfile.TemporaryDirectory(prefix=f"{DIST_NAME}-openclaw-run-loop-oracle-") as tmp_dir:
+    with tempfile.TemporaryDirectory(prefix=f"{DIST_NAME}-openclaw-{label}-oracle-") as tmp_dir:
         output_path = Path(tmp_dir) / "result.json"
-        test_file.write_text(_overflow_run_loop_oracle_test_source(), encoding="utf-8")
+        test_file.write_text(source, encoding="utf-8")
         try:
             completed = subprocess.run(
                 [str(vitest), "run", str(test_file.relative_to(repo_path)), "--reporter=dot"],
@@ -82,21 +146,23 @@ def run_overflow_run_loop_oracle(
                 check=False,
                 env={
                     **(node_env if node_env is not None else os.environ),
-                    ORACLE_OUTPUT_ENV: str(output_path),
+                    output_env: str(output_path),
                 },
             )
         finally:
             test_file.unlink(missing_ok=True)
 
         if completed.returncode != 0:
-            message = (completed.stderr or completed.stdout or "OpenClaw run-loop oracle failed").strip()
+            message = (
+                completed.stderr or completed.stdout or f"OpenClaw {label} oracle failed"
+            ).strip()
             raise OpenClawRunLoopOracleError(message)
         try:
             result = json.loads(output_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise OpenClawRunLoopOracleError(f"OpenClaw run-loop oracle output missing: {exc}") from exc
+            raise OpenClawRunLoopOracleError(f"OpenClaw {label} oracle output missing: {exc}") from exc
         if not isinstance(result, dict):
-            raise OpenClawRunLoopOracleError("OpenClaw run-loop oracle output was not an object")
+            raise OpenClawRunLoopOracleError(f"OpenClaw {label} oracle output was not an object")
         if stale_removed:
             result["staleTestFileRemoved"] = str(test_file)
         return result
@@ -376,6 +442,144 @@ describe(SUITE_NAME, () => {
     const result = await runEmbeddedAgent(session!.runParams);
 
     record("give_up_after_max_compaction_attempts", result);
+  });
+});
+'''
+
+
+_RECOVERY_TEST_SOURCE = r'''
+import fs from "node:fs";
+import { afterAll } from "vitest";
+
+type ScenarioDef = {
+  name: string;
+  preflightRecovery?: { route: string; source?: string };
+  terminalSource?: "prompt" | "precheck";
+  codeModeSuspended?: boolean;
+  replayUnsafe?: boolean;
+  hadPotentialSideEffects?: boolean;
+  rotate?: boolean;
+  compactResult?: Record<string, unknown>;
+  oversized?: boolean;
+  truncateHelps?: boolean;
+  seedSnapshot?: boolean;
+  attemptCompactionCount?: number;
+  startAttempts?: number;
+  errorText?: string;
+};
+
+const scenarios: Array<Record<string, unknown>> = [];
+
+describe(SUITE_NAME, () => {
+  afterEach(() => clearEmbeddedSessionPromptStates(["session-1", "rotated-session"]));
+  afterAll(() => {
+    const outputPath = process.env[OUTPUT_ENV];
+    if (!outputPath) {
+      throw new Error(`${OUTPUT_ENV} missing`);
+    }
+    fs.writeFileSync(outputPath, JSON.stringify({ ok: true, scenarios }), "utf-8");
+  });
+
+  it.each(SCENARIO_DEFS as ScenarioDef[])("$name", async (def) => {
+    const session = await vi.importActual<typeof import("./run/session-bootstrap.js")>(
+      "./run/session-bootstrap.js",
+    );
+    mocks.debug.mockReset();
+    mocks.getProviderPromptState.mockReset();
+    mocks.info.mockReset();
+    mocks.isDebugEnabled.mockReset().mockReturnValue(true);
+    mocks.isNoRealConversationCompactionNoop
+      .mockReset()
+      .mockImplementation(session.isNoRealConversationCompactionNoop);
+    mocks.maintenance.mockReset();
+    mocks.markProviderPromptRejected.mockReset();
+    mocks.resetNoRealConversationTokenSnapshot.mockReset();
+    mocks.warn.mockReset();
+    mocks.compact.mockReset().mockResolvedValue((def.compactResult ?? successfulCompaction()) as never);
+    mocks.sessionLikelyHasOversizedToolResults.mockReset().mockReturnValue(def.oversized === true);
+    mocks.truncateOversizedToolResults.mockReset().mockReturnValue(
+      def.truncateHelps
+        ? { truncated: true, truncatedCount: 1 }
+        : { truncated: false, truncatedCount: 0, reason: "nothing to truncate" },
+    );
+
+    const state = createEmbeddedRunContextRecoveryState();
+    state.overflowCompactionAttempts = def.startAttempts ?? 0;
+    if (def.seedSnapshot) {
+      state.lastCompactionTokensAfter = 80_000;
+      state.lastContextBudgetStatus = { schemaVersion: 1, route: "compact_only" } as never;
+    }
+    let activeSession = {
+      id: "session-1",
+      file: "/tmp/session-1.jsonl",
+      target: undefined as undefined,
+    };
+    const error = new Error(def.errorText ?? "request_too_large: Request size exceeds context window");
+    const attempt: Partial<EmbeddedRunAttemptResult> = {
+      messagesSnapshot: [],
+      ...(def.preflightRecovery ? { preflightRecovery: def.preflightRecovery as never } : {}),
+      ...(def.codeModeSuspended
+        ? {
+            toolMetas: [
+              { toolCallId: "call_1", toolName: "exec", codeModeSuspended: true },
+            ] as never,
+          }
+        : {}),
+      ...(def.replayUnsafe || def.hadPotentialSideEffects
+        ? {
+            replayMetadata: {
+              replaySafe: false,
+              hadPotentialSideEffects: def.hadPotentialSideEffects === true,
+            },
+          }
+        : {}),
+      ...(def.terminalSource === "precheck"
+        ? { terminal: { kind: "failed", source: "precheck", error } as never }
+        : {}),
+    };
+    const input = makeInput({
+      state,
+      attempt,
+      promptError: error,
+      attemptCompactionCount: def.attemptCompactionCount ?? 0,
+      adoptCompactionTranscript: vi.fn(async () => {
+        if (!def.rotate) {
+          return undefined;
+        }
+        activeSession = {
+          id: "rotated-session",
+          file: "/tmp/rotated-session.jsonl",
+          target: undefined,
+        };
+        return "session-1";
+      }),
+      getActiveSession: () => activeSession,
+    });
+
+    const result = await recoverEmbeddedRunOverflow(input);
+
+    const firstTruncate = mocks.truncateOversizedToolResults.mock.calls[0]?.[0] as
+      | { protectTrailingToolResults?: unknown }
+      | undefined;
+    scenarios.push({
+      name: def.name,
+      action: result.action,
+      kind: result.action === "surface" ? result.kind : null,
+      userText: result.action === "surface" ? result.userText : null,
+      compactCalls: mocks.compact.mock.calls.length,
+      truncateCalls: mocks.truncateOversizedToolResults.mock.calls.length,
+      truncateProtectTrailing: firstTruncate ? firstTruncate.protectTrailingToolResults === true : null,
+      markOwnedTranscriptRetry: (input.markOwnedTranscriptRetry as ReturnType<typeof vi.fn>).mock.calls.length,
+      prepareCurrentTranscriptRetry: (input.prepareCurrentTranscriptRetry as ReturnType<typeof vi.fn>).mock.calls.length,
+      prepareCompactedTranscriptRetry: (input.prepareCompactedTranscriptRetry as ReturnType<typeof vi.fn>).mock.calls.length,
+      armPostCompactionGuard: (input.armPostCompactionGuard as ReturnType<typeof vi.fn>).mock.calls.length,
+      onAutoCompactionSucceeded: (input.runParams.onAutoCompactionSucceeded as ReturnType<typeof vi.fn>).mock.calls.length,
+      resetSnapshotCalls: mocks.resetNoRealConversationTokenSnapshot.mock.calls.length,
+      snapshotCleared:
+        state.lastCompactionTokensAfter === undefined && state.lastContextBudgetStatus === undefined,
+      overflowCompactionAttempts: state.overflowCompactionAttempts,
+      toolResultTruncationAttempted: state.toolResultTruncationAttempted,
+    });
   });
 });
 '''

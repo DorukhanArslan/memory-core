@@ -104,3 +104,37 @@ def test_get_history_limit_from_session_key_rejects_unknown_or_unsupported_keys(
     assert get_history_limit_from_session_key("unknown:dm:123", config) is None
     assert get_history_limit_from_session_key("discord:channel:123", config) is None
     assert get_history_limit_from_session_key("telegram:dm:123", config) is None
+
+
+def test_get_history_limit_account_scopes_and_route_facts():
+    config = {
+        "session": {"identityLinks": {"alice": ["telegram:123"]}},
+        "channels": {
+            "telegram": {
+                "dmHistoryLimit": 20,
+                "historyLimit": 10,
+                "dms": {"alice": {"historyLimit": 7}},
+                "accounts": {
+                    "Work Team": {"dmHistoryLimit": 40},
+                    "direct": {"dmHistoryLimit": 50},
+                },
+            }
+        },
+    }
+
+    assert (
+        get_history_limit_from_session_key("telegram:dm:1", config, {"accountId": "work-team"}) == 40
+    )
+    # Ambiguous without route facts (an account named "direct", or the peer "dm:1").
+    assert get_history_limit_from_session_key("telegram:direct:dm:1", config) == 20
+    assert (
+        get_history_limit_from_session_key("telegram:direct:dm:1", config, {"peerId": "1"}) == 50
+    )
+    assert (
+        get_history_limit_from_session_key(
+            "telegram:direct:dm:1", config, {"chatType": "direct", "accountId": "default"}
+        )
+        == 20
+    )
+    assert get_history_limit_from_session_key("telegram:dm:alice", config, {"peerId": "123"}) == 7
+    assert get_history_limit_from_session_key("Telegram:group:g", config) == 10

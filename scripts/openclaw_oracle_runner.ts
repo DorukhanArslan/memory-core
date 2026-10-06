@@ -958,6 +958,144 @@ async function main() {
     };
   }
 
+  if (payload.operation === "toolResultProjection") {
+    // Prompt projection of tool results (tool-result-truncation.ts + session-prompt-state.ts): one
+    // ToolResultPromptProjectionState shared by a scripted sequence of the exported entry points
+    // (projectToolResultBranch itself is private and is reached through them). Every step reports
+    // its own result plus a canonical dump of the state.
+    const truncation = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/tool-result-truncation.ts",
+    );
+    const promptState = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/session-prompt-state.ts",
+    );
+    const sessions = await importFromRepo(repoPath, "src/agents/sessions/index.ts");
+    const state = promptState.createToolResultPromptProjectionState();
+    const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value ?? null)) as T;
+    const byKey = (a: [string, unknown], b: [string, unknown]) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+    const dumpState = () => ({
+      replacements: clean(
+        [...state.replacements].map(([key, value]: [string, Record<string, unknown>]) => [
+          key,
+          { cacheTtl: value.cacheTtl ?? null, content: value.content },
+        ]),
+      ).toSorted(byKey),
+      frozen: [...state.frozen].toSorted(),
+      ambiguousBaseKeys: [...state.ambiguousBaseKeys],
+      sourceHashByKey: [...state.sourceHashByKey].toSorted(byKey),
+      restoredCacheTtl: clean([...state.restoredCacheTtl]).toSorted(byKey),
+      lastWrittenSnapshotHash: state.lastWrittenSnapshotHash ?? null,
+    });
+    const stepResults: Array<Record<string, unknown>> = [];
+    for (const step of (payload.steps ?? []) as Array<Record<string, any>>) {
+      let result: Record<string, unknown> = {};
+      if (step.op === "truncateMessages") {
+        const out = truncation.truncateOversizedToolResultsInMessages(
+          step.messages ?? [],
+          step.contextWindowTokens ?? 100_000,
+          step.maxChars,
+          step.aggregateMaxChars,
+          step.withState === false ? undefined : state,
+        );
+        result = {
+          messages: clean(out.messages),
+          truncatedCount: out.truncatedCount,
+          aggregateTruncatedCount: out.aggregateTruncatedCount,
+          aggregatePressureEngaged: out.aggregatePressureEngaged,
+          aggregateBudgetChars: out.aggregateBudgetChars,
+        };
+      } else if (step.op === "prune") {
+        const settings = truncation.resolveCacheTtlPruningSettings(step.config);
+        let pruned = false;
+        const out = settings
+          ? truncation.pruneExpiredCacheTtlToolResults({
+              messages: step.messages ?? [],
+              settings,
+              contextWindowTokens: step.contextWindowTokens ?? 100_000,
+              lastCacheTouchAt: step.lastCacheTouchAt ?? null,
+              dropThinkingBlocksForEstimate: step.dropThinkingBlocksForEstimate === true,
+              now: step.now ?? 0,
+              projectionState: state,
+              pruneNewRounds: step.pruneNewRounds !== false,
+              onPruned: () => {
+                pruned = true;
+              },
+            })
+          : step.messages;
+        result = {
+          settings: settings
+            ? {
+                ttlMs: settings.ttlMs,
+                hardClear: settings.hardClear,
+                placeholder: settings.placeholder,
+                prunable: Object.fromEntries(
+                  (step.probeTools ?? []).map((name: string) => [name, settings.isToolPrunable(name)]),
+                ),
+              }
+            : null,
+          messages: clean(out),
+          pruned,
+        };
+      } else if (step.op === "restore") {
+        truncation.restoreCacheTtlToolResultProjections(state, step.entries ?? []);
+      } else if (step.op === "reconcile") {
+        truncation.reconcileToolResultPromptProjectionState(step.messages ?? [], state);
+      } else if (step.op === "serialize") {
+        const snapshot = promptState.serializeCacheTtlToolResultProjections(state);
+        const persisted: unknown[] = [];
+        promptState.persistToolResultProjections(state, (customType: string, data: unknown) => {
+          persisted.push({ customType, data: clean(data) });
+        });
+        result = {
+          snapshot: clean(snapshot),
+          hash: promptState.hashToolResultProjectionSnapshot(snapshot),
+          persisted,
+        };
+      } else if (step.op === "session") {
+        const manager = sessions.SessionManager.inMemory(process.cwd());
+        const idMap = new Map<string, string>();
+        for (const entry of step.sessionEntries ?? []) {
+          if (entry.type === "message" && isRecord(entry.message)) {
+            idMap.set(entry.id, manager.appendMessage(entry.message));
+          } else if (entry.type === "compaction") {
+            idMap.set(
+              entry.id,
+              manager.appendCompaction(
+                entry.summary ?? "summary",
+                idMap.get(entry.firstKeptEntryId) ?? entry.firstKeptEntryId,
+                entry.tokensBefore ?? 1000,
+              ),
+            );
+          }
+        }
+        const out = await truncation.truncateOversizedToolResultsInSessionManager({
+          sessionManager: manager,
+          contextWindowTokens: step.contextWindowTokens ?? 100_000,
+          maxCharsOverride: step.maxChars,
+          aggregateMaxCharsOverride: step.aggregateMaxChars,
+          protectTrailingToolResults: step.protectTrailingToolResults,
+          projectionState: step.withState === false ? undefined : state,
+        });
+        const branchMessages = manager
+          .getBranch()
+          .filter((entry: Record<string, unknown>) => entry.type === "message")
+          .map((entry: Record<string, unknown>) => entry.message);
+        result = {
+          truncated: out.truncated,
+          truncatedCount: out.truncatedCount,
+          reason: out.reason ?? null,
+          branchMessages: clean(branchMessages),
+        };
+      } else {
+        throw new Error(`unknown toolResultProjection step: ${String(step.op)}`);
+      }
+      stepResults.push({ op: step.op, ...result, state: dumpState() });
+    }
+    return { ok: true, operation: payload.operation, result: { steps: stepResults } };
+  }
+
   if (payload.operation === "preemptiveCompaction") {
     const preemptive = await importFromRepo(
       repoPath,
@@ -992,6 +1130,116 @@ async function main() {
         limitedMessages: history.limitHistoryTurns(payload.messages ?? [], payload.limit),
         limits,
       },
+    };
+  }
+
+  if (payload.operation === "historyLimitCases") {
+    // getHistoryLimitFromSessionKey with its optional route facts, one entry per case.
+    const history = await importFromRepo(repoPath, "src/agents/embedded-agent-runner/history.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map(
+        (item) =>
+          history.getHistoryLimitFromSessionKey(
+            item.sessionKey,
+            item.config ?? payload.config,
+            item.route,
+          ) ?? null,
+      ),
+    };
+  }
+
+  if (payload.operation === "stripInboundMetadata") {
+    // stripInboundMetadata and the display wrapper stripInternalMetadataForDisplay over texts.
+    const strip = await importFromRepo(repoPath, "src/auto-reply/reply/strip-inbound-meta.ts");
+    const display = await importFromRepo(repoPath, "src/auto-reply/reply/display-text-sanitize.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map((item) => ({
+        stripped: strip.stripInboundMetadata(String(item.text)),
+        display: display.stripInternalMetadataForDisplay(String(item.text)),
+      })),
+    };
+  }
+
+  if (payload.operation === "compactionReplayOwner") {
+    // replaceCompactionReplayOwnerContent and the checkpoint helpers next to it. A case names
+    // the new content as {ref: i} (the original block object at index i, matched by identity
+    // like upstream's indexOf) or {literal: value} (a fresh value).
+    const replay = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/provider-compaction-replay.ts",
+    );
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map((item) => {
+        const message = item.message;
+        const content = (item.content ?? []).map((spec: Record<string, unknown>) =>
+          "ref" in spec ? message.content[spec.ref as number] : spec.literal,
+        );
+        let replaced: unknown = null;
+        let error: string | null = null;
+        try {
+          replaced = replay.replaceCompactionReplayOwnerContent(message, content);
+        } catch (err) {
+          error = err instanceof Error ? err.constructor.name : String(err);
+        }
+        return {
+          replaced,
+          error,
+          isCheckpoint: replay.isCompactionReplayCheckpoint(message.providerReplay),
+          stripped: replay.stripCompactionReplayCheckpoint(message),
+        };
+      }),
+    };
+  }
+
+  if (payload.operation === "replayContentCases") {
+    // normalizeAssistantReplayContent / sanitizeToolCallInputs over many independent
+    // message lists; a throw is reported by the error class name.
+    const replayHistory = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/replay-history.ts",
+    );
+    const repair = await importFromRepo(repoPath, "src/agents/session-transcript-repair.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map((item) => {
+        const messages = item.messages ?? [];
+        try {
+          const out =
+            item.fn === "sanitizeToolCalls"
+              ? repair.sanitizeToolCallInputs(messages, {})
+              : replayHistory.normalizeAssistantReplayContent(messages);
+          return { messages: out, unchanged: out === messages, error: null };
+        } catch (err) {
+          return {
+            messages: null,
+            unchanged: false,
+            error: err instanceof Error ? err.constructor.name : String(err),
+          };
+        }
+      }),
+    };
+  }
+
+  if (payload.operation === "normalizeUsage") {
+    // normalizeUsage and hasNonzeroUsage over raw provider usage values, undefined as null.
+    const usage = await importFromRepo(repoPath, "src/agents/usage.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map((item) => {
+        const normalized = usage.normalizeUsage(item.usage);
+        return {
+          normalized: normalized ?? null,
+          nonzero: usage.hasNonzeroUsage(normalized),
+        };
+      }),
     };
   }
 
@@ -1154,6 +1402,46 @@ async function main() {
         isCompactionFailureError: helpers.isCompactionFailureError(text),
         extractObservedOverflowTokenCount:
           helpers.extractObservedOverflowTokenCount(text) ?? null,
+      },
+    };
+  }
+
+  if (payload.operation === "contextOverflowTables") {
+    // The overflow wording tables behind isLikelyContextOverflowError: every scope of
+    // matchesContextOverflowMessage plus the failover/context-overflow helpers and the rate-limit
+    // and billing tables they consult, over a corpus of provider messages in one call.
+    const overflow = await importFromRepo(repoPath, "packages/ai/src/utils/overflow.ts");
+    const failover = await importFromRepo(repoPath, "src/agents/failover/context-overflow.ts");
+    const tables = await importFromRepo(repoPath, "src/agents/failover/context-overflow-tables.ts");
+    const patterns = await importFromRepo(repoPath, "src/agents/failover/message-patterns.ts");
+    const scopes = [
+      "assistant-error",
+      "failover-explicit",
+      "provider-fallback",
+      "failover-hint",
+      "context-window-too-small",
+      "tpm-rate-limit-hint",
+      "rate-limit-hint",
+    ];
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        cases: (payload.texts ?? []).map((text) => {
+          const value = text ?? "";
+          return {
+            scopes: Object.fromEntries(
+              scopes.map((scope) => [scope, overflow.matchesContextOverflowMessage(value, scope)]),
+            ),
+            looksLikeCandidate: tables.looksLikeProviderContextOverflowCandidate(value),
+            fromTables: tables.isContextOverflowErrorFromTables(value),
+            isContextOverflowError: failover.isContextOverflowError(value),
+            isLikelyContextOverflowError: failover.isLikelyContextOverflowError(value),
+            isRateLimit: patterns.isRateLimitErrorMessage(value),
+            isBilling: patterns.isBillingErrorMessage(value),
+            requestSizeCeiling: patterns.isProviderRequestSizeCeilingError(value),
+          };
+        }),
       },
     };
   }
@@ -1887,6 +2175,108 @@ async function main() {
     });
   }
 
+  if (payload.operation === "consolidateMemory") {
+    // extensions/memory-core/src/dreaming-consolidation.ts through test-helpers.ts
+    // consolidateMemoryForTests with a stubbed model (no network). Each scenario either runs the
+    // model pass over `candidates` (replies: one entry per call, a string, {throw}, or
+    // {raw} for a non-string result) or applies a hand-built `plan` directly.
+    const helpers = await loadMemoryCoreTestHelpers(repoPath);
+    const consolidation = await importFromRepo(
+      repoPath,
+      "extensions/memory-core/src/dreaming-consolidation.ts",
+    );
+    const scenarioResults: unknown[] = [];
+    for (const scenario of payload.scenarios ?? []) {
+      const warnings: string[] = [];
+      const calls: Array<Record<string, unknown>> = [];
+      const replies: unknown[] = Array.isArray(scenario.replies) ? scenario.replies : [];
+      const subagent = {
+        complete: async (options: Record<string, unknown>) => {
+          calls.push({ ...options });
+          const reply = replies[calls.length - 1] as unknown;
+          if (isRecord(reply) && typeof reply.throw === "string") {
+            throw new Error(reply.throw);
+          }
+          if (isRecord(reply) && "raw" in reply) {
+            return reply.raw;
+          }
+          return { text: reply };
+        },
+      };
+      const scenarioNowMs = Number.isFinite(scenario.nowMs) ? Number(scenario.nowMs) : nowMs;
+      const applyParams = (plan: unknown) => ({
+        existingMemory: String(scenario.existingMemory ?? ""),
+        plan,
+        nowMs: scenarioNowMs,
+        timezone: scenario.timezone ?? "UTC",
+        ...(typeof scenario.memoryFileMaxChars === "number"
+          ? { memoryFileMaxChars: scenario.memoryFileMaxChars }
+          : {}),
+        maxPriorEntryLossFraction: Number(scenario.maxPriorEntryLossFraction ?? 0.25),
+      });
+      let plan: unknown = null;
+      if (scenario.plan) {
+        plan = scenario.plan;
+      } else {
+        plan = await helpers.consolidateMemoryForTests({
+          subagent,
+          existingMemory: String(scenario.existingMemory ?? ""),
+          candidates: scenario.candidates ?? [],
+          ...(typeof scenario.model === "string" ? { model: scenario.model } : {}),
+          maxPriorEntryLossFraction: Number(scenario.maxPriorEntryLossFraction ?? 0.25),
+          ...(typeof scenario.memoryFileMaxChars === "number"
+            ? { memoryFileMaxChars: scenario.memoryFileMaxChars }
+            : {}),
+          ...(typeof scenario.maxPromotedSnippetTokens === "number"
+            ? { maxPromotedSnippetTokens: scenario.maxPromotedSnippetTokens }
+            : {}),
+          nowMs: scenarioNowMs,
+          logger: { info: () => {}, warn: (message: string) => warnings.push(message) },
+        });
+      }
+      const applied = plan ? consolidation.applyMemoryConsolidationPlan(applyParams(plan)) : null;
+      scenarioResults.push({ plan, applied, calls, warnings });
+    }
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        systemPrompt: (
+          await (async () => {
+            // The system prompt is private; read it off a one-candidate pass.
+            let seen: unknown = null;
+            await helpers.consolidateMemoryForTests({
+              subagent: {
+                complete: async (options: Record<string, unknown>) => {
+                  seen = options.extraSystemPrompt;
+                  return { text: "{}" };
+                },
+              },
+              existingMemory: "",
+              candidates: [
+                {
+                  key: "k",
+                  path: "memory/2026-07-01.md",
+                  startLine: 1,
+                  endLine: 1,
+                  snippet: "x",
+                  score: 0.5,
+                  conceptTags: [],
+                  provenance: { originClass: "owner" },
+                },
+              ],
+              maxPriorEntryLossFraction: 0.25,
+              nowMs,
+              logger: { info: () => {}, warn: () => {} },
+            });
+            return seen;
+          })()
+        ),
+        scenarios: scenarioResults,
+      },
+    };
+  }
+
   if (payload.operation === "memoryBudgetCompaction") {
     // extensions/memory-core/src/memory-budget.ts compactMemoryForBudget (its private
     // parseMemoryBlocks decides which blocks are promotion sections) and
@@ -2546,8 +2936,8 @@ async function main() {
   if (payload.operation === "sessionCorpusEntry") {
     // packages/memory-host-sdk/src/host/session-files.ts buildSessionEntryInProcess over a JSONL
     // transcript file per case (the file branch, whose line map is the raw line ordinal; the SQLite
-    // branch is the same projection). Redaction is the identity (memory-core takes a host hook,
-    // not redactSensitiveText), the store classification is pinned by explicit
+    // branch is the same projection). Redaction is upstream's default, redactSensitiveText in
+    // tools mode (memory_core.redact), the store classification is pinned by explicit
     // generatedBy* flags, and the file's mtime is set to the case's `mtimeMs`. A case's
     // `fileName` decides the archive handling (cron records classify only in usage-counted
     // archives such as x.jsonl.reset.<iso>).
@@ -2578,7 +2968,6 @@ async function main() {
             onTranscriptMessage: (message: unknown, observedAt: number) =>
               observed.push([message, observedAt]),
           },
-          (text: string) => text,
         );
         cases.push(
           entry
@@ -2600,6 +2989,43 @@ async function main() {
     } finally {
       await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
     }
+  }
+
+  if (payload.operation === "redactSensitiveText") {
+    // src/logging/redact.ts redactSensitiveText(text, { mode: "tools" }), the redaction
+    // buildSessionEntry applies to every exported session text. `texts` are redacted one by one;
+    // `meta` also returns the pattern tables (redact-patterns.ts) and the \p{C}/\p{Z} ranges
+    // of this runtime for the table-equality checks.
+    process.env.OPENCLAW_LOG_LEVEL = "silent";
+    const redact = await importFromRepo(repoPath, "src/logging/redact.ts");
+    const patterns = await importFromRepo(repoPath, "src/logging/redact-patterns.ts");
+    const texts = (payload as Record<string, any>).texts ?? [];
+    const result: Record<string, unknown> = {
+      texts: texts.map((text: string) => redact.redactSensitiveText(text, { mode: "tools" })),
+    };
+    if ((payload as Record<string, any>).meta) {
+      const ranges = (re: RegExp) => {
+        const out: number[][] = [];
+        let start = -1;
+        for (let cp = 0; cp <= 0x10ffff; cp++) {
+          const hit = re.test(String.fromCodePoint(cp));
+          if (hit && start < 0) start = cp;
+          if (!hit && start >= 0) {
+            out.push([start, cp - 1]);
+            start = -1;
+          }
+        }
+        if (start >= 0) out.push([start, 0x10ffff]);
+        return out;
+      };
+      result.meta = {
+        defaultStringPatterns: [...patterns.DEFAULT_REDACT_STRING_PATTERNS],
+        bodySecretKeys: [...patterns.BODY_SECRET_KEYS],
+        unicodeC: ranges(/^\p{C}$/u),
+        unicodeZ: ranges(/^\p{Z}$/u),
+      };
+    }
+    return { ok: true, operation: payload.operation, result };
   }
 
   if (payload.operation === "sessionMemorySlug") {

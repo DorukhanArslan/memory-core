@@ -1,3 +1,4 @@
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import * as nodeModule from "node:module";
@@ -108,6 +109,10 @@ type Payload = {
   scenarios?: Array<Record<string, any>>;
   historySteps?: Array<Record<string, any>>;
   consolidation?: Record<string, any>;
+  promotionScenarios?: Array<Record<string, any>>;
+  originSteps?: Array<Record<string, any>>;
+  agentIds?: string[];
+  lockProbe?: Record<string, any>;
 };
 
 const WORKSPACE_STATE_SNAPSHOT_SKIP = new Set([
@@ -1511,6 +1516,68 @@ async function main() {
       "packages/ai/src/transports/provider-replay-context.ts",
     );
     const hash = await importFromRepo(repoPath, "packages/ai/src/utils/hash.ts");
+    const windowModule = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/openai-responses-compaction-window.ts",
+    );
+    const pressure = await importFromRepo(repoPath, "src/agents/sessions/context-token-pressure.ts");
+    const runtimeIndex = await importFromRepo(repoPath, "src/agents/runtime/index.ts");
+    const usageModule = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/openai-responses-context-usage.ts",
+    );
+    const converter = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/openai-responses-replay-messages-internal.ts",
+    );
+    // The real OpenClaw host (endpoint classification, secret sentinels) is what eligibility
+    // runs against in production; the library default host classifies every URL as "default".
+    await importFromRepo(repoPath, "src/llm/ai-transport-host.ts");
+    await importFromRepo(repoPath, "src/agents/ai-transport-runtime-host.ts");
+    const toolCallProviders = new Set([
+      "openai",
+      "opencode",
+      "azure-openai-responses",
+      "github-copilot",
+    ]);
+    const estimator = {
+      text: (value: string) => pressure.estimateStringTokenPressure(value),
+      image: () => runtimeIndex.IMAGE_BLOCK_TOKENS,
+      json: (value: unknown) => pressure.estimateJsonPayloadTokenPressure(value),
+      toolResult: (value: string) =>
+        pressure.estimateStringTokenPressure(
+          value,
+          pressure.ESTIMATED_CHARS_PER_TOKEN,
+          "tool-result",
+        ),
+    };
+    // A sibling copy of provider-compaction-replay.ts that also exports its private estimator;
+    // relative imports resolve from that directory. Removed as soon as it is loaded.
+    const replaySource = await fs.readFile(
+      path.join(repoPath, "packages/ai/src/transports/provider-compaction-replay.ts"),
+      "utf8",
+    );
+    const exposedPath = path.join(
+      repoPath,
+      "packages/ai/src/transports",
+      `provider-compaction-replay.oracle-${process.pid}.ts`,
+    );
+    await fs.writeFile(exposedPath, `${replaySource}\nexport { estimateResponsesInput };\n`);
+    let exposedPressureHelpers: Record<string, any>;
+    try {
+      exposedPressureHelpers = await import(pathToFileURL(exposedPath).href);
+    } finally {
+      await fs.rm(exposedPath, { force: true });
+    }
+    const replayModel = (model: Record<string, unknown>) => ({
+      input: ["text", "image"],
+      contextWindow: 200000,
+      maxTokens: 4096,
+      reasoning: false,
+      name: String(model.id),
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      ...model,
+    });
     return {
       ok: true,
       operation: payload.operation,
@@ -1585,6 +1652,273 @@ async function main() {
                 { ...options, ...(item.mode ? { mode: item.mode } : {}) },
               );
               return { value: { ...plan, messages: plan.messages.map(ref) }, error: null };
+            }
+            case "window":
+              return {
+                value:
+                  windowModule.readOpenAIResponsesCompactionWindow(item.replay, item.model) ?? null,
+                error: null,
+              };
+            case "isOutput":
+              return {
+                value: windowModule.isOpenAIResponsesCompactionOutput(item.value, item.model),
+                error: null,
+              };
+            case "eligibility": {
+              const saved = process.env.ANTHROPIC_BASE_URL;
+              if (item.env && "ANTHROPIC_BASE_URL" in item.env) {
+                process.env.ANTHROPIC_BASE_URL = item.env.ANTHROPIC_BASE_URL;
+              } else {
+                delete process.env.ANTHROPIC_BASE_URL;
+              }
+              try {
+                return {
+                  value: replay.resolveCompactionReplayEligibility(item.model, {
+                    extraParams: item.extraParams,
+                    apiKey: item.apiKey,
+                  }),
+                  error: null,
+                };
+              } finally {
+                if (saved === undefined) {
+                  delete process.env.ANTHROPIC_BASE_URL;
+                } else {
+                  process.env.ANTHROPIC_BASE_URL = saved;
+                }
+              }
+            }
+            case "pressure": {
+              const out = replay.resolveCompactionReplayPressure(
+                messages,
+                replayModel(item.model),
+                identity,
+                estimator,
+                item.systemPrompt,
+              );
+              return {
+                value: out === undefined ? null : { ...out, messages: out.messages.map(ref) },
+                error: null,
+              };
+            }
+            case "estimateInput": {
+              // estimateResponsesInput is private upstream; its source is the only way in.
+              // exposedPressureHelpers (below) loaded it through a sibling copy of the module.
+              const full = { ...estimator };
+              const noTool = { text: full.text, image: full.image, json: full.json };
+              return {
+                value: exposedPressureHelpers.estimateResponsesInput(
+                  item.items,
+                  item.withToolResult === false ? noTool : full,
+                ),
+                error: null,
+              };
+            }
+            case "projections": {
+              // The converter's wire input per projection and system-prompt flag, over the
+              // provider-role messages; the Python port takes it as a hook result.
+              const providerMessages = messages.filter((message: Record<string, unknown>) =>
+                ["user", "assistant", "toolResult"].includes(message.role as string),
+              );
+              const table: Record<string, unknown> = {};
+              for (const projection of ["transport", "provider"]) {
+                for (const includeSystemPrompt of [false, true]) {
+                  const convert =
+                    projection === "transport"
+                      ? converter.convertResponsesMessages
+                      : converter.convertProviderResponsesMessages;
+                  table[`${projection}:${includeSystemPrompt}`] = convert(
+                    replayModel(item.model),
+                    { messages: providerMessages, systemPrompt: item.systemPrompt },
+                    toolCallProviders,
+                    { ...identity, includeSystemPrompt },
+                  );
+                }
+              }
+              return { value: table, error: null };
+            }
+            case "recordUsage": {
+              // Bind measured usage to the replay prefix exactly as the transport does after a
+              // response: request.input is the wire input before the target assistant message
+              // and the target's own replay output follows it.
+              const target = messages[item.target];
+              const providerBefore = messages
+                .slice(0, item.target)
+                .filter((message: Record<string, unknown>) =>
+                  ["user", "assistant", "toolResult"].includes(message.role as string),
+                );
+              const convert =
+                item.projection === "transport"
+                  ? converter.convertResponsesMessages
+                  : converter.convertProviderResponsesMessages;
+              const model = replayModel(item.model);
+              const input = convert(
+                model,
+                { messages: providerBefore, systemPrompt: item.systemPrompt },
+                toolCallProviders,
+                { ...identity, includeSystemPrompt: item.includeSystemPrompt === true },
+              );
+              target.usage = {
+                ...target.usage,
+                contextUsage: {
+                  state: "available",
+                  promptTokens: item.promptTokens,
+                  totalTokens: item.totalTokens,
+                },
+              };
+              usageModule.recordResponsesContextUsage(
+                target,
+                model,
+                identity,
+                { input: [...(item.requestPrefix ?? []), ...input] },
+                item.output ?? [],
+                item.projection,
+              );
+              return { value: messages, error: null };
+            }
+            case "anthropicCapture": {
+              const output: Record<string, unknown> = structuredClone(item.output ?? {});
+              const capture = anthropic.createCompactionCapture(output, item.model, options);
+              const results = (item.events ?? []).map((event: Record<string, unknown>) =>
+                event.op === "begin"
+                  ? capture.begin(
+                      event.index as number,
+                      event.block as never,
+                      event.replayIndex as number,
+                    )
+                  : event.op === "delta"
+                    ? capture.delta(event.index as number, event.delta as never)
+                    : capture.complete(event.index as number),
+              );
+              return {
+                value: { results, providerReplay: output.providerReplay ?? null },
+                error: null,
+              };
+            }
+            case "anthropicSuppress": {
+              const output: Record<string, unknown> = structuredClone(item.output ?? {});
+              anthropic.suppressAnthropicCompaction(output, item.model, options);
+              return { value: { providerReplay: output.providerReplay ?? null }, error: null };
+            }
+            case "responsesCapture": {
+              const output: Record<string, unknown> = structuredClone(item.output ?? {});
+              responses.captureOpenAIResponsesCompaction(
+                output,
+                item.item,
+                item.boundary,
+                item.model,
+                item.metadata ?? undefined,
+                item.compactedOutput ?? undefined,
+              );
+              return { value: { providerReplay: output.providerReplay ?? null }, error: null };
+            }
+            case "responsesSuppress": {
+              const output: Record<string, unknown> = structuredClone(item.output ?? {});
+              const rejected: unknown[] = [];
+              responses.suppressOpenAIResponsesCompaction(
+                output,
+                item.model,
+                {
+                  ...options,
+                  ...(item.withCallback
+                    ? { onCompactionRejected: (value: unknown) => rejected.push(value) }
+                    : {}),
+                },
+                item.rejected ?? undefined,
+              );
+              return {
+                value: { providerReplay: output.providerReplay ?? null, rejected },
+                error: null,
+              };
+            }
+            case "reasoningMetadata":
+              return {
+                value: responses.buildOpenAIResponsesReasoningReplayMetadata(item.model, options),
+                error: null,
+              };
+            case "replayContextShape":
+              return { value: responses.isOpenAIResponsesReplayContext(item.value), error: null };
+            case "tracker": {
+              const output: Record<string, unknown> = structuredClone(item.output ?? {});
+              const tracker = responses.createCompactionTracker(
+                output,
+                item.model,
+                item.metadata ? { reasoningReplayMetadata: item.metadata } : undefined,
+              );
+              const snapshots = (item.steps ?? []).map((step: Record<string, unknown>) => {
+                if (step.op === "added") {
+                  tracker.added(step.item as never, step.replayIndex as number);
+                } else {
+                  tracker.completed(step.item as never, step.fallback as number);
+                }
+                return structuredClone(output.providerReplay ?? null);
+              });
+              return { value: { snapshots }, error: null };
+            }
+            default:
+              throw new Error(`unknown fn ${item.fn}`);
+          }
+        } catch (err) {
+          return { value: null, error: err instanceof Error ? err.constructor.name : String(err) };
+        }
+      }),
+    };
+  }
+
+  if (payload.operation === "inlineImage") {
+    // The inline image data-URL sanitiser, canonical base64, the signature sniffer and the
+    // Responses image payload sanitiser (undefined is reported as null).
+    const inline = await importFromRepo(
+      repoPath,
+      "packages/media-core/src/inline-image-data-url.ts",
+    );
+    const base64 = await importFromRepo(repoPath, "packages/media-core/src/base64.ts");
+    const stable = await importFromRepo(repoPath, "packages/normalization-core/src/stable-stringify.ts");
+    const sanitizer = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/responses-image-payload-sanitizer.ts",
+    );
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map((item) => {
+        try {
+          switch (item.fn) {
+            case "url":
+              return { value: inline.sanitizeInlineImageDataUrl(item.text) ?? null, error: null };
+            case "storage":
+              return {
+                value: inline.sanitizeInlineImageDataUrlForStorage(item.text) ?? null,
+                error: null,
+              };
+            case "base64":
+              return {
+                value:
+                  inline.sanitizeInlineImageBase64({
+                    mimeType: item.mimeType,
+                    base64: item.text,
+                  }) ?? null,
+                error: null,
+              };
+            case "canonical":
+              return { value: base64.canonicalizeBase64(item.text) ?? null, error: null };
+            case "sniff":
+              return {
+                value: inline.sniffInlineImageMime(Buffer.from(item.hex, "hex")) ?? null,
+                error: null,
+              };
+            case "stable":
+              return { value: stable.stableStringify(item.value), error: null };
+            case "hostname": {
+              // new URL(text).hostname: the endpoint classifiers' host extraction.
+              try {
+                return { value: new URL(item.text).hostname, error: null };
+              } catch {
+                return { value: null, error: null };
+              }
+            }
+            case "payload": {
+              const out = sanitizer.sanitizeResponsesImagePayload(item.params);
+              return { value: out, same: out === item.params, error: null };
             }
             default:
               throw new Error(`unknown fn ${item.fn}`);
@@ -3673,6 +4007,9 @@ async function main() {
     "rankShortTermPromotionCandidates",
     "applyShortTermPromotions",
     "consolidationHistory",
+    "applyPromotionScenarios",
+    "originsLedger",
+    "fileLockProbe",
   ]);
   if (!promotionOperations.has(payload.operation)) {
     throw new Error(`unsupported operation: ${payload.operation}`);
@@ -3787,6 +4124,355 @@ async function main() {
         }
       }
       return { ok: true, operation: payload.operation, files: await snapshotPromotionFiles() };
+    }
+
+    if (payload.operation === "fileLockProbe") {
+      // The second lock of the deep phase: the real withFileLock with MEMORY_WRITE_LOCK_OPTIONS
+      // (fewer retries) on the real lock target of resolveMemoryPromotionLockTarget (not exported,
+      // so recomputed here the same way). An optional seeded sidecar stands for another holder.
+      const { withFileLock } = await importFromRepo(repoPath, "src/plugin-sdk/file-lock.ts");
+      const probe = payload.lockProbe ?? {};
+      const workspaceDir = String(payload.workspaceDir);
+      const lockDir = path.join(promotionStateDir, "locks");
+      await fs.mkdir(lockDir, { recursive: true, mode: 0o700 });
+      const canonical = await fs.realpath(workspaceDir).catch(() => path.resolve(workspaceDir));
+      const hash = crypto.createHash("sha256").update(canonical).digest("hex");
+      const target = path.join(lockDir, `memory-promotion-${hash}`);
+      if (isRecord(probe.seed)) {
+        const seed = { ...probe.seed } as Record<string, unknown>;
+        if (seed.pid === "self") {
+          seed.pid = process.pid;
+        }
+        await fs.writeFile(`${target}.lock`, `${JSON.stringify(seed, null, 2)}\n`, {
+          mode: 0o600,
+        });
+      }
+      const retries = Number.isFinite(probe.retries) ? Number(probe.retries) : 3;
+      let outcome: Record<string, unknown>;
+      try {
+        outcome = await withFileLock(
+          target,
+          {
+            retries: { retries, factor: 1.2, minTimeout: 5, maxTimeout: 10 },
+            stale: 120_000,
+            staleRecovery: "fail-closed",
+          },
+          async () => {
+            const lockPath = `${target}.lock`;
+            const raw = await fs.readFile(lockPath, "utf-8");
+            const stat = await fs.stat(lockPath);
+            const dirStat = await fs.stat(lockDir);
+            return {
+              ok: true,
+              lockName: path.basename(lockPath),
+              expectedName: `memory-promotion-${hash}.lock`,
+              raw,
+              mode: stat.mode & 0o777,
+              dirMode: dirStat.mode & 0o777,
+              listing: (await fs.readdir(lockDir)).toSorted(),
+            };
+          },
+        );
+      } catch (error) {
+        outcome = {
+          ok: false,
+          code: (error as { code?: string }).code ?? null,
+          message: String((error as Error).message).replaceAll(target, "<target>"),
+        };
+      }
+      const afterListing = (await fs.readdir(lockDir)).toSorted();
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: { ...outcome, afterListing, seeded: isRecord(probe.seed) },
+      };
+    }
+
+    if (payload.operation === "originsLedger") {
+      // The memory-entry origins ledger (memory-entry-origins.ts) over the real per-agent SQLite
+      // database of the oracle's state directory, one step after another; every step reports the
+      // rows of every agent afterwards.
+      const origins = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/memory-entry-origins.ts",
+      );
+      const sqliteRuntime = await importFromRepo(repoPath, "src/plugin-sdk/sqlite-runtime.ts");
+      const agentIds: string[] = payload.agentIds ?? ["main"];
+      for (const agentId of agentIds) {
+        await fs.mkdir(path.dirname(sqliteRuntime.resolveOpenClawAgentSqlitePath({ agentId })), {
+          recursive: true,
+        });
+      }
+      const steps: unknown[] = [];
+      let chunkCounter = 0;
+      for (const step of payload.originSteps ?? []) {
+        let result: unknown = null;
+        try {
+          if (step.kind === "record") {
+            result = origins.recordMemoryEntryOrigins({
+              agentId: step.agentId,
+              origins: step.origins,
+              ...(typeof step.entryKey === "string" ? { entryKey: step.entryKey } : {}),
+            });
+          } else if (step.kind === "reserve") {
+            const rollback = origins.reserveMemoryEntryOrigins({
+              agentIds: step.agentIds,
+              previousMemory: step.previousMemory,
+              operations: step.operations,
+            });
+            if (step.rollback === true) {
+              rollback();
+            }
+          } else if (step.kind === "prune") {
+            await origins.pruneMemoryEntryOrigins({
+              workspaceDir: payload.workspaceDir,
+              agentIds: step.agentIds,
+              entryKeys: step.entryKeys,
+              retainedEntryKeys: new Set<string>(step.retainedEntryKeys ?? []),
+            });
+          } else if (step.kind === "index") {
+            const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId: step.agentId }).db;
+            for (const text of step.texts as string[]) {
+              chunkCounter += 1;
+              db.prepare(
+                "INSERT INTO memory_index_chunks (id, path, source, start_line, end_line, hash, model, text, embedding, updated_at) VALUES (?, 'MEMORY.md', ?, 1, 1, ?, 'm', ?, X'', 0)",
+              ).run(`chunk-${chunkCounter}`, step.source ?? "memory", `h${chunkCounter}`, text);
+            }
+          } else if (step.kind === "preimage") {
+            const artifactsModule = await importFromRepo(
+              repoPath,
+              "extensions/memory-core/src/dreaming-consolidation-artifacts.ts",
+            );
+            result = [
+              ...(await artifactsModule.storeMemoryPreimage({
+                workspaceDir: payload.workspaceDir,
+                content: step.content,
+                nowMs: step.nowMs,
+                agentIds: step.agentIds,
+                retainedEntryKeys: new Set<string>(step.retainedEntryKeys ?? []),
+              })),
+            ].toSorted();
+          } else if (step.kind === "list") {
+            result = origins.listMemoryEntryOrigins({
+              agentId: step.agentId,
+              ...(Array.isArray(step.sessionIds) ? { sessionIds: step.sessionIds } : {}),
+              ...(Array.isArray(step.entryKeys) ? { entryKeys: step.entryKeys } : {}),
+            });
+          }
+        } catch (error) {
+          result = { error: String((error as Error).message) };
+        }
+        steps.push({
+          result,
+          state: Object.fromEntries(
+            agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
+          ),
+        });
+      }
+      return { ok: true, operation: payload.operation, result: { steps } };
+    }
+
+    if (payload.operation === "applyPromotionScenarios") {
+      // The apply half of the deep phase over many seeded workspaces in one process (an oracle
+      // start costs seconds): rejectedCandidates, the memory.promotion.applied host events, the
+      // origins ledger, the lock/write order and the consolidation artifacts.
+      const origins = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/memory-entry-origins.ts",
+      );
+      const sqliteRuntime = await importFromRepo(repoPath, "src/plugin-sdk/sqlite-runtime.ts");
+      const hostEvents = await importFromRepo(repoPath, "src/memory-host-sdk/events.ts");
+      const artifacts = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/dreaming-consolidation-artifacts.ts",
+      );
+      const testAgentId = "memory-core-test";
+      const results: unknown[] = [];
+      for (const scenario of payload.promotionScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        const scenarioNowMs = Number.isFinite(scenario.nowMs) ? Number(scenario.nowMs) : nowMs;
+        await seedPromotionStateFromWorkspace(promotionState, workspaceDir);
+        const originAgents: string[] = [testAgentId, ...(scenario.workspaceAgentIds ?? [])];
+        for (const agentId of originAgents) {
+          await fs.mkdir(path.dirname(sqliteRuntime.resolveOpenClawAgentSqlitePath({ agentId })), {
+            recursive: true,
+          });
+          const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId }).db;
+          try {
+            db.exec("DELETE FROM memory_entry_origins");
+          } catch {
+            // The table is created lazily by the first record.
+          }
+          try {
+            db.exec("DELETE FROM memory_index_chunks");
+          } catch {
+            // Missing chunk table.
+          }
+        }
+        for (const seed of scenario.seedOrigins ?? []) {
+          origins.recordMemoryEntryOrigins({ agentId: seed.agentId, origins: [seed] });
+        }
+        for (const seed of scenario.seedIndexChunks ?? []) {
+          const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId: seed.agentId }).db;
+          db.prepare(
+            "INSERT INTO memory_index_chunks (id, path, source, start_line, end_line, hash, model, text, embedding, updated_at) VALUES (?, 'MEMORY.md', 'memory', 1, 1, ?, 'm', ?, X'', 0)",
+          ).run(`chunk-${crypto.randomUUID()}`, crypto.randomUUID(), seed.text);
+        }
+
+        // Order of the lock sidecar, MEMORY.md and DREAMS.md writes, taken from the fs calls.
+        const timeline: string[] = [];
+        const fsPromises = (await import("node:fs/promises")).default as unknown as Record<
+          string,
+          (...args: unknown[]) => Promise<unknown>
+        >;
+        const originals: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
+        // The sidecar is created natively (not through fs.promises), so its appearance is noticed
+        // at the next fs call that passes through the hook.
+        const canonicalWorkspace = await fs.realpath(workspaceDir);
+        const lockSidecar = path.join(
+          promotionStateDir,
+          "locks",
+          `memory-promotion-${crypto.createHash("sha256").update(canonicalWorkspace).digest("hex")}.lock`,
+        );
+        let lockSeen = false;
+        const label = (op: string, args: unknown[]): string | null => {
+          const target = String(op === "rename" ? args[1] : args[0]);
+          if (!lockSeen && fsSync.existsSync(lockSidecar)) {
+            lockSeen = true;
+            timeline.push("lock:acquire");
+          }
+          const base = path.basename(target);
+          if (base.startsWith("memory-promotion-") && base.endsWith(".lock")) {
+            return op === "unlink" || op === "rm" ? "lock:release" : null;
+          }
+          if (op !== "rename" && op !== "writeFile") {
+            return null;
+          }
+          if (base === "MEMORY.md") {
+            return "memory:write";
+          }
+          return base === "DREAMS.md" || base === "dreams.md" ? "dreams:write" : null;
+        };
+        for (const op of ["open", "rename", "writeFile", "unlink", "rm"]) {
+          originals[op] = fsPromises[op];
+          fsPromises[op] = async function (this: unknown, ...args: unknown[]) {
+            const entry = label(op, args);
+            if (entry) {
+              timeline.push(entry);
+            }
+            return await originals[op].apply(this, args);
+          };
+        }
+
+        const consolidationConfig = isRecord(scenario.consolidation)
+          ? (scenario.consolidation as Record<string, any>)
+          : undefined;
+        const replies: unknown[] = Array.isArray(consolidationConfig?.replies)
+          ? consolidationConfig.replies
+          : [];
+        const calls: Array<Record<string, unknown>> = [];
+        const warnings: string[] = [];
+        const infos: string[] = [];
+        const subagent = {
+          complete: async (options: Record<string, unknown>) => {
+            calls.push({ ...options });
+            for (const mutation of consolidationConfig?.mutateDuringCall ?? []) {
+              const target = path.join(workspaceDir, String(mutation.path));
+              if (mutation.append === true) {
+                await originals.writeFile.call(fsPromises, target, mutation.content, { flag: "a" });
+              } else {
+                await originals.writeFile.call(fsPromises, target, mutation.content);
+              }
+            }
+            const reply = replies[calls.length - 1] as unknown;
+            if (isRecord(reply) && typeof reply.throw === "string") {
+              throw new Error(reply.throw);
+            }
+            return { text: reply };
+          },
+        };
+        const applyParams = {
+          workspaceDir,
+          nowMs: scenarioNowMs,
+          timezone: scenario.timezone ?? timezone,
+          candidates: scenario.candidates ?? [],
+          ...(scenario.limit !== undefined ? { limit: scenario.limit } : {}),
+          ...(scenario.minScore !== undefined ? { minScore: scenario.minScore } : {}),
+          ...(scenario.minRecallCount !== undefined
+            ? { minRecallCount: scenario.minRecallCount }
+            : {}),
+          ...(scenario.minUniqueQueries !== undefined
+            ? { minUniqueQueries: scenario.minUniqueQueries }
+            : {}),
+          ...(scenario.maxAgeDays !== undefined ? { maxAgeDays: scenario.maxAgeDays } : {}),
+          ...(scenario.memoryFileMaxChars !== undefined
+            ? { memoryFileMaxChars: scenario.memoryFileMaxChars }
+            : {}),
+          ...(scenario.maxPriorEntryLossFraction !== undefined
+            ? { maxPriorEntryLossFraction: scenario.maxPriorEntryLossFraction }
+            : {}),
+          ...(scenario.maxPromotedSnippetTokens !== undefined
+            ? { maxPromotedSnippetTokens: scenario.maxPromotedSnippetTokens }
+            : {}),
+          ...(Array.isArray(scenario.workspaceAgentIds)
+            ? { workspaceAgentIds: scenario.workspaceAgentIds }
+            : {}),
+        };
+        let applied: unknown;
+        let error: string | null = null;
+        try {
+          if (consolidationConfig || scenario.agent === true) {
+            applied = await testHelpers.applyShortTermPromotionsForTests({
+              ...applyParams,
+              ...(consolidationConfig
+                ? {
+                    consolidation: {
+                      ...(consolidationConfig.noSubagent === true ? {} : { subagent }),
+                      ...(typeof consolidationConfig.model === "string"
+                        ? { model: consolidationConfig.model }
+                        : {}),
+                      logger: {
+                        info: (message: string) => infos.push(message),
+                        warn: (message: string) => warnings.push(message),
+                      },
+                    },
+                  }
+                : {}),
+            });
+          } else {
+            applied = await promotion.applyShortTermPromotions(applyParams);
+          }
+        } catch (caught) {
+          error = String((caught as Error).message);
+        } finally {
+          for (const op of Object.keys(originals)) {
+            fsPromises[op] = originals[op];
+          }
+        }
+        await exportPromotionStateToWorkspace(promotionState, workspaceDir, scenarioNowMs);
+        const files = await snapshotFiles(workspaceDir);
+        const memoryHostEvents = await hostEvents.readMemoryHostEvents({ workspaceDir });
+        const originRows = Object.fromEntries(
+          originAgents.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
+        );
+        const preimages = (await artifacts.readMemoryPreimages(workspaceDir)).map(
+          (entry: { value: unknown }) => entry.value,
+        );
+        results.push({
+          name: scenario.name,
+          error,
+          applied,
+          files,
+          events: memoryHostEvents,
+          origins: originRows,
+          preimages,
+          calls,
+          warnings,
+          infos,
+          timeline,
+        });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: results } };
     }
 
     const policy = await resolvePromotionPolicy(repoPath, payload);

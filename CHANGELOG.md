@@ -113,14 +113,35 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
         `memory_core/consolidation/artifacts.py` with the `DREAMS.md` consolidation history, and
         JS case folding in `memory_core/consolidation`. `run_dreaming_sweep` now forwards
         `max_prior_entry_loss_fraction`.
-    - Still not ported: `resolveCompactionReplayPressure`, the compaction capture side,
-      `resolveCompactionReplayEligibility` and `sanitizeInlineImageDataUrl`; the rewrite's SQLite,
-      bounded and persisted paths, `iterateSessionContextMessages` and the other `SessionManager`
-      methods; a caller of the cache-TTL transform (host-owned); `reset` in the
-      `transcript_tree.py` entry types; the `rejectedCandidates` reporting, origin ledger and
-      `memory.promotion.applied` events of the deep phase; REM/light narrative consolidation
-      inputs; the exact-secret redaction registry; SQLite session statistics and archives (kept
-      out by decision 4).
+      - Third round of gap ports (2026-10-06), each compared with the real TS oracle:
+        - `inline_image.py` (`sanitizeInlineImageDataUrl`, `...ForStorage`,
+          `sanitizeInlineImageBase64`, `canonicalizeBase64`, MIME sniffing), `js_url.py` (WHATWG
+          `hostname`) and `responses_egress.py` (`sanitizeResponsesImagePayload`, the input part of
+          the Responses payload policy); the compaction window readers and plans use this egress
+          projection by default (`egress_projection` stays an override).
+        - `compaction_replay.py`: `resolve_compaction_replay_pressure` (Anthropic and Responses,
+          `estimate_responses_input`, measured usage), `resolve_compaction_replay_eligibility`, the
+          capture and suppression writers (`CompactionCapture`, `CompactionTracker`,
+          `capture_openai_responses_compaction`, `suppress_anthropic_compaction`,
+          `suppress_openai_responses_compaction`) and the host hooks `projector`, `endpoint_class`
+          and `resolve_secret_sentinel`
+          (`test_openclaw_compaction_checkpoint_oracle.py`, `test_compaction_replay_gap3.py`).
+        - Deep phase apply half: `run_short_term_promotion` reports `rejected_candidates` with the
+          13 upstream categories, builds the `memory.promotion.applied` event
+          (`build_promotion_applied_event`, `on_event` callback), takes a second lock
+          (`consolidation/file_lock.py`, `withFileLock` sidecar) and keeps a SQLite origins ledger
+          (`consolidation/origins.py`) (`test_promotion_apply_oracle.py`). **Behaviour changes:**
+          promotion ranking excludes `untrusted` and `system` origins on every path, and the
+          consolidation origin/session filter runs after the rank limit.
+    - Still not ported: the Responses message converter (a `projector` hook) and
+      `normalizeAssistantReplayInput(fromResponse=true)`; the call sites of the pressure and
+      eligibility resolvers (`preemptive_compaction.py`); the rewrite's SQLite, bounded and
+      persisted paths, `iterateSessionContextMessages` and the other `SessionManager` methods; a
+      caller of the cache-TTL transform (host-owned); `reset` in the `transcript_tree.py` entry
+      types; origin recording by the recall recorder and session ingestion, session tombstones and
+      the daily-file quarantine; REM/light narrative consolidation inputs and workspace lock; the
+      exact-secret redaction registry; SQLite session statistics and archives (kept out by
+      decision 4).
 
 - Search ranking follows OpenClaw v2026.9.6 (port plan area 6): chunks are sized in CJK-weighted
   characters (`tokens * 4`) and `MEMORY.md` / `USER.md` chunk per `- ` entry and heading; keyword

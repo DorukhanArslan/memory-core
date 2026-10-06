@@ -22,6 +22,7 @@ only when a host calls them (dreaming is off by default).
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,6 +32,7 @@ from memory_core.bootstrap._js import js_to_well_formed
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifacts import read_dreams_file, resolve_dreams_path
 from memory_core.consolidation.llm_consolidation import DeepConsolidation
+from memory_core.consolidation.origins import MemoryEntryOriginLedger
 from memory_core.consolidation.policy import DeepDreamingPolicy
 from memory_core.consolidation.promotion import (
     MemoryPromotionRun,
@@ -71,6 +73,11 @@ def run_dreaming_sweep(
     identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
     policy: DeepDreamingPolicy | None = None,
     consolidation: DeepConsolidation | None = None,
+    agent_id: str | None = None,
+    workspace_agent_ids: Sequence[str] = (),
+    origins: MemoryEntryOriginLedger | None = None,
+    state_dir: str | Path | None = None,
+    on_event: Callable[[dict[str, Any]], None] | None = None,
 ) -> DreamingSweepResult:
     """Run one dreaming phase over the workspace's recall store.
 
@@ -86,7 +93,10 @@ def run_dreaming_sweep(
     workspace-relative paths the sweep wrote; ``identity`` picks the promotion
     marker prefix of the deep phase. ``consolidation`` (default ``None``, and off unless its
     ``options.enabled`` is set and it carries a model) opts the deep phase into the host-injected
-    LLM consolidation; see :func:`run_short_term_promotion`.
+    LLM consolidation; see :func:`run_short_term_promotion`, which also explains ``agent_id``,
+    ``workspace_agent_ids`` and ``origins`` (the memory-entry origins ledger), ``state_dir`` (the
+    sidecar lock's directory) and ``on_event`` (the host callback of the
+    ``memory.promotion.applied`` event).
     """
     if phase not in DREAMING_PHASES:
         raise ValueError(f"unsupported dreaming phase: {phase}")
@@ -148,6 +158,11 @@ def run_dreaming_sweep(
             timezone=timezone,
             identity=identity,
             consolidation=consolidation,
+            agent_id=agent_id,
+            workspace_agent_ids=workspace_agent_ids,
+            origins=origins,
+            state_dir=state_dir,
+            on_event=on_event,
             **gates,
         )
         if promotion.outcome.should_write:

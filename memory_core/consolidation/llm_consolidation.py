@@ -28,7 +28,7 @@ import os
 import re
 import secrets
 import unicodedata
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -54,6 +54,7 @@ from memory_core.consolidation.artifacts import (  # noqa: F401  (re-exported na
     store_memory_preimage,
 )
 from memory_core.consolidation.curated_annotations import extract_project_keys_from_curated_entry
+from memory_core.consolidation.origins import MemoryEntryOriginLedger, reserve_memory_entry_origins
 from memory_core.consolidation.promotion import (
     DEFAULT_DEEP_DREAMING_MAX_PRIOR_ENTRY_LOSS_FRACTION,
     DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
@@ -806,6 +807,8 @@ class DeepConsolidationCommit:
 
     result: MemoryConsolidationResult | None = None
     skipped_reason: str | None = None
+    # The promotion keys of the preimages kept after rotation (``storeMemoryPreimage``'s result).
+    retained_preimage_keys: set[str] | None = None
 
 
 def commit_deep_consolidation(
@@ -822,8 +825,15 @@ def commit_deep_consolidation(
     timezone: str | None,
     now_ms: int,
     identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+    origins: MemoryEntryOriginLedger | None = None,
+    origin_agent_ids: Sequence[str] = (),
+    retained_entry_keys: Collection[str] = frozenset(),
 ) -> DeepConsolidationCommit:
     """The committing half, run under the promotion lock; mirrors the lock body of upstream.
+
+    With an ``origins`` ledger the preimage rotation prunes expired backup references
+    (``retained_entry_keys`` stay) and the origins of merged entries are reserved before the
+    rename and rolled back when it is skipped (``reserveMemoryEntryOrigins``).
 
     Voids the plan (``result`` None, no ``skipped_reason``) when the candidates still to append
     differ from the planned ones; skips with a reason when MEMORY.md changed during planning,
@@ -853,23 +863,46 @@ def commit_deep_consolidation(
     if result is None:
         return DeepConsolidationCommit()
     try:
-        store_memory_preimage(workspace, existing, now_ms)
+        retained_preimage_keys = store_memory_preimage(
+            workspace,
+            existing,
+            now_ms,
+            agent_ids=origin_agent_ids,
+            retained_entry_keys=retained_entry_keys,
+            ledger=origins,
+        )
     except Exception as error:
         deep.log.warning(
             f"{DISPLAY_NAME}: consolidation preimage failed ({error}); using append-only fallback."
         )
         return DeepConsolidationCommit()
+    # Lineage is reserved before publication; the rows this adds are released when the rename is
+    # ruled out.
+    rollback_origins = (
+        reserve_memory_entry_origins(
+            origins,
+            agent_ids=origin_agent_ids,
+            previous_memory=existing,
+            operations=plan.operations,
+        )
+        if origins is not None
+        else None
+    )
     if hash_memory_content(read_text_if_exists(memory_path)) != base_hash:
+        if rollback_origins is not None:
+            rollback_origins()
         return DeepConsolidationCommit(
             skipped_reason="MEMORY.md changed immediately before the consolidation rename"
         )
     try:
         _replace_file(memory_path, result.content)
     except PermissionError:
+        if rollback_origins is not None:
+            rollback_origins()
         return DeepConsolidationCommit(
             skipped_reason="the MEMORY.md directory blocked atomic replacement"
         )
-    return DeepConsolidationCommit(result=result)
+    return DeepConsolidationCommit(result=result, retained_preimage_keys=retained_preimage_keys)
 
 
 def _replace_file(path: Path, content: str) -> None:

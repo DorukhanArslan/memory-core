@@ -20,6 +20,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 from dataclasses import dataclass
 from functools import lru_cache
@@ -259,7 +260,9 @@ def oracle_subprocess_env(repo_path: Path) -> dict[str, str] | None:
             "symlink named 'node' (docs/lab.md › Oracle checkout)",
         )
     if node.satisfies is False:
-        source = f"{ORACLE_NODE_ENV}={node.path}" if node.from_env else f"node on PATH ({node.path})"
+        source = (
+            f"{ORACLE_NODE_ENV}={node.path}" if node.from_env else f"node on PATH ({node.path})"
+        )
         raise OracleNodeError(
             "oracle-node-unsupported",
             f"{source} is {node.version}, outside the oracle checkout's engines range "
@@ -280,8 +283,34 @@ def oracle_subprocess_env(repo_path: Path) -> dict[str, str] | None:
     return {**os.environ, "PATH": path}
 
 
+def _kill_orphaned_runners() -> None:
+    """End runner processes a timeout orphaned.
+
+    ``subprocess.run`` kills only the direct child (pnpm) on a timeout; the tsx and node below it
+    survive, reparented to init, and keep upstream's cross-process state lock, which stalls every
+    later call. A runner whose parent is init belongs to no live call, so a concurrent call is
+    never touched.
+    """
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return
+    needle = str(RUNNER_PATH)
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+            if fields[1] != "1":
+                continue
+            cmdline = (entry / "cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
+            if needle in cmdline:
+                os.kill(int(entry.name), signal.SIGKILL)
+        except (OSError, IndexError, ValueError):
+            continue
+
+
 class OpenClawOracle:
-    def __init__(self, repo_path: Path | None = None, timeout_seconds: float = 20.0):
+    def __init__(self, repo_path: Path | None = None, timeout_seconds: float = 60.0):
         self.repo_path = repo_path or resolve_oracle_repo()
         self.timeout_seconds = timeout_seconds
 
@@ -330,7 +359,13 @@ class OpenClawOracle:
         except OracleNodeError as exc:
             return self._subprocess_error(exc.code, str(exc), metadata)
         try:
-            completed = self._run_runner(self._preferred_runner_command(), body, env)
+            try:
+                completed = self._run_runner(self._preferred_runner_command(), body, env)
+            except subprocess.TimeoutExpired:
+                # Back-to-back runner processes occasionally stall on upstream's cross-process
+                # state lock (about one call in ten in a long suite, never when run alone), so a
+                # timed-out call gets one fresh attempt after its process tree is cleared.
+                completed = self._run_runner(self._preferred_runner_command(), body, env)
         except FileNotFoundError:
             try:
                 completed = self._run_runner(self._npm_pnpm_runner_command(), body, env)
@@ -363,21 +398,27 @@ class OpenClawOracle:
         if isinstance(result, dict):
             result.setdefault("metadata", metadata)
             return result
-        return self._subprocess_error("oracle-invalid-payload", "oracle result was not an object", metadata)
+        return self._subprocess_error(
+            "oracle-invalid-payload", "oracle result was not an object", metadata
+        )
 
     def _run_runner(
         self, command: list[str], body: str, env: dict[str, str] | None = None
     ) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            command,
-            input=body,
-            text=True,
-            capture_output=True,
-            cwd=self.repo_path,
-            timeout=self.timeout_seconds,
-            check=False,
-            **({"env": env} if env is not None else {}),
-        )
+        try:
+            return subprocess.run(
+                command,
+                input=body,
+                text=True,
+                capture_output=True,
+                cwd=self.repo_path,
+                timeout=self.timeout_seconds,
+                check=False,
+                **({"env": env} if env is not None else {}),
+            )
+        except subprocess.TimeoutExpired:
+            _kill_orphaned_runners()
+            raise
 
     def _preferred_runner_command(self) -> list[str]:
         if shutil.which("pnpm"):

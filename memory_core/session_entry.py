@@ -10,9 +10,11 @@ Storage (plan decision 4): upstream reads SQLite snapshots; memory-core does not
 that schema, so the host passes the transcript events (or a JSONL text, whose line ordinals
 become ``line_map`` like upstream's archive branch). Deviations, by design:
 
-- ``redact_text`` is a host hook (default: no redaction). Upstream redacts every exported text
-  with ``redactSensitiveText(text, {mode: "tools"})`` (``src/logging/redact.ts``, a 1600-line
-  pattern set plus a secret registry); that is not ported (gap R13).
+- Every exported text goes through ``redactSensitiveText(text, {mode: "tools"})`` like upstream
+  (``memory_core.redact.redact_sensitive_text``, a faithful port verified against the real
+  function). ``redact_text`` is a host extension applied to that result (for example to mask
+  host-registered secrets: the exact-value registry of ``redact.ts`` is not ported, gap R13
+  narrowed); ``apply_default_redaction=False`` turns the built-in pass off.
 - ``stripInternalRuntimeContext`` is the memory-core helper of ``replay_history`` (the
   memory-core and OpenClaw runtime identities), not upstream's full legacy-format stripper.
 - The session key classification (dreaming narrative, cron run) needs the key from the host's
@@ -51,6 +53,7 @@ from memory_core.heartbeat import (
     is_heartbeat_user_message,
     is_silent_reply_payload_text,
 )
+from memory_core.redact import redact_sensitive_text
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.session_memory import (
     _has_inter_session_user_provenance,
@@ -549,6 +552,7 @@ def build_session_entry(
     allow_record_cron_classification: bool = False,
     reset_recall_cutoff: Mapping[str, Any] | None = None,
     redact_text: Callable[[str], str] | None = None,
+    apply_default_redaction: bool = True,
     on_transcript_message: Callable[[object, int], None] | None = None,
     runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
     strip_runtime_context: Callable[[str], str] | None = None,
@@ -559,7 +563,8 @@ def build_session_entry(
     upstream's SQLite branch); ``records`` gives explicit ``(line, value)`` pairs instead (see
     :func:`parse_jsonl_records`). ``session_key`` is the key of the host's store row (it
     classifies dreaming-narrative and cron-run sessions unless the flags are given);
-    ``mtime_ms`` is the activity time used when a message has no timestamp.
+    ``mtime_ms`` is the activity time used when a message has no timestamp. Texts are redacted
+    with upstream's ``redactSensitiveText`` (tools mode) first, then with ``redact_text`` when given.
     """
     if (events is None) == (records is None):
         raise ValueError("pass events or records")
@@ -583,7 +588,12 @@ def build_session_entry(
         if generated_by_cron_run is not None
         else bool(session_key and is_cron_run_session_key(session_key))
     )
-    redact = redact_text or (lambda text: text)
+
+    def redact(text: str) -> str:
+        if apply_default_redaction:
+            text = redact_sensitive_text(text)
+        return redact_text(text) if redact_text is not None else text
+
     collected: list[str] = []
     line_map: list[int] = []
     timestamps: list[int] = []

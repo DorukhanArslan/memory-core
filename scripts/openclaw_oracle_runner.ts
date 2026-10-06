@@ -2546,8 +2546,8 @@ async function main() {
   if (payload.operation === "sessionCorpusEntry") {
     // packages/memory-host-sdk/src/host/session-files.ts buildSessionEntryInProcess over a JSONL
     // transcript file per case (the file branch, whose line map is the raw line ordinal; the SQLite
-    // branch is the same projection). Redaction is the identity (memory-core takes a host hook,
-    // not redactSensitiveText), the store classification is pinned by explicit
+    // branch is the same projection). Redaction is upstream's default, redactSensitiveText in
+    // tools mode (memory_core.redact), the store classification is pinned by explicit
     // generatedBy* flags, and the file's mtime is set to the case's `mtimeMs`. A case's
     // `fileName` decides the archive handling (cron records classify only in usage-counted
     // archives such as x.jsonl.reset.<iso>).
@@ -2578,7 +2578,6 @@ async function main() {
             onTranscriptMessage: (message: unknown, observedAt: number) =>
               observed.push([message, observedAt]),
           },
-          (text: string) => text,
         );
         cases.push(
           entry
@@ -2600,6 +2599,43 @@ async function main() {
     } finally {
       await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
     }
+  }
+
+  if (payload.operation === "redactSensitiveText") {
+    // src/logging/redact.ts redactSensitiveText(text, { mode: "tools" }), the redaction
+    // buildSessionEntry applies to every exported session text. `texts` are redacted one by one;
+    // `meta` also returns the pattern tables (redact-patterns.ts) and the \p{C}/\p{Z} ranges
+    // of this runtime for the table-equality checks.
+    process.env.OPENCLAW_LOG_LEVEL = "silent";
+    const redact = await importFromRepo(repoPath, "src/logging/redact.ts");
+    const patterns = await importFromRepo(repoPath, "src/logging/redact-patterns.ts");
+    const texts = (payload as Record<string, any>).texts ?? [];
+    const result: Record<string, unknown> = {
+      texts: texts.map((text: string) => redact.redactSensitiveText(text, { mode: "tools" })),
+    };
+    if ((payload as Record<string, any>).meta) {
+      const ranges = (re: RegExp) => {
+        const out: number[][] = [];
+        let start = -1;
+        for (let cp = 0; cp <= 0x10ffff; cp++) {
+          const hit = re.test(String.fromCodePoint(cp));
+          if (hit && start < 0) start = cp;
+          if (!hit && start >= 0) {
+            out.push([start, cp - 1]);
+            start = -1;
+          }
+        }
+        if (start >= 0) out.push([start, 0x10ffff]);
+        return out;
+      };
+      result.meta = {
+        defaultStringPatterns: [...patterns.DEFAULT_REDACT_STRING_PATTERNS],
+        bodySecretKeys: [...patterns.BODY_SECRET_KEYS],
+        unicodeC: ranges(/^\p{C}$/u),
+        unicodeZ: ranges(/^\p{Z}$/u),
+      };
+    }
+    return { ok: true, operation: payload.operation, result };
   }
 
   if (payload.operation === "sessionMemorySlug") {

@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from memory_core.project_name import DIST_NAME, DISPLAY_NAME, PACKAGE_NAME
 from memory_core.bootstrap._js import (
     JS_NON_SPACE,
     JS_SPACE,
@@ -74,7 +75,7 @@ CONSOLIDATION_SYSTEM_PROMPT = "\n".join(
 )
 
 _ACTIONS = ("added", "merged", "superseded")
-_LOGGER = logging.getLogger("memory_core.consolidation.llm")
+_LOGGER = logging.getLogger(f"{PACKAGE_NAME}.consolidation.llm")
 
 
 @dataclass(frozen=True)
@@ -291,8 +292,8 @@ def _normalize_comparable_fact(value: str) -> str:
 def _marker_re(kind: str) -> re.Pattern[str]:
     # Readers accept every known prefix (memory-core and openclaw spellings).
     names = {
-        "promotion": ("memory-core-memory-promotion:", "openclaw-memory-promotion:"),
-        "lineage": ("memory-core-memory-lineage:", "openclaw-memory-lineage:"),
+        "promotion": (f"{DIST_NAME}-memory-promotion:", "openclaw-memory-promotion:"),
+        "lineage": (f"{DIST_NAME}-memory-lineage:", "openclaw-memory-lineage:"),
     }[kind]
     alternation = "|".join(re.escape(name) for name in names)
     capture = "([^\\n]+)" if kind == "lineage" else "[^\\n]+"
@@ -435,7 +436,7 @@ def apply_memory_consolidation_plan(
     """
     marker_prefix = identity.promotion_marker_prefix
     lineage_prefix = marker_prefix.replace("promotion:", "lineage:")
-    known_prefixes = {marker_prefix, "memory-core-memory-promotion:", "openclaw-memory-promotion:"}
+    known_prefixes = {marker_prefix, f"{DIST_NAME}-memory-promotion:", "openclaw-memory-promotion:"}
 
     def marker(key: str) -> str:
         return f"<!-- {marker_prefix}{key} -->"
@@ -563,7 +564,7 @@ def consolidate_memory(
             plan = parse_consolidation_plan(text, group_candidates, max_tokens)
             if plan is None:
                 log.warning(
-                    "memory-core: consolidation produced no structured output; "
+                    f"{DISPLAY_NAME}: consolidation produced no structured output; "
                     "using append-only fallback."
                 )
                 rejected = True
@@ -576,14 +577,14 @@ def consolidate_memory(
             )
             if rejection:
                 log.warning(
-                    f"memory-core: consolidation rejected because {rejection}; "
+                    f"{DISPLAY_NAME}: consolidation rejected because {rejection}; "
                     "using append-only fallback."
                 )
                 rejected = True
                 continue
             operations.extend(plan.operations)
         except Exception as error:
-            log.warning(f"memory-core: consolidation failed ({error}); using append-only fallback.")
+            log.warning(f"{DISPLAY_NAME}: consolidation failed ({error}); using append-only fallback.")
             rejected = True
     if rejected:
         return None
@@ -598,7 +599,7 @@ def consolidate_memory(
     )
     if aggregate is None:
         log.warning(
-            "memory-core: combined consolidation plan is invalid; using append-only fallback."
+            f"{DISPLAY_NAME}: combined consolidation plan is invalid; using append-only fallback."
         )
         return None
     return plan

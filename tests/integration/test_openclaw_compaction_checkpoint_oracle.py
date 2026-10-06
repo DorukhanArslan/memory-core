@@ -3571,3 +3571,484 @@ def test_real_openclaw_oracle_stable_stringify_matches_python(oracle):
     cases = [{"fn": "stable", "value": value} for value in values]
     assert len(cases) >= 400
     _compare_inline(oracle, cases)
+
+
+# --- recordResponsesContextUsage and normalizeAssistantReplayInput(fromResponse) ---------------
+# ``recordResponsesContextUsage`` is the producer of the measured-usage state that
+# ``resolveResponsesContextUsageBoundary`` consumes. The oracle runs it over generated target
+# messages, wire requests (with and without a compaction item, a continuation id, instructions)
+# and outputs; the saved ``openclawResponsesInputReplay`` must be equal, hashes included, which
+# also runs the converter's replay output and ``normalizeAssistantReplayInput(.., true)`` over
+# real tool-call arguments. The private normalizer is reached through a sibling copy of the
+# continuation module and compared on its own with generated items and argument texts.
+
+_RECORD_MODELS = ("responses", "azure", "transport", "responses_no_url")
+_ARG_TEXTS = [
+    '{"a":1}',
+    "{}",
+    '{ "a" : 1 }',
+    '{"a":9007199254740993}',
+    '{"a":-9007199254740993}',
+    '{"a":9007199254740991}',
+    '{"a":9007199254740992}',
+    '{"a":12345678901234567890}',
+    '{"a":1234567890123456}',
+    '{"a":1.5e3,"b":1E2,"c":-0,"d":-0.0,"e":1e21,"f":1e-7,"g":0.1}',
+    '{"a":[9007199254740993,{"b":18014398509481984}]}',
+    '{"a":"9007199254740993"}',
+    '{"a":9007199254740993.5}',
+    '{"a":1,"a":2}',
+    '{"b":1,"a":2,"10":3,"9":4}',
+    "[1,2]",
+    "5",
+    "null",
+    '"x"',
+    "",
+    "not json",
+    '{"a":NaN}',
+    '{"a":Infinity}',
+    '{"a":1e999}',
+    '{"a":-1e999}',
+    '{"a":"\\ud83d"}',
+    '{"a":"\\u00e9\\u0000\\n\\t"}',
+    '{"a":1,}',
+    '{"a":01}',
+    '{"a":.5}',
+    '{"a":1.}',
+    '{"a":-}',
+    '  {"a":1}  ',
+    '{"a":true,"b":null,"c":false}',
+    '{"k\\u00e9y":"v","\\ud83d\\ude00":1}',
+    '{"a":"\\"9007199254740993\\""}',
+    '{"a":{"b":{"c":[1,2,{"d":9007199254740993}]}}}',
+    '{"a":-9007199254740992}',
+    '{"a":123456789012345678901234567890.5}',
+    '{"a":1e5,"b":1E+5,"c":1e-5}',
+    '{"a":9007199254740993,"b":"x9007199254740993"}',
+    '{"a":0.30000000000000004}',
+    '{"a":100000000000000000000}',
+    '{"a":4.9e-324}',
+    '﻿{"a":1}',
+    '{"a":1}{"b":2}',
+    '{"a":[]}',
+    '{"":1}',
+]
+
+
+def _arg_value(rng: random.Random) -> Any:
+    return rng.choice(
+        [
+            *_ARG_TEXTS,
+            {"a": 1},
+            {},
+            {"b": [1, 2, {"c": None}], "n": 1.5, "m": 1e21, "k": 100.0, "t": 2**53, "u": 1e20},
+            {"10": 1, "9": 2, "a": 3},
+            [1, 2],
+            5,
+            None,
+            True,
+        ]
+    )
+
+
+def _normalize_items(rng: random.Random, count: int) -> list[Any]:
+    def part() -> Any:
+        return rng.choice(
+            [
+                {"type": "output_text", "text": "a", "annotations": [{"x": 1}], "logprobs": []},
+                {"type": "output_text", "text": "b", "annotations": [], "other": 1},
+                {"type": "output_text", "text": "c"},
+                {"type": "refusal", "refusal": "no", "annotations": []},
+                {"type": "input_text", "text": "q", "annotations": [1]},
+                "plain",
+                None,
+                5,
+            ]
+        )
+
+    def item() -> Any:
+        kind = rng.random()
+        if kind < 0.3:
+            call: dict[str, Any] = {
+                "type": "function_call",
+                "id": "fc_1",
+                "status": "completed",
+                "call_id": "call_1",
+                "name": "read",
+            }
+            if rng.random() < 0.9:
+                call["arguments"] = _arg_value(rng)
+            if rng.random() < 0.3:
+                del call["id"]
+            return call
+        if kind < 0.5:
+            message: dict[str, Any] = {
+                "type": "message",
+                "role": rng.choice(["assistant", "assistant", "user", "developer"]),
+                "id": "msg_1",
+                "status": "completed",
+                "content": rng.choice(
+                    [[part() for _ in range(rng.randrange(0, 4))], "text", None, {"a": 1}]
+                ),
+            }
+            return message
+        if kind < 0.6:
+            return {
+                "type": "reasoning",
+                "id": "rs_1",
+                "status": "completed",
+                "summary": [],
+                "encrypted_content": "E",
+            }
+        if kind < 0.7:
+            return {"type": "function_call_output", "call_id": "call_1", "output": "o"}
+        if kind < 0.78:
+            return {"type": "compaction", "encrypted_content": "ENC", "id": "cmp_1"}
+        return rng.choice([None, "text", 5, [1, 2], {"role": "user"}, {}, True])
+
+    return [item() for _ in range(count)]
+
+
+def test_real_openclaw_oracle_normalize_assistant_replay_input_matches_python(oracle):
+    rng = random.Random(4242)
+    cases: list[dict[str, Any]] = []
+    for index in range(1600):
+        cases.append(
+            {
+                "fn": "normalizeReplayInput",
+                "items": _normalize_items(rng, rng.randrange(0, 6)),
+                "fromResponse": index % 2 == 0,
+            }
+        )
+    for text in _ARG_TEXTS:
+        for from_response in (True, False):
+            cases.append(
+                {
+                    "fn": "normalizeReplayInput",
+                    "items": [{"type": "function_call", "id": "x", "arguments": text}],
+                    "fromResponse": from_response,
+                }
+            )
+    rows = _run_op(oracle, "compactionCheckpoint", cases)
+    python_rows = []
+    for case in cases:
+        try:
+            value = cr.normalize_assistant_replay_input(
+                _clean(case["items"]), case["fromResponse"]
+            )
+            error = None
+        except Exception as exc:  # noqa: BLE001 - the oracle reports the class name
+            value, error = None, type(exc).__name__
+        python_rows.append({"value": value, "error": error})
+    assert _first_diffs(cases, rows, python_rows) == []
+    rewritten = [
+        case
+        for case, row in zip(cases, rows, strict=True)
+        if case["fromResponse"]
+        and row["error"] is None
+        and any(
+            isinstance(a, dict)
+            and a.get("type") == "function_call"
+            and isinstance(a.get("arguments"), str)
+            and isinstance(b, dict)
+            and b.get("arguments") != a["arguments"]
+            for a, b in zip(case["items"], row["value"], strict=True)
+        )
+    ]
+    assert len(rewritten) > 100
+
+
+def test_real_openclaw_oracle_prefix_fingerprint_matches_python(oracle):
+    rng = random.Random(777)
+    cases: list[dict[str, Any]] = []
+    for index in range(1200):
+        case: dict[str, Any] = {
+            "fn": "prefixFingerprint",
+            "input": _normalize_items(rng, rng.randrange(0, 5)),
+        }
+        if index % 3:
+            case["output"] = _normalize_items(rng, rng.randrange(0, 4))
+        cases.append(case)
+    rows = _run_op(oracle, "compactionCheckpoint", cases)
+    python_rows = []
+    for case in cases:
+        try:
+            value = cr.responses_continuation_prefix_fingerprint(
+                _clean(case["input"]), _clean(case.get("output", []))
+            )
+            error = None
+        except Exception as exc:  # noqa: BLE001
+            value, error = None, type(exc).__name__
+        python_rows.append({"value": value, "error": error})
+    assert _first_diffs(cases, rows, python_rows) == []
+    assert len({row["value"] for row in rows}) > 800
+
+
+def _record_message(rng: random.Random, model: dict[str, Any]) -> dict[str, Any]:
+    content: list[Any] = []
+    for _ in range(rng.randrange(0, 4)):
+        roll = rng.random()
+        if roll < 0.4:
+            block: dict[str, Any] = {"type": "text", "text": rng.choice(["A", "answer", "é\U0001f600"])}
+            if rng.random() < 0.3:
+                block["textSignature"] = json.dumps({"v": 1, "id": "msg_1", "phase": "final_answer"})
+            content.append(block)
+        elif roll < 0.6:
+            content.append(
+                {
+                    "type": "thinking",
+                    "thinking": "t",
+                    "thinkingSignature": json.dumps(
+                        {
+                            "type": "reasoning",
+                            "id": rng.choice(["rs_1", "rs_2"]),
+                            "summary": [],
+                            "encrypted_content": rng.choice(["ENC", "ENC2", ""]),
+                            "status": "completed",
+                        }
+                    ),
+                }
+            )
+        else:
+            content.append(
+                {
+                    "type": "toolCall",
+                    "id": rng.choice(["call_1|fc_1", "call_2", "call_3|fc_3"]),
+                    "name": "read",
+                    "arguments": rng.choice(
+                        [
+                            {"p": 1},
+                            {},
+                            {"n": 1.5, "m": 1e21, "k": 100.0, "t": 2**53, "u": 1e20},
+                            {"10": 1, "9": 2, "a": [1, {"b": None}]},
+                            "raw",
+                            [1],
+                            None,
+                        ]
+                    ),
+                }
+            )
+    message = _wire_assistant(model, content)
+    usage_roll = rng.random()
+    if usage_roll < 0.62:
+        state = {"state": "available", "totalTokens": rng.choice([100, 12345])}
+        if rng.random() < 0.8:
+            state["promptTokens"] = rng.choice([90, 0, 5])
+        elif rng.random() < 0.3:
+            state["promptTokens"] = None
+        message["usage"]["contextUsage"] = state
+    elif usage_roll < 0.7:
+        message["usage"]["contextUsage"] = {
+            "state": "available",
+            "totalTokens": rng.choice([0, -5, 1.5, "100", None, 2**53, 2**53 - 1]),
+            "promptTokens": 1,
+        }
+    elif usage_roll < 0.8:
+        message["usage"]["contextUsage"] = {"state": rng.choice(["unavailable", "stale", 5, None])}
+    elif usage_roll < 0.9:
+        message["usage"]["contextUsage"] = rng.choice([None, "x", 5, [], {}])
+    elif usage_roll < 0.95:
+        message["usage"].pop("contextUsage", None)
+    else:
+        del message["usage"]
+    roll = rng.random()
+    if roll < 0.12:
+        message["stopReason"] = rng.choice(["error", "aborted"])
+    elif roll < 0.2:
+        message["stopReason"] = rng.choice(["length", "toolUse", "other", None])
+    if rng.random() < 0.12:
+        message["providerReplay"] = rng.choice([{"v": 1}, {}, 0, "", None, "x"])
+    roll = rng.random()
+    if roll < 0.15:
+        message["openclawResponsesInputReplay"] = rng.choice(
+            [
+                {},
+                {"afterResponseId": "r1"},
+                {"contextUsage": {"old": 1}, "afterResponseId": "r2"},
+                "string",
+                [],
+                None,
+                5,
+            ]
+        )
+    return message
+
+
+def _record_request(rng: random.Random) -> dict[str, Any]:
+    def item(kind: float) -> Any:
+        if kind < 0.2:
+            return {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": rng.choice(["q", "é\U0001f600"])}],
+            }
+        if kind < 0.3:
+            return {"type": "message", "role": rng.choice(["developer", "system"]), "content": "sys"}
+        if kind < 0.45:
+            return {
+                "type": "reasoning",
+                "id": "rs_1",
+                "status": "completed",
+                "summary": [],
+                "encrypted_content": rng.choice(["ENC", "ENC2"]),
+            }
+        if kind < 0.55:
+            return {
+                "type": "function_call",
+                "id": "fc_1",
+                "call_id": "call_1",
+                "name": "read",
+                "arguments": rng.choice(['{"a":1}', '{"a":9007199254740993}', "{}", "bad"]),
+            }
+        if kind < 0.65:
+            return {"type": "function_call_output", "call_id": "call_1", "output": "o"}
+        if kind < 0.75:
+            return {
+                "type": "message",
+                "role": "assistant",
+                "id": "msg_1",
+                "status": "completed",
+                "content": [{"type": "output_text", "text": "a", "annotations": [{"k": 1}]}],
+            }
+        return rng.choice(["text", None, 5, {}])
+
+    items = [item(rng.random()) for _ in range(rng.randrange(0, 5))]
+    if rng.random() < 0.85:
+        items.insert(
+            rng.randrange(0, len(items) + 1), {"type": "compaction", "encrypted_content": "ENC"}
+        )
+    if rng.random() < 0.45 and items:
+        items.insert(
+            0, {"type": "message", "role": rng.choice(["developer", "system", "user"]), "content": "s"}
+        )
+    request: dict[str, Any] = {"input": items}
+    roll = rng.random()
+    if roll < 0.04:
+        request["input"] = rng.choice(["text", None, {"a": 1}])
+    if rng.random() < 0.3:
+        request["instructions"] = rng.choice(["be brief", None, ""])
+    if rng.random() < 0.1:
+        request["previous_response_id"] = rng.choice(["resp_1", "", None])
+    if rng.random() < 0.3:
+        request["model"] = "x"
+    return request
+
+
+def _record_output(rng: random.Random) -> Any:
+    roll = rng.random()
+    if roll < 0.05:
+        return rng.choice([None, "x", {"a": 1}])
+    if roll < 0.12:
+        return [{"type": "compaction", "encrypted_content": "N"}]
+    return rng.choice(
+        [
+            [],
+            [{"type": "message", "role": "assistant", "content": []}],
+            [{"type": "function_call", "call_id": "c", "name": "n", "arguments": "{}"}],
+            [None, "x", 5],
+        ]
+    )
+
+
+def _record_cases(seed: int, count: int) -> list[dict[str, Any]]:
+    rng = random.Random(seed)
+    cases = []
+    for _ in range(count):
+        model = MODELS[rng.choice(_RECORD_MODELS)]
+        identity = IDENTS[rng.choice(["none", "session", "both", "unicode"])]
+        cases.append(
+            {
+                "fn": "recordContextUsage",
+                "messages": [_wire_user("q"), _record_message(rng, model)],
+                "target": 1,
+                "model": model,
+                "identity": identity,
+                "request": _record_request(rng),
+                "output": _record_output(rng),
+                "projection": rng.choice(["transport", "provider"]),
+            }
+        )
+    return cases
+
+
+def _python_record(case: dict[str, Any]) -> dict[str, Any]:
+    messages = _clean(case["messages"])
+    target = messages[case["target"]]
+    try:
+        cr.record_responses_context_usage(
+            target,
+            _py_model(case["model"]),
+            _py_identity(case["identity"]),
+            _clean(case["request"]),
+            _clean(case["output"]),
+            case["projection"],
+        )
+        value = _clean(target.get("openclawResponsesInputReplay"))
+        error = None
+    except Exception as exc:  # noqa: BLE001 - the oracle reports the class name
+        value, error = None, type(exc).__name__
+    return {"value": value, "error": error}
+
+
+def test_real_openclaw_oracle_record_responses_context_usage_matches_python(oracle):
+    cases = _record_cases(515, 3000)
+    rows = _run_op(oracle, "compactionCheckpoint", cases)
+    python_rows = [_python_record(case) for case in cases]
+    assert _first_diffs(cases, rows, python_rows) == []
+    recorded = [
+        row
+        for row in rows
+        if row["error"] is None
+        and isinstance(row["value"], dict)
+        and isinstance(row["value"].get("contextUsage"), dict)
+        and "prefixHash" in row["value"]["contextUsage"]
+    ]
+    skipped = [row for row in rows if row["error"] is None and row not in recorded]
+    assert len(recorded) > 500
+    assert len(skipped) > 500
+    assert {row["error"] for row in rows} <= {None, "TypeError"}
+    assert len({row["value"]["contextUsage"]["prefixHash"] for row in recorded}) > 200
+    states = [row["value"]["contextUsage"] for row in recorded]
+    assert {state["includeSystemPrompt"] for state in states} == {True, False}
+    assert {state["projection"] for state in states} == {"transport", "provider"}
+
+
+def test_record_responses_context_usage_gates_and_state_shape():
+    from memory_core import responses_converter as rc
+
+    model = MODELS["responses"]
+    identity = cr.ReplayIdentity("s1", "a1")
+    user = _wire_user("q")
+    target = _wire_assistant(model, [{"type": "text", "text": "answer"}])
+    target["usage"]["contextUsage"] = {"state": "available", "promptTokens": 90, "totalTokens": 100}
+    py_model = _py_model(model)
+    before = rc.convert_responses_messages(
+        py_model, [user], None, session_id="s1", auth_profile_id="a1", include_system_prompt=False
+    )
+    request = {"input": [{"type": "compaction", "encrypted_content": "E"}, *before]}
+    cr.record_responses_context_usage(target, py_model, identity, request, [], "transport")
+    state = target["openclawResponsesInputReplay"]["contextUsage"]
+    assert state["prefixLength"] == 2 + 1
+    assert (state["promptTokens"], state["totalTokens"], state["projection"]) == (90, 100, "transport")
+    assert state["includeSystemPrompt"] is False
+    assert cr.is_openai_responses_replay_context(state)
+    # A continuation, a failed turn, a compaction in the output and a request without a
+    # compaction item record nothing.
+    for mutate in (
+        lambda m, r: r.update(previous_response_id="resp_1"),
+        lambda m, r: m.update(stopReason="error"),
+        lambda m, r: m.update(providerReplay={"v": 1}),
+        lambda m, r: r.update(input=before),
+    ):
+        fresh = copy.deepcopy(target)
+        fresh.pop("openclawResponsesInputReplay")
+        req = copy.deepcopy(request)
+        mutate(fresh, req)
+        cr.record_responses_context_usage(fresh, py_model, identity, req, [], "transport")
+        assert "openclawResponsesInputReplay" not in fresh
+    fresh = copy.deepcopy(target)
+    fresh.pop("openclawResponsesInputReplay")
+    cr.record_responses_context_usage(
+        fresh, py_model, identity, request, [{"type": "compaction"}], "transport"
+    )
+    assert "openclawResponsesInputReplay" not in fresh

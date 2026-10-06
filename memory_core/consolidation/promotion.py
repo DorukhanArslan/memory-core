@@ -23,15 +23,27 @@ one lock, where upstream's CLI passes ranked candidates to a separate apply.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import re
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from memory_core.bootstrap._js import locale_sort_key, js_to_well_formed, js_trim_end, utf16_len, utf16_slice
+from memory_core.bootstrap._js import (
+    js_json_stringify,
+    js_to_well_formed,
+    js_trim_end,
+    js_utf8_encode,
+    locale_sort_key,
+    utf16_len,
+    utf16_slice,
+)
 from memory_core.config import MemoryConfig
 from memory_core.project_name import DISPLAY_NAME
 from memory_core.index.cjk_chars import truncate_utf16_safe
@@ -48,11 +60,18 @@ from memory_core.consolidation._util import (
     to_int,
     unified_diff,
 )
+from memory_core.consolidation.artifacts import read_memory_preimages
+from memory_core.consolidation.file_lock import (
+    MEMORY_WRITE_LOCK_OPTIONS,
+    resolve_memory_promotion_lock_target,
+    with_file_lock,
+)
 from memory_core.consolidation.markers import (
     extract_promotion_markers,
     format_promotion_marker,
     line_range_overlaps_dreaming_fence,
 )
+from memory_core.consolidation.origins import MemoryEntryOriginLedger, prune_memory_entry_origins
 from memory_core.consolidation.policy import (
     DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
     DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT,
@@ -63,10 +82,13 @@ from memory_core.consolidation.policy import (
 )
 from memory_core.consolidation.recall import (
     is_contaminated_dreaming_snippet,
+    is_short_term_session_corpus_path,
     is_workspace_contained_path,
+    normalize_memory_path,
 )
 from memory_core.consolidation.store import (
     acquire_short_term_promotion_lock,
+    hold_workspace_lock_marker,
     phase_signal_store_path,
     read_phase_signal_store,
     read_recall_store,
@@ -133,6 +155,73 @@ class PromotionCandidate:
     claim_hash: str | None = None
     project_key: str | None = None
     provenance: dict[str, Any] | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        """The candidate in upstream's ``PromotionCandidate`` JSON shape (camelCase, optional keys omitted)."""
+        out: dict[str, Any] = {
+            "key": self.key,
+            "path": self.path,
+            "startLine": self.start_line,
+            "endLine": self.end_line,
+            "source": "memory",
+            "snippet": self.snippet,
+            "recallCount": self.recall_count,
+            "dailyCount": self.daily_count,
+            "groundedCount": self.grounded_count,
+            "signalCount": self.signal_count,
+            "avgScore": self.avg_score,
+            "maxScore": self.max_score,
+            "uniqueQueries": self.unique_queries,
+        }
+        if self.claim_hash:
+            out["claimHash"] = self.claim_hash
+        if self.project_key:
+            out["projectKey"] = self.project_key
+        if self.promoted_at:
+            out["promotedAt"] = self.promoted_at
+        out.update(
+            {
+                "firstRecalledAt": self.first_recalled_at,
+                "lastRecalledAt": self.last_recalled_at,
+                "ageDays": self.age_days,
+                "score": self.score,
+                "recallDays": list(self.recall_days),
+                "conceptTags": list(self.concept_tags),
+                "components": dict(self.components),
+            }
+        )
+        if self.provenance is not None:
+            out["provenance"] = self.provenance
+        return out
+
+    @classmethod
+    def from_json(cls, raw: dict[str, Any]) -> PromotionCandidate:
+        """Read a candidate ranked elsewhere (the host's own ranking, or upstream's ``rankShortTermPromotionCandidates``)."""
+        return cls(
+            key=str(raw["key"]),
+            path=str(raw["path"]),
+            start_line=int(raw["startLine"]),
+            end_line=int(raw["endLine"]),
+            snippet=str(raw.get("snippet") or ""),
+            recall_count=int(raw.get("recallCount") or 0),
+            daily_count=int(raw.get("dailyCount") or 0),
+            grounded_count=int(raw.get("groundedCount") or 0),
+            signal_count=int(raw.get("signalCount") or 0),
+            avg_score=float(raw.get("avgScore") or 0),
+            max_score=float(raw.get("maxScore") or 0),
+            unique_queries=int(raw.get("uniqueQueries") or 0),
+            score=float(raw.get("score") or 0),
+            first_recalled_at=str(raw.get("firstRecalledAt") or ""),
+            last_recalled_at=str(raw.get("lastRecalledAt") or ""),
+            promoted_at=raw.get("promotedAt") or None,
+            age_days=float(raw.get("ageDays") or 0),
+            concept_tags=tuple(raw.get("conceptTags") or ()),
+            components={k: float(v) for k, v in (raw.get("components") or {}).items()},
+            recall_days=tuple(raw.get("recallDays") or ()),
+            claim_hash=raw.get("claimHash") or None,
+            project_key=raw.get("projectKey") or None,
+            provenance=raw.get("provenance") if isinstance(raw.get("provenance"), dict) else None,
+        )
 
 
 @dataclass(frozen=True)
@@ -209,6 +298,10 @@ class MemoryPromotionRun:
     # "short-term promotion consolidated"), or the reason a planned rewrite was skipped.
     consolidation: MemoryConsolidationResult | None = None
     consolidation_skipped_reason: str | None = None
+    # Every ranked candidate that did not reach MEMORY.md, with upstream's category and reason
+    # (``rejectedCandidates``). ``host_event`` is the ``memory.promotion.applied`` event of the run.
+    rejected_candidates: tuple[PromotionRejection, ...] = ()
+    host_event: dict[str, Any] | None = None
 
 
 def run_short_term_promotion(
@@ -228,55 +321,112 @@ def run_short_term_promotion(
     max_prior_entry_loss_fraction: float = DEFAULT_DEEP_DREAMING_MAX_PRIOR_ENTRY_LOSS_FRACTION,
     identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
     consolidation: DeepConsolidation | None = None,
+    candidates: Sequence[PromotionCandidate] | None = None,
+    agent_id: str | None = None,
+    workspace_agent_ids: Sequence[str] = (),
+    origins: MemoryEntryOriginLedger | None = None,
+    state_dir: str | Path | None = None,
+    on_event: Callable[[dict[str, Any]], None] | None = None,
+    lock_observer: Callable[[str, Path], None] | None = None,
 ) -> MemoryPromotionRun:
     """Promote the top gated recall entries into ``MEMORY.md`` and reindex.
 
-    Under the workspace promotion lock: evaluate every live entry, keep the
-    ``limit`` best that pass the gates, rehydrate each against its current
-    daily note (entries whose text is gone, or now inside a dreaming fence,
-    are dropped), skip keys that already have a promotion marker
-    (reconciled), append one dated section for the rest (dated in
-    ``timezone``), compact older promotion sections to fit
-    ``memory_file_max_chars``, mark every rehydrated entry ``promotedAt`` and
-    reindex ``store`` when MEMORY.md changed. A held lock returns a
-    ``"promotion locked"`` no-op result.
+    Port of ``rankShortTermPromotionCandidates`` plus ``applyShortTermPromotions``: ranks (or takes
+    the host's ``candidates``, upstream's CLI path), applies the apply-stage gates and reports every
+    candidate that did not reach MEMORY.md in ``rejected_candidates`` with upstream's category
+    (``origin``, ``consolidation origin/session``, ``contamination``, ``already promoted``,
+    ``score threshold``, ``signal threshold``, ``query threshold``, ``age threshold``,
+    ``selection limit``, ``source rehydration``, ``source changed``, ``memory budget``,
+    ``candidate changed``). Each selected candidate is rehydrated against its current daily note
+    (entries whose text is gone, or now inside a dreaming fence, are rejected), keys that already
+    have a promotion marker are reconciled, one dated section is appended for the rest (dated in
+    ``timezone``), older promotion sections are compacted to fit ``memory_file_max_chars``, every
+    committed entry is marked ``promotedAt`` and ``store`` is reindexed when MEMORY.md changed.
+
+    Locks, in upstream's order: the sidecar file lock
+    ``<state_dir>/locks/memory-promotion-<sha256 of the workspace path>.lock``
+    (:mod:`memory_core.consolidation.file_lock`; ``state_dir`` defaults to
+    ``<workspace>/memory/.dreams``) and inside it the workspace promotion lock, which the DREAMS.md
+    writers re-enter. A held workspace lock returns a ``"promotion locked"`` no-op result (upstream
+    waits 10 s and throws). A held or stale file lock raises
+    :class:`~memory_core.consolidation.file_lock.FileLockError`.
+
+    ``on_event`` receives the stored form of the ``memory.promotion.applied`` host event
+    (:func:`build_promotion_applied_event`) after the locks are released, once per run that
+    rehydrated a candidate; nothing is sent over a network. With ``agent_id`` and an ``origins``
+    ledger, consolidation reserves the origins of merged entries and the commit prunes the origins
+    nothing retains any more (``workspace_agent_ids`` are the sibling agents of the workspace).
 
     New markers use ``identity.promotion_marker_prefix`` (the neutral
     ``memory-core-memory-promotion:`` by default; pass
     ``OPENCLAW_COMPAT_RUNTIME_IDENTITY`` for upstream's bytes); existing
     markers of either prefix reconcile.
 
-    ``consolidation`` (a :class:`~memory_core.consolidation.llm_consolidation.DeepConsolidation`
-    with ``options.enabled`` and a host model) turns on upstream's deep-phase orchestration:
-    candidates that fail the consolidation origin/session filter are rejected, the host's model
-    plans a MEMORY.md rewrite for the candidates to append *before* the lock is taken, and under
-    the lock the plan is re-checked (same candidates, MEMORY.md unchanged), applied, preimaged
+    ``consolidation`` (a :class:`~memory_core.consolidation.llm_consolidation.DeepConsolidation`)
+    stands for upstream's ``options.consolidation``: any object turns on the consolidation
+    origin/session filter and the lock-time candidate rules; with ``options.enabled`` and a host
+    model the model also plans a MEMORY.md rewrite *before* the locks are taken, and under the
+    locks the plan is re-checked (same candidates, MEMORY.md unchanged), applied, preimaged
     (``memory/.dreams/consolidation-preimages.json``), committed and summarized in DREAMS.md. Any
     failed step falls back to the deterministic append below, so no eligible candidate is lost.
-    Off (the default), none of this runs.
     """
     from memory_core.consolidation.llm_consolidation import plan_deep_consolidation
 
     active = consolidation if consolidation is not None and consolidation.active else None
+    gates: dict[str, Any] = {
+        "limit": limit,
+        "min_score": min_score,
+        "min_recall_count": min_recall_count,
+        "min_unique_queries": min_unique_queries,
+        "max_age_days": max_age_days,
+    }
+    ranked = (
+        list(candidates)
+        if candidates is not None
+        else rank_short_term_promotion_candidates(
+            config=config,
+            now_ms=now_ms,
+            recency_half_life_days=recency_half_life_days,
+            **gates,
+        )
+    )
+    evaluations = evaluate_short_term_promotion_candidates(
+        config=config,
+        now_ms=now_ms,
+        min_score=min_score,
+        min_recall_count=min_recall_count,
+        min_unique_queries=min_unique_queries,
+        max_age_days=max_age_days,
+        recency_half_life_days=recency_half_life_days,
+    )
+    plan = _plan_apply_stage(
+        config=config,
+        ranked=ranked,
+        now_ms=now_ms,
+        consolidation=consolidation is not None,
+        **gates,
+    )
     preplan: _PrePlan | None = None
     if active is not None:
         preplan = _plan_before_lock(
             config=config,
             consolidation=active,
+            plan=plan,
             now_ms=now_ms,
-            limit=limit,
-            min_score=min_score,
-            min_recall_count=min_recall_count,
-            min_unique_queries=min_unique_queries,
-            max_age_days=max_age_days,
-            recency_half_life_days=recency_half_life_days,
             memory_file_max_chars=memory_file_max_chars,
             max_promoted_snippet_tokens=max_promoted_snippet_tokens,
             max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
             identity=identity,
             plan_fn=plan_deep_consolidation,
         )
-    with acquire_short_term_promotion_lock(config=config, now_ms=now_ms) as lock:
+    lock_target = resolve_memory_promotion_lock_target(
+        state_dir if state_dir is not None else Path(config.workspace_dir) / "memory" / ".dreams",
+        config.workspace_dir,
+    )
+    with (
+        with_file_lock(lock_target, MEMORY_WRITE_LOCK_OPTIONS, observer=lock_observer),
+        acquire_short_term_promotion_lock(config=config, now_ms=now_ms) as lock,
+    ):
         if not lock.acquired:
             return MemoryPromotionRun(
                 target=PROMOTION_TARGET,
@@ -292,24 +442,44 @@ def run_short_term_promotion(
                 chunks=store.count_chunks(),
                 evaluated_candidates=[],
             )
-        return _run_short_term_promotion_unlocked(
-            config=config,
-            store=store,
+        with hold_workspace_lock_marker(Path(config.workspace_dir)):
+            run, commit = _commit_promotion(
+                config=config,
+                store=store,
+                now_ms=now_ms,
+                timezone=timezone,
+                memory_file_max_chars=memory_file_max_chars,
+                max_promoted_snippet_tokens=max_promoted_snippet_tokens,
+                max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
+                identity=identity,
+                consolidation=consolidation,
+                plan=plan,
+                preplan=preplan,
+                ranked=ranked,
+                evaluations=evaluations,
+                agent_id=agent_id,
+                origin_agent_ids=_origin_agent_ids(agent_id, workspace_agent_ids),
+                origins=origins,
+            )
+    if commit is not None and commit.result is None and commit.skipped_reason and consolidation is not None:
+        from memory_core.consolidation.llm_consolidation import record_deep_consolidation_history
+
+        # Upstream writes the "rewrite skipped" note after releasing both locks.
+        record_deep_consolidation_history(consolidation, config.workspace_dir, commit, now_ms=now_ms)
+    if plan.rehydrated:
+        event = build_promotion_applied_event(
+            memory_path=str(Path(config.workspace_dir) / PROMOTION_TARGET),
+            applied_candidates=run.applied_candidates,
             now_ms=now_ms,
-            timezone=timezone,
-            limit=limit,
-            min_score=min_score,
-            min_recall_count=min_recall_count,
-            min_unique_queries=min_unique_queries,
-            max_age_days=max_age_days,
-            recency_half_life_days=recency_half_life_days,
-            memory_file_max_chars=memory_file_max_chars,
-            max_promoted_snippet_tokens=max_promoted_snippet_tokens,
-            max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
-            identity=identity,
-            consolidation=active,
-            preplan=preplan,
         )
+        run = replace(run, host_event=event)
+        if on_event is not None:
+            on_event(event)
+    return run
+
+
+def _origin_agent_ids(agent_id: str | None, workspace_agent_ids: Sequence[str]) -> list[str]:
+    return list(dict.fromkeys([agent_id, *workspace_agent_ids])) if agent_id else []
 
 
 @dataclass(frozen=True)
@@ -321,70 +491,246 @@ class _PrePlan:
     fingerprints: dict[str, str]
 
 
-def _select_promotion_candidates(
+@dataclass
+class _ApplyPlan:
+    """What the pre-lock half of ``applyShortTermPromotions`` decided."""
+
+    current: list[PromotionCandidate]
+    rejections: dict[str, tuple[PromotionRejectionCategory, str]]
+    rehydrated: list[PromotionCandidate]
+    store_fingerprints: dict[str, str]
+    source_fingerprints: dict[str, str]
+
+    def reject(self, key: str, category: PromotionRejectionCategory, reason: str) -> None:
+        self.rejections[key] = (category, reason)
+
+    def describe(self, candidate: PromotionCandidate) -> PromotionRejection:
+        # Late revalidation has several causes; no more specific gate is attributed.
+        category, reason = self.rejections.get(
+            candidate.key, ("candidate changed", "candidate changed during apply")
+        )
+        return PromotionRejection(candidate=candidate, reason=reason, category=category)
+
+
+def is_promotion_origin_blocked(provenance: dict[str, Any] | None) -> bool:
+    """``isPromotionOriginBlocked``: untrusted and system origins never promote on any path."""
+    return isinstance(provenance, dict) and provenance.get("originClass") in ("untrusted", "system")
+
+
+def _js_number_text(value: float) -> str:
+    """``String(value)`` of a finite JavaScript number, for the gate values in rejection reasons."""
+    if float(value).is_integer() and abs(value) < 1e21:
+        return str(int(value))
+    return format(Decimal(repr(float(value))), "f")
+
+
+def _to_finite_score(value: Any, fallback: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    return number if math.isfinite(number) and 0 <= number <= 1 else fallback
+
+
+def _to_finite_non_negative_int(value: Any, fallback: int) -> int:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    if not math.isfinite(number):
+        return fallback
+    floored = math.floor(number)
+    return fallback if floored < 0 else floored
+
+
+def _with_authoritative_provenance(
+    candidate: PromotionCandidate, provenance: dict[str, Any] | None
+) -> PromotionCandidate:
+    if is_promotion_origin_blocked(candidate.provenance):
+        return candidate
+    return replace(candidate, provenance=provenance if provenance else None)
+
+
+def _readable_store_entries(store: dict[str, Any]) -> dict[str, Any]:
+    """The recall entries upstream's ``readStore`` keeps: it drops rows without a memory source or a
+    path and line range, and rows whose snippet is pipeline scaffolding."""
+    kept: dict[str, Any] = {}
+    for key, entry in store["entries"].items():
+        if not isinstance(entry, dict):
+            continue
+        path = normalize_memory_path(str(entry.get("path") or ""))
+        lines_ok = all(
+            isinstance(entry.get(name), int | float)
+            and not isinstance(entry.get(name), bool)
+            and float(entry[name]).is_integer()
+            for name in ("startLine", "endLine")
+        )
+        if not path or not lines_ok or entry.get("source") != "memory":
+            continue
+        snippet = normalize_snippet(str(entry.get("snippet") or ""))
+        if snippet and is_contaminated_dreaming_snippet(
+            snippet, allow_transcript_turn_snippet=is_short_term_session_corpus_path(path)
+        ):
+            continue
+        kept[key] = entry
+    return kept
+
+
+def _store_entry_fingerprint(entry: Any) -> str:
+    return json.dumps(entry if isinstance(entry, dict) else None, sort_keys=True, default=str)
+
+
+def _promotion_source_fingerprint(workspace_dir: Path, candidate: PromotionCandidate) -> str:
+    for source_path in _resolve_short_term_source_path_candidates(workspace_dir, candidate.path):
+        try:
+            content = source_path.read_bytes()
+        except FileNotFoundError:
+            continue
+        return hashlib.sha256(content).hexdigest()
+    return "missing"
+
+
+def _plan_apply_stage(
     *,
     config: MemoryConfig,
+    ranked: Sequence[PromotionCandidate],
     now_ms: int,
+    consolidation: bool,
     limit: int,
     min_score: float,
     min_recall_count: int,
     min_unique_queries: int,
     max_age_days: int,
-    recency_half_life_days: float,
-    consolidation_filter: bool,
-) -> tuple[list[PromotionEvaluation], list[PromotionCandidate], list[PromotionCandidate]]:
-    """Evaluate, gate (plus the consolidation origin/session filter), limit and rehydrate."""
-    evaluations = evaluate_short_term_promotion_candidates(
-        config=config,
-        now_ms=now_ms,
-        min_score=min_score,
-        min_recall_count=min_recall_count,
-        min_unique_queries=min_unique_queries,
-        max_age_days=max_age_days,
-        recency_half_life_days=recency_half_life_days,
-    )
-    eligible = [_evaluation_to_candidate(item) for item in evaluations if not item.reasons]
-    if consolidation_filter:
-        # Upstream rejects these before the selection limit ("consolidation origin/session").
-        from memory_core.consolidation.llm_consolidation import is_consolidation_candidate_eligible
+) -> _ApplyPlan:
+    """The pre-lock half of ``applyShortTermPromotions``: authoritative copies, gates, limit, rehydration."""
+    from memory_core.consolidation.llm_consolidation import is_consolidation_candidate_eligible
 
-        eligible = [item for item in eligible if is_consolidation_candidate_eligible(item)]
-    candidates = sorted(eligible[:limit], key=lambda candidate: candidate.score, reverse=True)
-    rehydrated = [
-        item
-        for candidate in candidates
-        if (item := _rehydrate_promotion_candidate(config.workspace_dir, candidate)) is not None
-    ]
-    return evaluations, candidates, rehydrated
+    workspace_dir = Path(config.workspace_dir)
+    store = read_recall_store(recall_store_path(workspace_dir), now_ms)
+    entries = _readable_store_entries(store)
+    min_score = _to_finite_score(min_score, DEFAULT_DEEP_DREAMING_MIN_SCORE)
+    min_recall_count = _to_finite_non_negative_int(min_recall_count, 3)
+    min_unique_queries = _to_finite_non_negative_int(min_unique_queries, 2)
+    max_age = _to_finite_non_negative_int(max_age_days, -1)
+    selection_limit = (
+        max(0, math.floor(limit))
+        if isinstance(limit, int | float) and math.isfinite(limit)
+        else len(ranked)
+    )
+
+    current: list[PromotionCandidate] = []
+    for candidate in ranked:
+        entry = entries.get(candidate.key)
+        if isinstance(entry, dict):
+            candidate = _with_authoritative_provenance(
+                replace(
+                    candidate,
+                    path=str(entry.get("path") or ""),
+                    start_line=to_int(entry.get("startLine"), 1),
+                    end_line=to_int(entry.get("endLine"), to_int(entry.get("startLine"), 1)),
+                    snippet=str(entry.get("snippet") or ""),
+                ),
+                entry.get("provenance") if isinstance(entry.get("provenance"), dict) else None,
+            )
+        current.append(candidate)
+
+    plan = _ApplyPlan(current, {}, [], {}, {})
+
+    def passes(candidate: PromotionCandidate) -> bool:
+        latest = entries.get(candidate.key)
+        latest = latest if isinstance(latest, dict) else None
+        key = candidate.key
+        if is_promotion_origin_blocked(candidate.provenance):
+            origin = (candidate.provenance or {}).get("originClass")
+            plan.reject(key, "origin", f"origin filter ({origin})")
+        elif consolidation and (latest is None or not is_consolidation_candidate_eligible(candidate)):
+            if latest is not None:
+                plan.reject(
+                    key, "consolidation origin/session", "consolidation origin/session filter"
+                )
+        elif is_contaminated_dreaming_snippet(candidate.snippet):
+            plan.reject(key, "contamination", "contamination filter")
+        elif candidate.promoted_at or (latest is not None and latest.get("promotedAt")):
+            plan.reject(key, "already promoted", "already promoted")
+        elif candidate.score < min_score:
+            plan.reject(
+                key,
+                "score threshold",
+                f"score threshold ({js_to_fixed(candidate.score, 3)} < {_js_number_text(min_score)})",
+            )
+        elif candidate.signal_count < min_recall_count:
+            plan.reject(
+                key,
+                "signal threshold",
+                f"signal threshold ({candidate.signal_count} < {min_recall_count})",
+            )
+        elif candidate.unique_queries < min_unique_queries:
+            plan.reject(
+                key,
+                "query threshold",
+                f"query threshold ({candidate.unique_queries} < {min_unique_queries})",
+            )
+        elif max_age >= 0 and candidate.age_days > max_age:
+            plan.reject(
+                key,
+                "age threshold",
+                f"age threshold ({js_to_fixed(candidate.age_days, 1)}d > {max_age}d)",
+            )
+        else:
+            return True
+        return False
+
+    eligible = [candidate for candidate in current if passes(candidate)]
+    selected = eligible[:selection_limit]
+    for candidate in eligible[selection_limit:]:
+        plan.reject(candidate.key, "selection limit", f"selection limit ({selection_limit})")
+
+    for candidate in selected:
+        before = _promotion_source_fingerprint(workspace_dir, candidate)
+        item = _rehydrate_promotion_candidate(workspace_dir, candidate)
+        after = _promotion_source_fingerprint(workspace_dir, candidate)
+        if before == after and item is not None and not is_contaminated_dreaming_snippet(item.snippet):
+            plan.rehydrated.append(item)
+            plan.source_fingerprints[candidate.key] = after
+        elif item is None:
+            plan.reject(candidate.key, "source rehydration", "source rehydration failed")
+        elif before != after:
+            plan.reject(candidate.key, "source changed", "source changed during apply")
+        else:
+            plan.reject(
+                candidate.key, "contamination", "contamination filter after rehydration"
+            )
+    plan.store_fingerprints = {
+        candidate.key: _store_entry_fingerprint(entries.get(candidate.key))
+        for candidate in plan.rehydrated
+    }
+    return plan
 
 
 def _plan_before_lock(
     *,
     config: MemoryConfig,
     consolidation: DeepConsolidation,
+    plan: _ApplyPlan,
     now_ms: int,
     memory_file_max_chars: int,
     max_promoted_snippet_tokens: int,
     max_prior_entry_loss_fraction: float,
     identity: RuntimeIdentity,
     plan_fn: Any,
-    **gates: Any,
 ) -> _PrePlan | None:
     from memory_core.consolidation.llm_consolidation import (
         consolidation_candidate_fingerprint,
         hash_memory_content,
     )
 
-    _evaluations, _candidates, rehydrated = _select_promotion_candidates(
-        config=config, now_ms=now_ms, consolidation_filter=True, **gates
-    )
     memory_path = MemoryWorkspace(config.workspace_dir).resolve_memory_path(PROMOTION_TARGET)
     existing = read_text_if_exists(memory_path)
     markers = set(extract_promotion_markers(existing))
-    to_append = [candidate for candidate in rehydrated if candidate.key not in markers]
+    to_append = [candidate for candidate in plan.rehydrated if candidate.key not in markers]
     if not to_append:
         return None
-    plan = plan_fn(
+    model_plan = plan_fn(
         consolidation,
         existing_memory=existing,
         candidates=to_append,
@@ -394,10 +740,10 @@ def _plan_before_lock(
         now_ms=now_ms,
         identity=identity,
     )
-    if plan is None:
+    if model_plan is None:
         return None
     return _PrePlan(
-        plan=plan,
+        plan=model_plan,
         base_hash=hash_memory_content(existing),
         fingerprints={c.key: consolidation_candidate_fingerprint(c) for c in to_append},
     )
@@ -416,8 +762,9 @@ def rank_short_term_promotion_candidates(
 ) -> list[PromotionCandidate]:
     """Return up to ``limit`` gated candidates, best score first.
 
-    ``max_age_days < 0`` disables the age gate. Entries already promoted or
-    with contaminated snippets are never candidates.
+    ``max_age_days < 0`` disables the age gate. Entries already promoted, with contaminated
+    snippets or with an untrusted or system origin (``isPromotionOriginBlocked``: apply rejects
+    them too, so they are excluded before scoring and the candidate limit) are never candidates.
     """
     candidates = [
         _evaluation_to_candidate(evaluation)
@@ -430,7 +777,7 @@ def rank_short_term_promotion_candidates(
             max_age_days=max_age_days,
             recency_half_life_days=recency_half_life_days,
         )
-        if not evaluation.reasons
+        if not evaluation.reasons and not is_promotion_origin_blocked(evaluation.provenance)
     ]
     return sorted(
         candidates,
@@ -540,52 +887,105 @@ def format_memory_dreaming_day(now_ms: int, timezone: str | None = None) -> str:
     return datetime.fromtimestamp(now_ms / 1000).strftime("%Y-%m-%d")
 
 
-def _run_short_term_promotion_unlocked(
+def _commit_promotion(
     *,
     config: MemoryConfig,
     store: ReindexableStore,
     now_ms: int,
     timezone: str,
-    limit: int,
-    min_score: float,
-    min_recall_count: int,
-    min_unique_queries: int,
-    max_age_days: int,
-    recency_half_life_days: float,
     memory_file_max_chars: int,
     max_promoted_snippet_tokens: int,
     max_prior_entry_loss_fraction: float,
     identity: RuntimeIdentity,
-    consolidation: DeepConsolidation | None = None,
-    preplan: _PrePlan | None = None,
-) -> MemoryPromotionRun:
+    consolidation: DeepConsolidation | None,
+    plan: _ApplyPlan,
+    preplan: _PrePlan | None,
+    ranked: Sequence[PromotionCandidate],
+    evaluations: list[PromotionEvaluation],
+    agent_id: str | None,
+    origin_agent_ids: list[str],
+    origins: MemoryEntryOriginLedger | None,
+) -> tuple[MemoryPromotionRun, Any]:
+    """The lock body of ``applyShortTermPromotions``: revalidate, commit MEMORY.md, mark, prune."""
+    from memory_core.consolidation.llm_consolidation import (
+        DeepConsolidationCommit,
+        commit_deep_consolidation,
+        is_consolidation_candidate_eligible,
+        record_deep_consolidation_history,
+    )
+
     workspace = MemoryWorkspace(config.workspace_dir)
+    workspace_dir = Path(config.workspace_dir)
     target = PROMOTION_TARGET
     target_path = workspace.resolve_memory_path(target)
     before = read_text_if_exists(target_path)
-    evaluations, candidates, rehydrated_candidates = _select_promotion_candidates(
-        config=config,
-        now_ms=now_ms,
-        limit=limit,
-        min_score=min_score,
-        min_recall_count=min_recall_count,
-        min_unique_queries=min_unique_queries,
-        max_age_days=max_age_days,
-        recency_half_life_days=recency_half_life_days,
-        consolidation_filter=consolidation is not None,
+    recall_path = recall_store_path(workspace_dir)
+    summary = (
+        f"ranked {len(ranked)} short-term promotion candidate(s); "
+        f"evaluated {len(evaluations)} candidate(s); "
+        f"rehydrated {len(plan.rehydrated)}; "
     )
-    existing_markers = set(extract_promotion_markers(before))
-    to_append = [
-        candidate for candidate in rehydrated_candidates if candidate.key not in existing_markers
-    ]
-    commit = None
-    if consolidation is not None and preplan is not None and to_append:
-        from memory_core.consolidation.llm_consolidation import commit_deep_consolidation
+    if not plan.rehydrated:
+        run = MemoryPromotionRun(
+            target=target,
+            summary=f"{summary}appending 0; reconciled 0",
+            outcome=PromotionWriteOutcome(
+                should_write=False,
+                target=target,
+                entry="",
+                reason="no live promotion candidates" if ranked else "no promotion candidates",
+            ),
+            diff="",
+            indexed_files=0,
+            chunks=store.count_chunks(),
+            evaluated_candidates=evaluations,
+            rejected_candidates=tuple(plan.describe(c) for c in plan.current),
+        )
+        return run, None
 
+    # Revalidate against the store as it is under the locks.
+    latest_entries = _readable_store_entries(read_recall_store(recall_path, now_ms))
+    authoritative: list[PromotionCandidate] = []
+    for candidate in plan.rehydrated:
+        entry = latest_entries.get(candidate.key)
+        source_unchanged = plan.source_fingerprints.get(
+            candidate.key
+        ) == _promotion_source_fingerprint(workspace_dir, candidate)
+        if not isinstance(entry, dict):
+            was_direct = consolidation is None and plan.store_fingerprints.get(
+                candidate.key
+            ) == _store_entry_fingerprint(None)
+            if (
+                was_direct
+                and source_unchanged
+                and not is_contaminated_dreaming_snippet(candidate.snippet)
+            ):
+                authoritative.append(candidate)
+            continue
+        if entry.get("promotedAt"):
+            continue
+        if (
+            plan.store_fingerprints.get(candidate.key) != _store_entry_fingerprint(entry)
+            or not source_unchanged
+        ):
+            continue
+        current = _with_authoritative_provenance(
+            candidate, entry.get("provenance") if isinstance(entry.get("provenance"), dict) else None
+        )
+        if consolidation is not None and not is_consolidation_candidate_eligible(current):
+            continue
+        if not is_contaminated_dreaming_snippet(current.snippet):
+            authoritative.append(current)
+
+    existing = read_text_if_exists(target_path)
+    markers = set(extract_promotion_markers(existing))
+    to_append = [c for c in authoritative if c.key not in markers]
+    commit: DeepConsolidationCommit | None = None
+    if consolidation is not None and preplan is not None and to_append:
         commit = commit_deep_consolidation(
             consolidation,
             memory_path=target_path,
-            workspace=config.workspace_dir,
+            workspace=workspace_dir,
             plan=preplan.plan,
             base_hash=preplan.base_hash,
             to_append=to_append,
@@ -595,6 +995,9 @@ def _run_short_term_promotion_unlocked(
             timezone=timezone,
             now_ms=now_ms,
             identity=identity,
+            origins=origins if agent_id else None,
+            origin_agent_ids=origin_agent_ids,
+            retained_entry_keys={*markers, *latest_entries},
         )
     consolidated = commit is not None and commit.result is not None
     if consolidation is not None and preplan is not None and not consolidated:
@@ -606,95 +1009,221 @@ def _run_short_term_promotion_unlocked(
             consolidation.log.warning(
                 f"{DISPLAY_NAME}: {commit.skipped_reason}; using append-only fallback."
             )
-    summary = (
-        f"ranked {len(candidates)} short-term promotion candidate(s); "
-        f"evaluated {len(evaluations)} candidate(s); "
-        f"rehydrated {len(rehydrated_candidates)}; "
-        f"appending {len(to_append)}; reconciled {len(rehydrated_candidates) - len(to_append)}"
-    )
-    indexed_files = 0
-    reindex_error = None
+        # A failed rename or an outside edit leaves MEMORY.md as it is now.
+        existing = read_text_if_exists(target_path)
+        markers = set(extract_promotion_markers(existing))
+        to_append = [c for c in authoritative if c.key not in markers]
+    to_append_keys = {c.key for c in to_append}
+    already_written = [c for c in authoritative if c.key not in to_append_keys]
+
     compacted_dates: tuple[str, ...] = ()
     deferred_reason: str | None = None
-    if rehydrated_candidates:
-        entry = (
-            _build_promotion_section(
-                to_append, now_ms, timezone, max_promoted_snippet_tokens, identity
-            )
-            if to_append and not consolidated
-            else ""
+    entry_text = ""
+    committed_content: str | None = None
+    if consolidated and commit is not None and commit.result is not None:
+        committed_content = commit.result.content
+    elif to_append:
+        entry_text = _build_promotion_section(
+            to_append, now_ms, timezone, max_promoted_snippet_tokens, identity
         )
-        if to_append and not consolidated:
-            compacted_dates, deferred_reason = _append_to_memory(
-                target_path,
-                entry,
-                memory_file_max_chars=memory_file_max_chars,
-                max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
-            )
-        deferred_keys = {c.key for c in to_append} if deferred_reason else set()
-        promoted = [c for c in rehydrated_candidates if c.key not in deferred_keys]
-        with recall_store_lock(config.workspace_dir):
-            _mark_promoted(recall_store_path(config.workspace_dir), promoted, now_ms)
-        if to_append and not deferred_reason:
-            try:
-                indexed_files = store.reindex(workspace)
-            except Exception as exc:
-                reindex_error = exception_message(exc)
-        if consolidation is not None and commit is not None:
-            from memory_core.consolidation.llm_consolidation import (
-                record_deep_consolidation_history,
-            )
+        compacted_dates, deferred_reason = _append_to_memory(
+            target_path,
+            entry_text,
+            memory_file_max_chars=memory_file_max_chars,
+            max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
+        )
+        if deferred_reason:
+            for candidate in to_append:
+                plan.reject(candidate.key, "memory budget", deferred_reason)
+            if consolidation is not None:
+                consolidation.log.info(
+                    f"{DISPLAY_NAME}: deferred {len(to_append)} promotion candidate(s) "
+                    f"because {deferred_reason}."
+                )
+        else:
+            committed_content = read_text_if_exists(target_path)
+    appended = to_append if committed_content is not None and not consolidated else []
+    committed = [*already_written, *(to_append if consolidated else appended)]
 
-            record_deep_consolidation_history(
-                consolidation, config.workspace_dir, commit, now_ms=now_ms
-            )
-        outcome = PromotionWriteOutcome(
-            should_write=bool(to_append) and not deferred_reason,
-            target=target,
-            entry=(
-                commit.result.content.strip()
-                if commit is not None and commit.result is not None
-                else entry.strip()
-                if not deferred_reason
-                else ""
-            ),
-            reason=(
-                "short-term promotion deferred: memory budget"
-                if deferred_reason
-                else "short-term promotion consolidated"
-                if consolidated
-                else "short-term promotion"
-                if to_append
-                else "short-term promotion reconciled"
-            ),
+    with recall_store_lock(workspace_dir):
+        _mark_promoted(recall_path, committed, now_ms)
+    if agent_id and origins is not None and committed_content is not None:
+        retained_preimage_keys = commit.retained_preimage_keys if commit is not None else None
+        if retained_preimage_keys is None:
+            retained_preimage_keys = {
+                key
+                for item in read_memory_preimages(workspace_dir)
+                for key in extract_promotion_markers(str(item.get("content", "")))
+            }
+        prune_memory_entry_origins(
+            origins,
+            workspace_dir=workspace_dir,
+            agent_ids=origin_agent_ids,
+            entry_keys=extract_promotion_markers(existing),
+            retained_entry_keys={
+                *extract_promotion_markers(committed_content),
+                *_readable_store_entries(read_recall_store(recall_path, now_ms)),
+                *retained_preimage_keys,
+            },
         )
-    else:
-        outcome = PromotionWriteOutcome(
-            should_write=False,
-            target=target,
-            entry="",
-            reason="no live promotion candidates" if candidates else "no promotion candidates",
-        )
+    indexed_files = 0
+    reindex_error = None
+    if (to_append or consolidated) and committed_content is not None:
+        try:
+            indexed_files = store.reindex(workspace)
+        except Exception as exc:
+            reindex_error = exception_message(exc)
+    if consolidation is not None and commit is not None and commit.result is not None:
+        # Published before the locks are released; the skip note is written after they are.
+        record_deep_consolidation_history(consolidation, workspace_dir, commit, now_ms=now_ms)
+
     after = read_text_if_exists(target_path)
-    deferred_set = {c.key for c in to_append} if deferred_reason else set()
-    return MemoryPromotionRun(
+    committed_keys = {c.key for c in committed}
+    deferred = tuple(to_append) if deferred_reason else ()
+    outcome = PromotionWriteOutcome(
+        should_write=bool(to_append) and not deferred_reason,
         target=target,
-        summary=summary,
+        entry=(
+            commit.result.content.strip()
+            if consolidated and commit is not None and commit.result is not None
+            else entry_text.strip()
+            if not deferred_reason
+            else ""
+        ),
+        reason=(
+            "short-term promotion deferred: memory budget"
+            if deferred_reason
+            else "short-term promotion consolidated"
+            if consolidated
+            else "short-term promotion"
+            if to_append
+            else "short-term promotion reconciled"
+        ),
+    )
+    run = MemoryPromotionRun(
+        target=target,
+        summary=f"{summary}appending {len(to_append)}; reconciled {len(already_written)}",
         outcome=outcome,
         diff=unified_diff(before, after, target),
         indexed_files=indexed_files,
         chunks=store.count_chunks(),
         evaluated_candidates=evaluations,
         reindex_error=reindex_error,
-        applied_candidates=tuple(c for c in rehydrated_candidates if c.key not in deferred_set),
-        appended=0 if deferred_reason else len(to_append),
-        reconciled_existing=len(rehydrated_candidates) - len(to_append),
+        applied_candidates=tuple(committed),
+        appended=len(to_append) if consolidated or appended else 0,
+        reconciled_existing=len(already_written),
         compacted_dates=compacted_dates,
-        deferred_candidates=tuple(c for c in rehydrated_candidates if c.key in deferred_set),
+        deferred_candidates=deferred,
         deferred_reason=deferred_reason,
         consolidation=commit.result if commit is not None else None,
         consolidation_skipped_reason=commit.skipped_reason if commit is not None else None,
+        rejected_candidates=tuple(
+            plan.describe(c) for c in plan.current if c.key not in committed_keys
+        ),
     )
+    return run, commit
+
+
+PromotionRejectionCategory = Literal[
+    "origin",
+    "consolidation origin/session",
+    "contamination",
+    "already promoted",
+    "score threshold",
+    "signal threshold",
+    "query threshold",
+    "age threshold",
+    "selection limit",
+    "source rehydration",
+    "source changed",
+    "memory budget",
+    "candidate changed",
+]
+
+
+@dataclass(frozen=True)
+class PromotionRejection:
+    """One candidate that did not reach MEMORY.md (``rejectedCandidates`` of upstream's apply result).
+
+    ``category`` is one of upstream's fixed diagnostic labels; ``reason`` adds the gate values.
+    """
+
+    candidate: PromotionCandidate
+    reason: str
+    category: PromotionRejectionCategory
+
+
+def _utf8_len(value: str) -> int:
+    return len(js_utf8_encode(value))
+
+
+def _truncate_utf8(value: str, max_bytes: int) -> tuple[str, bool]:
+    """``truncateUtf8`` of the memory host event store: cut on UTF-16 units, append ``…``."""
+    if _utf8_len(value) <= max_bytes:
+        return value, False
+    low, high = 0, utf16_len(value)
+    while low < high:
+        middle = -(-(low + high) // 2)
+        if _utf8_len(utf16_slice(value, 0, middle)) <= max_bytes - 3:
+            low = middle
+        else:
+            high = middle - 1
+    end = low
+    if low > 0:
+        unit = utf16_slice(value, low - 1, low)
+        if len(unit) == 1 and "\ud800" <= unit <= "\udbff":
+            end = low - 1
+    return f"{utf16_slice(value, 0, end)}…", True
+
+
+def build_promotion_applied_event(
+    *,
+    memory_path: str,
+    applied_candidates: Sequence[PromotionCandidate],
+    now_ms: int,
+) -> dict[str, Any]:
+    """The ``memory.promotion.applied`` host event as the event store keeps it.
+
+    Port of the event ``applyShortTermPromotions`` appends and of
+    ``normalizeMemoryHostEventRecordForStorage`` (src/memory-host-sdk/event-store.ts): at most 10
+    candidates, 256 bytes for each key and path (and the memory path), an ellipsis on a cut,
+    ``storageTruncated`` when anything was cut and 8 KiB for the JSON, beyond which the candidates
+    are dropped.
+    """
+    path_limit = 256
+    truncated = False
+    memory, cut = _truncate_utf8(memory_path, path_limit)
+    truncated = truncated or cut
+    items = []
+    for candidate in applied_candidates[:10]:
+        key, cut_key = _truncate_utf8(candidate.key, path_limit)
+        path, cut_path = _truncate_utf8(candidate.path, path_limit)
+        truncated = truncated or cut_key or cut_path
+        items.append(
+            {
+                "key": key,
+                "path": path,
+                "startLine": candidate.start_line,
+                "endLine": candidate.end_line,
+                "score": candidate.score,
+                "recallCount": candidate.recall_count,
+            }
+        )
+    truncated = truncated or len(applied_candidates) > 10
+    timestamp, cut_stamp = _truncate_utf8(iso_ms(now_ms), 128)
+    truncated = truncated or cut_stamp
+    event: dict[str, Any] = {
+        "type": "memory.promotion.applied",
+        "timestamp": timestamp,
+        "memoryPath": memory,
+        "applied": len(applied_candidates),
+        "candidates": items,
+    }
+    if truncated:
+        event["storageTruncated"] = True
+    if _utf8_len(js_json_stringify(event)) > 8 * 1024:
+        event = {**event, "candidates": [], "storageTruncated": True}
+    return event
 
 
 def _evaluation_to_candidate(evaluation: PromotionEvaluation) -> PromotionCandidate:
@@ -957,8 +1486,9 @@ def _format_promoted_snippet_for_memory(raw_snippet: str, max_tokens: int) -> st
 def _mark_promoted(path: Path, candidates: list[PromotionCandidate], now_ms: int) -> None:
     store = read_recall_store(path, now_ms)
     now_iso = iso_ms(now_ms)
+    readable = _readable_store_entries(store)
     for candidate in candidates:
-        entry = store["entries"].get(candidate.key)
+        entry = readable.get(candidate.key)
         if isinstance(entry, dict):
             # The store keeps the full rehydrated snippet and relocated range;
             # only the MEMORY.md presentation is token-capped.
@@ -966,7 +1496,8 @@ def _mark_promoted(path: Path, candidates: list[PromotionCandidate], now_ms: int
             entry["endLine"] = candidate.end_line
             entry["snippet"] = candidate.snippet
             entry["promotedAt"] = now_iso
-    store["updatedAt"] = now_iso
+    # ``updatedAt`` never moves backwards (upstream: the later of now and the stored value).
+    store["updatedAt"] = iso_ms(max(now_ms, parse_ms(str(store.get("updatedAt") or ""), 0)))
     write_recall_store(path, store)
 
 

@@ -78,14 +78,31 @@ from memory_core.consolidation.policy import (
     DeepDreamingPolicy,
     resolve_deep_dreaming_policy,
 )
+from memory_core.consolidation.file_lock import (
+    FileLockError,
+    FileLockOptions,
+    FileLockStaleError,
+    FileLockTimeoutError,
+    resolve_memory_promotion_lock_target,
+    with_file_lock,
+)
+from memory_core.consolidation.origins import (
+    MemoryEntryOrigin,
+    MemoryEntryOriginLedger,
+    prune_memory_entry_origins,
+    reserve_memory_entry_origins,
+)
 from memory_core.consolidation.promotion import (
     PROMOTION_COMPONENT_WEIGHTS,
     MemoryPromotionRun,
     PromotionCandidate,
     PromotionEvaluation,
+    PromotionRejection,
     PromotionWriteOutcome,
     ReindexableStore,
+    build_promotion_applied_event,
     evaluate_short_term_promotion_candidates,
+    is_promotion_origin_blocked,
     format_memory_dreaming_day,
     rank_short_term_promotion_candidates,
     run_short_term_promotion,
@@ -103,12 +120,29 @@ from memory_core.consolidation.store import (
     SHORT_TERM_RECALL_MAX_ENTRIES,
     SHORT_TERM_RECALL_MAX_SNIPPET_CHARS,
     SHORT_TERM_STORE_RELATIVE_PATH,
+    MemoryWorkspaceLockHeldError,
     ShortTermLockResult,
     acquire_short_term_promotion_lock,
+    memory_workspace_lock,
 )
 from memory_core.memory_budget import DEFAULT_MEMORY_FILE_MAX_CHARS
 
 __all__ = [
+    "FileLockError",
+    "FileLockOptions",
+    "FileLockStaleError",
+    "FileLockTimeoutError",
+    "MemoryEntryOrigin",
+    "MemoryEntryOriginLedger",
+    "MemoryWorkspaceLockHeldError",
+    "PromotionRejection",
+    "build_promotion_applied_event",
+    "is_promotion_origin_blocked",
+    "memory_workspace_lock",
+    "prune_memory_entry_origins",
+    "reserve_memory_entry_origins",
+    "resolve_memory_promotion_lock_target",
+    "with_file_lock",
     "DeepConsolidation",
     "append_consolidation_skipped_summary",
     "append_consolidation_summary",

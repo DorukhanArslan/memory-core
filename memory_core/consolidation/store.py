@@ -14,18 +14,21 @@ the oracle runner bridges them into the pin's plugin state. The retention caps
 
 from __future__ import annotations
 
+import contextvars
 import json
 import os
 import secrets
 import threading
+import time
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from memory_core.bootstrap._js import js_trim_end, utf16_len
 from memory_core.config import MemoryConfig
+from memory_core.project_name import PACKAGE_NAME
 from memory_core.index.cjk_chars import truncate_utf16_safe
 from memory_core.consolidation._util import (
     DAY_MS,
@@ -98,10 +101,15 @@ def promotion_lock_path(workspace_dir: Path) -> Path:
     return workspace_dir / SHORT_TERM_LOCK_RELATIVE_PATH
 
 
-@contextmanager
 def acquire_short_term_promotion_lock(
     config: MemoryConfig, now_ms: int
-) -> Iterator[ShortTermLockResult]:
+) -> AbstractContextManager[ShortTermLockResult]:
+    """Hold the workspace promotion lock for the ``with`` block (see :func:`_acquire_workspace_lock`)."""
+    return _acquire_workspace_lock(Path(config.workspace_dir), now_ms)
+
+
+@contextmanager
+def _acquire_workspace_lock(workspace_dir: Path, now_ms: int) -> Iterator[ShortTermLockResult]:
     """Hold the workspace promotion lock for the duration of the ``with`` block.
 
     Port of upstream ``withShortTermLock``: the lock file carries ``pid``,
@@ -109,7 +117,7 @@ def acquire_short_term_promotion_lock(
     ``SHORT_TERM_LOCK_STALE_MS`` is stolen, a fresh one yields
     ``acquired=False``. Only the owner that created the file removes it.
     """
-    lock_path = promotion_lock_path(config.workspace_dir)
+    lock_path = promotion_lock_path(workspace_dir)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     stole_stale = False
     owner_token = secrets.token_hex(16)
@@ -145,6 +153,74 @@ def acquire_short_term_promotion_lock(
         yield ShortTermLockResult(acquired=True, path=lock_path, stole_stale=stole_stale)
     finally:
         _release_short_term_promotion_lock(lock_path, owner_token)
+
+
+# Upstream's ``withMemoryWorkspaceLock`` is reentrant within one async call chain (an AsyncLocalStorage
+# of owned workspaces): the DREAMS.md writers re-enter the lock the deep phase already holds.
+_HELD_WORKSPACES: contextvars.ContextVar[frozenset[str]] = contextvars.ContextVar(
+    f"{PACKAGE_NAME}_held_workspace_locks", default=frozenset()
+)
+MEMORY_WORKSPACE_LOCK_WAIT_TIMEOUT_MS = 10_000
+MEMORY_WORKSPACE_LOCK_RETRY_DELAY_MS = 40
+
+
+class MemoryWorkspaceLockHeldError(OSError):
+    """``MEMORY_WORKSPACE_LOCK_HELD``: the workspace lock stayed held for the whole wait."""
+
+    code = "MEMORY_WORKSPACE_LOCK_HELD"
+
+
+def _workspace_key(workspace_dir: Path) -> str:
+    return os.path.realpath(workspace_dir)
+
+
+@contextmanager
+def hold_workspace_lock_marker(workspace_dir: Path) -> Iterator[None]:
+    """Record that this call chain owns the workspace lock (so :func:`memory_workspace_lock` re-enters)."""
+    held = _HELD_WORKSPACES.get()
+    token = _HELD_WORKSPACES.set(held | {_workspace_key(workspace_dir)})
+    try:
+        yield
+    finally:
+        _HELD_WORKSPACES.reset(token)
+
+
+def workspace_lock_held(workspace_dir: Path) -> bool:
+    """True inside a block that owns the workspace lock (the current call chain)."""
+    return _workspace_key(workspace_dir) in _HELD_WORKSPACES.get()
+
+
+@contextmanager
+def memory_workspace_lock(
+    workspace_dir: str | Path,
+    *,
+    now_ms: int | None = None,
+    timeout_ms: float = MEMORY_WORKSPACE_LOCK_WAIT_TIMEOUT_MS,
+    retry_delay_ms: float = MEMORY_WORKSPACE_LOCK_RETRY_DELAY_MS,
+) -> Iterator[None]:
+    """``withMemoryWorkspaceLock``: wait for the workspace promotion lock, re-entering one this chain holds.
+
+    Waits ``retry_delay_ms`` between attempts for up to ``timeout_ms`` and then raises
+    :class:`MemoryWorkspaceLockHeldError` (upstream: 10 s and 40 ms). The lock is the same file
+    :func:`acquire_short_term_promotion_lock` takes.
+    """
+    workspace_dir = Path(workspace_dir)
+    if workspace_lock_held(workspace_dir):
+        yield
+        return
+    deadline = time.monotonic() + timeout_ms / 1000
+    while True:
+        stamp = int(time.time() * 1000) if now_ms is None else now_ms
+        with _acquire_workspace_lock(workspace_dir, stamp) as lock:
+            if lock.acquired:
+                with hold_workspace_lock_marker(workspace_dir):
+                    yield
+                return
+        if time.monotonic() >= deadline:
+            raise MemoryWorkspaceLockHeldError(
+                f"Timed out waiting for memory workspace lock at {lock.path}"
+            )
+        time.sleep(retry_delay_ms / 1000)
 
 
 def empty_recall_store(now_ms: int) -> dict[str, Any]:

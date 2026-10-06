@@ -1,3 +1,4 @@
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import * as nodeModule from "node:module";
@@ -108,6 +109,10 @@ type Payload = {
   scenarios?: Array<Record<string, any>>;
   historySteps?: Array<Record<string, any>>;
   consolidation?: Record<string, any>;
+  promotionScenarios?: Array<Record<string, any>>;
+  originSteps?: Array<Record<string, any>>;
+  agentIds?: string[];
+  lockProbe?: Record<string, any>;
 };
 
 const WORKSPACE_STATE_SNAPSHOT_SKIP = new Set([
@@ -4002,6 +4007,9 @@ async function main() {
     "rankShortTermPromotionCandidates",
     "applyShortTermPromotions",
     "consolidationHistory",
+    "applyPromotionScenarios",
+    "originsLedger",
+    "fileLockProbe",
   ]);
   if (!promotionOperations.has(payload.operation)) {
     throw new Error(`unsupported operation: ${payload.operation}`);
@@ -4116,6 +4124,355 @@ async function main() {
         }
       }
       return { ok: true, operation: payload.operation, files: await snapshotPromotionFiles() };
+    }
+
+    if (payload.operation === "fileLockProbe") {
+      // The second lock of the deep phase: the real withFileLock with MEMORY_WRITE_LOCK_OPTIONS
+      // (fewer retries) on the real lock target of resolveMemoryPromotionLockTarget (not exported,
+      // so recomputed here the same way). An optional seeded sidecar stands for another holder.
+      const { withFileLock } = await importFromRepo(repoPath, "src/plugin-sdk/file-lock.ts");
+      const probe = payload.lockProbe ?? {};
+      const workspaceDir = String(payload.workspaceDir);
+      const lockDir = path.join(promotionStateDir, "locks");
+      await fs.mkdir(lockDir, { recursive: true, mode: 0o700 });
+      const canonical = await fs.realpath(workspaceDir).catch(() => path.resolve(workspaceDir));
+      const hash = crypto.createHash("sha256").update(canonical).digest("hex");
+      const target = path.join(lockDir, `memory-promotion-${hash}`);
+      if (isRecord(probe.seed)) {
+        const seed = { ...probe.seed } as Record<string, unknown>;
+        if (seed.pid === "self") {
+          seed.pid = process.pid;
+        }
+        await fs.writeFile(`${target}.lock`, `${JSON.stringify(seed, null, 2)}\n`, {
+          mode: 0o600,
+        });
+      }
+      const retries = Number.isFinite(probe.retries) ? Number(probe.retries) : 3;
+      let outcome: Record<string, unknown>;
+      try {
+        outcome = await withFileLock(
+          target,
+          {
+            retries: { retries, factor: 1.2, minTimeout: 5, maxTimeout: 10 },
+            stale: 120_000,
+            staleRecovery: "fail-closed",
+          },
+          async () => {
+            const lockPath = `${target}.lock`;
+            const raw = await fs.readFile(lockPath, "utf-8");
+            const stat = await fs.stat(lockPath);
+            const dirStat = await fs.stat(lockDir);
+            return {
+              ok: true,
+              lockName: path.basename(lockPath),
+              expectedName: `memory-promotion-${hash}.lock`,
+              raw,
+              mode: stat.mode & 0o777,
+              dirMode: dirStat.mode & 0o777,
+              listing: (await fs.readdir(lockDir)).toSorted(),
+            };
+          },
+        );
+      } catch (error) {
+        outcome = {
+          ok: false,
+          code: (error as { code?: string }).code ?? null,
+          message: String((error as Error).message).replaceAll(target, "<target>"),
+        };
+      }
+      const afterListing = (await fs.readdir(lockDir)).toSorted();
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: { ...outcome, afterListing, seeded: isRecord(probe.seed) },
+      };
+    }
+
+    if (payload.operation === "originsLedger") {
+      // The memory-entry origins ledger (memory-entry-origins.ts) over the real per-agent SQLite
+      // database of the oracle's state directory, one step after another; every step reports the
+      // rows of every agent afterwards.
+      const origins = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/memory-entry-origins.ts",
+      );
+      const sqliteRuntime = await importFromRepo(repoPath, "src/plugin-sdk/sqlite-runtime.ts");
+      const agentIds: string[] = payload.agentIds ?? ["main"];
+      for (const agentId of agentIds) {
+        await fs.mkdir(path.dirname(sqliteRuntime.resolveOpenClawAgentSqlitePath({ agentId })), {
+          recursive: true,
+        });
+      }
+      const steps: unknown[] = [];
+      let chunkCounter = 0;
+      for (const step of payload.originSteps ?? []) {
+        let result: unknown = null;
+        try {
+          if (step.kind === "record") {
+            result = origins.recordMemoryEntryOrigins({
+              agentId: step.agentId,
+              origins: step.origins,
+              ...(typeof step.entryKey === "string" ? { entryKey: step.entryKey } : {}),
+            });
+          } else if (step.kind === "reserve") {
+            const rollback = origins.reserveMemoryEntryOrigins({
+              agentIds: step.agentIds,
+              previousMemory: step.previousMemory,
+              operations: step.operations,
+            });
+            if (step.rollback === true) {
+              rollback();
+            }
+          } else if (step.kind === "prune") {
+            await origins.pruneMemoryEntryOrigins({
+              workspaceDir: payload.workspaceDir,
+              agentIds: step.agentIds,
+              entryKeys: step.entryKeys,
+              retainedEntryKeys: new Set<string>(step.retainedEntryKeys ?? []),
+            });
+          } else if (step.kind === "index") {
+            const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId: step.agentId }).db;
+            for (const text of step.texts as string[]) {
+              chunkCounter += 1;
+              db.prepare(
+                "INSERT INTO memory_index_chunks (id, path, source, start_line, end_line, hash, model, text, embedding, updated_at) VALUES (?, 'MEMORY.md', ?, 1, 1, ?, 'm', ?, X'', 0)",
+              ).run(`chunk-${chunkCounter}`, step.source ?? "memory", `h${chunkCounter}`, text);
+            }
+          } else if (step.kind === "preimage") {
+            const artifactsModule = await importFromRepo(
+              repoPath,
+              "extensions/memory-core/src/dreaming-consolidation-artifacts.ts",
+            );
+            result = [
+              ...(await artifactsModule.storeMemoryPreimage({
+                workspaceDir: payload.workspaceDir,
+                content: step.content,
+                nowMs: step.nowMs,
+                agentIds: step.agentIds,
+                retainedEntryKeys: new Set<string>(step.retainedEntryKeys ?? []),
+              })),
+            ].toSorted();
+          } else if (step.kind === "list") {
+            result = origins.listMemoryEntryOrigins({
+              agentId: step.agentId,
+              ...(Array.isArray(step.sessionIds) ? { sessionIds: step.sessionIds } : {}),
+              ...(Array.isArray(step.entryKeys) ? { entryKeys: step.entryKeys } : {}),
+            });
+          }
+        } catch (error) {
+          result = { error: String((error as Error).message) };
+        }
+        steps.push({
+          result,
+          state: Object.fromEntries(
+            agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
+          ),
+        });
+      }
+      return { ok: true, operation: payload.operation, result: { steps } };
+    }
+
+    if (payload.operation === "applyPromotionScenarios") {
+      // The apply half of the deep phase over many seeded workspaces in one process (an oracle
+      // start costs seconds): rejectedCandidates, the memory.promotion.applied host events, the
+      // origins ledger, the lock/write order and the consolidation artifacts.
+      const origins = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/memory-entry-origins.ts",
+      );
+      const sqliteRuntime = await importFromRepo(repoPath, "src/plugin-sdk/sqlite-runtime.ts");
+      const hostEvents = await importFromRepo(repoPath, "src/memory-host-sdk/events.ts");
+      const artifacts = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/dreaming-consolidation-artifacts.ts",
+      );
+      const testAgentId = "memory-core-test";
+      const results: unknown[] = [];
+      for (const scenario of payload.promotionScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        const scenarioNowMs = Number.isFinite(scenario.nowMs) ? Number(scenario.nowMs) : nowMs;
+        await seedPromotionStateFromWorkspace(promotionState, workspaceDir);
+        const originAgents: string[] = [testAgentId, ...(scenario.workspaceAgentIds ?? [])];
+        for (const agentId of originAgents) {
+          await fs.mkdir(path.dirname(sqliteRuntime.resolveOpenClawAgentSqlitePath({ agentId })), {
+            recursive: true,
+          });
+          const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId }).db;
+          try {
+            db.exec("DELETE FROM memory_entry_origins");
+          } catch {
+            // The table is created lazily by the first record.
+          }
+          try {
+            db.exec("DELETE FROM memory_index_chunks");
+          } catch {
+            // Missing chunk table.
+          }
+        }
+        for (const seed of scenario.seedOrigins ?? []) {
+          origins.recordMemoryEntryOrigins({ agentId: seed.agentId, origins: [seed] });
+        }
+        for (const seed of scenario.seedIndexChunks ?? []) {
+          const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId: seed.agentId }).db;
+          db.prepare(
+            "INSERT INTO memory_index_chunks (id, path, source, start_line, end_line, hash, model, text, embedding, updated_at) VALUES (?, 'MEMORY.md', 'memory', 1, 1, ?, 'm', ?, X'', 0)",
+          ).run(`chunk-${crypto.randomUUID()}`, crypto.randomUUID(), seed.text);
+        }
+
+        // Order of the lock sidecar, MEMORY.md and DREAMS.md writes, taken from the fs calls.
+        const timeline: string[] = [];
+        const fsPromises = (await import("node:fs/promises")).default as unknown as Record<
+          string,
+          (...args: unknown[]) => Promise<unknown>
+        >;
+        const originals: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
+        // The sidecar is created natively (not through fs.promises), so its appearance is noticed
+        // at the next fs call that passes through the hook.
+        const canonicalWorkspace = await fs.realpath(workspaceDir);
+        const lockSidecar = path.join(
+          promotionStateDir,
+          "locks",
+          `memory-promotion-${crypto.createHash("sha256").update(canonicalWorkspace).digest("hex")}.lock`,
+        );
+        let lockSeen = false;
+        const label = (op: string, args: unknown[]): string | null => {
+          const target = String(op === "rename" ? args[1] : args[0]);
+          if (!lockSeen && fsSync.existsSync(lockSidecar)) {
+            lockSeen = true;
+            timeline.push("lock:acquire");
+          }
+          const base = path.basename(target);
+          if (base.startsWith("memory-promotion-") && base.endsWith(".lock")) {
+            return op === "unlink" || op === "rm" ? "lock:release" : null;
+          }
+          if (op !== "rename" && op !== "writeFile") {
+            return null;
+          }
+          if (base === "MEMORY.md") {
+            return "memory:write";
+          }
+          return base === "DREAMS.md" || base === "dreams.md" ? "dreams:write" : null;
+        };
+        for (const op of ["open", "rename", "writeFile", "unlink", "rm"]) {
+          originals[op] = fsPromises[op];
+          fsPromises[op] = async function (this: unknown, ...args: unknown[]) {
+            const entry = label(op, args);
+            if (entry) {
+              timeline.push(entry);
+            }
+            return await originals[op].apply(this, args);
+          };
+        }
+
+        const consolidationConfig = isRecord(scenario.consolidation)
+          ? (scenario.consolidation as Record<string, any>)
+          : undefined;
+        const replies: unknown[] = Array.isArray(consolidationConfig?.replies)
+          ? consolidationConfig.replies
+          : [];
+        const calls: Array<Record<string, unknown>> = [];
+        const warnings: string[] = [];
+        const infos: string[] = [];
+        const subagent = {
+          complete: async (options: Record<string, unknown>) => {
+            calls.push({ ...options });
+            for (const mutation of consolidationConfig?.mutateDuringCall ?? []) {
+              const target = path.join(workspaceDir, String(mutation.path));
+              if (mutation.append === true) {
+                await originals.writeFile.call(fsPromises, target, mutation.content, { flag: "a" });
+              } else {
+                await originals.writeFile.call(fsPromises, target, mutation.content);
+              }
+            }
+            const reply = replies[calls.length - 1] as unknown;
+            if (isRecord(reply) && typeof reply.throw === "string") {
+              throw new Error(reply.throw);
+            }
+            return { text: reply };
+          },
+        };
+        const applyParams = {
+          workspaceDir,
+          nowMs: scenarioNowMs,
+          timezone: scenario.timezone ?? timezone,
+          candidates: scenario.candidates ?? [],
+          ...(scenario.limit !== undefined ? { limit: scenario.limit } : {}),
+          ...(scenario.minScore !== undefined ? { minScore: scenario.minScore } : {}),
+          ...(scenario.minRecallCount !== undefined
+            ? { minRecallCount: scenario.minRecallCount }
+            : {}),
+          ...(scenario.minUniqueQueries !== undefined
+            ? { minUniqueQueries: scenario.minUniqueQueries }
+            : {}),
+          ...(scenario.maxAgeDays !== undefined ? { maxAgeDays: scenario.maxAgeDays } : {}),
+          ...(scenario.memoryFileMaxChars !== undefined
+            ? { memoryFileMaxChars: scenario.memoryFileMaxChars }
+            : {}),
+          ...(scenario.maxPriorEntryLossFraction !== undefined
+            ? { maxPriorEntryLossFraction: scenario.maxPriorEntryLossFraction }
+            : {}),
+          ...(scenario.maxPromotedSnippetTokens !== undefined
+            ? { maxPromotedSnippetTokens: scenario.maxPromotedSnippetTokens }
+            : {}),
+          ...(Array.isArray(scenario.workspaceAgentIds)
+            ? { workspaceAgentIds: scenario.workspaceAgentIds }
+            : {}),
+        };
+        let applied: unknown;
+        let error: string | null = null;
+        try {
+          if (consolidationConfig || scenario.agent === true) {
+            applied = await testHelpers.applyShortTermPromotionsForTests({
+              ...applyParams,
+              ...(consolidationConfig
+                ? {
+                    consolidation: {
+                      ...(consolidationConfig.noSubagent === true ? {} : { subagent }),
+                      ...(typeof consolidationConfig.model === "string"
+                        ? { model: consolidationConfig.model }
+                        : {}),
+                      logger: {
+                        info: (message: string) => infos.push(message),
+                        warn: (message: string) => warnings.push(message),
+                      },
+                    },
+                  }
+                : {}),
+            });
+          } else {
+            applied = await promotion.applyShortTermPromotions(applyParams);
+          }
+        } catch (caught) {
+          error = String((caught as Error).message);
+        } finally {
+          for (const op of Object.keys(originals)) {
+            fsPromises[op] = originals[op];
+          }
+        }
+        await exportPromotionStateToWorkspace(promotionState, workspaceDir, scenarioNowMs);
+        const files = await snapshotFiles(workspaceDir);
+        const memoryHostEvents = await hostEvents.readMemoryHostEvents({ workspaceDir });
+        const originRows = Object.fromEntries(
+          originAgents.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
+        );
+        const preimages = (await artifacts.readMemoryPreimages(workspaceDir)).map(
+          (entry: { value: unknown }) => entry.value,
+        );
+        results.push({
+          name: scenario.name,
+          error,
+          applied,
+          files,
+          events: memoryHostEvents,
+          origins: originRows,
+          preimages,
+          calls,
+          warnings,
+          infos,
+          timeline,
+        });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: results } };
     }
 
     const policy = await resolvePromotionPolicy(repoPath, payload);

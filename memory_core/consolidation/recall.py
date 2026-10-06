@@ -21,7 +21,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from memory_core.bootstrap._js import js_trim
+from memory_core.bootstrap._js import js_i_pattern, js_trim
 from memory_core.config import MemoryConfig
 from memory_core.consolidation._util import (
     clamp_score,
@@ -47,25 +47,30 @@ from memory_core.consolidation.store import (
 DREAMING_SIGNAL_PHASES = frozenset({"light", "rem"})
 
 _DREAMING_TRANSCRIPT_PROMPT_LINE_RE = re.compile(
-    r"\[[^\]]*dreaming-narrative[^\]]*]\s*(?:User|Assistant):\s*"
-    r"Write a dream diary entry from these memory fragments:?",
-    re.IGNORECASE,
+    js_i_pattern(
+        r"\[[^\]]*dreaming-narrative[^\]]*]\s*(?:User|Assistant):\s*"
+        r"Write a dream diary entry from these memory fragments:?"
+    )
 )
 _RAW_SESSION_METADATA_RE = re.compile(
-    r"\bSession Key\b.{0,260}\bSession ID\b|\bSession ID\b.{0,260}\bSession Key\b",
-    re.IGNORECASE,
+    js_i_pattern(
+        r"\bSession Key\b.{0,260}\bSession ID\b|\bSession ID\b.{0,260}\bSession Key\b"
+    )
 )
-_RAW_CONVERSATION_SUMMARY_RE = re.compile(r"^(?:[-*+]\s*)?Conversation Summary:", re.IGNORECASE)
-_RAW_TRANSCRIPT_TURN_RE = re.compile(r"^(?:[-*+]\s*)?(?:user|assistant):\s", re.IGNORECASE)
+_RAW_CONVERSATION_SUMMARY_RE = re.compile(js_i_pattern(r"^(?:[-*+]\s*)?Conversation Summary:"))
+_RAW_TRANSCRIPT_TURN_RE = re.compile(js_i_pattern(r"^(?:[-*+]\s*)?(?:user|assistant):\s"))
 _MEMORY_FLUSH_PROMPT_RE = re.compile(
-    r"Save important context from this session to the daily memory file\.\s*STRICT RULES:",
-    re.IGNORECASE,
+    js_i_pattern(
+        r"Save important context from this session to the daily memory file\.\s*STRICT RULES:"
+    )
 )
 _PROMOTION_SCORE_METADATA_RE = re.compile(
-    r"\[\s*score=\d+(?:\.\d+)?\s+(?:signals=\d+\s+)?recalls=\d+\s+avg=\d+(?:\.\d+)?\s+source=memory/",
-    re.IGNORECASE,
+    js_i_pattern(
+        r"\[\s*score=\d+(?:\.\d+)?\s+(?:signals=\d+\s+)?recalls=\d+\s+avg=\d+(?:\.\d+)?"
+        r"\s+source=memory/"
+    )
 )
-_DREAMING_DIFF_PREFIX_RE = re.compile(r"@@\s*-\d+(?:,\d+)?\s+[-*+]\s+", re.IGNORECASE)
+_DREAMING_DIFF_PREFIX_RE = re.compile(js_i_pattern(r"@@\s*-\d+(?:,\d+)?\s+[-*+]\s+"))
 
 
 def is_workspace_contained_path(workspace_dir: Path, relative_path: str) -> bool:
@@ -510,16 +515,15 @@ def is_contaminated_dreaming_snippet(raw: str, *, allow_transcript_turn_snippet:
         or _PROMOTION_SCORE_METADATA_RE.search(snippet)
     ):
         return True
-    has_status = re.search(r"\bstatus:\s*staged\b", snippet, re.IGNORECASE) is not None
-    has_recalls = re.search(r"\brecalls:\s*\d+\b", snippet, re.IGNORECASE) is not None
-    has_reflection_note = re.search(r"\bnote:\s*reflection\b", snippet, re.IGNORECASE) is not None
+    has_status = re.search(js_i_pattern(r"\bstatus:\s*staged\b"), snippet) is not None
+    has_recalls = re.search(js_i_pattern(r"\brecalls:\s*\d+\b"), snippet) is not None
+    has_reflection_note = re.search(js_i_pattern(r"\bnote:\s*reflection\b"), snippet) is not None
     return (
         _has_dreaming_narrative_lead(snippet)
-        and re.search(r"\bconfidence:\s*\d", snippet, re.IGNORECASE) is not None
+        and re.search(js_i_pattern(r"\bconfidence:\s*\d"), snippet) is not None
         and re.search(
-            r"\bevidence:\s*(?:memory/\.dreams/session-corpus/|memory/)",
+            js_i_pattern(r"\bevidence:\s*(?:memory/\.dreams/session-corpus/|memory/)"),
             snippet,
-            re.IGNORECASE,
         )
         is not None
         and ((has_status and has_recalls) or has_reflection_note)
@@ -548,10 +552,10 @@ def _consume_dreaming_lead_prefix(snippet: str) -> str:
 
 def _has_dreaming_narrative_lead(snippet: str) -> bool:
     without_prefix = _consume_dreaming_lead_prefix(snippet)
-    if re.match(r"^(?:Candidate|Reflections?):", without_prefix, re.IGNORECASE):
+    if re.match(js_i_pattern(r"^(?:Candidate|Reflections?):"), without_prefix):
         return True
     head = without_prefix[:200]
     return (
-        re.search(r"\b(?:Candidate|Reflections?):", head, re.IGNORECASE) is not None
-        or re.search(r"#{1,6}\s+Reflections?\b", head, re.IGNORECASE) is not None
+        re.search(js_i_pattern(r"\b(?:Candidate|Reflections?):"), head) is not None
+        or re.search(js_i_pattern(r"#{1,6}\s+Reflections?\b"), head) is not None
     )

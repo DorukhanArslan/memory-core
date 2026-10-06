@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import re
 
+from memory_core.bootstrap._js import js_i_pattern, js_iu_keyword_pattern
 from memory_core.runtime_identity import (
     OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     MEMORY_CORE_RUNTIME_IDENTITY,
@@ -37,17 +38,20 @@ MEMORY_CORE_PROMOTION_MARKER_PREFIX = MEMORY_CORE_RUNTIME_IDENTITY.promotion_mar
 OPENCLAW_PROMOTION_MARKER_PREFIX = OPENCLAW_COMPAT_RUNTIME_IDENTITY.promotion_marker_prefix
 PROMOTION_MARKER_PREFIXES = (MEMORY_CORE_PROMOTION_MARKER_PREFIX, OPENCLAW_PROMOTION_MARKER_PREFIX)
 
-_PREFIX_ALTERNATION = "|".join(re.escape(prefix) for prefix in PROMOTION_MARKER_PREFIXES)
-_PROMOTION_MARKER_RE = re.compile(
-    rf"<!--\s*(?:{_PREFIX_ALTERNATION})([^\n]+?)\s*-->",
-    re.IGNORECASE,
-)
-_PROMOTION_MARKER_START_RE = re.compile(rf"<!--\s*(?:{_PREFIX_ALTERNATION})", re.IGNORECASE)
+# Upstream reads markers with /giu (simple case folding: U+017F and U+212A fold onto ASCII) and the
+# dreaming fences with /i (ASCII-only folding), so neither can use Python's re.IGNORECASE.
+_PREFIX_ALTERNATION = "|".join(js_iu_keyword_pattern(prefix) for prefix in PROMOTION_MARKER_PREFIXES)
+_PROMOTION_MARKER_RE = re.compile(rf"<!--\s*(?:{_PREFIX_ALTERNATION})([^\n]+?)\s*-->")
+_PROMOTION_MARKER_START_RE = re.compile(rf"<!--\s*(?:{_PREFIX_ALTERNATION})")
 _DREAMING_FENCE_START_RE = re.compile(
-    r"<!--\s*openclaw:dreaming:[a-z][a-z0-9-]*:start\s*-->", re.IGNORECASE
+    js_i_pattern(r"<!--\s*openclaw:dreaming:")
+    + "[a-zA-Z][a-zA-Z0-9-]*"
+    + js_i_pattern(r":start\s*-->")
 )
 _DREAMING_FENCE_END_RE = re.compile(
-    r"<!--\s*openclaw:dreaming:[a-z][a-z0-9-]*:end\s*-->", re.IGNORECASE
+    js_i_pattern(r"<!--\s*openclaw:dreaming:")
+    + "[a-zA-Z][a-zA-Z0-9-]*"
+    + js_i_pattern(r":end\s*-->")
 )
 
 

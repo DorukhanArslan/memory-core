@@ -11,10 +11,12 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from memory_core.bootstrap._js import JS_SPACE_CLASS, js_trim
+from memory_core.bootstrap._js import JS_SPACE_CLASS, js_iu_keyword_pattern, js_trim
 
-_PROJECT_MARKER = re.compile(rf"<!--[{JS_SPACE_CLASS}]*(project)[{JS_SPACE_CLASS}]*:", re.IGNORECASE)
-_PROJECT_OPENER = re.compile(rf"<!--[{JS_SPACE_CLASS}]*project[{JS_SPACE_CLASS}]*:", re.IGNORECASE)
+# Upstream: /giu (simple case folding), not Python's wider re.IGNORECASE.
+_PROJECT_WORD = js_iu_keyword_pattern("project")
+_PROJECT_MARKER = re.compile(rf"<!--[{JS_SPACE_CLASS}]*({_PROJECT_WORD})[{JS_SPACE_CLASS}]*:")
+_PROJECT_OPENER = re.compile(rf"<!--[{JS_SPACE_CLASS}]*{_PROJECT_WORD}[{JS_SPACE_CLASS}]*:")
 _KEY_FORBIDDEN = re.compile(r"[\r\n<>]")
 
 

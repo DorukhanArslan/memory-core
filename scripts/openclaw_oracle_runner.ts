@@ -106,6 +106,8 @@ type Payload = {
   bootstrapMaxChars?: number;
   cases?: Array<Record<string, any>>;
   scenarios?: Array<Record<string, any>>;
+  historySteps?: Array<Record<string, any>>;
+  consolidation?: Record<string, any>;
 };
 
 const WORKSPACE_STATE_SNAPSHOT_SKIP = new Set([
@@ -3214,6 +3216,7 @@ async function main() {
     "recordDreamingPhaseSignals",
     "rankShortTermPromotionCandidates",
     "applyShortTermPromotions",
+    "consolidationHistory",
   ]);
   if (!promotionOperations.has(payload.operation)) {
     throw new Error(`unsupported operation: ${payload.operation}`);
@@ -3305,7 +3308,103 @@ async function main() {
       return { ok: true, operation: payload.operation, result: { candidates } };
     }
 
+    if (payload.operation === "consolidationHistory") {
+      // dreaming-consolidation-artifacts.ts appendConsolidationSummary and
+      // appendConsolidationSkippedSummary over the seeded DREAMS.md, one step after another.
+      const artifacts = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/dreaming-consolidation-artifacts.ts",
+      );
+      for (const step of payload.historySteps ?? []) {
+        if (step.kind === "skipped") {
+          await artifacts.appendConsolidationSkippedSummary({
+            workspaceDir: payload.workspaceDir,
+            nowMs: Number(step.nowMs),
+            reason: String(step.reason),
+          });
+        } else {
+          await artifacts.appendConsolidationSummary({
+            workspaceDir: payload.workspaceDir,
+            nowMs: Number(step.nowMs),
+            result: step.result,
+          });
+        }
+      }
+      return { ok: true, operation: payload.operation, files: await snapshotPromotionFiles() };
+    }
+
     const policy = await resolvePromotionPolicy(repoPath, payload);
+    if (isRecord(payload.consolidation)) {
+      // The deep phase with consolidation: applyShortTermPromotionsForTests (the test agent id
+      // enables the consolidation path) with a stubbed subagent (replies: one entry per call, a
+      // string, {throw} or {raw}); preimages come back from the plugin state store.
+      const consolidationConfig = payload.consolidation as Record<string, unknown>;
+      const replies: unknown[] = Array.isArray(consolidationConfig.replies)
+        ? consolidationConfig.replies
+        : [];
+      const calls: Array<Record<string, unknown>> = [];
+      const warnings: string[] = [];
+      const infos: string[] = [];
+      const subagent = {
+        complete: async (options: Record<string, unknown>) => {
+          calls.push({ ...options });
+          if (typeof consolidationConfig.mutateMemoryDuringCall === "string") {
+            await fs.appendFile(
+              path.join(String(payload.workspaceDir), "MEMORY.md"),
+              consolidationConfig.mutateMemoryDuringCall,
+            );
+          }
+          const reply = replies[calls.length - 1] as unknown;
+          if (isRecord(reply) && typeof reply.throw === "string") {
+            throw new Error(reply.throw);
+          }
+          if (isRecord(reply) && "raw" in reply) {
+            return reply.raw;
+          }
+          return { text: reply };
+        },
+      };
+      const artifacts = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/dreaming-consolidation-artifacts.ts",
+      );
+      const result = await testHelpers.applyShortTermPromotionsForTests({
+        workspaceDir: payload.workspaceDir,
+        nowMs,
+        timezone,
+        candidates: payload.candidates ?? [],
+        limit: policy.limit,
+        minScore: policy.minScore,
+        minRecallCount: policy.minRecallCount,
+        minUniqueQueries: policy.minUniqueQueries,
+        maxAgeDays: policy.maxAgeDays,
+        memoryFileMaxChars:
+          typeof payload.memoryFileMaxChars === "number" ? payload.memoryFileMaxChars : undefined,
+        maxPromotedSnippetTokens: policy.maxPromotedSnippetTokens,
+        ...(typeof payload.maxPriorEntryLossFraction === "number"
+          ? { maxPriorEntryLossFraction: payload.maxPriorEntryLossFraction }
+          : {}),
+        consolidation: {
+          ...(consolidationConfig.noSubagent === true ? {} : { subagent }),
+          ...(typeof consolidationConfig.model === "string"
+            ? { model: consolidationConfig.model }
+            : {}),
+          logger: {
+            info: (message: string) => infos.push(message),
+            warn: (message: string) => warnings.push(message),
+          },
+        },
+      });
+      const preimages = (await artifacts.readMemoryPreimages(payload.workspaceDir)).map(
+        (entry: { value: unknown }) => entry.value,
+      );
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: { ...result, calls, warnings, infos, preimages },
+        files: await snapshotPromotionFiles(),
+      };
+    }
     const result = await promotion.applyShortTermPromotions({
       workspaceDir: payload.workspaceDir,
       nowMs,

@@ -16,7 +16,7 @@ from memory_core._tool_result_budget import (
     slice_tool_result_text_tail_to_budget,
     slice_tool_result_text_to_budget,
 )
-from memory_core.bootstrap._js import slice_utf16_safe, utf16_len
+from memory_core.bootstrap._js import js_json_stringify, slice_utf16_safe, utf16_len
 
 
 ESTIMATED_CHARS_PER_TOKEN = 4
@@ -57,6 +57,29 @@ BRANCH_SUMMARY_PREFIX = (
     "\n\n<summary>\n"
 )
 BRANCH_SUMMARY_SUFFIX = "</summary>"
+
+class ProjectedMessage(dict):
+    """A message dict that carries its prompt-projection key.
+
+    Upstream hangs the key on the message object as a symbol property
+    (``TOOL_RESULT_PROJECTION_KEY``), which object spread copies and ``JSON.stringify`` skips.
+    The attribute survives :func:`spread_message` and never reaches ``json.dumps``.
+    """
+
+    __slots__ = ("projection_key",)
+
+
+def spread_message(message: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
+    """``{...message, ...updates}``: also carries the projection key, like a symbol spread."""
+
+    copied = {**message, **updates}
+    key = getattr(message, "projection_key", None)
+    if key is None:
+        return copied
+    projected = ProjectedMessage(copied)
+    projected.projection_key = key
+    return projected
+
 
 @dataclass(frozen=True)
 class ToolResultReductionPotential:
@@ -583,7 +606,7 @@ def truncate_tool_result_message(
         if isinstance(block.get("content"), str):
             next_block["content"] = truncated_text
         new_content.append(next_block)
-    return {**message, "content": new_content}
+    return spread_message(message, {"content": new_content})
 
 
 @dataclass(frozen=True)
@@ -714,7 +737,7 @@ def _clear_tool_result_text(
         if isinstance(block.get("content"), str):
             next_block["content"] = replacement_text
         new_content.append(next_block)
-    return {**message, "content": new_content}
+    return spread_message(message, {"content": new_content})
 
 
 def _get_trailing_tool_result_entry_ids(branch: list[dict[str, Any]]) -> set[str]:
@@ -1151,30 +1174,61 @@ def truncate_oversized_tool_results_in_session_file(
     max_chars_override: int | None = None,
     aggregate_max_chars_override: int | None = None,
     protect_trailing_tool_results: bool = False,
+    projection_state: Any = None,
 ) -> SessionToolResultTruncationResult:
+    """The session-file variant of ``truncateOversizedToolResultsInSessionManager``.
+
+    ``projection_state`` (a :class:`~memory_core.tool_result_projection.ToolResultPromptProjectionState`)
+    enables the recovery projection: frozen replacements replay into the plan and are rewritten
+    into the transcript, and the state is reconciled against the rewritten branch.
+    """
+
     path = Path(session_file)
     try:
         entries = _read_jsonl_entries(path)
     except OSError as exc:
         return SessionToolResultTruncationResult(False, 0, str(exc))
     branch = _active_branch(entries)
-    if not branch:
+    # Only the entries inside the compaction window take part (iterateSessionContextEntries).
+    from memory_core import tool_result_projection as projection
+
+    context_entries = projection.session_context_entries(branch)
+    if not context_entries:
         return SessionToolResultTruncationResult(False, 0, "empty session")
 
-    max_chars = max(1, max_chars_override or calculate_max_tool_result_chars(context_window_tokens))
-    aggregate_budget_chars = _recovery_aggregate_tool_result_chars(
-        context_window_tokens,
-        max_chars,
-        aggregate_max_chars_override,
+    max_chars, aggregate_budget_chars = projection.resolve_tool_result_budgets(
+        context_window_tokens=context_window_tokens,
+        max_chars_override=max_chars_override,
+        aggregate_max_chars_override=aggregate_max_chars_override,
     )
+    projected_branch = context_entries
+    if projection_state is not None:
+        projected_branch, _keys = projection.project_tool_result_branch(
+            branch=context_entries, projection_state=projection_state, frozen_only=True
+        )
     plan = build_tool_result_replacement_plan(
-        branch=branch,
+        branch=projected_branch,
         max_chars=max_chars,
         aggregate_budget_chars=aggregate_budget_chars,
         min_keep_chars=RECOVERY_MIN_KEEP_CHARS,
         protect_trailing_tool_results=protect_trailing_tool_results,
     )
-    replacements_by_entry_id = plan.replacement_messages_by_entry_id
+    # buildRecoveryToolResultReplacementPlan: a replacement exists only where the final message
+    # differs from the stored one (identity, then JSON equality).
+    replacements_by_entry_id: dict[str, dict[str, Any]] = {}
+    for entry, projected_entry in zip(context_entries, projected_branch, strict=True):
+        message = entry.get("message")
+        entry_id = entry.get("id")
+        if entry.get("type") != "message" or not message or not isinstance(entry_id, str):
+            continue
+        final_message = plan.replacement_messages_by_entry_id.get(
+            entry_id, projected_entry.get("message")
+        )
+        if not final_message or final_message is message:
+            continue
+        if js_json_stringify(message) == js_json_stringify(final_message):
+            continue
+        replacements_by_entry_id[entry_id] = final_message
     if not replacements_by_entry_id:
         texts, contents = _branch_tool_texts(branch)
         return SessionToolResultTruncationResult(
@@ -1199,6 +1253,7 @@ def truncate_oversized_tool_results_in_session_file(
     parent_id = branch[first_match].get("parentId")
     current_parent_id = parent_id if isinstance(parent_id, str) else None
     appended: list[dict[str, Any]] = []
+    rewritten_ids: dict[str, str] = {}
     truncated_count = 0
     for entry in branch[first_match:]:
         old_id = entry.get("id")
@@ -1211,15 +1266,26 @@ def truncate_oversized_tool_results_in_session_file(
         next_entry["id"] = new_id
         next_entry["parentId"] = current_parent_id
         if replacement is not None:
-            next_entry["message"] = replacement
+            # The projection key is an in-memory symbol upstream and never reaches the transcript.
+            next_entry["message"] = dict(replacement)
             truncated_count += 1
         elif isinstance(message, dict):
             next_entry["message"] = message
+        kept_id = entry.get("firstKeptEntryId")
+        if isinstance(kept_id, str) and kept_id in rewritten_ids:
+            # A re-appended compaction keeps pointing at the rewritten copy of its first kept entry.
+            next_entry["firstKeptEntryId"] = rewritten_ids[kept_id]
+        rewritten_ids[old_id] = new_id
         current_parent_id = new_id
         appended.append(next_entry)
     _append_jsonl_entries(path, appended)
 
     after_branch = _active_branch([*entries, *appended])
+    if projection_state is not None:
+        # Recovery changed canonical bytes; keeping their former source would undo the next TTL edit.
+        projection.reconcile_tool_result_prompt_projection_state(
+            projection.session_context_tool_result_messages(after_branch), projection_state
+        )
     texts, contents = _branch_tool_texts(after_branch)
     return SessionToolResultTruncationResult(True, truncated_count, None, texts, contents)
 

@@ -958,6 +958,144 @@ async function main() {
     };
   }
 
+  if (payload.operation === "toolResultProjection") {
+    // Prompt projection of tool results (tool-result-truncation.ts + session-prompt-state.ts): one
+    // ToolResultPromptProjectionState shared by a scripted sequence of the exported entry points
+    // (projectToolResultBranch itself is private and is reached through them). Every step reports
+    // its own result plus a canonical dump of the state.
+    const truncation = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/tool-result-truncation.ts",
+    );
+    const promptState = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/session-prompt-state.ts",
+    );
+    const sessions = await importFromRepo(repoPath, "src/agents/sessions/index.ts");
+    const state = promptState.createToolResultPromptProjectionState();
+    const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value ?? null)) as T;
+    const byKey = (a: [string, unknown], b: [string, unknown]) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+    const dumpState = () => ({
+      replacements: clean(
+        [...state.replacements].map(([key, value]: [string, Record<string, unknown>]) => [
+          key,
+          { cacheTtl: value.cacheTtl ?? null, content: value.content },
+        ]),
+      ).toSorted(byKey),
+      frozen: [...state.frozen].toSorted(),
+      ambiguousBaseKeys: [...state.ambiguousBaseKeys],
+      sourceHashByKey: [...state.sourceHashByKey].toSorted(byKey),
+      restoredCacheTtl: clean([...state.restoredCacheTtl]).toSorted(byKey),
+      lastWrittenSnapshotHash: state.lastWrittenSnapshotHash ?? null,
+    });
+    const stepResults: Array<Record<string, unknown>> = [];
+    for (const step of (payload.steps ?? []) as Array<Record<string, any>>) {
+      let result: Record<string, unknown> = {};
+      if (step.op === "truncateMessages") {
+        const out = truncation.truncateOversizedToolResultsInMessages(
+          step.messages ?? [],
+          step.contextWindowTokens ?? 100_000,
+          step.maxChars,
+          step.aggregateMaxChars,
+          step.withState === false ? undefined : state,
+        );
+        result = {
+          messages: clean(out.messages),
+          truncatedCount: out.truncatedCount,
+          aggregateTruncatedCount: out.aggregateTruncatedCount,
+          aggregatePressureEngaged: out.aggregatePressureEngaged,
+          aggregateBudgetChars: out.aggregateBudgetChars,
+        };
+      } else if (step.op === "prune") {
+        const settings = truncation.resolveCacheTtlPruningSettings(step.config);
+        let pruned = false;
+        const out = settings
+          ? truncation.pruneExpiredCacheTtlToolResults({
+              messages: step.messages ?? [],
+              settings,
+              contextWindowTokens: step.contextWindowTokens ?? 100_000,
+              lastCacheTouchAt: step.lastCacheTouchAt ?? null,
+              dropThinkingBlocksForEstimate: step.dropThinkingBlocksForEstimate === true,
+              now: step.now ?? 0,
+              projectionState: state,
+              pruneNewRounds: step.pruneNewRounds !== false,
+              onPruned: () => {
+                pruned = true;
+              },
+            })
+          : step.messages;
+        result = {
+          settings: settings
+            ? {
+                ttlMs: settings.ttlMs,
+                hardClear: settings.hardClear,
+                placeholder: settings.placeholder,
+                prunable: Object.fromEntries(
+                  (step.probeTools ?? []).map((name: string) => [name, settings.isToolPrunable(name)]),
+                ),
+              }
+            : null,
+          messages: clean(out),
+          pruned,
+        };
+      } else if (step.op === "restore") {
+        truncation.restoreCacheTtlToolResultProjections(state, step.entries ?? []);
+      } else if (step.op === "reconcile") {
+        truncation.reconcileToolResultPromptProjectionState(step.messages ?? [], state);
+      } else if (step.op === "serialize") {
+        const snapshot = promptState.serializeCacheTtlToolResultProjections(state);
+        const persisted: unknown[] = [];
+        promptState.persistToolResultProjections(state, (customType: string, data: unknown) => {
+          persisted.push({ customType, data: clean(data) });
+        });
+        result = {
+          snapshot: clean(snapshot),
+          hash: promptState.hashToolResultProjectionSnapshot(snapshot),
+          persisted,
+        };
+      } else if (step.op === "session") {
+        const manager = sessions.SessionManager.inMemory(process.cwd());
+        const idMap = new Map<string, string>();
+        for (const entry of step.sessionEntries ?? []) {
+          if (entry.type === "message" && isRecord(entry.message)) {
+            idMap.set(entry.id, manager.appendMessage(entry.message));
+          } else if (entry.type === "compaction") {
+            idMap.set(
+              entry.id,
+              manager.appendCompaction(
+                entry.summary ?? "summary",
+                idMap.get(entry.firstKeptEntryId) ?? entry.firstKeptEntryId,
+                entry.tokensBefore ?? 1000,
+              ),
+            );
+          }
+        }
+        const out = await truncation.truncateOversizedToolResultsInSessionManager({
+          sessionManager: manager,
+          contextWindowTokens: step.contextWindowTokens ?? 100_000,
+          maxCharsOverride: step.maxChars,
+          aggregateMaxCharsOverride: step.aggregateMaxChars,
+          protectTrailingToolResults: step.protectTrailingToolResults,
+          projectionState: step.withState === false ? undefined : state,
+        });
+        const branchMessages = manager
+          .getBranch()
+          .filter((entry: Record<string, unknown>) => entry.type === "message")
+          .map((entry: Record<string, unknown>) => entry.message);
+        result = {
+          truncated: out.truncated,
+          truncatedCount: out.truncatedCount,
+          reason: out.reason ?? null,
+          branchMessages: clean(branchMessages),
+        };
+      } else {
+        throw new Error(`unknown toolResultProjection step: ${String(step.op)}`);
+      }
+      stepResults.push({ op: step.op, ...result, state: dumpState() });
+    }
+    return { ok: true, operation: payload.operation, result: { steps: stepResults } };
+  }
+
   if (payload.operation === "preemptiveCompaction") {
     const preemptive = await importFromRepo(
       repoPath,
@@ -1264,6 +1402,46 @@ async function main() {
         isCompactionFailureError: helpers.isCompactionFailureError(text),
         extractObservedOverflowTokenCount:
           helpers.extractObservedOverflowTokenCount(text) ?? null,
+      },
+    };
+  }
+
+  if (payload.operation === "contextOverflowTables") {
+    // The overflow wording tables behind isLikelyContextOverflowError: every scope of
+    // matchesContextOverflowMessage plus the failover/context-overflow helpers and the rate-limit
+    // and billing tables they consult, over a corpus of provider messages in one call.
+    const overflow = await importFromRepo(repoPath, "packages/ai/src/utils/overflow.ts");
+    const failover = await importFromRepo(repoPath, "src/agents/failover/context-overflow.ts");
+    const tables = await importFromRepo(repoPath, "src/agents/failover/context-overflow-tables.ts");
+    const patterns = await importFromRepo(repoPath, "src/agents/failover/message-patterns.ts");
+    const scopes = [
+      "assistant-error",
+      "failover-explicit",
+      "provider-fallback",
+      "failover-hint",
+      "context-window-too-small",
+      "tpm-rate-limit-hint",
+      "rate-limit-hint",
+    ];
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        cases: (payload.texts ?? []).map((text) => {
+          const value = text ?? "";
+          return {
+            scopes: Object.fromEntries(
+              scopes.map((scope) => [scope, overflow.matchesContextOverflowMessage(value, scope)]),
+            ),
+            looksLikeCandidate: tables.looksLikeProviderContextOverflowCandidate(value),
+            fromTables: tables.isContextOverflowErrorFromTables(value),
+            isContextOverflowError: failover.isContextOverflowError(value),
+            isLikelyContextOverflowError: failover.isLikelyContextOverflowError(value),
+            isRateLimit: patterns.isRateLimitErrorMessage(value),
+            isBilling: patterns.isBillingErrorMessage(value),
+            requestSizeCeiling: patterns.isProviderRequestSizeCeilingError(value),
+          };
+        }),
       },
     };
   }

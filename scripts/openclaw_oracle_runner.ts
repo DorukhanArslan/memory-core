@@ -1096,6 +1096,263 @@ async function main() {
     return { ok: true, operation: payload.operation, result: { steps: stepResults } };
   }
 
+  if (payload.operation === "sessionContextWindow") {
+    // Reset boundary in the session context window: selectResetKeptEntries (tool-result-pairing.ts)
+    // and iterateSessionContextEntries (session.ts) over scripted entry lists. Selected entries
+    // are reported as indexes into the input list (both return the input objects themselves).
+    const pairing = await importFromRepo(
+      repoPath,
+      "packages/agent-core/src/harness/session/tool-result-pairing.ts",
+    );
+    const session = await importFromRepo(
+      repoPath,
+      "packages/agent-core/src/harness/session/session.ts",
+    );
+    const cases = (payload.cases ?? []).map((item) => {
+      const entries = (item.entries ?? []) as Array<Record<string, unknown>>;
+      const indexOf = new Map<unknown, number>(entries.map((entry, index) => [entry, index]));
+      return {
+        resetKept: pairing
+          .selectResetKeptEntries(entries)
+          .map((entry: Record<string, unknown>) => indexOf.get(entry)),
+        window: [...session.iterateSessionContextEntries(entries)].map(
+          (item: { entry: Record<string, unknown>; context: string }) => ({
+            index: indexOf.get(item.entry),
+            context: item.context,
+          }),
+        ),
+      };
+    });
+    return { ok: true, operation: payload.operation, result: { cases } };
+  }
+
+  if (payload.operation === "cacheTtlEligibility") {
+    // Cache-TTL provider eligibility and the session marker: isCacheTtlEligibleProvider and
+    // readLastCacheTtlTimestamp (cache-ttl.ts), appendAttemptCacheTtlIfNeeded
+    // (run/attempt-thread-helpers.ts) over a real projection state frozen by
+    // truncateOversizedToolResultsInMessages. No provider plugin is registered in the runner, so
+    // the plugin hook of isCacheTtlEligibleProvider resolves to undefined (core rules only).
+    const cacheTtl = await importFromRepo(repoPath, "src/agents/embedded-agent-runner/cache-ttl.ts");
+    const helpers = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/run/attempt-thread-helpers.ts",
+    );
+    const truncation = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/tool-result-truncation.ts",
+    );
+    const promptState = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/session-prompt-state.ts",
+    );
+    const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value ?? null)) as T;
+    const eligibility = (payload.cases ?? [])
+      .filter((item) => item.kind === "eligibility")
+      .map((item) =>
+        cacheTtl.isCacheTtlEligibleProvider(item.provider, item.modelId, item.modelApi, item.route),
+      );
+    const reads = (payload.cases ?? [])
+      .filter((item) => item.kind === "read")
+      .map((item) => {
+        const manager =
+          item.manager === "noEntries"
+            ? {}
+            : item.manager === "throws"
+              ? {
+                  getEntries: () => {
+                    throw new Error("boom");
+                  },
+                }
+              : item.manager === "null"
+                ? null
+                : { getEntries: () => item.entries ?? [] };
+        return cacheTtl.readLastCacheTtlTimestamp(manager, item.context);
+      });
+    const appends = (payload.cases ?? [])
+      .filter((item) => item.kind === "append")
+      .map((item) => {
+        const state = promptState.createToolResultPromptProjectionState();
+        if (item.freezeMessages) {
+          truncation.truncateOversizedToolResultsInMessages(
+            item.freezeMessages,
+            item.contextWindowTokens ?? 2_000,
+            item.maxChars,
+            item.aggregateMaxChars,
+            state,
+          );
+        }
+        const entries: unknown[] = [];
+        const sessionManager = item.noAppend
+          ? {}
+          : { appendCustomEntry: (customType: string, data: unknown) => entries.push({ customType, data: clean(data) }) };
+        const eligible =
+          item.eligible === "always"
+            ? () => true
+            : item.eligible === "never"
+              ? () => false
+              : cacheTtl.isCacheTtlEligibleProvider;
+        const results = [];
+        for (const round of item.rounds ?? [{}]) {
+          results.push(
+            helpers.appendAttemptCacheTtlIfNeeded({
+              sessionManager,
+              timedOutDuringCompaction: round.timedOutDuringCompaction === true,
+              compactionOccurredThisAttempt: round.compactionOccurredThisAttempt === true,
+              config: item.config,
+              provider: item.provider,
+              modelId: item.modelId,
+              modelApi: item.modelApi,
+              modelRoute: item.route,
+              isCacheTtlEligibleProvider: eligible,
+              now: round.now,
+              toolResultPromptProjectionState: state,
+            }),
+          );
+        }
+        return { results, entries, lastWrittenSnapshotHash: state.lastWrittenSnapshotHash ?? null };
+      });
+    return { ok: true, operation: payload.operation, result: { eligibility, reads, appends } };
+  }
+
+  if (payload.operation === "transcriptRewrite") {
+    // rewriteTranscriptEntriesInSessionManager (embedded-agent-runner/transcript-rewrite.ts) on a
+    // real in-memory SessionManager. Each case builds a transcript from `entries` (local labels
+    // for ids; {"op":"branch","to":label} and {"op":"resetLeaf"} steer the append cursor), then
+    // applies `replacements` (entryId is a label or a raw string) and dumps the result, the active
+    // branch, every entry, the append cursor and the persisted entry list including leaf controls,
+    // with ids normalized (build labels stay; new entries become n1.., leaf controls l1..) and
+    // timestamps dropped.
+    const rewrite = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/transcript-rewrite.ts",
+    );
+    const sessions = await importFromRepo(repoPath, "src/agents/sessions/index.ts");
+    const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value ?? null)) as T;
+    const results: unknown[] = [];
+    for (const item of payload.cases ?? []) {
+      const manager = sessions.SessionManager.inMemory(process.cwd());
+      const ids = new Map<string, string>();
+      const real = (label: unknown) =>
+        typeof label === "string" && ids.has(label) ? (ids.get(label) as string) : label;
+      for (const spec of (item.entries ?? []) as Array<Record<string, any>>) {
+        let id: string | undefined;
+        if (spec.op === "branch") {
+          manager.branch(real(spec.to));
+          continue;
+        }
+        if (spec.op === "resetLeaf") {
+          manager.resetLeaf();
+          continue;
+        }
+        if (spec.type === "message") {
+          id = manager.appendMessage(structuredClone(spec.message));
+        } else if (spec.type === "compaction") {
+          id = manager.appendCompaction(
+            spec.summary ?? "summary",
+            real(spec.firstKeptEntryId),
+            spec.tokensBefore ?? 100,
+            spec.details,
+            spec.fromHook,
+            spec.identity,
+            spec.tokensAfter,
+          );
+        } else if (spec.type === "reset") {
+          id = manager.appendResetBoundary(spec.reason ?? "new", real(spec.firstKeptEntryId));
+        } else if (spec.type === "thinking_level_change") {
+          id = await manager.appendThinkingLevelChange(spec.thinkingLevel);
+        } else if (spec.type === "model_change") {
+          id = await manager.appendModelChange(spec.provider, spec.modelId);
+        } else if (spec.type === "custom") {
+          id = manager.appendCustomEntry(spec.customType, spec.data);
+        } else if (spec.type === "custom_message") {
+          id = manager.appendCustomMessageEntry(
+            spec.customType,
+            spec.content,
+            spec.display ?? true,
+            spec.details,
+          );
+        } else if (spec.type === "session_info") {
+          id = manager.appendSessionInfo(spec.name ?? "");
+        } else if (spec.type === "branch_summary") {
+          id = manager.branchWithSummary(
+            spec.parentId === null || spec.parentId === undefined ? null : real(spec.parentId),
+            spec.summary ?? "branch",
+            spec.details,
+            spec.fromHook,
+          );
+        } else if (spec.type === "label") {
+          id = manager.appendLabelChange(real(spec.targetId), spec.label);
+        } else {
+          throw new Error(`unknown transcriptRewrite entry: ${String(spec.type)}`);
+        }
+        if (spec.id) {
+          ids.set(spec.id, id as string);
+        }
+      }
+      const idToLabel = new Map<string, string>([...ids].map(([label, id]) => [id, label]));
+      let outcome: Record<string, unknown>;
+      try {
+        outcome = clean(
+          await rewrite.rewriteTranscriptEntriesInSessionManager({
+            sessionManager: manager,
+            replacements: ((item.replacements ?? []) as Array<Record<string, any>>).map((r) => ({
+              entryId: real(r.entryId),
+              message: structuredClone(r.message),
+            })),
+            preserveReplacementCompactionReplay: item.preserveReplacementCompactionReplay,
+          }),
+        );
+      } catch (error) {
+        outcome = { error: error instanceof Error ? error.message : String(error) };
+      }
+      let nextEntry = 0;
+      let nextLeaf = 0;
+      const label = (id: unknown): unknown => {
+        if (typeof id !== "string") {
+          return id ?? null;
+        }
+        if (!idToLabel.has(id)) {
+          idToLabel.set(id, `n${(nextEntry += 1)}`);
+        }
+        return idToLabel.get(id);
+      };
+      const norm = (entry: Record<string, any>) => {
+        const out: Record<string, any> = { ...entry };
+        delete out.timestamp;
+        for (const key of ["id", "parentId", "firstKeptEntryId", "targetId", "appendParentId", "fromId"]) {
+          if (key in out) {
+            out[key] = key === "fromId" && out[key] === "root" ? "root" : label(out[key]);
+          }
+        }
+        return clean(out);
+      };
+      // Name every entry in storage order first so labels do not depend on the dump order.
+      const entries = manager.getEntries();
+      for (const entry of entries) {
+        label(entry.id);
+      }
+      const persisted = manager
+        .getPersistedEntries()
+        .filter((entry: Record<string, any>) => entry.type !== "session")
+        .map((entry: Record<string, any>) => {
+          if (entry.type === "leaf") {
+            idToLabel.set(entry.id, `l${(nextLeaf += 1)}`);
+          }
+          return norm(entry);
+        });
+      results.push({
+        outcome,
+        branch: manager.getBranch().map(norm),
+        entries: entries.map(norm),
+        leafId: label(manager.getLeafId()),
+        appendParentId: label(manager.getAppendParentId()),
+        appendMode: manager.getAppendMode() ?? null,
+        persisted,
+      });
+    }
+    return { ok: true, operation: payload.operation, result: { cases: results } };
+  }
+
   if (payload.operation === "preemptiveCompaction") {
     const preemptive = await importFromRepo(
       repoPath,
@@ -1444,6 +1701,65 @@ async function main() {
         }),
       },
     };
+  }
+
+  if (payload.operation === "assistantOverflow") {
+    // Assistant-error overflow path: isContextOverflow (packages/ai overflow.ts) over scripted
+    // assistant messages, and the provider-plugin hook of isContextOverflowError /
+    // classifyProviderPluginError with plugins built from a declarative spec: `matches` (regex
+    // sources tested on the error message; `matchReturn` "undefined" returns undefined),
+    // `reason` (classifyFailoverReason result) and a call log of the contexts handed over.
+    const overflow = await importFromRepo(repoPath, "packages/ai/src/utils/overflow.ts");
+    const failover = await importFromRepo(repoPath, "src/agents/failover/context-overflow.ts");
+    const patterns = await importFromRepo(repoPath, "src/agents/failover/provider-patterns.ts");
+    const messages = (payload.cases ?? [])
+      .filter((item) => item.message !== undefined)
+      .map((item) => ({
+        isContextOverflow:
+          item.contextWindow === undefined
+            ? overflow.isContextOverflow(item.message)
+            : overflow.isContextOverflow(item.message, item.contextWindow),
+      }));
+    const plugins = (payload.cases ?? [])
+      .filter((item) => item.text !== undefined)
+      .map((item) => {
+        const spec = item.plugin as Record<string, any> | undefined;
+        const calls: unknown[] = [];
+        const plugin = spec
+          ? {
+              id: spec.id,
+              matchesContextOverflowError: spec.matches
+                ? (ctx: Record<string, unknown>) => {
+                    calls.push({ hook: "matches", ctx });
+                    if (spec.matchReturn === "undefined") {
+                      return undefined;
+                    }
+                    return (spec.matches as string[]).some((source) =>
+                      new RegExp(source, "i").test(String(ctx.errorMessage)),
+                    );
+                  }
+                : undefined,
+              classifyFailoverReason:
+                spec.reason !== undefined
+                  ? (ctx: Record<string, unknown>) => {
+                      calls.push({ hook: "classify", ctx });
+                      return spec.reason;
+                    }
+                  : undefined,
+            }
+          : undefined;
+        const providerPlugin = item.mode === "null" ? null : item.mode === "unset" ? undefined : plugin;
+        return {
+          isContextOverflowError: failover.isContextOverflowError(item.text, { providerPlugin }),
+          classify: patterns.classifyProviderPluginError({
+            errorMessage: item.text,
+            ...(item.context ?? {}),
+            providerPlugin,
+          }),
+          calls,
+        };
+      });
+    return { ok: true, operation: payload.operation, result: { messages, plugins } };
   }
 
   if (payload.operation === "memoryGet") {

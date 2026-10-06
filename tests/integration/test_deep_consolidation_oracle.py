@@ -14,8 +14,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import shutil
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -190,10 +188,6 @@ def _mark_untrusted(workspace: Path, keys: list[str]) -> None:
     path.write_text(json.dumps(store, indent=2) + "\n", encoding="utf-8")
 
 
-def _snapshot(files: dict[str, str]) -> dict[str, str]:
-    return {name: files[name] for name in ("MEMORY.md", "DREAMS.md", "dreams.md") if name in files}
-
-
 def _py_files(workspace: Path) -> dict[str, str]:
     return {
         path.name: path.read_text(encoding="utf-8")
@@ -303,27 +297,35 @@ def _comparable_calls(ts_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 @pytest.fixture(scope="module")
-def _results() -> dict[str, tuple[dict[str, Any], dict[str, Any], Path, Path]]:
-    out = {}
-    with tempfile.TemporaryDirectory(prefix="memory-core-deep-consolidation-") as tmp:
-        root = Path(tmp)
-        for name, scenario in _scenarios().items():
-            ts_workspace = root / f"ts-{name}"
-            py_workspace = root / f"py-{name}"
-            ts_workspace.mkdir()
-            py_workspace.mkdir()
-            ts = _run_ts(scenario, ts_workspace)
-            py = _run_python(scenario, py_workspace)
-            out[name] = (ts, py, ts_workspace, py_workspace)
-        yield out
-        shutil.rmtree(root, ignore_errors=True)
+def _results(tmp_path_factory):
+    """Scenario results, computed on first use (an oracle call costs seconds)."""
+    root = tmp_path_factory.mktemp("deep-consolidation")
+    cache: dict[str, tuple[dict[str, Any], dict[str, Any], Path, Path]] = {}
+
+    class Results:
+        def __getitem__(self, name: str):
+            if name not in cache:
+                ts_workspace = root / f"ts-{name}"
+                py_workspace = root / f"py-{name}"
+                ts_workspace.mkdir()
+                py_workspace.mkdir()
+                scenario = _scenarios()[name]
+                cache[name] = (
+                    _run_ts(scenario, ts_workspace),
+                    _run_python(scenario, py_workspace),
+                    ts_workspace,
+                    py_workspace,
+                )
+            return cache[name]
+
+    return Results()
 
 
 @pytest.mark.parametrize("name", sorted(_scenarios()))
 def test_deep_consolidation_matches_openclaw(name: str, _results) -> None:
     ts, py, ts_workspace, py_workspace = _results[name]
     assert ts["ok"] is True
-    assert _snapshot(_py_files(py_workspace)) == _snapshot(ts["files"])
+    assert _py_files(py_workspace) == _py_files(ts_workspace)
     assert py["calls"] and [
         {
             "message": call.message,

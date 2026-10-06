@@ -598,14 +598,14 @@ def _run_short_term_promotion_unlocked(
         )
     consolidated = commit is not None and commit.result is not None
     if consolidation is not None and preplan is not None and not consolidated:
-        if commit is not None and commit.skipped_reason:
-            consolidation.log.warning(
-                f"{DISPLAY_NAME}: {commit.skipped_reason}; using append-only fallback."
-            )
         consolidation.log.warning(
             f"{DISPLAY_NAME}: promotion state or MEMORY.md changed during consolidation; "
             "using append-only fallback."
         )
+        if commit is not None and commit.skipped_reason:
+            consolidation.log.warning(
+                f"{DISPLAY_NAME}: {commit.skipped_reason}; using append-only fallback."
+            )
     summary = (
         f"ranked {len(candidates)} short-term promotion candidate(s); "
         f"evaluated {len(evaluations)} candidate(s); "

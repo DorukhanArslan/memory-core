@@ -4586,6 +4586,257 @@ def test_real_openclaw_oracle_history_limit_helpers_match_python():
     }
 
 
+_HISTORY_LIMIT_CONFIG = {
+    "session": {"identityLinks": {"alice": ["telegram:123", "discord:999"], "Bob": ["456", " X "]}},
+    "channels": {
+        "telegram": {
+            "historyLimit": 10,
+            "dmHistoryLimit": 20,
+            "dms": {"123": {"historyLimit": 5}, "alice": {"historyLimit": 7}, "0": {"historyLimit": 0}},
+            "accounts": {
+                "work": {
+                    "historyLimit": 11,
+                    "dmHistoryLimit": 30,
+                    "dms": {"123": {"historyLimit": 6}},
+                },
+                "Work Team": {"dmHistoryLimit": 40, "historyLimit": 41},
+                "direct": {"dmHistoryLimit": 50},
+                "bare": {},
+                "nulls": {"dmHistoryLimit": None, "historyLimit": None, "dms": None},
+                "emptydms": {"dms": {}},
+            },
+        },
+        "Slack": {"historyLimit": 8, "dmHistoryLimit": 9},
+        "matrix": {"dmHistoryLimit": 3, "historyLimit": 4, "accounts": "nope"},
+        "discord": {"dms": {"999": {"historyLimit": None}, "alice": {"historyLimit": 2}}},
+        "signal": "not-a-record",
+        "whatsapp": {"dmHistoryLimit": "12", "historyLimit": True},
+    },
+}
+
+
+def _history_limit_cases(cases: list[dict], config: dict | None = None) -> None:
+    """getHistoryLimitFromSessionKey at the tag against the port, with the route facts."""
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    config = _HISTORY_LIMIT_CONFIG if config is None else config
+    result = oracle.run({"operation": "historyLimitCases", "config": config, "cases": cases})
+    assert result["ok"] is True
+    expected = [
+        get_history_limit_from_session_key(case["sessionKey"], config, case.get("route"))
+        for case in cases
+    ]
+    assert result["result"] == expected, [
+        (case, got, want)
+        for case, got, want in zip(cases, result["result"], expected, strict=True)
+        if got != want
+    ]
+
+
+def _hl(key, **route):
+    return {"sessionKey": key, **({"route": route} if route else {})}
+
+
+def test_real_openclaw_oracle_history_limit_session_key_shapes_match_python():
+    _history_limit_cases(
+        [
+            _hl("telegram:dm:123"),
+            _hl("telegram:direct:123"),
+            _hl("telegram:DM:123"),
+            _hl("Telegram:dm:456"),
+            _hl("  telegram :dm:456"),
+            _hl("telegram:dm:0"),
+            _hl("telegram:dm:123:thread:99"),
+            _hl("telegram:dm:123:TOPIC:7"),
+            _hl("telegram:dm:123:thread:abc"),
+            _hl("telegram:dm:alice:thread:1:thread:2"),
+            _hl("telegram:dm:"),
+            _hl("telegram:dm"),
+            _hl("telegram"),
+            _hl("telegram:group:g1"),
+            _hl("telegram:channel:c1"),
+            _hl("telegram:group"),
+            _hl("telegram:slash:123"),
+            _hl("telegram::dm:123"),
+            _hl("telegram:dm::123"),
+            _hl("agent:main:telegram:dm:123"),
+            _hl("agent:main:telegram:dm:123:thread:5"),
+            _hl("agent:main:TELEGRAM:group:g"),
+            _hl("agent:main"),
+            _hl("agent:main:"),
+            _hl("agent::telegram:dm:123"),
+            _hl("agent:telegram:dm:123"),
+            _hl("agent:agent:telegram:dm:123"),
+            _hl("slack:channel:c1"),
+            _hl("Slack:group:g1"),
+            _hl("slack:dm:u1"),
+            _hl("agent:beta:slack:channel:c1"),
+            _hl("matrix:dm:@u:example.org"),
+            _hl("matrix:channel:!room:example.org"),
+            _hl("matrix:group:r:thread:9"),
+            _hl("discord:dm:999"),
+            _hl("discord:dm:alice"),
+            _hl("discord:channel:1"),
+            _hl("signal:dm:1"),
+            _hl("whatsapp:dm:1"),
+            _hl("whatsapp:group:1"),
+            _hl("unknown:dm:123"),
+            _hl("z.ai:dm:1"),
+            _hl("imessage:dm:1"),
+            _hl("nextcloud-talk:dm:1"),
+            _hl(""),
+            _hl(":dm:1"),
+            _hl("telegram:dm:123\n"),
+            _hl("telegram:dm:a\n:thread:1"),
+        ]
+    )
+
+
+def test_real_openclaw_oracle_history_limit_account_scoped_keys_match_python():
+    _history_limit_cases(
+        [
+            _hl("telegram:work:dm:123"),
+            _hl("telegram:work:direct:123"),
+            _hl("telegram:work:dm:456"),
+            _hl("telegram:work:dm:123:thread:3"),
+            _hl("telegram:work:group:g"),
+            _hl("telegram:work:channel:c"),
+            _hl("telegram:WORK:dm:456"),
+            _hl("telegram:Work Team:dm:1"),
+            _hl("telegram:work-team:dm:1"),
+            _hl("telegram:Work-Team:dm:1"),
+            _hl("telegram:bare:dm:1"),
+            _hl("telegram:nulls:dm:1"),
+            _hl("telegram:emptydms:dm:123"),
+            _hl("telegram:ghost:dm:123"),
+            _hl("telegram:default:dm:123"),
+            _hl("telegram:direct:dm:1"),
+            _hl("telegram:direct:direct:1"),
+            _hl("telegram:direct:dm"),
+            _hl("telegram:direct:123"),
+            _hl("telegram:direct:group:1"),
+            _hl("telegram:dm:direct:1"),
+            _hl("telegram:dm:work:1"),
+            _hl("telegram:group:work:1"),
+            _hl("telegram:dm:dm:123"),
+            _hl("telegram:dm:group:1"),
+            _hl("telegram:group:dm:1"),
+            _hl("telegram:channel:direct:1"),
+            _hl("telegram:direct:direct:123"),
+            _hl("telegram:direct:dm:123"),
+            _hl("telegram:dm:dm"),
+            _hl("agent:main:telegram:work:dm:123"),
+            _hl("agent:main:telegram:direct:direct:123:thread:1"),
+            _hl("matrix:work:dm:1"),
+            _hl("slack:ops:dm:1"),
+        ]
+    )
+
+
+def test_real_openclaw_oracle_history_limit_route_facts_match_python():
+    _history_limit_cases(
+        [
+            _hl("telegram:direct:dm:123", chatType="direct", accountId="direct"),
+            _hl("telegram:direct:dm:123", chatType="direct"),
+            _hl("telegram:direct:dm:123", chatType="direct", peerId="123"),
+            _hl("telegram:direct:dm:123", chatType="direct", peerId="dm:123"),
+            _hl("telegram:direct:dm:123", chatType="direct", peerId="dm:123", accountId="direct"),
+            _hl("telegram:direct:dm:123", peerId="dm:123"),
+            _hl("telegram:direct:dm:123", peerId="123"),
+            _hl("telegram:direct:direct:123", chatType="direct", peerId="direct:123"),
+            _hl("telegram:direct:group:1", chatType="group"),
+            _hl("telegram:direct:group:1", chatType="direct"),
+            _hl("telegram:direct:group:1", chatType="channel"),
+            _hl("telegram:group:g", chatType="direct"),
+            _hl("telegram:group:g", chatType="group"),
+            _hl("telegram:channel:c", chatType="channel"),
+            _hl("telegram:channel:c", chatType="group"),
+            _hl("telegram:dm:123", chatType="direct"),
+            _hl("telegram:dm:123", chatType="dm"),
+            _hl("telegram:dm:123", chatType="group"),
+            _hl("telegram:dm:123", chatType=""),
+            _hl("telegram:dm:123", peerId=""),
+            _hl("telegram:dm:123", peerId="   "),
+            _hl("telegram:dm:123", peerId="  123  "),
+            _hl("telegram:dm:123", peerId="456"),
+            _hl("telegram:dm:456", peerId="456"),
+            _hl("telegram:dm:456", peerId="123"),
+            _hl("telegram:dm:ALICE", peerId="123"),
+            _hl("telegram:dm:alice", peerId="123"),
+            _hl("telegram:dm:alice", peerId="999"),
+            _hl("telegram:dm:alice", peerId="telegram:123"),
+            _hl("telegram:dm:alice:thread:4", peerId="123"),
+            _hl("telegram:dm:123:thread:4", peerId="123"),
+            _hl("telegram:dm:123:thread:4", peerId="123:thread:4"),
+            _hl("telegram:dm:123:thread:4", peerId="ghost"),
+            _hl("telegram:dm:456", peerId="456", accountId="work"),
+            _hl("telegram:dm:456", accountId="work"),
+            _hl("telegram:dm:456", accountId="  work  "),
+            _hl("telegram:dm:456", accountId="Work Team"),
+            _hl("telegram:dm:456", accountId="work-team"),
+            _hl("telegram:dm:456", accountId=""),
+            _hl("telegram:dm:456", accountId="   "),
+            _hl("telegram:dm:456", accountId=None),
+            _hl("telegram:dm:456", accountId="ghost"),
+            _hl("telegram:dm:456", accountId="__proto__"),
+            _hl("telegram:dm:456", accountId="constructor"),
+            _hl("telegram:dm:456", accountId="!!!"),
+            _hl("telegram:dm:456", accountId="bare"),
+            _hl("telegram:dm:456", accountId="nulls"),
+            _hl("telegram:dm:123", accountId="emptydms"),
+            _hl("telegram:dm:123", accountId="work"),
+            _hl("telegram:work:dm:123", accountId="default"),
+            _hl("telegram:work:dm:123", accountId="Work"),
+            _hl("telegram:group:g", accountId="work"),
+            _hl("telegram:channel:c", accountId="Work Team"),
+            _hl("telegram:channel:c", accountId="bare"),
+            _hl("telegram:channel:c", accountId="nulls"),
+            _hl("telegram:work:dm:123", chatType="direct"),
+            _hl("telegram:work:dm:123", chatType="group"),
+            _hl("telegram:work:dm:123", chatType="direct", peerId="123"),
+            _hl("telegram:work:dm:123", chatType="direct", peerId="nobody"),
+            _hl("discord:dm:999", peerId="999"),
+            _hl("discord:dm:ghost", peerId="999"),
+            _hl("discord:dm:alice", peerId="999"),
+            _hl("matrix:dm:1", accountId="work"),
+            _hl("matrix:channel:1", accountId="work"),
+            _hl("whatsapp:dm:1", accountId="work"),
+            _hl("whatsapp:group:1", chatType="group"),
+            _hl("slack:channel:c", accountId="ops"),
+            _hl("agent:main:telegram:direct:dm:123", chatType="direct"),
+            _hl("agent:main:telegram:direct:dm:123", chatType="direct", peerId="dm:123"),
+            _hl("bogus:dm:1", accountId="work"),
+            _hl("telegram:dm:1", chatType="direct", peerId="x", accountId="work"),
+            _hl("telegram:dm:456", peerId=" X "),
+            _hl("telegram:dm:bob", peerId="456"),
+            _hl("telegram:dm:bob", peerId="x"),
+            _hl("telegram:dm:456", peerId="x"),
+        ]
+    )
+
+
+def test_real_openclaw_oracle_history_limit_without_config_or_provider_match_python():
+    cases = [_hl("telegram:dm:123"), _hl("slack:channel:c"), _hl("telegram:group:g")]
+    _history_limit_cases(cases, config={})
+    _history_limit_cases(cases, config={"channels": {}})
+    _history_limit_cases(cases, config={"channels": {"telegram": None}})
+    _history_limit_cases(cases, config={"channels": {"telegram": []}})
+    _history_limit_cases(cases, config={"channels": {"telegram": {"accounts": []}}})
+    _history_limit_cases(
+        [_hl("telegram:dm:1", accountId="a")],
+        config={"channels": {"telegram": {"accounts": {"a": "x"}, "dmHistoryLimit": 4}}},
+    )
+    _history_limit_cases(
+        [_hl("telegram:dm:1", accountId="a"), _hl("telegram:dm:2", accountId="a")],
+        config={
+            "channels": {
+                "TELEGRAM": {"dmHistoryLimit": 1},
+                "telegram": {"dmHistoryLimit": 2},
+                "telegram ": {"dmHistoryLimit": 3},
+            }
+        },
+    )
+
+
 def _repair_pairing_case(messages: list[dict], **options) -> None:
     """repairToolUseResultPairing at the tag against the port, the whole report compared."""
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))

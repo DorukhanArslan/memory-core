@@ -995,6 +995,23 @@ async function main() {
     };
   }
 
+  if (payload.operation === "historyLimitCases") {
+    // getHistoryLimitFromSessionKey with its optional route facts, one entry per case.
+    const history = await importFromRepo(repoPath, "src/agents/embedded-agent-runner/history.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map(
+        (item) =>
+          history.getHistoryLimitFromSessionKey(
+            item.sessionKey,
+            item.config ?? payload.config,
+            item.route,
+          ) ?? null,
+      ),
+    };
+  }
+
   if (payload.operation === "repairToolUseResultPairing") {
     const repair = await importFromRepo(repoPath, "src/agents/session-transcript-repair.ts");
     const result = repair.repairToolUseResultPairing(payload.messages ?? [], {

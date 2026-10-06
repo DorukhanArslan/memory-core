@@ -1385,19 +1385,82 @@ async function main() {
       repoPath,
       "src/agents/embedded-agent-runner/run/preemptive-compaction.ts",
     );
-    const result = preemptive.shouldPreemptivelyCompactBeforePrompt({
-      messages: payload.messages ?? [],
-      unwindowedMessages: payload.unwindowedMessages,
-      systemPrompt: payload.systemPrompt,
-      prompt: payload.prompt ?? "",
-      contextTokenBudget: payload.contextWindowTokens ?? 100_000,
-      reserveTokens: payload.reserveTokens ?? 0,
-      toolResultMaxChars: payload.toolResultMaxChars,
+    // The real OpenClaw host (endpoint classes, tool-result redaction) backs the replay pressure.
+    await importFromRepo(repoPath, "src/llm/ai-transport-host.ts");
+    await importFromRepo(repoPath, "src/agents/ai-transport-runtime-host.ts");
+    const replayModel = (model: Record<string, unknown>) => ({
+      input: ["text", "image"],
+      contextWindow: 200000,
+      maxTokens: 4096,
+      reasoning: false,
+      name: String(model.id),
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      ...model,
     });
+    const decide = (item: Record<string, any>) => {
+      const replay = item.replay
+        ? { ...item.replay, model: replayModel(item.replay.model) }
+        : undefined;
+      const messages = item.messages ?? [];
+      switch (item.fn) {
+        case "boundaryEstimate":
+          return preemptive.estimateLlmBoundaryTokenPressure({
+            messages,
+            systemPrompt: item.systemPrompt,
+            prompt: item.prompt ?? "",
+            replay,
+            ...(typeof item.toolSchemaTokens === "number"
+              ? { toolSchemaTokens: item.toolSchemaTokens }
+              : {}),
+          });
+        case "renderedBoundary":
+          return preemptive.estimateRenderedLlmBoundaryTokenPressure({
+            systemPrompt: item.systemPrompt,
+            prompt: item.prompt ?? "",
+          });
+        case "toolSchema":
+          return preemptive.estimateToolSchemaTokenPressure(item.tools);
+        case "precheckLog":
+          return preemptive.formatPrePromptPrecheckLog(item.params);
+        case "budgetStatus":
+          return preemptive.buildPrePromptContextBudgetStatus(item.params);
+        case "overflowText":
+          return preemptive.PREEMPTIVE_OVERFLOW_ERROR_TEXT;
+        default:
+          return preemptive.shouldPreemptivelyCompactBeforePrompt({
+            messages,
+            unwindowedMessages: item.unwindowedSame ? messages : item.unwindowedMessages,
+            systemPrompt: item.systemPrompt,
+            prompt: item.prompt ?? "",
+            contextTokenBudget: item.contextWindowTokens ?? 100_000,
+            reserveTokens: item.reserveTokens ?? 0,
+            toolResultMaxChars: item.toolResultMaxChars,
+            toolSchemaTokens: item.toolSchemaTokens,
+            llmBoundaryTokenPressure: item.llmBoundaryTokenPressure,
+            replay,
+          });
+      }
+    };
+    if (Array.isArray(payload.cases)) {
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: payload.cases.map((item: Record<string, any>) => {
+          try {
+            return { value: decide(item) ?? null, error: null };
+          } catch (err) {
+            return {
+              value: null,
+              error: err instanceof Error ? err.constructor.name : String(err),
+            };
+          }
+        }),
+      };
+    }
     return {
       ok: true,
       operation: payload.operation,
-      result,
+      result: decide(payload),
     };
   }
 
@@ -1529,6 +1592,19 @@ async function main() {
     const converter = await importFromRepo(
       repoPath,
       "packages/ai/src/transports/openai-responses-replay-messages-internal.ts",
+    );
+    const toolText = await importFromRepo(repoPath, "packages/ai/src/providers/tool-result-text.ts");
+    const contract = await importFromRepo(
+      repoPath,
+      "packages/ai/src/providers/anthropic-model-contract.ts",
+    );
+    const providerTransform = await importFromRepo(
+      repoPath,
+      "packages/ai/src/provider-transcript-transform.ts",
+    );
+    const transportTransform = await importFromRepo(
+      repoPath,
+      "src/agents/transport-message-transform.ts",
     );
     // The real OpenClaw host (endpoint classification, secret sentinels) is what eligibility
     // runs against in production; the library default host classifies every URL as "default".
@@ -1735,6 +1811,71 @@ async function main() {
                 }
               }
               return { value: table, error: null };
+            }
+            case "convert": {
+              // The Responses converter itself: the wire input of one projection over the case's
+              // messages as given (every role), with the identity's session and auth profile.
+              const convert =
+                item.projection === "provider"
+                  ? converter.convertProviderResponsesMessages
+                  : converter.convertResponsesMessages;
+              return {
+                value: convert(
+                  replayModel(item.model),
+                  { messages: structuredClone(messages), systemPrompt: item.systemPrompt },
+                  toolCallProviders,
+                  {
+                    ...identity,
+                    ...(item.options ?? {}),
+                    ...(item.includeSystemPrompt === undefined
+                      ? {}
+                      : { includeSystemPrompt: item.includeSystemPrompt }),
+                  },
+                ),
+                error: null,
+              };
+            }
+            case "toolResultText": {
+              return {
+                value: {
+                  text: toolText.extractToolResultText(item.blocks, item.options),
+                  placeholder: toolText.describeToolResultMediaPlaceholder(item.blocks) ?? null,
+                  hasImage: item.blocks.map((block: unknown) =>
+                    toolText.isImageWithMediaPayload(block),
+                  ),
+                  blocks: item.blocks.map(
+                    (block: unknown) => toolText.extractToolResultBlockText(block) ?? null,
+                  ),
+                },
+                error: null,
+              };
+            }
+            case "boundReplayMode": {
+              return {
+                value: contract.resolveModelBoundThinkingReplayMode({
+                  source: item.source,
+                  target: item.target,
+                }),
+                error: null,
+              };
+            }
+            case "transform": {
+              const model = replayModel(item.model);
+              const norm = (id: string) => `n:${id}`;
+              const out =
+                item.style === "provider"
+                  ? providerTransform.transformProviderMessages(
+                      structuredClone(messages),
+                      model,
+                      item.normalize ? norm : undefined,
+                    )
+                  : transportTransform.transformTransportMessages(
+                      structuredClone(messages),
+                      model,
+                      item.normalize ? norm : undefined,
+                      item.options,
+                    );
+              return { value: out, error: null };
             }
             case "recordUsage": {
               // Bind measured usage to the replay prefix exactly as the transport does after a

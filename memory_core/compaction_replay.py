@@ -24,8 +24,9 @@ plus the Responses payload policy), which ``readOpenAIResponsesCompactionWindow`
 the saved window to survive egress unchanged. ``egress_projection`` stays an optional override of
 that built-in projection.
 
-Host hooks: the Responses message converter that rebuilds the wire input for the measured-usage
-check (``projector``), the plugin-manifest endpoint classes and the secret-sentinel swap of the
+The Responses message converter that rebuilds the wire input for the measured-usage check is
+ported (:mod:`memory_core.responses_converter`) and is the default ``projector``; the hook stays
+an override. Host hooks: the plugin-manifest endpoint classes and the secret-sentinel swap of the
 Anthropic eligibility gate.
 
 ``replaceCompactionReplayOwnerContent`` matches surviving blocks with ``Array.prototype.indexOf``,
@@ -41,7 +42,7 @@ import math
 import os
 import re
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from memory_core.bootstrap._js import (
@@ -188,6 +189,12 @@ class ReplayModel:
     api: str
     id: str
     base_url: str | None = None
+    # What the Responses message converter reads besides the route (``Model.input``,
+    # ``reasoning``, ``compat``, ``params``); the defaults are a plain text-and-image model.
+    input: tuple[str, ...] = ("text", "image")
+    reasoning: bool = False
+    compat: Mapping[str, Any] | None = field(default=None, hash=False)
+    params: Mapping[str, Any] | None = field(default=None, hash=False)
 
 
 @dataclass(frozen=True)
@@ -1260,6 +1267,8 @@ def _stable_stringify(value: Any) -> str:
 
     if value is None:
         return "null"
+    if value is UNDEFINED:
+        return "undefined"
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, str):
@@ -1321,7 +1330,13 @@ def _is_reasoning(item: Any) -> bool:
 
 
 class ResponsesProjectionUnavailableError(RuntimeError):
-    """A measured-usage check needs the Responses message converter, which is a host hook."""
+    """Kept for callers that caught it: the built-in converter now answers every projection."""
+
+
+def _default_projector(model: ReplayModel, identity: ReplayIdentity | None) -> Any:
+    from memory_core.responses_converter import default_responses_input_projector  # noqa: PLC0415
+
+    return default_responses_input_projector(model, identity)
 
 
 # ``(projection, provider messages, system prompt, include_system_prompt) -> wire input items``:
@@ -1367,9 +1382,9 @@ def resolve_responses_context_usage_boundary(
     Walks back to the newest assistant message with an available ``contextUsage`` and a saved
     ``openclawResponsesInputReplay.contextUsage`` state; the state must match the identity, the
     message's route, its token counts and the sha256 of the wire-input prefix, which is rebuilt
-    through ``projector``. Returns ``{index, totalTokens, suffix}``, the suffix being the wire
-    items after the measured prefix. Without a ``projector`` a candidate that passes every other
-    check raises :class:`ResponsesProjectionUnavailableError`.
+    through ``projector`` (default: the built-in converter, :mod:`memory_core.responses_converter`).
+    Returns ``{index, totalTokens, suffix}``, the suffix being the wire items after the measured
+    prefix.
     """
 
     context = build_provider_replay_context(model, identity)
@@ -1406,9 +1421,7 @@ def resolve_responses_context_usage_boundary(
         ):
             return None
         if projector is None:
-            raise ResponsesProjectionUnavailableError(
-                "the Responses message converter is a host hook (projector)"
-            )
+            projector = _default_projector(model, identity)
         wire = projector(
             projection,
             [m for m in messages if m and m.get("role") in _PROVIDER_MESSAGE_ROLES],

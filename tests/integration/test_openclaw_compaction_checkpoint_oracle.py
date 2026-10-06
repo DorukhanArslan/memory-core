@@ -13,9 +13,11 @@ rule) is built in; the ``egress_projection`` hook stays an override and is unit 
 Later sections cover the capture and suppression writers, ``resolveCompactionReplayEligibility``
 (against the real OpenClaw transport host, so endpoint classes come from the plugin manifests),
 ``resolveCompactionReplayPressure`` and the inline image sanitiser. The measured-usage boundary
-needs the Responses message converter, which is a host hook in Python: the oracle runs the real
-converter and the real ``recordResponsesContextUsage`` to build the fixtures and to hand the wire
-input to the Python hook, so everything but the converter itself is compared.
+runs the Responses message converter: the oracle's real ``recordResponsesContextUsage`` builds the
+fixtures, and Python rebuilds the wire input with its built-in converter
+(``responses_converter.py``, compared message by message in
+``test_openclaw_responses_converter_oracle.py``) and, as the override path, with the hook fed from
+the real converter's output.
 """
 
 from __future__ import annotations
@@ -1411,6 +1413,7 @@ def _extended_python_row(
             def projector(projection: str, _msgs: list[Any], _sp: Any, include: bool) -> list[Any]:
                 return copy.deepcopy(table[f"{projection}:{str(include).lower()}"])
 
+            # Without a table the built-in converter (memory_core.responses_converter) projects.
             out = cr.resolve_compaction_replay_pressure(
                 messages,
                 model,
@@ -3377,6 +3380,10 @@ def test_real_openclaw_oracle_measured_usage_pressure_matches_python(oracle, con
     python_rows = [_python_row(case) for case in cases]
     assert _first_diffs(cases, kept_rows, python_rows) == []
     assert len(cases) > 0.9 * len(pressure_cases)
+    # The built-in converter (no host hook) against every case, converter failures included.
+    builtin_cases = [{k: v for k, v in c.items() if k != "projectionTable"} for c in pressure_cases]
+    builtin_rows = [_python_row(case) for case in builtin_cases]
+    assert _first_diffs(builtin_cases, rows, builtin_rows) == []
     measured = [row for row in rows if row["value"] and "measuredTokens" in row["value"]]
     estimated = [row for row in rows if row["value"] and "measuredTokens" not in row["value"]]
     assert len(measured) > 500

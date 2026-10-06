@@ -995,6 +995,116 @@ async function main() {
     };
   }
 
+  if (payload.operation === "historyLimitCases") {
+    // getHistoryLimitFromSessionKey with its optional route facts, one entry per case.
+    const history = await importFromRepo(repoPath, "src/agents/embedded-agent-runner/history.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map(
+        (item) =>
+          history.getHistoryLimitFromSessionKey(
+            item.sessionKey,
+            item.config ?? payload.config,
+            item.route,
+          ) ?? null,
+      ),
+    };
+  }
+
+  if (payload.operation === "stripInboundMetadata") {
+    // stripInboundMetadata and the display wrapper stripInternalMetadataForDisplay over texts.
+    const strip = await importFromRepo(repoPath, "src/auto-reply/reply/strip-inbound-meta.ts");
+    const display = await importFromRepo(repoPath, "src/auto-reply/reply/display-text-sanitize.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map((item) => ({
+        stripped: strip.stripInboundMetadata(String(item.text)),
+        display: display.stripInternalMetadataForDisplay(String(item.text)),
+      })),
+    };
+  }
+
+  if (payload.operation === "compactionReplayOwner") {
+    // replaceCompactionReplayOwnerContent and the checkpoint helpers next to it. A case names
+    // the new content as {ref: i} (the original block object at index i, matched by identity
+    // like upstream's indexOf) or {literal: value} (a fresh value).
+    const replay = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/provider-compaction-replay.ts",
+    );
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map((item) => {
+        const message = item.message;
+        const content = (item.content ?? []).map((spec: Record<string, unknown>) =>
+          "ref" in spec ? message.content[spec.ref as number] : spec.literal,
+        );
+        let replaced: unknown = null;
+        let error: string | null = null;
+        try {
+          replaced = replay.replaceCompactionReplayOwnerContent(message, content);
+        } catch (err) {
+          error = err instanceof Error ? err.constructor.name : String(err);
+        }
+        return {
+          replaced,
+          error,
+          isCheckpoint: replay.isCompactionReplayCheckpoint(message.providerReplay),
+          stripped: replay.stripCompactionReplayCheckpoint(message),
+        };
+      }),
+    };
+  }
+
+  if (payload.operation === "replayContentCases") {
+    // normalizeAssistantReplayContent / sanitizeToolCallInputs over many independent
+    // message lists; a throw is reported by the error class name.
+    const replayHistory = await importFromRepo(
+      repoPath,
+      "src/agents/embedded-agent-runner/replay-history.ts",
+    );
+    const repair = await importFromRepo(repoPath, "src/agents/session-transcript-repair.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map((item) => {
+        const messages = item.messages ?? [];
+        try {
+          const out =
+            item.fn === "sanitizeToolCalls"
+              ? repair.sanitizeToolCallInputs(messages, {})
+              : replayHistory.normalizeAssistantReplayContent(messages);
+          return { messages: out, unchanged: out === messages, error: null };
+        } catch (err) {
+          return {
+            messages: null,
+            unchanged: false,
+            error: err instanceof Error ? err.constructor.name : String(err),
+          };
+        }
+      }),
+    };
+  }
+
+  if (payload.operation === "normalizeUsage") {
+    // normalizeUsage and hasNonzeroUsage over raw provider usage values, undefined as null.
+    const usage = await importFromRepo(repoPath, "src/agents/usage.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map((item) => {
+        const normalized = usage.normalizeUsage(item.usage);
+        return {
+          normalized: normalized ?? null,
+          nonzero: usage.hasNonzeroUsage(normalized),
+        };
+      }),
+    };
+  }
+
   if (payload.operation === "repairToolUseResultPairing") {
     const repair = await importFromRepo(repoPath, "src/agents/session-transcript-repair.ts");
     const result = repair.repairToolUseResultPairing(payload.messages ?? [], {

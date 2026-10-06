@@ -4586,6 +4586,1018 @@ def test_real_openclaw_oracle_history_limit_helpers_match_python():
     }
 
 
+_HISTORY_LIMIT_CONFIG = {
+    "session": {"identityLinks": {"alice": ["telegram:123", "discord:999"], "Bob": ["456", " X "]}},
+    "channels": {
+        "telegram": {
+            "historyLimit": 10,
+            "dmHistoryLimit": 20,
+            "dms": {"123": {"historyLimit": 5}, "alice": {"historyLimit": 7}, "0": {"historyLimit": 0}},
+            "accounts": {
+                "work": {
+                    "historyLimit": 11,
+                    "dmHistoryLimit": 30,
+                    "dms": {"123": {"historyLimit": 6}},
+                },
+                "Work Team": {"dmHistoryLimit": 40, "historyLimit": 41},
+                "direct": {"dmHistoryLimit": 50},
+                "bare": {},
+                "nulls": {"dmHistoryLimit": None, "historyLimit": None, "dms": None},
+                "emptydms": {"dms": {}},
+            },
+        },
+        "Slack": {"historyLimit": 8, "dmHistoryLimit": 9},
+        "matrix": {"dmHistoryLimit": 3, "historyLimit": 4, "accounts": "nope"},
+        "discord": {"dms": {"999": {"historyLimit": None}, "alice": {"historyLimit": 2}}},
+        "signal": "not-a-record",
+        "whatsapp": {"dmHistoryLimit": "12", "historyLimit": True},
+    },
+}
+
+
+def _history_limit_cases(cases: list[dict], config: dict | None = None) -> None:
+    """getHistoryLimitFromSessionKey at the tag against the port, with the route facts."""
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    config = _HISTORY_LIMIT_CONFIG if config is None else config
+    result = oracle.run({"operation": "historyLimitCases", "config": config, "cases": cases})
+    assert result["ok"] is True
+    expected = [
+        get_history_limit_from_session_key(case["sessionKey"], config, case.get("route"))
+        for case in cases
+    ]
+    assert result["result"] == expected, [
+        (case, got, want)
+        for case, got, want in zip(cases, result["result"], expected, strict=True)
+        if got != want
+    ]
+
+
+def _hl(key, **route):
+    return {"sessionKey": key, **({"route": route} if route else {})}
+
+
+def test_real_openclaw_oracle_history_limit_session_key_shapes_match_python():
+    _history_limit_cases(
+        [
+            _hl("telegram:dm:123"),
+            _hl("telegram:direct:123"),
+            _hl("telegram:DM:123"),
+            _hl("Telegram:dm:456"),
+            _hl("  telegram :dm:456"),
+            _hl("telegram:dm:0"),
+            _hl("telegram:dm:123:thread:99"),
+            _hl("telegram:dm:123:TOPIC:7"),
+            _hl("telegram:dm:123:thread:abc"),
+            _hl("telegram:dm:alice:thread:1:thread:2"),
+            _hl("telegram:dm:"),
+            _hl("telegram:dm"),
+            _hl("telegram"),
+            _hl("telegram:group:g1"),
+            _hl("telegram:channel:c1"),
+            _hl("telegram:group"),
+            _hl("telegram:slash:123"),
+            _hl("telegram::dm:123"),
+            _hl("telegram:dm::123"),
+            _hl("agent:main:telegram:dm:123"),
+            _hl("agent:main:telegram:dm:123:thread:5"),
+            _hl("agent:main:TELEGRAM:group:g"),
+            _hl("agent:main"),
+            _hl("agent:main:"),
+            _hl("agent::telegram:dm:123"),
+            _hl("agent:telegram:dm:123"),
+            _hl("agent:agent:telegram:dm:123"),
+            _hl("slack:channel:c1"),
+            _hl("Slack:group:g1"),
+            _hl("slack:dm:u1"),
+            _hl("agent:beta:slack:channel:c1"),
+            _hl("matrix:dm:@u:example.org"),
+            _hl("matrix:channel:!room:example.org"),
+            _hl("matrix:group:r:thread:9"),
+            _hl("discord:dm:999"),
+            _hl("discord:dm:alice"),
+            _hl("discord:channel:1"),
+            _hl("signal:dm:1"),
+            _hl("whatsapp:dm:1"),
+            _hl("whatsapp:group:1"),
+            _hl("unknown:dm:123"),
+            _hl("z.ai:dm:1"),
+            _hl("imessage:dm:1"),
+            _hl("nextcloud-talk:dm:1"),
+            _hl(""),
+            _hl(":dm:1"),
+            _hl("telegram:dm:123\n"),
+            _hl("telegram:dm:a\n:thread:1"),
+        ]
+    )
+
+
+def test_real_openclaw_oracle_history_limit_account_scoped_keys_match_python():
+    _history_limit_cases(
+        [
+            _hl("telegram:work:dm:123"),
+            _hl("telegram:work:direct:123"),
+            _hl("telegram:work:dm:456"),
+            _hl("telegram:work:dm:123:thread:3"),
+            _hl("telegram:work:group:g"),
+            _hl("telegram:work:channel:c"),
+            _hl("telegram:WORK:dm:456"),
+            _hl("telegram:Work Team:dm:1"),
+            _hl("telegram:work-team:dm:1"),
+            _hl("telegram:Work-Team:dm:1"),
+            _hl("telegram:bare:dm:1"),
+            _hl("telegram:nulls:dm:1"),
+            _hl("telegram:emptydms:dm:123"),
+            _hl("telegram:ghost:dm:123"),
+            _hl("telegram:default:dm:123"),
+            _hl("telegram:direct:dm:1"),
+            _hl("telegram:direct:direct:1"),
+            _hl("telegram:direct:dm"),
+            _hl("telegram:direct:123"),
+            _hl("telegram:direct:group:1"),
+            _hl("telegram:dm:direct:1"),
+            _hl("telegram:dm:work:1"),
+            _hl("telegram:group:work:1"),
+            _hl("telegram:dm:dm:123"),
+            _hl("telegram:dm:group:1"),
+            _hl("telegram:group:dm:1"),
+            _hl("telegram:channel:direct:1"),
+            _hl("telegram:direct:direct:123"),
+            _hl("telegram:direct:dm:123"),
+            _hl("telegram:dm:dm"),
+            _hl("agent:main:telegram:work:dm:123"),
+            _hl("agent:main:telegram:direct:direct:123:thread:1"),
+            _hl("matrix:work:dm:1"),
+            _hl("slack:ops:dm:1"),
+        ]
+    )
+
+
+def test_real_openclaw_oracle_history_limit_route_facts_match_python():
+    _history_limit_cases(
+        [
+            _hl("telegram:direct:dm:123", chatType="direct", accountId="direct"),
+            _hl("telegram:direct:dm:123", chatType="direct"),
+            _hl("telegram:direct:dm:123", chatType="direct", peerId="123"),
+            _hl("telegram:direct:dm:123", chatType="direct", peerId="dm:123"),
+            _hl("telegram:direct:dm:123", chatType="direct", peerId="dm:123", accountId="direct"),
+            _hl("telegram:direct:dm:123", peerId="dm:123"),
+            _hl("telegram:direct:dm:123", peerId="123"),
+            _hl("telegram:direct:direct:123", chatType="direct", peerId="direct:123"),
+            _hl("telegram:direct:group:1", chatType="group"),
+            _hl("telegram:direct:group:1", chatType="direct"),
+            _hl("telegram:direct:group:1", chatType="channel"),
+            _hl("telegram:group:g", chatType="direct"),
+            _hl("telegram:group:g", chatType="group"),
+            _hl("telegram:channel:c", chatType="channel"),
+            _hl("telegram:channel:c", chatType="group"),
+            _hl("telegram:dm:123", chatType="direct"),
+            _hl("telegram:dm:123", chatType="dm"),
+            _hl("telegram:dm:123", chatType="group"),
+            _hl("telegram:dm:123", chatType=""),
+            _hl("telegram:dm:123", peerId=""),
+            _hl("telegram:dm:123", peerId="   "),
+            _hl("telegram:dm:123", peerId="  123  "),
+            _hl("telegram:dm:123", peerId="456"),
+            _hl("telegram:dm:456", peerId="456"),
+            _hl("telegram:dm:456", peerId="123"),
+            _hl("telegram:dm:ALICE", peerId="123"),
+            _hl("telegram:dm:alice", peerId="123"),
+            _hl("telegram:dm:alice", peerId="999"),
+            _hl("telegram:dm:alice", peerId="telegram:123"),
+            _hl("telegram:dm:alice:thread:4", peerId="123"),
+            _hl("telegram:dm:123:thread:4", peerId="123"),
+            _hl("telegram:dm:123:thread:4", peerId="123:thread:4"),
+            _hl("telegram:dm:123:thread:4", peerId="ghost"),
+            _hl("telegram:dm:456", peerId="456", accountId="work"),
+            _hl("telegram:dm:456", accountId="work"),
+            _hl("telegram:dm:456", accountId="  work  "),
+            _hl("telegram:dm:456", accountId="Work Team"),
+            _hl("telegram:dm:456", accountId="work-team"),
+            _hl("telegram:dm:456", accountId=""),
+            _hl("telegram:dm:456", accountId="   "),
+            _hl("telegram:dm:456", accountId=None),
+            _hl("telegram:dm:456", accountId="ghost"),
+            _hl("telegram:dm:456", accountId="__proto__"),
+            _hl("telegram:dm:456", accountId="constructor"),
+            _hl("telegram:dm:456", accountId="!!!"),
+            _hl("telegram:dm:456", accountId="bare"),
+            _hl("telegram:dm:456", accountId="nulls"),
+            _hl("telegram:dm:123", accountId="emptydms"),
+            _hl("telegram:dm:123", accountId="work"),
+            _hl("telegram:work:dm:123", accountId="default"),
+            _hl("telegram:work:dm:123", accountId="Work"),
+            _hl("telegram:group:g", accountId="work"),
+            _hl("telegram:channel:c", accountId="Work Team"),
+            _hl("telegram:channel:c", accountId="bare"),
+            _hl("telegram:channel:c", accountId="nulls"),
+            _hl("telegram:work:dm:123", chatType="direct"),
+            _hl("telegram:work:dm:123", chatType="group"),
+            _hl("telegram:work:dm:123", chatType="direct", peerId="123"),
+            _hl("telegram:work:dm:123", chatType="direct", peerId="nobody"),
+            _hl("discord:dm:999", peerId="999"),
+            _hl("discord:dm:ghost", peerId="999"),
+            _hl("discord:dm:alice", peerId="999"),
+            _hl("matrix:dm:1", accountId="work"),
+            _hl("matrix:channel:1", accountId="work"),
+            _hl("whatsapp:dm:1", accountId="work"),
+            _hl("whatsapp:group:1", chatType="group"),
+            _hl("slack:channel:c", accountId="ops"),
+            _hl("agent:main:telegram:direct:dm:123", chatType="direct"),
+            _hl("agent:main:telegram:direct:dm:123", chatType="direct", peerId="dm:123"),
+            _hl("bogus:dm:1", accountId="work"),
+            _hl("telegram:dm:1", chatType="direct", peerId="x", accountId="work"),
+            _hl("telegram:dm:456", peerId=" X "),
+            _hl("telegram:dm:bob", peerId="456"),
+            _hl("telegram:dm:bob", peerId="x"),
+            _hl("telegram:dm:456", peerId="x"),
+        ]
+    )
+
+
+def test_real_openclaw_oracle_history_limit_without_config_or_provider_match_python():
+    cases = [_hl("telegram:dm:123"), _hl("slack:channel:c"), _hl("telegram:group:g")]
+    _history_limit_cases(cases, config={})
+    _history_limit_cases(cases, config={"channels": {}})
+    _history_limit_cases(cases, config={"channels": {"telegram": None}})
+    _history_limit_cases(cases, config={"channels": {"telegram": []}})
+    _history_limit_cases(cases, config={"channels": {"telegram": {"accounts": []}}})
+    _history_limit_cases(
+        [_hl("telegram:dm:1", accountId="a")],
+        config={"channels": {"telegram": {"accounts": {"a": "x"}, "dmHistoryLimit": 4}}},
+    )
+    _history_limit_cases(
+        [_hl("telegram:dm:1", accountId="a"), _hl("telegram:dm:2", accountId="a")],
+        config={
+            "channels": {
+                "TELEGRAM": {"dmHistoryLimit": 1},
+                "telegram": {"dmHistoryLimit": 2},
+                "telegram ": {"dmHistoryLimit": 3},
+            }
+        },
+    )
+
+
+_ICTX = "⟦openclaw:ctx⟧"
+
+
+def _ctx_block(label: str, body: str) -> str:
+    return f"{label} {_ICTX}\n{body}"
+
+
+def _json_block(label: str, payload: str) -> str:
+    return _ctx_block(label, f"```json\n{payload}\n```")
+
+
+_INBOUND_BLOCKS = {
+    "conv": _json_block("Conversation info:", '{"message_id":"msg-abc","sender":{"id":"+1555000"}}'),
+    "conv_pretty": _json_block("Conversation info:", '{\n  "message_id": "msg-abc"\n}'),
+    "sender": _json_block("Sender:", '{\n  "label": "Alice",\n  "name": "Alice"\n}'),
+    "reply": _json_block("Reply target of current user message:", '{\n  "body": "What time?"\n}'),
+    "fence_inside": _json_block("Conversation info:", '{"body":"a ``` b"}\n```\nstill json?'),
+    "untrusted": _ctx_block(
+        "Context:",
+        '<<<EXTERNAL_UNTRUSTED_CONTENT id="dead">>>\nSource: Channel metadata\n---\nlabels\n'
+        '<<<END_EXTERNAL_UNTRUSTED_CONTENT id="dead">>>',
+    ),
+    "window": _ctx_block(
+        "Conversation context (chronological, selected for current message):",
+        "#10 2026-07-02T12:00:00Z Alice: prior\n#11 2026-07-02T12:01:00Z Bob: more",
+    ),
+    "prose": _ctx_block("Chat history since last reply:", "#1001 sam: did anyone see\n#1002 lee: yeah"),
+    "unclosed": _ctx_block("Conversation info:", '```json\n{"a":1}\nno closing fence'),
+    "nofence": _ctx_block("Conversation info:", '{"a":1}\nplain line\n\nafter blank'),
+    "spaced_header": f"  Sender: {_ICTX}  \n```json\n{{}}\n```",
+    "crlf": f"Sender: {_ICTX}\r\n```json\r\n{{\"a\":1}}\r\n```\r\n\r\nuser",
+    "empty_label": f" {_ICTX}\n```json\n{{}}\n```",
+    "marker_only": _ICTX,
+}
+_ACTIVE_MEMORY_BLOCK = "Context:\n<active_memory_plugin>\nUser prefers aisle seats.\n</active_memory_plugin>"
+
+
+def _inbound_hints() -> list[str]:
+    from memory_core.session_entry import MESSAGE_TOOL_DELIVERY_HINTS
+
+    return list(MESSAGE_TOOL_DELIVERY_HINTS)
+
+
+def _strip_inbound_texts() -> list[str]:
+    texts: list[str] = [
+        "",
+        "Hello, how are you?",
+        "#35676 Keśava: No wtf",
+        "\nContext: my project uses TypeScript\n",
+        "\nSee the Context: section below\n",
+        "Context:",
+        "Context:\n",
+        "  Context:  \nbody",
+        "Context:\nbody that is not active memory",
+        "Context:\n\nSource: x",
+        "intro\nContext:\n<active_memory_plugin>\nnever closed",
+        _ACTIVE_MEMORY_BLOCK,
+        _ACTIVE_MEMORY_BLOCK + "\n\nWhat now?",
+        "Earlier text\n" + _ACTIVE_MEMORY_BLOCK + "\n\nWhat now?",
+        _ACTIVE_MEMORY_BLOCK + "\n\n" + _ACTIVE_MEMORY_BLOCK + "\nfinal",
+        "Context:\n<active_memory_plugin>\nA\n</active_memory_plugin>   \nsame line tail",
+        "Context:\n <active_memory_plugin> \nA\n </active_memory_plugin> \n\nuser",
+        "Context:\r\n<active_memory_plugin>\r\nA\r\n</active_memory_plugin>\r\n\r\nuser",
+        "Context: <active_memory_plugin>\nA\n</active_memory_plugin>",
+        _inbound_json_with_active_memory(),
+        "[Mon 2026-01-05 10:00 UTC] hello",
+        "[Mon 2026-01-05 10:00] hello",
+        "[Mon 2026-01-05 10:00 GMT+2 extra stuff] hello",
+        "[Mon 2026-01-05 10:00 UTC]hello",
+        "[Mon 2026-01-05 10:00 UTC]   ",
+        "[Mon 2026-01-05 10:00 UTC] [Tue 2026-01-06 11:00 UTC] twice",
+        "[Mo 2026-01-05 10:00 UTC] short weekday",
+        "[Mon 26-01-05 10:00 UTC] bad date",
+        "[note] not a timestamp",
+        "x [Mon 2026-01-05 10:00 UTC] not leading",
+        "٠[Mon 2026-01-05 10:00 UTC] arabic digit prefix",
+    ]
+    for name, block in _INBOUND_BLOCKS.items():
+        for shape in (
+            "{b}",
+            "{b}\n",
+            "{b}\n\n",
+            "{b}\n\nWhat is the weather?",
+            "{b}\nNo blank separator",
+            "user first\n\n{b}",
+            "user first\n{b}\n\nthen more",
+            "\n\n{b}\n\nuser\n\n\n",
+            "  {b}  \n\nuser",
+            "{b}\n\n\n\nuser after many blanks",
+            "[Mon 2026-01-05 10:00 UTC] {b}\n\nuser",
+            "{b}\n\n[Tue 2026-01-06 11:00 UTC] stamp after",
+            "[Mon 2026-01-05 10:00 UTC]\n{b}\n\n[Tue 2026-01-06 11:00 UTC] stamp after",
+        ):
+            texts.append(shape.replace("{b}", block))
+        assert name
+    names = list(_INBOUND_BLOCKS)
+    for i, first in enumerate(names):
+        second = names[(i * 3 + 1) % len(names)]
+        third = names[(i * 5 + 2) % len(names)]
+        texts.append(f"{_INBOUND_BLOCKS[first]}\n\n{_INBOUND_BLOCKS[second]}\n\nuser text")
+        texts.append(
+            f"{_INBOUND_BLOCKS[first]}\n\n{_INBOUND_BLOCKS[second]}\n\n{_INBOUND_BLOCKS[third]}"
+        )
+        texts.append(f"mid {_INBOUND_BLOCKS[first]}\n\nmid2\n\n{_INBOUND_BLOCKS[second]}\ntail")
+    for hint in _inbound_hints():
+        for shape in (
+            "{h}",
+            "{h}\n",
+            "{h}\n\nuser text",
+            "user text\n{h}",
+            "user text\n\n{h}\n\nmore",
+            "  {h}  \nuser",
+            "{h} trailing words",
+            "prefix {h}",
+            "{h}\n{h}\nuser",
+            "{h}\n" + _INBOUND_BLOCKS["conv"] + "\n\nuser",
+            _INBOUND_BLOCKS["conv"] + "\n\n{h}\n\nuser",
+            "[Mon 2026-01-05 10:00 UTC] {h}\nuser",
+            _ACTIVE_MEMORY_BLOCK + "\n{h}\nuser",
+        ):
+            texts.append(shape.replace("{h}", hint))
+    channel = f"Context: {_ICTX}\nbody lines\nmore"
+    texts += [
+        channel,
+        f"user\n\n{channel}",
+        f"user\n\n\n\n{channel}",
+        f"user\n \n\t\n{channel}",
+        f"user\n{channel}\n\n{_INBOUND_BLOCKS['conv']}",
+        f"{_INBOUND_BLOCKS['conv']}\n\n{channel}",
+        f"  Context: {_ICTX}  \nx",
+        f"Context: {_ICTX} extra\nx",
+        f"{channel}\r\n",
+        f"first\r\nsecond\r\n\r\n{channel}",
+        f"a\n{_ICTX}\nb",
+        f"a {_ICTX} b",
+        f"x{_ICTX}",
+        f"x {_ICTX}\n```json\n{{}}\n```\nrest",
+        f"{_ICTX} x\n```json\n{{}}\n```\nrest",
+        f"{_ICTX}\n```json\n{{}}\n```\nrest",
+        "Sender: " + _ICTX + "\n```json\n{}\n```\n```json\nsecond\n```\ntail",
+        "Sender: " + _ICTX + "\n```JSON\n{}\n```\ntail",
+        "Sender: " + _ICTX + "\n ```json \n{}\n  ```  \ntail",
+        "Sender: " + _ICTX + "\n\n```json\n{}\n```\ntail",
+        "Sender: " + _ICTX + "\n```json\n{}\n```x\n```\ntail",
+        "Sender: " + _ICTX + "\n```json\n{}\n```",
+        "Sender: " + _ICTX + "\n```json",
+        "Sender: " + _ICTX + "\n",
+        "Sender: " + _ICTX,
+        "Sender: " + _ICTX + "\n\n\n",
+        "Sender: " + _ICTX + "\ntext\n\n\n\nafter",
+        "Sender: " + _ICTX + "\ntext\r\n\r\nafter",
+        "Sender: " + _ICTX + "\n  \t \nafter\n",
+        "Sender: " + _ICTX + "\n \nafter",
+        "Sender: " + _ICTX + "\n \nafter",
+        " Sender: " + _ICTX + "\nbody\n\nafter",
+        "﻿Sender: " + _ICTX + "\nbody\n\nafter",
+        "emoji \U0001f600\n" + _INBOUND_BLOCKS["conv"] + "\n\n\U0001f600 user \U0001f600",
+        "Keśava\n" + _INBOUND_BLOCKS["sender"] + "\n\nłódź",
+        "\n\n\n" + "plain user text with leading newlines",
+        "plain\n\n\n",
+        "\n\n" + _INBOUND_BLOCKS["conv"] + "\n\n\n\nuser",
+    ]
+    return texts
+
+
+def _inbound_json_with_active_memory() -> str:
+    return _json_block(
+        "Conversation info:", '{"a":"x"}\n' + _ACTIVE_MEMORY_BLOCK + '\n{"b":1}'
+    ) + "\n\nuser"
+
+
+def test_real_openclaw_oracle_strip_inbound_metadata_matches_python():
+    from memory_core.replay_history import _strip_internal_metadata_for_display
+    from memory_core.session_entry import strip_inbound_metadata
+
+    texts = _strip_inbound_texts()
+    assert len(texts) >= 250
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    result = oracle.run(
+        {"operation": "stripInboundMetadata", "cases": [{"text": text} for text in texts]}
+    )
+    assert result["ok"] is True
+    got = result["result"]
+    stripped_diffs = [
+        (text, row["stripped"], strip_inbound_metadata(text))
+        for text, row in zip(texts, got, strict=True)
+        if row["stripped"] != strip_inbound_metadata(text)
+    ]
+    assert stripped_diffs == []
+    display_diffs = [
+        (text, row["display"], _strip_internal_metadata_for_display(text))
+        for text, row in zip(texts, got, strict=True)
+        if row["display"] != _strip_internal_metadata_for_display(text)
+    ]
+    assert display_diffs == []
+
+
+def _owner_blocks() -> list[dict]:
+    return [
+        {"type": "text", "text": "A"},
+        {"type": "thinking", "thinking": "B", "signature": "s"},
+        {"type": "text", "text": "A"},
+        {"type": "toolCall", "id": "t1", "name": "read", "arguments": {}},
+    ]
+
+
+def _owner_replays() -> list[dict | None]:
+    replays: list[dict | None] = [
+        None,
+        {"type": "other-thing", "replayIndex": 2},
+        {"type": "anthropic-compaction"},
+        {"type": "openai-responses-compaction", "replayIndex": None},
+        {"type": "openai-responses-retained-compaction"},
+        {"type": "openai-responses-retained-compaction", "replayIndex": 99},
+        {"type": "anthropic-compaction", "replayIndex": 1.5},
+        {"type": "anthropic-compaction", "replayIndex": -1},
+    ]
+    for index in range(0, 7):
+        replays.append({"type": "anthropic-compaction", "replayIndex": index, "summary": "S"})
+        replays.append(
+            {"type": "openai-responses-compaction", "replayIndex": index, "encrypted": "E"}
+        )
+    return replays
+
+
+def _owner_content_specs() -> list[list[dict]]:
+    ref = lambda i: {"ref": i}  # noqa: E731
+    lit = {"literal": {"type": "text", "text": "A"}}
+    return [
+        [],
+        [ref(0), ref(1), ref(2), ref(3)],
+        [ref(1), ref(2), ref(3)],
+        [ref(0), ref(2), ref(3)],
+        [ref(0), ref(1), ref(3)],
+        [ref(0), ref(1), ref(2)],
+        [ref(2), ref(3)],
+        [ref(0), ref(3)],
+        [ref(3)],
+        [ref(2)],
+        [ref(0)],
+        [ref(1)],
+        [ref(0), ref(1)],
+        [ref(3), ref(2)],
+        [ref(0), ref(0)],
+        [ref(2), ref(0)],
+        [lit],
+        [ref(0), lit, ref(2)],
+        [lit, ref(0)],
+        [ref(0), ref(1), ref(2), ref(3), lit],
+        [{"literal": "A"}],
+        [{"literal": None}],
+    ]
+
+
+def _owner_cases() -> list[dict]:
+    cases = []
+    for replay in _owner_replays():
+        for specs in _owner_content_specs():
+            message = {
+                "role": "assistant",
+                "content": _owner_blocks(),
+                "stopReason": "stop",
+                **({"providerReplay": replay} if replay is not None else {}),
+            }
+            cases.append({"message": message, "content": specs})
+    # Primitive blocks are compared by value (strict equality), objects by identity.
+    primitive = {"type": "anthropic-compaction", "replayIndex": 3}
+    for specs in (
+        [{"ref": 0}, {"ref": 2}],
+        [{"literal": "x"}, {"literal": 1}],
+        [{"literal": True}],
+        [{"literal": "1"}],
+        [{"literal": 1}, {"literal": True}],
+        [{"literal": "x"}, {"literal": "x"}],
+        [{"ref": 1}, {"literal": None}],
+        [{"literal": 1.0}],
+        [{"literal": "y"}, {"literal": "x"}],
+    ):
+        cases.append(
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": ["x", "y", 1, True, None, "x"],
+                    "providerReplay": primitive,
+                },
+                "content": specs,
+            }
+        )
+    # Non-array original content: a string is searched as text, other shapes throw upstream.
+    for original in ("abc", "", {"type": "text", "text": "z"}, 7, None):
+        for specs in ([], [{"literal": {"type": "text", "text": "a"}}], [{"literal": "b"}]):
+            cases.append(
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": original,
+                        "providerReplay": {"type": "anthropic-compaction", "replayIndex": 0},
+                    },
+                    "content": specs,
+                }
+            )
+    return cases
+
+
+def _build_owner_content(message: dict, specs: list[dict]) -> list:
+    return [
+        message["content"][spec["ref"]] if "ref" in spec else spec["literal"] for spec in specs
+    ]
+
+
+def test_real_openclaw_oracle_compaction_replay_owner_content_matches_python():
+    from memory_core.compaction_replay import (
+        is_compaction_replay_checkpoint,
+        replace_compaction_replay_owner_content,
+        strip_compaction_replay_checkpoint,
+    )
+
+    cases = _owner_cases()
+    assert len(cases) >= 300
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    result = oracle.run({"operation": "compactionReplayOwner", "cases": cases})
+    assert result["ok"] is True
+    diffs = []
+    for case, row in zip(cases, result["result"], strict=True):
+        message = case["message"]
+        try:
+            replaced = replace_compaction_replay_owner_content(
+                message, _build_owner_content(message, case["content"])
+            )
+            error = None
+        except Exception as exc:  # noqa: BLE001 - the oracle reports the class name
+            replaced, error = None, type(exc).__name__
+        python_row = {
+            "replaced": replaced,
+            "error": error,
+            "isCheckpoint": is_compaction_replay_checkpoint(message.get("providerReplay")),
+            "stripped": strip_compaction_replay_checkpoint(message),
+        }
+        if row != python_row:
+            diffs.append((case, row, python_row))
+    assert diffs[:3] == []
+
+
+def _checkpoint_replay(index: int) -> dict:
+    return {"type": "anthropic-compaction", "replayIndex": index, "summary": "S"}
+
+
+def _media_block() -> dict:
+    return {"type": "image", "data": "AA==", "mimeType": "image/png"}
+
+
+def _replay_owner_messages() -> list[tuple[str, list[dict]]]:
+    """Replay-normalisation and tool-input fixtures whose owner message carries a checkpoint."""
+
+    def assistant(content, replay_index=None, **extra):
+        message = {
+            "role": "assistant",
+            "content": content,
+            "provider": "anthropic",
+            "model": "claude",
+            "usage": {"input": 3, "output": 4, "totalTokens": 7},
+            "stopReason": "stop",
+            "timestamp": 0,
+            **extra,
+        }
+        if replay_index is not None:
+            message["providerReplay"] = _checkpoint_replay(replay_index)
+        return message
+
+    text = {"type": "text", "text": "kept"}
+    think = {"type": "thinking", "thinking": "t", "signature": "sig"}
+    runtime = {
+        "type": "text",
+        "text": "before\n<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nsecret\n"
+        "<<<END_OPENCLAW_INTERNAL_CONTEXT>>>\nafter",
+    }
+    silent = {"type": "text", "text": "NO_REPLY"}
+    inbound = {
+        "type": "text",
+        "text": _json_block("Conversation info:", '{"a":1}') + "\n\nvisible tail",
+    }
+    call = {"type": "toolCall", "id": "c1", "name": "read", "arguments": {"path": "a"}}
+    bad_call = {"type": "toolCall", "name": "read", "arguments": {}}
+    fixtures: list[tuple[str, list[dict]]] = []
+    for index in range(0, 5):
+        fixtures += [
+            (f"unchanged-{index}", [assistant([text, think, text], index)]),
+            (f"image-first-{index}", [assistant([_media_block(), text, think], index)]),
+            (f"image-middle-{index}", [assistant([text, _media_block(), think], index)]),
+            (f"image-last-{index}", [assistant([text, think, _media_block()], index)]),
+            (f"image-only-{index}", [assistant([_media_block()], index)]),
+            (f"runtime-{index}", [assistant([think, runtime, text], index)]),
+            (f"inbound-{index}", [assistant([think, inbound, text], index)]),
+            (f"silent-{index}", [assistant([think, silent, text], index)]),
+            (f"silent-only-{index}", [assistant([silent], index)]),
+            (f"silent-thinking-{index}", [assistant([think, silent], index)]),
+            (f"string-{index}", [assistant("plain\n<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\nx\n"
+                                           "<<<END_OPENCLAW_INTERNAL_CONTEXT>>>", index)]),
+            (f"string-plain-{index}", [assistant("plain", index)]),
+            (f"object-content-{index}", [assistant({"type": "text", "text": "solo"}, index)]),
+            (f"two-owners-{index}", [
+                assistant([_media_block(), text], index),
+                {"role": "user", "content": "next", "timestamp": 1},
+                assistant([text, _media_block(), think], 2),
+            ]),
+            (f"retained-{index}", [assistant([_media_block(), text], None,
+                                              providerReplay={"type": "openai-responses-retained-compaction",
+                                                              "replayIndex": index})]),
+            (f"responses-{index}", [assistant([text, _media_block(), think], None,
+                                              providerReplay={"type": "openai-responses-compaction",
+                                                              "replayIndex": index})]),
+        ]
+    fixtures += [
+        ("no-replay-image", [assistant([text, _media_block()])]),
+        ("other-replay", [assistant([text, _media_block()], None, providerReplay={"type": "x"})]),
+        ("replay-index-beyond", [assistant([_media_block(), text], 9)]),
+    ]
+    return fixtures + [("tools-" + name, messages) for name, messages in _tool_owner_fixtures(
+        assistant, text, think, call, bad_call
+    )]
+
+
+def _tool_owner_fixtures(assistant, text, think, call, bad_call):
+    out = []
+    for index in range(0, 5):
+        out += [
+            (f"bad-first-{index}", [assistant([bad_call, text, think, call], index)]),
+            (f"bad-middle-{index}", [assistant([text, bad_call, think, call], index)]),
+            (f"bad-last-{index}", [assistant([text, think, call, bad_call], index)]),
+            (f"bad-only-{index}", [assistant([bad_call], index)]),
+            (f"clean-{index}", [assistant([text, think, call], index)]),
+        ]
+    return out
+
+
+def test_real_openclaw_oracle_replay_content_keeps_compaction_owner_matches_python():
+    fixtures = _replay_owner_messages()
+    normalize = [(name, messages) for name, messages in fixtures if not name.startswith("tools-")]
+    tools = [(name, messages) for name, messages in fixtures if name.startswith("tools-")]
+    assert len(normalize) >= 80
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    cases = [{"fn": "normalize", "messages": messages} for _, messages in normalize] + [
+        {"fn": "sanitizeToolCalls", "messages": messages} for _, messages in tools
+    ]
+    result = oracle.run({"operation": "replayContentCases", "cases": cases})
+    assert result["ok"] is True
+    names = [name for name, _ in normalize] + [name for name, _ in tools]
+    diffs = []
+    for name, case, row in zip(names, cases, result["result"], strict=True):
+        try:
+            if case["fn"] == "normalize":
+                out = normalize_assistant_replay_content(case["messages"])
+            else:
+                out = sanitize_tool_call_inputs(case["messages"])
+            python_row = {"messages": out, "unchanged": out is case["messages"], "error": None}
+        except Exception as exc:  # noqa: BLE001 - the oracle reports the class name
+            python_row = {"messages": None, "unchanged": False, "error": type(exc).__name__}
+        if row != python_row:
+            diffs.append((name, row, python_row))
+    assert diffs[:3] == []
+
+
+def _usage_fixtures() -> list:
+    fixtures: list = [
+        None,
+        {},
+        [],
+        [1, 2],
+        "",
+        "abc",
+        0,
+        5,
+        True,
+        {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 0},
+        {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0},
+        {"input": 1, "output": 1, "totalTokens": 2},
+        {"input": 3, "output": 4, "cacheRead": 5, "cacheWrite": 6, "total": 18},
+        {"cost": {"total": 0.5}},
+        {"cost": {"total": 0, "input": 0, "output": 0.0, "cacheRead": 0.1}},
+        {"cost": {"total": 0, "input": 0.25, "output": -1, "cacheWrite": 2}},
+        {"cost": {"total": -1}},
+        {"cost": {"total": 1, "totalOrigin": "provider-billed"}},
+        {"cost": {"total": 1, "totalOrigin": "estimated"}},
+        {"cost": {"total": "1"}},
+        {"cost": "free"},
+        {"cost": []},
+        {"cacheWrite1h": 4},
+        {"cacheWrite1h": 0, "input": 0},
+        {"input": 100, "cacheRead": 40},
+        {"input": 100, "cached_tokens": 40},
+        {"input_tokens": 100, "cached_tokens": 40},
+        {"input_tokens": 100, "cached_tokens": 140},
+        {"input_tokens": 100, "cached_tokens": None},
+        {"input_tokens": 100, "cached_tokens": None, "cache_write_input_tokens": None},
+        {"input_tokens": 100, "cached_input_tokens": 40},
+        {"input_tokens": 100, "cached": 40},
+        {"input": 100, "cached": 40},
+        {"input": 100, "cached_input_tokens": 40, "cache_write_input_tokens": 10},
+        {"input_tokens": 100, "cached_input_tokens": 40, "cache_write_input_tokens": 10},
+        {"input_tokens": 100, "cache_write_input_tokens": 100},
+        {"input_tokens": 100, "cache_write_input_tokens": 30, "cacheWrite": 5},
+        {"input_tokens": 100, "cache_creation_input_tokens": 30},
+        {"input_tokens": 100, "cache_read_input_tokens": 30},
+        {"input_tokens": 100, "input_tokens_details": {"cached_tokens": 60}},
+        {"input_tokens": 100, "input_tokens_details": {"cached_tokens": 60, "cache_write_tokens": 10}},
+        {"input_tokens": 100, "input_tokens_details": {"cache_write_tokens": 10}},
+        {"input_tokens": 100, "input_tokens_details": {"cached_tokens": None}},
+        {"input_tokens": 100, "input_tokens_details": None},
+        {"input_tokens": 100, "input_tokens_details": "cached"},
+        {"input_tokens": 100, "input_tokens_details": [1]},
+        {"prompt_tokens": 100, "prompt_tokens_details": {"cached_tokens": 60}},
+        {"prompt_tokens": 100, "prompt_tokens_details": {"cache_write_tokens": 25}},
+        {"prompt_tokens": 100, "prompt_tokens_details": {"cache_creation_input_tokens": 25}},
+        {"prompt_tokens": 100, "prompt_tokens_details": {"cached_tokens": 50, "cache_creation_input_tokens": 25}},
+        {"prompt_tokens": 30, "prompt_tokens_details": {"cached_tokens": 50}},
+        {"prompt_tokens_details": {"cached_tokens": 5}},
+        {"prompt_tokens_details": {"cached_tokens": 0}},
+        {"prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0}},
+        {"prompt_tokens_details": {"cache_write_tokens": 2}},
+        {"input_tokens_details": {"cache_write_tokens": 2}},
+        {"input_tokens_details": {"cached_tokens": 2}},
+        {"completion_tokens_details": {"reasoning_tokens": 3}},
+        {"completion_tokens_details": {"reasoning_tokens": 0}},
+        {"completion_tokens_details": {"reasoning_tokens": "3"}},
+        {"output_tokens_details": {"reasoning_tokens": 3}},
+        {"output_tokens_details": {"thinking_tokens": 3}},
+        {"output_tokens_details": {"reasoning_tokens": None, "thinking_tokens": 3}},
+        {"output_tokens_details": {"reasoning_tokens": 0, "thinking_tokens": 3}},
+        {"reasoningTokens": 2},
+        {"reasoning_tokens": 2},
+        {"reasoning_tokens": 0, "reasoningTokens": None},
+        {"timings": {"prompt_n": 12, "predicted_n": 3}},
+        {"timings": {"prompt_n": 0, "predicted_n": 0}},
+        {"timings": {"predicted_n": 4}},
+        {"timings": None},
+        {"timings": 5},
+        {"prompt_n": 7},
+        {"predicted_n": 7},
+        {"prompt_n": 7, "timings": {"prompt_n": 99}},
+        {"input": 9, "prompt_n": 7},
+        {"input": None, "inputTokens": 3},
+        {"inputTokens": 3},
+        {"outputTokens": 3},
+        {"promptTokens": 3},
+        {"completionTokens": 3},
+        {"completion_tokens": 3},
+        {"output_tokens": 3},
+        {"total_tokens": 3},
+        {"totalTokens": 3},
+        {"total": 3},
+        {"total": None, "totalTokens": 3},
+        {"total": 0, "totalTokens": 3},
+        {"cache_read": 3},
+        {"cache_write": 3},
+        {"contextUsage": {"state": "unavailable"}},
+        {"contextUsage": {"state": "unavailable", "promptTokens": 5}},
+        {"contextUsage": {"state": "available", "promptTokens": 5, "totalTokens": 9}},
+        {"contextUsage": {"state": "available", "promptTokens": 0, "totalTokens": 0}},
+        {"contextUsage": {"state": "available", "promptTokens": 5, "totalTokens": 4}},
+        {"contextUsage": {"state": "available", "promptTokens": 5}},
+        {"contextUsage": {"state": "available", "totalTokens": 5}},
+        {"contextUsage": {"state": "available", "promptTokens": "5", "totalTokens": "9"}},
+        {"contextUsage": {"state": "available", "promptTokens": -2, "totalTokens": 9}},
+        {"contextUsage": {"state": "available", "promptTokens": 0, "totalTokens": 9}},
+        {"contextUsage": {"state": "available", "promptTokens": 2.9, "totalTokens": 3.9}},
+        {"contextUsage": {"state": "other", "promptTokens": 1, "totalTokens": 2}},
+        {"contextUsage": None},
+        {"contextUsage": "unavailable"},
+        {"contextUsage": []},
+        {"input": 0, "contextUsage": {"state": "unavailable"}},
+        {"input": 2.9},
+        {"input": -3},
+        {"input": 1e300},
+        {"input": 1e300, "output": 0},
+        {"input": "5"},
+        {"input": True},
+        {"input": None},
+        {"output": 2.2},
+        {"cacheRead": 0.5},
+        {"cacheRead": -1, "input_tokens": 4, "cached_tokens": 9},
+        {"input": 9, "cached_tokens": 5},
+        {"input": 9, "input_tokens_details": {"cached_tokens": 5}},
+        {"input": 9, "prompt_tokens_details": {"cache_write_tokens": 5}},
+        {"input": 9, "cache_write_input_tokens": 5},
+        {"input": 9, "cached_input_tokens": 5},
+        {"input": None, "input_tokens": 9, "cached_input_tokens": 5},
+        {"input": "x", "input_tokens": 9, "cached_input_tokens": 5},
+        {"input": 9, "input_tokens": 100, "cached_input_tokens": 5},
+        {"total": 1, "input_tokens": None, "output_tokens": None},
+        {"unrelated": 5},
+        {"input": float(2**60)},
+        {"input": 2**60},
+        {"input": 2**53 + 5, "output": 2**53 + 5},
+    ]
+    for key in (
+        "input", "output", "cacheRead", "cacheWrite", "cacheWrite1h", "total", "inputTokens",
+        "outputTokens", "promptTokens", "completionTokens", "input_tokens", "output_tokens",
+        "prompt_tokens", "completion_tokens", "cache_read_input_tokens",
+        "cache_creation_input_tokens", "reasoningTokens", "reasoning_tokens", "cached_tokens",
+        "cached_input_tokens", "cache_write_input_tokens", "cached", "totalTokens", "total_tokens",
+        "cache_read", "cache_write", "prompt_n", "predicted_n",
+    ):
+        for value in (1, 0, -1, 0.5, "5", True, False, None, [1], {"a": 1}):
+            fixtures.append({key: value})
+    return fixtures
+
+
+def test_real_openclaw_oracle_normalize_usage_matches_python():
+    from memory_core.usage_normalization import has_nonzero_usage, normalize_usage
+
+    fixtures = _usage_fixtures()
+    assert len(fixtures) >= 300
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    result = oracle.run(
+        {"operation": "normalizeUsage", "cases": [{"usage": usage} for usage in fixtures]}
+    )
+    assert result["ok"] is True
+    diffs = []
+    for usage, row in zip(fixtures, result["result"], strict=True):
+        normalized = normalize_usage(usage)
+        python_row = {"normalized": normalized, "nonzero": has_nonzero_usage(normalized)}
+        if row != python_row:
+            diffs.append((usage, row, python_row))
+    assert diffs[:5] == []
+
+
+def test_real_openclaw_oracle_replay_mirror_duplicate_usage_matches_python():
+    """The bare delivery-mirror recovery keeps a duplicate reply only with nonzero usage."""
+
+    def pair(usage, stop_reason="stop"):
+        reply = {"type": "text", "text": "same reply"}
+        base = {"role": "assistant", "provider": "amazon-bedrock", "model": "m", "timestamp": 0}
+        return [
+            {**base, "content": [reply], "usage": {"input": 2, "output": 2}, "stopReason": "stop"},
+            {**base, "content": [dict(reply)], "usage": usage, "stopReason": stop_reason},
+        ]
+
+    # Huge counters are echoed back through JSON as floats; keep the echo comparable.
+    small = [usage for usage in _usage_fixtures() if "e+" not in repr(usage) and "2**" not in repr(usage)]
+    messages_by_usage = [
+        pair(usage)
+        for usage in small
+        if isinstance(usage, dict | list) and len(repr(usage)) < 400 and "1152921504606846976" not in repr(usage)
+        and "9007199254740997" not in repr(usage)
+    ]
+    messages_by_usage += [pair(usage) for usage in (None, "x", 5, True)]
+    messages_by_usage += [pair({}, "length"), pair({}, "toolUse"), pair({}, "error")]
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    cases = [{"fn": "normalize", "messages": messages} for messages in messages_by_usage]
+    result = oracle.run({"operation": "replayContentCases", "cases": cases})
+    assert result["ok"] is True
+    diffs = []
+    for messages, row in zip(messages_by_usage, result["result"], strict=True):
+        out = normalize_assistant_replay_content(messages)
+        python_row = {"messages": out, "unchanged": out is messages, "error": None}
+        if row != python_row:
+            diffs.append((messages[1]["usage"], row, python_row))
+    assert diffs[:5] == []
+
+
+def _media_user_messages() -> list[dict]:
+    media_values: list = [
+        [{"path": "/a.png"}],
+        [{"path": "  "}],
+        [{"path": " ﻿"}],
+        [{"path": 5}],
+        [{"url": "https://x/y"}],
+        [{"url": " \t"}],
+        [{"contentType": "image/png"}],
+        [{"contentType": " image/png "}],
+        [{"contentType": " "}],
+        [{"contentType": ""}],
+        [{"contentType": 5}],
+        [{"contentType": True}],
+        [{"contentType": "application/octet-stream"}],
+        [{"contentType": "binary/octet-stream"}],
+        [{"kind": "image"}],
+        [{"kind": "sticker"}],
+        [{"kind": "unknown"}],
+        [{"kind": ""}],
+        [{"kind": 0}],
+        [{"kind": 5}],
+        [{"kind": False}],
+        [{"kind": True}],
+        [{"kind": {}}],
+        [{"kind": []}],
+        [{"kind": None}],
+        [{"kind": None, "contentType": "image/png"}],
+        [{"kind": "unknown", "contentType": "image/png"}],
+        [{"kind": "unknown", "path": "/p"}],
+        [{"fileName": "a.png"}],
+        [{"sizeBytes": 10}],
+        [{"transcribed": True}],
+        [{"messageId": "m1", "workspaceDir": "/w"}],
+        [{"origin": "paste"}],
+        [{}],
+        [None],
+        [None, {"path": "/b"}],
+        [None, None],
+        [[]],
+        [["x"]],
+        ["str"],
+        [5],
+        [True],
+        [],
+        {"path": "/not-an-array"},
+        "str",
+        5,
+        None,
+        [{"path": "  "}, {"url": "u"}],
+        [{"path": "  "}, {"kind": "unknown"}, {"contentType": ""}],
+    ]
+    messages: list[dict] = []
+    for content in ("", "   ", "\n\t", [], [{"type": "text", "text": ""}], [
+        {"type": "text", "text": " "}, {"type": "text", "text": "\n"}
+    ], "hi", [{"type": "text", "text": "hi"}, {"type": "text", "text": " "}], [
+        {"type": "image", "data": "AA==", "mimeType": "image/png"}, {"type": "text", "text": ""}
+    ]):
+        messages.append({"role": "user", "content": content, "timestamp": 0})
+        for media in media_values:
+            messages.append(
+                {"role": "user", "content": content, "timestamp": 0, "__openclaw": {"media": media}}
+            )
+        for carrier in (
+            [],
+            {"media": "x"},
+            "str",
+            None,
+            5,
+            {"other": [{"path": "/a"}]},
+        ):
+            messages.append(
+                {"role": "user", "content": content, "timestamp": 0, "__openclaw": carrier}
+            )
+        for legacy in (
+            {"MediaPath": "/a"},
+            {"MediaPaths": ["/a"], "MediaTypes": ["image/png"]},
+            {"media": [{"path": "/a"}]},
+            {"mediaPath": "/a"},
+        ):
+            messages.append({"role": "user", "content": content, "timestamp": 0, **legacy})
+    return messages
+
+
+def test_real_openclaw_oracle_replay_user_media_facts_match_python():
+    messages = _media_user_messages()
+    assert len(messages) >= 500
+    oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))
+    cases = [{"fn": "normalize", "messages": [message]} for message in messages]
+    result = oracle.run({"operation": "replayContentCases", "cases": cases})
+    assert result["ok"] is True
+    diffs = []
+    for message, row in zip(messages, result["result"], strict=True):
+        single = [message]
+        out = normalize_assistant_replay_content(single)
+        python_row = {"messages": out, "unchanged": out is single, "error": None}
+        if row != python_row:
+            diffs.append((message, row, python_row))
+    assert diffs[:5] == []
+
+
 def _repair_pairing_case(messages: list[dict], **options) -> None:
     """repairToolUseResultPairing at the tag against the port, the whole report compared."""
     oracle = OpenClawOracle(repo_path=Path(os.environ["OPENCLAW_ORACLE_REPO"]))

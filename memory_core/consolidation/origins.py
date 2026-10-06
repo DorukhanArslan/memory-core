@@ -13,8 +13,13 @@ The ledger is a real SQLite database written through the standard library's ``sq
 upstream's DDL, ``STRICT`` table and conflict rule (``ON CONFLICT DO NOTHING``), so a file written
 by either implementation reads in the other. Where the database lives is the host's decision
 (upstream: one ``openclaw-agent.sqlite`` per agent in the state directory), hence the
-``path_for_agent`` callable. Not ported: the session tombstones and the ``memory_index_state``
-revision fence, which belong to the host's session index.
+``path_for_agent`` callable. The session tombstones (``memory_session_tombstones``: a forgotten
+session is never ingested again) and the ``memory_index_state`` revision fence (a counter every
+tombstone bumps, so an index rebuild prepared before the forget is rejected at publication, see
+:class:`MemoryIndexRevisionConflictError`) live in the same database. Upstream's agent database
+always carries ``memory_index_state``; here :meth:`MemoryEntryOriginLedger.record_session_tombstones`
+creates it (seeded at revision 0) when the host's index has not. Not ported: the index publication
+that consults the fence (``publishMemoryDatabaseTables``) and the forget flow that writes tombstones.
 
 Reads never create the database or the table (upstream: ``withOpenClawAgentDatabaseReadOnly`` and
 ``tableExists``); recording creates both. A ``memory_index_chunks`` table in the same database is
@@ -26,6 +31,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import time
 from collections.abc import Callable, Iterable, Sequence
 from contextlib import closing
 from dataclasses import dataclass
@@ -52,6 +58,36 @@ _SCHEMA = """CREATE TABLE IF NOT EXISTS memory_entry_origins (
 _MARKER_LINE_RE = re.compile(
     r"^<!--\s*(?:" + "|".join(re.escape(prefix) for prefix in PROMOTION_MARKER_PREFIXES) + r")([^\n]*?)\s*-->$"
 )
+
+
+_TOMBSTONE_SCHEMA = """CREATE TABLE IF NOT EXISTS memory_session_tombstones (
+      session_id TEXT NOT NULL PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    ) STRICT"""
+
+_INDEX_STATE_SCHEMA = """CREATE TABLE IF NOT EXISTS memory_index_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      revision INTEGER NOT NULL
+    ) STRICT"""
+
+# Four bindings per row stay below SQLite's historical 999-variable default.
+TOMBSTONE_INSERT_BATCH_SIZE = 128
+
+
+class MemoryIndexRevisionConflictError(Exception):
+    """``MemoryIndexRevisionConflictError``: the index changed while a full reindex was building."""
+
+
+@dataclass(frozen=True)
+class MemorySessionTombstone:
+    """``MemorySessionTombstone``: a session whose memory was forgotten."""
+
+    session_id: str
+    agent_id: str
+    reason: str
+    created_at: int
 
 
 @dataclass(frozen=True)
@@ -259,6 +295,100 @@ class MemoryEntryOriginLedger:
                 db.execute("ROLLBACK")
                 raise
         return removed
+
+    # -- session tombstones and the index revision fence ---------------------------------
+
+    def list_session_tombstones(
+        self, agent_id: str, session_ids: Sequence[str] | None = None
+    ) -> list[MemorySessionTombstone]:
+        """``listMemorySessionTombstones``: the agent's tombstones ordered by session id."""
+        if session_ids is not None and len(session_ids) == 0:
+            return []
+        db = self._open_read(agent_id)
+        if db is None:
+            return []
+        with closing(db):
+            if not self._table_exists(db, "memory_session_tombstones"):
+                return []
+            sql = (
+                "SELECT session_id, agent_id, reason, created_at FROM memory_session_tombstones "
+                "WHERE agent_id = ?"
+            )
+            params: list[object] = [agent_id]
+            if session_ids is not None:
+                sql += f" AND session_id IN ({','.join('?' * len(session_ids))})"
+                params.extend(session_ids)
+            sql += " ORDER BY session_id ASC"
+            return [MemorySessionTombstone(*row) for row in db.execute(sql, params)]
+
+    def record_session_tombstones(
+        self,
+        agent_id: str,
+        session_ids: Sequence[str],
+        *,
+        reason: str = "forgotten",
+        created_at: int | None = None,
+    ) -> int:
+        """``recordMemorySessionTombstonesInDatabase``: tombstone sessions, return how many were new.
+
+        One immediate transaction. A recorded tombstone bumps the index revision, so a rebuild
+        prepared before this call fails :meth:`assert_index_revision` (the fence holds even when
+        the shadow index has no published chunks yet). Already tombstoned sessions are kept.
+        """
+        unique = list(dict.fromkeys(session_ids))
+        if not unique:
+            return 0
+        stamp = int(time.time() * 1000) if created_at is None else created_at
+        with closing(self._open_write(agent_id)) as db:
+            db.execute(_TOMBSTONE_SCHEMA)
+            db.execute(_INDEX_STATE_SCHEMA)
+            db.execute("INSERT OR IGNORE INTO memory_index_state (id, revision) VALUES (1, 0)")
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                recorded = 0
+                for start in range(0, len(unique), TOMBSTONE_INSERT_BATCH_SIZE):
+                    for session_id in unique[start : start + TOMBSTONE_INSERT_BATCH_SIZE]:
+                        recorded += db.execute(
+                            "INSERT INTO memory_session_tombstones (session_id, agent_id, reason, created_at) "
+                            "VALUES (?, ?, ?, ?) ON CONFLICT (session_id) DO NOTHING",
+                            (session_id, agent_id, reason, stamp),
+                        ).rowcount
+                if recorded > 0:
+                    db.execute("UPDATE memory_index_state SET revision = revision + 1 WHERE id = 1")
+                db.execute("COMMIT")
+            except BaseException:
+                db.execute("ROLLBACK")
+                raise
+        return recorded
+
+    def index_revision(self, agent_id: str) -> int | None:
+        """``readMemoryDatabaseRevision``: the index revision, ``None`` without a database or state row."""
+        db = self._open_read(agent_id)
+        if db is None:
+            return None
+        with closing(db):
+            if not self._table_exists(db, "memory_index_state"):
+                return None
+            row = db.execute("SELECT revision FROM memory_index_state WHERE id = 1").fetchone()
+        return row[0] if row is not None else None
+
+    def bump_index_revision(self, agent_id: str) -> None:
+        """The revision bump of an index mutation (upstream's triggers on the index tables)."""
+        with closing(self._open_write(agent_id)) as db:
+            db.execute(_INDEX_STATE_SCHEMA)
+            db.execute("INSERT OR IGNORE INTO memory_index_state (id, revision) VALUES (1, 0)")
+            db.execute("UPDATE memory_index_state SET revision = revision + 1 WHERE id = 1")
+
+    def assert_index_revision(self, agent_id: str, expected_revision: int) -> None:
+        """The publication fence: raise :class:`MemoryIndexRevisionConflictError` when the index moved on."""
+        live = self.index_revision(agent_id)
+        if live is None:
+            raise ValueError("Memory index revision is missing or invalid")
+        if live != expected_revision:
+            raise MemoryIndexRevisionConflictError(
+                "Memory index changed while full reindex was building "
+                f"(expected revision {expected_revision}, found {live}); retry the full reindex."
+            )
 
     # -- the index ----------------------------------------------------------------------
 

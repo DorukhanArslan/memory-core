@@ -111,6 +111,8 @@ type Payload = {
   consolidation?: Record<string, any>;
   promotionScenarios?: Array<Record<string, any>>;
   originSteps?: Array<Record<string, any>>;
+  recallScenarios?: Array<Record<string, any>>;
+  backfillScenarios?: Array<Record<string, any>>;
   agentIds?: string[];
   lockProbe?: Record<string, any>;
 };
@@ -4010,6 +4012,8 @@ async function main() {
     "applyPromotionScenarios",
     "originsLedger",
     "fileLockProbe",
+    "recordRecallScenarios",
+    "sessionBackfillLineage",
   ]);
   if (!promotionOperations.has(payload.operation)) {
     throw new Error(`unsupported operation: ${payload.operation}`);
@@ -4252,6 +4256,21 @@ async function main() {
                 retainedEntryKeys: new Set<string>(step.retainedEntryKeys ?? []),
               })),
             ].toSorted();
+          } else if (step.kind === "tombstone") {
+            // recordMemorySessionTombstonesInDatabase on the agent's real database (the revision
+            // fence bump included).
+            const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId: step.agentId }).db;
+            result = origins.recordMemorySessionTombstonesInDatabase(db, {
+              agentId: step.agentId,
+              sessionIds: step.sessionIds,
+              ...(typeof step.reason === "string" ? { reason: step.reason } : {}),
+              ...(Number.isFinite(step.createdAt) ? { createdAt: Number(step.createdAt) } : {}),
+            });
+          } else if (step.kind === "tombstones") {
+            result = origins.listMemorySessionTombstones({
+              agentId: step.agentId,
+              ...(Array.isArray(step.sessionIds) ? { sessionIds: step.sessionIds } : {}),
+            });
           } else if (step.kind === "list") {
             result = origins.listMemoryEntryOrigins({
               agentId: step.agentId,
@@ -4267,9 +4286,183 @@ async function main() {
           state: Object.fromEntries(
             agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
           ),
+          tombstones: Object.fromEntries(
+            agentIds.map((agentId) => [agentId, origins.listMemorySessionTombstones({ agentId })]),
+          ),
+          // The index revision fence counter (memory_index_state) of every agent database.
+          revisions: Object.fromEntries(
+            agentIds.map((agentId) => [
+              agentId,
+              (
+                sqliteRuntime
+                  .openOpenClawAgentDatabase({ agentId })
+                  .db.prepare("SELECT revision FROM memory_index_state WHERE id = 1")
+                  .get() as { revision: number } | undefined
+              )?.revision ?? null,
+            ]),
+          ),
         });
       }
       return { ok: true, operation: payload.operation, result: { steps } };
+    }
+
+    if (payload.operation === "recordRecallScenarios") {
+      // recordShortTermRecalls with session origins over many seeded workspaces in one process:
+      // each scenario seeds tombstones, replays its recalls and reports the recall store, the
+      // origins ledger and the tombstones of its own agents (agent ids are unique per scenario).
+      const origins = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/memory-entry-origins.ts",
+      );
+      const sqliteRuntime = await importFromRepo(repoPath, "src/plugin-sdk/sqlite-runtime.ts");
+      const scenarioResults: unknown[] = [];
+      for (const scenario of payload.recallScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        const scenarioNowMs = Number.isFinite(scenario.nowMs) ? Number(scenario.nowMs) : nowMs;
+        await seedPromotionStateFromWorkspace(promotionState, workspaceDir);
+        const agentIds: string[] = scenario.agentIds ?? [];
+        for (const agentId of agentIds) {
+          await fs.mkdir(path.dirname(sqliteRuntime.resolveOpenClawAgentSqlitePath({ agentId })), {
+            recursive: true,
+          });
+        }
+        for (const seed of scenario.seedTombstones ?? []) {
+          const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId: seed.agentId }).db;
+          origins.recordMemorySessionTombstonesInDatabase(db, {
+            agentId: seed.agentId,
+            sessionIds: seed.sessionIds,
+            createdAt: 1,
+          });
+        }
+        let error: string | null = null;
+        try {
+          for (const recall of scenario.recalls ?? []) {
+            await promotion.recordShortTermRecalls({
+              workspaceDir,
+              query: recall.query ?? "",
+              results: recall.results ?? [],
+              nowMs: Number.isFinite(recall.nowMs) ? Number(recall.nowMs) : scenarioNowMs,
+              timezone: recall.timezone ?? timezone,
+              ...(typeof recall.signalType === "string" ? { signalType: recall.signalType } : {}),
+              ...(recall.dedupeByQueryPerDay === true ? { dedupeByQueryPerDay: true } : {}),
+              ...(typeof recall.dayBucket === "string" ? { dayBucket: recall.dayBucket } : {}),
+            });
+          }
+        } catch (caught) {
+          error = String((caught as Error).message);
+        }
+        await exportPromotionStateToWorkspace(promotionState, workspaceDir, scenarioNowMs);
+        scenarioResults.push({
+          name: scenario.name,
+          error,
+          files: await snapshotFiles(workspaceDir),
+          origins: Object.fromEntries(
+            agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
+          ),
+          tombstones: Object.fromEntries(
+            agentIds.map((agentId) => [agentId, origins.listMemorySessionTombstones({ agentId })]),
+          ),
+        });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
+    }
+
+    if (payload.operation === "sessionBackfillLineage") {
+      // session-backfill.ts: buildSessionBackfillDiaryEntries and coalesceBackfillClaims are not
+      // exported, so the real source is loaded with one extra export line (from a copy beside it,
+      // removed again) and the grounded-signal half of applySessionBackfillDays runs the exported
+      // recordGroundedShortTermCandidates on the coalesced claims. The origins ledger and the
+      // recall store are reported per scenario (agent ids are unique per scenario).
+      const sourcePath = path.join(repoPath, "extensions/memory-core/src/session-backfill.ts");
+      const patchedPath = path.join(
+        repoPath,
+        `extensions/memory-core/src/session-backfill.oracle-${process.pid}.ts`,
+      );
+      const original = await fs.readFile(sourcePath, "utf-8");
+      await fs.writeFile(
+        patchedPath,
+        `${original}\nexport { buildSessionBackfillDiaryEntries, coalesceBackfillClaims };\n`,
+      );
+      let backfill: Record<string, any>;
+      try {
+        backfill = await import(pathToFileURL(patchedPath).href);
+      } finally {
+        await fs.unlink(patchedPath).catch(() => {});
+      }
+      const origins = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/memory-entry-origins.ts",
+      );
+      const sqliteRuntime = await importFromRepo(repoPath, "src/plugin-sdk/sqlite-runtime.ts");
+      const scenarioResults: unknown[] = [];
+      for (const scenario of payload.backfillScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        const scenarioNowMs = Number.isFinite(scenario.nowMs) ? Number(scenario.nowMs) : nowMs;
+        await seedPromotionStateFromWorkspace(promotionState, workspaceDir);
+        const agentIds: string[] = scenario.agentIds ?? [];
+        for (const agentId of agentIds) {
+          await fs.mkdir(path.dirname(sqliteRuntime.resolveOpenClawAgentSqlitePath({ agentId })), {
+            recursive: true,
+          });
+        }
+        for (const seed of scenario.seedTombstones ?? []) {
+          const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId: seed.agentId }).db;
+          origins.recordMemorySessionTombstonesInDatabase(db, {
+            agentId: seed.agentId,
+            sessionIds: seed.sessionIds,
+            createdAt: 1,
+          });
+        }
+        let error: string | null = null;
+        let diary: unknown = null;
+        const coalesced: unknown[] = [];
+        try {
+          if (Array.isArray(scenario.days)) {
+            diary = backfill.buildSessionBackfillDiaryEntries({
+              agentId: scenario.agentId,
+              days: scenario.days,
+            });
+          }
+          for (const day of scenario.recordDays ?? []) {
+            const grounded = backfill.coalesceBackfillClaims(day.results);
+            coalesced.push(grounded);
+            if (grounded.length === 0) {
+              continue;
+            }
+            await promotion.recordGroundedShortTermCandidates({
+              workspaceDir,
+              query: `__dreaming_session_backfill__:${day.day}`,
+              items: grounded.map((result: Record<string, any>) => ({
+                path: result.path,
+                startLine: result.startLine,
+                endLine: result.endLine,
+                snippet: result.snippet,
+                score: 0.58,
+                dayBucket: day.day,
+                provenance: result.provenance,
+                sessionOrigin: result.sessionOrigin,
+              })),
+              dedupeByQueryPerDay: true,
+              nowMs: scenarioNowMs,
+              timezone,
+            });
+          }
+        } catch (caught) {
+          error = String((caught as Error).message);
+        }
+        await exportPromotionStateToWorkspace(promotionState, workspaceDir, scenarioNowMs);
+        scenarioResults.push({
+          name: scenario.name,
+          error,
+          diary,
+          coalesced,
+          files: await snapshotFiles(workspaceDir),
+          origins: Object.fromEntries(
+            agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
+          ),
+        });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
     }
 
     if (payload.operation === "applyPromotionScenarios") {
@@ -4285,6 +4478,10 @@ async function main() {
       const artifacts = await importFromRepo(
         repoPath,
         "extensions/memory-core/src/dreaming-consolidation-artifacts.ts",
+      );
+      const artifactProvenance = await importFromRepo(
+        repoPath,
+        "src/memory/memory-artifact-provenance.ts",
       );
       const testAgentId = "memory-core-test";
       const results: unknown[] = [];
@@ -4311,6 +4508,23 @@ async function main() {
         }
         for (const seed of scenario.seedOrigins ?? []) {
           origins.recordMemoryEntryOrigins({ agentId: seed.agentId, origins: [seed] });
+        }
+        // Daily-file trust records (the flush's quarantine), written by the real writer one after
+        // another; an optional `rollback` undoes the step the way a failed flush would.
+        for (const seed of scenario.seedArtifactProvenance ?? []) {
+          const rollback = await artifactProvenance.recordMemoryArtifactWriteProvenance({
+            workspaceDir,
+            relativePath: seed.relativePath,
+            contentBefore: seed.contentBefore ?? "",
+            contentAfter: seed.contentAfter ?? "",
+            originClass: seed.originClass,
+            observedAt: seed.observedAt,
+            ...(typeof seed.sessionId === "string" ? { sessionId: seed.sessionId } : {}),
+            ...(typeof seed.sessionKey === "string" ? { sessionKey: seed.sessionKey } : {}),
+          });
+          if (seed.rollback === true && rollback) {
+            await rollback();
+          }
         }
         for (const seed of scenario.seedIndexChunks ?? []) {
           const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId: seed.agentId }).db;
@@ -4463,6 +4677,9 @@ async function main() {
           error,
           applied,
           files,
+          artifactProvenance: await artifactProvenance.listMemoryArtifactProvenance({
+            workspaceDir,
+          }),
           events: memoryHostEvents,
           origins: originRows,
           preimages,

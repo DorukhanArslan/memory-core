@@ -1290,22 +1290,42 @@ async function main() {
         }
       }
       const idToLabel = new Map<string, string>([...ids].map(([label, id]) => [id, label]));
-      let outcome: Record<string, unknown>;
-      try {
-        outcome = clean(
-          await rewrite.rewriteTranscriptEntriesInSessionManager({
-            sessionManager: manager,
-            replacements: ((item.replacements ?? []) as Array<Record<string, any>>).map((r) => ({
-              entryId: real(r.entryId),
-              message: structuredClone(r.message),
-            })),
-            preserveReplacementCompactionReplay: item.preserveReplacementCompactionReplay,
-          }),
-        );
-      } catch (error) {
-        outcome = { error: error instanceof Error ? error.message : String(error) };
-      }
       let nextEntry = 0;
+      // Rounds apply in sequence; an entryId may also be {branchIndex: n}, the n-th entry of the
+      // active branch at that moment (how a later round names entries a rewrite created).
+      const rounds = (item.rounds ?? [
+        {
+          replacements: item.replacements ?? [],
+          preserveReplacementCompactionReplay: item.preserveReplacementCompactionReplay,
+        },
+      ]) as Array<Record<string, any>>;
+      const outcomes: Array<Record<string, unknown>> = [];
+      for (const round of rounds) {
+        try {
+          outcomes.push(
+            clean(
+              await rewrite.rewriteTranscriptEntriesInSessionManager({
+                sessionManager: manager,
+                replacements: ((round.replacements ?? []) as Array<Record<string, any>>).map((r) => ({
+                  entryId:
+                    r.entryId !== null && typeof r.entryId === "object"
+                      ? manager.getBranch()[r.entryId.branchIndex]?.id
+                      : real(r.entryId),
+                  message: structuredClone(r.message),
+                })),
+                preserveReplacementCompactionReplay: round.preserveReplacementCompactionReplay,
+              }),
+            ),
+          );
+        } catch (error) {
+          outcomes.push({ error: error instanceof Error ? error.message : String(error) });
+        }
+        for (const entry of manager.getEntries()) {
+          if (!idToLabel.has(entry.id)) {
+            idToLabel.set(entry.id, `n${(nextEntry += 1)}`);
+          }
+        }
+      }
       let nextLeaf = 0;
       const label = (id: unknown): unknown => {
         if (typeof id !== "string") {
@@ -1341,7 +1361,7 @@ async function main() {
           return norm(entry);
         });
       results.push({
-        outcome,
+        outcomes,
         branch: manager.getBranch().map(norm),
         entries: entries.map(norm),
         leafId: label(manager.getLeafId()),

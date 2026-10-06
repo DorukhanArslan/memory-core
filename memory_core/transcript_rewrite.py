@@ -468,7 +468,7 @@ class TranscriptSessionManager:
 
     def append_label_change(self, target_id: str, label: Any) -> str:
         if target_id not in self.by_id:
-            raise KeyError(f"Entry {target_id} not found")
+            raise ValueError(f"Entry {target_id} not found")
         entry = self._append_entry(
             {**self._base("label"), "targetId": target_id, "label": label}
         )
@@ -488,7 +488,7 @@ class TranscriptSessionManager:
     def branch(self, branch_from_id: str) -> None:
         target = self._resolve_branch_target_id(branch_from_id)
         if target is UNDEFINED:
-            raise KeyError(f"Entry {branch_from_id} not found")
+            raise ValueError(f"Entry {branch_from_id} not found")
         self.leaf_id = target
         self.append_parent_id = target
         self.append_mode = None
@@ -509,7 +509,7 @@ class TranscriptSessionManager:
     ) -> str:
         target = None if branch_from_id is None else self._resolve_branch_target_id(branch_from_id)
         if target is UNDEFINED:
-            raise KeyError(f"Entry {branch_from_id} not found")
+            raise ValueError(f"Entry {branch_from_id} not found")
         entry = {
             **self._base("branch_summary", target),
             "fromId": target if target is not None else "root",
@@ -546,13 +546,13 @@ class TranscriptSessionManager:
         self, *, target_id: str | None, append_parent_id: str | None, append_mode: str | None = None
     ) -> dict[str, Any]:
         if target_id is not None and target_id not in self.by_id:
-            raise KeyError(f"Entry {target_id} not found")
+            raise ValueError(f"Entry {target_id} not found")
         if (
             append_parent_id is not None
             and append_parent_id not in self.by_id
             and append_parent_id not in self.opaque_parents_by_id
         ):
-            raise KeyError(f"Append parent {append_parent_id} not found")
+            raise ValueError(f"Append parent {append_parent_id} not found")
         previous_leaf_id = self.leaf_id
         self.leaf_id = target_id
         entry = self._create_leaf_control(self.append_parent_id, append_parent_id, append_mode)
@@ -629,7 +629,7 @@ class TranscriptSessionManager:
             entries = [e for e in prepared.file_entries[initial_entry_count:] if e["type"] != "session"]
             for source_id in rewritten_entry_ids:
                 if source_id not in self.by_id:
-                    raise KeyError("Transcript rewrite source is not in the loaded view")
+                    raise ValueError("Transcript rewrite source is not in the loaded view")
             # A maintenance branch may cross a reset. Side entries preserve its explicit
             # ancestry; ordinary appends would normalize onto the old leaf.
             for entry in entries:
@@ -785,7 +785,10 @@ def rewrite_transcript_entries_in_session_manager(
     replacements_by_id: dict[str, Any] = {}
     for replacement in replacements:
         entry_id = replacement.get("entryId")
-        if not isinstance(entry_id, str) or len(js_trim(entry_id)) == 0:
+        if not isinstance(entry_id, str):
+            # ``replacement.entryId.trim()`` throws on anything but a string.
+            raise TypeError("Cannot read properties of a non-string replacement entryId (reading 'trim')")
+        if len(js_trim(entry_id)) == 0:
             continue
         message = replacement.get("message")
         replacements_by_id[entry_id] = (

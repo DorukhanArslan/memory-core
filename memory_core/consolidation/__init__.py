@@ -33,6 +33,12 @@ from memory_core.consolidation.audit import (
     audit_short_term_promotion_artifacts,
     repair_short_term_promotion_artifacts,
 )
+from memory_core.consolidation.artifacts import (
+    append_consolidation_skipped_summary,
+    append_consolidation_summary,
+    read_memory_preimages,
+    store_memory_preimage,
+)
 from memory_core.consolidation.concepts import MAX_CONCEPT_TAGS, derive_concept_tags
 from memory_core.consolidation.dreaming import (
     DREAMING_PHASES,
@@ -44,6 +50,7 @@ from memory_core.consolidation.llm_consolidation import (
     CONSOLIDATION_SYSTEM_PROMPT,
     ConsolidationModel,
     ConsolidationRequest,
+    DeepConsolidation,
     LlmConsolidationOptions,
     LlmConsolidationOutcome,
     MemoryConsolidationPlan,
@@ -102,6 +109,11 @@ from memory_core.consolidation.store import (
 from memory_core.memory_budget import DEFAULT_MEMORY_FILE_MAX_CHARS
 
 __all__ = [
+    "DeepConsolidation",
+    "append_consolidation_skipped_summary",
+    "append_consolidation_summary",
+    "read_memory_preimages",
+    "store_memory_preimage",
     "CONSOLIDATION_SYSTEM_PROMPT",
     "ConsolidationModel",
     "ConsolidationRequest",

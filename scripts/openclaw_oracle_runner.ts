@@ -1887,6 +1887,108 @@ async function main() {
     });
   }
 
+  if (payload.operation === "consolidateMemory") {
+    // extensions/memory-core/src/dreaming-consolidation.ts through test-helpers.ts
+    // consolidateMemoryForTests with a stubbed model (no network). Each scenario either runs the
+    // model pass over `candidates` (replies: one entry per call, a string, {throw}, or
+    // {raw} for a non-string result) or applies a hand-built `plan` directly.
+    const helpers = await loadMemoryCoreTestHelpers(repoPath);
+    const consolidation = await importFromRepo(
+      repoPath,
+      "extensions/memory-core/src/dreaming-consolidation.ts",
+    );
+    const scenarioResults: unknown[] = [];
+    for (const scenario of payload.scenarios ?? []) {
+      const warnings: string[] = [];
+      const calls: Array<Record<string, unknown>> = [];
+      const replies: unknown[] = Array.isArray(scenario.replies) ? scenario.replies : [];
+      const subagent = {
+        complete: async (options: Record<string, unknown>) => {
+          calls.push({ ...options });
+          const reply = replies[calls.length - 1] as unknown;
+          if (isRecord(reply) && typeof reply.throw === "string") {
+            throw new Error(reply.throw);
+          }
+          if (isRecord(reply) && "raw" in reply) {
+            return reply.raw;
+          }
+          return { text: reply };
+        },
+      };
+      const scenarioNowMs = Number.isFinite(scenario.nowMs) ? Number(scenario.nowMs) : nowMs;
+      const applyParams = (plan: unknown) => ({
+        existingMemory: String(scenario.existingMemory ?? ""),
+        plan,
+        nowMs: scenarioNowMs,
+        timezone: scenario.timezone ?? "UTC",
+        ...(typeof scenario.memoryFileMaxChars === "number"
+          ? { memoryFileMaxChars: scenario.memoryFileMaxChars }
+          : {}),
+        maxPriorEntryLossFraction: Number(scenario.maxPriorEntryLossFraction ?? 0.25),
+      });
+      let plan: unknown = null;
+      if (scenario.plan) {
+        plan = scenario.plan;
+      } else {
+        plan = await helpers.consolidateMemoryForTests({
+          subagent,
+          existingMemory: String(scenario.existingMemory ?? ""),
+          candidates: scenario.candidates ?? [],
+          ...(typeof scenario.model === "string" ? { model: scenario.model } : {}),
+          maxPriorEntryLossFraction: Number(scenario.maxPriorEntryLossFraction ?? 0.25),
+          ...(typeof scenario.memoryFileMaxChars === "number"
+            ? { memoryFileMaxChars: scenario.memoryFileMaxChars }
+            : {}),
+          ...(typeof scenario.maxPromotedSnippetTokens === "number"
+            ? { maxPromotedSnippetTokens: scenario.maxPromotedSnippetTokens }
+            : {}),
+          nowMs: scenarioNowMs,
+          logger: { info: () => {}, warn: (message: string) => warnings.push(message) },
+        });
+      }
+      const applied = plan ? consolidation.applyMemoryConsolidationPlan(applyParams(plan)) : null;
+      scenarioResults.push({ plan, applied, calls, warnings });
+    }
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: {
+        systemPrompt: (
+          await (async () => {
+            // The system prompt is private; read it off a one-candidate pass.
+            let seen: unknown = null;
+            await helpers.consolidateMemoryForTests({
+              subagent: {
+                complete: async (options: Record<string, unknown>) => {
+                  seen = options.extraSystemPrompt;
+                  return { text: "{}" };
+                },
+              },
+              existingMemory: "",
+              candidates: [
+                {
+                  key: "k",
+                  path: "memory/2026-07-01.md",
+                  startLine: 1,
+                  endLine: 1,
+                  snippet: "x",
+                  score: 0.5,
+                  conceptTags: [],
+                  provenance: { originClass: "owner" },
+                },
+              ],
+              maxPriorEntryLossFraction: 0.25,
+              nowMs,
+              logger: { info: () => {}, warn: () => {} },
+            });
+            return seen;
+          })()
+        ),
+        scenarios: scenarioResults,
+      },
+    };
+  }
+
   if (payload.operation === "memoryBudgetCompaction") {
     // extensions/memory-core/src/memory-budget.ts compactMemoryForBudget (its private
     // parseMemoryBlocks decides which blocks are promotion sections) and

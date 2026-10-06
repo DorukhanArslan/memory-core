@@ -1164,6 +1164,19 @@ async function main() {
     };
   }
 
+  if (payload.operation === "inboundMetadataHelpers") {
+    // stripLeadingInboundMetadata and extractInboundSenderLabel over texts.
+    const strip = await importFromRepo(repoPath, "src/auto-reply/reply/strip-inbound-meta.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map((item) => ({
+        leading: strip.stripLeadingInboundMetadata(String(item.text)),
+        sender: strip.extractInboundSenderLabel(String(item.text)),
+      })),
+    };
+  }
+
   if (payload.operation === "compactionReplayOwner") {
     // replaceCompactionReplayOwnerContent and the checkpoint helpers next to it. A case names
     // the new content as {ref: i} (the original block object at index i, matched by identity
@@ -1193,6 +1206,113 @@ async function main() {
           isCheckpoint: replay.isCompactionReplayCheckpoint(message.providerReplay),
           stripped: replay.stripCompactionReplayCheckpoint(message),
         };
+      }),
+    };
+  }
+
+  if (payload.operation === "compactionCheckpoint") {
+    // The Anthropic/Responses checkpoint resolvers, preserveCompactionReplayWindow,
+    // requiresCompactionReplayRefresh and the replay-plan builders. An owner message is reported
+    // as {ref: i} (its index in the case's messages, identity like upstream's ===). A case's
+    // `windowed` is a list of {ref: i} (the same object) or {copy: i} (a structured clone).
+    const replay = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/provider-compaction-replay.ts",
+    );
+    const anthropic = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/anthropic-compaction-replay.ts",
+    );
+    const responses = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/openai-responses-compaction-replay.ts",
+    );
+    const context = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/provider-replay-context.ts",
+    );
+    const hash = await importFromRepo(repoPath, "packages/ai/src/utils/hash.ts");
+    return {
+      ok: true,
+      operation: payload.operation,
+      result: (payload.cases ?? []).map((item) => {
+        const messages = item.messages ?? [];
+        const ref = (value: unknown) => {
+          const index = messages.indexOf(value);
+          return index >= 0 ? { ref: index } : value;
+        };
+        const refOwner = (value: Record<string, unknown> | undefined) =>
+          value === undefined ? null : { ...value, owner: ref(value.owner) };
+        const identity = item.identity ?? {};
+        const options = { authProfileId: identity.authProfileId, sessionId: identity.sessionId };
+        try {
+          switch (item.fn) {
+            case "shortHash":
+              return { value: hash.shortHash(item.text), error: null };
+            case "replayContext":
+              return { value: context.buildProviderReplayContext(item.model, options), error: null };
+            case "newestAnthropic":
+              return {
+                value: refOwner(
+                  anthropic.resolveNewestAnthropicCompaction(messages, item.model, options),
+                ),
+                error: null,
+              };
+            case "newestResponses":
+              return {
+                value: refOwner(
+                  responses.resolveNewestOpenAIResponsesCompactionReplay(
+                    messages,
+                    item.model,
+                    options,
+                  ),
+                ),
+                error: null,
+              };
+            case "requiresRefresh":
+              return {
+                value: replay.requiresCompactionReplayRefresh(messages, item.model, identity),
+                error: null,
+              };
+            case "preserve": {
+              const windowed = (item.windowed ?? []).map((spec: Record<string, number>) =>
+                "ref" in spec ? messages[spec.ref] : structuredClone(messages[spec.copy]),
+              );
+              const out = replay.preserveCompactionReplayWindow(
+                messages,
+                windowed,
+                item.model,
+                identity,
+              );
+              return {
+                value: out.map((message: unknown) =>
+                  windowed.includes(message) ? ref(message) : message,
+                ),
+                same: out === windowed,
+                error: null,
+              };
+            }
+            case "anthropicPlan": {
+              const plan = anthropic.buildAnthropicReplayPlan(messages, item.model, {
+                ...options,
+                enabled: identity.enabled,
+              });
+              return { value: { ...plan, messages: plan.messages.map(ref) }, error: null };
+            }
+            case "responsesPlan": {
+              const plan = responses.buildOpenAIResponsesCompactionReplayPlan(
+                messages,
+                item.model,
+                { ...options, ...(item.mode ? { mode: item.mode } : {}) },
+              );
+              return { value: { ...plan, messages: plan.messages.map(ref) }, error: null };
+            }
+            default:
+              throw new Error(`unknown fn ${item.fn}`);
+          }
+        } catch (err) {
+          return { value: null, error: err instanceof Error ? err.constructor.name : String(err) };
+        }
       }),
     };
   }

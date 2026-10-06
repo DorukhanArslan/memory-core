@@ -28,6 +28,7 @@ become ``line_map`` like upstream's archive branch). Deviations, by design:
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import re
 from collections.abc import Callable, Iterable, Mapping
@@ -136,7 +137,9 @@ def _has_sentinel(text: str) -> bool:
     return (
         INBOUND_CONTEXT_MARKER in text
         or any(hint in text for hint in MESSAGE_TOOL_DELIVERY_HINTS)
-        or (_ACTIVE_MEMORY_CONTEXT_HEADER in text and _BARE_CONTEXT_LINE_RE.search(text) is not None)
+        or (
+            _ACTIVE_MEMORY_CONTEXT_HEADER in text and _BARE_CONTEXT_LINE_RE.search(text) is not None
+        )
     )
 
 
@@ -214,6 +217,95 @@ def strip_inbound_metadata(text: str) -> str:
     return _LEADING_TIMESTAMP_RE.sub("", result, count=1)
 
 
+def _strip_trailing_context_block_suffix(text: str) -> str:
+    header = _find_line(text, _CHANNEL_CONTEXT_HEADER)
+    if header is None:
+        return text
+    end = header.start
+    while end > 0:
+        previous = 0 if end == 1 else text.rfind("\n", 0, end - 1) + 1
+        if js_trim(text[previous : end - 1]) != "":
+            break
+        end = previous
+    return text[: max(0, end - 1)]
+
+
+def _is_inbound_context_header_line(line: str) -> bool:
+    return len(line) > len(INBOUND_CONTEXT_MARKER) and line.endswith(INBOUND_CONTEXT_MARKER)
+
+
+def strip_leading_inbound_metadata(text: str) -> str:
+    """Port of ``stripLeadingInboundMetadata``: only the leading inbound blocks are removed."""
+    if not _has_sentinel(text):
+        return text
+    source = _strip_active_memory_blocks(text)
+    start = _skip_empty_lines(source, 0, False)
+    line = _read_line(source, start)
+    stripped_hint = line is not None and line.trimmed in MESSAGE_TOOL_DELIVERY_HINTS
+    while line is not None and line.trimmed in MESSAGE_TOOL_DELIVERY_HINTS:
+        start = _skip_empty_lines(source, line.next, False)
+        line = _read_line(source, start)
+    if line is None:
+        return ""
+    if not _is_inbound_context_header_line(line.trimmed):
+        return _strip_trailing_context_block_suffix(source[start:] if stripped_hint else source)
+    while line is not None and _is_inbound_context_header_line(line.trimmed):
+        start = _skip_empty_lines(source, _metadata_block_end(source, line))
+        line = _read_line(source, start)
+    return _strip_trailing_context_block_suffix(source[start:])
+
+
+def _parse_inbound_meta_block(text: str, label: str) -> dict[str, Any] | None:
+    header = _find_line(text, f"{label} {INBOUND_CONTEXT_MARKER}")
+    opening = _read_line(text, header.next) if header is not None else None
+    if opening is None or opening.trimmed != "```json":
+        return None
+    closing = _find_line(text, "```", opening.next)
+    if closing is None:
+        return None
+    body = js_trim(text[opening.next : closing.start])
+    if re.match(r"[\t\n\r ]*\{", body) is None:
+        return None
+    try:
+        parsed = json.loads(body, parse_constant=reject_json_constant)
+    except (ValueError, RecursionError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _first_non_empty_string(*values: Any) -> str | None:
+    for value in values:
+        if isinstance(value, str) and js_trim(value):
+            return js_trim(value).replace("`\u200b``", "```")
+    return None
+
+
+def extract_inbound_sender_label(text: str) -> str | None:
+    """Port of ``extractInboundSenderLabel``: the sender label of injected inbound metadata."""
+    if INBOUND_CONTEXT_MARKER not in text:
+        return None
+    sender = _parse_inbound_meta_block(text, "Sender:") or {}
+    label = _first_non_empty_string(
+        sender.get("label"),
+        sender.get("name"),
+        sender.get("username"),
+        sender.get("e164"),
+        sender.get("id"),
+    )
+    if label:
+        return label
+    conversation = _parse_inbound_meta_block(text, "Conversation info:") or {}
+    conversation_sender = conversation.get("sender")
+    if isinstance(conversation_sender, dict):
+        return _first_non_empty_string(
+            conversation_sender.get("name"),
+            conversation_sender.get("username"),
+            conversation_sender.get("e164"),
+            conversation_sender.get("id"),
+        )
+    return _first_non_empty_string(conversation_sender)
+
+
 def is_exec_completion_event(evt: str) -> bool:
     """Port of ``isExecCompletionEvent`` (heartbeat-events-filter.ts)."""
     trimmed = re.sub(f"^{_S}+", "", evt)
@@ -239,7 +331,9 @@ def _collect_raw_session_text(content: object) -> str | None:
     parts = [
         block["text"]
         for block in content
-        if isinstance(block, Mapping) and block.get("type") == "text" and isinstance(block.get("text"), str)
+        if isinstance(block, Mapping)
+        and block.get("type") == "text"
+        and isinstance(block.get("text"), str)
     ]
     return "\n".join(parts) if parts else None
 
@@ -303,7 +397,9 @@ def sanitize_session_text(
         _GENERATED_SYSTEM_MESSAGE_RE.match(normalized)
         or _DIRECT_CRON_PROMPT_RE.match(normalized)
         or is_heartbeat_user_message(
-            {"role": role, "content": normalized}, HEARTBEAT_PROMPT, runtime_identity=runtime_identity
+            {"role": role, "content": normalized},
+            HEARTBEAT_PROMPT,
+            runtime_identity=runtime_identity,
         )
     ):
         return None
@@ -426,7 +522,12 @@ def js_date_parse(value: str) -> float:
     year, month, day, hour, minute, second, frac, zone = match.groups()
     try:
         naive = datetime(
-            int(year), int(month or 1), int(day or 1), int(hour or 0), int(minute or 0), int(second or 0)
+            int(year),
+            int(month or 1),
+            int(day or 1),
+            int(hour or 0),
+            int(minute or 0),
+            int(second or 0),
         )
     except ValueError:
         return math.nan
@@ -444,9 +545,10 @@ def js_date_parse(value: str) -> float:
     else:
         stamp = naive.astimezone()  # date-time without offset: host local time
         stamp = naive.replace(tzinfo=stamp.tzinfo)
-    return math.floor(
-        (stamp - datetime(1970, 1, 1, tzinfo=dt_timezone.utc)).total_seconds() * 1000
-    ) + millis
+    return (
+        math.floor((stamp - datetime(1970, 1, 1, tzinfo=dt_timezone.utc)).total_seconds() * 1000)
+        + millis
+    )
 
 
 def parse_session_timestamp_ms(record: Mapping[str, Any], message: Mapping[str, Any]) -> int:
@@ -645,7 +747,10 @@ def build_session_entry(
         if raw_text is None:
             continue
         text = sanitize_session_text(
-            raw_text, role, runtime_identity=runtime_identity, strip_runtime_context=strip_runtime_context
+            raw_text,
+            role,
+            runtime_identity=runtime_identity,
+            strip_runtime_context=strip_runtime_context,
         )
         if not text:
             continue
@@ -667,7 +772,9 @@ def build_session_entry(
         line_map=line_map,
         message_timestamps_ms=timestamps,
         line_provenance=provenance,
-        hash=hash_session_entry_snapshot(content, line_map, timestamps, provenance, reset_recall_cutoff),
+        hash=hash_session_entry_snapshot(
+            content, line_map, timestamps, provenance, reset_recall_cutoff
+        ),
         session_kind=session_kind,
         reset_recall_cutoff=dict(reset_recall_cutoff),
         generated_by_dreaming_narrative=dreaming,
@@ -675,7 +782,9 @@ def build_session_entry(
     )
 
 
-def matches_session_entry_prefix_hash(entry: SessionEntry, line_count: int, expected_hash: str) -> bool:
+def matches_session_entry_prefix_hash(
+    entry: SessionEntry, line_count: int, expected_hash: str
+) -> bool:
     """Port of ``matchesSessionEntryPrefixHash``."""
     lines = entry.content.split("\n") if entry.content else []
     if not isinstance(line_count, int) or line_count < 0 or line_count > len(lines):
@@ -690,5 +799,3 @@ def matches_session_entry_prefix_hash(entry: SessionEntry, line_count: int, expe
         )
         == expected_hash
     )
-
-

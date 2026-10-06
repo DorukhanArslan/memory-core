@@ -8,7 +8,11 @@ pin 4c42815348):
   phase signal per candidate (``recordDreamingPhaseSignals``); the signals feed
   the promotion score's phase boost;
 - ``rem`` also appends a ``## Dreaming sweep`` summary to ``DREAMS.md``;
-- ``deep`` runs gated scored promotion (:func:`run_short_term_promotion`).
+- ``deep`` runs gated scored promotion (:func:`run_short_term_promotion`); with an enabled
+  :class:`~memory_core.consolidation.llm_consolidation.DeepConsolidation` it first lets the
+  host's model plan a MEMORY.md rewrite (``consolidateMemory``), commits it under the promotion
+  lock with a preimage and a DREAMS.md ``## Memory Consolidation History`` summary, and falls
+  back to the deterministic append whenever any step rejects.
 
 Known gaps (parity matrix rows "Light dreaming phase signals", "REM dreaming
 phase signals", "Deep dreaming application flow"): no REM narrative or
@@ -25,6 +29,8 @@ from typing import Any
 
 from memory_core.bootstrap._js import js_to_well_formed
 from memory_core.config import MemoryConfig
+from memory_core.consolidation.artifacts import read_dreams_file, resolve_dreams_path
+from memory_core.consolidation.llm_consolidation import DeepConsolidation
 from memory_core.consolidation.policy import DeepDreamingPolicy
 from memory_core.consolidation.promotion import (
     MemoryPromotionRun,
@@ -64,6 +70,7 @@ def run_dreaming_sweep(
     limit: int = 5,
     identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
     policy: DeepDreamingPolicy | None = None,
+    consolidation: DeepConsolidation | None = None,
 ) -> DreamingSweepResult:
     """Run one dreaming phase over the workspace's recall store.
 
@@ -77,7 +84,9 @@ def run_dreaming_sweep(
     policy's limit, gates, ``max_age_days``, ``recency_half_life_days`` and
     ``max_promoted_snippet_tokens`` apply. ``files_changed`` lists
     workspace-relative paths the sweep wrote; ``identity`` picks the promotion
-    marker prefix of the deep phase.
+    marker prefix of the deep phase. ``consolidation`` (default ``None``, and off unless its
+    ``options.enabled`` is set and it carries a model) opts the deep phase into the host-injected
+    LLM consolidation; see :func:`run_short_term_promotion`.
     """
     if phase not in DREAMING_PHASES:
         raise ValueError(f"unsupported dreaming phase: {phase}")
@@ -129,17 +138,22 @@ def run_dreaming_sweep(
                 "max_age_days": policy.max_age_days,
                 "recency_half_life_days": policy.recency_half_life_days,
                 "max_promoted_snippet_tokens": policy.max_promoted_snippet_tokens,
+                "max_prior_entry_loss_fraction": policy.max_prior_entry_loss_fraction,
             }
+        dreams_before = _read_dreams(config.workspace_dir)
         promotion = run_short_term_promotion(
             config=config,
             store=store,
             now_ms=now_ms,
             timezone=timezone,
             identity=identity,
+            consolidation=consolidation,
             **gates,
         )
         if promotion.outcome.should_write:
             files_changed.append(promotion.target)
+        if _read_dreams(config.workspace_dir) != dreams_before:
+            files_changed.append(resolve_dreams_path(config.workspace_dir).name)
 
     return DreamingSweepResult(
         phase=phase,
@@ -149,6 +163,10 @@ def run_dreaming_sweep(
         promotion=promotion,
         skip_reason=skip_reason,
     )
+
+
+def _read_dreams(workspace_dir: Path) -> str:
+    return read_dreams_file(resolve_dreams_path(workspace_dir))
 
 
 def _append_dreams_section(

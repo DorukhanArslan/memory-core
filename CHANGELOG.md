@@ -96,13 +96,31 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
     - `memory_core/tool_result_projection.py` (prompt projection state, cache-TTL pruning),
       the overflow tables (`_overflow_tables.py`), the parked Code Mode block and the
       no-real-conversation reset in `decide_provider_overflow_recovery`.
-    - Still not ported: `resolveCompactionSource`, `preserveCompactionReplayWindow` and the
-      provider checkpoint resolvers; `stripLeadingInboundMetadata`, `extractInboundSenderLabel`;
-      the internals of `rewriteTranscriptEntriesInSessionManager`; cache-TTL provider
-      eligibility and its call-site wiring; the assistant-error `isContextOverflow` path;
-      `run_llm_consolidation` in `run_dreaming_sweep` (the host calls it); `DREAMS.md`
-      consolidation-history summaries and the deep-phase lock/commit; the exact-secret
-      redaction registry; SQLite session statistics and archives (kept out by decision 4).
+    - Second round of gap ports (2026-10-06), each compared with the real TS oracle:
+      - `memory_core/compaction_replay.py`: `resolve_compaction_source`,
+        `preserve_compaction_replay_window`, `requires_compaction_replay_refresh`, the Anthropic
+        and OpenAI Responses checkpoint resolvers and plan builders with host-supplied
+        `ReplayModel` / `ReplayIdentity` and an optional `egress_projection` hook; and in
+        `session_entry.py` `strip_leading_inbound_metadata` and `extract_inbound_sender_label`
+        (`test_openclaw_compaction_checkpoint_oracle.py`).
+      - `memory_core/transcript_rewrite.py` (`rewrite_transcript_entries_in_session_manager`
+        over an in-memory `TranscriptSessionManager`), the reset window in
+        `session_context_window.py`, `cache_ttl.py` (provider eligibility, marker, call-site
+        wiring) and the assistant-error overflow path in `overflow_recovery.py`
+        (`is_context_overflow`, `resolve_context_overflow_error`) with host provider hooks.
+      - `DeepConsolidation` wired into `run_dreaming_sweep` and `run_short_term_promotion`
+        (`applyShortTermPromotions` flow with lock-time re-check, preimage and atomic commit),
+        `memory_core/consolidation/artifacts.py` with the `DREAMS.md` consolidation history, and
+        JS case folding in `memory_core/consolidation`. `run_dreaming_sweep` now forwards
+        `max_prior_entry_loss_fraction`.
+    - Still not ported: `resolveCompactionReplayPressure`, the compaction capture side,
+      `resolveCompactionReplayEligibility` and `sanitizeInlineImageDataUrl`; the rewrite's SQLite,
+      bounded and persisted paths, `iterateSessionContextMessages` and the other `SessionManager`
+      methods; a caller of the cache-TTL transform (host-owned); `reset` in the
+      `transcript_tree.py` entry types; the `rejectedCandidates` reporting, origin ledger and
+      `memory.promotion.applied` events of the deep phase; REM/light narrative consolidation
+      inputs; the exact-secret redaction registry; SQLite session statistics and archives (kept
+      out by decision 4).
 
 - Search ranking follows OpenClaw v2026.9.6 (port plan area 6): chunks are sized in CJK-weighted
   characters (`tokens * 4`) and `MEMORY.md` / `USER.md` chunk per `- ` entry and heading; keyword

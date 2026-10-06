@@ -33,6 +33,7 @@ from memory_core.bootstrap._js import (
     utf16_len,
 )
 from memory_core.heartbeat import parse_duration_ms
+from memory_core.session_context_window import iterate_session_context_entries
 from memory_core.preemptive_compaction import (
     RECOVERY_MIN_KEEP_CHARS,
     ProjectedMessage,
@@ -949,39 +950,12 @@ def truncate_oversized_tool_results_in_messages(
 def session_context_entries(branch: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     """``iterateSessionContextEntries`` over an active branch: entries inside the context window.
 
-    A compaction boundary is yielded first, then the kept and later message-like entries. A reset
-    boundary keeps no retained entries here (upstream consults ``selectResetKeptEntries``).
+    A compaction or reset boundary is yielded first, then the kept and later message-like entries.
+    A reset boundary keeps only what ``selectResetKeptEntries`` selects from its retained span
+    (:mod:`memory_core.session_context_window`).
     """
 
-    boundary_index = -1
-    for index, entry in enumerate(branch):
-        if entry.get("type") in ("reset", "compaction"):
-            boundary_index = index
-    first_kept_index = -1
-    if boundary_index >= 0:
-        wanted = branch[boundary_index].get("firstKeptEntryId")
-        found = next((i for i, e in enumerate(branch) if wanted is not None and e.get("id") == wanted), -1)
-        first_kept_index = found if 0 <= found < boundary_index else boundary_index
-    out: list[dict[str, Any]] = []
-    if boundary_index >= 0:
-        out.append(branch[boundary_index])
-    for index, entry in enumerate(branch):
-        retained = index < boundary_index
-        if index == boundary_index or (
-            retained and (index < first_kept_index or branch[boundary_index].get("type") == "reset")
-        ):
-            continue
-        if entry.get("type") not in ("message", "custom_message", "branch_summary"):
-            continue
-        message = entry.get("message")
-        if (
-            entry.get("type") == "message"
-            and isinstance(message, dict)
-            and message.get("excludeFromContext") is True
-        ):
-            continue
-        out.append(entry)
-    return out
+    return [entry for entry, _context in iterate_session_context_entries(branch)]
 
 
 def session_context_tool_result_messages(branch: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -189,6 +189,45 @@ def truncate_utf16_safe(value: str, max_len: int | float) -> str:
     return slice_utf16_safe(value, 0, limit)
 
 
+def js_i_pattern(source: str) -> str:
+    """Rewrite regex ``source`` so it matches like a JavaScript ``/i`` (no ``u``) literal.
+
+    Without the ``u`` flag ECMAScript canonicalizes with ``toUpperCase`` but never maps a
+    non-ASCII character onto an ASCII one, so only ASCII letters fold. Python's
+    ``re.IGNORECASE`` also folds U+017F, U+212A, U+0130 and U+0131 onto ASCII letters.
+    Every ASCII letter outside an escape or a character class becomes ``[xX]``; a class
+    with a letter is rejected (write both cases by hand). ``\\b`` and ``\\d`` outside a class
+    become their ASCII-only forms, like JavaScript's. Compile the result without
+    ``re.IGNORECASE``.
+    """
+    out: list[str] = []
+    index = 0
+    in_class = False
+    while index < len(source):
+        char = source[index]
+        if char == "\\":
+            token = source[index : index + 2]
+            if not in_class:
+                # JavaScript's \b and \d are ASCII-only without the u flag; Python's are Unicode.
+                token = {"\\b": "(?a:\\b)", "\\d": "[0-9]"}.get(token, token)
+            out.append(token)
+            index += 2
+            continue
+        if in_class:
+            if char.isascii() and char.isalpha():
+                raise ValueError("js_i_pattern: write letters in a character class in both cases")
+            in_class = char != "]"
+        elif char == "[":
+            in_class = True
+        elif char.isascii() and char.isalpha():
+            out.append(f"[{char.lower()}{char.upper()}]")
+            index += 1
+            continue
+        out.append(char)
+        index += 1
+    return "".join(out)
+
+
 def js_iu_keyword_pattern(keyword: str) -> str:
     """Regex source matching ``keyword`` like a JavaScript /iu literal.
 

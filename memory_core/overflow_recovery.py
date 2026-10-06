@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+import math
 import re
+from typing import Any, Literal
 
 from memory_core._overflow_tables import (
     is_billing_error_message,
     is_rate_limit_error_message,
+    js_regex,
     looks_like_provider_context_overflow_candidate,
     matches_context_overflow_message,
 )
+from memory_core.bootstrap._js import js_trim
 
 
 MAX_OVERFLOW_COMPACTION_ATTEMPTS = 3
@@ -185,13 +190,94 @@ def is_context_overflow_error_from_tables(error_message: str | None) -> bool:
     )
 
 
-def is_context_overflow_error(error_message: str | None) -> bool:
-    """``isContextOverflowError`` without a prepared provider plugin (none classifies here)."""
+class _Unset:
+    __slots__ = ()
 
-    return is_context_overflow_error_from_tables(error_message)
+    def __repr__(self) -> str:  # pragma: no cover - debug repr only
+        return "UNSET"
 
 
-def is_likely_context_overflow_error(error_message: str | None) -> bool:
+UNSET: Any = _Unset()
+
+#: ``ProviderSpecificErrorContext`` (failover/provider-patterns.ts) as a mapping with the keys
+#: ``errorMessage``, ``provider``, ``modelId``, ``status``, ``code`` and ``errorType``.
+ProviderErrorContext = Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class PreparedProviderFailoverOwner:
+    """``PreparedProviderFailoverOwner``: the provider plugin that owns an error, host-supplied.
+
+    ``matches_context_overflow_error`` and ``classify_failover_reason`` are the plugin hooks
+    ``matchesContextOverflowError`` and ``classifyFailoverReason``; each receives the context with
+    ``provider`` set to ``id`` and may return ``None`` to defer.
+    """
+
+    id: str
+    matches_context_overflow_error: Callable[[dict[str, Any]], bool | None] | None = None
+    classify_failover_reason: Callable[[dict[str, Any]], str | None] | None = None
+
+
+def classify_provider_plugin_error(
+    context: ProviderErrorContext,
+    *,
+    provider_plugin: PreparedProviderFailoverOwner | None | Any = UNSET,
+    discover: Callable[[dict[str, Any]], str | None] | None = None,
+) -> str | None:
+    """``classifyProviderPluginError``: a failover reason from the owning provider plugin, or ``None``.
+
+    ``provider_plugin=None`` is explicit absence (presentation has no provider owner: no
+    discovery). An unset plugin falls back to ``discover``, the host's counterpart of
+    ``classifyProviderFailoverSignalWithPlugin`` (provider lookup by ``context["provider"]``); no
+    host means no plugin classifies.
+    """
+
+    provider_context = dict(context)
+    if provider_plugin is None:
+        return None
+    if isinstance(provider_plugin, PreparedProviderFailoverOwner):
+        owned = {**provider_context, "provider": provider_plugin.id}
+        matcher = provider_plugin.matches_context_overflow_error
+        if matcher is not None and matcher(owned):
+            return "context_overflow"
+        if provider_plugin.classify_failover_reason is None:
+            return None
+        return provider_plugin.classify_failover_reason(owned) or None
+    if discover is None:
+        return None
+    return discover(provider_context) or None
+
+
+def is_context_overflow_error(
+    error_message: str | None,
+    *,
+    provider_plugin: PreparedProviderFailoverOwner | None | Any = UNSET,
+    discover_provider_plugin: Callable[[dict[str, Any]], str | None] | None = None,
+) -> bool:
+    """``isContextOverflowError``: the wording tables, or the provider plugin's own verdict.
+
+    The plugin is asked only for a message that looks like a provider overflow candidate
+    (rate limits excluded), exactly as upstream gates ``classifyProviderPluginError``.
+    """
+
+    if not error_message:
+        return False
+    return is_context_overflow_error_from_tables(error_message) or (
+        looks_like_provider_context_overflow_candidate(error_message)
+        and classify_provider_plugin_error(
+            {"errorMessage": error_message},
+            provider_plugin=provider_plugin,
+            discover=discover_provider_plugin,
+        )
+        == "context_overflow"
+    )
+
+
+def is_likely_context_overflow_error(
+    error_message: str | None,
+    *,
+    discover_provider_plugin: Callable[[dict[str, Any]], str | None] | None = None,
+) -> bool:
     if not error_message:
         return False
     # Settle an unsatisfiable request size first: the TPM and rate-limit exclusions below would
@@ -208,13 +294,160 @@ def is_likely_context_overflow_error(error_message: str | None) -> bool:
         or is_rate_limit_error_message(error_message)
     ):
         return False
-    if is_context_overflow_error(error_message):
+    # Upstream passes no plugin here: the provider owner is discovered by the runtime.
+    if is_context_overflow_error(error_message, discover_provider_plugin=discover_provider_plugin):
         return True
     if "prompt template" in _lower(error_message.strip()):
         return False
     if matches_context_overflow_message(error_message, "rate-limit-hint"):
         return False
     return matches_context_overflow_message(error_message, "failover-hint")
+
+
+# --- assistant-error path (packages/ai/src/utils/overflow.ts, run/overflow-context-recovery.ts) ----
+
+_NON_OVERFLOW_PATTERNS = (
+    js_regex(r"^(Throttling error|Service unavailable):"),
+    js_regex(r"rate limit"),
+    js_regex(r"too many requests"),
+)
+
+
+def is_provider_refusal_assistant_error(message: Mapping[str, Any] | None) -> bool:
+    """``isProviderRefusalAssistantError``: a ``provider_refusal`` diagnostic on the message."""
+
+    diagnostics = message.get("diagnostics") if isinstance(message, Mapping) else None
+    return isinstance(diagnostics, list) and any(
+        isinstance(item, Mapping) and item.get("type") == "provider_refusal" for item in diagnostics
+    )
+
+
+def _js_number(value: Any) -> float:
+    """A usage bucket as JS arithmetic reads it: absent is ``NaN``, ``null`` is ``0``."""
+
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        return int(value)
+    return value if isinstance(value, (int, float)) else math.nan
+
+
+def _resolve_context_input_tokens(message: Mapping[str, Any]) -> float | None:
+    usage = message["usage"]
+    context_usage = usage.get("contextUsage") if isinstance(usage, Mapping) else None
+    state = context_usage.get("state") if isinstance(context_usage, Mapping) else None
+    if state == "available":
+        if "promptTokens" not in context_usage:
+            return None
+        return _js_number(context_usage["promptTokens"])
+    if state == "unavailable":
+        return None
+    # Cache writes are prompt tokens too: providers that report them separately keep them out of
+    # ``input``, so omitting the bucket under-counts the context by exactly that amount.
+    return (
+        _js_number(usage.get("input", math.nan))
+        + _js_number(usage.get("cacheRead", math.nan))
+        + _js_number(usage.get("cacheWrite", math.nan))
+    )
+
+
+def is_context_overflow(
+    message: Mapping[str, Any], context_window: int | float | None = None
+) -> bool:
+    """``isContextOverflow``: whether an assistant message is a context overflow.
+
+    Error text (``stopReason`` ``error`` with a known overflow wording, throttling excluded), silent
+    overflow (``stop`` with usage above the window) and length-stop overflow (``length`` with no
+    output and a prompt filling 99 percent of the window). A provider refusal never qualifies.
+    """
+
+    if is_provider_refusal_assistant_error(message):
+        return False
+    stop_reason = message.get("stopReason")
+    error_message = message.get("errorMessage")
+    if (
+        stop_reason == "error"
+        and error_message
+        and not any(p.search(error_message) for p in _NON_OVERFLOW_PATTERNS)
+        and matches_context_overflow_message(error_message, "assistant-error")
+    ):
+        return True
+    window = context_window if context_window and not math.isnan(context_window) else None
+    if window is not None and stop_reason == "stop":
+        input_tokens = _resolve_context_input_tokens(message)
+        if input_tokens is not None and input_tokens > window:
+            return True
+    if window is not None and stop_reason == "length" and message["usage"].get("output") == 0:
+        input_tokens = _resolve_context_input_tokens(message)
+        if input_tokens is not None and input_tokens >= window * 0.99:
+            return True
+    return False
+
+
+@dataclass(frozen=True)
+class ContextOverflowError:
+    text: str
+    source: Literal["promptError", "assistantError"]
+
+
+def resolve_context_overflow_error(
+    *,
+    aborted: bool = False,
+    signal_owned_interruption: bool = False,
+    prompt_error: Any = None,
+    assistant: Mapping[str, Any] | None = None,
+    classification: Mapping[str, Any] | None = None,
+    assistant_error_text: str | None = None,
+    context_token_budget: int | float | None = None,
+    format_error: Callable[[Any], str] = str,
+    discover_provider_plugin: Callable[[dict[str, Any]], str | None] | None = None,
+) -> ContextOverflowError | None:
+    """The overflow selection of ``recoverEmbeddedRunOverflow`` (run/overflow-context-recovery.ts).
+
+    Which error text, if any, drives overflow recovery: a prompt failure by its own wording only;
+    otherwise the selected assistant response by its structured classification, a provider refusal
+    or a failover reason (both veto), its own overflow shape, or the assistant error text. An
+    aborted run or one whose interruption the signal owns selects nothing.
+
+    ``classification`` is the host's ``FailoverClassification`` of the assistant message
+    (``{"kind": "reason", "reason": ...}`` or ``{"kind": "context_overflow"}``);
+    ``format_error`` stands for ``formatErrorMessage`` (upstream also redacts, host side here).
+    """
+
+    if aborted or signal_owned_interruption:
+        return None
+    kind = classification.get("kind") if classification else None
+    if prompt_error:
+        error_text = format_error(prompt_error)
+        if is_likely_context_overflow_error(
+            error_text, discover_provider_plugin=discover_provider_plugin
+        ):
+            return ContextOverflowError(error_text, "promptError")
+        # A non-overflow prompt failure must not inherit a stale assistant error.
+        return None
+    # Preserve the structured terminal outcome before the text-only fallback below.
+    if is_provider_refusal_assistant_error(assistant):
+        return None
+    # This decision belongs to the selected response, not a text-only guess.
+    if assistant is not None and assistant.get("stopReason") == "error" and kind == "reason":
+        return None
+    if assistant is not None and (
+        kind == "context_overflow"
+        or (
+            context_token_budget is not None
+            and is_context_overflow(assistant, context_token_budget)
+        )
+    ):
+        message = assistant.get("errorMessage")
+        text = js_trim(message) if isinstance(message, str) else ""
+        return ContextOverflowError(text or "Context window exceeded", "assistantError")
+    if assistant is not None and assistant.get("stopReason") == "length":
+        return None
+    if assistant_error_text and is_likely_context_overflow_error(
+        assistant_error_text, discover_provider_plugin=discover_provider_plugin
+    ):
+        return ContextOverflowError(assistant_error_text, "assistantError")
+    return None
 
 
 def is_compaction_failure_error(error_message: str | None) -> bool:

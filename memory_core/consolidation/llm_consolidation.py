@@ -24,7 +24,9 @@ import hashlib
 import json
 import logging
 import math
+import os
 import re
+import secrets
 import unicodedata
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -35,6 +37,7 @@ from memory_core.project_name import DIST_NAME, DISPLAY_NAME, PACKAGE_NAME
 from memory_core.bootstrap._js import (
     JS_NON_SPACE,
     JS_SPACE,
+    js_iu_keyword_pattern,
     js_json_stringify,
     js_trim,
     js_trim_end,
@@ -42,7 +45,14 @@ from memory_core.bootstrap._js import (
     truncate_utf16_safe,
     utf16_len,
 )
-from memory_core.consolidation._util import iso_ms, read_text_if_exists, write_json_atomic
+from memory_core.consolidation._util import read_text_if_exists
+from memory_core.consolidation.artifacts import (  # noqa: F401  (re-exported names)
+    CONSOLIDATION_BACKUP_LIMIT,
+    PREIMAGE_FILE,
+    append_consolidation_skipped_summary,
+    append_consolidation_summary,
+    store_memory_preimage,
+)
 from memory_core.consolidation.curated_annotations import extract_project_keys_from_curated_entry
 from memory_core.consolidation.promotion import (
     DEFAULT_DEEP_DREAMING_MAX_PRIOR_ENTRY_LOSS_FRACTION,
@@ -58,8 +68,6 @@ from memory_core.memory_budget import DEFAULT_MEMORY_FILE_MAX_CHARS
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 
 CONSOLIDATION_TIMEOUT_MS = 60_000
-CONSOLIDATION_BACKUP_LIMIT = 8
-PREIMAGE_FILE = "consolidation-preimages.json"
 PROMOTED_SNIPPET_CHARS_PER_TOKEN_ESTIMATE = 4
 CONSOLIDATION_SYSTEM_PROMPT = "\n".join(
     [
@@ -266,13 +274,17 @@ def _same_counts(left: Sequence[str], right: Sequence[str]) -> bool:
     return _count(left) == _count(right)
 
 
+# Upstream uses /giu: simple case folding (U+017F and U+212A fold onto ASCII, U+0130 does not),
+# which js_iu_keyword_pattern spells out instead of Python's wider re.IGNORECASE.
 _NORMALIZE_STEPS: tuple[re.Pattern[str], ...] = tuple(
-    re.compile(pattern, re.IGNORECASE)
+    re.compile(pattern)
     for pattern in (
-        rf"{JS_SPACE}+<!--{JS_SPACE}*trigger:[^\r\n]*?-->",
-        rf"{JS_SPACE}+<!--{JS_SPACE}*importance:{JS_SPACE}*[0-9]+{JS_SPACE}*-->",
-        rf"{JS_SPACE}+<!--{JS_SPACE}*project:{JS_SPACE}*[^\r\n]*?-->",
-        rf"{JS_SPACE}+Source:{JS_SPACE}+[^\r\n]+#L[0-9]+-L[0-9]+{JS_SPACE}*\Z",
+        rf"{JS_SPACE}+<!--{JS_SPACE}*{js_iu_keyword_pattern('trigger')}:[^\r\n]*?-->",
+        rf"{JS_SPACE}+<!--{JS_SPACE}*{js_iu_keyword_pattern('importance')}:{JS_SPACE}*[0-9]+"
+        rf"{JS_SPACE}*-->",
+        rf"{JS_SPACE}+<!--{JS_SPACE}*{js_iu_keyword_pattern('project')}:{JS_SPACE}*[^\r\n]*?-->",
+        rf"{JS_SPACE}+{js_iu_keyword_pattern('Source')}:{JS_SPACE}+[^\r\n]+#{js_iu_keyword_pattern('L')}"
+        rf"[0-9]+-{js_iu_keyword_pattern('L')}[0-9]+{JS_SPACE}*\Z",
     )
 )
 _SCORE_SUFFIX = re.compile(
@@ -680,24 +692,212 @@ def run_llm_consolidation(
     )
     if result is None:
         return LlmConsolidationOutcome(False, "rejected")
-    _store_preimage(workspace, existing, now_ms)
+    store_memory_preimage(workspace, existing, now_ms)
     memory_path.write_text(result.content, encoding="utf-8")
     recall_path = workspace / "memory" / ".dreams" / "short-term-recall.json"
     if recall_path.exists():
         keys = {operation.candidate_key for operation in plan.operations}
         _mark_promoted(recall_path, [c for c in eligible if c.key in keys], now_ms)
+    _append_history(workspace, result, now_ms, logger or _LOGGER)
     return LlmConsolidationOutcome(True, None, result, plan)
 
 
-def _store_preimage(workspace: Path, content: str, now_ms: int) -> None:
-    path = workspace / "memory" / ".dreams" / PREIMAGE_FILE
+def _append_history(
+    workspace: Path, result: MemoryConsolidationResult, now_ms: int, log: logging.Logger
+) -> None:
+    """The DREAMS.md summary is best effort: MEMORY.md is already consolidated (upstream warns too)."""
     try:
-        current = json.loads(path.read_text(encoding="utf-8"))["entries"]
-        if not isinstance(current, list):
-            current = []
-    except (OSError, ValueError, KeyError, TypeError):
-        current = []
-    digest = hashlib.sha256(content.encode("utf-8", "surrogatepass")).hexdigest()
-    entry = {"createdAt": iso_ms(now_ms), "content": content, "contentHash": digest}
-    entries = sorted([*current, entry], key=lambda item: str(item.get("createdAt", "")))
-    write_json_atomic(path, {"version": 1, "entries": entries[-CONSOLIDATION_BACKUP_LIMIT:]})
+        append_consolidation_summary(
+            workspace,
+            added=result.added,
+            merged=result.merged,
+            superseded=result.superseded,
+            highlights=result.highlights,
+            now_ms=now_ms,
+        )
+    except Exception as error:
+        log.warning(f"{DISPLAY_NAME}: MEMORY.md was consolidated but DREAMS.md summary failed: {error}")
+
+
+# --- the deep-phase orchestration ------------------------------------------------------
+#
+# ``applyShortTermPromotions`` (short-term-promotion-apply.ts) plans the rewrite before it takes
+# its locks, then under the locks re-checks that the planned candidates and MEMORY.md are
+# unchanged, applies the plan, stores the preimage, commits, marks the candidates promoted and
+# writes the DREAMS.md summary; any failed step falls back to the append-only section. The
+# pieces below are those steps; ``run_short_term_promotion`` sequences them.
+
+
+@dataclass(frozen=True)
+class DeepConsolidation:
+    """What a deep sweep needs to consolidate: the host's model, the opt-in options and a logger.
+
+    ``options.enabled`` False (the default) or ``model`` None means the sweep promotes
+    deterministically and applies none of the consolidation-only filters.
+    """
+
+    model: ConsolidationModel | None = None
+    options: LlmConsolidationOptions = field(default_factory=LlmConsolidationOptions)
+    logger: logging.Logger | None = None
+
+    @property
+    def active(self) -> bool:
+        return self.options.enabled and self.model is not None
+
+    @property
+    def log(self) -> logging.Logger:
+        return self.logger or _LOGGER
+
+
+def hash_memory_content(content: str) -> str:
+    """``hashMemoryContent``: the identity of a MEMORY.md snapshot for the changed-while-planning checks."""
+    return hashlib.sha256(content.encode("utf-8", "surrogatepass")).hexdigest()
+
+
+def consolidation_candidate_fingerprint(candidate: PromotionCandidate) -> str:
+    """``consolidationCandidateFingerprint``: what a plan was made for; a changed value voids the plan."""
+    return json.dumps(
+        [
+            candidate.key,
+            candidate.path,
+            candidate.start_line,
+            candidate.end_line,
+            candidate.snippet,
+            candidate.provenance,
+            candidate.project_key,
+        ],
+        sort_keys=True,
+        ensure_ascii=False,
+        default=str,
+    )
+
+
+def plan_deep_consolidation(
+    deep: DeepConsolidation,
+    *,
+    existing_memory: str,
+    candidates: Sequence[PromotionCandidate],
+    max_prior_entry_loss_fraction: float,
+    memory_file_max_chars: float | None,
+    max_promoted_snippet_tokens: float | None,
+    now_ms: int,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+) -> MemoryConsolidationPlan | None:
+    """The planning half: the model pass over the candidates still to append, or ``None``."""
+    if not deep.active or deep.model is None or not candidates:
+        return None
+    return consolidate_memory(
+        model=deep.model,
+        existing_memory=existing_memory,
+        candidates=candidates,
+        max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
+        now_ms=now_ms,
+        model_name=deep.options.model_name,
+        memory_file_max_chars=memory_file_max_chars,
+        max_promoted_snippet_tokens=max_promoted_snippet_tokens,
+        identity=identity,
+        logger=deep.log,
+    )
+
+
+@dataclass(frozen=True)
+class DeepConsolidationCommit:
+    """Outcome of :func:`commit_deep_consolidation`: ``result`` set when MEMORY.md was rewritten."""
+
+    result: MemoryConsolidationResult | None = None
+    skipped_reason: str | None = None
+
+
+def commit_deep_consolidation(
+    deep: DeepConsolidation,
+    *,
+    memory_path: Path,
+    workspace: Path,
+    plan: MemoryConsolidationPlan,
+    base_hash: str,
+    to_append: Sequence[PromotionCandidate],
+    planned_fingerprints: dict[str, str],
+    max_prior_entry_loss_fraction: float,
+    memory_file_max_chars: float | None,
+    timezone: str | None,
+    now_ms: int,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+) -> DeepConsolidationCommit:
+    """The committing half, run under the promotion lock; mirrors the lock body of upstream.
+
+    Voids the plan (``result`` None, no ``skipped_reason``) when the candidates still to append
+    differ from the planned ones; skips with a reason when MEMORY.md changed during planning,
+    immediately before the rename, or cannot be replaced atomically; a failed preimage write
+    also voids the plan. Never raises for those: the caller appends the deterministic section.
+    """
+    planned_keys = {operation.candidate_key for operation in plan.operations}
+    plan_is_current = len(planned_keys) == len(to_append) and all(
+        candidate.key in planned_keys
+        and planned_fingerprints.get(candidate.key) == consolidation_candidate_fingerprint(candidate)
+        for candidate in to_append
+    )
+    if not plan_is_current:
+        return DeepConsolidationCommit()
+    existing = read_text_if_exists(memory_path)
+    if hash_memory_content(existing) != base_hash:
+        return DeepConsolidationCommit(skipped_reason="MEMORY.md changed while consolidation was running")
+    result = apply_memory_consolidation_plan(
+        existing_memory=existing,
+        plan=plan,
+        now_ms=now_ms,
+        timezone=timezone,
+        memory_file_max_chars=memory_file_max_chars,
+        max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
+        identity=identity,
+    )
+    if result is None:
+        return DeepConsolidationCommit()
+    try:
+        store_memory_preimage(workspace, existing, now_ms)
+    except Exception as error:
+        deep.log.warning(
+            f"{DISPLAY_NAME}: consolidation preimage failed ({error}); using append-only fallback."
+        )
+        return DeepConsolidationCommit()
+    if hash_memory_content(read_text_if_exists(memory_path)) != base_hash:
+        return DeepConsolidationCommit(
+            skipped_reason="MEMORY.md changed immediately before the consolidation rename"
+        )
+    try:
+        _replace_file(memory_path, result.content)
+    except PermissionError:
+        return DeepConsolidationCommit(
+            skipped_reason="the MEMORY.md directory blocked atomic replacement"
+        )
+    return DeepConsolidationCommit(result=result)
+
+
+def _replace_file(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    target = path.resolve() if path.is_symlink() else path
+    temporary = target.with_name(f"{target.name}.promotion.{os.getpid()}.{secrets.token_hex(4)}.tmp")
+    temporary.write_text(content, encoding="utf-8")
+    try:
+        os.replace(temporary, target)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def record_deep_consolidation_history(
+    deep: DeepConsolidation,
+    workspace: Path,
+    commit: DeepConsolidationCommit,
+    *,
+    now_ms: int,
+) -> None:
+    """The DREAMS.md summary after a commit, or the skip note after a skipped rewrite (best effort)."""
+    if commit.result is not None:
+        _append_history(workspace, commit.result, now_ms, deep.log)
+    elif commit.skipped_reason:
+        try:
+            append_consolidation_skipped_summary(
+                workspace, now_ms=now_ms, reason=commit.skipped_reason
+            )
+        except Exception as error:
+            deep.log.warning(f"{DISPLAY_NAME}: consolidation skip summary failed: {error}")

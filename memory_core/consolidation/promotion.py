@@ -28,11 +28,12 @@ import re
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from memory_core.bootstrap._js import locale_sort_key, js_to_well_formed, js_trim_end, utf16_len, utf16_slice
 from memory_core.config import MemoryConfig
+from memory_core.project_name import DISPLAY_NAME
 from memory_core.index.cjk_chars import truncate_utf16_safe
 from memory_core.consolidation._util import (
     DAY_MS,
@@ -76,6 +77,12 @@ from memory_core.consolidation.store import (
 from memory_core.memory_budget import DEFAULT_MEMORY_FILE_MAX_CHARS, build_budgeted_memory_append
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.workspace import MemoryWorkspace
+
+if TYPE_CHECKING:
+    from memory_core.consolidation.llm_consolidation import (
+        DeepConsolidation,
+        MemoryConsolidationResult,
+    )
 
 PROMOTION_TARGET = "MEMORY.md"
 PROMOTION_SECTION_TITLE = "Promoted From Short-Term Memory"
@@ -198,6 +205,10 @@ class MemoryPromotionRun:
     # ``memory_file_max_chars`` within ``max_prior_entry_loss_fraction``, so MEMORY.md is unchanged.
     deferred_candidates: tuple[PromotionCandidate, ...] = ()
     deferred_reason: str | None = None
+    # Set when an LLM consolidation rewrote MEMORY.md (``outcome.reason`` is then
+    # "short-term promotion consolidated"), or the reason a planned rewrite was skipped.
+    consolidation: MemoryConsolidationResult | None = None
+    consolidation_skipped_reason: str | None = None
 
 
 def run_short_term_promotion(
@@ -216,6 +227,7 @@ def run_short_term_promotion(
     max_promoted_snippet_tokens: int = DEFAULT_DEEP_DREAMING_MAX_PROMOTED_SNIPPET_TOKENS,
     max_prior_entry_loss_fraction: float = DEFAULT_DEEP_DREAMING_MAX_PRIOR_ENTRY_LOSS_FRACTION,
     identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+    consolidation: DeepConsolidation | None = None,
 ) -> MemoryPromotionRun:
     """Promote the top gated recall entries into ``MEMORY.md`` and reindex.
 
@@ -233,7 +245,37 @@ def run_short_term_promotion(
     ``memory-core-memory-promotion:`` by default; pass
     ``OPENCLAW_COMPAT_RUNTIME_IDENTITY`` for upstream's bytes); existing
     markers of either prefix reconcile.
+
+    ``consolidation`` (a :class:`~memory_core.consolidation.llm_consolidation.DeepConsolidation`
+    with ``options.enabled`` and a host model) turns on upstream's deep-phase orchestration:
+    candidates that fail the consolidation origin/session filter are rejected, the host's model
+    plans a MEMORY.md rewrite for the candidates to append *before* the lock is taken, and under
+    the lock the plan is re-checked (same candidates, MEMORY.md unchanged), applied, preimaged
+    (``memory/.dreams/consolidation-preimages.json``), committed and summarized in DREAMS.md. Any
+    failed step falls back to the deterministic append below, so no eligible candidate is lost.
+    Off (the default), none of this runs.
     """
+    from memory_core.consolidation.llm_consolidation import plan_deep_consolidation
+
+    active = consolidation if consolidation is not None and consolidation.active else None
+    preplan: _PrePlan | None = None
+    if active is not None:
+        preplan = _plan_before_lock(
+            config=config,
+            consolidation=active,
+            now_ms=now_ms,
+            limit=limit,
+            min_score=min_score,
+            min_recall_count=min_recall_count,
+            min_unique_queries=min_unique_queries,
+            max_age_days=max_age_days,
+            recency_half_life_days=recency_half_life_days,
+            memory_file_max_chars=memory_file_max_chars,
+            max_promoted_snippet_tokens=max_promoted_snippet_tokens,
+            max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
+            identity=identity,
+            plan_fn=plan_deep_consolidation,
+        )
     with acquire_short_term_promotion_lock(config=config, now_ms=now_ms) as lock:
         if not lock.acquired:
             return MemoryPromotionRun(
@@ -265,7 +307,100 @@ def run_short_term_promotion(
             max_promoted_snippet_tokens=max_promoted_snippet_tokens,
             max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
             identity=identity,
+            consolidation=active,
+            preplan=preplan,
         )
+
+
+@dataclass(frozen=True)
+class _PrePlan:
+    """A rewrite planned before the lock, with what the lock-time re-check compares against."""
+
+    plan: Any
+    base_hash: str
+    fingerprints: dict[str, str]
+
+
+def _select_promotion_candidates(
+    *,
+    config: MemoryConfig,
+    now_ms: int,
+    limit: int,
+    min_score: float,
+    min_recall_count: int,
+    min_unique_queries: int,
+    max_age_days: int,
+    recency_half_life_days: float,
+    consolidation_filter: bool,
+) -> tuple[list[PromotionEvaluation], list[PromotionCandidate], list[PromotionCandidate]]:
+    """Evaluate, gate (plus the consolidation origin/session filter), limit and rehydrate."""
+    evaluations = evaluate_short_term_promotion_candidates(
+        config=config,
+        now_ms=now_ms,
+        min_score=min_score,
+        min_recall_count=min_recall_count,
+        min_unique_queries=min_unique_queries,
+        max_age_days=max_age_days,
+        recency_half_life_days=recency_half_life_days,
+    )
+    eligible = [_evaluation_to_candidate(item) for item in evaluations if not item.reasons]
+    if consolidation_filter:
+        # Upstream rejects these before the selection limit ("consolidation origin/session").
+        from memory_core.consolidation.llm_consolidation import is_consolidation_candidate_eligible
+
+        eligible = [item for item in eligible if is_consolidation_candidate_eligible(item)]
+    candidates = sorted(eligible[:limit], key=lambda candidate: candidate.score, reverse=True)
+    rehydrated = [
+        item
+        for candidate in candidates
+        if (item := _rehydrate_promotion_candidate(config.workspace_dir, candidate)) is not None
+    ]
+    return evaluations, candidates, rehydrated
+
+
+def _plan_before_lock(
+    *,
+    config: MemoryConfig,
+    consolidation: DeepConsolidation,
+    now_ms: int,
+    memory_file_max_chars: int,
+    max_promoted_snippet_tokens: int,
+    max_prior_entry_loss_fraction: float,
+    identity: RuntimeIdentity,
+    plan_fn: Any,
+    **gates: Any,
+) -> _PrePlan | None:
+    from memory_core.consolidation.llm_consolidation import (
+        consolidation_candidate_fingerprint,
+        hash_memory_content,
+    )
+
+    _evaluations, _candidates, rehydrated = _select_promotion_candidates(
+        config=config, now_ms=now_ms, consolidation_filter=True, **gates
+    )
+    memory_path = MemoryWorkspace(config.workspace_dir).resolve_memory_path(PROMOTION_TARGET)
+    existing = read_text_if_exists(memory_path)
+    markers = set(extract_promotion_markers(existing))
+    to_append = [candidate for candidate in rehydrated if candidate.key not in markers]
+    if not to_append:
+        return None
+    plan = plan_fn(
+        consolidation,
+        existing_memory=existing,
+        candidates=to_append,
+        max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
+        memory_file_max_chars=memory_file_max_chars,
+        max_promoted_snippet_tokens=max_promoted_snippet_tokens,
+        now_ms=now_ms,
+        identity=identity,
+    )
+    if plan is None:
+        return None
+    return _PrePlan(
+        plan=plan,
+        base_hash=hash_memory_content(existing),
+        fingerprints={c.key: consolidation_candidate_fingerprint(c) for c in to_append},
+    )
 
 
 def rank_short_term_promotion_candidates(
@@ -421,34 +556,56 @@ def _run_short_term_promotion_unlocked(
     max_promoted_snippet_tokens: int,
     max_prior_entry_loss_fraction: float,
     identity: RuntimeIdentity,
+    consolidation: DeepConsolidation | None = None,
+    preplan: _PrePlan | None = None,
 ) -> MemoryPromotionRun:
     workspace = MemoryWorkspace(config.workspace_dir)
     target = PROMOTION_TARGET
     target_path = workspace.resolve_memory_path(target)
     before = read_text_if_exists(target_path)
-    evaluations = evaluate_short_term_promotion_candidates(
+    evaluations, candidates, rehydrated_candidates = _select_promotion_candidates(
         config=config,
         now_ms=now_ms,
+        limit=limit,
         min_score=min_score,
         min_recall_count=min_recall_count,
         min_unique_queries=min_unique_queries,
         max_age_days=max_age_days,
         recency_half_life_days=recency_half_life_days,
+        consolidation_filter=consolidation is not None,
     )
-    candidates = [
-        _evaluation_to_candidate(evaluation) for evaluation in evaluations if not evaluation.reasons
-    ][:limit]
-    candidates = sorted(candidates, key=lambda candidate: candidate.score, reverse=True)
-    rehydrated_candidates = [
-        rehydrated
-        for candidate in candidates
-        if (rehydrated := _rehydrate_promotion_candidate(config.workspace_dir, candidate))
-        is not None
-    ]
     existing_markers = set(extract_promotion_markers(before))
     to_append = [
         candidate for candidate in rehydrated_candidates if candidate.key not in existing_markers
     ]
+    commit = None
+    if consolidation is not None and preplan is not None and to_append:
+        from memory_core.consolidation.llm_consolidation import commit_deep_consolidation
+
+        commit = commit_deep_consolidation(
+            consolidation,
+            memory_path=target_path,
+            workspace=config.workspace_dir,
+            plan=preplan.plan,
+            base_hash=preplan.base_hash,
+            to_append=to_append,
+            planned_fingerprints=preplan.fingerprints,
+            max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
+            memory_file_max_chars=memory_file_max_chars,
+            timezone=timezone,
+            now_ms=now_ms,
+            identity=identity,
+        )
+    consolidated = commit is not None and commit.result is not None
+    if consolidation is not None and preplan is not None and not consolidated:
+        consolidation.log.warning(
+            f"{DISPLAY_NAME}: promotion state or MEMORY.md changed during consolidation; "
+            "using append-only fallback."
+        )
+        if commit is not None and commit.skipped_reason:
+            consolidation.log.warning(
+                f"{DISPLAY_NAME}: {commit.skipped_reason}; using append-only fallback."
+            )
     summary = (
         f"ranked {len(candidates)} short-term promotion candidate(s); "
         f"evaluated {len(evaluations)} candidate(s); "
@@ -464,10 +621,10 @@ def _run_short_term_promotion_unlocked(
             _build_promotion_section(
                 to_append, now_ms, timezone, max_promoted_snippet_tokens, identity
             )
-            if to_append
+            if to_append and not consolidated
             else ""
         )
-        if to_append:
+        if to_append and not consolidated:
             compacted_dates, deferred_reason = _append_to_memory(
                 target_path,
                 entry,
@@ -483,13 +640,29 @@ def _run_short_term_promotion_unlocked(
                 indexed_files = store.reindex(workspace)
             except Exception as exc:
                 reindex_error = exception_message(exc)
+        if consolidation is not None and commit is not None:
+            from memory_core.consolidation.llm_consolidation import (
+                record_deep_consolidation_history,
+            )
+
+            record_deep_consolidation_history(
+                consolidation, config.workspace_dir, commit, now_ms=now_ms
+            )
         outcome = PromotionWriteOutcome(
             should_write=bool(to_append) and not deferred_reason,
             target=target,
-            entry=entry.strip() if not deferred_reason else "",
+            entry=(
+                commit.result.content.strip()
+                if commit is not None and commit.result is not None
+                else entry.strip()
+                if not deferred_reason
+                else ""
+            ),
             reason=(
                 "short-term promotion deferred: memory budget"
                 if deferred_reason
+                else "short-term promotion consolidated"
+                if consolidated
                 else "short-term promotion"
                 if to_append
                 else "short-term promotion reconciled"
@@ -519,6 +692,8 @@ def _run_short_term_promotion_unlocked(
         compacted_dates=compacted_dates,
         deferred_candidates=tuple(c for c in rehydrated_candidates if c.key in deferred_set),
         deferred_reason=deferred_reason,
+        consolidation=commit.result if commit is not None else None,
+        consolidation_skipped_reason=commit.skipped_reason if commit is not None else None,
     )
 
 

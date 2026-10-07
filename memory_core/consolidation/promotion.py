@@ -39,7 +39,6 @@ from memory_core.bootstrap._js import (
     js_json_stringify,
     js_to_well_formed,
     js_trim_end,
-    js_utf8_encode,
     locale_sort_key,
     utf16_len,
     utf16_slice,
@@ -72,6 +71,8 @@ from memory_core.consolidation.file_lock import (
     resolve_memory_promotion_lock_target,
     with_file_lock,
 )
+from memory_core.consolidation.host_events import truncate_utf8 as _truncate_utf8
+from memory_core.consolidation.host_events import utf8_len as _utf8_len
 from memory_core.consolidation.markers import (
     extract_promotion_markers,
     format_promotion_marker,
@@ -1170,29 +1171,6 @@ class PromotionRejection:
     candidate: PromotionCandidate
     reason: str
     category: PromotionRejectionCategory
-
-
-def _utf8_len(value: str) -> int:
-    return len(js_utf8_encode(value))
-
-
-def _truncate_utf8(value: str, max_bytes: int) -> tuple[str, bool]:
-    """``truncateUtf8`` of the memory host event store: cut on UTF-16 units, append ``…``."""
-    if _utf8_len(value) <= max_bytes:
-        return value, False
-    low, high = 0, utf16_len(value)
-    while low < high:
-        middle = -(-(low + high) // 2)
-        if _utf8_len(utf16_slice(value, 0, middle)) <= max_bytes - 3:
-            low = middle
-        else:
-            high = middle - 1
-    end = low
-    if low > 0:
-        unit = utf16_slice(value, low - 1, low)
-        if len(unit) == 1 and "\ud800" <= unit <= "\udbff":
-            end = low - 1
-    return f"{utf16_slice(value, 0, end)}…", True
 
 
 def build_promotion_applied_event(

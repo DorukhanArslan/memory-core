@@ -40,11 +40,36 @@ from memory_core.consolidation.artifacts import (
     store_memory_preimage,
 )
 from memory_core.consolidation.concepts import MAX_CONCEPT_TAGS, derive_concept_tags
+from memory_core.consolidation.daily_ingestion import (
+    build_daily_ingestion_results,
+    ingest_daily_memory_signals,
+    seed_historical_daily_memory_signals,
+)
 from memory_core.consolidation.dreaming import (
     DREAMING_PHASES,
     DREAMS_FILE_NAME,
+    DreamingIngestion,
     DreamingSweepResult,
     run_dreaming_sweep,
+)
+from memory_core.consolidation.forget import (
+    MemoryForgetReport,
+    MemorySessionTarget,
+    SessionArchive,
+    SessionInstance,
+    forget_memory_entries,
+    resolve_memory_session_targets,
+)
+from memory_core.consolidation.host_events import (
+    build_recall_recorded_event,
+    build_recall_skipped_event,
+)
+from memory_core.consolidation.session_ingestion import (
+    SessionAdmissionPolicy,
+    SessionCorpusEntry,
+    ingest_session_transcript_signals,
+    resolve_admission_policy,
+    scan_session_ingestion_source,
 )
 from memory_core.consolidation.llm_consolidation import (
     CONSOLIDATION_SYSTEM_PROMPT,
@@ -92,6 +117,7 @@ from memory_core.consolidation.artifact_provenance import (
 )
 from memory_core.consolidation.origins import (
     MemoryEntryOrigin,
+    IndexRevisionFence,
     MemoryEntryOriginLedger,
     MemoryIndexRevisionConflictError,
     MemorySessionTombstone,
@@ -134,6 +160,24 @@ from memory_core.consolidation.store import (
 from memory_core.memory_budget import DEFAULT_MEMORY_FILE_MAX_CHARS
 
 __all__ = [
+    "DreamingIngestion",
+    "IndexRevisionFence",
+    "MemoryForgetReport",
+    "MemorySessionTarget",
+    "SessionAdmissionPolicy",
+    "SessionArchive",
+    "SessionCorpusEntry",
+    "SessionInstance",
+    "build_daily_ingestion_results",
+    "build_recall_recorded_event",
+    "build_recall_skipped_event",
+    "forget_memory_entries",
+    "ingest_daily_memory_signals",
+    "ingest_session_transcript_signals",
+    "resolve_admission_policy",
+    "resolve_memory_session_targets",
+    "scan_session_ingestion_source",
+    "seed_historical_daily_memory_signals",
     "FileLockError",
     "FileLockOptions",
     "FileLockStaleError",

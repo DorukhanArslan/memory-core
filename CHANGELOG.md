@@ -161,17 +161,44 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
             table; `test_redact_oracle.py` additions) is the default `redact=` of the converter, and
             `record_responses_context_usage` with `normalize_assistant_replay_input(from_response=True)`
             in `compaction_replay.py` (`test_openclaw_compaction_checkpoint_oracle.py` additions).
-    - Still not ported (the parity matrix rows keep the gaps of earlier rounds): tombstone writers
-      (upstream `memory forget`) and the index's use of the revision fence; the daily-file flush that
-      writes trust records and the dreaming daily ingestion that reads them; the
-      `memory.recall.recorded` / `memory.recall.skipped` events; the session transcript scan with its
-      tombstone filter, rewind journal and CLI, and the REM branch of the diary builder
-      (`previewGroundedRemForFile`); the upstream callers of the pre-prompt decision, the
-      replay-pressure guard and the eligibility resolver (`attempt-prompt-preflight.ts`,
-      `tool-result-context-guard.ts`, `compaction-session-execution.ts`,
-      `attempt-stream-settle.ts`) and the transport handler that records Responses context usage; a
-      real `Model` catalogue; the exact-secret redaction registry, `logging.redactPatterns`, the
-      full-context tool-payload mode and `prepareModelVisibleToolTextBlock`; SQLite session
+        - Sixth round (2026-10-07), each compared with the real TS oracle (audit note 30 of
+          docs/parity_matrix.md):
+          - `consolidation/forget.py` (`forget_memory_entries`: tombstones, purge of recall,
+            phase, corpus, memory-file, checkpoint, preimage and index state, then the origin rows),
+            `MemoryEntryOriginLedger.record_session_tombstones_if_lineage_current`, and the revision
+            fence on the index: `SQLiteMemoryStore(revision_fence=)` / `IndexRevisionFence` make
+            `reindex` raise `MemoryIndexRevisionConflictError` when the revision moved during the
+            build (`test_forget_oracle.py`, 35 tests). **Behaviour changes:** forgotten sessions
+            leave the session corpus; a fenced `reindex` can raise.
+          - `memory.recall.recorded` / `memory.recall.skipped` events (`consolidation/host_events.py`;
+            `record_short_term_recalls(on_event=)`, `HostKit(on_event=)`;
+            `test_recall_events_oracle.py`, 77 tests).
+          - `consolidation/daily_ingestion.py` and `consolidation/session_ingestion.py` (daily
+            chunker and checkpoint, transcript scan with tombstone and admission filters,
+            `run_dreaming_sweep(ingestion=)`), and `session_artifacts.py` (transcript file-name
+            classifiers) (`test_daily_ingestion_oracle.py` 12, `test_session_ingestion_oracle.py` 45,
+            `test_session_artifacts_oracle.py` 2).
+          - `memory_write_provenance.py` (the daily flush's trust observer; `HostKit(artifact_provenance=)`,
+            `after_turn(untrusted_turn=)`; `test_memory_write_provenance_oracle.py`, 32 tests).
+          - `attempt_preflight.py` (`prepare_attempt_prompt_preflight`,
+            `handle_attempt_mid_turn_precheck`, the eligibility call sites) and
+            `tool_result_context_guard.py` (the mid-turn guard); host-supplied normalizers
+            (`test_openclaw_replay_callers_oracle.py`: 1,950 preflight, 450 mid-turn, 1,500 guard,
+            700 wiring scenarios).
+          - `secret_registry.py` (exact-secret registry), `redact_user_patterns.py`
+            (`logging.redactPatterns` parsing, safe-regex screen, JS-regex translation) and the
+            redaction options in `redact.py` (`LoggingConfig`, `configure_logging_redaction`,
+            full-context mode, tool-payload, field-value and transcript policies)
+            (`test_redact_policies_oracle.py` 181 tests, `test_redact_user_regex_oracle.py`).
+            Defaults are unchanged byte for byte.
+    - Still not ported (the parity matrix rows keep the gaps): the light and REM phase bodies
+      staging daily-only entries and the REM branch of the diary builder
+      (`previewGroundedRemForFile`); callers for the forget flow, the ingestions and the provenance
+      wiring (no CLI or scheduler; `save_session_memory` writes no trust record); the index's
+      `memory_index_sources`, vector and per-chunk provenance rows; `installContextEngineLoopHook`,
+      `normalizeMessagesForLlmBoundary`, `sanitizeCompactionReplayMessages` and the transport
+      handler that records Responses context usage; a real `Model` catalogue; the redaction
+      log-record transport, `redact-source.ts` and `prepareModelVisibleToolTextBlock`; SQLite session
       statistics and archives (kept out by decision 4).
 
 - Search ranking follows OpenClaw v2026.9.6 (port plan area 6): chunks are sized in CJK-weighted

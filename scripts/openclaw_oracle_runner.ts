@@ -113,6 +113,10 @@ type Payload = {
   originSteps?: Array<Record<string, any>>;
   recallScenarios?: Array<Record<string, any>>;
   backfillScenarios?: Array<Record<string, any>>;
+  ingestScenarios?: Array<Record<string, any>>;
+  forgetScenarios?: Array<Record<string, any>>;
+  provenanceScenarios?: Array<Record<string, any>>;
+  sessionScenarios?: Array<Record<string, any>>;
   agentIds?: string[];
   lockProbe?: Record<string, any>;
 };
@@ -340,6 +344,21 @@ async function runWorkspaceSteps(repoPath: string, workspaceDir: string, steps: 
 async function importFromRepo(repoPath: string, relativePath: string) {
   const fullPath = path.join(repoPath, relativePath);
   return await import(pathToFileURL(fullPath).href);
+}
+
+// Load a repo module with extra export lines appended (private functions the oracle needs). The
+// patched copy sits beside the original so its relative imports resolve, and is removed again.
+async function importPatched(repoPath: string, relativePath: string, extraExports: string) {
+  const sourcePath = path.join(repoPath, relativePath);
+  const parsed = path.parse(sourcePath);
+  const patchedPath = path.join(parsed.dir, `${parsed.name}.oracle-${process.pid}${parsed.ext}`);
+  const original = await fs.readFile(sourcePath, "utf-8");
+  await fs.writeFile(patchedPath, `${original}\n${extraExports}\n`);
+  try {
+    return await import(pathToFileURL(patchedPath).href);
+  } finally {
+    await fs.unlink(patchedPath).catch(() => {});
+  }
 }
 
 // src/infra/heartbeat-runner.test-utils.ts seedHeartbeatScratchForTest without its scratch write
@@ -1464,6 +1483,322 @@ async function main() {
       operation: payload.operation,
       result: decide(payload),
     };
+  }
+
+  if (payload.operation === "replayCallers") {
+    // The upstream callers of the compaction replay decision: the pre-prompt preflight and the
+    // mid-turn handler (run/attempt-prompt-preflight.ts), the mid-turn tool-result guard
+    // (tool-result-context-guard.ts) and the eligibility wiring of attempt-stream-settle.ts and
+    // compaction-session-execution.ts, with the real callees behind them.
+    const runner = "src/agents/embedded-agent-runner";
+    const preflightModule = await importFromRepo(
+      repoPath,
+      `${runner}/run/attempt-prompt-preflight.ts`,
+    );
+    const guardModule = await importFromRepo(repoPath, `${runner}/tool-result-context-guard.ts`);
+    const loggerModule = await importFromRepo(repoPath, `${runner}/logger.ts`);
+    const boundaryModule = await importFromRepo(repoPath, `${runner}/run/attempt-llm-boundary.ts`);
+    const estimatorModule = await importFromRepo(
+      repoPath,
+      `${runner}/tool-result-char-estimator.ts`,
+    );
+    const limitsModule = await importFromRepo(repoPath, "src/agents/tool-result-limits.ts");
+    const noticeModule = await importFromRepo(repoPath, `${runner}/context-truncation-notice.ts`);
+    const preemptive = await importFromRepo(repoPath, `${runner}/run/preemptive-compaction.ts`);
+    const promptStateModule = await importFromRepo(repoPath, `${runner}/session-prompt-state.ts`);
+    const eligibilityModule = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/provider-compaction-replay.ts",
+    );
+    const sessions = await importFromRepo(repoPath, "src/agents/sessions/index.ts");
+    // The real OpenClaw host (endpoint classes, tool-result redaction) backs the replay pressure.
+    await importFromRepo(repoPath, "src/llm/ai-transport-host.ts");
+    await importFromRepo(repoPath, "src/agents/ai-transport-runtime-host.ts");
+    const FIXED_NOW = 1_700_000_000_000;
+    Date.now = () => FIXED_NOW;
+    const replayModel = (model: Record<string, unknown>) => ({
+      input: ["text", "image"],
+      contextWindow: 200000,
+      maxTokens: 4096,
+      reasoning: false,
+      name: String(model.id),
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      ...model,
+    });
+    const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value ?? null)) as T;
+    const errorName = (err: unknown) => (err instanceof Error ? err.constructor.name : String(err));
+    const errorShape = (err: unknown) =>
+      err ? { name: errorName(err), message: (err as Error).message } : null;
+    const withEnv = <T>(env: Record<string, string> | undefined, work: () => T): T => {
+      const saved = process.env.ANTHROPIC_BASE_URL;
+      if (env && "ANTHROPIC_BASE_URL" in env) {
+        process.env.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL;
+      } else {
+        delete process.env.ANTHROPIC_BASE_URL;
+      }
+      try {
+        return work();
+      } finally {
+        if (saved === undefined) {
+          delete process.env.ANTHROPIC_BASE_URL;
+        } else {
+          process.env.ANTHROPIC_BASE_URL = saved;
+        }
+      }
+    };
+    const captureLogs = async <T>(work: () => Promise<T> | T) => {
+      const logs: Array<[string, string]> = [];
+      const log = loggerModule.log as Record<string, (message: string) => void>;
+      const saved: Record<string, (message: string) => void> = {};
+      for (const level of ["debug", "info", "warn"]) {
+        saved[level] = log[level];
+        log[level] = (message: string) => {
+          logs.push([level, message]);
+        };
+      }
+      try {
+        return { value: await work(), logs };
+      } finally {
+        for (const level of ["debug", "info", "warn"]) {
+          log[level] = saved[level];
+        }
+      }
+    };
+    const resolveEnabled = (item: Record<string, any>, model: Record<string, unknown>) =>
+      item.compactionReplayEnabled !== undefined
+        ? item.compactionReplayEnabled
+        : withEnv(item.eligibility?.env, () =>
+            // attempt-stream-settle.ts: compactionReplayEnabled
+            eligibilityModule.resolveCompactionReplayEligibility(model, {
+              extraParams: item.eligibility?.extraParams,
+              apiKey: item.eligibility?.apiKey,
+            }),
+          );
+    const runCase = async (item: Record<string, any>) => {
+      switch (item.fn) {
+        case "preflight": {
+          const a = item.attempt;
+          const model = replayModel(a.model);
+          const attempt = {
+            provider: a.provider,
+            modelId: a.modelId,
+            model,
+            sessionId: a.sessionId,
+            sessionKey: a.sessionKey,
+            sessionFile: a.sessionFile,
+            runtimePlan: a.runtimePlan,
+            authProfileId: "ignored-local-profile",
+          };
+          const boundaryOptions = {
+            appendOnlyRuntimeContext: item.appendOnlyRuntimeContext,
+            ...(item.timezone ? { timezone: item.timezone } : {}),
+            ...(item.includeBoundaryTimestamp ? {} : { includeTimestamp: false }),
+          };
+          let boundaryNormalized: unknown = null;
+          if (item.unwindowedMessages !== undefined) {
+            try {
+              boundaryNormalized = clean(
+                boundaryModule.normalizeMessagesForLlmBoundary(
+                  structuredClone(item.unwindowedMessages),
+                  boundaryOptions,
+                ),
+              );
+            } catch (err) {
+              boundaryNormalized = { error: errorName(err) };
+            }
+          }
+          const compactionReplayEnabled = resolveEnabled(item, model);
+          let out: Awaited<ReturnType<typeof captureLogs<any>>>;
+          try {
+          out = await captureLogs(() =>
+            preflightModule.prepareEmbeddedAttemptPromptPreflight({
+              appendOnlyRuntimeContext: item.appendOnlyRuntimeContext,
+              attempt,
+              activeContextEngine: item.activeContextEngine,
+              compactionReplayEnabled,
+              contextEngineAssemblySucceeded: item.contextEngineAssemblySucceeded,
+              contextEnginePromptAuthority: item.contextEnginePromptAuthority,
+              contextTokenBudget: item.contextTokenBudget,
+              hookMessagesForCurrentPrompt: item.hookMessages,
+              includeBoundaryTimestamp: item.includeBoundaryTimestamp,
+              promptForPrecheck: item.promptForPrecheck,
+              reserveTokens: item.reserveTokens,
+              sessionMessageCount: item.sessionMessageCount,
+              state: item.state,
+              systemPrompt: item.systemPrompt,
+              timezone: item.timezone,
+              toolResultMaxChars: item.toolResultMaxChars,
+              toolSchemaTokens: item.toolSchemaTokens,
+              unwindowedContextEngineMessagesForPrecheck: item.unwindowedMessages,
+            }),
+          );
+          } catch (err) {
+            return { thrown: errorName(err), compactionReplayEnabled, boundaryNormalized };
+          }
+          const state = out.value;
+          return {
+            state: {
+              contextBudgetStatus: clean(state.contextBudgetStatus),
+              preflightRecovery: clean(state.preflightRecovery),
+              promptError: errorShape(state.promptError),
+              promptErrorSource: state.promptErrorSource ?? null,
+              skipPromptSubmission: state.skipPromptSubmission,
+            },
+            logs: out.logs,
+            compactionReplayEnabled,
+            boundaryNormalized,
+          };
+        }
+        case "midTurn": {
+          const a = item.attempt;
+          const manager = sessions.SessionManager.inMemory(process.cwd());
+          for (const message of item.sessionMessages ?? []) {
+            manager.appendMessage(structuredClone(message));
+          }
+          const projectionState = promptStateModule.createToolResultPromptProjectionState();
+          const replaced: unknown[] = [];
+          const out = await captureLogs(() =>
+            preflightModule.handleEmbeddedAttemptMidTurnPrecheck({
+              attempt: {
+                provider: a.provider,
+                modelId: a.modelId,
+                sessionId: a.sessionId,
+                sessionKey: a.sessionKey,
+                sessionFile: a.sessionFile,
+                contextTokenBudget: a.contextTokenBudget,
+              },
+              request: item.request,
+              sessionAgentId: "main",
+              sessionManager: manager,
+              toolResultPromptProjectionState: projectionState,
+              prePromptMessageCount: item.prePromptMessageCount,
+              replaceSessionMessages: (messages: unknown[]) => {
+                replaced.push(clean(messages));
+              },
+            }),
+          );
+          const branchMessages = manager
+            .getBranch()
+            .filter((entry: Record<string, unknown>) => entry.type === "message")
+            .map((entry: Record<string, unknown>) => entry.message);
+          return {
+            preflightRecovery: clean(out.value.preflightRecovery),
+            promptError: errorShape(out.value.promptError),
+            replaced,
+            branchMessages: clean(branchMessages),
+            logs: out.logs,
+          };
+        }
+        case "guard": {
+          const options = item.midTurnPrecheck;
+          const requests: unknown[] = [];
+          const agent: Record<string, any> = {};
+          const model = options?.replay ? replayModel(options.replay.model) : undefined;
+          const restore = guardModule.installToolResultContextGuard({
+            agent,
+            contextWindowTokens: item.contextWindowTokens,
+            ...(options
+              ? {
+                  midTurnPrecheck: {
+                    enabled: options.enabled,
+                    contextTokenBudget: options.contextTokenBudget,
+                    reserveTokens: () => options.reserveTokens,
+                    toolResultMaxChars: options.toolResultMaxChars,
+                    getSystemPrompt: () => options.systemPrompt,
+                    ...(options.prePromptMessageCount !== undefined
+                      ? { getPrePromptMessageCount: () => options.prePromptMessageCount }
+                      : {}),
+                    ...(options.replay
+                      ? { getReplay: () => ({ ...options.replay, model }) }
+                      : {}),
+                    onMidTurnPrecheck: (request: unknown) => {
+                      requests.push(clean(request));
+                    },
+                  },
+                }
+              : {}),
+          });
+          const steps: unknown[] = [];
+          try {
+            for (const messages of item.steps) {
+              const input = structuredClone(messages);
+              try {
+                const output = await agent.transformContext(input, new AbortController().signal);
+                steps.push({ kind: "messages", messages: clean(output), same: output === input });
+              } catch (err) {
+                steps.push({
+                  kind: "error",
+                  name: errorName(err),
+                  message: err instanceof Error ? err.message : String(err),
+                  request: clean((err as { request?: unknown }).request),
+                });
+              }
+            }
+          } finally {
+            restore();
+          }
+          return { steps, requests };
+        }
+        case "charEstimate":
+          return item.messages.map((message: unknown) =>
+            estimatorModule.estimateMessageChars(message),
+          );
+        case "limits":
+          return {
+            contextMaxChars: limitsModule.resolveToolResultContextMaxChars(
+              item.contextWindowTokens,
+            ),
+            notice: noticeModule.formatContextLimitTruncationNotice(item.truncatedChars ?? 1),
+          };
+        case "compactionSession": {
+          // compaction-session-execution.ts: eligibility, the history-window fence and the
+          // post-server-compaction measurement share one replay identity.
+          const model = replayModel(item.model);
+          const enabled = withEnv(item.env, () =>
+            eligibilityModule.resolveCompactionReplayEligibility(model, {
+              extraParams: item.extraParams,
+              apiKey: item.apiKey,
+            }),
+          );
+          const identity = { sessionId: item.sessionId, authProfileId: item.authProfileId, enabled };
+          const original = structuredClone(item.messages);
+          const limited = original.slice(item.limitFrom ?? 0);
+          const windowed = eligibilityModule.preserveCompactionReplayWindow(
+            original,
+            limited,
+            model,
+            identity,
+          );
+          const tokensAfter = preemptive.estimateLlmBoundaryTokenPressure({
+            messages: windowed,
+            systemPrompt: item.systemPrompt,
+            prompt: "",
+            replay: { model, ...identity },
+          });
+          return {
+            enabled,
+            window: clean(windowed),
+            windowRefs: windowed.map((message: unknown) => original.indexOf(message)),
+            tokensAfter,
+          };
+        }
+        default:
+          throw new Error(`unknown replayCallers fn: ${String(item.fn)}`);
+      }
+    };
+    const callerResults: unknown[] = [];
+    for (const item of payload.cases ?? []) {
+      try {
+        callerResults.push({ value: await runCase(item), error: null });
+      } catch (err) {
+        callerResults.push({
+          value: null,
+          error: errorName(err),
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { ok: true, operation: payload.operation, result: callerResults };
   }
 
   if (payload.operation === "historyLimit") {
@@ -4054,6 +4389,207 @@ async function main() {
     }
   }
 
+  if (payload.operation === "redactPolicies") {
+    // src/logging/redact.ts policies beyond the default table, each scenario in a clean process
+    // state: the exact-secret registry (secret-redaction-registry.ts, reset through its test
+    // API, then `registry` registered in order), an optional config-file logging block
+    // (`fileConfig`, read by readLoggingConfig for the calls that take no config), an explicit
+    // logging config (`config`, `fullContext` marks it with the internal full-context flag) and
+    // the `steps` run in order. Every step returns its value or {error}. A pattern entry
+    // {matcher: name} stands for a programmatic RedactMatcher defined below.
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-redact-policies-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    process.env.OPENCLAW_LOG_LEVEL = "silent";
+    process.env.NODE_ENV = "test";
+    try {
+      const redact = await importFromRepo(repoPath, "src/logging/redact.ts");
+      const registry = await importFromRepo(repoPath, "src/logging/secret-redaction-registry.ts");
+      const internalState = await importFromRepo(repoPath, "src/logging/redact-internal-state.ts");
+      const loggingConfig = await importFromRepo(repoPath, "src/logging/config.ts");
+      const runtime = await importFromRepo(repoPath, "src/logging/redact-pattern-runtime.ts");
+      const configRegex = await importFromRepo(repoPath, "src/security/config-regex.ts");
+      const transcript = await importFromRepo(repoPath, "src/agents/transcript-redact-text.ts");
+      const patternTables = await importFromRepo(repoPath, "src/logging/redact-patterns.ts");
+      const resetRegistry = (globalThis as Record<PropertyKey, any>)[
+        Symbol.for("openclaw.secretRedactionRegistryTestApi")
+      ].resetSecretRedactionRegistryForTest;
+      const matchers: Record<string, any> = {
+        cust: {
+          source: "cust",
+          *exec(input: string) {
+            for (const m of input.matchAll(/CUST-(\d+)/g)) {
+              yield {
+                match: m[0],
+                groups: [m[1]],
+                input,
+                offset: m.index,
+                replacement: m[1].length > 3 ? "<cust>" : undefined,
+              };
+            }
+          },
+        },
+        whole: {
+          source: "whole",
+          *exec(input: string) {
+            for (const m of input.matchAll(/ZZ[0-9]{3,}/g)) {
+              yield { match: m[0], groups: [], input, offset: m.index };
+            }
+          },
+        },
+        aws: patternTables.AWS_SECRET_ACCESS_KEY_MATCHER,
+      };
+      const mapPatterns = (list: unknown) =>
+        Array.isArray(list)
+          ? list.map((entry: any) =>
+              entry && typeof entry === "object" ? matchers[entry.matcher] : entry,
+            )
+          : list;
+      const body = payload as Record<string, any>;
+      const scenarios: any[] = [];
+      let fileIndex = 0;
+      for (const scenario of body.scenarios ?? []) {
+        resetRegistry();
+        const baseRevision = registry.getSecretRedactionRegistryRevision();
+        const stepsOut: unknown[] = [];
+        let registerError: string | undefined;
+        for (const value of scenario.registry ?? []) {
+          try {
+            registry.registerSecretValueForRedaction(value);
+          } catch (error) {
+            registerError = String((error as Error)?.name ?? error);
+          }
+        }
+        if (scenario.fileConfig) {
+          const file = path.join(sandbox, `config-${fileIndex++}.json`);
+          await fs.writeFile(file, JSON.stringify({ logging: scenario.fileConfig }));
+          process.env.OPENCLAW_CONFIG_PATH = file;
+        } else {
+          process.env.OPENCLAW_CONFIG_PATH = path.join(sandbox, "missing-config.json");
+        }
+        loggingConfig.invalidateLoggingConfigCache();
+        let config: any = scenario.config ?? undefined;
+        if (scenario.fullContext) {
+          config = internalState.fullContextToolPayloadRedactionState.mark(config ?? {});
+        }
+        const snapshots: any[] = [];
+        for (const step of scenario.steps ?? []) {
+          try {
+            let out: unknown;
+            switch (step.fn) {
+              case "sensitiveText":
+                out = redact.redactSensitiveText(step.text, {
+                  mode: step.mode ?? "tools",
+                  patterns: mapPatterns(step.patterns),
+                });
+                break;
+              case "sensitiveTextConfig":
+                out = redact.redactSensitiveText(step.text);
+                break;
+              case "toolPayload":
+                out = redact.redactToolPayloadTextWithConfig(step.text, config);
+                break;
+              case "toolPayloadHost":
+                out = redact.redactToolPayloadText(step.text);
+                break;
+              case "modelVisibleText":
+                out = redact.redactModelVisibleToolPayloadTextWithConfig(step.text, config);
+                break;
+              case "field":
+                out = redact.redactSensitiveFieldValueWithConfig(step.key, step.value, config);
+                break;
+              case "modelVisibleField":
+                out = redact.redactModelVisibleSensitiveFieldValueWithConfig(
+                  step.key,
+                  step.value,
+                  config,
+                );
+                break;
+              case "secrets":
+                out = redact.redactSecrets(structuredClone(step.value));
+                break;
+              case "modelVisibleSecrets":
+                out = redact.redactModelVisibleSecrets(structuredClone(step.value));
+                break;
+              case "transcriptText":
+                out = transcript.redactTranscriptText(
+                  step.text,
+                  step.cfg ?? undefined,
+                  Boolean(step.modelVisible),
+                );
+                break;
+              case "transcriptField":
+                out = transcript.redactTranscriptStructuredFieldValue(
+                  step.key,
+                  step.value,
+                  step.cfg ?? undefined,
+                  Boolean(step.modelVisible),
+                );
+                break;
+              case "register":
+                registry.registerSecretValueForRedaction(step.value);
+                out = null;
+                break;
+              case "registryState":
+                out = {
+                  revision: registry.getSecretRedactionRegistryRevision() - baseRevision,
+                  has: registry.hasRegisteredSecretValuesForRedaction(),
+                  values: registry.captureSecretRedactionRegistrySnapshot().values,
+                  registered: (step.probe ?? []).map((v: string) =>
+                    registry.isSecretValueRegisteredForRedaction(v),
+                  ),
+                };
+                break;
+              case "snapshot":
+                snapshots.push(redact.captureSensitiveTextRedactionSnapshot());
+                out = null;
+                break;
+              case "snapshotRedact":
+                out = redact.createSensitiveTextRedactor(snapshots[step.index])(step.text);
+                break;
+              case "registered":
+                out = registry.redactRegisteredSecretValues(
+                  step.text,
+                  (value: string, index: number) => `<${value.length}@${index}>`,
+                );
+                break;
+              case "bitmap": {
+                const bitmap = redact.computeSensitiveRedactionBitmap(
+                  step.text,
+                  redact.resolveRedactOptions({
+                    mode: step.mode ?? "tools",
+                    patterns: mapPatterns(step.patterns),
+                  }),
+                );
+                out = bitmap.flatMap((flag: boolean, index: number) => (flag ? [index] : []));
+                break;
+              }
+              case "compile": {
+                const [source, flags] = runtime.parseRedactPatternSource(step.pattern);
+                const compiled = step.pattern.trim()
+                  ? configRegex.compileConfigRegex(source, flags)
+                  : null;
+                out = compiled
+                  ? { source: compiled.pattern, flags: compiled.flags, reason: compiled.reason }
+                  : null;
+                break;
+              }
+              default:
+                throw new Error(`unknown step ${step.fn}`);
+            }
+            stepsOut.push({ value: out === undefined ? null : out });
+          } catch (error) {
+            stepsOut.push({ error: String((error as Error)?.name ?? error) });
+          }
+        }
+        scenarios.push({ steps: stepsOut, registerError: registerError ?? null });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios } };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
   if (payload.operation === "sessionMemorySlug") {
     // src/hooks/llm-slug-generator.ts generateSlugViaLLM with only its model run replaced:
     // a module hook resolves its ../agents/embedded-agent.js import to a stub whose
@@ -4246,6 +4782,11 @@ async function main() {
     "fileLockProbe",
     "recordRecallScenarios",
     "sessionBackfillLineage",
+    "dailyIngestionScenarios",
+    "forgetScenarios",
+    "memoryWriteProvenance",
+    "sessionArtifactNames",
+    "sessionIngestionScenarios",
   ]);
   if (!promotionOperations.has(payload.operation)) {
     throw new Error(`unsupported operation: ${payload.operation}`);
@@ -4588,6 +5129,10 @@ async function main() {
           name: scenario.name,
           error,
           files: await snapshotFiles(workspaceDir),
+          // Every host event of the workspace, diagnostic variants (memory.recall.skipped) included.
+          events: await (
+            await importFromRepo(repoPath, "src/memory-host-sdk/events.ts")
+          ).readMemoryHostEventRecords({ workspaceDir }),
           origins: Object.fromEntries(
             agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
           ),
@@ -4693,6 +5238,660 @@ async function main() {
             agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
           ),
         });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
+    }
+
+    if (payload.operation === "dailyIngestionScenarios") {
+      // dreaming-phases.ts daily ingestion: buildDailyIngestionResults, ingestDailyMemorySignals and
+      // seedHistoricalDailyMemorySignals are not exported, so the real source is loaded with one
+      // extra export line. A scenario is a list of steps (write/remove files with a fixed mtime,
+      // trust records, build, ingest, seed); after every step the recall store and the daily
+      // ingestion checkpoint are reported.
+      const phases = await importPatched(
+        repoPath,
+        "extensions/memory-core/src/dreaming-phases.ts",
+        "export { buildDailyIngestionResults, ingestDailyMemorySignals };",
+      );
+      const dreamingStateModule = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/dreaming-state.ts",
+      );
+      const artifactProvenance = await importFromRepo(
+        repoPath,
+        "src/memory/memory-artifact-provenance.ts",
+      );
+      const hostEvents = await importFromRepo(repoPath, "src/memory-host-sdk/events.ts");
+      const scenarioResults: unknown[] = [];
+      for (const scenario of payload.ingestScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        const scenarioTimezone = scenario.timezone ?? timezone;
+        await seedPromotionStateFromWorkspace(promotionState, workspaceDir);
+        const stepResults: unknown[] = [];
+        for (const step of scenario.steps ?? []) {
+          let result: unknown = null;
+          let error: string | null = null;
+          const stepNowMs = Number.isFinite(step.nowMs) ? Number(step.nowMs) : nowMs;
+          try {
+            if (step.kind === "write") {
+              const target = path.join(workspaceDir, step.path);
+              await fs.mkdir(path.dirname(target), { recursive: true });
+              await fs.writeFile(target, step.content, "utf-8");
+              if (Number.isFinite(step.mtimeMs)) {
+                await fs.utimes(target, Number(step.mtimeMs) / 1000, Number(step.mtimeMs) / 1000);
+              }
+            } else if (step.kind === "remove") {
+              await fs.rm(path.join(workspaceDir, step.path), { force: true });
+            } else if (step.kind === "provenance") {
+              const rollback = await artifactProvenance.recordMemoryArtifactWriteProvenance({
+                workspaceDir,
+                relativePath: step.relativePath,
+                contentBefore: step.contentBefore ?? "",
+                contentAfter: step.contentAfter ?? "",
+                originClass: step.originClass,
+                observedAt: step.observedAt,
+              });
+              if (step.rollback === true && rollback) {
+                await rollback();
+              }
+            } else if (step.kind === "build") {
+              result = phases.buildDailyIngestionResults({
+                raw: step.raw,
+                path: step.path,
+                limit: step.limit,
+                defaultObservedAt: step.defaultObservedAt,
+                ...(step.recorded ? { recorded: step.recorded } : {}),
+              });
+            } else if (step.kind === "ingest") {
+              await phases.ingestDailyMemorySignals({
+                workspaceDir,
+                lookbackDays: step.lookbackDays,
+                limit: step.limit,
+                nowMs: stepNowMs,
+                timezone: scenarioTimezone,
+              });
+            } else if (step.kind === "seed") {
+              result = await phases.seedHistoricalDailyMemorySignals({
+                workspaceDir,
+                filePaths: (step.filePaths as string[]).map((entry) =>
+                  path.isAbsolute(entry) ? entry : path.join(workspaceDir, entry),
+                ),
+                limit: step.limit,
+                nowMs: stepNowMs,
+                timezone: scenarioTimezone,
+              });
+            }
+          } catch (caught) {
+            error = String((caught as Error).message);
+          }
+          const recallStore = (await promotionState.readRecallStore(
+            workspaceDir,
+            new Date(stepNowMs).toISOString(),
+          )) as { entries?: Record<string, unknown> };
+          const dailyEntries = await dreamingStateModule.readMemoryCoreWorkspaceEntries({
+            namespace: "dreaming-daily-ingestion",
+            workspaceDir,
+          });
+          stepResults.push({
+            result,
+            error,
+            recall: withSortedEntries(recallStore).entries,
+            daily: Object.fromEntries(
+              (dailyEntries as Array<{ key: string; value: unknown }>)
+                .toSorted((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+                .map((entry) => [entry.key, entry.value]),
+            ),
+          });
+        }
+        scenarioResults.push({
+          name: scenario.name,
+          steps: stepResults,
+          events: await hostEvents.readMemoryHostEventRecords({ workspaceDir }),
+        });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
+    }
+
+    if (payload.operation === "sessionIngestionScenarios") {
+      // session-ingestion.ts / dreaming-phases.ts session ingestion. Two scenario kinds:
+      // - "scan": scanSessionIngestionSource over JSONL files (the file branch of buildSessionEntry),
+      //   step after step with the checkpoint and seen hashes chained like the sweep does;
+      // - "sweep": the real ingestSessionTranscriptSignals (dreaming-phases.ts with one extra export
+      //   line) over sessions seeded in the agent's SQLite session store, tombstones, an admission
+      //   policy and the real corpus enumeration; the recall store, the session checkpoint, the
+      //   session corpus files, the origins ledger and the host events are reported after each step.
+      const phases = await importPatched(
+        repoPath,
+        "extensions/memory-core/src/dreaming-phases.ts",
+        "export { ingestSessionTranscriptSignals };",
+      );
+      const sessionIngestion = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/session-ingestion.ts",
+      );
+      const origins = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/memory-entry-origins.ts",
+      );
+      const sqliteRuntime = await importFromRepo(repoPath, "src/plugin-sdk/sqlite-runtime.ts");
+      const hostEvents = await importFromRepo(repoPath, "src/memory-host-sdk/events.ts");
+      const sessionsSdk = await importFromRepo(
+        repoPath,
+        "src/plugin-sdk/memory-core-host-engine-sessions.ts",
+      );
+      const paths = await importFromRepo(repoPath, "src/config/sessions/paths.ts");
+      const sessionStore = await importFromRepo(repoPath, "src/plugin-sdk/session-store-runtime.ts");
+      const transcriptStore = await importFromRepo(
+        repoPath,
+        "src/plugin-sdk/session-transcript-runtime.ts",
+      );
+      const scenarioResults: unknown[] = [];
+      for (const scenario of payload.sessionScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        const scenarioTimezone = scenario.timezone ?? timezone;
+        const stepResults: unknown[] = [];
+        if (scenario.kind === "scan") {
+          let chainPrevious: Record<string, any> | undefined;
+          const chainSeen: Record<string, string[]> = {};
+          for (const step of scenario.steps ?? []) {
+            let result: unknown = null;
+            let error: string | null = null;
+            try {
+              const target = path.join(
+                workspaceDir,
+                "agents",
+                step.agentId,
+                "sessions",
+                `${step.sessionId}.jsonl`,
+              );
+              if (step.kind === "write") {
+                await fs.mkdir(path.dirname(target), { recursive: true });
+                await fs.writeFile(
+                  target,
+                  (step.records as unknown[]).map((record) => JSON.stringify(record)).join("\n") +
+                    (step.records.length > 0 ? "\n" : ""),
+                  "utf-8",
+                );
+                if (Number.isFinite(step.mtimeMs)) {
+                  await fs.utimes(target, Number(step.mtimeMs) / 1000, Number(step.mtimeMs) / 1000);
+                }
+              } else if (step.kind === "remove") {
+                await fs.rm(target, { force: true });
+              } else if (step.kind === "scan") {
+                const source = step.foreign
+                  ? sessionIngestion.foreignSessionIngestionSource(step.agentId, target)
+                  : sessionIngestion.sessionIngestionSourceFromCorpus({
+                      agentId: step.agentId,
+                      sessionId: step.sessionId,
+                      sessionFile: target,
+                      transcriptSource: "file",
+                      artifactKind: "active-session",
+                      sessionKind: step.sessionKind ?? "interactive",
+                      ...(step.sessionKey ? { sessionKey: step.sessionKey } : {}),
+                      ...(step.generatedByCronRun ? { generatedByCronRun: true } : {}),
+                      ...(step.generatedByDreamingNarrative
+                        ? { generatedByDreamingNarrative: true }
+                        : {}),
+                    });
+                if (!source) {
+                  stepResults.push({ result: null, error: null });
+                  continue;
+                }
+                const blocked = new Set<string>(step.blockDays ?? []);
+                const included = step.includeDays ? new Set<string>(step.includeDays) : undefined;
+                const scan = await sessionIngestion.scanSessionIngestionSource({
+                  source,
+                  previous: step.chain ? chainPrevious : step.previous,
+                  seenMessages: step.chain ? chainSeen : (step.seen ?? {}),
+                  timezone: scenarioTimezone,
+                  ...(Number.isFinite(step.maxCandidates)
+                    ? { maxCandidates: step.maxCandidates }
+                    : {}),
+                  ...(step.verifyContent === true ? { verifyContent: true } : {}),
+                  ...(Array.isArray(step.acceptOrigins)
+                    ? {
+                        acceptProvenance: (provenance: { originClass: string }) =>
+                          (step.acceptOrigins as string[]).includes(provenance.originClass),
+                      }
+                    : {}),
+                  classifyDay: (day: string) =>
+                    blocked.has(day) ? "block" : !included || included.has(day) ? "include" : "skip",
+                });
+                if (step.chain) {
+                  if (scan.fileState) {
+                    chainPrevious = scan.fileState;
+                  }
+                  if (scan.candidates.length > 0) {
+                    chainSeen[source.scope] = sessionIngestion.mergeTrackedMessageHashes(
+                      chainSeen[source.scope] ?? [],
+                      scan.candidates.map((candidate: { hash: string }) => candidate.hash),
+                    );
+                  }
+                }
+                result = { scan, scope: source.scope, stateKey: source.stateKey };
+              }
+            } catch (caught) {
+              error = String((caught as Error).message);
+            }
+            stepResults.push({ result, error });
+          }
+        } else {
+          const agentIds: string[] = scenario.agentIds ?? [];
+          const cfg = {
+            agents: {
+              list: agentIds.map((agentId) => ({ id: agentId, workspace: workspaceDir })),
+            },
+          };
+          const policyConfig = scenario.pluginConfig;
+          await seedPromotionStateFromWorkspace(promotionState, workspaceDir);
+          for (const agentId of agentIds) {
+            await fs.mkdir(path.dirname(sqliteRuntime.resolveOpenClawAgentSqlitePath({ agentId })), {
+              recursive: true,
+            });
+          }
+          for (const step of scenario.steps ?? []) {
+            let result: unknown = null;
+            let error: string | null = null;
+            const stepNowMs = Number.isFinite(step.nowMs) ? Number(step.nowMs) : nowMs;
+            try {
+              if (step.kind === "session" || step.kind === "append") {
+                const sessionsDir: string = paths.resolveSessionTranscriptsDirForAgent(step.agentId);
+                const storePath = path.join(sessionsDir, "sessions.json");
+                await fs.mkdir(sessionsDir, { recursive: true });
+                const sessionKey = step.sessionKey ?? `agent:${step.agentId}:${step.sessionId}`;
+                if (step.kind === "session") {
+                  await sessionStore.upsertSessionEntry({
+                    agentId: step.agentId,
+                    sessionKey,
+                    storePath,
+                    entry: { sessionId: step.sessionId, updatedAt: stepNowMs, ...(step.entry ?? {}) },
+                  });
+                }
+                for (const message of step.messages ?? []) {
+                  await transcriptStore.appendSessionTranscriptMessageByIdentity({
+                    agentId: step.agentId,
+                    sessionId: step.sessionId,
+                    sessionKey,
+                    storePath,
+                    message,
+                  });
+                }
+              } else if (step.kind === "tombstone") {
+                const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId: step.agentId }).db;
+                origins.recordMemorySessionTombstonesInDatabase(db, {
+                  agentId: step.agentId,
+                  sessionIds: step.sessionIds,
+                  createdAt: 1,
+                });
+              } else if (step.kind === "ingest") {
+                await phases.ingestSessionTranscriptSignals({
+                  workspaceDir,
+                  cfg,
+                  lookbackDays: step.lookbackDays,
+                  nowMs: stepNowMs,
+                  timezone: scenarioTimezone,
+                  ...(policyConfig
+                    ? { admissionPolicy: sessionIngestion.resolveAdmissionPolicy(policyConfig) }
+                    : {}),
+                });
+              }
+            } catch (caught) {
+              error = String((caught as Error).message);
+            }
+            await exportPromotionStateToWorkspace(promotionState, workspaceDir, stepNowMs);
+            const sessionState = await sessionIngestion.readSessionIngestionState(workspaceDir);
+            const corpusDir = path.join(workspaceDir, "memory", ".dreams", "session-corpus");
+            const corpus: Record<string, string> = {};
+            for (const name of (await fs.readdir(corpusDir).catch(() => [] as string[])).toSorted()) {
+              corpus[name] = await fs.readFile(path.join(corpusDir, name), "utf-8");
+            }
+            const corpusEntries: Array<Record<string, unknown>> = [];
+            for (const agentId of agentIds) {
+              corpusEntries.push(
+                ...(await sessionsSdk.listSessionTranscriptCorpusEntriesForAgent(agentId, {
+                  includeRetainedSqlite: true,
+                })),
+              );
+            }
+            stepResults.push({
+              result,
+              error,
+              state: sessionState,
+              corpus,
+              corpusEntries: corpusEntries.map((entry) => ({
+                agentId: entry.agentId,
+                sessionId: entry.sessionId,
+                sessionKey: entry.sessionKey ?? null,
+                sessionKind: entry.sessionKind ?? null,
+                artifactKind: entry.artifactKind ?? null,
+                transcriptSource: entry.transcriptSource ?? null,
+                generatedByDreamingNarrative: entry.generatedByDreamingNarrative === true,
+                generatedByCronRun: entry.generatedByCronRun === true,
+              })),
+              recall: withSortedEntries(
+                (await promotionState.readRecallStore(
+                  workspaceDir,
+                  new Date(stepNowMs).toISOString(),
+                )) as Record<string, unknown>,
+              ).entries,
+              origins: Object.fromEntries(
+                agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
+              ),
+            });
+          }
+        }
+        scenarioResults.push({
+          name: scenario.name,
+          steps: stepResults,
+          events:
+            scenario.kind === "scan"
+              ? []
+              : await hostEvents.readMemoryHostEventRecords({ workspaceDir }),
+        });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
+    }
+
+    if (payload.operation === "sessionArtifactNames") {
+      // src/config/sessions/artifacts.ts filename classifiers over a list of names.
+      const artifacts = await importFromRepo(repoPath, "src/config/sessions/artifacts.ts");
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: {
+          names: (payload.texts ?? []).map((name) => ({
+            name,
+            primary: artifacts.isPrimarySessionTranscriptFileName(String(name)),
+            archive: artifacts.isSessionArchiveArtifactName(String(name)),
+            checkpoint: artifacts.isCompactionCheckpointTranscriptFileName(String(name)),
+            sessionId: artifacts.parseUsageCountedSessionIdFromFileName(String(name)),
+          })),
+        },
+      };
+    }
+
+    if (payload.operation === "memoryWriteProvenance") {
+      // src/agents/memory-write-provenance.ts: the observer the flush's write tool and the
+      // session-memory hook attach to their file writes, over the real trust store. A step writes
+      // (or deletes) one file through the observer; the trust records of the workspace are
+      // reported after every step.
+      const observerModule = await importFromRepo(
+        repoPath,
+        "src/agents/memory-write-provenance.ts",
+      );
+      const artifactProvenance = await importFromRepo(
+        repoPath,
+        "src/memory/memory-artifact-provenance.ts",
+      );
+      const scenarioResults: unknown[] = [];
+      for (const scenario of payload.provenanceScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        await fs.mkdir(workspaceDir, { recursive: true });
+        const stepResults: unknown[] = [];
+        for (const step of scenario.steps ?? []) {
+          let result: unknown = null;
+          let error: string | null = null;
+          try {
+            const target = path.isAbsolute(step.path) ? step.path : path.join(workspaceDir, step.path);
+            if (step.kind === "symlink") {
+              await fs.mkdir(path.dirname(target), { recursive: true });
+              await fs.symlink(
+                path.isAbsolute(step.target) ? step.target : path.join(workspaceDir, step.target),
+                target,
+              );
+            } else if (step.kind === "mkdir") {
+              await fs.mkdir(target, { recursive: true });
+            } else {
+              const observer = observerModule.createMemoryWriteProvenanceObserver({
+                mutationRoot: workspaceDir,
+                workspaceDir,
+                resolveOriginClass: () => step.originClass ?? "agent",
+                ...(typeof step.sessionId === "string" ? { sessionId: step.sessionId } : {}),
+                ...(typeof step.sessionKey === "string" ? { sessionKey: step.sessionKey } : {}),
+                now: () => Number(step.observedAt ?? 0),
+              });
+              if (step.kind === "classifies") {
+                result = await observer.classifies(target);
+              } else if (step.kind === "write") {
+                await fs.mkdir(path.dirname(target), { recursive: true });
+                await observer.write({
+                  absolutePath: target,
+                  contentBefore: step.contentBefore ?? "",
+                  contentAfter: step.contentAfter ?? "",
+                  commit: async () => {
+                    if (step.failCommit === true) {
+                      throw new Error("commit failed");
+                    }
+                    await fs.writeFile(target, step.contentAfter ?? "", "utf-8");
+                  },
+                });
+              } else if (step.kind === "delete") {
+                await fs.rm(target, { force: true });
+                await observer.clearAfterDelete(target, step.contentBefore ?? "");
+              }
+            }
+          } catch (caught) {
+            error = String((caught as Error).message);
+          }
+          stepResults.push({
+            result,
+            error,
+            records: await artifactProvenance.listMemoryArtifactProvenance({ workspaceDir }),
+          });
+        }
+        scenarioResults.push({ name: scenario.name, steps: stepResults });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
+    }
+
+    if (payload.operation === "forgetScenarios") {
+      // memory-forget.ts forgetMemoryEntries over seeded workspaces: files, the recall and phase
+      // stores, the session ingestion checkpoint, preimages, origin rows, trust records, sessions
+      // (SQLite session store), index chunks and sources. A scenario runs a list of forget calls;
+      // the report and the state of every artifact are reported after each call.
+      const forget = await importFromRepo(repoPath, "extensions/memory-core/src/memory-forget.ts");
+      const origins = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/memory-entry-origins.ts",
+      );
+      const sqliteRuntime = await importFromRepo(repoPath, "src/plugin-sdk/sqlite-runtime.ts");
+      const sessionIngestion = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/session-ingestion.ts",
+      );
+      const dreamingStateModule = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/dreaming-state.ts",
+      );
+      const artifacts = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/dreaming-consolidation-artifacts.ts",
+      );
+      const artifactProvenance = await importFromRepo(
+        repoPath,
+        "src/memory/memory-artifact-provenance.ts",
+      );
+      const memorySchema = await importFromRepo(
+        repoPath,
+        "packages/memory-host-sdk/src/host/memory-schema.ts",
+      );
+      const sessionsSdk = await importFromRepo(
+        repoPath,
+        "src/plugin-sdk/memory-core-host-engine-sessions.ts",
+      );
+      const paths = await importFromRepo(repoPath, "src/config/sessions/paths.ts");
+      const sessionStore = await importFromRepo(repoPath, "src/plugin-sdk/session-store-runtime.ts");
+      const transcriptStore = await importFromRepo(
+        repoPath,
+        "src/plugin-sdk/session-transcript-runtime.ts",
+      );
+      const scenarioResults: unknown[] = [];
+      for (const scenario of payload.forgetScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        const agentId = String(scenario.agentId);
+        const cfg = { agents: { list: [{ id: agentId, workspace: workspaceDir }] } };
+        await fs.mkdir(workspaceDir, { recursive: true });
+        for (const [relativePath, content] of Object.entries(scenario.files ?? {})) {
+          const target = path.join(workspaceDir, relativePath);
+          await fs.mkdir(path.dirname(target), { recursive: true });
+          await fs.writeFile(target, String(content), "utf-8");
+        }
+        await seedPromotionStateFromWorkspace(promotionState, workspaceDir);
+        if (scenario.sessionIngestion) {
+          await sessionIngestion.writeSessionIngestionState(workspaceDir, {
+            version: 3,
+            files: scenario.sessionIngestion.files ?? {},
+            seenMessages: scenario.sessionIngestion.seenMessages ?? {},
+          });
+        }
+        if (Array.isArray(scenario.backups)) {
+          await dreamingStateModule.writeMemoryCoreWorkspaceEntries({
+            namespace: "dreaming-memory-backups",
+            workspaceDir,
+            entries: (scenario.backups as Array<Record<string, unknown>>).map((value) => ({
+              key: `${value.createdAt}:${String(value.contentHash).slice(0, 12)}`,
+              value,
+            })),
+          });
+        }
+        await fs.mkdir(path.dirname(sqliteRuntime.resolveOpenClawAgentSqlitePath({ agentId })), {
+          recursive: true,
+        });
+        const agentDb = sqliteRuntime.openOpenClawAgentDatabase({ agentId }).db;
+        memorySchema.ensureMemoryIndexSchema({ db: agentDb, cacheEnabled: true, ftsEnabled: true });
+        for (const row of scenario.origins ?? []) {
+          origins.recordMemoryEntryOrigins({ agentId, origins: [row] });
+        }
+        if (Array.isArray(scenario.tombstones) && scenario.tombstones.length > 0) {
+          origins.recordMemorySessionTombstonesInDatabase(agentDb, {
+            agentId,
+            sessionIds: scenario.tombstones,
+            createdAt: 1,
+          });
+        }
+        for (const seed of scenario.provenance ?? []) {
+          await artifactProvenance.recordMemoryArtifactWriteProvenance({
+            workspaceDir,
+            relativePath: seed.relativePath,
+            contentBefore: seed.contentBefore ?? "",
+            contentAfter: seed.contentAfter ?? "",
+            originClass: seed.originClass,
+            observedAt: seed.observedAt,
+            ...(typeof seed.sessionId === "string" ? { sessionId: seed.sessionId } : {}),
+            ...(typeof seed.sessionKey === "string" ? { sessionKey: seed.sessionKey } : {}),
+          });
+        }
+        let chunkCounter = 0;
+        for (const chunk of scenario.chunks ?? []) {
+          chunkCounter += 1;
+          agentDb
+            .prepare(
+              "INSERT INTO memory_index_chunks (id, path, source, start_line, end_line, hash, model, text, embedding, updated_at) VALUES (?, ?, ?, 1, 1, ?, 'm', ?, X'00', 1)",
+            )
+            .run(`chunk-${chunkCounter}`, chunk.path, chunk.source ?? "memory", `h${chunkCounter}`, chunk.text);
+        }
+        for (const source of scenario.sources ?? []) {
+          agentDb
+            .prepare(
+              "INSERT INTO memory_index_sources (path, source, hash, mtime, size) VALUES (?, ?, 'h', 1, 1)",
+            )
+            .run(source.path, source.source ?? "memory");
+        }
+        const sessionsDir: string = paths.resolveSessionTranscriptsDirForAgent(agentId);
+        const storePath = path.join(sessionsDir, "sessions.json");
+        await fs.mkdir(sessionsDir, { recursive: true });
+        for (const session of scenario.sessions ?? []) {
+          const sessionKey = session.sessionKey ?? `agent:${agentId}:${session.sessionId}`;
+          await sessionStore.upsertSessionEntry({
+            agentId,
+            sessionKey,
+            storePath,
+            entry: {
+              sessionId: session.sessionId,
+              updatedAt: Number(scenario.createdAt ?? nowMs) + Number(session.createdOffset ?? 0),
+              ...(session.entry ?? {}),
+            },
+          });
+          for (const message of session.messages ?? []) {
+            await transcriptStore.appendSessionTranscriptMessageByIdentity({
+              agentId,
+              sessionId: session.sessionId,
+              sessionKey,
+              storePath,
+              message,
+            });
+          }
+        }
+        const corpusEntries = (
+          await sessionsSdk.listSessionTranscriptCorpusEntriesForAgent(agentId)
+        ).map((entry: Record<string, unknown>) => ({
+          agentId: entry.agentId,
+          sessionId: entry.sessionId,
+          sessionKey: entry.sessionKey ?? null,
+          sessionKind: entry.sessionKind ?? null,
+          artifactKind: entry.artifactKind ?? null,
+          transcriptSource: entry.transcriptSource ?? null,
+          generatedByDreamingNarrative: entry.generatedByDreamingNarrative === true,
+          generatedByCronRun: entry.generatedByCronRun === true,
+        }));
+        const runResults: unknown[] = [];
+        for (const run of scenario.runs ?? []) {
+          let report: unknown = null;
+          let error: string | null = null;
+          try {
+            report = await forget.forgetMemoryEntries({
+              cfg,
+              agentId,
+              ...(Array.isArray(run.sessionIds) ? { sessionIds: run.sessionIds } : {}),
+              ...(Array.isArray(run.hookSources) ? { hookSources: run.hookSources } : {}),
+              ...(Array.isArray(run.participants) ? { participants: run.participants } : {}),
+              ...(run.since !== undefined ? { since: run.since } : {}),
+              ...(run.dryRun === true ? { dryRun: true } : {}),
+            });
+          } catch (caught) {
+            error = String((caught as Error).message);
+          }
+          await exportPromotionStateToWorkspace(promotionState, workspaceDir, nowMs);
+          const tree = await snapshotWorkspaceTree(workspaceDir);
+          const files = Object.fromEntries(
+            Object.entries(tree).filter(([relative]) => !relative.startsWith("memory/.dreams/")),
+          );
+          const recallStore = (await promotionState.readRecallStore(
+            workspaceDir,
+            new Date(nowMs).toISOString(),
+          )) as Record<string, unknown>;
+          const phaseStore = (await promotionState.readPhaseSignalStore(
+            workspaceDir,
+            new Date(nowMs).toISOString(),
+          )) as Record<string, unknown>;
+          const preimages = (await artifacts.readMemoryPreimages(workspaceDir)).map(
+            (entry: { value: unknown }) => entry.value,
+          );
+          const revision = (
+            agentDb.prepare("SELECT revision FROM memory_index_state WHERE id = 1").get() as
+              | { revision: number }
+              | undefined
+          )?.revision;
+          runResults.push({
+            report,
+            error,
+            files,
+            recall: withSortedEntries(recallStore).entries,
+            phase: withSortedEntries(phaseStore).entries,
+            sessionState: await sessionIngestion.readSessionIngestionState(workspaceDir),
+            preimages,
+            origins: origins.listMemoryEntryOrigins({ agentId }),
+            tombstones: origins.listMemorySessionTombstones({ agentId }),
+            revision,
+            chunks: agentDb
+              .prepare("SELECT path, source, text FROM memory_index_chunks ORDER BY path, source, text")
+              .all(),
+            sources: agentDb
+              .prepare("SELECT path, source FROM memory_index_sources ORDER BY path, source")
+              .all(),
+          });
+        }
+        scenarioResults.push({ name: scenario.name, corpusEntries, runs: runResults });
       }
       return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
     }

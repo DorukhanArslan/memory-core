@@ -199,7 +199,7 @@ def test_history_writers_use_the_upstream_text(tmp_path: Path) -> None:
 def test_history_goes_to_an_existing_lowercase_dreams_file(tmp_path: Path) -> None:
     (tmp_path / "dreams.md").write_text("kept\n", encoding="utf-8")
     append_consolidation_skipped_summary(tmp_path, now_ms=NOW_MS, reason="r")
-    assert not (tmp_path / "DREAMS.md").exists()
+    assert {path.name for path in tmp_path.iterdir() if path.is_file()} == {"dreams.md"}
     assert (tmp_path / "dreams.md").read_text(encoding="utf-8").startswith(
         "kept\n\n## Memory Consolidation History\n\n### "
     )

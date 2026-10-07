@@ -18,6 +18,7 @@ from memory_core.adapters.langgraph import (
     transcript_rows,
     turn_usage,
 )
+from memory_core.session_memory import get_recent_session_projection_from_events
 
 messages = pytest.importorskip("langchain_core.messages")
 AIMessage = messages.AIMessage
@@ -100,6 +101,122 @@ def test_transcript_rows_read_type_dicts_and_never_emit_a_type_key(tmp_path: Pat
     saved = new.saved.path.read_text(encoding="utf-8")
     assert 'user: "I prefer green tea."' in saved
     assert 'assistant: "Green tea it is."' in saved
+
+
+def _message_shape(message, shape):
+    if shape == "model_dump":
+        return message.model_dump()
+    if shape == "messages_to_dict":
+        return messages.messages_to_dict([message])[0]
+    return message
+
+
+@pytest.mark.parametrize("shape", ["object", "model_dump", "messages_to_dict"])
+def test_transcript_rows_project_only_host_memory_metadata(shape):
+    human = HumanMessage(
+        "Hello there",
+        additional_kwargs={
+            "provenance": {"kind": "external_user", "sourceTool": "sessions_send", "jobId": "j1"},
+            "__openclaw": {"senderIsOwner": True, "turnTainted": False, "runId": "r1"},
+            "provider_payload": {"senderIsOwner": False},
+        },
+        response_metadata={"__openclaw": {"senderIsOwner": False}},
+    )
+    ai = AIMessage(
+        "Hi! How can I help?",
+        additional_kwargs={"__openclaw": {"turnTainted": True}},
+    )
+
+    shaped_human = _message_shape(human, shape)
+    rows = transcript_rows([shaped_human, _message_shape(ai, shape)])
+
+    assert rows == [
+        {
+            "role": "user",
+            "content": "Hello there",
+            "provenance": {"kind": "external_user", "sourceTool": "sessions_send"},
+            "__openclaw": {"senderIsOwner": True, "turnTainted": False},
+        },
+        {
+            "role": "assistant",
+            "content": "Hi! How can I help?",
+            "__openclaw": {"turnTainted": True},
+        },
+    ]
+    source_kwargs = (
+        shaped_human.additional_kwargs if shape == "object"
+        else (shaped_human["data"] if shape == "messages_to_dict" else shaped_human)["additional_kwargs"]
+    )
+    assert rows[0]["provenance"] is not source_kwargs["provenance"]
+    assert rows[0]["__openclaw"] is not source_kwargs["__openclaw"]
+    rows[0]["provenance"]["kind"] = "internal_system"
+    rows[0]["__openclaw"]["senderIsOwner"] = False
+    assert human.additional_kwargs["provenance"]["kind"] == "external_user"
+    assert human.additional_kwargs["__openclaw"]["senderIsOwner"] is True
+
+
+@pytest.mark.parametrize("shape", ["object", "model_dump", "messages_to_dict"])
+@pytest.mark.parametrize("owner,tainted,origin", [(True, False, "agent"), (False, False, "untrusted"), (True, True, "untrusted")])
+def test_projected_host_metadata_reaches_session_memory_trust(shape, owner, tainted, origin):
+    transcript = [
+        HumanMessage("Hello there", additional_kwargs={"__openclaw": {"senderIsOwner": owner}}),
+        AIMessage("Hi! How can I help?", additional_kwargs={"__openclaw": {"turnTainted": tainted}}),
+    ]
+    rows = transcript_rows([_message_shape(message, shape) for message in transcript])
+
+    projection = get_recent_session_projection_from_events(
+        [{"type": "message", "message": row} for row in rows]
+    )
+
+    assert projection.origin_class == origin
+
+
+@pytest.mark.parametrize("kind", ["inter_session", "internal_system", "future_kind"])
+def test_transcript_rows_keep_provenance_strings_without_reinterpreting_them(kind):
+    row = transcript_rows([HumanMessage(
+        "Hello there",
+        additional_kwargs={"provenance": {"kind": kind, "sourceTool": "memory_search"}},
+    )])[0]
+
+    assert row["provenance"] == {"kind": kind, "sourceTool": "memory_search"}
+
+
+@pytest.mark.parametrize("value", [1, 0, "true", "false", None, [], {}])
+def test_transcript_rows_do_not_coerce_trust_booleans(value):
+    row = transcript_rows([HumanMessage(
+        "Hello there",
+        additional_kwargs={
+            "__openclaw": {"senderIsOwner": value, "turnTainted": value},
+        },
+    )])[0]
+
+    assert row == {"role": "user", "content": "Hello there"}
+
+
+@pytest.mark.parametrize("value", [1, 0, True, False, None, [], {}])
+def test_transcript_rows_do_not_coerce_provenance_strings(value):
+    row = transcript_rows([HumanMessage(
+        "Hello there", additional_kwargs={"provenance": {"kind": value, "sourceTool": value}},
+    )])[0]
+
+    assert row == {"role": "user", "content": "Hello there"}
+
+
+def test_transcript_rows_do_not_read_provider_response_metadata():
+    row = transcript_rows([HumanMessage(
+        "Hello there", response_metadata={"__openclaw": {"senderIsOwner": True}},
+    )])[0]
+
+    assert row == {"role": "user", "content": "Hello there"}
+
+
+def test_transcript_rows_keep_existing_role_mapping_metadata():
+    row = {"role": "user", "content": "Hello there", "provenance": {"kind": "future_kind"}}
+
+    projected = transcript_rows([row])[0]
+
+    assert projected == row and projected is not row
+    assert projected["provenance"] is row["provenance"]
 
 
 def test_transcript_rows_reject_an_unknown_message_type():

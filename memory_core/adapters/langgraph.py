@@ -44,6 +44,12 @@ def transcript_rows(messages: Iterable[Any]) -> list[dict[str, Any]]:
     or ``messages_to_dict`` form) reads like the object. No row carries a ``type`` key: the
     session-memory hook reads a mapping with one as a raw transcript entry and would drop it.
     ``ValueError`` for anything else (a host error).
+
+    Explicit host-authored ``additional_kwargs`` metadata is copied to the core's top-level
+    namespaces: ``provenance.kind`` / ``sourceTool`` strings and ``__openclaw.senderIsOwner`` /
+    ``turnTainted`` bools. Values are preserved without coercion; unrelated kwargs and provider
+    ``response_metadata`` are ignored. This projection does not authenticate imported metadata:
+    the host must author these trust fields from its own caller and turn classification.
     """
     return [_row(message) for message in messages]
 
@@ -245,12 +251,38 @@ def _row(message: Any) -> dict[str, Any]:
     if not isinstance(role, str) or not role:
         raise ValueError(f"not a chat message: type {kind!r}")
     row = {"role": role, "content": _field(message, "content")}
+    row.update(_memory_metadata(message))
     if role == "tool":
         row["tool_call_id"] = _field(message, "tool_call_id")
         name = _field(message, "name")
         if name:
             row["name"] = name
     return row
+
+
+def _memory_metadata(message: Any) -> dict[str, dict[str, Any]]:
+    # session_memory.classify_session_message_origin and session_entry's reset-recall /
+    # heartbeat exclusions read these fields. This adapter projects them, without applying
+    # input-provenance.ts's normalization or interpreting unknown kind/sourceTool strings.
+    additional = _field(message, "additional_kwargs")
+    if not isinstance(additional, Mapping):
+        return {}
+    result = {}
+    for namespace, fields, field_type in (
+        ("provenance", ("kind", "sourceTool"), str),
+        ("__openclaw", ("senderIsOwner", "turnTainted"), bool),
+    ):
+        metadata = additional.get(namespace)
+        if not isinstance(metadata, Mapping):
+            continue
+        projected = {
+            name: metadata[name]
+            for name in fields
+            if isinstance(metadata.get(name), field_type)
+        }
+        if projected:
+            result[namespace] = projected
+    return result
 
 
 def _field(message: Any, name: str) -> Any:

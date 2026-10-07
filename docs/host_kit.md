@@ -690,6 +690,12 @@ class ResetTurn:
   projection's origin, content hash, source session and time before file publication. A failed
   publication rolls back the reservation; a filename collision rolls it back before retrying.
   A store error prevents publication. Without the optional store, writes remain untracked.
+- A framework host must preserve authenticated ownership/taint metadata in its transcript
+  projection. The LangGraph example accepts optional `AgentContext.trust=TurnTrust(...)`
+  and checkpoints it before fallible host work (adapter-only). See
+  [Host trust and manual ingestion/forget](integrations/langgraph.md#host-trust) for the
+  allowlist, store/fence setup and host responsibilities. Forget reports curated session
+  snapshots as retained; it does not erase those files or the host's checkpoint history.
 - The saved file is written before the startup context is read, so the next session's prelude
   can quote it. Upstream writes it from a background queue, so its order is not fixed.
 - The reset turn then runs like any turn: the host sends `reset.model_prompt` through

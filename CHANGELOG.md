@@ -10,6 +10,13 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Added
 
+- LangGraph host acceptance (2026-10-07, adapter-only): optional exact-boolean `TurnTrust`
+  on `AgentContext`, checkpointed before fallible host work and preserved across reset/retry;
+  narrow host provenance/trust projection in `transcript_rows`; actual graph tests for
+  quarantine, flush retry recovery/exhaustion, recall events, manual ingestion, forget and
+  stale-index publication refusal. The host guide includes the public API composition and
+  retained-artifact limits. Authentication, scheduling and checkpoint/curated-file erasure
+  remain host responsibilities; these tests use scripted models and a local HTTP stub.
 - Bounded small-port closeout (2026-10-07): promotion ranking accepts optional
   `include_promoted` and normalized custom `weights`; fresh daily-only entries can enter
   light/REM staging; transcript navigation honors reset fences; session-memory writes accept

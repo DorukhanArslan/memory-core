@@ -10,6 +10,11 @@ langchain-openai 1.6.6; the Findings section below lists what the kit's API lack
 and the kit changes it recommends were built on `feat/kit-langgraph-fixes` the same day
 (decision L10; docs/host_kit.md › LangGraph findings).
 
+The 2026-10-07 host acceptance update adds optional authenticated turn trust and tests the
+existing manual ingestion/forget APIs through this graph. It adds no scheduler, authentication
+service or checkpoint deletion. See **Host trust**, **Manual ingestion and forget**, and the
+dated test evidence below.
+
 ## Usage
 
 ### Install
@@ -95,8 +100,9 @@ work unchanged; `context=AgentContext(runtime_context=...)` is optional.
 ### What one run does
 
 ```text
-START -> new_session (a human "/new" or "/reset" first word: kit.on_new_session)
-      -> prepare     (kit.before_turn, into a TurnState in the state)
+START -> capture_trust (checkpoint optional host trust before fallible host work)
+      -> new_session (a human "/new" or "/reset" first word: kit.on_new_session)
+      -> prepare     (otherwise directly; kit.before_turn, into a TurnState in the state)
       -> agent       (the model bound to kit.tools(); has tool calls?) -> tools -> agent ...
       -> maintain    (kit.after_turn; a due FlushRequest runs its flush turn) -> END
 ```
@@ -140,6 +146,123 @@ START -> new_session (a human "/new" or "/reset" first word: kit.on_new_session)
 - One run per thread at a time: LangGraph does not serialize runs of one thread, and the kit's
   one-maintenance-lane rule needs it (F15).
 
+### Host trust
+
+`AgentContext(trust=TurnTrust(sender_is_owner=..., turn_tainted=...))` accepts host-authored
+facts. Import `TurnTrust` from your copy of `langgraph_agent`. Both flags require actual
+`bool` values; `turn_tainted` defaults to `False`. The host must authenticate the sender and
+decide whether the turn is tainted. Do not read these flags from user text, provider output
+or an unverified client message's metadata. Runtime-context text does not establish trust.
+
+The graph checkpoints the two flags in `capture_trust`, before `before_turn`, reset saving
+or model calls can fail. A contextless `graph.invoke(None, config)` resume keeps this snapshot.
+The graph sets the active user's `__openclaw.senderIsOwner` and marks assistant messages
+`__openclaw.turnTainted=True` for a tainted turn. `/new` preserves the allowed metadata on its
+replacement user row. Maintenance passes `untrusted_turn=True` for a non-owner or tainted
+turn. Configure `HostKit(artifact_provenance=...)` to store trust for daily and session-memory
+writes. The example does not add this store to the terminal CLI by default.
+
+A new turn without `trust=` clears the current snapshot and preserves the old flush default.
+Session-memory projection still treats user rows without `senderIsOwner=True` as untrusted.
+Thus omitted trust does not mean verified ownership. This is an initial-turn snapshot: a host
+that discovers taint during a tool call must implement its own authenticated trust update.
+The graph does not detect taint or infer it from tool output.
+
+The adapter copies only `additional_kwargs.provenance.kind`, `.sourceTool` (strings) and
+`additional_kwargs.__openclaw.senderIsOwner`, `.turnTainted` (exact booleans) into the core's
+top-level namespaces. Unknown string values remain unchanged for the core to interpret.
+It drops other metadata and does not coerce `"false"` or `0` to booleans. This projection
+preserves host facts; it does not verify their authority.
+
+### Manual ingestion and forget
+
+The host owns scheduling, session enumeration, authenticated transcript metadata and retention.
+The graph does not ingest transcripts or call forget automatically. Use the public APIs below
+when a host has those responsibilities. Keep the origin ledger and index in the same SQLite
+database to make the revision check atomic with index publication. Keep the trust store outside
+the indexed workspace. This setup replaces the simple `HostKit.open` setup above:
+
+```python
+from memory_core import Memory
+from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
+from memory_core.consolidation.origins import MemoryEntryOriginLedger
+
+host_dir = Path("my-agent-state")
+host_dir.mkdir(parents=True, exist_ok=True)
+memory_config = MemoryConfig(
+    workspace_dir=root,
+    store_path=host_dir / "main.sqlite",
+    flags=FeatureFlags(vector_search=False),
+)
+origins = MemoryEntryOriginLedger(lambda agent: host_dir / f"{agent}.sqlite")
+trust = MemoryArtifactProvenanceStore(host_dir / "trust.sqlite")
+memory = Memory.from_workspace(
+    root, config=memory_config, initialize=False, reindex=False,
+    revision_fence=origins.revision_fence("main"),
+)
+kit = HostKit(memory, artifact_provenance=trust, dreaming_enabled=True)
+# Build the graph with this kit. Pass authenticated TurnTrust on each new turn.
+```
+
+For this single-agent example, the agent id is `main`. The host supplies
+`corpus_entries(agent_id) -> Sequence[SessionCorpusEntry]`: each entry identifies a real session
+id, session key and readable transcript source. Persist only an approved memory-facing
+projection; apply the host's redaction policy before persistence. Do not store raw runtime
+context. The acceptance test uses scratch JSONL, not OpenClaw's session database. The API's
+`transcript_source="sqlite"` name follows the upstream admission branch; it does not adopt
+OpenClaw's SQLite session storage.
+
+```python
+from memory_core.consolidation.dreaming import DreamingIngestion, run_dreaming_sweep
+
+sweep = run_dreaming_sweep(
+    config=memory_config, store=memory.store, agent_id="main", origins=origins,
+    phase="light", now_ms=now_ms, timezone="UTC",
+    ingestion=DreamingIngestion(
+        provenance=trust, agent_ids=("main",), corpus_entries=corpus_entries,
+    ),
+)
+memory.store.reindex(memory.workspace)
+```
+
+`now_ms` is the host's current epoch time in milliseconds. Pass the user's timezone instead of
+UTC for their local day. This call ingests signals and runs the existing light phase; complete
+phase-runtime parity remains open. Generated session corpus is indexed as `corpus="sessions"`.
+`HostKit(dreaming_enabled=True, on_event=...)` records recall events for `corpus="memory"` hits
+only. Source lineage comes from ingestion; do not attribute a search hit to its current caller.
+
+For a selected session, supply `session` (its `SessionState`) and the same callback/stores:
+
+```python
+from memory_core.consolidation.forget import SessionInstance, forget_memory_entries
+
+options = dict(
+    config=memory_config, agent_id="main", origins=origins,
+    session_ids=[session.session_id],
+    instances=[SessionInstance("main", session.session_id, session.session_key, now_ms)],
+    corpus_entries=corpus_entries, artifact_provenance=trust, store=memory.store,
+    now_ms=now_ms,
+)
+preview = forget_memory_entries(**options, dry_run=True)
+# Review preview.to_json() according to the host's deletion policy.
+report = forget_memory_entries(**options)
+memory.store.reindex(memory.workspace)
+```
+
+The dry run does not change files or the index revision. Commit writes session tombstones,
+purges the selected generated corpus and origin rows, and removes promoted entries by lineage.
+A promoted entry with mixed lineage is deleted whole. A rebuild started before the forget can
+raise `MemoryIndexRevisionConflictError`; retry the rebuild against the new revision.
+Same-session ingestion stays excluded by the tombstone.
+
+**Forget is not complete data erasure.** Upstream's `memory-forget.ts` reports curated writes;
+`cli-index-search.runtime.ts` calls them "Curated writes retained". Session snapshots reported
+in `report.curated_writes` can remain searchable after reindex. Source transcripts and previous
+LangGraph checkpoints also remain. The host must separately implement its approved retention
+or deletion policy for these files, checkpoints, backups and other derived copies. A session-id
+tombstone does not prevent the same fact from returning in a different session. No checkpoint
+purge, archive retention policy or content-wide erasure was added by this acceptance update.
+
 ### Adapter
 
 `memory_core.adapters.langgraph` (also exported by `memory_core.adapters`) reads LangChain
@@ -148,7 +271,7 @@ models convert; it imports no framework, owns no loop and calls no model.
 
 | Name | What |
 | --- | --- |
-| `transcript_rows(messages)` | the kit's `{"role", "content"}` rows of LangChain messages (objects or dict forms) for `after_turn` and `on_new_session`; never a `type` key |
+| `transcript_rows(messages)` | the kit's `{"role", "content"}` rows of LangChain messages (objects or dict forms), plus the allowed host metadata described above, for `after_turn` and `on_new_session`; never a `type` key |
 | `turn_usage(message)` | `TurnUsage` from an AI message's `usage_metadata`, else `None` |
 | `has_tool_calls(message)` | valid or invalid tool calls, for routing |
 | `tool_messages(message, dispatch)` | one `{"role": "tool", ...}` dict per tool call, valid and invalid, answered through `kit.dispatcher(session)` or `FlushRequest.dispatch` |
@@ -169,7 +292,25 @@ earlier auto-recall node, was removed in 0.2.0 (L1, confirmed by Doruk on 2026-0
   `MEMORY_CORE_LIVE_OPENAI=1`, `OPENAI_API_KEY` and `OPENAI_MODEL` (`OPENAI_BASE_URL`
   optional); skipped otherwise. It has not run against a real model on this branch yet.
 
-Measured 2026-09-29 on the branch: offline 1387 passed, 312 skipped at `5171e6e` and 1395
+Measured 2026-10-07 on `c47883a`: **109 passed** in 7.52 s across the graph and adapter modules,
+using the frozen lock (Python 3.12.7, LangGraph 1.2.12, langchain-core 1.6.5,
+langchain-openai 1.6.6). This includes actual graph execution, trust across reset/retry/rebuild,
+quarantine, flush retry recovery/exhaustion, host recall events, manual ingestion, forget
+dry-run/commit, retained snapshots, same-session tombstones and a deterministically interleaved
+stale-index rebuild. It is not a concurrent stress test. Model answers are scripted. The
+terminal and usage transport cases use `ChatOpenAI` against a local HTTP stub. No real-provider
+call or full oracle rerun is included in these results.
+
+Full isolated offline verification on the same code plus these guide updates, 2026-10-07:
+**1831 passed, 1625 skipped, 0 failed/errors** in 99.61 s. Ruff passed. Matrix and project-name
+checks are included in that suite. The oracle opt-in and live-provider opt-in were unset;
+provider keys were blank, tracing was disabled, and tests used a scratch `TMPDIR` without
+writing bytecode or pytest cache. The primary checkout's older environment was not used.
+Independent review also ran all three advanced guide snippets unchanged in scratch with a
+real graph, scripted model and host-supplied session sources. The actual CLI subprocess
+without model/key configuration exited with its explicit setup error before a provider call.
+
+Historical evidence, measured 2026-09-29 on the branch: offline 1387 passed, 312 skipped at `5171e6e` and 1395
 passed, 312 skipped after the review fixes (`caa244e`..`2b685d9`, eight new tests; baseline at
 `79a1b5c`: 1347 passed, 311 skipped), ruff and the name check clean; the oracle suite at
 `7388ea0` (v2026.9.6, Node 24) 254 passed, 81 xfailed, 3 skipped, 0 failed of 338, the
@@ -188,8 +329,8 @@ What building this host showed about the host kit's API, confirmed while impleme
 design below (numbers kept from Design; F22-F26 are new). Evidence: **test** is a named offline
 test in `tests/unit/test_langgraph_agent.py` or `tests/unit/test_langgraph_adapter.py`,
 **probe** a scratch run on the tested versions, **source** read but not run. Verdict: the six
-entry points were enough; nothing needed a kit change to work, but a LangGraph host needs about
-200 lines of graph code and five adapter helpers, and the items marked **kit** would remove glue
+entry points were enough; nothing needed a kit change to work, but a LangGraph host needs
+graph code and five adapter helpers, and the items marked **kit** would remove glue
 or a trap. Addressed on `feat/kit-langgraph-fixes` (2026-09-29, decision L10; docs/host_kit.md ›
 LangGraph findings): F1, F2, F3, F7, F12, F21, F22, F24 and F26, each row naming its commits
 (`0ba1cfc` is the branch's docs commit; the review fixes after it are `a851890`..`64770c7`).
@@ -325,6 +466,8 @@ only in the tests.
 
 ```text
                 START
+                  |
+            capture_trust                                checkpoint authenticated host flags
                   |  route_input: is the last message a human "/new ..." or "/reset ..."?
           yes     |                      no
     +-------------+-----------------------+
@@ -356,11 +499,19 @@ class AgentState(TypedDict):
     memory_turn: NotRequired[dict | None]         # TurnState.to_json(), the turn in flight
     memory_reset: NotRequired[dict | None]        # ResetTurn.to_json() of a bare /new, for prepare
     memory_maintenance: NotRequired[dict | None]  # the last maintenance: the gate and the flush
+    memory_turn_trust: NotRequired[dict[str, bool] | None]  # current authenticated host flags
+
+
+@dataclass(frozen=True)
+class TurnTrust:
+    sender_is_owner: bool              # exact bool, supplied by the authenticated host
+    turn_tainted: bool = False         # exact bool; validated in __post_init__
 
 
 @dataclass
 class AgentContext:                    # the run context (context_schema)
     runtime_context: str | None = None  # the host's per-turn text (channel, sender)
+    trust: TurnTrust | None = None
 ```
 
 - `messages` holds what upstream's transcript holds: user messages, replies, tool calls and
@@ -374,6 +525,7 @@ class AgentContext:                    # the run context (context_schema)
   passes no runtime context.
 - The run context itself is not checkpointed, but the turn's marker-wrapped runtime context and
   system prompt are: `memory_turn` holds them from `prepare` to `maintain` (F11).
+  The explicit trust flags are separately checkpointed by `capture_trust` before host work.
 - The `memory_*` keys hold JSON values only and `messages` holds LangChain messages, which are
   on the checkpoint serializer's safe list (`langgraph/checkpoint/serde/_msgpack.py:57`), so the
   state also loads under a strict serializer (`JsonPlusSerializer(allowed_msgpack_modules=None)`,
@@ -383,12 +535,13 @@ class AgentContext:                    # the run context (context_schema)
 
 | Node | Kit call | Reads | Writes |
 | --- | --- | --- | --- |
-| `route_input` (conditional edge from START) | none | the last message | the next node |
+| `capture_trust` (edge from START) | none | `runtime.context.trust`, the active user message | `memory_turn_trust`; active user ownership metadata when trust is supplied |
+| `route_input` (conditional edge from `capture_trust`) | none | the last message | the next node |
 | `new_session` | `kit.on_new_session(ending, command=, session_id=, transcript=transcript_rows(messages), text=, redactor=)` | `memory_session` (or a first `SessionState.new`) | `messages`: remove all, then the new session's first row; `memory_session`: `NewSession.session`; `memory_reset` for a bare command |
 | `prepare` | `kit.before_turn(session, runtime_context=...)` with its per-turn ensure | `memory_session`, `memory_reset`, `runtime.context` (may be `None`) | `memory_turn`: `TurnState.from_context(context, reset=ResetTurn.from_json(memory_reset))`; `memory_reset`: `None`; `memory_session` only for a thread's first `SessionState.new` |
-| `agent` | `kit.repair_tool_calls(rows, allowed_tool_names=<the offered tools' names>)` through the adapter's `repair_tool_calls`, then the host's model | `memory_turn`, `messages` | `messages`: the AI message |
+| `agent` | `kit.repair_tool_calls(rows, allowed_tool_names=<the offered tools' names>)` through the adapter's `repair_tool_calls`, then the host's model | `memory_turn`, `memory_turn_trust`, `messages` | `messages`: the AI message, marked tainted when the trust snapshot requires it |
 | `tools` | `tool_messages(last, kit.dispatcher(turn.session))` | `memory_turn`, the last AI message | `messages`: one tool message per call |
-| `maintain` | `kit.after_turn(turn.session, transcript=transcript_rows(messages), usage=turn_usage(last), context_window_tokens=, redact=)`; for a request `request.messages`, `.tools`, `.dispatch`, `.complete(session, error=, redact=)` | `memory_turn`, `messages` | `memory_session`, `memory_turn`: `None`, `memory_maintenance` |
+| `maintain` | `kit.after_turn(turn.session, transcript=transcript_rows(messages), usage=turn_usage(last), context_window_tokens=, redact=, untrusted_turn=)`; for a request `request.messages`, `.tools`, `.dispatch`, `.complete(session, error=, redact=)` | `memory_turn`, `memory_turn_trust`, `messages` | `memory_session`, `memory_turn`: `None`, `memory_turn_trust`: `None`, `memory_maintenance` |
 
 Not wired, on purpose: `heartbeat_prompt` (it needs the host's scheduler; L7), `request_flush`
 (a memory-core extension with no upstream counterpart; the example has no `/flush`) and
@@ -516,6 +669,11 @@ def run_flush(request: FlushRequest, session: SessionState) -> FlushOutcome:
   holds only its last 15 lines. Checkpoint retention is the host's (F11).
 
 ### Error handling
+
+The trust snapshot survives a failed `prepare`, `new_session` or `agent` node. Resume with
+`graph.invoke(None, config)` without reconstructing trust from client data. A fresh message
+starts a fresh snapshot. This guarantee concerns the two explicit trust flags; run context
+such as `runtime_context` is not itself checkpointed before `prepare` builds `TurnState`.
 
 | Failure | Node | Behaviour |
 | --- | --- | --- |

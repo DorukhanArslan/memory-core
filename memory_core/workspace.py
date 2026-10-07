@@ -6,6 +6,7 @@ import stat
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from memory_core.bootstrap._js import js_trim
 from memory_core.memory_paths import (
@@ -15,6 +16,9 @@ from memory_core.memory_paths import (
     validate_daily_memory_path,
 )
 from memory_core.session_corpus import MemoryCoreSessionCorpus
+
+if TYPE_CHECKING:
+    from memory_core.memory_write_provenance import MemoryWriteProvenanceObserver
 
 # Root memory file name (OpenClaw src/memory/root-memory-files.ts
 # CANONICAL_ROOT_MEMORY_FILENAME). The legacy lowercase `memory.md` is a
@@ -193,17 +197,24 @@ def check_writable_memory_file(root: Path, rel_path: str) -> None:
         raise UnsafeMemoryPathError(f"{rel_path} has more than one hard link")
 
 
-def append_daily_memory_file(root: str | os.PathLike[str], rel_path: str, entry: str) -> Path:
+def append_daily_memory_file(
+    root: str | os.PathLike[str],
+    rel_path: str,
+    entry: str,
+    *,
+    provenance: MemoryWriteProvenanceObserver | None = None,
+) -> Path:
     """:meth:`MemoryWorkspace.append_daily_memory` under the file's write lock.
 
     The shared daily append of the curated daily note and the memory flush's ``write`` tool:
     ``rel_path`` must be ``memory/YYYY-MM-DD.md`` and pass :func:`check_writable_memory_file`.
+    ``provenance`` is the write observer of the flush (:mod:`memory_core.memory_write_provenance`).
     """
     resolved = Path(root).resolve()
     validate_daily_memory_path(rel_path)
     with workspace_file_lock(resolved, rel_path):
         check_writable_memory_file(resolved, rel_path)
-        return MemoryWorkspace(resolved).append_daily_memory(rel_path, entry)
+        return MemoryWorkspace(resolved).append_daily_memory(rel_path, entry, provenance=provenance)
 
 
 @dataclass(frozen=True)
@@ -349,7 +360,19 @@ class MemoryWorkspace:
             raise MemoryPathNotAllowedError(MEMORY_PATH_NOT_ALLOWED_ERROR)
         return rel_path, abs_path
 
-    def append_daily_memory(self, rel_path: str, entry: str) -> Path:
+    def append_daily_memory(
+        self,
+        rel_path: str,
+        entry: str,
+        *,
+        provenance: MemoryWriteProvenanceObserver | None = None,
+    ) -> Path:
+        """Append ``entry`` to the daily note ``rel_path`` (``memory/YYYY-MM-DD.md``).
+
+        With a ``provenance`` observer (the flush's trust record, upstream's
+        ``createMemoryWriteProvenanceObserver``) the file's trust is recorded before the append
+        (the text before and the text the append produces) and rolled back when the append fails.
+        """
         validate_daily_memory_path(rel_path)
         lexical_path = self.root / rel_path
         if lexical_path.is_symlink():
@@ -359,17 +382,29 @@ class MemoryWorkspace:
             raise UnsafeMemoryPathError(f"memory path escapes workspace: {rel_path}")
 
         path.parent.mkdir(parents=True, exist_ok=True)
-        if entry.strip():
-            text = entry.rstrip("\r\n")
-            needs_separator = False
-            if path.exists() and path.stat().st_size > 0:
-                with path.open("rb") as existing:
-                    existing.seek(-1, 2)
-                    needs_separator = existing.read(1) != b"\n"
+        if not entry.strip():
+            return path
+        text = entry.rstrip("\r\n")
+        needs_separator = False
+        if path.exists() and path.stat().st_size > 0:
+            with path.open("rb") as existing:
+                existing.seek(-1, 2)
+                needs_separator = existing.read(1) != b"\n"
+
+        def commit() -> None:
             with path.open("a", encoding="utf-8") as handle:
                 if needs_separator:
                     handle.write("\n")
                 handle.write(f"{text}\n")
+
+        if provenance is None:
+            commit()
+            return path
+        from memory_core.memory_write_provenance import read_text_or_empty
+
+        before = read_text_or_empty(path)
+        after = f"{before}{chr(10) if needs_separator else ''}{text}\n"
+        provenance.write(absolute_path=path, content_before=before, content_after=after, commit=commit)
         return path
 
     def read_text(

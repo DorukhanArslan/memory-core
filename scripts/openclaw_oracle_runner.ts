@@ -114,6 +114,7 @@ type Payload = {
   recallScenarios?: Array<Record<string, any>>;
   backfillScenarios?: Array<Record<string, any>>;
   ingestScenarios?: Array<Record<string, any>>;
+  provenanceScenarios?: Array<Record<string, any>>;
   sessionScenarios?: Array<Record<string, any>>;
   agentIds?: string[];
   lockProbe?: Record<string, any>;
@@ -4264,6 +4265,7 @@ async function main() {
     "recordRecallScenarios",
     "sessionBackfillLineage",
     "dailyIngestionScenarios",
+    "memoryWriteProvenance",
     "sessionArtifactNames",
     "sessionIngestionScenarios",
   ]);
@@ -5087,6 +5089,80 @@ async function main() {
           })),
         },
       };
+    }
+
+    if (payload.operation === "memoryWriteProvenance") {
+      // src/agents/memory-write-provenance.ts: the observer the flush's write tool and the
+      // session-memory hook attach to their file writes, over the real trust store. A step writes
+      // (or deletes) one file through the observer; the trust records of the workspace are
+      // reported after every step.
+      const observerModule = await importFromRepo(
+        repoPath,
+        "src/agents/memory-write-provenance.ts",
+      );
+      const artifactProvenance = await importFromRepo(
+        repoPath,
+        "src/memory/memory-artifact-provenance.ts",
+      );
+      const scenarioResults: unknown[] = [];
+      for (const scenario of payload.provenanceScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        await fs.mkdir(workspaceDir, { recursive: true });
+        const stepResults: unknown[] = [];
+        for (const step of scenario.steps ?? []) {
+          let result: unknown = null;
+          let error: string | null = null;
+          try {
+            const target = path.isAbsolute(step.path) ? step.path : path.join(workspaceDir, step.path);
+            if (step.kind === "symlink") {
+              await fs.mkdir(path.dirname(target), { recursive: true });
+              await fs.symlink(
+                path.isAbsolute(step.target) ? step.target : path.join(workspaceDir, step.target),
+                target,
+              );
+            } else if (step.kind === "mkdir") {
+              await fs.mkdir(target, { recursive: true });
+            } else {
+              const observer = observerModule.createMemoryWriteProvenanceObserver({
+                mutationRoot: workspaceDir,
+                workspaceDir,
+                resolveOriginClass: () => step.originClass ?? "agent",
+                ...(typeof step.sessionId === "string" ? { sessionId: step.sessionId } : {}),
+                ...(typeof step.sessionKey === "string" ? { sessionKey: step.sessionKey } : {}),
+                now: () => Number(step.observedAt ?? 0),
+              });
+              if (step.kind === "classifies") {
+                result = await observer.classifies(target);
+              } else if (step.kind === "write") {
+                await fs.mkdir(path.dirname(target), { recursive: true });
+                await observer.write({
+                  absolutePath: target,
+                  contentBefore: step.contentBefore ?? "",
+                  contentAfter: step.contentAfter ?? "",
+                  commit: async () => {
+                    if (step.failCommit === true) {
+                      throw new Error("commit failed");
+                    }
+                    await fs.writeFile(target, step.contentAfter ?? "", "utf-8");
+                  },
+                });
+              } else if (step.kind === "delete") {
+                await fs.rm(target, { force: true });
+                await observer.clearAfterDelete(target, step.contentBefore ?? "");
+              }
+            }
+          } catch (caught) {
+            error = String((caught as Error).message);
+          }
+          stepResults.push({
+            result,
+            error,
+            records: await artifactProvenance.listMemoryArtifactProvenance({ workspaceDir }),
+          });
+        }
+        scenarioResults.push({ name: scenario.name, steps: stepResults });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
     }
 
     if (payload.operation === "applyPromotionScenarios") {

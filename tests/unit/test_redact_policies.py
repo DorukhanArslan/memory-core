@@ -25,6 +25,7 @@ def _clean_state():
 
 
 def test_registry_registers_encoded_and_json_forms_raw_last():
+    base = secret_registry.get_secret_redaction_registry_revision()
     secret_registry.register_secret_value_for_redaction("a b\"c\\d é 😀 secret")
     snapshot = secret_registry.capture_secret_redaction_registry_snapshot()
     assert snapshot.values == (
@@ -32,7 +33,7 @@ def test_registry_registers_encoded_and_json_forms_raw_last():
         'a b\\"c\\\\d é 😀 secret',
         'a b"c\\d é 😀 secret',
     )
-    assert secret_registry.get_secret_redaction_registry_revision() == 4  # reset + 3 forms
+    assert secret_registry.get_secret_redaction_registry_revision() - base == 3  # one per form
 
 
 def test_registry_ignores_short_values_and_counts_utf16_units():

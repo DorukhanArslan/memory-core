@@ -596,6 +596,29 @@ scenario(
 )
 
 
+# --- computeSensitiveRedactionBitmap: where redaction would replace a unit ------------------------------------
+def _bitmap_texts() -> list[str]:
+    from test_redact_oracle import FIXTURES, _fuzz_texts
+
+    return [text for _, text in FIXTURES if len(text) < 5000] + _fuzz_texts(41, 400, 14)
+
+
+_BITMAP_TEXTS = _bitmap_texts()
+scenario(
+    "bitmap-default-patterns",
+    [{"fn": "bitmap", "text": text} for text in _BITMAP_TEXTS],
+)
+scenario(
+    "bitmap-user-patterns",
+    [
+        {"fn": "bitmap", "text": text, "patterns": patterns}
+        for patterns in (["CUST-\\d+", "/foo(bar)/i", "/\\u{1F600}+/u"], [{"matcher": "cust"}, "x*"], [])
+        for text in USER_TEXTS + EXTRA_TEXTS + MATCHER_TEXTS
+    ]
+    + [{"fn": "bitmap", "text": text, "mode": "off"} for text in USER_TEXTS[:3]],
+)
+
+
 @functools.cache
 def _fixed_oracle() -> list[dict]:
     return oracle_run([scn for _, scn in SCENARIOS])

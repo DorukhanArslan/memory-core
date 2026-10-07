@@ -141,6 +141,11 @@ def run_python(scenario: dict) -> dict:
                 out = secret_registry.redact_registered_secret_values(
                     step["text"], lambda value, index: f"<{_units(value)}@{index}>"
                 )
+            elif fn == "bitmap":
+                flags = redact.compute_sensitive_redaction_bitmap(
+                    step["text"], mode=step.get("mode", "tools"), patterns=_map_patterns(step.get("patterns"))
+                )
+                out = [index for index, flag in enumerate(flags) if flag]
             elif fn == "compile":
                 compiled = compile_redact_pattern(step["pattern"])
                 out = (

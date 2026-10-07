@@ -4218,6 +4218,17 @@ async function main() {
                   (value: string, index: number) => `<${value.length}@${index}>`,
                 );
                 break;
+              case "bitmap": {
+                const bitmap = redact.computeSensitiveRedactionBitmap(
+                  step.text,
+                  redact.resolveRedactOptions({
+                    mode: step.mode ?? "tools",
+                    patterns: mapPatterns(step.patterns),
+                  }),
+                );
+                out = bitmap.flatMap((flag: boolean, index: number) => (flag ? [index] : []));
+                break;
+              }
               case "compile": {
                 const [source, flags] = runtime.parseRedactPatternSource(step.pattern);
                 const compiled = step.pattern.trim()

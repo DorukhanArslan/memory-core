@@ -45,7 +45,7 @@ Host policy surface (all oracle-verified, ``tests/integration/test_redact_polici
   prefilter, no chunking).
 
 Not ported (docs/gap6-redaction-notes.md): the log-record transport (``redactLogRecord*``,
-``redactSensitiveLines``, ``computeSensitiveRedactionBitmap``), the source-code policy
+``redactSensitiveLines``), the source-code policy
 (``redactInputTextWithSourcePolicy``, needs a JavaScript tokenizer) and the per-block provenance
 cache (``prepareModelVisibleToolTextBlock``).
 """
@@ -2016,6 +2016,113 @@ def create_sensitive_text_redactor(snapshot: SensitiveTextRedactionSnapshot) -> 
 def get_default_redact_patterns() -> list[str]:
     """``getDefaultRedactPatterns``: the default string patterns."""
     return list(DEFAULT_REDACT_STRING_PATTERNS)
+
+
+# --- computeSensitiveRedactionBitmap ---------------------------------------------------------------------
+def _iterate_matches(text: str, pattern: _Pattern) -> Iterator[tuple[str, list[str], int, re.Match[str] | None]]:
+    """``iterateRedactMatches`` over ``text`` (in the pattern's own coordinates: UTF-16 units, code
+    points for a ``u``-flag configured pattern): every match, left to right, an empty match
+    advancing the search by one position."""
+    if pattern.regex is None:
+        for found in pattern.matcher(text):
+            yield found[0], found[1], found[2], None
+        return
+    regex = pattern.regex
+    sticky = pattern.user is not None and pattern.user.sticky
+    position = 0
+    while position <= len(text):
+        match = regex.match(text, position) if sticky else regex.search(text, position)
+        if match is None:
+            return
+        if pattern.lookbehind and not _base64_lookbehind_ok(text, match.end(1)):
+            position = match.start() + 1
+            continue
+        yield match.group(0), [g or "" for g in match.groups()], match.start(), match
+        position = match.end() if match.end() > match.start() else match.end() + 1
+
+
+def compute_sensitive_redaction_bitmap(
+    text: str, *, mode: str = "tools", patterns: Sequence[RedactPattern] | None = None
+) -> list[bool]:
+    """``computeSensitiveRedactionBitmap``: one flag per UTF-16 code unit of ``text``, true where
+    redaction would replace the unit (structured authorization parameters, URL query values, form
+    bodies and every pattern's secret span, each judged on the original text)."""
+    units = to_units(text)
+    bitmap = [False] * len(units)
+    if _normalize_mode(mode) == "off" or not text:
+        return bitmap
+    joined = from_units(units)
+    astral = joined != units
+    prefix = [0]
+    if astral:
+        for char in joined:
+            prefix.append(prefix[-1] + (2 if ord(char) > 0xFFFF else 1))
+
+    def mark_units(start: int, end: int) -> None:
+        for index in range(max(0, start), min(len(bitmap), end)):
+            bitmap[index] = True
+
+    def mark_cp(start: int, end: int) -> None:
+        mark_units(prefix[start] if astral else start, prefix[end] if astral else end)
+
+    def mark_assignments(segment: str, kind: str, offset: int) -> None:
+        _visit_sensitive_assignments(segment, kind, lambda start, end, _maskable: mark_cp(offset + start, offset + end))
+
+    def mark_form_line(line: str, offset: int) -> None:
+        if not line:
+            return
+        mark_assignments(line, "encoded", offset)
+        mark_assignments(line, "context", offset)
+        if "&" not in line:
+            return
+        if _FORM_BODY_RE.match(line):
+            mark_assignments(line, "form", offset)
+            return
+        for found in _FORM_BODY_SUBSTRING_RE.finditer(line):
+            lead = found.group(1) or ""
+            mark_assignments(found.group(2) or "", "form", offset + found.start() + len(lead))
+
+    for start, end in find_structured_auth_param_ranges(joined):
+        mark_cp(start, end)
+    mark_assignments(joined, "url", 0)
+    if _FORM_BODY_LINE_BREAK_SPLIT_RE.search(joined):
+        cursor = 0
+        for segment in _FORM_BODY_LINE_BREAK_SPLIT_RE.split(joined):
+            if not _FORM_BODY_LINE_BREAK_SEGMENT_RE.match(segment):
+                mark_form_line(segment, cursor)
+            cursor += len(segment)
+    else:
+        mark_form_line(joined, 0)
+
+    for pattern in _resolve_patterns(patterns):
+        coordinates = joined if pattern.user is not None and pattern.user.unicode else units
+        in_units = coordinates is units
+
+        def to_unit(index: int, coordinates: str = coordinates, in_units: bool = in_units) -> int:
+            return index if in_units else len(to_units(coordinates[:index]))
+
+        for match, groups, offset, regex_match in _iterate_matches(coordinates, pattern):
+            if "PRIVATE KEY-----" in match:
+                mark_units(to_unit(offset), to_unit(offset + len(match)))
+                continue
+            selected_index = -1
+            selected_value = match
+            for index, value in enumerate(groups):
+                if value:
+                    selected_index = index
+                    selected_value = value
+            if selected_value == match:
+                token_start = 0
+            elif regex_match is not None and selected_index >= 0:
+                token_start = regex_match.start(selected_index + 1) - offset
+            else:
+                token_start = match.rfind(selected_value)
+            if token_start < 0:
+                continue
+            secret = _split_form_aware_credential_value(selected_value)[0] if pattern.form_aware else selected_value
+            _, _, mask_start, mask_end = _split_secret_value_for_mask(secret)
+            mark_units(to_unit(offset + token_start + mask_start), to_unit(offset + token_start + mask_end))
+    return bitmap
 
 
 # --- redactModelVisibleSecrets (structured, model-visible tool output) ----------------------------

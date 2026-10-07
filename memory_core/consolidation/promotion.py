@@ -259,6 +259,7 @@ class PromotionEvaluation:
     claim_hash: str | None = None
     project_key: str | None = None
     provenance: dict[str, Any] | None = None
+    promoted_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -779,12 +780,16 @@ def rank_short_term_promotion_candidates(
     min_unique_queries: int,
     max_age_days: int = -1,
     recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
+    include_promoted: bool = False,
+    weights: Mapping[str, float] | None = None,
 ) -> list[PromotionCandidate]:
     """Return up to ``limit`` gated candidates, best score first.
 
-    ``max_age_days < 0`` disables the age gate. Entries already promoted, with contaminated
-    snippets or with an untrusted or system origin (``isPromotionOriginBlocked``: apply rejects
-    them too, so they are excluded before scoring and the candidate limit) are never candidates.
+    ``max_age_days < 0`` disables the age gate. ``include_promoted`` includes previously
+    promoted entries for inspection. Partial ``weights`` override the component defaults
+    before nonnegative normalization (short-term-promotion-utils.ts ``normalizeWeights``).
+    Contaminated snippets and untrusted or system origins are always excluded
+    (``isPromotionOriginBlocked`` also rejects these origins during apply).
     """
     candidates = [
         _evaluation_to_candidate(evaluation)
@@ -796,6 +801,8 @@ def rank_short_term_promotion_candidates(
             min_unique_queries=min_unique_queries,
             max_age_days=max_age_days,
             recency_half_life_days=recency_half_life_days,
+            include_promoted=include_promoted,
+            weights=weights,
         )
         if not evaluation.reasons and not is_promotion_origin_blocked(evaluation.provenance)
     ]
@@ -814,15 +821,18 @@ def evaluate_short_term_promotion_candidates(
     min_unique_queries: int,
     max_age_days: int = -1,
     recency_half_life_days: float = DEFAULT_RECENCY_HALF_LIFE_DAYS,
+    include_promoted: bool = False,
+    weights: Mapping[str, float] | None = None,
 ) -> list[PromotionEvaluation]:
     """Score every live recall entry and list the gates it fails, best score first."""
     store = read_recall_store(recall_store_path(config.workspace_dir), now_ms)
     phase_signals = read_phase_signal_store(phase_signal_store_path(config.workspace_dir), now_ms)
     phase_entries = phase_signals.get("entries", {})
+    normalized_weights = _normalize_promotion_weights(weights)
     evaluations = []
     for raw in store["entries"].values():
         key = str(raw.get("key") or "")
-        if not key or raw.get("promotedAt"):
+        if not key or (not include_promoted and raw.get("promotedAt")):
             continue
         if is_contaminated_dreaming_snippet(str(raw.get("snippet") or "")):
             continue
@@ -851,9 +861,11 @@ def evaluate_short_term_promotion_candidates(
             phase_entries=phase_entries if isinstance(phase_entries, dict) else {},
             recency_half_life_days=recency_half_life_days,
         )
-        score = _candidate_score(components)
+        raw_score = _candidate_score(components, normalized_weights)
+        score = clamp_score(raw_score)
         reasons = []
-        if score < min_score:
+        # Upstream gates the weighted score before clamping the candidate output.
+        if raw_score < min_score:
             reasons.append(f"score {score:.3f} < {min_score:.3f}")
         if signal_count < min_recall_count:
             reasons.append(f"signals {signal_count} < {min_recall_count}")
@@ -887,6 +899,7 @@ def evaluate_short_term_promotion_candidates(
                 claim_hash=raw.get("claimHash") or None,
                 project_key=raw.get("projectKey") or None,
                 provenance=raw.get("provenance") if isinstance(raw.get("provenance"), dict) else None,
+                promoted_at=raw.get("promotedAt") or None,
             )
         )
     return sorted(evaluations, key=lambda evaluation: evaluation.score, reverse=True)
@@ -1247,6 +1260,7 @@ def _evaluation_to_candidate(evaluation: PromotionEvaluation) -> PromotionCandid
         claim_hash=evaluation.claim_hash,
         project_key=evaluation.project_key,
         provenance=evaluation.provenance,
+        promoted_at=evaluation.promoted_at,
     )
 
 
@@ -1290,14 +1304,28 @@ def _candidate_components(
     }
 
 
-def _candidate_score(components: dict[str, float]) -> float:
+def _normalize_promotion_weights(weights: Mapping[str, float] | None) -> dict[str, float]:
+    """OpenClaw eb377ac59e6 short-term-promotion-utils.ts ``normalizeWeights``."""
+    merged = {}
+    total = 0.0
+    for key, default in PROMOTION_COMPONENT_WEIGHTS.items():
+        value = float(weights.get(key, default)) if weights is not None else default
+        # Math.max preserves NaN; Python's max(0, NaN) would silently turn it into zero.
+        merged[key] = value if math.isnan(value) else max(0.0, value)
+        total += merged[key]
+    if total <= 0:
+        return dict(PROMOTION_COMPONENT_WEIGHTS)
+    return {key: value / total for key, value in merged.items()}
+
+
+def _candidate_score(components: dict[str, float], weights: Mapping[str, float]) -> float:
     # Left-to-right float addition like the upstream expression
     # (short-term-promotion.ts rankShortTermPromotionCandidates). Python 3.12's
     # built-in sum() compensates rounding and can differ in the last ulp.
     weighted = 0.0
-    for key, weight in PROMOTION_COMPONENT_WEIGHTS.items():
+    for key, weight in weights.items():
         weighted += weight * float(components.get(key) or 0)
-    return clamp_score(weighted + float(components.get("phaseBoost") or 0))
+    return weighted + float(components.get("phaseBoost") or 0)
 
 
 def _phase_signal_age_days(last_seen_at: Any, now_ms: int) -> float | None:

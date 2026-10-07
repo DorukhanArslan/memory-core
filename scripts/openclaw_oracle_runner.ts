@@ -61,6 +61,8 @@ type Payload = {
   minUniqueQueries?: number;
   maxAgeDays?: number;
   recencyHalfLifeDays?: number;
+  includePromoted?: boolean;
+  weights?: Record<string, number>;
   memoryFileMaxChars?: number;
   maxPriorEntryLossFraction?: number;
   maxPromotedSnippetTokens?: number;
@@ -4901,17 +4903,32 @@ async function main() {
     }
 
     if (payload.operation === "rankShortTermPromotionCandidates") {
-      const policy = await resolvePromotionPolicy(repoPath, payload);
-      const candidates = await promotion.rankShortTermPromotionCandidates({
-        workspaceDir: payload.workspaceDir,
-        nowMs,
-        limit: policy.limit,
-        minScore: policy.minScore,
-        minRecallCount: policy.minRecallCount,
-        minUniqueQueries: policy.minUniqueQueries,
-        maxAgeDays: policy.maxAgeDays,
-        recencyHalfLifeDays: policy.recencyHalfLifeDays,
-      });
+      const rankCandidates = async (options: Payload) => {
+        const policy = await resolvePromotionPolicy(repoPath, options);
+        return promotion.rankShortTermPromotionCandidates({
+          workspaceDir: payload.workspaceDir,
+          nowMs,
+          limit: policy.limit,
+          minScore: policy.minScore,
+          minRecallCount: policy.minRecallCount,
+          minUniqueQueries: policy.minUniqueQueries,
+          maxAgeDays: policy.maxAgeDays,
+          recencyHalfLifeDays: policy.recencyHalfLifeDays,
+          includePromoted: options.includePromoted,
+          weights: options.weights,
+        });
+      };
+      if (Array.isArray(payload.cases)) {
+        const cases = [];
+        for (const item of payload.cases) {
+          cases.push({
+            name: item.name,
+            candidates: await rankCandidates({ ...payload, ...item }),
+          });
+        }
+        return { ok: true, operation: payload.operation, result: { cases } };
+      }
+      const candidates = await rankCandidates(payload);
       return { ok: true, operation: payload.operation, result: { candidates } };
     }
 

@@ -1,0 +1,120 @@
+"""Pinned rank options; fixture from short-term-promotion-scoring.test.ts:199-218."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from memory_core.config import MemoryConfig
+from memory_core.consolidation.promotion import (
+    PROMOTION_COMPONENT_WEIGHTS,
+    evaluate_short_term_promotion_candidates,
+    rank_short_term_promotion_candidates,
+)
+
+NOW_MS = 1775210460000  # 2026-04-03T10:01:00.000Z
+NOW_ISO = "2026-04-03T10:01:00.000Z"
+RELEVANCE_ONLY = {
+    "frequency": 0,
+    "relevance": 1,
+    "diversity": 0,
+    "recency": 0,
+    "consolidation": 0,
+    "conceptual": 0,
+}
+
+
+def _workspace(tmp_path: Path, **overrides: Any) -> MemoryConfig:
+    entry = {
+        "key": "boundary",
+        "path": "memory/2026-04-01.md",
+        "startLine": 1,
+        "endLine": 1,
+        "source": "memory",
+        "snippet": "boundary durable note",
+        "recallCount": 0,
+        "dailyCount": 1,
+        "groundedCount": 0,
+        "totalScore": 0.75,
+        "maxScore": 0.75,
+        "firstRecalledAt": "2026-04-01T10:00:00.000Z",
+        "lastRecalledAt": NOW_ISO,
+        "queryHashes": ["query-a"],
+        "userQueryHashes": ["query-a"],
+        "recallDays": ["2026-04-03"],
+        "conceptTags": [],
+        **overrides,
+    }
+    recall = tmp_path / "memory/.dreams/short-term-recall.json"
+    recall.parent.mkdir(parents=True)
+    recall.write_text(
+        json.dumps({"version": 1, "updatedAt": NOW_ISO, "entries": {entry["key"]: entry}}),
+        encoding="utf-8",
+    )
+    return MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "index.sqlite")
+
+
+def _rank(config: MemoryConfig, **options: Any):
+    return rank_short_term_promotion_candidates(
+        config=config,
+        now_ms=NOW_MS,
+        limit=10,
+        min_recall_count=0,
+        min_unique_queries=0,
+        **{"min_score": 0, **options},
+    )
+
+
+def test_include_promoted_retains_the_original_promotion_timestamp(tmp_path: Path):
+    config = _workspace(tmp_path, promotedAt=NOW_ISO)
+    assert _rank(config) == []
+    candidates = _rank(config, include_promoted=True)
+    assert [c.key for c in candidates] == ["boundary"]
+    assert candidates[0].promoted_at == NOW_ISO
+    evaluations = evaluate_short_term_promotion_candidates(
+        config=config, now_ms=NOW_MS, min_score=0, min_recall_count=0,
+        min_unique_queries=0, include_promoted=True,
+    )
+    assert [e.key for e in evaluations] == ["boundary"]
+
+
+def test_relevance_only_weights_control_the_inclusive_score_gate(tmp_path: Path):
+    config = _workspace(tmp_path)
+    candidates = _rank(config, weights=RELEVANCE_ONLY, min_score=0.75)
+    assert [c.score for c in candidates] == [0.75]
+    assert _rank(config, weights=RELEVANCE_ONLY, min_score=0.750001) == []
+    evaluations = evaluate_short_term_promotion_candidates(
+        config=config, now_ms=NOW_MS, min_score=0.750001, min_recall_count=0,
+        min_unique_queries=0, weights=RELEVANCE_ONLY,
+    )
+    assert evaluations[0].score == 0.75
+    assert evaluations[0].reasons == ("score 0.750 < 0.750",)
+
+
+@pytest.mark.parametrize("weights", [{"relevance": 3}, {"frequency": -1, "recency": 2}])
+def test_partial_weights_merge_defaults_then_normalize(tmp_path: Path, weights: dict[str, float]):
+    config = _workspace(tmp_path)
+    candidate = _rank(config, weights=weights)[0]
+    merged = {**PROMOTION_COMPONENT_WEIGHTS, **weights}
+    total = sum(max(0, value) for value in merged.values())
+    expected = sum(max(0, value) * candidate.components[key] / total for key, value in merged.items())
+    assert candidate.score == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("weights", [{key: 0 for key in RELEVANCE_ONLY},
+                                    {key: -2 for key in RELEVANCE_ONLY}])
+def test_nonpositive_weights_restore_default_scores(tmp_path: Path, weights: dict[str, float]):
+    config = _workspace(tmp_path)
+    assert _rank(config, weights=weights) == _rank(config)
+
+
+@pytest.mark.parametrize("weight", [float("nan"), float("inf")])
+def test_nonfinite_weight_gate_uses_raw_score_before_output_clamping(tmp_path: Path, weight: float):
+    # normalizeWeights permits nonfinite numbers. JS's NaN < minScore is false,
+    # then rankShortTermPromotionCandidates clamps the returned candidate score to zero.
+    config = _workspace(tmp_path)
+    candidates = _rank(config, weights={"relevance": weight}, min_score=0.75)
+    assert [c.score for c in candidates] == [0]

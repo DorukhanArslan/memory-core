@@ -677,7 +677,7 @@ class ResetTurn:
 
 - Composes, in the kit's order: `memory_core/session_memory.py:save_session_memory(root,
   session_key, session_id, messages=transcript | session_file, source, now_ms, timezone,
-  slug_generator, redactor)`; a reindex, so `memory_search` finds the new file;
+  slug_generator, redactor, artifact_provenance=self._artifact_provenance)`; a reindex, so `memory_search` finds the new file;
   `ensure()` (upstream's ensure runs before the reset reply, `get-reply.ts:443-448`; it stays here
   because the reset prompt's bootstrap mode must see the file just saved); for a bare command
   (`text` empty) `memory_core/bootstrap/startup.py:resolve_bare_session_reset_prompt_state(root, now_ms,
@@ -686,6 +686,10 @@ class ResetTurn:
   `should_apply_startup_context(command)`, and `format_session_reset_transcript_prompt(command,
   identity)`. `model_prompt` joins the startup prelude and the reset prompt with a blank line, as
   `prompt-prelude.ts:200-212` builds the model's message (the transcript row: `:224-225`).
+- With `HostKit(artifact_provenance=store)`, the session-memory writer reserves the rendered
+  projection's origin, content hash, source session and time before file publication. A failed
+  publication rolls back the reservation; a filename collision rolls it back before retrying.
+  A store error prevents publication. Without the optional store, writes remain untracked.
 - The saved file is written before the startup context is read, so the next session's prelude
   can quote it. Upstream writes it from a background queue, so its order is not fixed.
 - The reset turn then runs like any turn: the host sends `reset.model_prompt` through

@@ -10,6 +10,13 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Added
 
+- Bounded small-port closeout (2026-10-07): promotion ranking accepts optional
+  `include_promoted` and normalized custom `weights`; fresh daily-only entries can enter
+  light/REM staging; transcript navigation honors reset fences; session-memory writes accept
+  `artifact_provenance`, forwarded by `HostKit.on_new_session`, with trust reservation before
+  exclusive publication and rollback on failed writes/collisions. Pinned oracle checks cover
+  these helpers. Complete phase/runtime parity and Python/V8 exact-threshold numeric parity
+  remain open (see parity matrix audit note 31).
 - `memory_core.host`, the host kit (docs/host_kit.md): one `HostKit` per workspace with
   `tools()`, `dispatch()`, `before_turn()`, `after_turn()`, `on_new_session()` and
   `heartbeat_prompt()`, one `SessionState` per session, and the handles they return
@@ -191,11 +198,12 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
             full-context mode, tool-payload, field-value and transcript policies)
             (`test_redact_policies_oracle.py` 181 tests, `test_redact_user_regex_oracle.py`).
             Defaults are unchanged byte for byte.
-    - Still not ported (the parity matrix rows keep the gaps): the light and REM phase bodies
-      staging daily-only entries and the REM branch of the diary builder
-      (`previewGroundedRemForFile`); callers for the forget flow, the ingestions and the provenance
-      wiring (no CLI or scheduler; `save_session_memory` writes no trust record); the index's
-      `memory_index_sources`, vector and per-chunk provenance rows; `installContextEngineLoopHook`,
+    - Remaining boundaries (current evidence: parity matrix audit note 31): complete light/REM
+      phase ordering, narrative/evidence, freshness/restaging and publication locks, plus the REM
+      diary preview (`previewGroundedRemForFile`); automatic forget/ingestion scheduling and the
+      asynchronous `installContextEngineLoopHook` belong to the host. Session-memory trust is now
+      wired through the optional host store. Package gaps include the index's
+      `memory_index_sources`, vector and per-chunk provenance rows;
       `normalizeMessagesForLlmBoundary`, `sanitizeCompactionReplayMessages` and the transport
       handler that records Responses context usage; a real `Model` catalogue; the redaction
       log-record transport, `redact-source.ts` and `prepareModelVisibleToolTextBlock`; SQLite session

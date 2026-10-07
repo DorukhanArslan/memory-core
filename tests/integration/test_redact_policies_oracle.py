@@ -637,7 +637,7 @@ def test_scenario_matches_upstream(index: int):
 
 
 # Valid JavaScript this port reports as unsupported (dropped like an invalid entry), see
-# docs/gap6-redaction-notes.md.
+# docs/parity_matrix.md, audit note 30 and the Redaction row.
 UNSUPPORTED = ["(?<n>a)|(?<n>b)", "(?<=;base64,[A-Za-z0-9+/=]*)zz", "/\\p{L}+/u", "/\\P{Lu}/u", "(?<=a+)b", "(?<!\\d{1,3})x", "a{99999999999}"]
 
 

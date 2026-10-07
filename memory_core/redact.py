@@ -44,7 +44,7 @@ Host policy surface (all oracle-verified, ``tests/integration/test_redact_polici
   (:func:`mark_full_context_tool_payload_redaction`: every pattern over the whole text, no
   prefilter, no chunking).
 
-Not ported (docs/gap6-redaction-notes.md): the log-record transport (``redactLogRecord*``,
+Not ported (docs/parity_matrix.md, audit note 30 and the Redaction row): the log-record transport (``redactLogRecord*``,
 ``redactSensitiveLines``), the source-code policy
 (``redactInputTextWithSourcePolicy``, needs a JavaScript tokenizer) and the per-block provenance
 cache (``prepareModelVisibleToolTextBlock``).

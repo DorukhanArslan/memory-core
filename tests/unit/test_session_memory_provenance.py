@@ -1,6 +1,7 @@
 """Session hook provenance composition (handler.ts:253-271, OpenClaw v2026.9.6)."""
 
 import hashlib
+import errno
 from pathlib import Path
 
 import pytest
@@ -119,3 +120,42 @@ def test_host_new_session_forwards_its_trust_store(tmp_path: Path):
     )
     record = store.read(workspace_dir=root, relative_path=result.saved.rel_path)
     assert record is not None and record.origin_class == "untrusted"
+
+
+def test_failed_fallback_fsync_removes_partial_file_before_trust_rollback(tmp_path, monkeypatch):
+    root = tmp_path / "ws"
+    store = MemoryArtifactProvenanceStore(tmp_path / "trust.sqlite")
+    fsync = session_memory.os.fsync
+    calls = []
+
+    def no_hard_links(*args):
+        raise OSError(errno.EPERM, "hard links not supported")
+
+    def fail_final_fsync(fd):
+        calls.append(fd)
+        if len(calls) == 2:
+            raise OSError("disk full")
+        fsync(fd)
+
+    monkeypatch.setattr(session_memory.os, "link", no_hard_links)
+    monkeypatch.setattr(session_memory.os, "fsync", fail_final_fsync)
+    with pytest.raises(OSError, match="disk full"):
+        _save(root, store)
+    assert list((root / "memory").iterdir()) == []
+    assert store.list(root) == []
+
+
+def test_temporary_cleanup_failure_keeps_published_file_tracked(tmp_path, monkeypatch):
+    root = tmp_path / "ws"
+    store = MemoryArtifactProvenanceStore(tmp_path / "trust.sqlite")
+    unlink = session_memory.os.unlink
+
+    def fail_temporary_cleanup(path, *args, **kwargs):
+        if str(path).endswith(".tmp"):
+            raise OSError("cleanup failed")
+        unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(session_memory.os, "unlink", fail_temporary_cleanup)
+    saved = _save(root, store)
+    record = store.read(workspace_dir=root, relative_path=saved.rel_path)
+    assert record is not None and record.file_hash == hashlib.sha256(saved.path.read_bytes()).hexdigest()

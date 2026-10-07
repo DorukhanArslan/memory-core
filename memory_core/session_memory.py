@@ -1007,10 +1007,20 @@ def _create_exclusive(path: Path, data: bytes) -> bool:
         fd = os.open(path, _EXCLUSIVE_FLAGS, 0o666)
     except FileExistsError:
         return False
-    with os.fdopen(fd, "wb") as handle:
-        handle.write(data)
-        handle.flush()
-        os.fsync(handle.fileno())
+    created = os.fstat(fd)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        # The no-hard-link fallback writes the final name directly. A failed write must
+        # remove its own partial file before the observer rolls back the trust reservation.
+        with contextlib.suppress(FileNotFoundError):
+            current = path.stat(follow_symlinks=False)
+            if (current.st_dev, current.st_ino) == (created.st_dev, created.st_ino):
+                path.unlink()
+        raise
     return True
 
 
@@ -1035,7 +1045,10 @@ def _publish_new_file(memory_dir: Path, filename: str, data: bytes) -> bool:
             if not _create_exclusive(memory_dir / filename, data):
                 return False
     finally:
-        with contextlib.suppress(FileNotFoundError):
+        # A successfully linked final file is already published. Cleanup must not turn that
+        # success into an error that would roll back its provenance; hidden temp cleanup is
+        # best effort, also preserving the original error on a failed publication.
+        with contextlib.suppress(OSError):
             os.unlink(temporary)
     _fsync_directory(memory_dir)
     return True

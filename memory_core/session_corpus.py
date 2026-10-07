@@ -36,7 +36,12 @@ class MemoryCoreSessionCorpus:
         agent_id: str = "main",
         runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
         redact_text: Callable[[str], str] | None = None,
+        is_forgotten: Callable[[str], bool] | None = None,
     ):
+        # A forgotten session (a tombstone in the origins ledger) is never indexed again:
+        # ``is_forgotten(session_id)`` (upstream: manager-session-sync-ops.ts filters the corpus
+        # by ``listMemorySessionTombstones``).
+        self.is_forgotten = is_forgotten
         self.state_dir = state_dir.resolve()
         self.agent_id = agent_id
         # Decides which heartbeat transcript row (HEARTBEAT_TRANSCRIPT_PROMPT) is
@@ -60,6 +65,8 @@ class MemoryCoreSessionCorpus:
             if not path.is_file() or not _is_inside(path, self.sessions_dir.resolve()):
                 continue
             session_id = file_name[: -len(".jsonl")]
+            if self.is_forgotten is not None and self.is_forgotten(session_id):
+                continue
             files.append(
                 SessionCorpusFile(
                     rel_path=f"sessions/{self.agent_id}/{session_id}.jsonl",

@@ -114,6 +114,7 @@ type Payload = {
   recallScenarios?: Array<Record<string, any>>;
   backfillScenarios?: Array<Record<string, any>>;
   ingestScenarios?: Array<Record<string, any>>;
+  forgetScenarios?: Array<Record<string, any>>;
   provenanceScenarios?: Array<Record<string, any>>;
   sessionScenarios?: Array<Record<string, any>>;
   agentIds?: string[];
@@ -4265,6 +4266,7 @@ async function main() {
     "recordRecallScenarios",
     "sessionBackfillLineage",
     "dailyIngestionScenarios",
+    "forgetScenarios",
     "memoryWriteProvenance",
     "sessionArtifactNames",
     "sessionIngestionScenarios",
@@ -5161,6 +5163,218 @@ async function main() {
           });
         }
         scenarioResults.push({ name: scenario.name, steps: stepResults });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
+    }
+
+    if (payload.operation === "forgetScenarios") {
+      // memory-forget.ts forgetMemoryEntries over seeded workspaces: files, the recall and phase
+      // stores, the session ingestion checkpoint, preimages, origin rows, trust records, sessions
+      // (SQLite session store), index chunks and sources. A scenario runs a list of forget calls;
+      // the report and the state of every artifact are reported after each call.
+      const forget = await importFromRepo(repoPath, "extensions/memory-core/src/memory-forget.ts");
+      const origins = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/memory-entry-origins.ts",
+      );
+      const sqliteRuntime = await importFromRepo(repoPath, "src/plugin-sdk/sqlite-runtime.ts");
+      const sessionIngestion = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/session-ingestion.ts",
+      );
+      const dreamingStateModule = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/dreaming-state.ts",
+      );
+      const artifacts = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/dreaming-consolidation-artifacts.ts",
+      );
+      const artifactProvenance = await importFromRepo(
+        repoPath,
+        "src/memory/memory-artifact-provenance.ts",
+      );
+      const memorySchema = await importFromRepo(
+        repoPath,
+        "packages/memory-host-sdk/src/host/memory-schema.ts",
+      );
+      const sessionsSdk = await importFromRepo(
+        repoPath,
+        "src/plugin-sdk/memory-core-host-engine-sessions.ts",
+      );
+      const paths = await importFromRepo(repoPath, "src/config/sessions/paths.ts");
+      const sessionStore = await importFromRepo(repoPath, "src/plugin-sdk/session-store-runtime.ts");
+      const transcriptStore = await importFromRepo(
+        repoPath,
+        "src/plugin-sdk/session-transcript-runtime.ts",
+      );
+      const scenarioResults: unknown[] = [];
+      for (const scenario of payload.forgetScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        const agentId = String(scenario.agentId);
+        const cfg = { agents: { list: [{ id: agentId, workspace: workspaceDir }] } };
+        await fs.mkdir(workspaceDir, { recursive: true });
+        for (const [relativePath, content] of Object.entries(scenario.files ?? {})) {
+          const target = path.join(workspaceDir, relativePath);
+          await fs.mkdir(path.dirname(target), { recursive: true });
+          await fs.writeFile(target, String(content), "utf-8");
+        }
+        await seedPromotionStateFromWorkspace(promotionState, workspaceDir);
+        if (scenario.sessionIngestion) {
+          await sessionIngestion.writeSessionIngestionState(workspaceDir, {
+            version: 3,
+            files: scenario.sessionIngestion.files ?? {},
+            seenMessages: scenario.sessionIngestion.seenMessages ?? {},
+          });
+        }
+        if (Array.isArray(scenario.backups)) {
+          await dreamingStateModule.writeMemoryCoreWorkspaceEntries({
+            namespace: "dreaming-memory-backups",
+            workspaceDir,
+            entries: (scenario.backups as Array<Record<string, unknown>>).map((value) => ({
+              key: `${value.createdAt}:${String(value.contentHash).slice(0, 12)}`,
+              value,
+            })),
+          });
+        }
+        await fs.mkdir(path.dirname(sqliteRuntime.resolveOpenClawAgentSqlitePath({ agentId })), {
+          recursive: true,
+        });
+        const agentDb = sqliteRuntime.openOpenClawAgentDatabase({ agentId }).db;
+        memorySchema.ensureMemoryIndexSchema({ db: agentDb, cacheEnabled: true, ftsEnabled: true });
+        for (const row of scenario.origins ?? []) {
+          origins.recordMemoryEntryOrigins({ agentId, origins: [row] });
+        }
+        if (Array.isArray(scenario.tombstones) && scenario.tombstones.length > 0) {
+          origins.recordMemorySessionTombstonesInDatabase(agentDb, {
+            agentId,
+            sessionIds: scenario.tombstones,
+            createdAt: 1,
+          });
+        }
+        for (const seed of scenario.provenance ?? []) {
+          await artifactProvenance.recordMemoryArtifactWriteProvenance({
+            workspaceDir,
+            relativePath: seed.relativePath,
+            contentBefore: seed.contentBefore ?? "",
+            contentAfter: seed.contentAfter ?? "",
+            originClass: seed.originClass,
+            observedAt: seed.observedAt,
+            ...(typeof seed.sessionId === "string" ? { sessionId: seed.sessionId } : {}),
+            ...(typeof seed.sessionKey === "string" ? { sessionKey: seed.sessionKey } : {}),
+          });
+        }
+        let chunkCounter = 0;
+        for (const chunk of scenario.chunks ?? []) {
+          chunkCounter += 1;
+          agentDb
+            .prepare(
+              "INSERT INTO memory_index_chunks (id, path, source, start_line, end_line, hash, model, text, embedding, updated_at) VALUES (?, ?, ?, 1, 1, ?, 'm', ?, X'00', 1)",
+            )
+            .run(`chunk-${chunkCounter}`, chunk.path, chunk.source ?? "memory", `h${chunkCounter}`, chunk.text);
+        }
+        for (const source of scenario.sources ?? []) {
+          agentDb
+            .prepare(
+              "INSERT INTO memory_index_sources (path, source, hash, mtime, size) VALUES (?, ?, 'h', 1, 1)",
+            )
+            .run(source.path, source.source ?? "memory");
+        }
+        const sessionsDir: string = paths.resolveSessionTranscriptsDirForAgent(agentId);
+        const storePath = path.join(sessionsDir, "sessions.json");
+        await fs.mkdir(sessionsDir, { recursive: true });
+        for (const session of scenario.sessions ?? []) {
+          const sessionKey = session.sessionKey ?? `agent:${agentId}:${session.sessionId}`;
+          await sessionStore.upsertSessionEntry({
+            agentId,
+            sessionKey,
+            storePath,
+            entry: {
+              sessionId: session.sessionId,
+              updatedAt: Number(scenario.createdAt ?? nowMs) + Number(session.createdOffset ?? 0),
+              ...(session.entry ?? {}),
+            },
+          });
+          for (const message of session.messages ?? []) {
+            await transcriptStore.appendSessionTranscriptMessageByIdentity({
+              agentId,
+              sessionId: session.sessionId,
+              sessionKey,
+              storePath,
+              message,
+            });
+          }
+        }
+        const corpusEntries = (
+          await sessionsSdk.listSessionTranscriptCorpusEntriesForAgent(agentId)
+        ).map((entry: Record<string, unknown>) => ({
+          agentId: entry.agentId,
+          sessionId: entry.sessionId,
+          sessionKey: entry.sessionKey ?? null,
+          sessionKind: entry.sessionKind ?? null,
+          artifactKind: entry.artifactKind ?? null,
+          transcriptSource: entry.transcriptSource ?? null,
+          generatedByDreamingNarrative: entry.generatedByDreamingNarrative === true,
+          generatedByCronRun: entry.generatedByCronRun === true,
+        }));
+        const runResults: unknown[] = [];
+        for (const run of scenario.runs ?? []) {
+          let report: unknown = null;
+          let error: string | null = null;
+          try {
+            report = await forget.forgetMemoryEntries({
+              cfg,
+              agentId,
+              ...(Array.isArray(run.sessionIds) ? { sessionIds: run.sessionIds } : {}),
+              ...(Array.isArray(run.hookSources) ? { hookSources: run.hookSources } : {}),
+              ...(Array.isArray(run.participants) ? { participants: run.participants } : {}),
+              ...(run.since !== undefined ? { since: run.since } : {}),
+              ...(run.dryRun === true ? { dryRun: true } : {}),
+            });
+          } catch (caught) {
+            error = String((caught as Error).message);
+          }
+          await exportPromotionStateToWorkspace(promotionState, workspaceDir, nowMs);
+          const tree = await snapshotWorkspaceTree(workspaceDir);
+          const files = Object.fromEntries(
+            Object.entries(tree).filter(([relative]) => !relative.startsWith("memory/.dreams/")),
+          );
+          const recallStore = (await promotionState.readRecallStore(
+            workspaceDir,
+            new Date(nowMs).toISOString(),
+          )) as Record<string, unknown>;
+          const phaseStore = (await promotionState.readPhaseSignalStore(
+            workspaceDir,
+            new Date(nowMs).toISOString(),
+          )) as Record<string, unknown>;
+          const preimages = (await artifacts.readMemoryPreimages(workspaceDir)).map(
+            (entry: { value: unknown }) => entry.value,
+          );
+          const revision = (
+            agentDb.prepare("SELECT revision FROM memory_index_state WHERE id = 1").get() as
+              | { revision: number }
+              | undefined
+          )?.revision;
+          runResults.push({
+            report,
+            error,
+            files,
+            recall: withSortedEntries(recallStore).entries,
+            phase: withSortedEntries(phaseStore).entries,
+            sessionState: await sessionIngestion.readSessionIngestionState(workspaceDir),
+            preimages,
+            origins: origins.listMemoryEntryOrigins({ agentId }),
+            tombstones: origins.listMemorySessionTombstones({ agentId }),
+            revision,
+            chunks: agentDb
+              .prepare("SELECT path, source, text FROM memory_index_chunks ORDER BY path, source, text")
+              .all(),
+            sources: agentDb
+              .prepare("SELECT path, source FROM memory_index_sources ORDER BY path, source")
+              .all(),
+          });
+        }
+        scenarioResults.push({ name: scenario.name, corpusEntries, runs: runResults });
       }
       return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
     }

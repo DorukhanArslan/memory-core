@@ -12,6 +12,7 @@ from typing import Any
 
 from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
+from memory_core.consolidation.origins import IndexRevisionFence
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.index.chunking import MemoryChunk, chunk_markdown
 from memory_core.index.fts import bm25_rank_to_score, build_fts_query
@@ -91,7 +92,16 @@ def validate_store_config(config: MemoryConfig, embeddings: EmbeddingProvider | 
 
 
 class SQLiteMemoryStore:
-    def __init__(self, config: MemoryConfig, embeddings: EmbeddingProvider | None):
+    def __init__(
+        self,
+        config: MemoryConfig,
+        embeddings: EmbeddingProvider | None,
+        *,
+        revision_fence: IndexRevisionFence | None = None,
+    ):
+        # The ``memory_index_state`` fence a rebuild is published against (see :meth:`reindex`);
+        # assignable after construction, ``None`` (default) means no fence.
+        self.revision_fence = revision_fence
         self.path = validate_store_config(config, embeddings)
         self.config = config
         self.flags = config.effective_flags()
@@ -223,7 +233,18 @@ class SQLiteMemoryStore:
         ``Buffer.toString("utf-8")`` replaces invalid bytes, so an AppleDouble
         ``._*.md`` or a Latin-1 note never fails the reindex, and a file that
         vanished after discovery is skipped (upstream returns ``null``).
+
+        With a ``revision_fence`` (:class:`~memory_core.consolidation.origins.IndexRevisionFence`) the
+        rebuild is published like upstream's (``manager-sync-ops.ts``, ``publishMemoryDatabaseTables``):
+        the ``memory_index_state`` revision is read before anything is built and compared again in the
+        publication transaction, so a forget (a session tombstone) or any other index mutation in between
+        raises :class:`~memory_core.consolidation.origins.MemoryIndexRevisionConflictError` and leaves the
+        published index untouched (the caller retries); a successful publication bumps the revision (the
+        index tables' triggers upstream), which fails a rebuild that was prepared before it. See the fence
+        for what is atomic when the index lives in another file than the ledger.
         """
+        fence = self.revision_fence
+        expected_revision = fence.read() if fence is not None else None
         files = workspace.discover_indexable_files()
         chunks: list[MemoryChunk] = []
         indexed_files = 0
@@ -255,7 +276,14 @@ class SQLiteMemoryStore:
             embeddings = [[] for _ in chunks]
 
         vector_dims = len(embeddings[0]) if embeddings and embeddings[0] else None
+        same_database = fence is not None and fence.same_database(self.path)
+        if fence is not None and not same_database:
+            fence.assert_unchanged(expected_revision)
         with self.connect() as db:
+            if fence is not None and same_database:
+                # The publication transaction owns the write lock before the revision is compared.
+                db.execute("BEGIN IMMEDIATE")
+                fence.assert_unchanged_in(db, expected_revision)
             db.execute("DELETE FROM chunks")
             db.execute("DELETE FROM chunks_fts")
             db.execute("DELETE FROM paths_fts")
@@ -286,6 +314,10 @@ class SQLiteMemoryStore:
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 (MEMORY_INDEX_META_KEY, js_json_stringify(self._build_index_meta(vector_dims))),
             )
+            if fence is not None and same_database:
+                fence.bump_in(db)
+        if fence is not None and not same_database:
+            fence.bump()
 
         return indexed_files
 

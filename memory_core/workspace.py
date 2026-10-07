@@ -4,6 +4,7 @@ import os
 import re
 import stat
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -234,7 +235,17 @@ class MemoryReadResult:
 
 
 class MemoryWorkspace:
-    def __init__(self, root: Path, *, openclaw_state_dir: Path | None = None, agent_id: str = "main"):
+    def __init__(
+        self,
+        root: Path,
+        *,
+        openclaw_state_dir: Path | None = None,
+        agent_id: str = "main",
+        is_session_forgotten: Callable[[str], bool] | None = None,
+    ):
+        # ``is_session_forgotten(session_id)``: forgotten sessions leave the index and stay out
+        # (the origins ledger's tombstones, ``MemoryEntryOriginLedger.list_session_tombstones``).
+        self.is_session_forgotten = is_session_forgotten
         self.root = root.resolve()
         self.openclaw_state_dir = openclaw_state_dir.resolve() if openclaw_state_dir else None
         self.agent_id = agent_id
@@ -264,7 +275,9 @@ class MemoryWorkspace:
                         )
                     )
         if self.openclaw_state_dir is not None:
-            corpus = MemoryCoreSessionCorpus(self.openclaw_state_dir, agent_id=self.agent_id)
+            corpus = MemoryCoreSessionCorpus(
+                self.openclaw_state_dir, agent_id=self.agent_id, is_forgotten=self.is_session_forgotten
+            )
             files.extend(
                 MemoryFile(
                     item.rel_path,

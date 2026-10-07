@@ -22,6 +22,7 @@ from memory_core.consolidation.dreaming import DreamingIngestion, run_dreaming_s
 from memory_core.consolidation.origins import MemoryEntryOriginLedger
 from memory_core.consolidation.session_ingestion import SessionCorpusEntry
 from memory_core.consolidation.store import recall_store_path
+from memory_core.consolidation._util import iso_ms
 from memory_core.flags import FeatureFlags
 from memory_core.host import HostKit, SessionState, TurnUsage
 
@@ -130,13 +131,14 @@ def _sweep_config(tmp_path: Path) -> tuple[MemoryConfig, Memory]:
     return config, Memory.from_workspace(root, config=config, initialize=False)
 
 
-def test_a_light_sweep_ingests_the_daily_notes_first(tmp_path: Path) -> None:
+@pytest.mark.parametrize("phase", ["light", "rem"])
+def test_a_sweep_stages_daily_only_notes_after_ingestion(tmp_path: Path, phase: str) -> None:
     config, memory = _sweep_config(tmp_path)
     events: list[dict[str, Any]] = []
     result = run_dreaming_sweep(
         config=config,
         store=memory.store,
-        phase="light",
+        phase=phase,
         now_ms=NOW_MS,
         timezone="UTC",
         ingestion=DreamingIngestion(),
@@ -146,9 +148,10 @@ def test_a_light_sweep_ingests_the_daily_notes_first(tmp_path: Path) -> None:
     assert result.session_ingestion is None  # no corpus given
     entries = json.loads(recall_store_path(config.workspace_dir).read_text("utf-8"))["entries"]
     assert [(e["dailyCount"], e["recallCount"]) for e in entries.values()] == [(1, 0)]
-    # The simplified light ranking still wants a recall (upstream's light phase also stages daily-only
-    # entries: a gap named in the parity matrix), so nothing is staged from the ingested note alone.
-    assert result.candidates == ()
+    # dreaming-phases.ts stages daily-only signals without interactive-query diversity gates.
+    assert len(result.candidates) == result.phase_signals_recorded == 1
+    assert result.candidates[0].daily_count == 1
+    assert result.candidates[0].recall_count == result.candidates[0].unique_queries == 0
     # A daily signal is recorded like a recall (only the grounded signal emits nothing): one event.
     assert [(e["type"], e["query"], e["resultCount"]) for e in events] == [
         ("memory.recall.recorded", "__dreaming_daily__:2026-09-25", 1)
@@ -161,6 +164,71 @@ def test_sweeps_without_ingestion_and_the_deep_phase_ingest_nothing(tmp_path: Pa
         result = run_dreaming_sweep(config=config, store=memory.store, phase=phase, now_ms=NOW_MS, timezone="UTC", ingestion=ingestion)
         assert result.daily_ingestion is None and result.session_ingestion is None
     assert not recall_store_path(config.workspace_dir).exists()
+
+
+@pytest.mark.parametrize("phase", ["light", "rem"])
+def test_historical_daily_only_ingestion_does_not_stage_stale_evidence(tmp_path: Path, phase):
+    config, memory = _sweep_config(tmp_path)
+    root = config.workspace_dir
+    (root / TARGET).rename(root / "memory" / "2026-09-15.md")
+    result = run_dreaming_sweep(
+        config=config, store=memory.store, phase=phase, now_ms=NOW_MS,
+        timezone="UTC", ingestion=DreamingIngestion(),
+    )
+    assert result.daily_ingestion is not None and result.daily_ingestion.batches
+    assert result.candidates == () and result.phase_signals_recorded == 0
+
+
+@pytest.mark.parametrize("phase", ["light", "rem"])
+def test_untrusted_daily_only_note_is_not_staged(tmp_path: Path, phase):
+    config, memory = _sweep_config(tmp_path)
+    root = config.workspace_dir
+    trust = MemoryArtifactProvenanceStore(tmp_path / "trust.sqlite")
+    trust.record_write(
+        workspace_dir=root, relative_path=TARGET, content_before="",
+        content_after=(root / TARGET).read_text("utf-8"), origin_class="untrusted", observed_at=NOW_MS,
+    )
+    result = run_dreaming_sweep(
+        config=config, store=memory.store, phase=phase, now_ms=NOW_MS,
+        timezone="UTC", ingestion=DreamingIngestion(provenance=trust),
+    )
+    assert result.daily_ingestion is not None and result.daily_ingestion.batches
+    assert result.candidates == () and result.phase_signals_recorded == 0
+
+
+@pytest.mark.parametrize("phase", ["light", "rem"])
+def test_phase_filters_before_limit_and_includes_promoted_daily_evidence(tmp_path, phase):
+    config, memory = _sweep_config(tmp_path)
+    ingest_daily_memory_signals(
+        config=config, now_ms=NOW_MS, lookback_days=14, limit=5, timezone="UTC",
+    )
+    path = recall_store_path(config.workspace_dir)
+    data = json.loads(path.read_text("utf-8"))
+    fresh = next(iter(data["entries"].values()))
+    fresh["promotedAt"] = iso_ms(NOW_MS)
+    data["entries"]["older"] = {
+        **fresh, "key": "older", "dailyCount": 10, "totalScore": 10,
+        "recallDays": ["2026-09-15"],
+    }
+    # The existing tolerant rank reader ignores dict rows without a key.
+    data["entries"]["malformed"] = {"lastRecalledAt": iso_ms(NOW_MS), "recallDays": ["2026-09-25"]}
+    path.write_text(json.dumps(data), "utf-8")
+    result = run_dreaming_sweep(
+        config=config, store=memory.store, phase=phase, now_ms=NOW_MS, timezone="UTC", limit=1,
+    )
+    assert [candidate.key for candidate in result.candidates] == [fresh["key"]]
+    assert result.candidates[0].promoted_at == fresh["promotedAt"]
+
+
+def test_light_and_rem_use_their_own_default_lookback_windows(tmp_path):
+    config, memory = _sweep_config(tmp_path)
+    (config.workspace_dir / TARGET).rename(config.workspace_dir / "memory" / "2026-09-22.md")
+    for phase, expected in [("light", 0), ("rem", 1)]:
+        result = run_dreaming_sweep(
+            config=config, store=memory.store, phase=phase, now_ms=NOW_MS,
+            timezone="UTC", ingestion=DreamingIngestion(),
+        )
+        assert len(result.candidates) == expected
 
 
 def test_a_rem_sweep_ingests_sessions_and_skips_forgotten_ones(tmp_path: Path) -> None:

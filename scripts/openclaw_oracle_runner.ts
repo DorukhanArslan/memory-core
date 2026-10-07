@@ -4809,6 +4809,22 @@ async function main() {
     }
   }
 
+  if (payload.operation === "dreamingLookback") {
+    // Real dreaming-phases.ts filter; use persisted ISO/day fixture forms, not Date.parse fuzzing.
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-lookback-"));
+    process.env.OPENCLAW_STATE_DIR = sandbox;
+    try {
+      const phases = await importFromRepo(repoPath, "extensions/memory-core/src/dreaming-phases.ts");
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: (payload.cases ?? []).map((item: any) => phases.filterRecallEntriesWithinLookback(item)),
+      };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
   const promotionOperations = new Set([
     "recordShortTermRecalls",
     "recordShortTermRecallSequence",

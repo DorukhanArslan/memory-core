@@ -8,6 +8,7 @@ sent; nothing here calls a provider.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import itertools
 import json
 import os
@@ -249,8 +250,8 @@ def test_due_flush_runs_after_the_reply_and_writes_the_daily_file(tmp_path: Path
     state = graph.get_state(THREAD).values
 
     # The reply was in the stream before the flush model call started (upstream order).
-    assert recording.at_flush == ["prepare", "agent", "tools", "agent"]
-    assert seen == ["prepare", "agent", "tools", "agent", "maintain"]
+    assert recording.at_flush == ["capture_trust", "prepare", "agent", "tools", "agent"]
+    assert seen == ["capture_trust", "prepare", "agent", "tools", "agent", "maintain"]
     assert (tmp_path / DAILY).read_text(encoding="utf-8") == FACT + "\n"
     assert _session(state).entry["memoryFlush"] == {"kind": "succeeded", "compactionCount": 0}
     assert state["memory_maintenance"] == {
@@ -1213,3 +1214,131 @@ def test_langgraph_doc_lists_the_adapter_exports():
         "tool_messages",
         "repair_tool_calls",
     }
+
+
+def _trust_kit(root: Path):
+    from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
+
+    trust = MemoryArtifactProvenanceStore(root.parent / "trust.sqlite")
+    kit = HostKit.open(
+        root,
+        config=MemoryConfig(workspace_dir=root, flags=FeatureFlags(vector_search=False)),
+        artifact_provenance=trust,
+        now_ms=lambda: NOW_MS,
+    )
+    return kit, trust
+
+
+@pytest.mark.parametrize("owner,tainted,origin", [
+    (True, False, "agent"), (False, False, "untrusted"), (True, True, "untrusted"),
+])
+def test_host_trust_controls_flush_and_session_save(tmp_path: Path, owner, tainted, origin):
+    root = tmp_path / "workspace"
+    kit, trust = _trust_kit(root)
+    _, _, graph = _graph(root, memory_script(), kit=kit)
+    context = example.AgentContext(trust=example.TurnTrust(owner, tainted))
+
+    first = _say(graph, "Our codename is velvetkiwi.", context=context)
+
+    record = trust.read(workspace_dir=root, relative_path=DAILY)
+    assert record.origin_class == origin
+    assert record.file_hash == hashlib.sha256((root / DAILY).read_bytes()).hexdigest()
+    assert record.session_id == _session(first).session_id
+    assert first["memory_turn_trust"] is None
+    assert transcript_rows(first["messages"])[0]["__openclaw"]["senderIsOwner"] is owner
+
+    _say(graph, "/new")
+
+    (saved,) = _saved_session_files(root)
+    record = trust.read(workspace_dir=root, relative_path=saved.relative_to(root).as_posix())
+    assert record.origin_class == origin
+    assert record.file_hash == hashlib.sha256(saved.read_bytes()).hexdigest()
+    assert record.session_id == _session(first).session_id
+
+
+def test_trust_survives_a_failed_model_call_without_fresh_context(tmp_path: Path):
+    root = tmp_path / "workspace"
+    kit, trust = _trust_kit(root)
+    script = memory_script()
+    fail = {"on": True}
+
+    def flaky(call, calls):
+        if fail["on"]:
+            raise RuntimeError("provider down")
+        return script(call, calls)
+
+    _, _, graph = _graph(root, flaky, kit=kit)
+    context = example.AgentContext(trust=example.TurnTrust(True, True))
+    with pytest.raises(RuntimeError, match="provider down"):
+        _say(graph, "Our codename is velvetkiwi.", context=context)
+    snapshot = graph.get_state(THREAD)
+    assert snapshot.next == ("agent",)
+    assert snapshot.values["memory_turn_trust"] == {"senderIsOwner": True, "turnTainted": True}
+
+    fail["on"] = False
+    resumed = graph.invoke(None, THREAD)
+
+    assert resumed["memory_turn_trust"] is None
+    assert trust.read(workspace_dir=root, relative_path=DAILY).origin_class == "untrusted"
+    assert transcript_rows(resumed["messages"])[-1]["__openclaw"]["turnTainted"] is True
+
+
+def test_reset_replacement_keeps_owner_trust_across_graph_rebuild(tmp_path: Path):
+    root = tmp_path / "workspace"
+    kit, trust = _trust_kit(root)
+    saver = InMemorySaver()
+    _, _, graph = _graph(root, memory_script(usage=1_000), kit=kit, checkpointer=saver)
+    owner = example.AgentContext(trust=example.TurnTrust(True))
+    _say(graph, "Our codename is velvetkiwi.", context=owner)
+    state = _say(graph, "/new", context=owner)
+    assert transcript_rows(state["messages"])[0]["__openclaw"]["senderIsOwner"] is True
+
+    rebuilt_kit, same_store = _trust_kit(root)
+    _, _, rebuilt = _graph(root, memory_script(usage=1_000), kit=rebuilt_kit, checkpointer=saver)
+    _say(rebuilt, "/new", context=owner)
+
+    assert same_store.path == trust.path
+    for saved in _saved_session_files(root):
+        record = same_store.read(workspace_dir=root, relative_path=saved.relative_to(root).as_posix())
+        assert record.origin_class == "agent"
+        assert record.file_hash == hashlib.sha256(saved.read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize("options", [
+    {"sender_is_owner": "true"}, {"sender_is_owner": 1},
+    {"sender_is_owner": True, "turn_tainted": "false"},
+    {"sender_is_owner": True, "turn_tainted": 0},
+])
+def test_turn_trust_requires_actual_booleans(options):
+    with pytest.raises(TypeError, match="bool"):
+        example.TurnTrust(**options)
+
+
+@pytest.mark.parametrize("method", ["before_turn", "on_new_session"])
+def test_trust_survives_preparation_or_reset_failure(tmp_path: Path, monkeypatch, method):
+    root = tmp_path / "workspace"
+    kit, trust = _trust_kit(root)
+    _, _, graph = _graph(root, memory_script(), kit=kit)
+    if method == "on_new_session":
+        _say(graph, "Our codename is velvetkiwi.",
+             context=example.AgentContext(trust=example.TurnTrust(True)))
+    original = getattr(kit, method)
+    fail = {"on": True}
+
+    def unavailable(*args, **kwargs):
+        if fail["on"]:
+            raise OSError("host unavailable")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(kit, method, unavailable)
+    with pytest.raises(OSError, match="host unavailable"):
+        _say(graph, "/new" if method == "on_new_session" else "Our codename is velvetkiwi.",
+             context=example.AgentContext(trust=example.TurnTrust(False)))
+    snapshot = graph.get_state(THREAD)
+    assert snapshot.values["memory_turn_trust"] == {"senderIsOwner": False, "turnTainted": False}
+
+    fail["on"] = False
+    resumed = graph.invoke(None, THREAD)
+
+    assert resumed["memory_turn_trust"] is None
+    assert trust.read(workspace_dir=root, relative_path=DAILY).origin_class == "untrusted"

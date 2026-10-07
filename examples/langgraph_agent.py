@@ -88,6 +88,24 @@ class AgentState(TypedDict):
     memory_turn: NotRequired[dict[str, Any] | None]
     memory_reset: NotRequired[dict[str, Any] | None]
     memory_maintenance: NotRequired[dict[str, Any] | None]
+    memory_turn_trust: NotRequired[dict[str, bool] | None]
+
+
+@dataclass(frozen=True)
+class TurnTrust:
+    """Authenticated host facts for one turn, never values taken from message text.
+
+    The host resolves ownership and taint. These exact booleans feed the core's
+    ``senderIsOwner``/``turnTainted`` metadata and flush provenance observer; this example
+    does not authenticate a client or infer trust from runtime-context text.
+    """
+
+    sender_is_owner: bool
+    turn_tainted: bool = False
+
+    def __post_init__(self) -> None:
+        if type(self.sender_is_owner) is not bool or type(self.turn_tainted) is not bool:
+            raise TypeError("turn trust flags must be bool values")
 
 
 @dataclass
@@ -97,6 +115,16 @@ class AgentContext:
     # The host's per-turn text (channel, sender, time); the kit wraps it in the runtime
     # context markers.
     runtime_context: str | None = None
+    trust: TurnTrust | None = None
+
+
+def _with_trust_metadata(message: AnyMessage, **flags: bool) -> AnyMessage:
+    """Copy a host-stamped message; do not mutate a checkpoint's earlier value."""
+    extra = dict(message.additional_kwargs)
+    previous = extra.get("__openclaw")
+    metadata = dict(previous) if isinstance(previous, Mapping) else {}
+    extra["__openclaw"] = {**metadata, **flags}
+    return message.model_copy(update={"additional_kwargs": extra})
 
 
 def reset_command(message: Any) -> tuple[Literal["new", "reset"], str] | None:
@@ -231,6 +259,24 @@ def build_graph(
     def route_input(state: AgentState) -> str:
         return "new_session" if reset_command(state["messages"][-1]) else "prepare"
 
+    def capture_trust(state: AgentState, runtime: Runtime[AgentContext]) -> dict[str, Any]:
+        # Commit authenticated facts before fallible workspace/reset work. A contextless
+        # resume starts at the failed node and keeps this snapshot, like an agent retry does.
+        context = runtime.context
+        trust = context.trust if context is not None else None
+        update: dict[str, Any] = {
+            "memory_turn_trust": None if trust is None else {
+                "senderIsOwner": trust.sender_is_owner, "turnTainted": trust.turn_tainted,
+            },
+        }
+        if trust is not None:
+            active = active_user_index(state["messages"])
+            if active is not None:
+                update["messages"] = [
+                    _with_trust_metadata(state["messages"][active], senderIsOwner=trust.sender_is_owner)
+                ]
+        return update
+
     def new_session(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
         ending, _ = current_session(state, config)
         command, text = reset_command(state["messages"][-1])
@@ -245,8 +291,13 @@ def build_graph(
         # The thread's messages become the new session's transcript: its first row is the
         # reset row of a bare command (the model gets the reset prompt instead) or the text.
         first = new.reset.transcript_prompt if new.reset is not None else text
+        source = transcript_rows([state["messages"][-1]])[0]
+        metadata = {key: source[key] for key in ("provenance", "__openclaw") if key in source}
         return {
-            "messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), HumanMessage(first)],
+            "messages": [
+                RemoveMessage(id=REMOVE_ALL_MESSAGES),
+                HumanMessage(first, additional_kwargs=metadata),
+            ],
             "memory_session": new.session.to_json(),
             "memory_turn": None,
             "memory_reset": new.reset.to_json() if new.reset is not None else None,
@@ -283,6 +334,9 @@ def build_graph(
         reply = bound.invoke(model_input(turn, state["messages"], repair))
         if capped and has_tool_calls(reply):  # not stored: every call in state stays answered
             raise RuntimeError(f"the model asked for tools after {MAX_TOOL_ROUNDS} tool rounds")
+        trust = state.get("memory_turn_trust")
+        if trust is not None and trust["turnTainted"]:
+            reply = _with_trust_metadata(reply, turnTainted=True)
         return {"messages": [reply]}
 
     def tools(state: AgentState) -> dict[str, Any]:
@@ -310,12 +364,16 @@ def build_graph(
     def maintain(state: AgentState) -> dict[str, Any]:
         turn = TurnState.from_json(state["memory_turn"])
         messages = state["messages"]
+        trust = state.get("memory_turn_trust")
         record = kit.after_turn(
             turn.session,
             transcript=transcript_rows(messages),
             usage=turn_usage(messages[-1]),
             context_window_tokens=context_window_tokens,
             redact=redact,
+            untrusted_turn=trust is not None and (
+                not trust["senderIsOwner"] or trust["turnTainted"]
+            ),
         )
         decision = record.flush_decision
         session, failure, wrote = record.session, record.flush_failure, ()
@@ -325,6 +383,7 @@ def build_graph(
         return {
             "memory_session": session.to_json(),
             "memory_turn": None,
+            "memory_turn_trust": None,
             "memory_maintenance": {
                 "flush": decision.reason,
                 "tokenCount": decision.total_tokens,
@@ -343,12 +402,14 @@ def build_graph(
         }
 
     graph = StateGraph(AgentState, context_schema=AgentContext)
+    graph.add_node("capture_trust", capture_trust)
     graph.add_node("new_session", new_session)
     graph.add_node("prepare", prepare)
     graph.add_node("agent", agent)
     graph.add_node("tools", tools)
     graph.add_node("maintain", maintain)
-    graph.add_conditional_edges(START, route_input, ["new_session", "prepare"])
+    graph.add_edge(START, "capture_trust")
+    graph.add_conditional_edges("capture_trust", route_input, ["new_session", "prepare"])
     graph.add_edge("new_session", "prepare")
     graph.add_edge("prepare", "agent")
     graph.add_conditional_edges("agent", after_agent, ["tools", "maintain"])

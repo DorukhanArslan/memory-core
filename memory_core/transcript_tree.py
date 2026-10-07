@@ -28,6 +28,7 @@ _CANONICAL_SESSION_ENTRY_TYPES = frozenset(
         "thinking_level_change",
         "model_change",
         "compaction",
+        "reset",
         "branch_summary",
         "custom",
         "custom_message",
@@ -195,9 +196,30 @@ def scan_session_transcript_tree(entries: list[Any]) -> SessionTranscriptTree:
     has_explicit_leaf_update = False
     has_invalid_leaf_control = False
     invalid_leaf_control_ids: set[str] = set()
+    # OpenClaw scanSessionTranscriptNavigation: a reset fences later navigation
+    # and active appends to descendants of the latest reset boundary.
+    latest_reset_id: str | None = None
+    reset_descendant_ids: set[str] = set()
 
     for index, entry in enumerate(entries):
         explicit_tree_entry = parse_session_transcript_tree_entry(entry)
+        if (
+            latest_reset_id is not None
+            and leaf_id is not None
+            and explicit_tree_entry is not None
+            and not isinstance(explicit_tree_entry.leaf_id, _Unset)
+            and is_session_transcript_leaf_control(entry)
+            and (
+                explicit_tree_entry.leaf_id is None
+                or explicit_tree_entry.leaf_id not in reset_descendant_ids
+            )
+        ):
+            explicit_tree_entry = replace(
+                explicit_tree_entry,
+                parent_id=leaf_id,
+                leaf_id=leaf_id,
+                append_parent_id=leaf_id,
+            )
 
         def _is_known_leaf_reference(ref_id: str | None) -> bool:
             return ref_id is None or (ref_id in by_id and ref_id not in invalid_leaf_control_ids)
@@ -234,16 +256,33 @@ def scan_session_transcript_tree(entries: list[Any]) -> SessionTranscriptTree:
 
         tree_entry = explicit_tree_entry or _parse_parentless_canonical_entry(entry, leaf_id)
         if tree_entry is not None and is_canonical_session_transcript_entry(entry):
-            logical_parent_id = (
-                leaf_id
-                if (
+            canonical_parent_is_stale = (
+                explicit_tree_entry is not None
+                and tree_entry.parent_id is not None
+                and tree_entry.parent_id not in by_id
+                and leaf_id is not None
+            )
+            crosses_reset_boundary = (
+                latest_reset_id is not None
+                and tree_entry.append_mode != "side"
+                and (
+                    tree_entry.parent_id is None
+                    or tree_entry.parent_id not in reset_descendant_ids
+                )
+            )
+            if (
+                crosses_reset_boundary
+                or (tree_entry.append_mode != "side" and canonical_parent_is_stale)
+                or (
                     explicit_tree_entry is not None
                     and tree_entry.append_mode != "side"
                     and tree_entry.parent_id == append_parent_id
                     and leaf_id != append_parent_id
                 )
-                else tree_entry.parent_id
-            )
+            ):
+                logical_parent_id = leaf_id
+            else:
+                logical_parent_id = tree_entry.parent_id
             normalized_parent_id = _resolve_canonical_parent_id(logical_parent_id, by_id)
             if normalized_parent_id != tree_entry.parent_id:
                 # The raw cursor can belong to plugin metadata, an inactive
@@ -263,6 +302,12 @@ def scan_session_transcript_tree(entries: list[Any]) -> SessionTranscriptTree:
         )
         nodes.append(node)
         by_id[node.id] = node
+        if isinstance(entry, dict) and entry.get("type") == "reset":
+            latest_reset_id = node.id
+            reset_descendant_ids.clear()
+            reset_descendant_ids.add(node.id)
+        elif latest_reset_id is not None and node.parent_id in reset_descendant_ids:
+            reset_descendant_ids.add(node.id)
         append_parent_id = node.append_parent_id
         if not isinstance(node.leaf_id, _Unset):
             leaf_id = node.leaf_id
@@ -306,6 +351,34 @@ def select_session_transcript_tree_path_nodes(
     return path
 
 
+def _select_session_transcript_active_entries(
+    entries: list[Any], tree: SessionTranscriptTree
+) -> list[Any]:
+    """OpenClaw selectSessionTranscriptActiveEntries: retain the reset/compaction boundary."""
+    if not tree.has_explicit_leaf_update:
+        return list(entries)
+    active_path = select_session_transcript_tree_path_nodes(tree, tree.leaf_id)
+    active_entries = [entries[node.index] for node in active_path]
+    first_active_index = active_path[0].index if active_path else 0
+    for index in range(first_active_index - 1, -1, -1):
+        record = entries[index]
+        if not isinstance(record, dict) or record.get("type") not in {"compaction", "reset"}:
+            continue
+        if record["type"] == "reset":
+            reset_id = _read_non_empty_string(record.get("id"))
+            first_kept_entry_id = _read_non_empty_string(record.get("firstKeptEntryId"))
+            if reset_id and first_kept_entry_id:
+                reset_path = select_session_transcript_tree_path_nodes(tree, reset_id)
+                for kept_start, node in enumerate(reset_path):
+                    if node.id == first_kept_entry_id:
+                        retained_reset_path = [
+                            entries[retained.index] for retained in reset_path[kept_start:]
+                        ]
+                        return [*retained_reset_path, *active_entries]
+        return [record, *active_entries]
+    return active_entries
+
+
 def select_session_transcript_leaf_controlled_path(entries: list[Any]) -> list[Any] | None:
     """Select the effective branch only when the transcript contains leaf controls.
 
@@ -318,10 +391,15 @@ def select_session_transcript_leaf_controlled_path(entries: list[Any]) -> list[A
     if not tree.has_leaf_control:
         return None
     selected: list[Any] = []
-    for node in select_session_transcript_tree_path_nodes(tree, tree.leaf_id):
-        entry = node.entry
+    for entry in _select_session_transcript_active_entries(entries, tree):
+        node = (
+            tree.by_id.get(_read_non_empty_string(entry.get("id")) or "")
+            if isinstance(entry, dict)
+            else None
+        )
         if (
-            not isinstance(entry, dict)
+            node is None
+            or not isinstance(entry, dict)
             or ("parentId" in entry and entry["parentId"] == node.parent_id)
         ):
             selected.append(entry)

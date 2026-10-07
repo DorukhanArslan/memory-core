@@ -1,17 +1,107 @@
 """Source-backed port tests for OpenClaw src/config/sessions/transcript-tree.ts.
 
-Fixtures mirror upstream transcript-tree.test.ts at OpenClaw HEAD 4c42815348
-(leaf navigation controls added by upstream commit 1a002c2d9d).
+Fixtures mirror upstream transcript-tree.test.ts: the original leaf navigation
+controls at 4c42815348 and reset/stale-parent behavior at v2026.9.6 (eb377ac59e6).
 """
 
 from memory_core.transcript_tree import (
     UNSET,
+    is_canonical_session_transcript_entry,
     is_session_transcript_leaf_control,
     parse_session_transcript_tree_entry,
     scan_session_transcript_tree,
     select_session_transcript_leaf_controlled_path,
     select_session_transcript_tree_path_nodes,
 )
+
+
+def _reset_entries():
+    """Pinned transcript-tree.test.ts: retained reset tail before a disjoint branch."""
+    return [
+        {"type": "message", "id": "kept-user", "parentId": None},
+        {"type": "message", "id": "kept-assistant", "parentId": "kept-user"},
+        {
+            "type": "reset",
+            "id": "reset-boundary",
+            "parentId": "kept-assistant",
+            "firstKeptEntryId": "kept-user",
+        },
+        {"type": "message", "id": "branch-user", "parentId": None},
+        {
+            "type": "leaf",
+            "id": "branch-leaf",
+            "parentId": "reset-boundary",
+            "targetId": "branch-user",
+        },
+    ]
+
+
+def test_reset_is_canonical_and_updates_the_visible_leaf():
+    entries = _reset_entries()[:3]
+
+    assert is_canonical_session_transcript_entry(entries[-1])
+    assert scan_session_transcript_tree(entries).leaf_id == "reset-boundary"
+
+
+def test_retains_reset_kept_tail_before_a_disjoint_selected_branch():
+    entries = _reset_entries()
+
+    assert select_session_transcript_leaf_controlled_path(entries) == [
+        *entries[:3],
+        {**entries[3], "parentId": "reset-boundary"},
+    ]
+
+
+def test_reset_fences_navigation_to_pre_reset_or_empty_branches():
+    for target_id in ("kept-user", None, "missing-stale-parent"):
+        entries = _reset_entries()
+        entries[-1] = {**entries[-1], "targetId": target_id}
+
+        tree = scan_session_transcript_tree(entries)
+
+        assert tree.leaf_id == "branch-user"
+        assert tree.append_parent_id == "branch-user"
+        assert tree.has_invalid_leaf_control is False
+        assert select_session_transcript_leaf_controlled_path(entries) == [
+            *entries[:3],
+            {**entries[3], "parentId": "reset-boundary"},
+        ]
+
+
+def test_reset_fence_preserves_explicit_side_append_ancestry():
+    entries = _reset_entries()
+    entries.append(
+        {"type": "custom", "id": "side-two", "parentId": "kept-user", "appendMode": "side"}
+    )
+
+    tree = scan_session_transcript_tree(entries)
+
+    assert tree.leaf_id == "branch-user"
+    assert tree.append_parent_id == "side-two"
+    assert tree.by_id["side-two"].parent_id == "kept-user"
+
+
+def test_normalizes_canonical_rows_with_stale_parents_onto_the_active_leaf():
+    # Pinned transcript-tree.test.ts: stale bootstrap context cursor repair.
+    entries = [
+        {"type": "message", "id": "user", "parentId": None},
+        {"type": "message", "id": "assistant", "parentId": "user"},
+        {
+            "type": "custom",
+            "id": "bootstrap-context",
+            "parentId": "missing-stale-parent",
+            "customType": "openclaw:bootstrap-context:full",
+        },
+    ]
+
+    tree = scan_session_transcript_tree(entries)
+
+    assert tree.by_id["bootstrap-context"].parent_id == "assistant"
+    assert [node.id for node in select_session_transcript_tree_path_nodes(tree, tree.leaf_id)] == [
+        "user",
+        "assistant",
+        "bootstrap-context",
+    ]
 
 
 def test_recognizes_only_valid_leaf_controls():

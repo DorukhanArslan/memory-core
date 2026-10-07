@@ -1242,6 +1242,39 @@ async function main() {
     return { ok: true, operation: payload.operation, result: { eligibility, reads, appends } };
   }
 
+  if (payload.operation === "transcriptTree") {
+    // Real pinned transcript navigation, including reset fences and retained kept tails.
+    const navigation = await importFromRepo(repoPath, "src/config/sessions/transcript-tree.ts");
+    const visible = await importFromRepo(repoPath, "src/config/sessions/transcript-visible-events.ts");
+    const cases = (payload.cases ?? []).map((item) => {
+      const entries = item.entries ?? [];
+      const tree = navigation.scanSessionTranscriptTree(entries);
+      return {
+        canonical: entries.map(navigation.isCanonicalSessionTranscriptEntry),
+        sideAppend: entries.map(navigation.isSessionTranscriptSideAppendEntry),
+        tree: {
+          leafId: tree.leafId,
+          appendParentId: tree.appendParentId,
+          hasLeafControl: tree.hasLeafControl,
+          hasLeafUpdate: tree.hasLeafUpdate,
+          hasExplicitLeafUpdate: tree.hasExplicitLeafUpdate,
+          hasInvalidLeafControl: tree.hasInvalidLeafControl,
+          nodes: tree.nodes.map((node) => ({
+            id: node.id,
+            parentId: node.parentId,
+            leafId: node.leafId ?? null,
+            appendParentId: node.appendParentId,
+            appendMode: node.appendMode ?? null,
+            index: node.index,
+          })),
+        },
+        leafControlledPath: navigation.selectSessionTranscriptLeafControlledPath(entries) ?? null,
+        visibleEvents: visible.selectVisibleTranscriptEvents(entries),
+      };
+    });
+    return { ok: true, operation: payload.operation, result: { cases } };
+  }
+
   if (payload.operation === "transcriptRewrite") {
     // rewriteTranscriptEntriesInSessionManager (embedded-agent-runner/transcript-rewrite.ts) on a
     // real in-memory SessionManager. Each case builds a transcript from `entries` (local labels

@@ -35,6 +35,7 @@ from memory_core._memory_flush_constants import (
     WRITE_TOOL_PATH_DESCRIPTION,
 )
 from memory_core.client import Memory
+from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.host._calls import ToolCallRefused, read_tool_call, tool_error
 from memory_core.host.session import SessionState
 from memory_core.memory_flush import (
@@ -42,6 +43,7 @@ from memory_core.memory_flush import (
     record_memory_flush_failure,
     record_memory_flush_success,
 )
+from memory_core.memory_write_provenance import MemoryWriteProvenanceObserver
 from memory_core.tools.common import format_error_message, to_tool_error
 from memory_core.workspace import append_daily_memory_file
 
@@ -98,6 +100,9 @@ class FlushRequest:
         target: str,
         reason: str,
         messages: tuple[dict[str, str], ...],
+        provenance: MemoryArtifactProvenanceStore | None = None,
+        untrusted: bool | Callable[[], bool] = False,
+        session_key: str | None = None,
     ) -> None:
         self.target = target
         self.reason = reason
@@ -105,6 +110,9 @@ class FlushRequest:
         self.tools = (memory_flush_write_tool(target),)
         self._memory = memory
         self._session_id = session_id
+        self._provenance = provenance
+        self._untrusted = untrusted
+        self._session_key = session_key
         self._compaction_count = compaction_count
         self._entries: list[str] = []
         self._lock = threading.Lock()
@@ -143,7 +151,7 @@ class FlushRequest:
         if content.strip() in ("", SILENT_REPLY_TOKEN):
             return {"status": "ok", "tool": name, "path": self.target, "action": "skipped"}
         try:
-            append_daily_memory_file(root, self.target, content)
+            append_daily_memory_file(root, self.target, content, provenance=self._write_observer(root))
         except Exception as error:
             return to_tool_error(error, tool=name)
         with self._lock:
@@ -160,6 +168,24 @@ class FlushRequest:
         except Exception as error:  # the append is committed; report, never retry
             payload["afterWriteError"] = format_error_message(error)
         return payload
+
+    def _write_observer(self, root: Any) -> MemoryWriteProvenanceObserver | None:
+        """The trust record of the append (upstream: the observer of the flush run's agent tools).
+
+        ``untrusted`` (a bool, or a callable read at the write like ``isTurnTainted``) marks a turn
+        that must not become trusted memory: the record is ``untrusted`` and stays so.
+        """
+        if self._provenance is None:
+            return None
+        untrusted = self._untrusted
+        return MemoryWriteProvenanceObserver(
+            store=self._provenance,
+            mutation_root=root,
+            workspace_dir=root,
+            resolve_origin_class=lambda: "untrusted" if (untrusted() if callable(untrusted) else untrusted) else "agent",
+            session_id=self._session_id,
+            session_key=self._session_key,
+        )
 
     def complete(
         self,

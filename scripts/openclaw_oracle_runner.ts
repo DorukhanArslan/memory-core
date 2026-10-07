@@ -113,6 +113,10 @@ type Payload = {
   originSteps?: Array<Record<string, any>>;
   recallScenarios?: Array<Record<string, any>>;
   backfillScenarios?: Array<Record<string, any>>;
+  ingestScenarios?: Array<Record<string, any>>;
+  forgetScenarios?: Array<Record<string, any>>;
+  provenanceScenarios?: Array<Record<string, any>>;
+  sessionScenarios?: Array<Record<string, any>>;
   agentIds?: string[];
   lockProbe?: Record<string, any>;
 };
@@ -340,6 +344,21 @@ async function runWorkspaceSteps(repoPath: string, workspaceDir: string, steps: 
 async function importFromRepo(repoPath: string, relativePath: string) {
   const fullPath = path.join(repoPath, relativePath);
   return await import(pathToFileURL(fullPath).href);
+}
+
+// Load a repo module with extra export lines appended (private functions the oracle needs). The
+// patched copy sits beside the original so its relative imports resolve, and is removed again.
+async function importPatched(repoPath: string, relativePath: string, extraExports: string) {
+  const sourcePath = path.join(repoPath, relativePath);
+  const parsed = path.parse(sourcePath);
+  const patchedPath = path.join(parsed.dir, `${parsed.name}.oracle-${process.pid}${parsed.ext}`);
+  const original = await fs.readFile(sourcePath, "utf-8");
+  await fs.writeFile(patchedPath, `${original}\n${extraExports}\n`);
+  try {
+    return await import(pathToFileURL(patchedPath).href);
+  } finally {
+    await fs.unlink(patchedPath).catch(() => {});
+  }
 }
 
 // src/infra/heartbeat-runner.test-utils.ts seedHeartbeatScratchForTest without its scratch write
@@ -4763,6 +4782,11 @@ async function main() {
     "fileLockProbe",
     "recordRecallScenarios",
     "sessionBackfillLineage",
+    "dailyIngestionScenarios",
+    "forgetScenarios",
+    "memoryWriteProvenance",
+    "sessionArtifactNames",
+    "sessionIngestionScenarios",
   ]);
   if (!promotionOperations.has(payload.operation)) {
     throw new Error(`unsupported operation: ${payload.operation}`);
@@ -5105,6 +5129,10 @@ async function main() {
           name: scenario.name,
           error,
           files: await snapshotFiles(workspaceDir),
+          // Every host event of the workspace, diagnostic variants (memory.recall.skipped) included.
+          events: await (
+            await importFromRepo(repoPath, "src/memory-host-sdk/events.ts")
+          ).readMemoryHostEventRecords({ workspaceDir }),
           origins: Object.fromEntries(
             agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
           ),
@@ -5210,6 +5238,660 @@ async function main() {
             agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
           ),
         });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
+    }
+
+    if (payload.operation === "dailyIngestionScenarios") {
+      // dreaming-phases.ts daily ingestion: buildDailyIngestionResults, ingestDailyMemorySignals and
+      // seedHistoricalDailyMemorySignals are not exported, so the real source is loaded with one
+      // extra export line. A scenario is a list of steps (write/remove files with a fixed mtime,
+      // trust records, build, ingest, seed); after every step the recall store and the daily
+      // ingestion checkpoint are reported.
+      const phases = await importPatched(
+        repoPath,
+        "extensions/memory-core/src/dreaming-phases.ts",
+        "export { buildDailyIngestionResults, ingestDailyMemorySignals };",
+      );
+      const dreamingStateModule = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/dreaming-state.ts",
+      );
+      const artifactProvenance = await importFromRepo(
+        repoPath,
+        "src/memory/memory-artifact-provenance.ts",
+      );
+      const hostEvents = await importFromRepo(repoPath, "src/memory-host-sdk/events.ts");
+      const scenarioResults: unknown[] = [];
+      for (const scenario of payload.ingestScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        const scenarioTimezone = scenario.timezone ?? timezone;
+        await seedPromotionStateFromWorkspace(promotionState, workspaceDir);
+        const stepResults: unknown[] = [];
+        for (const step of scenario.steps ?? []) {
+          let result: unknown = null;
+          let error: string | null = null;
+          const stepNowMs = Number.isFinite(step.nowMs) ? Number(step.nowMs) : nowMs;
+          try {
+            if (step.kind === "write") {
+              const target = path.join(workspaceDir, step.path);
+              await fs.mkdir(path.dirname(target), { recursive: true });
+              await fs.writeFile(target, step.content, "utf-8");
+              if (Number.isFinite(step.mtimeMs)) {
+                await fs.utimes(target, Number(step.mtimeMs) / 1000, Number(step.mtimeMs) / 1000);
+              }
+            } else if (step.kind === "remove") {
+              await fs.rm(path.join(workspaceDir, step.path), { force: true });
+            } else if (step.kind === "provenance") {
+              const rollback = await artifactProvenance.recordMemoryArtifactWriteProvenance({
+                workspaceDir,
+                relativePath: step.relativePath,
+                contentBefore: step.contentBefore ?? "",
+                contentAfter: step.contentAfter ?? "",
+                originClass: step.originClass,
+                observedAt: step.observedAt,
+              });
+              if (step.rollback === true && rollback) {
+                await rollback();
+              }
+            } else if (step.kind === "build") {
+              result = phases.buildDailyIngestionResults({
+                raw: step.raw,
+                path: step.path,
+                limit: step.limit,
+                defaultObservedAt: step.defaultObservedAt,
+                ...(step.recorded ? { recorded: step.recorded } : {}),
+              });
+            } else if (step.kind === "ingest") {
+              await phases.ingestDailyMemorySignals({
+                workspaceDir,
+                lookbackDays: step.lookbackDays,
+                limit: step.limit,
+                nowMs: stepNowMs,
+                timezone: scenarioTimezone,
+              });
+            } else if (step.kind === "seed") {
+              result = await phases.seedHistoricalDailyMemorySignals({
+                workspaceDir,
+                filePaths: (step.filePaths as string[]).map((entry) =>
+                  path.isAbsolute(entry) ? entry : path.join(workspaceDir, entry),
+                ),
+                limit: step.limit,
+                nowMs: stepNowMs,
+                timezone: scenarioTimezone,
+              });
+            }
+          } catch (caught) {
+            error = String((caught as Error).message);
+          }
+          const recallStore = (await promotionState.readRecallStore(
+            workspaceDir,
+            new Date(stepNowMs).toISOString(),
+          )) as { entries?: Record<string, unknown> };
+          const dailyEntries = await dreamingStateModule.readMemoryCoreWorkspaceEntries({
+            namespace: "dreaming-daily-ingestion",
+            workspaceDir,
+          });
+          stepResults.push({
+            result,
+            error,
+            recall: withSortedEntries(recallStore).entries,
+            daily: Object.fromEntries(
+              (dailyEntries as Array<{ key: string; value: unknown }>)
+                .toSorted((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+                .map((entry) => [entry.key, entry.value]),
+            ),
+          });
+        }
+        scenarioResults.push({
+          name: scenario.name,
+          steps: stepResults,
+          events: await hostEvents.readMemoryHostEventRecords({ workspaceDir }),
+        });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
+    }
+
+    if (payload.operation === "sessionIngestionScenarios") {
+      // session-ingestion.ts / dreaming-phases.ts session ingestion. Two scenario kinds:
+      // - "scan": scanSessionIngestionSource over JSONL files (the file branch of buildSessionEntry),
+      //   step after step with the checkpoint and seen hashes chained like the sweep does;
+      // - "sweep": the real ingestSessionTranscriptSignals (dreaming-phases.ts with one extra export
+      //   line) over sessions seeded in the agent's SQLite session store, tombstones, an admission
+      //   policy and the real corpus enumeration; the recall store, the session checkpoint, the
+      //   session corpus files, the origins ledger and the host events are reported after each step.
+      const phases = await importPatched(
+        repoPath,
+        "extensions/memory-core/src/dreaming-phases.ts",
+        "export { ingestSessionTranscriptSignals };",
+      );
+      const sessionIngestion = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/session-ingestion.ts",
+      );
+      const origins = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/memory-entry-origins.ts",
+      );
+      const sqliteRuntime = await importFromRepo(repoPath, "src/plugin-sdk/sqlite-runtime.ts");
+      const hostEvents = await importFromRepo(repoPath, "src/memory-host-sdk/events.ts");
+      const sessionsSdk = await importFromRepo(
+        repoPath,
+        "src/plugin-sdk/memory-core-host-engine-sessions.ts",
+      );
+      const paths = await importFromRepo(repoPath, "src/config/sessions/paths.ts");
+      const sessionStore = await importFromRepo(repoPath, "src/plugin-sdk/session-store-runtime.ts");
+      const transcriptStore = await importFromRepo(
+        repoPath,
+        "src/plugin-sdk/session-transcript-runtime.ts",
+      );
+      const scenarioResults: unknown[] = [];
+      for (const scenario of payload.sessionScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        const scenarioTimezone = scenario.timezone ?? timezone;
+        const stepResults: unknown[] = [];
+        if (scenario.kind === "scan") {
+          let chainPrevious: Record<string, any> | undefined;
+          const chainSeen: Record<string, string[]> = {};
+          for (const step of scenario.steps ?? []) {
+            let result: unknown = null;
+            let error: string | null = null;
+            try {
+              const target = path.join(
+                workspaceDir,
+                "agents",
+                step.agentId,
+                "sessions",
+                `${step.sessionId}.jsonl`,
+              );
+              if (step.kind === "write") {
+                await fs.mkdir(path.dirname(target), { recursive: true });
+                await fs.writeFile(
+                  target,
+                  (step.records as unknown[]).map((record) => JSON.stringify(record)).join("\n") +
+                    (step.records.length > 0 ? "\n" : ""),
+                  "utf-8",
+                );
+                if (Number.isFinite(step.mtimeMs)) {
+                  await fs.utimes(target, Number(step.mtimeMs) / 1000, Number(step.mtimeMs) / 1000);
+                }
+              } else if (step.kind === "remove") {
+                await fs.rm(target, { force: true });
+              } else if (step.kind === "scan") {
+                const source = step.foreign
+                  ? sessionIngestion.foreignSessionIngestionSource(step.agentId, target)
+                  : sessionIngestion.sessionIngestionSourceFromCorpus({
+                      agentId: step.agentId,
+                      sessionId: step.sessionId,
+                      sessionFile: target,
+                      transcriptSource: "file",
+                      artifactKind: "active-session",
+                      sessionKind: step.sessionKind ?? "interactive",
+                      ...(step.sessionKey ? { sessionKey: step.sessionKey } : {}),
+                      ...(step.generatedByCronRun ? { generatedByCronRun: true } : {}),
+                      ...(step.generatedByDreamingNarrative
+                        ? { generatedByDreamingNarrative: true }
+                        : {}),
+                    });
+                if (!source) {
+                  stepResults.push({ result: null, error: null });
+                  continue;
+                }
+                const blocked = new Set<string>(step.blockDays ?? []);
+                const included = step.includeDays ? new Set<string>(step.includeDays) : undefined;
+                const scan = await sessionIngestion.scanSessionIngestionSource({
+                  source,
+                  previous: step.chain ? chainPrevious : step.previous,
+                  seenMessages: step.chain ? chainSeen : (step.seen ?? {}),
+                  timezone: scenarioTimezone,
+                  ...(Number.isFinite(step.maxCandidates)
+                    ? { maxCandidates: step.maxCandidates }
+                    : {}),
+                  ...(step.verifyContent === true ? { verifyContent: true } : {}),
+                  ...(Array.isArray(step.acceptOrigins)
+                    ? {
+                        acceptProvenance: (provenance: { originClass: string }) =>
+                          (step.acceptOrigins as string[]).includes(provenance.originClass),
+                      }
+                    : {}),
+                  classifyDay: (day: string) =>
+                    blocked.has(day) ? "block" : !included || included.has(day) ? "include" : "skip",
+                });
+                if (step.chain) {
+                  if (scan.fileState) {
+                    chainPrevious = scan.fileState;
+                  }
+                  if (scan.candidates.length > 0) {
+                    chainSeen[source.scope] = sessionIngestion.mergeTrackedMessageHashes(
+                      chainSeen[source.scope] ?? [],
+                      scan.candidates.map((candidate: { hash: string }) => candidate.hash),
+                    );
+                  }
+                }
+                result = { scan, scope: source.scope, stateKey: source.stateKey };
+              }
+            } catch (caught) {
+              error = String((caught as Error).message);
+            }
+            stepResults.push({ result, error });
+          }
+        } else {
+          const agentIds: string[] = scenario.agentIds ?? [];
+          const cfg = {
+            agents: {
+              list: agentIds.map((agentId) => ({ id: agentId, workspace: workspaceDir })),
+            },
+          };
+          const policyConfig = scenario.pluginConfig;
+          await seedPromotionStateFromWorkspace(promotionState, workspaceDir);
+          for (const agentId of agentIds) {
+            await fs.mkdir(path.dirname(sqliteRuntime.resolveOpenClawAgentSqlitePath({ agentId })), {
+              recursive: true,
+            });
+          }
+          for (const step of scenario.steps ?? []) {
+            let result: unknown = null;
+            let error: string | null = null;
+            const stepNowMs = Number.isFinite(step.nowMs) ? Number(step.nowMs) : nowMs;
+            try {
+              if (step.kind === "session" || step.kind === "append") {
+                const sessionsDir: string = paths.resolveSessionTranscriptsDirForAgent(step.agentId);
+                const storePath = path.join(sessionsDir, "sessions.json");
+                await fs.mkdir(sessionsDir, { recursive: true });
+                const sessionKey = step.sessionKey ?? `agent:${step.agentId}:${step.sessionId}`;
+                if (step.kind === "session") {
+                  await sessionStore.upsertSessionEntry({
+                    agentId: step.agentId,
+                    sessionKey,
+                    storePath,
+                    entry: { sessionId: step.sessionId, updatedAt: stepNowMs, ...(step.entry ?? {}) },
+                  });
+                }
+                for (const message of step.messages ?? []) {
+                  await transcriptStore.appendSessionTranscriptMessageByIdentity({
+                    agentId: step.agentId,
+                    sessionId: step.sessionId,
+                    sessionKey,
+                    storePath,
+                    message,
+                  });
+                }
+              } else if (step.kind === "tombstone") {
+                const db = sqliteRuntime.openOpenClawAgentDatabase({ agentId: step.agentId }).db;
+                origins.recordMemorySessionTombstonesInDatabase(db, {
+                  agentId: step.agentId,
+                  sessionIds: step.sessionIds,
+                  createdAt: 1,
+                });
+              } else if (step.kind === "ingest") {
+                await phases.ingestSessionTranscriptSignals({
+                  workspaceDir,
+                  cfg,
+                  lookbackDays: step.lookbackDays,
+                  nowMs: stepNowMs,
+                  timezone: scenarioTimezone,
+                  ...(policyConfig
+                    ? { admissionPolicy: sessionIngestion.resolveAdmissionPolicy(policyConfig) }
+                    : {}),
+                });
+              }
+            } catch (caught) {
+              error = String((caught as Error).message);
+            }
+            await exportPromotionStateToWorkspace(promotionState, workspaceDir, stepNowMs);
+            const sessionState = await sessionIngestion.readSessionIngestionState(workspaceDir);
+            const corpusDir = path.join(workspaceDir, "memory", ".dreams", "session-corpus");
+            const corpus: Record<string, string> = {};
+            for (const name of (await fs.readdir(corpusDir).catch(() => [] as string[])).toSorted()) {
+              corpus[name] = await fs.readFile(path.join(corpusDir, name), "utf-8");
+            }
+            const corpusEntries: Array<Record<string, unknown>> = [];
+            for (const agentId of agentIds) {
+              corpusEntries.push(
+                ...(await sessionsSdk.listSessionTranscriptCorpusEntriesForAgent(agentId, {
+                  includeRetainedSqlite: true,
+                })),
+              );
+            }
+            stepResults.push({
+              result,
+              error,
+              state: sessionState,
+              corpus,
+              corpusEntries: corpusEntries.map((entry) => ({
+                agentId: entry.agentId,
+                sessionId: entry.sessionId,
+                sessionKey: entry.sessionKey ?? null,
+                sessionKind: entry.sessionKind ?? null,
+                artifactKind: entry.artifactKind ?? null,
+                transcriptSource: entry.transcriptSource ?? null,
+                generatedByDreamingNarrative: entry.generatedByDreamingNarrative === true,
+                generatedByCronRun: entry.generatedByCronRun === true,
+              })),
+              recall: withSortedEntries(
+                (await promotionState.readRecallStore(
+                  workspaceDir,
+                  new Date(stepNowMs).toISOString(),
+                )) as Record<string, unknown>,
+              ).entries,
+              origins: Object.fromEntries(
+                agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
+              ),
+            });
+          }
+        }
+        scenarioResults.push({
+          name: scenario.name,
+          steps: stepResults,
+          events:
+            scenario.kind === "scan"
+              ? []
+              : await hostEvents.readMemoryHostEventRecords({ workspaceDir }),
+        });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
+    }
+
+    if (payload.operation === "sessionArtifactNames") {
+      // src/config/sessions/artifacts.ts filename classifiers over a list of names.
+      const artifacts = await importFromRepo(repoPath, "src/config/sessions/artifacts.ts");
+      return {
+        ok: true,
+        operation: payload.operation,
+        result: {
+          names: (payload.texts ?? []).map((name) => ({
+            name,
+            primary: artifacts.isPrimarySessionTranscriptFileName(String(name)),
+            archive: artifacts.isSessionArchiveArtifactName(String(name)),
+            checkpoint: artifacts.isCompactionCheckpointTranscriptFileName(String(name)),
+            sessionId: artifacts.parseUsageCountedSessionIdFromFileName(String(name)),
+          })),
+        },
+      };
+    }
+
+    if (payload.operation === "memoryWriteProvenance") {
+      // src/agents/memory-write-provenance.ts: the observer the flush's write tool and the
+      // session-memory hook attach to their file writes, over the real trust store. A step writes
+      // (or deletes) one file through the observer; the trust records of the workspace are
+      // reported after every step.
+      const observerModule = await importFromRepo(
+        repoPath,
+        "src/agents/memory-write-provenance.ts",
+      );
+      const artifactProvenance = await importFromRepo(
+        repoPath,
+        "src/memory/memory-artifact-provenance.ts",
+      );
+      const scenarioResults: unknown[] = [];
+      for (const scenario of payload.provenanceScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        await fs.mkdir(workspaceDir, { recursive: true });
+        const stepResults: unknown[] = [];
+        for (const step of scenario.steps ?? []) {
+          let result: unknown = null;
+          let error: string | null = null;
+          try {
+            const target = path.isAbsolute(step.path) ? step.path : path.join(workspaceDir, step.path);
+            if (step.kind === "symlink") {
+              await fs.mkdir(path.dirname(target), { recursive: true });
+              await fs.symlink(
+                path.isAbsolute(step.target) ? step.target : path.join(workspaceDir, step.target),
+                target,
+              );
+            } else if (step.kind === "mkdir") {
+              await fs.mkdir(target, { recursive: true });
+            } else {
+              const observer = observerModule.createMemoryWriteProvenanceObserver({
+                mutationRoot: workspaceDir,
+                workspaceDir,
+                resolveOriginClass: () => step.originClass ?? "agent",
+                ...(typeof step.sessionId === "string" ? { sessionId: step.sessionId } : {}),
+                ...(typeof step.sessionKey === "string" ? { sessionKey: step.sessionKey } : {}),
+                now: () => Number(step.observedAt ?? 0),
+              });
+              if (step.kind === "classifies") {
+                result = await observer.classifies(target);
+              } else if (step.kind === "write") {
+                await fs.mkdir(path.dirname(target), { recursive: true });
+                await observer.write({
+                  absolutePath: target,
+                  contentBefore: step.contentBefore ?? "",
+                  contentAfter: step.contentAfter ?? "",
+                  commit: async () => {
+                    if (step.failCommit === true) {
+                      throw new Error("commit failed");
+                    }
+                    await fs.writeFile(target, step.contentAfter ?? "", "utf-8");
+                  },
+                });
+              } else if (step.kind === "delete") {
+                await fs.rm(target, { force: true });
+                await observer.clearAfterDelete(target, step.contentBefore ?? "");
+              }
+            }
+          } catch (caught) {
+            error = String((caught as Error).message);
+          }
+          stepResults.push({
+            result,
+            error,
+            records: await artifactProvenance.listMemoryArtifactProvenance({ workspaceDir }),
+          });
+        }
+        scenarioResults.push({ name: scenario.name, steps: stepResults });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
+    }
+
+    if (payload.operation === "forgetScenarios") {
+      // memory-forget.ts forgetMemoryEntries over seeded workspaces: files, the recall and phase
+      // stores, the session ingestion checkpoint, preimages, origin rows, trust records, sessions
+      // (SQLite session store), index chunks and sources. A scenario runs a list of forget calls;
+      // the report and the state of every artifact are reported after each call.
+      const forget = await importFromRepo(repoPath, "extensions/memory-core/src/memory-forget.ts");
+      const origins = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/memory-entry-origins.ts",
+      );
+      const sqliteRuntime = await importFromRepo(repoPath, "src/plugin-sdk/sqlite-runtime.ts");
+      const sessionIngestion = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/session-ingestion.ts",
+      );
+      const dreamingStateModule = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/dreaming-state.ts",
+      );
+      const artifacts = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/dreaming-consolidation-artifacts.ts",
+      );
+      const artifactProvenance = await importFromRepo(
+        repoPath,
+        "src/memory/memory-artifact-provenance.ts",
+      );
+      const memorySchema = await importFromRepo(
+        repoPath,
+        "packages/memory-host-sdk/src/host/memory-schema.ts",
+      );
+      const sessionsSdk = await importFromRepo(
+        repoPath,
+        "src/plugin-sdk/memory-core-host-engine-sessions.ts",
+      );
+      const paths = await importFromRepo(repoPath, "src/config/sessions/paths.ts");
+      const sessionStore = await importFromRepo(repoPath, "src/plugin-sdk/session-store-runtime.ts");
+      const transcriptStore = await importFromRepo(
+        repoPath,
+        "src/plugin-sdk/session-transcript-runtime.ts",
+      );
+      const scenarioResults: unknown[] = [];
+      for (const scenario of payload.forgetScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        const agentId = String(scenario.agentId);
+        const cfg = { agents: { list: [{ id: agentId, workspace: workspaceDir }] } };
+        await fs.mkdir(workspaceDir, { recursive: true });
+        for (const [relativePath, content] of Object.entries(scenario.files ?? {})) {
+          const target = path.join(workspaceDir, relativePath);
+          await fs.mkdir(path.dirname(target), { recursive: true });
+          await fs.writeFile(target, String(content), "utf-8");
+        }
+        await seedPromotionStateFromWorkspace(promotionState, workspaceDir);
+        if (scenario.sessionIngestion) {
+          await sessionIngestion.writeSessionIngestionState(workspaceDir, {
+            version: 3,
+            files: scenario.sessionIngestion.files ?? {},
+            seenMessages: scenario.sessionIngestion.seenMessages ?? {},
+          });
+        }
+        if (Array.isArray(scenario.backups)) {
+          await dreamingStateModule.writeMemoryCoreWorkspaceEntries({
+            namespace: "dreaming-memory-backups",
+            workspaceDir,
+            entries: (scenario.backups as Array<Record<string, unknown>>).map((value) => ({
+              key: `${value.createdAt}:${String(value.contentHash).slice(0, 12)}`,
+              value,
+            })),
+          });
+        }
+        await fs.mkdir(path.dirname(sqliteRuntime.resolveOpenClawAgentSqlitePath({ agentId })), {
+          recursive: true,
+        });
+        const agentDb = sqliteRuntime.openOpenClawAgentDatabase({ agentId }).db;
+        memorySchema.ensureMemoryIndexSchema({ db: agentDb, cacheEnabled: true, ftsEnabled: true });
+        for (const row of scenario.origins ?? []) {
+          origins.recordMemoryEntryOrigins({ agentId, origins: [row] });
+        }
+        if (Array.isArray(scenario.tombstones) && scenario.tombstones.length > 0) {
+          origins.recordMemorySessionTombstonesInDatabase(agentDb, {
+            agentId,
+            sessionIds: scenario.tombstones,
+            createdAt: 1,
+          });
+        }
+        for (const seed of scenario.provenance ?? []) {
+          await artifactProvenance.recordMemoryArtifactWriteProvenance({
+            workspaceDir,
+            relativePath: seed.relativePath,
+            contentBefore: seed.contentBefore ?? "",
+            contentAfter: seed.contentAfter ?? "",
+            originClass: seed.originClass,
+            observedAt: seed.observedAt,
+            ...(typeof seed.sessionId === "string" ? { sessionId: seed.sessionId } : {}),
+            ...(typeof seed.sessionKey === "string" ? { sessionKey: seed.sessionKey } : {}),
+          });
+        }
+        let chunkCounter = 0;
+        for (const chunk of scenario.chunks ?? []) {
+          chunkCounter += 1;
+          agentDb
+            .prepare(
+              "INSERT INTO memory_index_chunks (id, path, source, start_line, end_line, hash, model, text, embedding, updated_at) VALUES (?, ?, ?, 1, 1, ?, 'm', ?, X'00', 1)",
+            )
+            .run(`chunk-${chunkCounter}`, chunk.path, chunk.source ?? "memory", `h${chunkCounter}`, chunk.text);
+        }
+        for (const source of scenario.sources ?? []) {
+          agentDb
+            .prepare(
+              "INSERT INTO memory_index_sources (path, source, hash, mtime, size) VALUES (?, ?, 'h', 1, 1)",
+            )
+            .run(source.path, source.source ?? "memory");
+        }
+        const sessionsDir: string = paths.resolveSessionTranscriptsDirForAgent(agentId);
+        const storePath = path.join(sessionsDir, "sessions.json");
+        await fs.mkdir(sessionsDir, { recursive: true });
+        for (const session of scenario.sessions ?? []) {
+          const sessionKey = session.sessionKey ?? `agent:${agentId}:${session.sessionId}`;
+          await sessionStore.upsertSessionEntry({
+            agentId,
+            sessionKey,
+            storePath,
+            entry: {
+              sessionId: session.sessionId,
+              updatedAt: Number(scenario.createdAt ?? nowMs) + Number(session.createdOffset ?? 0),
+              ...(session.entry ?? {}),
+            },
+          });
+          for (const message of session.messages ?? []) {
+            await transcriptStore.appendSessionTranscriptMessageByIdentity({
+              agentId,
+              sessionId: session.sessionId,
+              sessionKey,
+              storePath,
+              message,
+            });
+          }
+        }
+        const corpusEntries = (
+          await sessionsSdk.listSessionTranscriptCorpusEntriesForAgent(agentId)
+        ).map((entry: Record<string, unknown>) => ({
+          agentId: entry.agentId,
+          sessionId: entry.sessionId,
+          sessionKey: entry.sessionKey ?? null,
+          sessionKind: entry.sessionKind ?? null,
+          artifactKind: entry.artifactKind ?? null,
+          transcriptSource: entry.transcriptSource ?? null,
+          generatedByDreamingNarrative: entry.generatedByDreamingNarrative === true,
+          generatedByCronRun: entry.generatedByCronRun === true,
+        }));
+        const runResults: unknown[] = [];
+        for (const run of scenario.runs ?? []) {
+          let report: unknown = null;
+          let error: string | null = null;
+          try {
+            report = await forget.forgetMemoryEntries({
+              cfg,
+              agentId,
+              ...(Array.isArray(run.sessionIds) ? { sessionIds: run.sessionIds } : {}),
+              ...(Array.isArray(run.hookSources) ? { hookSources: run.hookSources } : {}),
+              ...(Array.isArray(run.participants) ? { participants: run.participants } : {}),
+              ...(run.since !== undefined ? { since: run.since } : {}),
+              ...(run.dryRun === true ? { dryRun: true } : {}),
+            });
+          } catch (caught) {
+            error = String((caught as Error).message);
+          }
+          await exportPromotionStateToWorkspace(promotionState, workspaceDir, nowMs);
+          const tree = await snapshotWorkspaceTree(workspaceDir);
+          const files = Object.fromEntries(
+            Object.entries(tree).filter(([relative]) => !relative.startsWith("memory/.dreams/")),
+          );
+          const recallStore = (await promotionState.readRecallStore(
+            workspaceDir,
+            new Date(nowMs).toISOString(),
+          )) as Record<string, unknown>;
+          const phaseStore = (await promotionState.readPhaseSignalStore(
+            workspaceDir,
+            new Date(nowMs).toISOString(),
+          )) as Record<string, unknown>;
+          const preimages = (await artifacts.readMemoryPreimages(workspaceDir)).map(
+            (entry: { value: unknown }) => entry.value,
+          );
+          const revision = (
+            agentDb.prepare("SELECT revision FROM memory_index_state WHERE id = 1").get() as
+              | { revision: number }
+              | undefined
+          )?.revision;
+          runResults.push({
+            report,
+            error,
+            files,
+            recall: withSortedEntries(recallStore).entries,
+            phase: withSortedEntries(phaseStore).entries,
+            sessionState: await sessionIngestion.readSessionIngestionState(workspaceDir),
+            preimages,
+            origins: origins.listMemoryEntryOrigins({ agentId }),
+            tombstones: origins.listMemorySessionTombstones({ agentId }),
+            revision,
+            chunks: agentDb
+              .prepare("SELECT path, source, text FROM memory_index_chunks ORDER BY path, source, text")
+              .all(),
+            sources: agentDb
+              .prepare("SELECT path, source FROM memory_index_sources ORDER BY path, source")
+              .all(),
+          });
+        }
+        scenarioResults.push({ name: scenario.name, corpusEntries, runs: runResults });
       }
       return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
     }

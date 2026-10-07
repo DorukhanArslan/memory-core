@@ -47,6 +47,7 @@ from memory_core.bootstrap.files import (
 from memory_core.client import Memory
 from memory_core.config import MemoryConfig
 from memory_core.consolidation import record_short_term_recalls, undecorate_search_results
+from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.current_time import DEFAULT_TIME_FORMAT, TimeFormat, resolve_time_format
 from memory_core.curation import CurationPolicy, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
@@ -230,9 +231,15 @@ class HostKit:
         dreaming_enabled: bool = False,
         automation_store: AutomationStore | None = None,
         now_ms: Callable[[], int] | None = None,
+        on_event: Callable[[dict[str, Any]], None] | None = None,
+        artifact_provenance: MemoryArtifactProvenanceStore | None = None,
     ) -> None:
         self._memory = memory
+        # The trust store of the flush's daily-note writes (the dreaming ingestion reads it).
+        self._artifact_provenance = artifact_provenance
         self._root = memory.workspace.root
+        # The host's sink for the ``memory.recall.*`` events of recorded searches.
+        self._on_event = on_event
         self._layout = layout
         self._templates = dict(templates) if templates is not None else None
         self._seed_bootstrap = (
@@ -392,6 +399,7 @@ class HostKit:
                     query=str(args.get("query", "")),
                     results=undecorate_search_results(hits),
                     now_ms=self._clock(),
+                    on_event=self._on_event,
                 )
             except Exception:
                 pass
@@ -494,6 +502,7 @@ class HostKit:
         context_window_tokens: int | None = None,
         transcript_bytes: int | None = None,
         redact: Callable[[str], str] | None = None,
+        untrusted_turn: bool | Callable[[], bool] = False,
     ) -> TurnRecord:
         """Record a completed turn and decide the memory flush (docs/host_kit.md, entry 4).
 
@@ -511,7 +520,10 @@ class HostKit:
         it), as upstream serializes session maintenance per session key
         (src/agents/session-maintenance/coordinator.ts). ``redact`` maps the message of a target
         that cannot be created (``TurnRecord.flush_failure.error``), as
-        ``FlushRequest.complete(redact=)`` does for a failed run.
+        ``FlushRequest.complete(redact=)`` does for a failed run. With an ``artifact_provenance``
+        store the flush's appends record the daily note's trust; ``untrusted_turn`` (a bool, or a
+        callable read at each write) marks the turn tainted or its sender not the owner, so the note
+        is recorded ``untrusted`` and the dreaming ingestion and promotion treat it so.
         """
         window = (
             context_window_tokens
@@ -552,11 +564,17 @@ class HostKit:
             session=recorded,
             flush_plan=plan,
             flush_decision=decision,
-            flush=self._flush_request(recorded, plan, transcript, reason=decision.reason),
+            flush=self._flush_request(
+                recorded, plan, transcript, reason=decision.reason, untrusted=untrusted_turn
+            ),
         )
 
     def request_flush(
-        self, session: SessionState, *, transcript: Sequence[Mapping[str, Any]]
+        self,
+        session: SessionState,
+        *,
+        transcript: Sequence[Mapping[str, Any]],
+        untrusted_turn: bool | Callable[[], bool] = False,
     ) -> FlushRequest | None:
         """A flush run now, outside the token gate: a memory-core extension (decision Q6).
 
@@ -574,7 +592,9 @@ class HostKit:
             return None
         plan = self._flush_plan(DEFAULT_CONTEXT_WINDOW_TOKENS)
         ensure_memory_flush_target_file(self._root, plan.relative_path)
-        return self._flush_request(session, plan, transcript, reason=_FORCED_FLUSH_REASON)
+        return self._flush_request(
+            session, plan, transcript, reason=_FORCED_FLUSH_REASON, untrusted=untrusted_turn
+        )
 
     def on_new_session(
         self,
@@ -727,6 +747,7 @@ class HostKit:
         transcript: Sequence[Mapping[str, Any]],
         *,
         reason: str,
+        untrusted: bool | Callable[[], bool] = False,
     ) -> FlushRequest:
         count = session.entry.get("compactionCount")
         return FlushRequest(
@@ -736,6 +757,9 @@ class HostKit:
             target=plan.relative_path,
             reason=reason,
             messages=self._flush_messages(session, plan, transcript),
+            provenance=self._artifact_provenance,
+            untrusted=untrusted,
+            session_key=session.session_key,
         )
 
     def _flush_messages(

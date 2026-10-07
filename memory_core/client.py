@@ -6,6 +6,7 @@ from typing import Callable
 
 from memory_core.bootstrap import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
 from memory_core.config import MemoryConfig
+from memory_core.consolidation.origins import IndexRevisionFence
 from memory_core.curation import CurationPolicy, CurationResult, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore, validate_store_config
@@ -37,6 +38,7 @@ class Memory:
         config: MemoryConfig | None = None,
         initialize: bool = True,
         reindex: bool = True,
+        revision_fence: IndexRevisionFence | None = None,
     ) -> Memory:
         workspace = MemoryWorkspace(Path(workspace_dir))
         resolved_config = config or MemoryConfig(workspace_dir=workspace.root)
@@ -45,7 +47,7 @@ class Memory:
         validate_store_config(resolved_config, embedding_provider)
         if initialize:
             initialize_memory_core_workspace(workspace.root)
-        store = SQLiteMemoryStore(resolved_config, embedding_provider)
+        store = SQLiteMemoryStore(resolved_config, embedding_provider, revision_fence=revision_fence)
         if reindex:
             store.reindex(workspace)
         return cls(config=resolved_config, workspace=workspace, store=store)

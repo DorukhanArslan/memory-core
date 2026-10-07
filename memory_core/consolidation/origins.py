@@ -18,8 +18,11 @@ session is never ingested again) and the ``memory_index_state`` revision fence (
 tombstone bumps, so an index rebuild prepared before the forget is rejected at publication, see
 :class:`MemoryIndexRevisionConflictError`) live in the same database. Upstream's agent database
 always carries ``memory_index_state``; here :meth:`MemoryEntryOriginLedger.record_session_tombstones`
-creates it (seeded at revision 0) when the host's index has not. Not ported: the index publication
-that consults the fence (``publishMemoryDatabaseTables``) and the forget flow that writes tombstones.
+creates it (seeded at revision 0) when the host's index has not. The index publication that consults
+the fence (``publishMemoryDatabaseTables``) is :meth:`SQLiteMemoryStore.reindex` with an
+:class:`IndexRevisionFence`, and the forget flow that writes the tombstones is
+:mod:`memory_core.consolidation.forget` (it uses :meth:`record_session_tombstones_if_lineage_current`,
+upstream's guarded ``marked`` transaction).
 
 Reads never create the database or the table (upstream: ``withOpenClawAgentDatabaseReadOnly`` and
 ``tableExists``); recording creates both. A ``memory_index_chunks`` table in the same database is
@@ -361,6 +364,55 @@ class MemoryEntryOriginLedger:
                 raise
         return recorded
 
+    def record_session_tombstones_if_lineage_current(
+        self,
+        agent_id: str,
+        session_ids: Sequence[str],
+        *,
+        is_current: Callable[[list[MemoryEntryOrigin]], bool],
+        reason: str = "forgotten",
+        created_at: int | None = None,
+    ) -> bool:
+        """The forget flow's guarded tombstone write (``memory-forget.ts``, the ``marked`` transaction).
+
+        One immediate transaction: the agent's origin rows are read inside it, ``is_current`` decides
+        whether the lineage the forget planned against still holds (``False`` rolls back and returns
+        ``False``: the caller plans again), the sessions are tombstoned and the index revision is bumped
+        (:meth:`record_session_tombstones` bumps when a tombstone is new; a session that was already
+        tombstoned still bumps, so every forget fences a rebuild that started before it).
+        """
+        unique = list(dict.fromkeys(session_ids))
+        stamp = int(time.time() * 1000) if created_at is None else created_at
+        with closing(self._open_write(agent_id)) as db:
+            db.execute(_TOMBSTONE_SCHEMA)
+            db.execute(_INDEX_STATE_SCHEMA)
+            db.execute("INSERT OR IGNORE INTO memory_index_state (id, revision) VALUES (1, 0)")
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                origins = (
+                    self._read(db, agent_id, None, None)
+                    if self._table_exists(db, "memory_entry_origins")
+                    else []
+                )
+                if not is_current(origins):
+                    db.execute("ROLLBACK")
+                    return False
+                recorded = 0
+                for start in range(0, len(unique), TOMBSTONE_INSERT_BATCH_SIZE):
+                    for session_id in unique[start : start + TOMBSTONE_INSERT_BATCH_SIZE]:
+                        recorded += db.execute(
+                            "INSERT INTO memory_session_tombstones (session_id, agent_id, reason, created_at) "
+                            "VALUES (?, ?, ?, ?) ON CONFLICT (session_id) DO NOTHING",
+                            (session_id, agent_id, reason, stamp),
+                        ).rowcount
+                db.execute("UPDATE memory_index_state SET revision = revision + 1 WHERE id = 1")
+                db.execute("COMMIT")
+            except BaseException:
+                if db.in_transaction:
+                    db.execute("ROLLBACK")
+                raise
+        return True
+
     def index_revision(self, agent_id: str) -> int | None:
         """``readMemoryDatabaseRevision``: the index revision, ``None`` without a database or state row."""
         db = self._open_read(agent_id)
@@ -385,10 +437,11 @@ class MemoryEntryOriginLedger:
         if live is None:
             raise ValueError("Memory index revision is missing or invalid")
         if live != expected_revision:
-            raise MemoryIndexRevisionConflictError(
-                "Memory index changed while full reindex was building "
-                f"(expected revision {expected_revision}, found {live}); retry the full reindex."
-            )
+            raise MemoryIndexRevisionConflictError(_conflict_message(expected_revision, live))
+
+    def revision_fence(self, agent_id: str) -> IndexRevisionFence:
+        """The fence an index passes to :class:`~memory_core.index.sqlite_store.SQLiteMemoryStore`."""
+        return IndexRevisionFence(self, agent_id)
 
     # -- the index ----------------------------------------------------------------------
 
@@ -415,6 +468,70 @@ class MemoryEntryOriginLedger:
             ):
                 keys.update(extract_promotion_markers(text))
             return keys
+
+
+class IndexRevisionFence:
+    """The ``memory_index_state`` revision fence of one agent, for an index that publishes a rebuild.
+
+    Upstream's full reindex (``manager-sync-ops.ts``) reads the database revision before it builds the
+    shadow index (:meth:`read`) and publishes it in one immediate transaction that first compares the
+    live revision (``publishMemoryDatabaseTables``): a forget that tombstoned a session, or any other
+    index mutation, in between bumps the revision and the publication fails with
+    :class:`MemoryIndexRevisionConflictError`. :class:`~memory_core.index.sqlite_store.SQLiteMemoryStore`
+    takes a fence (``revision_fence=``) and does the same around :meth:`SQLiteMemoryStore.reindex`.
+
+    When the index lives in the ledger's own database file (``same_database``) the check and the bump
+    run on the index's connection, inside its publication transaction (atomic, like upstream); for a
+    separate index file the check runs just before the publication transaction and the bump just after
+    it (a forget landing between them is not fenced: a labelled deviation).
+    """
+
+    def __init__(self, ledger: MemoryEntryOriginLedger, agent_id: str) -> None:
+        self._ledger = ledger
+        self.agent_id = agent_id
+
+    @property
+    def database_path(self) -> Path:
+        return self._ledger.database_path(self.agent_id)
+
+    def same_database(self, path: str | Path) -> bool:
+        try:
+            return self.database_path.resolve() == Path(path).resolve()
+        except OSError:
+            return False
+
+    def read(self) -> int | None:
+        """The live revision, ``None`` while the database or its state row does not exist."""
+        return self._ledger.index_revision(self.agent_id)
+
+    def assert_unchanged(self, expected: int | None) -> None:
+        """Raise :class:`MemoryIndexRevisionConflictError` when the revision is not ``expected``."""
+        live = self.read()
+        if live != expected:
+            raise MemoryIndexRevisionConflictError(_conflict_message(expected, live))
+
+    def assert_unchanged_in(self, db: sqlite3.Connection, expected: int | None) -> None:
+        """:meth:`assert_unchanged` on the index's own connection (``same_database``)."""
+        db.execute(_INDEX_STATE_SCHEMA)
+        row = db.execute("SELECT revision FROM memory_index_state WHERE id = 1").fetchone()
+        live = row[0] if row is not None else None
+        if live != expected:
+            raise MemoryIndexRevisionConflictError(_conflict_message(expected, live))
+
+    def bump(self) -> None:
+        self._ledger.bump_index_revision(self.agent_id)
+
+    def bump_in(self, db: sqlite3.Connection) -> None:
+        db.execute(_INDEX_STATE_SCHEMA)
+        db.execute("INSERT OR IGNORE INTO memory_index_state (id, revision) VALUES (1, 0)")
+        db.execute("UPDATE memory_index_state SET revision = revision + 1 WHERE id = 1")
+
+
+def _conflict_message(expected: int | None, live: int | None) -> str:
+    return (
+        "Memory index changed while full reindex was building "
+        f"(expected revision {expected}, found {live}); retry the full reindex."
+    )
 
 
 def reserve_memory_entry_origins(

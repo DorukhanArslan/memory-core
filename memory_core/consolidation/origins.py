@@ -18,8 +18,11 @@ session is never ingested again) and the ``memory_index_state`` revision fence (
 tombstone bumps, so an index rebuild prepared before the forget is rejected at publication, see
 :class:`MemoryIndexRevisionConflictError`) live in the same database. Upstream's agent database
 always carries ``memory_index_state``; here :meth:`MemoryEntryOriginLedger.record_session_tombstones`
-creates it (seeded at revision 0) when the host's index has not. Not ported: the index publication
-that consults the fence (``publishMemoryDatabaseTables``) and the forget flow that writes tombstones.
+creates it (seeded at revision 0) when the host's index has not. The index publication that consults
+the fence (``publishMemoryDatabaseTables``) is :meth:`SQLiteMemoryStore.reindex` with an
+:class:`IndexRevisionFence`, and the forget flow that writes the tombstones is
+:mod:`memory_core.consolidation.forget` (it uses :meth:`record_session_tombstones_if_lineage_current`,
+upstream's guarded ``marked`` transaction).
 
 Reads never create the database or the table (upstream: ``withOpenClawAgentDatabaseReadOnly`` and
 ``tableExists``); recording creates both. A ``memory_index_chunks`` table in the same database is

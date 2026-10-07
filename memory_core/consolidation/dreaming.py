@@ -12,7 +12,12 @@ pin 4c42815348):
   :class:`~memory_core.consolidation.llm_consolidation.DeepConsolidation` it first lets the
   host's model plan a MEMORY.md rewrite (``consolidateMemory``), commits it under the promotion
   lock with a preimage and a DREAMS.md ``## Memory Consolidation History`` summary, and falls
-  back to the deterministic append whenever any step rejects.
+  back to the deterministic append whenever any step rejects;
+- ``ingestion=`` (:class:`DreamingIngestion`) makes a light or REM sweep first ingest the daily
+  notes (:mod:`~memory_core.consolidation.daily_ingestion`) and the live session transcripts
+  (:mod:`~memory_core.consolidation.session_ingestion`) as ``daily`` recall signals, like
+  upstream's ``ingestDreamingPhaseSignals``; the ranking below still sees only entries with a
+  recall (upstream's light phase also stages daily-only entries).
 
 Known gaps (parity matrix rows "Light dreaming phase signals", "REM dreaming
 phase signals", "Deep dreaming application flow"): no REM narrative or

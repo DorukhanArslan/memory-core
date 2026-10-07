@@ -619,7 +619,8 @@ class HostKit:
         prompt with the startup context (session-reset-prompt.ts, startup-context.ts). The saved
         file is written first, so the startup context can quote it. The host sends
         ``reset.model_prompt`` through :meth:`before_turn` and records
-        ``reset.transcript_prompt``.
+        ``reset.transcript_prompt``. The kit's optional ``artifact_provenance`` store records
+        the ending projection's trust before the saved file is published.
         """
         if command not in ("new", "reset"):
             raise ValueError(f"command must be 'new' or 'reset', got {command!r}")
@@ -635,6 +636,7 @@ class HostKit:
             timezone=self._timezone,
             slug_generator=slug_generator,
             redactor=redactor,
+            artifact_provenance=self._artifact_provenance,
         )
         self._memory.store.reindex(self._memory.workspace)
         workspace_init = self.ensure()

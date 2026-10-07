@@ -4757,7 +4757,11 @@ async function main() {
         } catch {
           memory = null;
         }
-        scenarios.push({ memory, prompts });
+        const provenance = payload.includeProvenance
+          ? await (await importFromRepo(repoPath, "src/memory/memory-artifact-provenance.ts"))
+              .listMemoryArtifactProvenance({ workspaceDir })
+          : undefined;
+        scenarios.push({ memory, prompts, ...(provenance ? { provenance } : {}) });
       }
       return { ok: true, operation: payload.operation, result: { scenarios } };
     } finally {

@@ -53,7 +53,7 @@ off) maps each line before it is written.
 Deviations, each named at its code site: an explicit IANA zone (default UTC) instead of
 ``process.env.TZ``; the session key written as given (no agent re-keying); errors raised to
 the caller instead of logged; a name is taken by any directory entry; no memory-write
-provenance record (the capture's trust class is returned instead); no ``context.agentId``
+provenance record unless the host supplies ``artifact_provenance``; no ``context.agentId``
 requirement or admission (the host owns agent scoping). Not ported: the background write
 queue, the agent/workspace resolution from OpenClaw config, and the 15 s model timeout (the
 host's generator owns it). The files reach the next session through
@@ -89,6 +89,8 @@ from memory_core.bootstrap._js import (
     reject_json_constant,
     truncate_utf16_safe,
 )
+from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
+from memory_core.memory_write_provenance import MemoryWriteProvenanceObserver
 from memory_core.transcript_tree import select_visible_transcript_events
 from memory_core.workspace import UnsafeMemoryPathError
 
@@ -1039,14 +1041,36 @@ def _publish_new_file(memory_dir: Path, filename: str, data: bytes) -> bool:
     return True
 
 
-def _write_session_memory_file(memory_dir: Path, date_str: str, slug: str, entry: str) -> str:
+class _SessionMemoryNameCollision(FileExistsError):
+    """Rollback a reserved trust record before retrying exclusive publication."""
+
+
+def _write_session_memory_file(
+    memory_dir: Path, date_str: str, slug: str, entry: str,
+    provenance: MemoryWriteProvenanceObserver | None = None,
+) -> str:
     data = js_utf8_encode(entry)
     while True:
         filename = resolve_available_memory_filename(memory_dir, date_str, slug)
         if SESSION_MEMORY_FILE_RE.match(filename) is None:
             raise UnsafeMemoryPathError(f"not a session memory file name: memory/{filename}")
-        if _publish_new_file(memory_dir, filename, data):
-            return filename
+        def commit() -> None:
+            if not _publish_new_file(memory_dir, filename, data):
+                raise _SessionMemoryNameCollision(filename)
+
+        try:
+            if provenance is None:
+                commit()
+            else:
+                provenance.write(
+                    absolute_path=memory_dir / filename,
+                    content_before="",
+                    content_after=entry,
+                    commit=commit,
+                )
+        except _SessionMemoryNameCollision:
+            continue
+        return filename
 
 
 def save_session_memory(
@@ -1066,11 +1090,17 @@ def save_session_memory(
     message_count: object = DEFAULT_SESSION_MEMORY_MESSAGE_COUNT,
     slug_generator: SlugGenerator | None = None,
     redactor: Callable[[str], str] | None = None,
+    artifact_provenance: MemoryArtifactProvenanceStore | None = None,
 ) -> SessionMemoryResult:
     """Port of the session-memory hook's save (``saveSessionMemoryNow``, handler.ts).
 
     Call it when the host handles ``/new``, ``/reset`` or an automatic
     rollover (``is_session_memory_trigger``), with the session that is ending.
+
+    With ``artifact_provenance``, reserve the projection's trust record before publishing
+    the new file, like the upstream hook. A failed write or a filename collision rolls the
+    reservation back; a trust-store error prevents publication. Without a store the file
+    is written untracked, as before.
 
     The conversation comes from ``events``: the host-supplied transcript events
     of the ending session (dicts with ``type: "message"`` and a ``message``;
@@ -1114,9 +1144,8 @@ def save_session_memory(
     if not isinstance(session_key, str):
         raise TypeError("session_key must be a string")
     count = resolve_session_memory_message_count(message_count)
-    timestamp = format_local_session_timestamp(
-        time.time_ns() // 1_000_000 if now_ms is None else now_ms, timezone
-    )
+    timestamp_ms = time.time_ns() // 1_000_000 if now_ms is None else now_ms
+    timestamp = format_local_session_timestamp(timestamp_ms, timezone)
     root = os.fspath(workspace_dir)
     memory_dir = _memory_dir(root)
 
@@ -1161,7 +1190,18 @@ def save_session_memory(
         event_type=event_type,
         unavailable_reason=unavailable_reason,
     )
-    filename = _write_session_memory_file(memory_dir, timestamp.date, slug, entry)
+    # handler.ts:253-271 reserves the captured projection's trust before exposing the file.
+    # Our exclusive publication retries also roll back that reservation on a name collision.
+    provenance = None if artifact_provenance is None else MemoryWriteProvenanceObserver(
+        store=artifact_provenance,
+        mutation_root=root,
+        workspace_dir=root,
+        resolve_origin_class=lambda: origin_class,
+        session_id=session_id,
+        session_key=session_key,
+        now=lambda: int(timestamp_ms),
+    )
+    filename = _write_session_memory_file(memory_dir, timestamp.date, slug, entry, provenance)
     return SessionMemoryResult(
         path=memory_dir / filename,
         rel_path=f"memory/{filename}",

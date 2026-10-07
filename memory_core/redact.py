@@ -24,18 +24,66 @@ with ECMAScript semantics:
   chunk boundaries count units like JavaScript. The ``u``-flag stages (structured authorization
   parameters, URL query, form bodies) run over code points.
 - The one variable-length lookbehind (``(?<!;base64,[A-Za-z0-9+/=]*)``, used by the base64-safe
-  vendor prefixes) is a post-match check; the registry of exact secret values
-  (``redactRegisteredSecretValues``) is not ported (a host has no such registry).
+  vendor prefixes) is a post-match check.
+
+Host policy surface (all oracle-verified, ``tests/integration/test_redact_policies_oracle.py``):
+
+- the exact-secret registry (:mod:`memory_core.secret_registry`, re-exported here): a host
+  registers the secrets it resolved and every entry point masks their exact occurrences first,
+  including the percent-encoded and JSON-escaped forms, even in ``mode="off"``;
+- ``logging.redactPatterns`` (:class:`LoggingConfig`, :func:`configure_logging_redaction`, the
+  ``patterns=`` option): user patterns REPLACE the default string table in
+  :func:`redact_sensitive_text` and are MERGED with the built-in table (user first) by the
+  tool-payload and model-visible policies; parsing, the safe-regex screen and the JavaScript
+  regex translation live in :mod:`memory_core.redact_user_patterns`;
+- the policies of ``redact.ts`` the memory host uses: :func:`redact_tool_payload_text`,
+  :func:`redact_model_visible_tool_payload_text`, :func:`redact_sensitive_field_value`,
+  :func:`redact_model_visible_field_value`, :func:`redact_secrets`,
+  :func:`redact_model_visible_secrets`, the transcript wrappers of
+  ``src/agents/transcript-redact-text.ts``, and the full-context mode
+  (:func:`mark_full_context_tool_payload_redaction`: every pattern over the whole text, no
+  prefilter, no chunking).
+
+Not ported (docs/gap6-redaction-notes.md): the log-record transport (``redactLogRecord*``,
+``redactSensitiveLines``, ``computeSensitiveRedactionBitmap``), the source-code policy
+(``redactInputTextWithSourcePolicy``, needs a JavaScript tokenizer) and the per-block provenance
+cache (``prepareModelVisibleToolTextBlock``).
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 from memory_core.bootstrap._js import JS_IU_WORD_CLASS, JS_SPACE_CLASS, js_trim
+from memory_core.redact_user_patterns import UserRegex, compile_redact_pattern
+from memory_core.secret_registry import (
+    RegistrySnapshot,
+    capture_secret_redaction_registry_snapshot,
+    create_secret_value_redactor,
+    redact_registered_secret_values,
+)
+from memory_core.secret_registry import (
+    get_secret_redaction_registry_revision as get_secret_redaction_registry_revision,
+)
+from memory_core.secret_registry import (
+    has_registered_secret_values_for_redaction as has_registered_secret_values_for_redaction,
+)
+from memory_core.secret_registry import (
+    is_secret_value_registered_for_redaction as is_secret_value_registered_for_redaction,
+)
+from memory_core.secret_registry import (
+    register_secret_value_for_redaction as register_secret_value_for_redaction,
+)
+from memory_core.secret_registry import (
+    register_secret_values_for_redaction as register_secret_values_for_redaction,
+)
+from memory_core.secret_registry import (
+    reset_secret_redaction_registry as reset_secret_redaction_registry,
+)
 
 DEFAULT_REDACT_MIN_LENGTH = 18
 DEFAULT_REDACT_KEEP_START = 6
@@ -939,7 +987,16 @@ def redact_pem_block(block: str, marker: str) -> str:
 
 # --- Pattern table ------------------------------------------------------------------------------
 class _Pattern:
-    __slots__ = ("source", "regex", "lookbehind", "matcher", "shell_reference", "form_aware", "chunk_unsafe")
+    __slots__ = (
+        "source",
+        "regex",
+        "lookbehind",
+        "matcher",
+        "shell_reference",
+        "form_aware",
+        "chunk_unsafe",
+        "user",
+    )
 
     def __init__(
         self,
@@ -951,7 +1008,9 @@ class _Pattern:
         shell_reference: bool = False,
         form_aware: bool = False,
         chunk_unsafe: bool = False,
+        user: UserRegex | None = None,
     ) -> None:
+        self.user = user
         self.source = source
         self.regex = regex
         self.lookbehind = lookbehind
@@ -962,11 +1021,22 @@ class _Pattern:
 
 
 _LITERAL_PATTERN_RE = re.compile(r"^/(.+)/([gimsuy]*)\Z")
+_PEM_PATTERN = _Pattern(PEM_REDACT_PATTERN_SOURCE, matcher=_match_pem)
+_AWS_PATTERN = _Pattern("aws-secret-access-key", matcher=_match_aws_secret_access_keys)
+
+
+def _is_chunk_unsafe_source(raw: str) -> bool:
+    return (
+        raw.startswith(BASE64_SAFE_TOKEN_BOUNDARY)
+        or raw.startswith(IDENTIFIER_SAFE_TOKEN_BOUNDARY)
+        or raw in CHUNK_UNSAFE_PATTERN_SOURCES
+    )
 
 
 def _parse_pattern(raw: str) -> _Pattern:
+    """A built-in pattern source (``DEFAULT_REDACT_STRING_PATTERNS``) as a matcher."""
     if raw == PEM_REDACT_PATTERN_SOURCE:
-        return _Pattern(raw, matcher=_match_pem)
+        return _PEM_PATTERN
     literal = _LITERAL_PATTERN_RE.match(raw)
     # parseRedactPatternSource: a bare string is case-insensitive, a /literal/ keeps its flags.
     source, flags = (literal.group(1), literal.group(2)) if literal else (raw, "gi")
@@ -977,19 +1047,35 @@ def _parse_pattern(raw: str) -> _Pattern:
         lookbehind=lookbehind,
         shell_reference=raw in SHELL_REFERENCE_PRESERVING_PATTERN_SOURCES,
         form_aware=raw in FORM_AWARE_EQUALS_ASSIGNMENT_PATTERN_SOURCES,
-        chunk_unsafe=(
-            raw.startswith(BASE64_SAFE_TOKEN_BOUNDARY)
-            or raw.startswith(IDENTIFIER_SAFE_TOKEN_BOUNDARY)
-            or raw in CHUNK_UNSAFE_PATTERN_SOURCES
-        ),
+        chunk_unsafe=_is_chunk_unsafe_source(raw),
     )
 
 
 @lru_cache(maxsize=1)
 def _default_patterns() -> tuple[_Pattern, ...]:
-    return (
-        *(_parse_pattern(raw) for raw in DEFAULT_REDACT_STRING_PATTERNS),
-        _Pattern("aws-secret-access-key", matcher=_match_aws_secret_access_keys),
+    return (*(_parse_pattern(raw) for raw in DEFAULT_REDACT_STRING_PATTERNS), _AWS_PATTERN)
+
+
+_DEFAULT_SOURCES = frozenset(DEFAULT_REDACT_STRING_PATTERNS)
+
+
+@lru_cache(maxsize=512)
+def _parse_configured_pattern(raw: str) -> _Pattern | None:
+    """``parsePattern`` for a configured string: built-in sources keep their verified translation,
+    any other source goes through ``compileConfigRegex`` (``None`` when blank or rejected)."""
+    if raw in _DEFAULT_SOURCES:
+        return _parse_pattern(raw)
+    compiled = compile_redact_pattern(raw)
+    if compiled is None or compiled.regex is None:
+        return None
+    user = compiled.regex
+    return _Pattern(
+        raw,
+        regex=user.regex,
+        shell_reference=False,
+        form_aware=False,
+        chunk_unsafe=_is_chunk_unsafe_source(raw),
+        user=user,
     )
 
 
@@ -1544,9 +1630,10 @@ def _redact_match(
     offset: int,
     pattern: _Pattern,
     regex_match: re.Match[str] | None,
+    replacement: str | None = None,
 ) -> str:
     if "PRIVATE KEY-----" in match:
-        return redact_pem_block(match, "…redacted…")
+        return replacement if replacement is not None else redact_pem_block(match, "…redacted…")
     selected_index = -1
     selected_value = match
     for index, value in enumerate(groups):
@@ -1572,18 +1659,52 @@ def _redact_match(
         _should_preserve_shell_reference_match(match, token) or _EMPTY_EXPANSION_TAIL_RE.match(token)
     ):
         return match
-    masked = _mask_token_units(token) if pattern.shell_reference else f"{_mask_secret_value(secret, hinted=True)}{suffix}"
+    if replacement is not None:
+        masked = replacement
+    elif pattern.shell_reference:
+        masked = _mask_token_units(token)
+    else:
+        masked = f"{_mask_secret_value(secret, hinted=True)}{suffix}"
     return match[:token_index] + masked + match[token_index + len(token) :]
+
+
+def _sub_regex(text: str, pattern: _Pattern) -> str:
+    """Replace every match of a (non-lookbehind) regex pattern in ``text``."""
+    regex = pattern.regex
+    assert regex is not None
+    user = pattern.user
+    if user is None:
+        return regex.sub(
+            lambda m: _redact_match(m.group(0), [g or "" for g in m.groups()], m.start(), pattern, m),
+            text,
+        )
+    # ``String.prototype.replace`` with a global regex: after an empty match the search resumes one
+    # position later (Python's ``sub`` would let a non-empty match start there); a sticky regex
+    # must match exactly where the previous match ended.
+    parts: list[str] = []
+    last = 0
+    position = 0
+    while position <= len(text):
+        match = regex.match(text, position) if user.sticky else regex.search(text, position)
+        if match is None:
+            break
+        parts.append(text[last : match.start()])
+        parts.append(
+            _redact_match(match.group(0), [g or "" for g in match.groups()], match.start(), pattern, match)
+        )
+        last = match.end()
+        position = match.end() if match.end() > match.start() else match.end() + 1
+    if not parts:
+        return text
+    parts.append(text[last:])
+    return "".join(parts)
 
 
 def _replace_regex(text: str, pattern: _Pattern) -> str:
     regex = pattern.regex
     assert regex is not None
     if not pattern.lookbehind:
-        return regex.sub(
-            lambda m: _redact_match(m.group(0), [g or "" for g in m.groups()], m.start(), pattern, m),
-            text,
-        )
+        return _sub_regex(text, pattern)
     # Variable-length lookbehind after group 1: the outcome depends only on the start position, so
     # a rejected match resumes the search one character later, like the regex engine would.
     parts: list[str] = []
@@ -1608,14 +1729,21 @@ def _replace_regex(text: str, pattern: _Pattern) -> str:
     return "".join(parts)
 
 
+def _replace_one(text: str, pattern: _Pattern) -> str:
+    if pattern.user is not None and pattern.user.unicode:
+        # A u-flag pattern matches code points: run it over the joined text of this chunk.
+        return to_units(_replace_regex(from_units(text), pattern))
+    return _replace_regex(text, pattern)
+
+
 def _replace_bounded(text: str, pattern: _Pattern) -> str:
     if len(text) <= REDACT_REGEX_CHUNK_THRESHOLD:
-        return _replace_regex(text, pattern)
+        return _replace_one(text, pattern)
     # Chunking may miss matches spanning chunk boundaries; chunk-unsafe patterns skip this path.
     output: list[str] | None = None
     for index in range(0, len(text), REDACT_REGEX_CHUNK_SIZE):
         chunk = text[index : index + REDACT_REGEX_CHUNK_SIZE]
-        replaced = _replace_regex(chunk, pattern)
+        replaced = _replace_one(chunk, pattern)
         if output is not None:
             output.append(replaced)
         elif replaced != chunk:
@@ -1623,26 +1751,35 @@ def _replace_bounded(text: str, pattern: _Pattern) -> str:
     return "".join(output) if output is not None else text
 
 
-def _apply_pattern(text: str, pattern: _Pattern) -> str:
+def _apply_pattern(text: str, pattern: _Pattern, full_context: bool = False) -> str:
     if pattern.regex is not None:
-        return _replace_regex(text, pattern) if pattern.chunk_unsafe else _replace_bounded(text, pattern)
+        if full_context or pattern.chunk_unsafe:
+            return _replace_one(text, pattern)
+        return _replace_bounded(text, pattern)
     parts: list[str] = []
     end = 0
-    for match, groups, offset in pattern.matcher(text):
+    for found in pattern.matcher(text):
+        match, groups, offset = found[0], found[1], found[2]
+        replacement = found[3] if len(found) > 3 else None
         parts.append(text[end:offset])
-        parts.append(_redact_match(match, groups, offset, pattern, None))
+        parts.append(_redact_match(match, groups, offset, pattern, None, replacement))
         end = offset + len(match)
     return "".join(parts) + text[end:] if parts else text
 
 
-def _redact_text(text: str, patterns: tuple[_Pattern, ...] | None = None) -> str:
-    """``redactText(text, patterns)`` (default: the full default pattern table)."""
+def _redact_text(
+    text: str, patterns: tuple[_Pattern, ...] | None = None, *, full_context: bool = False
+) -> str:
+    """``redactText(text, patterns, {fullContext})`` (default: the full default pattern table).
+
+    ``full_context`` runs every pattern over the whole text in one pass (no chunking).
+    """
     staged = _redact_form_body(
         _redact_assignment_values(redact_structured_auth_headers(text, "***"), "url")
     )
     units = to_units(staged)
     for pattern in _default_patterns() if patterns is None else patterns:
-        units = _apply_pattern(units, pattern)
+        units = _apply_pattern(units, pattern, full_context)
     return from_units(units)
 
 
@@ -1650,14 +1787,235 @@ def _could_match_default_redact_patterns(text: str) -> bool:
     return bool(_prefilter_re().search(text)) or _could_match_aws_secret_access_key(text)
 
 
-def redact_sensitive_text(text: str) -> str:
-    """``redactSensitiveText(text, {mode: "tools"})`` with an empty secret registry."""
+# --- Public pattern types, logging configuration, option resolution ---------------------------------
+class RedactMatch(NamedTuple):
+    """One match of a programmatic matcher (``RedactMatch`` in ``redact-pattern-runtime.ts``).
+
+    ``match`` is the exact matched text, ``offset`` its index (in code points) in the text the
+    matcher was given, ``groups`` the captures (``""`` for an unmatched one; the last nonempty
+    capture is the secret, none selects the whole match) and ``replacement`` a fixed mask that
+    replaces the secret instead of the token-hint mask.
+    """
+
+    match: str
+    groups: tuple[str, ...] = ()
+    offset: int = 0
+    replacement: str | None = None
+
+
+class RedactMatcher(NamedTuple):
+    """A programmatic synchronous rule: ``exec(text)`` yields nonempty, ordered, non-overlapping
+    :class:`RedactMatch` values over the text it is given (never serialized into configuration)."""
+
+    source: str
+    exec: Callable[[str], Iterable[RedactMatch]]
+
+
+def _adapt_matcher(matcher: RedactMatcher) -> _Pattern:
+    def run(units: str) -> Iterator[tuple[str, list[str], int, str | None]]:
+        text = from_units(units)
+        # Convert code-point offsets to UTF-16 unit offsets when the text holds astral characters.
+        prefix: list[int] | None = None
+        if text != units:
+            prefix = [0]
+            for char in text:
+                prefix.append(prefix[-1] + (2 if ord(char) > 0xFFFF else 1))
+        for found in matcher.exec(text):
+            offset = prefix[found.offset] if prefix is not None else found.offset
+            yield (
+                to_units(found.match),
+                [to_units(group) for group in found.groups],
+                offset,
+                None if found.replacement is None else to_units(found.replacement),
+            )
+
+    return _Pattern(matcher.source, matcher=run)
+
+
+# The built-in scanners, as values a configured list can contain (identity-matched).
+AWS_SECRET_ACCESS_KEY_MATCHER = RedactMatcher("aws-secret-access-key", lambda text: ())
+PEM_REDACT_MATCHER = RedactMatcher(PEM_REDACT_PATTERN_SOURCE, lambda text: ())
+
+DEFAULT_REDACT_PATTERNS: tuple[str | RedactMatcher, ...] = (
+    *DEFAULT_REDACT_STRING_PATTERNS,
+    AWS_SECRET_ACCESS_KEY_MATCHER,
+)
+RedactPattern = str | RedactMatcher
+
+
+@dataclass(frozen=True)
+class LoggingConfig:
+    """The slice of OpenClaw's ``logging`` config that redaction reads.
+
+    ``redact_patterns`` is ``logging.redactPatterns`` (strings; blank, unsafe and invalid entries
+    are skipped). ``full_context_tool_payload`` is the internal full-context mark
+    (``fullContextToolPayloadRedactionState.mark``): tool-payload redaction then runs every
+    pattern over the whole text, without the prefilter and without chunking.
+    """
+
+    redact_patterns: tuple[str, ...] | None = None
+    full_context_tool_payload: bool = False
+
+    def __post_init__(self) -> None:
+        if self.redact_patterns is not None:
+            patterns = tuple(self.redact_patterns)
+            if not all(isinstance(pattern, str) for pattern in patterns):
+                raise TypeError("logging.redactPatterns holds strings")
+            object.__setattr__(self, "redact_patterns", patterns)
+
+
+_HOST_LOGGING_CONFIG: LoggingConfig | None = None
+
+
+def configure_logging_redaction(config: LoggingConfig | None) -> None:
+    """Set the host's logging configuration (``readLoggingConfig()`` for the redaction functions
+    that read it when called without an explicit ``logging_config``). ``None`` clears it."""
+    global _HOST_LOGGING_CONFIG
+    _HOST_LOGGING_CONFIG = config
+
+
+def get_logging_redaction_config() -> LoggingConfig | None:
+    return _HOST_LOGGING_CONFIG
+
+
+def _read_logging_config(config: LoggingConfig | None) -> LoggingConfig | None:
+    """An explicit config, else the host's (a TS default parameter: ``undefined`` reads it)."""
+    return config if config is not None else _HOST_LOGGING_CONFIG
+
+
+def mark_full_context_tool_payload_redaction(config: LoggingConfig | None = None) -> LoggingConfig:
+    """``fullContextToolPayloadRedactionState.mark``: a copy of the config with the full-context mark."""
+    base = _read_logging_config(config)
+    return LoggingConfig(base.redact_patterns if base else None, True)
+
+
+def is_full_context_tool_payload_redaction(config: LoggingConfig | None) -> bool:
+    return bool(config and config.full_context_tool_payload)
+
+
+class _Options(NamedTuple):
+    mode: str = "tools"
+    patterns: Sequence[RedactPattern] | None = None
+    sensitive_field_patterns: Sequence[RedactPattern] | None = None
+
+
+def _normalize_mode(value: str | None) -> str:
+    return "off" if value == "off" else "tools"
+
+
+def _uses_built_in_patterns(value: Sequence[RedactPattern] | None) -> bool:
+    return not value or value is DEFAULT_REDACT_PATTERNS or value is TOOL_PAYLOAD_REDACT_PATTERNS
+
+
+def _resolve_patterns(value: Sequence[RedactPattern] | None) -> tuple[_Pattern, ...]:
+    """``resolvePatterns``: built-in tables as such; a configured list as parsed, deduplicated by
+    identity, with the AWS matcher appended when absent."""
+    if value is TOOL_PAYLOAD_REDACT_PATTERNS:
+        return _tool_payload_patterns()
+    if not value or value is DEFAULT_REDACT_PATTERNS:
+        return _default_patterns()
+    resolved: list[_Pattern] = []
+    host_matchers: dict[int, _Pattern] = {}
+    for raw in value:
+        if isinstance(raw, str):
+            parsed = _parse_configured_pattern(raw)
+        elif raw is AWS_SECRET_ACCESS_KEY_MATCHER:
+            parsed = _AWS_PATTERN
+        elif raw is PEM_REDACT_MATCHER:
+            parsed = _PEM_PATTERN
+        else:
+            parsed = host_matchers.get(id(raw))
+            if parsed is None:
+                parsed = host_matchers[id(raw)] = _adapt_matcher(raw)
+        if parsed is not None and not any(parsed is existing for existing in resolved):
+            resolved.append(parsed)
+    if not any(existing is _AWS_PATTERN for existing in resolved):
+        resolved.append(_AWS_PATTERN)
+    return tuple(resolved)
+
+
+def _config_patterns(config: LoggingConfig | None) -> tuple[str, ...]:
+    return tuple(config.redact_patterns or ()) if config else ()
+
+
+def _redact_exact(text: str) -> str:
+    """``redactRegisteredSecretValues(text, maskToken)``."""
+    return redact_registered_secret_values(text, lambda value, _index: mask_token(value))
+
+
+def _redact_with_options(exact: str, options: _Options) -> str:
+    """``redactSensitiveTextWithOptions`` over text the registry already redacted."""
+    if _normalize_mode(options.mode) == "off":
+        return exact
+    joined = from_units(exact)
+    if _uses_built_in_patterns(options.patterns) and not _could_match_default_redact_patterns(joined):
+        return exact
+    return _redact_text(joined, _resolve_patterns(options.patterns))
+
+
+def redact_sensitive_text(
+    text: str,
+    *,
+    mode: str = "tools",
+    patterns: Sequence[RedactPattern] | None = None,
+    config: LoggingConfig | Literal["host"] | None = None,
+) -> str:
+    """``redactSensitiveText``: registered secret values, then the pattern table.
+
+    Without options this is ``redactSensitiveText(text, {mode: "tools"})`` (what session export
+    runs): the registered exact values are masked first (``maskToken``; a value under 18 UTF-16
+    units becomes ``***``), then the 122 default patterns, the structured authorization
+    parameters, URL query values, form bodies, PEM blocks and the AWS secret-access-key matcher.
+
+    ``mode="off"`` skips every pattern (registered values are still masked, like upstream).
+    ``patterns`` is ``options.patterns``: ``logging.redactPatterns`` strings (and
+    :class:`RedactMatcher` rules) that REPLACE the default string table; the built-in form-body,
+    structured-auth and AWS bare-key protections still apply, and an empty list means the
+    defaults. A blank, nested-repetition or invalid entry is skipped. ``config`` reproduces
+    ``redactSensitiveText(text)`` with no options: the patterns come from that
+    :class:`LoggingConfig` (``"host"``: the one set with :func:`configure_logging_redaction`) and
+    the mode is ``tools``.
+    """
     if not text:
         return text
-    joined = from_units(text)
-    if not _could_match_default_redact_patterns(joined):
-        return text
-    return _redact_text(joined)
+    if config is not None:
+        resolved_config = _HOST_LOGGING_CONFIG if config == "host" else config
+        assert resolved_config is None or isinstance(resolved_config, LoggingConfig)
+        options = _Options("tools", _config_patterns(resolved_config))
+    else:
+        options = _Options(mode, patterns)
+    return _redact_with_options(_redact_exact(text), options)
+
+
+@dataclass(frozen=True)
+class SensitiveTextRedactionSnapshot:
+    """``SensitiveTextRedactionSnapshot``: the registry revision and its exact values. Never log it."""
+
+    registry_revision: int
+    registered_secret_values: tuple[str, ...]
+
+
+def capture_sensitive_text_redaction_snapshot() -> SensitiveTextRedactionSnapshot:
+    """Capture the built-in tools-mode policy (session preparation) and the registry as it is now."""
+    snapshot: RegistrySnapshot = capture_secret_redaction_registry_snapshot()
+    return SensitiveTextRedactionSnapshot(snapshot.revision, snapshot.values)
+
+
+def create_sensitive_text_redactor(snapshot: SensitiveTextRedactionSnapshot) -> Callable[[str], str]:
+    """``createSensitiveTextRedactor``: a text redactor over the snapshot's values (later
+    registrations do not affect it)."""
+    redact_exact = create_secret_value_redactor(snapshot.registered_secret_values)
+    options = _Options("tools")
+
+    def redact(text: str) -> str:
+        return _redact_with_options(redact_exact(text, lambda value, _index: mask_token(value)), options)
+
+    return redact
+
+
+def get_default_redact_patterns() -> list[str]:
+    """``getDefaultRedactPatterns``: the default string patterns."""
+    return list(DEFAULT_REDACT_STRING_PATTERNS)
 
 
 # --- redactModelVisibleSecrets (structured, model-visible tool output) ----------------------------
@@ -1667,8 +2025,8 @@ def redact_sensitive_text(text: str) -> str:
 # array is walked, and every string under a key goes through ``redactSensitiveFieldValue`` (the
 # subset, or the full table under a sensitive key, then app-specific passwords, then a whole-value
 # mask for a sensitive key); numbers and booleans under a sensitive key become ``***``.
-# Not ported: the exact-secret registry (``redactRegisteredSecretValues``, empty here) and the
-# ``logging.redactPatterns`` / full-context configuration (none is read, so the defaults apply).
+# The registry and the ``logging.redactPatterns`` / full-context configuration are read like upstream
+# (``LoggingConfig``, the host's configuration when none is passed).
 _JS_I = re.IGNORECASE | re.ASCII
 STRUCTURED_SECRET_FIELD_RE = re.compile(
     _t(
@@ -1726,9 +2084,66 @@ TOOL_PAYLOAD_REDACT_STRING_PATTERNS: tuple[str, ...] = tuple(
 
 @lru_cache(maxsize=1)
 def _tool_payload_patterns() -> tuple[_Pattern, ...]:
-    return (
-        *(_parse_pattern(raw) for raw in TOOL_PAYLOAD_REDACT_STRING_PATTERNS),
-        _Pattern("aws-secret-access-key", matcher=_match_aws_secret_access_keys),
+    return (*(_parse_pattern(raw) for raw in TOOL_PAYLOAD_REDACT_STRING_PATTERNS), _AWS_PATTERN)
+
+
+TOOL_PAYLOAD_REDACT_PATTERNS: tuple[str | RedactMatcher, ...] = (
+    *TOOL_PAYLOAD_REDACT_STRING_PATTERNS,
+    AWS_SECRET_ACCESS_KEY_MATCHER,
+)
+
+
+def _resolve_tool_payload_redaction(config: LoggingConfig | None) -> _Options:
+    """``resolveToolPayloadRedaction``: user ``redactPatterns`` first, then the built-in table."""
+    user = _config_patterns(_read_logging_config(config))
+    return _Options("tools", [*user, *DEFAULT_REDACT_PATTERNS] if user else None)
+
+
+def _resolve_model_visible_redaction(config: LoggingConfig | None) -> _Options:
+    """``resolveModelVisibleToolPayloadRedaction``: the narrower tool-payload table for text,
+    the full table for sensitive field names, each after the user patterns."""
+    user = _config_patterns(_read_logging_config(config))
+    if user:
+        return _Options(
+            "tools", [*user, *TOOL_PAYLOAD_REDACT_PATTERNS], [*user, *DEFAULT_REDACT_PATTERNS]
+        )
+    return _Options("tools", TOOL_PAYLOAD_REDACT_PATTERNS, DEFAULT_REDACT_PATTERNS)
+
+
+def _redact_tool_payload_text_with_policy(
+    text: str, config: LoggingConfig | None, options: _Options
+) -> str:
+    if not text:
+        return text
+    if not is_full_context_tool_payload_redaction(config):
+        return _redact_with_options(_redact_exact(text), options)
+    # Full context: registered values, then every pattern over the whole text (no prefilter, no
+    # chunking); a mode other than tools cannot reach here.
+    return _redact_text(
+        from_units(_redact_exact(text)), _resolve_patterns(options.patterns), full_context=True
+    )
+
+
+def redact_tool_payload_text(text: str, *, logging_config: LoggingConfig | None = None) -> str:
+    """``redactToolPayloadTextWithConfig``: tools mode forced, user ``redactPatterns`` merged with
+    the built-in table (both apply). ``logging_config=None`` reads the host configuration; a
+    config marked full-context (:func:`mark_full_context_tool_payload_redaction`) runs the
+    whole-context mode."""
+    return _redact_tool_payload_text_with_policy(
+        text, logging_config, _resolve_tool_payload_redaction(logging_config)
+    )
+
+
+redact_tool_detail = redact_tool_payload_text
+
+
+def redact_model_visible_tool_payload_text(
+    text: str, *, logging_config: LoggingConfig | None = None
+) -> str:
+    """``redactModelVisibleToolPayloadTextWithConfig``: like :func:`redact_tool_payload_text` with
+    the narrower tool-payload table (source code in tool output keeps its assignments)."""
+    return _redact_tool_payload_text_with_policy(
+        text, logging_config, _resolve_model_visible_redaction(logging_config)
     )
 
 
@@ -1829,28 +2244,71 @@ def _should_redact_structured_primitive_field(key: str, path: tuple[str, ...]) -
     )
 
 
-def redact_model_visible_field_value(
-    key: str, value: str, path: tuple[str, ...] | None = None, object_path: bool = True
+def _redact_field_value(
+    key: str, value: str, options: _Options, path: tuple[str, ...], object_path: bool
 ) -> str:
-    """``redactSensitiveFieldValueWithOptions`` under the model-visible tool-payload policy."""
-    path = (key,) if path is None else path
+    """``redactSensitiveFieldValueWithOptions``."""
+    exact = _redact_exact(value)
     if _is_public_share_id_path(path):
-        return mask_token(value)
-    patterns = _default_patterns() if is_sensitive_field_key(key) else _tool_payload_patterns()
-    joined = from_units(value)
-    redacted = (
-        _redact_text(joined, patterns) if _could_match_default_redact_patterns(joined) else joined
+        return mask_token(exact)
+    sensitive_key = is_sensitive_field_key(key)
+    field_patterns = (
+        options.sensitive_field_patterns
+        if sensitive_key and options.sensitive_field_patterns is not None
+        else options.patterns
     )
-    changed = redacted != joined
-    if changed or STRUCTURED_APP_PASSWORD_FIELD_RE.fullmatch(key) is not None:
+    if _normalize_mode(options.mode) == "off":
+        return exact
+    joined_exact = from_units(exact)
+    # Structured payloads hold thousands of short benign strings: built-in tables go through the
+    # prefilter, explicit user patterns always take the full scan.
+    redacted = (
+        _redact_text(joined_exact, _resolve_patterns(field_patterns))
+        if not _uses_built_in_patterns(field_patterns) or _could_match_default_redact_patterns(joined_exact)
+        else joined_exact
+    )
+    joined = from_units(value)
+    if redacted != joined or STRUCTURED_APP_PASSWORD_FIELD_RE.fullmatch(key) is not None:
         app_redacted = _redact_app_specific_passwords(redacted)
         if app_redacted != joined:
             return app_redacted
-    if changed:
+    if redacted != joined:
         return redacted
-    if _should_redact_structured_string_field(key, value, path, object_path):
-        return mask_token(value)
-    return value
+    if _should_redact_structured_string_field(key, exact, path, object_path):
+        return mask_token(exact)
+    return exact
+
+
+def redact_sensitive_field_value(
+    key: str, value: str, *, logging_config: LoggingConfig | None = None
+) -> str:
+    """``redactSensitiveFieldValueWithConfig``: a string under a field name, diagnostic policy
+    (user patterns plus the full built-in table)."""
+    return _redact_field_value(
+        key, value, _resolve_tool_payload_redaction(logging_config), (key,), True
+    )
+
+
+def redact_model_visible_field_value(
+    key: str,
+    value: str,
+    path: tuple[str, ...] | None = None,
+    object_path: bool = True,
+    *,
+    logging_config: LoggingConfig | None = None,
+) -> str:
+    """``redactModelVisibleSensitiveFieldValueWithConfig`` (``redactSensitiveFieldValueWithOptions``
+    under the model-visible tool-payload policy)."""
+    return _redact_field_value(
+        key,
+        value,
+        _resolve_model_visible_redaction(logging_config),
+        (key,) if path is None else path,
+        object_path,
+    )
+
+
+redact_model_visible_sensitive_field_value = redact_model_visible_field_value
 
 
 def _js_object_key_order(keys: list[str]) -> list[str]:
@@ -1863,10 +2321,15 @@ def _js_object_key_order(keys: list[str]) -> list[str]:
 
 
 def _redact_structured_value(
-    key: str, value: Any, seen: set[int], path: tuple[str, ...], object_path: bool
+    key: str,
+    value: Any,
+    seen: set[int],
+    options: _Options,
+    path: tuple[str, ...],
+    object_path: bool,
 ) -> Any:
     if isinstance(value, str):
-        return redact_model_visible_field_value(key, value, path, object_path)
+        return _redact_field_value(key, value, options, path, object_path)
     if value is None:
         return value
     if isinstance(value, bool | int | float):
@@ -1875,7 +2338,7 @@ def _redact_structured_value(
         if id(value) in seen:
             return "[Circular]"
         seen.add(id(value))
-        out = [_redact_structured_value(key, entry, seen, path, False) for entry in value]
+        out = [_redact_structured_value(key, entry, seen, options, path, False) for entry in value]
         seen.discard(id(value))
         return out
     if isinstance(value, dict):
@@ -1883,7 +2346,7 @@ def _redact_structured_value(
             return "[Circular]"
         seen.add(id(value))
         out_dict = {
-            name: _redact_structured_value(name, value[name], seen, (*path, name), object_path)
+            name: _redact_structured_value(name, value[name], seen, options, (*path, name), object_path)
             for name in _js_object_key_order(list(value))
         }
         seen.discard(id(value))
@@ -1891,21 +2354,59 @@ def _redact_structured_value(
     return value
 
 
-def redact_model_visible_secrets(value: Any) -> Any:
-    """``redactModelVisibleSecrets``: tool-payload patterns for strings, field-name masks for records.
-
-    A string is redacted as text (the tool-payload subset of the default patterns, no field
-    context). A dict or list is copied with every string redacted under its key (a sensitive key
-    uses the full pattern table and masks an unchanged value whole), numbers and booleans under a
-    sensitive key replaced by ``***``, and ``None`` kept.
-    """
+def _redact_secrets_with_options(value: Any, options: _Options) -> Any:
     if isinstance(value, str):
-        if not value:
-            return value
-        joined = from_units(value)
-        if not _could_match_default_redact_patterns(joined):
-            return value
-        return _redact_text(joined, _tool_payload_patterns())
+        return _redact_with_options(_redact_exact(value), options) if value else value
     if value is None or not isinstance(value, dict | list | tuple):
         return value
-    return _redact_structured_value("", value, set(), (), True)
+    return _redact_structured_value("", value, set(), options, (), True)
+
+
+def redact_secrets(value: Any, *, logging_config: LoggingConfig | None = None) -> Any:
+    """``redactSecrets``: a string as text, a record or list walked with field-name masks, under
+    the diagnostic policy (user patterns plus the full built-in table)."""
+    return _redact_secrets_with_options(value, _resolve_tool_payload_redaction(logging_config))
+
+
+def redact_model_visible_secrets(value: Any, *, logging_config: LoggingConfig | None = None) -> Any:
+    """``redactModelVisibleSecrets``: tool-payload patterns for strings, field-name masks for records.
+
+    A string is redacted as text (registered secret values, then the tool-payload subset of the
+    default patterns, no field context). A dict or list is copied with every string redacted under
+    its key (a sensitive key uses the full pattern table and masks an unchanged value whole),
+    numbers and booleans under a sensitive key replaced by ``***``, and ``None`` kept. User
+    ``logging.redactPatterns`` (``logging_config``, else the host's) run first in both tables.
+    """
+    return _redact_secrets_with_options(value, _resolve_model_visible_redaction(logging_config))
+
+
+_PAGE_CURSOR_KEY_RE = re.compile(r"(?:next[_-]?)?page[_-]?token|page[_-]?cursor", _JS_I)
+
+
+def redact_transcript_text(
+    value: str, *, logging_config: LoggingConfig | None = None, model_visible_tool_result: bool = False
+) -> str:
+    """``redactTranscriptText`` (``src/agents/transcript-redact-text.ts``): the transcript writer's
+    text redaction, diagnostic policy or, for a model-visible tool result, the narrower one."""
+    if model_visible_tool_result:
+        return redact_model_visible_tool_payload_text(value, logging_config=logging_config)
+    return redact_tool_payload_text(value, logging_config=logging_config)
+
+
+def redact_transcript_structured_field_value(
+    key: str,
+    value: str,
+    *,
+    logging_config: LoggingConfig | None = None,
+    model_visible_tool_result: bool = False,
+) -> str:
+    """``redactTranscriptStructuredFieldValue``: pagination tokens (``page_token``,
+    ``next_page_token``, ``page_cursor``) are kept out of the field-name mask in transcripts and
+    redacted as text; every other field goes through the field-value policy."""
+    if _PAGE_CURSOR_KEY_RE.fullmatch(key):
+        return redact_transcript_text(
+            value, logging_config=logging_config, model_visible_tool_result=model_visible_tool_result
+        )
+    if model_visible_tool_result:
+        return redact_model_visible_field_value(key, value, logging_config=logging_config)
+    return redact_sensitive_field_value(key, value, logging_config=logging_config)

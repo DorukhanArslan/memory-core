@@ -4054,6 +4054,196 @@ async function main() {
     }
   }
 
+  if (payload.operation === "redactPolicies") {
+    // src/logging/redact.ts policies beyond the default table, each scenario in a clean process
+    // state: the exact-secret registry (secret-redaction-registry.ts, reset through its test
+    // API, then `registry` registered in order), an optional config-file logging block
+    // (`fileConfig`, read by readLoggingConfig for the calls that take no config), an explicit
+    // logging config (`config`, `fullContext` marks it with the internal full-context flag) and
+    // the `steps` run in order. Every step returns its value or {error}. A pattern entry
+    // {matcher: name} stands for a programmatic RedactMatcher defined below.
+    const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-oracle-redact-policies-"));
+    process.env.HOME = path.join(sandbox, "home");
+    process.env.OPENCLAW_STATE_DIR = path.join(sandbox, "state");
+    process.env.OPENCLAW_LOG_LEVEL = "silent";
+    process.env.NODE_ENV = "test";
+    try {
+      const redact = await importFromRepo(repoPath, "src/logging/redact.ts");
+      const registry = await importFromRepo(repoPath, "src/logging/secret-redaction-registry.ts");
+      const internalState = await importFromRepo(repoPath, "src/logging/redact-internal-state.ts");
+      const loggingConfig = await importFromRepo(repoPath, "src/logging/config.ts");
+      const runtime = await importFromRepo(repoPath, "src/logging/redact-pattern-runtime.ts");
+      const configRegex = await importFromRepo(repoPath, "src/security/config-regex.ts");
+      const transcript = await importFromRepo(repoPath, "src/agents/transcript-redact-text.ts");
+      const patternTables = await importFromRepo(repoPath, "src/logging/redact-patterns.ts");
+      const resetRegistry = (globalThis as Record<PropertyKey, any>)[
+        Symbol.for("openclaw.secretRedactionRegistryTestApi")
+      ].resetSecretRedactionRegistryForTest;
+      const matchers: Record<string, any> = {
+        cust: {
+          source: "cust",
+          *exec(input: string) {
+            for (const m of input.matchAll(/CUST-(\d+)/g)) {
+              yield {
+                match: m[0],
+                groups: [m[1]],
+                input,
+                offset: m.index,
+                replacement: m[1].length > 3 ? "<cust>" : undefined,
+              };
+            }
+          },
+        },
+        whole: {
+          source: "whole",
+          *exec(input: string) {
+            for (const m of input.matchAll(/ZZ[0-9]{3,}/g)) {
+              yield { match: m[0], groups: [], input, offset: m.index };
+            }
+          },
+        },
+        aws: patternTables.AWS_SECRET_ACCESS_KEY_MATCHER,
+      };
+      const mapPatterns = (list: unknown) =>
+        Array.isArray(list)
+          ? list.map((entry: any) =>
+              entry && typeof entry === "object" ? matchers[entry.matcher] : entry,
+            )
+          : list;
+      const body = payload as Record<string, any>;
+      const scenarios: any[] = [];
+      let fileIndex = 0;
+      for (const scenario of body.scenarios ?? []) {
+        resetRegistry();
+        const baseRevision = registry.getSecretRedactionRegistryRevision();
+        const stepsOut: unknown[] = [];
+        let registerError: string | undefined;
+        for (const value of scenario.registry ?? []) {
+          try {
+            registry.registerSecretValueForRedaction(value);
+          } catch (error) {
+            registerError = String((error as Error)?.name ?? error);
+          }
+        }
+        if (scenario.fileConfig) {
+          const file = path.join(sandbox, `config-${fileIndex++}.json`);
+          await fs.writeFile(file, JSON.stringify({ logging: scenario.fileConfig }));
+          process.env.OPENCLAW_CONFIG_PATH = file;
+        } else {
+          process.env.OPENCLAW_CONFIG_PATH = path.join(sandbox, "missing-config.json");
+        }
+        loggingConfig.invalidateLoggingConfigCache();
+        let config: any = scenario.config ?? undefined;
+        if (scenario.fullContext) {
+          config = internalState.fullContextToolPayloadRedactionState.mark(config ?? {});
+        }
+        const snapshots: any[] = [];
+        for (const step of scenario.steps ?? []) {
+          try {
+            let out: unknown;
+            switch (step.fn) {
+              case "sensitiveText":
+                out = redact.redactSensitiveText(step.text, {
+                  mode: step.mode ?? "tools",
+                  patterns: mapPatterns(step.patterns),
+                });
+                break;
+              case "sensitiveTextConfig":
+                out = redact.redactSensitiveText(step.text);
+                break;
+              case "toolPayload":
+                out = redact.redactToolPayloadTextWithConfig(step.text, config);
+                break;
+              case "toolPayloadHost":
+                out = redact.redactToolPayloadText(step.text);
+                break;
+              case "modelVisibleText":
+                out = redact.redactModelVisibleToolPayloadTextWithConfig(step.text, config);
+                break;
+              case "field":
+                out = redact.redactSensitiveFieldValueWithConfig(step.key, step.value, config);
+                break;
+              case "modelVisibleField":
+                out = redact.redactModelVisibleSensitiveFieldValueWithConfig(
+                  step.key,
+                  step.value,
+                  config,
+                );
+                break;
+              case "secrets":
+                out = redact.redactSecrets(structuredClone(step.value));
+                break;
+              case "modelVisibleSecrets":
+                out = redact.redactModelVisibleSecrets(structuredClone(step.value));
+                break;
+              case "transcriptText":
+                out = transcript.redactTranscriptText(
+                  step.text,
+                  step.cfg ?? undefined,
+                  Boolean(step.modelVisible),
+                );
+                break;
+              case "transcriptField":
+                out = transcript.redactTranscriptStructuredFieldValue(
+                  step.key,
+                  step.value,
+                  step.cfg ?? undefined,
+                  Boolean(step.modelVisible),
+                );
+                break;
+              case "register":
+                registry.registerSecretValueForRedaction(step.value);
+                out = null;
+                break;
+              case "registryState":
+                out = {
+                  revision: registry.getSecretRedactionRegistryRevision() - baseRevision,
+                  has: registry.hasRegisteredSecretValuesForRedaction(),
+                  values: registry.captureSecretRedactionRegistrySnapshot().values,
+                  registered: (step.probe ?? []).map((v: string) =>
+                    registry.isSecretValueRegisteredForRedaction(v),
+                  ),
+                };
+                break;
+              case "snapshot":
+                snapshots.push(redact.captureSensitiveTextRedactionSnapshot());
+                out = null;
+                break;
+              case "snapshotRedact":
+                out = redact.createSensitiveTextRedactor(snapshots[step.index])(step.text);
+                break;
+              case "registered":
+                out = registry.redactRegisteredSecretValues(
+                  step.text,
+                  (value: string, index: number) => `<${value.length}@${index}>`,
+                );
+                break;
+              case "compile": {
+                const [source, flags] = runtime.parseRedactPatternSource(step.pattern);
+                const compiled = step.pattern.trim()
+                  ? configRegex.compileConfigRegex(source, flags)
+                  : null;
+                out = compiled
+                  ? { source: compiled.pattern, flags: compiled.flags, reason: compiled.reason }
+                  : null;
+                break;
+              }
+              default:
+                throw new Error(`unknown step ${step.fn}`);
+            }
+            stepsOut.push({ value: out === undefined ? null : out });
+          } catch (error) {
+            stepsOut.push({ error: String((error as Error)?.name ?? error) });
+          }
+        }
+        scenarios.push({ steps: stepsOut, registerError: registerError ?? null });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios } };
+    } finally {
+      await fs.rm(sandbox, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
   if (payload.operation === "sessionMemorySlug") {
     // src/hooks/llm-slug-generator.ts generateSlugViaLLM with only its model run replaced:
     // a module hook resolves its ../agents/embedded-agent.js import to a stub whose

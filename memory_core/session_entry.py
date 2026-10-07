@@ -12,9 +12,10 @@ become ``line_map`` like upstream's archive branch). Deviations, by design:
 
 - Every exported text goes through ``redactSensitiveText(text, {mode: "tools"})`` like upstream
   (``memory_core.redact.redact_sensitive_text``, a faithful port verified against the real
-  function). ``redact_text`` is a host extension applied to that result (for example to mask
-  host-registered secrets: the exact-value registry of ``redact.ts`` is not ported, gap R13
-  narrowed); ``apply_default_redaction=False`` turns the built-in pass off.
+  function), so the exact-secret values a host registered with
+  ``memory_core.redact.register_secret_value_for_redaction`` are masked first, as upstream does.
+  ``redact_text`` is a host extension applied to that result; ``apply_default_redaction=False``
+  turns the built-in pass off.
 - ``stripInternalRuntimeContext`` is the memory-core helper of ``replay_history`` (the
   memory-core and OpenClaw runtime identities), not upstream's full legacy-format stripper.
 - The session key classification (dreaming narrative, cron run) needs the key from the host's

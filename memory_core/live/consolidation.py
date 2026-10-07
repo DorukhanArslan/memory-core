@@ -17,7 +17,7 @@ Nothing runs on its own; the host decides when to record, promote or dream.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -69,12 +69,18 @@ class SubjectConsolidation:
         return self.subject.memory.config.effective_flags().subject_promotion
 
     def record_recalls(
-        self, query: str, results: Iterable[Mapping[str, Any]], *, now_ms: int
+        self,
+        query: str,
+        results: Iterable[Mapping[str, Any]],
+        *,
+        now_ms: int,
+        on_event: Callable[[dict[str, Any]], None] | None = None,
     ) -> int:
         """Record hits of ``subject.memory.search(query)`` as short-term recall signals.
 
         Citation suffixes are removed first (:func:`undecorate_search_results`);
-        only ``memory/*.md`` hits count. Returns the number of entries touched.
+        only ``memory/*.md`` hits count. Returns the number of entries touched. ``on_event`` receives
+        the ``memory.recall.*`` host events (:func:`record_short_term_recalls`).
         """
         self._require_enabled()
         return record_short_term_recalls(
@@ -82,6 +88,7 @@ class SubjectConsolidation:
             query=query,
             results=undecorate_search_results(results),
             now_ms=now_ms,
+            on_event=on_event,
         )
 
     def promote(

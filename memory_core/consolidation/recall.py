@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -32,6 +32,7 @@ from memory_core.consolidation._util import (
     write_json_atomic,
 )
 from memory_core.consolidation.concepts import derive_concept_tags
+from memory_core.consolidation.host_events import build_recall_recorded_event, build_recall_skipped_event
 from memory_core.consolidation.markers import contains_promotion_marker
 from memory_core.consolidation.origins import MemoryEntryOrigin, MemoryEntryOriginLedger
 from memory_core.consolidation.store import (
@@ -225,6 +226,7 @@ def record_short_term_recalls(
     day_bucket: str | None = None,
     timezone: str | None = None,
     origins: MemoryEntryOriginLedger | None = None,
+    on_event: Callable[[dict[str, Any]], None] | None = None,
 ) -> int:
     """Record ``memory_search`` hits as short-term recall signals (``recordShortTermRecalls``).
 
@@ -235,8 +237,16 @@ def record_short_term_recalls(
     ``grounded``), scores, query hashes (``userQueryHashes`` only for interactive recalls),
     recall days in the dreaming timezone, concept tags, merged provenance and the claim hash.
     Contaminated dreaming snippets are skipped. A path outside the workspace is skipped (a
-    memory-core hardening). Returns the number of entries written. Not ported: the
-    ``memory.recall.*`` host events.
+    memory-core hardening). Returns the number of entries written.
+
+    Host events (``on_event``, :mod:`memory_core.consolidation.host_events`): after the recall store is
+    written, a ``memory.recall.recorded`` event lists the admitted hits (never for the ``grounded``
+    signal), and a ``memory.recall.skipped`` event the memory hits outside the short-term paths
+    (``eligibleResultCount`` is the number admitted; a recall with only such hits emits just that
+    event and writes nothing). Each event is delivered in its stored form, like
+    ``memory.promotion.applied``; a recall whose every hit came from a forgotten session emits none.
+    A callback that raises propagates after the store was written, as an event store failure does
+    upstream.
 
     Session lineage (``recordShortTermRecalls``, short-term-promotion-record.ts:370): a hit may
     carry ``sessionOrigin`` (``agentId``, ``sessionId``, optional ``sessionKey``), the session
@@ -254,7 +264,12 @@ def record_short_term_recalls(
         return 0
     memory_results = [r for r in results if r.get("source", "memory") == "memory"]
     relevant = [r for r in memory_results if is_short_term_memory_path(str(r.get("path") or ""))]
+    skipped_hits = [r for r in memory_results if not is_short_term_memory_path(str(r.get("path") or ""))]
+    if not relevant and (not skipped_hits or signal_type == "grounded"):
+        return 0
     if not relevant:
+        if on_event is not None:
+            on_event(_skipped_event(iso_ms(now_ms), query, 0, skipped_hits))
         return 0
     store_path = recall_store_path(config.workspace_dir)
     now_iso = iso_ms(now_ms)
@@ -455,7 +470,39 @@ def record_short_term_recalls(
                 origins.record(agent, [row for row in origin_rows if row.agent_id == agent])
         store["updatedAt"] = now_iso
         write_recall_store(store_path, store)
+        if on_event is not None and signal_type != "grounded":
+            on_event(
+                build_recall_recorded_event(
+                    timestamp=now_iso,
+                    query=query,
+                    admitted=relevant,
+                    paths=[normalize_memory_path(str(r.get("path") or "")) for r in relevant],
+                    scores=[_hit_score(r) for r in relevant],
+                )
+            )
+            if skipped_hits:
+                on_event(_skipped_event(now_iso, query, len(relevant), skipped_hits))
     return changed
+
+
+def _hit_score(result: Mapping[str, Any]) -> float:
+    try:
+        return clamp_score(float(result.get("score") or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _skipped_event(
+    timestamp: str, query: str, eligible: int, skipped: list[dict[str, Any]]
+) -> dict[str, Any]:
+    return build_recall_skipped_event(
+        timestamp=timestamp,
+        query=query,
+        eligible_result_count=eligible,
+        skipped=skipped,
+        paths=[normalize_memory_path(str(r.get("path") or "")) for r in skipped],
+        scores=[_hit_score(r) for r in skipped],
+    )
 
 
 def _session_origin(result: Mapping[str, Any]) -> dict[str, Any] | None:

@@ -4588,6 +4588,10 @@ async function main() {
           name: scenario.name,
           error,
           files: await snapshotFiles(workspaceDir),
+          // Every host event of the workspace, diagnostic variants (memory.recall.skipped) included.
+          events: await (
+            await importFromRepo(repoPath, "src/memory-host-sdk/events.ts")
+          ).readMemoryHostEventRecords({ workspaceDir }),
           origins: Object.fromEntries(
             agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
           ),

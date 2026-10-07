@@ -230,9 +230,12 @@ class HostKit:
         dreaming_enabled: bool = False,
         automation_store: AutomationStore | None = None,
         now_ms: Callable[[], int] | None = None,
+        on_event: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         self._memory = memory
         self._root = memory.workspace.root
+        # The host's sink for the ``memory.recall.*`` events of recorded searches.
+        self._on_event = on_event
         self._layout = layout
         self._templates = dict(templates) if templates is not None else None
         self._seed_bootstrap = (
@@ -392,6 +395,7 @@ class HostKit:
                     query=str(args.get("query", "")),
                     results=undecorate_search_results(hits),
                     now_ms=self._clock(),
+                    on_event=self._on_event,
                 )
             except Exception:
                 pass

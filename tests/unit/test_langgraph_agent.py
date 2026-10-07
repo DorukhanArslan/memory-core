@@ -1342,3 +1342,209 @@ def test_trust_survives_preparation_or_reset_failure(tmp_path: Path, monkeypatch
 
     assert resumed["memory_turn_trust"] is None
     assert trust.read(workspace_dir=root, relative_path=DAILY).origin_class == "untrusted"
+
+
+def test_graph_untrusted_flush_is_quarantined_by_dreaming(tmp_path: Path):
+    from memory_core.consolidation.dreaming import DreamingIngestion, run_dreaming_sweep
+    from memory_core.consolidation.store import read_recall_store, recall_store_path
+
+    root = tmp_path / "workspace"
+    kit, trust = _trust_kit(root)
+    _, _, graph = _graph(root, memory_script(), kit=kit)
+    _say(graph, "Our codename is velvetkiwi.",
+         context=example.AgentContext(trust=example.TurnTrust(False)))
+
+    sweep = run_dreaming_sweep(
+        config=kit.memory.config, store=kit.memory.store, phase="light", now_ms=NOW_MS,
+        timezone="UTC", ingestion=DreamingIngestion(provenance=trust),
+    )
+
+    assert sweep.daily_ingestion.batches
+    entries = read_recall_store(recall_store_path(root), NOW_MS)["entries"]
+    assert entries and all(e["provenance"]["originClass"] == "untrusted" for e in entries.values())
+    assert sweep.candidates == ()
+
+
+@pytest.mark.parametrize("recover", [False, True])
+def test_graph_flush_retry_exhaustion_or_recovery(tmp_path: Path, recover):
+    script = memory_script()
+    fail = {"on": True}
+
+    def flaky(call, calls):
+        if call.is_flush and fail["on"]:
+            raise RuntimeError("flush model down")
+        return script(call, calls)
+
+    _, model, graph = _graph(tmp_path, flaky)
+    first = _say(graph, "Our codename is velvetkiwi.")
+    assert first["memory_maintenance"]["failure"]["failureCount"] == 1
+    if recover:
+        fail["on"] = False
+        recovered = _say(graph, "Are you there?")
+        assert recovered["memory_maintenance"]["failure"] is None
+        assert recovered["memory_maintenance"]["wrote"] == [FACT]
+    else:
+        for attempt in (2, 3):
+            state = _say(graph, "Are you there?")
+            assert state["memory_maintenance"]["failure"]["failureCount"] == attempt
+        assert state["memory_maintenance"]["failure"]["exhausted"] is True
+    calls = len(_flush_calls(model))
+    later = _say(graph, "Are you there?")
+    assert _session(later).entry["memoryFlush"] == {"kind": "succeeded", "compactionCount": 0}
+    assert later["memory_maintenance"]["flush"] == "already_flushed"
+    assert len(_flush_calls(model)) == calls
+
+
+def test_graph_host_ingestion_forget_and_fenced_rebuild(tmp_path: Path, monkeypatch):
+    from memory_core import Memory
+    from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
+    from memory_core.consolidation.dreaming import DreamingIngestion, run_dreaming_sweep
+    from memory_core.consolidation.forget import SessionInstance, forget_memory_entries
+    from memory_core.consolidation.origins import (
+        MemoryEntryOriginLedger, MemoryIndexRevisionConflictError,
+    )
+    from memory_core.consolidation.session_ingestion import (
+        SessionCorpusEntry, ingest_session_transcript_signals,
+    )
+
+    root, host = tmp_path / "workspace", tmp_path / "host"
+    config = MemoryConfig(workspace_dir=root, store_path=host / "main.sqlite",
+                          flags=FeatureFlags(vector_search=False))
+    origins = MemoryEntryOriginLedger(lambda agent: host / f"{agent}.sqlite")
+    trust = MemoryArtifactProvenanceStore(host / "trust.sqlite")
+    memory = Memory.from_workspace(root, config=config, initialize=False, reindex=False,
+                                   revision_fence=origins.revision_fence("main"))
+    events = []
+    kit = HostKit(memory, now_ms=lambda: NOW_MS, artifact_provenance=trust,
+                  dreaming_enabled=True, on_event=events.append)
+    saver = InMemorySaver()
+    _, _, graph = _graph(root, memory_script(usage=1_000), kit=kit, checkpointer=saver)
+    owner = example.AgentContext(trust=example.TurnTrust(True))
+    first = _say(graph, "Our codename is velvetkiwi.", context=owner)
+    session = _session(first)
+
+    # The host owns transcript persistence/enumeration. This test uses scratch JSONL;
+    # the example does not create a second session database or persist transcripts itself.
+    source = host / "agents" / "main" / "sessions" / f"{session.session_id}.jsonl"
+    source.parent.mkdir(parents=True)
+    source.write_text("".join(json.dumps({
+        "type": "message", "message": {**row, "timestamp": NOW_MS},
+    }) + "\n" for row in transcript_rows(first["messages"])), "utf-8")
+    entry = SessionCorpusEntry("main", session.session_id, str(source),
+                               session_key=session.session_key)
+
+    def sources(agent):
+        assert agent == "main"
+        return [entry]
+
+    sweep = run_dreaming_sweep(
+        config=config, store=memory.store, phase="light", now_ms=NOW_MS, timezone="UTC",
+        agent_id="main", origins=origins,
+        ingestion=DreamingIngestion(provenance=trust, agent_ids=("main",), corpus_entries=sources),
+    )
+    assert sweep.session_ingestion.batches
+    assert origins.list("main")
+    assert {row.session_id for row in origins.list("main")} == {session.session_id}
+    kit.memory.store.reindex(kit.memory.workspace)
+    found = _say(graph, "What is our project codename? Check your memory.", context=owner)
+    hits = [m for m in found["messages"] if m.type == "tool" and "velvetkiwi" in m.content]
+    assert hits
+    # Generated session corpus is indexed as "sessions". HostKit records only
+    # memory-corpus recalls, as in upstream tools.ts, so these hits emit no event.
+    assert all(hit["corpus"] == "sessions" for hit in json.loads(hits[-1].content)["results"])
+    assert not events
+    assert memory.search("velvetkiwi")["results"]
+
+    options = dict(config=config, agent_id="main", origins=origins,
+                   session_ids=[session.session_id],
+                   instances=[SessionInstance("main", session.session_id, session.session_key, NOW_MS)],
+                   corpus_entries=sources, artifact_provenance=trust, store=memory.store, now_ms=NOW_MS)
+    files = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    revision = origins.index_revision("main")
+    report = forget_memory_entries(**options, dry_run=True)
+    assert report.dry_run and report.entry_keys
+    assert origins.index_revision("main") == revision
+    assert files == {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+
+    # Coordinate a real forget during a real reindex; the stale build must not publish.
+    discover = memory.workspace.discover_indexable_files
+    reports = []
+
+    def discover_then_forget():
+        pending = discover()
+        reports.append(forget_memory_entries(**options))
+        return pending
+
+    with monkeypatch.context() as patch:
+        patch.setattr(memory.workspace, "discover_indexable_files", discover_then_forget)
+        with pytest.raises(MemoryIndexRevisionConflictError):
+            memory.store.reindex(memory.workspace)
+    assert len(reports) == 1 and not reports[0].dry_run
+    assert origins.list_session_tombstones("main", [session.session_id])
+    assert not origins.list("main")
+    assert memory.store.reindex(memory.workspace) >= 0
+    assert memory.search("velvetkiwi")["results"] == []
+
+    # Source history/checkpoints still exist; tombstones stop memory ingestion from reviving it.
+    assert source.exists()
+    assert any("velvetkiwi" in str(s.values.get("messages")) for s in graph.get_state_history(THREAD))
+    replay = ingest_session_transcript_signals(
+        config=config, agent_ids=["main"], corpus_entries=sources, lookback_days=7,
+        now_ms=NOW_MS, timezone="UTC", origins=origins,
+    )
+    assert not replay.batches and not origins.list("main")
+    memory.store.reindex(memory.workspace)
+    _, _, fresh = _graph(root, memory_script(usage=1_000), kit=kit, new_id=lambda: "id-fresh")
+    state = _say(fresh, "What is our project codename? Check your memory.",
+                 {"configurable": {"thread_id": "fresh"}}, context=owner)
+    results = [json.loads(m.content)["results"] for m in state["messages"] if m.type == "tool"]
+    assert results and all(not hits for hits in results)
+
+
+def test_graph_memory_search_emits_host_recall_events(tmp_path: Path):
+    events = []
+    kit = HostKit.open(
+        tmp_path,
+        config=MemoryConfig(workspace_dir=tmp_path, flags=FeatureFlags(vector_search=False)),
+        now_ms=lambda: NOW_MS,
+        dreaming_enabled=True,
+        on_event=events.append,
+    )
+    _, _, graph = _graph(tmp_path, memory_script(), kit=kit)
+    _say(graph, "Our codename is velvetkiwi.")  # The due flush writes FACT into daily memory.
+    state = _say(graph, "What is our project codename? Check your memory.")
+
+    hits = [json.loads(m.content)["results"] for m in state["messages"] if m.type == "tool"]
+    assert any(hit["path"] == DAILY and hit["corpus"] == "memory" for hit in hits[-1])
+    recorded = [event for event in events if event["type"] == "memory.recall.recorded"]
+    assert recorded
+
+
+def test_host_forget_reports_and_retains_the_session_snapshot(tmp_path: Path):
+    from memory_core.consolidation.forget import forget_memory_entries
+    from memory_core.consolidation.origins import MemoryEntryOriginLedger
+
+    root = tmp_path / "workspace"
+    kit, trust = _trust_kit(root)
+    origins = MemoryEntryOriginLedger(lambda agent: tmp_path / f"{agent}.sqlite")
+    _, _, graph = _graph(root, memory_script(usage=1_000), kit=kit)
+    owner = example.AgentContext(trust=example.TurnTrust(True))
+    first = _say(graph, "Our codename is velvetkiwi.", context=owner)
+    _say(graph, "/new", context=owner)
+    (saved,) = _saved_session_files(root)
+    content = saved.read_bytes()
+
+    report = forget_memory_entries(
+        config=kit.memory.config, agent_id="main", origins=origins,
+        session_ids=[_session(first).session_id], artifact_provenance=trust,
+        store=kit.memory.store, now_ms=NOW_MS,
+    )
+    kit.memory.store.reindex(kit.memory.workspace)
+
+    # Pinned cli-index-search.runtime.ts labels these as "Curated writes retained".
+    # The host's retention policy must handle them; forget does not claim complete erasure.
+    assert {row["relativePath"] for row in report.curated_writes} == {
+        saved.relative_to(root).as_posix(),
+    }
+    assert saved.read_bytes() == content
+    assert kit.memory.search("velvetkiwi")["results"]

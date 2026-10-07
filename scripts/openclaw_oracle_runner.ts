@@ -113,6 +113,7 @@ type Payload = {
   originSteps?: Array<Record<string, any>>;
   recallScenarios?: Array<Record<string, any>>;
   backfillScenarios?: Array<Record<string, any>>;
+  ingestScenarios?: Array<Record<string, any>>;
   agentIds?: string[];
   lockProbe?: Record<string, any>;
 };
@@ -340,6 +341,21 @@ async function runWorkspaceSteps(repoPath: string, workspaceDir: string, steps: 
 async function importFromRepo(repoPath: string, relativePath: string) {
   const fullPath = path.join(repoPath, relativePath);
   return await import(pathToFileURL(fullPath).href);
+}
+
+// Load a repo module with extra export lines appended (private functions the oracle needs). The
+// patched copy sits beside the original so its relative imports resolve, and is removed again.
+async function importPatched(repoPath: string, relativePath: string, extraExports: string) {
+  const sourcePath = path.join(repoPath, relativePath);
+  const parsed = path.parse(sourcePath);
+  const patchedPath = path.join(parsed.dir, `${parsed.name}.oracle-${process.pid}${parsed.ext}`);
+  const original = await fs.readFile(sourcePath, "utf-8");
+  await fs.writeFile(patchedPath, `${original}\n${extraExports}\n`);
+  try {
+    return await import(pathToFileURL(patchedPath).href);
+  } finally {
+    await fs.unlink(patchedPath).catch(() => {});
+  }
 }
 
 // src/infra/heartbeat-runner.test-utils.ts seedHeartbeatScratchForTest without its scratch write
@@ -4246,6 +4262,7 @@ async function main() {
     "fileLockProbe",
     "recordRecallScenarios",
     "sessionBackfillLineage",
+    "dailyIngestionScenarios",
   ]);
   if (!promotionOperations.has(payload.operation)) {
     throw new Error(`unsupported operation: ${payload.operation}`);
@@ -4696,6 +4713,116 @@ async function main() {
           origins: Object.fromEntries(
             agentIds.map((agentId) => [agentId, origins.listMemoryEntryOrigins({ agentId })]),
           ),
+        });
+      }
+      return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };
+    }
+
+    if (payload.operation === "dailyIngestionScenarios") {
+      // dreaming-phases.ts daily ingestion: buildDailyIngestionResults, ingestDailyMemorySignals and
+      // seedHistoricalDailyMemorySignals are not exported, so the real source is loaded with one
+      // extra export line. A scenario is a list of steps (write/remove files with a fixed mtime,
+      // trust records, build, ingest, seed); after every step the recall store and the daily
+      // ingestion checkpoint are reported.
+      const phases = await importPatched(
+        repoPath,
+        "extensions/memory-core/src/dreaming-phases.ts",
+        "export { buildDailyIngestionResults, ingestDailyMemorySignals };",
+      );
+      const dreamingStateModule = await importFromRepo(
+        repoPath,
+        "extensions/memory-core/src/dreaming-state.ts",
+      );
+      const artifactProvenance = await importFromRepo(
+        repoPath,
+        "src/memory/memory-artifact-provenance.ts",
+      );
+      const hostEvents = await importFromRepo(repoPath, "src/memory-host-sdk/events.ts");
+      const scenarioResults: unknown[] = [];
+      for (const scenario of payload.ingestScenarios ?? []) {
+        const workspaceDir = String(scenario.workspaceDir);
+        const scenarioTimezone = scenario.timezone ?? timezone;
+        await seedPromotionStateFromWorkspace(promotionState, workspaceDir);
+        const stepResults: unknown[] = [];
+        for (const step of scenario.steps ?? []) {
+          let result: unknown = null;
+          let error: string | null = null;
+          const stepNowMs = Number.isFinite(step.nowMs) ? Number(step.nowMs) : nowMs;
+          try {
+            if (step.kind === "write") {
+              const target = path.join(workspaceDir, step.path);
+              await fs.mkdir(path.dirname(target), { recursive: true });
+              await fs.writeFile(target, step.content, "utf-8");
+              if (Number.isFinite(step.mtimeMs)) {
+                await fs.utimes(target, Number(step.mtimeMs) / 1000, Number(step.mtimeMs) / 1000);
+              }
+            } else if (step.kind === "remove") {
+              await fs.rm(path.join(workspaceDir, step.path), { force: true });
+            } else if (step.kind === "provenance") {
+              const rollback = await artifactProvenance.recordMemoryArtifactWriteProvenance({
+                workspaceDir,
+                relativePath: step.relativePath,
+                contentBefore: step.contentBefore ?? "",
+                contentAfter: step.contentAfter ?? "",
+                originClass: step.originClass,
+                observedAt: step.observedAt,
+              });
+              if (step.rollback === true && rollback) {
+                await rollback();
+              }
+            } else if (step.kind === "build") {
+              result = phases.buildDailyIngestionResults({
+                raw: step.raw,
+                path: step.path,
+                limit: step.limit,
+                defaultObservedAt: step.defaultObservedAt,
+                ...(step.recorded ? { recorded: step.recorded } : {}),
+              });
+            } else if (step.kind === "ingest") {
+              await phases.ingestDailyMemorySignals({
+                workspaceDir,
+                lookbackDays: step.lookbackDays,
+                limit: step.limit,
+                nowMs: stepNowMs,
+                timezone: scenarioTimezone,
+              });
+            } else if (step.kind === "seed") {
+              result = await phases.seedHistoricalDailyMemorySignals({
+                workspaceDir,
+                filePaths: (step.filePaths as string[]).map((entry) =>
+                  path.isAbsolute(entry) ? entry : path.join(workspaceDir, entry),
+                ),
+                limit: step.limit,
+                nowMs: stepNowMs,
+                timezone: scenarioTimezone,
+              });
+            }
+          } catch (caught) {
+            error = String((caught as Error).message);
+          }
+          const recallStore = (await promotionState.readRecallStore(
+            workspaceDir,
+            new Date(stepNowMs).toISOString(),
+          )) as { entries?: Record<string, unknown> };
+          const dailyEntries = await dreamingStateModule.readMemoryCoreWorkspaceEntries({
+            namespace: "dreaming-daily-ingestion",
+            workspaceDir,
+          });
+          stepResults.push({
+            result,
+            error,
+            recall: withSortedEntries(recallStore).entries,
+            daily: Object.fromEntries(
+              (dailyEntries as Array<{ key: string; value: unknown }>)
+                .toSorted((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+                .map((entry) => [entry.key, entry.value]),
+            ),
+          });
+        }
+        scenarioResults.push({
+          name: scenario.name,
+          steps: stepResults,
+          events: await hostEvents.readMemoryHostEventRecords({ workspaceDir }),
         });
       }
       return { ok: true, operation: payload.operation, result: { scenarios: scenarioResults } };

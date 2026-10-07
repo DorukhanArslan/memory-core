@@ -1466,6 +1466,322 @@ async function main() {
     };
   }
 
+  if (payload.operation === "replayCallers") {
+    // The upstream callers of the compaction replay decision: the pre-prompt preflight and the
+    // mid-turn handler (run/attempt-prompt-preflight.ts), the mid-turn tool-result guard
+    // (tool-result-context-guard.ts) and the eligibility wiring of attempt-stream-settle.ts and
+    // compaction-session-execution.ts, with the real callees behind them.
+    const runner = "src/agents/embedded-agent-runner";
+    const preflightModule = await importFromRepo(
+      repoPath,
+      `${runner}/run/attempt-prompt-preflight.ts`,
+    );
+    const guardModule = await importFromRepo(repoPath, `${runner}/tool-result-context-guard.ts`);
+    const loggerModule = await importFromRepo(repoPath, `${runner}/logger.ts`);
+    const boundaryModule = await importFromRepo(repoPath, `${runner}/run/attempt-llm-boundary.ts`);
+    const estimatorModule = await importFromRepo(
+      repoPath,
+      `${runner}/tool-result-char-estimator.ts`,
+    );
+    const limitsModule = await importFromRepo(repoPath, "src/agents/tool-result-limits.ts");
+    const noticeModule = await importFromRepo(repoPath, `${runner}/context-truncation-notice.ts`);
+    const preemptive = await importFromRepo(repoPath, `${runner}/run/preemptive-compaction.ts`);
+    const promptStateModule = await importFromRepo(repoPath, `${runner}/session-prompt-state.ts`);
+    const eligibilityModule = await importFromRepo(
+      repoPath,
+      "packages/ai/src/transports/provider-compaction-replay.ts",
+    );
+    const sessions = await importFromRepo(repoPath, "src/agents/sessions/index.ts");
+    // The real OpenClaw host (endpoint classes, tool-result redaction) backs the replay pressure.
+    await importFromRepo(repoPath, "src/llm/ai-transport-host.ts");
+    await importFromRepo(repoPath, "src/agents/ai-transport-runtime-host.ts");
+    const FIXED_NOW = 1_700_000_000_000;
+    Date.now = () => FIXED_NOW;
+    const replayModel = (model: Record<string, unknown>) => ({
+      input: ["text", "image"],
+      contextWindow: 200000,
+      maxTokens: 4096,
+      reasoning: false,
+      name: String(model.id),
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      ...model,
+    });
+    const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value ?? null)) as T;
+    const errorName = (err: unknown) => (err instanceof Error ? err.constructor.name : String(err));
+    const errorShape = (err: unknown) =>
+      err ? { name: errorName(err), message: (err as Error).message } : null;
+    const withEnv = <T>(env: Record<string, string> | undefined, work: () => T): T => {
+      const saved = process.env.ANTHROPIC_BASE_URL;
+      if (env && "ANTHROPIC_BASE_URL" in env) {
+        process.env.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL;
+      } else {
+        delete process.env.ANTHROPIC_BASE_URL;
+      }
+      try {
+        return work();
+      } finally {
+        if (saved === undefined) {
+          delete process.env.ANTHROPIC_BASE_URL;
+        } else {
+          process.env.ANTHROPIC_BASE_URL = saved;
+        }
+      }
+    };
+    const captureLogs = async <T>(work: () => Promise<T> | T) => {
+      const logs: Array<[string, string]> = [];
+      const log = loggerModule.log as Record<string, (message: string) => void>;
+      const saved: Record<string, (message: string) => void> = {};
+      for (const level of ["debug", "info", "warn"]) {
+        saved[level] = log[level];
+        log[level] = (message: string) => {
+          logs.push([level, message]);
+        };
+      }
+      try {
+        return { value: await work(), logs };
+      } finally {
+        for (const level of ["debug", "info", "warn"]) {
+          log[level] = saved[level];
+        }
+      }
+    };
+    const resolveEnabled = (item: Record<string, any>, model: Record<string, unknown>) =>
+      item.compactionReplayEnabled !== undefined
+        ? item.compactionReplayEnabled
+        : withEnv(item.eligibility?.env, () =>
+            // attempt-stream-settle.ts: compactionReplayEnabled
+            eligibilityModule.resolveCompactionReplayEligibility(model, {
+              extraParams: item.eligibility?.extraParams,
+              apiKey: item.eligibility?.apiKey,
+            }),
+          );
+    const runCase = async (item: Record<string, any>) => {
+      switch (item.fn) {
+        case "preflight": {
+          const a = item.attempt;
+          const model = replayModel(a.model);
+          const attempt = {
+            provider: a.provider,
+            modelId: a.modelId,
+            model,
+            sessionId: a.sessionId,
+            sessionKey: a.sessionKey,
+            sessionFile: a.sessionFile,
+            runtimePlan: a.runtimePlan,
+            authProfileId: "ignored-local-profile",
+          };
+          const boundaryOptions = {
+            appendOnlyRuntimeContext: item.appendOnlyRuntimeContext,
+            ...(item.timezone ? { timezone: item.timezone } : {}),
+            ...(item.includeBoundaryTimestamp ? {} : { includeTimestamp: false }),
+          };
+          let boundaryNormalized: unknown = null;
+          if (item.unwindowedMessages !== undefined) {
+            try {
+              boundaryNormalized = clean(
+                boundaryModule.normalizeMessagesForLlmBoundary(
+                  structuredClone(item.unwindowedMessages),
+                  boundaryOptions,
+                ),
+              );
+            } catch (err) {
+              boundaryNormalized = { error: errorName(err) };
+            }
+          }
+          const compactionReplayEnabled = resolveEnabled(item, model);
+          let out: Awaited<ReturnType<typeof captureLogs<any>>>;
+          try {
+          out = await captureLogs(() =>
+            preflightModule.prepareEmbeddedAttemptPromptPreflight({
+              appendOnlyRuntimeContext: item.appendOnlyRuntimeContext,
+              attempt,
+              activeContextEngine: item.activeContextEngine,
+              compactionReplayEnabled,
+              contextEngineAssemblySucceeded: item.contextEngineAssemblySucceeded,
+              contextEnginePromptAuthority: item.contextEnginePromptAuthority,
+              contextTokenBudget: item.contextTokenBudget,
+              hookMessagesForCurrentPrompt: item.hookMessages,
+              includeBoundaryTimestamp: item.includeBoundaryTimestamp,
+              promptForPrecheck: item.promptForPrecheck,
+              reserveTokens: item.reserveTokens,
+              sessionMessageCount: item.sessionMessageCount,
+              state: item.state,
+              systemPrompt: item.systemPrompt,
+              timezone: item.timezone,
+              toolResultMaxChars: item.toolResultMaxChars,
+              toolSchemaTokens: item.toolSchemaTokens,
+              unwindowedContextEngineMessagesForPrecheck: item.unwindowedMessages,
+            }),
+          );
+          } catch (err) {
+            return { thrown: errorName(err), compactionReplayEnabled, boundaryNormalized };
+          }
+          const state = out.value;
+          return {
+            state: {
+              contextBudgetStatus: clean(state.contextBudgetStatus),
+              preflightRecovery: clean(state.preflightRecovery),
+              promptError: errorShape(state.promptError),
+              promptErrorSource: state.promptErrorSource ?? null,
+              skipPromptSubmission: state.skipPromptSubmission,
+            },
+            logs: out.logs,
+            compactionReplayEnabled,
+            boundaryNormalized,
+          };
+        }
+        case "midTurn": {
+          const a = item.attempt;
+          const manager = sessions.SessionManager.inMemory(process.cwd());
+          for (const message of item.sessionMessages ?? []) {
+            manager.appendMessage(structuredClone(message));
+          }
+          const projectionState = promptStateModule.createToolResultPromptProjectionState();
+          const replaced: unknown[] = [];
+          const out = await captureLogs(() =>
+            preflightModule.handleEmbeddedAttemptMidTurnPrecheck({
+              attempt: {
+                provider: a.provider,
+                modelId: a.modelId,
+                sessionId: a.sessionId,
+                sessionKey: a.sessionKey,
+                sessionFile: a.sessionFile,
+                contextTokenBudget: a.contextTokenBudget,
+              },
+              request: item.request,
+              sessionAgentId: "main",
+              sessionManager: manager,
+              toolResultPromptProjectionState: projectionState,
+              prePromptMessageCount: item.prePromptMessageCount,
+              replaceSessionMessages: (messages: unknown[]) => {
+                replaced.push(clean(messages));
+              },
+            }),
+          );
+          const branchMessages = manager
+            .getBranch()
+            .filter((entry: Record<string, unknown>) => entry.type === "message")
+            .map((entry: Record<string, unknown>) => entry.message);
+          return {
+            preflightRecovery: clean(out.value.preflightRecovery),
+            promptError: errorShape(out.value.promptError),
+            replaced,
+            branchMessages: clean(branchMessages),
+            logs: out.logs,
+          };
+        }
+        case "guard": {
+          const options = item.midTurnPrecheck;
+          const requests: unknown[] = [];
+          const agent: Record<string, any> = {};
+          const model = options?.replay ? replayModel(options.replay.model) : undefined;
+          const restore = guardModule.installToolResultContextGuard({
+            agent,
+            contextWindowTokens: item.contextWindowTokens,
+            ...(options
+              ? {
+                  midTurnPrecheck: {
+                    enabled: options.enabled,
+                    contextTokenBudget: options.contextTokenBudget,
+                    reserveTokens: () => options.reserveTokens,
+                    toolResultMaxChars: options.toolResultMaxChars,
+                    getSystemPrompt: () => options.systemPrompt,
+                    ...(options.prePromptMessageCount !== undefined
+                      ? { getPrePromptMessageCount: () => options.prePromptMessageCount }
+                      : {}),
+                    ...(options.replay
+                      ? { getReplay: () => ({ ...options.replay, model }) }
+                      : {}),
+                    onMidTurnPrecheck: (request: unknown) => {
+                      requests.push(clean(request));
+                    },
+                  },
+                }
+              : {}),
+          });
+          const steps: unknown[] = [];
+          try {
+            for (const messages of item.steps) {
+              const input = structuredClone(messages);
+              try {
+                const output = await agent.transformContext(input, new AbortController().signal);
+                steps.push({ kind: "messages", messages: clean(output), same: output === input });
+              } catch (err) {
+                steps.push({
+                  kind: "error",
+                  name: errorName(err),
+                  message: err instanceof Error ? err.message : String(err),
+                  request: clean((err as { request?: unknown }).request),
+                });
+              }
+            }
+          } finally {
+            restore();
+          }
+          return { steps, requests };
+        }
+        case "charEstimate":
+          return item.messages.map((message: unknown) =>
+            estimatorModule.estimateMessageChars(message),
+          );
+        case "limits":
+          return {
+            contextMaxChars: limitsModule.resolveToolResultContextMaxChars(
+              item.contextWindowTokens,
+            ),
+            notice: noticeModule.formatContextLimitTruncationNotice(item.truncatedChars ?? 1),
+          };
+        case "compactionSession": {
+          // compaction-session-execution.ts: eligibility, the history-window fence and the
+          // post-server-compaction measurement share one replay identity.
+          const model = replayModel(item.model);
+          const enabled = withEnv(item.env, () =>
+            eligibilityModule.resolveCompactionReplayEligibility(model, {
+              extraParams: item.extraParams,
+              apiKey: item.apiKey,
+            }),
+          );
+          const identity = { sessionId: item.sessionId, authProfileId: item.authProfileId, enabled };
+          const original = structuredClone(item.messages);
+          const limited = original.slice(item.limitFrom ?? 0);
+          const windowed = eligibilityModule.preserveCompactionReplayWindow(
+            original,
+            limited,
+            model,
+            identity,
+          );
+          const tokensAfter = preemptive.estimateLlmBoundaryTokenPressure({
+            messages: windowed,
+            systemPrompt: item.systemPrompt,
+            prompt: "",
+            replay: { model, ...identity },
+          });
+          return {
+            enabled,
+            window: clean(windowed),
+            windowRefs: windowed.map((message: unknown) => original.indexOf(message)),
+            tokensAfter,
+          };
+        }
+        default:
+          throw new Error(`unknown replayCallers fn: ${String(item.fn)}`);
+      }
+    };
+    const callerResults: unknown[] = [];
+    for (const item of payload.cases ?? []) {
+      try {
+        callerResults.push({ value: await runCase(item), error: null });
+      } catch (err) {
+        callerResults.push({
+          value: null,
+          error: errorName(err),
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { ok: true, operation: payload.operation, result: callerResults };
+  }
+
   if (payload.operation === "historyLimit") {
     const history = await importFromRepo(repoPath, "src/agents/embedded-agent-runner/history.ts");
     const limits: Record<string, number | null> = {};

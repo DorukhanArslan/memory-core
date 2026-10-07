@@ -1,4 +1,8 @@
-"""Marks the stage-1 worklist of the v2026.9.6 re-pin (oracle_worklist.PENDING_PORTS).
+"""Gate oracle modules and mark the v2026.9.6 worklist (oracle_worklist.PENDING_PORTS).
+
+Integration modules named ``test_*_oracle.py`` require a nonempty ``OPENCLAW_ORACLE_REPO``.
+Without it, skip them before fixture setup; ordinary integration tests still run offline.
+An explicitly configured but broken oracle remains a failure.
 
 A listed test is ``xfail(strict=True, raises=AssertionError)``: it may only fail on a value
 assertion. Any oracle result with ``ok: false`` (timeout, runner error, missing checkout, invalid
@@ -16,10 +20,11 @@ from pathlib import Path
 
 import pytest
 
-from demo.openclaw_oracle import OpenClawOracle
+from demo.openclaw_oracle import ORACLE_REPO_ENV, OpenClawOracle
 from oracle_worklist import pending_port_reason
 
 _PREFIX = "tests/integration/"
+_INTEGRATION_DIR = Path(__file__).parent
 
 
 class OracleHarnessError(RuntimeError):
@@ -27,7 +32,14 @@ class OracleHarnessError(RuntimeError):
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    oracle_enabled = bool(os.getenv(ORACLE_REPO_ENV))
     for item in items:
+        if (
+            not oracle_enabled
+            and item.path.parent == _INTEGRATION_DIR
+            and item.path.name.endswith("_oracle.py")
+        ):
+            item.add_marker(pytest.mark.skip(reason=f"{ORACLE_REPO_ENV} is not set"))
         nodeid = item.nodeid
         relative = nodeid[len(_PREFIX) :] if nodeid.startswith(_PREFIX) else nodeid
         reason = pending_port_reason(relative)

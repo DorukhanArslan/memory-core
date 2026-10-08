@@ -53,6 +53,7 @@ def test_demo_and_langgraph_are_the_only_extras_and_dev_tools_a_group():
         "langchain-openai",
         "pytest",
         "ruff",
+        "mypy",
     }
 
 

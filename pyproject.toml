@@ -32,6 +32,7 @@ dev = [
   "langchain-openai>=1.6",
   "pytest>=8.3",
   "ruff>=0.6",
+  "mypy>=1.15,<2",
 ]
 
 # The project name: [project] name above, and the display name prose and the UI write.

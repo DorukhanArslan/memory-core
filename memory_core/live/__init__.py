@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterable, Callable, Iterable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass, replace
 import inspect
 import json
@@ -339,13 +340,27 @@ class LiveSDKConfig:
 
 @dataclass(frozen=True)
 class JsonlTraceSink:
-    path: Path
+    """Append events; an optional policy sanitizes a deep copy before any file operation.
 
-    def __init__(self, path: str | Path):
+    Without ``payload_redactor``, records retain the original event content.
+    Policy and serialization errors propagate without appending a raw fallback.
+    """
+
+    path: Path
+    payload_redactor: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+
+    def __init__(
+        self, path: str | Path, *,
+        payload_redactor: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    ):
         object.__setattr__(self, "path", Path(path))
+        object.__setattr__(self, "payload_redactor", payload_redactor)
 
     @classmethod
-    def for_session(cls, trace_dir: str | Path, session_id: str) -> "JsonlTraceSink":
+    def for_session(
+        cls, trace_dir: str | Path, session_id: str, *,
+        payload_redactor: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    ) -> "JsonlTraceSink":
         """Trace sink at ``<trace_dir>/<session_id>.jsonl``.
 
         ``session_id`` must match upstream's ``SAFE_SESSION_ID_RE`` (a leading
@@ -354,17 +369,22 @@ class JsonlTraceSink:
         """
         if not SAFE_SESSION_ID_RE.fullmatch(session_id):
             raise ValueError(f"session_id is not filesystem-safe: {session_id}")
-        return cls(Path(trace_dir) / f"{session_id}.jsonl")
+        return cls(Path(trace_dir) / f"{session_id}.jsonl", payload_redactor=payload_redactor)
 
     def record(self, event: LiveTurnEvent) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "type": event.type,
             "text": event.text,
             "data": event.data or {},
         }
+        if self.payload_redactor is not None:
+            payload = self.payload_redactor(deepcopy(payload))
+            if not isinstance(payload, dict):
+                raise TypeError("payload_redactor must return dict")
+        serialized = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(f"{json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}\n")
+            handle.write(f"{serialized}\n")
 
 
 class SubjectMemory:
@@ -588,11 +608,17 @@ class SubjectMemory:
         transcript: str,
         summary_llm: Callable[[list[dict[str, str]]], str],
         redactor: Callable[[str], str] | None = None,
+        output_redactor: Callable[[str], str] | None = None,
         now_ms: int | None = None,
         timezone: str = "UTC",
         trace_sink: TraceSink | None = None,
         time_format: str = DEFAULT_TIME_FORMAT,
     ) -> SessionSummaryResult:
+        """Extract memory; ``redactor`` handles input, ``output_redactor`` handles results.
+
+        The output policy runs on accepted values and ``raw_text`` before storage.
+        Without it, the existing model-output behavior is preserved.
+        """
         plan, messages = self._prepare_session_summary_messages(
             session_id=session_id,
             transcript=transcript,
@@ -610,6 +636,7 @@ class SubjectMemory:
                 raw_text=raw_text,
                 relative_path=plan.relative_path,
                 trace_sink=trace_sink,
+                output_redactor=output_redactor,
             )
         except Exception as exc:
             self._trace_session_summary_failed(session_id, exc, trace_sink)
@@ -622,11 +649,13 @@ class SubjectMemory:
         transcript: str,
         summary_llm: Callable[[list[dict[str, str]]], Any],
         redactor: Callable[[str], str] | None = None,
+        output_redactor: Callable[[str], str] | None = None,
         now_ms: int | None = None,
         timezone: str = "UTC",
         trace_sink: TraceSink | None = None,
         time_format: str = DEFAULT_TIME_FORMAT,
     ) -> SessionSummaryResult:
+        """Async variant with the same input and output policy boundaries."""
         plan, messages = self._prepare_session_summary_messages(
             session_id=session_id,
             transcript=transcript,
@@ -644,6 +673,7 @@ class SubjectMemory:
                 raw_text=raw_text,
                 relative_path=plan.relative_path,
                 trace_sink=trace_sink,
+                output_redactor=output_redactor,
             )
         except Exception as exc:
             self._trace_session_summary_failed(session_id, exc, trace_sink)
@@ -695,8 +725,12 @@ class SubjectMemory:
         raw_text: str,
         relative_path: str,
         trace_sink: TraceSink | None,
+        output_redactor: Callable[[str], str] | None = None,
     ) -> SessionSummaryResult:
         extraction = _parse_session_summary_output(raw_text)
+        if output_redactor is not None:
+            extraction = _redact_session_summary_output(extraction, output_redactor)
+            raw_text = _redact_summary_value(raw_text, output_redactor)
         result = SessionSummaryResult(
             wrote=False,
             path=relative_path,
@@ -967,6 +1001,39 @@ def _parse_session_summary_output(raw_text: str) -> dict[str, Any]:
     if bullets is None:
         return _session_summary_payload(skip_reason="unstructured")
     return _session_summary_payload(memory_text="\n".join(bullets))
+
+
+def _redact_summary_value(value: str, redactor: Callable[[str], str]) -> str:
+    result = redactor(value)
+    if not isinstance(result, str):
+        raise TypeError("output_redactor must return str")
+    return result
+
+
+def _redact_session_summary_output(
+    extraction: dict[str, Any], redactor: Callable[[str], str],
+) -> dict[str, Any]:
+    """Redact accepted values, then rebuild storage text without re-parsing policy output."""
+    if extraction["skip_reason"] is not None:
+        return extraction
+
+    def values(items: tuple[str, ...]) -> tuple[str, ...]:
+        sanitized = (_collapse_whitespace(_redact_summary_value(item, redactor)) for item in items)
+        return tuple(item for item in sanitized if item)
+
+    if any(extraction[key] for key in ("durable_facts", "preferences", "follow_ups")):
+        facts = values(extraction["durable_facts"])
+        preferences = values(extraction["preferences"])
+        follow_ups = values(extraction["follow_ups"])
+        return _session_summary_payload(
+            memory_text=_format_structured_session_memory(
+                durable_facts=facts, preferences=preferences, follow_ups=follow_ups,
+            ),
+            durable_facts=facts, preferences=preferences, follow_ups=follow_ups,
+        )
+    # Bullet-list parsing deliberately leaves the three semantic tuples empty.
+    bullets = values(tuple(line[2:] for line in extraction["memory_text"].splitlines()))
+    return _session_summary_payload(memory_text="\n".join(f"- {item}" for item in bullets))
 
 
 def _is_summary_label_line(line: str) -> bool:

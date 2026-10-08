@@ -159,6 +159,12 @@ def optional_text(value: Any) -> str | None:
     return text or None
 
 
+def _redact_exact_secrets(message: str, secret_values: tuple[str, ...]) -> str:
+    forms = [form for secret in secret_values if secret
+             for form in (secret, encode_uri_component(secret), json_string_content(secret))]
+    return create_secret_value_redactor(forms)(message, lambda _value, _index: "[redacted]")
+
+
 def redact_secrets(message: str, secret_values: tuple[str, ...]) -> str:
     """Diagnostic text with builtin masks and operation-scoped exact credential forms.
 
@@ -166,9 +172,7 @@ def redact_secrets(message: str, secret_values: tuple[str, ...]) -> str:
     Exact matches precede pattern masks so configured credentials are hidden in full.
     """
     try:
-        forms = [form for secret in secret_values if secret
-                 for form in (secret, encode_uri_component(secret), json_string_content(secret))]
-        exact = create_secret_value_redactor(forms)(message, lambda _value, _index: "[redacted]")
+        exact = _redact_exact_secrets(message, secret_values)
         return redact_tool_payload_text(
             exact, logging_config=mark_full_context_tool_payload_redaction()
         )
@@ -177,13 +181,29 @@ def redact_secrets(message: str, secret_values: tuple[str, ...]) -> str:
 
 
 def redact_payload(value: Any, secret_values: tuple[str, ...]) -> Any:
-    """Sanitize diagnostic strings while preserving status, code and numeric control fields."""
+    """Replace configured credentials in general payloads without masking ordinary content."""
+    if not secret_values:
+        return value
     if isinstance(value, str):
-        return redact_secrets(value, secret_values)
+        try:
+            return _redact_exact_secrets(value, secret_values)
+        except Exception:
+            return "error details unavailable"
     if isinstance(value, dict):
         return {key: redact_payload(item, secret_values) for key, item in value.items()}
     if isinstance(value, list | tuple):
         return [redact_payload(item, secret_values) for item in value]
+    return value
+
+
+def redact_diagnostic_payload(value: Any, secret_values: tuple[str, ...]) -> Any:
+    """Apply diagnostic text policy inside diagnostic fields; preserve transport control values."""
+    if isinstance(value, str):
+        return redact_secrets(value, secret_values)
+    if isinstance(value, dict):
+        return {key: redact_diagnostic_payload(item, secret_values) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [redact_diagnostic_payload(item, secret_values) for item in value]
     return value
 
 

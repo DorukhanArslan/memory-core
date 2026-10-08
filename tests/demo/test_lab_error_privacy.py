@@ -9,11 +9,14 @@ import pytest
 from demo import lab_runtime
 from demo.lab_tools import LabToolbox, ToolLoopOutcome, run_tool_loop
 from memory_core.host import FlushRequest, HostKit
+from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.secret_registry import (
     capture_secret_redaction_registry_snapshot,
     encode_uri_component,
     json_string_content,
 )
+from memory_core.tools.corpus import CorpusAttempt, compose_memory_corpus_metadata
+from memory_core.tools.memory_search import execute_memory_search_tool
 from test_demo_app import (
     HEARTBEAT_HEADER,
     StubEngine,
@@ -63,7 +66,7 @@ def test_payload_redaction_preserves_control_fields_and_masks_diagnostics():
     payload = {"code": "provider_unreachable", "status": 503, "cause": {"code": "ECONNREFUSED"},
                "error": FAILURE, "usage": {"promptTokens": 1000}}
 
-    result = lab_runtime.redact_payload(payload, (KEY,))
+    result = lab_runtime.redact_diagnostic_payload(payload, (KEY,))
 
     assert_private(result)
     assert result["code"] == "provider_unreachable" and result["status"] == 503
@@ -190,3 +193,93 @@ def test_returned_flush_diagnostic_is_private_before_calls_and_model_feedback(
     assert_private(engine.calls[1]["messages"][-1])
     assert result["status"] == response.json()["flush"]["toolCalls"][0]["result"]["status"]
     assert result.get("error", result.get("afterWriteError")) == FAILURE
+
+
+@pytest.mark.parametrize("scoped_key", [False, True])
+def test_successful_search_endpoint_preserves_content_and_exact_only_redaction(
+    client, monkeypatch, scoped_key
+):
+    import demo.lab_kept_api as kept
+
+    content = f"token={LONG} {KEY}"
+    result = {"results": [{"snippet": content, "score": 1}], "citations": "on"}
+    monkeypatch.setattr(kept, "execute_memory_search_tool", lambda *args: result)
+    payload = {"query": "note", "mode": "text"}
+    if scoped_key:
+        payload["openai"] = {"apiKey": KEY}
+
+    response = client.post("/api/search", json=payload)
+
+    assert response.status_code == 200
+    expected = content.replace(KEY, "[redacted]") if scoped_key else content
+    assert response.json()["results"] == [{"snippet": expected, "score": 1}]
+    assert result == {"results": [{"snippet": content, "score": 1}], "citations": "on"}
+    assert response.json()["citations"] == "on"
+
+
+def test_general_payload_redaction_does_not_apply_diagnostic_policy():
+    value = {"results": [{"snippet": f"token={LONG} {KEY}"}]}
+
+    assert lab_runtime.redact_payload(value, ()) is value
+    assert lab_runtime.redact_payload(value, (KEY,)) == {
+        "results": [{"snippet": f"token={LONG} [redacted]"}]
+    }
+    assert value["results"][0]["snippet"] == f"token={LONG} {KEY}"
+
+
+def test_real_all_corpus_search_diagnostic_is_private_before_records_and_feedback(lab, monkeypatch):
+    lab.ensure()
+    store = lab.store(lab.resolve_embedding({}), mode="text")
+    lab.reindex(store)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError(FAILURE)
+
+    monkeypatch.setattr(SQLiteMemoryStore, "search", fail)
+    result = execute_memory_search_tool(lab.config(mode="text"), store, {"query": "note", "corpus": "all"})
+    assert not any(key in result for key in ("status", "unavailable", "disabled"))
+    assert result["corpora"][0]["outcome"] == "unavailable"
+    assert result["error"] == FAILURE
+    monkeypatch.setattr(HostKit, "dispatch", lambda *args, **kwargs: result)
+    toolbox = LabToolbox(lab, lab.kit(store), lab.session("main"), None, secrets=(KEY,))
+    engine = StubEngine([("", [tool_call("c1", "memory_search", {"query": "note", "corpus": "all"})]),
+                         ("done", [])])
+
+    events = list(run_tool_loop(engine, [], toolbox, ToolLoopOutcome(), secrets=(KEY,)))
+
+    assert_private(events)
+    assert_private(toolbox.calls)
+    assert_private(engine.calls[1]["messages"][-1])
+    assert result["error"] == FAILURE
+
+
+@pytest.mark.parametrize("name,status", [("memory_search", None), ("memory_get", "ok"),
+                                        ("memory_get", "not_found")])
+def test_mixed_corpus_diagnostics_are_private_and_successful_content_is_unchanged(
+    lab, monkeypatch, name, status
+):
+    lab.ensure()
+    metadata = compose_memory_corpus_metadata([
+        CorpusAttempt("memory", "partial", error=FAILURE, deadline=True),
+        CorpusAttempt("wiki", "ok"),
+    ])
+    content = f"token={LONG}"
+    result = ({"results": [{"snippet": content, "score": 1}]} if name == "memory_search"
+              else {"status": status, "text": content, "path": "MEMORY.md"})
+    result.update(metadata)
+    before = json.loads(json.dumps(result))
+    kit = lab.kit(lab.store(lab.resolve_embedding({}), mode="text"))
+    monkeypatch.setattr(HostKit, "dispatch", lambda *args, **kwargs: result)
+    toolbox = LabToolbox(lab, kit, lab.session("main"), None, secrets=(KEY,))
+    engine = StubEngine([("", [tool_call("c1", name, {"query": "note", "corpus": "all"})]),
+                         ("done", [])])
+
+    events = list(run_tool_loop(engine, [], toolbox, ToolLoopOutcome(), secrets=(KEY,)))
+
+    saved = toolbox.calls[0]["result"]
+    for published in (dict(events[1][1]["result"]), saved,
+                      json.loads(engine.calls[1]["messages"][-1]["content"])):
+        assert_private({key: published[key] for key in ("error", "warning", "corpora")})
+        assert published.get("results", published.get("text")) == result.get("results", result.get("text"))
+        assert published["timedOut"] is True and published["timeoutMs"] == 30_000
+    assert result == before

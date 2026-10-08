@@ -24,7 +24,7 @@ from demo.lab_runtime import (
     CURATION_FLAG,
     LabRuntime,
     LabSession,
-    redact_payload,
+    redact_diagnostic_payload,
     safe_exception_message,
 )
 from memory_core.curation import (
@@ -57,11 +57,19 @@ def openai_tools(definitions: list[dict]) -> list[dict]:
 
 def redact_tool_diagnostics(result: dict[str, Any], secrets: tuple[str, ...]) -> dict[str, Any]:
     """Protect failure diagnostics before records, events or model feedback; keep normal content."""
-    if result.get("status") == "error" or result.get("unavailable") or result.get("disabled"):
-        return redact_payload(result, secrets)
-    if "afterWriteError" in result:
-        return {**result, "afterWriteError": redact_payload(result["afterWriteError"], secrets)}
-    return result
+    # memory_search and memory_get can return useful content alongside failed corpus metadata
+    # without an overall failure status (tools/corpus.py:compose_memory_corpus_metadata).
+    updates = {
+        key: redact_diagnostic_payload(result[key], secrets)
+        for key in ("error", "warning", "action", "afterWriteError", "debug", "cause")
+        if key in result
+    }
+    if isinstance(result.get("corpora"), list):
+        updates["corpora"] = [
+            redact_tool_diagnostics(corpus, secrets) if isinstance(corpus, dict) else corpus
+            for corpus in result["corpora"]
+        ]
+    return {**result, **updates} if updates else result
 
 
 @dataclass

@@ -66,14 +66,25 @@ seconds later as the same model with reasoning mode pro). Recorded in
 | Session-memory file | upstream (D2) | `HostKit.on_new_session`: raw recent `role: text` lines, no redactor, labelled; the key `lab:<kind>` stays across `/new` (Q10). |
 | Heartbeat | runtime-only port | `HostKit.heartbeat_prompt` and `HeartbeatRun.complete`. No scheduler (the host's job upstream); v2026.9.6 shape: monitor scratch and automation jobs in `.memory-core/automation.json` (`FileAutomationStore`; upstream uses its shared state DB). The virtual clock (demo-only) shifts due checks, job runs and migrated anchors only; the prompt's current-time lines use the real clock. |
 | Promotion/dreaming | package | Manual sweeps; the view's evidence label is read from `docs/parity_matrix.md`. |
-| Live task | adapter-only | Real model when a request or `.env` key resolves, else scripted replies; summaries redact the identity proof. |
+| Live task | adapter-only | Real model when a request or `.env` key resolves, else scripted replies; scoped output policy for trace, events, state and summaries (see the live guide). |
 
 ## Endpoints
 
 Errors are JSON `{error, code?, ...}` with a 4xx/5xx status; SSE streams end
 with `error` or `done`/`turn_done`. Every message that can carry provider text is
-checked against the configured keys (`redacted: true`). Ids (`sessionId`,
+checked against the configured keys (`redacted: true`). This flag reports that
+the host policy ran; it does not certify arbitrary PII removal. Ids (`sessionId`,
 `subjectId`, `writeId`, mark ids) must match `^[A-Za-z0-9_-]{1,64}$`.
+
+Tool exceptions, unavailable/refused payloads and flush `afterWriteError` are
+sanitized before call records, events and tool feedback reach the model. The
+diagnostic policy combines builtin patterns with operation-scoped exact keys
+and their URI/JSON forms. It does not register request keys globally. A
+sanitizer failure produces a fixed safe diagnostic. Successful tool content
+and tool arguments keep their existing behavior. Codes and numeric controls
+remain intact. These are demo-only boundaries; old files and existing event
+records are not purged. The [live guide](integrations/live.md#demo-environment)
+describes the separate proof policy, streamed-text protection and its limits.
 
 ### `/api/lab/*`
 

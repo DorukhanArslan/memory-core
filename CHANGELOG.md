@@ -10,6 +10,12 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Added
 
+- Live privacy boundaries (2026-10-08, adapter/demo-only): optional
+  `JsonlTraceSink.payload_redactor` and sync/async summary `output_redactor` sanitize
+  copied trace payloads and parsed output before storage. SDK defaults and the existing
+  input-only summary hook remain unchanged. The Lab applies scoped credential/proof
+  policies and sanitizes tool failure diagnostics before records, events and model feedback.
+  These changes do not add OpenClaw log-transport parity or remove retained old artifacts.
 - LangGraph host acceptance (2026-10-07, adapter-only): optional exact-boolean `TurnTrust`
   on `AgentContext`, checkpointed before fallible host work and preserved across reset/retry;
   narrow host provenance/trust projection in `transcript_rows`; actual graph tests for

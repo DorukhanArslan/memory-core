@@ -335,6 +335,27 @@ This is intentionally append-only and generic. Production hosts can implement
 the `TraceSink` protocol to write events into their own audit log, database, or
 message bus.
 
+The default sink keeps raw event content. To sanitize the file, supply an optional
+`payload_redactor`. For example:
+
+```python
+from memory_core.live import JsonlTraceSink
+from memory_core.redact import redact_secrets
+
+trace_sink = JsonlTraceSink.for_session(
+    trace_dir, "session_456", payload_redactor=redact_secrets,
+)
+```
+
+The policy receives a deep copy of the JSON payload (`type`, `text`, `data`). It
+must return a dict. It runs before serialization, directory creation and file
+append. Policy or serialization errors propagate; the sink never writes a raw
+fallback. Yielded events and model inputs keep their original content. A host
+must apply its client policy separately. This hook does not remove old records.
+The builtin policy masks recognized text patterns and sensitive field names;
+it is not a general identity-data detector, and some masks keep key hints. A
+host can compose it with a scoped exact-value policy for its own known secrets.
+
 ## Post-Session Summary
 
 Do not write raw transcripts directly to durable memory. Run a summarizer or
@@ -346,6 +367,7 @@ result = memory.record_session_summary(
     session_id="session_456",
     transcript=full_transcript,
     redactor=redact_sensitive_text,
+    output_redactor=redact_sensitive_text,
     summary_llm=summary_llm,
     timezone="Europe/Istanbul",
     trace_sink=trace_sink,
@@ -416,9 +438,23 @@ flush turn writes through tools and has no reply-to-file step):
 
 `result.skip_reason` is `None` when something was written; the
 `session_summary_skipped` trace event carries the same `skip_reason`.
-`result.raw_text` keeps the unsanitized reply. A skip raises nothing: without
-a trace sink it is visible only in the returned `skip_reason`, so a host that
-must not lose facts checks it (and can retry with a stricter extractor).
+Without `output_redactor`, `result.raw_text` keeps the unsanitized reply. A skip
+raises nothing: without a trace sink it is visible only in the returned
+`skip_reason`, so a host that must not lose facts checks it (and can retry with a
+stricter extractor).
+
+The existing `redactor` applies only to the transcript sent to the model.
+It does not stop a model from repeating a secret. The optional `output_redactor`
+applies to each accepted fact, preference, follow-up or bullet body after
+parsing. The SDK collapses whitespace, removes empty values, and rebuilds the
+stored text from the sanitized values. If none remain, the result is `empty`.
+The policy also sanitizes returned `raw_text`, including skipped replies. For
+opted calls, that field is a sanitized diagnostic rather than the raw model
+reply. Each policy result must be a string. A policy error occurs before the
+daily append and reindex. The same rules apply to the async method. Summary
+failure events can still contain an exception message; use a sanitized trace
+sink too. Sink failures can propagate after a completed daily write, and input
+preparation or cancellation does not guarantee a terminal trace event.
 
 Behaviour change (branch `feat/workspace-layout`, 2026-09-26): before this rule,
 any reply that was not a JSON object was appended verbatim. A host whose
@@ -502,10 +538,33 @@ The demo task is appointment rescheduling. It verifies identity, collects a new
 time, asks for confirmation, emits sentence events for TTS-style chunking, and
 writes post-session summaries through `SubjectMemory.record_session_summary`.
 Without a provider key (request or `.env`) the replies are scripted; the state
-payload's `engine` says which one a turn uses. Summaries pass a host redactor
-that replaces the utterance which verified the subject with
-`[kimlik bilgisi gizlendi]`, so identity data never reaches subject memory, and
-the SDK sanitizer skips replies that are neither JSON nor `- ` lines.
+payload's `engine` says which one a turn uses. The demo takes a snapshot of its
+verified proof literals for each operation. It masks those literals and their
+numeric proof text with `[kimlik bilgisi gizlendi]`. It composes builtin text
+and field masking with scoped request/environment credentials, including URI
+and JSON forms. It applies the policy to trace records, emitted events, state
+and both summary input and output. Accepted summary facts are sanitized before
+the daily write, even if the model repeats a proof. The SDK parser still skips
+replies that are neither JSON nor `- ` lines.
+
+Known credential/proof prefixes are held across `text_delta` and `sentence`
+chunks. Incremental text and failed partial replies are omitted from diagnostic
+trace records. A successful turn commits sanitized transcript and user/business
+fields; routing IDs and workflow controls stay authoritative internally.
+Later turns therefore use sanitized history. The current-turn model input
+remains the original host data. Cancellation or failure does not commit the
+candidate workflow/transcript, and pending prefixes are discarded. The host
+keeps its verified-proof list until reset; request keys are not registered in
+the global secret registry.
+
+This is a demo-only output policy, not general PII detection or complete
+erasure. It does not purge old trace/daily files, erase browser-local typed
+input, or change normal chat and successful tool content. Unknown pattern
+fragments, and arbitrary provider data split across separate events, are not
+covered by the text-stream prefix filter.
+Builtin pattern masks can retain hints. A policy snapshot is not a concurrency
+lock: the host still needs to serialize runs for a session. A trace sink failure
+after a daily write can leave the sanitized write in place.
 
 The live task uses its own workspace (`memory-core-live-task-demo-workspace` in the
 system temp dir), separate from the chat workspace. It is seeded with the Lab

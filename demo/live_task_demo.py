@@ -19,6 +19,7 @@ from memory_core.live import (
     LIVE_TURN_COMPLETED,
     LIVE_TURN_FAILED,
     LiveIdentityStore,
+    LiveTurnEvent,
     LiveTurnContext,
     SubjectMemory,
     SENTENCE,
@@ -144,13 +145,17 @@ class LiveTaskDemo:
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
         self._bootstrap_workspace()
         if self._state.session_id != session_id or self._state.subject_id != subject_id:
-            self._state = LiveTaskSessionState(session_id=session_id, subject_id=subject_id)
-            self._transcript = []
-            self._identity_proofs = []
+            base_state = LiveTaskSessionState(session_id=session_id, subject_id=subject_id)
+            base_transcript: list[dict[str, str]] = []
+            base_proofs: tuple[str, ...] = ()
+        else:
+            base_state = self._state
+            base_transcript = list(self._transcript)
+            base_proofs = tuple(self._identity_proofs)
 
-        next_state = advance_appointment_workflow(self._state, user_utterance)
-        new_proof = user_utterance.strip() if next_state.verified and not self._state.verified else None
-        proofs = (*self._identity_proofs, *((new_proof,) if new_proof else ()))
+        next_state = advance_appointment_workflow(base_state, user_utterance)
+        new_proof = user_utterance.strip() if next_state.verified and not base_state.verified else None
+        proofs = (*base_proofs, *((new_proof,) if new_proof else ()))
         policy = LivePrivacyPolicy(proofs=proofs, secrets=secrets, redactor=redactor)
         # The trace file is named after the session: for_session rejects unsafe ids.
         trace_sink = JsonlTraceSink.for_session(
@@ -166,7 +171,7 @@ class LiveTaskDemo:
             subject_id=subject_id,
             session_id=session_id,
             user_utterance=user_utterance,
-            transcript_window=_format_transcript(self._transcript),
+            transcript_window=_format_transcript(base_transcript),
             workflow_state=asdict(next_state),
         )
         completed_assistant_text = ""
@@ -214,11 +219,43 @@ class LiveTaskDemo:
         # Only natural, successful exhaustion commits. Later turns see the safe
         # history; the current-turn LLM input above remains the original host data.
         if completed:
-            self._state = LiveTaskSessionState(**policy.payload(asdict(next_state)))
+            # Routing IDs and workflow controls stay authoritative internally.
+            # Public state() sanitizes copies; only user/business content is
+            # sanitized in the retained workflow state.
+            state_payload = policy.payload({
+                "requested_slot": next_state.requested_slot,
+                "business_action": next_state.business_action,
+            })
+            user_text = policy.text(user_utterance)
+            proof_policy = LivePrivacyPolicy(secrets=secrets)
+            candidate_proofs = list(base_proofs)
             if new_proof:
-                self._identity_proofs.append(LivePrivacyPolicy(secrets=secrets).text(new_proof))
-            self._transcript.append({"role": "user", "content": policy.text(user_utterance)})
-            self._transcript.append({"role": "assistant", "content": completed_assistant_text})
+                candidate_proofs.append(proof_policy.text(new_proof))
+            candidate_transcript = [
+                *base_transcript,
+                {"role": "user", "content": user_text},
+                {"role": "assistant", "content": completed_assistant_text},
+            ]
+            candidate_state = None
+            if not policy.failed and not proof_policy.failed:
+                try:
+                    candidate_state = replace(
+                        next_state,
+                        requested_slot=state_payload["requested_slot"],
+                        business_action=state_payload["business_action"],
+                    )
+                except (KeyError, TypeError, ValueError):
+                    policy.failed = True
+            if policy.failed or proof_policy.failed:
+                failure = policy.failure_payload()
+                trace_sink.record(LiveTurnEvent(LIVE_TURN_FAILED, data=failure["data"]))
+                yield {**failure, "elapsed_ms": int(round((time.monotonic() - started_at) * 1000))}
+                return
+            # Every fallible sanitization/shape check has finished before any
+            # candidate becomes visible; no await separates these assignments.
+            self._state, self._identity_proofs, self._transcript = (
+                candidate_state, candidate_proofs, candidate_transcript,
+            )
 
     def record_summary(
         self,

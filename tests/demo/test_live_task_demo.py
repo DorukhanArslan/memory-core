@@ -540,3 +540,111 @@ def test_live_task_scoped_keys_are_never_registered_or_retained(tmp_path: Path):
     assert get_secret_redaction_registry_revision() == revision
     assert key not in repr(vars(demo))
     assert key not in json.dumps(demo.state().transcript)
+
+
+@pytest.mark.parametrize("failure_target", ["user_text", "state_payload"])
+def test_live_task_commit_policy_failure_preserves_previous_state(tmp_path: Path, failure_target):
+    demo = LiveTaskDemo(workspace_dir=tmp_path)
+    demo.reset(session_id="session_1", subject_id="subject_1")
+    preparing_commit = False
+
+    def fail_on_committed_user_text(text):
+        trigger = "[kimlik bilgisi gizlendi]" if failure_target == "user_text" else "requested_slot"
+        if preparing_commit and text == trigger:
+            raise RuntimeError("request-scoped-live-key-123")
+        return text
+
+    async def collect():
+        nonlocal preparing_commit
+        events = []
+        async for event in demo.stream_turn(
+            session_id="session_1", subject_id="subject_1",
+            user_utterance="Doğum tarihim 12.04.1990", redactor=fail_on_committed_user_text,
+        ):
+            events.append(event)
+            if event["type"] == "live_turn_completed":
+                preparing_commit = True
+        return events
+
+    events = asyncio.run(collect())
+    assert demo.state().workflow["verified"] is False
+    assert demo.state().transcript == []
+    assert demo._identity_proofs == []
+    assert events[-1]["type"] == "live_turn_failed"
+    assert "redaction failed" in events[-1]["data"]["error"]
+    assert "request-scoped-live-key-123" not in json.dumps(events)
+    trace = (tmp_path / "trace/live-task/session_1.jsonl").read_text(encoding="utf-8")
+    assert json.loads(trace.splitlines()[-1])["type"] == "live_turn_failed"
+
+
+def test_live_task_proof_redaction_does_not_change_authoritative_routing_ids(tmp_path: Path):
+    demo = LiveTaskDemo(workspace_dir=tmp_path)
+
+    async def collect():
+        for utterance in ("Müşteri numaram 4821.", "Yarın saat 15:00 uygun olur"):
+            async for _ in demo.stream_turn(
+                session_id="session_4821", subject_id="subject_4821", user_utterance=utterance,
+            ):
+                pass
+
+    asyncio.run(collect())
+    assert demo._state.session_id == "session_4821"
+    assert demo._state.subject_id == "subject_4821"
+    assert demo.state().workflow["current_step"] == "confirm_change"
+    assert demo.state().workflow["requested_slot"] == "Yarın saat 15:00 uygun olur"
+
+
+@pytest.mark.parametrize("split", range(len("request-scoped-live-key-123") + 1))
+def test_live_task_overlapping_known_literals_are_masked_at_every_split(split):
+    from demo.live_privacy import LiteralStreamFilter, LivePrivacyPolicy
+
+    key = "request-scoped-live-key-123"
+    policy = LivePrivacyPolicy(secrets=(key[:12], key))
+    stream_filter = LiteralStreamFilter(policy)
+    first = stream_filter.feed("Merhaba. " + key[:split])
+    assert first == ("Merhaba. [redacted]" if split == len(key) else "Merhaba. ")
+    text = first + stream_filter.feed(key[split:]) + stream_filter.finish()
+    assert text == "Merhaba. [redacted]"
+
+
+@pytest.mark.parametrize("mode", ["failure", "close"])
+def test_live_task_unsuccessful_session_switch_preserves_active_session(tmp_path: Path, mode):
+    demo = LiveTaskDemo(workspace_dir=tmp_path)
+
+    async def establish_session():
+        async for _ in demo.stream_turn(
+            session_id="session_1", subject_id="subject_1",
+            user_utterance="Doğum tarihim 12.04.1990",
+        ):
+            pass
+
+    asyncio.run(establish_session())
+    previous_state = demo._state
+    previous_transcript = list(demo._transcript)
+    previous_proofs = list(demo._identity_proofs)
+
+    async def interrupted(messages):
+        yield "Müşteri numaram 4821."
+        raise RuntimeError("token=abcdefghijklmnopqrstuvwxyz")
+
+    async def switch_session():
+        stream = demo.stream_turn(
+            session_id="session_2", subject_id="subject_2",
+            user_utterance="Müşteri numaram 4821.", llm=interrupted,
+        )
+        events = []
+        try:
+            async for event in stream:
+                events.append(event)
+                if mode == "close" and event["type"] == "text_delta":
+                    await stream.aclose()
+                    break
+        except RuntimeError:
+            assert mode == "failure"
+        return events
+
+    events = asyncio.run(switch_session())
+    assert all(event["type"] != "live_turn_completed" for event in events)
+    assert demo._state == previous_state
+    assert demo._transcript == previous_transcript
+    assert demo._identity_proofs == previous_proofs

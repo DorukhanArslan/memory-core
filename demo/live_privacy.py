@@ -108,13 +108,16 @@ class LiteralStreamFilter:
         output: list[str] = []
         cursor = 0
         while cursor < len(value):
+            remainder = value[cursor:]
+            # A complete shorter secret can still be the beginning of a longer
+            # configured one. Resolve that ambiguity before replacing either.
+            if any(len(s) > len(remainder) and s.startswith(remainder) for s in self.policy.literals):
+                self.pending = remainder
+                break
             literal = next((s for s in self.policy.literals if value.startswith(s, cursor)), None)
             if literal is not None:
                 output.append(self.policy.replacements[literal])
                 cursor += len(literal)
-            elif any(s.startswith(value[cursor:]) for s in self.policy.literals):
-                self.pending = value[cursor:]
-                break
             else:
                 output.append(value[cursor])
                 cursor += 1

@@ -25,7 +25,10 @@ def validate_files(files: set[str], *, kind: str) -> None:
     required = {f"{PACKAGE_NAME}/__init__.py", f"{PACKAGE_NAME}/py.typed"}
     notice = "LICENSE.openclaw"
     if kind == "sdist":
-        allowed_root = {"pyproject.toml", "README.md", "CHANGELOG.md", "PKG-INFO", notice}
+        # Hatch always includes its VCS ignore file in an sdist.
+        # https://hatch.pypa.io/latest/plugins/builder/sdist/#default-file-selection
+        allowed_root = {"pyproject.toml", "README.md", "CHANGELOG.md", "PKG-INFO",
+                        ".gitignore", notice}
         required |= {"pyproject.toml", notice}
     elif kind == "wheel":
         allowed_root = set()

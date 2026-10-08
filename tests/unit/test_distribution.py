@@ -24,7 +24,7 @@ def test_artifacts_require_types_and_upstream_notice():
         ("wheel", {"memory_core/__init__.py", "memory_core/py.typed",
                    "memory_core-0.2.0.dist-info/licenses/LICENSE.openclaw"}),
         ("sdist", {"memory_core/__init__.py", "memory_core/py.typed", "LICENSE.openclaw",
-                   "pyproject.toml", "README.md", "CHANGELOG.md", "PKG-INFO"}),
+                   "pyproject.toml", "README.md", "CHANGELOG.md", "PKG-INFO", ".gitignore"}),
     ):
         validate_files(valid, kind=kind)
         for required in ("memory_core/py.typed", next(p for p in valid if p.endswith("LICENSE.openclaw"))):

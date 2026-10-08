@@ -3,7 +3,7 @@
 A real host loop (critique high #1): the model gets ``HostKit.tools()`` (the
 upstream ``memory_search``/``memory_get`` definitions and the curation tools the
 Lab flags allow); every call goes through ``HostKit.dispatch`` and its payload is
-sent back verbatim. The Lab adds what a host adds: call records, events, and a
+sent back with sanitized diagnostics. The Lab adds what a host adds: call records, events, and a
 before/after snapshot of every curated write so it can be reverted (only while the
 file is unchanged); refused writes are recorded too. The loop is bounded: after
 ``MAX_TOOL_ROUNDS`` rounds with tool calls, one last round runs without tools.
@@ -20,7 +20,13 @@ from typing import Any, Protocol
 
 from demo.chat_engine import ChatEngine
 from demo.lab_events import unified_diff
-from demo.lab_runtime import CURATION_FLAG, LabRuntime, LabSession, safe_exception_message
+from demo.lab_runtime import (
+    CURATION_FLAG,
+    LabRuntime,
+    LabSession,
+    redact_payload,
+    safe_exception_message,
+)
 from memory_core.curation import (
     ADD_MEMORY_ENTRY,
     APPEND_DAILY_NOTE,
@@ -49,6 +55,15 @@ def openai_tools(definitions: list[dict]) -> list[dict]:
     return [{"type": "function", "function": definition} for definition in definitions]
 
 
+def redact_tool_diagnostics(result: dict[str, Any], secrets: tuple[str, ...]) -> dict[str, Any]:
+    """Protect failure diagnostics before records, events or model feedback; keep normal content."""
+    if result.get("status") == "error" or result.get("unavailable") or result.get("disabled"):
+        return redact_payload(result, secrets)
+    if "afterWriteError" in result:
+        return {**result, "afterWriteError": redact_payload(result["afterWriteError"], secrets)}
+    return result
+
+
 @dataclass
 class LabToolbox:
     """Tools offered to one turn (the kit's) and the Lab's records of their calls."""
@@ -59,6 +74,7 @@ class LabToolbox:
     turn_id: int | None
     curated: list[dict[str, Any]] = field(default_factory=list)
     calls: list[dict[str, Any]] = field(default_factory=list)
+    secrets: tuple[str, ...] = field(default=(), repr=False)
 
     def definitions(self) -> list[dict]:
         return self.kit.tools()
@@ -78,7 +94,9 @@ class LabToolbox:
         elif name == MEMORY_SEARCH_TOOL_NAME:
             result = self._memory_search(raw_arguments, arguments)
         else:
-            result = self.kit.dispatch(name, raw_arguments, session=self.session.state)
+            result = redact_tool_diagnostics(
+                self.kit.dispatch(name, raw_arguments, session=self.session.state), self.secrets
+            )
         finish_call(record, result, started)
         self.calls.append(record)
         return record
@@ -89,6 +107,7 @@ class LabToolbox:
             result = self.kit.dispatch(
                 MEMORY_SEARCH_TOOL_NAME, raw_arguments, session=self.session.state
             )
+        result = redact_tool_diagnostics(result, self.secrets)
         if result.get("status") == "error":
             return result
         if result.get("unavailable"):
@@ -134,6 +153,7 @@ class LabToolbox:
         }
         with self.lab.tracked("curation", turn_id=self.turn_id):
             result = self.kit.dispatch(name, raw_arguments, session=self.session.state)
+        result = redact_tool_diagnostics(result, self.secrets)
         # Every error payload is a refused write: a refusal, bad or invalid arguments, a failure.
         if result.get("status") == "error":
             reason = str(result.get("error"))
@@ -219,6 +239,7 @@ def run_tool_loop(
     outcome: ToolLoopOutcome,
     *,
     max_rounds: int = MAX_TOOL_ROUNDS,
+    secrets: tuple[str, ...] = (),
 ) -> Iterator[tuple[str, dict[str, Any]]]:
     """Stream model rounds and dispatch tool calls; yields ``(event, payload)`` pairs.
 
@@ -277,7 +298,7 @@ def run_tool_loop(
             except Exception as exc:  # a tool failure goes back to the model, like upstream
                 record = {"id": call["id"], "name": call["name"], "ok": False, "ms": 0,
                           "result": {"status": "error", "tool": call["name"],
-                                     "error": safe_exception_message(exc)}}
+                                     "error": safe_exception_message(exc, secrets)}}
                 toolbox.calls.append(record)
             payload = {key: record[key] for key in ("id", "name", "ok", "result", "ms")}
             if "curation" in record:
@@ -309,4 +330,3 @@ __all__ = [
     "public_write",
     "run_tool_loop",
 ]
-

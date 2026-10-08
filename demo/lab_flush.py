@@ -27,7 +27,13 @@ from demo.lab_runtime import (
     safe_exception_message,
 )
 from demo.lab_settings import flush_settings
-from demo.lab_tools import ToolLoopOutcome, finish_call, preview_arguments, run_tool_loop
+from demo.lab_tools import (
+    ToolLoopOutcome,
+    finish_call,
+    preview_arguments,
+    redact_tool_diagnostics,
+    run_tool_loop,
+)
 from memory_core.bootstrap._js import utf16_len
 from memory_core.host import FlushRequest, TurnRecord, TurnUsage
 from memory_core.memory_flush import (
@@ -166,8 +172,9 @@ def report_failure(
 class FlushToolbox:
     """The flush run's one tool (``FlushRequest.tools``) for the Lab tool loop."""
 
-    def __init__(self, request: FlushRequest) -> None:
+    def __init__(self, request: FlushRequest, *, secrets: tuple[str, ...] = ()) -> None:
         self.request = request
+        self.secrets = secrets
         self.calls: list[dict[str, Any]] = []
 
     def definitions(self) -> list[dict[str, Any]]:
@@ -176,7 +183,8 @@ class FlushToolbox:
     def dispatch(self, call_id: str, name: str, raw_arguments: str) -> dict[str, Any]:
         started = time.perf_counter()
         record = {"id": call_id, "name": name, "arguments": preview_arguments(raw_arguments)}
-        finish_call(record, self.request.dispatch(name, raw_arguments), started)
+        result = redact_tool_diagnostics(self.request.dispatch(name, raw_arguments), self.secrets)
+        finish_call(record, result, started)
         self.calls.append(record)
         return record
 
@@ -195,15 +203,15 @@ def run_flush(
     The request's messages and write tool go through the Lab tool loop; the reply is never
     delivered and never enters the transcript. ``complete`` then stamps the session's
     ``memoryFlush`` state (success, or a strike with the cause chain, redacted with the Lab's
-    key values: upstream's ``redactSensitiveText`` is not ported).
+    key values and the builtin diagnostic redaction policy).
     """
-    toolbox = FlushToolbox(request)
+    toolbox = FlushToolbox(request, secrets=secrets)
     loop = ToolLoopOutcome()
     error: Exception | None = None
     with lab.tracked("flush", turn_id=turn_id) as changes:
         try:
             messages = [dict(message) for message in request.messages]
-            for _event in run_tool_loop(engine, messages, toolbox, loop):
+            for _event in run_tool_loop(engine, messages, toolbox, loop, secrets=secrets):
                 pass
         except Exception as exc:
             error = exc

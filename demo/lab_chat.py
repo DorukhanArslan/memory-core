@@ -349,7 +349,7 @@ def _run_turn(
         wc = context.workspace
         truncation_shown = wc.prompt_warning.warning_shown
         truncated = len(wc.analysis.truncated_files)
-        toolbox = None if scripted else LabToolbox(lab, kit, session, turn.id)
+        toolbox = None if scripted else LabToolbox(lab, kit, session, turn.id, secrets=secrets)
         tool_names = sorted(tool["name"] for tool in context.tools)
         memory_section = list(context.memory_recall)
         sent, omitted = _transcript_window(session, user_content)
@@ -391,7 +391,7 @@ def _run_turn(
 
         yield turn.start("stream")
         outcome = ToolLoopOutcome()
-        for event, data in run_tool_loop(engine, messages, toolbox, outcome):
+        for event, data in run_tool_loop(engine, messages, toolbox, outcome, secrets=secrets):
             yield sse_frame({"turnId": turn.id, **data}, event=event)
             if event == "tool_result" and data.get("curation"):
                 yield sse_frame({"turnId": turn.id, **data["curation"]}, event="curation")

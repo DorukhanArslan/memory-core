@@ -67,6 +67,12 @@ from memory_core.flags import FeatureFlags
 from memory_core.host import DEFAULT_CONTEXT_WINDOW_TOKENS, HostKit, SessionState, TurnRecord
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.project_name import DIST_NAME, STATE_DIRNAME
+from memory_core.redact import mark_full_context_tool_payload_redaction, redact_tool_payload_text
+from memory_core.secret_registry import (
+    create_secret_value_redactor,
+    encode_uri_component,
+    json_string_content,
+)
 from memory_core.workspace import MemoryWorkspace
 
 LAB_TIMEZONE = "Europe/Istanbul"
@@ -154,16 +160,24 @@ def optional_text(value: Any) -> str | None:
 
 
 def redact_secrets(message: str, secret_values: tuple[str, ...]) -> str:
-    for secret in secret_values:
-        if secret:
-            message = message.replace(secret, "[redacted]")
-    return message
+    """Diagnostic text with builtin masks and operation-scoped exact credential forms.
+
+    No value is registered globally: the matcher and its encoded forms live only for this call.
+    Exact matches precede pattern masks so configured credentials are hidden in full.
+    """
+    try:
+        forms = [form for secret in secret_values if secret
+                 for form in (secret, encode_uri_component(secret), json_string_content(secret))]
+        exact = create_secret_value_redactor(forms)(message, lambda _value, _index: "[redacted]")
+        return redact_tool_payload_text(
+            exact, logging_config=mark_full_context_tool_payload_redaction()
+        )
+    except Exception:
+        return "error details unavailable"
 
 
 def redact_payload(value: Any, secret_values: tuple[str, ...]) -> Any:
-    """Every string in a JSON-like value with the configured key values replaced."""
-    if not secret_values:
-        return value
+    """Sanitize diagnostic strings while preserving status, code and numeric control fields."""
     if isinstance(value, str):
         return redact_secrets(value, secret_values)
     if isinstance(value, dict):
@@ -174,8 +188,12 @@ def redact_payload(value: Any, secret_values: tuple[str, ...]) -> Any:
 
 
 def safe_exception_message(exc: BaseException, secret_values: tuple[str, ...] = ()) -> str:
-    message = str(exc) or exc.__class__.__name__
-    return f"{exc.__class__.__name__}: {redact_secrets(message, secret_values)}"
+    try:
+        name = type(exc).__name__
+        message = str(exc) or name
+        return redact_secrets(f"{name}: {message}", secret_values)
+    except Exception:
+        return "error details unavailable"
 
 
 def local_date(now_ms: int, timezone: str = LAB_TIMEZONE) -> date:

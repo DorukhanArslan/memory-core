@@ -415,7 +415,7 @@ def _run(
         lab.reindex(index)
         context = heartbeat.context
         wc = context.workspace
-        toolbox = None if scripted else LabToolbox(lab, kit, session, turn_id=None)
+        toolbox = None if scripted else LabToolbox(lab, kit, session, turn_id=None, secrets=secrets)
         tool_names = sorted(tool["name"] for tool in context.tools)
         user_message = turn.message or ""
         previous = [ChatMessage(role=item["role"], content=item["content"]) for item in session.messages]
@@ -442,7 +442,7 @@ def _run(
         lab.bus.emit("heartbeat.llm", summary=f"heartbeat modeli: {engine.model}",
                      data={"provider": getattr(engine, "provider", engine.name), "model": engine.model})
         loop = ToolLoopOutcome()
-        for event, data in run_tool_loop(engine, messages, toolbox, loop):
+        for event, data in run_tool_loop(engine, messages, toolbox, loop, secrets=secrets):
             yield sse_frame(data, event=event)
             if event == "tool_result" and data.get("curation"):
                 yield sse_frame(data["curation"], event="curation")

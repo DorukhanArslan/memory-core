@@ -107,6 +107,14 @@ def test_stream_redacts_only_the_trace_copy(tmp_path: Path):
     assert [row["type"] for row in _records(path)] == [event.type for event in events]
 
 
+def test_trace_serialization_failure_precedes_filesystem_operations(tmp_path: Path):
+    path = tmp_path / "trace" / "session_1.jsonl"
+    sink = JsonlTraceSink(path, payload_redactor=lambda _payload: {"data": object()})
+    with pytest.raises(TypeError, match="not JSON serializable"):
+        sink.record(LiveTurnEvent(TEXT_DELTA, f"token={LONG}"))
+    assert not path.parent.exists()
+
+
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("shape", ["json", "bullets"])
 def test_summary_output_policy_precedes_write_and_result(tmp_path: Path, asynchronous, shape):
@@ -204,3 +212,26 @@ def test_existing_summary_redactor_remains_input_only(tmp_path: Path):
     assert PROOF not in json.dumps(seen, ensure_ascii=False)
     assert "Transcript removed." in seen[-1]["content"]
     assert result.wrote and result.text == reply and result.raw_text == reply
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_raw_summary_policy_failure_also_prevents_durable_write(tmp_path: Path, asynchronous):
+    memory = SubjectMemory.open(workspace_dir=tmp_path, subject_id="subj_123", reindex=False)
+    reply = json.dumps({"durable_facts": ["Subject prefers SMS."]})
+    sanitized = []
+
+    def policy(text):
+        sanitized.append(text)
+        if text == reply:
+            raise RuntimeError("raw reply policy failed")
+        return text
+
+    options = dict(session_id="session_1", transcript="Transcript.", now_ms=NOW_MS,
+                   summary_llm=lambda _m: reply, output_redactor=policy)
+    with pytest.raises(RuntimeError, match="raw reply policy failed"):
+        if asynchronous:
+            asyncio.run(memory.async_record_session_summary(**options))
+        else:
+            memory.record_session_summary(**options)
+    assert sanitized == ["Subject prefers SMS.", reply]
+    assert not list(memory.memory.workspace.root.glob("memory/*.md"))

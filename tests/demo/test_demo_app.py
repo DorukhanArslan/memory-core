@@ -2428,6 +2428,105 @@ def test_live_task_turn_failure_redacts_the_request_key(client, monkeypatch):
     assert key not in client.get("/api/lab/events", params={"once": "true"}).text
 
 
+def test_live_task_masks_split_keys_and_structured_provider_fields(client, lab, monkeypatch):
+    import demo.lab_kept_api as kept
+
+    key = "request-scoped-live-key-123"
+
+    class EchoEngine:
+        model = "test-model"
+
+        def raw_chat_stream(self, messages):
+            assert messages[-1]["content"] == "Merhaba"
+            yield {"type": "llm", "apiKey": "abcdefghijklmnopqrstuvwxyz"}
+            yield key[:12]
+            yield key[12:]
+
+    monkeypatch.setattr(kept, "live_engine", lambda lab, payload: EchoEngine())
+    response = client.post("/api/live-task/turn-stream", json={
+        "message": "Merhaba", "openai": {"apiKey": key},
+    })
+    frames = parse_sse(response.text)
+    deltas = "".join(frame["data"]["text"] for frame in frames if frame["event"] == "text_delta")
+    assert key not in deltas
+    assert key not in response.text
+    assert "abcdefghijklmnopqrstuvwxyz" not in response.text
+    assert key not in client.get("/api/live-task/state").text
+    assert key not in client.get("/api/lab/events", params={"once": "true"}).text
+    trace = lab.live_root / "trace/live-task/demo_session.jsonl"
+    saved = trace.read_text(encoding="utf-8")
+    assert key not in saved and key[:12] not in saved
+    assert "abcdefghijklmnopqrstuvwxyz" not in saved
+
+
+def test_live_task_terminal_errors_do_not_repeat_verification_proof(client, lab, monkeypatch):
+    import demo.lab_kept_api as kept
+
+    proof = "Doğum tarihim 12.04.1990"
+
+    class FailingEngine:
+        model = "test-model"
+
+        def raw_chat_stream(self, messages):
+            raise RuntimeError(proof)
+            yield ""  # pragma: no cover
+
+        def raw_chat_text(self, messages):
+            raise RuntimeError(proof)
+
+    monkeypatch.setattr(kept, "live_engine", lambda lab, payload: FailingEngine())
+    response = client.post("/api/live-task/turn-stream", json={"message": proof})
+    assert "12.04.1990" not in response.text
+    assert "live_turn_completed" not in response.text
+    assert client.get("/api/live-task/state").json()["workflow"]["verified"] is False
+
+    monkeypatch.setattr(kept, "live_engine", lambda lab, payload: None)
+    live_turn(client, proof)
+    monkeypatch.setattr(kept, "live_engine", lambda lab, payload: FailingEngine())
+    summary = client.post("/api/live-task/summary", json={})
+    assert summary.status_code == 502
+    assert "12.04.1990" not in summary.text
+    assert "12.04.1990" not in client.get("/api/lab/events", params={"once": "true"}).text
+    trace = (lab.live_root / "trace/live-task/demo_session.jsonl").read_text(encoding="utf-8")
+    assert "12.04.1990" not in trace
+
+
+def test_live_task_summary_masks_request_env_and_repeated_proof_everywhere(client, lab, monkeypatch):
+    import demo.lab_kept_api as kept
+
+    key = "request-scoped-live-key-123"
+    env_key = "env-live-key-value"
+    proof = "Doğum tarihim 12.04.1990"
+    live_turn(client, proof)
+    monkeypatch.setenv("MEMORY_CORE_DEMO_OPENAI_API_KEY", env_key)
+
+    class SummaryEngine:
+        model = "test-model"
+
+        def raw_chat_text(self, messages):
+            assert all(value not in json.dumps(messages, ensure_ascii=False) for value in (key, env_key, "12.04.1990"))
+            return json.dumps({
+                "durable_facts": [f"{proof} {key} {env_key}"],
+                "preferences": ["token=abcdefghijklmnopqrstuvwxyz"],
+                "follow_ups": [key],
+            }, ensure_ascii=False)
+
+    monkeypatch.setattr(kept, "live_engine", lambda lab, payload: SummaryEngine())
+    response = client.post("/api/live-task/summary", json={
+        "transcript": f"{proof} {key} {env_key}", "openai": {"apiKey": key},
+    })
+    assert response.status_code == 200
+    result = response.json()["summary"]
+    assert result["wrote"] is True
+    daily = lab.live_root / "subjects/demo_subject" / result["path"]
+    bodies = (response.text, daily.read_text(encoding="utf-8"),
+              client.get("/api/live-task/state").text,
+              client.get("/api/lab/events", params={"once": "true"}).text,
+              (lab.live_root / "trace/live-task/demo_session.jsonl").read_text(encoding="utf-8"))
+    for body in bodies:
+        assert all(value not in body for value in (key, env_key, "12.04.1990", "abcdefghijklmnopqrstuvwxyz"))
+
+
 # --- no key value in any response, error or event --------------------------------------------
 
 

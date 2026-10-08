@@ -7,22 +7,27 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from demo.live_privacy import (
+    LiteralStreamFilter,
+    LivePrivacyPolicy,
+    REDACTED_IDENTITY_PROOF as REDACTED_IDENTITY_PROOF,
+    SAFE_DIAGNOSTIC,
+)
 from demo.workspace_context import ensure_workspace_bootstrap_files
 from memory_core.live import (
     JsonlTraceSink,
     LIVE_TURN_COMPLETED,
+    LIVE_TURN_FAILED,
     LiveIdentityStore,
     LiveTurnContext,
     SubjectMemory,
+    SENTENCE,
     TEXT_DELTA,
 )
 
 
 DEFAULT_LIVE_TASK_SESSION_ID = "demo_session"
 DEFAULT_LIVE_TASK_SUBJECT_ID = "demo_subject"
-# Replaces the utterance that verified the subject before a summary is built, so
-# identity data (a birth date, a customer number) never reaches subject memory.
-REDACTED_IDENTITY_PROOF = "[kimlik bilgisi gizlendi]"
 # The seeded bootstrap files of the v2026.9.6 map (TOOLS.md was retired, 669db2968fc).
 LIVE_TASK_REQUIRED_FILES = ("AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md")
 LIVE_TASK_AGENTS_SECTION_HEADING = "## Live Task Demo: appointment_reschedule"
@@ -62,11 +67,13 @@ class LiveTaskDemo:
         self._identity_proofs: list[str] = []
 
     def redact(self, text: str) -> str:
-        """Host redactor for summaries: the identity-proof utterances become a placeholder."""
-        for proof in sorted(self._identity_proofs, key=len, reverse=True):
-            if proof:
-                text = text.replace(proof, REDACTED_IDENTITY_PROOF)
-        return text
+        """A snapshot of the demo's verified-proof output policy."""
+        return self.privacy_policy().text(text)
+
+    def privacy_policy(
+        self, *, secrets: tuple[str, ...] = (), redactor: Callable[[str], str] | None = None,
+    ) -> LivePrivacyPolicy:
+        return LivePrivacyPolicy(proofs=tuple(self._identity_proofs), secrets=secrets, redactor=redactor)
 
     def reset(
         self,
@@ -81,14 +88,15 @@ class LiveTaskDemo:
         self._identity_proofs = []
         return self.state()
 
-    def state(self) -> LiveTaskDemoState:
+    def state(self, *, policy: LivePrivacyPolicy | None = None) -> LiveTaskDemoState:
+        policy = policy or self.privacy_policy()
         return LiveTaskDemoState(
-            workflow=asdict(self._state),
-            transcript=list(self._transcript),
-            workspace=str(self.workspace_dir),
-            trace_path=str(self._trace_path(self._state.session_id)),
-            subject_memory_files=self._subject_memory_files(self._state.subject_id),
-            identity_files=self._identity_files(),
+            workflow=policy.payload(asdict(self._state)),
+            transcript=policy.payload(self._transcript),
+            workspace=policy.text(str(self.workspace_dir)),
+            trace_path=policy.text(str(self._trace_path(self._state.session_id))),
+            subject_memory_files=policy.payload(self._subject_memory_files(self._state.subject_id)),
+            identity_files=policy.payload(self._identity_files()),
         )
 
     def _identity_files(self) -> dict[str, str]:
@@ -130,9 +138,9 @@ class LiveTaskDemo:
         subject_id: str,
         user_utterance: str,
         llm: Callable[[list[dict[str, str]]], Any] | None = None,
+        secrets: tuple[str, ...] = (),
+        redactor: Callable[[str], str] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
-        # The trace file is named after the session: for_session rejects unsafe ids.
-        trace_sink = JsonlTraceSink.for_session(self.trace_dir, session_id)
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
         self._bootstrap_workspace()
         if self._state.session_id != session_id or self._state.subject_id != subject_id:
@@ -141,8 +149,13 @@ class LiveTaskDemo:
             self._identity_proofs = []
 
         next_state = advance_appointment_workflow(self._state, user_utterance)
-        if next_state.verified and not self._state.verified:
-            self._identity_proofs.append(user_utterance.strip())
+        new_proof = user_utterance.strip() if next_state.verified and not self._state.verified else None
+        proofs = (*self._identity_proofs, *((new_proof,) if new_proof else ()))
+        policy = LivePrivacyPolicy(proofs=proofs, secrets=secrets, redactor=redactor)
+        # The trace file is named after the session: for_session rejects unsafe ids.
+        trace_sink = JsonlTraceSink.for_session(
+            self.trace_dir, session_id, payload_redactor=policy.trace_payload,
+        )
         memory = SubjectMemory.open(
             workspace_dir=self.workspace_dir,
             subject_id=subject_id,
@@ -156,36 +169,56 @@ class LiveTaskDemo:
             transcript_window=_format_transcript(self._transcript),
             workflow_state=asdict(next_state),
         )
-        assistant_parts: list[str] = []
         completed_assistant_text = ""
+        completed = False
+        filters = {TEXT_DELTA: LiteralStreamFilter(policy), SENTENCE: LiteralStreamFilter(policy)}
         started_at = time.monotonic()
         resolved_llm = llm or (lambda messages: _fake_live_task_stream(messages, next_state))
-        async for event in memory.stream_live_turn(
-            context,
-            llm=resolved_llm,
-            identity=identity,
-            trace_sink=trace_sink,
-        ):
-            if event.type == TEXT_DELTA and event.text:
-                assistant_parts.append(event.text)
-            if event.type == LIVE_TURN_COMPLETED and event.data:
-                completed_assistant_text = str(event.data.get("assistant_text") or "")
-            yield latency_event_payload(
-                event_type=event.type,
-                text=event.text,
-                data=event.data,
-                started_at=started_at,
-                now=time.monotonic(),
-            )
+        try:
+            async for event in memory.stream_live_turn(
+                context, llm=resolved_llm, identity=identity, trace_sink=trace_sink,
+            ):
+                if policy.failed:
+                    yield {**policy.failure_payload(), "elapsed_ms": int(round((time.monotonic() - started_at) * 1000))}
+                    return
+                text = event.text
+                data = event.data
+                if event.type in filters:
+                    text = filters[event.type].feed(text)
+                if event.type == LIVE_TURN_FAILED:
+                    for stream_filter in filters.values():
+                        stream_filter.discard()
+                    data = {**(data or {}), "assistant_text": "[partial text omitted]"}
+                if event.type == LIVE_TURN_COMPLETED:
+                    for kind, stream_filter in filters.items():
+                        remainder = stream_filter.finish()
+                        if remainder:
+                            yield latency_event_payload(
+                                event_type=kind, text=remainder, data={},
+                                started_at=started_at, now=time.monotonic(),
+                            )
+                    completed_assistant_text = policy.text(str((event.data or {}).get("assistant_text") or ""))
+                    completed = True
+                outgoing = policy.payload(latency_event_payload(
+                    event_type=event.type, text=text, data=data,
+                    started_at=started_at, now=time.monotonic(),
+                ))
+                if policy.failed:
+                    yield {**policy.failure_payload(), "elapsed_ms": int(round((time.monotonic() - started_at) * 1000))}
+                    return
+                yield outgoing
+        finally:
+            for stream_filter in filters.values():
+                stream_filter.discard()
 
-        self._state = next_state
-        self._transcript.append({"role": "user", "content": user_utterance})
-        self._transcript.append(
-            {
-                "role": "assistant",
-                "content": completed_assistant_text or "".join(assistant_parts).strip(),
-            }
-        )
+        # Only natural, successful exhaustion commits. Later turns see the safe
+        # history; the current-turn LLM input above remains the original host data.
+        if completed:
+            self._state = LiveTaskSessionState(**policy.payload(asdict(next_state)))
+            if new_proof:
+                self._identity_proofs.append(LivePrivacyPolicy(secrets=secrets).text(new_proof))
+            self._transcript.append({"role": "user", "content": policy.text(user_utterance)})
+            self._transcript.append({"role": "assistant", "content": completed_assistant_text})
 
     def record_summary(
         self,
@@ -194,6 +227,8 @@ class LiveTaskDemo:
         subject_id: str,
         transcript: str | None = None,
         summary_llm: Callable[[list[dict[str, str]]], str] | None = None,
+        secrets: tuple[str, ...] = (),
+        redactor: Callable[[str], str] | None = None,
     ) -> dict[str, Any]:
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
         memory = SubjectMemory.open(
@@ -202,23 +237,38 @@ class LiveTaskDemo:
             reindex=False,
         )
         transcript_text = transcript or _format_transcript(self._transcript)
+        policy = self.privacy_policy(secrets=secrets, redactor=redactor)
         redacted_transcript = [
-            {**item, "content": self.redact(item["content"])} for item in self._transcript
+            {**item, "content": policy.text(item["content"])} for item in self._transcript
         ]
         resolved_summary_llm = summary_llm or (
             lambda messages: _fake_summary_output(self._state, redacted_transcript)
         )
+        def checked_summary_llm(messages):
+            if policy.failed:
+                raise RuntimeError(SAFE_DIAGNOSTIC)
+            return resolved_summary_llm(messages)
+
+        def checked_output_redactor(text):
+            result = policy.text(text)
+            if policy.failed:
+                raise RuntimeError(SAFE_DIAGNOSTIC)
+            return result
+
         # The SDK redacts the transcript before the model sees it and sanitizes the
         # reply (JSON object or "- " lines only; anything else is skipped, not stored).
         result = memory.record_session_summary(
             session_id=session_id,
             transcript=transcript_text,
-            summary_llm=resolved_summary_llm,
-            redactor=self.redact,
+            summary_llm=checked_summary_llm,
+            redactor=policy.text,
+            output_redactor=checked_output_redactor,
             timezone="Europe/Istanbul",
-            trace_sink=JsonlTraceSink.for_session(self.trace_dir, session_id),
+            trace_sink=JsonlTraceSink.for_session(
+                self.trace_dir, session_id, payload_redactor=policy.trace_payload,
+            ),
         )
-        return {
+        return policy.payload({
             "wrote": result.wrote,
             "path": result.path,
             "text": result.text,
@@ -228,7 +278,7 @@ class LiveTaskDemo:
             "follow_ups": list(result.follow_ups),
             "skip_reason": result.skip_reason,
             "redacted": bool(self._identity_proofs),
-        }
+        })
 
     def _bootstrap_workspace(self) -> None:
         """Seed the live workspace and append the task's AGENTS.md section once.

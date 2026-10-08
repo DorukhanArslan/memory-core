@@ -33,7 +33,6 @@ from demo.live_task_demo import (
     LiveTaskDemoState,
 )
 from demo.parity_trace import build_parity_trace
-from memory_core.live import LIVE_TURN_FAILED
 from memory_core.memory_paths import UnsafeMemoryPathError
 from memory_core.prompt_section import build_prompt_section
 from memory_core.tools.memory_get import memory_get
@@ -201,7 +200,8 @@ def build_kept_router(lab: LabRuntime) -> APIRouter:
 
 def serialize_live_state(lab: LabRuntime, state: LiveTaskDemoState, payload: dict | None = None) -> dict[str, Any]:
     chat = lab.resolve_chat(payload or {})
-    return {
+    policy = lab.live_task.privacy_policy(secrets=lab.secret_values(payload))
+    return policy.payload({
         "workflow": state.workflow,
         "transcript": state.transcript,
         "workspace": state.workspace,
@@ -215,7 +215,7 @@ def serialize_live_state(lab: LabRuntime, state: LiveTaskDemoState, payload: dic
             "keySource": chat.key_source,
             "model": chat.model if chat.has_key else "workflow-script",
         },
-    }
+    })
 
 
 def _live_ids(payload: dict[str, Any]) -> tuple[str, str]:
@@ -255,21 +255,23 @@ def _add_live_task_routes(router: APIRouter, lab: LabRuntime) -> None:
     def live_task_summary(payload: dict = Body(default={})):
         session_id, subject_id = _live_ids(payload)
         secrets = lab.secret_values(payload)
-        engine = live_engine(lab, payload)
         try:
+            engine = live_engine(lab, payload)
             summary = lab.live_task.record_summary(
                 session_id=session_id,
                 subject_id=subject_id,
                 transcript=optional_text(payload.get("transcript")),
                 summary_llm=engine.raw_chat_text if engine is not None else None,
+                secrets=secrets,
+                redactor=lambda text: redact_secrets(text, secrets),
             )
-        except Exception as exc:
+        except Exception:
             raise LabError(
                 502,
-                f"live task summary failed: {safe_exception_message(exc, secrets)}",
+                "live task summary failed",
                 code="live_summary_failed",
                 redacted=True,
-            ) from exc
+            ) from None
         lab.bus.emit(
             "live.session_summary",
             summary=f"canlı özet: {'yazıldı' if summary.get('wrote') else 'yazılmadı'}",
@@ -293,12 +295,9 @@ async def _live_turn_frames(
         engine = live_engine(lab, payload)
         llm = (lambda messages: _live_engine_stream(engine, messages)) if engine is not None else None
         async for event in lab.live_task.stream_turn(
-            session_id=session_id, subject_id=subject_id, user_utterance=message, llm=llm
+            session_id=session_id, subject_id=subject_id, user_utterance=message, llm=llm,
+            secrets=secrets, redactor=lambda text: redact_secrets(text, secrets),
         ):
-            if event["type"] == LIVE_TURN_FAILED and event["data"].get("error"):
-                # The SDK yields str(exc) unredacted; the browser must not see a key.
-                error = redact_secrets(event["data"]["error"], secrets)
-                event = {**event, "data": {**event["data"], "error": error}}
             lab.bus.emit(
                 f"live.{event['type']}",
                 summary=f"canlı: {event['type']}",
@@ -306,8 +305,10 @@ async def _live_turn_frames(
             )
             yield sse_frame(event, event=str(event["type"]))
         yield sse_frame(serialize_live_state(lab, lab.live_task.state(), payload), event="live_task_state")
-    except Exception as exc:
-        yield error_frame(f"live task turn failed: {safe_exception_message(exc, secrets)}", code="live_turn_failed")
+    except Exception:
+        # The SDK re-raises its original exception after its failure event. A
+        # fixed terminal diagnostic also covers the uncommitted current proof.
+        yield error_frame("live task turn failed", code="live_turn_failed")
 
 
 def cooldown_payload(lab: LabRuntime, config, store) -> dict[str, Any] | None:

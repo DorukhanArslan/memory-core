@@ -107,12 +107,18 @@ def test_stream_redacts_only_the_trace_copy(tmp_path: Path):
     assert [row["type"] for row in _records(path)] == [event.type for event in events]
 
 
-def test_trace_serialization_failure_precedes_filesystem_operations(tmp_path: Path):
+@pytest.mark.parametrize("existing", [False, True])
+def test_trace_serialization_failure_precedes_filesystem_operations(tmp_path: Path, existing):
     path = tmp_path / "trace" / "session_1.jsonl"
+    if existing:
+        JsonlTraceSink(path).record(LiveTurnEvent(TEXT_DELTA, "OK."))
+    before = path.read_bytes() if existing else None
     sink = JsonlTraceSink(path, payload_redactor=lambda _payload: {"data": object()})
     with pytest.raises(TypeError, match="not JSON serializable"):
         sink.record(LiveTurnEvent(TEXT_DELTA, f"token={LONG}"))
-    assert not path.parent.exists()
+    assert (path.read_bytes() if path.exists() else None) == before
+    if not existing:
+        assert not path.parent.exists()
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])

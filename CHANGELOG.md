@@ -10,6 +10,13 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Added
 
+- Release preparation (2026-10-08, build/adapter-only): offline Linux CI for Python
+  3.11/3.12 with a frozen development stack and pinned actions; isolated wheel/sdist
+  installation, core-only FTS/HostKit smoke and public consumer type checks. `py.typed`
+  exposes existing inline annotations; dynamic options/callbacks remain permissive.
+  The release checklist retains copyright, publication and external verification gates.
+  Consolidation documentation now distinguishes the enabled scored deep policy from
+  the disabled opt-in LLM step; runtime defaults are unchanged.
 - Live privacy boundaries (2026-10-08, adapter/demo-only): optional
   `JsonlTraceSink.payload_redactor` and sync/async summary `output_redactor` sanitize
   copied trace payloads and parsed output before storage. SDK defaults and the existing

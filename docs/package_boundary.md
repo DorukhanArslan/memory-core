@@ -79,13 +79,14 @@ Four paths change memory files; none of them uses keyword triggers.
 | Mode | Writes | Decided by | Module | Evidence |
 | --- | --- | --- | --- | --- |
 | Daily capture | `memory/YYYY-MM-DD.md` (append only) | the model's flush pass through the append-only `write` tool (`NO_REPLY` writes nothing) | `memory_core.memory_flush`, `memory_core.host` (`FlushRequest`) | flush plan oracle-backed; the write loop is adapter-only |
-| Scored promotion and dreaming | dated `## Promoted From Short-Term Memory (<date>)` sections of `MEMORY.md`, `memory/.dreams/*.json`, `DREAMS.md` | recall signals and the score, signal, diversity and age gates; no LLM | `memory_core.consolidation` | 21 promotion oracle tests assert Python == TS (docs/parity_matrix.md) |
+| Scored promotion and dreaming | dated `## Promoted From Short-Term Memory (<date>)` sections of `MEMORY.md`, `memory/.dreams/*.json`, `DREAMS.md` | recall signals and the score, signal, diversity and age gates; optional host-model consolidation in the deep phase | `memory_core.consolidation` | oracle-backed helpers with named phase/runtime gaps (docs/parity_matrix.md) |
 | Curated writes | the non-promotion blocks of `MEMORY.md`, `USER.md`, `PROACTIVE_PREFERENCES.md`, today's daily note (append only) | the agent, through curation tools (decision Q16, on by default) | `memory_core.curation` (`MemoryCurator`, `Memory.curator()`) | memory-core extension, no upstream counterpart; one oracle test runs curated edits against the real promotion apply |
 | Session snapshot | a new `memory/<date>-<slug>.md` per ending session (never appended to) | the host's `/new` or `/reset` command; the slug comes from a host-supplied generator, else the timestamp | `memory_core.session_memory` (`save_session_memory`) | oracle-backed with named deviations (docs/parity_matrix.md) |
 
 - Scored consolidation never runs on its own: there is no scheduler and
-  dreaming is off by default (`DEFAULT_DEEP_DREAMING_ENABLED = False`). A host
-  records hits with `record_short_term_recalls` and calls
+  the scored deep policy is enabled by default (`DEFAULT_DEEP_DREAMING_ENABLED = True`).
+  The separate LLM consolidation option is off by default and requires a host-supplied model.
+  A host records hits with `record_short_term_recalls` and calls
   `run_short_term_promotion` or `run_dreaming_sweep` when it chooses.
 - Promotion and curation share one block model
   (`memory_core.memory_budget.parse_memory_blocks`): budget compaction only drops

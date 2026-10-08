@@ -17,10 +17,10 @@ pin 4c42815348. It is the package's scored consolidation mode:
 3. :func:`audit_short_term_promotion_artifacts` and
    :func:`repair_short_term_promotion_artifacts` inspect and fix the stores.
 
-Nothing here runs on its own: there is no scheduler. Dreaming is off by
-default (:data:`DEFAULT_DEEP_DREAMING_ENABLED`): a deep sweep given a
-resolved :class:`DeepDreamingPolicy` promotes nothing unless the policy
-enables it; a call without a policy runs whenever the host makes it. The
+Nothing here runs on its own: there is no scheduler. The scored deep policy is enabled
+by default (:data:`DEFAULT_DEEP_DREAMING_ENABLED`); an explicitly disabled
+:class:`DeepDreamingPolicy` prevents deep promotion. The separate LLM
+consolidation option is off by default and requires a host-supplied model. The
 module knows no web framework, UI or LLM client; the opt-in LLM consolidation step
 (:mod:`~memory_core.consolidation.llm_consolidation`) takes a host-injected model callable. Evidence per behaviour lives in
 docs/parity_matrix.md.

@@ -26,7 +26,7 @@ pip install "/path/to/memory-core[langgraph]" langchain-openai  # LangGraph, for
 The Lab (`demo/`), the tests, the scripts and the examples stay in the checkout; the
 package holds only `memory_core/`. For development, create the checkout's environment with
 [uv](https://docs.astral.sh/uv/) (an editable install with the demo and langgraph extras,
-plus langchain-openai, pytest and ruff from the `dev` dependency group, which is not part of
+plus langchain-openai, pytest, ruff and mypy from the `dev` dependency group, which is not part of
 the package's metadata):
 
 ```bash
@@ -34,10 +34,13 @@ uv sync
 ```
 
 [CHANGELOG.md](CHANGELOG.md) lists what changed in each version.
+The [release checklist](docs/release.md) describes artifact and offline CI checks.
+The package includes `py.typed` for its existing inline annotations. Selected public API
+contracts are checked from clean installs; dynamic options and callbacks still accept `Any`.
 
-Licence: memory-core's own licence is not decided yet. Code ported from OpenClaw keeps
-upstream's MIT notice in [LICENSE.openclaw](LICENSE.openclaw), which the wheel and the
-sdist carry.
+Licence: the project's own MIT notice and metadata await the confirmed copyright holder
+and year. Code ported from OpenClaw keeps upstream's MIT notice in
+[LICENSE.openclaw](LICENSE.openclaw), which the wheel and the sdist carry.
 
 ## Quickstart
 

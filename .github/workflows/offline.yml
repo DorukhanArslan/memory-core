@@ -18,6 +18,7 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
     env:
+      UV_PYTHON: ${{ matrix.python-version }}
       PYTHONDONTWRITEBYTECODE: "1"
       LANGSMITH_TRACING: "false"
       LANGCHAIN_TRACING_V2: "false"

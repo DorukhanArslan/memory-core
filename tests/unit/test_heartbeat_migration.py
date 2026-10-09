@@ -11,6 +11,8 @@ from __future__ import annotations
 import os
 import stat
 
+import pytest
+
 from memory_core.automation import FileAutomationStore, is_heartbeat_task_job
 from memory_core.heartbeat_migration import (
     analyze_legacy_heartbeat_tasks,
@@ -61,7 +63,9 @@ def test_analyze_ignores_tasks_hidden_in_comments_but_keeps_the_comment_bytes():
     assert "<!--\ntasks:\n  - name: disabled" in document.stripped_content
 
 
-def test_heartbeat_md_migrates_archives_and_reruns_idempotently(tmp_path):
+@pytest.mark.parametrize("under_home", [True, False], ids=["inside-home", "outside-home"])
+def test_heartbeat_md_migrates_archives_and_reruns_idempotently(tmp_path, monkeypatch, under_home):
+    monkeypatch.setenv("HOME", str(tmp_path if under_home else tmp_path / "home"))
     content = "# Operations\n\ntasks:\n  - name: inbox\n    interval: 1h\n    prompt: Check inbox\n"
     (tmp_path / "HEARTBEAT.md").write_text(content, encoding="utf-8")
     store = FileAutomationStore(tmp_path)
@@ -72,8 +76,9 @@ def test_heartbeat_md_migrates_archives_and_reruns_idempotently(tmp_path):
     result = migrate_heartbeat_md(tmp_path, store, now_ms=NOW)
 
     assert result.warnings == ()
+    expected_path = "~/HEARTBEAT.md" if under_home else str(tmp_path / "HEARTBEAT.md")
     assert result.changes == (
-        f"Migrated {tmp_path / 'HEARTBEAT.md'} into cron scratch for Heartbeat (main).",
+        f"Migrated {expected_path} into cron scratch for Heartbeat (main).",
     )
     assert not (tmp_path / "HEARTBEAT.md").exists()
     scratch = store.read_scratch("main").scratch

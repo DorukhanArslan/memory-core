@@ -43,7 +43,11 @@ def _only_archive(root: Path) -> Path:
     return archive
 
 
-def test_customized_content_goes_under_the_tools_section_and_reruns_idempotently(tmp_path):
+@pytest.mark.parametrize("under_home", [True, False], ids=["inside-home", "outside-home"])
+def test_customized_content_goes_under_the_tools_section_and_reruns_idempotently(
+    tmp_path, monkeypatch, under_home
+):
+    monkeypatch.setenv("HOME", str(tmp_path if under_home else tmp_path / "home"))
     agents = "# Agent\n\n## Tools\n\nExisting notes.\n\n## Safety\n\nBe careful.\n"
     tools = "### Cameras\n\n- kitchen → wide angle\n\nKeep trailing spaces.  \n"
     root = _workspace(tmp_path, agents, tools)
@@ -51,7 +55,8 @@ def test_customized_content_goes_under_the_tools_section_and_reruns_idempotently
     result = migrate_tools_md(root)
 
     assert result.warnings == ()
-    assert result.changes == (f"Merged {root / 'TOOLS.md'} into AGENTS.md and archived the original.",)
+    expected_path = "~/workspace/TOOLS.md" if under_home else str(root / "TOOLS.md")
+    assert result.changes == (f"Merged {expected_path} into AGENTS.md and archived the original.",)
     assert (root / "AGENTS.md").read_text(encoding="utf-8") == (
         "# Agent\n\n## Tools\n\nExisting notes.\n\n" + f"{MIGRATED}\n\n" + tools + "\n## Safety\n\nBe careful.\n"
     )
@@ -87,7 +92,11 @@ def test_missing_agents_md_gets_the_tools_section(tmp_path):
 
 
 @pytest.mark.parametrize("tools", [LEGACY_TOOLS_MD_TEMPLATE, "", " \n\t"], ids=["template", "empty", "blank"])
-def test_untouched_template_and_blank_files_are_archived_and_removed(tmp_path, tools):
+@pytest.mark.parametrize("under_home", [True, False], ids=["inside-home", "outside-home"])
+def test_untouched_template_and_blank_files_are_archived_and_removed(
+    tmp_path, monkeypatch, tools, under_home
+):
+    monkeypatch.setenv("HOME", str(tmp_path if under_home else tmp_path / "home"))
     agents = "# Agent\n\n## Tools\n\nLocal details stay unchanged.\n"
     root = _workspace(tmp_path, agents, tools)
 
@@ -95,7 +104,8 @@ def test_untouched_template_and_blank_files_are_archived_and_removed(tmp_path, t
 
     assert result.warnings == ()
     assert result.merged is False
-    assert result.changes == (f"Removed untouched {root / 'TOOLS.md'} after archiving it.",)
+    expected_path = "~/workspace/TOOLS.md" if under_home else str(root / "TOOLS.md")
+    assert result.changes == (f"Removed untouched {expected_path} after archiving it.",)
     assert (root / "AGENTS.md").read_text(encoding="utf-8") == agents
     assert _only_archive(root).read_text(encoding="utf-8") == tools
     assert not (root / "TOOLS.md").exists()

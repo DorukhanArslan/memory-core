@@ -1,4 +1,3 @@
-import ast
 import asyncio
 import json
 import re
@@ -8,7 +7,7 @@ from pathlib import Path
 import examples.basic_usage as basic_usage
 import examples.live_streaming as live_streaming
 import examples.quickstart as quickstart
-from memory_core import HostKit, TurnUsage
+from memory_core import TurnUsage
 from memory_core.live import LiveIdentityStore
 
 
@@ -169,28 +168,41 @@ def test_quickstart_runs_the_memory_tools_and_the_flush(tmp_path: Path, monkeypa
     assert stdout_so_far() == ["reply 1", "reply 2"]
 
 
-def test_readme_quickstart_shows_the_example():
-    source = Path(quickstart.__file__).read_text(encoding="utf-8")
+def test_readme_quickstart_saves_and_recalls_without_a_provider(tmp_path: Path, monkeypatch, capsys):
     readme = (Path(quickstart.__file__).parents[1] / "README.md").read_text(encoding="utf-8")
-    docstring_end = ast.parse(source).body[0].end_lineno
-    code = "".join(source.splitlines(keepends=True)[docstring_end:]).lstrip("\n")
     section = readme.split("\n## Quickstart\n", 1)[1]
+    code = section.split("```python\n", 1)[1].split("\n```\n", 1)[0]
+    monkeypatch.chdir(tmp_path)
+    namespace = {"__name__": "__main__"}
 
-    assert section.split("```python\n", 1)[1].split("\n```\n", 1)[0] + "\n" == code
+    exec(code, namespace)
+
+    memory = namespace["reopened"]
+    assert memory.store.flags.vector_search is False
+    assert memory.store.embeddings is None
+    (hit,) = namespace["result"]["results"]
+    assert hit["path"] == namespace["path"]
+    assert "I prefer technical answers in English." in hit["snippet"]
+    assert hit["citation"] == f"Source: {namespace['path']}#L1-L2"
+    output = capsys.readouterr().out
+    assert "I prefer technical answers in English." in output
+    assert hit["citation"] in output
 
 
 def test_readme_hybrid_snippet_imports_what_it_uses(tmp_path: Path, monkeypatch):
-    # The snippet replaces the quickstart's HostKit.open call, so it needs only HostKit and root.
+    # Use a test-only embedder; execute the complete public configuration example.
     import memory_core
 
     readme = (Path(quickstart.__file__).parents[1] / "README.md").read_text(encoding="utf-8")
-    snippet = readme.split("`OpenAICompatibleEmbeddingProvider` or any other", 1)[1]
+    assert "\n### Hybrid search\n" in readme
+    snippet = readme.split("\n### Hybrid search\n", 1)[1]
     code = textwrap.dedent(snippet.split("```python\n", 1)[1].split("```\n", 1)[0])
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
         memory_core, "OpenAICompatibleEmbeddingProvider", lambda **kwargs: _FakeProvider(base_url="", **kwargs)
     )
-    namespace = {"HostKit": HostKit, "root": tmp_path / "my-agent-app"}
+    monkeypatch.chdir(tmp_path)
+    namespace = {}
 
     exec(code, namespace)
 

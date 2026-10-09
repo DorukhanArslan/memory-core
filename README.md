@@ -1,157 +1,74 @@
 # memory-core
 
-**OpenClaw memory behavior for Python agent applications.**
+**Give your Python agent a memory that survives the conversation.**
 
-[Why this exists](#why-a-python-port) · [How it works](#how-memory-works) · [Quickstart](#quickstart) · [Try the Lab](#run-the-lab) · [Docs](#read-the-docs)
+Store preferences, decisions, and working context as readable Markdown.
+Retrieve relevant notes with source lines. Bring them into the next session without replaying the entire conversation.
 
-[OpenClaw](https://github.com/openclaw/openclaw) already has a memory system written in TypeScript.
-This project ports selected parts of that system into a standalone Python SDK.
-Use it to add OpenClaw-style memory to an agent application whose model calls, tools, and workflow you already control.
+`memory-core` brings selected parts of [OpenClaw](https://github.com/openclaw/openclaw)'s memory system to a standalone Python SDK.
+OpenClaw is the technical reference. You keep your model, tools, and agent loop; the SDK supplies the memory layer.
 
-OpenClaw is the technical reference for this project.
-The port includes memory storage, retrieval, write tools, and memory maintenance helpers.
-Its Python API and host adapters are this project's own design.
+[Quickstart](#quickstart) · [How it works](#how-it-works) · [Integrations](#integrations) · [Try the Lab](#run-the-lab) · [Docs](#documentation)
 
-## Why a Python port?
+## Why memory-core?
 
-At the pinned OpenClaw release, `extensions/memory-core` is an OpenClaw plugin.
-Its [entry point](https://github.com/openclaw/openclaw/blob/v2026.9.6/extensions/memory-core/index.ts)
-registers tools through the OpenClaw plugin API and uses services from that runtime.
+- **Memory you can inspect.** Notes are Markdown files you can read and edit. SQLite holds the search index.
+- **Recall with sources.** Search results include snippets, scores, file paths, and source lines.
+- **Start without an API key.** Use local keyword search, then add an embedding provider for hybrid retrieval.
+- **Keep your agent architecture.** Call `Memory` directly, or connect memory to your existing tool loop with `HostKit`.
 
-A Python application can use TypeScript through a bridge or a separate service.
-This project offers another integration path: call the memory APIs directly inside your Python application.
-You can keep your existing agent loop, model provider, application tools, and session store.
-The core package needs Python, SQLite, and `httpx`.
-Normal Python memory calls do not require Node.js or a running OpenClaw instance.
-Node.js is required for the upstream oracle tests.
+### Why a Python port when OpenClaw already has memory?
 
-| You already have | What this package adds |
-| --- | --- |
-| A Python agent or service | `Memory` for local files, indexing, and retrieval |
-| Your own model and tool loop | `HostKit` for memory prompts, tool dispatch, and flush requests |
-| A LangGraph workflow | Helpers that connect graph state and checkpoints to the same memory APIs |
-| A streaming application | A live SDK for subject memory, events, and session summaries |
+OpenClaw already has a TypeScript memory system.
+At the reference release, its [memory plugin](https://github.com/openclaw/openclaw/blob/v2026.9.6/extensions/memory-core/index.ts) registers tools through OpenClaw's plugin API and uses runtime services.
+A Python application can use that code through a bridge or a separate service.
+This SDK offers direct Python memory APIs inside the application you already run.
+You keep your existing model calls, workflow, session store, and deployment.
 
-Your application still runs the model, stores session state, and schedules maintenance.
-The package supplies memory mechanisms that those parts can call.
-See [Package Boundary](docs/package_boundary.md) for the division of responsibilities.
-
-## How memory works
-
-A model's context window holds the information available for one model call.
-Persistent memory stores useful information outside that window.
-A later session can search and read that information instead of sending the entire old conversation to the model.
-
-1. **Store readable notes.** A workspace holds `MEMORY.md` for long-term notes and `memory/YYYY-MM-DD.md` for daily notes.
-   These Markdown files are the saved memory. You can open and inspect them.
-2. **Build an index.** The SDK splits notes into chunks and builds a SQLite search index.
-   Full-text search finds matching words. Hybrid search combines text results with vectors from an embedding provider.
-   The provider turns text into vectors used for similarity search.
-3. **Retrieve sources.** `memory_search` returns matching chunks, scores, file paths, and source lines.
-   For results from memory files, `memory_get` reads the original text.
-   Your application sends these tool results back to the model.
-4. **Save useful facts.** The model chooses whether to use the write tools that your application provides.
-   The daily write tool appends to a dated note. Curation tools can edit long-term notes under a host-supplied policy.
-   These curation tools are a documented memory-core extension, rather than ports of OpenClaw tools.
-5. **Preserve facts before context fills.** After a reply, your host supplies token usage and the model's context limit to `HostKit`.
-   The kit can request a memory flush: a separate model turn with an append-only daily write tool.
-   Your host runs that turn and records its result. A request alone does not save the facts.
-6. **Maintain long-term memory.** Promotion helpers use recall signals and score gates to select candidates for `MEMORY.md`.
-   Budget helpers can remove older promotion blocks to reduce the file's size.
-   Your host chooses when to run these helpers.
-
-Memory does not change the model's weights. It gives the model stored information through prompts and tool results.
-The [Quickstart](#quickstart) below shows a file write, a new memory instance, and a search without a model call.
-The [complete host loop](examples/quickstart.py) shows where a model and its tool calls fit into that process.
-
-## What you can build
-
-| Application | How the memory layer supports it |
-| --- | --- |
-| A project assistant that resumes work in a new session | Keep a stable project workspace. Save decisions in notes, then retrieve them with source lines in later sessions. |
-| A long-running Python workflow | Connect `HostKit` to your tool loop. Supply actual token usage and run requested flushes before useful facts leave the context window. |
-| A LangGraph agent with memory across graph runs | Store session state in checkpoints and call the memory helpers from graph nodes. Durable notes stay in the workspace. |
-| A streaming assistant with memory for separate subjects | Use subject workspaces and structured session summaries. Reopen the selected subject's memory for a later session. |
-
-The host selects each workspace and enforces access to it.
-The [HostKit guide](docs/host_kit.md), [LangGraph guide](docs/integrations/langgraph.md), and
-[live SDK guide](docs/integrations/live.md) explain those integrations.
-The Lab shows memory prompts, search results, saved notes, and session events in a browser.
-
-## OpenClaw reference and oracle tests
-
-The reference release is **OpenClaw `v2026.9.6`**.
-An oracle test uses the upstream implementation as the reference result.
-Our [TypeScript runner](scripts/openclaw_oracle_runner.ts) calls real OpenClaw functions from that pinned checkout.
-The [comparison tests](tests/integration/test_openclaw_ts_oracle.py) give the Python and TypeScript implementations equivalent inputs and compare their observable results.
-
-These tests cover selected operations. They do not establish complete OpenClaw compatibility.
-The [parity matrix](docs/parity_matrix.md) separates oracle-backed behavior, source-backed ports, and known gaps.
-Host adapters and Lab behavior are identified separately from upstream parity.
-This project is unofficial and is not affiliated with OpenClaw.
-
-### Future direction is open
-
-We have not yet decided whether future development will remain strictly aligned with OpenClaw or add independently designed memory capabilities.
-OpenClaw is the current technical reference and the baseline for the oracle tests.
-Existing project-specific APIs and extensions are identified in the documentation.
-
-## Install
-
-Use Python **3.11 or newer**. Install from a checkout; there is no package index release yet.
-
-```bash
-# Core SDK. Its only runtime dependency is httpx.
-pip install /path/to/memory-core
-
-# Optional Lab dependencies.
-pip install "/path/to/memory-core[demo]"
-
-# Optional LangGraph stack and the example's model integration.
-pip install "/path/to/memory-core[langgraph]" langchain-openai
-```
-
-The installed package contains `memory_core/`.
-The Lab, examples, tests, and scripts stay in the checkout.
-The `demo` extra adds dependencies; it does not install the Lab application.
-
-For development, run this command from the repo root:
-
-```bash
-uv sync --frozen
-```
-
-This installs the editable package and the development tools from `uv.lock`.
-See the [release checklist](docs/release.md) for clean install and consumer type checks.
+The core requires Python **3.11 or newer** and has one runtime dependency: `httpx`.
+It uses Python's `sqlite3` module. Normal SDK use needs no Node.js, running OpenClaw instance, or separate vector database.
+Node.js is needed for the upstream oracle tests.
 
 ## Quickstart
 
-Save a note. Open the same workspace again. Search the saved note.
-This example uses local full-text search (FTS). It needs no model, API key, or embedding provider.
+Clone or download this repository. There is no package index release yet.
+From the repository root, install into your Python environment:
+
+```bash
+python -m pip install .
+```
+
+Save a note, reopen the workspace, and retrieve it.
+This example uses local full-text search (FTS), with no model, API key, or embedding provider.
 
 ```python
 from datetime import datetime, timezone
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 from memory_core import FeatureFlags, Memory, MemoryConfig
 
-with TemporaryDirectory() as folder:
-    root = Path(folder)
-    config = MemoryConfig(workspace_dir=root, flags=FeatureFlags(vector_search=False))
-    memory = Memory.from_workspace(root, config=config)
-    path = f"memory/{datetime.now(timezone.utc):%Y-%m-%d}.md"
-    memory.workspace.append_daily_memory(path, "- I prefer technical answers in English.")
-    memory.store.reindex(memory.workspace)
+root = Path("agent-memory")
+config = MemoryConfig(
+    workspace_dir=root,
+    flags=FeatureFlags(vector_search=False),
+)
 
-    # A new instance reads the saved files.
-    reopened = Memory.from_workspace(root, config=config)
-    result = reopened.search("technical answers")
-    print(result["results"][0]["snippet"])
+# Save a note and index it.
+memory = Memory.from_workspace(root, config=config)
+path = f"memory/{datetime.now(timezone.utc):%Y-%m-%d}.md"
+memory.workspace.append_daily_memory(
+    path, "- I prefer technical answers in English."
+)
+memory.store.reindex(memory.workspace)
+
+# Reopen the same workspace, as you would in another session.
+reopened = Memory.from_workspace(root, config=config)
+result = reopened.search("technical answers")
+print(result["results"][0]["snippet"])
 ```
 
-The result contains the preference and a `Source:` line with the note's path and line range.
-For example, a note saved on 9 October 2026 produces this output:
+The snippet contains the saved preference and a `Source:` line with the note's path and line range.
+For a note saved on 9 October 2026, the first run produces:
 
 ```text
 - I prefer technical answers in English.
@@ -159,18 +76,93 @@ For example, a note saved on 9 October 2026 produces this output:
 Source: memory/2026-10-09.md#L1-L2
 ```
 
-This example writes the note directly through the workspace API.
-In an agent, the model uses the write tools that your application offers.
-The temporary workspace is removed when the example ends. Use a permanent path in your application.
+The files remain in `agent-memory/` after the script exits. Repeated runs append the note again.
+This example writes through the workspace API. In an agent, the model can use the write tools you expose.
+A chat reply alone does not save a memory.
+
+## How it works
+
+Memory lives outside the model's context window.
+Your application retrieves relevant notes and supplies them through prompts and tool results.
+Stored notes do not change the model's weights.
+
+| File in the workspace | Purpose |
+| --- | --- |
+| `MEMORY.md` | Long-term notes |
+| `memory/YYYY-MM-DD.md` | Daily notes |
+| `.memory-core/main.sqlite` | Search index |
+
+1. **Write.** Save useful facts through the workspace API or agent write tools.
+   The daily write tool appends to a dated note. The model chooses whether to use the tools your application offers.
+2. **Index.** Split notes into chunks and index them in SQLite.
+   Full-text search finds matching words. Hybrid search adds embedding similarity.
+   An embedding provider turns text into vectors used for similarity search.
+3. **Recall.** `memory_search` returns matching chunks, scores, paths, and source lines.
+   For results from memory files, `memory_get` reads the original text. Your host returns the tool result to the model.
+4. **Maintain.** Let your host run memory flushes and promotion helpers when needed.
+   A flush is a separate model turn that can append useful facts before context fills.
+   Promotion helpers use recall signals and score gates to select candidates for `MEMORY.md`.
+   Budget helpers can remove older promotion blocks to reduce the file's size.
+
+Reindex after direct writes or manual file edits with `memory.store.reindex(memory.workspace)`.
+Reopening through `Memory.from_workspace()` reindexes by default.
+Your application owns model calls, session state, workspace access, and maintenance scheduling.
+See [Package Boundary](docs/package_boundary.md) for those responsibilities.
+
+### What you can build
+
+- **Resume a project in a new session.** Save project decisions in a stable workspace.
+  Let the agent search those decisions and read their sources when work continues.
+- **Keep facts across a long task.** Give `HostKit` the model's actual token usage and context limit.
+  Run requested flushes so useful facts can survive later context changes.
+- **Keep separate memory for streaming subjects.** Use subject workspaces and structured session summaries.
+  Reopen the selected subject's memory in a later session. Your host selects the workspace and enforces access.
+
+## Integrations
+
+Start with the interface that fits the application you already have.
+
+| Your application | Use | Example or guide |
+| --- | --- | --- |
+| A Python service that needs storage and retrieval | `Memory` | [Quickstart](#quickstart) |
+| An agent with its own model and tool loop | `HostKit` | [Host loop example](examples/quickstart.py) · [Guide](docs/host_kit.md) |
+| A LangGraph workflow | Graph and checkpoint helpers | [LangGraph guide](docs/integrations/langgraph.md) |
+| A streaming assistant with separate subjects | Live SDK | [Live SDK guide](docs/integrations/live.md) |
+
+`HostKit` prepares memory prompts and tools, dispatches tool calls, and can request a memory flush.
+Your host executes model turns and stores the returned session state.
+The model uses the offered recall tools; `before_turn()` does not search automatically.
+Replace `call_my_llm` in the host loop example with your model call and tool loop before running it.
+
+<details>
+<summary><strong>HostKit lifecycle and integration requirements</strong></summary>
+
+| Stage | API | Host responsibility |
+| --- | --- | --- |
+| Open | `HostKit.open(...)` | Select the workspace and search mode |
+| Prepare | `kit.before_turn(state)` | Send the prompt, message, and tools to the model |
+| Dispatch | `kit.dispatcher(turn.session)` | Execute tool calls and return their results to the model |
+| Complete | `kit.after_turn(...)` | Deliver the reply first; supply the transcript, token usage, and model context limit |
+| Flush | `record.flush` | Run the requested model turn and call `complete()` before the next `after_turn()` |
+| New session | `kit.on_new_session(...)` | Supply the transcript and persist the new session state |
+
+- Pass the last model call's provider usage through `TurnUsage`. Persist the returned `SessionState` in your session store.
+- Pass `context_window_tokens` to **`kit.after_turn(...)`** with your model's actual limit.
+  The default is 200,000 tokens, which can schedule a flush too late for a smaller model.
+- A flush request does not itself save facts. If execution fails, pass the exception to `complete(state, error=...)`.
+- Curation tools are project-specific extensions governed by `curated_memory_writes` and `CurationPolicy`.
+  The feature flag is on by default; the host's policy controls available operations.
+- Promotion and dreaming helpers run only when called. The scored deep policy is enabled by default.
+  The separate LLM consolidation step is off by default.
+
+See [HostKit](docs/host_kit.md) for error handling and [Workspace Layout](docs/workspace_layout.md) for initialization.
+
+</details>
 
 ### Hybrid search
 
-The package default combines vector search with keyword search.
-An embedding provider converts text to vectors for that search.
-The default configuration requires a provider. It raises an error if you omit one.
-Use `FeatureFlags(vector_search=False)` to select FTS-only search explicitly.
-
-For hybrid search, configure `OpenAICompatibleEmbeddingProvider` or another `EmbeddingProvider`:
+Hybrid search combines keyword matches with embedding similarity.
+Configure an embedding provider:
 
 ```python
 import os
@@ -178,171 +170,166 @@ from pathlib import Path
 
 from memory_core import HostKit, OpenAICompatibleEmbeddingProvider
 
-root = Path("my-agent-app")
 kit = HostKit.open(
-    root,
+    Path("agent-memory"),
     embedding_provider=OpenAICompatibleEmbeddingProvider(
-        api_key=os.environ["OPENAI_API_KEY"], model="text-embedding-3-small"
+        api_key=os.environ["OPENAI_API_KEY"],
+        model="text-embedding-3-small",
     ),
 )
 ```
 
-This configuration uses a real embeddings endpoint.
-Set the provider's `base_url` if your endpoint differs from its OpenAI default.
-For search controls, see [Feature Flags](docs/feature_flags.md).
-
-## Python API
-
-Use `Memory` for file storage and search. Use `HostKit` to connect those functions to an agent loop.
-
-| Step | HostKit call | Your application does this |
-| --- | --- | --- |
-| Open a workspace | `HostKit.open(...)` | Select the path and search mode |
-| Prepare a turn | `kit.before_turn(state)` | Send the prompt, current message, and memory tools to the model |
-| Answer a tool call | `kit.dispatcher(turn.session)` | Run the requested tool and send its result back to the model |
-| Complete a turn | `kit.after_turn(...)` | Deliver the reply first; pass the transcript, actual token usage, and model window size |
-| Run a requested flush | `record.flush` | Run its model turn and call `complete()` before the next `after_turn()` |
-| Start another session | `kit.on_new_session(...)` | Supply the transcript and store the new session state |
-| Run maintenance | `kit.heartbeat_prompt(...)` and consolidation helpers | Choose when to run them |
-
-The [complete host loop](examples/quickstart.py) shows prompt assembly, tool dispatch, and flush execution.
-Replace its `call_my_llm` function with your model call and tool loop before you run it.
-The [HostKit guide](docs/host_kit.md) covers error handling, session state, and runtime context.
-
-Pass your model's actual window size as `context_window_tokens` to `kit.after_turn`.
-The default is 200,000 tokens. Its flush threshold can exceed a smaller model's window.
-Keep `SessionState` in your session store. Pass provider token usage through `TurnUsage`.
-If a flush fails, pass the exception to `complete(state, error=...)`.
-
-The curation tools can edit long-term notes, user preferences, and daily notes.
-They are a memory-core extension, controlled by `curated_memory_writes` and `CurationPolicy`.
-Promotion and dreaming helpers run only when your host calls them.
-The scored deep policy is enabled by default. The separate LLM consolidation step is off by default.
-
-A workspace can contain:
-
-```text
-my-agent-app/
-  MEMORY.md                 # Long-term notes
-  memory/
-    YYYY-MM-DD.md           # Daily notes
-  .memory-core/
-    main.sqlite             # Search index
-```
-
-`Memory.from_workspace()` creates only this memory surface when it is missing.
-It preserves existing notes. Pass `initialize=False` to skip memory-file initialization.
-`HostKit.open()` also seeds the selected agent file layout; files are empty unless you supply templates.
-See [Workspace Layout](docs/workspace_layout.md) for bootstrap files and prompt limits.
+Set the provider's `base_url` for another OpenAI-compatible embeddings endpoint, or supply your own `EmbeddingProvider`.
+For `Memory.from_workspace()` and `HostKit.open()`, hybrid search is the default and requires a provider.
+Without one, initialization raises an error. To use local keyword search, explicitly set `FeatureFlags(vector_search=False)`.
+See [Feature Flags](docs/feature_flags.md) for search controls.
 
 ## Run the Lab
 
-The Lab shows prompts, search results, memory changes, and session events in a browser.
-It uses the public package APIs. Its chat loop and UI are demo code.
-Run it from a checkout after `uv sync --frozen`.
-Set the chat endpoint, API key, and model before you start the server.
-Use environment variables or a gitignored `.env`:
+See the memory layer at work in a browser: inspect prompts, search results, saved notes, and session events.
+The Lab uses the public SDK APIs. Its chat loop and UI are demo code.
+
+From the repository root, install the development environment and configure an OpenAI-compatible chat provider.
+For example, with OpenRouter:
 
 ```bash
+uv sync --frozen
+
 export MEMORY_CORE_DEMO_OPENAI_BASE_URL="https://openrouter.ai/api/v1"
-export MEMORY_CORE_DEMO_OPENAI_API_KEY="<your key>"
-export MEMORY_CORE_DEMO_OPENAI_MODEL="openai/gpt-6-luna"
-```
+export MEMORY_CORE_DEMO_OPENAI_API_KEY="<your-api-key>"
+export MEMORY_CORE_DEMO_OPENAI_MODEL="<your-chat-model>"
 
-These endpoint and model values are the current defaults in `demo/chat_engine.py`.
-Use the model and endpoint that you select. A missing key returns `no_api_key`.
-
-Start the server:
-
-```bash
 uv run --frozen python -m uvicorn demo.app:app --port 8000
 ```
 
-Open [localhost:8000](http://127.0.0.1:8000).
-The Lab stores its workspace in the system temp directory.
+Choose a chat model that supports tool calls. The exports override the defaults in `demo/chat_engine.py`.
+Open [localhost:8000](http://127.0.0.1:8000). Try this message:
 
-An explicit `scripted` request runs the demo pipeline without a model, memory tools, or a flush turn.
-It does not test model recall or model writes.
+> I prefer technical answers in English. Please remember that.
 
-With a configured chat key, run this smoke test:
+Inspect memory changes and search results to check whether the model saved the preference.
+The model decides whether to call a write tool. A successful reply alone does not prove persistence.
+
+<details>
+<summary><strong>HTTP smoke test</strong></summary>
+
+After the server starts with a configured chat key:
 
 ```bash
 curl -s http://127.0.0.1:8000/api/lab/state
 curl -s -N -X POST http://127.0.0.1:8000/api/lab/chat/stream \
   -H 'Content-Type: application/json' \
-  -d '{"message":"I prefer technical answers in English.","sessionKind":"main"}'
+  -d '{"message":"I prefer technical answers in English. Please remember that.","sessionKind":"main"}'
 ```
 
-The model decides whether to call a write tool. A successful reply alone does not prove that a note was saved.
-Check the file changes and search results in the Lab.
+Check file changes and retrieval results in the Lab after the request.
 
-The default OpenRouter configuration uses FTS-only search.
-For hybrid search, set `MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL` and
-`MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY` to a real embeddings endpoint.
-The Lab uses no fake embeddings.
-See [Lab Guide](docs/lab.md) for endpoints, scripted modes, privacy limits, and demo behavior.
+</details>
 
-## Read the docs
+The Lab stores its workspace in the system temp directory. A missing chat key returns `no_api_key`.
+An explicit `scripted` request runs without a model, memory tools, or a flush turn.
+It does not test model recall or model writes.
 
-| Guide | Use it for |
-| --- | --- |
-| [HostKit](docs/host_kit.md) | Prompts, tools, flushes, session state, and error handling |
-| [LangGraph Integration](docs/integrations/langgraph.md) | A graph with session checkpoints and explicit memory operations |
-| [Live SDK Integration](docs/integrations/live.md) | Streaming events, subject memory, and session summaries |
-| [Feature Flags](docs/feature_flags.md) | Search modes and optional capabilities |
-| [Package Boundary](docs/package_boundary.md) | Core, adapters, demo, and host responsibilities |
-| [Parity Matrix](docs/parity_matrix.md) | Oracle evidence and known differences from OpenClaw |
+The default OpenRouter configuration uses keyword search. The Lab uses no fake embeddings.
+For hybrid search, supply a real endpoint through `MEMORY_CORE_DEMO_OPENAI_EMBEDDING_BASE_URL` and
+`MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY`. The embedding model is set with `MEMORY_CORE_DEMO_OPENAI_EMBEDDING_MODEL`.
+See [Lab Guide](docs/lab.md) for configuration, scripted modes, and demo privacy limits.
 
-The package includes `py.typed` for its inline annotations.
-Clean install checks cover selected public interfaces. Dynamic options and some callbacks still accept `Any`.
+## OpenClaw reference
+
+This project is an unofficial, standalone Python port of selected OpenClaw memory behavior.
+The reference release is **OpenClaw `v2026.9.6`**. This project is not affiliated with OpenClaw.
+The Python API, host adapters, and dedicated curation tools are this project's own design.
+
+The [oracle runner](scripts/openclaw_oracle_runner.ts) calls real functions from the pinned TypeScript implementation.
+[Comparison tests](tests/integration/test_openclaw_ts_oracle.py) give both implementations equivalent inputs and compare observable results.
+These tests cover selected operations, not full compatibility or model quality.
+
+The [Parity Matrix](docs/parity_matrix.md) separates oracle-backed behavior, source-backed ports, and known gaps.
 Full REM behavior, some regex/tokenizer cases, and parts of runtime and index compatibility remain incomplete.
-See the parity matrix for each boundary. See [CHANGELOG](CHANGELOG.md) for version history.
+Host adapters and Lab behavior are identified separately from upstream parity.
 
-## Run Tests
+### Future direction is open
 
-Run these commands from the checkout's development environment:
+We have not yet decided whether future development will remain strictly aligned with OpenClaw or add independently designed memory capabilities.
+OpenClaw is the current technical reference and the baseline for the oracle tests.
+Existing project-specific extensions are identified separately in the documentation.
+
+## Documentation
+
+| Guide | What it covers |
+| --- | --- |
+| [HostKit](docs/host_kit.md) | Prompts, tools, flushes, sessions, and error handling |
+| [LangGraph](docs/integrations/langgraph.md) | Graph state, checkpoints, and memory operations |
+| [Live SDK](docs/integrations/live.md) | Subject memory, streaming events, and session summaries |
+| [Workspace Layout](docs/workspace_layout.md) | Files, initialization, and prompt limits |
+| [Feature Flags](docs/feature_flags.md) | Search modes and optional capabilities |
+| [Package Boundary](docs/package_boundary.md) | SDK, adapters, demo, and host responsibilities |
+| [Lab](docs/lab.md) | Browser demo setup and behavior |
+| [Parity Matrix](docs/parity_matrix.md) | Upstream evidence and compatibility limits |
+| [Release Checklist](docs/release.md) | Clean installs and consumer type checks |
+
+See [CHANGELOG](CHANGELOG.md) for version history.
+
+## Development
+
+From the repository root:
 
 ```bash
+uv sync --frozen
 uv run --frozen pytest -q
 uv run --frozen ruff check . --no-cache
 uv run --frozen python scripts/check_distribution.py
 ```
 
 Offline tests use deterministic fake embeddings and scripted test models where needed.
-Oracle tests require `OPENCLAW_ORACLE_REPO`. It must point to the pinned OpenClaw checkout with installed dependencies.
+Oracle tests require Node.js and `OPENCLAW_ORACLE_REPO` pointing to the pinned checkout with installed dependencies.
 Live embedding tests require `MEMORY_CORE_LIVE_OPENAI=1` and provider credentials.
-See [Oracle Setup](docs/lab.md#oracle-checkout) and the [release checklist](docs/release.md) for isolated runs.
+See [Oracle Setup](docs/lab.md#oracle-checkout) for isolated runs.
 
-## Live OpenAI-Compatible Embeddings
+The installed package contains `memory_core/` and inline type annotations through `py.typed`.
+Clean consumer checks cover selected interfaces; dynamic options and some callbacks still accept `Any`.
+The Lab, examples, tests, and scripts remain in the checkout.
 
-[examples/basic_usage.py](examples/basic_usage.py) uses a real embedding provider.
-It writes memory files in the working directory. Run it from a scratch directory:
+For optional dependencies, run `python -m pip install ".[demo]"` for the Lab, or
+`python -m pip install ".[langgraph]" langchain-openai` for the LangGraph example.
+The `demo` extra installs dependencies, not the Lab application.
+
+<details>
+<summary><strong>Real embedding example</strong></summary>
+
+[examples/basic_usage.py](examples/basic_usage.py) uses a real embedding provider and writes files in the working directory.
+Run it from a scratch directory. Set the absolute checkout path in `PYTHONPATH`:
 
 ```bash
 cd "$(mktemp -d)"
-OPENAI_API_KEY="<your key>" PYTHONPATH=/path/to/memory-core python -m examples.basic_usage
+OPENAI_API_KEY="<your-api-key>" PYTHONPATH=/path/to/memory-core python -m examples.basic_usage
 ```
 
-The example accepts `OPENAI_BASE_URL` and `OPENAI_EMBEDDING_MODEL` as optional settings.
-Use a real embeddings endpoint. The default model is `text-embedding-3-small`.
+The example also accepts `OPENAI_BASE_URL` and `OPENAI_EMBEDDING_MODEL`.
+The default embedding model is `text-embedding-3-small`.
 
-## Rename the Project
+</details>
+
+<details>
+<summary><strong>Project rename utility</strong></summary>
 
 The project name is declared in `pyproject.toml`.
-The rename script updates the package, metadata, environment prefix, and tracked text from that declaration.
-Start from a clean checkout, then review and commit the diff:
+The script updates package names, metadata, environment prefixes, and tracked text from that declaration.
+Start from a clean checkout, review the diff, and commit it:
 
 ```bash
 .venv/bin/python scripts/rename_project.py --to <dist-name> [--display <text>]
 .venv/bin/python scripts/rename_project.py --check
 ```
 
-A rename preserves locked dependencies and protected OpenClaw names.
-It needs no resolver cache or network access. It does not migrate existing workspaces or promotion markers.
-See the script's help before you rename a project that already has saved memory.
+The rename preserves locked dependencies and protected OpenClaw names. It needs no resolver cache or network access.
+It does not migrate existing workspaces or promotion markers. Read the script's help before renaming a project with saved memory.
+
+</details>
 
 ## License
 
-The project's own MIT notice and metadata await the confirmed copyright holder and year.
 Ported code retains the upstream MIT notice in [LICENSE.openclaw](LICENSE.openclaw).
-Both the wheel and the source distribution include that notice.
+Both wheel and source distributions include that notice.
+This project's own MIT notice and metadata await confirmation of the copyright holder and year.

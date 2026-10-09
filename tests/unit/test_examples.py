@@ -184,6 +184,7 @@ def test_readme_quickstart_saves_and_recalls_without_a_provider(tmp_path: Path, 
     assert hit["path"] == namespace["path"]
     assert "I prefer technical answers in English." in hit["snippet"]
     assert hit["citation"] == f"Source: {namespace['path']}#L1-L2"
+    assert (memory.workspace.root / hit["path"]).is_file()
     output = capsys.readouterr().out
     assert "I prefer technical answers in English." in output
     assert hit["citation"] in output

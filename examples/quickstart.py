@@ -4,7 +4,7 @@ A terminal chat over the host kit. Each turn the kit builds the system prompt an
 memory tools, answers the model's tool calls, and after the reply decides the memory flush: a
 second model run that appends durable facts to ``memory/YYYY-MM-DD.md``. The kit never calls a
 model; replace ``call_my_llm`` with yours. The workspace is ``my-agent-app/`` in the working
-directory. The README's Python API section links to this file.
+directory. The README's Integrations section links to this file.
 """
 
 import uuid

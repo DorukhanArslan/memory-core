@@ -1,41 +1,100 @@
 # memory-core
 
-**Memory for Python agents. Across sessions. In files you can read.**
+**OpenClaw memory behavior for Python agent applications.**
 
-[Install](#install) · [Quickstart](#quickstart) · [Connect your agent](#python-api) · [Try the Lab](#run-the-lab) · [Docs](#read-the-docs)
+[Why this exists](#why-a-python-port) · [How it works](#how-memory-works) · [Quickstart](#quickstart) · [Try the Lab](#run-the-lab) · [Docs](#read-the-docs)
 
-New session. Same questions. Again?
+[OpenClaw](https://github.com/openclaw/openclaw) already has a memory system written in TypeScript.
+This project ports selected parts of that system into a standalone Python SDK.
+Use it to add OpenClaw-style memory to an agent application whose model calls, tools, and workflow you already control.
 
-- **Tired of repeating “I prefer technical answers in English”?** Save the preference for the next session.
-- **Want your agent to keep yesterday’s project decisions?** Store the useful facts and search them when needed.
-- **Need to see where an answer came from?** Get the saved note, its file path, and its source lines.
+OpenClaw is the technical reference for this project.
+The port includes memory storage, retrieval, write tools, and memory maintenance helpers.
+Its Python API and host adapters are this project's own design.
 
-If you need this in a Python agent application, use `memory-core` as its memory layer.
-You build the agent. The package supplies memory files, search tools, and memory maintenance helpers.
+## Why a Python port?
 
-## What it does
+At the pinned OpenClaw release, `extensions/memory-core` is an OpenClaw plugin.
+Its [entry point](https://github.com/openclaw/openclaw/blob/v2026.9.6/extensions/memory-core/index.ts)
+registers tools through the OpenClaw plugin API and uses services from that runtime.
 
-`memory-core` is a Python SDK for persistent agent memory.
-It stores notes in Markdown files and builds a SQLite search index.
-Your agent can search saved facts, read their sources, and write useful information through the tools you allow.
+A Python application can use TypeScript through a bridge or a separate service.
+This project offers another integration path: call the memory APIs directly inside your Python application.
+You can keep your existing agent loop, model provider, application tools, and session store.
+The core package needs Python, SQLite, and `httpx`.
+Normal Python memory calls do not require Node.js or a running OpenClaw instance.
+Node.js is required for the upstream oracle tests.
 
-| Need | Package support |
+| You already have | What this package adds |
 | --- | --- |
-| Keep facts between sessions | Daily notes, long-term notes, and session snapshots |
-| Find a saved fact | `memory_search` with keyword or hybrid search and source lines |
-| Read the original note | `memory_get` with file and line selection |
-| Save facts before the context window fills | Flush planning and an append-only daily write tool |
-| Keep important notes within a size budget | Scored promotion and memory budget helpers |
-| Connect an existing Python agent | `HostKit`, LangGraph helpers, and a streaming SDK |
+| A Python agent or service | `Memory` for local files, indexing, and retrieval |
+| Your own model and tool loop | `HostKit` for memory prompts, tool dispatch, and flush requests |
+| A LangGraph workflow | Helpers that connect graph state and checkpoints to the same memory APIs |
+| A streaming application | A live SDK for subject memory, events, and session summaries |
 
-Your application runs the model, answers tool calls, stores session state, and schedules maintenance.
-`HostKit` prepares the memory prompt and tools. It also returns requests for a memory flush.
-A flush is a separate model turn that saves useful facts before the context window fills.
+Your application still runs the model, stores session state, and schedules maintenance.
+The package supplies memory mechanisms that those parts can call.
+See [Package Boundary](docs/package_boundary.md) for the division of responsibilities.
 
-The memory algorithms are an independent Python port of [OpenClaw](https://github.com/openclaw/openclaw)'s
-`extensions/memory-core` plugin. This project is unofficial and is not affiliated with OpenClaw.
-Tests compare supported functions with the real TypeScript code at release `v2026.9.6`.
-The [parity matrix](docs/parity_matrix.md) lists verified behavior and known gaps.
+## How memory works
+
+A model's context window holds the information available for one model call.
+Persistent memory stores useful information outside that window.
+A later session can search and read that information instead of sending the entire old conversation to the model.
+
+1. **Store readable notes.** A workspace holds `MEMORY.md` for long-term notes and `memory/YYYY-MM-DD.md` for daily notes.
+   These Markdown files are the saved memory. You can open and inspect them.
+2. **Build an index.** The SDK splits notes into chunks and builds a SQLite search index.
+   Full-text search finds matching words. Hybrid search combines text results with vectors from an embedding provider.
+   The provider turns text into vectors used for similarity search.
+3. **Retrieve sources.** `memory_search` returns matching chunks, scores, file paths, and source lines.
+   For results from memory files, `memory_get` reads the original text.
+   Your application sends these tool results back to the model.
+4. **Save useful facts.** The model chooses whether to use the write tools that your application provides.
+   The daily write tool appends to a dated note. Curation tools can edit long-term notes under a host-supplied policy.
+   These curation tools are a documented memory-core extension, rather than ports of OpenClaw tools.
+5. **Preserve facts before context fills.** After a reply, your host supplies token usage and the model's context limit to `HostKit`.
+   The kit can request a memory flush: a separate model turn with an append-only daily write tool.
+   Your host runs that turn and records its result. A request alone does not save the facts.
+6. **Maintain long-term memory.** Promotion helpers use recall signals and score gates to select candidates for `MEMORY.md`.
+   Budget helpers can remove older promotion blocks to reduce the file's size.
+   Your host chooses when to run these helpers.
+
+Memory does not change the model's weights. It gives the model stored information through prompts and tool results.
+The [Quickstart](#quickstart) below shows a file write, a new memory instance, and a search without a model call.
+The [complete host loop](examples/quickstart.py) shows where a model and its tool calls fit into that process.
+
+## What you can build
+
+| Application | How the memory layer supports it |
+| --- | --- |
+| A project assistant that resumes work in a new session | Keep a stable project workspace. Save decisions in notes, then retrieve them with source lines in later sessions. |
+| A long-running Python workflow | Connect `HostKit` to your tool loop. Supply actual token usage and run requested flushes before useful facts leave the context window. |
+| A LangGraph agent with memory across graph runs | Store session state in checkpoints and call the memory helpers from graph nodes. Durable notes stay in the workspace. |
+| A streaming assistant with memory for separate subjects | Use subject workspaces and structured session summaries. Reopen the selected subject's memory for a later session. |
+
+The host selects each workspace and enforces access to it.
+The [HostKit guide](docs/host_kit.md), [LangGraph guide](docs/integrations/langgraph.md), and
+[live SDK guide](docs/integrations/live.md) explain those integrations.
+The Lab shows memory prompts, search results, saved notes, and session events in a browser.
+
+## OpenClaw reference and oracle tests
+
+The reference release is **OpenClaw `v2026.9.6`**.
+An oracle test uses the upstream implementation as the reference result.
+Our [TypeScript runner](scripts/openclaw_oracle_runner.ts) calls real OpenClaw functions from that pinned checkout.
+The [comparison tests](tests/integration/test_openclaw_ts_oracle.py) give the Python and TypeScript implementations equivalent inputs and compare their observable results.
+
+These tests cover selected operations. They do not establish complete OpenClaw compatibility.
+The [parity matrix](docs/parity_matrix.md) separates oracle-backed behavior, source-backed ports, and known gaps.
+Host adapters and Lab behavior are identified separately from upstream parity.
+This project is unofficial and is not affiliated with OpenClaw.
+
+### Future direction is open
+
+We have not yet decided whether future development will remain strictly aligned with OpenClaw or add independently designed memory capabilities.
+OpenClaw is the current technical reference and the baseline for the oracle tests.
+Existing project-specific APIs and extensions are identified in the documentation.
 
 ## Install
 

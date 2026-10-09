@@ -88,6 +88,12 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Changed
 
+- CI portability repairs (2026-10-09, tooling/tests): a name-only project rename updates
+  its existing lock entries without resolving dependencies, so an empty offline uv cache
+  no longer interrupts the rename. Locked dependency versions, hashes and markers stay
+  unchanged. Migration tests explicitly cover messages inside and outside HOME while
+  preserving the runtime's `~/` shortening. Local Python 3.11/3.12 acceptance is recorded
+  in docs/release.md; fresh hosted Linux acceptance remains pending.
 - Stage 2 of the OpenClaw v2026.9.6 port (docs/upstream_port_v2026_9_6.md), areas 5 to 10, all
   verified against the real TS oracle; the oracle worklist is empty.
   - Memory tools and search (areas 5, 6): `memory_get` status/error codes, per-corpus outcomes and

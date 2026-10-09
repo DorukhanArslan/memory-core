@@ -83,6 +83,35 @@ was not changed. Artifact installs resolved allowed core dependencies independen
 development lock. Hosted Linux CI, a new full oracle run and real-provider acceptance were
 not performed. No push or publication was performed.
 
+## CI portability repair — 2026-10-09
+
+The first [hosted Linux run](https://github.com/DorukhanArslan/memory-core/actions/runs/37914961404)
+on `3f56590` failed on Python 3.11 and 3.12. Each job reported 1919 passed, 6 failed,
+3 errors and 1626 skipped; the artifact step did not run. The failures came from two
+environment assumptions: renaming required resolver metadata absent from the frozen-install
+cache, and migration tests expected absolute paths inside HOME where messages use `~/`.
+
+Candidate `80cbcbe` repairs these boundaries. A name-only rename rewrites the existing
+project lock entries and preserves resolved dependencies. The regression checks unchanged
+third-party metadata and lock markers; with uv installed it also checks the renamed lock
+using real `uv lock --check --offline` with an empty cache. Migration tests assert complete
+literal messages both inside and outside HOME. Migration runtime behavior is unchanged.
+
+Local macOS verification used isolated frozen environments, temporary HOME/TMPDIR and empty
+offline uv caches for both full suites. Provider keys, live gates, oracle gates and tracing
+were disabled. The checkout's existing `.venv` was not changed.
+
+| Python | Full offline tests | Time | Clean wheel and sdist |
+| --- | --- | --- | --- |
+| 3.11.9 | 1935 passed, 1625 skipped, 0 failed/errors | 116.60 s | imports, FTS/HostKit, dependency/notice checks and consumer types passed |
+| 3.12.7 | 1935 passed, 1625 skipped, 0 failed/errors | 114.47 s | imports, FTS/HostKit, dependency/notice checks and consumer types passed |
+
+Ruff, naming and diff checks passed. Independent spec and code review found no actionable
+issue. These are tooling/test repairs, with no new OpenClaw parity claim. A fresh hosted
+Linux result remains required after an authorized push. No new full oracle run, real-provider
+acceptance or publication was performed. Artifact installs can download dependencies as
+described above.
+
 ## Before publication
 
 - Confirm the copyright holder and year for the project's MIT notice. Add the project's

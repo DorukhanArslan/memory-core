@@ -14,6 +14,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -126,6 +127,37 @@ def test_the_tree_passes_the_name_check():
     result = _run(ROOT, "--check")
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_a_rename_preserves_locked_dependencies_with_an_empty_offline_uv_cache(tmp_path, monkeypatch):
+    tree = _copy_tracked_tree(tmp_path / "tree")
+    original = tomllib.loads((tree / rename_project.LOCKFILE).read_text(encoding="utf-8"))
+    monkeypatch.setenv("UV_CACHE_DIR", str(tmp_path / "empty-uv-cache"))
+    monkeypatch.setenv("UV_OFFLINE", "1")
+    monkeypatch.setenv("UV_PYTHON", sys.executable)
+    monkeypatch.setenv("UV_PYTHON_DOWNLOADS", "never")
+
+    result = _run(tree, "--to", PROBE_DIST, "--display", PROBE_DISPLAY)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    renamed = tomllib.loads((tree / rename_project.LOCKFILE).read_text(encoding="utf-8"))
+    assert {key: value for key, value in renamed.items() if key != "package"} == {
+        key: value for key, value in original.items() if key != "package"
+    }
+    assert [entry for entry in renamed["package"] if entry["source"] != {"editable": "."}] == [
+        entry for entry in original["package"] if entry["source"] != {"editable": "."}
+    ]
+    assert _run(tree, "--check").returncode == 0
+    uv = shutil.which("uv")
+    if uv is not None:
+        lock_check = subprocess.run(
+            [uv, "lock", "--check", "--offline", "--quiet"],
+            cwd=tree,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert lock_check.returncode == 0, lock_check.stdout + lock_check.stderr
 
 
 def test_a_probe_rename_renames_the_package_and_every_derived_name(probe_tree):

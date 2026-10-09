@@ -305,7 +305,9 @@ One command renames the project; review the diff and commit it:
 
 `--to` refuses uncommitted changes and untracked files (a failed rename is then undone with
 git), moves the package directory with `git mv`, rewrites every spelling of the name in the
-tracked files, relocks `uv.lock` and runs `--check` before and after (a test runs it too).
+tracked files, updates its own entries in `uv.lock` and runs `--check` before and after
+(a test runs it too). Locked dependencies stay unchanged; a rename needs no resolver cache
+or network access.
 Spellings that name OpenClaw memory-core (its paths, the plugin config key and the identifiers
 and prose the script's `PROTECTED` lists) stay as they are, and a rename to a name the tree
 already spells elsewhere is refused. A rename does not migrate existing workspaces: their state

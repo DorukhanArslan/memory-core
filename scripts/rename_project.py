@@ -11,8 +11,7 @@ runtime code spells the name only through that module::
     python scripts/rename_project.py --to <dist-name> [--display <text>]
 
 ``--to`` renames the project from the declared name: the package directory (``git mv``), the
-declaration, the constant module, uv.lock (relocked by ``uv lock --offline`` when uv is
-installed, else its own entries rewritten) and every spelling of the name in the tracked
+declaration, the constant module, the project's own uv.lock entries and every name in tracked
 files. ``--display`` defaults to the new distribution name. It refuses uncommitted changes
 and untracked files (outside UNTOUCHED and the hidden top-level directories, which it never
 changes), runs ``--check`` before and after, and commits nothing. ``--check`` lists every
@@ -51,7 +50,6 @@ import io
 import json
 import os
 import re
-import shutil
 import string
 import subprocess
 import sys
@@ -440,7 +438,7 @@ def rewrite_constant_module(text: str, new: ProjectName) -> str:
 
 
 def rewrite_lockfile(text: str, old: ProjectName, new: ProjectName) -> str:
-    """The project's own entries in uv.lock, for a tree without uv (a relock sorts them)."""
+    """Rename the project's entries without resolving or changing locked dependencies."""
     dist = re.escape(old.dist)
     text = _replace_once(text, rf'(?m)^name = "{dist}"$', f'name = "{new.dist}"', LOCKFILE)
     return re.sub(rf'\{{ name = "{dist}",', f'{{ name = "{new.dist}",', text)
@@ -488,11 +486,10 @@ def rename(root: Path, new: ProjectName) -> None:
             " rename could not be told apart from them later:\n" + "\n".join(collisions[:20])
         )
     constant_module = f"{old.package}/{CONSTANT_MODULE}"
-    uv = shutil.which("uv")
     updates = {}
     for path, text in texts.items():
         if path == LOCKFILE:
-            updated = text if uv else rewrite_lockfile(text, old, new)
+            updated = rewrite_lockfile(text, old, new)
         else:
             updated = text
             if path == PYPROJECT:
@@ -515,9 +512,6 @@ def rename(root: Path, new: ProjectName) -> None:
     for path, updated in updates.items():
         (root / path).write_bytes(updated.encode("utf-8"))
     move_paths(root, old, new)
-    relock = [uv, "lock", "--offline", "--quiet"] if uv else None
-    if relock and subprocess.run(relock, cwd=root, check=False).returncode:
-        raise SystemExit("renamed, but `uv lock --offline` failed; relock by hand")
     problems = check(root)
     if problems:
         raise SystemExit("renamed, but the check fails:\n" + "\n".join(problems))

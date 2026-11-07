@@ -246,7 +246,7 @@ See [Lab Guide](docs/lab.md) for configuration, scripted modes, and demo privacy
 ## OpenClaw reference
 
 This project is an unofficial, standalone Python port of selected OpenClaw memory behavior.
-The reference release is **OpenClaw `v2026.9.6`**. This project is not affiliated with OpenClaw.
+The original reference release was **OpenClaw `v2026.9.6`**; the current acceptance target below is **`v2026.9.9`**. This project is not affiliated with OpenClaw.
 The Python API, host adapters, and dedicated curation tools are this project's own design.
 
 The [oracle runner](scripts/openclaw_oracle_runner.ts) calls real functions from the pinned TypeScript implementation.
@@ -305,22 +305,43 @@ The rebuilt acceptance suite runs independently of the Lab and its historical or
 git clone --depth 1 --branch v2026.9.9 https://github.com/openclaw/openclaw.git .reference/openclaw
 uv run --frozen python -m equivalence.source_map --reference .reference/openclaw
 uv run --frozen python -m equivalence.dependencies --reference .reference/openclaw --destination .reference/npm --install
-uv run --frozen python scripts/check_equivalence.py --reference .reference/openclaw --node /path/to/node --smoke --report .equivalence-results/subset.json
-uv run --frozen python scripts/check_equivalence.py --reference .reference/openclaw --node /path/to/node --report .equivalence-results/full.json
+uv run --frozen python -m equivalence.release_runtime --reference .reference/openclaw --destination .reference/release-runtime --install
+uv run --frozen python scripts/check_equivalence.py --reference .reference/openclaw --node /path/to/node --release-runtime .reference/release-runtime --smoke --report .equivalence-results/subset.json
+uv run --frozen python scripts/check_equivalence.py --reference .reference/openclaw --node /path/to/node --release-runtime .reference/release-runtime --report .equivalence-results/full.json
 ```
 
-Use Node 24.16.0–24.x or 26.1.0 and newer. The registered subset imports real upstream
-TypeScript without installing or starting OpenClaw. `--smoke` checks only those registered cases.
-Filesystem and cache comparisons use the reference's exact `fs-safe` package, platform binary,
-`p-map` and `kysely`.
-The explicit setup command downloads their archives and verifies integrity against the pinned
-upstream lockfile; comparison runs verify every installed byte before and after execution and
-never download or repair dependencies implicitly. These are test-only dependencies; the Python
-SDK still needs no Node process. The filesystem fixtures currently require Linux or macOS.
+Use Node 24.16.0–24.x or 26.1.0 and newer. `--smoke` checks only the registered cases.
+Source cases execute the clean, pinned upstream TypeScript. Lifecycle cases execute the
+official compiled v2026.9.9 memory manager and its workers with embeddings disabled.
+They use separate evidence: `referenceExecution.trackedTypeScriptCaseIds` and `sources`
+identify executed source cases and tracked files; `compiledReleaseCaseIds`, `releaseSources`
+and `releaseTraces` identify the authenticated release execution. The release's build commit
+must match the target, but its source build was not independently reproduced
+(`sourceBuildReproduced: false`).
+
+The two explicit setup commands download the archives declared in
+[dependencies.json](equivalence/dependencies.json) and
+[release-runtime.json](equivalence/release-runtime.json). They verify source dependencies
+against the pinned upstream lockfile and official release artifacts against their declared
+integrity hashes. Comparison runs verify installed bytes before and after execution; they
+never download or repair dependencies implicitly. These are test-only runtimes and packages;
+the Python SDK still needs no Node process or OpenClaw service. Filesystem fixtures currently
+require Linux or macOS. Runtime cases use their own state and log directories, admit no paid
+provider calls, and retain raw state and execution evidence separately from declared comparison
+normalizations.
+
 The identity and embedding-cache kernels use verified direct reexport bindings from broad
 SDK facades to their original source owners. Their reports explicitly exclude facade
 initialization and full manager execution from that evidence. Cache SQL still executes through
 the actual native Kysely/SQLite implementation.
+
+Prepared-publication cases execute the complete original schema and SQLite-worker SDK facades
+and the native transaction owner, rather than those narrower reexport projections. They compare
+all published source, chunk, FTS, path, recall and provenance fields, including concurrent-reader
+visibility and rollback/reopen state. See the [checklist](docs/full-equivalence-checklist.md)
+for acceptance coverage and the exact normalization boundaries; passing these cases does not
+prove query-time synchronization or provider orchestration.
+
 The default full command fails while required acceptance points remain uncovered, even when
 the subset passes. Missing or modified reference sources, a wrong commit, runner failures,
 and behavioral mismatches cannot produce a successful acceptance result.

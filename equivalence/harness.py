@@ -6,6 +6,7 @@ declared acceptance point, while smoke mode compares only registered cases.
 from __future__ import annotations
 
 from copy import deepcopy
+from contextlib import ExitStack
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -14,8 +15,10 @@ from pathlib import Path
 import platform
 import re
 import signal
+import stat
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Any, Callable
 
@@ -82,6 +85,24 @@ def _implementation_identity() -> dict[str, Any]:
 def _adapter_identity() -> dict[str, str]:
     paths = sorted((ROOT / "equivalence").glob("*.py")) + sorted((ROOT / "equivalence").glob("*.mjs"))
     return {path.name: _digest(path) for path in paths}
+
+
+def _reference_bindings(checkout: Path, *, cache: bool, publication: bool) -> dict:
+    from equivalence.reference_bindings import prepare_reference_bindings
+
+    bindings = (prepare_reference_bindings(checkout, include_cache=True) if cache
+                else prepare_reference_bindings(checkout))
+    if publication:
+        from equivalence.index_bindings import prepare_index_bindings
+
+        extension = prepare_index_bindings(checkout)
+        for key in ("allowedResolutions", "projectionEvidence"):
+            bindings.setdefault(key, []).extend(extension[key])
+        resolutions = [(entry["parent"], entry["specifier"])
+                       for entry in bindings["allowedResolutions"]]
+        if len(resolutions) != len(set(resolutions)):
+            raise ValueError("Native binding projections conflict.")
+    return bindings
 
 
 def _command(args: list[str], *, cwd: Path | None = None) -> str:
@@ -202,7 +223,8 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
 
 
 def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout: float,
-            *, dependencies: dict | None = None, bindings: dict | None = None) -> dict:
+            *, dependencies: dict | None = None, bindings: dict | None = None,
+            release_runtime: dict | None = None) -> dict:
     if not script.is_file():
         raise HarnessError("oracle-missing", "The independent TypeScript oracle runner is missing.")
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= 120:
@@ -213,7 +235,20 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
     # cross into the source-only oracle. There is one dispatch and no retry.
     env = {"PATH": str(node.parent) + os.pathsep + os.defpath, "LANG": "en_US.UTF-8", "TZ": "UTC"}
     process = None
+    resources = ExitStack()
+    execution = None
     try:
+        if release_runtime is not None:
+            from equivalence.runtime_oracle import ReleaseOracleExecution, RuntimeOracleError
+
+            try:
+                execution = resources.enter_context(ReleaseOracleExecution(
+                    release_runtime, _adapter_identity()))
+                # Only this reviewed preload is supplied. User Node options,
+                # credentials, proxy/auth state and provider keys stay absent.
+                env.update(execution.env)
+            except (OSError, ValueError):
+                raise HarnessError("runtime-context-invalid", "The verified release execution context is unavailable.") from None
         # Native retry helpers use TS parameter properties. Node's own source
         # loader executes these with its built-in transform support; no modified
         # reference files or precompiled stand-ins are used.
@@ -228,6 +263,14 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
         if len(stdout.encode("utf-8")) > _MAX_OUTPUT_BYTES:
             raise HarnessError("oracle-output-limit", "The TypeScript oracle exceeded the bounded result size.")
         result = _json(stdout)
+        if execution is not None:
+            try:
+                result = execution.collect(result, cases)
+            except (OSError, ValueError) as error:
+                detail = str(error) if isinstance(error, RuntimeOracleError) else "Invalid execution evidence."
+                raise HarnessError("runtime-evidence-invalid",
+                                   "The release runtime did not provide authenticated process and worker evidence: "
+                                   + detail) from None
     except subprocess.TimeoutExpired:
         if process is not None:
             if os.name == "posix":
@@ -240,6 +283,8 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
         raise HarnessError("oracle-unavailable", "The TypeScript oracle could not start.") from None
     except (ValueError, UnicodeError):
         raise HarnessError("oracle-protocol", "The TypeScript oracle did not return valid bounded JSON.") from None
+    finally:
+        resources.close()
     if not isinstance(result, dict) or not isinstance(result.get("results"), list):
         raise HarnessError("oracle-protocol", "The TypeScript oracle returned an invalid result envelope.")
     rows = result["results"]
@@ -254,6 +299,11 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
         seen.add(row["id"])
     if seen != expected:
         raise HarnessError("oracle-protocol", "The TypeScript oracle omitted registered cases.")
+    if release_runtime is not None:
+        if (result.get("kind") != "official-release-runtime-comparison" or result.get("sources") != []
+                or not result.get("releaseSources")):
+            raise HarnessError("runtime-evidence-invalid", "Compiled release evidence must remain separate from Git sources.")
+        return result
     sources = result.get("sources", [])
     if not isinstance(sources, list) or not sources:
         raise HarnessError("oracle-protocol", "The TypeScript oracle returned invalid source evidence.")
@@ -294,6 +344,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
               cases: list[dict] | None = None,
               python_runner: Callable[[dict], Any] | None = None,
               dependency_root: Path = ROOT / ".reference/npm",
+              release_runtime_root: Path = ROOT / ".reference/release-runtime",
               timeout_seconds: float = 30) -> tuple[dict, int]:
     """Return the report and exit code 0(pass), 1(incomplete/diff), 2(blocked)."""
     started = time.monotonic()
@@ -307,6 +358,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         "providerMode": "model-free local fixtures", "providerCredentialsForwarded": False,
         "paidProviderCalls": 0,
     }
+    resources = ExitStack()
     try:
         target, scope = _load(reference_path), _load(scope_path)
         if not isinstance(target, dict):
@@ -316,6 +368,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             cases = build_cases() if cases is None else cases
             python_runner = run_python if python_runner is None else python_runner
         requirements, _ = _validate_scope(scope, cases)
+        runtime_cases = [case for case in cases if case["operation"] == "index-lifecycle-runtime"]
+        source_cases = [case for case in cases if case["operation"] != "index-lifecycle-runtime"]
         report["manifestSha256"] = {"reference": _digest(reference_path), "scope": _digest(scope_path)}
         source_map = ROOT / "equivalence/source-map.json"
         if (reference_path.resolve() == ROOT / "equivalence/reference.json"
@@ -331,24 +385,70 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         native_storage = any(case["operation"] in {
             "storage-discovery", "storage-read-paths", "index-identity",
             "embedding-cache", "incremental-index",
+            "index-publication",
         } for case in cases)
         cache_bindings = any(case["operation"] == "embedding-cache" for case in cases)
+        publication_bindings = any(case["operation"] == "index-publication" for case in cases)
         if native_storage:
             from equivalence.dependencies import prepare_dependencies
-            from equivalence.reference_bindings import prepare_reference_bindings
 
             try:
                 dependencies = prepare_dependencies(checkout, dependency_root)
-                bindings = (prepare_reference_bindings(checkout, include_cache=True) if cache_bindings
-                            else prepare_reference_bindings(checkout))
+                bindings = _reference_bindings(checkout, cache=cache_bindings,
+                                               publication=publication_bindings)
             except (OSError, ValueError, RuntimeError):
                 raise HarnessError("reference-dependencies-unavailable",
                                    "Verified native dependencies and binding provenance are required; "
                                    "prepare them with python -m equivalence.dependencies --install.") from None
         adapter_hashes = _adapter_identity()
         report["adapterSha256"] = adapter_hashes
-        oracle = _oracle(node, oracle_path, checkout, cases, timeout_seconds,
-                         dependencies=dependencies, bindings=bindings)
+        oracle = (_oracle(node, oracle_path, checkout, source_cases, timeout_seconds,
+                          dependencies=dependencies, bindings=bindings)
+                  if source_cases else {"results": [], "sources": []})
+        runtime_config = None
+        if runtime_cases:
+            from equivalence.release_runtime import prepare_release_runtime
+
+            try:
+                runtime_config = prepare_release_runtime(checkout, release_runtime_root)
+            except (OSError, ValueError, RuntimeError):
+                raise HarnessError("release-runtime-unavailable",
+                                   "Authenticated official release artifacts are required; prepare them with "
+                                   "python -m equivalence.release_runtime --install.") from None
+            report["releaseRuntime"] = {key: value for key, value in runtime_config.items()
+                                        if key not in {"runtimeRoot", "packages"}}
+            report["releaseRuntime"]["packages"] = [
+                {key: value for key, value in package.items() if key not in {"directory", "files"}}
+                for package in runtime_config["packages"]
+            ]
+            report["releaseSources"], report["releaseTraces"], report["runtimeDiagnostics"] = [], [], []
+            observed_release = {}
+            for case in runtime_cases:
+                # The real manager retains global state owners. Each distinct
+                # case gets one fresh process; failed cases are never retried.
+                try:
+                    native = _oracle(node, ROOT / "equivalence/release-oracle.mjs", checkout, [case],
+                                     max(timeout_seconds, 60), release_runtime=runtime_config)
+                except HarnessError:
+                    report["failedReferenceCaseId"] = case["id"]
+                    raise
+                oracle["results"].extend(native["results"])
+                for loaded in native["releaseSources"]:
+                    observed_release[(loaded["package"], loaded["path"])] = loaded
+                report["releaseTraces"].append({"id": case["id"], **native["releaseTrace"]})
+                report["runtimeDiagnostics"].extend(
+                    {"side": "native", **diagnostic} for diagnostic in native["runtimeDiagnostics"])
+            try:
+                if prepare_release_runtime(checkout, release_runtime_root) != runtime_config:
+                    raise ValueError("Runtime artifacts changed.")
+            except (OSError, ValueError, RuntimeError):
+                raise HarnessError("release-runtime-changed",
+                                   "Official runtime artifact bytes changed during comparison.") from None
+            report["releaseSources"] = [observed_release[key] for key in sorted(observed_release)]
+        report["referenceExecution"] = {
+            "trackedTypeScriptCaseIds": [case["id"] for case in source_cases],
+            "compiledReleaseCaseIds": [case["id"] for case in runtime_cases],
+        }
         if dependencies is not None:
             from equivalence.dependencies import validate_dependency_sources
 
@@ -358,8 +458,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 validate_dependency_sources(dependencies, oracle.get("dependencySources", []))
                 if not oracle.get("dependencySources"):
                     raise ValueError("Native dependency execution evidence is missing.")
-                current_bindings = (prepare_reference_bindings(checkout, include_cache=True) if cache_bindings
-                                    else prepare_reference_bindings(checkout))
+                current_bindings = _reference_bindings(checkout, cache=cache_bindings,
+                                                       publication=publication_bindings)
                 if current_bindings != bindings:
                     raise ValueError("Binding provenance changed.")
             except (OSError, ValueError, RuntimeError):
@@ -374,6 +474,14 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             ]
             report["dependencySources"] = oracle["dependencySources"]
             report["bindingProjections"] = bindings
+            if publication_bindings:
+                from equivalence.index_bindings import attest_index_facades, prepare_index_bindings
+
+                try:
+                    report["indexFacadeExecution"] = attest_index_facades(
+                        prepare_index_bindings(checkout), oracle["sources"])
+                except (OSError, ValueError, RuntimeError):
+                    raise HarnessError("index-facade-unverified", "The original native index facades were not executed.") from None
         if _adapter_identity() != adapter_hashes:
             raise HarnessError("adapter-changed", "Differential adapters changed during comparison.")
         # A source mutation during comparison invalidates every observed result.
@@ -382,15 +490,40 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             raise HarnessError("reference-changed", "The reference checkout changed during comparison.")
         report["sources"] = oracle.get("sources", [])
         native_rows = {row["id"]: row for row in oracle["results"]}
+        python_diagnostics = (Path(resources.enter_context(tempfile.TemporaryDirectory(
+            prefix="memory-python-runtime-evidence-"))) if runtime_cases else None)
         for case in cases:
             row = {"id": case["id"], "requirement": case["requirement"], "covers": case["covers"],
                    "operation": case["operation"], "input": case["input"]}
+            if "normalizationPolicy" in case:
+                row["normalizationPolicy"] = case["normalizationPolicy"]
+            if "driverScope" in case:
+                row["driverScope"] = case["driverScope"]
             native = native_rows[case["id"]]
             if not native["ok"]:
                 row.update(status="blocked", code="oracle-case-failed")
             else:
                 try:
-                    python = python_runner(deepcopy(case))
+                    python_case = deepcopy(case)
+                    if case in runtime_cases:
+                        directory = python_diagnostics / hashlib.sha256(case["id"].encode()).hexdigest()
+                        python_case["_diagnosticDirectory"] = directory
+                        row["referenceMode"] = "authenticated-official-release"
+                    python = python_runner(python_case)
+                    if case in runtime_cases:
+                        evidence = directory / "python-raw.json"
+                        info = evidence.lstat()
+                        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                                or info.st_size > 16 * 1024 * 1024):
+                            raise ValueError("Invalid runtime diagnostic file.")
+                        raw = evidence.read_bytes()
+                        snapshots = _json(raw.decode("utf-8"))
+                        if not isinstance(snapshots, list):
+                            raise ValueError("Runtime diagnostics must retain raw snapshot rows.")
+                        report["runtimeDiagnostics"].append({
+                            "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                            "rawSnapshots": snapshots,
+                        })
                     # Reject non-JSON outputs and non-finite values explicitly.
                     python = _json(json.dumps(python, ensure_ascii=False, allow_nan=False))
                     row["status"] = "matched" if _same_json(python, native["result"]) else "mismatched"
@@ -435,6 +568,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         report["errors"].append({"code": error.code, "message": str(error)})
     except Exception:
         report["errors"].append({"code": "harness-failed", "message": "The acceptance harness could not complete."})
+    finally:
+        resources.close()
     report["durationSeconds"] = round(time.monotonic() - started, 6)
     report["finishedAt"] = datetime.now(timezone.utc).isoformat()
     report["fullScopePassed"] = report["mode"] == "full" and report["status"] == "passed"

@@ -35,21 +35,43 @@ def packages(tmp_path, monkeypatch):
     destination = tmp_path / "npm"
     raw_by_package = {}
     sections = []
+    snapshots = []
+    edges = {
+        "string-width": {"get-east-asian-width": "1.7.0", "strip-ansi": "7.2.0"},
+        "strip-ansi": {"ansi-regex": "6.3.0"},
+    }
     for name, version in (
         ("@openclaw/fs-safe", "0.21.1"),
         ("@openclaw/fs-safe-linux-x64-gnu", "0.21.1"),
         ("p-map", "7.0.8"),
         ("kysely", "0.29.6"),
+        ("semver", "7.8.5"),
+        ("chalk", "6.0.0"),
+        ("tslog", "5.2.0"),
+        ("string-width", "8.2.2"),
+        ("get-east-asian-width", "1.7.0"),
+        ("strip-ansi", "7.2.0"),
+        ("ansi-regex", "6.3.0"),
     ):
+        package = {"name": name, "version": version}
+        if name in edges:
+            package["dependencies"] = {key: "^" + value for key, value in edges[name].items()}
         raw = _tar({
-            "package/package.json": json.dumps({"name": name, "version": version}).encode(),
+            "package/package.json": json.dumps(package).encode(),
             "package/dist/index.js": b"export const realArtifact = true;\n",
         })
         raw_by_package[name] = raw
         quote = "'" if name.startswith("@") else ""
         sections.append(f"  {quote}{name}@{version}{quote}:\n"
                         f"    resolution: {{integrity: {_integrity(raw)}}}\n")
-    lock = "\n".join(sections).encode()
+        key = f"  {quote}{name}@{version}{quote}:"
+        if name in edges:
+            snapshots.append(key + "\n    dependencies:\n" + "".join(
+                f"      {dependency}: {version}\n" for dependency, version in edges[name].items()
+            ))
+        else:
+            snapshots.append(key + " {}\n")
+    lock = ("packages:\n" + "\n".join(sections) + "\nsnapshots:\n" + "\n".join(snapshots)).encode()
     monkeypatch.setattr(deps, "_committed_lock", lambda _: ("a" * 40, lock))
     monkeypatch.setattr(deps, "_target", lambda: "linux-x64-gnu")
     calls = []
@@ -67,7 +89,10 @@ def test_setup_authenticates_and_extracts_only_pinned_artifacts_without_scripts(
     config = deps.prepare_dependencies(Path("unused"), destination, download=True)
     assert calls == [("@openclaw/fs-safe", "0.21.1"),
                      ("@openclaw/fs-safe-linux-x64-gnu", "0.21.1"), ("p-map", "7.0.8"),
-                     ("kysely", "0.29.6")]
+                     ("kysely", "0.29.6"), ("semver", "7.8.5"), ("chalk", "6.0.0"),
+                     ("tslog", "5.2.0"), ("string-width", "8.2.2"),
+                     ("get-east-asian-width", "1.7.0"), ("strip-ansi", "7.2.0"),
+                     ("ansi-regex", "6.3.0")]
     assert config["kind"] == "verified-npm-artifacts"
     assert config["referenceCommit"] == "a" * 40
     assert all(len(package["files"]) == 2 for package in config["packages"])
@@ -87,6 +112,7 @@ def test_verification_never_downloads_missing_artifacts(packages):
 @pytest.mark.parametrize("change", [
     "unknown", "wrong-fs-safe-version", "wrong-p-map-version", "wrong-kysely-version",
     "missing-kysely", "duplicate-kysely", "wrong-registry", "not-an-object",
+    "wrong-string-width-version", "wrong-width-dependency-version", "missing-width-dependency",
 ])
 def test_setup_rejects_packages_and_versions_outside_the_authorized_list(
     packages, tmp_path, monkeypatch, change,
@@ -104,11 +130,20 @@ def test_setup_rejects_packages_and_versions_outside_the_authorized_list(
     elif change == "wrong-kysely-version":
         manifest["additionalPackages"][1]["version"] = "0.29.5"
     elif change == "missing-kysely":
-        manifest["additionalPackages"].pop()
+        manifest["additionalPackages"].pop(1)
     elif change == "duplicate-kysely":
         manifest["additionalPackages"].append(dict(manifest["additionalPackages"][1]))
     elif change == "wrong-registry":
         manifest["registry"] = "https://registry.example.invalid"
+    elif change == "wrong-string-width-version":
+        next(package for package in manifest["additionalPackages"]
+             if package["name"] == "string-width")["version"] = "4.2.3"
+    elif change == "wrong-width-dependency-version":
+        next(package for package in manifest["additionalPackages"]
+             if package["name"] == "get-east-asian-width")["version"] = "1.6.0"
+    elif change == "missing-width-dependency":
+        manifest["additionalPackages"] = [package for package in manifest["additionalPackages"]
+                                          if package["name"] != "strip-ansi"]
     else:
         manifest = []
     root = tmp_path / "suite"
@@ -199,6 +234,55 @@ def test_exact_lock_resolution_is_required():
         deps._integrity(lock, "p-map", "7.0.7")
     with pytest.raises(deps.DependencyError, match="uniquely pinned"):
         deps._integrity(lock + lock, "p-map", "7.0.8")
+
+
+def test_runtime_edges_come_from_project_snapshots_in_a_multi_document_lock():
+    lock = b"""---
+packages:
+  manager@1.0.0:
+    resolution: {integrity: sha512-AAAA==}
+snapshots:
+  manager@1.0.0: {}
+---
+packages:
+  string-width@8.2.2:
+    resolution: {integrity: sha512-BBBB==}
+snapshots:
+  string-width@8.2.2:
+    dependencies:
+      get-east-asian-width: 1.7.0
+      strip-ansi: 7.2.0
+  strip-ansi@7.2.0:
+    dependencies:
+      ansi-regex: 6.3.0
+"""
+    assert deps._runtime_dependencies(lock, "string-width", "8.2.2") == {
+        "get-east-asian-width": "1.7.0", "strip-ansi": "7.2.0",
+    }
+    assert deps._runtime_dependencies(lock, "strip-ansi", "7.2.0") == {"ansi-regex": "6.3.0"}
+    with pytest.raises(deps.DependencyError, match="not uniquely pinned"):
+        deps._runtime_dependencies(lock, "string-width", "4.2.3")
+    duplicate = lock + b"---\nsnapshots:\n  string-width@8.2.2: {}\n"
+    with pytest.raises(deps.DependencyError, match="not uniquely pinned"):
+        deps._runtime_dependencies(duplicate, "string-width", "8.2.2")
+
+
+@pytest.mark.parametrize("change", ["unlisted", "wrong-version", "missing-declaration", "invalid-declaration"])
+def test_authenticated_package_runtime_edges_must_match_the_authorized_lock_closure(change):
+    package = {"name": "strip-ansi", "version": "7.2.0", "dependencies": {"ansi-regex": "^6.0.1"}}
+    lock = b"snapshots:\n  strip-ansi@7.2.0:\n    dependencies:\n      ansi-regex: 6.3.0\n"
+    authorized = {"strip-ansi": "7.2.0", "ansi-regex": "6.3.0"}
+    deps._validate_runtime_closure(package, lock, authorized)
+    if change == "unlisted":
+        authorized.pop("ansi-regex")
+    elif change == "wrong-version":
+        authorized["ansi-regex"] = "5.0.1"
+    elif change == "missing-declaration":
+        package["dependencies"] = {}
+    else:
+        package["dependencies"] = []
+    with pytest.raises(deps.DependencyError, match="runtime dependencies"):
+        deps._validate_runtime_closure(package, lock, authorized)
 
 
 def test_loaded_dependency_evidence_cannot_forge_sources_or_hashes(packages):

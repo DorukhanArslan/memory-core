@@ -31,6 +31,17 @@ ROOT = Path(__file__).resolve().parents[1]
 MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 128 * 1024 * 1024
 MAX_FILES = 10000
+ADDITIONAL_PACKAGES = (
+    ("p-map", "7.0.8"),
+    ("kysely", "0.29.6"),
+    ("semver", "7.8.5"),
+    ("chalk", "6.0.0"),
+    ("tslog", "5.2.0"),
+    ("string-width", "8.2.2"),
+    ("get-east-asian-width", "1.7.0"),
+    ("strip-ansi", "7.2.0"),
+    ("ansi-regex", "6.3.0"),
+)
 
 
 class DependencyError(RuntimeError):
@@ -52,9 +63,7 @@ def _manifest() -> dict:
             or value.get("version") != "0.21.1"
             or not isinstance(value.get("nativeTargets"), list)
             or value.get("additionalPackages") != [
-                {"name": "p-map", "version": "7.0.8"},
-                {"name": "kysely", "version": "0.29.6"},
-            ]):
+                {"name": name, "version": version} for name, version in ADDITIONAL_PACKAGES]):
         raise DependencyError("The reference dependency manifest is invalid.")
     return value
 
@@ -139,6 +148,48 @@ def _archive_files(raw: bytes, integrity: str) -> dict[str, bytes]:
     if "package.json" not in files:
         raise DependencyError("The reference dependency archive has no package manifest.")
     return files
+
+
+def _runtime_dependencies(lock: bytes, name: str, version: str) -> dict[str, str]:
+    """Read exact mandatory edges from the pinned lockfile's snapshot stanza."""
+    # The pinned pnpm lock has two YAML documents: pnpm's own executable
+    # closure, then the project closure. Only inspect snapshot sections, never
+    # an identically named package-resolution stanza elsewhere in the file.
+    sections = re.findall(r"(?ms)^snapshots:\n(.*?)(?=^---(?:\n|$)|\Z)", lock.decode("utf-8"))
+    quoted = "'" if name.startswith("@") else ""
+    key = quoted + name + "@" + version + quoted
+    matches = [(section, match) for section in sections
+               for match in re.finditer(r"^  " + re.escape(key) + r":(.*)$", section, re.MULTILINE)]
+    if len(matches) != 1:
+        raise DependencyError("The dependency runtime snapshot is not uniquely pinned.")
+    snapshots, match = matches[0]
+    if match.group(1).strip() == "{}":
+        return {}
+    remainder = snapshots[match.end():]
+    end = re.search(r"\n  \S", remainder)
+    block = remainder[:end.start()] if end else remainder
+    edges: dict[str, str] = {}
+    reading = False
+    for line in block.splitlines():
+        if line == "    dependencies:":
+            reading = True
+        elif line.startswith("    ") and not line.startswith("      "):
+            reading = False
+        elif reading and line.strip():
+            edge = re.fullmatch(r"      '?([@a-zA-Z0-9_./-]+)'?: (\d+\.\d+\.\d+)", line)
+            if edge is None or edge[1] in edges:
+                raise DependencyError("The dependency runtime snapshot has unsupported or ambiguous edges.")
+            edges[edge[1]] = edge[2]
+    return edges
+
+
+def _validate_runtime_closure(package: dict, lock: bytes, authorized: dict[str, str]) -> None:
+    declared = package.get("dependencies", {})
+    if not isinstance(declared, dict):
+        raise DependencyError("The authenticated package has invalid runtime dependencies.")
+    edges = _runtime_dependencies(lock, package["name"], package["version"])
+    if set(declared) != set(edges) or any(authorized.get(name) != version for name, version in edges.items()):
+        raise DependencyError("The authenticated runtime dependencies differ from the authorized lockfile closure.")
 
 
 def _download(name: str, version: str) -> bytes:
@@ -234,6 +285,7 @@ def _prepare_dependencies(checkout: Path, destination: Path, download: bool) -> 
     dependencies = [{"name": name, "version": manifest["version"]}
                     for name in (manifest["package"], manifest["package"] + "-" + target)]
     dependencies.extend(manifest["additionalPackages"])
+    authorized = {dependency["name"]: dependency["version"] for dependency in dependencies}
     for dependency in dependencies:
         name, version = dependency["name"], dependency["version"]
         integrity = _integrity(lock, name, version)
@@ -253,6 +305,7 @@ def _prepare_dependencies(checkout: Path, destination: Path, download: bool) -> 
             raise DependencyError("The authenticated dependency manifest is invalid.") from None
         if package.get("name") != name or package.get("version") != version:
             raise DependencyError("The authenticated dependency has the wrong name or version.")
+        _validate_runtime_closure(package, lock, authorized)
         directory = destination / "node_modules" / name
         if download:
             if not archive.exists():

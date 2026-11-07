@@ -22,10 +22,13 @@ def main() -> int:
                         help="Compare registered cases only; does not establish full equivalence.")
     parser.add_argument("--dependencies", type=Path, default=ROOT / ".reference/npm",
                         help="Verified native npm artifact cache (prepared explicitly; no implicit downloads).")
+    parser.add_argument("--release-runtime", type=Path, default=ROOT / ".reference/release-runtime",
+                        help="Authenticated official runtime for full lifecycle cases (explicit setup required).")
     parser.add_argument("--report", type=Path, required=True, help="Retain every mismatch and coverage gap as JSON.")
     args = parser.parse_args()
     report, code = run_suite(checkout=args.reference.resolve(), node=args.node.resolve(), smoke=args.smoke,
-                             dependency_root=args.dependencies.resolve())
+                             dependency_root=args.dependencies.resolve(),
+                             release_runtime_root=args.release_runtime.resolve())
     try:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n",

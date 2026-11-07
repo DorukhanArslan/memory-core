@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from copy import deepcopy
 import errno
 import hashlib
 import json
@@ -8,15 +9,17 @@ import os
 import re
 import sqlite3
 import stat
+import time
 import unicodedata
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import Callable, Iterator
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
 from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
-from memory_core.consolidation.origins import IndexRevisionFence
+from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
+from memory_core.consolidation.origins import IndexRevisionFence, MemoryIndexRevisionConflictError
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.index.chunking import MemoryChunk, chunk_markdown
 from memory_core.index.embedding_cache import (
@@ -67,6 +70,21 @@ from memory_core.index.identity import (
     resolve_memory_index_provider_identities,
 )
 from memory_core.index.keywords import extract_keywords
+from memory_core.index.publication import (
+    PreparedChunk,
+    PreparedIndexRevision,
+    PreparedSource,
+    ensure_publication_schema,
+    missing_metadata_sources,
+    read_published_rows,
+    write_prepared_index,
+)
+from memory_core.index.preparation import (
+    classify_memory_path,
+    extract_curated_entry_recall_metadata,
+    resolve_chunk_provenance,
+    strip_memory_annotation_carriers,
+)
 from memory_core.index.temporal_decay import (
     TemporalDecayConfig,
     apply_temporal_decay_to_hybrid_results,
@@ -105,6 +123,8 @@ class IndexSourceSnapshot:
     mtime: float
     size: int
     kind: str = "markdown"
+    canonical_path: str | None = None
+    index_entry: Any | None = None
 
 
 def _text_hash(text: str) -> str:
@@ -120,15 +140,20 @@ def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:
     The final component is opened without following symlinks and special files
     are never read, including a FIFO introduced after discovery.
     """
-    if file.index_text is not None:
-        text = file.index_text
+    index_entry = getattr(file, "index_entry", None)
+    if file.index_text is not None or index_entry is not None:
+        text = index_entry.content if index_entry is not None else file.index_text
         try:
             info = file.abs_path.stat()
             mtime = info.st_mtime_ns / 1_000_000
+            size = info.st_size if index_entry is not None else len(js_utf8_encode(text))
         except (FileNotFoundError, NotADirectoryError):
             mtime = 0.0
+            size = len(js_utf8_encode(text))
         return IndexSourceSnapshot(
-            file.rel_path, file.source, _text_hash(text), text, mtime, len(js_utf8_encode(text)),
+            file.rel_path, file.source,
+            index_entry.hash if index_entry is not None else _text_hash(text), text, mtime, size,
+            index_entry=deepcopy(index_entry),
         )
     try:
         info = file.abs_path.lstat()
@@ -176,10 +201,14 @@ class SQLiteMemoryStore:
         embeddings: EmbeddingProvider | None,
         *,
         revision_fence: IndexRevisionFence | None = None,
+        artifact_provenance: MemoryArtifactProvenanceStore | None = None,
     ):
         # The ``memory_index_state`` fence a rebuild is published against (see :meth:`reindex`);
         # assignable after construction, ``None`` (default) means no fence.
         self.revision_fence = revision_fence
+        # Hosts may share their write observer's trust ledger with indexing.
+        # Merely binding it must not create or read the provenance database.
+        self.artifact_provenance = artifact_provenance
         self.path = validate_store_config(config, embeddings)
         self.config = config
         self.flags = config.effective_flags()
@@ -188,7 +217,9 @@ class SQLiteMemoryStore:
         self._init_schema()
 
     def connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.path)
+        db = sqlite3.connect(self.path)
+        db.execute("PRAGMA foreign_keys = ON")
+        return db
 
     @contextmanager
     def _search_connection(self, signal: CancellationSignal | None) -> Iterator[sqlite3.Connection]:
@@ -197,6 +228,9 @@ class SQLiteMemoryStore:
         db = self.connect()
         remove_listener = signal.add_listener(db.interrupt) if signal is not None else None
         try:
+            # All lexical/path/vector probes and their identity gate use one
+            # reader generation. Query embedding happens before this is opened.
+            db.execute("BEGIN")
             yield db
         finally:
             if remove_listener is not None:
@@ -248,6 +282,96 @@ class SQLiteMemoryStore:
                 "workspace TEXT, needs_rebuild INTEGER NOT NULL DEFAULT 0)"
             )
             db.execute(f"INSERT OR IGNORE INTO {INDEX_SYNC_TABLE}(id, revision) VALUES (1, 0)")
+            ensure_publication_schema(db)
+
+    def index_revision(self, *, db: sqlite3.Connection | None = None) -> int:
+        """The private publication generation, checked like the native owner."""
+        if db is None:
+            with closing(self.connect()) as connection:
+                return self.index_revision(db=connection)
+        row = db.execute(f"SELECT revision FROM {INDEX_SYNC_TABLE} WHERE id=1").fetchone()
+        if row is None or type(row[0]) is not int or abs(row[0]) > 2 ** 53 - 1:
+            raise RuntimeError("Memory index revision is missing or invalid")
+        return row[0]
+
+    def read_published_index(self, *, db: sqlite3.Connection | None = None) -> dict:
+        """Return complete published rows under one deferred read snapshot.
+
+        A supplied connection may retain its transaction across publications;
+        this method leaves that caller-owned snapshot and handle open.
+        """
+        if db is None:
+            with closing(self.connect()) as connection:
+                connection.execute("BEGIN")
+                return self.read_published_index(db=connection)
+        if not db.in_transaction:
+            try:
+                db.execute("BEGIN")
+                return read_published_rows(db, self.index_revision(db=db))
+            finally:
+                db.rollback()
+        return read_published_rows(db, self.index_revision(db=db))
+
+    def publish_prepared_index(
+        self,
+        prepared: PreparedIndexRevision,
+        expected_revision: int,
+        *,
+        on_begin: Callable[[sqlite3.Connection], None] | None = None,
+        with_commit: Callable[[Callable[[], None]], None] | None = None,
+        owner_check: Callable[[sqlite3.Connection], None] | None = None,
+        expected_fence_revision: int | None = None,
+    ) -> int:
+        """Atomically publish prepared chunks, metadata and source state.
+
+        The connection owns BEGIN IMMEDIATE through COMMIT. Hooks run inside
+        that owner, permitting admission/commit services and failure injection
+        without making partial rows visible to independent readers. Generated
+        embedding cache entries are deliberately outside this transaction.
+        """
+        fence = self.revision_fence
+        if fence is not None and expected_fence_revision is None:
+            expected_fence_revision = fence.read()
+        same_database = fence is not None and fence.same_database(self.path)
+        with closing(self.connect()) as db:
+            try:
+                db.execute("BEGIN IMMEDIATE")
+                if on_begin is not None:
+                    on_begin(db)
+                if fence is not None:
+                    if same_database:
+                        fence.assert_unchanged_in(db, expected_fence_revision)
+                    else:
+                        fence.assert_unchanged(expected_fence_revision)
+                if owner_check is not None:
+                    owner_check(db)
+                current_revision = self.index_revision(db=db)
+                if isinstance(expected_revision, bool) or current_revision != expected_revision:
+                    raise MemoryIndexRevisionConflictError(
+                        "Memory index changed while full reindex was building "
+                        f"(expected revision {expected_revision}, found {current_revision}); "
+                        "retry the full reindex."
+                    )
+                write_prepared_index(db, prepared)
+                db.execute(
+                    f"UPDATE {INDEX_SYNC_TABLE} SET revision=revision+1, "
+                    "workspace=?, needs_rebuild=0 WHERE id=1", (prepared.workspace,),
+                )
+                if fence is not None and same_database:
+                    fence.bump_in(db)
+                new_revision = self.index_revision(db=db)
+                if with_commit is None:
+                    db.commit()
+                else:
+                    with_commit(db.commit)
+                    if db.in_transaction:
+                        raise RuntimeError("Index publication did not commit")
+            except BaseException:
+                db.rollback()
+                raise
+        if fence is not None and not same_database:
+            fence.bump()
+        return new_revision
 
     def _index_provider(self) -> dict[str, str] | None:
         # The embedder only counts while vector search is on; otherwise the
@@ -273,20 +397,22 @@ class SQLiteMemoryStore:
     def _provider_key(self) -> str:
         return self._provider_identities()[0]["providerKey"]
 
-    def read_index_meta(self) -> object:
+    def read_index_meta(self, *, db: sqlite3.Connection | None = None) -> object:
         """The stored index identity JSON, or ``None`` (``readMeta``)."""
-        with self.connect() as db:
-            row = db.execute(
-                f"SELECT value FROM {MEMORY_INDEX_META_TABLE} WHERE key = ?",
-                (MEMORY_INDEX_META_KEY,),
-            ).fetchone()
+        if db is None:
+            with closing(self.connect()) as connection:
+                return self.read_index_meta(db=connection)
+        row = db.execute(
+            f"SELECT value FROM {MEMORY_INDEX_META_TABLE} WHERE key = ?",
+            (MEMORY_INDEX_META_KEY,),
+        ).fetchone()
         return parse_index_meta(row[0] if row else None)
 
     def _has_indexed_chunks(self) -> bool:
         with self.connect() as db:
             return db.execute("SELECT 1 FROM chunks LIMIT 1").fetchone() is not None
 
-    def index_identity(self) -> dict[str, Any]:
+    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:
         """Whether the index matches this store's provider and settings.
 
         ``{"status": "valid"}``, or ``missing``/``mismatched`` with an upstream
@@ -294,8 +420,12 @@ class SQLiteMemoryStore:
         Searches return no hits and ``memory_search`` pauses until
         :meth:`reindex` writes fresh metadata.
         """
+        if db is None:
+            with closing(self.connect()) as connection:
+                connection.execute("BEGIN")
+                return self.index_identity(db=connection)
         return resolve_memory_index_identity_state(
-            meta=self.read_index_meta(),
+            meta=self.read_index_meta(db=db),
             provider=self._index_provider(),
             provider_key=self._provider_key(),
             provider_key_known=True,
@@ -304,7 +434,7 @@ class SQLiteMemoryStore:
             chunk_tokens=CHUNK_TOKENS,
             chunk_overlap=CHUNK_OVERLAP,
             vector_ready=self._index_provider() is not None,
-            has_indexed_chunks=self._has_indexed_chunks(),
+            has_indexed_chunks=db.execute("SELECT 1 FROM chunks LIMIT 1").fetchone() is not None,
             fts_tokenizer=DEFAULT_FTS_TOKENIZER,
         )
 
@@ -376,6 +506,7 @@ class SQLiteMemoryStore:
                     "SELECT source, path, COUNT(*) FROM chunks GROUP BY source, path"
                 )
             }
+            metadata_missing = missing_metadata_sources(db)
         meta = self.read_index_meta()
         rebuild = (
             force or bool(needs_rebuild) or previous_workspace != workspace_root
@@ -384,7 +515,8 @@ class SQLiteMemoryStore:
         snapshots = self._read_source_snapshots(workspace)
         changed = {
             key for key, entry in snapshots.items()
-            if rebuild or previous_sources.get(key) != (entry.hash, previous_counts.get(key, 0))
+            if rebuild or key in metadata_missing
+            or previous_sources.get(key) != (entry.hash, previous_counts.get(key, 0))
         }
         removed = (set(previous_sources) | set(previous_counts)) - snapshots.keys()
         remaining_old = snapshots.keys() - changed
@@ -441,12 +573,7 @@ class SQLiteMemoryStore:
             return len(snapshots)
 
         prepared: dict[tuple[str, str], list[MemoryChunk]] = {
-            key: chunk_markdown(
-                entry.path, entry.text, source=entry.source,
-                target_tokens=chunk_tokens, overlap_tokens=chunk_overlap,
-                per_entry=entry.source == "memory" and entry.path.replace("\\", "/")
-                in ("MEMORY.md", "USER.md"),
-            )
+            key: self._prepare_source_chunks(entry, chunk_tokens, chunk_overlap)
             for key, entry in snapshots.items() if key in changed
         }
         chunks = [chunk for source_chunks in prepared.values() for chunk in source_chunks]
@@ -509,68 +636,91 @@ class SQLiteMemoryStore:
                     embeddings[item["index"]] = value
 
         assert_sources_current()
-        with self.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
-            assert_owner(db)
-            if rebuild:
-                db.execute("DELETE FROM chunks")
-                db.execute("DELETE FROM chunks_fts")
-                db.execute("DELETE FROM paths_fts")
-                db.execute(f"DELETE FROM {INDEX_SOURCES_TABLE}")
-            else:
-                # An external purge may have removed chunk rows before the
-                # corresponding FTS rows. Do not duplicate such orphaned IDs
-                # when a count mismatch triggers a source repair.
-                db.execute("DELETE FROM chunks_fts WHERE id NOT IN (SELECT id FROM chunks)")
-                for source, path in changed | removed:
-                    db.execute(
-                        "DELETE FROM chunks_fts WHERE id IN "
-                        "(SELECT id FROM chunks WHERE source = ? AND path = ?)", (source, path),
-                    )
-                    db.execute("DELETE FROM chunks WHERE source = ? AND path = ?", (source, path))
-                    db.execute("DELETE FROM paths_fts WHERE source = ? AND path = ?", (source, path))
-                    db.execute(
-                        f"DELETE FROM {INDEX_SOURCES_TABLE} WHERE source = ? AND path = ?",
-                        (source, path),
-                    )
-            offset = 0
-            for key, source_chunks in prepared.items():
-                entry = snapshots[key]
-                if source_chunks:
-                    db.execute("INSERT INTO paths_fts(path, source) VALUES (?, ?)",
-                               (entry.path, entry.source))
-                for chunk in source_chunks:
-                    db.execute(
-                        "INSERT INTO chunks VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (chunk.id, chunk.path, chunk.start_line, chunk.end_line,
-                         chunk.source, chunk.text, json.dumps(embeddings[offset])),
-                    )
-                    db.execute("INSERT INTO chunks_fts(id, text) VALUES (?, ?)",
-                               (chunk.id, chunk.text))
-                    offset += 1
-                db.execute(
-                    f"INSERT INTO {INDEX_SOURCES_TABLE} VALUES (?, ?, ?, ?, ?, ?)",
-                    (entry.source, entry.path, entry.hash, entry.mtime, entry.size, len(source_chunks)),
+        has_chunks = bool(chunks) or any(previous_counts.get(key, 0) for key in remaining_old)
+        vector_dims = active_dimensions if provider is not None and has_chunks else None
+        published_meta = dict(next_meta)
+        if vector_dims is not None:
+            published_meta["vectorDims"] = vector_dims
+        updated_at = time.time_ns() // 1_000_000
+        sources = []
+        offset = 0
+        for key, source_chunks in prepared.items():
+            entry = snapshots[key]
+            published_chunks = []
+            recorded = (
+                self.artifact_provenance.read(
+                    workspace_dir=workspace.root, relative_path=entry.canonical_path,
                 )
-            has_chunks = bool(chunks) or any(previous_counts.get(key, 0) for key in remaining_old)
-            vector_dims = active_dimensions if provider is not None and has_chunks else None
-            published_meta = dict(next_meta)
-            if vector_dims is not None:
-                published_meta["vectorDims"] = vector_dims
-            db.execute(
-                f"INSERT INTO {MEMORY_INDEX_META_TABLE} (key, value) VALUES (?, ?) "
-                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                (MEMORY_INDEX_META_KEY, js_json_stringify(published_meta)),
+                if self.artifact_provenance is not None and entry.source == "memory"
+                and entry.canonical_path is not None else None
             )
-            db.execute(
-                f"UPDATE {INDEX_SYNC_TABLE} SET revision = revision + 1, "
-                "workspace = ?, needs_rebuild = 0 WHERE id = 1", (workspace_root,),
+            classification = classify_memory_path(
+                entry.canonical_path or "", entry.source,
+                recorded_origin=recorded.origin_class if recorded is not None else None,
             )
-            if fence is not None and same_database:
-                fence.bump_in(db)
-        if fence is not None and not same_database:
-            fence.bump()
+            source_lines = entry.text.replace("\r\n", "\n").split("\n") if entry.source == "memory" else []
+            metadata_by_span = {}
+            line_provenance = entry.index_entry.line_provenance if entry.index_entry is not None else None
+            line_map = entry.index_entry.line_map if entry.index_entry is not None else None
+            for chunk in source_chunks:
+                provenance = resolve_chunk_provenance(
+                    source=entry.source, path_origin_class=classification["originClass"],
+                    mtime_ms=entry.mtime, start_line=chunk.start_line, end_line=chunk.end_line,
+                    line_provenance=line_provenance,
+                )
+                span = (chunk.entry_start_line or chunk.start_line, chunk.entry_end_line or chunk.end_line)
+                if span not in metadata_by_span:
+                    metadata_by_span[span] = extract_curated_entry_recall_metadata(
+                        source_lines=source_lines[span[0] - 1:span[1]],
+                        curated_root=classification["curatedRoot"],
+                        project_scope_eligible=entry.source == "memory" and entry.path.upper() != "USER.MD",
+                    )
+                start, end = chunk.start_line, chunk.end_line
+                if line_map:
+                    start = line_map[start - 1] if start <= len(line_map) and line_map[start - 1] is not None else start
+                    end = line_map[end - 1] if end <= len(line_map) and line_map[end - 1] is not None else end
+                chunk_hash = _text_hash(chunk.text)
+                chunk_id = _text_hash(
+                    f"{chunk.source}:{chunk.path}:{start}:{end}:{chunk_hash}:{next_meta['model']}"
+                )
+                published_chunks.append(PreparedChunk(
+                    id=chunk_id, path=chunk.path, source=chunk.source,
+                    start_line=start, end_line=end,
+                    text=chunk.text, embedding=tuple(embeddings[offset]),
+                    hash=chunk_hash, model=next_meta["model"], updated_at=updated_at,
+                    provenance=provenance, recall=metadata_by_span[span],
+                ))
+                offset += 1
+            sources.append(PreparedSource(entry.path, entry.source, entry.hash,
+                                          entry.mtime, entry.size, tuple(published_chunks)))
+        self.publish_prepared_index(
+            PreparedIndexRevision(tuple(sources), js_json_stringify(published_meta),
+                                  workspace=workspace_root, replace_all=bool(rebuild),
+                                  removed_sources=tuple(removed)),
+            generation, owner_check=assert_owner, expected_fence_revision=expected_fence,
+        )
         return len(snapshots)
+
+    @staticmethod
+    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:
+        content = strip_memory_annotation_carriers(entry.text) if entry.source == "memory" else entry.text
+        options = {"source": entry.source, "target_tokens": tokens, "overlap_tokens": overlap,
+                   "per_entry": entry.source == "memory" and entry.path.replace("\\", "/")
+                   in ("MEMORY.md", "USER.md")}
+        cutoff_index = -1
+        if entry.source == "sessions" and entry.index_entry is not None:
+            cutoff = entry.index_entry.reset_recall_cutoff
+            cutoff_line = cutoff.get("cutoffLine") if cutoff.get("state") == "valid" else None
+            if cutoff_line is not None:
+                cutoff_index = next((index for index, line in enumerate(entry.index_entry.line_map)
+                                     if line >= cutoff_line), -1)
+        if cutoff_index <= 0:
+            return chunk_markdown(entry.path, content, **options)
+        lines = content.split("\n")
+        before = chunk_markdown(entry.path, "\n".join(lines[:cutoff_index]), **options)
+        after = chunk_markdown(entry.path, "\n".join(lines[cutoff_index:]), **options)
+        return [*before, *(dataclasses.replace(chunk, start_line=chunk.start_line + cutoff_index,
+                                              end_line=chunk.end_line + cutoff_index) for chunk in after)]
 
     @staticmethod
     def _read_source_snapshots(workspace: MemoryWorkspace) -> dict[tuple[str, str], IndexSourceSnapshot]:
@@ -578,6 +728,12 @@ class SQLiteMemoryStore:
         for file in workspace.discover_indexable_files():
             entry = read_index_source(file)
             if entry is not None:
+                if entry.source == "memory":
+                    try:
+                        canonical = file.abs_path.resolve(strict=True).relative_to(workspace.root).as_posix()
+                    except (OSError, RuntimeError, ValueError):
+                        canonical = None
+                    entry = dataclasses.replace(entry, canonical_path=canonical)
                 key = (entry.source, entry.path)
                 if key in snapshots:
                     raise ValueError("Duplicate memory index source")
@@ -643,12 +799,13 @@ class SQLiteMemoryStore:
         if (
             not normalized
             or not self.flags.text_search
-            or self.index_identity()["status"] != "valid"
         ):
             return []
         window = max(SEARCH_CANDIDATE_UNIVERSE, max_results)
         candidates = min(200, max(1, window * HYBRID_CANDIDATE_MULTIPLIER))
         with self._search_connection(None) as db:
+            if self.index_identity(db=db)["status"] != "valid":
+                return []
             hits = self._search_keyword_with_fallback(
                 db, normalized, candidates, _source_filter_clause({"memory"}), None
             )
@@ -668,10 +825,17 @@ class SQLiteMemoryStore:
         keyword: list[KeywordHit] = []
         vector_ready = self.flags.vector_search
         query_embedding: list[float] = []
+        provider_identity = self._provider_identities() if vector_ready else None
         if vector_ready:
             query_embedding = self.embeddings.embed_query(query)
             _checkpoint(signal)
+            if self._provider_identities() != provider_identity:
+                return []
         with self._search_connection(signal) as db:
+            if vector_ready and self._provider_identities() != provider_identity:
+                return []
+            if self.index_identity(db=db)["status"] != "valid":
+                return []
             if db.execute("SELECT 1 FROM chunks LIMIT 1").fetchone() is None:
                 return []
             if self.flags.text_search:

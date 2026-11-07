@@ -206,12 +206,16 @@ def build_cases() -> list[dict[str, Any]]:
     from equivalence.index_identity import build_index_identity_cases
     from equivalence.embedding_cache import build_embedding_cache_cases
     from equivalence.incremental_index import build_incremental_index_cases
+    from equivalence.index_publication import build_index_publication_cases
+    from equivalence.index_lifecycle import build_index_lifecycle_cases
     from equivalence.storage_discovery import build_storage_discovery_cases
     from equivalence.storage_paths import build_storage_path_cases
 
     cases.extend(build_index_identity_cases())
     cases.extend(build_embedding_cache_cases())
     cases.extend(build_incremental_index_cases())
+    cases.extend(build_index_publication_cases())
+    cases.extend(build_index_lifecycle_cases())
     cases.extend(build_storage_discovery_cases())
     cases.extend(build_storage_path_cases())
     return cases
@@ -220,6 +224,14 @@ def build_cases() -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation == "index-publication":
+        from equivalence.index_publication import run_index_publication
+
+        return run_index_publication(arguments)
+    if operation == "index-lifecycle-runtime":
+        from equivalence.index_lifecycle import run_index_lifecycle
+
+        return run_index_lifecycle(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "embedding-cache":
         from equivalence.embedding_cache import run_embedding_cache
 

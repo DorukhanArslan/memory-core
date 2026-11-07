@@ -34,13 +34,13 @@
           "path": "memory_core/workspace.py",
           "symbol": "list_memory_files",
           "anchor": "def list_memory_files(workspace_dir: Path) -> list[Path]:",
-          "line": 59
+          "line": 60
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 339
+          "line": 340
         }
       ],
       "implementation": "partial",
@@ -74,19 +74,19 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_read_path",
           "anchor": "    def resolve_memory_read_path(self, raw_path: str) -> tuple[str, Path | None]:",
-          "line": 376
+          "line": 377
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_path",
           "anchor": "    def resolve_memory_path(self, rel_path: str) -> Path:",
-          "line": 367
+          "line": 368
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "check_writable_memory_file",
           "anchor": "def check_writable_memory_file(root: Path, rel_path: str) -> None:",
-          "line": 222
+          "line": 223
         }
       ],
       "implementation": "partial",
@@ -126,13 +126,13 @@
           "path": "memory_core/workspace.py",
           "symbol": "append_daily_memory_file",
           "anchor": "def append_daily_memory_file(",
-          "line": 248
+          "line": 249
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "workspace_file_lock",
           "anchor": "def workspace_file_lock(root: Path, rel_path: str) -> threading.Lock:",
-          "line": 204
+          "line": 205
         }
       ],
       "implementation": "partial",
@@ -394,13 +394,68 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 331
+          "line": 461
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "SQLiteMemoryStore._prepare_source_chunks",
+          "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
+          "line": 705
+        },
+        {
+          "path": "memory_core/index/preparation.py",
+          "symbol": "strip_memory_annotation_carriers",
+          "anchor": "def strip_memory_annotation_carriers(text: str) -> str:",
+          "line": 63
+        },
+        {
+          "path": "memory_core/index/preparation.py",
+          "symbol": "classify_memory_path",
+          "anchor": "def classify_memory_path(",
+          "line": 118
+        },
+        {
+          "path": "memory_core/index/preparation.py",
+          "symbol": "resolve_chunk_provenance",
+          "anchor": "def resolve_chunk_provenance(",
+          "line": 151
+        },
+        {
+          "path": "memory_core/index/preparation.py",
+          "symbol": "extract_curated_entry_recall_metadata",
+          "anchor": "def extract_curated_entry_recall_metadata(",
+          "line": 81
+        },
+        {
+          "path": "memory_core/index/publication.py",
+          "symbol": "PreparedChunk",
+          "anchor": "class PreparedChunk:",
+          "line": 41
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "SQLiteMemoryStore._reindex_locked",
+          "anchor": "    def _reindex_locked(self, workspace: MemoryWorkspace, *, force: bool) -> int:",
+          "line": 484
+        },
+        {
+          "path": "memory_core/client.py",
+          "symbol": "Memory.from_workspace",
+          "anchor": "    def from_workspace(",
+          "line": 63
+        },
+        {
+          "path": "memory_core/host/kit.py",
+          "symbol": "HostKit",
+          "anchor": "class HostKit:",
+          "line": 206
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python chunks carry path/source, chunk ID and entry ranges, but the store does not persist native per-chunk provenance, recall annotations or original-source content-hash publication facts.",
-        "Native preparation handles session line provenance, reset boundaries and annotation stripping; these are not implied by Python entry_start_line/entry_end_line fields."
+        "The preparation owner strips annotation carriers before chunking, derives recall annotations from the original entry span, partitions session chunks at reset boundaries, and reduces session line provenance before remapping ranges to original transcript lines.",
+        "Production reindex persists canonical source/path/range/content-hash/model chunk IDs plus chunk hash, model, update time, provenance and recall fields through the prepared publication owner. The public chunk_markdown helper retains its existing ID contract; explicitly supplied prepared IDs and metadata are preserved.",
+        "The source reader validates canonical workspace paths for default agent/system/untrusted classification. SDK/store construction accepts an artifact-provenance ledger, and HostKit shares that owner across writes, ingestion and indexing so recorded untrusted memory stays quarantined when changed sources are prepared or reopened. Metadata-only trust transitions do not refresh otherwise unchanged sources automatically; authoritative retained-session events remain host inputs."
       ]
     },
     {
@@ -439,8 +494,8 @@
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
-          "anchor": "    def index_identity(self) -> dict[str, Any]:",
-          "line": 289
+          "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
+          "line": 415
         }
       ],
       "implementation": "partial",
@@ -475,25 +530,44 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 331
+          "line": 461
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 339
+          "line": 340
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "read_index_source",
           "anchor": "def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:",
-          "line": 114
+          "line": 134
+        },
+        {
+          "path": "memory_core/session_corpus.py",
+          "symbol": "MemoryCoreSessionCorpus.read_index_entry",
+          "anchor": "    def read_index_entry(self, file: SessionCorpusFile) -> SessionEntry:",
+          "line": 105
+        },
+        {
+          "path": "memory_core/workspace.py",
+          "symbol": "MemoryWorkspace.discover_session_transcript_files",
+          "anchor": "    def discover_session_transcript_files(self) -> list[MemoryFile]:",
+          "line": 312
+        },
+        {
+          "path": "memory_core/index/publication.py",
+          "symbol": "missing_metadata_sources",
+          "anchor": "def missing_metadata_sources(db: sqlite3.Connection) -> set[tuple[str, str]]:",
+          "line": 132
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Reindex persists source hashes/counts and a private publication generation; unchanged sources under a matching identity retain chunks, while changed/renamed/deleted sources update in one SQLite transaction. Force refresh supports explicit repair.",
-        "The production source reader matches native buildFileEntry in paired raw-byte/UTF-8/newline/path cases. Source-reader comparisons do not prove the complete native source/session sync orchestration or concurrent publication."
+        "Reindex persists source hashes/counts and a private publication generation; unchanged sources under a matching identity retain chunks, while changed/renamed/deleted sources use the shared prepared publication owner. Legacy or incomplete chunk metadata invalidates source reuse for refresh; force refresh supports explicit repair.",
+        "Memory source hashing retains raw-byte and replacement-decoding behavior. Session discovery carries the complete projected SessionEntry, so source freshness uses its projection hash while raw transcript size/mtime remain source facts; chunk preparation retains original-line mapping, trust facts and reset boundaries. Artifact-ledger trust is read for prepared memory sources; changing only trust metadata does not itself invalidate an unchanged source.",
+        "The production source reader has paired native raw-byte/UTF-8/newline/path fixtures. Source reading, explicit reindex and metadata migration do not establish complete native manager source/session admission, automatic synchronization or provider lifecycle behavior."
       ]
     },
     {
@@ -521,19 +595,50 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 331
+          "line": 461
         },
         {
           "path": "memory_core/consolidation/origins.py",
           "symbol": "IndexRevisionFence",
           "anchor": "class IndexRevisionFence:",
           "line": 473
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "SQLiteMemoryStore.publish_prepared_index",
+          "anchor": "    def publish_prepared_index(",
+          "line": 315
+        },
+        {
+          "path": "memory_core/index/publication.py",
+          "symbol": "PreparedIndexRevision",
+          "anchor": "class PreparedIndexRevision:",
+          "line": 73
+        },
+        {
+          "path": "memory_core/index/publication.py",
+          "symbol": "write_prepared_index",
+          "anchor": "def write_prepared_index(db: sqlite3.Connection, prepared: PreparedIndexRevision) -> None:",
+          "line": 142
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "SQLiteMemoryStore.read_published_index",
+          "anchor": "    def read_published_index(self, *, db: sqlite3.Connection | None = None) -> dict:",
+          "line": 297
+        },
+        {
+          "path": "memory_core/index/publication.py",
+          "symbol": "ensure_publication_schema",
+          "anchor": "def ensure_publication_schema(db: sqlite3.Connection) -> None:",
+          "line": 86
         }
       ],
-      "implementation": "partial",
+      "implementation": "present",
       "notes": [
-        "Python publishes changed chunk/FTS/path/source/meta rows in one immediate SQLite transaction, with a private generation and optional origins fence; the origins fence shares that transaction only when its ledger uses the same database.",
-        "Separate ledger/index databases use pre-publication check and post-publication bump, while native table publication and generation leases have a broader revision contract; reader/failure interleavings remain unproved."
+        "Ordinary reindex and the immutable prepared-index API share one production publication owner. An immediate SQLite transaction replaces or removes chunks, body/path FTS, source state, chunk details, provenance, recall metadata and index identity; path FTS retains sources with no chunks.",
+        "Publication checks the private generation and source/provider ownership, supports real begin/commit hooks, and exposes complete published rows under one read snapshot. A commit hook that raises after committing leaves the new durable revision visible; cache persistence remains a separate transaction.",
+        "The optional origins fence shares the transaction only when its ledger uses the index database. Separate ledger/index databases retain a pre-publication check and post-publication bump; this source counterpart does not establish native generation-lease, host orchestration or cross-store recovery equivalence."
       ]
     },
     {
@@ -585,7 +690,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 331
+          "line": 461
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -627,19 +732,32 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 592
+          "line": 748
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_run_memory_search_tool",
           "anchor": "def _run_memory_search_tool(",
           "line": 562
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "SQLiteMemoryStore._search_connection",
+          "anchor": "    def _search_connection(self, signal: CancellationSignal | None) -> Iterator[sqlite3.Connection]:",
+          "line": 225
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "SQLiteMemoryStore.index_identity",
+          "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
+          "line": 415
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Current native search handles bootstrap sync, identity repair, a pending-chunking keyword-only mode, dirty-index background publication and generation rechecks; Python search pauses on a non-valid identity until its host explicitly rebuilds.",
-        "The Python tool does not model native stale/rebuild notices. This gap is based on current v2026.9.9 orchestration, not a historical empty-result forced-sync comment in Python."
+        "Keyword and hybrid searches now validate index identity and read body/path/vector candidates inside the same SQLite read transaction. Query embedding completes before that transaction, and a changed provider identity fails closed before probes.",
+        "Current native search additionally handles bootstrap sync, identity repair, pending-chunking keyword-only mode, dirty-index background publication and generation rechecks. Python still pauses on a non-valid identity until its host explicitly rebuilds; coherent reads do not implement that automatic synchronization.",
+        "The Python tool does not model native stale/rebuild notices. These orchestration gaps are based on current v2026.9.9 source, not a historical empty-result forced-sync comment in Python."
       ]
     },
     {
@@ -673,7 +791,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 657
+          "line": 814
         }
       ],
       "implementation": "partial",
@@ -1114,19 +1232,31 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus",
           "anchor": "class MemoryCoreSessionCorpus:",
-          "line": 31
+          "line": 43
         },
         {
           "path": "memory_core/consolidation/session_ingestion.py",
           "symbol": "session_exclusion_reason",
           "anchor": "def session_exclusion_reason(",
           "line": 307
+        },
+        {
+          "path": "memory_core/session_corpus.py",
+          "symbol": "MemoryCoreSessionCorpus.read_index_entry",
+          "anchor": "    def read_index_entry(self, file: SessionCorpusFile) -> SessionEntry:",
+          "line": 105
+        },
+        {
+          "path": "memory_core/workspace.py",
+          "symbol": "MemoryWorkspace.discover_session_transcript_files",
+          "anchor": "    def discover_session_transcript_files(self) -> list[MemoryFile]:",
+          "line": 312
         }
       ],
       "implementation": "partial",
       "notes": [
-        "The built-in Python corpus discovers sessions.json entries and existing .jsonl files only. Native v2026.9.9 discovers retained SQLite transcript entries and classifies session metadata; equivalent metadata/event discovery must be supplied by a host.",
-        "The ingestion policy helper accepts host-supplied session kind and maintenance flags; it does not establish their authoritative ownership or participant metadata."
+        "The built-in Python corpus discovers sessions.json entries and existing .jsonl files, classifies their session kind and maintenance flags, and carries the complete projected SessionEntry into indexing.",
+        "Native v2026.9.9 discovers retained SQLite transcript entries and their authoritative metadata/event revisions. That storage integration and participant metadata still require host inputs; JSONL reset-cutoff state remains absent unless a host supplies a fuller entry."
       ]
     },
     {
@@ -1167,11 +1297,30 @@
           "symbol": "build_session_file_entry",
           "anchor": "def build_session_file_entry(",
           "line": 376
+        },
+        {
+          "path": "memory_core/session_corpus.py",
+          "symbol": "MemoryCoreSessionCorpus.read_index_entry",
+          "anchor": "    def read_index_entry(self, file: SessionCorpusFile) -> SessionEntry:",
+          "line": 105
+        },
+        {
+          "path": "memory_core/workspace.py",
+          "symbol": "MemoryFile",
+          "anchor": "class MemoryFile:",
+          "line": 270
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "read_index_source",
+          "anchor": "def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:",
+          "line": 134
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Event projection, reset-cutoff and JSONL filtering helpers exist. The default ingestion loader reads a JSONL file; the host must provide retained SQLite events and archive/event revisions rather than treating the file loader as native session-store integration."
+        "Event projection, reset-cutoff and JSONL filtering helpers exist. The built-in corpus passes the exact projection content, full projection hash, line map and provenance through MemoryFile.index_entry into source preparation, without adding the compatibility renderer final newline.",
+        "The default loader still reads JSONL. Retained SQLite events, archive/event revisions and authoritative reset cutoffs must be supplied by a host; preserving a SessionEntry is not native session-store integration."
       ]
     },
     {
@@ -1199,7 +1348,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus",
           "anchor": "class MemoryCoreSessionCorpus:",
-          "line": 31
+          "line": 43
         },
         {
           "path": "memory_core/consolidation/recall.py",
@@ -1263,7 +1412,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 599
+          "line": 606
         }
       ],
       "implementation": "partial",
@@ -1651,7 +1800,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 496
+          "line": 503
         }
       ],
       "implementation": "partial",
@@ -2383,19 +2532,25 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 331
+          "line": 461
         },
         {
           "path": "memory_core/consolidation/forget.py",
           "symbol": "index fence wiring",
           "anchor": "fence = getattr(store, \"revision_fence\", None)",
           "line": 1030
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "SQLiteMemoryStore.publish_prepared_index",
+          "anchor": "    def publish_prepared_index(",
+          "line": 315
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python revision fencing is optional. The check and publication share an immediate transaction only when the origin ledger and index use the same database file.",
-        "A private generation now fences index/cache publication after a cooperating purge, including cache-only forgets. Separate origins/index databases still have a tombstone/publication gap; full native concurrent forget/rebuild exclusion remains unproved."
+        "Python revision fencing is optional. The prepared publication owner checks and bumps the origins fence in its immediate transaction only when the origins ledger and index use the same database file.",
+        "A private generation fences index/cache publication after a cooperating purge, including cache-only forgets. Chunk deletion cascades details/provenance/recall rows through foreign keys enabled on every store connection. Separate origins/index databases still have a tombstone/publication gap; full native concurrent forget/rebuild exclusion remains unproved."
       ]
     },
     {
@@ -2517,7 +2672,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 496
+          "line": 503
         }
       ],
       "implementation": "partial",
@@ -2657,7 +2812,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus._is_heartbeat_row",
           "anchor": "    def _is_heartbeat_row(self, raw_text: str, role: str) -> bool:",
-          "line": 99
+          "line": 133
         }
       ],
       "implementation": "partial",
@@ -2785,7 +2940,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "workspace_index_lock",
           "anchor": "def workspace_index_lock(root: Path) -> threading.RLock:",
-          "line": 210
+          "line": 211
         }
       ],
       "implementation": "partial",
@@ -2890,7 +3045,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 331
+          "line": 461
         },
         {
           "path": "memory_core/consolidation/artifacts.py",
@@ -2908,13 +3063,19 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 496
+          "line": 503
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "SQLiteMemoryStore.publish_prepared_index",
+          "anchor": "    def publish_prepared_index(",
+          "line": 315
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python has transaction/atomic-rename and rollback primitives, but publication spans Markdown, recall, origins, provenance and index stores; no common durable operation receipt establishes next-open recovery across all required cuts.",
-        "Native flush admission and visible failure policy are host state. Python REM directly appends DREAMS text and the Lab live session state is RAM, so interruption and retry outcomes need explicit host/process failure cases."
+        "Prepared index publication provides atomic chunks/FTS/source/identity/details/provenance/recall replacement and rollback before commit; a post-commit hook error preserves the committed revision. This covers one SQLite publication boundary, not a common recovery receipt across Markdown, recall, origins, provenance and index stores.",
+        "Python also has atomic-rename and rollback primitives, but no common durable operation receipt establishes next-open recovery across all required cuts. Native flush admission and visible failure policy are host state; Python REM directly appends DREAMS text and the Lab live session state is RAM, so interruption and retry outcomes still require host/process failure cases."
       ]
     },
     {
@@ -3103,7 +3264,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 496
+          "line": 503
         },
         {
           "path": "demo/lab_chat.py",
@@ -3148,13 +3309,13 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus",
           "anchor": "class MemoryCoreSessionCorpus:",
-          "line": 31
+          "line": 43
         },
         {
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 599
+          "line": 606
         },
         {
           "path": "demo/lab_runtime.py",
@@ -3199,7 +3360,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.dispatcher",
           "anchor": "    def dispatcher(",
-          "line": 365
+          "line": 372
         },
         {
           "path": "memory_core/live/__init__.py",

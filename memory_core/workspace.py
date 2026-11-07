@@ -22,6 +22,7 @@ from memory_core.session_corpus import MemoryCoreSessionCorpus
 
 if TYPE_CHECKING:
     from memory_core.memory_write_provenance import MemoryWriteProvenanceObserver
+    from memory_core.session_entry import SessionEntry
 
 # Root memory file name (OpenClaw src/memory/root-memory-files.ts
 # CANONICAL_ROOT_MEMORY_FILENAME). The legacy lowercase `memory.md` is a
@@ -271,6 +272,9 @@ class MemoryFile:
     abs_path: Path
     source: str = "memory"
     index_text: str | None = None
+    # An authoritative host projection includes source hash, line mapping and
+    # per-line provenance. Plain index_text remains supported for legacy hosts.
+    index_entry: SessionEntry | None = None
 
 
 @dataclass(frozen=True)
@@ -325,15 +329,12 @@ class MemoryWorkspace:
             corpus = MemoryCoreSessionCorpus(
                 self.openclaw_state_dir, agent_id=self.agent_id, is_forgotten=self.is_session_forgotten
             )
-            files.extend(
-                MemoryFile(
-                    item.rel_path,
-                    item.abs_path,
-                    item.source,
-                    index_text=corpus.read_index_text(item),
-                )
-                for item in corpus.discover_files()
-            )
+            for item in corpus.discover_files():
+                entry = corpus.read_index_entry(item)
+                files.append(MemoryFile(
+                    item.rel_path, item.abs_path, item.source,
+                    index_text=entry.content, index_entry=entry,
+                ))
         return files
 
     def discover_indexable_files(self) -> list[MemoryFile]:

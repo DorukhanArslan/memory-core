@@ -694,6 +694,11 @@ class ResetTurn:
   projection's origin, content hash, source session and time before file publication. A failed
   publication rolls back the reservation; a filename collision rolls it back before retrying.
   A store error prevents publication. Without the optional store, writes remain untracked.
+  The kit shares this ledger with index preparation, or inherits the ledger passed to
+  `Memory.from_workspace(..., artifact_provenance=store)`. Different configured ledger paths
+  are rejected. New or changed sources consult recorded origin; unchanged sources retain
+  their published trust. After a metadata-only trust change, use
+  `memory.store.reindex(memory.workspace, force=True)` for explicit repair.
 - A framework host must preserve authenticated ownership/taint metadata in its transcript
   projection. The LangGraph example accepts optional `AgentContext.trust=TurnTrust(...)`
   and checkpoints it before fallible host work (adapter-only). See

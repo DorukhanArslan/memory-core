@@ -235,8 +235,14 @@ class HostKit:
         artifact_provenance: MemoryArtifactProvenanceStore | None = None,
     ) -> None:
         self._memory = memory
-        # The trust store of the flush's daily-note writes (the dreaming ingestion reads it).
-        self._artifact_provenance = artifact_provenance
+        # Writes, ingestion and indexing must consult the same host trust ledger.
+        existing_provenance = memory.store.artifact_provenance
+        if (artifact_provenance is not None and existing_provenance is not None
+                and artifact_provenance.path != existing_provenance.path):
+            raise ValueError("HostKit and memory store must use the same artifact provenance store")
+        self._artifact_provenance = (
+            artifact_provenance if artifact_provenance is not None else existing_provenance
+        )
         self._root = memory.workspace.root
         # The host's sink for the ``memory.recall.*`` events of recorded searches.
         self._on_event = on_event
@@ -263,6 +269,7 @@ class HostKit:
         self._curator = memory.curator(
             layout=layout, policy=curation_policy, timezone=timezone, now_ms=self._clock
         )
+        memory.store.artifact_provenance = self._artifact_provenance
 
     @classmethod
     def open(

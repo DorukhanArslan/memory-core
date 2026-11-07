@@ -33,7 +33,7 @@ any differential-test coverage.
 ## 3. Rebuild the differential tests from a clean authority boundary
 
 - [x] Keep the new comparison harness independent of `demo/`, old literal expectations and old parity status labels.
-- [x] Import and execute the real pinned TypeScript functions. Do not copy the algorithm into an oracle stub or use Python output as the expected answer.
+- [x] Import and execute the real pinned TypeScript functions. Authenticate official compiled runtime cases separately, retaining their source-build limitation. Do not copy the algorithm into an oracle stub or use Python output as the expected answer.
 - [ ] Give both implementations the same fixtures, deterministic clocks, provider stubs, filesystem inputs and explicitly driven lifecycle events.
 - [ ] Compare complete observable results: ordering, source ranges, citations, errors, events, changed files, published index state and dispatch counts where applicable.
 - [x] Attach every case to a required contract and the exact acceptance points it exercises. One passing helper case cannot complete a whole feature area.
@@ -70,8 +70,8 @@ Entries remain pending until their complete acceptance conditions are verified a
 ### Index lifecycle
 
 - [ ] **`indexing.identity` — Match index identity gating.** Vary provider, model, endpoint settings, scope, sources, tokenizer and chunking versions. Compare missing, matching and stale metadata diagnostics before any query is admitted.
-- [ ] **`indexing.incremental-sync` — Match index refresh and invalidation.** Create, update, rename and delete files and sessions while retaining an index. Compare discovery, chunk replacement and unchanged-file handling across reopen.
-- [ ] **`indexing.transaction-publication` — Publish one coherent index revision.** Interleave readers with successful and failing rebuilds. Compare visible old/new revisions and prevent partial chunk, FTS or provenance publication.
+- [x] **`indexing.incremental-sync` — Match index refresh and invalidation.** Create, update, rename and delete files and sessions while retaining an index. Compare discovery, chunk replacement and unchanged-file handling across reopen.
+- [x] **`indexing.transaction-publication` — Publish one coherent index revision.** Interleave readers with successful and failing rebuilds. Compare visible old/new revisions and prevent partial chunk, FTS or provenance publication. Both acceptance points are covered by the prepared-publication comparisons recorded below.
 - [ ] **`indexing.embedding-cache` — Match embedding reuse and invalidation.** Use a deterministic instrumented embedder to count query and document calls. Compare cache identity, batching, changed chunks, failed batches and retained entries.
 - [ ] **`indexing.query-sync` — Match query-time synchronization.** Query an empty or stale index before and after source changes. Compare forced-sync/retry policy, unavailable outcomes and dispatch counts.
 
@@ -189,9 +189,14 @@ python -m equivalence.dependencies \
   --reference /path/to/openclaw-v2026.9.9 \
   --destination .reference/npm --install
 
+python -m equivalence.release_runtime \
+  --reference /path/to/openclaw-v2026.9.9 \
+  --destination .reference/release-runtime --install
+
 python scripts/check_equivalence.py \
   --reference /path/to/openclaw-v2026.9.9 \
   --node /path/to/node \
+  --release-runtime .reference/release-runtime \
   --smoke \
   --report /path/to/equivalence-smoke.json
 ```
@@ -202,10 +207,17 @@ Run the strict full gate:
 python scripts/check_equivalence.py \
   --reference /path/to/openclaw-v2026.9.9 \
   --node /path/to/node \
+  --release-runtime .reference/release-runtime \
   --report /path/to/equivalence-full.json
 ```
 
 The full gate is expected to remain non-passing while any acceptance point above is unimplemented or untested. Keep its report; do not disable requirements or add expected failures to make it green.
+
+Both setup commands are explicit downloads with integrity verification. Normal comparison
+runs authenticate the installed source dependencies and release artifacts without installing,
+repairing or fetching anything. The official release's matching build-commit attestation does
+not reproduce its source build; reports retain `sourceBuildReproduced: false`. Tracked
+TypeScript sources and compiled release files/traces remain separate evidence sets.
 
 
 ## Initial rebuilt baseline — 2026-11-07
@@ -414,3 +426,102 @@ launches, preserving its no-retry assertion even when a busy runner expires the
 deadline before the child writes its first marker. Ruff, project-name consistency,
 source inventory and staged diff checks passed. No paid provider call was made;
 hosted CI remains a separate result.
+
+## Prepared publication and manager lifecycle — 2026-11-07
+
+The Python store now uses one prepared-index publication owner for ordinary refreshes and
+explicit prepared revisions. A revision carries source rows, chunk identifiers, vectors,
+hashes, models, update times, recall annotations and provenance. Publication replaces the
+selected state in one transaction while preserving unrelated metadata and the embedding
+cache. Empty sources retain source state. Stale generations and failed publication remain
+visible failures rather than successful receipts.
+
+The 17 new prepared-publication cases execute the actual pinned
+`publishMemoryDatabaseTables` owner and the original schema/SQLite-worker SDK facades.
+**All 17 match.** Independent SQLite connections observe old state until commit; a held
+reader retains its old snapshot after commit. Cases compare successful and empty replacement,
+same-row publication, stale revision rejection, failures at begin/source/chunk/details/recall/
+provenance/commit boundaries, a post-commit failure, orphan metadata replacement/rollback,
+and reopened state. Comparisons retain every source, chunk, FTS, path, detail, recall and
+provenance row, raw metadata, body/path query results, live cache contents and attachment
+release observations. Controlled prepared chunk IDs are shared, not normalized away.
+
+Native per-row revision counters and Python's private publication generation have different
+internal counts. These cases compare revision advancement and stale-generation rejection,
+not absolute counter values. Injected failures retain their exact stage. A failure after
+COMMIT is classified by that boundary: native handle fencing can replace its final private
+diagnostic during cleanup, but durable new state, the old held-reader snapshot and reopening
+are still compared in full. No rollback is invented and unexpected errors retain their
+actual class/message. These rules are recorded in each case's `normalizationPolicy`.
+
+Both `indexing.transaction-publication` acceptance points are now covered. This does not
+complete the separate `recovery.failure-publication` contract, which also includes writes,
+flush, consolidation, forget and diary operations.
+
+| Fixed acceptance coverage | Covered | Remaining | Progress |
+| --- | ---: | ---: | ---: |
+| Previous batch | 11 / 128 | 117 | 8.6% |
+| Verified prepared publication | 13 / 128 | 115 | 10.2% |
+| Verified publication and manager lifecycle | 15 / 128 | 113 | 11.7% |
+
+The registered catalog now contains **302 cases**: 279 previous cases, 17 prepared-publication
+cases and 6 manager lifecycle cases. The first 296 execute tracked TypeScript; the last 6
+execute the authenticated official compiled v2026.9.9 manager and its workers with provider
+mode `none`. The source checkout and compiled runtime are separately authenticated, and
+reports distinguish `trackedTypeScriptCaseIds` from `compiledReleaseCaseIds`. Matching release
+version/build-commit metadata is publisher attestation; the source build has not been
+independently reproduced (`sourceBuildReproduced: false`).
+
+The lifecycle fixtures cover memory create/update/rename/delete/reopen, unchanged inputs,
+content changes with unchanged size/time, empty and whitespace sources, recognized memory
+provenance, session create/append/rename/delete/reopen, and chunk-write failure followed by an
+explicit retry. They drive existing dirty/reconciliation notifications directly. Session
+rename uses the actual public host operations: read stored messages, delete the old identity,
+create the new identity and append messages in order. Existing startup-catchup admission
+then feeds one complete native sync. OS watcher scheduling and binary transcript interchange
+are outside that driver. All six cases match across 28 observed refresh boundaries, completing
+both `indexing.incremental-sync` acceptance points.
+
+Lifecycle normalization retains actual chunk IDs, public paths, source mtimes, all semantic
+rows and the complete `memory_index_meta_v1` identity. Execution-clock write times compare
+new/retained/rewritten relationships. SQLite session revision prefixes compare their complete
+SessionEntry snapshot hash and retention behavior. Session transport byte counts compare
+zero/nonzero, retention and change direction because the hosts use different private
+transcript encodings; memory-file byte counts remain exact. Raw absolute states and all host
+metadata keys are retained separately in `runtimeDiagnostics` so those differences remain
+inspectable. Each case records these policies explicitly.
+
+Runtime cases use owned state/log directories and a fresh process per case. The controlled
+preload is inherited by workers, denies network fetches and records loaded artifact traces;
+no model or embedding-provider request is part of these fixtures. The owned host config uses
+`session.maintenance.mode: warn` so unrelated age-based pruning cannot remove the fixed-clock
+fixtures; automated maintenance remains a separate contract. Archive and installed-file
+integrity checks run before and after comparisons. The runtime authenticates 48 archives and
+21,737 files. No paid provider call was made.
+
+Native query-time synchronization is the next existing contract, `indexing.query-sync`.
+Provider dispatch/retry/batch orchestration, automatic watcher scheduling and the other
+unchecked contracts remain separate work. The contract still contains exactly **64 contracts
+and 128 acceptance points**; catalog growth adds evidence, not requirements.
+
+The combined comparison passed **302 matched, 0 mismatched, 0 blocked**. Coverage is
+**15/128 (11.7%)**, with **113 acceptance points (88.3%) remaining**; this measures verified
+acceptance coverage, not development effort. Reports are retained at
+`.equivalence-results/index-publication-lifecycle-subset.json` and
+`.equivalence-results/index-publication-lifecycle-full.json`. The first integrated capture,
+`index-publication-lifecycle-first.json`, was blocked by runtime evidence validation during
+adapter integration and is retained without parity credit.
+
+The complete offline regression run passed **2,417 tests**, with the same 1,625 historical
+oracle/live checks gated off and granting no acceptance credit. Ruff, project-name consistency,
+source inventory and staged diff checks passed. The source inventory now records 11 present,
+49 partial, 1 missing and 3 host-owned counterparts; those are source classifications. The
+earlier 279-case and 2,216-test figures above describe the previous batch only.
+
+Review also found and fixed two integration errors: prepared chunks now consult the optional
+host artifact-provenance ledger rather than upgrading recorded untrusted files; and a search
+rechecks its captured provider identity inside the reader transaction before using its query
+vector. Regression tests exercise an actual observed untrusted write across content changes
+and reopen, and a model change/reindex immediately before opening the reader. Metadata-only
+trust transitions still require explicit repair and remain separate from automatic trust
+synchronization.

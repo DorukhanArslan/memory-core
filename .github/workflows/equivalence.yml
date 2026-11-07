@@ -48,20 +48,26 @@ jobs:
         run: uv run --frozen pytest -q tests/equivalence
       - name: Verify the fixed source inventory
         run: uv run --frozen python -m equivalence.source_map --reference .reference/openclaw
-      - name: Prepare authenticated native filesystem dependencies
+      - name: Prepare authenticated native source dependencies
         run: >-
           uv run --frozen python -m equivalence.dependencies
           --reference .reference/openclaw --destination .reference/npm --install
+      - name: Prepare the authenticated official memory manager runtime
+        run: >-
+          uv run --frozen python -m equivalence.release_runtime
+          --reference .reference/openclaw --destination .reference/release-runtime --install
       - name: Compare the registered cases with actual OpenClaw
         run: >-
           uv run --frozen python scripts/check_equivalence.py
           --reference .reference/openclaw --node "$(command -v node)"
+          --release-runtime .reference/release-runtime
           --smoke --report .equivalence-results/subset.json
       - name: Require the complete contract on manual acceptance runs
         if: always() && github.event_name == 'workflow_dispatch'
         run: >-
           uv run --frozen python scripts/check_equivalence.py
           --reference .reference/openclaw --node "$(command -v node)"
+          --release-runtime .reference/release-runtime
           --report .equivalence-results/full.json
       - name: Retain results, including failed acceptance runs
         if: always()

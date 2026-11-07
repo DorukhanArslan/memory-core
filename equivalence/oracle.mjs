@@ -18,6 +18,7 @@ for (const [operation, filename, name] of [
   ["index-identity", "index-identity.mjs", "runIndexIdentity"],
   ["embedding-cache", "embedding-cache.mjs", "runEmbeddingCache"],
   ["incremental-index", "incremental-index.mjs", "runIncrementalIndex"],
+  ["index-publication", "index-publication.mjs", "runIndexPublication"],
 ]) {
   const url = new URL(filename, import.meta.url);
   if (fs.existsSync(fileURLToPath(url))) adapters.set(operation, (await import(url.href))[name]);
@@ -50,6 +51,10 @@ const sourceUrl = (relative) => pathToFileURL(path.join(root, relative)).href;
 const isInside = (candidate) => candidate === root || candidate.startsWith(root + path.sep);
 const publicSources = new Map([
   ["openclaw/plugin-sdk/string-coerce-runtime", "src/plugin-sdk/string-coerce-runtime.ts"],
+  ["openclaw/plugin-sdk/memory-core-host-engine-schema", "src/plugin-sdk/memory-core-host-engine-schema.ts"],
+  ["openclaw/plugin-sdk/memory-core-host-engine-indexing", "src/plugin-sdk/memory-core-host-engine-indexing.ts"],
+  ["openclaw/plugin-sdk/sqlite-worker-runtime", "src/plugin-sdk/sqlite-worker-runtime.ts"],
+  ["@openclaw/net-policy/redact-sensitive-url", "packages/net-policy/src/redact-sensitive-url.ts"],
 ]);
 
 registerHooks({

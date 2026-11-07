@@ -16,6 +16,8 @@ for (const [operation, filename, name] of [
   ["storage-discovery", "storage-discovery.mjs", "runStorageDiscovery"],
   ["storage-read-paths", "storage-paths.mjs", "runStoragePaths"],
   ["index-identity", "index-identity.mjs", "runIndexIdentity"],
+  ["embedding-cache", "embedding-cache.mjs", "runEmbeddingCache"],
+  ["incremental-index", "incremental-index.mjs", "runIncrementalIndex"],
 ]) {
   const url = new URL(filename, import.meta.url);
   if (fs.existsSync(fileURLToPath(url))) adapters.set(operation, (await import(url.href))[name]);

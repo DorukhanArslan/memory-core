@@ -4,7 +4,8 @@
   "package": "@openclaw/fs-safe",
   "version": "0.21.1",
   "additionalPackages": [
-    {"name": "p-map", "version": "7.0.8"}
+    {"name": "p-map", "version": "7.0.8"},
+    {"name": "kysely", "version": "0.29.6"}
   ],
   "nativeTargets": [
     "darwin-arm64",

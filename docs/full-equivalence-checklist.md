@@ -328,3 +328,89 @@ Local reports are `.equivalence-results/storage-index-before.json`,
 the eight identity differences. Separate discovery/read baseline captures are
 retained under `.equivalence-results/storage-discovery-before.json` and
 `.equivalence-results/storage-read-*-before.*`. No model/provider call was made.
+
+## Persistent cache and selective index refresh — 2026-11-07
+
+The existing `indexing.embedding-cache` and `indexing.incremental-sync` work now
+has a persistent SQLite cache and selective source publication. A refresh still
+discovers, reads and hashes sources. Matching sources retain their chunks;
+changed/new sources are rebuilt, and renamed/deleted paths are removed in the
+same transaction as chunk, FTS, path, source-state and metadata changes. Empty
+files retain source state. `force=True` reparses all sources for explicit repair
+and can still reuse valid document embeddings.
+
+Cache identity includes provider, model, provider settings and chunk-content
+hash. Binary64 encoding, alias precedence, invalid entries, batches of 400,
+last-occurrence deduplication and capacity/age/rowid eviction follow the native
+cache kernel. The store uses the native default cap of 50,000 entries. Complete
+provider batches must have the expected count, finite nonempty vectors and one
+compatible dimension before retention. Valid generated vectors can survive a
+later index publication failure; source, provider and index generations are
+checked before writes. An explicit retry recovers after incompatible dimensions
+invalidate that cache identity.
+
+Selected session forgets clear the unattributed cache, including vectors retained
+before a failed index publication and rows added after a zero-count purge plan.
+The purge advances the private generation in the same transaction, so older
+refreshes cannot repopulate it. Dry runs and unresolved selections retain state;
+a failed purge leaves the tombstone available for an explicit retry.
+
+Cooperating SDK curated writes and refreshes share a reentrant process-local
+workspace guard. A regression caught concurrent curated appends reporting an
+avoidable source-change error after their writes had committed. The guard now
+keeps each write and its refresh together, including separate store/curator
+instances, without retrying provider calls. External writes, provider changes
+and stale database generations still produce visible conflicts. This does not
+establish native cross-process lock/lease equivalence.
+The guard is scoped to the SDK's original synchronous refresh callback. Generic
+curator hooks, and callers replacing that callback, retain their prior behavior;
+four bounded worker-thread join regressions protect that integration boundary.
+
+The same three-file Python lifecycle was measured against commit `9028ad2` and
+the updated store with a deterministic instrumented embedder:
+
+| Refresh | Previous document items | Current document items |
+| --- | ---: | ---: |
+| Initial index | 3 | 3 |
+| No content changes | 3 | 0 |
+| One file changed | 3 | 1 |
+| Store reopened | 3 | 0 |
+| File renamed, same content | 3 | 0 |
+| One file deleted | 2 | 0 |
+
+These are actual provider document-item counts, not startup-time estimates or
+native manager equivalence evidence. Query embeddings still make one fresh call
+per search in this fixture. Both runs made zero paid calls. The local accounting
+artifacts are `.equivalence-results/index-call-accounting-before.json` and
+`.equivalence-results/index-call-accounting-after.json`.
+
+The fresh native suite adds 66 cache-kernel cases and 20 source-entry cases.
+Actual cache SQL executes through the original Kysely/SQLite helpers, codecs and
+cache implementation. Source snapshots execute original `buildFileEntry` across
+CRLF, malformed UTF-8, unchanged time/size, rename/delete and nonregular paths.
+Kysely 0.29.6 is authenticated against the same upstream lockfile; there are now
+1,249 authenticated npm files. Verified direct reexport projections remain
+explicitly limited to the named kernels and bypass broad facade initialization.
+
+The full registered comparison has **279 matched, 0 mismatched, 0 blocked**.
+The full acceptance gate still has **117 uncovered points**: these new kernel
+cases deliberately have no full acceptance credit. Native provider dispatch,
+retry/batch orchestration, complete session sync and concurrent publication still
+require their existing lifecycle comparisons. No requirement was added or removed.
+The source inventory now classifies 10 counterparts present, 50 partial, 1 missing
+and 3 host-owned; those classifications are not parity results.
+
+Current generated reports are `.equivalence-results/cache-incremental-subset.json`
+and `.equivalence-results/cache-incremental-full.json`. Historical first captures
+are retained separately; the cache kernel's first actual run matched, so no
+pre-port mismatch count is claimed for it.
+
+The final combined offline run passed **2,216 tests**: 122 acceptance
+harness/adapter guards and 2,094 direct/retained regressions. The 1,625 historical
+oracle/live checks remained skipped with their opt-in gates disabled and provide
+no equivalence credit. Concurrent SDK append and two-store barrier checks also
+passed eight repeated runs each. The timeout guard now counts reference process
+launches, preserving its no-retry assertion even when a busy runner expires the
+deadline before the child writes its first marker. Ruff, project-name consistency,
+source inventory and staged diff checks passed. No paid provider call was made;
+hosted CI remains a separate result.

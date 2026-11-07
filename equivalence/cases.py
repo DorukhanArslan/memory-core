@@ -204,10 +204,14 @@ def build_cases() -> list[dict[str, Any]]:
                     or identifier.startswith("mmr-normalization-")):
                 case["covers"].append("retrieval.mmr.text-boundaries")
     from equivalence.index_identity import build_index_identity_cases
+    from equivalence.embedding_cache import build_embedding_cache_cases
+    from equivalence.incremental_index import build_incremental_index_cases
     from equivalence.storage_discovery import build_storage_discovery_cases
     from equivalence.storage_paths import build_storage_path_cases
 
     cases.extend(build_index_identity_cases())
+    cases.extend(build_embedding_cache_cases())
+    cases.extend(build_incremental_index_cases())
     cases.extend(build_storage_discovery_cases())
     cases.extend(build_storage_path_cases())
     return cases
@@ -216,6 +220,14 @@ def build_cases() -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation == "embedding-cache":
+        from equivalence.embedding_cache import run_embedding_cache
+
+        return run_embedding_cache(arguments)
+    if operation == "incremental-index":
+        from equivalence.incremental_index import run_incremental_index
+
+        return run_incremental_index(arguments)
     if operation == "index-identity":
         from equivalence.index_identity import run_index_identity
 

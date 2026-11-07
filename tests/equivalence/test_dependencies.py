@@ -39,6 +39,7 @@ def packages(tmp_path, monkeypatch):
         ("@openclaw/fs-safe", "0.21.1"),
         ("@openclaw/fs-safe-linux-x64-gnu", "0.21.1"),
         ("p-map", "7.0.8"),
+        ("kysely", "0.29.6"),
     ):
         raw = _tar({
             "package/package.json": json.dumps({"name": name, "version": version}).encode(),
@@ -65,7 +66,8 @@ def test_setup_authenticates_and_extracts_only_pinned_artifacts_without_scripts(
     destination, _, calls = packages
     config = deps.prepare_dependencies(Path("unused"), destination, download=True)
     assert calls == [("@openclaw/fs-safe", "0.21.1"),
-                     ("@openclaw/fs-safe-linux-x64-gnu", "0.21.1"), ("p-map", "7.0.8")]
+                     ("@openclaw/fs-safe-linux-x64-gnu", "0.21.1"), ("p-map", "7.0.8"),
+                     ("kysely", "0.29.6")]
     assert config["kind"] == "verified-npm-artifacts"
     assert config["referenceCommit"] == "a" * 40
     assert all(len(package["files"]) == 2 for package in config["packages"])
@@ -78,6 +80,43 @@ def test_verification_never_downloads_missing_artifacts(packages):
     destination, _, calls = packages
     with pytest.raises(deps.DependencyError, match="archive is missing"):
         deps.prepare_dependencies(Path("unused"), destination)
+    assert calls == []
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("change", [
+    "unknown", "wrong-fs-safe-version", "wrong-p-map-version", "wrong-kysely-version",
+    "missing-kysely", "duplicate-kysely", "wrong-registry", "not-an-object",
+])
+def test_setup_rejects_packages_and_versions_outside_the_authorized_list(
+    packages, tmp_path, monkeypatch, change,
+):
+    destination, _, calls = packages
+    manifest = json.loads((deps.ROOT / "equivalence/dependencies.json").read_text())
+    if change == "unknown":
+        manifest["additionalPackages"].append({"name": "another-package", "version": "1.0.0"})
+    elif change == "wrong-fs-safe-version":
+        # This older version also occurs in upstream's lockfile; its presence
+        # there does not authorize it for this source oracle.
+        manifest["version"] = "0.12.0"
+    elif change == "wrong-p-map-version":
+        manifest["additionalPackages"][0]["version"] = "7.0.7"
+    elif change == "wrong-kysely-version":
+        manifest["additionalPackages"][1]["version"] = "0.29.5"
+    elif change == "missing-kysely":
+        manifest["additionalPackages"].pop()
+    elif change == "duplicate-kysely":
+        manifest["additionalPackages"].append(dict(manifest["additionalPackages"][1]))
+    elif change == "wrong-registry":
+        manifest["registry"] = "https://registry.example.invalid"
+    else:
+        manifest = []
+    root = tmp_path / "suite"
+    (root / "equivalence").mkdir(parents=True)
+    (root / "equivalence/dependencies.json").write_text(json.dumps(manifest))
+    monkeypatch.setattr(deps, "ROOT", root)
+    with pytest.raises(deps.DependencyError, match="manifest is invalid"):
+        deps.prepare_dependencies(Path("unused"), destination, download=True)
     assert calls == []
     assert not destination.exists()
 

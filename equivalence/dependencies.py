@@ -1,7 +1,7 @@
 """Verified npm artifacts for source-only reference execution.
 
 The application does not depend on these packages. They are the pinned native
-reference's filesystem dependency and its platform binary. No install scripts
+reference's filesystem and SQL dependencies and its platform binary. No install scripts
 run, and dependency files remain separate from committed TypeScript evidence.
 Every verification checks downloaded archive integrity against the pinned
 upstream lockfile, then checks every extracted byte against that archive.
@@ -46,12 +46,15 @@ def _manifest() -> dict:
         value = json.loads((ROOT / "equivalence/dependencies.json").read_text())
     except (OSError, ValueError):
         raise DependencyError("The reference dependency manifest is unavailable.") from None
-    if (value.get("schemaVersion") != 1
+    if (not isinstance(value, dict) or value.get("schemaVersion") != 1
             or value.get("registry") != "https://registry.npmjs.org"
             or value.get("package") != "@openclaw/fs-safe"
-            or not re.fullmatch(r"\d+\.\d+\.\d+", str(value.get("version", "")))
+            or value.get("version") != "0.21.1"
             or not isinstance(value.get("nativeTargets"), list)
-            or value.get("additionalPackages") != [{"name": "p-map", "version": "7.0.8"}]):
+            or value.get("additionalPackages") != [
+                {"name": "p-map", "version": "7.0.8"},
+                {"name": "kysely", "version": "0.29.6"},
+            ]):
         raise DependencyError("The reference dependency manifest is invalid.")
     return value
 

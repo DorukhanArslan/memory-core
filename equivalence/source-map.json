@@ -40,7 +40,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 326
+          "line": 339
         }
       ],
       "implementation": "partial",
@@ -74,19 +74,19 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_read_path",
           "anchor": "    def resolve_memory_read_path(self, raw_path: str) -> tuple[str, Path | None]:",
-          "line": 363
+          "line": 376
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_path",
           "anchor": "    def resolve_memory_path(self, rel_path: str) -> Path:",
-          "line": 354
+          "line": 367
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "check_writable_memory_file",
           "anchor": "def check_writable_memory_file(root: Path, rel_path: str) -> None:",
-          "line": 209
+          "line": 222
         }
       ],
       "implementation": "partial",
@@ -120,19 +120,19 @@
           "path": "memory_core/curation.py",
           "symbol": "MemoryCurator._write_target",
           "anchor": "    def _write_target(self, name: str, before: str | None, content: str) -> None:",
-          "line": 1148
+          "line": 1153
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "append_daily_memory_file",
           "anchor": "def append_daily_memory_file(",
-          "line": 235
+          "line": 248
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "workspace_file_lock",
           "anchor": "def workspace_file_lock(root: Path, rel_path: str) -> threading.Lock:",
-          "line": 203
+          "line": 204
         }
       ],
       "implementation": "partial",
@@ -393,8 +393,8 @@
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
-          "anchor": "    def reindex(self, workspace: MemoryWorkspace) -> int:",
-          "line": 228
+          "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
+          "line": 331
         }
       ],
       "implementation": "partial",
@@ -428,19 +428,19 @@
           "path": "memory_core/index/identity.py",
           "symbol": "resolve_memory_index_identity_state",
           "anchor": "def resolve_memory_index_identity_state(",
-          "line": 266
+          "line": 269
         },
         {
           "path": "memory_core/index/identity.py",
           "symbol": "resolve_memory_index_provider_identities",
           "anchor": "def resolve_memory_index_provider_identities(",
-          "line": 113
+          "line": 116
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
           "anchor": "    def index_identity(self) -> dict[str, Any]:",
-          "line": 187
+          "line": 289
         }
       ],
       "implementation": "partial",
@@ -474,20 +474,26 @@
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
-          "anchor": "    def reindex(self, workspace: MemoryWorkspace) -> int:",
-          "line": 228
+          "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
+          "line": 331
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 326
+          "line": 339
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "read_index_source",
+          "anchor": "def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:",
+          "line": 114
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python reindex reads/chunks all discovered files and deletes/reinserts the full index; it has no native per-file mtime/hash skip and changed-source replacement lifecycle.",
-        "Create/update/rename/delete outcomes may converge after an explicit rebuild, but unchanged-file work and reopen dispatch counts differ from incremental sync."
+        "Reindex persists source hashes/counts and a private publication generation; unchanged sources under a matching identity retain chunks, while changed/renamed/deleted sources update in one SQLite transaction. Force refresh supports explicit repair.",
+        "The production source reader matches native buildFileEntry in paired raw-byte/UTF-8/newline/path cases. Source-reader comparisons do not prove the complete native source/session sync orchestration or concurrent publication."
       ]
     },
     {
@@ -514,8 +520,8 @@
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
-          "anchor": "    def reindex(self, workspace: MemoryWorkspace) -> int:",
-          "line": 228
+          "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
+          "line": 331
         },
         {
           "path": "memory_core/consolidation/origins.py",
@@ -526,7 +532,7 @@
       ],
       "implementation": "partial",
       "notes": [
-        "Python replaces chunk/FTS/path/meta rows in one SQLite transaction and optionally checks/bump fences; the fence is atomic with publication only when its ledger uses the same database.",
+        "Python publishes changed chunk/FTS/path/source/meta rows in one immediate SQLite transaction, with a private generation and optional origins fence; the origins fence shares that transaction only when its ledger uses the same database.",
         "Separate ledger/index databases use pre-publication check and post-publication bump, while native table publication and generation leases have a broader revision contract; reader/failure interleavings remain unproved."
       ]
     },
@@ -556,11 +562,44 @@
           "line": 236
         }
       ],
-      "python": [],
-      "implementation": "missing",
+      "python": [
+        {
+          "path": "memory_core/index/embedding_cache.py",
+          "symbol": "load_memory_embedding_cache",
+          "anchor": "def load_memory_embedding_cache(",
+          "line": 86
+        },
+        {
+          "path": "memory_core/index/embedding_cache.py",
+          "symbol": "upsert_memory_embedding_cache",
+          "anchor": "def upsert_memory_embedding_cache(",
+          "line": 144
+        },
+        {
+          "path": "memory_core/index/embedding_cache.py",
+          "symbol": "validate_memory_embedding_batch",
+          "anchor": "def validate_memory_embedding_batch(",
+          "line": 231
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "SQLiteMemoryStore.reindex",
+          "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
+          "line": 331
+        },
+        {
+          "path": "memory_core/consolidation/forget.py",
+          "symbol": "purge_memory_index",
+          "anchor": "def purge_memory_index(store: Any, plan: IndexPlan) -> bool:",
+          "line": 537
+        }
+      ],
+      "implementation": "partial",
       "notes": [
-        "Python SQLiteMemoryStore.reindex embeds every discovered chunk again when vector search is enabled; its schema has no persistent native-style embedding cache keyed by provider/model/chunk hash.",
-        "Document-call reuse, failed-batch retention and native cache batching therefore have no Python implementation owner to map."
+        "Persistent provider/model/provider-key/chunk-hash cache, binary64 codec, alias precedence, corruption handling, eviction and batching execute against the actual native cache kernel in paired SQLite fixtures.",
+        "The store validates generated batches, checks source/provider/generation ownership, and retains valid cache independently of index publication. Python lifecycle regressions count provider calls across changes and reopen.",
+        "The kernel import projects verified direct bindings to original codec and SQLite query owners. Full native provider retry/batch orchestration, source/session admission and manager lifecycle remain unproved; kernel cases receive no whole acceptance credit.",
+        "Selected session forgets clear all unattributed cached vectors, including cache-only entries, and advance the private generation in the purge transaction; dry runs and unresolved selections retain the cache."
       ]
     },
     {
@@ -588,7 +627,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 329
+          "line": 592
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -634,7 +673,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 394
+          "line": 657
         }
       ],
       "implementation": "partial",
@@ -2286,7 +2325,7 @@
           "path": "memory_core/consolidation/forget.py",
           "symbol": "forget_memory_entries",
           "anchor": "def forget_memory_entries(",
-          "line": 642
+          "line": 679
         },
         {
           "path": "memory_core/consolidation/origins.py",
@@ -2343,20 +2382,20 @@
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
-          "anchor": "    def reindex(self, workspace: MemoryWorkspace) -> int:",
-          "line": 228
+          "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
+          "line": 331
         },
         {
           "path": "memory_core/consolidation/forget.py",
           "symbol": "index fence wiring",
           "anchor": "fence = getattr(store, \"revision_fence\", None)",
-          "line": 993
+          "line": 1030
         }
       ],
       "implementation": "partial",
       "notes": [
         "Python revision fencing is optional. The check and publication share an immediate transaction only when the origin ledger and index use the same database file.",
-        "With separate databases the revision check occurs before publication and the bump after it, leaving a stale-publication race; unfenced stores cannot establish the required stale-rebuild exclusion."
+        "A private generation now fences index/cache publication after a cooperating purge, including cache-only forgets. Separate origins/index databases still have a tombstone/publication gap; full native concurrent forget/rebuild exclusion remains unproved."
       ]
     },
     {
@@ -2741,12 +2780,19 @@
           "symbol": "with_file_lock",
           "anchor": "def with_file_lock(",
           "line": 229
+        },
+        {
+          "path": "memory_core/workspace.py",
+          "symbol": "workspace_index_lock",
+          "anchor": "def workspace_index_lock(root: Path) -> threading.RLock:",
+          "line": 210
         }
       ],
       "implementation": "partial",
       "notes": [
         "Python uses owner-token sidecar files and context-local reentrancy; native uses keyed plugin-state observations/CAS, an in-process sibling queue and guarded pending-release receipts.",
-        "Python workspace stale detection uses age rather than the native owner/process-start lease checks, and recall_store_lock is process-local; cross-process writers and owner-death reclaim are not established as equivalent."
+        "Python workspace stale detection uses age rather than the native owner/process-start lease checks, and recall_store_lock is process-local; cross-process writers and owner-death reclaim are not established as equivalent.",
+        "Cooperating curated write/refresh pairs and direct index refreshes share a reentrant process-local workspace guard. This preserves SDK thread behavior without provider retries; native cross-process lease semantics remain unproved."
       ]
     },
     {
@@ -2843,8 +2889,8 @@
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
-          "anchor": "    def reindex(self, workspace: MemoryWorkspace) -> int:",
-          "line": 228
+          "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
+          "line": 331
         },
         {
           "path": "memory_core/consolidation/artifacts.py",
@@ -2856,7 +2902,7 @@
           "path": "memory_core/consolidation/forget.py",
           "symbol": "commit_memory_content",
           "anchor": "def commit_memory_content(",
-          "line": 550
+          "line": 587
         },
         {
           "path": "memory_core/host/kit.py",
@@ -2910,7 +2956,7 @@
           "path": "memory_core/index/identity.py",
           "symbol": "_js_number",
           "anchor": "def _js_number(",
-          "line": 189
+          "line": 192
         }
       ],
       "implementation": "partial",
@@ -3147,7 +3193,7 @@
           "path": "memory_core/curation.py",
           "symbol": "MemoryCurator.replace_memory_entry",
           "anchor": "    def replace_memory_entry(",
-          "line": 934
+          "line": 939
         },
         {
           "path": "memory_core/host/kit.py",

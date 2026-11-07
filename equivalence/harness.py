@@ -330,14 +330,17 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         dependencies = bindings = None
         native_storage = any(case["operation"] in {
             "storage-discovery", "storage-read-paths", "index-identity",
+            "embedding-cache", "incremental-index",
         } for case in cases)
+        cache_bindings = any(case["operation"] == "embedding-cache" for case in cases)
         if native_storage:
             from equivalence.dependencies import prepare_dependencies
             from equivalence.reference_bindings import prepare_reference_bindings
 
             try:
                 dependencies = prepare_dependencies(checkout, dependency_root)
-                bindings = prepare_reference_bindings(checkout)
+                bindings = (prepare_reference_bindings(checkout, include_cache=True) if cache_bindings
+                            else prepare_reference_bindings(checkout))
             except (OSError, ValueError, RuntimeError):
                 raise HarnessError("reference-dependencies-unavailable",
                                    "Verified native dependencies and binding provenance are required; "
@@ -355,7 +358,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 validate_dependency_sources(dependencies, oracle.get("dependencySources", []))
                 if not oracle.get("dependencySources"):
                     raise ValueError("Native dependency execution evidence is missing.")
-                if prepare_reference_bindings(checkout) != bindings:
+                current_bindings = (prepare_reference_bindings(checkout, include_cache=True) if cache_bindings
+                                    else prepare_reference_bindings(checkout))
+                if current_bindings != bindings:
                     raise ValueError("Binding provenance changed.")
             except (OSError, ValueError, RuntimeError):
                 raise HarnessError("oracle-dependency-mismatch",

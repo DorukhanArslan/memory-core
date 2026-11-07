@@ -32,9 +32,11 @@ forced by the package's host-injected design: the host supplies the session fact
 (``instances`` and ``archives`` for the selectors, ``corpus_entries`` for the transcripts to
 inspect: ``curatedWrites``, the excluded sessions); the state upstream keeps in SQLite plugin state is
 the JSON files of this package; the index is the package's :class:`SQLiteMemoryStore` (chunks, a path
-table and an FTS table: no ``memory_index_sources``, vector or embedding-cache rows, so
-``vectorRows`` and ``embeddingCacheRows`` are 0 and chunk provenance cannot select system-origin
-chunks); the origin ledger check before the index purge is a second read, not one transaction with it;
+table, FTS, private source state and the persistent embedding cache). Native v2026.9.9 clears the
+whole embedding cache for a selected session forget because cached vectors carry no source lineage;
+the same policy applies here, including cache-only rows from an uncompleted index publication.
+There is no separate vector table, so ``vectorRows`` remains 0, and chunk provenance cannot select
+system-origin chunks; the origin ledger check before the index purge is a second read, not one transaction with it;
 the memory files are listed with the package's ``list_memory_files`` plus the DREAMS files.
 """
 
@@ -88,6 +90,7 @@ from memory_core.consolidation.store import (
     recall_store_path,
 )
 from memory_core.project_name import DIST_NAME
+from memory_core.index.identity import INDEX_SOURCES_TABLE, INDEX_SYNC_TABLE
 from memory_core.session_artifacts import parse_usage_counted_session_id_from_file_name
 from memory_core.session_entry import (
     SessionEntry,
@@ -465,11 +468,19 @@ def collect_transcript_writes(
 
 @dataclass
 class IndexPlan:
-    """``ForgetIndexPlan`` over the package's index (chunks, paths and FTS rows)."""
+    """``ForgetIndexPlan`` over index rows and unattributed embedding-cache state."""
 
     chunks: list[tuple[str, str, str]] = field(default_factory=list)  # (id, path, source)
     sources: list[tuple[str, str]] = field(default_factory=list)  # (path, source)
     fts_rows: int = 0
+    embedding_cache_rows: int = 0
+    purge_cache: bool = False
+
+
+def _index_table_exists(db: Any, table: str) -> bool:
+    return db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+    ).fetchone() is not None
 
 
 def plan_memory_index(
@@ -482,7 +493,7 @@ def plan_memory_index(
     excluded_session_ids: set[str],
     matches_memory: Callable[[str], bool],
 ) -> IndexPlan:
-    """``planMemoryIndex``: the chunks and path rows a purge removes."""
+    """``planMemoryIndex``: indexed sources and cache rows selected for a purge."""
     if store is None:
         return IndexPlan()
     with closing(store.connect()) as db:
@@ -517,14 +528,26 @@ def plan_memory_index(
             fts_rows += db.execute(
                 f"SELECT COUNT(*) FROM chunks_fts WHERE id IN ({','.join('?' * len(batch))})", batch
             ).fetchone()[0]
-    return IndexPlan(chunks, sources, fts_rows)
+        cache_rows = 0
+        if session_ids and _index_table_exists(db, "memory_embedding_cache"):
+            cache_rows = db.execute("SELECT COUNT(*) FROM memory_embedding_cache").fetchone()[0]
+    return IndexPlan(chunks, sources, fts_rows, cache_rows, bool(session_ids))
 
 
 def purge_memory_index(store: Any, plan: IndexPlan) -> bool:
-    """Delete the planned chunks and path rows; ``True`` when anything was removed."""
-    if store is None or (not plan.chunks and not plan.sources):
+    """Purge index rows and unattributed cache vectors in one transaction.
+
+    A selected session forget clears the live cache even when its planned count
+    is zero: an in-flight provider may have populated it after the plan. Advancing
+    the private index generation prevents an older refresh from restoring those
+    vectors or publishing chunks prepared before this purge.
+    """
+    if store is None or (not plan.chunks and not plan.sources and not plan.purge_cache):
         return False
     with closing(store.connect()) as db, db:
+        # Own the write lock before clearing derived state and fencing its
+        # next publisher. Older external stores need neither private table.
+        db.execute("BEGIN IMMEDIATE")
         ids = [chunk_id for chunk_id, _path, _source in plan.chunks]
         for start in range(0, len(ids), 500):
             batch = ids[start : start + 500]
@@ -533,6 +556,20 @@ def purge_memory_index(store: Any, plan: IndexPlan) -> bool:
             db.execute(f"DELETE FROM chunks_fts WHERE id IN ({marks})", batch)
         for path, source in plan.sources:
             db.execute("DELETE FROM paths_fts WHERE path = ? AND source = ?", (path, source))
+        if _index_table_exists(db, INDEX_SOURCES_TABLE):
+            affected = {*plan.sources, *((path, source) for _id, path, source in plan.chunks)}
+            for path, source in affected:
+                db.execute(
+                    f"DELETE FROM {INDEX_SOURCES_TABLE} WHERE source = ? AND path = ?",
+                    (source, path),
+                )
+        if plan.purge_cache and _index_table_exists(db, "memory_embedding_cache"):
+            db.execute("DELETE FROM memory_embedding_cache")
+        if _index_table_exists(db, INDEX_SYNC_TABLE):
+            db.execute(
+                f"UPDATE {INDEX_SYNC_TABLE} SET revision = revision + 1, "
+                "needs_rebuild = 1 WHERE id = 1"
+            )
     return True
 
 
@@ -958,7 +995,7 @@ def _forget_workspace_memory(
             "indexSources": len(index_plan.sources),
             "ftsRows": index_plan.fts_rows,
             "vectorRows": 0,
-            "embeddingCacheRows": 0,
+            "embeddingCacheRows": index_plan.embedding_cache_rows,
             "shortTermEntries": len(short_term_entries) - len(retained_short_term),
             "seenHashScopes": removed_seen_scopes,
             "backups": rewritten_backups,
@@ -989,7 +1026,7 @@ def _forget_workspace_memory(
     # The marker has committed: a purge failure leaves it durable for the retry.
     if not lineage_is_current(ledger.list(agent_id)):
         return None
-    if purge_memory_index(store, index_plan):
+    if purge_memory_index(store, index_plan) and (index_plan.chunks or index_plan.sources):
         fence = getattr(store, "revision_fence", None)
         if fence is not None:
             # The chunk and source deletes bump the revision upstream (table triggers).

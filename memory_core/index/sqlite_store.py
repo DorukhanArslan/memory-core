@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import dataclasses
+import errno
+import hashlib
 import json
+import os
 import re
 import sqlite3
+import stat
 import unicodedata
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -15,8 +19,17 @@ from memory_core.config import MemoryConfig
 from memory_core.consolidation.origins import IndexRevisionFence
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.index.chunking import MemoryChunk, chunk_markdown
+from memory_core.index.embedding_cache import (
+    clear_memory_embedding_cache_identities,
+    collect_memory_cached_embeddings,
+    ensure_embedding_cache_schema,
+    is_valid_memory_embedding,
+    load_memory_embedding_cache,
+    upsert_memory_embedding_cache,
+    validate_memory_embedding_batch,
+)
 from memory_core.index.fts import bm25_rank_to_score, build_fts_query
-from memory_core.bootstrap._js import js_json_stringify, js_trim, locale_sort_key
+from memory_core.bootstrap._js import js_json_stringify, js_trim, js_utf8_encode, locale_sort_key
 from memory_core.index.cjk_chars import truncate_utf16_safe
 from memory_core.index.hybrid import (
     HybridKeywordResult,
@@ -40,6 +53,8 @@ from memory_core.index.keyword_search import (
 from memory_core.index.identity import (
     DEFAULT_FTS_TOKENIZER,
     FTS_ONLY_MODEL,
+    INDEX_SOURCES_TABLE,
+    INDEX_SYNC_TABLE,
     MEMORY_CHUNKING_VERSION,
     MEMORY_INDEX_META_KEY,
     MEMORY_INDEX_PROVENANCE_VERSION,
@@ -57,7 +72,7 @@ from memory_core.index.temporal_decay import (
     apply_temporal_decay_to_hybrid_results,
 )
 from memory_core.index.vector import cosine_similarity
-from memory_core.workspace import MemoryWorkspace
+from memory_core.workspace import MemoryFile, MemoryWorkspace, workspace_index_lock
 
 # OpenClaw caps per-keyword FTS fallback probes so long conversational queries
 # cannot fan out into unbounded sqlite work (memory-core manager.ts).
@@ -73,6 +88,69 @@ CHUNK_TOKENS = 400
 CHUNK_OVERLAP = 80
 # memory-core always indexes memory files and session transcripts.
 CONFIGURED_SOURCES = ("memory", "sessions")
+# Native src/agents/memory-search.ts DEFAULT_CACHE_MAX_ENTRIES.
+EMBEDDING_CACHE_MAX_ENTRIES = 50_000
+
+
+class MemoryIndexSourceChangedError(RuntimeError):
+    """A prepared source or index generation changed before publication."""
+
+
+@dataclasses.dataclass(frozen=True)
+class IndexSourceSnapshot:
+    path: str
+    source: str
+    hash: str
+    text: str
+    mtime: float
+    size: int
+    kind: str = "markdown"
+
+
+def _text_hash(text: str) -> str:
+    return hashlib.sha256(js_utf8_encode(text)).hexdigest()
+
+
+def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:
+    """Inspect one source without changing newline or invalid-UTF-8 semantics.
+
+    Native ``buildFileEntry`` hashes the replacement-decoded text, retaining
+    CRLF bytes in its string. Session projections supplied by the host are
+    authoritative and must not be replaced with their raw JSONL file contents.
+    The final component is opened without following symlinks and special files
+    are never read, including a FIFO introduced after discovery.
+    """
+    if file.index_text is not None:
+        text = file.index_text
+        try:
+            info = file.abs_path.stat()
+            mtime = info.st_mtime_ns / 1_000_000
+        except (FileNotFoundError, NotADirectoryError):
+            mtime = 0.0
+        return IndexSourceSnapshot(
+            file.rel_path, file.source, _text_hash(text), text, mtime, len(js_utf8_encode(text)),
+        )
+    try:
+        info = file.abs_path.lstat()
+        if not stat.S_ISREG(info.st_mode):
+            return None
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        descriptor = os.open(file.abs_path, flags)
+        with os.fdopen(descriptor, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode):
+                return None
+            raw = stream.read()
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    except OSError as error:
+        if error.errno == errno.ELOOP:
+            return None
+        raise
+    text = raw.decode("utf-8", errors="replace")
+    return IndexSourceSnapshot(
+        file.rel_path, file.source, _text_hash(text), text, info.st_mtime_ns / 1_000_000, info.st_size,
+    )
 
 
 def validate_store_config(config: MemoryConfig, embeddings: EmbeddingProvider | None) -> Path:
@@ -153,6 +231,23 @@ class SQLiteMemoryStore:
                 f"CREATE TABLE IF NOT EXISTS {MEMORY_INDEX_META_TABLE} "
                 "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
+            ensure_embedding_cache_schema(db)
+            # Source state is private to this Python schema. An empty source
+            # still gets a row so later deletion/reopen decisions are sound.
+            db.execute(
+                f"CREATE TABLE IF NOT EXISTS {INDEX_SOURCES_TABLE} ("
+                "source TEXT NOT NULL, path TEXT NOT NULL, hash TEXT NOT NULL, "
+                "mtime REAL NOT NULL, size INTEGER NOT NULL, chunk_count INTEGER NOT NULL, "
+                "PRIMARY KEY (source, path))"
+            )
+            # An internal generation protects selective publications even when
+            # the host has not supplied a separate origins/revision fence.
+            db.execute(
+                f"CREATE TABLE IF NOT EXISTS {INDEX_SYNC_TABLE} ("
+                "id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL, "
+                "workspace TEXT, needs_rebuild INTEGER NOT NULL DEFAULT 0)"
+            )
+            db.execute(f"INSERT OR IGNORE INTO {INDEX_SYNC_TABLE}(id, revision) VALUES (1, 0)")
 
     def _index_provider(self) -> dict[str, str] | None:
         # The embedder only counts while vector search is on; otherwise the
@@ -161,15 +256,22 @@ class SQLiteMemoryStore:
             return None
         return {"id": self.embeddings.provider_id, "model": self.embeddings.model}
 
-    def _provider_key(self) -> str:
+    def _provider_identities(self) -> list[dict[str, str]]:
         cache_key_data = getattr(self.embeddings, "cache_key_data", None)
         if callable(cache_key_data):
             cache_key_data = cache_key_data()
+        aliases = getattr(self.embeddings, "index_identity_aliases", ())
+        if callable(aliases):
+            aliases = aliases()
         provider = self._index_provider()
         return resolve_memory_index_provider_identities(
             provider,
             cache_key_data=cache_key_data if provider is not None else None,
-        )[0]["providerKey"]
+            aliases=aliases if provider is not None else (),
+        )
+
+    def _provider_key(self) -> str:
+        return self._provider_identities()[0]["providerKey"]
 
     def read_index_meta(self) -> object:
         """The stored index identity JSON, or ``None`` (``readMeta``)."""
@@ -206,13 +308,14 @@ class SQLiteMemoryStore:
             fts_tokenizer=DEFAULT_FTS_TOKENIZER,
         )
 
-    def _build_index_meta(self, vector_dims: int | None) -> dict:
+    def _build_index_meta(
+        self, vector_dims: int | None, *, provider: dict[str, str] | None, provider_key: str,
+    ) -> dict:
         # manager-sync-ops.ts nextMeta (same key order).
-        provider = self._index_provider()
         meta = {
             "model": provider["model"] if provider is not None else FTS_ONLY_MODEL,
             "provider": provider["id"] if provider is not None else NO_PROVIDER_ID,
-            "providerKey": self._provider_key(),
+            "providerKey": provider_key,
             "sources": resolve_configured_sources_for_meta(CONFIGURED_SOURCES),
             "scopeHash": resolve_configured_scope_hash(),
             "chunkTokens": CHUNK_TOKENS,
@@ -225,101 +328,261 @@ class SQLiteMemoryStore:
             meta["vectorDims"] = vector_dims
         return meta
 
-    def reindex(self, workspace: MemoryWorkspace) -> int:
-        """Rebuild the index from every discovered file; returns the files indexed.
+    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:
+        """Refresh changed sources and return the number of eligible files.
 
-        Markdown is decoded like upstream ``buildFileEntry``
-        (``packages/memory-host-sdk/src/host/internal.ts:292-304``):
-        ``Buffer.toString("utf-8")`` replaces invalid bytes, so an AppleDouble
-        ``._*.md`` or a Latin-1 note never fails the reindex, and a file that
-        vanished after discovery is skipped (upstream returns ``null``).
+        ``force=True`` reparses all sources for explicit index repair, while
+        still reusing valid provider-scoped cached embeddings. Every refresh
+        discovers and replacement-decodes the current sources, as
+        upstream source hashing does. Only matching source hashes under a valid
+        index identity reuse existing chunks. Generated document embeddings are
+        persisted separately after response/source/generation validation, so a
+        later index publication failure can retain that valid reusable batch.
 
-        With a ``revision_fence`` (:class:`~memory_core.consolidation.origins.IndexRevisionFence`) the
-        rebuild is published like upstream's (``manager-sync-ops.ts``, ``publishMemoryDatabaseTables``):
-        the ``memory_index_state`` revision is read before anything is built and compared again in the
-        publication transaction, so a forget (a session tombstone) or any other index mutation in between
-        raises :class:`~memory_core.consolidation.origins.MemoryIndexRevisionConflictError` and leaves the
-        published index untouched (the caller retries); a successful publication bumps the revision (the
-        index tables' triggers upstream), which fails a rebuild that was prepared before it. See the fence
-        for what is atomic when the index lives in another file than the ledger.
+        Chunk/FTS/path/source/meta changes publish in one immediate transaction.
+        The private generation prevents two selective publications from mixing
+        prepared revisions. A supplied origins fence is checked in that same
+        transaction when it shares this database; its separate-database gap is
+        unchanged and remains documented on IndexRevisionFence.
+        Cooperating curated write/refresh pairs and refreshes share a reentrant
+        process-local workspace guard; raw filesystem and external-process
+        changes are still checked rather than retried implicitly.
         """
+        with workspace_index_lock(workspace.root):
+            return self._reindex_locked(workspace, force=force)
+
+    def _reindex_locked(self, workspace: MemoryWorkspace, *, force: bool) -> int:
         fence = self.revision_fence
-        expected_revision = fence.read() if fence is not None else None
-        files = workspace.discover_indexable_files()
-        chunks: list[MemoryChunk] = []
-        indexed_files = 0
-        for file in files:
-            if file.index_text is not None:
-                text = file.index_text
-            else:
-                try:
-                    text = file.abs_path.read_text(encoding="utf-8", errors="replace")
-                except FileNotFoundError:
-                    continue
-            indexed_files += 1
-            chunks.extend(
-                chunk_markdown(
-                    file.rel_path,
-                    text,
-                    source=file.source,
-                    target_tokens=CHUNK_TOKENS,
-                    overlap_tokens=CHUNK_OVERLAP,
-                    # manager-index-preparation.ts: the curated files chunk per entry.
-                    per_entry=file.source == "memory"
-                    and file.rel_path.replace("\\", "/") in ("MEMORY.md", "USER.md"),
-                )
-            )
-
-        if self.flags.vector_search and chunks:
-            embeddings = self.embeddings.embed_documents([chunk.text for chunk in chunks])
-        else:
-            embeddings = [[] for _ in chunks]
-
-        vector_dims = len(embeddings[0]) if embeddings and embeddings[0] else None
+        expected_fence = fence.read() if fence is not None else None
         same_database = fence is not None and fence.same_database(self.path)
-        if fence is not None and not same_database:
-            fence.assert_unchanged(expected_revision)
+        provider = self._index_provider()
+        identities = self._provider_identities()
+        provider_key = identities[0]["providerKey"]
+        next_meta = self._build_index_meta(None, provider=provider, provider_key=provider_key)
+        chunk_tokens, chunk_overlap = next_meta["chunkTokens"], next_meta["chunkOverlap"]
+        workspace_root = str(workspace.root.resolve())
         with self.connect() as db:
-            if fence is not None and same_database:
-                # The publication transaction owns the write lock before the revision is compared.
-                db.execute("BEGIN IMMEDIATE")
-                fence.assert_unchanged_in(db, expected_revision)
-            db.execute("DELETE FROM chunks")
-            db.execute("DELETE FROM chunks_fts")
-            db.execute("DELETE FROM paths_fts")
-            db.executemany(
-                "INSERT INTO paths_fts(path, source) VALUES (?, ?)",
-                sorted({(chunk.path, chunk.source) for chunk in chunks}),
+            generation, previous_workspace, needs_rebuild = db.execute(
+                f"SELECT revision, workspace, needs_rebuild FROM {INDEX_SYNC_TABLE} WHERE id = 1"
+            ).fetchone()
+            previous_sources = {
+                (source, path): (chunk_hash, chunk_count)
+                for source, path, chunk_hash, chunk_count in db.execute(
+                    f"SELECT source, path, hash, chunk_count FROM {INDEX_SOURCES_TABLE}"
+                )
+            }
+            previous_counts = {
+                (source, path): count for source, path, count in db.execute(
+                    "SELECT source, path, COUNT(*) FROM chunks GROUP BY source, path"
+                )
+            }
+        meta = self.read_index_meta()
+        rebuild = (
+            force or bool(needs_rebuild) or previous_workspace != workspace_root
+            or self.index_identity()["status"] != "valid"
+        )
+        snapshots = self._read_source_snapshots(workspace)
+        changed = {
+            key for key, entry in snapshots.items()
+            if rebuild or previous_sources.get(key) != (entry.hash, previous_counts.get(key, 0))
+        }
+        removed = (set(previous_sources) | set(previous_counts)) - snapshots.keys()
+        remaining_old = snapshots.keys() - changed
+        active_dimensions = (
+            meta.get("vectorDims") if provider is not None and isinstance(meta, dict)
+            and any(previous_counts.get(key, 0) for key in remaining_old) else None
+        )
+        if active_dimensions is not None and (
+            isinstance(active_dimensions, bool) or not isinstance(active_dimensions, int)
+            or active_dimensions <= 0
+        ):
+            # A malformed legacy dimension cannot authorize mixing old vectors
+            # with newly generated ones. Rebuild all sources instead.
+            rebuild = True
+            changed = set(snapshots)
+            remaining_old = set()
+            active_dimensions = None
+
+        def assert_owner(db: sqlite3.Connection) -> None:
+            if fence is not None:
+                if same_database:
+                    fence.assert_unchanged_in(db, expected_fence)
+                else:
+                    fence.assert_unchanged(expected_fence)
+            revision = db.execute(
+                f"SELECT revision FROM {INDEX_SYNC_TABLE} WHERE id = 1"
+            ).fetchone()[0]
+            if revision != generation:
+                raise MemoryIndexSourceChangedError(
+                    "Memory index changed while refresh was being prepared; retry the index refresh."
+                )
+            if (self._index_provider() != provider or self._provider_identities() != identities
+                    or self._build_index_meta(None, provider=provider, provider_key=provider_key) != next_meta
+                    or str(workspace.root.resolve()) != workspace_root):
+                raise MemoryIndexSourceChangedError(
+                    "Memory index owner changed while refresh was being prepared; retry the index refresh."
+                )
+
+        def assert_sources_current() -> None:
+            # Prefer the established ledger diagnostic when forget changed the
+            # revision, before another host projection could hide the cause.
+            if fence is not None:
+                fence.assert_unchanged(expected_fence)
+            current = self._read_source_snapshots(workspace)
+            if ({key: entry.hash for key, entry in current.items()}
+                    != {key: entry.hash for key, entry in snapshots.items()}):
+                raise MemoryIndexSourceChangedError(
+                    "Memory source changed while refresh was being prepared; retry the index refresh."
+                )
+
+        if not rebuild and not changed and not removed:
+            with self.connect() as db:
+                assert_owner(db)
+            return len(snapshots)
+
+        prepared: dict[tuple[str, str], list[MemoryChunk]] = {
+            key: chunk_markdown(
+                entry.path, entry.text, source=entry.source,
+                target_tokens=chunk_tokens, overlap_tokens=chunk_overlap,
+                per_entry=entry.source == "memory" and entry.path.replace("\\", "/")
+                in ("MEMORY.md", "USER.md"),
             )
-            for chunk, embedding in zip(chunks, embeddings, strict=True):
-                db.execute(
-                    "INSERT INTO chunks VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        chunk.id,
-                        chunk.path,
-                        chunk.start_line,
-                        chunk.end_line,
-                        chunk.source,
-                        chunk.text,
-                        json.dumps(embedding),
-                    ),
+            for key, entry in snapshots.items() if key in changed
+        }
+        chunks = [chunk for source_chunks in prepared.values() for chunk in source_chunks]
+        embeddings: list[list[float]] = [[] for _ in chunks]
+        if provider is not None and chunks:
+            chunk_refs = [{"hash": _text_hash(chunk.text)} for chunk in chunks]
+            with self.connect() as db:
+                cached = load_memory_embedding_cache(
+                    db, enabled=True, provider_identities=identities,
+                    hashes=[entry["hash"] for entry in chunk_refs],
                 )
-                db.execute(
-                    "INSERT INTO chunks_fts(id, text) VALUES (?, ?)",
-                    (chunk.id, chunk.text),
+            # Hits and new vectors must occupy one space, including across
+            # providers' alias identities and a process restart.
+            for chunk_hash, embedding in list(cached.items()):
+                valid = (is_valid_memory_embedding(embedding) if active_dimensions is None
+                         else is_valid_memory_embedding(embedding, active_dimensions))
+                if not valid:
+                    del cached[chunk_hash]
+                elif active_dimensions is None:
+                    active_dimensions = len(embedding)
+            collected = collect_memory_cached_embeddings(chunk_refs, cached)
+            embeddings = collected["embeddings"]
+            missing = collected["missing"]
+            if missing:
+                generated = self.embeddings.embed_documents(
+                    [chunks[item["index"]].text for item in missing]
                 )
-            # Fresh identity in the same transaction as the chunks (writeMeta).
+                try:
+                    dimensions = validate_memory_embedding_batch(
+                        generated, len(missing), dimensions=active_dimensions,
+                    )
+                except ValueError:
+                    if (active_dimensions is not None and isinstance(generated, list)
+                            and any(is_valid_memory_embedding(value)
+                                    and len(value) != active_dimensions for value in generated)):
+                        # Ambiguous dimensions cannot be borrowed on the next
+                        # attempt. Preserve published rows, clear this space,
+                        # and force a complete refresh on the explicit retry.
+                        with self.connect() as db:
+                            db.execute("BEGIN IMMEDIATE")
+                            assert_owner(db)
+                            clear_memory_embedding_cache_identities(db, identities)
+                            db.execute(
+                                f"UPDATE {INDEX_SYNC_TABLE} SET needs_rebuild = 1, "
+                                "revision = revision + 1 WHERE id = 1"
+                            )
+                    raise
+                active_dimensions = dimensions
+                assert_sources_current()
+                with self.connect() as db:
+                    db.execute("BEGIN IMMEDIATE")
+                    assert_owner(db)
+                    upsert_memory_embedding_cache(
+                        db, enabled=True, provider=provider, provider_key=provider_key,
+                        max_entries=EMBEDDING_CACHE_MAX_ENTRIES,
+                        entries=[{"hash": chunk_refs[item["index"]]["hash"], "embedding": value}
+                                 for item, value in zip(missing, generated, strict=True)],
+                    )
+                for item, value in zip(missing, generated, strict=True):
+                    embeddings[item["index"]] = value
+
+        assert_sources_current()
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            assert_owner(db)
+            if rebuild:
+                db.execute("DELETE FROM chunks")
+                db.execute("DELETE FROM chunks_fts")
+                db.execute("DELETE FROM paths_fts")
+                db.execute(f"DELETE FROM {INDEX_SOURCES_TABLE}")
+            else:
+                # An external purge may have removed chunk rows before the
+                # corresponding FTS rows. Do not duplicate such orphaned IDs
+                # when a count mismatch triggers a source repair.
+                db.execute("DELETE FROM chunks_fts WHERE id NOT IN (SELECT id FROM chunks)")
+                for source, path in changed | removed:
+                    db.execute(
+                        "DELETE FROM chunks_fts WHERE id IN "
+                        "(SELECT id FROM chunks WHERE source = ? AND path = ?)", (source, path),
+                    )
+                    db.execute("DELETE FROM chunks WHERE source = ? AND path = ?", (source, path))
+                    db.execute("DELETE FROM paths_fts WHERE source = ? AND path = ?", (source, path))
+                    db.execute(
+                        f"DELETE FROM {INDEX_SOURCES_TABLE} WHERE source = ? AND path = ?",
+                        (source, path),
+                    )
+            offset = 0
+            for key, source_chunks in prepared.items():
+                entry = snapshots[key]
+                if source_chunks:
+                    db.execute("INSERT INTO paths_fts(path, source) VALUES (?, ?)",
+                               (entry.path, entry.source))
+                for chunk in source_chunks:
+                    db.execute(
+                        "INSERT INTO chunks VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (chunk.id, chunk.path, chunk.start_line, chunk.end_line,
+                         chunk.source, chunk.text, json.dumps(embeddings[offset])),
+                    )
+                    db.execute("INSERT INTO chunks_fts(id, text) VALUES (?, ?)",
+                               (chunk.id, chunk.text))
+                    offset += 1
+                db.execute(
+                    f"INSERT INTO {INDEX_SOURCES_TABLE} VALUES (?, ?, ?, ?, ?, ?)",
+                    (entry.source, entry.path, entry.hash, entry.mtime, entry.size, len(source_chunks)),
+                )
+            has_chunks = bool(chunks) or any(previous_counts.get(key, 0) for key in remaining_old)
+            vector_dims = active_dimensions if provider is not None and has_chunks else None
+            published_meta = dict(next_meta)
+            if vector_dims is not None:
+                published_meta["vectorDims"] = vector_dims
             db.execute(
                 f"INSERT INTO {MEMORY_INDEX_META_TABLE} (key, value) VALUES (?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                (MEMORY_INDEX_META_KEY, js_json_stringify(self._build_index_meta(vector_dims))),
+                (MEMORY_INDEX_META_KEY, js_json_stringify(published_meta)),
+            )
+            db.execute(
+                f"UPDATE {INDEX_SYNC_TABLE} SET revision = revision + 1, "
+                "workspace = ?, needs_rebuild = 0 WHERE id = 1", (workspace_root,),
             )
             if fence is not None and same_database:
                 fence.bump_in(db)
         if fence is not None and not same_database:
             fence.bump()
+        return len(snapshots)
 
-        return indexed_files
+    @staticmethod
+    def _read_source_snapshots(workspace: MemoryWorkspace) -> dict[tuple[str, str], IndexSourceSnapshot]:
+        snapshots = {}
+        for file in workspace.discover_indexable_files():
+            entry = read_index_source(file)
+            if entry is not None:
+                key = (entry.source, entry.path)
+                if key in snapshots:
+                    raise ValueError("Duplicate memory index source")
+                snapshots[key] = entry
+        return snapshots
 
     def count_chunks(self) -> int:
         with self.connect() as db:

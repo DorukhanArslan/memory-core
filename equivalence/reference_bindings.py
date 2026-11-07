@@ -24,6 +24,13 @@ _TARGET = "packages/memory-host-sdk/src/host/internal.ts"
 _HASH = "packages/memory-host-sdk/src/host/hash.ts"
 _CHUNKS = "packages/memory-host-sdk/src/host/markdown-chunks.ts"
 _BINDINGS = ("hashText", "MEMORY_CHUNKING_VERSION", "normalizeExtraMemoryPathEntries")
+_CACHE_PARENT = "extensions/memory-core/src/memory/manager-embedding-cache.ts"
+_VECTOR = "packages/memory-host-sdk/src/host/embedding-vector.ts"
+_SQL_FACADE = "src/plugin-sdk/sqlite-runtime.ts"
+_SQL_TARGET = "src/infra/kysely-sync.ts"
+_CACHE_BINDINGS = ("decodeMemoryEmbedding", "encodeMemoryEmbedding")
+_SQL_BINDINGS = ("compileSqliteQueryBindings", "executeSqliteQuerySync",
+                 "getNodeSqliteKysely", "iterateSqliteQuerySync")
 
 # A release change requires deliberate review of every edge, not automatic
 # acceptance of whichever exports happen to appear in a caller's checkout.
@@ -34,6 +41,12 @@ _SOURCE_SHA256 = {
     _TARGET: "f45f4006c1f92c6364059532c9ba309533b68c4cd7a6d7516fd017caa9330591",
     _HASH: "face88c71f4d752c24052ab299771ddf55c1c54d76ed2ebac8618a7812818683",
     _CHUNKS: "caae77122117210dba507956489f1e20f4015a31113e017e9e0b57f72ad78f1b",
+}
+_CACHE_SOURCE_SHA256 = {
+    _CACHE_PARENT: "75fb4853466385740e4150d247797516e4c7698896fb63e6acb3c546faea5f09",
+    _VECTOR: "515e3d73f9e6adff455f6f3db477d253fac0a10e44b53179d47683d101068de9",
+    _SQL_FACADE: "6fa47548183e9c9425d541051cecbb6f6fb1b611dbe8e5b8bd78fc6d698ce903",
+    _SQL_TARGET: "b00ef2f4a7e5fd229fab29c43729a6ebdce6d9900ddd3c856178f3ecc5d834d7",
 }
 _NAMED_FROM = re.compile(
     r"(?m)^(?P<kind>import|export)\s+(?P<types>type\s+)?"
@@ -86,7 +99,7 @@ def _edge(sources: Mapping[str, str], module: str, specifier: str,
         raise ReferenceBindingError("A projected binding is not an unchanged direct named binding.")
     match = accepted[0]
     if kind == "import" and _runtime_names(match) != [(name, name) for name in bindings]:
-        raise ReferenceBindingError("The identity kernel imports unexpected runtime bindings.")
+        raise ReferenceBindingError("A projected kernel imports unexpected runtime bindings.")
     return {
         "path": module,
         "specifier": specifier,
@@ -122,7 +135,36 @@ def _trace_projection(sources: Mapping[str, str]) -> list[dict]:
     return edges
 
 
-def prepare_reference_bindings(checkout: Path) -> dict:
+def _trace_cache_projections(sources: Mapping[str, str]) -> list[dict]:
+    vectors = [
+        _edge(sources, _CACHE_PARENT, _SPECIFIER, _CACHE_BINDINGS, kind="import"),
+        _edge(sources, _FACADE, "../../packages/memory-host-sdk/src/engine-storage.js", _CACHE_BINDINGS),
+        _edge(sources, _ENGINE, "./host/internal.js", _CACHE_BINDINGS),
+        _edge(sources, _TARGET, "./embedding-vector.js", _CACHE_BINDINGS),
+    ]
+    sql = [
+        _edge(sources, _CACHE_PARENT, "openclaw/plugin-sdk/sqlite-runtime", _SQL_BINDINGS,
+              kind="import"),
+        _edge(sources, _SQL_FACADE, "../infra/kysely-sync.js", _SQL_BINDINGS),
+    ]
+    for chain, module, names in ((vectors, _VECTOR, _CACHE_BINDINGS),
+                                  (sql, _SQL_TARGET, _SQL_BINDINGS)):
+        for name in names:
+            anchor = f"export function {name}"
+            matches = list(re.finditer(re.escape(anchor) + r"(?:\(|<)", sources[module]))
+            if len(matches) != 1:
+                raise ReferenceBindingError("A projected cache binding has no unique native declaration.")
+            chain.append({"path": module, "kind": "declaration", "anchor": anchor,
+                          "line": sources[module][:matches[0].start()].count("\n") + 1})
+    return [
+        {"resolution": {"parent": _CACHE_PARENT, "specifier": _SPECIFIER,
+                        "target": _VECTOR, "bindings": list(_CACHE_BINDINGS)}, "chain": vectors},
+        {"resolution": {"parent": _CACHE_PARENT, "specifier": "openclaw/plugin-sdk/sqlite-runtime",
+                        "target": _SQL_TARGET, "bindings": list(_SQL_BINDINGS)}, "chain": sql},
+    ]
+
+
+def prepare_reference_bindings(checkout: Path, *, include_cache: bool = False) -> dict:
     """Return an exact-parent import allowlist and transparent projection evidence.
 
     The loader must match ``parent``, ``specifier`` and ``target`` together. It
@@ -138,7 +180,8 @@ def prepare_reference_bindings(checkout: Path) -> dict:
         raise ReferenceBindingError("Projected bindings require unmodified tracked native files.")
     sources = {}
     evidence = []
-    for relative, expected in _SOURCE_SHA256.items():
+    expected_sources = {**_SOURCE_SHA256, **(_CACHE_SOURCE_SHA256 if include_cache else {})}
+    for relative, expected in expected_sources.items():
         source = checkout / relative
         try:
             if source.is_symlink() or not source.resolve().is_relative_to(checkout):
@@ -155,7 +198,7 @@ def prepare_reference_bindings(checkout: Path) -> dict:
     chain = _trace_projection(sources)
     projection = {"parent": _PARENT, "specifier": _SPECIFIER, "target": _TARGET,
                   "bindings": list(_BINDINGS)}
-    return {
+    result = {
         "schemaVersion": 1,
         "kind": "reference-binding-projection",
         "reference": {"tag": _TAG, "commit": _COMMIT},
@@ -163,7 +206,7 @@ def prepare_reference_bindings(checkout: Path) -> dict:
         "projectionEvidence": [{
             **projection,
             "scope": "identity-kernel-only",
-            "sources": evidence,
+            "sources": [item for item in evidence if item["path"] in _SOURCE_SHA256],
             "chain": chain,
             "facadeExecutionVerified": False,
             "fullManagerExecutionVerified": False,
@@ -175,3 +218,17 @@ def prepare_reference_bindings(checkout: Path) -> dict:
             ),
         }],
     }
+    if include_cache:
+        for item in _trace_cache_projections(sources):
+            resolution, chain = item["resolution"], item["chain"]
+            paths = {edge["path"] for edge in chain}
+            result["allowedResolutions"].append(resolution)
+            result["projectionEvidence"].append({
+                **resolution, "scope": "embedding-cache-kernel-only", "chain": chain,
+                "sources": [source for source in evidence if source["path"] in paths],
+                "facadeExecutionVerified": False, "fullManagerExecutionVerified": False,
+                "note": "Original cache, codec and SQLite query implementations execute unchanged. "
+                        "Only their verified direct named bindings bypass broad facade initialization; "
+                        "provider dispatch, full sync and manager lifecycle are not verified here.",
+            })
+    return result

@@ -188,12 +188,26 @@ def test_runner_failures_are_private_not_successful_cases(suite, mode):
     assert (suite["oracle_path"].parent / "dispatches").read_text().count("dispatch") == 1
 
 
-def test_timeout_does_not_retry_the_reference_process(suite):
+def test_timeout_does_not_retry_the_reference_process(suite, monkeypatch):
     suite["oracle_path"].write_text("sleep")
+    original_popen = subprocess.Popen
+    launches = []
+
+    def count_reference_process(command, *args, **kwargs):
+        if command[:2] == [str(suite["node"]), str(suite["oracle_path"])]:
+            launches.append(command)
+        return original_popen(command, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", count_reference_process)
     report, code = run_suite(**suite, smoke=True, timeout_seconds=0.05)
     assert code == 2
     assert report["errors"][0]["code"] == "oracle-timeout"
-    assert (suite["oracle_path"].parent / "dispatches").read_text().count("dispatch") == 1
+    assert len(launches) == 1
+    # A busy runner may expire the deadline before the child reaches its first
+    # write. Count process launches rather than assuming startup finished.
+    dispatches = suite["oracle_path"].parent / "dispatches"
+    if dispatches.exists():
+        assert dispatches.read_text().count("dispatch") == 1
 
 
 def test_secrets_and_node_options_do_not_cross_to_oracle(suite, monkeypatch):

@@ -41,7 +41,8 @@ Safety rules shared by every operation:
   and refused when the file changed since it was read. Within one process,
   each file's read, check and replace run under a per-file lock
   (``memory_core.workspace.workspace_file_lock``), so parallel
-  tool calls (a host thread pool) are serialized and no edit is lost; writers
+  tool calls (a host thread pool) are serialized and no edit is lost.
+  The per-file lock is released before ``after_write`` runs. Writers
   in other processes are not locked out, only caught by the re-read check.
 - A write that grows a file is refused when the file would exceed its policy
   cap or when the workspace bootstrap budget
@@ -61,6 +62,10 @@ during the reindex), the write stands and the result carries
 ``after_write_error`` (``afterWriteError`` in the tool payload, next to
 ``"status": "ok"``), so the model is never told that a committed write failed
 and never retries it.
+
+``Memory.curator()`` adds a reentrant process-local workspace guard around each
+write and its default synchronous index-refresh callback. A standalone curator
+or a caller-supplied replacement callback retains the unlocked hook contract.
 
 For model tool calls, ``MemoryCurator.tool_definitions()`` returns
 provider-neutral specs (``name``, ``description``, JSON-schema

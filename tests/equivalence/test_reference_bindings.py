@@ -142,3 +142,88 @@ def test_reference_root_cannot_be_a_nested_directory(checkout):
 def test_missing_reference_is_not_projection_evidence(tmp_path):
     with pytest.raises(bindings.ReferenceBindingError):
         bindings.prepare_reference_bindings(tmp_path / "missing")
+
+
+@pytest.fixture
+def cache_sources(sources):
+    sources = deepcopy(sources)
+    vectors = ", ".join(bindings._CACHE_BINDINGS)
+    sql = ", ".join(bindings._SQL_BINDINGS)
+    for module in (bindings._FACADE, bindings._ENGINE):
+        sources[module] = sources[module].replace(" } from", f", {vectors} }} from")
+    sources[bindings._TARGET] += f'export {{ {vectors} }} from "./embedding-vector.js";\n'
+    sources[bindings._CACHE_PARENT] = (
+        f'import {{ {vectors}, type MemoryChunk }} from "{bindings._SPECIFIER}";\n'
+        f'import {{ {sql}, type Generated }} from "openclaw/plugin-sdk/sqlite-runtime";\n'
+    )
+    sources[bindings._VECTOR] = "\n".join(
+        f"export function {name}() {{}}" for name in bindings._CACHE_BINDINGS)
+    sources[bindings._SQL_FACADE] = f'export {{ {sql} }} from "../infra/kysely-sync.js";\n'
+    sources[bindings._SQL_TARGET] = "\n".join(
+        f"export function {name}<T>() {{}}" for name in bindings._SQL_BINDINGS)
+    return sources
+
+
+def test_cache_sql_and_codec_imports_trace_to_original_declarations(cache_sources):
+    before = deepcopy(cache_sources)
+    projections = bindings._trace_cache_projections(cache_sources)
+    assert len(projections) == 2
+    assert {item["resolution"]["target"] for item in projections} == {
+        bindings._VECTOR, bindings._SQL_TARGET,
+    }
+    assert all(item["resolution"]["parent"] == bindings._CACHE_PARENT for item in projections)
+    assert all(len(item["chain"]) == 6 for item in projections)
+    assert cache_sources == before
+
+
+@pytest.mark.parametrize("change", [
+    "codec-alias", "codec-type-only", "codec-owner", "sql-alias", "sql-owner",
+    "sql-extra-import", "sql-missing-declaration", "codec-duplicate-declaration",
+])
+def test_changed_cache_binding_provenance_is_rejected(cache_sources, change):
+    if change == "codec-alias":
+        cache_sources[bindings._TARGET] = cache_sources[bindings._TARGET].replace(
+            "decodeMemoryEmbedding", "other as decodeMemoryEmbedding")
+    elif change == "codec-type-only":
+        cache_sources[bindings._TARGET] = cache_sources[bindings._TARGET].replace(
+            "export { decodeMemoryEmbedding", "export type { decodeMemoryEmbedding")
+    elif change == "codec-owner":
+        cache_sources[bindings._TARGET] = cache_sources[bindings._TARGET].replace("embedding-vector", "other")
+    elif change == "sql-alias":
+        cache_sources[bindings._SQL_FACADE] = cache_sources[bindings._SQL_FACADE].replace(
+            "getNodeSqliteKysely", "other as getNodeSqliteKysely")
+    elif change == "sql-owner":
+        cache_sources[bindings._SQL_FACADE] = cache_sources[bindings._SQL_FACADE].replace("kysely-sync", "other")
+    elif change == "sql-extra-import":
+        cache_sources[bindings._CACHE_PARENT] = cache_sources[bindings._CACHE_PARENT].replace(
+            "type Generated", "unreviewedRuntime")
+    elif change == "sql-missing-declaration":
+        cache_sources[bindings._SQL_TARGET] = ""
+    else:
+        cache_sources[bindings._VECTOR] *= 2
+    with pytest.raises(bindings.ReferenceBindingError):
+        bindings._trace_cache_projections(cache_sources)
+
+
+def test_prepared_cache_bindings_exclude_manager_and_facade_execution(checkout, cache_sources, monkeypatch):
+    for relative, content in cache_sources.items():
+        path = checkout / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    subprocess.run(["git", "add", "."], cwd=checkout, check=True)
+    subprocess.run(["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.test",
+                    "commit", "-qm", "cache provenance fixture"], cwd=checkout, check=True)
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=checkout).decode().strip()
+    monkeypatch.setattr(bindings, "_COMMIT", commit)
+    for mapping in ("_SOURCE_SHA256", "_CACHE_SOURCE_SHA256"):
+        monkeypatch.setattr(bindings, mapping, {
+            relative: hashlib.sha256(cache_sources[relative].encode()).hexdigest()
+            for relative in getattr(bindings, mapping)
+        })
+    result = bindings.prepare_reference_bindings(checkout, include_cache=True)
+    assert len(result["allowedResolutions"]) == 3
+    assert [item["scope"] for item in result["projectionEvidence"]] == [
+        "identity-kernel-only", "embedding-cache-kernel-only", "embedding-cache-kernel-only",
+    ]
+    assert all(not item["facadeExecutionVerified"] and not item["fullManagerExecutionVerified"]
+               for item in result["projectionEvidence"])

@@ -198,12 +198,25 @@ def _collect_memory_files_from_dir(directory: Path, files: list[Path]) -> None:
 # daily append read, check and write under it, so parallel tool calls never interleave.
 _FILE_LOCKS: dict[tuple[str, str], threading.Lock] = {}
 _FILE_LOCKS_GUARD = threading.Lock()
+_INDEX_LOCKS: dict[str, threading.RLock] = {}
 
 
 def workspace_file_lock(root: Path, rel_path: str) -> threading.Lock:
     """The process-wide write lock of ``rel_path`` under the (resolved) workspace ``root``."""
     with _FILE_LOCKS_GUARD:
         return _FILE_LOCKS.setdefault((str(root), rel_path), threading.Lock())
+
+
+def workspace_index_lock(root: Path) -> threading.RLock:
+    """Serialize cooperating index refreshes and curated write/refresh pairs.
+
+    Reentrancy lets a committed curated write refresh its index, and permits
+    same-thread host callbacks. External processes and raw filesystem writers
+    remain subject to the source and database generation checks.
+    """
+    key = str(root.resolve())
+    with _FILE_LOCKS_GUARD:
+        return _INDEX_LOCKS.setdefault(key, threading.RLock())
 
 
 def check_writable_memory_file(root: Path, rel_path: str) -> None:

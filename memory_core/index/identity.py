@@ -23,9 +23,12 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from memory_core.bootstrap._js import js_json_stringify, js_trim
+from memory_core.project_name import PACKAGE_NAME
 
 MEMORY_INDEX_META_TABLE = "memory_index_meta"
 MEMORY_INDEX_META_KEY = "memory_index_meta_v1"
+INDEX_SOURCES_TABLE = f"{PACKAGE_NAME}_index_sources"
+INDEX_SYNC_TABLE = f"{PACKAGE_NAME}_index_sync"
 DEFAULT_FTS_TOKENIZER = "unicode61"
 # packages/memory-host-sdk/src/host/multimodal.ts DEFAULT_MEMORY_MULTIMODAL_MAX_FILE_BYTES.
 DEFAULT_MEMORY_MULTIMODAL_MAX_FILE_BYTES = 10 * 1024 * 1024

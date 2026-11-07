@@ -89,6 +89,7 @@ Stored notes do not change the model's weights.
 | File in the workspace | Purpose |
 | --- | --- |
 | `MEMORY.md` | Long-term notes |
+| `USER.md` | User preferences and standing instructions |
 | `memory/YYYY-MM-DD.md` | Daily notes |
 | `.memory-core/main.sqlite` | Search index |
 
@@ -106,6 +107,13 @@ Stored notes do not change the model's weights.
 
 Reindex after direct writes or manual file edits with `memory.store.reindex(memory.workspace)`.
 Reopening through `Memory.from_workspace()` reindexes by default.
+Refreshes read and hash the current sources, then update changed files and remove deleted paths.
+Unchanged chunks remain in place. Document embeddings are cached in SQLite by provider, model,
+provider settings and chunk content, including across process restarts; search-query embeddings
+remain fresh calls. The cache retains at most 50,000 entries.
+Use `memory.store.reindex(memory.workspace, force=True)` to rebuild all chunks for explicit repair
+while retaining valid cached embeddings. A malformed embedding batch or a source/generation
+change fails the refresh before publishing partial index rows.
 Your application owns model calls, session state, workspace access, and maintenance scheduling.
 See [Package Boundary](docs/package_boundary.md) for those responsibilities.
 
@@ -303,13 +311,16 @@ uv run --frozen python scripts/check_equivalence.py --reference .reference/openc
 
 Use Node 24.16.0–24.x or 26.1.0 and newer. The registered subset imports real upstream
 TypeScript without installing or starting OpenClaw. `--smoke` checks only those registered cases.
-Filesystem comparisons use the reference's exact `fs-safe` package, platform binary and `p-map`.
+Filesystem and cache comparisons use the reference's exact `fs-safe` package, platform binary,
+`p-map` and `kysely`.
 The explicit setup command downloads their archives and verifies integrity against the pinned
 upstream lockfile; comparison runs verify every installed byte before and after execution and
 never download or repair dependencies implicitly. These are test-only dependencies; the Python
 SDK still needs no Node process. The filesystem fixtures currently require Linux or macOS.
-The identity kernel uses a verified direct reexport binding from the storage facade; its
-report explicitly excludes facade initialization and full manager execution from that evidence.
+The identity and embedding-cache kernels use verified direct reexport bindings from broad
+SDK facades to their original source owners. Their reports explicitly exclude facade
+initialization and full manager execution from that evidence. Cache SQL still executes through
+the actual native Kysely/SQLite implementation.
 The default full command fails while required acceptance points remain uncovered, even when
 the subset passes. Missing or modified reference sources, a wrong commit, runner failures,
 and behavioral mismatches cannot produce a successful acceptance result.

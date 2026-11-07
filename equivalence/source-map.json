@@ -34,19 +34,19 @@
           "path": "memory_core/workspace.py",
           "symbol": "list_memory_files",
           "anchor": "def list_memory_files(workspace_dir: Path) -> list[Path]:",
-          "line": 57
+          "line": 59
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 292
+          "line": 326
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Native discovery includes the root USER.md and configured extra paths/multimodal sources; Python list_memory_files only adds root MEMORY.md and recursively discovered memory/*.md.",
-        "Python skips unreadable scans while current native discovery distinguishes operational scan failures; disappearing-file and symlink outcomes need paired filesystem cases."
+        "Default discovery includes MEMORY.md, USER.md and nested memory/*.md, with global UTF-16 ordering and visible operational scan failures; paired filesystem cases exercise roots, hidden/repair paths, symlinks, non-regular entries and disappearance.",
+        "Configured extra paths/patterns and multimodal discovery remain unsupported; the default-root subset does not complete either full discovery acceptance point."
       ]
     },
     {
@@ -74,25 +74,25 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_read_path",
           "anchor": "    def resolve_memory_read_path(self, raw_path: str) -> tuple[str, Path | None]:",
-          "line": 329
+          "line": 363
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_path",
           "anchor": "    def resolve_memory_path(self, rel_path: str) -> Path:",
-          "line": 320
+          "line": 354
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "check_writable_memory_file",
           "anchor": "def check_writable_memory_file(root: Path, rel_path: str) -> None:",
-          "line": 175
+          "line": 209
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python read/write gates exist for workspace Markdown and daily append targets; native read roots additionally include configured extra paths and its fs-safe root policy.",
-        "Path safety is distributed across read and write operations; mapping the normalizer alone does not establish rejection shapes or race-safe writes."
+        "Workspace Markdown read probes compare absolute, relative, traversal, encoded, symlink and non-regular requests, exact policy codes/messages and unchanged filesystem snapshots.",
+        "Configured extra roots, write admission and descriptor/path-replacement checks remain unproved. The read-only fixtures receive no full path-safety acceptance credit."
       ]
     },
     {
@@ -126,13 +126,13 @@
           "path": "memory_core/workspace.py",
           "symbol": "append_daily_memory_file",
           "anchor": "def append_daily_memory_file(",
-          "line": 201
+          "line": 235
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "workspace_file_lock",
           "anchor": "def workspace_file_lock(root: Path, rel_path: str) -> threading.Lock:",
-          "line": 169
+          "line": 203
         }
       ],
       "implementation": "partial",
@@ -428,13 +428,13 @@
           "path": "memory_core/index/identity.py",
           "symbol": "resolve_memory_index_identity_state",
           "anchor": "def resolve_memory_index_identity_state(",
-          "line": 248
+          "line": 266
         },
         {
           "path": "memory_core/index/identity.py",
           "symbol": "resolve_memory_index_provider_identities",
           "anchor": "def resolve_memory_index_provider_identities(",
-          "line": 107
+          "line": 113
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -445,7 +445,8 @@
       ],
       "implementation": "partial",
       "notes": [
-        "Identity comparison helpers exist for provider aliases, sources, chunking/tokenizer and provenance versions; scope hashing fixes extraPaths to an empty list and lacks native multimodal configuration.",
+        "Real native identity-kernel comparisons exercise provider aliases/settings, stored metadata, source/scope hashes, tokenizer/chunking/provenance versions and JavaScript stored-JSON numeric coercion.",
+        "Scope hashing still fixes extraPaths to an empty list. The verified storage facade binding projection tests the kernel, not facade initialization or manager/query admission; indexing.identity.boundaries remains open.",
         "Python version constants alone do not establish that stored chunks implement the native version; current native repair/admission lifecycle is mapped separately under indexing.query-sync."
       ]
     },
@@ -480,7 +481,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 292
+          "line": 326
         }
       ],
       "implementation": "partial",
@@ -2909,7 +2910,7 @@
           "path": "memory_core/index/identity.py",
           "symbol": "_js_number",
           "anchor": "def _js_number(",
-          "line": 183
+          "line": 189
         }
       ],
       "implementation": "partial",

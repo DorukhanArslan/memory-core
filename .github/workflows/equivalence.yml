@@ -48,6 +48,10 @@ jobs:
         run: uv run --frozen pytest -q tests/equivalence
       - name: Verify the fixed source inventory
         run: uv run --frozen python -m equivalence.source_map --reference .reference/openclaw
+      - name: Prepare authenticated native filesystem dependencies
+        run: >-
+          uv run --frozen python -m equivalence.dependencies
+          --reference .reference/openclaw --destination .reference/npm --install
       - name: Compare the registered cases with actual OpenClaw
         run: >-
           uv run --frozen python scripts/check_equivalence.py

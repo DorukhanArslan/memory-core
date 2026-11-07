@@ -206,6 +206,51 @@ def test_secrets_and_node_options_do_not_cross_to_oracle(suite, monkeypatch):
     assert "SECRET_FIXTURE_VALUE" not in json.dumps(report)
 
 
+def test_storage_cases_require_authenticated_dependencies_before_dispatch(suite, monkeypatch):
+    from equivalence.dependencies import DependencyError
+
+    def unavailable(*args, **kwargs):
+        raise DependencyError("Untrusted archive fixture; do not forward diagnostic details.")
+
+    monkeypatch.setattr("equivalence.dependencies.prepare_dependencies", unavailable)
+    suite["cases"][0]["operation"] = "storage-discovery"
+    report, code = run_suite(**suite, smoke=True)
+    assert code == 2
+    assert report["errors"][0]["code"] == "reference-dependencies-unavailable"
+    assert "Untrusted archive fixture" not in json.dumps(report)
+    assert not (suite["oracle_path"].parent / "dispatches").exists()
+
+
+def test_storage_cannot_pass_without_loaded_dependency_evidence(suite, monkeypatch):
+    config = {"schemaVersion": 1, "kind": "labelled-package-fixture", "packages": []}
+    monkeypatch.setattr("equivalence.dependencies.prepare_dependencies", lambda *a, **k: config)
+    monkeypatch.setattr("equivalence.reference_bindings.prepare_reference_bindings", lambda *a: {})
+    suite["cases"][0]["operation"] = "storage-discovery"
+    report, code = run_suite(**suite, smoke=True)
+    assert code == 2
+    assert report["errors"][0]["code"] == "oracle-dependency-mismatch"
+    assert (suite["oracle_path"].parent / "dispatches").read_text().count("dispatch") == 1
+
+
+def test_python_adapter_mutation_invalidates_the_report(suite, monkeypatch, tmp_path):
+    from equivalence import harness
+
+    adapter = tmp_path / "labelled_adapter.py"
+    adapter.write_text("original adapter fixture")
+    monkeypatch.setattr(harness, "_adapter_identity",
+                        lambda: {adapter.name: harness._digest(adapter)})
+
+    def mutate(case):
+        adapter.write_text("changed during the Python half")
+        return case["input"]
+
+    suite["python_runner"] = mutate
+    report, code = run_suite(**suite, smoke=True)
+    assert code == 2
+    assert report["errors"][0]["code"] == "adapter-changed"
+    assert report["fullScopePassed"] is False
+
+
 def test_json_booleans_do_not_match_numbers_and_no_float_tolerance_is_implied(suite):
     suite["cases"][0]["input"] = {"value": True}
     suite["python_runner"] = lambda case: {"value": 1}

@@ -79,6 +79,11 @@ def _implementation_identity() -> dict[str, Any]:
             "sourceSha256": digest.hexdigest(), "sourceFiles": len(paths)}
 
 
+def _adapter_identity() -> dict[str, str]:
+    paths = sorted((ROOT / "equivalence").glob("*.py")) + sorted((ROOT / "equivalence").glob("*.mjs"))
+    return {path.name: _digest(path) for path in paths}
+
+
 def _command(args: list[str], *, cwd: Path | None = None) -> str:
     try:
         result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=10)
@@ -196,18 +201,24 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
     return requirements, points
 
 
-def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout: float) -> dict:
+def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout: float,
+            *, dependencies: dict | None = None, bindings: dict | None = None) -> dict:
     if not script.is_file():
         raise HarnessError("oracle-missing", "The independent TypeScript oracle runner is missing.")
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= 120:
         raise HarnessError("timeout-invalid", "The oracle requires a finite timeout of at most 120 seconds.")
-    body = json.dumps({"cases": cases}, ensure_ascii=False, allow_nan=False)
+    body = json.dumps({"cases": cases, "dependencies": dependencies,
+                       "bindings": bindings}, ensure_ascii=False, allow_nan=False)
     # No provider credentials, runtime switches, Node options or user auth state
     # cross into the source-only oracle. There is one dispatch and no retry.
     env = {"PATH": str(node.parent) + os.pathsep + os.defpath, "LANG": "en_US.UTF-8", "TZ": "UTC"}
     process = None
     try:
-        process = subprocess.Popen([str(node), str(script), str(checkout)],
+        # Native retry helpers use TS parameter properties. Node's own source
+        # loader executes these with its built-in transform support; no modified
+        # reference files or precompiled stand-ins are used.
+        flags = ["--experimental-transform-types"] if script.resolve() == ROOT / "equivalence/oracle.mjs" else []
+        process = subprocess.Popen([str(node), *flags, str(script), str(checkout)],
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    text=True, env=env, cwd=script.parent,
                                    start_new_session=os.name == "posix")
@@ -282,6 +293,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
               oracle_path: Path = ROOT / "equivalence/oracle.mjs",
               cases: list[dict] | None = None,
               python_runner: Callable[[dict], Any] | None = None,
+              dependency_root: Path = ROOT / ".reference/npm",
               timeout_seconds: float = 30) -> tuple[dict, int]:
     """Return the report and exit code 0(pass), 1(incomplete/diff), 2(blocked)."""
     started = time.monotonic()
@@ -315,7 +327,50 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         report["oracleSha256"] = _digest(oracle_path) if oracle_path.is_file() else None
         case_module = ROOT / "equivalence/cases.py"
         report["casesSha256"] = _digest(case_module) if case_module.is_file() else None
-        oracle = _oracle(node, oracle_path, checkout, cases, timeout_seconds)
+        dependencies = bindings = None
+        native_storage = any(case["operation"] in {
+            "storage-discovery", "storage-read-paths", "index-identity",
+        } for case in cases)
+        if native_storage:
+            from equivalence.dependencies import prepare_dependencies
+            from equivalence.reference_bindings import prepare_reference_bindings
+
+            try:
+                dependencies = prepare_dependencies(checkout, dependency_root)
+                bindings = prepare_reference_bindings(checkout)
+            except (OSError, ValueError, RuntimeError):
+                raise HarnessError("reference-dependencies-unavailable",
+                                   "Verified native dependencies and binding provenance are required; "
+                                   "prepare them with python -m equivalence.dependencies --install.") from None
+        adapter_hashes = _adapter_identity()
+        report["adapterSha256"] = adapter_hashes
+        oracle = _oracle(node, oracle_path, checkout, cases, timeout_seconds,
+                         dependencies=dependencies, bindings=bindings)
+        if dependencies is not None:
+            from equivalence.dependencies import validate_dependency_sources
+
+            try:
+                if prepare_dependencies(checkout, dependency_root) != dependencies:
+                    raise ValueError("Native dependencies changed.")
+                validate_dependency_sources(dependencies, oracle.get("dependencySources", []))
+                if not oracle.get("dependencySources"):
+                    raise ValueError("Native dependency execution evidence is missing.")
+                if prepare_reference_bindings(checkout) != bindings:
+                    raise ValueError("Binding provenance changed.")
+            except (OSError, ValueError, RuntimeError):
+                raise HarnessError("oracle-dependency-mismatch",
+                                   "Native dependency bytes or export provenance changed during execution.") from None
+            # Artifact evidence is separate from the committed TypeScript source
+            # list. These packages are not presented as files in the Git tree.
+            report["dependencies"] = {key: value for key, value in dependencies.items() if key != "packages"}
+            report["dependencies"]["packages"] = [
+                {key: value for key, value in package.items() if key != "directory"}
+                for package in dependencies["packages"]
+            ]
+            report["dependencySources"] = oracle["dependencySources"]
+            report["bindingProjections"] = bindings
+        if _adapter_identity() != adapter_hashes:
+            raise HarnessError("adapter-changed", "Differential adapters changed during comparison.")
         # A source mutation during comparison invalidates every observed result.
         after = _validate_reference(checkout, node, target)
         if after != report["reference"]:
@@ -343,6 +398,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         after_implementation = _implementation_identity()
         if after_implementation["sourceSha256"] != report["implementation"]["sourceSha256"]:
             raise HarnessError("implementation-changed", "Python implementation changed during comparison.")
+        if _adapter_identity() != adapter_hashes:
+            raise HarnessError("adapter-changed", "Differential adapters changed during comparison.")
         by_requirement = {requirement["id"]: [] for requirement in requirements}
         for row in report["cases"]:
             by_requirement[row["requirement"]].append(row)

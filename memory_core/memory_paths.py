@@ -39,6 +39,18 @@ class MemoryPathNotAllowedError(UnsafeMemoryPathError):
     code = "MEMORY_PATH_NOT_ALLOWED"
 
 
+class MemoryReadPathError(UnsafeMemoryPathError):
+    """A stable filesystem policy error surfaced by the memory-file reader.
+
+    The codes/messages match the fs-safe policy used by the pinned OpenClaw
+    readMemoryFile implementation; they are distinct from the Markdown gate.
+    """
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
 def is_daily_memory_path(rel_path: str) -> bool:
     return DAILY_MEMORY_PATH_RE.fullmatch(rel_path) is not None
 

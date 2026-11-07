@@ -261,7 +261,9 @@ def test_extension_dirs_are_never_injected_or_indexed(tmp_path):
     assert all(Path(file.path).parent == Path(os.path.abspath(tmp_path)) for file in loaded)
     assert [file.content for file in context.files] == ["root rules"]
     assert "per-user" not in context.stable_text
-    assert indexed == []
+    # The seeded root profile is eligible at v2026.9.9. The per-user and
+    # artifact directories still contribute no files to the index.
+    assert [file.rel_path for file in indexed] == ["USER.md"]
 
 
 def test_prompt_text_joins_workspace_parts_in_upstream_order(tmp_path):

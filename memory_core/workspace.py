@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import os
 import re
 import stat
@@ -13,6 +14,7 @@ from memory_core.bootstrap._js import js_trim
 from memory_core.memory_paths import (
     SESSION_CORPUS_FILE_RE,
     MemoryPathNotAllowedError,
+    MemoryReadPathError,
     UnsafeMemoryPathError,
     validate_daily_memory_path,
 )
@@ -55,16 +57,16 @@ def is_memory_path(rel_path: str) -> bool:
 
 
 def list_memory_files(workspace_dir: Path) -> list[Path]:
-    """Port of OpenClaw ``listMemoryFiles`` (memory-host-sdk host/internal.ts:150-222).
+    """Default-root portion of OpenClaw ``listMemoryFiles`` (v2026.9.9).
 
-    Returns absolute paths in upstream order: the root ``MEMORY.md`` when it is
-    a real file (exact name, not a symlink), then every ``*.md`` under
-    ``memory/`` in a pre-order walk with byte-sorted directory entries (Node
-    ``fs.readdir`` sorts via libuv scandir). Symlinked files and directories are
+    Returns paths in upstream order: the root ``MEMORY.md`` when it is a real
+    file (exact name, not a symlink), root ``USER.md``, then every ``*.md`` under
+    ``memory/`` sorted by JavaScript UTF-16 code units. Symlinked files and directories are
     skipped, a symlinked ``memory/`` is ignored, and ``.openclaw-repair``
     directories are not descended; hidden files and dot-directories such as
     ``memory/.dreams`` are walked like any other entry. Results are deduplicated
-    by realpath.
+    by realpath. Missing entries are ignored; operational scan errors are
+    reported instead of publishing an apparently successful partial scan.
 
     Not ported: ``extraPaths`` and multimodal files (memory-core has no config for
     them), and the ``shouldSkipRootMemoryAuxiliaryPath`` guard, which can only
@@ -75,11 +77,16 @@ def list_memory_files(workspace_dir: Path) -> list[Path]:
     memory_file = _resolve_canonical_root_memory_file(root)
     if memory_file is not None and _is_regular_markdown_file(memory_file):
         result.append(memory_file)
+    user_file = root / "USER.md"
+    if _is_regular_markdown_file(user_file):
+        result.append(user_file)
     memory_dir = root / "memory"
     try:
         memory_dir_stat = os.lstat(memory_dir)
-    except OSError:
+    except (FileNotFoundError, NotADirectoryError):
         memory_dir_stat = None
+    except OSError as exc:
+        raise MemorySourceScanError(memory_dir, exc) from exc
     if (
         memory_dir_stat is not None
         and not stat.S_ISLNK(memory_dir_stat.st_mode)
@@ -102,6 +109,20 @@ def list_memory_files(workspace_dir: Path) -> list[Path]:
     return deduped
 
 
+class MemorySourceScanError(RuntimeError):
+    """An operational failure while enumerating a memory source.
+
+    The path and errno code mirror the native scan diagnostic. A missing source
+    is intentionally not a scan failure and is handled by discovery itself.
+    """
+
+    def __init__(self, path: Path, cause: OSError):
+        self.path = path
+        self.code = errno.errorcode.get(cause.errno)
+        code = f" ({self.code})" if self.code else ""
+        super().__init__(f"memory source scan failed at {path}{code}: {cause}")
+
+
 def _resolve_canonical_root_memory_file(root: Path) -> Path | None:
     # src/memory/root-memory-files.ts resolveCanonicalRootMemoryFile: an exact
     # directory entry (no case folding) that is a file and not a symlink.
@@ -112,8 +133,10 @@ def _resolve_canonical_root_memory_file(root: Path) -> Path | None:
                     follow_symlinks=False
                 ):
                     return root / entry.name
-    except OSError:
+    except (FileNotFoundError, NotADirectoryError):
         pass
+    except OSError as exc:
+        raise MemorySourceScanError(root, exc) from exc
     return None
 
 
@@ -122,41 +145,52 @@ def _is_regular_markdown_file(path: Path) -> bool:
     # non-regular files are rejected) plus the `.md` suffix check.
     try:
         file_stat = os.lstat(path)
-    except OSError:
+    except (FileNotFoundError, NotADirectoryError):
         return False
+    except OSError as exc:
+        raise MemorySourceScanError(path, exc) from exc
     return stat.S_ISREG(file_stat.st_mode) and path.name.endswith(".md")
 
 
 def _collect_memory_files_from_dir(directory: Path, files: list[Path]) -> None:
     # collectMemoryFilesFromDir over @openclaw/fs-safe walkDirectory with
     # `symlinks: "skip"`: each directory is visited once by realpath, entries
-    # are pushed before descending, and unreadable directories are skipped.
+    # are pushed before descending. listMemoryFiles then sorts the complete
+    # collected list using JavaScript's default UTF-16 string comparison.
     visited: set[str] = set()
+    collected: list[Path] = []
 
     def visit(current: Path) -> None:
         try:
+            if current != directory and stat.S_ISLNK(os.lstat(current).st_mode):
+                return
             real_dir = os.path.realpath(current, strict=True)
-        except OSError:
+        except (FileNotFoundError, NotADirectoryError):
             return
+        except OSError as exc:
+            raise MemorySourceScanError(current, exc) from exc
         if real_dir in visited:
             return
         visited.add(real_dir)
         try:
             with os.scandir(current) as iterator:
                 entries = sorted(iterator, key=lambda item: os.fsencode(item.name))
-        except OSError:
+        except (FileNotFoundError, NotADirectoryError):
             return
+        except OSError as exc:
+            raise MemorySourceScanError(current, exc) from exc
         for entry in entries:
             if entry.is_symlink():
                 continue
             full_path = current / entry.name
             if entry.is_file(follow_symlinks=False):
                 if entry.name.endswith(".md"):
-                    files.append(full_path)
+                    collected.append(full_path)
             elif entry.is_dir(follow_symlinks=False) and entry.name != OPENCLAW_REPAIR_DIRNAME:
                 visit(full_path)
 
     visit(directory)
+    files.extend(sorted(collected, key=lambda item: str(item).encode("utf-16-be", "surrogatepass")))
 
 
 
@@ -335,14 +369,12 @@ class MemoryWorkspace:
         the workspace, a non-memory path (anything but ``MEMORY.md``,
         ``dreams.md`` in any case, or ``memory/...``) or a non-``.md`` file,
         such as session-corpus ``.txt`` files and ``sessions/<agent>/*.jsonl``
-        state-dir transcripts; ``path must be a regular file`` for a symlink or
-        a non-regular file. Paths are resolved lexically first, so
-        ``memory/../AGENTS.md`` is refused. Not ported: ``extraPaths``.
-
-        Deviation (stricter than upstream): a path whose realpath leaves the
-        workspace through a symlinked parent directory is refused with
-        ``path required``; upstream only lstats the final component and reads
-        through such parents.
+        state-dir transcripts. Non-regular leaves raise ``path must be a regular
+        file``; final symlinks and parent symlinks escaping the root retain the
+        reference filesystem policy code. Parent symlinks within the root are
+        admitted. Paths are resolved lexically first, so ``memory/../AGENTS.md``
+        is refused. Not ported: ``extraPaths`` or the reference's descriptor and
+        concurrent path-identity checks.
         """
         path = js_trim(raw_path)
         if not path:
@@ -362,15 +394,51 @@ class MemoryWorkspace:
             # fs-safe root(): "root dir not found" counts as a missing file.
             return rel_path, None
         if not self.root.is_dir():
-            raise UnsafeMemoryPathError("root dir is not a directory")
+            raise MemoryReadPathError("invalid-path", "root dir is not a directory")
+        # Authorize parents before observing the leaf. Otherwise an outside
+        # symlink with a missing leaf would be misreported as an ordinary miss.
+        parent = self.root
+        for part in abs_path.relative_to(self.root).parts[:-1]:
+            parent = parent / part
+            try:
+                parent_stat = os.lstat(parent)
+                if stat.S_ISLNK(parent_stat.st_mode):
+                    try:
+                        resolved_parent = parent.resolve(strict=True)
+                    except (FileNotFoundError, NotADirectoryError) as error:
+                        raise MemoryReadPathError(
+                            "outside-workspace", "file is outside workspace root"
+                        ) from error
+                    if not self.is_path_inside_root(resolved_parent) or not resolved_parent.is_dir():
+                        raise MemoryReadPathError("outside-workspace", "file is outside workspace root")
+                elif not stat.S_ISDIR(parent_stat.st_mode):
+                    raise MemoryReadPathError("outside-workspace", "file is outside workspace root")
+            except FileNotFoundError:
+                return rel_path, None
+            except (OSError, RuntimeError) as error:
+                # pathlib reports a symlink loop as RuntimeError on older
+                # supported Python versions and as ELOOP on newer versions.
+                if isinstance(error, RuntimeError) or getattr(error, "errno", None) == errno.ELOOP:
+                    raise MemoryReadPathError("symlink", "symlink path could not be resolved") from error
+                raise
         try:
             file_stat = os.lstat(abs_path)
-        except (FileNotFoundError, NotADirectoryError):
+        except FileNotFoundError:
             return rel_path, None
-        if stat.S_ISLNK(file_stat.st_mode) or not stat.S_ISREG(file_stat.st_mode):
+        except NotADirectoryError as error:
+            # fs-safe's parent admission refuses a non-directory ancestor;
+            # it is not a missing leaf and must remain a visible read failure.
+            raise MemoryReadPathError("outside-workspace", "file is outside workspace root") from error
+        except OSError as error:
+            if error.errno == errno.ELOOP:
+                raise MemoryReadPathError("symlink", "symlink path could not be resolved") from error
+            raise
+        if stat.S_ISLNK(file_stat.st_mode):
+            raise MemoryReadPathError("symlink", "symlink path component not allowed")
+        if not stat.S_ISREG(file_stat.st_mode):
             raise UnsafeMemoryPathError(MEMORY_PATH_NOT_REGULAR_FILE_ERROR)
         if not self.is_path_inside_root(abs_path.resolve()):
-            raise MemoryPathNotAllowedError(MEMORY_PATH_NOT_ALLOWED_ERROR)
+            raise MemoryReadPathError("outside-workspace", "file is outside workspace root")
         return rel_path, abs_path
 
     def append_daily_memory(

@@ -270,7 +270,7 @@ def dispatch(
 - Composes `execute_memory_search_tool(config, store, args, agent_session_key=session.session_key,
   runtime_identity=identity)`, `execute_memory_get_tool(config, args)` and
   `MemoryCurator.dispatch(name, args)` on `HostKit.curator`, built from `Memory.curator(layout,
-  policy, timezone, now_ms)` (whose `after_write` reindexes after MEMORY.md and daily-note writes).
+  policy, timezone, now_ms)` (whose `after_write` reindexes after MEMORY.md, USER.md and daily-note writes).
 - Arguments: a mapping, its JSON text (parsed once for every tool) or `None` (read as `{}`).
   Blank text reads as `{}`. Parsing JSON text is host-transport glue and deliberately differs from
   the core's `asToolParamsRecord` (`as_tool_params_record`, where a string reads as `{}`): the kit

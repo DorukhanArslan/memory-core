@@ -307,6 +307,10 @@ def _memory_get_text(
     lines: int | None,
 ) -> dict:
     file_lines = content.split("\n")
+    # A terminal newline closes the previous line; its split sentinel is not a
+    # readable extra blank line (read-file-shared.ts buildMemoryReadResult).
+    if file_lines[-1] == "":
+        file_lines.pop()
     start = max(1, from_line or 1)
     requested_count = max(1, lines if lines is not None else config.memory_get_default_lines)
     selected_lines = file_lines[start - 1 : start - 1 + requested_count]

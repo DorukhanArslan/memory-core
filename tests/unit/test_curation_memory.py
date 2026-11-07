@@ -40,12 +40,28 @@ def test_only_indexed_files_trigger_a_reindex(tmp_path, monkeypatch):
     monkeypatch.setattr(memory.store, "reindex", lambda workspace: calls.append(workspace))
 
     curator.upsert_user_directive("Prefer delta.")
+    assert calls == [memory.workspace]
     curator.set_proactive_preferences("alpha")
     curator.upsert_user_directive("Prefer delta.")
-    assert calls == []
+    assert calls == [memory.workspace]
     curator.add_memory_entry("Decisions", "delta")
     curator.append_daily_note("alpha")
-    assert calls == [memory.workspace, memory.workspace]
+    assert calls == [memory.workspace, memory.workspace, memory.workspace]
+
+
+def test_curated_user_directive_is_searchable_before_the_next_turn(tmp_path):
+    memory = _memory(tmp_path)
+    curator = memory.curator(now_ms=lambda: NOW_MS)
+    assert memory.search("quartznectar")["results"] == []
+
+    result = curator.upsert_user_directive("Prefer quartznectar in the morning.")
+    assert result.changed and result.after_write_error is None
+    assert [hit["path"] for hit in memory.search("quartznectar")["results"]] == ["USER.md"]
+
+    # The new profile remains indexed when the store is reopened without a
+    # rebuild, proving publication rather than a process-local read shortcut.
+    reopened = Memory.from_workspace(tmp_path, config=memory.config, reindex=False)
+    assert [hit["path"] for hit in reopened.search("quartznectar")["results"]] == ["USER.md"]
 
 
 def test_the_config_flag_disables_the_curator(tmp_path):

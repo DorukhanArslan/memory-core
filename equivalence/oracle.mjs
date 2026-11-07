@@ -9,6 +9,31 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const root = fs.realpathSync(process.argv[2]);
+// Load the argument/fixture adapters before installing the reference-only hook.
+// Their source hashes are retained separately by the Python harness.
+const adapters = new Map();
+for (const [operation, filename, name] of [
+  ["storage-discovery", "storage-discovery.mjs", "runStorageDiscovery"],
+  ["storage-read-paths", "storage-paths.mjs", "runStoragePaths"],
+  ["index-identity", "index-identity.mjs", "runIndexIdentity"],
+]) {
+  const url = new URL(filename, import.meta.url);
+  if (fs.existsSync(fileURLToPath(url))) adapters.set(operation, (await import(url.href))[name]);
+}
+const request = JSON.parse(fs.readFileSync(0, "utf8"));
+if (!Array.isArray(request.cases)) throw Error("Supply an array of equivalence cases.");
+const dependencySources = new Map();
+const packages = (request.dependencies?.packages ?? []).map((entry) => ({
+  ...entry, directory: fs.realpathSync(entry.directory),
+  hashes: new Map(entry.files.map((file) => [file.path, file.sha256])),
+}));
+const dependencyFile = (filename) => {
+  for (const entry of packages) {
+    const relative = path.relative(entry.directory, filename).replaceAll(path.sep, "/");
+    if (entry.hashes.has(relative)) return { entry, relative };
+  }
+  return undefined;
+};
 let trackedFiles;
 try {
   trackedFiles = (await promisify(execFile)("git", ["ls-files", "-z"], {
@@ -27,16 +52,35 @@ const publicSources = new Map([
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
+    for (const projection of request.bindings?.allowedResolutions ?? []) {
+      if (specifier === projection.specifier && context.parentURL === sourceUrl(projection.parent)) {
+        return { url: sourceUrl(projection.target), shortCircuit: true };
+      }
+    }
     if (publicSources.has(specifier)) {
       return { url: sourceUrl(publicSources.get(specifier)), shortCircuit: true };
     }
-    if (specifier.startsWith("@openclaw/normalization-core/")) {
-      const name = specifier.slice("@openclaw/normalization-core/".length);
+    const sourcePackage = /^@openclaw\/(normalization-core|media-core|session-url-contract|retry)(?:\/([a-z][a-z0-9-]*))?$/.exec(specifier);
+    if (sourcePackage) {
+      const [, packageName, subpath] = sourcePackage;
+      const name = subpath ?? "index";
       if (!/^[a-z][a-z0-9-]*$/.test(name)) throw Error("Invalid normalization source module.");
-      return { url: sourceUrl(`packages/normalization-core/src/${name}.ts`), shortCircuit: true };
+      return { url: sourceUrl(`packages/${packageName}/src/${name}.ts`), shortCircuit: true };
+    }
+    for (const entry of packages) {
+      if (specifier === entry.name || specifier.startsWith(entry.name + "/")) {
+        // Continue with Node's normal package export resolver from the verified
+        // package tree. Calling require.resolve here would reenter this hook.
+        const resolution = nextResolve(specifier, {
+          ...context, parentURL: pathToFileURL(path.join(entry.directory, "package.json")).href,
+        });
+        const resolved = fs.realpathSync(fileURLToPath(resolution.url));
+        if (!dependencyFile(resolved)) throw Error("Dependency resolution escaped the verified artifact.");
+        return { url: pathToFileURL(resolved).href, shortCircuit: true };
+      }
     }
     // Upstream TS imports its eventual .js build outputs. Resolve to the exact
-    // tracked source file without copying, editing or transpiling its contents.
+    // tracked source file. Node executes its original TypeScript contents.
     if (specifier.startsWith(".") && specifier.endsWith(".js") && context.parentURL?.startsWith("file:")) {
       const candidate = fileURLToPath(new URL(specifier.slice(0, -3) + ".ts", context.parentURL));
       if (isInside(candidate) && fs.existsSync(candidate)) {
@@ -48,7 +92,16 @@ registerHooks({
   load(url, context, nextLoad) {
     if (url.startsWith("file:")) {
       const source = fs.realpathSync(fileURLToPath(url));
-      if (!isInside(source)) throw Error("Reference import escaped the pinned checkout.");
+      const dependency = dependencyFile(source);
+      if (dependency) {
+        const sha256 = crypto.createHash("sha256").update(fs.readFileSync(source)).digest("hex");
+        if (sha256 !== dependency.entry.hashes.get(dependency.relative)) throw Error("Dependency bytes changed.");
+        dependencySources.set(`${dependency.entry.name}\0${dependency.relative}`, {
+          package: dependency.entry.name, path: dependency.relative, sha256,
+        });
+        return nextLoad(url, context);
+      }
+      if (!isInside(source)) throw Error("Reference import escaped the pinned checkout and verified artifacts.");
       const relative = path.relative(root, source).replaceAll(path.sep, "/");
       if (!trackedSources.has(relative)) throw Error("Reference import is not a tracked source file.");
       sources.add(relative);
@@ -64,6 +117,7 @@ const number = (value) => typeof value === "string"
   : value;
 
 async function execute(operation, input) {
+  if (adapters.has(operation)) return adapters.get(operation)(input, (relative) => import(sourceUrl(relative)));
   const source = (name) => import(sourceUrl(`extensions/memory-core/src/memory/${name}.ts`));
   switch (operation) {
     case "fts-query":
@@ -97,8 +151,6 @@ async function execute(operation, input) {
   }
 }
 
-const request = JSON.parse(fs.readFileSync(0, "utf8"));
-if (!Array.isArray(request.cases)) throw Error("Supply an array of equivalence cases.");
 const results = [];
 for (const testCase of request.cases) {
   try {
@@ -113,4 +165,6 @@ process.stdout.write(JSON.stringify({
     path: relative,
     sha256: crypto.createHash("sha256").update(fs.readFileSync(path.join(root, relative))).digest("hex"),
   })),
+  dependencySources: [...dependencySources.values()].sort((a, b) =>
+    a.package.localeCompare(b.package) || a.path.localeCompare(b.path)),
 }) + "\n");

@@ -203,12 +203,31 @@ def build_cases() -> list[dict[str, Any]]:
             if (identifier in ("mmr-cjk-text", "mmr-empty-punctuation-text", "mmr-empty-token-text")
                     or identifier.startswith("mmr-normalization-")):
                 case["covers"].append("retrieval.mmr.text-boundaries")
+    from equivalence.index_identity import build_index_identity_cases
+    from equivalence.storage_discovery import build_storage_discovery_cases
+    from equivalence.storage_paths import build_storage_path_cases
+
+    cases.extend(build_index_identity_cases())
+    cases.extend(build_storage_discovery_cases())
+    cases.extend(build_storage_path_cases())
     return cases
 
 
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation == "index-identity":
+        from equivalence.index_identity import run_index_identity
+
+        return run_index_identity(arguments)
+    if operation == "storage-discovery":
+        from equivalence.storage_discovery import run_storage_discovery
+
+        return run_storage_discovery(arguments)
+    if operation == "storage-read-paths":
+        from equivalence.storage_paths import run_storage_paths
+
+        return run_storage_paths(arguments)
     if operation == "fts-query":
         from memory_core.index.fts import build_fts_query
 

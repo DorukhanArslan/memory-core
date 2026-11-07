@@ -49,7 +49,7 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 
 ## 4. Implement and verify the fixed memory behavior contract
 
-All entries below are pending fresh evidence against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree.
+Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 ### Storage and workspace
 
@@ -185,6 +185,10 @@ Use a separate reference checkout. Runtime/package use of `memory-core` still ne
 Run the currently implemented differential cases explicitly:
 
 ```sh
+python -m equivalence.dependencies \
+  --reference /path/to/openclaw-v2026.9.9 \
+  --destination .reference/npm --install
+
 python scripts/check_equivalence.py \
   --reference /path/to/openclaw-v2026.9.9 \
   --node /path/to/node \
@@ -267,3 +271,60 @@ The before-fix failure is retained locally in
 `.equivalence-results/current-full.json`. Reports include the inventory digest
 as traceability metadata. Hosted CI results are separate from these local checks.
 No model/provider call was made.
+
+## Default storage and index identity correction — 2026-11-07
+
+This increment stays inside the existing storage/index contracts. It adds 21
+default-root discovery fixtures, 6 read-path fixtures containing 55 requests,
+and 79 index identity fixtures. They execute the original pinned native source
+against isolated local files and stored-JSON/configuration inputs.
+
+Discovery now includes root `USER.md`, sorts the whole memory tree by JavaScript
+UTF-16 order, and reports operational scan failures instead of silently accepting
+a partial scan. The original source snapshot mismatched 8 of the 21 discovery
+fixtures; all 21 now agree. A successful curated `USER.md` write also rebuilds the Python
+index before returning, and a fresh store can retrieve that published note.
+
+Read-path probes compare absolute/relative paths, traversal, encoded names,
+symlinks, hardlinks, FIFOs, missing files and invalid roots, and check that reads
+leave the filesystem unchanged. The fixes retain native filesystem policy codes
+and remove a phantom final line/continuation caused by a terminal newline. Two
+historical assertions expecting that phantom content were corrected with direct
+current-native evidence; the original failing fixture inputs remain in the suite.
+
+The first strict identity comparison found 8 differences in stored-JSON numeric
+coercion. Version checks now follow JavaScript conversion for hexadecimal,
+binary/octal strings and arrays, and reject Python-only numeric spellings. All
+79 identity cases now agree. The oracle verifies that the three identity imports
+are unchanged direct reexports of the original host functions, then projects that
+binding for the kernel comparison. Its report explicitly does not attest storage
+facade initialization or full native manager/query dispatch.
+
+Filesystem execution uses authenticated `@openclaw/fs-safe` 0.21.1, its exact
+platform binary, and `p-map` 7.0.8. Setup alone downloads archives; every comparison
+checks archive SHA512 values against the pinned upstream lockfile and all extracted
+file bytes before/after execution. Package evidence is separate from committed
+TypeScript hashes. Adapter hashes cover both native and Python halves of the run.
+These test dependencies do not change the standalone Python SDK's runtime needs.
+
+Current actual-source comparison: **193 matched, 0 mismatched, 0 blocked**. Only
+`indexing.identity.outcomes` receives new acceptance coverage; the strict full gate
+remains incomplete with **117 uncovered acceptance points**. The two storage
+contracts deliberately receive no whole-contract credit: configured extra paths,
+patterns/multimodal discovery, write admission and descriptor/concurrent path
+checks remain unproved. Cache reuse, incremental refresh, coherent concurrent
+publication and query-time synchronization remain pending in the existing list.
+
+The final combined offline run passed **2,089 tests** (97 acceptance harness/adapter
+guards and 1,992 retained/direct regressions). The 1,625 historical oracle/live
+checks remained skipped with their opt-in gates disabled and supply no equivalence
+credit. Ruff, project-name consistency, source inventory and staged diff checks
+passed. The actual report records 65 executed tracked native source files and 639
+authenticated dependency files; hosted CI remains a separate result.
+
+Local reports are `.equivalence-results/storage-index-before.json`,
+`.equivalence-results/storage-index-subset.json` and
+`.equivalence-results/storage-index-full.json`. The first strict report preserves
+the eight identity differences. Separate discovery/read baseline captures are
+retained under `.equivalence-results/storage-discovery-before.json` and
+`.equivalence-results/storage-read-*-before.*`. No model/provider call was made.

@@ -75,7 +75,9 @@ def test_session_memory_files_are_discovered_searched_and_read(tmp_path: Path):
         assert f"Source: {saved.rel_path}#L" in hits[0]["snippet"]
         read = memory.get(saved.rel_path)
         assert read["path"] == saved.rel_path
-        assert read["text"] == saved.path.read_text(encoding="utf-8")
+        # readMemoryFile returns readable lines, excluding the terminal split
+        # sentinel introduced by the saved Markdown's final newline.
+        assert read["text"] == saved.path.read_text(encoding="utf-8").removesuffix("\n")
         assert query in read["text"]
 
 

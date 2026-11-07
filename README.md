@@ -296,12 +296,20 @@ The rebuilt acceptance suite runs independently of the Lab and its historical or
 ```bash
 git clone --depth 1 --branch v2026.9.9 https://github.com/openclaw/openclaw.git .reference/openclaw
 uv run --frozen python -m equivalence.source_map --reference .reference/openclaw
+uv run --frozen python -m equivalence.dependencies --reference .reference/openclaw --destination .reference/npm --install
 uv run --frozen python scripts/check_equivalence.py --reference .reference/openclaw --node /path/to/node --smoke --report .equivalence-results/subset.json
 uv run --frozen python scripts/check_equivalence.py --reference .reference/openclaw --node /path/to/node --report .equivalence-results/full.json
 ```
 
 Use Node 24.16.0–24.x or 26.1.0 and newer. The registered subset imports real upstream
 TypeScript without installing or starting OpenClaw. `--smoke` checks only those registered cases.
+Filesystem comparisons use the reference's exact `fs-safe` package, platform binary and `p-map`.
+The explicit setup command downloads their archives and verifies integrity against the pinned
+upstream lockfile; comparison runs verify every installed byte before and after execution and
+never download or repair dependencies implicitly. These are test-only dependencies; the Python
+SDK still needs no Node process. The filesystem fixtures currently require Linux or macOS.
+The identity kernel uses a verified direct reexport binding from the storage facade; its
+report explicitly excludes facade initialization and full manager execution from that evidence.
 The default full command fails while required acceptance points remain uncovered, even when
 the subset passes. Missing or modified reference sources, a wrong commit, runner failures,
 and behavioral mismatches cannot produce a successful acceptance result.

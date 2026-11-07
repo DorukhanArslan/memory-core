@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "registry": "https://registry.npmjs.org",
+  "package": "@openclaw/fs-safe",
+  "version": "0.21.1",
+  "additionalPackages": [
+    {"name": "p-map", "version": "7.0.8"}
+  ],
+  "nativeTargets": [
+    "darwin-arm64",
+    "darwin-x64",
+    "linux-arm64-gnu",
+    "linux-arm64-musl",
+    "linux-x64-gnu",
+    "linux-x64-musl",
+    "win32-x64-msvc"
+  ]
+}

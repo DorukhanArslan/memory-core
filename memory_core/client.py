@@ -96,15 +96,15 @@ class Memory:
         """Curated writes for this workspace (memory-core extension, see memory_core.curation).
 
         The curator uses this memory's feature flags and reindexes the store
-        after each write to MEMORY.md or a daily note, the files memory_search
-        indexes; USER.md and PROACTIVE_PREFERENCES.md writes skip the reindex.
+        after each write to MEMORY.md, USER.md or a daily note, the default
+        files memory_search indexes. PROACTIVE_PREFERENCES.md writes skip it.
         The reindex runs after the write is committed and re-embeds the whole
         corpus synchronously; if it fails, the write stands and the result
         carries ``after_write_error`` (``afterWriteError`` in the tool payload).
         """
 
         def reindex(result: CurationResult) -> None:
-            if result.path == layout.memory_file or result.path.startswith("memory/"):
+            if result.path in (layout.memory_file, "USER.md") or result.path.startswith("memory/"):
                 self.store.reindex(self.workspace)
 
         return MemoryCurator(

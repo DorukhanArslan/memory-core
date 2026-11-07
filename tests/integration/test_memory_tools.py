@@ -133,12 +133,10 @@ def test_memory_get_reads_wiki_supplement_result(tmp_path: Path):
     assert result == {
         "status": "ok",
         "path": "w1.md",
-        "text": "Requires security approval.\n\n[More content available. Use from=3 to continue.]",
+        "text": "Requires security approval.",
         "from": 2,
         "lines": 1,
         "corpus": "wiki",
-        "truncated": True,
-        "nextFrom": 3,
         "corpora": [{"corpus": "wiki", "outcome": "ok"}],
     }
 

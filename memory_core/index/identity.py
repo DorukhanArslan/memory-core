@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
@@ -33,11 +34,16 @@ NO_PROVIDER_ID = "none"
 
 MEMORY_SOURCES = ("memory", "sessions")
 # manager-reindex-state.ts MEMORY_INDEX_PROVENANCE_VERSION and
-# packages/memory-host-sdk/src/host/markdown-chunks.ts MEMORY_CHUNKING_VERSION at v2026.9.6.
+# packages/memory-host-sdk/src/host/markdown-chunks.ts MEMORY_CHUNKING_VERSION at v2026.9.9.
 # The store writes both. Until the chunker is re-ported (stage 2 area 6) the chunking
 # version states the tag's number, not the pin-era chunker's.
 MEMORY_INDEX_PROVENANCE_VERSION = 1
 MEMORY_CHUNKING_VERSION = 5
+
+_JS_DECIMAL_NUMBER = re.compile(
+    r"[+-]?(?:Infinity|(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?)"
+)
+_JS_NON_DECIMAL_NUMBER = re.compile(r"0(?:[xX][0-9a-fA-F]+|[oO][0-7]+|[bB][01]+)")
 
 
 class _Undefined:
@@ -182,20 +188,32 @@ def resolve_configured_scope_hash(
 
 def _js_number(value: object) -> float:
     """The number a stored JSON value becomes in a JavaScript relational comparison."""
-    if value is UNDEFINED or value is None:
+    if value is UNDEFINED:
+        return math.nan
+    if value is None:
         return 0.0
     if isinstance(value, bool):
         return 1.0 if value else 0.0
     if _is_number(value):
-        return float(value)  # type: ignore[arg-type]
+        try:
+            return float(value)  # type: ignore[arg-type]
+        except OverflowError:
+            return math.inf if value > 0 else -math.inf  # type: ignore[operator]
+    if isinstance(value, list):
+        # Array ToPrimitive uses its comma-joined string, including nested
+        # arrays and null's empty field; Number([]) and Number([null]) are 0.
+        return _js_number(_template(value))
     if isinstance(value, str):
         text = js_trim(value)
         if not text:
             return 0.0
-        try:
+        if _JS_DECIMAL_NUMBER.fullmatch(text):
             return float(text)
-        except ValueError:
-            return math.nan
+        if _JS_NON_DECIMAL_NUMBER.fullmatch(text):
+            try:
+                return float(int(text, 0))
+            except OverflowError:
+                return math.inf
     return math.nan
 
 

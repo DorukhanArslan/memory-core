@@ -4,6 +4,8 @@ import re
 from collections.abc import Iterable
 from typing import TypeVar
 
+from memory_core.bootstrap._js import js_trim
+
 T = TypeVar("T", bound=dict)
 
 CJK_RE = re.compile(
@@ -122,15 +124,15 @@ def mmr_rerank(items: list[T], *, enabled: bool = False, lambda_: float = 0.7) -
 
 
 def _normalize_lower(text: str) -> str:
-    return (text or "").lower()
+    return js_trim(text or "").lower()
 
 
 def apply_mmr_to_hybrid_results(results: list, *, enabled: bool = False, lambda_: float = 0.7) -> list:
-    """``applyMMRToHybridResults`` (mmr.ts at v2026.9.6) over objects with ``score`` and ``snippet``.
+    """``applyMMRToHybridResults`` (mmr.ts at v2026.9.9) over objects with ``score`` and ``snippet``.
 
     Same selection as :func:`mmr_rerank`; the difference is the similarity of two items that
     both tokenize to nothing (Cyrillic, emoji or punctuation only): it is 1 only when their
-    lower-cased snippets are equal, not for every such pair.
+    ECMAScript-trimmed, lower-cased snippets are equal, not for every such pair.
     """
     if not results:
         return results

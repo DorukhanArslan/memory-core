@@ -270,6 +270,7 @@ Project-specific extensions are identified separately and cannot establish upstr
 | [Lab](docs/lab.md) | Browser demo setup and behavior |
 | [Parity Matrix](docs/parity_matrix.md) | Upstream evidence and compatibility limits |
 | [Full Equivalence Checklist](docs/full-equivalence-checklist.md) | Cleanup, fixed v2026.9.9 scope, acceptance conditions, and unfinished work |
+| [Equivalence Source Map](docs/equivalence-source-map.md) | Pinned upstream/Python entry points, source hashes, and implementation gaps |
 | [Release Checklist](docs/release.md) | Clean installs and consumer type checks |
 
 See [CHANGELOG](CHANGELOG.md) for version history.
@@ -294,6 +295,7 @@ The rebuilt acceptance suite runs independently of the Lab and its historical or
 
 ```bash
 git clone --depth 1 --branch v2026.9.9 https://github.com/openclaw/openclaw.git .reference/openclaw
+uv run --frozen python -m equivalence.source_map --reference .reference/openclaw
 uv run --frozen python scripts/check_equivalence.py --reference .reference/openclaw --node /path/to/node --smoke --report .equivalence-results/subset.json
 uv run --frozen python scripts/check_equivalence.py --reference .reference/openclaw --node /path/to/node --report .equivalence-results/full.json
 ```

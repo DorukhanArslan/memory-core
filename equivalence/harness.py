@@ -305,6 +305,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             python_runner = run_python if python_runner is None else python_runner
         requirements, _ = _validate_scope(scope, cases)
         report["manifestSha256"] = {"reference": _digest(reference_path), "scope": _digest(scope_path)}
+        source_map = ROOT / "equivalence/source-map.json"
+        if (reference_path.resolve() == ROOT / "equivalence/reference.json"
+                and scope_path.resolve() == ROOT / "equivalence/scope.json" and source_map.is_file()):
+            # Inventory identity is traceability metadata, never case coverage.
+            report["manifestSha256"]["sourceMap"] = _digest(source_map)
         report["reference"] = _validate_reference(checkout, node, target)
         report["implementation"] = _implementation_identity()
         report["oracleSha256"] = _digest(oracle_path) if oracle_path.is_file() else None

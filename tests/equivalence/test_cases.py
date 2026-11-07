@@ -63,3 +63,18 @@ def test_tokenization_compares_sets_without_losing_case_sensitive_results():
     tokens = run_python(case)
     assert tokens == sorted(set(tokens))
     assert "a" in tokens and "我" in tokens and "我我" in tokens
+
+
+def test_original_mmr_difference_is_retained_with_whitespace_boundary_cases():
+    cases = {case["id"]: case for case in build_cases()}
+    original = cases["mmr-empty-token-text"]
+    assert original["input"]["items"][0]["snippet"] == " Привет "
+    assert original["input"]["lambda"] == 0
+    for name in (
+        "bom-punctuation", "nbsp-cyrillic", "unicode-space-cyrillic", "emoji",
+        "all-whitespace", "nel-distinct", "separator-distinct", "zero-width-distinct",
+        "balanced", "equal-scores", "disabled",
+    ):
+        case = cases[f"mmr-normalization-{name}"]
+        assert case["operation"] == "mmr"
+        assert set(case["covers"]) == {"retrieval.mmr.order", "retrieval.mmr.text-boundaries"}

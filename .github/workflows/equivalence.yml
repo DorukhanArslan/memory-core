@@ -46,6 +46,8 @@ jobs:
         run: uv sync --frozen
       - name: Test the new acceptance harness
         run: uv run --frozen pytest -q tests/equivalence
+      - name: Verify the fixed source inventory
+        run: uv run --frozen python -m equivalence.source_map --reference .reference/openclaw
       - name: Compare the registered cases with actual OpenClaw
         run: >-
           uv run --frozen python scripts/check_equivalence.py

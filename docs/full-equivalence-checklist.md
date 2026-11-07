@@ -19,10 +19,16 @@ Keep the working SDK, Lab, framework adapter, license and substantive regression
 - [x] Verify the release tag resolves to commit `bcfc88812a35243893585dbeca87ca41b48272ca`, and retain that exact commit in [reference.json](../equivalence/reference.json).
 - [x] Require a real, clean reference checkout at that commit. Reject a missing checkout, another release or modified reference source before comparison.
 - [x] Verify and record the Node runtime. Supported reference range: `>=24.16.0 <25 || >=26.1.0`; Node 25 is excluded.
-- [ ] Inventory source modules, runtime dependencies, exported operations and observable effects for the fixed contract. Version any deliberate exclusion.
+- [x] Inventory source modules, runtime dependencies, exported operations and observable effects for the fixed contract. Version any deliberate exclusion.
 - [x] Record Python implementation identity, reference identity, contract identity, actual runtime versions and case identifiers in every comparison report.
 
 The reference repository is `https://github.com/openclaw/openclaw.git`. Python-only convenience features remain separately tested extensions. Different internal storage is acceptable only where the declared external memory results, isolation, concurrency and failure behavior still match; this is not a promise of binary interchange with OpenClaw's private database.
+
+The [source map](equivalence-source-map.md) links all 64 contracts and 128 acceptance points
+to the pinned upstream code and the current Python implementation. The inventory records
+103 upstream source modules, their tracked hashes, literal dependencies and exported
+declarations. Source presence and inventory validation do not establish behavior or add
+any differential-test coverage.
 
 ## 3. Rebuild the differential tests from a clean authority boundary
 
@@ -220,9 +226,9 @@ with exit code 2. No paid provider call was made.
 
 The observed difference is `mmr-empty-token-text`, within the existing
 `retrieval.mmr` contract: with lambda 0, padded Cyrillic snippets that produce no
-lexical tokens yield Python order `a,b,c` and OpenClaw order `a,c,b`. It remains
-a normal failing comparison, with input and both outputs retained, not an xfail
-or an algorithm change in this cleanup/test-foundation work.
+lexical tokens yield Python order `a,b,c` and OpenClaw order `a,c,b`. At that baseline it was retained as
+a normal failing comparison, with input and both outputs, not an xfail. The
+subsequent correction is recorded below; the initial failure is not erased.
 
 Local generated artifacts are `.equivalence-results/full.json`,
 `.equivalence-results/subset.json` and `.equivalence-results/missing-reference.json`.
@@ -230,3 +236,34 @@ They are ignored by Git and can be reproduced with the commands above. The new
 CI workflow retains its own artifacts; a hosted run has not been established by
 this local verification. Every behavioral checkbox remains pending review of its
 complete acceptance conditions; registered subset coverage alone does not close it.
+
+## Source inventory and MMR correction — 2026-11-07
+
+The [source map](equivalence-source-map.md) now inventories all 64 contracts and
+128 acceptance points against 103 tracked upstream modules. It records actual
+code anchors, direct literal imports, exported declarations and current Python
+counterparts. Its source-presence classifications are 10 present, 49 partial,
+2 missing and 3 host-owned. These are source observations, not equivalence scores.
+The validator checked the exact clean reference, hashes against Git and disk,
+and every Python/upstream anchor. CI now runs that validation separately.
+
+The original `mmr-empty-token-text` difference is corrected by applying the
+existing ECMAScript `js_trim()` before lowercasing empty-token snippets. Ordinary
+space, BOM and non-breaking space now follow the reference; NEL, U+001C and
+zero-width space remain significant as JavaScript requires. The original case
+remains in the suite. Eleven additional paired MMR cases and 17 direct ranking
+regressions exercise whitespace boundaries, ties, disabled MMR and lambda values.
+
+Current actual-source comparison: **87 matched, 0 mismatched, 0 blocked**. The
+subset exits 0. The full command exits 1 with status `incomplete` because
+**118 acceptance points remain uncovered**. Source mapping gives none of those
+points behavioral credit. The focused inventory/harness/MMR checks passed
+68 tests; retained regressions passed 1,944 tests with 1,625 historical oracle/live
+checks skipped. Ruff, project-name consistency and the diff check passed.
+
+The before-fix failure is retained locally in
+`.equivalence-results/before-mmr-fix.json`; current reports are
+`.equivalence-results/current-subset.json` and
+`.equivalence-results/current-full.json`. Reports include the inventory digest
+as traceability metadata. Hosted CI results are separate from these local checks.
+No model/provider call was made.

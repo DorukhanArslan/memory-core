@@ -154,6 +154,35 @@ def build_cases() -> list[dict[str, Any]]:
             "items": items, "enabled": True, "lambda": 0.7, **arguments,
         }))
 
+    for name, first, second, third in (
+        ("bom-punctuation", "\ufeff!!!\ufeff", "!!!", "???"),
+        ("nbsp-cyrillic", "\u00a0Привет\u00a0", "привет", "Пока"),
+        ("unicode-space-cyrillic", "\u2003\u2028Привет\u2029\u3000", "привет", "Пока"),
+        ("emoji", "\t😀\r\n", "😀", "😃"),
+        ("all-whitespace", " \t\r\n", "", "!!!"),
+        ("nel-distinct", "\u0085Привет\u0085", "привет", "Пока"),
+        ("separator-distinct", "\u001cПривет\u001c", "привет", "Пока"),
+        ("zero-width-distinct", "\u200bПривет\u200b", "привет", "Пока"),
+    ):
+        cases.append(_case(f"mmr-normalization-{name}", "retrieval.mmr", "mmr", {
+            "items": [{**item, "snippet": text}
+                      for item, text in zip(items, (first, second, third), strict=True)],
+            "enabled": True, "lambda": 0,
+        }))
+    duplicate_items = [
+        {**items[0], "snippet": " Привет "},
+        {**items[1], "snippet": "привет"},
+        {**items[2], "snippet": "Пока"},
+    ]
+    for name, arguments in (
+        ("balanced", {"lambda": 0.5}),
+        ("equal-scores", {"items": [{**item, "score": 1.0} for item in duplicate_items]}),
+        ("disabled", {"enabled": False}),
+    ):
+        cases.append(_case(f"mmr-normalization-{name}", "retrieval.mmr", "mmr", {
+            "items": duplicate_items, "enabled": True, "lambda": 0, **arguments,
+        }))
+
     for case in cases:
         operation, identifier = case["operation"], case["id"]
         if operation in ("fts-query", "tokenization"):
@@ -171,7 +200,8 @@ def build_cases() -> list[dict[str, Any]]:
                 case["covers"].append("retrieval.temporal-decay.sources")
         elif operation == "mmr":
             case["covers"] = ["retrieval.mmr.order"]
-            if identifier in ("mmr-cjk-text", "mmr-empty-punctuation-text"):
+            if (identifier in ("mmr-cjk-text", "mmr-empty-punctuation-text", "mmr-empty-token-text")
+                    or identifier.startswith("mmr-normalization-")):
                 case["covers"].append("retrieval.mmr.text-boundaries")
     return cases
 

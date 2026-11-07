@@ -245,15 +245,17 @@ The [oracle runner](scripts/openclaw_oracle_runner.ts) calls real functions from
 [Comparison tests](tests/integration/test_openclaw_ts_oracle.py) give both implementations equivalent inputs and compare observable results.
 These tests cover selected operations, not full compatibility or model quality.
 
-The [Parity Matrix](docs/parity_matrix.md) separates oracle-backed behavior, source-backed ports, and known gaps.
+The historical v2026.9.6 [Parity Matrix](docs/parity_matrix.md) separates oracle-backed behavior, source-backed ports, and known gaps.
 Full REM behavior, some regex/tokenizer cases, and parts of runtime and index compatibility remain incomplete.
 Host adapters and Lab behavior are identified separately from upstream parity.
 
-### Future direction is open
+### Current equivalence target
 
-We have not yet decided whether future development will remain strictly aligned with OpenClaw or add independently designed memory capabilities.
-OpenClaw is the current technical reference and the baseline for the oracle tests.
-Existing project-specific extensions are identified separately in the documentation.
+The [full-equivalence checklist](docs/full-equivalence-checklist.md) is the current acceptance plan.
+It starts with repository cleanup and fixes the target at OpenClaw **v2026.9.9**, commit
+`bcfc88812a35243893585dbeca87ca41b48272ca`, matching the native bridge's release.
+Existing v2026.9.6 tests remain regression evidence; their results do not complete the new contract.
+Project-specific extensions are identified separately and cannot establish upstream equivalence.
 
 ## Documentation
 
@@ -267,6 +269,7 @@ Existing project-specific extensions are identified separately in the documentat
 | [Package Boundary](docs/package_boundary.md) | SDK, adapters, demo, and host responsibilities |
 | [Lab](docs/lab.md) | Browser demo setup and behavior |
 | [Parity Matrix](docs/parity_matrix.md) | Upstream evidence and compatibility limits |
+| [Full Equivalence Checklist](docs/full-equivalence-checklist.md) | Cleanup, fixed v2026.9.9 scope, acceptance conditions, and unfinished work |
 | [Release Checklist](docs/release.md) | Clean installs and consumer type checks |
 
 See [CHANGELOG](CHANGELOG.md) for version history.
@@ -283,9 +286,25 @@ uv run --frozen python scripts/check_distribution.py
 ```
 
 Offline tests use deterministic fake embeddings and scripted test models where needed.
-Oracle tests require Node.js and `OPENCLAW_ORACLE_REPO` pointing to the pinned checkout with installed dependencies.
+Historical v2026.9.6 oracle regressions require Node.js and `OPENCLAW_ORACLE_REPO` pointing to that checkout with installed dependencies.
 Live embedding tests require `MEMORY_CORE_LIVE_OPENAI=1` and provider credentials.
 See [Oracle Setup](docs/lab.md#oracle-checkout) for isolated runs.
+
+The rebuilt acceptance suite runs independently of the Lab and its historical oracle:
+
+```bash
+git clone --depth 1 --branch v2026.9.9 https://github.com/openclaw/openclaw.git .reference/openclaw
+uv run --frozen python scripts/check_equivalence.py --reference .reference/openclaw --node /path/to/node --smoke --report .equivalence-results/subset.json
+uv run --frozen python scripts/check_equivalence.py --reference .reference/openclaw --node /path/to/node --report .equivalence-results/full.json
+```
+
+Use Node 24.16.0–24.x or 26.1.0 and newer. The registered subset imports real upstream
+TypeScript without installing or starting OpenClaw. `--smoke` checks only those registered cases.
+The default full command fails while required acceptance points remain uncovered, even when
+the subset passes. Missing or modified reference sources, a wrong commit, runner failures,
+and behavioral mismatches cannot produce a successful acceptance result.
+Push and pull-request CI run the differential subset; manual equivalence workflow runs also
+require the full contract. Neither the offline suite nor a green subset proves full equivalence.
 
 The installed package contains `memory_core/` and inline type annotations through `py.typed`.
 Clean consumer checks cover selected interfaces; dynamic options and some callbacks still accept `Any`.

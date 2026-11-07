@@ -1,0 +1,221 @@
+"""Fresh, model-free equivalence inputs and calls to the actual Python engine.
+
+These adapters translate argument names and serialize results. They contain no
+copy of an OpenClaw algorithm and no expected-output snapshots. The reference
+side imports the pinned upstream TypeScript implementations at execution time.
+"""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+import math
+import random
+from typing import Any
+
+
+@dataclass(frozen=True)
+class _Result:
+    path: str
+    score: float
+    source: str
+    snippet: str
+    startLine: int = 1
+
+
+def _case(identifier: str, requirement: str, operation: str, value: dict) -> dict:
+    return {"id": identifier, "requirement": requirement, "operation": operation, "input": value}
+
+
+def _number(value: float | str) -> float:
+    # Standard JSON has no NaN/Infinity. Named inputs exercise the actual
+    # implementations' non-finite branches without non-standard JSON literals.
+    if isinstance(value, str):
+        return {"nan": math.nan, "infinity": math.inf, "-infinity": -math.inf}[value]
+    return value
+
+
+def build_cases() -> list[dict[str, Any]]:
+    cases: list[dict[str, Any]] = []
+    for name, text in (
+        ("empty", ""),
+        ("ascii", 'router vlan "prod"'),
+        ("punctuation", "!!! -- ?"),
+        ("unicode", "İstanbul Αθήνα café 日本語"),
+        ("combining", "cafe\u0301 café"),
+        ("numbers", "version_2 ٣ ²"),
+        ("emoji", "☕ coffee 😀"),
+        ("controls", "alpha\n beta\tzero\u200bwidth"),
+    ):
+        cases.append(_case(f"fts-{name}", "lexical.fts-query", "fts-query", {"text": text}))
+
+    for name, text in (
+        ("empty", ""),
+        ("ascii", "Router VLAN_42 router"),
+        ("cjk-contiguous", "我喜欢你好"),
+        ("cjk-separated", "我喜欢hello你好"),
+        ("japanese-korean", "カタカナ 한국어"),
+        ("outside-alphabet", "Привет 😀 Καλημέρα"),
+        ("unicode-casing", "İSTANBUL Straße ＡＢＣ"),
+    ):
+        cases.append(_case(
+            f"tokens-{name}", "lexical.tokenization", "tokenization", {"text": text},
+        ))
+
+    generated = random.Random(20260909)
+    alphabet = "AB_z09 \t-\"我你カ한 caféİé\u0301😀"
+    for index in range(16):
+        text = "".join(generated.choice(alphabet) for _ in range(80))
+        for operation, requirement, prefix in (
+            ("fts-query", "lexical.fts-query", "fts"),
+            ("tokenization", "lexical.tokenization", "tokens"),
+        ):
+            cases.append(_case(
+                f"{prefix}-generated-{index:02d}", requirement, operation, {"text": text},
+            ))
+
+    for index, rank in enumerate((-100, -3, -1, 0, 1, 3, "nan", "infinity", "-infinity")):
+        cases.append(_case(f"bm25-{index:02d}", "lexical.bm25", "bm25", {"rank": rank}))
+
+    now_ms = 1_767_225_600_000  # 2026-01-01T00:00:00Z, fixed on both sides.
+    base_results = [
+        {"path": "memory/2025-12-02.md", "score": 0.8, "source": "memory", "snippet": "old"},
+        {"path": "memory/2026-01-01.md", "score": 0.7, "source": "memory", "snippet": "today"},
+        {"path": "memory/2026-01-15.md", "score": 0.6, "source": "memory", "snippet": "future"},
+    ]
+    decay_inputs = [
+        ("disabled", {"results": base_results, "enabled": False}),
+        ("dated", {"results": base_results}),
+        ("evergreen", {"results": [
+            {"path": "MEMORY.md", "score": 0.8, "source": "memory", "snippet": "root"},
+            {"path": "USER.md", "score": 0.7, "source": "memory", "snippet": "user"},
+            {"path": "memory/topics/coffee.md", "score": 0.6,
+             "source": "memory", "snippet": "topic"},
+        ]}),
+        ("path-shapes", {"results": [
+            {"path": "./memory/2025-12-02.md", "score": 0.5, "source": "memory", "snippet": "dot"},
+            {"path": "memory\\2025-12-02.md", "score": 0.5,
+             "source": "memory", "snippet": "windows"},
+            {"path": "memory/2025-02-30.md", "score": 0.5,
+             "source": "memory", "snippet": "invalid"},
+        ]}),
+        ("session-metadata", {"results": [
+            {"path": "session-a", "score": 0.8, "source": "sessions", "snippet": "indexed"},
+            {"path": "session-b", "score": 0.7, "source": "sessions", "snippet": "unknown"},
+        ], "sessionSourceMtimes": {"session-a": now_ms - 30 * 86_400_000}}),
+        ("zero-half-life", {"results": base_results, "halfLifeDays": 0}),
+    ]
+    rng = random.Random(20260909)
+    for index in range(4):
+        age = rng.randint(1, 120)
+        decay_inputs.append((f"seeded-{index:02d}", {
+            "results": [{"path": f"session-{index}", "score": rng.randrange(1, 100) / 100,
+                         "source": "sessions", "snippet": "fixed-seed"}],
+            "sessionSourceMtimes": {f"session-{index}": now_ms - age * 86_400_000},
+            "halfLifeDays": rng.choice([7, 14, 30, 60]),
+        }))
+    for name, arguments in decay_inputs:
+        cases.append(_case(f"decay-{name}", "retrieval.temporal-decay", "temporal-decay", {
+            "nowMs": now_ms, "enabled": True, "halfLifeDays": 30, **arguments,
+        }))
+
+    items = [
+        {"path": "memory/a.md", "score": 1.0, "source": "memory",
+         "snippet": "router vlan alpha", "startLine": 1},
+        {"path": "memory/b.md", "score": 0.9, "source": "memory",
+         "snippet": "router vlan alpha duplicate", "startLine": 1},
+        {"path": "memory/c.md", "score": 0.8, "source": "memory",
+         "snippet": "calendar preference", "startLine": 1},
+    ]
+    for name, arguments in (
+        ("disabled", {"enabled": False}),
+        ("balanced", {"lambda": 0.7}),
+        ("diversity", {"lambda": 0}),
+        ("relevance", {"lambda": 1}),
+        ("negative-lambda", {"lambda": -1}),
+        ("large-lambda", {"lambda": 2}),
+        ("ties", {"items": [{**item, "score": 1.0} for item in items]}),
+        ("empty-token-text", {"items": [
+            {**items[0], "snippet": " Привет "},
+            {**items[1], "snippet": "привет"},
+            {**items[2], "snippet": "Пока"},
+        ], "lambda": 0}),
+        ("cjk-text", {"items": [
+            {**items[0], "snippet": "我喜欢咖啡"},
+            {**items[1], "snippet": "我喜欢咖啡茶"},
+            {**items[2], "snippet": "明天开会"},
+        ], "lambda": 0}),
+        ("empty-punctuation-text", {"items": [
+            {**items[0], "snippet": ""},
+            {**items[1], "snippet": "!!!"},
+            {**items[2], "snippet": "???"},
+        ], "lambda": 0}),
+    ):
+        cases.append(_case(f"mmr-{name}", "retrieval.mmr", "mmr", {
+            "items": items, "enabled": True, "lambda": 0.7, **arguments,
+        }))
+
+    for case in cases:
+        operation, identifier = case["operation"], case["id"]
+        if operation in ("fts-query", "tokenization"):
+            primary = "query" if operation == "fts-query" else "tokens"
+            case["covers"] = [f"{case['requirement']}.{primary}"]
+            if "-generated-" in identifier:
+                case["covers"].append(f"{case['requirement']}.generated")
+        elif operation == "bm25":
+            case["covers"] = ["lexical.bm25.ranks", "lexical.bm25.boundaries"]
+        elif operation == "temporal-decay":
+            case["covers"] = ["retrieval.temporal-decay.time-inputs"]
+            if identifier in (
+                "decay-dated", "decay-evergreen", "decay-path-shapes", "decay-session-metadata",
+            ):
+                case["covers"].append("retrieval.temporal-decay.sources")
+        elif operation == "mmr":
+            case["covers"] = ["retrieval.mmr.order"]
+            if identifier in ("mmr-cjk-text", "mmr-empty-punctuation-text"):
+                case["covers"].append("retrieval.mmr.text-boundaries")
+    return cases
+
+
+def run_python(case: dict[str, Any]) -> Any:
+    """Execute the installed Python implementation; never manufacture a match."""
+    operation, arguments = case["operation"], case["input"]
+    if operation == "fts-query":
+        from memory_core.index.fts import build_fts_query
+
+        return build_fts_query(arguments["text"])
+    if operation == "bm25":
+        from memory_core.index.fts import bm25_rank_to_score
+
+        return bm25_rank_to_score(_number(arguments["rank"]))
+    if operation == "tokenization":
+        from memory_core.index.mmr import tokenize
+
+        # The return contract is a mathematical set, not Python/JS set iteration order.
+        return sorted(tokenize(arguments["text"]))
+    if operation == "temporal-decay":
+        from memory_core.index.temporal_decay import (
+            TemporalDecayConfig,
+            apply_temporal_decay_to_hybrid_results,
+        )
+
+        results = [_Result(**value) for value in arguments["results"]]
+        result = apply_temporal_decay_to_hybrid_results(
+            results,
+            temporal_decay=TemporalDecayConfig(
+                enabled=arguments["enabled"], half_life_days=arguments["halfLifeDays"],
+            ),
+            now_ms=arguments["nowMs"],
+            session_source_mtimes=arguments.get("sessionSourceMtimes"),
+        )
+        # startLine is not part of this operation's input, so do not add it to the result.
+        return [{key: value for key, value in asdict(item).items() if key != "startLine"}
+                for item in result]
+    if operation == "mmr":
+        from memory_core.index.mmr import apply_mmr_to_hybrid_results
+
+        result = apply_mmr_to_hybrid_results(
+            [_Result(**value) for value in arguments["items"]],
+            enabled=arguments["enabled"], lambda_=arguments["lambda"],
+        )
+        return [asdict(item) for item in result]
+    raise ValueError(f"Unsupported equivalence operation: {operation}")

@@ -1,12 +1,19 @@
-# Upstream port to OpenClaw v2026.9.6 (stage 2 plan)
+# Historical port to OpenClaw v2026.9.6
+
+This document retains the accepted port decisions and the evidence from the
+completed v2026.9.6 stage-two work. Its original estimates and task states are
+historical. The current v2026.9.9 target and acceptance work are tracked in
+[Full Equivalence Checklist](full-equivalence-checklist.md).
 
 Stage 1 (branch `feat/pin-v2026.9.6`, 2026-09-27) moved the oracle target from pin `4c42815348`
 (2026-07-05) to release tag `v2026.9.6` = `eb377ac59e6c9fd6c7705028034812becf00271b` (tag
 commit 2026-09-22) and changed no Python behaviour. The oracle runner now calls the tag's
-functions, and every oracle test that fails at the tag is an `xfail(strict=True)` entry in
-`tests/integration/oracle_worklist.py`, grouped by the areas below. Stage 2 ports the Python
-code to the tag area by area; each area is done when its worklist entries are removed, its
-tests pass against the tag, and its `docs/parity_matrix.md` rows are re-audited.
+functions. Every oracle test that failed at the tag was recorded as an
+`xfail(strict=True)` entry in the stage-two worklist, grouped by the areas below.
+Stage 2 ported the Python code to the tag area by area; each area was done when
+its worklist entries were removed, its tests passed against the tag, and its
+`docs/parity_matrix.md` rows were re-audited. The empty helper and its bookkeeping
+tests have since been retired; their original contents remain in Git history.
 
 ## Where stage 1 left the suite (measured 2026-09-27)
 
@@ -165,8 +172,8 @@ after the runs. Matrix after the merge: 42 rows, 24 `partial`, 11 `mismatch`, 2 
 ## Areas
 
 Estimates are labelled estimates (2026-09-27, inferred from the measured failure classes and
-source reading, not measured). "Tests" counts worklist tests, and "Worklist areas" names the
-`PendingPort.area` labels of `tests/integration/oracle_worklist.py` that each plan area owns
+source reading, not measured). "Tests" counts historical worklist tests, and "Worklist areas"
+names the retired helper's `PendingPort.area` labels that each plan area owned
 (stage 1: 17 labels, 120 tests; after areas 1 and 2: 15 labels, 90 tests; after area 3: 14
 labels, 86 tests; after areas 3 and 4 merged: 12 labels, 81 tests; each label carries its plan
 area as `PendingPort.plan_area`, which the xfail reason prints as "area N"); every worklist test

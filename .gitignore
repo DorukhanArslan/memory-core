@@ -9,3 +9,5 @@ __pycache__/
 **/*.key
 **/*.pem
 **/secrets*
+.reference/
+.equivalence-results/

@@ -1,0 +1,66 @@
+name: Memory equivalence
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  differential:
+    name: Differential subset (full contract on manual runs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      OPENAI_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+      MEMORY_CORE_LIVE_OPENAI: ""
+      MEMORY_CORE_DEMO_OPENAI_API_KEY: ""
+      MEMORY_CORE_DEMO_OPENAI_EMBEDDING_API_KEY: ""
+      OPENCLAW_ORACLE_REPO: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Check out the exact reference source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: openclaw/openclaw
+          ref: bcfc88812a35243893585dbeca87ca41b48272ca
+          path: .reference/openclaw
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24.16.0"
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.9.18"
+      - name: Install frozen development stack
+        run: uv sync --frozen
+      - name: Test the new acceptance harness
+        run: uv run --frozen pytest -q tests/equivalence
+      - name: Compare the registered cases with actual OpenClaw
+        run: >-
+          uv run --frozen python scripts/check_equivalence.py
+          --reference .reference/openclaw --node "$(command -v node)"
+          --smoke --report .equivalence-results/subset.json
+      - name: Require the complete contract on manual acceptance runs
+        if: always() && github.event_name == 'workflow_dispatch'
+        run: >-
+          uv run --frozen python scripts/check_equivalence.py
+          --reference .reference/openclaw --node "$(command -v node)"
+          --report .equivalence-results/full.json
+      - name: Retain results, including failed acceptance runs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: memory-equivalence-results
+          path: .equivalence-results/*.json
+          if-no-files-found: ignore

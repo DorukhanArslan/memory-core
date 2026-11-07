@@ -1,0 +1,7 @@
+{
+  "tag": "v2026.9.9",
+  "commit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+  "repository": "https://github.com/openclaw/openclaw.git",
+  "nodeMin": "24.16.0",
+  "nodeRanges": ">=24.16.0 <25 || >=26.1.0"
+}

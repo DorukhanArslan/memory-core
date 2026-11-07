@@ -3,6 +3,15 @@
 Version 0.2.0 is unreleased. The package has no index release. These checks prepare the
 current package. They do not publish it or change its runtime defaults.
 
+## Full-equivalence claims
+
+An ordinary package build or offline test run does not establish OpenClaw equivalence.
+For a full-equivalence claim, follow [the current checklist](full-equivalence-checklist.md)
+and run the default `scripts/check_equivalence.py` command against the exact v2026.9.9
+reference commit. A smoke/subset report is insufficient. The full gate must pass without
+missing acceptance points, mismatches, reference errors, or runner failures. The gate is
+expected to fail until the documented contract is implemented and exercised.
+
 ## Local checks
 
 Use Python 3.11 or newer and uv. Run from the checkout. The development tools come from

@@ -1,5 +1,9 @@
 # memory-core host kit (`memory_core.host`)
 
+The API contract below remains useful to hosts. Its dated implementation plans
+and v2026.9.6 comparison notes are historical; current v2026.9.9 acceptance work
+is tracked in [Full Equivalence Checklist](full-equivalence-checklist.md).
+
 Status: specification and TDD plan, written 2026-09-28 on `feat/host-kit` (from `main`
 `b829bad`), revised after review the same day. Implemented on that branch the same night:
 Tasks 1-8 and the kit parts of Task 10's docs. Task 9 (the Lab's flush, `/new` and heartbeat run)
@@ -1470,7 +1474,7 @@ synthetic error result after it, and a call without an id is dropped from the co
 
 `memory_core/replay_repair.py` is pin-era (`4c428153`): its oracle fixture
 `repair_tool_use_result_pairing_matches_python` is a strict xfail at the tag
-(`tests/integration/oracle_worklist.py`, area 10). Probe of 2026-09-29 on `807508d` (the real TS
+(the retired stage-two worklist, area 10). Probe of 2026-09-29 on `807508d` (the real TS
 function through the oracle runner, Node 24.21.0), three fixtures:
 
 | Fixture | Tag | Pin-era port |
@@ -1765,8 +1769,8 @@ Tasks 4 and 5 run in Task 9 (the implementation stage runs no oracle).
 - Files: `memory_core/replay_repair.py`, `scripts/extract_upstream_constants.py`,
   `memory_core/_transcript_repair_constants.py`, `scripts/openclaw_oracle_runner.ts` (pass
   `preserveUnframedToolResults`, return `discarded`), `tests/unit/test_replay_repair.py`,
-  `tests/integration/test_openclaw_ts_oracle.py`, `tests/integration/oracle_worklist.py` (the
-  fixture leaves area 10's tuple), `tests/integration/test_extracted_upstream_constants.py`,
+  `tests/integration/test_openclaw_ts_oracle.py` (the fixture left the historical area-10
+  worklist), `tests/integration/test_extracted_upstream_constants.py`,
   docs/parity_matrix.md (the row and audit note 24), docs/upstream_port_v2026_9_6.md (area 10).
 - First step: re-read `tool-result-pairing.ts` and `session-transcript-repair.ts:391-480` at the
   tag; if either contradicts this section, stop and report.

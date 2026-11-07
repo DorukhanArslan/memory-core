@@ -1,0 +1,1037 @@
+{
+  "schemaVersion": 1,
+  "requirements": [
+    {
+      "id": "storage.discovery",
+      "title": "Discover exactly the eligible memory files",
+      "required": true,
+      "domain": "Storage and workspace",
+      "acceptance": [
+        {
+          "id": "storage.discovery.outcomes",
+          "description": "Compare roots, nested Markdown, case sensitivity, order, hidden artifacts and disappearing files."
+        },
+        {
+          "id": "storage.discovery.boundaries",
+          "description": "Exclude or admit symlinks and non-regular files exactly as the pinned reference does."
+        }
+      ]
+    },
+    {
+      "id": "storage.path-safety",
+      "title": "Enforce memory path and read boundaries",
+      "required": true,
+      "domain": "Storage and workspace",
+      "acceptance": [
+        {
+          "id": "storage.path-safety.outcomes",
+          "description": "Exercise absolute, relative, traversal, encoded and symlink paths."
+        },
+        {
+          "id": "storage.path-safety.boundaries",
+          "description": "Compare rejected operations, result shapes and absence of unintended writes."
+        }
+      ]
+    },
+    {
+      "id": "storage.atomic-writes",
+      "title": "Publish writes atomically",
+      "required": true,
+      "domain": "Storage and workspace",
+      "acceptance": [
+        {
+          "id": "storage.atomic-writes.outcomes",
+          "description": "Compare append, replace, exclusive creation and concurrent rename outcomes."
+        },
+        {
+          "id": "storage.atomic-writes.boundaries",
+          "description": "Inject write, flush, fsync and publication failures and inspect the surviving files."
+        }
+      ]
+    },
+    {
+      "id": "storage.workspace-isolation",
+      "title": "Keep workspace and subject state separate",
+      "required": true,
+      "domain": "Storage and workspace",
+      "acceptance": [
+        {
+          "id": "storage.workspace-isolation.outcomes",
+          "description": "Reuse one host configuration across distinct workspaces and subjects."
+        },
+        {
+          "id": "storage.workspace-isolation.boundaries",
+          "description": "Prove files, indexes, recalls and maintenance state cannot cross the selected boundary."
+        }
+      ]
+    },
+    {
+      "id": "lexical.tokenization",
+      "title": "Match lexical tokenization",
+      "required": true,
+      "domain": "Lexical and chunking",
+      "acceptance": [
+        {
+          "id": "lexical.tokenization.tokens",
+          "description": "Compare exported token sets for empty, repeated, ASCII, mixed-script, CJK and Unicode boundary inputs."
+        },
+        {
+          "id": "lexical.tokenization.generated",
+          "description": "Use deterministic generated strings as well as named cases; preserve all observable tokens."
+        }
+      ]
+    },
+    {
+      "id": "lexical.fts-query",
+      "title": "Match full-text query construction",
+      "required": true,
+      "domain": "Lexical and chunking",
+      "acceptance": [
+        {
+          "id": "lexical.fts-query.query",
+          "description": "Compare query strings and no-query outcomes for punctuation, quotes, identifiers, whitespace and mixed scripts."
+        },
+        {
+          "id": "lexical.fts-query.generated",
+          "description": "Exercise deterministic generated inputs without reconstructing the reference algorithm in the oracle."
+        }
+      ]
+    },
+    {
+      "id": "lexical.bm25",
+      "title": "Match BM25 rank conversion",
+      "required": true,
+      "domain": "Lexical and chunking",
+      "acceptance": [
+        {
+          "id": "lexical.bm25.ranks",
+          "description": "Compare positive, negative, zero and boundary ranks, including supported non-finite input representations."
+        },
+        {
+          "id": "lexical.bm25.boundaries",
+          "description": "Report numerical differences rather than masking score-gate changes with a blanket tolerance."
+        }
+      ]
+    },
+    {
+      "id": "chunking.markdown-boundaries",
+      "title": "Match Markdown chunk boundaries",
+      "required": true,
+      "domain": "Lexical and chunking",
+      "acceptance": [
+        {
+          "id": "chunking.markdown-boundaries.outcomes",
+          "description": "Compare ordered chunks, lines, overlap, empty content, headings and per-entry curated files."
+        },
+        {
+          "id": "chunking.markdown-boundaries.boundaries",
+          "description": "Read the original source through every returned line range."
+        }
+      ]
+    },
+    {
+      "id": "chunking.utf16-cjk-budget",
+      "title": "Match UTF-16 and CJK chunk budgets",
+      "required": true,
+      "domain": "Lexical and chunking",
+      "acceptance": [
+        {
+          "id": "chunking.utf16-cjk-budget.outcomes",
+          "description": "Exercise surrogate pairs, malformed surrogates, CJK weighting and exact budget boundaries."
+        },
+        {
+          "id": "chunking.utf16-cjk-budget.boundaries",
+          "description": "Compare truncation and overlap without splitting valid pairs or changing source ranges."
+        }
+      ]
+    },
+    {
+      "id": "chunking.entry-provenance",
+      "title": "Retain chunk identity and provenance",
+      "required": true,
+      "domain": "Lexical and chunking",
+      "acceptance": [
+        {
+          "id": "chunking.entry-provenance.outcomes",
+          "description": "Compare chunk hashes, entry boundaries, source identities and provenance fields."
+        },
+        {
+          "id": "chunking.entry-provenance.boundaries",
+          "description": "Verify unchanged and changed inputs produce the reference identities and invalidation decisions."
+        }
+      ]
+    },
+    {
+      "id": "indexing.identity",
+      "title": "Match index identity gating",
+      "required": true,
+      "domain": "Index lifecycle",
+      "acceptance": [
+        {
+          "id": "indexing.identity.outcomes",
+          "description": "Vary provider, model, endpoint settings, scope, sources, tokenizer and chunking versions."
+        },
+        {
+          "id": "indexing.identity.boundaries",
+          "description": "Compare missing, matching and stale metadata diagnostics before any query is admitted."
+        }
+      ]
+    },
+    {
+      "id": "indexing.incremental-sync",
+      "title": "Match index refresh and invalidation",
+      "required": true,
+      "domain": "Index lifecycle",
+      "acceptance": [
+        {
+          "id": "indexing.incremental-sync.outcomes",
+          "description": "Create, update, rename and delete files and sessions while retaining an index."
+        },
+        {
+          "id": "indexing.incremental-sync.boundaries",
+          "description": "Compare discovery, chunk replacement and unchanged-file handling across reopen."
+        }
+      ]
+    },
+    {
+      "id": "indexing.transaction-publication",
+      "title": "Publish one coherent index revision",
+      "required": true,
+      "domain": "Index lifecycle",
+      "acceptance": [
+        {
+          "id": "indexing.transaction-publication.outcomes",
+          "description": "Interleave readers with successful and failing rebuilds."
+        },
+        {
+          "id": "indexing.transaction-publication.boundaries",
+          "description": "Compare visible old/new revisions and prevent partial chunk, FTS or provenance publication."
+        }
+      ]
+    },
+    {
+      "id": "indexing.embedding-cache",
+      "title": "Match embedding reuse and invalidation",
+      "required": true,
+      "domain": "Index lifecycle",
+      "acceptance": [
+        {
+          "id": "indexing.embedding-cache.outcomes",
+          "description": "Use a deterministic instrumented embedder to count query and document calls."
+        },
+        {
+          "id": "indexing.embedding-cache.boundaries",
+          "description": "Compare cache identity, batching, changed chunks, failed batches and retained entries."
+        }
+      ]
+    },
+    {
+      "id": "indexing.query-sync",
+      "title": "Match query-time synchronization",
+      "required": true,
+      "domain": "Index lifecycle",
+      "acceptance": [
+        {
+          "id": "indexing.query-sync.outcomes",
+          "description": "Query an empty or stale index before and after source changes."
+        },
+        {
+          "id": "indexing.query-sync.boundaries",
+          "description": "Compare forced-sync/retry policy, unavailable outcomes and dispatch counts."
+        }
+      ]
+    },
+    {
+      "id": "retrieval.vector-scoring",
+      "title": "Match vector candidate scoring",
+      "required": true,
+      "domain": "Retrieval and ranking",
+      "acceptance": [
+        {
+          "id": "retrieval.vector-scoring.outcomes",
+          "description": "Compare cosine scoring, candidate bounds, zero vectors and incompatible dimensions."
+        },
+        {
+          "id": "retrieval.vector-scoring.boundaries",
+          "description": "Compare ordered source/range identities before downstream hybrid ranking."
+        }
+      ]
+    },
+    {
+      "id": "retrieval.hybrid-scoring",
+      "title": "Match hybrid merge and score gates",
+      "required": true,
+      "domain": "Retrieval and ranking",
+      "acceptance": [
+        {
+          "id": "retrieval.hybrid-scoring.outcomes",
+          "description": "Compare vector-only, text-only, overlapping and disjoint candidates with configured weights."
+        },
+        {
+          "id": "retrieval.hybrid-scoring.boundaries",
+          "description": "Check selection, minimum-score boundaries and lexical fallback without dropping result fields."
+        }
+      ]
+    },
+    {
+      "id": "retrieval.exact-path-priority",
+      "title": "Match exact-path retrieval priority",
+      "required": true,
+      "domain": "Retrieval and ranking",
+      "acceptance": [
+        {
+          "id": "retrieval.exact-path-priority.outcomes",
+          "description": "Exercise exact paths, basename matches, partial paths and body-only matches."
+        },
+        {
+          "id": "retrieval.exact-path-priority.boundaries",
+          "description": "Compare path specificity tiers, ties and interaction with content score."
+        }
+      ]
+    },
+    {
+      "id": "retrieval.mmr",
+      "title": "Match diversity reranking",
+      "required": true,
+      "domain": "Retrieval and ranking",
+      "acceptance": [
+        {
+          "id": "retrieval.mmr.order",
+          "description": "Compare disabled/enabled MMR, duplicate text, equal scores, stable ties and lambda boundaries."
+        },
+        {
+          "id": "retrieval.mmr.text-boundaries",
+          "description": "Exercise CJK, empty and punctuation-only snippets and preserve output ordering."
+        }
+      ]
+    },
+    {
+      "id": "retrieval.temporal-decay",
+      "title": "Match recency decay",
+      "required": true,
+      "domain": "Retrieval and ranking",
+      "acceptance": [
+        {
+          "id": "retrieval.temporal-decay.time-inputs",
+          "description": "Compare enabled/disabled decay, half-life boundaries, future dates and missing timestamps."
+        },
+        {
+          "id": "retrieval.temporal-decay.sources",
+          "description": "Compare dated versus evergreen memory paths and session activity timestamps under a fixed clock."
+        }
+      ]
+    },
+    {
+      "id": "retrieval.importance-project",
+      "title": "Match importance and active-project ranking",
+      "required": true,
+      "domain": "Retrieval and ranking",
+      "acceptance": [
+        {
+          "id": "retrieval.importance-project.outcomes",
+          "description": "Exercise importance annotations, triggers and active/inactive project keys."
+        },
+        {
+          "id": "retrieval.importance-project.boundaries",
+          "description": "Compare multipliers and their order relative to path tiers, decay and MMR."
+        }
+      ]
+    },
+    {
+      "id": "tools.search-contract",
+      "title": "Match memory_search inputs and results",
+      "required": true,
+      "domain": "Memory tool contract",
+      "acceptance": [
+        {
+          "id": "tools.search-contract.outcomes",
+          "description": "Compare definitions, accepted parameters, coercion, defaults, corpora and rejection errors."
+        },
+        {
+          "id": "tools.search-contract.boundaries",
+          "description": "Compare complete ordered payloads, citations, warnings and source metadata."
+        }
+      ]
+    },
+    {
+      "id": "tools.get-contract",
+      "title": "Match memory_get inputs and results",
+      "required": true,
+      "domain": "Memory tool contract",
+      "acceptance": [
+        {
+          "id": "tools.get-contract.outcomes",
+          "description": "Compare allowed files, line windows, UTF-16 budgets, continuation hints and missing sources."
+        },
+        {
+          "id": "tools.get-contract.boundaries",
+          "description": "Compare exact status/error shapes and returned source text."
+        }
+      ]
+    },
+    {
+      "id": "tools.deadline-cooldown",
+      "title": "Match deadlines and cooldowns",
+      "required": true,
+      "domain": "Memory tool contract",
+      "acceptance": [
+        {
+          "id": "tools.deadline-cooldown.outcomes",
+          "description": "Control clocks and slow providers to exercise absolute deadlines and cooldown transitions."
+        },
+        {
+          "id": "tools.deadline-cooldown.boundaries",
+          "description": "Compare subsequent admission, provider call counts and memory/wiki/session independence."
+        }
+      ]
+    },
+    {
+      "id": "tools.unavailable-partial",
+      "title": "Match unavailable and partial corpus outcomes",
+      "required": true,
+      "domain": "Memory tool contract",
+      "acceptance": [
+        {
+          "id": "tools.unavailable-partial.outcomes",
+          "description": "Fail individual providers and supplemental corpora independently."
+        },
+        {
+          "id": "tools.unavailable-partial.boundaries",
+          "description": "Compare partial results, timed-out flags, warnings and recovery on a later explicit query."
+        }
+      ]
+    },
+    {
+      "id": "sessions.corpus-admission",
+      "title": "Match session corpus admission",
+      "required": true,
+      "domain": "Sessions and transcript",
+      "acceptance": [
+        {
+          "id": "sessions.corpus-admission.outcomes",
+          "description": "Compare accepted session kinds, ownership, participants, archives and generated maintenance sessions."
+        },
+        {
+          "id": "sessions.corpus-admission.boundaries",
+          "description": "Provide the same host metadata and compare included and excluded entries."
+        }
+      ]
+    },
+    {
+      "id": "sessions.transcript-filtering",
+      "title": "Match transcript extraction and filtering",
+      "required": true,
+      "domain": "Sessions and transcript",
+      "acceptance": [
+        {
+          "id": "sessions.transcript-filtering.outcomes",
+          "description": "Compare JSONL trees, tool rows, heartbeat markers, recalled content and failed or mirrored messages."
+        },
+        {
+          "id": "sessions.transcript-filtering.boundaries",
+          "description": "Exercise reset fences, malformed rows and supported archives without inventing stored text."
+        }
+      ]
+    },
+    {
+      "id": "sessions.visibility-lineage",
+      "title": "Match source-session visibility and lineage",
+      "required": true,
+      "domain": "Sessions and transcript",
+      "acceptance": [
+        {
+          "id": "sessions.visibility-lineage.outcomes",
+          "description": "Vary visible sessions, source identities, trust and forgotten origins."
+        },
+        {
+          "id": "sessions.visibility-lineage.boundaries",
+          "description": "Compare hits, provenance and source reads before and after reset or deletion."
+        }
+      ]
+    },
+    {
+      "id": "sessions.reset-hook",
+      "title": "Match new/reset memory capture",
+      "required": true,
+      "domain": "Sessions and transcript",
+      "acceptance": [
+        {
+          "id": "sessions.reset-hook.outcomes",
+          "description": "Compare transcript projection, naming, timezone, slug behavior and exclusive publication."
+        },
+        {
+          "id": "sessions.reset-hook.boundaries",
+          "description": "Verify source lines, trust records, collision handling and recall after the hook."
+        }
+      ]
+    },
+    {
+      "id": "sessions.durable-context",
+      "title": "Preserve durable conversation context",
+      "required": true,
+      "domain": "Sessions and transcript",
+      "acceptance": [
+        {
+          "id": "sessions.durable-context.outcomes",
+          "description": "Persist actual transcript and session metadata and reconstruct the host in a fresh process."
+        },
+        {
+          "id": "sessions.durable-context.boundaries",
+          "description": "Compare continuation, ordering and retained context without relying on process-local lists."
+        }
+      ]
+    },
+    {
+      "id": "prompt.bootstrap-discovery",
+      "title": "Match workspace bootstrap selection",
+      "required": true,
+      "domain": "Prompt and bootstrap",
+      "acceptance": [
+        {
+          "id": "prompt.bootstrap-discovery.outcomes",
+          "description": "Exercise setup states, session kinds, available files and compatibility layouts."
+        },
+        {
+          "id": "prompt.bootstrap-discovery.boundaries",
+          "description": "Compare ensure decisions, selected files and their order under the same inputs."
+        }
+      ]
+    },
+    {
+      "id": "prompt.bootstrap-budget",
+      "title": "Match bootstrap clipping and notices",
+      "required": true,
+      "domain": "Prompt and bootstrap",
+      "acceptance": [
+        {
+          "id": "prompt.bootstrap-budget.outcomes",
+          "description": "Exercise per-file, USER.md and aggregate UTF-16 limits and exact boundary values."
+        },
+        {
+          "id": "prompt.bootstrap-budget.boundaries",
+          "description": "Compare clipping, omitted files, warning modes and once-per-session state."
+        }
+      ]
+    },
+    {
+      "id": "prompt.runtime-context",
+      "title": "Match memory and runtime prompt composition",
+      "required": true,
+      "domain": "Prompt and bootstrap",
+      "acceptance": [
+        {
+          "id": "prompt.runtime-context.outcomes",
+          "description": "Compare memory guidance, tools, runtime markers and fixed clock/timezone fragments."
+        },
+        {
+          "id": "prompt.runtime-context.boundaries",
+          "description": "Compare insertion order and isolation of untrusted or recalled text."
+        }
+      ]
+    },
+    {
+      "id": "prompt.history-repair",
+      "title": "Match history windowing and tool repair",
+      "required": true,
+      "domain": "Prompt and bootstrap",
+      "acceptance": [
+        {
+          "id": "prompt.history-repair.outcomes",
+          "description": "Exercise missing results, duplicate or invalid calls, failed turns and provider replay metadata."
+        },
+        {
+          "id": "prompt.history-repair.boundaries",
+          "description": "Compare repaired model-visible messages while preserving the original durable transcript."
+        }
+      ]
+    },
+    {
+      "id": "flush.plan-target",
+      "title": "Match flush plan and target selection",
+      "required": true,
+      "domain": "Flush and compaction",
+      "acceptance": [
+        {
+          "id": "flush.plan-target.outcomes",
+          "description": "Compare enabled/disabled configuration, model selection, timezone and daily target validation."
+        },
+        {
+          "id": "flush.plan-target.boundaries",
+          "description": "Compare prompts, reserve terms and failure before a target can be safely prepared."
+        }
+      ]
+    },
+    {
+      "id": "flush.trigger-usage",
+      "title": "Match flush trigger accounting",
+      "required": true,
+      "domain": "Flush and compaction",
+      "acceptance": [
+        {
+          "id": "flush.trigger-usage.outcomes",
+          "description": "Feed fresh/stale usage, missing usage, transcript byte limits and compaction counters."
+        },
+        {
+          "id": "flush.trigger-usage.boundaries",
+          "description": "Compare trigger decisions, heartbeat exclusions and retry/exhaustion state."
+        }
+      ]
+    },
+    {
+      "id": "flush.execute-finalize",
+      "title": "Match flush execution and finalization",
+      "required": true,
+      "domain": "Flush and compaction",
+      "acceptance": [
+        {
+          "id": "flush.execute-finalize.outcomes",
+          "description": "Run the same labelled model/tool sequence through both hosts."
+        },
+        {
+          "id": "flush.execute-finalize.boundaries",
+          "description": "Compare append-only writes, index readiness, provenance and successful or failed cycle stamps."
+        }
+      ]
+    },
+    {
+      "id": "compaction.memory-budget",
+      "title": "Match curated memory budget compaction",
+      "required": true,
+      "domain": "Flush and compaction",
+      "acceptance": [
+        {
+          "id": "compaction.memory-budget.outcomes",
+          "description": "Exercise promotion sections mixed with user text and exact size/loss limits."
+        },
+        {
+          "id": "compaction.memory-budget.boundaries",
+          "description": "Compare preserved bytes, removed sections, deferral and reconciliation markers."
+        }
+      ]
+    },
+    {
+      "id": "compaction.context-assembly",
+      "title": "Match context assembly and compaction replay",
+      "required": true,
+      "domain": "Flush and compaction",
+      "acceptance": [
+        {
+          "id": "compaction.context-assembly.outcomes",
+          "description": "Compare active transcript projections, summaries, checkpoints, tool-result bounds and replay decisions."
+        },
+        {
+          "id": "compaction.context-assembly.boundaries",
+          "description": "Retain trailing required results and provider continuation data across restart."
+        }
+      ]
+    },
+    {
+      "id": "compaction.provider-overflow",
+      "title": "Match overflow recovery behavior",
+      "required": true,
+      "domain": "Flush and compaction",
+      "acceptance": [
+        {
+          "id": "compaction.provider-overflow.outcomes",
+          "description": "Drive preflight and mid-turn overflow, truncation, compact/retry and terminal failures."
+        },
+        {
+          "id": "compaction.provider-overflow.boundaries",
+          "description": "Compare dispatch counts, protected messages and exact continuation/admission decisions."
+        }
+      ]
+    },
+    {
+      "id": "promotion.recall-signals",
+      "title": "Match recall recording",
+      "required": true,
+      "domain": "Recall and promotion",
+      "acceptance": [
+        {
+          "id": "promotion.recall-signals.outcomes",
+          "description": "Compare filtering, deduplication, query hashes, day boundaries, retention and recall events."
+        },
+        {
+          "id": "promotion.recall-signals.boundaries",
+          "description": "Verify ground truth source ranges and origin recording before published recall state."
+        }
+      ]
+    },
+    {
+      "id": "promotion.ranking-gates",
+      "title": "Match promotion ranking and gates",
+      "required": true,
+      "domain": "Recall and promotion",
+      "acceptance": [
+        {
+          "id": "promotion.ranking-gates.outcomes",
+          "description": "Compare scores, custom weights, tie order, diversity, age, trust and visibility gates."
+        },
+        {
+          "id": "promotion.ranking-gates.boundaries",
+          "description": "Include exact score thresholds and promoted-entry visibility."
+        }
+      ]
+    },
+    {
+      "id": "promotion.apply-reconcile",
+      "title": "Match promotion application and reconciliation",
+      "required": true,
+      "domain": "Recall and promotion",
+      "acceptance": [
+        {
+          "id": "promotion.apply-reconcile.outcomes",
+          "description": "Compare MEMORY.md/DREAMS.md, markers, authoritative candidates and applied/rejected receipts."
+        },
+        {
+          "id": "promotion.apply-reconcile.boundaries",
+          "description": "Interleave candidate changes and verify lock-time rechecks and publication order."
+        }
+      ]
+    },
+    {
+      "id": "promotion.deep-consolidation",
+      "title": "Match model-assisted consolidation",
+      "required": true,
+      "domain": "Recall and promotion",
+      "acceptance": [
+        {
+          "id": "promotion.deep-consolidation.outcomes",
+          "description": "Feed identical deterministic model plans for added, merged, superseded and rejected entries."
+        },
+        {
+          "id": "promotion.deep-consolidation.boundaries",
+          "description": "Compare preimages, loss safeguards, history, origin changes and deterministic fallback."
+        }
+      ]
+    },
+    {
+      "id": "dreaming.light",
+      "title": "Match the complete light phase",
+      "required": true,
+      "domain": "Dreaming phases",
+      "acceptance": [
+        {
+          "id": "dreaming.light.outcomes",
+          "description": "Compare ingestion, freshness, ordering, deduplication, evidence grouping and selection."
+        },
+        {
+          "id": "dreaming.light.boundaries",
+          "description": "Compare live-source checks, staged-key state, phase signals and published artifacts."
+        }
+      ]
+    },
+    {
+      "id": "dreaming.rem",
+      "title": "Match the complete REM phase",
+      "required": true,
+      "domain": "Dreaming phases",
+      "acceptance": [
+        {
+          "id": "dreaming.rem.outcomes",
+          "description": "Compare narrative/evidence extraction and staged-key preference, consumption and freshness."
+        },
+        {
+          "id": "dreaming.rem.boundaries",
+          "description": "Compare diary outputs, live-source checks and failure/publication semantics."
+        }
+      ]
+    },
+    {
+      "id": "dreaming.deep",
+      "title": "Match the complete deep phase",
+      "required": true,
+      "domain": "Dreaming phases",
+      "acceptance": [
+        {
+          "id": "dreaming.deep.outcomes",
+          "description": "Compare eligibility, consolidation invocation, fallback and phase composition."
+        },
+        {
+          "id": "dreaming.deep.boundaries",
+          "description": "Compare phase ordering, source provenance and all resulting memory/recall state."
+        }
+      ]
+    },
+    {
+      "id": "dreaming.diary-provenance",
+      "title": "Match diary and phase publication",
+      "required": true,
+      "domain": "Dreaming phases",
+      "acceptance": [
+        {
+          "id": "dreaming.diary-provenance.outcomes",
+          "description": "Compare diary structure, coverage, evidence references, timestamps and artifact trust."
+        },
+        {
+          "id": "dreaming.diary-provenance.boundaries",
+          "description": "Inject publisher failures and concurrent changes and compare locks and durable receipts."
+        }
+      ]
+    },
+    {
+      "id": "forget.lineage-tombstones",
+      "title": "Match forget selection and tombstones",
+      "required": true,
+      "domain": "Forget and provenance",
+      "acceptance": [
+        {
+          "id": "forget.lineage-tombstones.outcomes",
+          "description": "Exercise dry-run and commit for direct, promoted, mixed-lineage and missing origins."
+        },
+        {
+          "id": "forget.lineage-tombstones.boundaries",
+          "description": "Compare retained/deleted memory, lineage, tombstones and same-session replay admission."
+        }
+      ]
+    },
+    {
+      "id": "forget.index-fence",
+      "title": "Match forget/index revision fences",
+      "required": true,
+      "domain": "Forget and provenance",
+      "acceptance": [
+        {
+          "id": "forget.index-fence.outcomes",
+          "description": "Interleave forget with rebuild, search and promotion using the same source revisions."
+        },
+        {
+          "id": "forget.index-fence.boundaries",
+          "description": "Prove a stale rebuild cannot republish forgotten entries, including after restart."
+        }
+      ]
+    },
+    {
+      "id": "trust.secret-redaction",
+      "title": "Match secret redaction policies",
+      "required": true,
+      "domain": "Trust and redaction",
+      "acceptance": [
+        {
+          "id": "trust.secret-redaction.outcomes",
+          "description": "Compare literal registered secrets, structured credentials and model/tool/transcript policies."
+        },
+        {
+          "id": "trust.secret-redaction.boundaries",
+          "description": "Compare bounded chunks, sanitization order and failure diagnostics without leaking live credentials."
+        }
+      ]
+    },
+    {
+      "id": "trust.configured-redaction",
+      "title": "Match configured patterns and trust transitions",
+      "required": true,
+      "domain": "Trust and redaction",
+      "acceptance": [
+        {
+          "id": "trust.configured-redaction.outcomes",
+          "description": "Compare supported JavaScript regex patterns, mode overrides and full-context walking."
+        },
+        {
+          "id": "trust.configured-redaction.boundaries",
+          "description": "Compare owner/taint/provenance transitions at tool time and through stored session state."
+        }
+      ]
+    },
+    {
+      "id": "heartbeat.scratch",
+      "title": "Match heartbeat monitor scratch state",
+      "required": true,
+      "domain": "Heartbeat and automation",
+      "acceptance": [
+        {
+          "id": "heartbeat.scratch.outcomes",
+          "description": "Compare read/write/unset/delete, size limits, tombstones and doctor migrations."
+        },
+        {
+          "id": "heartbeat.scratch.boundaries",
+          "description": "Compare persisted state and diagnostics after reconstruction."
+        }
+      ]
+    },
+    {
+      "id": "heartbeat.turn-decisions",
+      "title": "Match heartbeat turn inputs and reply handling",
+      "required": true,
+      "domain": "Heartbeat and automation",
+      "acceptance": [
+        {
+          "id": "heartbeat.turn-decisions.outcomes",
+          "description": "Compare skip/run decisions, prompt inputs, due tasks, NO_REPLY and HEARTBEAT_OK handling."
+        },
+        {
+          "id": "heartbeat.turn-decisions.boundaries",
+          "description": "Compare flush exclusion and removal from the session-memory corpus."
+        }
+      ]
+    },
+    {
+      "id": "automation.job-state",
+      "title": "Match memory-related automation state",
+      "required": true,
+      "domain": "Heartbeat and automation",
+      "acceptance": [
+        {
+          "id": "automation.job-state.outcomes",
+          "description": "Compare schedule parsing, due decisions, run recording and migration outcomes under a fixed clock."
+        },
+        {
+          "id": "automation.job-state.boundaries",
+          "description": "Drive jobs explicitly; compare observable memory inputs and outputs without cloning an OS scheduler."
+        }
+      ]
+    },
+    {
+      "id": "concurrency.workspace-locks",
+      "title": "Match workspace lock semantics",
+      "required": true,
+      "domain": "Concurrency and recovery",
+      "acceptance": [
+        {
+          "id": "concurrency.workspace-locks.outcomes",
+          "description": "Exercise simultaneous writers in separate processes, lock timeout, owner death and stale recovery."
+        },
+        {
+          "id": "concurrency.workspace-locks.boundaries",
+          "description": "Compare exclusion, lease/reclaim behavior and absence of cross-workspace interference."
+        }
+      ]
+    },
+    {
+      "id": "recovery.repair-diagnostics",
+      "title": "Match audit and repair outcomes",
+      "required": true,
+      "domain": "Concurrency and recovery",
+      "acceptance": [
+        {
+          "id": "recovery.repair-diagnostics.outcomes",
+          "description": "Corrupt recall stores, indexes, provenance and lock artifacts independently."
+        },
+        {
+          "id": "recovery.repair-diagnostics.boundaries",
+          "description": "Compare diagnostic codes, retained valid state and repair effects without silently resetting data."
+        }
+      ]
+    },
+    {
+      "id": "recovery.failure-publication",
+      "title": "Match interrupted operation recovery",
+      "required": true,
+      "domain": "Concurrency and recovery",
+      "acceptance": [
+        {
+          "id": "recovery.failure-publication.outcomes",
+          "description": "Interrupt write, index, flush, consolidation, forget and diary publication at defined boundaries."
+        },
+        {
+          "id": "recovery.failure-publication.boundaries",
+          "description": "Compare next-open behavior, partial outcomes, unknown operations and retry policy."
+        }
+      ]
+    },
+    {
+      "id": "engine.numeric-boundaries",
+      "title": "Match numeric boundary behavior",
+      "required": true,
+      "domain": "Cross-language boundaries",
+      "acceptance": [
+        {
+          "id": "engine.numeric-boundaries.outcomes",
+          "description": "Exercise coercion, non-finite numbers, negative zero, integer limits and exact score gates."
+        },
+        {
+          "id": "engine.numeric-boundaries.boundaries",
+          "description": "Compare decisions and serialization; document any operation-specific tolerance without masking inclusion changes."
+        }
+      ]
+    },
+    {
+      "id": "engine.unicode-collation",
+      "title": "Match Unicode and collation behavior",
+      "required": true,
+      "domain": "Cross-language boundaries",
+      "acceptance": [
+        {
+          "id": "engine.unicode-collation.outcomes",
+          "description": "Exercise UTF-16 units, lone surrogates, case folding, segmentation and path ordering."
+        },
+        {
+          "id": "engine.unicode-collation.boundaries",
+          "description": "Compare ordering and truncation for deterministic generated and named multilingual cases."
+        }
+      ]
+    },
+    {
+      "id": "engine.datetime-regex",
+      "title": "Match date/time and regex edge behavior",
+      "required": true,
+      "domain": "Cross-language boundaries",
+      "acceptance": [
+        {
+          "id": "engine.datetime-regex.outcomes",
+          "description": "Compare supported date parsing, offsets, DST boundaries, locale-independent clocks and regex options."
+        },
+        {
+          "id": "engine.datetime-regex.boundaries",
+          "description": "Classify unsupported source behavior as a mismatch or uncovered requirement, never an implicit match."
+        }
+      ]
+    },
+    {
+      "id": "host.turn-barrier",
+      "title": "Finalize memory before the next turn",
+      "required": true,
+      "domain": "Host lifecycle acceptance",
+      "acceptance": [
+        {
+          "id": "host.turn-barrier.outcomes",
+          "description": "Drive a natural first-turn save and an immediate follow-up in both host paths."
+        },
+        {
+          "id": "host.turn-barrier.boundaries",
+          "description": "Compare committed and searchable memory, serialized maintenance and visible failure before next admission."
+        }
+      ]
+    },
+    {
+      "id": "host.restart-recall",
+      "title": "Recall across fresh chats and process restart",
+      "required": true,
+      "domain": "Host lifecycle acceptance",
+      "acceptance": [
+        {
+          "id": "host.restart-recall.outcomes",
+          "description": "Use the same saved corpus with a fresh session and then a fresh host process."
+        },
+        {
+          "id": "host.restart-recall.boundaries",
+          "description": "Compare source-backed retrieval and state continuity with facts omitted from the new prompt."
+        }
+      ]
+    },
+    {
+      "id": "host.update-isolation",
+      "title": "Update current facts while preserving isolation",
+      "required": true,
+      "domain": "Host lifecycle acceptance",
+      "acceptance": [
+        {
+          "id": "host.update-isolation.outcomes",
+          "description": "Replace a prior preference, retain unrelated facts and query from independent user/workspace scopes."
+        },
+        {
+          "id": "host.update-isolation.boundaries",
+          "description": "Compare current versus superseded answers and honest write/index failure reporting."
+        }
+      ]
+    }
+  ],
+  "outOfScope": [
+    "Gateway process startup, transport implementation and the OpenClaw daemon lifecycle, except their externally observable memory ordering and failure effects.",
+    "Browser UI, channel integrations, CLI surface and plugin packaging.",
+    "Operating-system scheduling, deployment authentication and sandbox implementation; the memory admission, trust and explicitly driven scheduling decisions they supply remain in scope.",
+    "Provider/plugin registration and transport SDK internals; memory-facing embedding, usage, cancellation and error semantics remain in scope.",
+    "Binary interchange with OpenClaw's private SQLite schema; observable memory contents, identities, concurrency and durability remain in scope.",
+    "Python-only curation/live/framework conveniences have separate regression tests and do not count as native equivalence evidence."
+  ]
+}

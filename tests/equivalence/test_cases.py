@@ -21,6 +21,7 @@ def test_case_catalog_is_deterministic_unique_and_standard_json():
         "retrieval.exact-path-priority",
         "retrieval.importance-project",
         "tools.search-contract",
+        "tools.get-contract",
         "engine.unicode-collation",
         "storage.discovery", "storage.path-safety", "indexing.identity",
         "indexing.embedding-cache", "indexing.incremental-sync",

@@ -133,9 +133,9 @@ def test_memory_get_reads_wiki_supplement_result(tmp_path: Path):
     assert result == {
         "status": "ok",
         "path": "w1.md",
-        "text": "Requires security approval.",
-        "from": 2,
-        "lines": 1,
+        # The provider owns excerpt selection. The tool retains its complete
+        # content and metadata instead of applying a second range selection.
+        "text": "Project Nebula deployment rule.\nRequires security approval.\n",
         "corpus": "wiki",
         "corpora": [{"corpus": "wiki", "outcome": "ok"}],
     }

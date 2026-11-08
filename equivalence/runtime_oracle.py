@@ -49,6 +49,12 @@ _OPERATIONS = {
     "search-contract-helper-runtime": (
         "search-contract-runtime.mjs", "dist/tools-DotaQGXh.mjs", False,
     ),
+    "get-contract-runtime": (
+        "get-contract-runtime.mjs", "dist/tools-DotaQGXh.mjs", False,
+    ),
+    "get-contract-helper-runtime": (
+        "get-contract-runtime.mjs", "dist/tools-DotaQGXh.mjs", False,
+    ),
 }
 
 
@@ -211,6 +217,9 @@ class ReleaseOracleExecution:
         if (operation in search_profile_kinds
                 and case.get("input", {}).get("kind") not in search_profile_kinds[operation]):
             raise RuntimeOracleError("Search fixtures must use their narrowly declared helper or whole-tool profile.")
+        get_profile_kinds = {"get-contract-runtime": "tool", "get-contract-helper-runtime": "definition"}
+        if operation in get_profile_kinds and case.get("input", {}).get("kind") != get_profile_kinds[operation]:
+            raise RuntimeOracleError("Get fixtures must use their narrowly declared definition or whole-tool profile.")
         if (not isinstance(row, dict) or operation not in _OPERATIONS
                 or row.get("id") != case.get("id") or type(row.get("ok")) is not bool
                 or set(row) != ({"id", "ok", "result"} if row["ok"] else {"id", "ok", "error"})):
@@ -321,6 +330,12 @@ class ReleaseOracleExecution:
             if any(("node_modules/openclaw", owner) not in loaded
                    for owner in REQUIRED_LOADED_ARTIFACTS_BY_PROFILE[operation]):
                 raise RuntimeOracleError("The actual declared native search-tool owners did not execute.")
+        if operation in {"get-contract-runtime", "get-contract-helper-runtime"}:
+            from equivalence.get_contract_runtime_bindings import REQUIRED_LOADED_ARTIFACTS_BY_PROFILE
+
+            if any(("node_modules/openclaw", owner) not in loaded
+                   for owner in REQUIRED_LOADED_ARTIFACTS_BY_PROFILE[operation]):
+                raise RuntimeOracleError("The actual declared native get-tool owners did not execute.")
         if case.get("operation") == "flush-execution-runtime" and not captures:
             raise RuntimeOracleError("The native provider loader did not execute a reviewed fixture source capture.")
         if operation == "flush-execution-runtime" and (
@@ -342,6 +357,46 @@ class ReleaseOracleExecution:
         diagnostic = _json(raw)
         if not isinstance(diagnostic, list):
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
+        if operation == "get-contract-runtime" and case["input"]["kind"] == "tool" and row["ok"]:
+            from equivalence.get_contract_runtime_bindings import READ_RUNTIME_ARTIFACTS
+            from equivalence.search_contract import _same_json, decode_search_tool_envelope
+
+            public_steps = row["result"].get("steps")
+            if (not isinstance(public_steps, list) or not isinstance(case["input"].get("steps"), list)
+                    or len(public_steps) != len(case["input"]["steps"]) or len(diagnostic) != 1
+                    or not isinstance(diagnostic[0], dict) or diagnostic[0].get("kind") != "tool"
+                    or not isinstance(diagnostic[0].get("nativeEnvelopes"), list)
+                    or len(diagnostic[0]["nativeEnvelopes"]) != len(public_steps)):
+                raise RuntimeOracleError("Get-tool results require every original raw operation envelope.")
+            portable_paths = case["input"].get("normalizeFixturePaths") is True
+            if portable_paths:
+                from equivalence.get_contract import map_get_fixture_paths
+
+                fixture_base = diagnostic[0].get("fixtureBase")
+                if (not isinstance(fixture_base, str) or not Path(fixture_base).is_absolute()
+                        or Path(fixture_base).parent != evidence.parent
+                        or not re.fullmatch(r"native-get-fixture-[A-Za-z0-9_-]+", Path(fixture_base).name)):
+                    raise RuntimeOracleError("Get-tool path aliases require the exact owned case fixture base.")
+            raw_requests = diagnostic[0].get("requests")
+            if portable_paths:
+                raw_requests = map_get_fixture_paths(raw_requests, fixture_base)
+            if not _same_json(raw_requests, row["result"].get("requests")):
+                raise RuntimeOracleError("Get-tool provider requests differ from retained raw observations.")
+            for index, (original, public) in enumerate(zip(diagnostic[0]["nativeEnvelopes"], public_steps, strict=True)):
+                if (not isinstance(original, dict) or original.get("index") != index
+                        or not isinstance(public, dict) or set(public) not in ({"result"}, {"error"})
+                        or set(original) != {"index", *public}):
+                    raise RuntimeOracleError("Get-tool raw and public operation identities differ.")
+                observed = ({"result": decode_search_tool_envelope(original["result"])}
+                            if "result" in public else {"error": original["error"]})
+                if portable_paths:
+                    observed = map_get_fixture_paths(observed, fixture_base)
+                if not _same_json(observed, public):
+                    raise RuntimeOracleError("Get-tool public payload differs from its complete raw envelope.")
+            if any("result" in step for step in public_steps) and any(
+                ("node_modules/openclaw", owner) not in loaded for owner in READ_RUNTIME_ARTIFACTS
+            ):
+                raise RuntimeOracleError("A returned get-tool envelope has no actual native read runtime.")
         if operation == "flush-execution-runtime" and not any(
             isinstance(row, dict) and isinstance(row.get("modelCalls"), list) and row["modelCalls"]
             for row in diagnostic

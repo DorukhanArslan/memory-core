@@ -138,6 +138,14 @@ def _reference_bindings(checkout: Path, *, cache: bool, publication: bool,
             bindings.setdefault(key, []).extend(extension[key])
         bindings["searchContractSourceOwners"] = {key: value for key, value in extension.items()
                                                  if key not in {"allowedResolutions", "projectionEvidence"}}
+    if "get-contract" in reuse_operations:
+        from equivalence.get_contract_bindings import prepare_get_contract_bindings
+
+        extension = prepare_get_contract_bindings(checkout)
+        for key in ("allowedResolutions", "projectionEvidence"):
+            bindings.setdefault(key, []).extend(extension[key])
+        bindings["getContractSourceOwners"] = {key: value for key, value in extension.items()
+                                              if key not in {"allowedResolutions", "projectionEvidence"}}
     if reuse_operations:
         from equivalence.reuse_bindings import prepare_reuse_bindings
 
@@ -441,6 +449,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "exact-path-runtime",
             "importance-project-runtime",
             "search-contract-runtime", "search-contract-helper-runtime",
+            "get-contract-runtime", "get-contract-helper-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -467,6 +476,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                          "vector-scoring", "hybrid-scoring", "exact-path-priority",
                                          "importance-project",
                                          "search-contract",
+                                         "get-contract",
                                      })
         native_storage = required_artifact_execution or bool(reuse_operations)
         cache_bindings = any(case["operation"] == "embedding-cache" for case in cases)
@@ -565,6 +575,19 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 except (OSError, ValueError):
                     raise HarnessError("search-contract-runtime-owner-unavailable",
                                        "The reviewed native search-tool owners could not be verified.") from None
+            get_contract_runtime = any(case["operation"] in {
+                "get-contract-runtime", "get-contract-helper-runtime",
+            } for case in runtime_cases)
+            if get_contract_runtime:
+                from equivalence.get_contract_runtime_bindings import prepare_get_contract_runtime_bindings
+
+                try:
+                    report["getContractRuntimeBindings"] = prepare_get_contract_runtime_bindings(
+                        checkout, Path(runtime_config["runtimeRoot"]),
+                    )
+                except (OSError, ValueError):
+                    raise HarnessError("get-contract-runtime-owner-unavailable",
+                                       "The reviewed native get-tool owners could not be verified.") from None
             report["releaseSources"], report["releaseTraces"], report["runtimeDiagnostics"] = [], [], []
             if flush_execution:
                 report["fixtureCaptures"] = []
@@ -611,6 +634,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     checkout, Path(runtime_config["runtimeRoot"]),
                 ) != report["searchContractRuntimeBindings"]:
                     raise ValueError("Search-tool source or compiled owners changed.")
+                if get_contract_runtime and prepare_get_contract_runtime_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]),
+                ) != report["getContractRuntimeBindings"]:
+                    raise ValueError("Get-tool source or compiled owners changed.")
             except (OSError, ValueError, RuntimeError):
                 raise HarnessError("release-runtime-changed",
                                    "Official runtime artifact bytes changed during comparison.") from None

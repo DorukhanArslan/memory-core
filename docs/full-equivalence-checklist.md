@@ -1255,3 +1255,57 @@ only; SDK source, differential adapters and the inventory match the tested imple
 
 Next in the fixed checklist is **`tools.get-contract`**, targeting **+2 points**, or
 **37/128 (28.9%)** if verified. No additional user information is needed for that work.
+
+
+### Memory-get tool boundary implementation
+
+This batch targets **+2 acceptance points**, from **35/128 (27.3%)** to **37/128
+(28.9%)** if the committed integrated checks pass. The fixed scope remains **64 contracts
+and 128 acceptance points**; no storage/deadline/OS behavior point is added by this batch.
+
+The pre-change SDK baseline at `a94d989f134f94a311774ef261aeeb6ae918a06e` is retained in
+`.equivalence-results/get-contract-python-baseline.json`. It consumed one Python character
+instead of one UTF-16 unit, and sliced/clamped wiki content again while dropping provider
+metadata. The read path now uses genuine shared production excerpt builders with 120-line
+and 12,000-unit defaults, safe surrogate boundaries, exact continuation state and notices
+even when no first character fits. Wiki providers own their excerpts; content becomes text,
+status becomes ok and all other details remain intact. Explicit registered readers receive
+lookup, range, agent and trusted host context; legacy anonymous callable signatures remain
+supported. The English API guide is [memory_get_tool.md](memory_get_tool.md).
+
+The new production factory exposes the actual definition and complete JSON result envelope,
+checks live availability and captures one workspace/agent without requiring an index. Plain
+configured file/directory roots authorize additional reads; model arguments cannot grant
+that scope. Existing admission order, symlink refusals and read-only behavior are preserved.
+Stable fs-safe causes are attached at the actual refusal checks for outside symlinks,
+non-directory ancestors and nonregular leaves. Python's actual OS-owned symlink-loop cause
+is retained rather than rewritten into Node's wording. Pattern configuration, descriptor
+races, retry timing, deadlines and session visibility remain outside this bounded profile.
+
+The first report, `.equivalence-results/get-contract-first.json`, retained **69 matches,
+one filesystem mismatch and zero blocked cases**, before acceptance mapping. Its existing
+loop request is still tested in the default catalog as the ordinary uncredited
+`get-contract-symlink-loop-cause-diagnostic` under `storage.path-safety`. The corrected report,
+`.equivalence-results/get-contract-corrected.json`, records **70 matches, that one visible
+OS diagnostic mismatch, zero blocked cases and no runner errors**. All 70 get-contract
+cases match: 52 original source helper cases, six official definitions and 12 complete
+whole-tool batches. Across the 13 batches including the diagnostic, all 66 requested
+operations and 112 original text carriers are retained.
+
+The filesystem cases explicitly map each side's exact owned temporary fixture base to
+`$FIXTURE`, retaining workspace/outside suffixes, full error words, codes and every envelope
+field. Raw carriers validate against details before that identity mapping, and originals
+remain separately retained. Prefixes such as `/`, `/tmp`, another case or a sibling are
+rejected; neither OS error wording nor result fields are normalized away. Relative extra
+paths reach both real factories unchanged. Provider request observations compare all actual
+fields with only the declared Python/native keyword-name mapping.
+
+Independent review supports both get points within this portable profile. **124 provenance
+and transport guards** pass, including required read artifacts, split helper/full-tool
+profiles, complete operation counts and raw-carrier authority. The genuine get path uses
+2,885 authenticated release files and no index workers. Official compiled execution remains
+separate from a reproduced source build. Broad affected SDK/HostKit checks passed 340 tests,
+and demo/LangGraph checks passed 460 tests before the cause-only refinement. Final committed
+regressions, package consumers and the integrated gate remain pending. The OS diagnostic
+joins the existing Unicode path-order and warm first-recall differences; all remain visible
+and uncredited. No paid provider call is required.

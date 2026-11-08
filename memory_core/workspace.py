@@ -548,14 +548,20 @@ class MemoryWorkspace:
                 if stat.S_ISLNK(parent_stat.st_mode):
                     try:
                         resolved_parent = parent.resolve(strict=True)
-                    except (FileNotFoundError, NotADirectoryError) as error:
+                    except (FileNotFoundError, NotADirectoryError):
                         raise MemoryReadPathError(
                             "outside-workspace", "file is outside workspace root"
-                        ) from error
+                        ) from ValueError(f"Symlink escapes root ({self.root}): {parent}")
                     if not self.is_path_inside_root(resolved_parent) or not resolved_parent.is_dir():
-                        raise MemoryReadPathError("outside-workspace", "file is outside workspace root")
+                        raise MemoryReadPathError(
+                            "outside-workspace", "file is outside workspace root",
+                        ) from ValueError(f"Symlink escapes root ({self.root}): {parent}")
                 elif not stat.S_ISDIR(parent_stat.st_mode):
-                    raise MemoryReadPathError("outside-workspace", "file is outside workspace root")
+                    raise MemoryReadPathError(
+                        "outside-workspace", "file is outside workspace root",
+                    ) from MemoryReadPathError(
+                        "ENOTDIR", f"Path component is not a directory: {parent}",
+                    )
             except FileNotFoundError:
                 return rel_path, None
             except (OSError, RuntimeError) as error:
@@ -579,7 +585,9 @@ class MemoryWorkspace:
         if stat.S_ISLNK(file_stat.st_mode):
             raise MemoryReadPathError("symlink", "symlink path component not allowed")
         if not stat.S_ISREG(file_stat.st_mode):
-            raise UnsafeMemoryPathError(MEMORY_PATH_NOT_REGULAR_FILE_ERROR)
+            raise UnsafeMemoryPathError(MEMORY_PATH_NOT_REGULAR_FILE_ERROR) from MemoryReadPathError(
+                "not-file", "not a file",
+            )
         if not self.is_path_inside_root(abs_path.resolve()):
             raise MemoryReadPathError("outside-workspace", "file is outside workspace root")
         return rel_path, abs_path

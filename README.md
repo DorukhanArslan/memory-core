@@ -282,6 +282,7 @@ Project-specific extensions are identified separately and cannot establish upstr
 | Guide | What it covers |
 | --- | --- |
 | [HostKit](docs/host_kit.md) | Prompts, tools, flushes, sessions, and error handling |
+| [Memory Get](docs/memory_get_tool.md) | Read-tool factory, bounded excerpts, wiki providers, and filesystem diagnostics |
 | [LangGraph](docs/integrations/langgraph.md) | Graph state, checkpoints, and memory operations |
 | [Live SDK](docs/integrations/live.md) | Subject memory, streaming events, and session summaries |
 | [Workspace Layout](docs/workspace_layout.md) | Files, initialization, and prompt limits |

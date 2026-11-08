@@ -1302,38 +1302,69 @@
           "symbol": "buildMemoryReadResult",
           "anchor": "export function buildMemoryReadResult(params: {",
           "line": 97
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/read-file.ts",
+          "symbol": "readMemoryFile",
+          "anchor": "export async function readMemoryFile(params: {",
+          "line": 34
         }
       ],
       "python": [
         {
+          "path": "memory_core/tools/get_factory.py",
+          "symbol": "create_memory_get_tool",
+          "anchor": "def create_memory_get_tool(",
+          "line": 87
+        },
+        {
           "path": "memory_core/tools/memory_get.py",
           "symbol": "memory_get_tool_definition",
-          "anchor": "def memory_get_tool_definition() -> dict[str, Any]:",
-          "line": 85
+          "anchor": "def memory_get_tool_definition(",
+          "line": 91
         },
         {
           "path": "memory_core/tools/memory_get.py",
           "symbol": "read_memory_get_params",
           "anchor": "def read_memory_get_params(params: object) -> MemoryGetParams:",
-          "line": 109
+          "line": 120
         },
         {
           "path": "memory_core/tools/memory_get.py",
           "symbol": "memory_get",
           "anchor": "def memory_get(",
-          "line": 171
+          "line": 247
         },
         {
           "path": "memory_core/tools/memory_get.py",
           "symbol": "_memory_get_text",
           "anchor": "def _memory_get_text(",
-          "line": 301
+          "line": 400
+        },
+        {
+          "path": "memory_core/tools/memory_get.py",
+          "symbol": "build_memory_read_result",
+          "anchor": "def build_memory_read_result(",
+          "line": 228
+        },
+        {
+          "path": "memory_core/tools/memory_get.py",
+          "symbol": "build_memory_read_result_from_slice",
+          "anchor": "def build_memory_read_result_from_slice(",
+          "line": 195
+        },
+        {
+          "path": "memory_core/tools/get_paths.py",
+          "symbol": "resolve_memory_get_path",
+          "anchor": "def resolve_memory_get_path(",
+          "line": 56
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python reads bounded Markdown line windows with UTF-16 continuation budgets and status/error outcomes, but configured external native read roots are unsupported.",
-        "Python memory_get calls supplemental corpora without the native absolute deadline; this affects error/partial shapes for slow supplement reads."
+        "The model-facing factory, raw parameter readers and shared excerpt builders preserve complete get envelopes, UTF-16-safe paging, missing sources and portable filesystem policy causes. Registered excerpt readers receive trusted lookup/range/context and retain all provider details without a second slice.",
+        "Configured plain extra file/directory roots are supported; glob patterns, descriptor races, retry timing and general OS-owned cause text remain unverified. An ordinary symlink-loop diagnostic preserves the Python/Node cause difference without acceptance credit.",
+        "Supplemental reads remain synchronous in the SDK; native absolute deadlines and cancellation transitions belong to the separate deadline/unavailable contracts. This source inventory alone grants no behavior credit."
       ]
     },
     {

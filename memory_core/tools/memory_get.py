@@ -3,16 +3,19 @@
 Two entry points, like ``memory_search``:
 
 - :func:`execute_memory_get_tool` takes the model's raw tool-call arguments and
-  reads them exactly like ``createMemoryGetTool`` (tools.ts:720-725):
+  reads them exactly like ``createMemoryGetTool``:
   ``readStringParam(path, required)`` (JavaScript trim; a missing, non-string
   or blank path raises ``path required``) and ``readPositiveIntegerParam`` for
   ``from`` and ``lines`` (``from must be a positive integer``, ``lines must be
-  a positive integer``). Invalid input raises
-  :class:`~memory_core.tools.common.MemoryToolInputError` tagged ``memory_get``; a
-  host tool loop sends the model ``error.to_tool_error()``.
+  a positive integer``). Invalid path or numeric input raises
+  :class:`~memory_core.tools.common.MemoryToolInputError` (native name
+  ``ToolInputError``, status 400). An unknown corpus raises the ordinary
+  :class:`~memory_core.tools.common.MemoryToolError` (native name ``Error``,
+  no status). Both are tagged ``memory_get``; a host tool loop sends the model
+  ``error.to_tool_error()``.
 - :func:`memory_get` is the Python-call form below the param readers: the
   tool body after validation (``readAgentMemoryFile`` / ``readMemoryFile`` and
-  ``resolveMemoryReadFailureResult``). Like ``buildMemoryReadResult`` it
+  ``executeMemoryReadResult``). Like ``buildMemoryReadResult`` it
   clamps ``from_line``/``lines`` to at least 1, and a blank path returns the
   ``path required`` failure payload instead of raising.
 
@@ -23,12 +26,15 @@ description and parameter schema, verbatim from upstream.
 from __future__ import annotations
 
 import copy
+import math
+from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
-from memory_core.bootstrap._js import js_trim
+from memory_core.bootstrap._js import js_trim, truncate_utf16_safe, utf16_len
 from memory_core.config import MemoryConfig
-from memory_core.supplements import MemoryCorpusSupplement
+from memory_core.supplements import MemoryCorpusSupplement, RegisteredMemoryCorpusSupplement
 from memory_core.tools.common import (
     MemoryToolError,
     as_tool_params_record,
@@ -44,7 +50,7 @@ from memory_core.tools.corpus import (
     error_code,
     settle_supplements,
 )
-from memory_core.workspace import MemoryWorkspace
+from memory_core.tools.get_paths import resolve_memory_get_path
 
 MEMORY_GET_TOOL_NAME = "memory_get"
 MEMORY_GET_CORPORA = ("memory", "wiki", "all")
@@ -82,16 +88,21 @@ MEMORY_GET_TOOL_PARAMETERS: dict[str, Any] = {
 }
 
 
-def memory_get_tool_definition() -> dict[str, Any]:
+def memory_get_tool_definition(*, extra_paths: Sequence[str | Path] = ()) -> dict[str, Any]:
     """``{"name", "description", "parameters"}`` of the upstream ``memory_get`` tool.
 
     Same provider-neutral shape as ``MemoryCurator.tool_definitions()``; wrap it
-    in the host's tool format. The schema's ``corpus`` enum is enforced by the
-    host's argument validation, not by :func:`execute_memory_get_tool`.
+    in the host's tool format. The schema publishes the closed ``corpus`` enum.
+    :func:`execute_memory_get_tool` also rejects an unknown corpus independently,
+    raising ordinary ``MemoryToolError`` with native name ``Error`` and no status.
     """
     return {
         "name": MEMORY_GET_TOOL_NAME,
-        "description": MEMORY_GET_TOOL_DESCRIPTION,
+        "description": MEMORY_GET_TOOL_DESCRIPTION.replace(
+            MEMORY_TOOL_FILES_DESCRIPTION,
+            MEMORY_TOOL_FILES_DESCRIPTION + (", configured extra paths" if extra_paths else ""),
+            1,
+        ),
         "parameters": copy.deepcopy(MEMORY_GET_TOOL_PARAMETERS),
     }
 
@@ -107,7 +118,7 @@ class MemoryGetParams:
 
 
 def read_memory_get_params(params: object) -> MemoryGetParams:
-    """Read tool-call params exactly like ``createMemoryGetTool`` (tools.ts:720-725)."""
+    """Read tool-call params exactly like ``createMemoryGetTool``."""
     raw = as_tool_params_record(params)
     try:
         path = read_string_param(raw, "path", required=True)
@@ -125,11 +136,16 @@ def execute_memory_get_tool(
     params: object,
     *,
     supplements: list[MemoryCorpusSupplement] | None = None,
+    extra_paths: Sequence[str | Path] = (),
+    agent_session_key: str | None = None,
+    sandboxed: bool | None = None,
 ) -> dict:
     """Run ``memory_get`` on raw tool-call params (the model's arguments).
 
-    Raises :class:`MemoryToolInputError` (``tool == "memory_get"``) on invalid
-    params; read failures come back as ``{"path", "text": "", "status": "error",
+    Invalid path or numeric input raises ``MemoryToolInputError`` (native
+    ``ToolInputError``, status 400); an unknown corpus raises ordinary
+    ``MemoryToolError`` (native ``Error``, no status). Both are tagged
+    ``memory_get``. Read failures come back as ``{"path", "text": "", "status": "error",
     "code", "error"}`` payloads, as upstream.
     """
     parsed = read_memory_get_params(params)
@@ -140,6 +156,9 @@ def execute_memory_get_tool(
         lines=parsed.lines,
         corpus=parsed.corpus if parsed.corpus is not None else "memory",
         supplements=supplements,
+        extra_paths=extra_paths,
+        agent_session_key=agent_session_key,
+        sandboxed=sandboxed,
     )
 
 
@@ -153,19 +172,76 @@ def _continuation_notice(*, next_from: int | None, suggest_read_fallback: bool) 
 
 
 def _fit_lines_to_char_budget(lines: list[str], *, max_chars: int) -> tuple[str, int, bool]:
-    if not lines:
-        return "", 0, False
+    included_lines = 0
+    chars = 0
+    for line in lines:
+        next_chars = chars + utf16_len(line) + (1 if included_lines else 0)
+        if included_lines and next_chars > max_chars:
+            break
+        included_lines += 1
+        chars = next_chars
+    return (truncate_utf16_safe("\n".join(lines[:included_lines]), max_chars),
+            included_lines, chars > max_chars)
 
-    included_lines = len(lines)
-    text = "\n".join(lines)
-    while included_lines > 1 and len(text) > max_chars:
-        included_lines -= 1
-        text = "\n".join(lines[:included_lines])
 
-    if len(text) <= max_chars:
-        return text, included_lines, False
+def _resolve_integer_option(value: object, fallback: int) -> int:
+    try:
+        finite = isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+    except OverflowError:
+        finite = False
+    return max(1, math.floor(float(value) if finite else fallback))
 
-    return text[:max_chars], 1, True
+
+def build_memory_read_result_from_slice(
+    *, selected_lines: Sequence[str], rel_path: str, start_line: int,
+    more_source_lines_remain: bool = False, max_chars: int | None = None,
+    suggest_read_fallback: bool = False,
+) -> dict[str, Any]:
+    """Native read-file-shared result builder over an already selected excerpt."""
+    start = _resolve_integer_option(start_line, 1)
+    text, included_lines, hard_truncated_single_line = _fit_lines_to_char_budget(
+        list(selected_lines), max_chars=_resolve_integer_option(max_chars, 12_000),
+    )
+    char_cap_truncated = hard_truncated_single_line or included_lines < len(selected_lines)
+    next_from = (
+        start + included_lines
+        if not hard_truncated_single_line
+        and (more_source_lines_remain or included_lines < len(selected_lines))
+        else None
+    )
+    truncated = char_cap_truncated or more_source_lines_remain
+    if truncated and (text or hard_truncated_single_line):
+        text += _continuation_notice(
+            next_from=next_from,
+            suggest_read_fallback=hard_truncated_single_line and suggest_read_fallback,
+        )
+    output: dict[str, Any] = {
+        "status": "ok", "text": text, "path": rel_path, "from": start, "lines": included_lines,
+    }
+    if truncated:
+        output["truncated"] = True
+    if next_from is not None:
+        output["nextFrom"] = next_from
+    return output
+
+
+def build_memory_read_result(
+    *, content: str, rel_path: str, from_line: int | None = None, lines: int | None = None,
+    default_lines: int | None = None, max_chars: int | None = None,
+    suggest_read_fallback: bool = False,
+) -> dict[str, Any]:
+    """Native UTF-16 excerpt builder used by the actual workspace reader."""
+    file_lines = content.split("\n")
+    if file_lines[-1] == "":
+        file_lines.pop()
+    start = _resolve_integer_option(from_line, 1)
+    count = _resolve_integer_option(lines if lines is not None else default_lines, 120)
+    selected = file_lines[start - 1 : start - 1 + count]
+    return build_memory_read_result_from_slice(
+        selected_lines=selected, rel_path=rel_path, start_line=start,
+        more_source_lines_remain=start - 1 + len(selected) < len(file_lines),
+        max_chars=max_chars, suggest_read_fallback=suggest_read_fallback,
+    )
 
 
 def memory_get(
@@ -176,6 +252,9 @@ def memory_get(
     lines: int | None = None,
     corpus: str = "memory",
     supplements: list[MemoryCorpusSupplement] | None = None,
+    extra_paths: Sequence[str | Path] = (),
+    agent_session_key: str | None = None,
+    sandboxed: bool | None = None,
 ) -> dict:
     """The tool body (``createMemoryGetTool`` + ``memory-read-tool.ts``).
 
@@ -188,11 +267,13 @@ def memory_get(
     if corpus == "wiki":
         wiki = _read_wiki(
             config,
-            path=MemoryWorkspace(config.workspace_dir).normalize_memory_path(path),
+            path=requested_path,
             from_line=from_line,
             lines=lines,
             corpus=corpus,
             supplements=supplements,
+            agent_session_key=agent_session_key,
+            sandboxed=sandboxed,
         )
         if wiki.value is not None:
             result: dict = wiki.value
@@ -203,7 +284,9 @@ def memory_get(
         return {**result, **compose_memory_corpus_metadata([wiki])}
 
     def read() -> dict:
-        return _read_builtin(config, path=path, from_line=from_line, lines=lines)
+        return _read_builtin(
+            config, path=path, from_line=from_line, lines=lines, extra_paths=extra_paths,
+        )
 
     if corpus != "all":
         try:
@@ -218,6 +301,8 @@ def memory_get(
         lines=lines,
         corpus=corpus,
         supplements=supplements,
+        agent_session_key=agent_session_key,
+        sandboxed=sandboxed,
     )
     memory_result = memory.value
     wiki_result = wiki.value
@@ -233,16 +318,18 @@ def memory_get(
 
 
 def _read_builtin(
-    config: MemoryConfig, *, path: str, from_line: int | None, lines: int | None
+    config: MemoryConfig, *, path: str, from_line: int | None, lines: int | None,
+    extra_paths: Sequence[str | Path] = (),
 ) -> dict:
     """``readAgentMemoryFile`` -> ``readMemoryFile``; a refusal or an OS error raises."""
-    workspace = MemoryWorkspace(config.workspace_dir)
     # memory_search session hits (`sessions/<agent>/*.jsonl` and
     # memory/.dreams/session-corpus/*.txt) are not readable upstream either: they fail
     # the memory-path/`.md` gate; a session-corpus `.md` file is an ordinary memory file.
     rel_path = js_trim(path)
     try:
-        rel_path, memory_path = workspace.resolve_memory_read_path(path)
+        rel_path, memory_path, suggest_read_fallback = resolve_memory_get_path(
+            config.workspace_dir, path, extra_paths,
+        )
         if memory_path is None:
             return _not_found(rel_path)
         # Buffer.toString("utf-8"): no newline translation, invalid bytes replaced.
@@ -250,7 +337,8 @@ def _read_builtin(
     except (FileNotFoundError, NotADirectoryError):
         return _not_found(rel_path)
     return _memory_get_text(
-        config, path=rel_path, content=content, from_line=from_line, lines=lines
+        config, path=rel_path, content=content, from_line=from_line, lines=lines,
+        suggest_read_fallback=suggest_read_fallback,
     )
 
 
@@ -277,19 +365,30 @@ def _read_wiki(
     lines: int | None,
     corpus: str,
     supplements: list[MemoryCorpusSupplement],
+    agent_session_key: str | None = None,
+    sandboxed: bool | None = None,
 ) -> CorpusAttempt:
     """``readMemoryCorpusSupplements``: the first supplement that has the path."""
 
     def run(supplement: MemoryCorpusSupplement) -> dict | None:
-        result = supplement.get(path=path, corpus=corpus)
+        if isinstance(supplement, RegisteredMemoryCorpusSupplement):
+            result = supplement.read(
+                lookup=path, from_line=from_line, line_count=lines, agent_id=config.agent_id,
+                agent_session_key=agent_session_key, sandboxed=sandboxed,
+            )
+        else:
+            result = supplement.get(path=path, corpus=corpus)
         if result is None:
             return None
-        content = result.get("content") or result.get("snippet") or ""
-        text_result = _memory_get_text(
-            config, path=path, content=str(content), from_line=from_line, lines=lines
-        )
-        text_result["corpus"] = result.get("corpus", corpus)
-        return text_result
+        presented = dict(result)
+        if "content" in presented:
+            presented["text"] = presented.pop("content")
+        else:
+            # Native undefined overwrites an existing text property and is
+            # omitted by the JSON transport. Empty and null content stay exact.
+            presented.pop("text", None)
+        presented["status"] = "ok"
+        return presented
 
     return settle_supplements(
         supplements,
@@ -305,40 +404,10 @@ def _memory_get_text(
     content: str,
     from_line: int | None,
     lines: int | None,
+    suggest_read_fallback: bool = True,
 ) -> dict:
-    file_lines = content.split("\n")
-    # A terminal newline closes the previous line; its split sentinel is not a
-    # readable extra blank line (read-file-shared.ts buildMemoryReadResult).
-    if file_lines[-1] == "":
-        file_lines.pop()
-    start = max(1, from_line or 1)
-    requested_count = max(1, lines if lines is not None else config.memory_get_default_lines)
-    selected_lines = file_lines[start - 1 : start - 1 + requested_count]
-    more_source_lines_remain = start - 1 + len(selected_lines) < len(file_lines)
-    text, included_lines, hard_truncated_single_line = _fit_lines_to_char_budget(
-        selected_lines,
-        max_chars=max(1, config.memory_get_max_chars),
+    return build_memory_read_result(
+        content=content, rel_path=path, from_line=from_line, lines=lines,
+        default_lines=config.memory_get_default_lines, max_chars=config.memory_get_max_chars,
+        suggest_read_fallback=suggest_read_fallback,
     )
-    char_cap_truncated = hard_truncated_single_line or included_lines < len(selected_lines)
-    next_from = (
-        start + included_lines
-        if not hard_truncated_single_line
-        and (more_source_lines_remain or included_lines < len(selected_lines))
-        else None
-    )
-    truncated = char_cap_truncated or more_source_lines_remain
-    if truncated and text:
-        text = f"{text}{_continuation_notice(next_from=next_from, suggest_read_fallback=hard_truncated_single_line)}"
-
-    output = {
-        "status": "ok",
-        "text": text,
-        "path": path,
-        "from": start,
-        "lines": included_lines,
-    }
-    if truncated:
-        output["truncated"] = True
-    if next_from is not None:
-        output["nextFrom"] = next_from
-    return output

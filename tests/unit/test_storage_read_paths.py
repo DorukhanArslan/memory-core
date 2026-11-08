@@ -62,7 +62,10 @@ def test_outside_parent_is_refused_before_the_leaf_is_observed(tmp_path, leaf):
     result = memory_get(MemoryConfig(workspace_dir=root), path=f"memory/outside/{leaf}")
     assert result["status"] == "error"
     assert result["code"] == "outside-workspace"
-    assert result["error"] == "file is outside workspace root"
+    assert result["error"] == (
+        f"file is outside workspace root | Symlink escapes root ({root.resolve()}): "
+        f"{root.resolve() / 'memory' / 'outside'}"
+    )
     assert (outside / "secret.md").read_text() == "secret"
 
 
@@ -79,6 +82,10 @@ def test_broken_parent_symlink_is_a_visible_policy_failure(tmp_path):
     result = memory_get(MemoryConfig(workspace_dir=tmp_path), path="memory/broken/note.md")
     assert result["status"] == "error"
     assert result["code"] == "outside-workspace"
+    assert result["error"] == (
+        f"file is outside workspace root | Symlink escapes root ({tmp_path.resolve()}): "
+        f"{tmp_path.resolve() / 'memory' / 'broken'}"
+    )
 
 
 def test_parent_loop_keeps_stable_policy_diagnostic(tmp_path):
@@ -98,6 +105,10 @@ def test_non_directory_parent_is_a_read_failure_instead_of_a_miss(tmp_path):
     result = memory_get(MemoryConfig(workspace_dir=tmp_path), path="memory/note.md/child.md")
     assert result["status"] == "error"
     assert result["code"] == "outside-workspace"
+    assert result["error"] == (
+        "file is outside workspace root | Path component is not a directory: "
+        f"{tmp_path.resolve() / 'memory' / 'note.md'} | ENOTDIR"
+    )
 
 
 def test_non_directory_workspace_keeps_policy_code(tmp_path):
@@ -117,7 +128,8 @@ def test_directory_and_fifo_leaves_are_not_read(tmp_path):
     for leaf in ("directory.md", "pipe.md"):
         result = memory_get(MemoryConfig(workspace_dir=tmp_path), path=f"memory/{leaf}")
         assert result["status"] == "error"
-        assert result["error"] == "path must be a regular file"
+        assert result["code"] == "MEMORY_READ_FAILED"
+        assert result["error"] == "path must be a regular file | not a file | not-file"
 
 
 def test_missing_normal_parent_returns_not_found(tmp_path):

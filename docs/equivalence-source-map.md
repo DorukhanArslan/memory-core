@@ -183,7 +183,7 @@ differences remain. No claim of full equivalence follows from these bounded resu
 | `retrieval.temporal-decay` | [applyTemporalDecayToHybridResults](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/temporal-decay.ts#L112) | [apply_temporal_decay_to_hybrid_results](../memory_core/index/temporal_decay.py#L122) | partial |
 | `retrieval.importance-project` | [applyImportanceMultiplier](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/importance.ts#L9) | [SQLiteMemoryStore.attach_recall_metadata](../memory_core/index/sqlite_store.py#L869) | present |
 | `tools.search-contract` | [createMemorySearchTool](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.ts#L226) | [memory_search_tool_definition](../memory_core/tools/memory_search.py#L153) | partial |
-| `tools.get-contract` | [createMemoryGetTool](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.ts#L569) | [memory_get_tool_definition](../memory_core/tools/memory_get.py#L85) | partial |
+| `tools.get-contract` | [createMemoryGetTool](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.ts#L569) | [create_memory_get_tool](../memory_core/tools/get_factory.py#L87) | partial |
 | `tools.deadline-cooldown` | [runMemorySearchWithDeadline](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/search-deadline.ts#L28) | [_DeadlineWorker](../memory_core/tools/memory_search.py#L441) | partial |
 | `tools.unavailable-partial` | [buildMemorySearchUnavailableResult](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.shared.ts#L93) | [build_memory_search_unavailable_result](../memory_core/tools/memory_search.py#L175) | partial |
 | `sessions.corpus-admission` | [listSessionTranscriptCorpusEntriesForAgent](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/session-transcript-corpus.ts#L560) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L43) | partial |
@@ -248,3 +248,20 @@ carrier codec verifies text/details agreement and preserves both original envelo
 not claim identical number spelling or whitespace across engines. Real transcript visibility,
 provider/fallback/bootstrap, stale/rebuild lifecycle and deadline transitions remain open.
 No acceptance credit is inferred from the source inventory alone.
+
+
+The get boundary now has an actual SDK factory in
+[`get_factory.py`](../memory_core/tools/get_factory.py), with no store or index required.
+Shared production read builders use UTF-16-safe budgets and complete continuation metadata.
+Registered excerpt readers receive trusted range/context arguments and preserve provider-owned
+content and every other detail. Plain configured extra roots use explicit read authorization;
+pattern entries and descriptor/race equivalence remain unverified.
+
+The first 70-case comparison retained one filesystem diagnostic mismatch. After porting
+library-owned policy causes, the corrected comparison matches all 70 get cases. The existing
+loop request is preserved as an ordinary uncredited `storage.path-safety` diagnostic: genuine
+Python/Node OS cause wording still differs. Only each side's exact owned private fixture base
+is aliased, after raw text/details validation; all error words, codes, relative suffixes and
+original envelopes survive. The compiled whole-tool proof requires the real secure reader
+and authenticated main-process preload; no index worker is required or invented for reads.
+Final committed integrated evidence is pending for this get batch.

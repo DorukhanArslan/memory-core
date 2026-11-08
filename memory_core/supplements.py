@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol, TypedDict
 
@@ -35,12 +36,38 @@ class RegisteredMemoryCorpusSupplement:
 
     plugin_id: str
     supplement: MemoryCorpusSupplement
+    reader: Callable[..., MemoryCorpusResult | None] | None = None
 
     def search(self, *, query: str, max_results: int, corpus: str) -> list[MemoryCorpusResult]:
         return self.supplement.search(query=query, max_results=max_results, corpus=corpus)
 
     def get(self, *, path: str, corpus: str) -> MemoryCorpusResult | None:
         return self.supplement.get(path=path, corpus=corpus)
+
+    def read(
+        self,
+        *,
+        lookup: str,
+        from_line: int | None = None,
+        line_count: int | None = None,
+        agent_id: str | None = None,
+        agent_session_key: str | None = None,
+        sandboxed: bool | None = None,
+    ) -> MemoryCorpusResult | None:
+        """Run an explicit excerpt reader, omitting absent native options.
+
+        A registration without a reader retains the legacy provider protocol.
+        The provider owns excerpt selection and all fields in its result.
+        """
+        if self.reader is None:
+            return self.get(path=lookup, corpus="wiki")
+        options = {
+            "from_line": from_line, "line_count": line_count, "agent_id": agent_id,
+            "agent_session_key": agent_session_key, "sandboxed": sandboxed,
+        }
+        return self.reader(lookup=lookup, **{
+            key: value for key, value in options.items() if value is not None
+        })
 
 
 @dataclass(frozen=True)

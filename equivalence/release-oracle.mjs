@@ -17,6 +17,8 @@ const operations = {
   "flush-execution-runtime": ["flush-execution.mjs", "runFlushExecution"],
   "search-contract-runtime": ["search-contract-runtime.mjs", "runSearchContractRuntime"],
   "search-contract-helper-runtime": ["search-contract-runtime.mjs", "runSearchContractHelperRuntime"],
+  "get-contract-runtime": ["get-contract-runtime.mjs", "runGetContractRuntime"],
+  "get-contract-helper-runtime": ["get-contract-runtime.mjs", "runGetContractHelperRuntime"],
 };
 const results = [];
 for (const testCase of request.cases) {

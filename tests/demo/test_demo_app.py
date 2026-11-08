@@ -2100,7 +2100,8 @@ def test_default_lab_is_fts_only_and_never_builds_an_embedder(client, lab, embed
     assert result["embeddings"]["mode"] == "fts-only"
     assert result["embeddings"]["label"] == "yalnız FTS"
     assert "openrouter.ai" in result["embeddings"]["reason"]
-    assert result["results"][0]["vectorScore"] is None or result["results"][0]["vectorScore"] == 0
+    assert "vectorScore" not in result["results"][0]
+    assert result["results"][0]["textScore"] > 0
     assert result["results"][0]["citation"].startswith(f"Source: memory/{lab.today()}.md#L")
     assert result["identity"]["status"] == "valid"
     assert result["reindexed"] is True and isinstance(result["ms"], int)

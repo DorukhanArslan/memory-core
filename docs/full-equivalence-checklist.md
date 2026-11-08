@@ -55,8 +55,8 @@ The latest verified baseline has **33/128 acceptance points (25.8%)**, with **95
 (74.2%)** remaining. This includes both importance/project points from actual annotation/SQL
 source comparisons and authenticated provider-none public stored searches. The existing
 unicode61, printable-ASCII path-tie and portable CPU capability profiles remain explicit.
-The new integrated 946-case gate and full regression results are pending; the preceding
-exact-path full run records 890 matches, two retained differences and zero blocked cases.
+The integrated 946-case gate records 944 matches, two retained differences and zero blocked
+cases. Final regression validation passed 3,037 tests.
 
 | Contract status | Contracts | Verified acceptance points | Remaining acceptance points |
 | --- | ---: | ---: | ---: |
@@ -1115,6 +1115,25 @@ first-recall and Unicode-path diagnostics remain open and uncredited.
 Two legacy flag-test field-shape expectations were corrected against the actual native public
 probe. A host twin fixture now supplies identical source mtimes because provenance exposes
 `observedAt`; the correction fixes nondeterministic inputs rather than normalizing output.
-The new default catalog has **946 cases** (892 previous plus 54 importance/project cases).
-The committed full gate and full regression validation are **pending**; their final counts
-will be recorded after those runs complete.
+The committed full-gate report, `.equivalence-results/importance-project-full.json`, executes
+all **946 cases** against implementation commit `2f4b5460e54dbd6aabaf30e33d9eb57323bd1a11` with a
+clean tracked tree. It records **944 matches, two mismatches and zero blocked cases**, with no
+runner errors. All **54 importance/project cases match**, including eight public stored-search
+flows with protected workers and all four required artifact owners. The only differences remain
+`hybrid-unicode-path-collation-diagnostic` and `flush-execution-warm-index-first-recall`; neither
+grants acceptance credit. The full gate reports `mismatched`, not full equivalence, and **95
+acceptance points remain uncovered**. No provider credentials were forwarded and no paid
+provider calls were made.
+
+The first full regression attempt recorded 3,036 passes and one legacy Lab failure: its
+keyword-only assertion required `vectorScore`, contrary to the observed native branch payload.
+That log remains at `/workspace/scratch/memory-core-importance-project-full-tests.log`. The
+assertion now checks the native absence of that field and a positive text component; the
+targeted test passes. The complete rerun passed **3,037 tests** in 141.12 seconds, retained at
+`/workspace/scratch/memory-core-importance-project-full-tests-final.log`. The same **1,625
+historical oracle/live checks** remain skipped and grant no acceptance credit. Ruff,
+project-name consistency, exact source-map validation and staged diff checks passed.
+
+These final results and the legacy Lab assertion are recorded in a documentation/test follow-up;
+SDK implementation, differential adapters and source inventory are unchanged from the tested
+implementation commit.

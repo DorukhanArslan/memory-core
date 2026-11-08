@@ -54,7 +54,8 @@ Entries remain pending until their complete acceptance conditions are verified a
 The latest verified baseline has **31/128 acceptance points (24.2%)**, with **97 points
 (75.8%)** remaining. Counts include actual exact-path source and compiled-method comparisons
 under the paired unicode61 profile, the hybrid printable-ASCII tie profile and portable CPU
-vector capability. Final integrated and regression validation for this batch remains pending.
+vector capability. The full report records 890 matches, two retained differences and zero blocked
+cases; regression validation passed 2,943 tests.
 
 | Contract status | Contracts | Verified acceptance points | Remaining acceptance points |
 | --- | ---: | ---: | ---: |
@@ -1040,10 +1041,20 @@ a diagnostic-wiring failure, not an SDK/native behavior mismatch. The corrected 
 and its guard passed **41 targeted tests**. Actual
 `.equivalence-results/exact-path-runtime-evidence-fixed.json` then records **15 matches, zero
 mismatches and zero blocked cases**. These original focused reports retain `covers: []`; reviewed
-point assignments belong to the registered catalog and next full gate.
+point assignments belong to the registered catalog and the full gate below.
 
-The default catalog now contains **892 cases**. Final integrated and regression validation is
-recorded after the runs; the planned full report is
-`.equivalence-results/exact-path-priority-full.json`. The known warm first-recall and Unicode path-order comparisons remain
-registered, visible and uncredited; they are not normalized into matches. The full contract still
-has **97 uncovered acceptance points** and cannot pass full equivalence.
+The committed full-gate report, `.equivalence-results/exact-path-priority-full.json`, executes all
+**892 cases** against implementation commit `ea38a8504934a2811406ed6592e693585b45f906` with a clean
+tracked tree. It records **890 matches, two mismatches and zero blocked cases**, with no runner
+errors. All **64 exact-path cases match**: 49 source cases and 15 protected compiled-method
+executions with native and Python raw evidence. The only differences remain
+`hybrid-unicode-path-collation-diagnostic` and `flush-execution-warm-index-first-recall`; both
+are ordinary visible mismatches with no acceptance credit. The full gate reports `mismatched`,
+not full equivalence, and **97 acceptance points remain uncovered**. No provider credentials
+were forwarded and no paid provider calls were made.
+
+Full regression validation passed **2,943 tests** in 133.59 seconds. The same **1,625 historical
+oracle/live checks** remain skipped and grant no acceptance credit. Ruff, project-name
+consistency, exact source-map validation and staged diff checks passed. These final results are
+recorded in a documentation-only follow-up; implementation, adapters and source inventory are
+unchanged from the tested commit.

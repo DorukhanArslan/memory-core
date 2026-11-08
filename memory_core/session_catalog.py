@@ -20,12 +20,25 @@ import sqlite3
 import time
 import threading
 from typing import Any
+from uuid import uuid4
 
 from memory_core.bootstrap._js import js_json_stringify, js_trim, js_truthy, js_utf8_encode
 from memory_core.project_name import DIST_NAME
+from memory_core.redact import LoggingConfig
 from memory_core.session_entry import resolve_session_reset_recall_cutoff
+from memory_core.session_transcript_append import (
+    SqliteTranscriptMutationConflictError,
+    TranscriptTurnAdmissionConflictError,
+    can_forward_project_event,
+    message_idempotency_key,
+    messages_match_for_replay,
+    redact_message_for_storage,
+    resolve_message_append_parent,
+    timestamp_ms_to_iso,
+)
 from memory_core.session_visibility import is_incognito_session_key, resolve_session_agent_id
 from memory_core.tools.common import MemoryToolError
+from memory_core.transcript_tree import UNSET, select_visible_transcript_events
 
 
 @dataclass
@@ -56,6 +69,33 @@ def normalize_session_agent_id(value: str | None) -> str:
     normalized = js_trim(value or "").lower()
     normalized = re.sub(r"[^a-z0-9_-]+", "-", normalized).strip("-")[:64]
     return normalized or "main"
+
+
+def _normalize_store_key(value: str) -> str:
+    """Fold structural key bytes while retaining provider-owned peer IDs."""
+    raw = js_trim(value)
+    spans = []
+    for match in re.finditer(r"(^|:)signal:group:([^:]+)", raw, re.I | re.ASCII):
+        spans.append((match.start(2), match.end(2), True))
+    matrix = re.match(r"^(?:(?:agent:[^:]*:)+:*)?matrix:(?:channel|group):", raw, re.I | re.ASCII)
+    if matrix is not None and matrix.end() < len(raw):
+        start = matrix.end()
+        marker = raw[start:].lower().rfind(":thread:")
+        if marker < 0:
+            spans.append((start, len(raw), False))
+        else:
+            spans.append((start, start + marker, False))
+            thread = start + marker + len(":thread:")
+            if thread < len(raw):
+                spans.append((thread, len(raw), False))
+    result, cursor = "", 0
+    for start, end, trim in sorted(spans, key=lambda span: span[0]):
+        if end <= start or start < cursor:
+            continue
+        result += js_trim(raw[cursor:start]).lower()
+        result += js_trim(raw[start:end]) if trim else raw[start:end]
+        cursor = end
+    return result + js_trim(raw[cursor:]).lower()
 
 
 def _json(value: object) -> str:
@@ -269,6 +309,7 @@ class MemorySessionCatalog:
                     entry_json TEXT NOT NULL, provenance_known INTEGER NOT NULL,
                     acp_owned INTEGER NOT NULL, updated_at REAL NOT NULL, revision INTEGER NOT NULL DEFAULT 0,
                     transcript_updated_at REAL,
+                    transcript_observed_at REAL,
                     mutation_at REAL NOT NULL DEFAULT 0,
                     created_at REAL NOT NULL DEFAULT 0,
                     plugin_owner_id TEXT,
@@ -278,6 +319,10 @@ class MemorySessionCatalog:
                     agent TEXT NOT NULL, session_id TEXT NOT NULL, seq INTEGER NOT NULL,
                     event_json TEXT NOT NULL, byte_size INTEGER NOT NULL,
                     PRIMARY KEY(agent,session_id,seq));
+                CREATE TABLE IF NOT EXISTS memory_session_transcript_state(
+                    agent TEXT NOT NULL, session_id TEXT NOT NULL, generation TEXT NOT NULL,
+                    projection_dirty INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(agent,session_id));
                 CREATE TABLE IF NOT EXISTS memory_session_archives(
                     agent TEXT NOT NULL, archive_name TEXT NOT NULL, session_id TEXT NOT NULL,
                     session_key TEXT, path TEXT NOT NULL, PRIMARY KEY(agent,archive_name));
@@ -294,6 +339,10 @@ class MemorySessionCatalog:
                 db.execute("ALTER TABLE memory_session_windows ADD COLUMN created_at REAL NOT NULL DEFAULT 0")
                 db.execute("UPDATE memory_session_windows SET created_at=updated_at")
             columns = {row["name"] for row in db.execute("PRAGMA table_info(memory_session_windows)")}
+            if "transcript_observed_at" not in columns:
+                db.execute("ALTER TABLE memory_session_windows ADD COLUMN transcript_observed_at REAL")
+                db.execute("UPDATE memory_session_windows SET transcript_observed_at="
+                           "COALESCE(transcript_updated_at,updated_at)")
             for column in ("plugin_owner_id", "hook_external_content_source"):
                 if column not in columns:
                     db.execute(f"ALTER TABLE memory_session_windows ADD COLUMN {column} TEXT")
@@ -361,6 +410,14 @@ class MemorySessionCatalog:
             return self
         return self._process_catalog(resolve_session_agent_id(session_key), create=create)
 
+    def _session_key(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        key = _normalize_store_key(value)
+        if not key or key in {"global", "unknown"} or key.startswith("agent:"):
+            return key
+        return f"agent:{self.agent_id}:{key}"
+
     def _transcript_catalog(
         self, session_id: str, session_key: str | None, *, write_fallback: bool = False,
     ) -> MemorySessionCatalog | None:
@@ -398,6 +455,7 @@ class MemorySessionCatalog:
             return None
         if catalog is not self:
             return catalog.get_session_entry(session_key, agent_id=catalog.agent_id)
+        session_key = self._session_key(session_key)
         agent = self._scope(agent_id)
         with closing(self._connect()) as db:
             row = db.execute("SELECT entry_json FROM memory_session_nodes WHERE agent=? AND session_key=?",
@@ -428,6 +486,7 @@ class MemorySessionCatalog:
             return catalog.upsert_session(
                 session_key, entry, provenance_known=provenance_known, acp_owned=acp_owned,
             )
+        session_key = self._session_key(session_key)
         data = json.loads(_json(dict(entry)))
         data.setdefault("delivery", {"kind": "none"})
         if "updatedAt" not in data:
@@ -452,12 +511,16 @@ class MemorySessionCatalog:
             db.execute("INSERT INTO memory_session_nodes VALUES(?,?,?) ON CONFLICT(agent,session_key) "
                        "DO UPDATE SET entry_json=excluded.entry_json", (self.agent_id, session_key, _json(data)))
             if session_id:
-                db.execute("INSERT INTO memory_session_windows(agent,session_id,session_key,entry_json,provenance_known,acp_owned,updated_at,revision,mutation_at,created_at,plugin_owner_id,hook_external_content_source) VALUES(?,?,?,?,?,?,?,0,?,?,?,?) "
+                observed = db.execute("SELECT transcript_updated_at FROM memory_session_windows "
+                                      "WHERE agent=? AND session_id=?", (self.agent_id, session_id)).fetchone()
+                observed_at = observed[0] if observed is not None and observed[0] is not None else updated_at
+                db.execute("INSERT INTO memory_session_windows(agent,session_id,session_key,entry_json,provenance_known,acp_owned,updated_at,revision,mutation_at,created_at,plugin_owner_id,hook_external_content_source,transcript_observed_at) VALUES(?,?,?,?,?,?,?,0,?,?,?,?,?) "
                            "ON CONFLICT(agent,session_id) DO UPDATE SET entry_json=excluded.entry_json, "
-                           "updated_at=excluded.updated_at WHERE memory_session_windows.session_key=excluded.session_key",
+                           "updated_at=excluded.updated_at,transcript_observed_at=excluded.transcript_observed_at "
+                           "WHERE memory_session_windows.session_key=excluded.session_key",
                            (self.agent_id, session_id, session_key, _json(data), provenance[0],
                             provenance[1], updated_at, self._clock(),
-                            _source_created_at(data, updated_at), provenance[2], provenance[3]))
+                            _source_created_at(data, updated_at), provenance[2], provenance[3], observed_at))
                 db.execute(
                     "UPDATE memory_session_windows SET provenance_known=?,acp_owned=?,plugin_owner_id=?,"
                     "hook_external_content_source=? WHERE agent=? AND session_id=?",
@@ -475,6 +538,7 @@ class MemorySessionCatalog:
             return catalog.retain_transcript(
                 session_key, entry, provenance_known=provenance_known, acp_owned=acp_owned,
             )
+        session_key = self._session_key(session_key)
         data = json.loads(_json(dict(entry)))
         session_id = js_trim(data.get("sessionId", ""))
         if not session_id:
@@ -482,13 +546,17 @@ class MemorySessionCatalog:
         updated_at = data.get("updatedAt") if _finite(data.get("updatedAt")) else 0
         provenance = _bound_window_provenance(data, provenance_known, acp_owned)
         with closing(self._connect()) as db, db:
-            db.execute("INSERT INTO memory_session_windows(agent,session_id,session_key,entry_json,provenance_known,acp_owned,updated_at,revision,mutation_at,created_at,plugin_owner_id,hook_external_content_source) VALUES(?,?,?,?,?,?,?,0,?,?,?,?) "
+            observed = db.execute("SELECT transcript_updated_at FROM memory_session_windows "
+                                  "WHERE agent=? AND session_id=?", (self.agent_id, session_id)).fetchone()
+            observed_at = observed[0] if observed is not None and observed[0] is not None else updated_at
+            db.execute("INSERT INTO memory_session_windows(agent,session_id,session_key,entry_json,provenance_known,acp_owned,updated_at,revision,mutation_at,created_at,plugin_owner_id,hook_external_content_source,transcript_observed_at) VALUES(?,?,?,?,?,?,?,0,?,?,?,?,?) "
                        "ON CONFLICT(agent,session_id) DO UPDATE SET session_key=excluded.session_key, "
                        "entry_json=excluded.entry_json,provenance_known=excluded.provenance_known, "
                        "acp_owned=excluded.acp_owned,updated_at=excluded.updated_at,"
+                       "transcript_observed_at=excluded.transcript_observed_at,"
                        "plugin_owner_id=excluded.plugin_owner_id,hook_external_content_source=excluded.hook_external_content_source",
                        (self.agent_id, session_id, session_key, _json(data), provenance[0], provenance[1], updated_at, self._clock(),
-                        _source_created_at(data, updated_at), provenance[2], provenance[3]))
+                        _source_created_at(data, updated_at), provenance[2], provenance[3], observed_at))
             self._changed(db)
 
     def _write_events(
@@ -506,8 +574,10 @@ class MemorySessionCatalog:
                 session_id, events, replace=replace, updated_at_ms=updated_at_ms,
                 session_key=session_key,
             )
+        session_key = self._session_key(session_key)
         with closing(self._connect()) as db, db:
-            window = db.execute("SELECT mutation_at,session_key FROM memory_session_windows WHERE agent=? AND session_id=?",
+            window = db.execute("SELECT mutation_at,session_key,transcript_updated_at,transcript_observed_at "
+                                "FROM memory_session_windows WHERE agent=? AND session_id=?",
                                 (self.agent_id, session_id)).fetchone()
             if window is None:
                 raise ValueError("Transcript identity is not registered in this catalog")
@@ -518,6 +588,10 @@ class MemorySessionCatalog:
                 ).fetchone()
                 if active is None or json.loads(active[0]).get("sessionId") != session_id:
                     raise ValueError("Transcript identity does not belong to the requested session_key")
+            previous = db.execute(
+                "SELECT event_json,byte_size FROM memory_session_events WHERE agent=? AND session_id=? ORDER BY seq",
+                (self.agent_id, session_id),
+            ).fetchall()
             if replace:
                 db.execute("DELETE FROM memory_session_events WHERE agent=? AND session_id=?", (self.agent_id, session_id))
             start = db.execute("SELECT COALESCE(MAX(seq),0) FROM memory_session_events WHERE agent=? AND session_id=?",
@@ -527,10 +601,40 @@ class MemorySessionCatalog:
                  len(js_utf8_encode(js_json_stringify(events[index]))))
                 for index, text in enumerate(serialized)
             ])
+            if serialized or replace:
+                state = db.execute(
+                    "SELECT generation,projection_dirty FROM memory_session_transcript_state WHERE agent=? AND session_id=?",
+                    (self.agent_id, session_id),
+                ).fetchone()
+                if serialized or state is not None:
+                    generation = uuid4().hex if replace or state is None else state[0]
+                    if replace:
+                        dirty = len(previous) + len(serialized) > 4000 or (
+                            sum(row["byte_size"] for row in previous)
+                            + sum(len(js_utf8_encode(js_json_stringify(event))) for event in events)
+                        ) > 4 * 1024 * 1024
+                    else:
+                        dirty = bool(state["projection_dirty"]) if state is not None else bool(previous)
+                        prefix = [json.loads(row["event_json"]) for row in previous]
+                        for event in events:
+                            dirty |= not can_forward_project_event(prefix, event)
+                            prefix.append(event)
+                    db.execute(
+                        "INSERT INTO memory_session_transcript_state VALUES(?,?,?,?) "
+                        "ON CONFLICT(agent,session_id) DO UPDATE SET generation=excluded.generation,projection_dirty=excluded.projection_dirty",
+                        (self.agent_id, session_id, generation, int(dirty)),
+                    )
             now = self._clock()
             mutation_at = max(window[0] + 1, now)
+            activity_at = updated_at_ms if updated_at_ms is not None else now
+            if _finite(activity_at) and activity_at >= 0:
+                activity_at = max(math.floor(activity_at),
+                                  (window["transcript_updated_at"] if window["transcript_updated_at"] is not None else -1) + 1,
+                                  (window["transcript_observed_at"] if window["transcript_observed_at"] is not None else -1) + 1)
+            else:
+                activity_at = window["transcript_updated_at"]
             db.execute("UPDATE memory_session_windows SET revision=revision+1,transcript_updated_at=?,mutation_at=? WHERE agent=? AND session_id=?",
-                       (updated_at_ms if updated_at_ms is not None else now, mutation_at, self.agent_id, session_id))
+                       (activity_at, mutation_at, self.agent_id, session_id))
             self._changed(db)
 
     def append_events(
@@ -547,12 +651,189 @@ class MemorySessionCatalog:
         self._write_events(session_id, events, replace=True, updated_at_ms=updated_at_ms,
                            session_key=session_key)
 
+    def _message_anchor(
+        self, db: sqlite3.Connection, session_id: str, session_key: str,
+        events: list[Any], event: Mapping[str, Any], seq: int,
+    ) -> dict[str, Any] | None:
+        state = db.execute(
+            "SELECT generation,projection_dirty FROM memory_session_transcript_state "
+            "WHERE agent=? AND session_id=?", (self.agent_id, session_id),
+        ).fetchone()
+        if state is None or state["projection_dirty"]:
+            return None
+        messages = [record for record in select_visible_transcript_events(events)
+                    if isinstance(record, dict) and record.get("type") != "session"
+                    and "message" in record]
+        position = next((index for index, record in enumerate(messages)
+                         if record is event), None)
+        if position is None:
+            return None
+        anchor = {
+            "agentId": self.agent_id, "sessionId": session_id, "sessionKey": session_key,
+            "storePath": str(self.path), "generation": state["generation"],
+            "entryId": event["id"], "rawSeq": seq - 1,
+            "effectiveParentId": event.get("parentId"), "activeMessagePosition": position,
+        }
+        key = message_idempotency_key(event.get("message"))
+        if key:
+            anchor["idempotencyKey"] = key
+        return anchor
+
+    def append_message(
+        self, session_id: str, message: Any, *, session_key: str,
+        event_id: str | None = None, parent_id: Any = UNSET, now_ms: float | None = None,
+        cwd: str | None = None, append_intent: str | None = None,
+        expected_mutation_at: Any = UNSET, logging_config: LoggingConfig | None = None,
+    ) -> dict[str, Any]:
+        """Append one ordinary JSON agent message in a single durable transaction.
+
+        Header creation, redaction, admission-key replay, parent selection and
+        the resulting identity share the write lock. ``append_events`` remains
+        the raw transcript import API. This owner does not orchestrate pending
+        inputs, media migration, provider replay or live writer-run fences.
+        """
+        catalog = self._transcript_catalog(session_id, session_key, write_fallback=True)
+        if catalog is None:
+            raise ValueError("Transcript identity is not registered in this catalog")
+        if catalog is not self:
+            return catalog.append_message(
+                session_id, message, session_key=session_key, event_id=event_id,
+                parent_id=parent_id, now_ms=now_ms, cwd=cwd, append_intent=append_intent,
+                expected_mutation_at=expected_mutation_at, logging_config=logging_config,
+            )
+        if parent_id is not UNSET and parent_id is not None and not isinstance(parent_id, str):
+            raise TypeError("parent_id must be a string, null, or omitted")
+        session_key = self._session_key(session_key)
+        persisted = json.loads(_json(redact_message_for_storage(message, logging_config)))
+        admission_key = message_idempotency_key(message)
+        with closing(self._connect()) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            window = db.execute(
+                "SELECT * FROM memory_session_windows WHERE agent=? AND session_id=?",
+                (self.agent_id, session_id),
+            ).fetchone()
+            if window is None or window["session_key"] != session_key:
+                raise ValueError("Transcript identity does not belong to the requested session_key")
+            before = window["transcript_updated_at"]
+            if expected_mutation_at is not UNSET:
+                matches = (before is None if expected_mutation_at is None else
+                           _finite(expected_mutation_at) and before == expected_mutation_at)
+                if not matches:
+                    raise SqliteTranscriptMutationConflictError(session_id)
+            records = db.execute(
+                "SELECT seq,event_json FROM memory_session_events WHERE agent=? AND session_id=? ORDER BY seq",
+                (self.agent_id, session_id),
+            ).fetchall()
+            events = [json.loads(row["event_json"]) for row in records]
+
+            def replay(index: int, key: str) -> dict[str, Any]:
+                event = events[index]
+                if not messages_match_for_replay(event.get("message"), persisted):
+                    raise TranscriptTurnAdmissionConflictError(key)
+                result = {
+                    "appended": False, "effectiveParentId": event.get("parentId"),
+                    "message": event.get("message"), "messageId": event["id"],
+                }
+                anchor = self._message_anchor(db, session_id, session_key, events, event, records[index]["seq"])
+                if anchor is not None:
+                    result["anchor"] = anchor
+                return result
+
+            if admission_key:
+                for index, event in enumerate(events):
+                    if isinstance(event, dict) and message_idempotency_key(event.get("message")) == admission_key:
+                        return replay(index, admission_key)
+            identifier = event_id if event_id is not None else str(uuid4())
+            for index, event in enumerate(events):
+                if isinstance(event, dict) and isinstance(event.get("id"), str) and js_trim(event["id"]) == identifier:
+                    if "message" not in event:
+                        raise RuntimeError(f"SQLite transcript append did not insert message {identifier}.")
+                    return replay(index, admission_key or f"event:{identifier}")
+
+            state = db.execute(
+                "SELECT generation,projection_dirty FROM memory_session_transcript_state WHERE agent=? AND session_id=?",
+                (self.agent_id, session_id),
+            ).fetchone()
+            generation = state["generation"] if state is not None else uuid4().hex
+            dirty = bool(state["projection_dirty"]) if state is not None else bool(events)
+            clock = self._clock()
+            seq = records[-1]["seq"] if records else 0
+            mutation = before
+
+            def insert(event: dict[str, Any]) -> None:
+                nonlocal seq, mutation
+                seq += 1
+                text = _json(event)
+                db.execute("INSERT INTO memory_session_events VALUES(?,?,?,?,?)", (
+                    self.agent_id, session_id, seq, text,
+                    len(js_utf8_encode(js_json_stringify(event))),
+                ))
+                events.append(event)
+                mutation = max(clock, (mutation if mutation is not None else -1) + 1,
+                               (window["transcript_observed_at"] if window["transcript_observed_at"] is not None else -1) + 1)
+
+            if not events:
+                insert({"type": "session", "version": 4, "id": session_id,
+                        "timestamp": timestamp_ms_to_iso(clock), "cwd": cwd if cwd is not None else os.getcwd()})
+            parent = resolve_message_append_parent(events, parent_id, append_intent)
+            event = {"type": "message", "id": identifier, "parentId": parent,
+                     "timestamp": timestamp_ms_to_iso(now_ms if now_ms is not None else clock),
+                     "message": persisted}
+            dirty |= not can_forward_project_event(events, event)
+            insert(event)
+            db.execute(
+                "INSERT INTO memory_session_transcript_state VALUES(?,?,?,?) "
+                "ON CONFLICT(agent,session_id) DO UPDATE SET generation=excluded.generation,projection_dirty=excluded.projection_dirty",
+                (self.agent_id, session_id, generation, int(dirty)),
+            )
+            db.execute(
+                "UPDATE memory_session_windows SET revision=revision+1,transcript_updated_at=?,mutation_at=?,updated_at=? "
+                "WHERE agent=? AND session_id=?",
+                (mutation, mutation, now_ms if now_ms is not None else clock, self.agent_id, session_id),
+            )
+            self._changed(db)
+            result = {"appended": True, "effectiveParentId": parent,
+                      "message": persisted, "messageId": identifier}
+            anchor = self._message_anchor(db, session_id, session_key, events, event, seq)
+            if anchor is not None:
+                result["anchor"] = anchor
+            return result
+
+    def read_anchor(
+        self, session_id: str, entry_id: str, *, session_key: str,
+    ) -> dict[str, Any] | None:
+        """Read a certified active-message identity in the current SQLite snapshot."""
+        catalog = self._transcript_catalog(session_id, session_key)
+        if catalog is None:
+            return None
+        if catalog is not self:
+            return catalog.read_anchor(session_id, entry_id, session_key=session_key)
+        session_key = self._session_key(session_key)
+        with closing(self._connect()) as db:
+            db.execute("BEGIN")
+            window = db.execute(
+                "SELECT session_key FROM memory_session_windows WHERE agent=? AND session_id=?",
+                (self.agent_id, session_id),
+            ).fetchone()
+            if window is None or window[0] != session_key:
+                return None
+            records = db.execute(
+                "SELECT seq,event_json FROM memory_session_events WHERE agent=? AND session_id=? ORDER BY seq",
+                (self.agent_id, session_id),
+            ).fetchall()
+            events = [json.loads(row["event_json"]) for row in records]
+            for index, event in enumerate(events):
+                if isinstance(event, dict) and event.get("id") == entry_id:
+                    return self._message_anchor(db, session_id, session_key, events, event, records[index]["seq"])
+            return None
+
     def remove_session(self, session_key: str) -> None:
         catalog = self._key_catalog(session_key)
         if catalog is None:
             return
         if catalog is not self:
             return catalog.remove_session(session_key)
+        session_key = self._session_key(session_key)
         with closing(self._connect()) as db, db:
             db.execute("DELETE FROM memory_session_nodes WHERE agent=? AND session_key=?", (self.agent_id, session_key))
             db.execute("DELETE FROM memory_session_participants WHERE agent=? AND session_key=?", (self.agent_id, session_key))
@@ -573,6 +854,7 @@ class MemorySessionCatalog:
         catalog = self._key_catalog(session_key, create=True)
         if catalog is not self:
             return catalog.record_participant(session_key, record, agent_id=catalog.agent_id)
+        session_key = self._session_key(session_key)
         agent = self._scope(agent_id)
         namespace = _participant_namespace(identity)
         # Node's SQLite bindings replace unmatched UTF-16 surrogate code units.
@@ -633,6 +915,7 @@ class MemorySessionCatalog:
             return {}
         if catalog is not self:
             return catalog.list_participants(session_key, agent_id=catalog.agent_id)
+        session_key = self._session_key(session_key)
         agent = self._scope(agent_id)
         with closing(self._connect()) as db:
             db.execute("BEGIN")
@@ -658,6 +941,7 @@ class MemorySessionCatalog:
         catalog = self._key_catalog(session_key, create=True)
         if catalog is not self:
             return catalog.record_archive(archive_name, session_id, session_key=session_key, path=path)
+        session_key = self._session_key(session_key)
         archive_path = Path(path).resolve() if path is not None else self.store_path.parent / archive_name
         with closing(self._connect()) as db, db:
             db.execute("INSERT INTO memory_session_archives VALUES(?,?,?,?,?) ON CONFLICT(agent,archive_name) "
@@ -671,6 +955,7 @@ class MemorySessionCatalog:
             catalog = self._key_catalog(session_key, create=True)
         if catalog is not self:
             return catalog.tombstone_session(session_id, session_key=session_key)
+        session_key = self._session_key(session_key)
         with closing(self._connect()) as db, db:
             db.execute("INSERT OR IGNORE INTO memory_session_tombstones VALUES(?,?)", (self.agent_id, session_id))
             self._changed(db)
@@ -696,6 +981,70 @@ class MemorySessionCatalog:
             revision = db.execute("SELECT revision FROM memory_session_catalog_state WHERE agent=?", (self.agent_id,)).fetchone()[0]
             return SessionCatalogSnapshot(entries, instances, archives, forgotten, revision)
 
+    def list_transcript_instances(
+        self, *, session_id: str | None = None, include_all_windows: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Project persisted current/retained windows through the host history contract.
+
+        Retained instances carry window-owned classification fields, while the
+        current incarnation additionally carries its complete current entry.
+        The raw ``snapshot`` remains the catalog's internal admission authority.
+        """
+        with closing(self._connect()) as db:
+            db.execute("BEGIN")
+            current_entries = {row["session_key"]: json.loads(row["entry_json"]) for row in db.execute(
+                "SELECT session_key,entry_json FROM memory_session_nodes WHERE agent=?", (self.agent_id,),
+            )}
+            sql = "SELECT * FROM memory_session_windows WHERE agent=?"
+            parameters: tuple[Any, ...] = (self.agent_id,)
+            if not include_all_windows:
+                sql += " AND transcript_updated_at IS NOT NULL"
+            if session_id is not None:
+                sql += " AND session_id=?"
+                parameters += (session_id,)
+            sql += " ORDER BY transcript_updated_at DESC,session_id"
+            result = []
+            for row in db.execute(sql, parameters):
+                key = row["session_key"]
+                if not include_all_windows and _internal_key(key):
+                    continue
+                recorded = json.loads(row["entry_json"])
+                current = current_entries.get(key)
+                exact = current is not None and current.get("sessionId") == row["session_id"]
+                known = bool(row["provenance_known"])
+                updated = row["transcript_updated_at"] if row["transcript_updated_at"] is not None else row["updated_at"]
+                entry = dict(current) if exact else {}
+                entry.update(sessionId=row["session_id"], updatedAt=updated)
+                for field in ("parentSessionKey", "spawnedBy"):
+                    if js_truthy(recorded.get(field)):
+                        entry[field] = recorded[field]
+                        if field == "spawnedBy":
+                            entry["spawnDepth"] = 1
+                chat_type = recorded.get("chatType")
+                chat_type = chat_type if isinstance(chat_type, str) and chat_type in {"direct", "group", "channel"} else None
+                if chat_type:
+                    entry["chatType"] = chat_type
+                if known and row["plugin_owner_id"]:
+                    entry["pluginOwnerId"] = row["plugin_owner_id"]
+                hook = row["hook_external_content_source"]
+                hook = hook if hook in {"gmail", "webhook"} else None
+                if known and hook:
+                    entry["hookExternalContentSource"] = hook
+                exact_hook = current.get("hookExternalContentSource") if exact else None
+                if exact_hook is None:
+                    exact_hook = "gmail" if known and hook == "gmail" else None
+                channel, account = _source_delivery_facts(recorded)
+                result.append({
+                    "agentId": resolve_session_agent_id(key, self.agent_id),
+                    "acpOwned": bool(row["acp_owned"]) or bool(exact and js_truthy(current.get("acp"))),
+                    "entry": entry, "provenanceKnown": known,
+                    "sessionId": row["session_id"], "sessionKey": key, "updatedAtMs": updated,
+                    "sourceMetadata": {"createdAt": row["created_at"], "channel": channel,
+                                       "accountId": account, "chatType": chat_type,
+                                       "hookExternalContentSource": exact_hook},
+                })
+            return result
+
     def read_transcript(
         self, session_id: str, *, agent_id: str | None = None, session_key: str | None = None,
     ) -> SessionTranscriptSnapshot | None:
@@ -705,6 +1054,7 @@ class MemorySessionCatalog:
         if catalog is not self:
             return catalog.read_transcript(session_id, agent_id=catalog.agent_id,
                                            session_key=session_key)
+        session_key = self._session_key(session_key)
         agent = self._scope(agent_id)
         with closing(self._connect()) as db:
             db.execute("BEGIN")
@@ -729,6 +1079,62 @@ class MemorySessionCatalog:
         transcript = self.read_transcript(session_id, agent_id=agent_id, session_key=session_key)
         return resolve_session_reset_recall_cutoff(list(transcript.events)) if transcript is not None else {"state": "invalid"}
 
+    def read_continuation(
+        self, session_id: str, *, session_key: str, agent_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Reconstruct continuation from one committed transcript/metadata snapshot.
+
+        This is raw host context acquisition. A caller exposing a session to
+        another actor must still apply the session visibility policy. It does
+        not run a model, a turn barrier or the memory-flush scheduler.
+        """
+        from memory_core.session_context import (
+            build_session_context, convert_to_llm, is_session_history_prelude,
+        )
+
+        catalog = self._transcript_catalog(session_id, session_key)
+        if catalog is None:
+            return None
+        if catalog is not self:
+            return catalog.read_continuation(session_id, session_key=session_key,
+                                             agent_id=catalog.agent_id)
+        session_key = self._session_key(session_key)
+        agent = self._scope(agent_id)
+        with closing(self._connect()) as db:
+            db.execute("BEGIN")
+            window = db.execute(
+                "SELECT * FROM memory_session_windows WHERE agent=? AND session_id=?",
+                (agent, session_id),
+            ).fetchone()
+            if window is None or window["session_key"] != session_key:
+                return None
+            active = db.execute(
+                "SELECT entry_json FROM memory_session_nodes WHERE agent=? AND session_key=?",
+                (agent, session_key),
+            ).fetchone()
+            records = db.execute(
+                "SELECT seq,event_json FROM memory_session_events WHERE agent=? AND session_id=? ORDER BY seq",
+                (agent, session_id),
+            ).fetchall()
+            state = db.execute(
+                "SELECT generation FROM memory_session_transcript_state WHERE agent=? AND session_id=?",
+                (agent, session_id),
+            ).fetchone()
+            events = [json.loads(row["event_json"]) for row in records]
+            visible = select_visible_transcript_events(events)
+            context = build_session_context(visible)
+            llm_messages = convert_to_llm(context["messages"])
+            return {
+                "entry": json.loads(active[0]) if active is not None else None,
+                "instanceEntry": json.loads(window["entry_json"]), "events": events,
+                "visibleEvents": visible, "context": context, "llmMessages": llm_messages,
+                "historyPrelude": [is_session_history_prelude(message) for message in context["messages"]],
+                "modelHistoryPrelude": [is_session_history_prelude(message) for message in llm_messages],
+                "version": {"rawSeq": records[-1]["seq"] - 1 if records else None,
+                            "generation": state["generation"] if state is not None else None,
+                            "updatedAt": window["transcript_updated_at"]},
+            }
+
     def load_session_metadata(self, origin: Mapping[str, str], store_path: str | None = None) -> dict[str, Any] | None:
         catalog = self._key_catalog(origin.get("sessionKey"))
         if catalog is None:
@@ -737,6 +1143,7 @@ class MemorySessionCatalog:
             return catalog.load_session_metadata(
                 {**origin, "agentId": catalog.agent_id}, str(catalog.store_path),
             )
+        origin = {**origin, **({"sessionKey": self._session_key(origin["sessionKey"])} if "sessionKey" in origin else {})}
         self._scope(origin.get("agentId"))
         if store_path is not None and Path(store_path).resolve() != self.store_path:
             raise ValueError("Session metadata belongs to a different catalog store")

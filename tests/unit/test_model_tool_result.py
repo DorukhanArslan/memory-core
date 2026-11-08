@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -105,6 +109,13 @@ def test_args_diagnostic_policy_and_result_model_policy_have_distinct_actual_wal
     assert result == {"first": {"token": "***"}, "second": {"token": "***"}, "source": "api_key=fixture-value"}
 
 
+def test_argument_aliases_follow_actual_javascript_numeric_property_order():
+    shared = {"note": "ordinary"}
+    assert owner.sanitize_tool_args({"10": shared, "2": shared}) == {
+        "2": {"note": "ordinary"}, "10": "[Circular]",
+    }
+
+
 def test_actual_session_event_preparation_retains_live_provenance_and_avoids_double_redaction():
     config = redact.LoggingConfig((r"foo|\*",))
     text = {"type": "text", "text": "foo", "custom": "preserved"}
@@ -146,3 +157,59 @@ def test_primitive_results_and_unrelated_events_keep_their_actual_value(value):
     assert owner.sanitize_tool_result(value) is value
     event = {"type": "message_update", "message": {"role": "toolResult", "content": []}}
     assert owner.prepare_session_tool_result(event) is False
+
+
+def test_storage_reuses_genuine_admitted_text_and_preserves_marker_on_other_field_changes():
+    from memory_core.session_transcript_append import redact_message_for_storage
+
+    config = redact.LoggingConfig((r"foo|\*",))
+    for extra, expected_extra in [({}, {}), ({"note": "foo"}, {"note": "***"})]:
+        block = owner.prepare_model_visible_tool_text_block({"type": "text", "text": "foo", **extra}, config)
+        message = {"role": "toolResult", "toolCallId": "call-1", "content": [block], "timestamp": 1}
+        stored = redact_message_for_storage(message, config)
+        assert stored["content"][0] == {"type": "text", "text": "***", **expected_extra}
+        assert owner.is_prepared_model_visible_tool_text(stored["content"][0], "***", config)
+        repeated = redact_message_for_storage(stored, config)
+        if not extra:
+            assert repeated is stored and stored is message
+        else:
+            assert stored is not message
+            assert repeated["content"][0] == {"type": "text", "text": "***", "note": "*********"}
+        assert block == {"type": "text", "text": "***", **extra}
+
+
+def test_changed_user_content_drops_stale_mentions_without_mutating_original_metadata():
+    from memory_core.session_transcript_append import redact_message_for_storage
+
+    mentions = [{"offset": 0, "length": 3, "person": "person-1"}]
+    metadata = {"humanMentions": mentions, "senderIsOwner": True}
+    message = {"role": "user", "content": "foo", "__openclaw": metadata}
+    stored = redact_message_for_storage(message, redact.LoggingConfig(("foo",)))
+    assert stored == {"role": "user", "content": "***", "__openclaw": {"senderIsOwner": True}}
+    assert message["content"] == "foo" and message["__openclaw"] is metadata
+    assert metadata["humanMentions"] is mentions
+
+
+def test_live_prepared_tool_text_survives_actual_append_and_fresh_process_read(tmp_path: Path):
+    from memory_core.session_catalog import MemorySessionCatalog
+
+    config = redact.LoggingConfig((r"foo|\*",))
+    catalog = MemorySessionCatalog(tmp_path / "catalog.sqlite", clock_ms=lambda: 1000)
+    catalog.upsert_session("agent:main:dm:prepared", {"sessionId": "prepared", "updatedAt": 1000})
+    message = {"role": "toolResult", "toolCallId": "call-1", "toolName": "demo",
+               "content": [{"type": "text", "text": "foo"}], "timestamp": 1000}
+    assert owner.prepare_session_tool_result({"type": "message_end", "message": message}, logging_config=config)
+    appended = catalog.append_message(
+        "prepared", message, session_key="agent:main:dm:prepared", event_id="result-1", logging_config=config,
+    )
+    assert appended["message"]["content"][0]["text"] == "***"
+    # Only the durable store path crosses processes; no prepared object or policy state does.
+    completed = subprocess.run([sys.executable, "-c", """
+import json,sys
+from memory_core.session_catalog import MemorySessionCatalog
+value=MemorySessionCatalog(sys.argv[1]).read_transcript('prepared')
+print(json.dumps(value.events[-1]['message']))
+""", str(catalog.path)], check=True, capture_output=True, text=True,
+        env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2])})
+    assert json.loads(completed.stdout) == appended["message"]
+    assert message["content"][0]["text"] == "***"

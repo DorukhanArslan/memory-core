@@ -15,6 +15,7 @@ from typing import Any
 from memory_core.bootstrap._js import truncate_utf16_safe, utf16_len
 from memory_core.redact import (
     LoggingConfig,
+    _js_object_key_order,
     get_logging_redaction_config,
     is_full_context_tool_payload_redaction,
     redact_model_visible_field_value,
@@ -127,7 +128,7 @@ def _same_value(left: Any, right: Any) -> bool:
     if isinstance(left, bool) or isinstance(right, bool):
         return type(left) is type(right) and left == right
     if isinstance(left, (int, float)) and isinstance(right, (int, float)):
-        if math.isnan(left) and math.isnan(right):
+        if isinstance(left, float) and isinstance(right, float) and math.isnan(left) and math.isnan(right):
             return True
         if left == right == 0:
             return math.copysign(1, left) == math.copysign(1, right)
@@ -246,8 +247,9 @@ def sanitize_tool_args(args: Any, *, logging_config: LoggingConfig | None = None
         seen.add(id(value))
         if isinstance(value, list):
             return [walk(item) for item in value]
-        return {key: redact_sensitive_field_value(key, item, logging_config=logging_config)
-                if isinstance(item, str) else walk(item) for key, item in value.items()}
+        return {key: redact_sensitive_field_value(key, value[key], logging_config=logging_config)
+                if isinstance(value[key], str) else walk(value[key])
+                for key in _js_object_key_order(list(value))}
 
     return walk(args)
 

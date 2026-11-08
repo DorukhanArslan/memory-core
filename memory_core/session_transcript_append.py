@@ -13,6 +13,10 @@ from datetime import datetime, timezone
 from typing import Any
 
 from memory_core.bootstrap._js import js_trim
+from memory_core.model_tool_result import (
+    copy_prepared_model_visible_tool_text,
+    is_prepared_model_visible_tool_text,
+)
 from memory_core.redact import (
     LoggingConfig,
     redact_secrets,
@@ -99,6 +103,10 @@ def redact_message_for_storage(
             result = {}
             changes: set[str] = set()
             for key, item in value.items():
+                if (model_visible and key == "text" and isinstance(item, str)
+                        and is_prepared_model_visible_tool_text(value, item, logging_config)):
+                    result[key] = item
+                    continue
                 identity = location == "root" and key == "idempotencyKey"
                 identity |= isinstance(item, str) and (
                     (location == "root" and value.get("role") == "toolResult" and key == "toolCallId")
@@ -127,10 +135,14 @@ def redact_message_for_storage(
                     result.pop("humanMentions", None)
             if location == "root" and value.get("role") == "user" and "content" in changes:
                 metadata = result.get("__openclaw")
-                if isinstance(metadata, dict):
-                    metadata.pop("humanMentions", None)
+                if isinstance(metadata, dict) and "humanMentions" in metadata:
+                    result["__openclaw"] = {key: item for key, item in metadata.items() if key != "humanMentions"}
         seen.remove(id(value))
-        return result, changed
+        if not changed:
+            return value, False
+        if model_visible and isinstance(result, dict):
+            result = copy_prepared_model_visible_tool_text(value, result)
+        return result, True
 
     return walk(message, location="root")[0]
 

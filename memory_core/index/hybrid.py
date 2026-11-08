@@ -1,23 +1,38 @@
-"""Hybrid merge and selection (OpenClaw ``extensions/memory-core/src/memory/hybrid.ts`` at v2026.9.6).
+"""Hybrid merge and selection (OpenClaw ``extensions/memory-core/src/memory/hybrid.ts`` at v2026.9.9).
 
 ``merge_hybrid_results`` combines vector and keyword candidates by chunk id, weights them, applies
 temporal decay and MMR, and keeps exact path matches (a query that names a file) in tiers above
 everything else. ``select_hybrid_search_results`` applies the minimum score with the all-lexical
-fallback. Not ported: importance multipliers and active-project ranking, which need curated-entry
-annotations that memory-core's index does not store.
+fallback. Candidate metadata survives the merger, including the importance/project adjustments;
+index ingestion and persistence of those annotations are separate responsibilities.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from enum import Enum
+import math
+from typing import Any
 
-from memory_core.bootstrap._js import locale_sort_key
+from memory_core.bootstrap._js import js_trim, js_truthy, locale_sort_key
 from memory_core.index.mmr import apply_mmr_to_hybrid_results
 from memory_core.index.temporal_decay import (
     TemporalDecayConfig,
     apply_temporal_decay_to_hybrid_results,
 )
+
+
+class _MissingHybridMetadata(Enum):
+    VALUE = "missing-hybrid-metadata"
+
+
+# An omitted annotation differs from an explicitly supplied JSON null. Enum
+# identity also survives the copies made by dataclasses.asdict/deepcopy.
+HYBRID_METADATA_MISSING = _MissingHybridMetadata.VALUE
+_MetadataNumber = float | None | _MissingHybridMetadata
+_MetadataText = str | None | _MissingHybridMetadata
+INVALID_PROJECT_ANNOTATION_KEY = "!invalid-project-annotation"
 
 
 @dataclass(frozen=True)
@@ -30,6 +45,10 @@ class HybridVectorResult:
     snippet: str
     vector_score: float
     exact_path_specificity: int = 0
+    importance: _MetadataNumber = HYBRID_METADATA_MISSING
+    triggers: _MetadataText = HYBRID_METADATA_MISSING
+    project_key: _MetadataText = HYBRID_METADATA_MISSING
+    provenance: Any = HYBRID_METADATA_MISSING
 
 
 @dataclass(frozen=True)
@@ -45,6 +64,10 @@ class HybridKeywordResult:
     ranking_score: float | None = None
     path_score: float = 0.0
     exact_path_specificity: int = 0
+    importance: _MetadataNumber = HYBRID_METADATA_MISSING
+    triggers: _MetadataText = HYBRID_METADATA_MISSING
+    project_key: _MetadataText = HYBRID_METADATA_MISSING
+    provenance: Any = HYBRID_METADATA_MISSING
 
 
 @dataclass(frozen=True)
@@ -57,6 +80,25 @@ class HybridResult:
     text_score: float
     snippet: str
     source: str
+    importance: _MetadataNumber = HYBRID_METADATA_MISSING
+    triggers: _MetadataText = HYBRID_METADATA_MISSING
+    project_key: _MetadataText = HYBRID_METADATA_MISSING
+    provenance: Any = HYBRID_METADATA_MISSING
+
+    def to_payload(self) -> dict[str, Any]:
+        """Return the complete observable result, preserving absent versus null annotations."""
+        payload = {
+            "path": self.path, "startLine": self.start_line, "endLine": self.end_line,
+            "score": self.score, "vectorScore": self.vector_score, "textScore": self.text_score,
+            "snippet": self.snippet, "source": self.source,
+        }
+        for name, value in (
+            ("importance", self.importance), ("triggers", self.triggers),
+            ("projectKey", self.project_key), ("provenance", self.provenance),
+        ):
+            if value is not HYBRID_METADATA_MISSING:
+                payload[name] = value
+        return payload
 
 
 @dataclass
@@ -75,6 +117,10 @@ class _Entry:
     has_body_match: bool = False
     has_vector: bool = False
     has_keyword: bool = False
+    importance: _MetadataNumber = HYBRID_METADATA_MISSING
+    triggers: _MetadataText = HYBRID_METADATA_MISSING
+    project_key: _MetadataText = HYBRID_METADATA_MISSING
+    provenance: Any = HYBRID_METADATA_MISSING
 
 
 @dataclass
@@ -91,6 +137,34 @@ class _Ranked:
     snippet: str
     source: str
     ranking_score: float = 0.0
+    importance: _MetadataNumber = HYBRID_METADATA_MISSING
+    triggers: _MetadataText = HYBRID_METADATA_MISSING
+    project_key: _MetadataText = HYBRID_METADATA_MISSING
+    provenance: Any = HYBRID_METADATA_MISSING
+
+
+def _has_provenance(value: Any) -> bool:
+    return value is not HYBRID_METADATA_MISSING and js_truthy(value)
+
+
+def _importance_multiplier(importance: _MetadataNumber) -> float:
+    if importance is HYBRID_METADATA_MISSING or importance is None:
+        return 1.0
+    value = float(importance)
+    if math.isnan(value):
+        return math.nan
+    floored = math.floor(value) if math.isfinite(value) else value
+    return 0.75 + max(1, min(10, floored)) * 0.05
+
+
+def _project_keys(project_key: _MetadataText) -> list[str]:
+    return [] if not isinstance(project_key, str) else [js_trim(key) for key in project_key.split(";")]
+
+
+def _project_score_multiplier(project_key: _MetadataText, active_projects: set[str] | None) -> float:
+    if not project_key or project_key is HYBRID_METADATA_MISSING or not active_projects:
+        return 1.0
+    return 1.15 if all(key in active_projects for key in _project_keys(project_key) if key) else 0.9
 
 
 def score_exact_path_tie_for_temporal_decay(content_score: float) -> float:
@@ -111,6 +185,8 @@ def merge_hybrid_results(
     now_ms: int | None = None,
     is_non_text_media_path: Callable[[str], bool] | None = None,
     session_source_mtimes: Mapping[str, float | None] | None = None,
+    memory_source_mtimes: Mapping[str, float | None] | None = None,
+    active_project_keys: list[str] | tuple[str, ...] | None = None,
 ) -> list[HybridResult]:
     by_id: dict[str, _Entry] = {}
     for item in vector:
@@ -124,6 +200,10 @@ def merge_hybrid_results(
             vector_score=item.vector_score,
             exact_path_specificity=item.exact_path_specificity,
             has_vector=True,
+            importance=item.importance,
+            triggers=item.triggers,
+            project_key=item.project_key,
+            provenance=item.provenance if _has_provenance(item.provenance) else HYBRID_METADATA_MISSING,
         )
     for item in keyword:
         has_body = item.has_body_match if item.has_body_match is not None else item.text_score > 0
@@ -138,6 +218,11 @@ def merge_hybrid_results(
                 existing.exact_path_specificity, item.exact_path_specificity
             )
             existing.has_keyword = True
+            for name in ("importance", "triggers", "project_key"):
+                if getattr(existing, name) is HYBRID_METADATA_MISSING or getattr(existing, name) is None:
+                    setattr(existing, name, getattr(item, name))
+            if not _has_provenance(existing.provenance) and _has_provenance(item.provenance):
+                existing.provenance = item.provenance
             if item.snippet:
                 existing.snippet = item.snippet
         else:
@@ -155,6 +240,11 @@ def merge_hybrid_results(
                 exact_path_specificity=item.exact_path_specificity,
                 has_body_match=has_body,
                 has_keyword=True,
+                importance=item.importance,
+                triggers=item.triggers,
+                project_key=item.project_key,
+                provenance=(item.provenance if _has_provenance(item.provenance)
+                            else HYBRID_METADATA_MISSING),
             )
 
     decay = temporal_decay or TemporalDecayConfig()
@@ -205,6 +295,10 @@ def merge_hybrid_results(
                 lexical_rank=lexical_rank,
                 snippet=entry.snippet,
                 source=entry.source,
+                importance=entry.importance,
+                triggers=entry.triggers,
+                project_key=entry.project_key,
+                provenance=entry.provenance,
             )
         )
 
@@ -216,14 +310,24 @@ def merge_hybrid_results(
         workspace_dir=workspace_dir,
         now_ms=now_ms,
         session_source_mtimes=session_source_mtimes,
+        memory_source_mtimes=memory_source_mtimes,
     )
+    active_projects = set(active_project_keys) if active_project_keys else None
     rankable: list[_Ranked] = []
     for entry in decayed:
+        # A malformed stored project annotation excludes the candidate even
+        # when no active project filter is configured.
+        if INVALID_PROJECT_ANNOTATION_KEY in _project_keys(entry.project_key):
+            continue
+        entry.score *= _importance_multiplier(entry.importance)
+        project_multiplier = _project_score_multiplier(entry.project_key, active_projects)
+        if active_projects:
+            entry.score *= project_multiplier
         # Exact tiers and recall-only LIKE hits keep their public confidence; their private
         # ranking score still includes every weighting pass.
         entry.ranking_score = entry.score
         if entry.exact_path_specificity > 0:
-            entry.score = 1.0  # projectScoreMultiplier without an active project
+            entry.score = project_multiplier
         elif entry.content_score == 0:
             entry.score = 0.0
         rankable.append(entry)
@@ -249,7 +353,7 @@ def merge_hybrid_results(
             entry.score = entry.ranking_score
         reranked = apply_mmr_to_hybrid_results(entries, enabled=True, lambda_=mmr_lambda)
         for entry in reranked:
-            entry.score = 1.0
+            entry.score = _project_score_multiplier(entry.project_key, active_projects)
         return reranked
 
     exact: list[_Ranked] = []
@@ -279,6 +383,10 @@ def merge_hybrid_results(
             text_score=item.text_score,
             snippet=item.snippet,
             source=item.source,
+            importance=item.importance,
+            triggers=item.triggers,
+            project_key=item.project_key,
+            provenance=item.provenance,
         )
         for item in ranked
     ]
@@ -325,6 +433,7 @@ def select_hybrid_search_results(
 
 
 __all__ = [
+    "HYBRID_METADATA_MISSING",
     "HybridKeywordResult",
     "HybridResult",
     "HybridVectorResult",

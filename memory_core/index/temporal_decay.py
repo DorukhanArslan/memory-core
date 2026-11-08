@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar
 
+from memory_core.index._js_exp import exp as _js_exp
 from memory_core.memory_paths import parse_dated_memory_path
 
 T = TypeVar("T")
@@ -32,7 +33,7 @@ def calculate_temporal_decay_multiplier(*, age_in_days: float, half_life_days: f
     clamped_age = max(0.0, age_in_days)
     if lambda_ <= 0 or not math.isfinite(clamped_age):
         return 1.0
-    return math.exp(-lambda_ * clamped_age)
+    return _js_exp(-lambda_ * clamped_age)
 
 
 def apply_temporal_decay_to_score(
@@ -69,26 +70,38 @@ def _is_evergreen_memory_path(file_path: str) -> bool:
     return parse_dated_memory_path(normalized) is None
 
 
+def _time_clip(timestamp_ms: float | None) -> int | None:
+    """The millisecond instant retained by JavaScript's numeric Date constructor."""
+    if timestamp_ms is None or not math.isfinite(timestamp_ms) or abs(timestamp_ms) > 8.64e15:
+        return None
+    return math.trunc(timestamp_ms)
+
+
 def _extract_timestamp(
     *,
     file_path: str,
     source: str | None,
     workspace_dir: str | None,
     session_source_mtimes: Mapping[str, float | None] | None = None,
-) -> datetime | None:
+    memory_source_mtimes: Mapping[str, float | None] | None = None,
+) -> int | None:
     if source == "sessions":
         # Session paths are logical identities, not workspace files: ranking uses the indexed
         # source activity (a host-supplied mtime in ms), never a same-named file.
         mtime = (session_source_mtimes or {}).get(file_path)
-        if mtime is None or not math.isfinite(mtime):
-            return None
-        return datetime.fromtimestamp(mtime / 1000, tz=UTC)
+        return _time_clip(mtime)
     from_path = _parse_memory_date_from_path(file_path)
     if from_path is not None:
-        return from_path
+        return int(from_path.timestamp() * 1000)
 
     if source == "memory" and _is_evergreen_memory_path(file_path):
         return None
+
+    if source == "memory" and memory_source_mtimes is not None:
+        # An explicit indexed map, even empty, is authoritative for remote
+        # files. Never replace missing host metadata with a local file mtime.
+        mtime = memory_source_mtimes.get(file_path)
+        return _time_clip(mtime)
 
     if workspace_dir is None:
         return None
@@ -96,13 +109,13 @@ def _extract_timestamp(
     path = Path(file_path)
     absolute_path = path if path.is_absolute() else Path(workspace_dir) / path
     try:
-        return datetime.fromtimestamp(absolute_path.stat().st_mtime, tz=UTC)
+        return _time_clip(absolute_path.stat().st_mtime * 1000)
     except OSError:
         return None
 
 
-def _age_in_days_from_timestamp(timestamp: datetime, now_ms: int) -> float:
-    age_ms = max(0.0, now_ms - timestamp.timestamp() * 1000)
+def _age_in_days_from_timestamp(timestamp: int, now_ms: int) -> float:
+    age_ms = max(0.0, now_ms - timestamp)
     return age_ms / DAY_MS
 
 
@@ -113,6 +126,7 @@ def apply_temporal_decay_to_hybrid_results(
     workspace_dir: str | None = None,
     now_ms: int | None = None,
     session_source_mtimes: Mapping[str, float | None] | None = None,
+    memory_source_mtimes: Mapping[str, float | None] | None = None,
 ) -> list[T]:
     config = temporal_decay or TemporalDecayConfig()
     if not config.enabled:
@@ -121,7 +135,7 @@ def apply_temporal_decay_to_hybrid_results(
     effective_now_ms = (
         now_ms if now_ms is not None else int(datetime.now(tz=UTC).timestamp() * 1000)
     )
-    timestamp_cache: dict[tuple[str | None, str], datetime | None] = {}
+    timestamp_cache: dict[tuple[str | None, str], int | None] = {}
     decayed: list[T] = []
 
     for entry in results:
@@ -134,6 +148,7 @@ def apply_temporal_decay_to_hybrid_results(
                 source=source,
                 workspace_dir=workspace_dir,
                 session_source_mtimes=session_source_mtimes,
+                memory_source_mtimes=memory_source_mtimes,
             )
 
         timestamp = timestamp_cache[cache_key]

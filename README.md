@@ -406,4 +406,6 @@ It does not migrate existing workspaces or promotion markers. Read the script's 
 
 Ported code retains the upstream MIT notice in [LICENSE.openclaw](LICENSE.openclaw).
 Both wheel and source distributions include that notice.
+The private [exponential helper](memory_core/index/_js_exp.py) also retains the Sun fdlibm
+permission notice and V8 BSD license conditions alongside its translated implementation.
 This project's own MIT notice and metadata await confirmation of the copyright holder and year.

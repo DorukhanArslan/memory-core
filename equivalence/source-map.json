@@ -862,6 +862,12 @@
           "symbol": "selectHybridSearchResults",
           "anchor": "export function selectHybridSearchResults<TSource extends HybridSource>(params: {",
           "line": 301
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/curated-annotations.ts",
+          "symbol": "INVALID_PROJECT_ANNOTATION_KEY",
+          "anchor": "export const INVALID_PROJECT_ANNOTATION_KEY = \"!invalid-project-annotation\";",
+          "line": 2
         }
       ],
       "python": [
@@ -869,19 +875,33 @@
           "path": "memory_core/index/hybrid.py",
           "symbol": "merge_hybrid_results",
           "anchor": "def merge_hybrid_results(",
-          "line": 101
+          "line": 175
         },
         {
           "path": "memory_core/index/hybrid.py",
           "symbol": "select_hybrid_search_results",
           "anchor": "def select_hybrid_search_results(",
-          "line": 291
+          "line": 399
+        },
+        {
+          "path": "memory_core/index/hybrid.py",
+          "symbol": "HybridResult.to_payload",
+          "anchor": "    def to_payload(self) -> dict[str, Any]:",
+          "line": 88
+        },
+        {
+          "path": "memory_core/index/_js_exp.py",
+          "symbol": "exp",
+          "anchor": "def exp(x: float) -> float:",
+          "line": 74
         }
       ],
-      "implementation": "partial",
+      "implementation": "present",
       "notes": [
-        "Python merges vector/keyword chunk IDs, weights scores and applies fallback selection; its result records omit native importance/project/provenance annotations needed by the complete ranking pipeline.",
-        "Native indexed memory mtimes and importance/project modifiers are not accepted by the Python merge API, so matching simple score fixtures does not cover the full result contract."
+        "Both hybrid merge/selection acceptance points are verified for finite complete payloads with printable-ASCII path ties. Vector-only, keyword-only and overlapping candidates preserve ordering, scores, full source/range identities, importance/triggers/projectKey/provenance metadata and absent-versus-null distinctions. Exact Unicode content is retained; non-ASCII path collation remains a separate ordinary mismatching engine diagnostic.",
+        "The merger applies importance and active-project adjustments, malformed-project exclusion, exact-path tiers, decay and MMR before strict score selection and lexical fallback. These are owned dependencies of the hybrid result contract, not separate importance/project, temporal or numeric-engine acceptance credit. The stored annotation ingestion/persistence pipeline and full-manager orchestration remain unverified.",
+        "Authoritative memory_source_mtimes input and Date TimeClip preserve indexed timestamp behavior. A private binary64 exponential translated from pinned V8/fdlibm fixes an observed one-ULP selection boundary, retains Sun/V8 license notices and source provenance, and adds no Node runtime or package dependency. Numeric helper diagnostics grant no engine acceptance credit.",
+        "The actual curated-annotations constant owner is authenticated through an exact named-binding projection; broad storage-facade initialization is bypassed. The retained annotated baseline API TypeError, first 64/66 comparison, decisive one-ULP selector failure and final 66 hybrid matches plus one known Unicode mismatch remain separate evidence. The warm first-recall boundary and optional accelerated KNN remain unverified."
       ]
     },
     {
@@ -921,13 +941,13 @@
           "path": "memory_core/index/hybrid.py",
           "symbol": "score_exact_path_tie_for_temporal_decay",
           "anchor": "def score_exact_path_tie_for_temporal_decay(content_score: float) -> float:",
-          "line": 96
+          "line": 170
         }
       ],
       "implementation": "present",
       "notes": [
         "Python has exact-path specificity, content/body tie scores and merged keyword tiers; this is distinct from merely boosting a basename match.",
-        "Tier interactions with absent importance/project metadata remain part of retrieval.importance-project; path-only source mapping does not prove full ranking equivalence."
+        "Importance/project metadata and modifier order now have Python hybrid counterparts. Their full independent acceptance and exact-path integration remain separate fixed contracts; source presence alone does not prove those ranking conditions."
       ]
     },
     {
@@ -995,18 +1015,18 @@
           "path": "memory_core/index/temporal_decay.py",
           "symbol": "apply_temporal_decay_to_hybrid_results",
           "anchor": "def apply_temporal_decay_to_hybrid_results(",
-          "line": 109
+          "line": 122
         },
         {
           "path": "memory_core/index/temporal_decay.py",
           "symbol": "_extract_timestamp",
           "anchor": "def _extract_timestamp(",
-          "line": 72
+          "line": 80
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python supports fixed-clock decay, dated/evergreen paths and caller-supplied session source mtimes, but lacks native indexed memorySourceMtimes input and instead stats non-evergreen workspace files.",
+        "Python supports fixed-clock decay, dated/evergreen paths, caller-supplied session and authoritative memory source mtimes, including empty-map behavior and numeric Date TimeClip. The hybrid dependency now uses a pinned V8/fdlibm exponential to preserve observed binary64 gate behavior; this adds no new temporal or numeric-engine acceptance credit.",
         "SQLiteMemoryStore does not forward indexed session activity mtimes into its ranking calls, so standalone helper support does not establish end-to-end session timestamp behavior."
       ]
     },
@@ -1036,11 +1056,24 @@
           "line": 42
         }
       ],
-      "python": [],
-      "implementation": "missing",
+      "python": [
+        {
+          "path": "memory_core/index/hybrid.py",
+          "symbol": "_importance_multiplier",
+          "anchor": "def _importance_multiplier(importance: _MetadataNumber) -> float:",
+          "line": 150
+        },
+        {
+          "path": "memory_core/index/hybrid.py",
+          "symbol": "_project_score_multiplier",
+          "anchor": "def _project_score_multiplier(project_key: _MetadataText, active_projects: set[str] | None) -> float:",
+          "line": 164
+        }
+      ],
+      "implementation": "partial",
       "notes": [
-        "Python hybrid.py explicitly omits importance multipliers and active-project ranking, and its index/result records do not persist the curated-entry annotations needed to apply them.",
-        "There is no Python implementation owner for modifier order relative to exact-path tiers, decay and MMR; these remain required scope."
+        "Python now has importance/project modifiers, malformed-project filtering and complete result metadata as dependencies of hybrid merge/selection. This establishes a partial source counterpart without granting either separate importance/project acceptance point.",
+        "Curated annotation ingestion/persistence, authoritative active-project inputs and their complete independent acceptance conditions remain unverified; hybrid fixtures do not close this contract."
       ]
     },
     {
@@ -4470,6 +4503,19 @@
         "resolveMemoryHostAgentWorkspaceDir",
         "resolveMemoryHostSearchPathConfig",
         "resolveRememberAcrossConversations"
+      ]
+    },
+    {
+      "path": "packages/memory-host-sdk/src/host/curated-annotations.ts",
+      "sha256": "c4bd75fe3476f54508b42623e1f09190816f49e319703375865b9564fe4e7f5d",
+      "sourceImports": [],
+      "exportedDeclarations": [
+        "CuratedProjectAnnotations",
+        "INVALID_PROJECT_ANNOTATION_KEY",
+        "extractCuratedEntryRecallMetadata",
+        "extractProjectKeysFromCuratedEntry",
+        "normalizeProjectAnnotationKey",
+        "stripMemoryAnnotationCarriers"
       ]
     },
     {

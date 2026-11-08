@@ -88,7 +88,7 @@ The portable CPU vector batch executes the original bounded SQLite candidate own
 codec/cosine and row projection through authenticated named bindings. Both fixed
 `retrieval.vector-scoring` points are verified under the paired capability where native optional
 vector acceleration is unavailable/disabled and the SDK uses CPU scoring. Current verified
-coverage is **27/128 (21.1%)**, with **101 points (78.9%)** remaining. The inventory maps **107
+coverage at that stage was **27/128 (21.1%)**, with **101 points (78.9%)** remaining. That inventory mapped **107
 upstream modules**, including the actual embedding-vector and search-row projection owners;
 classifications are 13 present, 47 partial, one missing and three host-owned. Fixed scope is
 unchanged. Optional sqlite-vec KNN, accelerated float32 behavior, broad facade initialization and
@@ -100,6 +100,21 @@ selection and stable rowid ties in 256-row batches. Normal public search retains
 zero-query and generation-snapshot guards. Actual comparison reports and the retained old-prefix
 diagnostic are listed in the [checklist](full-equivalence-checklist.md); no vector result changes
 the uncredited warm first-recall diagnostic or closes the flush boundaries point.
+
+The hybrid batch verifies both fixed merge/selection points for finite complete payloads with
+printable-ASCII path ties. It preserves exact Unicode content and complete importance, triggers,
+project-key and provenance metadata, including absent-versus-null fields. Indexed memory mtimes,
+Date TimeClip and a private V8/fdlibm exponential are required ranking dependencies; they grant
+no additional temporal, importance/project or numeric-engine acceptance credit. The constant
+binding authenticates its actual curated-annotations owner while bypassing broad storage-facade
+initialization. Full manager execution and the stored annotation ingestion pipeline remain
+unverified, as does optional accelerated KNN.
+
+Current coverage is **29/128 (22.7%)**, with **99 points (77.3%)** remaining. The inventory maps
+**108 upstream modules**; classifications are 14 present, 47 partial, zero missing and three
+host-owned. Importance/project now has a partial source counterpart without acceptance credit.
+The Unicode path-order diagnostic remains an ordinary, uncredited mismatch; numeric helper
+bit comparisons do not close engine points. The warm first-recall boundary also remains open.
 
 | Contract | OpenClaw entry | Python entry | Python surface |
 | --- | --- | --- | --- |
@@ -119,11 +134,11 @@ the uncredited warm first-recall diagnostic or closes the flush boundaries point
 | `indexing.embedding-cache` | [loadMemoryEmbeddingCache](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-embedding-cache.ts#L40) | [load_memory_embedding_cache](../memory_core/index/embedding_cache.py#L86) | partial |
 | `indexing.query-sync` | [MemorySearchOrchestration.searchCandidates](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search-orchestration.ts#L109) | [SQLiteMemoryStore.search](../memory_core/index/sqlite_store.py#L754) | partial |
 | `retrieval.vector-scoring` | [searchVector](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search-vector.ts#L24) | [SQLiteMemoryStore.search_vector_candidates](../memory_core/index/sqlite_store.py#L820) | present |
-| `retrieval.hybrid-scoring` | [mergeHybridResults](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/hybrid.ts#L58) | [merge_hybrid_results](../memory_core/index/hybrid.py#L101) | partial |
+| `retrieval.hybrid-scoring` | [mergeHybridResults](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/hybrid.ts#L58) | [merge_hybrid_results](../memory_core/index/hybrid.py#L175) | present |
 | `retrieval.exact-path-priority` | [prepareExactPathMatcher](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search.ts#L135) | [prepare_exact_path_matcher](../memory_core/index/keyword_search.py#L102) | present |
 | `retrieval.mmr` | [applyMMRToHybridResults](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/mmr.ts#L32) | [apply_mmr_to_hybrid_results](../memory_core/index/mmr.py#L130) | present |
-| `retrieval.temporal-decay` | [applyTemporalDecayToHybridResults](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/temporal-decay.ts#L112) | [apply_temporal_decay_to_hybrid_results](../memory_core/index/temporal_decay.py#L109) | partial |
-| `retrieval.importance-project` | [applyImportanceMultiplier](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/importance.ts#L9) | — | missing |
+| `retrieval.temporal-decay` | [applyTemporalDecayToHybridResults](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/temporal-decay.ts#L112) | [apply_temporal_decay_to_hybrid_results](../memory_core/index/temporal_decay.py#L122) | partial |
+| `retrieval.importance-project` | [applyImportanceMultiplier](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/importance.ts#L9) | [_importance_multiplier](../memory_core/index/hybrid.py#L150) | partial |
 | `tools.search-contract` | [createMemorySearchTool](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.ts#L226) | [memory_search_tool_definition](../memory_core/tools/memory_search.py#L148) | partial |
 | `tools.get-contract` | [createMemoryGetTool](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.ts#L569) | [memory_get_tool_definition](../memory_core/tools/memory_get.py#L85) | partial |
 | `tools.deadline-cooldown` | [runMemorySearchWithDeadline](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/search-deadline.ts#L28) | [_DeadlineWorker](../memory_core/tools/memory_search.py#L415) | partial |

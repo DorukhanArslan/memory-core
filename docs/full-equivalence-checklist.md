@@ -26,7 +26,7 @@ The reference repository is `https://github.com/openclaw/openclaw.git`. Python-o
 
 The [source map](equivalence-source-map.md) links all 64 contracts and 128 acceptance points
 to the pinned upstream code and the current Python implementation. The inventory records
-107 upstream source modules, their tracked hashes, literal dependencies and exported
+108 upstream source modules, their tracked hashes, literal dependencies and exported
 declarations. Source presence and inventory validation do not establish behavior or add
 any differential-test coverage.
 
@@ -51,16 +51,17 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
-The latest verified baseline has **27/128 acceptance points (21.1%)**, with **101 points
-(78.9%)** remaining. Counts below follow the actual `vector-scoring-full.json` report and the
-declared comparison profiles, including the portable CPU limitation for vector candidates.
+The latest verified baseline has **29/128 acceptance points (22.7%)**, with **99 points
+(77.3%)** remaining. Counts include the actual hybrid comparisons and their declared profile:
+finite complete payloads with printable-ASCII path ties, exact Unicode content, and the existing
+portable CPU limitation for vector candidates. Full integrated and regression runs remain pending.
 
 | Contract status | Contracts | Verified acceptance points | Remaining acceptance points |
 | --- | ---: | ---: | ---: |
-| Complete | 12 | 24 | 0 |
+| Complete | 13 | 26 | 0 |
 | Partial | 3 | 3 | 3 |
-| Pending verification | 49 | 0 | 98 |
-| Total | 64 | 27 | 101 |
+| Pending verification | 48 | 0 | 96 |
+| Total | 64 | 29 | 99 |
 
 Pending verification does not mean no implementation exists. Partial contracts have outcomes
 verified and boundaries still open: `indexing.identity`, `sessions.transcript-filtering` and
@@ -72,6 +73,12 @@ After each completed batch, update these counts and provide the full completed, 
 pending lists, the batch's target and actual acceptance increase, and any information needed
 from the user. The latest implementation batch targeted **+2 points** and verified **+2**;
 correcting stale checklist status adds **zero** acceptance points.
+
+Current status of all 64 contracts:
+
+- **Complete (13):** `lexical.tokenization`, `lexical.fts-query`, `lexical.bm25`, `chunking.markdown-boundaries`, `chunking.utf16-cjk-budget`, `indexing.incremental-sync`, `indexing.transaction-publication`, `retrieval.vector-scoring`, `retrieval.hybrid-scoring`, `retrieval.mmr`, `retrieval.temporal-decay`, `prompt.bootstrap-budget`, `flush.trigger-usage`.
+- **Partial (3):** `indexing.identity`, `sessions.transcript-filtering`, `flush.execute-finalize`.
+- **Pending verification (48):** `storage.discovery`, `storage.path-safety`, `storage.atomic-writes`, `storage.workspace-isolation`, `chunking.entry-provenance`, `indexing.embedding-cache`, `indexing.query-sync`, `retrieval.exact-path-priority`, `retrieval.importance-project`, `tools.search-contract`, `tools.get-contract`, `tools.deadline-cooldown`, `tools.unavailable-partial`, `sessions.corpus-admission`, `sessions.visibility-lineage`, `sessions.reset-hook`, `sessions.durable-context`, `prompt.bootstrap-discovery`, `prompt.runtime-context`, `prompt.history-repair`, `flush.plan-target`, `compaction.memory-budget`, `compaction.context-assembly`, `compaction.provider-overflow`, `promotion.recall-signals`, `promotion.ranking-gates`, `promotion.apply-reconcile`, `promotion.deep-consolidation`, `dreaming.light`, `dreaming.rem`, `dreaming.deep`, `dreaming.diary-provenance`, `forget.lineage-tombstones`, `forget.index-fence`, `trust.secret-redaction`, `trust.configured-redaction`, `heartbeat.scratch`, `heartbeat.turn-decisions`, `automation.job-state`, `concurrency.workspace-locks`, `recovery.repair-diagnostics`, `recovery.failure-publication`, `engine.numeric-boundaries`, `engine.unicode-collation`, `engine.datetime-regex`, `host.turn-barrier`, `host.restart-recall`, `host.update-isolation`.
 
 ### Storage and workspace
 
@@ -100,7 +107,7 @@ correcting stale checklist status adds **zero** acceptance points.
 ### Retrieval and ranking
 
 - [x] **`retrieval.vector-scoring` — Match vector candidate scoring.** Compare cosine scoring, candidate bounds, zero vectors and incompatible dimensions. Compare ordered source/range identities before downstream hybrid ranking. Verified for the paired portable CPU fallback capability; optional accelerated KNN remains unverified.
-- [ ] **`retrieval.hybrid-scoring` — Match hybrid merge and score gates.** Compare vector-only, text-only, overlapping and disjoint candidates with configured weights. Check selection, minimum-score boundaries and lexical fallback without dropping result fields.
+- [x] **`retrieval.hybrid-scoring` — Match hybrid merge and score gates.** Compare vector-only, text-only, overlapping and disjoint candidates with configured weights. Check selection, minimum-score boundaries and lexical fallback without dropping result fields. Verified for finite complete payloads with printable-ASCII path ties; the Unicode path-order diagnostic remains uncredited and mismatched.
 - [ ] **`retrieval.exact-path-priority` — Match exact-path retrieval priority.** Exercise exact paths, basename matches, partial paths and body-only matches. Compare path specificity tiers, ties and interaction with content score.
 - [x] **`retrieval.mmr` — Match diversity reranking.** Compare disabled/enabled MMR, duplicate text, equal scores, stable ties and lambda boundaries. Exercise CJK, empty and punctuation-only snippets and preserve output ordering.
 - [x] **`retrieval.temporal-decay` — Match recency decay.** Compare enabled/disabled decay, half-life boundaries, future dates and missing timestamps. Compare dated versus evergreen memory paths and session activity timestamps under a fixed clock.
@@ -927,3 +934,55 @@ Full regression validation passed **2,781 tests** in 131.77 seconds. The same **
 oracle/live checks** remain skipped and grant no acceptance credit. Ruff, project-name
 consistency, source-map validation and staged diff checks passed. These results are recorded in
 this documentation-only follow-up; implementation, adapters and source inventory are unchanged.
+
+### Hybrid merge and score gates — 2026-11-08
+
+This batch targets and verifies **+2 points**: **`retrieval.hybrid-scoring.outcomes`** and
+**`retrieval.hybrid-scoring.boundaries`**. Current acceptance is **29/128 (22.7%)**, with **99
+points (77.3%)** remaining: **13 complete, three partial and 48 pending contracts**. The fixed
+64-contract/128-point scope and its SHA-256 remain unchanged. Source inventory now maps **108
+upstream modules**, including the actual curated-annotations constant owner; classifications
+are 14 present, 47 partial, zero missing and three host-owned. Importance/project has a new partial
+source counterpart but receives no separate acceptance credit.
+
+The declared profile compares finite complete result payloads with printable-ASCII path ties.
+Unicode content is compared exactly. The original native hybrid, importance, project-ranking,
+decay, MMR and selection owners execute; an authenticated exact named binding resolves
+`INVALID_PROJECT_ANNOTATION_KEY` to its unchanged source owner without broad storage-facade
+initialization. No full-manager, annotation-storage pipeline or optional KNN equivalence is
+claimed. Cases cover vector/text overlap, weights, score thresholds and lexical fallback while
+retaining source/range identities, importance, triggers, project keys and provenance, including
+absent-versus-null fields. Required modifiers and timestamp plumbing add no separate importance,
+temporal or engine acceptance points.
+
+The actual old annotated API failed with `TypeError` at commit
+`a2084cd7d06f7775a2c160e59de59d9cb5506aeb`;
+`.equivalence-results/hybrid-annotated-baseline.json` retains that observation. The first native
+comparison, `.equivalence-results/hybrid-scoring-first.json`, records **64 matches, two mismatches
+and zero blocked cases**. One mismatch exposed a one-ULP decay difference; the other was real
+Unicode path ordering. `.equivalence-results/hybrid-decay-gate-before-fix.json` retains a decisive
+selector case where that numeric difference changes inclusion at the minimum-score gate.
+
+Indexed `memory_source_mtimes` are now authoritative, including an explicitly empty map, and
+timestamps follow numeric Date TimeClip. A private `_js_exp.py` translates V8/fdlibm binary64
+exponential behavior from immutable Node commit `c7d10158bc31036de6783d66beaaaf551e3167aa`, retaining
+the full Sun and V8 BSD notices. It adds no production Node runtime or package dependency.
+`.equivalence-results/hybrid-exp-source-provenance.json` records source/license provenance;
+`.equivalence-results/hybrid-exp-bits.json` records **11,503/11,503** helper bit matches, with
+an independent **2,263-case** comparison also bit-exact. Those diagnostics grant no engine credit.
+
+The actual corrected report, `.equivalence-results/hybrid-scoring-after-exp.json`, records
+**66 hybrid matches**, **one known Unicode diagnostic mismatch**, zero blocked cases and no runner
+errors. Outputs remain unrounded and complete; no blanket numeric tolerance hides a gate change.
+After reviewed point assignment, `.equivalence-results/hybrid-scoring-registered.json` records
+the same **66 hybrid matches and one known Unicode mismatch**, with zero blocked cases or runner
+errors, and covers both hybrid points.
+The Unicode diagnostic belongs to `engine.unicode-collation`, retains no acceptance credit and
+remains an ordinary mismatch with its declared deviation. That engine contract still has **0/2
+points verified**; printable-ASCII hybrid tie evidence does not establish general Unicode path
+collation. The prior warm first-recall comparison likewise remains visible and uncredited.
+
+The default catalog now contains **828 cases**. Final integrated and regression validation is
+recorded after the runs; the planned full report is `.equivalence-results/hybrid-scoring-full.json`.
+Known warm and Unicode differences remain visible, and **99 acceptance points remain uncovered**,
+so this batch cannot produce a full-equivalence pass.

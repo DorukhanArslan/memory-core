@@ -123,9 +123,17 @@ def run_session_contract(arguments: dict[str, Any], *, evidence_directory: Path 
             }
 
         if "configs" in value:
-            return {"provider": "none", "policies": [render(config) for config in value["configs"]]}
-        policy = render(value.get("pluginConfig"))
-        return {"provider": "none", **({"policy": policy} if policy is not None else {})}
+            result = {"policies": [render(config) for config in value["configs"]]}
+        else:
+            policy = render(value.get("pluginConfig"))
+            result = {"policy": policy} if policy is not None else {}
+        if evidence_directory is not None:
+            evidence_directory.mkdir(parents=True, exist_ok=True)
+            (evidence_directory / "python-raw.json").write_text(
+                json.dumps([{"result": result}], ensure_ascii=False, indent=2, allow_nan=False) + "\n",
+                encoding="utf-8",
+            )
+        return {"provider": "none", **result}
     if value["kind"] == "indexable":
         from memory_core.session_corpus import is_memory_session_indexable
 
@@ -181,7 +189,8 @@ def _run_session_runtime(value: dict[str, Any], *, evidence_directory: Path | No
         raw: dict[str, Any] = {"fixtureBase": str(root), "constructorSkipped": False, "managerFixture": False,
                                "sessionWrites": [], "snapshots": [], "catalogRequests": [],
                                "pythonEnvelopes": [], "queryErrors": [], "reads": [],
-                               "lifecycle": [], "archiveWrites": []}
+                               "lifecycle": [], "archiveWrites": [], "managerAcquisitions": [],
+                               "queryOwners": []}
 
         def catalog_for(identifier: str) -> MemorySessionCatalog:
             if identifier not in catalogs:
@@ -264,8 +273,10 @@ def _run_session_runtime(value: dict[str, Any], *, evidence_directory: Path | No
         def owner_for(identifier: str):
             if identifier not in owners:
                 owner_catalog = catalog_for(identifier)
+                owner_root = workspace if identifier == agent else workspace / identifier
+                owner_root.mkdir(parents=True, exist_ok=True)
                 owner_config = MemoryConfig(
-                    workspace_dir=workspace, agent_id=identifier,
+                    workspace_dir=owner_root, agent_id=identifier,
                     store_path=state / "agents" / identifier / "agent" / "openclaw-agent.sqlite",
                     session_search="sessions" in source_policy["searchSources"],
                     search_max_results=200, search_min_score=0,
@@ -273,11 +284,13 @@ def _run_session_runtime(value: dict[str, Any], *, evidence_directory: Path | No
                 )
                 owner_store = SQLiteMemoryStore(owner_config, None)
                 owner_workspace = MemoryWorkspace(
-                    workspace, openclaw_state_dir=state, agent_id=identifier,
+                    owner_root, openclaw_state_dir=state, agent_id=identifier,
                     session_catalog=owner_catalog, index_sources=source_policy["sources"],
                 )
                 owner_context = SessionVisibilityContext.from_catalog(owner_catalog, visibility)
                 owners[identifier] = owner_config, owner_store, owner_workspace, owner_context
+                raw["managerAcquisitions"].append({"agentId": identifier, "workspaceDir": str(owner_workspace.root),
+                                                   "dbPath": str(owner_config.resolved_store_path())})
             return owners[identifier]
 
         config, store, memory_workspace, context = owner_for(agent)
@@ -318,6 +331,9 @@ def _run_session_runtime(value: dict[str, Any], *, evidence_directory: Path | No
                 query_config, query_store, query_workspace, query_context = owner_for(query_agent)
                 if query_agent != agent:
                     query_store.reindex(query_workspace)
+                raw["queryOwners"].append({"queryId": query["id"], "agentId": query_agent,
+                                           "workspaceDir": str(query_workspace.root),
+                                           "published": query_store.read_published_index()})
                 candidates = query_store.search(query["query"], max_results=query.get("maxResults", 200),
                                                 min_score=query.get("minScore", 0), sources={"sessions"})
                 tool_context = MemorySearchToolContext(

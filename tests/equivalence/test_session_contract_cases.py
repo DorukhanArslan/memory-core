@@ -46,6 +46,46 @@ def test_unknown_operation_is_not_a_success_placeholder():
         run_session_contract({"kind": "invented"})
 
 
+def test_compiled_policy_helper_dispatch_retains_the_full_actual_owner_evidence(tmp_path):
+    from equivalence.runtime_oracle import _validate_session_contract_raw
+
+    case = deepcopy(next(case for case in build_session_contract_cases()
+                         if case["operation"] == "session-contract-helper-runtime"))
+    case["_diagnosticDirectory"] = tmp_path / "evidence"
+    before = deepcopy(case)
+    result = run_python(case)
+    assert case == before
+    raw = json.loads((tmp_path / "evidence" / "python-raw.json").read_text())
+    assert raw == [{"result": {"policies": result["policies"]}}]
+    assert len(raw[0]["result"]["policies"]) == len(case["input"]["configs"])
+    _validate_session_contract_raw({"ok": True, "result": result}, case, raw)
+
+
+def test_peer_workspace_uses_its_actual_owner_root_and_never_indexes_the_main_fact(tmp_path):
+    value = {
+        "kind": "flow", "nowMs": 1_790_000_000_000, "includeContentRevision": False,
+        "config": {"agentIds": ["main", "peer"], "visibility": "agent"},
+        "files": {"MEMORY.md": "Cobalt main workspace fact.\n"},
+        "sessions": [{"agentId": "peer", "sessionKey": "agent:peer:direct:reader",
+                      "entry": {"sessionId": "peer", "chatType": "direct"}, "events": [{
+                          "type": "message", "message": {"role": "user", "content": "Cobalt peer transcript."},
+                      }]}],
+        "steps": [{"label": "owner-scoped-workspaces", "queries": [{
+            "id": "main-memory", "query": "Cobalt", "corpus": "memory", "requesterSessionKey": "agent:main:main",
+        }, {"id": "peer-memory", "agentId": "peer", "query": "Cobalt", "corpus": "memory",
+            "requesterSessionKey": "agent:peer:direct:reader"}]}],
+    }
+    result = run_session_contract(value, evidence_directory=tmp_path / "evidence")
+    main, peer = result["steps"][0]["queries"]
+    assert [hit["path"] for hit in main["result"]["details"]["results"]] == ["MEMORY.md"]
+    assert peer["result"]["details"]["results"] == []
+    raw, = json.loads((tmp_path / "evidence" / "python-raw.json").read_text())
+    owners = {row["agentId"]: row for row in raw["managerAcquisitions"]}
+    assert owners["peer"]["workspaceDir"] == owners["main"]["workspaceDir"] + "/peer"
+    peer_query, = [row for row in raw["queryOwners"] if row["agentId"] == "peer"]
+    assert [row["source"] for row in peer_query["published"]["sources"]] == ["sessions"]
+
+
 @pytest.mark.parametrize("case", [
     case for case in build_session_contract_cases() if case["operation"] == "session-contract-runtime"
 ], ids=lambda case: case["id"])

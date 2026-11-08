@@ -470,6 +470,8 @@ class MemoryWorkspace:
             )
             for item in corpus.discover_files():
                 entry = corpus.read_index_entry(item)
+                if entry is None:
+                    continue
                 if not is_memory_session_indexable({
                     "generatedByDreamingNarrative": entry.generated_by_dreaming_narrative,
                     "generatedByCronRun": entry.generated_by_cron_run,

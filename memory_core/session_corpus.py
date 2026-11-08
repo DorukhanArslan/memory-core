@@ -6,6 +6,7 @@ import json
 import math
 from pathlib import Path
 import re
+import stat
 from typing import Any
 
 from memory_core.bootstrap._js import JS_SPACE_CLASS, js_trim, js_truthy
@@ -331,10 +332,19 @@ class MemoryCoreSessionCorpus:
         is not part of the native indexed projection or its source hash.
         """
         entry = self.read_index_entry(file)
+        if entry is None:
+            return ""
         return entry.content + ("\n" if entry.content else "")
 
-    def read_index_entry(self, file: SessionCorpusFile) -> SessionEntry:
-        """Retain the native projection, original line mapping and trust facts."""
+    def read_index_entry(
+        self, file: SessionCorpusFile, *,
+        on_transcript_message: Callable[[object, int], None] | None = None,
+    ) -> SessionEntry | None:
+        """Return a complete projection, or absence for an unreadable file.
+
+        File/archive failures follow the native source reader's nullable result.
+        Errors from an identity-backed SQLite accessor remain operational errors.
+        """
         # Indexing follows OpenClaw memory ingestion (buildSessionEntry, ported in
         # memory_core.session_entry): every user/assistant message row in file order, including
         # abandoned and side-append branches (ingestion never calls the transcript-tree helpers),
@@ -347,7 +357,7 @@ class MemoryCoreSessionCorpus:
                 raise ValueError("SQLite transcript projection requires its authoritative catalog")
             snapshot = self.catalog.read_transcript(file.session_id, session_key=file.session_key)
             if snapshot is None:
-                raise FileNotFoundError("Session transcript identity disappeared")
+                return None
             entry = build_session_entry(
                 events=snapshot.events,
                 mtime_ms=file.updated_at_ms if file.updated_at_ms is not None else snapshot.updated_at_ms,
@@ -355,6 +365,7 @@ class MemoryCoreSessionCorpus:
                 generated_by_dreaming_narrative=file.generated_by_dreaming_narrative,
                 generated_by_cron_run=file.generated_by_cron_run,
                 runtime_identity=self.runtime_identity, redact_text=self.redact_text,
+                on_transcript_message=on_transcript_message,
             )
             entry._extra.update({
                 "path": file.rel_path, "absPath": str(file.abs_path),
@@ -363,13 +374,20 @@ class MemoryCoreSessionCorpus:
             })
             return entry
         try:
-            info = file.abs_path.stat()
-            seconds, nanos = divmod(info.st_mtime_ns, 1_000_000_000)
-            mtime_ms = seconds * 1000 + nanos / 1_000_000
-            file_size = info.st_size
-        except OSError:
-            mtime_ms = 0
-            file_size = 0
+            return self._read_file_index_entry(file, on_transcript_message=on_transcript_message)
+        except Exception:
+            return None
+
+    def _read_file_index_entry(
+        self, file: SessionCorpusFile, *,
+        on_transcript_message: Callable[[object, int], None] | None = None,
+    ) -> SessionEntry | None:
+        info = file.abs_path.stat()
+        if not stat.S_ISREG(info.st_mode):
+            return None
+        seconds, nanos = divmod(info.st_mtime_ns, 1_000_000_000)
+        mtime_ms = seconds * 1000 + nanos / 1_000_000
+        file_size = info.st_size
         if file.abs_path.name.endswith(".zst"):
             from memory_core.session_archive_codec import read_session_transcript_bytes
 
@@ -389,6 +407,7 @@ class MemoryCoreSessionCorpus:
             allow_record_cron_classification=file.artifact_kind == "archive-artifact",
             runtime_identity=self.runtime_identity,
             redact_text=self.redact_text,
+            on_transcript_message=on_transcript_message,
         )
         entry._extra.update({
             "path": file.rel_path, "absPath": str(file.abs_path), "mtimeMs": mtime_ms,
@@ -396,9 +415,14 @@ class MemoryCoreSessionCorpus:
         })
         return entry
 
-    def read_source_entry(self, file: SessionCorpusFile) -> dict[str, Any]:
+    def read_source_entry(
+        self, file: SessionCorpusFile, *,
+        on_transcript_message: Callable[[object, int], None] | None = None,
+    ) -> dict[str, Any] | None:
         """Build the complete native-shaped source projection from actual stored state."""
-        entry = self.read_index_entry(file)
+        entry = self.read_index_entry(file, on_transcript_message=on_transcript_message)
+        if entry is None:
+            return None
         return {
             **entry._extra, "hash": entry.hash, "content": entry.content,
             "lineMap": entry.line_map, "messageTimestampsMs": entry.message_timestamps_ms,

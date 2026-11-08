@@ -88,7 +88,8 @@ class FlushRequest:
     Built by ``HostKit.after_turn`` for a due flush (``reason`` is the trigger's,
     ``token_threshold`` or ``transcript_size``) or by ``HostKit.request_flush`` (``forced``). Tool
     calls of the run go to :meth:`dispatch`; the run ends with one :meth:`complete`. Parallel
-    tool calls are safe (the append is locked).
+    tool calls are safe (the append is locked). Completion rejects an in-flight dispatch;
+    the host completes after its tool calls have returned.
     """
 
     def __init__(
@@ -103,6 +104,7 @@ class FlushRequest:
         provenance: MemoryArtifactProvenanceStore | None = None,
         untrusted: bool | Callable[[], bool] = False,
         session_key: str | None = None,
+        assert_current: Callable[[], None] | None = None,
     ) -> None:
         self.target = target
         self.reason = reason
@@ -114,9 +116,11 @@ class FlushRequest:
         self._untrusted = untrusted
         self._session_key = session_key
         self._compaction_count = compaction_count
+        self._assert_current = assert_current
         self._entries: list[str] = []
         self._lock = threading.Lock()
         self._completed = False
+        self._active_dispatches = 0
 
     def dispatch(self, name: str, arguments: Mapping[str, Any] | str | None) -> dict[str, Any]:
         """Run one tool call of the flush run and return the payload for the model.
@@ -126,10 +130,21 @@ class FlushRequest:
         content and the exact ``NO_REPLY`` token are skipped, anything else is appended, the
         store reindexed and upstream's ``Appended content to <target>.`` returned. Errors are
         payloads, as in ``HostKit.dispatch``; a call after :meth:`complete` raises
-        ``RuntimeError``.
+        ``RuntimeError``. An authority check supplied by the host may also raise.
         """
-        if self._completed:
-            raise RuntimeError("the flush request is already completed")
+        with self._lock:
+            if self._completed:
+                raise RuntimeError("the flush request is already completed")
+            self._active_dispatches += 1
+        try:
+            # Host callbacks run outside the state lock. The reservation prevents completion
+            # from returning while a callback, append, provenance update or index refresh runs.
+            return self._dispatch(name, arguments)
+        finally:
+            with self._lock:
+                self._active_dispatches -= 1
+
+    def _dispatch(self, name: str, arguments: Mapping[str, Any] | str | None) -> dict[str, Any]:
         try:
             args = read_tool_call(name, arguments)
         except ToolCallRefused as refused:
@@ -150,9 +165,31 @@ class FlushRequest:
             )
         if content.strip() in ("", SILENT_REPLY_TOKEN):
             return {"status": "ok", "tool": name, "path": self.target, "action": "skipped"}
+        authority_error: BaseException | None = None
+
+        def check_current() -> None:
+            nonlocal authority_error
+            if self._assert_current is not None:
+                try:
+                    self._assert_current()
+                except BaseException as error:
+                    authority_error = error
+                    raise
+
+        check_current()
         try:
-            append_daily_memory_file(root, self.target, content, provenance=self._write_observer(root))
+            append_daily_memory_file(
+                root,
+                self.target,
+                content,
+                provenance=self._write_observer(root),
+                assert_current=check_current if self._assert_current is not None else None,
+            )
         except Exception as error:
+            if error is authority_error:
+                raise
+            if authority_error is not None:
+                raise authority_error from error
             return to_tool_error(error, tool=name)
         with self._lock:
             self._entries.append(content)
@@ -164,6 +201,8 @@ class FlushRequest:
             "text": MEMORY_FLUSH_WRITE_APPENDED_TEMPLATE.format(relative_path=self.target),
         }
         try:
+            if self._assert_current is not None:
+                self._assert_current()
             self._memory.store.reindex(self._memory.workspace)
         except Exception as error:  # the append is committed; report, never retry
             payload["afterWriteError"] = format_error_message(error)
@@ -200,15 +239,24 @@ class FlushRequest:
         (``flushedCompactionCount``, agent-runner-memory.ts:1517, 1665-1671); ``error`` records a
         failure strike (three mark the cycle flushed) with ``redact`` applied to its message. A
         cancelled run is not completed (upstream records nothing for it). ``ValueError`` for
-        another session, ``RuntimeError`` for a second call.
+        another session, ``RuntimeError`` for a second call or an in-flight dispatch. An
+        authority check may raise before recording either result; the request then stays closed.
         """
-        if self._completed:
-            raise RuntimeError("the flush request is already completed")
-        if session.session_id != self._session_id:
-            raise ValueError(
-                f"the flush belongs to session {self._session_id!r}, not {session.session_id!r}"
-            )
-        self._completed = True
+        with self._lock:
+            if self._completed:
+                raise RuntimeError("the flush request is already completed")
+            if session.session_id != self._session_id:
+                raise ValueError(
+                    f"the flush belongs to session {self._session_id!r}, not {session.session_id!r}"
+                )
+            if self._active_dispatches:
+                raise RuntimeError("the flush request has an in-flight dispatch")
+            self._completed = True
+            entries = tuple(self._entries)
+        # Claim completion before calling host code: a reentrant dispatch is refused and an
+        # abandoned/cancelled request cannot subsequently write or stamp a session result.
+        if self._assert_current is not None:
+            self._assert_current()
         entry = copy.deepcopy(dict(session.entry))
         failure = None
         if error is None:
@@ -218,8 +266,6 @@ class FlushRequest:
         else:
             failure = record_memory_flush_failure(entry, error=error, redact=redact)
             entry = failure.entry
-        with self._lock:
-            entries = tuple(self._entries)
         return FlushOutcome(
             session=replace(session, entry=entry),
             wrote=bool(entries),

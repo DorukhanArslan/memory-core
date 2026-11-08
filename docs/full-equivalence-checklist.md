@@ -622,7 +622,8 @@ terms, byte-size parsing, timezone and clock fallback, target validation and sur
 contents, exported token/compaction gates, and error text/cause chains. All 111 retain
 `covers: []`. Plan evidence does not settle dates below year 1000 or above 9999 and the
 documented host time-format/timezone boundaries. Python target preparation still has
-stricter filesystem admission, and native `assertCurrent` authority revocation is untested.
+stricter filesystem admission. At this baseline, native `assertCurrent` authority revocation
+was untested; the later bounded comparison below addresses its three helper checkpoints.
 Exported gates do not establish actual transcript/provider usage accounting, heartbeat
 exclusions, durable retry/exhaustion stamps or execution/finalization. All existing flush
 acceptance points remain open.
@@ -676,3 +677,58 @@ points**, so this remains partial verification of the fixed contract. The final 
 run passed **2,490 tests**; the same 1,625 historical oracle/live checks remained gated off
 and grant no acceptance credit. Ruff, project-name consistency, source-map and staged diff
 checks passed. No production Python implementation changed in this completion batch.
+
+### Flush target authority and cancellation — 2026-11-08
+
+The public `ensure_memory_flush_target_file(..., *, assert_current=None)` now matches the native
+helper's optional raising authority checkpoints before mkdir, after mkdir and after open. It
+closes the real descriptor in `finally`, including when the last check raises. A callback is
+synchronous and prompt; its return value is ignored. Omitting it retains legacy behavior. The
+existing stricter refusal of symlinked parents and symlink, hard-linked or non-regular targets
+remains explicit.
+
+The new `flush-target` operation adds **22 cases**, bringing the default catalog to **651**
+(629 previous plus 22). `.equivalence-results/flush-target-first.json` retains the original
+**22 mismatches** from the helper without callback support. The intermediate
+`.equivalence-results/flush-target-after-helper.json` records **21 matches and one mismatch**:
+failure injection below `Path.mkdir` let `exist_ok` absorb the artificial failure for an existing
+directory. The transport now injects at the corresponding `Path.mkdir` and native
+`fs.promises.mkdir` API boundaries. No case was removed. The final focused report,
+`.equivalence-results/flush-target-final.json`, records **22 matches, zero mismatches or blocked
+cases**. Earlier captures remain diagnostic evidence.
+
+These fixtures execute both real helpers and compare ordered callback and filesystem events,
+surviving directories, exact file bytes (including non-UTF-8 bytes), and actual descriptor
+closure. They cover revocation at each checkpoint for new and existing targets, actual
+`asyncio.CancelledError`, invalid paths, and declared mkdir/open/close failures. Close-failure
+injection occurs after releasing the real handle. Normalization is limited to declared injected
+authority errors, the two path-validation messages, injected errno/operation/owned path fields,
+and owned temporary roots in unexpected-error diagnostics.
+
+`HostKit.after_turn` and `request_flush` carry the optional check through request creation,
+dispatch and completion. During preparation, both host methods preserve the original authority
+exception if descriptor cleanup also fails, chain the close failure as its cause and record no
+cancellation strike. The standalone target helper retains native close-error priority. The shared
+append checks authority under the actual file lock and
+again before provenance reservation, open and write, including after provenance callbacks.
+Cancellation while waiting for the lock or after reserving provenance prevents an append and
+preserves rollback. Precommit authority exception identity survives, including cancellation;
+rollback failures remain chained causes. After an append commits, ordinary authority/index
+exceptions return `appended` plus `afterWriteError`, so the host keeps the write without retry.
+`BaseException` cancellation propagates while retaining committed bytes and the request entry.
+Completion rejects an active dispatch, closes the request before its callback, and records no
+success or failure stamp if that callback raises. Python regression tests exercise these host
+boundaries; the native comparison is bounded to target preparation.
+
+All new cases retain **`covers: []`**. This batch does not close either `flush.plan-target`
+acceptance point or establish host queue ordering, a durable next-turn barrier, usage accounting
+or full execution/finalization equivalence. Verified acceptance remains **22/128 (17.2%)**,
+with **106/128 (82.8%)** remaining. Scope remains **64 contracts, 128 acceptance points**, the
+same scope digest and **103 mapped upstream modules**.
+
+The integrated subset report, `.equivalence-results/flush-authority-subset-first.json`, matched
+all **651 cases**, with zero mismatches or blocked cases. The committed full-gate report,
+`.equivalence-results/flush-authority-full.json`, remains **incomplete** because the same
+**106 acceptance points** remain uncovered. The full regression run passed **2,571 tests**;
+the same **1,625 historical oracle/live checks** remain gated off and grant no acceptance
+credit. Ruff, project-name consistency, source-map and staged diff checks passed.

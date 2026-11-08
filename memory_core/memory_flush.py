@@ -599,7 +599,12 @@ def record_memory_flush_failure(
     )
 
 
-def ensure_memory_flush_target_file(root: str | os.PathLike[str], relative_path: str) -> Path:
+def ensure_memory_flush_target_file(
+    root: str | os.PathLike[str],
+    relative_path: str,
+    *,
+    assert_current: Callable[[], None] | None = None,
+) -> Path:
     """Create the flush target empty before the flush run; returns its path.
 
     Port of ``ensureMemoryFlushTargetFile`` (src/auto-reply/reply/memory-flush-session.ts:64-96,
@@ -608,6 +613,10 @@ def ensure_memory_flush_target_file(root: str | os.PathLike[str], relative_path:
     ``... "Memory flush target path must stay inside the workspace"``; then the parent
     directories are created and the file is opened for append. So a flush that answers
     ``NO_REPLY`` still leaves the empty daily file, and ``memory/`` counts as setup evidence.
+    ``assert_current`` is a prompt, synchronous host check that must raise to revoke authority;
+    its return value is ignored. It runs before mkdir, after mkdir and after opening the file.
+    The latter two checks run under the write lock, and the opened file is closed even when
+    the final check raises. Check and filesystem exceptions propagate to the caller.
     Deviation (stricter than upstream): under the file's write lock, a symlinked or non-directory
     parent and a target that is a symlink, not a regular file or hard-linked are refused
     (``memory_core.workspace.check_writable_memory_file``), as the flush write refuses them.
@@ -620,11 +629,20 @@ def ensure_memory_flush_target_file(root: str | os.PathLike[str], relative_path:
     inside = os.path.relpath(target, workspace_root).replace(os.sep, "/")
     if inside == "." or inside.startswith("..") or os.path.isabs(inside):
         raise UnsafeMemoryPathError(MEMORY_FLUSH_TARGET_OUTSIDE_ERROR)
+    if assert_current is not None:
+        assert_current()
     with workspace_file_lock(workspace_root, inside):
         check_writable_memory_file(workspace_root, inside)
         target.parent.mkdir(parents=True, exist_ok=True)
+        if assert_current is not None:
+            assert_current()
         flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
-        os.close(os.open(target, flags, 0o666))
+        descriptor = os.open(target, flags, 0o666)
+        try:
+            if assert_current is not None:
+                assert_current()
+        finally:
+            os.close(descriptor)
     return target
 
 

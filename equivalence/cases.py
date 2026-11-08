@@ -211,6 +211,7 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.markdown_chunking import build_markdown_chunking_cases
     from equivalence.bootstrap_budget import build_bootstrap_budget_cases
     from equivalence.flush_contract import build_flush_contract_cases
+    from equivalence.flush_target import build_flush_target_cases
     from equivalence.session_projection import build_session_projection_cases
     from equivalence.storage_discovery import build_storage_discovery_cases
     from equivalence.storage_paths import build_storage_path_cases
@@ -223,6 +224,7 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     cases.extend(build_markdown_chunking_cases())
     cases.extend(build_bootstrap_budget_cases())
     cases.extend(build_flush_contract_cases())
+    cases.extend(build_flush_target_cases())
     cases.extend(build_session_projection_cases())
     cases.extend(build_storage_discovery_cases())
     cases.extend(build_storage_path_cases())
@@ -253,6 +255,10 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.flush_contract import run_flush_contract
 
         return run_flush_contract(arguments)
+    if operation == "flush-target":
+        from equivalence.flush_target import run_flush_target
+
+        return run_flush_target(arguments)
     if operation == "session-projection":
         from equivalence.session_projection import run_session_projection
 

@@ -49,10 +49,21 @@ remaining; this inventory itself grants none of that behavioral credit. Classifi
 remain 11 present, 49 partial, one missing and three host-owned. Historical import-blocked
 captures are superseded by the focused reports listed in the checklist.
 
+The subsequent target-authority batch compares the original `ensureMemoryFlushTargetFile`
+with the public Python helper in 22 additional cases. All match in
+`.equivalence-results/flush-target-final.json`, including the three raising authority checkpoints,
+actual descriptor closure, exact existing bytes and declared mkdir/open/close failures. Every
+case retains `covers: []`; stricter Python filesystem admission and the remaining plan/target
+conditions keep both acceptance points open. The public host methods carry an optional raising
+check through request creation, locked append and completion. Host-side cancellation, provenance
+rollback and completion races have Python regression evidence; this does not establish native
+host queue or durable next-turn barrier equivalence. Fixed coverage remains 22/128 (17.2%), with
+106 points (82.8%) remaining.
+
 | Contract | OpenClaw entry | Python entry | Python surface |
 | --- | --- | --- | --- |
 | `storage.discovery` | [listMemoryFiles](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/internal.ts#L266) | [list_memory_files](../memory_core/workspace.py#L60) | partial |
-| `storage.path-safety` | [readMemoryFile](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/read-file.ts#L34) | [MemoryWorkspace.resolve_memory_read_path](../memory_core/workspace.py#L377) | partial |
+| `storage.path-safety` | [readMemoryFile](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/read-file.ts#L34) | [MemoryWorkspace.resolve_memory_read_path](../memory_core/workspace.py#L384) | partial |
 | `storage.atomic-writes` | [commitMemoryContent](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/short-term-promotion-memory-write.ts#L139) | [MemoryCurator._write_target](../memory_core/curation.py#L1153) | partial |
 | `storage.workspace-isolation` | [resolveMemoryHostAgentWorkspaceDir](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/config-utils.ts#L164) | [SubjectMemory.open](../memory_core/live/__init__.py#L390) | partial |
 | `lexical.tokenization` | [tokenize](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/tokenize.ts#L6) | [tokenize](../memory_core/index/mmr.py#L17) | present |

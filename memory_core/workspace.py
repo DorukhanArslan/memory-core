@@ -252,18 +252,25 @@ def append_daily_memory_file(
     entry: str,
     *,
     provenance: MemoryWriteProvenanceObserver | None = None,
+    assert_current: Callable[[], None] | None = None,
 ) -> Path:
     """:meth:`MemoryWorkspace.append_daily_memory` under the file's write lock.
 
     The shared daily append of the curated daily note and the memory flush's ``write`` tool:
     ``rel_path`` must be ``memory/YYYY-MM-DD.md`` and pass :func:`check_writable_memory_file`.
     ``provenance`` is the write observer of the flush (:mod:`memory_core.memory_write_provenance`).
+    ``assert_current`` is a prompt synchronous raising check, run under the file lock and again
+    before the append commits, including after provenance callbacks.
     """
     resolved = Path(root).resolve()
     validate_daily_memory_path(rel_path)
     with workspace_file_lock(resolved, rel_path):
+        if assert_current is not None:
+            assert_current()
         check_writable_memory_file(resolved, rel_path)
-        return MemoryWorkspace(resolved).append_daily_memory(rel_path, entry, provenance=provenance)
+        return MemoryWorkspace(resolved).append_daily_memory(
+            rel_path, entry, provenance=provenance, assert_current=assert_current
+        )
 
 
 @dataclass(frozen=True)
@@ -461,12 +468,15 @@ class MemoryWorkspace:
         entry: str,
         *,
         provenance: MemoryWriteProvenanceObserver | None = None,
+        assert_current: Callable[[], None] | None = None,
     ) -> Path:
         """Append ``entry`` to the daily note ``rel_path`` (``memory/YYYY-MM-DD.md``).
 
         With a ``provenance`` observer (the flush's trust record, upstream's
         ``createMemoryWriteProvenanceObserver``) the file's trust is recorded before the append
         (the text before and the text the append produces) and rolled back when the append fails.
+        ``assert_current`` checks the host's authority before filesystem mutations and before
+        reserving provenance; a cancellation after reservation rolls the provenance back.
         """
         validate_daily_memory_path(rel_path)
         lexical_path = self.root / rel_path
@@ -476,6 +486,8 @@ class MemoryWorkspace:
         if not self.is_path_inside_root(path):
             raise UnsafeMemoryPathError(f"memory path escapes workspace: {rel_path}")
 
+        if assert_current is not None:
+            assert_current()
         path.parent.mkdir(parents=True, exist_ok=True)
         if not entry.strip():
             return path
@@ -487,10 +499,12 @@ class MemoryWorkspace:
                 needs_separator = existing.read(1) != b"\n"
 
         def commit() -> None:
+            if assert_current is not None:
+                assert_current()
             with path.open("a", encoding="utf-8") as handle:
-                if needs_separator:
-                    handle.write("\n")
-                handle.write(f"{text}\n")
+                if assert_current is not None:
+                    assert_current()
+                handle.write(f"{chr(10) if needs_separator else ''}{text}\n")
 
         if provenance is None:
             commit()
@@ -499,6 +513,8 @@ class MemoryWorkspace:
 
         before = read_text_or_empty(path)
         after = f"{before}{chr(10) if needs_separator else ''}{text}\n"
+        if assert_current is not None:
+            assert_current()
         provenance.write(absolute_path=path, content_before=before, content_after=after, commit=commit)
         return path
 

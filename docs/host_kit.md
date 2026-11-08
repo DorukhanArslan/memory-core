@@ -461,6 +461,8 @@ def after_turn(
     context_window_tokens: int | None = None,
     transcript_bytes: int | None = None,
     redact: Callable[[str], str] | None = None,
+    untrusted_turn: bool | Callable[[], bool] = False,
+    assert_current: Callable[[], None] | None = None,
 ) -> TurnRecord
 
 @dataclass(frozen=True)
@@ -512,11 +514,14 @@ pre-turn flush with the incoming prompt's estimate was the pin-era order.
   window minus the reserve floor (20,000) and the soft threshold (4,000): the default puts it at
   176,000, above a 128,000-token model's window (whose own threshold is 104,000), so that model's
   flush never runs. Pass the model's window.
-- `after_turn` has only upstream inputs. The one forced flush is the extension below.
+- `assert_current` supplies the host's optional cancellation or stale-authority check, described
+  below. The one forced flush is the extension below.
 
 ```python
 def request_flush(
-    self, session: SessionState, *, transcript: Sequence[Mapping[str, Any]]
+    self, session: SessionState, *, transcript: Sequence[Mapping[str, Any]],
+    untrusted_turn: bool | Callable[[], bool] = False,
+    assert_current: Callable[[], None] | None = None,
 ) -> FlushRequest | None
 ```
 
@@ -528,13 +533,42 @@ request `after_turn` builds for a due flush (target file first, the same message
 `reason` `forced`. A target that cannot be created raises (`UnsafeMemoryPathError`, `OSError`) and
 records nothing: the forced run is outside upstream's gate, so there is no strike to mirror.
 
-`memory_core/memory_flush.py:ensure_memory_flush_target_file(root, relative_path)` (new port of
+`memory_core/memory_flush.py:ensure_memory_flush_target_file(root, relative_path, *, assert_current=None)` (port of
 `ensureMemoryFlushTargetFile`): a blank or absolute path raises `UnsafeMemoryPathError("Invalid
 memory flush target path")`, one that resolves outside the root raises `... "Memory flush target
 path must stay inside the workspace"` (upstream messages, script-extracted); it then creates the
 parent directories and opens the file for append, creating it empty. Stricter than upstream
 (documented deviation): it refuses a symlinked or non-directory parent and a target that is a
 symlink, a non-regular file or has more than one hard link, the same refusal as the flush write.
+
+The optional `assert_current` callback must raise when the host cancels or revokes the flush.
+It is synchronous, returns promptly, and its return value is ignored. Target preparation calls
+it before creating directories, after directory creation and after opening the target. The last
+two checks run under the file's write lock; the opened descriptor is closed in `finally`, including
+when the final check raises. Cancellation may therefore leave the directory or empty target
+created before the failing checkpoint. Filesystem failures still propagate, including a close
+failure that occurs while another exception is unwinding. Omitting the callback preserves the
+existing API behavior and filesystem safeguards.
+
+`after_turn` and `request_flush` retain the callback on the request and check again after building
+its messages. An authority exception propagates unchanged instead of becoming a tool error or a
+setup failure strike. If closing the prepared target also fails, these host methods preserve
+the original authority exception and chain the close failure as its cause. The standalone target
+helper retains native close-error priority. For example, the core's cancellation signal supplies
+a raising check:
+
+```python
+from memory_core.cancellation import CancellationSignal
+
+signal = CancellationSignal()
+request = kit.request_flush(
+    state, transcript=transcript, assert_current=signal.throw_if_aborted,
+)
+# The host can call signal.abort("flush cancelled") when it stops this run.
+```
+
+The host owns the signal and can instead check its current session generation. At file-lock
+checkpoints, the callback must not wait for another writer of the same file.
 
 Flush execution: a returned request object, not a host callable. Reasons:
 
@@ -621,9 +655,16 @@ maintenance whose output no channel sees (F7).
     `MemoryCurator.append_daily_note` uses, so both refuse the same symlinks and hard links), the
     store is reindexed, and the payload is `{"status": "ok", "tool": "write", "path": target,
     "action": "appended", "text": "Appended content to <target>."}` (upstream's text, `:828`;
-    script-extracted). A reindex failure keeps the ok payload and adds `afterWriteError`, as curated
-    writes do;
-  - other names return `tool <name> is not available`; errors of the append are payloads.
+    script-extracted). The authority check runs before appending, after acquiring the actual file
+    lock, before provenance reservation and before opening/writing, including after provenance
+    callbacks. Revocation while waiting for that lock or during provenance recording prevents
+    the append and rolls back any reserved provenance. Precommit authority exceptions retain
+    their identity, including `asyncio.CancelledError`; a provenance rollback failure is retained
+    as a chained cause. After a committed append, an ordinary `Exception` from the next authority
+    check or reindex keeps the ok payload and adds `afterWriteError`; the host keeps the write
+    and does not retry it. A `BaseException` cancellation propagates, with committed bytes and
+    the request's appended entry retained;
+  - other names return `tool <name> is not available`; ordinary append errors are payloads.
 - `complete(session, ...)` writes the session entry of the host's current state for this session
   (the flush may run detached while the next turn's `before_turn`, tool calls and model call run and
   update the state; a different `session_id` raises `ValueError`):
@@ -632,8 +673,11 @@ maintenance whose output no channel sees (F7).
   `record_memory_flush_failure(entry, error=..., redact=...)` (three strikes mark the cycle
   flushed). The flush reply's text is never delivered and never enters the transcript (upstream
   also treats an empty reply as silent). A cancelled run is not completed: upstream records nothing
-  for a cancelled flush. A second `complete()`, or a `dispatch` after it, raises `RuntimeError`
-  (host error).
+  for a cancelled flush. `complete()` rejects an in-flight dispatch with `RuntimeError`; the
+  host joins its tool calls before completing. It closes the request before calling
+  `assert_current`, so a failing completion check records neither a success nor a failure stamp
+  and the request stays closed. A second `complete()`, or a `dispatch` after it, raises
+  `RuntimeError` (host error).
 - One maintenance lane per session: the kit keeps no pending-flush state, so until `complete()`
   stamps the cycle, `after_turn` on a session over the threshold returns another request for the
   same cycle. The host runs a session's next `after_turn` only after the pending flush completed or
@@ -803,7 +847,10 @@ class HeartbeatOutcome:
 | retired upstream setup state in the workspace | raise `WorkspaceStateMigrationRequiredError` (fail closed) |
 | filesystem failure outside a tool | raise `OSError` |
 | flush target cannot be created | `after_turn`: `TurnRecord.flush_failure`, one strike (upstream `recordFailure`); `request_flush`: raise, no strike |
-| a reindex fails after a committed curated or flush write | ok payload with `afterWriteError` (core rule) |
+| flush authority check raises before append or completion | exception propagates; no failure strike or completion stamp |
+| an ordinary authority or reindex exception follows a committed flush write | ok payload with `afterWriteError`; committed append retained |
+| a `BaseException` cancellation follows a committed flush write | cancellation propagates; committed append and request entry retained |
+| a reindex fails after a committed curated write | ok payload with `afterWriteError` (core rule) |
 
 ### Flags
 

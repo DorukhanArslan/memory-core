@@ -40,7 +40,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 340
+          "line": 347
         }
       ],
       "implementation": "partial",
@@ -74,13 +74,13 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_read_path",
           "anchor": "    def resolve_memory_read_path(self, raw_path: str) -> tuple[str, Path | None]:",
-          "line": 377
+          "line": 384
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_path",
           "anchor": "    def resolve_memory_path(self, rel_path: str) -> Path:",
-          "line": 368
+          "line": 375
         },
         {
           "path": "memory_core/workspace.py",
@@ -542,7 +542,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 340
+          "line": 347
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -560,7 +560,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(self) -> list[MemoryFile]:",
-          "line": 312
+          "line": 319
         },
         {
           "path": "memory_core/index/publication.py",
@@ -1256,7 +1256,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(self) -> list[MemoryFile]:",
-          "line": 312
+          "line": 319
         }
       ],
       "implementation": "partial",
@@ -1314,7 +1314,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryFile",
           "anchor": "class MemoryFile:",
-          "line": 270
+          "line": 277
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -1420,7 +1420,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 606
+          "line": 657
         }
       ],
       "implementation": "partial",
@@ -1644,7 +1644,7 @@
       "implementation": "partial",
       "notes": [
         "Runtime markers default to Memory Core identity; native marker behavior requires the explicit OpenClaw compatibility identity.",
-        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1–9999."
+        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1\u20139999."
       ]
     },
     {
@@ -1752,7 +1752,7 @@
         {
           "path": "memory_core/memory_flush.py",
           "symbol": "ensure_memory_flush_target_file",
-          "anchor": "def ensure_memory_flush_target_file(root: str | os.PathLike[str], relative_path: str) -> Path:",
+          "anchor": "def ensure_memory_flush_target_file(",
           "line": 602
         }
       ],
@@ -1760,7 +1760,8 @@
       "notes": [
         "Python target preparation intentionally refuses symlinked parents and symlink, hard-linked or non-regular targets beyond the native target preparation checks.",
         "Host time-format/timezone fallback and Python supported-date range differ as documented in memory_core.current_time.",
-        "The complete retained native flush matrix now executes original source owners. Matching plan/target fixtures do not close acceptance: dates below year 1000 or above 9999, documented host time-format/timezone boundaries, stricter Python filesystem admission and native assertCurrent authority revocation remain outside the verified domain."
+        "The complete retained native flush matrix executes original source owners. An additional 22-case target-helper comparison matches raising authority checkpoints, exact bytes and real descriptor closure, with covers: [] throughout. Dates below year 1000 or above 9999, documented host time-format/timezone boundaries and stricter Python filesystem admission still prevent complete plan/target acceptance.",
+        "The public Python helper accepts optional assert_current, a prompt synchronous raising callback with ignored return value, before mkdir, after mkdir and after open. The opened descriptor closes in finally even when the last check raises; filesystem failures, including close failures, still propagate."
       ]
     },
     {
@@ -1858,20 +1859,22 @@
           "path": "memory_core/host/flush.py",
           "symbol": "dispatch",
           "anchor": "def dispatch(self, name: str, arguments: Mapping[str, Any] | str | None) -> dict[str, Any]:",
-          "line": 121
+          "line": 125
         },
         {
           "path": "memory_core/host/flush.py",
           "symbol": "complete",
           "anchor": "def complete(",
-          "line": 190
+          "line": 229
         }
       ],
       "implementation": "partial",
       "notes": [
-        "FlushRequest exposes messages/tools and finalizes stamps, but the host executes the model loop, cancellation and next-turn barrier.",
+        "FlushRequest exposes messages/tools and finalizes stamps. HostKit.after_turn and request_flush carry an optional raising authority check through request creation, dispatch and completion; the host still owns the model loop, authority state and next-turn barrier.",
         "The Python write path skips empty content and NO_REPLY, normalizes appended trailing newlines and has distinct argument-error payloads; exact native append/tool-result behavior is not established by these helpers.",
-        "A committed append with a reindex failure returns afterWriteError; the host must surface it and preserve the durable write instead of retrying blindly."
+        "A committed append followed by an ordinary authority or reindex exception returns appended plus afterWriteError; BaseException cancellation propagates while committed bytes and the request entry remain. The host preserves the write without retry.",
+        "The shared append checks authority under the actual file lock and before provenance reservation/open/write, including after provenance callbacks. Precommit revocation prevents an append and preserves provenance rollback and authority exception identity, with rollback failures chained as causes. Completion rejects in-flight dispatch, closes before its callback and records no success/failure stamp if the check raises. Python regressions cover these boundaries; the native target-helper cases do not verify host queue ordering or durable barriers.",
+        "During target preparation, HostKit.after_turn and request_flush preserve the original authority exception when descriptor cleanup also fails, chain the close error as its cause and record no cancellation strike. The standalone ensure_memory_flush_target_file helper retains native close-error priority."
       ]
     },
     {
@@ -3328,7 +3331,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 606
+          "line": 657
         },
         {
           "path": "demo/lab_runtime.py",

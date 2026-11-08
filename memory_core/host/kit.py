@@ -510,6 +510,7 @@ class HostKit:
         transcript_bytes: int | None = None,
         redact: Callable[[str], str] | None = None,
         untrusted_turn: bool | Callable[[], bool] = False,
+        assert_current: Callable[[], None] | None = None,
     ) -> TurnRecord:
         """Record a completed turn and decide the memory flush (docs/host_kit.md, entry 4).
 
@@ -531,6 +532,10 @@ class HostKit:
         store the flush's appends record the daily note's trust; ``untrusted_turn`` (a bool, or a
         callable read at each write) marks the turn tainted or its sender not the owner, so the note
         is recorded ``untrusted`` and the dreaming ingestion and promotion treat it so.
+        ``assert_current`` may raise when the host's flush authority is cancelled or stale; it
+        is checked during target preparation, before handing off the request, at dispatch and
+        before completion records a result. Its exception propagates without a failure strike.
+        Supply a synchronous check that returns promptly; the host owns its authority state.
         """
         window = (
             context_window_tokens
@@ -556,9 +561,26 @@ class HostKit:
         )
         if not decision.should_flush:
             return TurnRecord(session=recorded, flush_plan=plan, flush_decision=decision)
+        authority_error: BaseException | None = None
+
+        def check_current() -> None:
+            nonlocal authority_error
+            if assert_current is not None:
+                try:
+                    assert_current()
+                except BaseException as error:
+                    authority_error = error
+                    raise
+
         try:
-            ensure_memory_flush_target_file(self._root, plan.relative_path)
+            ensure_memory_flush_target_file(
+                self._root, plan.relative_path, assert_current=check_current
+            )
         except (UnsafeMemoryPathError, OSError) as error:
+            if error is authority_error:
+                raise
+            if authority_error is not None:
+                raise authority_error from error
             # A failed flush preparation is a failed flush (agent-runner-memory.ts recordFailure).
             failure = record_memory_flush_failure(entry, error=error, redact=redact)
             return TurnRecord(
@@ -572,7 +594,12 @@ class HostKit:
             flush_plan=plan,
             flush_decision=decision,
             flush=self._flush_request(
-                recorded, plan, transcript, reason=decision.reason, untrusted=untrusted_turn
+                recorded,
+                plan,
+                transcript,
+                reason=decision.reason,
+                untrusted=untrusted_turn,
+                assert_current=assert_current,
             ),
         )
 
@@ -582,6 +609,7 @@ class HostKit:
         *,
         transcript: Sequence[Mapping[str, Any]],
         untrusted_turn: bool | Callable[[], bool] = False,
+        assert_current: Callable[[], None] | None = None,
     ) -> FlushRequest | None:
         """A flush run now, outside the token gate: a memory-core extension (decision Q6).
 
@@ -591,16 +619,39 @@ class HostKit:
         three times) returns ``None`` (``has_already_flushed_for_current_compaction``). Otherwise
         it is the request ``after_turn`` builds for a due flush, with reason ``forced``. A target
         that cannot be created raises (``UnsafeMemoryPathError``, ``OSError``) and records
-        nothing.
+        nothing. ``assert_current`` has the same cancellation checks as :meth:`after_turn`.
         """
         if session.kind == "heartbeat" or has_already_flushed_for_current_compaction(
             dict(session.entry)
         ):
             return None
         plan = self._flush_plan(DEFAULT_CONTEXT_WINDOW_TOKENS)
-        ensure_memory_flush_target_file(self._root, plan.relative_path)
+        authority_error: BaseException | None = None
+
+        def check_current() -> None:
+            nonlocal authority_error
+            if assert_current is not None:
+                try:
+                    assert_current()
+                except BaseException as error:
+                    authority_error = error
+                    raise
+
+        try:
+            ensure_memory_flush_target_file(
+                self._root, plan.relative_path, assert_current=check_current
+            )
+        except BaseException as error:
+            if authority_error is not None and error is not authority_error:
+                raise authority_error from error
+            raise
         return self._flush_request(
-            session, plan, transcript, reason=_FORCED_FLUSH_REASON, untrusted=untrusted_turn
+            session,
+            plan,
+            transcript,
+            reason=_FORCED_FLUSH_REASON,
+            untrusted=untrusted_turn,
+            assert_current=assert_current,
         )
 
     def on_new_session(
@@ -757,18 +808,23 @@ class HostKit:
         *,
         reason: str,
         untrusted: bool | Callable[[], bool] = False,
+        assert_current: Callable[[], None] | None = None,
     ) -> FlushRequest:
         count = session.entry.get("compactionCount")
+        messages = self._flush_messages(session, plan, transcript)
+        if assert_current is not None:
+            assert_current()
         return FlushRequest(
             self._memory,
             session_id=session.session_id,
             compaction_count=0 if count is None else count,
             target=plan.relative_path,
             reason=reason,
-            messages=self._flush_messages(session, plan, transcript),
+            messages=messages,
             provenance=self._artifact_provenance,
             untrusted=untrusted,
             session_key=session.session_key,
+            assert_current=assert_current,
         )
 
     def _flush_messages(

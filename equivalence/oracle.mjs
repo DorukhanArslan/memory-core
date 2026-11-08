@@ -28,6 +28,7 @@ for (const [operation, filename, name] of [
   ["index-publication", "index-publication.mjs", "runIndexPublication"],
   ["markdown-chunking", "markdown-chunking.mjs", "runMarkdownChunking"],
   ["flush-contract", "flush-contract.mjs", "runFlushContract"],
+  ["flush-target", "flush-target.mjs", "runFlushTarget"],
   ["bootstrap-budget", "bootstrap-budget.mjs", "runBootstrapBudget"],
   ["session-projection", "session-projection.mjs", "runSessionProjection"],
 ]) {

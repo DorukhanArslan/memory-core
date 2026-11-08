@@ -104,7 +104,7 @@ def _reference_bindings(checkout: Path, *, cache: bool, publication: bool,
 
         extension = prepare_reuse_bindings(
             checkout, bootstrap="bootstrap-budget" in reuse_operations,
-            flush="flush-contract" in reuse_operations,
+            flush=bool(reuse_operations & {"flush-contract", "flush-target"}),
             session="session-projection" in reuse_operations,
         )
         for key in ("allowedResolutions", "projectionEvidence"):
@@ -415,7 +415,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         } for case in cases)
         reuse_operations = frozenset(case["operation"] for case in cases
                                      if case["operation"] in {
-                                         "bootstrap-budget", "flush-contract", "session-projection",
+                                         "bootstrap-budget", "flush-contract", "flush-target", "session-projection",
                                      })
         native_storage = required_artifact_execution or bool(reuse_operations)
         cache_bindings = any(case["operation"] == "embedding-cache" for case in cases)
@@ -528,10 +528,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         for case in cases:
             row = {"id": case["id"], "requirement": case["requirement"], "covers": case["covers"],
                    "operation": case["operation"], "input": case["input"]}
-            if "normalizationPolicy" in case:
-                row["normalizationPolicy"] = case["normalizationPolicy"]
-            if "driverScope" in case:
-                row["driverScope"] = case["driverScope"]
+            for field in ("normalizationPolicy", "driverScope", "declaredDeviation"):
+                if field in case:
+                    row[field] = case[field]
             native = native_rows[case["id"]]
             if not native["ok"]:
                 row.update(status="blocked", code="oracle-case-failed")

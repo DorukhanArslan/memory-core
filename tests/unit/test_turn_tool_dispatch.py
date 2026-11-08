@@ -129,9 +129,12 @@ def test_dispatched_network_retry_quarantine_and_assistant_source_survive_real_p
     key = "agent:main:dm:turn"
     catalog.upsert_session(key, {"sessionId": "session", "updatedAt": 1000})
     assistant = state.stamp_assistant({"role": "assistant", "content": "External cedar saved.", "timestamp": 1000})
-    catalog.replace_events("session", [{"type": "message", "id": "user", "message": {
-        "role": "user", "content": "Remember cedar.", "timestamp": 1000, "__openclaw": {"senderIsOwner": True}}},
-        {"type": "message", "id": "assistant", "message": assistant}], session_key=key)
+    catalog.append_message("session", {
+        "role": "user", "content": "Remember cedar.", "timestamp": 1000,
+        "__openclaw": {"senderIsOwner": True}}, session_key=key, event_id="user",
+        now_ms=1000, cwd="/fixture/workspace")
+    catalog.append_message("session", assistant, session_key=key, event_id="assistant",
+                           now_ms=1000, cwd="/fixture/workspace")
     child_code = """
 import json,sys
 from pathlib import Path
@@ -150,7 +153,8 @@ print(json.dumps({'trust':state.to_json(),'artifact':asdict(ledger.read(workspac
     reopened = json.loads(process.stdout)
     assert reopened["trust"] == state.to_json()
     assert reopened["artifact"] == asdict(artifact)
-    assert reopened["events"][1]["message"] == assistant
+    assert reopened["events"][0]["type"] == "session" and reopened["events"][0]["version"] == 4
+    assert reopened["events"][2]["message"] == assistant
     assert [line["originClass"] for line in reopened["entry"]["lineProvenance"]] == ["owner", "untrusted"]
     # New-turn authority is clean; the existing file's quarantine remains sticky.
     fresh = TurnTrust("second", sender_is_owner=True)

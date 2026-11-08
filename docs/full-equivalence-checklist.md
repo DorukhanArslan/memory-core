@@ -54,7 +54,8 @@ Entries remain pending until their complete acceptance conditions are verified a
 The latest verified baseline has **29/128 acceptance points (22.7%)**, with **99 points
 (77.3%)** remaining. Counts include the actual hybrid comparisons and their declared profile:
 finite complete payloads with printable-ASCII path ties, exact Unicode content, and the existing
-portable CPU limitation for vector candidates. Full integrated and regression runs remain pending.
+portable CPU limitation for vector candidates. The full report records 826 matches, two retained
+differences and zero blocked cases; regression validation passed 2,857 tests.
 
 | Contract status | Contracts | Verified acceptance points | Remaining acceptance points |
 | --- | ---: | ---: | ---: |
@@ -982,7 +983,17 @@ remains an ordinary mismatch with its declared deviation. That engine contract s
 points verified**; printable-ASCII hybrid tie evidence does not establish general Unicode path
 collation. The prior warm first-recall comparison likewise remains visible and uncredited.
 
-The default catalog now contains **828 cases**. Final integrated and regression validation is
-recorded after the runs; the planned full report is `.equivalence-results/hybrid-scoring-full.json`.
-Known warm and Unicode differences remain visible, and **99 acceptance points remain uncovered**,
-so this batch cannot produce a full-equivalence pass.
+The committed full-gate report, `.equivalence-results/hybrid-scoring-full.json`, executes all
+**828 cases** against implementation commit `0687e8726bd0cb408c5575bca608359783a64600` with a clean
+tracked tree. It records **826 matches, two mismatches and zero blocked cases**, with no runner
+errors. All **66 hybrid cases match**. The only differences are the uncredited
+`hybrid-unicode-path-collation-diagnostic` and `flush-execution-warm-index-first-recall` cases.
+Both remain ordinary visible mismatches; neither grants acceptance credit. The full gate reports
+`mismatched`, not a full-equivalence pass, and **99 acceptance points remain uncovered**. No
+provider credentials were forwarded and no paid provider calls were made.
+
+Full regression validation passed **2,857 tests** in 133.16 seconds. The same **1,625 historical
+oracle/live checks** remain skipped and grant no acceptance credit. Ruff, project-name
+consistency, exact source-map validation and staged diff checks passed. These final results are
+recorded in a documentation-only follow-up; implementation, adapters and source inventory are
+unchanged from the tested commit.

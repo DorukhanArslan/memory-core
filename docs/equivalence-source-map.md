@@ -147,17 +147,21 @@ Keyword-only, vector-only and hybrid payloads preserve the native component/id f
 internal source mtimes are removed from public results. Trigger metadata preservation does not
 establish automatic trigger/project candidate admission or prompt injection.
 
-Current coverage is **35/128 (27.3%)**, with **93 points (72.7%)** remaining. The inventory maps
+Current bounded coverage is **37/128 (28.9%)**, with **91 points (71.1%)** remaining. The inventory maps
 **113 upstream modules**, adding both actual recall-reader owners and the public manager
 lifecycle owner. Classifications are 15 present, 46 partial, zero missing and three host-owned.
 The stored annotation path is now verified within its declared profile; other manager/host
 contracts, alternate tokenizers, universal ICU and optional accelerated KNN remain open. The
 warm first-recall and Unicode path-order diagnostics remain visible and uncredited. Fixed scope
-is unchanged at 64 contracts and 128 acceptance points. The final search integrated gate retains 1,013 matches and two existing differences in
+is unchanged at 64 contracts and 128 acceptance points. The preceding search integrated gate retains 1,013 matches and two existing differences in
 1,015 cases, including all 69 search cases, on clean implementation `cff2ff0`. The final
 recall-fix source passes 3,260 regression tests and isolated wheel/sdist checks. Both search
-points pass within the declared profile; 93 acceptance points and the two uncredited
-differences remain. No claim of full equivalence follows from these bounded results.
+points pass within their declared profile. The subsequent get batch matches all 70 get cases,
+passes 3,448 regressions and both clean package checks. Its final integrated report records
+1,083 matches, three visible differences, zero blockers and 91 uncovered acceptance points
+in 1,086 cases.
+The newly observed OS-specific loop diagnostic remains uncredited alongside the earlier two
+differences. No claim of full equivalence follows from these bounded results.
 
 | Contract | OpenClaw entry | Python entry | Python surface |
 | --- | --- | --- | --- |
@@ -264,4 +268,8 @@ Python/Node OS cause wording still differs. Only each side's exact owned private
 is aliased, after raw text/details validation; all error words, codes, relative suffixes and
 original envelopes survive. The compiled whole-tool proof requires the real secure reader
 and authenticated main-process preload; no index worker is required or invented for reads.
-Final committed integrated evidence is pending for this get batch.
+The final committed get report matches all 70 get cases and verifies both bounded get
+points. The whole catalog records 1,083 matches, three uncredited differences, zero blocked
+cases and 91 uncovered points on clean implementation `c61dfdc`. All 3,448 regression tests
+and both isolated package consumers pass. SDK and adapter hashes remain unchanged in the
+final documentation follow-up.

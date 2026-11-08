@@ -51,20 +51,21 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
-The latest verified baseline has **35/128 acceptance points (27.3%)**, with **93 points
-(72.7%)** remaining. This includes both search-tool points from actual source helpers and
-separately authenticated whole-tool executions, as well as the earlier importance/project
-points. The explicit provider-none memory/wiki, unicode61, printable-ASCII path-tie and
-portable CPU profiles remain bounded. The final integrated 1,015-case gate records 1,013
-matches, two retained differences and zero blocked cases. Final recall-fix regression
-validation passed 3,260 tests, and both clean package consumers passed.
+The latest verified bounded baseline has **37/128 acceptance points (28.9%)**, with **91 points
+(71.1%)** remaining. This includes both get-tool points from real read helpers and complete
+native/SDK factories, alongside the earlier search/ranking points. Provider-none memory/wiki,
+portable filesystem diagnostics, unicode61, printable-ASCII path ties and portable CPU
+profiles remain explicit. All 70 get cases match; the OS-specific loop diagnostic remains
+visible and uncredited. Final regressions passed 3,448 tests and both clean package consumers
+passed. The committed 1,086-case integrated get report records 1,083 matches, three visible
+differences, zero blocked cases and no runner errors.
 
 | Contract status | Contracts | Verified acceptance points | Remaining acceptance points |
 | --- | ---: | ---: | ---: |
-| Complete | 16 | 32 | 0 |
+| Complete | 17 | 34 | 0 |
 | Partial | 3 | 3 | 3 |
-| Pending verification | 45 | 0 | 90 |
-| Total | 64 | 35 | 93 |
+| Pending verification | 44 | 0 | 88 |
+| Total | 64 | 37 | 91 |
 
 Pending verification does not mean no implementation exists. Partial contracts have outcomes
 verified and boundaries still open: `indexing.identity`, `sessions.transcript-filtering` and
@@ -79,9 +80,9 @@ correcting stale checklist status adds **zero** acceptance points.
 
 Current status of all 64 contracts:
 
-- **Complete (16):** `lexical.tokenization`, `lexical.fts-query`, `lexical.bm25`, `chunking.markdown-boundaries`, `chunking.utf16-cjk-budget`, `indexing.incremental-sync`, `indexing.transaction-publication`, `retrieval.vector-scoring`, `retrieval.hybrid-scoring`, `retrieval.exact-path-priority`, `retrieval.mmr`, `retrieval.temporal-decay`, `retrieval.importance-project`, `tools.search-contract`, `prompt.bootstrap-budget`, `flush.trigger-usage`.
+- **Complete (17):** `lexical.tokenization`, `lexical.fts-query`, `lexical.bm25`, `chunking.markdown-boundaries`, `chunking.utf16-cjk-budget`, `indexing.incremental-sync`, `indexing.transaction-publication`, `retrieval.vector-scoring`, `retrieval.hybrid-scoring`, `retrieval.exact-path-priority`, `retrieval.mmr`, `retrieval.temporal-decay`, `retrieval.importance-project`, `tools.search-contract`, `tools.get-contract`, `prompt.bootstrap-budget`, `flush.trigger-usage`.
 - **Partial (3):** `indexing.identity`, `sessions.transcript-filtering`, `flush.execute-finalize`.
-- **Pending verification (45):** `storage.discovery`, `storage.path-safety`, `storage.atomic-writes`, `storage.workspace-isolation`, `chunking.entry-provenance`, `indexing.embedding-cache`, `indexing.query-sync`, `tools.get-contract`, `tools.deadline-cooldown`, `tools.unavailable-partial`, `sessions.corpus-admission`, `sessions.visibility-lineage`, `sessions.reset-hook`, `sessions.durable-context`, `prompt.bootstrap-discovery`, `prompt.runtime-context`, `prompt.history-repair`, `flush.plan-target`, `compaction.memory-budget`, `compaction.context-assembly`, `compaction.provider-overflow`, `promotion.recall-signals`, `promotion.ranking-gates`, `promotion.apply-reconcile`, `promotion.deep-consolidation`, `dreaming.light`, `dreaming.rem`, `dreaming.deep`, `dreaming.diary-provenance`, `forget.lineage-tombstones`, `forget.index-fence`, `trust.secret-redaction`, `trust.configured-redaction`, `heartbeat.scratch`, `heartbeat.turn-decisions`, `automation.job-state`, `concurrency.workspace-locks`, `recovery.repair-diagnostics`, `recovery.failure-publication`, `engine.numeric-boundaries`, `engine.unicode-collation`, `engine.datetime-regex`, `host.turn-barrier`, `host.restart-recall`, `host.update-isolation`.
+- **Pending verification (44):** `storage.discovery`, `storage.path-safety`, `storage.atomic-writes`, `storage.workspace-isolation`, `chunking.entry-provenance`, `indexing.embedding-cache`, `indexing.query-sync`, `tools.deadline-cooldown`, `tools.unavailable-partial`, `sessions.corpus-admission`, `sessions.visibility-lineage`, `sessions.reset-hook`, `sessions.durable-context`, `prompt.bootstrap-discovery`, `prompt.runtime-context`, `prompt.history-repair`, `flush.plan-target`, `compaction.memory-budget`, `compaction.context-assembly`, `compaction.provider-overflow`, `promotion.recall-signals`, `promotion.ranking-gates`, `promotion.apply-reconcile`, `promotion.deep-consolidation`, `dreaming.light`, `dreaming.rem`, `dreaming.deep`, `dreaming.diary-provenance`, `forget.lineage-tombstones`, `forget.index-fence`, `trust.secret-redaction`, `trust.configured-redaction`, `heartbeat.scratch`, `heartbeat.turn-decisions`, `automation.job-state`, `concurrency.workspace-locks`, `recovery.repair-diagnostics`, `recovery.failure-publication`, `engine.numeric-boundaries`, `engine.unicode-collation`, `engine.datetime-regex`, `host.turn-barrier`, `host.restart-recall`, `host.update-isolation`.
 
 ### Storage and workspace
 
@@ -119,7 +120,7 @@ Current status of all 64 contracts:
 ### Memory tool contract
 
 - [x] **`tools.search-contract` — Match memory_search inputs and results.** Compare definitions, accepted parameters, coercion, defaults, corpora and rejection errors. Compare complete ordered payloads, citations, warnings and source metadata. Verified for the declared provider-none memory/wiki profile; other lifecycle/provider/session contracts remain open.
-- [ ] **`tools.get-contract` — Match memory_get inputs and results.** Compare allowed files, line windows, UTF-16 budgets, continuation hints and missing sources. Compare exact status/error shapes and returned source text.
+- [x] **`tools.get-contract` — Match memory_get inputs and results.** Compare allowed files, line windows, UTF-16 budgets, continuation hints and missing sources. Compare exact status/error shapes and returned source text. Verified for the declared portable read/wiki profile; OS-specific loop causes, patterns and filesystem races remain uncredited.
 - [ ] **`tools.deadline-cooldown` — Match deadlines and cooldowns.** Control clocks and slow providers to exercise absolute deadlines and cooldown transitions. Compare subsequent admission, provider call counts and memory/wiki/session independence.
 - [ ] **`tools.unavailable-partial` — Match unavailable and partial corpus outcomes.** Fail individual providers and supplemental corpora independently. Compare partial results, timed-out flags, warnings and recovery on a later explicit query.
 
@@ -1253,8 +1254,8 @@ and reproduced failures remain separately retained. Ruff, project-name consisten
 inventory validation and diff checks passed. This final follow-up changes documentation
 only; SDK source, differential adapters and the inventory match the tested implementation.
 
-Next in the fixed checklist is **`tools.get-contract`**, targeting **+2 points**, or
-**37/128 (28.9%)** if verified. No additional user information is needed for that work.
+After that search batch, the next fixed item was `tools.get-contract`, targeting
+37/128 if verified; the get implementation and evidence follow below.
 
 
 ### Memory-get tool boundary implementation
@@ -1306,6 +1307,44 @@ profiles, complete operation counts and raw-carrier authority. The genuine get p
 2,885 authenticated release files and no index workers. Official compiled execution remains
 separate from a reproduced source build. Broad affected SDK/HostKit checks passed 340 tests,
 and demo/LangGraph checks passed 460 tests before the cause-only refinement. Final committed
-regressions, package consumers and the integrated gate remain pending. The OS diagnostic
+regressions, package consumers and the integrated gate are recorded below. The OS diagnostic
 joins the existing Unicode path-order and warm first-recall differences; all remain visible
 and uncredited. No paid provider call is required.
+
+
+Final get regression checks on committed implementation
+`c61dfdc2f503d2a232de97fdc8ce1026458bd668` passed **3,448 tests** in 154.80 seconds. The same
+**1,625 historical/live skips** grant no acceptance credit. The official wheel/sdist script
+also passed with networking disabled and existing cached dependencies: archive contents,
+license/metadata, isolated core-only installs, dependency consistency, every module import,
+real FTS HostKit flow and positive/negative public API typing. Logs are retained at
+`/workspace/scratch/memory-core-get-contract-full-tests.log` and
+`/workspace/scratch/memory-core-get-contract-distribution.log`. No further SDK or adapter
+changes are planned; final integrated evidence follows below.
+
+
+The final report, `.equivalence-results/get-contract-full.json`, executes all **1,086 cases**
+against clean implementation commit `c61dfdc2f503d2a232de97fdc8ce1026458bd668`. It records
+**1,083 matches, three ordinary mismatches, zero blocked cases and no runner errors**. All
+**70 get-contract cases match**, including portable complete filesystem error causes,
+provider-owned wiki payloads and actual trusted reader requests. Both get acceptance points
+pass. This batch targeted **+2** and verified **+2**, increasing **35/128 (27.3%)** to
+**37/128 (28.9%)**, a **1.6 percentage-point** increase. **91/128 (71.1%)** remain. The fixed
+list now has **17 complete, three partial and 44 pending contracts**.
+
+All **130 Python source files** are identified by SHA-256
+`f9c2f69b97fb11b5b9e25595d58c504682acd3fed0609c903b90b0954bdb6ccf`. Current source and adapter
+hashes still match this tested implementation. The scope hash remains
+`a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9`. The three
+visible differences are `hybrid-unicode-path-collation-diagnostic`,
+`get-contract-symlink-loop-cause-diagnostic` and `flush-execution-warm-index-first-recall`;
+each retains `covers: []` and grants no acceptance credit. Original error causes and raw
+carriers remain in retained evidence. Secure path admission and the SDK's stronger eager
+index-readiness guarantee were preserved.
+
+The full gate remains mismatched/incomplete because these diagnostics and 91 uncovered
+points remain; this is not complete OpenClaw equivalence. No provider credentials were
+forwarded and no paid model requests were made. This follow-up changes documentation only;
+SDK source, differential adapters and the source inventory remain identical to the tested
+commit. The next fixed item is **`tools.deadline-cooldown`**, targeting **+2 points** or
+**39/128 (30.5%)** if verified. No additional user information is required.

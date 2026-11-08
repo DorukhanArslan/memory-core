@@ -69,6 +69,9 @@ class _RecordingStore(SQLiteMemoryStore):
 def clock(monkeypatch):
     state = {"now": 5_000_000.0}
     monkeypatch.setattr(memory_search_module, "_now_ms", lambda: state["now"])
+    # Tool payload timing and cooldown ownership both follow Date.now-style
+    # wall time; keep the direct observer and actual executor on one clock.
+    monkeypatch.setattr(memory_search_module.time, "time", lambda: state["now"] / 1000)
     return state
 
 

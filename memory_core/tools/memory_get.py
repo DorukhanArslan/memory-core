@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import copy
 import math
+import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,6 +35,7 @@ from typing import Any
 
 from memory_core.bootstrap._js import js_trim, truncate_utf16_safe, utf16_len
 from memory_core.config import MemoryConfig
+from memory_core.cancellation import CancellationSignal
 from memory_core.supplements import MemoryCorpusSupplement, RegisteredMemoryCorpusSupplement
 from memory_core.tools.common import (
     MemoryToolError,
@@ -51,6 +53,7 @@ from memory_core.tools.corpus import (
     settle_supplements,
 )
 from memory_core.tools.get_paths import resolve_memory_get_path
+from memory_core.tools.deadline import MemoryToolDeadlineContext, run_memory_corpus_deadline
 
 MEMORY_GET_TOOL_NAME = "memory_get"
 MEMORY_GET_CORPORA = ("memory", "wiki", "all")
@@ -139,6 +142,7 @@ def execute_memory_get_tool(
     extra_paths: Sequence[str | Path] = (),
     agent_session_key: str | None = None,
     sandboxed: bool | None = None,
+    execution: MemoryToolDeadlineContext | None = None,
 ) -> dict:
     """Run ``memory_get`` on raw tool-call params (the model's arguments).
 
@@ -159,6 +163,7 @@ def execute_memory_get_tool(
         extra_paths=extra_paths,
         agent_session_key=agent_session_key,
         sandboxed=sandboxed,
+        execution=execution,
     )
 
 
@@ -255,66 +260,72 @@ def memory_get(
     extra_paths: Sequence[str | Path] = (),
     agent_session_key: str | None = None,
     sandboxed: bool | None = None,
+    execution: MemoryToolDeadlineContext | None = None,
 ) -> dict:
     """The tool body (``createMemoryGetTool`` + ``memory-read-tool.ts``).
 
     The result always carries ``status``: ``ok``, ``not_found`` or ``error`` (with a
     ``code``); ``corpus=wiki`` and ``corpus=all`` add the per-corpus ``corpora``
-    metadata. Deviation: no 30 s deadline, the host's supplements are plain calls.
+    metadata. Wiki and combined reads share one absolute 30 s deadline; the
+    built-in-only read follows the native unguarded file-reader path.
     """
     supplements = supplements or []
     requested_path = js_trim(path)
-    if corpus == "wiki":
-        wiki = _read_wiki(
-            config,
-            path=requested_path,
-            from_line=from_line,
-            lines=lines,
-            corpus=corpus,
-            supplements=supplements,
-            agent_session_key=agent_session_key,
-            sandboxed=sandboxed,
-        )
-        if wiki.value is not None:
-            result: dict = wiki.value
-        elif wiki.outcome == "ok":
-            result = _not_found(requested_path)
-        else:
-            result = {"path": requested_path, "text": ""}
-        return {**result, **compose_memory_corpus_metadata([wiki])}
-
     def read() -> dict:
         return _read_builtin(
             config, path=path, from_line=from_line, lines=lines, extra_paths=extra_paths,
         )
 
-    if corpus != "all":
+    if corpus not in {"all", "wiki"}:
         try:
             return read()
         except Exception as exc:
             return _read_failure(requested_path, exc)
-    memory = attempt_corpus("memory", None, read)
-    wiki = _read_wiki(
-        config,
-        path=requested_path,
-        from_line=from_line,
-        lines=lines,
-        corpus=corpus,
-        supplements=supplements,
-        agent_session_key=agent_session_key,
-        sandboxed=sandboxed,
-    )
-    memory_result = memory.value
-    wiki_result = wiki.value
-    if memory_result is not None and memory_result.get("status") != "not_found":
-        result = memory_result
-    elif wiki_result is not None:
-        result = wiki_result
-    elif memory.outcome == "ok" or wiki.outcome == "ok":
-        result = _not_found(requested_path)
-    else:
-        result = {"status": "error", "path": requested_path, "text": ""}
-    return {**result, **compose_memory_corpus_metadata([memory, wiki])}
+
+    def guarded(signal: CancellationSignal, _control: Any) -> dict:
+        memory_box: dict[str, Any] = {}
+        memory_done = threading.Event()
+        if corpus == "all":
+            def read_memory() -> None:
+                try:
+                    memory_box["attempt"] = attempt_corpus(
+                        "memory", None, read, signal=signal, context=execution,
+                    )
+                except BaseException as error:
+                    memory_box["exception"] = error
+                finally:
+                    memory_done.set()
+
+            threading.Thread(target=read_memory, name="memory-get-reader", daemon=True).start()
+        wiki = _read_wiki(
+            config, path=requested_path, from_line=from_line, lines=lines, corpus=corpus,
+            supplements=supplements, agent_session_key=agent_session_key, sandboxed=sandboxed,
+            signal=signal, execution=execution,
+        )
+        if corpus == "wiki":
+            if wiki.value is not None:
+                result = wiki.value
+            elif wiki.outcome == "ok":
+                result = _not_found(requested_path)
+            else:
+                result = {"path": requested_path, "text": ""}
+            return {**result, **compose_memory_corpus_metadata([wiki])}
+        memory_done.wait()
+        if "exception" in memory_box:
+            raise memory_box["exception"]
+        memory = memory_box["attempt"]
+        memory_result, wiki_result = memory.value, wiki.value
+        if memory_result is not None and memory_result.get("status") != "not_found":
+            result = memory_result
+        elif wiki_result is not None:
+            result = wiki_result
+        elif memory.outcome == "ok" or wiki.outcome == "ok":
+            result = _not_found(requested_path)
+        else:
+            result = {"status": "error", "path": requested_path, "text": ""}
+        return {**result, **compose_memory_corpus_metadata([memory, wiki])}
+
+    return run_memory_corpus_deadline("memory_get", guarded, context=execution)
 
 
 def _read_builtin(
@@ -367,6 +378,8 @@ def _read_wiki(
     supplements: list[MemoryCorpusSupplement],
     agent_session_key: str | None = None,
     sandboxed: bool | None = None,
+    signal: CancellationSignal | None = None,
+    execution: MemoryToolDeadlineContext | None = None,
 ) -> CorpusAttempt:
     """``readMemoryCorpusSupplements``: the first supplement that has the path."""
 
@@ -394,6 +407,7 @@ def _read_wiki(
         supplements,
         run,
         lambda results: next((result for result in results if result is not None), None),
+        signal=signal, context=execution,
     )
 
 

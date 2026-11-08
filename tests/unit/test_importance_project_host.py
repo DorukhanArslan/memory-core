@@ -111,15 +111,23 @@ def test_host_kit_snapshots_host_context_and_ignores_model_override(tmp_path):
     assert memory.search("emberquartz", active_project_keys=[_ALPHA])["results"][0]["projectKey"] == _ALPHA
 
 
-def test_deadline_keyword_fallback_retains_the_same_host_project_context(tmp_path, monkeypatch):
+def test_deadline_partial_snapshot_retains_the_same_host_project_context(tmp_path, monkeypatch):
     memory = _memory(tmp_path)
     release = threading.Event()
     finished = threading.Event()
     seen = []
+    keywords = memory.store.search_memory_keywords
 
     def blocked_search(_query, *, signal, **options):
         seen.append(options["active_project_keys"])
         try:
+            # A capable backend publishes its real finalized keyword evidence
+            # before waiting for semantic work. The deadline reuses that
+            # snapshot instead of issuing another query after expiry.
+            options["on_partial_results"](keywords(
+                _query, max_results=options["max_results"], min_score=options["min_score"],
+                active_project_keys=options["active_project_keys"],
+            ))
             assert release.wait(3)
             signal.throw_if_aborted()
         finally:
@@ -155,6 +163,7 @@ def test_omitted_host_projects_do_not_add_a_keyword_to_legacy_search_backend(tmp
                              sources=sources, signal=signal)
 
     monkeypatch.setattr(memory.store, "search", legacy_search)
+    monkeypatch.setattr(memory.store, "supports_partial_results", False)
     result = memory.search("emberquartz", max_results=2)
 
     assert calls == ["emberquartz"]

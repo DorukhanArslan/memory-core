@@ -5,8 +5,10 @@ The active reference is OpenClaw **v2026.9.9**, commit
 live in `extensions/memory-core/src/tools.ts`, `tools.shared.ts`,
 `tools.citations.ts`, `memory-tool-contract.ts`, and `memory-search-tool-query.ts`.
 This page describes the Python boundary and its explicit host responsibilities.
-The acceptance target is `tools.search-contract`; this work does not establish
-full deadline, provider lifecycle, session visibility, or recall parity.
+It covers the `tools.search-contract` interface and the execution controls used
+by `tools.deadline-cooldown` and `tools.unavailable-partial`. Acceptance evidence
+and remaining limits are tracked separately; these APIs do not establish full
+provider lifecycle, session visibility, or recall parity.
 
 ## Entry points and defaults
 
@@ -15,7 +17,7 @@ full deadline, provider lifecycle, session visibility, or recall parity.
 | `execute_memory_search_tool(config, store, params)` | Reads raw model arguments and returns the complete provider-neutral payload dictionary. |
 | `memory_search(config, store, *, query, max_results=6, min_score=0.35, corpus="all")` | Python convenience form of the raw executor. `None` means the numeric argument was omitted. |
 | `Memory.search(query, max_results=5, min_score=0.0, corpus="all")` | Existing SDK convenience defaults; these are explicit arguments to the tool. |
-| `create_memory_search_tool(config, store, ...)` | Creates the model-facing factory object, or returns `None` when disabled. Its `execute(tool_call_id, params)` returns the native-shaped JSON envelope. |
+| `create_memory_search_tool(config, store, ...)` | Creates the model-facing factory object, or returns `None` when disabled. Its `execute(tool_call_id, params, signal=None)` returns the native-shaped JSON envelope. |
 
 The raw tool resolves omitted numeric arguments from
 `MemoryConfig.search_max_results` and `MemoryConfig.search_min_score`, whose
@@ -121,6 +123,15 @@ its search/fallback stages. Registered supplements use
 `RegisteredMemoryCorpusSupplement(plugin_id, supplement)` for stable plugin-id
 ordering and failure labels; anonymous existing supplements remain supported.
 
+An explicit `RegisteredMemoryCorpusSupplement(..., searcher=callback)` receives
+`query` and the supplied `max_results`, `agent_id`, `agent_session_key`, and
+`sandboxed` keywords. Absent optional values stay omitted, including an omitted
+model `maxResults`. Primary search still resolves its configured default of six;
+wiki/all blending defaults to ten. The callback receives no cancellation signal.
+The coordinator supervises its work and retains completed results when another
+provider fails or exceeds the budget. Anonymous providers retain their existing
+`search(query=..., max_results=..., corpus=...)` call shape.
+
 The factory accepts `get_config`, which is read at creation and on each
 execution. A missing or disabled live configuration revokes the tool before
 query validation. `FeatureFlags.memory=False` and `context.enabled` also gate
@@ -173,6 +184,9 @@ executor. Its fields are:
 | `clock` | Millisecond clock, real wall clock by default. Tests can inject a controlled clock into the same timing path. |
 | `conversation_recall_corpus` | Trusted recall corpus policy. |
 | `enabled` | Boolean or live callable for host enablement. |
+| `execution` | Optional `MemoryToolDeadlineContext` for parent cancellation, monotonic time, scheduled timers, and event waiting. |
+| `refresh_store` | Optional host callback returning a replacement manager for one recognized closed-store failure. |
+| `sandboxed` | Optional trusted provider context, forwarded to registered search callbacks. |
 
 The tool computes `searchMs`, `toolMs`, `outsideSearchMs`, `hits`,
 `candidateHits`, `withheldHits`, and `searchWindow` from actual execution.
@@ -193,6 +207,28 @@ outcomes without dropping the other diagnostics.
 These callbacks provide production status, not prebuilt expected results.
 They do not implement an automatic sync lifecycle for a standalone Python
 store. The host still owns reindexing and any manager acquisition/retirement.
+
+Capable backends declare `supports_partial_results=True`. Their `search` method
+accepts `on_partial_results`, `on_debug`, `deadline_control`, and optional
+`session_key`, alongside the existing query, source, score, cancellation, and
+project options. Actual SQLite search implements this callback protocol.
+Custom hosts can implement the same protocol; legacy backends without the
+capability keep their existing argument shape.
+
+`on_partial_results(rows)` publishes finalized evidence before semantic work
+finishes; `on_partial_results(None)` invalidates it. Only eligible memory-file
+rows can become a retained partial response. Callback generations prevent old
+or late publications from replacing the current snapshot. Manager debug events
+come through `on_debug`; the tool does not manufacture a mode event for normal
+SQLite FTS retrieval.
+
+`refresh_store` is called at most once for recognized closed-manager errors,
+not for arbitrary provider failures. The old partial generation is invalidated
+before refresh. A replacement must keep the captured workspace, index, and
+agent; changing those requires a new tool. A failed replacement is not retried
+again, and caller cancellation prevents refresh. The tool measures the new
+acquisition duration for `managerMs`. This host hook does not add an automatic
+index rebuild or a general provider-fallback implementation.
 
 ## Unavailable, deadline, and cooldown behavior
 
@@ -218,32 +254,85 @@ provenance, and generic provider failure. Runtime-specific advice comes from
 `RuntimeIdentity`; `OPENCLAW_COMPAT_RUNTIME_IDENTITY` supplies OpenClaw's exact
 CLI/Gateway wording, while the default uses Python host guidance.
 
-A genuine search deadline adds `timedOut=true` and `timeoutMs=30000`. A provider
-message that merely says `memory_search timed out after 30s` does not acquire
-deadline provenance. The active native constant is 30 seconds.
+A genuine search deadline adds `timedOut=true` and `timeoutMs=30000`. Ownership
+is recorded by error identity. A provider message that merely says
+`memory_search timed out after 30s`, or copies timeout-looking properties, does
+not acquire deadline provenance. The active native budget is 30 seconds.
 
-The existing Python workers have a 30-second per-corpus deadline and a
-60-second failure cooldown. Wiki queries remain independent. Memory-file
-keyword evidence can produce a partial response after a semantic deadline;
-session transcript results are excluded from that partial fallback. Paused
-indexes and partial results do not record a cooldown. Python scopes cooldowns
-by the resolved store path plus agent identity to isolate independent hosted
-workspaces. This is an explicit SDK extension to native agent-based keys.
+Search uses one absolute primary budget and an independent wiki budget.
+Completion is checked against its owner's deadline even when an overdue timer
+has not yet run. An already committed wiki result survives a later join after
+memory has spent time in managed readiness. Capable managers can report
+balanced `pause`/`resume` actions through `deadline_control` during managed
+readiness; that preserves the remaining primary budget without extending wiki
+work. Repeated nested pauses require matching resumes.
 
-Deadline, cancellation, cooldown configuration invalidation, automatic sync,
-closed-manager refresh, provider transitions, and full session visibility
-remain separately tracked contracts. Verifying the warning/output branches
-here does not close those broader contracts. A Python fallback performs a fresh
-keyword query; the native manager can retain a previously filtered partial
-snapshot. An in-flight embedding HTTP request is not interrupted by SQLite
-cancellation.
+SQLite publishes finalized memory-file keyword evidence **before query
+embedding**. On a semantic deadline, the tool can return that captured snapshot
+with `partial=True`, corpus diagnostics, and timeout guidance. It does not run
+a fresh FTS query after expiry. Invalidated snapshots, session-only evidence,
+and publications arriving after settlement cannot rescue a timed-out request.
+A backend that publishes no usable snapshot returns unavailable instead.
+
+A failed primary search starts a 60-second cooldown. It retains its error,
+code, and deadline provenance; it expires exactly at its boundary. The failure
+is bound to the effective `MemoryConfig` and actual provider identity metadata,
+so a configuration change invalidates the old entry. Python additionally
+scopes the key by the resolved store path plus agent identity to isolate hosted
+workspaces, an explicit SDK extension to native agent-based keys.
+
+Wiki-only work does not read or record a memory cooldown. Combined queries
+still search wiki during one and expose memory's failure beside surviving
+results. Paused indexes, successful partial snapshots, and caller cancellation
+do not record cooldowns.
+
+## Caller cancellation and execution dependencies
+
+`MemoryToolDeadlineContext` has trusted `signal`, `clock`, `schedule`, and
+`wait` fields. Its default clock is monotonic milliseconds; scheduled delays
+are milliseconds and return a cancellation callback. Its wait primitive takes
+an event and seconds, or `None`. Defaults use real timers and worker threads.
+`MemorySearchToolContext.clock` remains the wall-clock millisecond source for
+payload timings and cooldown admission. Controlled hosts can pair these
+clocks and scheduler primitives without replacing the production owners.
+
+```python
+from memory_core.cancellation import CancellationSignal
+from memory_core.tools.deadline import MemoryToolDeadlineContext
+from memory_core.tools.memory_search import MemorySearchToolContext
+from memory_core.tools.search_factory import create_memory_search_tool
+
+tool = create_memory_search_tool(
+    memory.config, memory.store,
+    context=MemorySearchToolContext(execution=MemoryToolDeadlineContext()),
+)
+signal = CancellationSignal()
+if tool is not None:
+    envelope = tool.execute("recall-1", {"query": "preferred tea"}, signal)
+# Another host task may call signal.abort(RuntimeError("Caller stopped"))
+# while execute is waiting.
+```
+
+A per-call signal overrides the execution context's parent signal. A caller
+abort propagates its original exception object, rather than becoming an
+unavailable provider payload or a cached failure. A pre-aborted search is
+refused before argument validation or backend admission. Disabled session
+search is refused before starting a deadline timer.
+
+Cancellation stops waiting and reaches cooperative listeners, including
+SQLite interruption/checkpoints. A provider or plugin callback may continue
+running until it returns; late results are ignored. This does not guarantee
+that an in-flight external network request is cancelled.
 
 ## Evidence and historical references
 
 Current `tools.search-contract` evidence must run the pinned production
 factory and real search engine, compare the complete public payload and
 exception metadata, and retain the native envelope. Controlled clocks exercise
-the real timing code. Helper-only fixtures supplement whole-tool cases;
+the real timing code. Controlled-manager deadline/recovery cases exercise the
+actual supervision and tool owners through genuine callbacks; they do not
+establish SQLite constructor, network cancellation, or provider lifecycle
+equivalence. Helper-only fixtures supplement whole-tool cases;
 they do not establish the complete contract by themselves. See
 `docs/parity_matrix.md` for the acceptance ledger and current evidence.
 

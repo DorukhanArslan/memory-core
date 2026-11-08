@@ -26,7 +26,7 @@ The reference repository is `https://github.com/openclaw/openclaw.git`. Python-o
 
 The [source map](equivalence-source-map.md) links all 64 contracts and 128 acceptance points
 to the pinned upstream code and the current Python implementation. The inventory records
-113 upstream source modules, their tracked hashes, literal dependencies and exported
+116 upstream source modules, their tracked hashes, literal dependencies and exported
 declarations. Source presence and inventory validation do not establish behavior or add
 any differential-test coverage.
 
@@ -51,8 +51,9 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
-The latest verified bounded baseline has **37/128 acceptance points (28.9%)**, with **91 points
-(71.1%)** remaining. This includes both get-tool points from real read helpers and complete
+The latest verified bounded baseline has **37/128 acceptance conditions**, with **91 conditions**
+remaining. This is an unweighted count of verified conditions, not a percentage of engineering
+work completed or a time estimate. This includes both get-tool points from real read helpers and complete
 native/SDK factories, alongside the earlier search/ranking points. Provider-none memory/wiki,
 portable filesystem diagnostics, unicode61, printable-ASCII path ties and portable CPU
 profiles remain explicit. All 70 get cases match; the OS-specific loop diagnostic remains
@@ -75,8 +76,10 @@ the entire fixed scope. Infrastructure counts do not add behavioral acceptance p
 
 After each completed batch, update these counts and provide the full completed, partial and
 pending lists, the batch's target and actual acceptance increase, and any information needed
-from the user. The latest implementation batch targeted **+2 points** and verified **+2**;
-correcting stale checklist status adds **zero** acceptance points.
+from the user. The preceding get batch targeted **+2 conditions** and verified **+2**. The next combined
+deadline/cooldown and partial-result batch targets **+4**, from 37 to 41/128, subject to the
+committed integrated gate. Correcting stale status adds **zero** verified conditions. Batch
+sizes follow related behavior and dependencies; they need not increase by two.
 
 Current status of all 64 contracts:
 
@@ -1346,5 +1349,86 @@ The full gate remains mismatched/incomplete because these diagnostics and 91 unc
 points remain; this is not complete OpenClaw equivalence. No provider credentials were
 forwarded and no paid model requests were made. This follow-up changes documentation only;
 SDK source, differential adapters and the source inventory remain identical to the tested
-commit. The next fixed item is **`tools.deadline-cooldown`**, targeting **+2 points** or
-**39/128 (30.5%)** if verified. No additional user information is required.
+commit. After review of batch sizing, the next package combines **`tools.deadline-cooldown`**
+and **`tools.unavailable-partial`**, targeting **+4 conditions**, or **41/128** if verified.
+These equal checklist conditions measure coverage rather than effort. No additional user
+information is required.
+
+
+### Shared deadlines, cooldowns and partial corpus results — 2026-11-08
+
+This package targets all four original acceptance conditions in `tools.deadline-cooldown`
+and `tools.unavailable-partial`, from **37 to 41/128**, without changing the fixed 64-contract
+scope. Verification counts are unweighted: four conditions do not imply four equal units of
+work or a fixed percentage of time saved. Acceptance remains at the preceding verified
+baseline until the final committed integrated report below.
+
+The SDK now shares an actual deadline/signal owner between search and get. Search separates
+an original parent cancellation from a deadline created by its own owner; a provider error
+with the same timeout text cannot manufacture that identity or poison cooldown state. It
+checks the absolute budget at settlement, supports nested managed-readiness pauses for memory,
+and preserves an independent wiki budget. Later explicit queries exercise cached cooldown,
+configuration/provider invalidation, the exact expiration boundary and successful recovery.
+Factory calls accept the trusted third signal argument. These are host execution options,
+not model arguments.
+
+`memory_get` now supervises wiki/all through the shared corpus deadline and preserves completed
+excerpts when another registered provider hangs. Native builtin-only reads bypass that budget,
+including the native pre-aborted-parent behavior; the port represents that branch explicitly.
+Registered wiki callbacks receive the actual native request context and no invented provider
+cancellation argument. An uncooperative callback can keep running in its daemon worker after
+the coordinator stops waiting; late completion cannot revise the returned result.
+
+Search timeout fallback uses a real pre-deadline memory-only snapshot. It does not start a
+new keyword query after its budget expires or return session hits through that fallback. The
+SQLite backend publishes keyword candidates and releases its read lease before waiting for
+embedding, so a hung provider does not retain that writer-blocking lease. Revision changes
+and provider rotation invalidate the snapshot. Five real SQLite regressions exercise early
+publication, concurrent writing, immutable metadata, generation changes and provider failures.
+Custom backends opt into the explicit partial-result protocol; legacy callbacks retain their
+existing call shape.
+
+The native comparison uses **18 original source-owner cases, 12 complete controlled search
+factory cases and three complete get factory cases**. Actual Node builtin mock timers and
+`performance.now` drive the unchanged deadline, corpus, query and cooldown owners. The SDK
+uses its production clock/schedule/wait dependency and real signal workers. Controlled search
+acquisition supplies literal backend results and skips the index-manager constructor. Get
+uses an owned literal memory file and the actual secure reader without substituting a manager.
+This verifies the declared execution contract, not live provider latency, index-manager startup,
+transcript visibility, OS scheduling, or universal filesystem behavior. Reviewed source and
+authenticated official compiled artifacts remain separate; `sourceBuildReproduced: false`.
+
+Complete public envelopes retain warnings, partial flags, corpus outcomes, actions and actual
+debug durations. The already declared text-carrier codec verifies complete details before
+JSON decoding and retains raw wire envelopes. Provider observations preserve every event in
+its backend lane; independent backend entry has no global ordering guarantee, and raw evidence
+also retains the actual global interleaving. Actual control-clock cuts and provider counts are
+compared without timing tolerances. Readiness/winning-provider barriers observe actual owner
+settlement, rather than assuming a resolved provider promise has completed its wrapper.
+
+Retained first observations and corrections:
+
+- `.equivalence-results/deadline-partial-python-baseline.json` runs actual unchanged SDK commit
+  `903729befb4bddefda65ce894c0072e24669d49f`. Its wiki get remains pending after **30,050 ms**
+  of real waiting, then completes only after provider release. Its search diagnostic observes
+  one fresh keyword query after timeout using the existing accelerated private duration
+  converter; that accelerated diagnostic grants no native acceptance credit.
+- `.equivalence-results/deadline-partial-first.json` is invalid with
+  `implementation-changed`: a final production fix overlapped the run. Its 30 observations
+  supply no credit. The report is retained rather than replaced.
+- `.equivalence-results/deadline-partial-valid-first.json` has **30 matches, zero mismatches
+  and three blocked get cases**. The get transport was valid; the root Python dispatcher had
+  omitted its new operation route. `.equivalence-results/deadline-get-python-transport-first.log`
+  retains the traceback. A routing regression now checks actual dispatch and full evidence.
+- `.equivalence-results/deadline-get-corrected.json` executes the corrected three get cases:
+  **three matches, zero mismatches and zero blocked cases**. Public adapter outputs did not
+  change. Independent review approves the four-condition mapping under the declared profile,
+  pending fresh committed integrated validation.
+
+The source inventory now maps 116 actual upstream modules, adding deadline-control, shared
+parameter-reader and input-error owners. Classifications remain 15 present, 46 partial and
+three host-owned; presence is separate from acceptance. Absolute settlement checks also retain
+a pending timer handle until cleanup, verified by real scheduler-cancellation assertions.
+
+No paid model calls or credential-bearing fixtures are used. The full gate must keep the
+three existing uncredited diagnostics and every remaining uncovered condition visible.

@@ -19,6 +19,8 @@ const operations = {
   "search-contract-helper-runtime": ["search-contract-runtime.mjs", "runSearchContractHelperRuntime"],
   "get-contract-runtime": ["get-contract-runtime.mjs", "runGetContractRuntime"],
   "get-contract-helper-runtime": ["get-contract-runtime.mjs", "runGetContractHelperRuntime"],
+  "deadline-partial-runtime": ["deadline-partial-runtime.mjs", "runDeadlinePartialRuntime"],
+  "deadline-partial-get-runtime": ["deadline-partial-runtime.mjs", "runDeadlineGetRuntime"],
 };
 const results = [];
 for (const testCase of request.cases) {

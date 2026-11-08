@@ -37,6 +37,7 @@ for (const [operation, filename, name] of [
   ["session-projection", "session-projection.mjs", "runSessionProjection"],
   ["search-contract", "search-contract.mjs", "runSearchContract"],
   ["get-contract", "get-contract.mjs", "runGetContract"],
+  ["deadline-partial", "deadline-partial.mjs", "runDeadlinePartial"],
 ]) {
   const url = new URL(filename, import.meta.url);
   if (fs.existsSync(fileURLToPath(url))) adapters.set(operation, (await import(url.href))[name]);

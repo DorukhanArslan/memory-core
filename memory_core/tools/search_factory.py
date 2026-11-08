@@ -13,11 +13,13 @@ from pathlib import Path
 from typing import Any
 
 from memory_core.bootstrap._js import js_json_stringify
+from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.supplements import MemoryCorpusSupplement
 from memory_core.tools.common import MemoryToolError, as_tool_params_record
+from memory_core.tools.deadline import MemoryToolDeadlineContext
 from memory_core.tools.memory_search import (
     MemorySearchToolContext,
     execute_memory_search_tool,
@@ -98,7 +100,9 @@ class MemorySearchTool:
     def prepare_arguments(params: object) -> object:
         return prepare_memory_search_arguments(params)
 
-    def execute(self, tool_call_id: str, params: object) -> dict[str, Any]:
+    def execute(
+        self, tool_call_id: str, params: object, signal: CancellationSignal | None = None,
+    ) -> dict[str, Any]:
         del tool_call_id
         config = self._get_config() if self._get_config is not None else self._config
         if config is None or not config.effective_flags().memory or not _enabled(self._context):
@@ -113,6 +117,13 @@ class MemorySearchTool:
         # A factory acquires its already-open manager by resolving its captured
         # store and validating ownership. Direct SDK retrieval has no acquisition.
         execution_context = replace(self._context, enabled=True)
+        if signal is not None:
+            execution_context = replace(
+                execution_context,
+                execution=replace(
+                    execution_context.execution or MemoryToolDeadlineContext(), signal=signal,
+                ),
+            )
         if manager_started is not None:
             execution_context = replace(
                 execution_context, manager_ms=max(0, self._context.clock() - manager_started),

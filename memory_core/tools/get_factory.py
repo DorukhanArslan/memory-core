@@ -8,15 +8,17 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from memory_core.bootstrap._js import js_json_stringify
 from memory_core.config import MemoryConfig
+from memory_core.cancellation import CancellationSignal
 from memory_core.supplements import MemoryCorpusSupplement
 from memory_core.tools.common import MemoryToolError
 from memory_core.tools.memory_get import execute_memory_get_tool, memory_get_tool_definition
+from memory_core.tools.deadline import MemoryToolDeadlineContext
 
 _DISABLED = "Memory is disabled for this agent. Enable memory search for this agent, then retry."
 
@@ -45,6 +47,7 @@ class MemoryGetTool:
     _extra_paths: tuple[str | Path, ...]
     _agent_session_key: str | None
     _sandboxed: bool | None
+    _execution: MemoryToolDeadlineContext | None
 
     @property
     def definition(self) -> dict[str, Any]:
@@ -66,7 +69,9 @@ class MemoryGetTool:
     def parameters(self) -> dict[str, Any]:
         return deepcopy(self._definition["parameters"])
 
-    def execute(self, tool_call_id: str, params: object) -> dict[str, Any]:
+    def execute(
+        self, tool_call_id: str, params: object, signal: CancellationSignal | None = None,
+    ) -> dict[str, Any]:
         del tool_call_id
         config = self._get_config() if self._get_config is not None else self._config
         if config is None or not config.effective_flags().memory:
@@ -76,11 +81,15 @@ class MemoryGetTool:
                 "Memory get configuration belongs to a different workspace or agent; "
                 "create a new tool for that owner.", tool="memory_get",
             )
+        execution = self._execution
+        if signal is not None:
+            execution = replace(execution or MemoryToolDeadlineContext(), signal=signal)
         return serialize_get_tool_result(execute_memory_get_tool(
             config, params, supplements=list(self._supplements),
             extra_paths=self._extra_paths,
             agent_session_key=self._agent_session_key,
             sandboxed=self._sandboxed,
+            execution=execution,
         ))
 
 
@@ -92,6 +101,7 @@ def create_memory_get_tool(
     extra_paths: Sequence[str | Path] = (),
     agent_session_key: str | None = None,
     sandboxed: bool | None = None,
+    execution: MemoryToolDeadlineContext | None = None,
 ) -> MemoryGetTool | None:
     """Create the read tool, or omit it for missing or disabled current config.
 
@@ -106,5 +116,5 @@ def create_memory_get_tool(
     definition["label"] = "Memory Get"
     return MemoryGetTool(
         definition, current, get_config, tuple(supplements or ()), _owner(current),
-        tuple(extra_paths), agent_session_key, sandboxed,
+        tuple(extra_paths), agent_session_key, sandboxed, execution,
     )

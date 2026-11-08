@@ -146,6 +146,14 @@ def _reference_bindings(checkout: Path, *, cache: bool, publication: bool,
             bindings.setdefault(key, []).extend(extension[key])
         bindings["getContractSourceOwners"] = {key: value for key, value in extension.items()
                                               if key not in {"allowedResolutions", "projectionEvidence"}}
+    if "deadline-partial" in reuse_operations:
+        from equivalence.deadline_partial_bindings import prepare_deadline_partial_bindings
+
+        extension = prepare_deadline_partial_bindings(checkout)
+        for key in ("allowedResolutions", "projectionEvidence"):
+            bindings.setdefault(key, []).extend(extension[key])
+        bindings["deadlinePartialSourceOwners"] = {key: value for key, value in extension.items()
+                                                  if key not in {"allowedResolutions", "projectionEvidence"}}
     if reuse_operations:
         from equivalence.reuse_bindings import prepare_reuse_bindings
 
@@ -450,6 +458,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "importance-project-runtime",
             "search-contract-runtime", "search-contract-helper-runtime",
             "get-contract-runtime", "get-contract-helper-runtime",
+            "deadline-partial-runtime",
+            "deadline-partial-get-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -477,6 +487,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                          "importance-project",
                                          "search-contract",
                                          "get-contract",
+                                         "deadline-partial",
                                      })
         native_storage = required_artifact_execution or bool(reuse_operations)
         cache_bindings = any(case["operation"] == "embedding-cache" for case in cases)
@@ -588,6 +599,19 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 except (OSError, ValueError):
                     raise HarnessError("get-contract-runtime-owner-unavailable",
                                        "The reviewed native get-tool owners could not be verified.") from None
+            deadline_partial_runtime = any(case["operation"] in {
+                "deadline-partial-runtime", "deadline-partial-get-runtime",
+            } for case in runtime_cases)
+            if deadline_partial_runtime:
+                from equivalence.deadline_partial_runtime_bindings import prepare_deadline_partial_runtime_bindings
+
+                try:
+                    report["deadlinePartialRuntimeBindings"] = prepare_deadline_partial_runtime_bindings(
+                        checkout, Path(runtime_config["runtimeRoot"]),
+                    )
+                except (OSError, ValueError):
+                    raise HarnessError("deadline-partial-runtime-owner-unavailable",
+                                       "The reviewed native deadline/corpus owners could not be verified.") from None
             report["releaseSources"], report["releaseTraces"], report["runtimeDiagnostics"] = [], [], []
             if flush_execution:
                 report["fixtureCaptures"] = []
@@ -638,6 +662,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     checkout, Path(runtime_config["runtimeRoot"]),
                 ) != report["getContractRuntimeBindings"]:
                     raise ValueError("Get-tool source or compiled owners changed.")
+                if deadline_partial_runtime and prepare_deadline_partial_runtime_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]),
+                ) != report["deadlinePartialRuntimeBindings"]:
+                    raise ValueError("Deadline/corpus source or compiled owners changed.")
             except (OSError, ValueError, RuntimeError):
                 raise HarnessError("release-runtime-changed",
                                    "Official runtime artifact bytes changed during comparison.") from None

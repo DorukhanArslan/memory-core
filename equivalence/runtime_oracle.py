@@ -55,11 +55,133 @@ _OPERATIONS = {
     "get-contract-helper-runtime": (
         "get-contract-runtime.mjs", "dist/tools-DotaQGXh.mjs", False,
     ),
+    "deadline-partial-runtime": (
+        "deadline-partial-runtime.mjs", "dist/tools-DotaQGXh.mjs", False,
+    ),
+    "deadline-partial-get-runtime": (
+        "deadline-partial-runtime.mjs", "dist/tools-DotaQGXh.mjs", False,
+    ),
 }
 
 
 class RuntimeOracleError(ValueError):
     """The release process did not provide bounded authenticated execution evidence."""
+
+
+def _validate_deadline_partial_raw(row: dict, case: dict, diagnostic: list,
+                                 evidence_directory: Path | None = None) -> None:
+    """Bind every compared effect to complete original provider/tool observations."""
+    from equivalence.search_contract import _same_json, decode_search_tool_envelope
+
+    if not row["ok"]:
+        return
+    public = row["result"]
+    if (set(public) != {"provider", "calls", "memoryDispatches", "wikiDispatches", "lanes", "clockSteps"}
+            or len(diagnostic) != 1 or not isinstance(diagnostic[0], dict)):
+        raise RuntimeOracleError("Controlled deadline results require complete raw effects and call envelopes.")
+    raw, arguments = diagnostic[0], case["input"]
+    real_get = case.get("operation") == "deadline-partial-get-runtime"
+    if real_get:
+        fixture_base = raw.get("fixtureBase")
+        if (raw.get("toolName") != "memory_get" or raw.get("managerFixture") is not False
+                or raw.get("constructorSkipped") is not False
+                or raw.get("managerAcquisition") != "not-required" or raw.get("indexManagerConstructed") is not False
+                or any(raw.get(name) != [] for name in ("managerGets", "statusReads", "closes"))
+                or not isinstance(fixture_base, str) or evidence_directory is None
+                or Path(fixture_base).parent != evidence_directory
+                or not re.fullmatch(r"deadline-get-fixture-[A-Za-z0-9_-]+", Path(fixture_base).name)):
+            raise RuntimeOracleError("Real get deadline fixtures require their owned files and no manager override.")
+    elif (raw.get("managerFixture") is not True or raw.get("constructorSkipped") is not True
+          or raw.get("managerGetRestoredBeforeExit") is not True):
+        raise RuntimeOracleError("Controlled manager acquisition must be explicit and restore its actual owner.")
+    expected_driver = {"kind": "node-test-mock-timers", "apis": ["Date", "setTimeout"],
+                       "dateReplaced": True, "setTimeoutReplaced": True, "clearTimeoutReplaced": True,
+                       "initialDateNow": arguments.get("startMs"),
+                       "initialPerformanceNow": arguments.get("startMs"), "performanceNowMatchesDateNow": True}
+    if not _same_json(raw.get("timerDriver"), expected_driver):
+        raise RuntimeOracleError("The real Node timer APIs and performance clock were not observed under control.")
+    commands = arguments.get("commands")
+    if not isinstance(commands, list) or not all(isinstance(value, dict) for value in commands):
+        raise RuntimeOracleError("Controlled deadline fixtures require ordered explicit commands.")
+    call_ids = [command.get("id") for command in commands if command.get("op") == "call"]
+    originals, replies = raw.get("nativeEnvelopes"), public.get("calls")
+    if (not all(isinstance(value, str) for value in call_ids) or len(set(call_ids)) != len(call_ids)
+            or not isinstance(originals, list) or not isinstance(replies, list)
+            or len(originals) != len(call_ids) or len(replies) != len(call_ids)
+            or any(not isinstance(value, dict) for value in originals + replies)
+            or [value.get("id") for value in replies] != call_ids
+            or {value.get("id") for value in originals} != set(call_ids)):
+        raise RuntimeOracleError("Every requested controlled tool call needs its original raw reply.")
+    original_by_id = {value["id"]: value for value in originals}
+    for reply in replies:
+        original = original_by_id[reply["id"]]
+        if (set(reply) not in ({"id", "result"}, {"id", "error"})
+                or set(original) != {*reply, "time"}):
+            raise RuntimeOracleError("Controlled tool replies changed their original payload/error identity.")
+        observed = {"id": original["id"], **(
+            {"result": decode_search_tool_envelope(original["result"])} if "result" in reply
+            else {"error": original["error"]})}
+        if not _same_json(observed, reply):
+            raise RuntimeOracleError("Controlled tool replies differ from their complete raw envelopes.")
+    plugin_ids = [value["pluginId"] for value in arguments.get("supplements", [])]
+    if len(set(plugin_ids)) != len(plugin_ids):
+        raise RuntimeOracleError("Controlled supplement fixtures require unique plugin identities.")
+    lanes = {name: [] for name in ["memory", *("wiki:" + value for value in plugin_ids)]}
+    events = raw.get("globalEvents")
+    if not isinstance(events, list):
+        raise RuntimeOracleError("Controlled provider effects require their untouched global observations.")
+    for event in events:
+        if not isinstance(event, dict) or event.get("lane") not in lanes:
+            raise RuntimeOracleError("A controlled provider event lost its declared backend identity.")
+        lanes[event["lane"]].append({key: value for key, value in event.items() if key != "lane"})
+    if real_get and (lanes["memory"] or public["memoryDispatches"] != []):
+        raise RuntimeOracleError("Real get reads cannot substitute controlled memory-manager provider callbacks.")
+    memory = [event["args"] for event in lanes["memory"] if event.get("event") == "start"]
+    wiki = {plugin: [event["args"] for event in lanes["wiki:" + plugin] if event.get("event") == "start"]
+            for plugin in plugin_ids}
+    if (not _same_json(lanes, public["lanes"]) or not _same_json(memory, public["memoryDispatches"])
+            or not _same_json(wiki, public["wikiDispatches"])):
+        raise RuntimeOracleError("Compared provider lanes must retain every original argument, event and time.")
+    steps, cuts, outcome_cuts = raw.get("clockSteps"), raw.get("clockObservationCuts"), raw.get("clockOutcomeCuts")
+    clear_events, clear_cuts = raw.get("timerClears"), raw.get("clockClearCuts")
+    if (not isinstance(steps, list) or not isinstance(cuts, list) or not isinstance(outcome_cuts, list)
+            or len(steps) != len(commands) or len(cuts) != len(commands) or len(outcome_cuts) != len(commands)
+            or not _same_json(steps, public["clockSteps"])):
+        raise RuntimeOracleError("Every controlled clock action and barrier needs its full original observation.")
+    if (not isinstance(clear_events, list) or not isinstance(clear_cuts, list)
+            or len(clear_cuts) != len(commands)):
+        raise RuntimeOracleError("Actual timer cancellation observations must be retained for every command.")
+    derived = {"time", "dispatchCounts", "activeCounts", "abortCounts", "settledCalls", "timerClearCount"}
+    previous_cut = previous_outcome_cut = previous_clear_cut = 0
+    for command, step, cut, outcome_cut, clear_cut in zip(commands, steps, cuts, outcome_cuts, clear_cuts, strict=True):
+        if (not isinstance(step, dict) or any(key in command for key in derived)
+                or not _same_json(command, {key: value for key, value in step.items() if key not in derived})
+                or type(cut) is not int or not previous_cut <= cut <= len(events)
+                or type(outcome_cut) is not int or not previous_outcome_cut <= outcome_cut <= len(originals)
+                or type(clear_cut) is not int or not previous_clear_cut <= clear_cut <= len(clear_events)):
+            raise RuntimeOracleError("Controlled action identities or observation boundaries changed.")
+        previous_cut, previous_outcome_cut, previous_clear_cut = cut, outcome_cut, clear_cut
+        if "timerClears" in command:
+            if (step.get("timerClearCount") != clear_cut or clear_cut < command["timerClears"]):
+                raise RuntimeOracleError("Timer cancellation barriers require actual owner cancellation calls.")
+        elif "timerClearCount" in step:
+            raise RuntimeOracleError("Private timer counts require an explicitly declared command observation.")
+        if command.get("op") not in {"barrier", "tick", "set-time", "pause", "resume", "settle"}:
+            continue
+        prefix = events[:cut]
+        dispatches, active, aborted = {}, {}, {}
+        for name in lanes:
+            lane_events = [event for event in prefix if event["lane"] == name]
+            starts = [event for event in lane_events if event.get("event") == "start"]
+            finishes = [event for event in lane_events if event.get("event") in {"fulfilled", "rejected"}]
+            dispatches[name] = len(starts)
+            active[name] = len(starts) - len(finishes)
+            aborted[name] = len({event["invocation"] for event in lane_events if event.get("event") == "abort"})
+        settled = {value["id"] for value in originals[:outcome_cut]}
+        if (not _same_json(step.get("dispatchCounts"), dispatches) or not _same_json(step.get("activeCounts"), active)
+                or not _same_json(step.get("abortCounts"), aborted)
+                or step.get("settledCalls") != [value for value in call_ids if value in settled]):
+            raise RuntimeOracleError("Provider admission, active work, aborts or settlements lost their causal observations.")
 
 
 def _digest(raw: bytes) -> str:
@@ -220,6 +342,11 @@ class ReleaseOracleExecution:
         get_profile_kinds = {"get-contract-runtime": "tool", "get-contract-helper-runtime": "definition"}
         if operation in get_profile_kinds and case.get("input", {}).get("kind") != get_profile_kinds[operation]:
             raise RuntimeOracleError("Get fixtures must use their narrowly declared definition or whole-tool profile.")
+        if operation in {"deadline-partial-runtime", "deadline-partial-get-runtime"} and case.get("input", {}).get("kind") != "tool":
+            raise RuntimeOracleError("Controlled deadline fixtures must use the dedicated whole-tool profile.")
+        if (operation == "deadline-partial-runtime" and case["input"].get("toolName") not in {None, "memory_search"}
+                or operation == "deadline-partial-get-runtime" and case["input"].get("toolName") != "memory_get"):
+            raise RuntimeOracleError("Deadline search and real-file get profiles cannot impersonate each other.")
         if (not isinstance(row, dict) or operation not in _OPERATIONS
                 or row.get("id") != case.get("id") or type(row.get("ok")) is not bool
                 or set(row) != ({"id", "ok", "result"} if row["ok"] else {"id", "ok", "error"})):
@@ -314,6 +441,11 @@ class ReleaseOracleExecution:
         if not {str((ROOT / "equivalence" / name).resolve())
                 for name in ("release-oracle.mjs", adapter)} <= local_imports:
             raise RuntimeOracleError("The reviewed release runner and case adapter did not execute.")
+        if operation in {"deadline-partial-runtime", "deadline-partial-get-runtime"} and not {
+            str((ROOT / "equivalence" / name).resolve())
+            for name in ("deadline-partial.mjs", "search-contract-runtime.mjs")
+        } <= local_imports:
+            raise RuntimeOracleError("The actual controlled timer and complete envelope codec owners did not execute.")
         if required_owner is not None and ("node_modules/openclaw", required_owner) not in loaded:
             message = ("The actual native runtime owner did not execute."
                        if operation in {"exact-path-runtime", "importance-project-runtime"}
@@ -336,6 +468,12 @@ class ReleaseOracleExecution:
             if any(("node_modules/openclaw", owner) not in loaded
                    for owner in REQUIRED_LOADED_ARTIFACTS_BY_PROFILE[operation]):
                 raise RuntimeOracleError("The actual declared native get-tool owners did not execute.")
+        if operation in {"deadline-partial-runtime", "deadline-partial-get-runtime"}:
+            from equivalence.deadline_partial_runtime_bindings import REQUIRED_LOADED_ARTIFACTS_BY_PROFILE
+
+            if any(("node_modules/openclaw", owner) not in loaded
+                   for owner in REQUIRED_LOADED_ARTIFACTS_BY_PROFILE[operation]):
+                raise RuntimeOracleError("The actual native deadline/cooldown/corpus owners did not execute.")
         if case.get("operation") == "flush-execution-runtime" and not captures:
             raise RuntimeOracleError("The native provider loader did not execute a reviewed fixture source capture.")
         if operation == "flush-execution-runtime" and (
@@ -357,6 +495,8 @@ class ReleaseOracleExecution:
         diagnostic = _json(raw)
         if not isinstance(diagnostic, list):
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
+        if operation in {"deadline-partial-runtime", "deadline-partial-get-runtime"}:
+            _validate_deadline_partial_raw(row, case, diagnostic, evidence.parent)
         if operation == "get-contract-runtime" and case["input"]["kind"] == "tool" and row["ok"]:
             from equivalence.get_contract_runtime_bindings import READ_RUNTIME_ARTIFACTS
             from equivalence.search_contract import _same_json, decode_search_tool_envelope

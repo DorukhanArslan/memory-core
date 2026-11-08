@@ -14,11 +14,16 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+import threading
 from typing import Any, TypeVar
 
 from memory_core.bootstrap._js import locale_sort_key
+from memory_core.cancellation import CancellationSignal
 from memory_core.supplements import RegisteredMemoryCorpusSupplement
 from memory_core.tools.common import format_error_message
+from memory_core.tools.deadline import (
+    MemoryToolDeadlineContext, is_memory_search_deadline_error, race_memory_corpus_signal,
+)
 
 # memory/search-deadline.ts DEFAULT_MEMORY_SEARCH_TIMEOUT_MS.
 MEMORY_CORPUS_TIMEOUT_MS = 30_000
@@ -64,7 +69,7 @@ def error_code(error: BaseException) -> str | None:
 
 
 def unavailable_corpus(
-    corpus: str, value: Any, error: BaseException | str, *, deadline: bool = False
+    corpus: str, value: Any, error: BaseException | str, *, deadline: bool | None = None
 ) -> CorpusAttempt:
     """``unavailableMemoryCorpus``."""
     return CorpusAttempt(
@@ -73,15 +78,31 @@ def unavailable_corpus(
         value=value,
         error=error if isinstance(error, str) else format_error_message(error),
         code=None if isinstance(error, str) else error_code(error),
-        deadline=deadline,
+        deadline=is_memory_search_deadline_error(error) if deadline is None else deadline,
     )
 
 
-def attempt_corpus(corpus: str, unavailable_value: T, run: Callable[[], T]) -> CorpusAttempt:
-    """``attemptMemoryCorpus`` without a signal: an exception is an unavailable corpus."""
+def attempt_corpus(
+    corpus: str, unavailable_value: T, run: Callable[[], T], *,
+    signal: CancellationSignal | None = None,
+    context: MemoryToolDeadlineContext | None = None,
+    get_partial_value: Callable[[], T | None] | None = None,
+) -> CorpusAttempt:
+    """Attempt a corpus under its signal, preserving only genuine deadline partials."""
     try:
-        return CorpusAttempt(corpus=corpus, outcome="ok", value=run())
+        value = race_memory_corpus_signal(signal, run, context=context) if signal is not None else run()
+        return CorpusAttempt(corpus=corpus, outcome="ok", value=value)
     except Exception as error:
+        partial = (
+            get_partial_value()
+            if get_partial_value is not None and is_memory_search_deadline_error(error) else None
+        )
+        if partial is not None:
+            failure = unavailable_corpus(corpus, partial, error)
+            return CorpusAttempt(
+                corpus=corpus, outcome="partial", value=partial, error=failure.error,
+                code=failure.code, deadline=failure.deadline,
+            )
         return unavailable_corpus(corpus, unavailable_value, error)
 
 
@@ -89,6 +110,9 @@ def settle_supplements(
     supplements: Sequence[Any],
     run: Callable[[Any], T],
     merge: Callable[[list[T]], T],
+    *,
+    signal: CancellationSignal | None = None,
+    context: MemoryToolDeadlineContext | None = None,
 ) -> CorpusAttempt:
     """Run every supplement, retaining successes and registered failure identities.
 
@@ -108,16 +132,73 @@ def settle_supplements(
         next(registered) if isinstance(entry, RegisteredMemoryCorpusSupplement) else entry
         for entry in supplements
     ]
-    for supplement in ordered:
+    if signal is None:
+        for supplement in ordered:
+            try:
+                completed.append(run(supplement))
+            except Exception as error:
+                plugin_id = (
+                    supplement.plugin_id
+                    if isinstance(supplement, RegisteredMemoryCorpusSupplement)
+                    else None
+                )
+                failures.append((plugin_id, format_error_message(error)))
+    else:
+        # Index each slot before running it so completion timing cannot change
+        # plugin priority. A returned snapshot never accepts late completions.
+        lock = threading.Lock()
+        done = threading.Event()
+        values: dict[int, T] = {}
+        errors: dict[int, tuple[str | None, str]] = {}
+        next_index = 0
+        remaining = min(4, len(ordered))
+        accepting = True
+
+        def work() -> None:
+            nonlocal next_index, remaining
+            try:
+                while True:
+                    with lock:
+                        if next_index == len(ordered):
+                            return
+                        index = next_index
+                        next_index += 1
+                    supplement = ordered[index]
+                    try:
+                        result = run(supplement)
+                        with lock:
+                            if accepting:
+                                values[index] = result
+                    except Exception as error:
+                        plugin_id = (
+                            supplement.plugin_id
+                            if isinstance(supplement, RegisteredMemoryCorpusSupplement) else None
+                        )
+                        with lock:
+                            if accepting:
+                                errors[index] = (plugin_id, format_error_message(error))
+            finally:
+                with lock:
+                    remaining -= 1
+                    if remaining == 0:
+                        done.set()
+
+        def coordinate() -> None:
+            for _ in range(min(4, len(ordered))):
+                threading.Thread(target=work, name="memory-supplement-worker", daemon=True).start()
+            done.wait()
+
         try:
-            completed.append(run(supplement))
+            race_memory_corpus_signal(signal, coordinate, context=context)
         except Exception as error:
-            plugin_id = (
-                supplement.plugin_id
-                if isinstance(supplement, RegisteredMemoryCorpusSupplement)
-                else None
-            )
-            failures.append((plugin_id, format_error_message(error)))
+            with lock:
+                accepting = False
+                snapshot = [values[index] for index in sorted(values)]
+            return unavailable_corpus("wiki", merge(snapshot), error)
+        with lock:
+            accepting = False
+            completed = [values[index] for index in sorted(values)]
+            failures = [errors[index] for index in sorted(errors)]
     value = merge(completed)
     if not failures:
         return CorpusAttempt(corpus="wiki", outcome="ok", value=value)

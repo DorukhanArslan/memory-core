@@ -5,7 +5,8 @@ The active reference is OpenClaw **v2026.9.9**, commit
 `extensions/memory-core/src/tools.ts`, `memory-read-tool.ts`, `memory-corpus.ts`,
 and `packages/memory-host-sdk/src/host/read-file.ts` and `read-file-shared.ts`.
 This document describes the Python read boundary and its supported host policy.
-It does not establish complete filesystem, deadline, or manager lifecycle parity.
+It describes the read interface and its deadline/cancellation controls, without
+claiming complete filesystem, network cancellation, or manager lifecycle parity.
 
 ## Entry points
 
@@ -13,7 +14,7 @@ It does not establish complete filesystem, deadline, or manager lifecycle parity
 | --- | --- |
 | `create_memory_get_tool(config, ...)` | Create a model-facing read tool, or return `None` when disabled. No store or index is required. |
 | `tool.definition` | A defensive copy of its `label`, `name`, `description`, and JSON `parameters`. |
-| `tool.execute(tool_call_id, params)` | Validate model arguments, perform the read, and return the complete JSON result envelope. |
+| `tool.execute(tool_call_id, params, signal=None)` | Validate model arguments, perform the read, and return the complete JSON result envelope. |
 | `execute_memory_get_tool(config, params, ...)` | Run the same read from raw model arguments and return its payload dictionary directly. |
 | `memory_get(config, *, path, from_line=None, lines=None, corpus="memory", ...)` | Python convenience form below raw argument validation. |
 | `memory_get_tool_definition(extra_paths=())` | Return the provider-neutral name, description, and schema. |
@@ -21,6 +22,11 @@ It does not establish complete filesystem, deadline, or manager lifecycle parity
 The factory exposes read-only `name`, `label`, `description`, and `parameters`
 properties as well. Native `memory_get` has no argument-preparation callback;
 the Python factory does not invent one.
+
+The factory and both direct functions accept trusted `execution=` with a
+`MemoryToolDeadlineContext`. A factory call's optional third `signal` argument
+overrides that context's parent signal for that call. These are host options,
+not properties in the model's argument schema.
 
 The factory returns the native-shaped envelope:
 
@@ -127,6 +133,11 @@ reader also supports that existing provider API. That call style is an SDK
 extension: providers using it do not receive native range/context keywords.
 Their returned excerpt still passes through the complete result mapping.
 
+Registered providers are coordinated with at most four concurrent callbacks.
+Completed excerpts and other providers' failures remain available when one
+provider blocks. Plugins receive their documented query/context keywords,
+without an added cancellation-signal argument.
+
 ## Runnable integration example
 
 This example performs real file and wiki reads without a model, embedding
@@ -180,6 +191,49 @@ with TemporaryDirectory() as temporary:
     assert wiki_result["details"]["text"] == "Preferred answer language: English."
     assert wiki_result["details"]["title"] == "User preferences"
 ```
+
+## Execution and cancellation
+
+`MemoryToolDeadlineContext` supplies `signal`, a monotonic millisecond `clock`,
+`schedule(delay_ms, callback)` returning a timer-cancellation function, and
+`wait(event, seconds_or_none)`. Defaults use real timers and workers. Controlled
+hosts can provide those same execution dependencies; they do not supply
+prebuilt read results or expected timeout payloads.
+
+The corpus determines which path is supervised:
+
+| Read path | Execution policy |
+| --- | --- |
+| Omitted corpus or `memory` | Native unguarded built-in read. It does not gain a deadline or caller-abort check from this context. |
+| `wiki` | Registered-provider coordination under one absolute 30-second budget and the caller's signal. |
+| `all` | Built-in and wiki work run concurrently under the same absolute 30-second budget and caller signal. |
+
+Raw arguments validate before wiki/all deadline admission. Those guarded reads
+retain completed work and compose genuine deadline/corpus diagnostics when
+other work exceeds the budget. A completed primary excerpt can therefore
+remain `status="ok"` with a wiki warning and `timedOut=True`; a timeout does
+not erase its content. Completion is checked against the absolute budget even
+when an overdue timer has not yet been dispatched.
+
+A caller abort of guarded work propagates its original exception object.
+Cancellation stops waiting; it does not forcibly terminate a file or provider
+callback. Late completions cannot mutate an already returned result. This does
+not guarantee cancellation of an external provider's in-flight network call.
+Reads do not use the search tool's failure cooldown.
+
+```python
+from memory_core.cancellation import CancellationSignal
+from memory_core.tools.deadline import MemoryToolDeadlineContext
+
+signal = CancellationSignal()
+execution = MemoryToolDeadlineContext(signal=signal)
+# Pass execution=execution to create_memory_get_tool or a direct read call.
+# Another host task can abort signal while a wiki/all read is waiting.
+```
+
+Search's managed-readiness pause control and its independently budgeted wiki
+work are described in [memory_search Tool Contract](memory_search_tool.md).
+Ordinary memory-file reads need no index or memory-search manager.
 
 ## Filesystem policy and configured extra paths
 
@@ -240,7 +294,9 @@ Execution after revocation raises the ordinary native-shaped disabled error
 before validating read arguments. A live configuration cannot move a captured
 tool to another workspace or agent; create a new tool for that owner.
 
-The Python read calls are synchronous. Complete deadline/abort behavior
-(`tools.deadline-cooldown`, contract #24) and unavailable/manager lifecycle behavior
-(`tools.unavailable-partial`, contract #25) remain open. Successful bounded reads and synchronous error
-payloads do not close those broader contracts.
+The acceptance ledger separately tracks `tools.deadline-cooldown` and
+`tools.unavailable-partial`. Controlled callback cases exercise the actual
+deadline, cancellation, coordination, and payload owners; they do not prove
+provider network cancellation, general filesystem concurrency, or an automatic
+manager/index lifecycle. Original wire diagnostics and the bounded comparison
+profile remain part of that evidence.

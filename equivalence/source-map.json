@@ -308,7 +308,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 716
+          "line": 722
         }
       ],
       "implementation": "present",
@@ -400,13 +400,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 472
+          "line": 478
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 716
+          "line": 722
         },
         {
           "path": "memory_core/index/preparation.py",
@@ -442,7 +442,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._reindex_locked",
           "anchor": "    def _reindex_locked(self, workspace: MemoryWorkspace, *, force: bool) -> int:",
-          "line": 495
+          "line": 501
         },
         {
           "path": "memory_core/client.py",
@@ -501,7 +501,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
           "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
-          "line": 426
+          "line": 432
         }
       ],
       "implementation": "partial",
@@ -536,7 +536,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 472
+          "line": 478
         },
         {
           "path": "memory_core/workspace.py",
@@ -548,7 +548,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "read_index_source",
           "anchor": "def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:",
-          "line": 145
+          "line": 146
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -601,7 +601,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 472
+          "line": 478
         },
         {
           "path": "memory_core/consolidation/origins.py",
@@ -613,7 +613,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 326
+          "line": 332
         },
         {
           "path": "memory_core/index/publication.py",
@@ -631,7 +631,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.read_published_index",
           "anchor": "    def read_published_index(self, *, db: sqlite3.Connection | None = None) -> dict:",
-          "line": 308
+          "line": 314
         },
         {
           "path": "memory_core/index/publication.py",
@@ -696,7 +696,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 472
+          "line": 478
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -738,25 +738,25 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 762
+          "line": 768
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_run_memory_search_tool",
           "anchor": "def _run_memory_search_tool(",
-          "line": 768
+          "line": 812
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_connection",
           "anchor": "    def _search_connection(self, signal: CancellationSignal | None) -> Iterator[sqlite3.Connection]:",
-          "line": 236
+          "line": 241
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
           "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
-          "line": 426
+          "line": 432
         }
       ],
       "implementation": "partial",
@@ -815,7 +815,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search_vector_candidates",
           "anchor": "    def search_vector_candidates(",
-          "line": 923
+          "line": 950
         },
         {
           "path": "memory_core/index/vector.py",
@@ -833,7 +833,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 1053
+          "line": 1080
         }
       ],
       "implementation": "present",
@@ -953,7 +953,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search_path_candidates",
           "anchor": "    def search_path_candidates(",
-          "line": 1351
+          "line": 1423
         },
         {
           "path": "memory_core/index/keyword_search.py",
@@ -1160,13 +1160,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.attach_recall_metadata",
           "anchor": "    def attach_recall_metadata(",
-          "line": 869
+          "line": 896
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.read_recall_metadata",
           "anchor": "    def read_recall_metadata(",
-          "line": 839
+          "line": 866
         },
         {
           "path": "memory_core/index/hybrid.py",
@@ -1184,13 +1184,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._finalize_keyword_only",
           "anchor": "    def _finalize_keyword_only(",
-          "line": 1188
+          "line": 1260
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 762
+          "line": 768
         },
         {
           "path": "memory_core/client.py",
@@ -1208,7 +1208,7 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "memory_search",
           "anchor": "def memory_search(",
-          "line": 580
+          "line": 581
         }
       ],
       "implementation": "present",
@@ -1238,6 +1238,36 @@
           "symbol": "buildMemorySearchPresentation",
           "anchor": "export function buildMemorySearchPresentation(",
           "line": 21
+        },
+        {
+          "path": "src/agents/tools/common.ts",
+          "symbol": "asToolParamsRecord",
+          "anchor": "export function asToolParamsRecord(",
+          "line": 56
+        },
+        {
+          "path": "src/agents/tools/common.ts",
+          "symbol": "readToolStringParam",
+          "anchor": "export function readToolStringParam(",
+          "line": 90
+        },
+        {
+          "path": "src/agents/tools/common.ts",
+          "symbol": "readPositiveIntegerParam",
+          "anchor": "export function readPositiveIntegerParam(",
+          "line": 199
+        },
+        {
+          "path": "src/agents/tool-input-error.ts",
+          "symbol": "ToolInputError",
+          "anchor": "export class ToolInputError extends Error {",
+          "line": 4
+        },
+        {
+          "path": "src/agents/tools/common.ts",
+          "symbol": "readFiniteNumberParam",
+          "anchor": "export function readFiniteNumberParam(",
+          "line": 247
         }
       ],
       "python": [
@@ -1245,31 +1275,67 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "memory_search_tool_definition",
           "anchor": "def memory_search_tool_definition(",
-          "line": 153
+          "line": 163
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "read_memory_search_params",
           "anchor": "def read_memory_search_params(params: object) -> MemorySearchParams:",
-          "line": 516
+          "line": 489
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "execute_memory_search_tool",
           "anchor": "def execute_memory_search_tool(",
-          "line": 540
+          "line": 513
         },
         {
           "path": "memory_core/tools/search_factory.py",
           "symbol": "create_memory_search_tool",
           "anchor": "def create_memory_search_tool(",
-          "line": 132
+          "line": 143
         },
         {
           "path": "memory_core/tools/citations.py",
           "symbol": "build_memory_search_presentation",
           "anchor": "def build_memory_search_presentation(",
           "line": 42
+        },
+        {
+          "path": "memory_core/tools/common.py",
+          "symbol": "as_tool_params_record",
+          "anchor": "def as_tool_params_record(",
+          "line": 121
+        },
+        {
+          "path": "memory_core/tools/common.py",
+          "symbol": "read_string_param",
+          "anchor": "def read_string_param(",
+          "line": 199
+        },
+        {
+          "path": "memory_core/tools/common.py",
+          "symbol": "read_positive_integer_param",
+          "anchor": "def read_positive_integer_param(",
+          "line": 223
+        },
+        {
+          "path": "memory_core/tools/common.py",
+          "symbol": "MemoryToolError",
+          "anchor": "class MemoryToolError(",
+          "line": 45
+        },
+        {
+          "path": "memory_core/tools/common.py",
+          "symbol": "MemoryToolInputError",
+          "anchor": "class MemoryToolInputError(",
+          "line": 59
+        },
+        {
+          "path": "memory_core/tools/common.py",
+          "symbol": "read_finite_number_param",
+          "anchor": "def read_finite_number_param(",
+          "line": 243
         }
       ],
       "implementation": "partial",
@@ -1308,6 +1374,36 @@
           "symbol": "readMemoryFile",
           "anchor": "export async function readMemoryFile(params: {",
           "line": 34
+        },
+        {
+          "path": "src/agents/tools/common.ts",
+          "symbol": "asToolParamsRecord",
+          "anchor": "export function asToolParamsRecord(",
+          "line": 56
+        },
+        {
+          "path": "src/agents/tools/common.ts",
+          "symbol": "readToolStringParam",
+          "anchor": "export function readToolStringParam(",
+          "line": 90
+        },
+        {
+          "path": "src/agents/tools/common.ts",
+          "symbol": "readPositiveIntegerParam",
+          "anchor": "export function readPositiveIntegerParam(",
+          "line": 199
+        },
+        {
+          "path": "src/agents/tool-input-error.ts",
+          "symbol": "ToolInputError",
+          "anchor": "export class ToolInputError extends Error {",
+          "line": 4
+        },
+        {
+          "path": "extensions/memory-core/src/memory-read-tool.ts",
+          "symbol": "executeWikiMemoryReadResult",
+          "anchor": "export async function executeWikiMemoryReadResult(",
+          "line": 39
         }
       ],
       "python": [
@@ -1315,56 +1411,98 @@
           "path": "memory_core/tools/get_factory.py",
           "symbol": "create_memory_get_tool",
           "anchor": "def create_memory_get_tool(",
-          "line": 87
+          "line": 96
         },
         {
           "path": "memory_core/tools/memory_get.py",
           "symbol": "memory_get_tool_definition",
           "anchor": "def memory_get_tool_definition(",
-          "line": 91
+          "line": 94
         },
         {
           "path": "memory_core/tools/memory_get.py",
           "symbol": "read_memory_get_params",
           "anchor": "def read_memory_get_params(params: object) -> MemoryGetParams:",
-          "line": 120
+          "line": 123
         },
         {
           "path": "memory_core/tools/memory_get.py",
           "symbol": "memory_get",
           "anchor": "def memory_get(",
-          "line": 247
+          "line": 252
         },
         {
           "path": "memory_core/tools/memory_get.py",
           "symbol": "_memory_get_text",
           "anchor": "def _memory_get_text(",
-          "line": 400
+          "line": 414
         },
         {
           "path": "memory_core/tools/memory_get.py",
           "symbol": "build_memory_read_result",
           "anchor": "def build_memory_read_result(",
-          "line": 228
+          "line": 233
         },
         {
           "path": "memory_core/tools/memory_get.py",
           "symbol": "build_memory_read_result_from_slice",
           "anchor": "def build_memory_read_result_from_slice(",
-          "line": 195
+          "line": 200
         },
         {
           "path": "memory_core/tools/get_paths.py",
           "symbol": "resolve_memory_get_path",
           "anchor": "def resolve_memory_get_path(",
           "line": 56
+        },
+        {
+          "path": "memory_core/tools/common.py",
+          "symbol": "as_tool_params_record",
+          "anchor": "def as_tool_params_record(",
+          "line": 121
+        },
+        {
+          "path": "memory_core/tools/common.py",
+          "symbol": "read_string_param",
+          "anchor": "def read_string_param(",
+          "line": 199
+        },
+        {
+          "path": "memory_core/tools/common.py",
+          "symbol": "read_positive_integer_param",
+          "anchor": "def read_positive_integer_param(",
+          "line": 223
+        },
+        {
+          "path": "memory_core/tools/common.py",
+          "symbol": "MemoryToolError",
+          "anchor": "class MemoryToolError(",
+          "line": 45
+        },
+        {
+          "path": "memory_core/tools/common.py",
+          "symbol": "MemoryToolInputError",
+          "anchor": "class MemoryToolInputError(",
+          "line": 59
+        },
+        {
+          "path": "memory_core/tools/memory_get.py",
+          "symbol": "execute_memory_get_tool",
+          "anchor": "def execute_memory_get_tool(",
+          "line": 137
+        },
+        {
+          "path": "memory_core/supplements.py",
+          "symbol": "RegisteredMemoryCorpusSupplement",
+          "anchor": "class RegisteredMemoryCorpusSupplement:",
+          "line": 30
         }
       ],
       "implementation": "partial",
       "notes": [
         "The model-facing factory, raw parameter readers and shared excerpt builders preserve complete get envelopes, UTF-16-safe paging, missing sources and portable filesystem policy causes. Registered excerpt readers receive trusted lookup/range/context and retain all provider details without a second slice.",
         "Configured plain extra file/directory roots are supported; glob patterns, descriptor races, retry timing and general OS-owned cause text remain unverified. An ordinary symlink-loop diagnostic preserves the Python/Node cause difference without acceptance credit.",
-        "Supplemental reads remain synchronous in the SDK; native absolute deadlines and cancellation transitions belong to the separate deadline/unavailable contracts. This source inventory alone grants no behavior credit."
+        "Wiki and combined reads now use the shared absolute corpus deadline, original caller cancellation and completed-supplement snapshots; built-in-only reads retain their unguarded file-reader path. Deadline/unavailable behavioral profiles belong to their separate contracts; inventory presence grants no acceptance credit."
       ]
     },
     {
@@ -1391,32 +1529,153 @@
           "symbol": "runMemoryCorpusDeadline",
           "anchor": "export async function runMemoryCorpusDeadline<T>(params: {",
           "line": 111
+        },
+        {
+          "path": "extensions/memory-core/src/memory/search-deadline.ts",
+          "symbol": "createMemorySearchDeadlineError",
+          "anchor": "export function createMemorySearchDeadlineError(",
+          "line": 18
+        },
+        {
+          "path": "extensions/memory-core/src/memory/search-deadline.ts",
+          "symbol": "isMemorySearchDeadlineError",
+          "anchor": "export function isMemorySearchDeadlineError(",
+          "line": 24
+        },
+        {
+          "path": "extensions/memory-core/src/memory/search-deadline.ts",
+          "symbol": "resolveMemorySearchAbortError",
+          "anchor": "export function resolveMemorySearchAbortError(",
+          "line": 2
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/search-deadline-control.ts",
+          "symbol": "createMemorySearchDeadlineControl",
+          "anchor": "export function createMemorySearchDeadlineControl(",
+          "line": 36
+        },
+        {
+          "path": "extensions/memory-core/src/tools.ts",
+          "symbol": "recordMemorySearchToolCooldown",
+          "anchor": "function recordMemorySearchToolCooldown(",
+          "line": 120
+        },
+        {
+          "path": "extensions/memory-core/src/memory-corpus.ts",
+          "symbol": "raceMemoryCorpusSignal",
+          "anchor": "async function raceMemoryCorpusSignal<T>(",
+          "line": 66
+        },
+        {
+          "path": "extensions/memory-core/src/memory-read-tool.ts",
+          "symbol": "executeMemoryReadResult",
+          "anchor": "export async function executeMemoryReadResult(",
+          "line": 55
+        },
+        {
+          "path": "extensions/memory-core/src/memory-read-tool.ts",
+          "symbol": "executeWikiMemoryReadResult",
+          "anchor": "export async function executeWikiMemoryReadResult(",
+          "line": 39
         }
       ],
       "python": [
         {
-          "path": "memory_core/tools/memory_search.py",
-          "symbol": "_DeadlineWorker",
-          "anchor": "class _DeadlineWorker:",
-          "line": 441
+          "path": "memory_core/tools/deadline.py",
+          "symbol": "MemoryToolDeadlineContext",
+          "anchor": "class MemoryToolDeadlineContext:",
+          "line": 66
+        },
+        {
+          "path": "memory_core/tools/deadline.py",
+          "symbol": "DeadlineWorker",
+          "anchor": "class DeadlineWorker:",
+          "line": 326
+        },
+        {
+          "path": "memory_core/tools/deadline.py",
+          "symbol": "SignalWorker",
+          "anchor": "class SignalWorker:",
+          "line": 230
+        },
+        {
+          "path": "memory_core/tools/deadline.py",
+          "symbol": "run_memory_search_with_deadline",
+          "anchor": "def run_memory_search_with_deadline(",
+          "line": 348
+        },
+        {
+          "path": "memory_core/tools/deadline.py",
+          "symbol": "run_memory_corpus_deadline",
+          "anchor": "def run_memory_corpus_deadline(",
+          "line": 306
+        },
+        {
+          "path": "memory_core/tools/deadline.py",
+          "symbol": "MemorySearchDeadlineControl",
+          "anchor": "class MemorySearchDeadlineControl:",
+          "line": 75
+        },
+        {
+          "path": "memory_core/tools/deadline.py",
+          "symbol": "create_memory_search_deadline_error",
+          "anchor": "def create_memory_search_deadline_error(",
+          "line": 30
+        },
+        {
+          "path": "memory_core/tools/deadline.py",
+          "symbol": "is_memory_search_deadline_error",
+          "anchor": "def is_memory_search_deadline_error(",
+          "line": 44
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "read_memory_search_tool_cooldown_failure",
-          "anchor": "def read_memory_search_tool_cooldown_failure(key: str) -> CorpusFailure | None:",
-          "line": 368
+          "anchor": "def read_memory_search_tool_cooldown_failure(",
+          "line": 377
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "record_memory_search_tool_cooldown",
           "anchor": "def record_memory_search_tool_cooldown(",
-          "line": 405
+          "line": 420
+        },
+        {
+          "path": "memory_core/tools/memory_search.py",
+          "symbol": "_search_configuration_key",
+          "anchor": "def _search_configuration_key(",
+          "line": 629
+        },
+        {
+          "path": "memory_core/cancellation.py",
+          "symbol": "CancellationSignal",
+          "anchor": "class CancellationSignal:",
+          "line": 27
+        },
+        {
+          "path": "memory_core/cancellation.py",
+          "symbol": "resolve_memory_search_abort_error",
+          "anchor": "def resolve_memory_search_abort_error(",
+          "line": 82
+        },
+        {
+          "path": "memory_core/tools/memory_get.py",
+          "symbol": "memory_get",
+          "anchor": "def memory_get(",
+          "line": 252
+        },
+        {
+          "path": "memory_core/tools/get_factory.py",
+          "symbol": "MemoryGetTool",
+          "anchor": "class MemoryGetTool:",
+          "line": 39
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python memory_search has absolute worker waits, cancellation checkpoints and process-wide agent/store cooldowns with separate supplemental outcomes; memory_get has no equivalent deadline.",
-        "Python timed-out semantic search runs a fresh keyword-only FTS pass instead of returning the native manager first-stage partial snapshot, changing work and snapshot boundaries."
+        "Shared Python deadline owners use monotonic active budgets, balanced pause/resume, original parent exception reasons and identity-registered timeout provenance. Workers settle before later joins; search cooldowns include configuration identity within the existing store/agent scope.",
+        "Wiki and combined memory_get reads use the corpus deadline and concurrent corpus attempts; built-in-only memory_get retains the native unguarded reader path. Default timers and waits are real host operations, with injectable trusted scheduling dependencies for controlled execution.",
+        "Managed model-service readiness, arbitrary host scheduling and the complete provider runtime remain separate integration surfaces. These source counterparts and locations grant no behavioral acceptance credit."
       ]
     },
     {
@@ -1443,6 +1702,24 @@
           "symbol": "executeMemorySearchToolQuery",
           "anchor": "export async function executeMemorySearchToolQuery(params: {",
           "line": 72
+        },
+        {
+          "path": "extensions/memory-core/src/memory-corpus.ts",
+          "symbol": "unavailableMemoryCorpus",
+          "anchor": "export function unavailableMemoryCorpus<T>(",
+          "line": 49
+        },
+        {
+          "path": "extensions/memory-core/src/memory-corpus.ts",
+          "symbol": "attemptMemoryCorpus",
+          "anchor": "export async function attemptMemoryCorpus<T>(",
+          "line": 89
+        },
+        {
+          "path": "extensions/memory-core/src/memory-corpus.ts",
+          "symbol": "settleMemorySupplements",
+          "anchor": "async function settleMemorySupplements<T>(",
+          "line": 223
         }
       ],
       "python": [
@@ -1450,25 +1727,68 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "build_memory_search_unavailable_result",
           "anchor": "def build_memory_search_unavailable_result(",
-          "line": 175
+          "line": 185
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_settle_memory_attempt",
           "anchor": "def _settle_memory_attempt(",
-          "line": 1024
+          "line": 1173
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_merge_corpus_results",
           "anchor": "def _merge_corpus_results(",
-          "line": 1132
+          "line": 1269
+        },
+        {
+          "path": "memory_core/tools/corpus.py",
+          "symbol": "unavailable_corpus",
+          "anchor": "def unavailable_corpus(",
+          "line": 71
+        },
+        {
+          "path": "memory_core/tools/corpus.py",
+          "symbol": "attempt_corpus",
+          "anchor": "def attempt_corpus(",
+          "line": 85
+        },
+        {
+          "path": "memory_core/tools/corpus.py",
+          "symbol": "settle_supplements",
+          "anchor": "def settle_supplements(",
+          "line": 109
+        },
+        {
+          "path": "memory_core/tools/corpus.py",
+          "symbol": "compose_memory_corpus_metadata",
+          "anchor": "def compose_memory_corpus_metadata(",
+          "line": 215
+        },
+        {
+          "path": "memory_core/tools/memory_search.py",
+          "symbol": "_run_memory_search_tool",
+          "anchor": "def _run_memory_search_tool(",
+          "line": 812
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "SQLiteMemoryStore._search_candidates",
+          "anchor": "    def _search_candidates(",
+          "line": 1080
+        },
+        {
+          "path": "memory_core/tools/memory_get.py",
+          "symbol": "memory_get",
+          "anchor": "def memory_get(",
+          "line": 252
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python records per-corpus success/failure and partial result metadata. Trusted host status now supplies stale/rebuild notices, but fallback partials still use another FTS query; actual provider deadlines, stale/rebuild transitions and later-query recovery require paired lifecycle evidence.",
-        "Later explicit-query recovery is represented by Python cooldown expiry and explicit host index repair, not the complete native provider/index lifecycle; failure order and dispatch counts require paired tests."
+        "The SQLite search owner can publish finalized memory-file keyword candidates before query embedding. The tool admits generation/status-valid snapshots from that same search, retires publication after settlement and does not run a second post-timeout FTS query.",
+        "Shared corpus owners preserve completed registered supplement values and ordered failures on cancellation. Timeout guidance derives from private error identity; published keyword partials avoid the full-failure cooldown. Retry, refresh and stale/rebuild presentation have explicit host/manager owners.",
+        "Source presence does not prove general provider fallback, managed readiness or all recovery lifecycles. Behavioral evidence and its bounded profiles are tracked separately from this inventory."
       ]
     },
     {
@@ -1578,7 +1898,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "read_index_source",
           "anchor": "def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:",
-          "line": 145
+          "line": 146
         }
       ],
       "implementation": "partial",
@@ -2847,7 +3167,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 472
+          "line": 478
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -2859,7 +3179,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 326
+          "line": 332
         }
       ],
       "implementation": "partial",
@@ -3360,7 +3680,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 472
+          "line": 478
         },
         {
           "path": "memory_core/consolidation/artifacts.py",
@@ -3384,7 +3704,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 326
+          "line": 332
         }
       ],
       "implementation": "partial",
@@ -4899,6 +5219,18 @@
       ]
     },
     {
+      "path": "packages/memory-host-sdk/src/host/search-deadline-control.ts",
+      "sha256": "ac3eee0e159c9d949c5367a1e8e40ead6b1c2a5433f9d925dc29184b9dc3208b",
+      "sourceImports": [],
+      "exportedDeclarations": [
+        "MEMORY_SEARCH_DEADLINE_CONTROL",
+        "MemorySearchDeadlineControl",
+        "MemorySearchDeadlineControlAction",
+        "MemorySearchDeadlineControlOptions",
+        "createMemorySearchDeadlineControl"
+      ]
+    },
+    {
       "path": "packages/memory-host-sdk/src/host/session-entry-projection.ts",
       "sha256": "34458bdb1827bc240626c7f81f6840ce5b23263e3f37b5342881f3ec9eaaad8d",
       "sourceImports": [
@@ -5601,6 +5933,55 @@
         "sanitizeToolCallInputs",
         "sanitizeToolUseResultPairing",
         "sanitizeToolUseResultPairingForModel"
+      ]
+    },
+    {
+      "path": "src/agents/tool-input-error.ts",
+      "sha256": "70582ae2f67d5d23ce514ee93f249e2c659ddf32e7bf70b1692dcadcf03af7bc",
+      "sourceImports": [],
+      "exportedDeclarations": [
+        "ToolAuthorizationError",
+        "ToolInputError",
+        "isTrustedToolInputError"
+      ]
+    },
+    {
+      "path": "src/agents/tools/common.ts",
+      "sha256": "3140b2be2998afbd24d2ab68e1d206e86c7dd8ed8147a2b4ff77304419f7c7dc",
+      "sourceImports": [
+        "../../../packages/agent-core/src/types.js",
+        "../../infra/fs-safe.js",
+        "../../param-key.js",
+        "../image-sanitization.js",
+        "../tool-images.runtime.js",
+        "../tool-input-error.js",
+        "./tool-results.js",
+        "@openclaw/media-core/mime",
+        "@openclaw/normalization-core/number-coercion",
+        "@openclaw/normalization-core/record-coerce",
+        "@openclaw/normalization-core/string-normalization",
+        "typebox"
+      ],
+      "exportedDeclarations": [
+        "ActionGate",
+        "AgentToolWithMeta",
+        "AnyAgentTool",
+        "asToolParamsRecord",
+        "createActionGate",
+        "failedTextResult",
+        "imageResultFromFile",
+        "normalizeToolModelOverride",
+        "parseAvailableTags",
+        "payloadTextResult",
+        "readFiniteNumberParam",
+        "readNonNegativeIntegerParam",
+        "readNumberParam",
+        "readPositiveIntegerParam",
+        "readReactionParams",
+        "readStringArrayParam",
+        "readStringOrNumberParam",
+        "readToolStringParam",
+        "scheduleToolProgress"
       ]
     },
     {

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from memory_core.cancellation import CancellationSignal
+from memory_core.tools.deadline import MemorySearchDeadlineControl
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 from memory_core.consolidation.origins import IndexRevisionFence, MemoryIndexRevisionConflictError
@@ -206,6 +207,10 @@ def validate_store_config(config: MemoryConfig, embeddings: EmbeddingProvider | 
 
 
 class SQLiteMemoryStore:
+    # Backends opting into the tool's partial-result callback implement the
+    # same optional search keyword. Legacy backends need not accept it.
+    supports_partial_results = True
+
     def __init__(
         self,
         config: MemoryConfig,
@@ -240,7 +245,8 @@ class SQLiteMemoryStore:
         remove_listener = signal.add_listener(db.interrupt) if signal is not None else None
         try:
             # All lexical/path/vector probes and their identity gate use one
-            # reader generation. Query embedding happens before this is opened.
+            # reader generation. An early partial keyword lease is released
+            # before provider work; the final pass uses one complete generation.
             db.execute("BEGIN")
             yield db
         finally:
@@ -768,6 +774,10 @@ class SQLiteMemoryStore:
         sources: set[str] | None = None,
         signal: CancellationSignal | None = None,
         active_project_keys: Sequence[str] | None = None,
+        on_partial_results: Callable[[list[HybridResult] | None], None] | None = None,
+        session_key: str | None = None,
+        on_debug: Callable[[dict[str, Any]], None] | None = None,
+        deadline_control: MemorySearchDeadlineControl | None = None,
     ) -> list[HybridResult]:
         """Search the index; ``signal`` aborts it at the next checkpoint.
 
@@ -782,14 +792,31 @@ class SQLiteMemoryStore:
         ranked, then trimmed to ``max_results``: keyword hits (chunk text and file path, with
         exact-path tiers), vector hits, the hybrid merge with temporal decay and MMR, and the
         selection under ``min_score``.
+
+        ``on_partial_results`` receives finalized memory-file keyword hits
+        before query embedding; ``None`` invalidates an earlier snapshot.
+        Session authority and managed-provider readiness belong to the host;
+        their optional controls share the capable-backend call protocol.
         """
+        del session_key, on_debug, deadline_control
         normalized = js_trim(query)
         if not normalized:
             return []
         _checkpoint(signal)
         # memory/manager.ts:680-685: no hits unless the index identity is valid.
         if self.index_identity()["status"] != "valid":
+            if on_partial_results is not None:
+                on_partial_results(None)
             return []
+        def publish_partial(results: list[HybridResult] | None) -> None:
+            if on_partial_results is not None:
+                # Match the requested manager window and keep a caller from
+                # mutating metadata used by the later complete result.
+                on_partial_results(None if results is None else [
+                    dataclasses.replace(deepcopy(result), source_mtime=HYBRID_METADATA_MISSING)
+                    for result in results[:max_results]
+                ])
+
         window = (SEARCH_CANDIDATE_UNIVERSE if active_project_keys
                   else max(SEARCH_CANDIDATE_UNIVERSE, max_results))
         results = self._search_candidates(
@@ -799,6 +826,7 @@ class SQLiteMemoryStore:
             sources=sources,
             signal=signal,
             active_project_keys=active_project_keys,
+            on_partial_results=publish_partial if on_partial_results is not None else None,
         )
         return [dataclasses.replace(result, source_mtime=HYBRID_METADATA_MISSING)
                 for result in results[:max_results]]
@@ -809,10 +837,9 @@ class SQLiteMemoryStore:
     ) -> list[HybridResult]:
         """Memory-file keyword hits without the query embedding.
 
-        What ``memory_search`` returns as a partial result when semantic retrieval
-        misses its deadline (OpenClaw's ``onPartialResults`` of the memory manager):
-        FTS only, session transcripts excluded, nothing when keyword search is off or
-        the index identity is not valid.
+        This explicit helper excludes sessions and refuses a stale index. Tool
+        partials instead come from ``search``'s pre-embedding publisher; the
+        deadline path must not start another FTS query after its budget expires.
         """
         normalized = js_trim(query)
         if (
@@ -1059,6 +1086,7 @@ class SQLiteMemoryStore:
         sources: set[str] | None,
         signal: CancellationSignal | None,
         active_project_keys: Sequence[str] | None = None,
+        on_partial_results: Callable[[list[HybridResult] | None], None] | None = None,
     ) -> list[HybridResult]:
         source_filter = _source_filter_clause(sources)
         candidates = min(200, max(1, max_results * HYBRID_CANDIDATE_MULTIPLIER))
@@ -1066,23 +1094,67 @@ class SQLiteMemoryStore:
         vector_ready = self.flags.vector_search
         query_embedding: list[float] = []
         provider_identity = self._provider_identities() if vector_ready else None
-        if vector_ready:
-            query_embedding = self.embeddings.embed_query(query)
+        prepared_keyword: list[KeywordHit] | None = None
+        prepared_revision: int | None = None
+        if vector_ready and self.flags.text_search and on_partial_results is not None:
+            # Publish actual FTS work before embedding can block. Release the
+            # transaction while waiting so an uncooperative provider cannot
+            # retain a read lock after the caller's deadline has elapsed.
+            with self._search_connection(signal) as db:
+                if (self._provider_identities() != provider_identity
+                        or self.index_identity(db=db)["status"] != "valid"):
+                    on_partial_results(None)
+                    return []
+                prepared_revision = self.index_revision(db=db)
+                prepared_keyword = self._search_keyword_with_fallback(
+                    db, query, candidates, source_filter, signal,
+                )
+                prepared_keyword = self.attach_recall_metadata(
+                    prepared_keyword, db=db, signal=signal,
+                )
+                memory_hits = [hit for hit in prepared_keyword if hit.source == "memory"]
+                partial = self._finalize_keyword_only(
+                    memory_hits, max_results, min_score, active_project_keys=active_project_keys,
+                ) if memory_hits else []
             _checkpoint(signal)
+            if partial:
+                on_partial_results(partial)
+        if vector_ready:
+            try:
+                query_embedding = self.embeddings.embed_query(query)
+                _checkpoint(signal)
+            except BaseException:
+                if on_partial_results is not None and not (signal is not None and signal.aborted):
+                    on_partial_results(None)
+                raise
             if self._provider_identities() != provider_identity:
+                if on_partial_results is not None:
+                    on_partial_results(None)
                 return []
         with self._search_connection(signal) as db:
             if vector_ready and self._provider_identities() != provider_identity:
+                if on_partial_results is not None:
+                    on_partial_results(None)
                 return []
             if self.index_identity(db=db)["status"] != "valid":
+                if on_partial_results is not None:
+                    on_partial_results(None)
                 return []
+            same_generation = (prepared_revision is not None
+                               and self.index_revision(db=db) == prepared_revision)
+            if (prepared_revision is not None and not same_generation
+                    and on_partial_results is not None):
+                on_partial_results(None)
             if db.execute("SELECT 1 FROM chunks LIMIT 1").fetchone() is None:
                 return []
             if self.flags.text_search:
-                keyword = self._search_keyword_with_fallback(
-                    db, query, candidates, source_filter, signal
-                )
-                keyword = self.attach_recall_metadata(keyword, db=db, signal=signal)
+                if same_generation and prepared_keyword is not None:
+                    keyword = prepared_keyword
+                else:
+                    keyword = self._search_keyword_with_fallback(
+                        db, query, candidates, source_filter, signal
+                    )
+                    keyword = self.attach_recall_metadata(keyword, db=db, signal=signal)
             vector: list[HybridVectorResult] = []
             if vector_ready and any(value != 0 for value in query_embedding):
                 match_exact_path = prepare_exact_path_matcher(query)

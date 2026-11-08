@@ -32,23 +32,25 @@ provider/model/settings returns the paused result (no cooldown) until
 from __future__ import annotations
 
 import copy
-import math
+import hashlib
+import json
 import re
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from memory_core.bootstrap._js import js_trim
-from memory_core.cancellation import CancellationSignal
+from memory_core.cancellation import CancellationSignal, resolve_memory_search_abort_error
 from memory_core.config import MemoryConfig
 from memory_core.index.hybrid import HYBRID_METADATA_MISSING
 from memory_core.index.sqlite_store import SQLiteMemoryStore
-from memory_core.project_name import DIST_NAME
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
-from memory_core.supplements import MemoryCorpusResult, MemoryCorpusSupplement, sort_corpus_results
+from memory_core.supplements import (
+    MemoryCorpusResult, MemoryCorpusSupplement, RegisteredMemoryCorpusSupplement, sort_corpus_results,
+)
 from memory_core.tools.citations import (
     build_memory_search_presentation,
     resolve_memory_citations_mode,
@@ -60,6 +62,14 @@ from memory_core.tools.corpus import (
     compose_memory_corpus_metadata,
     error_code,
     settle_supplements,
+)
+from memory_core.tools.deadline import (
+    DeadlineOutcome,
+    MemorySearchDeadlineControl,
+    MemoryToolDeadlineContext,
+    SignalWorker,
+    is_memory_search_deadline_error,
+    run_memory_corpus_deadline,
 )
 from memory_core.tools.memory_get import (
     MEMORY_TOOL_CORPUS_OUTCOME_GUIDANCE,
@@ -321,13 +331,12 @@ def build_paused_memory_index_unavailable_result(
 
 # Process-wide cooldowns (tools.ts memorySearchToolCooldowns): the failure that paused the
 # store, so a repeated call reports the same error, code and deadline provenance.
-_cooldowns: dict[str, tuple[float, CorpusFailure]] = {}
+_cooldowns: dict[str, tuple[float, CorpusFailure, str | None]] = {}
 _cooldowns_lock = threading.Lock()
 
 
 def _now_ms() -> float:
-    # Monotonic clock (upstream reads Date.now()); tests replace it.
-    return time.monotonic() * 1000
+    return time.time() * 1000
 
 
 def resolve_memory_search_tool_cooldown_key(
@@ -365,14 +374,20 @@ def memory_search_tool_cooldown_key(
     return f"{Path(store_path).resolve()}\0{agent_key}"
 
 
-def read_memory_search_tool_cooldown_failure(key: str) -> CorpusFailure | None:
+def read_memory_search_tool_cooldown_failure(
+    key: str, *, config_key: str | None = None,
+    now_ms: float | Callable[[], float] | None = None,
+) -> CorpusFailure | None:
     """The failure of an active cooldown for ``key``, dropping it once expired."""
     with _cooldowns_lock:
         entry = _cooldowns.get(key)
         if entry is None:
             return None
-        until, failure = entry
-        if until <= _now_ms():
+        until, failure, recorded_config = entry
+        now = now_ms() if callable(now_ms) else now_ms if now_ms is not None else _now_ms()
+        if (until <= now
+                or (config_key is not None and recorded_config is not None
+                    and config_key != recorded_config)):
             del _cooldowns[key]
             return None
         return failure
@@ -394,7 +409,7 @@ def memory_search_tool_cooldown_remaining(key: str) -> tuple[float, str] | None:
         entry = _cooldowns.get(key)
         if entry is None:
             return None
-        until, failure = entry
+        until, failure, _ = entry
         remaining = until - _now_ms()
         if remaining <= 0:
             del _cooldowns[key]
@@ -403,13 +418,15 @@ def memory_search_tool_cooldown_remaining(key: str) -> tuple[float, str] | None:
 
 
 def record_memory_search_tool_cooldown(
-    key: str, error: str, *, deadline: bool = False, code: str | None = None
+    key: str, error: str, *, deadline: bool = False, code: str | None = None,
+    config_key: str | None = None, now_ms: float | None = None,
 ) -> None:
     """tools.ts:95-100: pause memory search for ``key`` for 60 s."""
     with _cooldowns_lock:
         _cooldowns[key] = (
-            _now_ms() + MEMORY_SEARCH_TOOL_COOLDOWN_MS,
+            (now_ms if now_ms is not None else _now_ms()) + MEMORY_SEARCH_TOOL_COOLDOWN_MS,
             CorpusFailure(error=error, deadline=deadline, code=code),
+            config_key,
         )
 
 
@@ -419,65 +436,18 @@ def reset_memory_search_tool_cooldowns() -> None:
         _cooldowns.clear()
 
 
-def _js_round(value: float) -> int:
-    # Math.round: halves round towards +infinity.
-    return math.floor(value + 0.5)
-
-
 def _deadline_seconds(timeout_ms: int) -> float:
-    # How long the caller waits; tests shorten it without changing the message.
+    # Convert the configured timer delay for the default scheduler.
     return timeout_ms / 1000
 
 
-@dataclass(frozen=True)
-class _DeadlineOutcome:
-    status: str
-    value: Any = None
-    error: str | None = None
-    code: str | None = None
-    deadline: bool = False
-
-
-class _DeadlineWorker:
-    """``runMemoryCorpusDeadline`` (memory-corpus.ts) on a worker thread.
-
-    Works from any thread and inside a running event loop (no signals, no loop
-    access). :meth:`wait` settles the outcome first and only then aborts the signal,
-    so an abort-aware store cannot replace the stable timeout error.
-    """
-
-    def __init__(self, label: str, run: Callable[[CancellationSignal], Any]) -> None:
-        self.label = label
-        self.signal = CancellationSignal()
-        self._done = threading.Event()
-        self._box: dict[str, Any] = {}
-        self._started_at = time.monotonic()
-        self._run = run
-        threading.Thread(
-            target=self._work, name=f"{DIST_NAME}-memory-{label}", daemon=True
-        ).start()
-
-    def _work(self) -> None:
-        try:
-            self._box["value"] = self._run(self.signal)
-        except BaseException as error:  # reported to the caller as unavailable
-            self._box["error"] = error
-        finally:
-            self._done.set()
-
-    def wait(self, timeout_ms: int) -> _DeadlineOutcome:
-        timeout_message = f"{self.label} timed out after {_js_round(timeout_ms / 1000)}s"
-        remaining = max(0.0, _deadline_seconds(timeout_ms) - (time.monotonic() - self._started_at))
-        if not self._done.wait(remaining):
-            outcome = _DeadlineOutcome(status="unavailable", error=timeout_message, deadline=True)
-            self.signal.abort(timeout_message)
-            return outcome
-        if "error" in self._box:
-            error = self._box["error"]
-            return _DeadlineOutcome(
-                status="unavailable", error=format_error_message(error), code=error_code(error)
-            )
-        return _DeadlineOutcome(status="ok", value=self._box["value"])
+def _search_execution(context: MemorySearchToolContext) -> MemoryToolDeadlineContext:
+    if context.execution is not None:
+        return context.execution
+    execution = MemoryToolDeadlineContext()
+    return replace(execution, schedule=lambda delay, callback: execution.schedule(
+        _deadline_seconds(delay) * 1000, callback,
+    ))
 
 
 @dataclass(frozen=True)
@@ -511,6 +481,9 @@ class MemorySearchToolContext:
     clock: Callable[[], float] = _wall_clock_ms
     conversation_recall_corpus: str | None = None
     enabled: bool | Callable[[], bool] = True
+    execution: MemoryToolDeadlineContext | None = None
+    refresh_store: Callable[[], SQLiteMemoryStore | None] | None = None
+    sandboxed: bool | None = None
 
 
 def read_memory_search_params(params: object) -> MemorySearchParams:
@@ -561,20 +534,48 @@ def execute_memory_search_tool(
         raise MemoryToolError(
             "Memory is disabled for this agent. Enable memory search for this agent, then retry."
         )
+    execution = _search_execution(context)
+    if execution.signal is not None:
+        execution.signal.throw_if_aborted()
     parsed = read_memory_search_params(params)
+    requested_corpus = (
+        "sessions" if context.conversation_recall_corpus == "sessions" else parsed.corpus
+    )
+    if (requested_corpus == "sessions" and not config.session_search
+            and context.conversation_recall_corpus is None):
+        return build_memory_search_unavailable_result(
+            MEMORY_SEARCH_SESSIONS_DISABLED_REASON,
+            warning=MEMORY_SEARCH_SESSIONS_DISABLED_WARNING,
+            action=runtime_identity.memory_search_sessions_disabled_action,
+            runtime_identity=runtime_identity,
+        )
     # Like native MemoryToolOptions, this is trusted host context rather than
     # a model-authored tool parameter. Keep one snapshot across worker/fallback.
     active_projects = tuple(active_project_keys) if active_project_keys is not None else None
-    return _run_memory_search_tool(
-        config,
-        store,
-        parsed,
-        supplements=supplements or [],
-        agent_session_key=agent_session_key,
-        runtime_identity=runtime_identity,
-        active_project_keys=active_projects,
-        context=context,
-    )
+    def run(signal: CancellationSignal, control: MemorySearchDeadlineControl) -> dict:
+        return _run_memory_search_tool(
+            config, store, parsed, supplements=supplements or [],
+            agent_session_key=agent_session_key, runtime_identity=runtime_identity,
+            active_project_keys=active_projects, context=context,
+            signal=signal, deadline_control=control, execution=execution,
+        )
+
+    try:
+        return run_memory_corpus_deadline("memory_search", run, context=execution)
+    except Exception as error:
+        if execution.signal is not None and execution.signal.aborted:
+            raise resolve_memory_search_abort_error(execution.signal)
+        deadline = is_memory_search_deadline_error(error)
+        if requested_corpus != "wiki":
+            record_memory_search_tool_cooldown(
+                memory_search_tool_cooldown_key(config, store, agent_session_key=agent_session_key),
+                format_error_message(error), deadline=deadline, code=error_code(error),
+                config_key=_search_configuration_key(config, store), now_ms=context.clock(),
+            )
+        return build_memory_search_unavailable_result(
+            format_error_message(error), agent_id=config.agent_id, deadline=deadline,
+            code=error_code(error), runtime_identity=runtime_identity,
+        )
 
 
 def memory_search(
@@ -623,6 +624,30 @@ def _failure_attempt(corpus: str, failure: CorpusFailure, value: Any = None) -> 
         code=failure.code,
         deadline=failure.deadline,
     )
+
+
+def _search_configuration_key(config: MemoryConfig, store: SQLiteMemoryStore) -> str:
+    """Bind a failure to its actual configuration and provider identity.
+
+    The store path remains part of the cooldown ownership key. Status counters
+    are deliberately absent: a changing hit count is not a config revision.
+    """
+    identities = getattr(store, "_provider_identities", None)
+    if callable(identities):
+        provider: Any = identities()
+    else:
+        embeddings = store.embeddings
+        metadata = getattr(embeddings, "cache_key_data", None)
+        provider = {
+            "provider": getattr(embeddings, "provider_id", None),
+            "model": getattr(embeddings, "model", None),
+            "settings": metadata() if callable(metadata) else metadata,
+        }
+    encoded = json.dumps(
+        {"config": asdict(config), "provider": provider}, sort_keys=True, default=str,
+        ensure_ascii=True, separators=(",", ":"),
+    )
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _read_manager_status(
@@ -742,8 +767,9 @@ def _search_debug(
     *, status: Mapping[str, Any], context: MemorySearchToolContext, started_at: float,
     hits: int, candidates: int, filtered: int, window: int,
     effective_mode: str | None = None,
+    runtime_events: Sequence[Mapping[str, Any]] = (),
 ) -> tuple[dict[str, Any], str | None]:
-    events = _runtime_debug_events(context)
+    events = [*runtime_events, *_runtime_debug_events(context)]
     latest = events[-1] if events else {}
     debug: dict[str, Any] = {
         "effectiveMode": effective_mode or "n/a",
@@ -765,6 +791,24 @@ def _search_debug(
     return debug, effective_mode or latest.get("effectiveMode")
 
 
+def _is_closed_store_error(error: BaseException) -> bool:
+    message = format_error_message(error).lower()
+    return any(fragment in message for fragment in (
+        "database is not open", "database connection is not open", "database handle is closed",
+        "memory index manager is closed",
+    ))
+
+
+def _store_owner(config: MemoryConfig, store: SQLiteMemoryStore) -> tuple[Path, Path, str]:
+    owner_config = getattr(store, "config", None) or config
+    store_path = getattr(store, "path", None)
+    return (
+        Path(owner_config.workspace_dir).resolve(),
+        Path(store_path if store_path is not None else owner_config.resolved_store_path()).resolve(),
+        owner_config.agent_id,
+    )
+
+
 def _run_memory_search_tool(
     config: MemoryConfig,
     store: SQLiteMemoryStore,
@@ -775,34 +819,33 @@ def _run_memory_search_tool(
     runtime_identity: RuntimeIdentity,
     active_project_keys: Sequence[str] | None = None,
     context: MemorySearchToolContext,
+    signal: CancellationSignal,
+    deadline_control: MemorySearchDeadlineControl,
+    execution: MemoryToolDeadlineContext,
 ) -> dict:
     """``createMemorySearchTool``'s execute (tools.ts:402-702).
 
     Memory and the wiki supplements are separate corpora, each with its own deadline
     and outcome; the result reports every corpus it covered (``corpora``), so a failed
-    corpus is surfaced next to the results of the other. A deadline
-    leaves the keyword-only pass to a fresh FTS query instead of a snapshot of the
-    manager's first stage.
+    corpus is surfaced next to the results of the other. A deadline can retain
+    only a valid memory-file snapshot published before the caller stopped
+    waiting; no new keyword query runs after expiry.
     """
     requested_corpus = (
         "sessions" if context.conversation_recall_corpus == "sessions" else params.corpus
     )
-    if (requested_corpus == "sessions" and not config.session_search
-            and context.conversation_recall_corpus is None):
-        return build_memory_search_unavailable_result(
-            MEMORY_SEARCH_SESSIONS_DISABLED_REASON,
-            warning=MEMORY_SEARCH_SESSIONS_DISABLED_WARNING,
-            action=runtime_identity.memory_search_sessions_disabled_action,
-            runtime_identity=runtime_identity,
-        )
     tool_started_at = context.clock()
     cooldown_key = memory_search_tool_cooldown_key(
         config, store, agent_session_key=agent_session_key
     )
     searches_memory = requested_corpus != "wiki"
     searches_wiki = requested_corpus in {"wiki", "all"}
+    configuration_key = _search_configuration_key(config, store) if searches_memory else ""
+    initial_owner = _store_owner(config, store)
     cooldown = (
-        read_memory_search_tool_cooldown_failure(cooldown_key) if searches_memory else None
+        read_memory_search_tool_cooldown_failure(
+            cooldown_key, config_key=configuration_key, now_ms=context.clock,
+        ) if searches_memory else None
     )
     max_results = (
         params.max_results if params.max_results is not None else config.search_max_results
@@ -812,14 +855,16 @@ def _run_memory_search_tool(
     )
     rebuild_readers: list[Callable[[], str | None]] = []
     search_state: dict[str, Any] = {}
+    partial_lock = threading.Lock()
+    search_state.update(partial=None, generation=0, accepting_partial=True, runtime_events=[])
 
     def read_rebuild_warning() -> str | None:
         warnings = list(dict.fromkeys(warning for read in rebuild_readers if (warning := read())))
         return " ".join(warnings) or None
 
-    def search_memory_worker(signal: CancellationSignal) -> dict:
-        started_at = context.clock()
-        search_state["started_at"] = started_at
+    def search_memory_once(signal: CancellationSignal) -> dict:
+        signal.throw_if_aborted()
+        started_at = search_state["started_at"]
         status = _read_manager_status(store, context)
         rebuild_readers.append(_capture_rebuild_notice(status))
         sources = _memory_sources_for_corpus(requested_corpus, session_search=config.session_search)
@@ -836,6 +881,58 @@ def _run_memory_search_tool(
         host_options: dict[str, Any] = {}
         if active_project_keys is not None:
             host_options["active_project_keys"] = active_project_keys
+
+        def on_debug(event: Mapping[str, Any]) -> None:
+            search_state["runtime_events"].append(event)
+
+        def publish_partial(items: list[Any] | None) -> None:
+            # Every publication first invalidates its predecessor. Work from an
+            # older provider/generation must not survive while its replacement
+            # is being finalized or after the caller has stopped waiting.
+            with partial_lock:
+                if not search_state["accepting_partial"]:
+                    return
+                search_state["generation"] += 1
+                generation = search_state["generation"]
+                search_state["partial"] = None
+            if signal.aborted or not items or requested_corpus == "sessions":
+                return
+            candidates = [_serialize_result(item) for item in items]
+            candidates = [item for item in candidates if item.get("source") == "memory"]
+            if not candidates:
+                return
+            partial_status = _read_manager_status(store, context)
+            identity = _status_identity(partial_status)
+            if identity is not None and resolve_paused_memory_index_identity(identity) is not None:
+                return
+            raw_results = candidates[:max_results]
+            debug, mode = _search_debug(
+                status=partial_status,
+                context=replace(context, manager_ms=search_state.get("manager_ms", context.manager_ms)),
+                started_at=started_at,
+                hits=len(raw_results), candidates=len(candidates), filtered=len(candidates),
+                window=window, effective_mode="keyword-only",
+                runtime_events=search_state["runtime_events"],
+            )
+            partial = {
+                "results": raw_results,
+                **{key: partial_status[key] for key in ("provider", "model", "fallback")
+                   if key in partial_status},
+                "mode": mode, "debug": debug,
+                "staleness": _resolve_search_staleness(partial_status, config.agent_id, runtime_identity),
+            }
+            with partial_lock:
+                if (search_state["accepting_partial"] and not signal.aborted
+                        and generation == search_state["generation"]):
+                    search_state["partial"] = partial
+
+        if getattr(store, "supports_partial_results", False):
+            host_options.update(
+                on_partial_results=publish_partial, on_debug=on_debug,
+                deadline_control=deadline_control,
+            )
+            if agent_session_key is not None:
+                host_options["session_key"] = agent_session_key
         hits = store.search(
             params.query,
             max_results=window,
@@ -864,8 +961,11 @@ def _run_memory_search_tool(
         filtered = [item for item in candidates if sources is None or item["source"] in sources]
         retained = filtered[:max_results]
         debug, mode = _search_debug(
-            status=status, context=context, started_at=started_at, hits=len(retained),
+            status=status,
+            context=replace(context, manager_ms=search_state.get("manager_ms", context.manager_ms)),
+            started_at=started_at, hits=len(retained),
             candidates=len(candidates), filtered=len(filtered), window=window,
+            runtime_events=search_state["runtime_events"],
         )
         return {
             "results": retained,
@@ -876,26 +976,67 @@ def _run_memory_search_tool(
             "debug": debug,
         }
 
+    def search_memory_worker(signal: CancellationSignal) -> dict:
+        nonlocal store
+        signal.throw_if_aborted()
+        search_state["started_at"] = context.clock()
+        try:
+            return search_memory_once(signal)
+        except Exception as error:
+            if (signal.aborted or not _is_closed_store_error(error)
+                    or context.refresh_store is None):
+                raise
+            with partial_lock:
+                search_state["generation"] += 1
+                search_state["partial"] = None
+            signal.throw_if_aborted()
+            manager_started = context.clock()
+            refreshed = context.refresh_store()
+            manager_ms = max(0, context.clock() - manager_started)
+            signal.throw_if_aborted()
+            if refreshed is None:
+                raise
+            if _store_owner(config, refreshed) != initial_owner:
+                raise MemoryToolError(
+                    "Refreshed memory search store belongs to a different workspace, index, or agent; "
+                    "create a new tool with its matching store.", tool=MEMORY_SEARCH_TOOL_NAME,
+                )
+            store = refreshed
+            search_state["manager_ms"] = manager_ms
+            return search_memory_once(signal)
+
     def wiki_worker(signal: CancellationSignal) -> CorpusAttempt:
-        del signal
         limit = max(1, params.max_results if params.max_results is not None else 10)
 
         def run(supplement: MemoryCorpusSupplement) -> list[MemoryCorpusResult]:
+            if isinstance(supplement, RegisteredMemoryCorpusSupplement):
+                return supplement.search_native(
+                    query=params.query, max_results=params.max_results,
+                    agent_id=config.agent_id, agent_session_key=agent_session_key,
+                    sandboxed=context.sandboxed,
+                )
             return supplement.search(query=params.query, max_results=limit, corpus=requested_corpus or "")
 
         return settle_supplements(
             supplements,
             run,
             lambda batches: sort_corpus_results([item for batch in batches for item in batch])[:limit],
+            signal=signal, context=execution,
         )
 
     memory_worker = (
-        _DeadlineWorker("memory_search", search_memory_worker)
+        SignalWorker(signal, search_memory_worker, context=execution)
         if searches_memory and cooldown is None
         else None
     )
     wiki_deadline_worker = (
-        _DeadlineWorker("memory_search", wiki_worker) if searches_wiki else None
+        SignalWorker(
+            execution.signal or CancellationSignal(),
+            lambda _signal: run_memory_corpus_deadline(
+                "memory_search", lambda wiki_signal, _control: wiki_worker(wiki_signal),
+                context=execution,
+            ), context=execution,
+        ) if searches_wiki else None
     )
 
     memory: CorpusAttempt | None = None
@@ -904,14 +1045,20 @@ def _run_memory_search_tool(
             memory = _failure_attempt("memory", cooldown)
         else:
             assert memory_worker is not None
+            outcome = memory_worker.wait()
+            if execution.signal is not None and execution.signal.aborted:
+                raise resolve_memory_search_abort_error(execution.signal)
+            with partial_lock:
+                search_state["accepting_partial"] = False
             memory = _settle_memory_attempt(
-                memory_worker.wait(MEMORY_SEARCH_TOOL_TIMEOUT_MS),
+                outcome,
                 store=store,
                 config=config,
                 params=params,
                 max_results=max_results,
                 min_score=min_score,
                 cooldown_key=cooldown_key,
+                configuration_key=configuration_key,
                 runtime_identity=runtime_identity,
                 active_project_keys=active_project_keys,
                 context=context,
@@ -920,7 +1067,9 @@ def _run_memory_search_tool(
             )
     wiki: CorpusAttempt | None = None
     if wiki_deadline_worker is not None:
-        outcome = wiki_deadline_worker.wait(MEMORY_SEARCH_TOOL_TIMEOUT_MS)
+        outcome = wiki_deadline_worker.wait()
+        if execution.signal is not None and execution.signal.aborted:
+            raise resolve_memory_search_abort_error(execution.signal)
         wiki = (
             outcome.value
             if outcome.status == "ok"
@@ -1022,7 +1171,7 @@ def _run_memory_search_tool(
 
 
 def _settle_memory_attempt(
-    outcome: _DeadlineOutcome,
+    outcome: DeadlineOutcome,
     *,
     store: SQLiteMemoryStore,
     config: MemoryConfig,
@@ -1030,6 +1179,7 @@ def _settle_memory_attempt(
     max_results: int,
     min_score: float,
     cooldown_key: str,
+    configuration_key: str,
     runtime_identity: RuntimeIdentity,
     active_project_keys: Sequence[str] | None = None,
     context: MemorySearchToolContext,
@@ -1059,35 +1209,21 @@ def _settle_memory_attempt(
             )
         return CorpusAttempt(corpus="memory", outcome="ok", value=value)
     if outcome.deadline:
-        # The keyword pass is what a deadline leaves: memory-file FTS hits without the
-        # query embedding. A failed or empty pass is an ordinary unavailable corpus.
-        try:
-            host_options: dict[str, Any] = {}
-            if active_project_keys is not None:
-                host_options["active_project_keys"] = active_project_keys
-            keyword_hits = store.search_memory_keywords(
-                params.query, max_results=max_results, min_score=min_score, **host_options,
-            )
-        except Exception:
-            keyword_hits = []
-        if keyword_hits:
-            status = _read_manager_status(store, context)
-            raw_hits = [_serialize_result(item) for item in keyword_hits]
-            debug, mode = _search_debug(
-                status=status, context=context,
-                started_at=search_state.get("started_at", context.clock()),
-                hits=len(raw_hits), candidates=len(raw_hits), filtered=len(raw_hits),
-                window=search_state.get("window", max_results), effective_mode="keyword-only",
-            )
-            debug["fallback"] = outcome.error
+        # Only evidence finalized before the deadline can survive. Starting a
+        # new FTS query here could observe another provider/index generation or
+        # spend an unbounded amount of time after the caller's budget expired.
+        snapshot = search_state.get("partial")
+        if snapshot and snapshot.get("results"):
+            debug = {
+                **snapshot["debug"],
+                "searchMs": max(0, context.clock() - search_state["started_at"]),
+                "fallback": outcome.error,
+            }
             return CorpusAttempt(
                 corpus="memory",
                 outcome="partial",
                 value={
-                    "results": raw_hits,
-                    **{key: status[key] for key in ("provider", "model", "fallback") if key in status},
-                    "mode": mode,
-                    "staleness": _resolve_search_staleness(status, config.agent_id, runtime_identity),
+                    **snapshot,
                     "automaticRebuildWarning": read_rebuild_warning(),
                     "debug": debug,
                 },
@@ -1095,7 +1231,8 @@ def _settle_memory_attempt(
                 deadline=True,
             )
     record_memory_search_tool_cooldown(
-        cooldown_key, outcome.error or "", deadline=outcome.deadline, code=outcome.code
+        cooldown_key, outcome.error or "", deadline=outcome.deadline, code=outcome.code,
+        config_key=configuration_key, now_ms=context.clock(),
     )
     return CorpusAttempt(
         corpus="memory",
@@ -1167,6 +1304,10 @@ def _serialize_result(item) -> dict:
     The search snippet already owns its retrieval budget. The memory_get read
     budget must not truncate it a second time or add fields absent upstream.
     """
+    if isinstance(item, Mapping):
+        result = dict(item)
+        result.pop("sourceMtime", None)
+        return result
     to_payload = getattr(item, "to_payload", None)
     if callable(to_payload):
         # The store owns native result-field presence for keyword, vector and

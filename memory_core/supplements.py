@@ -37,12 +37,35 @@ class RegisteredMemoryCorpusSupplement:
     plugin_id: str
     supplement: MemoryCorpusSupplement
     reader: Callable[..., MemoryCorpusResult | None] | None = None
+    searcher: Callable[..., list[MemoryCorpusResult]] | None = None
 
     def search(self, *, query: str, max_results: int, corpus: str) -> list[MemoryCorpusResult]:
         return self.supplement.search(query=query, max_results=max_results, corpus=corpus)
 
     def get(self, *, path: str, corpus: str) -> MemoryCorpusResult | None:
         return self.supplement.get(path=path, corpus=corpus)
+
+    def search_native(
+        self,
+        *,
+        query: str,
+        max_results: int | None = None,
+        agent_id: str | None = None,
+        agent_session_key: str | None = None,
+        sandboxed: bool | None = None,
+    ) -> list[MemoryCorpusResult]:
+        """Invoke an explicitly registered search callback with native option omission."""
+        if self.searcher is None:
+            return self.search(
+                query=query, max_results=max_results if max_results is not None else 10, corpus="wiki",
+            )
+        options = {
+            "max_results": max_results, "agent_id": agent_id,
+            "agent_session_key": agent_session_key, "sandboxed": sandboxed,
+        }
+        return self.searcher(query=query, **{
+            key: value for key, value in options.items() if value is not None
+        })
 
     def read(
         self,

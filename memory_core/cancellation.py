@@ -17,26 +17,34 @@ from collections.abc import Callable
 class OperationAbortedError(RuntimeError):
     """Raised at a checkpoint after the signal was aborted."""
 
+    name = "Error"
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
 
 class CancellationSignal:
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._reason: str | None = None
+        self._reason: object = None
+        self._aborted = False
         self._listeners: list[Callable[[], None]] = []
 
     @property
     def aborted(self) -> bool:
-        return self._reason is not None
+        return self._aborted
 
     @property
-    def reason(self) -> str | None:
+    def reason(self) -> object:
         return self._reason
 
-    def abort(self, reason: str) -> None:
+    def abort(self, reason: object = None) -> None:
         with self._lock:
-            if self._reason is not None:
+            if self._aborted:
                 return
             self._reason = reason
+            self._aborted = True
             listeners, self._listeners = self._listeners, []
         for listener in listeners:
             try:
@@ -46,13 +54,13 @@ class CancellationSignal:
                 pass
 
     def throw_if_aborted(self) -> None:
-        if self._reason is not None:
-            raise OperationAbortedError(self._reason)
+        if self._aborted:
+            raise resolve_memory_search_abort_error(self)
 
     def add_listener(self, callback: Callable[[], None]) -> Callable[[], None]:
         """Call ``callback`` on abort (now, if already aborted); returns a remover."""
         with self._lock:
-            if self._reason is None:
+            if not self._aborted:
                 self._listeners.append(callback)
                 registered = True
             else:
@@ -69,3 +77,11 @@ class CancellationSignal:
                     self._listeners.remove(callback)
 
         return remove
+
+
+def resolve_memory_search_abort_error(signal: CancellationSignal) -> BaseException:
+    """Preserve an exception reason; strings and other values use native errors."""
+    reason = signal.reason
+    if isinstance(reason, BaseException):
+        return reason
+    return OperationAbortedError(reason if isinstance(reason, str) else "memory search aborted")

@@ -210,6 +210,7 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.importance_project import build_importance_project_cases
     from equivalence.search_contract import build_search_contract_cases
     from equivalence.get_contract import build_get_contract_cases
+    from equivalence.deadline_contract import build_deadline_contract_cases
     from equivalence.embedding_cache import build_embedding_cache_cases
     from equivalence.incremental_index import build_incremental_index_cases
     from equivalence.index_publication import build_index_publication_cases
@@ -231,6 +232,7 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     cases.extend(build_importance_project_cases())
     cases.extend(build_search_contract_cases())
     cases.extend(build_get_contract_cases())
+    cases.extend(build_deadline_contract_cases())
     cases.extend(build_embedding_cache_cases())
     cases.extend(build_incremental_index_cases())
     cases.extend(build_index_publication_cases())
@@ -259,6 +261,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation in {"deadline-partial", "deadline-partial-runtime", "deadline-partial-get-runtime"}:
+        from equivalence.deadline_contract import run_deadline_contract
+
+        return run_deadline_contract(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation in {"get-contract", "get-contract-runtime", "get-contract-helper-runtime"}:
         from equivalence.get_contract import run_get_contract
 

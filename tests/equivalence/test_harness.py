@@ -64,6 +64,7 @@ if mode=='duplicate': rows.append(rows[0])
 if mode=='omitted': rows=[]
 if mode=='skip': rows[0]['status']='skipped'
 if mode=='failed': rows[0]={'id':rows[0]['id'],'ok':False,'error':'SECRET_FIXTURE_VALUE'}
+if mode=='missing-package': rows[0]={'id':rows[0]['id'],'ok':False,'error':{'type':'Error','message':"Cannot find package 'json5' imported from /private/SECRET_FIXTURE_VALUE/fixture.ts"}}
 if mode=='environment':
     assert 'EQUIVALENCE_PRIVATE_FIXTURE' not in os.environ
     assert 'OPENROUTER_API_KEY' not in os.environ
@@ -233,6 +234,15 @@ def test_storage_cases_require_authenticated_dependencies_before_dispatch(suite,
     assert report["errors"][0]["code"] == "reference-dependencies-unavailable"
     assert "Untrusted archive fixture" not in json.dumps(report)
     assert not (suite["oracle_path"].parent / "dispatches").exists()
+
+
+def test_import_blockers_retain_package_without_private_exception_paths(suite):
+    suite["oracle_path"].write_text("missing-package")
+    report, code = run_suite(**suite, smoke=True)
+    assert code == 2
+    assert report["cases"][0]["code"] == "oracle-case-failed"
+    assert report["cases"][0]["unavailablePackage"] == "json5"
+    assert "SECRET_FIXTURE_VALUE" not in json.dumps(report)
 
 
 def test_storage_cannot_pass_without_loaded_dependency_evidence(suite, monkeypatch):

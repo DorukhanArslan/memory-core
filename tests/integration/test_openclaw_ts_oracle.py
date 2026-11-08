@@ -1336,8 +1336,8 @@ def test_real_openclaw_oracle_markdown_chunks_match_python():
                 per_entry=case.get("perEntry", False),
             )
         ]
-        # The caller drops whitespace-only chunks (manager-index-preparation.ts).
-        assert got == [chunk for chunk in expected if chunk["text"].strip()], case
+        # These are raw chunker APIs; index preparation filters whitespace later.
+        assert got == expected, case
 
 
 def test_real_openclaw_oracle_memory_prompt_section_matches_python():

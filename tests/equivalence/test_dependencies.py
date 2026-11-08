@@ -39,6 +39,16 @@ def packages(tmp_path, monkeypatch):
     edges = {
         "string-width": {"get-east-asian-width": "1.7.0", "strip-ansi": "7.2.0"},
         "strip-ansi": {"ansi-regex": "6.3.0"},
+        "execa": {
+            "@sindresorhus/merge-streams": "4.0.0", "figures": "6.1.0", "get-stream": "9.0.1",
+            "human-signals": "8.0.1", "is-plain-obj": "4.1.0", "is-stream": "4.0.1",
+            "npm-run-path": "6.0.0", "pretty-ms": "9.3.1", "signal-exit": "4.1.0",
+            "strip-final-newline": "4.0.0", "which-command": "0.1.0", "yoctocolors": "2.2.0",
+        },
+        "figures": {"is-unicode-supported": "2.1.0"},
+        "get-stream": {"@sec-ant/readable-stream": "0.4.1", "is-stream": "4.0.1"},
+        "npm-run-path": {"path-key": "4.0.0", "unicorn-magic": "0.3.0"},
+        "pretty-ms": {"parse-ms": "4.0.0"},
     }
     for name, version in (
         ("@openclaw/fs-safe", "0.21.1"),
@@ -52,6 +62,29 @@ def packages(tmp_path, monkeypatch):
         ("get-east-asian-width", "1.7.0"),
         ("strip-ansi", "7.2.0"),
         ("ansi-regex", "6.3.0"),
+        ("zod", "4.6.5"),
+        ("json5", "2.2.3"),
+        ("commander", "15.0.0"),
+        ("typebox", "1.3.34"),
+        ("execa", "10.0.1"),
+        ("import-meta-resolve", "4.2.0"),
+        ("@sindresorhus/merge-streams", "4.0.0"),
+        ("figures", "6.1.0"),
+        ("get-stream", "9.0.1"),
+        ("human-signals", "8.0.1"),
+        ("is-plain-obj", "4.1.0"),
+        ("is-stream", "4.0.1"),
+        ("npm-run-path", "6.0.0"),
+        ("pretty-ms", "9.3.1"),
+        ("signal-exit", "4.1.0"),
+        ("strip-final-newline", "4.0.0"),
+        ("which-command", "0.1.0"),
+        ("yoctocolors", "2.2.0"),
+        ("is-unicode-supported", "2.1.0"),
+        ("@sec-ant/readable-stream", "0.4.1"),
+        ("path-key", "4.0.0"),
+        ("unicorn-magic", "0.3.0"),
+        ("parse-ms", "4.0.0"),
     ):
         package = {"name": name, "version": version}
         if name in edges:
@@ -92,7 +125,17 @@ def test_setup_authenticates_and_extracts_only_pinned_artifacts_without_scripts(
                      ("kysely", "0.29.6"), ("semver", "7.8.5"), ("chalk", "6.0.0"),
                      ("tslog", "5.2.0"), ("string-width", "8.2.2"),
                      ("get-east-asian-width", "1.7.0"), ("strip-ansi", "7.2.0"),
-                     ("ansi-regex", "6.3.0")]
+                     ("ansi-regex", "6.3.0"), ("zod", "4.6.5"),
+                     ("json5", "2.2.3"), ("commander", "15.0.0"), ("typebox", "1.3.34"),
+                     ("execa", "10.0.1"), ("import-meta-resolve", "4.2.0"),
+                     ("@sindresorhus/merge-streams", "4.0.0"), ("figures", "6.1.0"),
+                     ("get-stream", "9.0.1"), ("human-signals", "8.0.1"),
+                     ("is-plain-obj", "4.1.0"), ("is-stream", "4.0.1"), ("npm-run-path", "6.0.0"),
+                     ("pretty-ms", "9.3.1"), ("signal-exit", "4.1.0"),
+                     ("strip-final-newline", "4.0.0"), ("which-command", "0.1.0"),
+                     ("yoctocolors", "2.2.0"), ("is-unicode-supported", "2.1.0"),
+                     ("@sec-ant/readable-stream", "0.4.1"), ("path-key", "4.0.0"),
+                     ("unicorn-magic", "0.3.0"), ("parse-ms", "4.0.0")]
     assert config["kind"] == "verified-npm-artifacts"
     assert config["referenceCommit"] == "a" * 40
     assert all(len(package["files"]) == 2 for package in config["packages"])
@@ -113,6 +156,8 @@ def test_verification_never_downloads_missing_artifacts(packages):
     "unknown", "wrong-fs-safe-version", "wrong-p-map-version", "wrong-kysely-version",
     "missing-kysely", "duplicate-kysely", "wrong-registry", "not-an-object",
     "wrong-string-width-version", "wrong-width-dependency-version", "missing-width-dependency",
+    "wrong-zod-version", "missing-zod", "wrong-json5-version", "wrong-commander-version",
+    "wrong-typebox-version", "missing-typebox",
 ])
 def test_setup_rejects_packages_and_versions_outside_the_authorized_list(
     packages, tmp_path, monkeypatch, change,
@@ -144,6 +189,19 @@ def test_setup_rejects_packages_and_versions_outside_the_authorized_list(
     elif change == "missing-width-dependency":
         manifest["additionalPackages"] = [package for package in manifest["additionalPackages"]
                                           if package["name"] != "strip-ansi"]
+    elif change == "wrong-zod-version":
+        next(package for package in manifest["additionalPackages"]
+             if package["name"] == "zod")["version"] = "4.6.4"
+    elif change == "missing-zod":
+        manifest["additionalPackages"] = [package for package in manifest["additionalPackages"]
+                                          if package["name"] != "zod"]
+    elif change in {"wrong-json5-version", "wrong-commander-version", "wrong-typebox-version"}:
+        name = change.removeprefix("wrong-").removesuffix("-version")
+        next(package for package in manifest["additionalPackages"]
+             if package["name"] == name)["version"] = "0.0.0"
+    elif change == "missing-typebox":
+        manifest["additionalPackages"] = [package for package in manifest["additionalPackages"]
+                                          if package["name"] != "typebox"]
     else:
         manifest = []
     root = tmp_path / "suite"

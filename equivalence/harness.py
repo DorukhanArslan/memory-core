@@ -87,7 +87,8 @@ def _adapter_identity() -> dict[str, str]:
     return {path.name: _digest(path) for path in paths}
 
 
-def _reference_bindings(checkout: Path, *, cache: bool, publication: bool) -> dict:
+def _reference_bindings(checkout: Path, *, cache: bool, publication: bool,
+                        reuse_operations: frozenset[str] = frozenset()) -> dict:
     from equivalence.reference_bindings import prepare_reference_bindings
 
     bindings = (prepare_reference_bindings(checkout, include_cache=True) if cache
@@ -98,10 +99,20 @@ def _reference_bindings(checkout: Path, *, cache: bool, publication: bool) -> di
         extension = prepare_index_bindings(checkout)
         for key in ("allowedResolutions", "projectionEvidence"):
             bindings.setdefault(key, []).extend(extension[key])
-        resolutions = [(entry["parent"], entry["specifier"])
-                       for entry in bindings["allowedResolutions"]]
-        if len(resolutions) != len(set(resolutions)):
-            raise ValueError("Native binding projections conflict.")
+    if reuse_operations:
+        from equivalence.reuse_bindings import prepare_reuse_bindings
+
+        extension = prepare_reuse_bindings(
+            checkout, bootstrap="bootstrap-budget" in reuse_operations,
+            flush="flush-contract" in reuse_operations,
+            session="session-projection" in reuse_operations,
+        )
+        for key in ("allowedResolutions", "projectionEvidence"):
+            bindings.setdefault(key, []).extend(extension[key])
+    resolutions = [(entry["parent"], entry["specifier"])
+                   for entry in bindings.get("allowedResolutions", [])]
+    if len(resolutions) != len(set(resolutions)):
+        raise ValueError("Native binding projections conflict.")
     return bindings
 
 
@@ -382,11 +393,16 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         case_module = ROOT / "equivalence/cases.py"
         report["casesSha256"] = _digest(case_module) if case_module.is_file() else None
         dependencies = bindings = None
-        native_storage = any(case["operation"] in {
+        required_artifact_execution = any(case["operation"] in {
             "storage-discovery", "storage-read-paths", "index-identity",
             "embedding-cache", "incremental-index",
             "index-publication",
         } for case in cases)
+        reuse_operations = frozenset(case["operation"] for case in cases
+                                     if case["operation"] in {
+                                         "bootstrap-budget", "flush-contract", "session-projection",
+                                     })
+        native_storage = required_artifact_execution or bool(reuse_operations)
         cache_bindings = any(case["operation"] == "embedding-cache" for case in cases)
         publication_bindings = any(case["operation"] == "index-publication" for case in cases)
         if native_storage:
@@ -395,7 +411,8 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             try:
                 dependencies = prepare_dependencies(checkout, dependency_root)
                 bindings = _reference_bindings(checkout, cache=cache_bindings,
-                                               publication=publication_bindings)
+                                               publication=publication_bindings,
+                                               reuse_operations=reuse_operations)
             except (OSError, ValueError, RuntimeError):
                 raise HarnessError("reference-dependencies-unavailable",
                                    "Verified native dependencies and binding provenance are required; "
@@ -456,10 +473,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 if prepare_dependencies(checkout, dependency_root) != dependencies:
                     raise ValueError("Native dependencies changed.")
                 validate_dependency_sources(dependencies, oracle.get("dependencySources", []))
-                if not oracle.get("dependencySources"):
+                if required_artifact_execution and not oracle.get("dependencySources"):
                     raise ValueError("Native dependency execution evidence is missing.")
                 current_bindings = _reference_bindings(checkout, cache=cache_bindings,
-                                                       publication=publication_bindings)
+                                                       publication=publication_bindings,
+                                                       reuse_operations=reuse_operations)
                 if current_bindings != bindings:
                     raise ValueError("Binding provenance changed.")
             except (OSError, ValueError, RuntimeError):
@@ -502,6 +520,16 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             native = native_rows[case["id"]]
             if not native["ok"]:
                 row.update(status="blocked", code="oracle-case-failed")
+                # Retain a bounded package identifier for source-graph setup
+                # failures, without copying arbitrary exception text (which
+                # can contain fixture secrets or host data) into reports.
+                error = native.get("error")
+                message = error.get("message") if isinstance(error, dict) else None
+                if isinstance(message, str):
+                    missing_package = re.match(
+                        r"Cannot find package '(@?[A-Za-z0-9_.\-/]+)' imported from ", message)
+                    if missing_package:
+                        row["unavailablePackage"] = missing_package[1]
             else:
                 try:
                     python_case = deepcopy(case)

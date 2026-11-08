@@ -347,6 +347,9 @@ the subset passes. Missing or modified reference sources, a wrong commit, runner
 and behavioral mismatches cannot produce a successful acceptance result.
 Push and pull-request CI run the differential subset; manual equivalence workflow runs also
 require the full contract. Neither the offline suite nor a green subset proves full equivalence.
+Retained fixture inputs are reused for fresh native comparisons. Add
+`--include-prospective` to execute the preserved broader flush/session fixtures as well;
+their import blockers remain visible failures and receive no acceptance credit.
 
 The installed package contains `memory_core/` and inline type annotations through `py.typed`.
 Clean consumer checks cover selected interfaces; dynamic options and some callbacks still accept `Any`.

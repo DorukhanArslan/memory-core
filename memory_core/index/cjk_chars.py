@@ -9,7 +9,12 @@ slice for a Python string.
 
 from __future__ import annotations
 
+import re
+
+from memory_core.bootstrap._js import truncate_utf16_safe as _truncate_utf16_safe
+
 CHARS_PER_TOKEN_ESTIMATE = 4
+_SURROGATE_RE = re.compile("[\ud800-\udfff]")
 
 # cjk-chars.ts WEIGHTED_CJK_RANGES, one list per weight bucket (bucket 1 first).
 _WEIGHTED_CJK_RANGES: tuple[tuple[tuple[int, int], ...], ...] = (
@@ -67,6 +72,10 @@ def utf16_length(text: str) -> int:
 
 def estimate_string_chars(text: str) -> int:
     """``estimateStringChars``: UTF-16 length with the CJK weights applied."""
+    # A literal high/low pair denotes the same JS code point as its astral
+    # spelling. Join valid pairs for weighting, preserving malformed units.
+    if _SURROGATE_RE.search(text):
+        text = text.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "surrogatepass")
     total = utf16_length(text)
     if text.isascii():
         return total
@@ -96,12 +105,4 @@ def estimate_string_chars(text: str) -> int:
 
 def truncate_utf16_safe(text: str, max_units: int) -> str:
     """``truncateUtf16Safe``: the longest prefix within ``max_units`` units, never splitting a pair."""
-    if max_units <= 0:
-        return ""
-    units = 0
-    for index, char in enumerate(text):
-        width = 2 if ord(char) > 0xFFFF else 1
-        if units + width > max_units:
-            return text[:index]
-        units += width
-    return text
+    return _truncate_utf16_safe(text, max_units)

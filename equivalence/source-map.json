@@ -296,19 +296,25 @@
           "path": "memory_core/index/chunking.py",
           "symbol": "chunk_markdown",
           "anchor": "def chunk_markdown(",
-          "line": 61
+          "line": 63
         },
         {
           "path": "memory_core/index/chunking.py",
           "symbol": "curated_markdown_entry_kind",
           "anchor": "def curated_markdown_entry_kind(line: str) -> str | None:",
-          "line": 41
+          "line": 43
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "SQLiteMemoryStore._prepare_source_chunks",
+          "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
+          "line": 705
         }
       ],
       "implementation": "present",
       "notes": [
-        "Python has line-range, overlap and per-entry chunking owners; native index preparation additionally normalizes annotation carriers before invoking this chunker.",
-        "Returned ranges must be read against original files in paired tests; helper existence does not establish round-trip source-range equivalence."
+        "Python exposes the raw chunker, retaining whitespace-only chunks like native chunkMarkdown; SQLiteMemoryStore._prepare_source_chunks applies the separate index-preparation whitespace filter and annotation normalization.",
+        "Paired cases compare ordered chunks, content hashes, overlap, curated-entry spans and original source line UTF-16 units; 60 chunk/helper cases close the two chunking contracts without closing entry-provenance."
       ]
     },
     {
@@ -342,13 +348,13 @@
           "path": "memory_core/index/cjk_chars.py",
           "symbol": "estimate_string_chars",
           "anchor": "def estimate_string_chars(text: str) -> int:",
-          "line": 68
+          "line": 73
         },
         {
           "path": "memory_core/index/cjk_chars.py",
           "symbol": "truncate_utf16_safe",
           "anchor": "def truncate_utf16_safe(text: str, max_units: int) -> str:",
-          "line": 97
+          "line": 106
         },
         {
           "path": "memory_core/bootstrap/_js.py",
@@ -359,8 +365,8 @@
       ],
       "implementation": "present",
       "notes": [
-        "Python implements weighted character estimation plus explicit UTF-16 slicing/truncation; Python string length cannot substitute for those entry points.",
-        "Malformed surrogates, overlap and exact budget boundaries still need direct native/Python chunk comparisons."
+        "Python implements weighted character estimation plus explicit UTF-16 slicing/truncation; valid literal surrogate pairs are normalized for code-point weighting while malformed units remain observable.",
+        "Direct native/Python chunk and helper comparisons cover weighted CJK ranges, valid and malformed surrogates, exact budgets, truncation, overlap and returned source ranges."
       ]
     },
     {
@@ -388,7 +394,7 @@
           "path": "memory_core/index/chunking.py",
           "symbol": "MemoryChunk",
           "anchor": "class MemoryChunk:",
-          "line": 28
+          "line": 30
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -732,7 +738,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 748
+          "line": 751
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -791,7 +797,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 814
+          "line": 817
         }
       ],
       "implementation": "partial",
@@ -1509,7 +1515,7 @@
           "path": "memory_core/bootstrap/files.py",
           "symbol": "load_workspace_bootstrap_files",
           "anchor": "def load_workspace_bootstrap_files(",
-          "line": 254
+          "line": 256
         },
         {
           "path": "memory_core/bootstrap/context.py",
@@ -1554,23 +1560,26 @@
           "path": "memory_core/bootstrap/budget.py",
           "symbol": "build_bootstrap_context_files",
           "anchor": "def build_bootstrap_context_files(",
-          "line": 392
+          "line": 393
         },
         {
           "path": "memory_core/bootstrap/budget.py",
           "symbol": "analyze_bootstrap_budget",
           "anchor": "def analyze_bootstrap_budget(",
-          "line": 563
+          "line": 569
         },
         {
           "path": "memory_core/bootstrap/budget.py",
           "symbol": "build_bootstrap_prompt_warning",
           "anchor": "def build_bootstrap_prompt_warning(",
-          "line": 753
+          "line": 759
         }
       ],
       "implementation": "present",
-      "notes": []
+      "notes": [
+        "Native clipping, injection statistics, budget analysis and warning transitions are compared against the existing Python owners using 77 cases, including personal USER.md inputs supplied by the host.",
+        "WorkspaceBootstrapFile.personal_user and ContextFile.personal_user preserve the supplied personal-overlay flag and its native no-clipping policy. Authenticated personal-overlay discovery remains outside this budget contract."
+      ]
     },
     {
       "id": "prompt.runtime-context",

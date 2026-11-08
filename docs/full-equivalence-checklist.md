@@ -63,8 +63,8 @@ Entries remain pending until their complete acceptance conditions are verified a
 - [ ] **`lexical.tokenization` — Match lexical tokenization.** Compare exported token sets for empty, repeated, ASCII, mixed-script, CJK and Unicode boundary inputs. Use deterministic generated strings as well as named cases; preserve all observable tokens.
 - [ ] **`lexical.fts-query` — Match full-text query construction.** Compare query strings and no-query outcomes for punctuation, quotes, identifiers, whitespace and mixed scripts. Exercise deterministic generated inputs without reconstructing the reference algorithm in the oracle.
 - [ ] **`lexical.bm25` — Match BM25 rank conversion.** Compare positive, negative, zero and boundary ranks, including supported non-finite input representations. Report numerical differences rather than masking score-gate changes with a blanket tolerance.
-- [ ] **`chunking.markdown-boundaries` — Match Markdown chunk boundaries.** Compare ordered chunks, lines, overlap, empty content, headings and per-entry curated files. Read the original source through every returned line range.
-- [ ] **`chunking.utf16-cjk-budget` — Match UTF-16 and CJK chunk budgets.** Exercise surrogate pairs, malformed surrogates, CJK weighting and exact budget boundaries. Compare truncation and overlap without splitting valid pairs or changing source ranges.
+- [x] **`chunking.markdown-boundaries` — Match Markdown chunk boundaries.** Compare ordered chunks, lines, overlap, empty content, headings and per-entry curated files. Read the original source through every returned line range.
+- [x] **`chunking.utf16-cjk-budget` — Match UTF-16 and CJK chunk budgets.** Exercise surrogate pairs, malformed surrogates, CJK weighting and exact budget boundaries. Compare truncation and overlap without splitting valid pairs or changing source ranges.
 - [ ] **`chunking.entry-provenance` — Retain chunk identity and provenance.** Compare chunk hashes, entry boundaries, source identities and provenance fields. Verify unchanged and changed inputs produce the reference identities and invalidation decisions.
 
 ### Index lifecycle
@@ -102,7 +102,7 @@ Entries remain pending until their complete acceptance conditions are verified a
 ### Prompt and bootstrap
 
 - [ ] **`prompt.bootstrap-discovery` — Match workspace bootstrap selection.** Exercise setup states, session kinds, available files and compatibility layouts. Compare ensure decisions, selected files and their order under the same inputs.
-- [ ] **`prompt.bootstrap-budget` — Match bootstrap clipping and notices.** Exercise per-file, USER.md and aggregate UTF-16 limits and exact boundary values. Compare clipping, omitted files, warning modes and once-per-session state.
+- [x] **`prompt.bootstrap-budget` — Match bootstrap clipping and notices.** Exercise per-file, USER.md and aggregate UTF-16 limits and exact boundary values. Compare clipping, omitted files, warning modes and once-per-session state.
 - [ ] **`prompt.runtime-context` — Match memory and runtime prompt composition.** Compare memory guidance, tools, runtime markers and fixed clock/timezone fragments. Compare insertion order and isolation of untrusted or recalled text.
 - [ ] **`prompt.history-repair` — Match history windowing and tool repair.** Exercise missing results, duplicate or invalid calls, failed turns and provider replay metadata. Compare repaired model-visible messages while preserving the original durable transcript.
 
@@ -525,3 +525,90 @@ vector. Regression tests exercise an actual observed untrusted write across cont
 and reopen, and a model change/reindex immediately before opening the reader. Metadata-only
 trust transitions still require explicit repair and remain separate from automatic trust
 synchronization.
+
+
+### 2026-11-08: reuse existing fixtures against pinned native owners
+
+This batch reuses inputs from retained Markdown, UTF-16/CJK, bootstrap, flush and session
+fixtures. Those tests already exercise substantial Python implementations. Their existing
+inputs remain useful even when an older oracle targeted v2026.9.6; this batch obtains new
+outputs from the unchanged v2026.9.9 source and the current production Python functions.
+It imports neither historical expected outputs nor historical oracle implementations.
+An unchecked acceptance point measures missing verified contract evidence, not a missing
+implementation or a unit of development effort.
+
+The chunking comparison reuses the 13 legacy Markdown cases and the existing line-range
+fixture, then adds exact budget, CJK, surrogate, whitespace, curated-entry and helper cases.
+It compares ordered text, native content hashes, overlap, entry spans and the UTF-16 units
+of original source lines. The raw Python chunker now preserves native whitespace chunks;
+`SQLiteMemoryStore._prepare_source_chunks` retains the index owner's separate whitespace
+filter. Other observed differences required JavaScript heading-whitespace semantics, valid
+literal-surrogate-pair weighting and safe UTF-16 truncation; overlap and entry spans
+were verified without replacing their algorithms. The first 54-case report
+matched 44 and mismatched 10; the first six helper cases matched three and mismatched three.
+The final chunk/helper comparison matches all **60 cases**, completing both acceptance
+points of `chunking.markdown-boundaries` and `chunking.utf16-cjk-budget`. This does not close
+`chunking.entry-provenance`.
+
+The bootstrap comparison reuses the existing clipping probe, policy digest, missing marker,
+path matching and USER.md budget inputs, with exact limits, UTF-16 and warning-transition
+cases. It executes native clipping, injection statistics, budget analysis and notices.
+The first executable comparison matched 73 of 77 cases and exposed four personal USER.md
+differences. The Python file records now preserve the host-supplied `personal_user` flag
+and apply its native no-clipping policy. All **77 cases** now match, completing both
+`prompt.bootstrap-budget` acceptance points. Authenticated personal-overlay discovery
+remains separate from this supplied-input budget comparison.
+
+| Fixed acceptance coverage | Covered | Remaining | Progress |
+| --- | ---: | ---: | ---: |
+| Previous publication and lifecycle batch | 15 / 128 | 113 | 11.7% |
+| Verified chunking and bootstrap reuse | 21 / 128 | 107 | 16.4% |
+
+The six newly covered points leave **107/128 (83.6%)** unverified. Source-presence
+classifications remain 11 present, 49 partial, one missing and three host-owned. Neither
+those classifications nor passing legacy unit tests grant additional acceptance credit.
+Flush and session projection adapters compare bounded function surfaces; their broader
+contracts remain unchecked unless complete acceptance evidence is established separately.
+
+Retained comparisons are `.equivalence-results/markdown-chunking-first.json`,
+`markdown-chunking-helpers-first.json`, `markdown-chunking-with-helpers-after-native-fixes.json`,
+`bootstrap-budget-before-fix-3.json` and `bootstrap-budget-final.json`. Earlier blocked
+bootstrap setup captures remain available without parity credit. The combined registered
+catalog now has **463 cases**: 302 previous, 60 chunk/helper, 77 bootstrap-budget,
+18 fresh-usage/error and six session-reset probes. The integrated subset comparison
+matched all 463 with zero mismatches or blocked cases. The last two groups receive no
+complete flush/session acceptance credit. The full regression run passed **2,465 tests**; the same 1,625 historical oracle/live
+checks remained gated off and grant no acceptance credit. Ruff, project-name consistency,
+source inventory and staged diff checks passed.
+
+The new adapters call original tracked source owners through narrowly verified original
+reexports. [reuse_bindings.py](../equivalence/reuse_bindings.py) authenticates declaration
+bindings and source hashes while bypassing broad facade initialization; these projections
+make no claim about full host orchestration. Additional package artifacts are pinned by the
+reference source metadata and use the verified local cache, without adding dependencies to
+the Python SDK. The scope remains exactly **64 contracts and 128 acceptance points**; its
+scope digest and the inventory's 103 upstream modules are unchanged.
+
+
+The prospective builders also preserve the complete 111 flush and 79 session fixtures.
+Their 166 additional cases remain explicit, rather than being reported as passes or
+missing implementations. The latest broad probes are blocked by source-graph imports:
+`acorn` for 62 plan cases, `mdast-util-from-markdown` for eight target and 73 session
+cases, and `partial-json` for 23 gate/threshold cases. They can be included explicitly
+with `scripts/check_equivalence.py --include-prospective` (alongside the usual required
+arguments); failures remain failures. Both session points and all plan/trigger points
+stay open. Original inputs, first captures and blocked reports remain retained.
+
+Source-only setup now authenticates 34 packages against the pinned upstream lockfile,
+including the mandatory dependency closure encountered while probing those owners.
+All added archives were available locally and authenticated before extraction; no
+install scripts or provider calls ran. Broad source owners still require the named
+additional packages. These dependencies belong to the test authority, not the Python SDK.
+
+
+Integrated evidence is retained at `.equivalence-results/reused-fixtures-subset-first.json`
+(**463 matched, zero mismatched or blocked**) and
+`.equivalence-results/reused-fixtures-prospective.json` (**166 import-blocked**, zero
+implementation mismatches established). The committed full-gate run is retained at
+`.equivalence-results/reused-fixtures-full.json`; it requires the unchanged complete scope
+and stays incomplete with 107 uncovered points. No paid provider call was made.

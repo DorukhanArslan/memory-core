@@ -20,13 +20,21 @@ def main() -> int:
     parser.add_argument("--node", type=Path, required=True, help="Supported Node executable.")
     parser.add_argument("--smoke", action="store_true",
                         help="Compare registered cases only; does not establish full equivalence.")
+    parser.add_argument("--include-prospective", action="store_true",
+                        help="Also execute retained prospective fixtures; import blockers remain failures.")
     parser.add_argument("--dependencies", type=Path, default=ROOT / ".reference/npm",
                         help="Verified native npm artifact cache (prepared explicitly; no implicit downloads).")
     parser.add_argument("--release-runtime", type=Path, default=ROOT / ".reference/release-runtime",
                         help="Authenticated official runtime for full lifecycle cases (explicit setup required).")
     parser.add_argument("--report", type=Path, required=True, help="Retain every mismatch and coverage gap as JSON.")
     args = parser.parse_args()
+    cases = None
+    if args.include_prospective:
+        from equivalence.cases import build_cases
+
+        cases = build_cases(include_prospective=True)
     report, code = run_suite(checkout=args.reference.resolve(), node=args.node.resolve(), smoke=args.smoke,
+                             cases=cases,
                              dependency_root=args.dependencies.resolve(),
                              release_runtime_root=args.release_runtime.resolve())
     try:

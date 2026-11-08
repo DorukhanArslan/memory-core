@@ -34,7 +34,7 @@ def _number(value: float | str) -> float:
     return value
 
 
-def build_cases() -> list[dict[str, Any]]:
+def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
     for name, text in (
         ("empty", ""),
@@ -208,6 +208,10 @@ def build_cases() -> list[dict[str, Any]]:
     from equivalence.incremental_index import build_incremental_index_cases
     from equivalence.index_publication import build_index_publication_cases
     from equivalence.index_lifecycle import build_index_lifecycle_cases
+    from equivalence.markdown_chunking import build_markdown_chunking_cases
+    from equivalence.bootstrap_budget import build_bootstrap_budget_cases
+    from equivalence.flush_contract import build_flush_contract_cases
+    from equivalence.session_projection import build_session_projection_cases
     from equivalence.storage_discovery import build_storage_discovery_cases
     from equivalence.storage_paths import build_storage_path_cases
 
@@ -216,14 +220,43 @@ def build_cases() -> list[dict[str, Any]]:
     cases.extend(build_incremental_index_cases())
     cases.extend(build_index_publication_cases())
     cases.extend(build_index_lifecycle_cases())
+    cases.extend(build_markdown_chunking_cases())
+    cases.extend(build_bootstrap_budget_cases())
+    cases.extend(build_flush_contract_cases())
+    cases.extend(build_session_projection_cases())
     cases.extend(build_storage_discovery_cases())
     cases.extend(build_storage_path_cases())
+    if include_prospective:
+        from equivalence.flush_contract import build_prospective_flush_contract_cases
+        from equivalence.session_projection import build_prospective_session_projection_cases
+
+        registered = {case["id"] for case in cases}
+        cases.extend(case for case in (
+            *build_prospective_flush_contract_cases(),
+            *build_prospective_session_projection_cases(),
+        ) if case["id"] not in registered)
     return cases
 
 
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation == "markdown-chunking":
+        from equivalence.markdown_chunking import run_markdown_chunking
+
+        return run_markdown_chunking(arguments)
+    if operation == "bootstrap-budget":
+        from equivalence.bootstrap_budget import run_bootstrap_budget
+
+        return run_bootstrap_budget(arguments)
+    if operation == "flush-contract":
+        from equivalence.flush_contract import run_flush_contract
+
+        return run_flush_contract(arguments)
+    if operation == "session-projection":
+        from equivalence.session_projection import run_session_projection
+
+        return run_session_projection(arguments)
     if operation == "index-publication":
         from equivalence.index_publication import run_index_publication
 

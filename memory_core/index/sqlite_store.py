@@ -715,12 +715,15 @@ class SQLiteMemoryStore:
                 cutoff_index = next((index for index, line in enumerate(entry.index_entry.line_map)
                                      if line >= cutoff_line), -1)
         if cutoff_index <= 0:
-            return chunk_markdown(entry.path, content, **options)
+            return [chunk for chunk in chunk_markdown(entry.path, content, **options)
+                    if js_trim(chunk.text)]
         lines = content.split("\n")
         before = chunk_markdown(entry.path, "\n".join(lines[:cutoff_index]), **options)
         after = chunk_markdown(entry.path, "\n".join(lines[cutoff_index:]), **options)
-        return [*before, *(dataclasses.replace(chunk, start_line=chunk.start_line + cutoff_index,
-                                              end_line=chunk.end_line + cutoff_index) for chunk in after)]
+        return [chunk for chunk in (
+            *before, *(dataclasses.replace(chunk, start_line=chunk.start_line + cutoff_index,
+                                          end_line=chunk.end_line + cutoff_index) for chunk in after),
+        ) if js_trim(chunk.text)]
 
     @staticmethod
     def _read_source_snapshots(workspace: MemoryWorkspace) -> dict[tuple[str, str], IndexSourceSnapshot]:

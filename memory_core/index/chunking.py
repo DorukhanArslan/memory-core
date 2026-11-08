@@ -14,6 +14,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 
+from memory_core.bootstrap._js import JS_SPACE_CLASS
 from memory_core.index.cjk_chars import (
     CHARS_PER_TOKEN_ESTIMATE,
     estimate_string_chars,
@@ -21,7 +22,8 @@ from memory_core.index.cjk_chars import (
     utf16_length,
 )
 
-_HEADING_RE = re.compile(r"#{1,6}(?:\s|$)")
+_HEADING_RE = re.compile(r"#{1,6}(?:[" + JS_SPACE_CLASS + r"]|$)")
+_SURROGATE_RE = re.compile("[\ud800-\udfff]")
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,11 @@ def chunk_markdown(
     overlap_tokens: int = 80,
     per_entry: bool = False,
 ) -> list[MemoryChunk]:
+    # Python can spell one UTF-16 pair as either an astral character or two
+    # literal surrogate code points. Join valid pairs before code-point walks,
+    # preserving lone units, so weighting and every boundary see the same text.
+    if _SURROGATE_RE.search(text):
+        text = text.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "surrogatepass")
     lines = text.split("\n")
     max_chars = max(32, target_tokens * CHARS_PER_TOKEN_ESTIMATE)
     overlap_chars = max(0, overlap_tokens * CHARS_PER_TOKEN_ESTIMATE)
@@ -169,8 +176,6 @@ def chunk_markdown(
 
     chunks: list[MemoryChunk] = []
     for start_line, end_line, chunk_text, entry_start_line, entry_end_line in raw:
-        if not chunk_text.strip():
-            continue
         digest = hashlib.sha256(
             f"{path}:{start_line}:{end_line}:{chunk_text}".encode("utf-8", "surrogatepass")
         ).hexdigest()

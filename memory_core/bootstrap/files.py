@@ -75,7 +75,8 @@ class WorkspaceBootstrapFile:
 
     ``unreadable_reason`` is memory-core metadata: set when the guarded read refused the file, in
     which case ``content`` is upstream's ``[UNREADABLE: <reason>]`` text and ``missing`` is
-    false, exactly as upstream loads it.
+    false, exactly as upstream loads it. Hosts can mark a supplied personal USER.md overlay
+    with ``personal_user``; authenticated overlay discovery is not ported.
     """
 
     name: str
@@ -83,6 +84,7 @@ class WorkspaceBootstrapFile:
     content: str | None = None
     missing: bool = False
     unreadable_reason: str | None = None
+    personal_user: bool = False
 
 
 def _is_inside(path: str, root: str) -> bool:

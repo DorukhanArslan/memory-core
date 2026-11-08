@@ -19,6 +19,10 @@ for (const [operation, filename, name] of [
   ["embedding-cache", "embedding-cache.mjs", "runEmbeddingCache"],
   ["incremental-index", "incremental-index.mjs", "runIncrementalIndex"],
   ["index-publication", "index-publication.mjs", "runIndexPublication"],
+  ["markdown-chunking", "markdown-chunking.mjs", "runMarkdownChunking"],
+  ["flush-contract", "flush-contract.mjs", "runFlushContract"],
+  ["bootstrap-budget", "bootstrap-budget.mjs", "runBootstrapBudget"],
+  ["session-projection", "session-projection.mjs", "runSessionProjection"],
 ]) {
   const url = new URL(filename, import.meta.url);
   if (fs.existsSync(fileURLToPath(url))) adapters.set(operation, (await import(url.href))[name]);
@@ -54,6 +58,7 @@ const publicSources = new Map([
   ["openclaw/plugin-sdk/memory-core-host-engine-schema", "src/plugin-sdk/memory-core-host-engine-schema.ts"],
   ["openclaw/plugin-sdk/memory-core-host-engine-indexing", "src/plugin-sdk/memory-core-host-engine-indexing.ts"],
   ["openclaw/plugin-sdk/sqlite-worker-runtime", "src/plugin-sdk/sqlite-worker-runtime.ts"],
+  ["openclaw/plugin-sdk/memory-core-host-runtime-core", "src/plugin-sdk/memory-core-host-runtime-core.ts"],
   ["@openclaw/net-policy/redact-sensitive-url", "packages/net-policy/src/redact-sensitive-url.ts"],
 ]);
 
@@ -67,12 +72,27 @@ registerHooks({
     if (publicSources.has(specifier)) {
       return { url: sourceUrl(publicSources.get(specifier)), shortCircuit: true };
     }
-    const sourcePackage = /^@openclaw\/(normalization-core|media-core|session-url-contract|retry)(?:\/([a-z][a-z0-9-]*))?$/.exec(specifier);
+    const sourcePackage = /^@openclaw\/(normalization-core|media-core|session-url-contract|retry|model-catalog-core|llm-core|ai)(?:\/([a-z][a-z0-9-]*(?:\/[a-z][a-z0-9-]*)*))?$/.exec(specifier);
     if (sourcePackage) {
       const [, packageName, subpath] = sourcePackage;
       const name = subpath ?? "index";
-      if (!/^[a-z][a-z0-9-]*$/.test(name)) throw Error("Invalid normalization source module.");
-      return { url: sourceUrl(`packages/${packageName}/src/${name}.ts`), shortCircuit: true };
+      let sourceName = name;
+      if (!/^[a-z][a-z0-9-]*(?:\/[a-z][a-z0-9-]*)*$/.test(name)) throw Error("Invalid workspace source module.");
+      if (packageName === "model-catalog-core" || packageName === "llm-core" || packageName === "ai") {
+        const manifest = `packages/${packageName}/package.json`;
+        if (!trackedSources.has(manifest)) throw Error("Untracked source package manifest.");
+        const declared = JSON.parse(fs.readFileSync(path.join(root, manifest), "utf8"));
+        const exported = declared.exports?.[subpath ? `./${subpath}` : "."];
+        const target = typeof exported === "string" ? exported : exported?.import ?? exported?.default;
+        const declaredPath = typeof target === "string"
+          ? /^\.\/dist\/([a-z][a-z0-9-]*(?:\/[a-z][a-z0-9-]*)*)\.mjs$/.exec(target) : undefined;
+        if (declared.name !== `@openclaw/${packageName}` || !declaredPath) {
+          throw Error("Workspace source alias differs from its declared package export.");
+        }
+        sourceName = declaredPath[1];
+        sources.add(manifest);
+      }
+      return { url: sourceUrl(`packages/${packageName}/src/${sourceName}.ts`), shortCircuit: true };
     }
     for (const entry of packages) {
       if (specifier === entry.name || specifier.startsWith(entry.name + "/")) {

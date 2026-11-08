@@ -19,6 +19,8 @@ def test_case_catalog_is_deterministic_unique_and_standard_json():
         "storage.discovery", "storage.path-safety", "indexing.identity",
         "indexing.embedding-cache", "indexing.incremental-sync",
         "indexing.transaction-publication",
+        "chunking.markdown-boundaries", "chunking.utf16-cjk-budget",
+        "prompt.bootstrap-budget", "flush.trigger-usage", "sessions.transcript-filtering",
     }
 
 
@@ -49,6 +51,20 @@ def test_generated_lexical_coverage_is_backed_by_reproducible_seeded_strings():
 def test_unknown_operation_is_an_error_not_a_success_placeholder():
     with pytest.raises(ValueError, match="Unsupported equivalence operation"):
         run_python({"operation": "unimplemented-rem-phase", "input": {}})
+
+
+def test_prospective_fixtures_remain_explicit_without_dropping_registered_cases():
+    registered = {case["id"]: case for case in build_cases()}
+    all_cases = build_cases(include_prospective=True)
+    assert len({case["id"] for case in all_cases}) == len(all_cases)
+    assert {case["id"]: case for case in all_cases if case["id"] in registered} == registered
+    prospective = [case for case in all_cases if case["id"] not in registered]
+    assert len(prospective) == 166
+    assert {case["requirement"] for case in prospective} == {
+        "flush.plan-target", "flush.trigger-usage", "sessions.transcript-filtering",
+    }
+    assert all(case["covers"] == [] for case in prospective)
+    assert all_cases == build_cases(include_prospective=True)
 
 
 def test_mmr_disabled_preserves_input_order_and_payload():

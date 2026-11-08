@@ -15,8 +15,8 @@ and signatures). All lengths are UTF-16 code units. Head and tail slices are sur
 ``appendBootstrapPromptWarning`` is gone upstream (0b450013ea0, #130325: the truncation notice
 goes into the system prompt as ``## Bootstrap Context Notice``), and so is its port.
 
-Not ported: the authenticated personal ``users/<profile-id>/USER.md`` overlay, which upstream
-skips instead of truncating (``personalUser``).
+Caller-supplied personal ``USER.md`` overlays are kept whole or skipped instead of
+truncated (``personalUser``). Authenticated overlay discovery is not ported.
 """
 
 from __future__ import annotations
@@ -104,6 +104,7 @@ class ContextFile:
 
     path: str
     content: str
+    personal_user: bool = False
 
 
 @dataclass(frozen=True)
@@ -440,6 +441,11 @@ def build_bootstrap_context_files(
             min(max_chars, USER_BOOTSTRAP_MAX_CHARS) if _is_user_bootstrap_file(file.name) else max_chars
         )
         file_max_chars = max(1, min(file_budget, remaining))
+        # Cutting a personal directive can change its meaning. Keep shared defaults
+        # and leave this file's budget available for subsequent bootstrap files.
+        if file.personal_user and utf16_len(js_trim_end(file.content or "")) > file_max_chars:
+            warnings.append("Personal USER.md exceeds the bootstrap budget; using shared defaults.")
+            continue
         trimmed = trim_bootstrap_content(file.content or "", file.name, file_max_chars)
         within_budget = clamp_to_budget(trimmed.content, remaining)
         if not within_budget:
@@ -450,7 +456,7 @@ def build_bootstrap_context_files(
                 f"(limit {trimmed.max_chars}); truncating in injected context"
             )
         remaining = max(0, remaining - utf16_len(within_budget))
-        result.append(ContextFile(path_value, within_budget))
+        result.append(ContextFile(path_value, within_budget, personal_user=file.personal_user))
     return BootstrapContextFilesResult(tuple(result), tuple(warnings))
 
 

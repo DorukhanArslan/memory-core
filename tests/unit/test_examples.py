@@ -7,6 +7,7 @@ from pathlib import Path
 import examples.basic_usage as basic_usage
 import examples.live_streaming as live_streaming
 import examples.quickstart as quickstart
+import memory_core.tools.memory_search as memory_search_module
 from memory_core import TurnUsage
 from memory_core.live import LiveIdentityStore
 
@@ -116,6 +117,7 @@ class _StubLLM:
 
 
 def test_quickstart_runs_the_memory_tools_and_the_flush(tmp_path: Path, monkeypatch, capsys):
+    monkeypatch.setattr(memory_search_module.time, "time", lambda: 1.0)
     printed = []
 
     def stdout_so_far():
@@ -141,7 +143,14 @@ def test_quickstart_runs_the_memory_tools_and_the_flush(tmp_path: Path, monkeypa
         "What is our codename?",
     ]
     # Turn 1 finds nothing; its flush appends the fact, which turn 2's search finds.
-    empty = {"results": [], "provider": "none", "model": "fts-only", "citations": "on"}
+    empty = {
+        "results": [], "provider": "none", "citations": "auto",
+        "debug": {
+            "backend": "builtin", "effectiveMode": "n/a", "searchMs": 0,
+            "hits": 0, "candidateHits": 0, "withheldHits": 0,
+            "searchWindow": 200, "toolMs": 0, "outsideSearchMs": 0,
+        },
+    }
     assert llm.searches[0] == empty
     (write,) = llm.writes
     target = write["path"]
@@ -157,7 +166,7 @@ def test_quickstart_runs_the_memory_tools_and_the_flush(tmp_path: Path, monkeypa
     assert (tmp_path / "my-agent-app" / target).read_text(encoding="utf-8") == llm.FACT
     (hit,) = llm.searches[1]["results"]
     assert (hit["path"], hit["startLine"]) == (target, 1)
-    assert hit["citation"] == f"Source: {target}#L1"
+    assert hit["citation"] == f"{target}#L1"
     assert llm.FACT in hit["snippet"]
     # One flush run over turn 1's text: complete() stamped the compaction cycle and the loop
     # kept that state, so turn 2, past the threshold too, reads already_flushed.
@@ -185,7 +194,7 @@ def test_readme_quickstart_saves_and_recalls_without_a_provider(tmp_path: Path, 
     (hit,) = namespace["result"]["results"]
     assert hit["path"] == namespace["path"]
     assert "I prefer technical answers in English." in hit["snippet"]
-    assert hit["citation"] == f"Source: {namespace['path']}#L1-L2"
+    assert hit["citation"] == f"{namespace['path']}#L1-L2"
     assert (memory.workspace.root / hit["path"]).is_file()
     output = capsys.readouterr().out
     assert "I prefer technical answers in English." in output

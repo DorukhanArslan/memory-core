@@ -20,6 +20,13 @@ from memory_core.prompt_section import build_prompt_section
 from memory_core.runtime_context_prompt import build_runtime_context_system_context
 from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY, MEMORY_CORE_RUNTIME_IDENTITY
 
+
+def test_auto_citations_preserve_memory_prompt_guidance():
+    tools = {"memory_search", "memory_get"}
+    assert build_prompt_section(tools, citations_mode="auto") == build_prompt_section(
+        tools, citations_mode="on",
+    )
+
 NOW_MS = 1_790_375_400_000  # 2026-09-25 22:30 UTC
 TEMPLATES = {
     "AGENTS.md": "# AGENTS.md\n\nAnswer briefly.\n",

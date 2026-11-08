@@ -43,6 +43,12 @@ _OPERATIONS = {
     "flush-execution-runtime": (
         "flush-execution.mjs", "dist/agent-runner-memory-Cc4lCZcs.mjs", True,
     ),
+    "search-contract-runtime": (
+        "search-contract-runtime.mjs", "dist/tools-DotaQGXh.mjs", True,
+    ),
+    "search-contract-helper-runtime": (
+        "search-contract-runtime.mjs", "dist/tools-DotaQGXh.mjs", False,
+    ),
 }
 
 
@@ -200,6 +206,11 @@ class ReleaseOracleExecution:
         case = cases[0]
         row = result["results"][0]
         operation = case.get("operation")
+        search_profile_kinds = {"search-contract-runtime": {"tool"},
+                                "search-contract-helper-runtime": {"definition", "prepare-arguments"}}
+        if (operation in search_profile_kinds
+                and case.get("input", {}).get("kind") not in search_profile_kinds[operation]):
+            raise RuntimeOracleError("Search fixtures must use their narrowly declared helper or whole-tool profile.")
         if (not isinstance(row, dict) or operation not in _OPERATIONS
                 or row.get("id") != case.get("id") or type(row.get("ok")) is not bool
                 or set(row) != ({"id", "ok", "result"} if row["ok"] else {"id", "ok", "error"})):
@@ -304,6 +315,12 @@ class ReleaseOracleExecution:
 
             if any(("node_modules/openclaw", owner) not in loaded for owner in COMPILED_HASHES):
                 raise RuntimeOracleError("The actual native preparation, metadata and ranking owners did not execute.")
+        if operation in {"search-contract-runtime", "search-contract-helper-runtime"}:
+            from equivalence.search_contract_runtime_bindings import REQUIRED_LOADED_ARTIFACTS_BY_PROFILE
+
+            if any(("node_modules/openclaw", owner) not in loaded
+                   for owner in REQUIRED_LOADED_ARTIFACTS_BY_PROFILE[operation]):
+                raise RuntimeOracleError("The actual declared native search-tool owners did not execute.")
         if case.get("operation") == "flush-execution-runtime" and not captures:
             raise RuntimeOracleError("The native provider loader did not execute a reviewed fixture source capture.")
         if operation == "flush-execution-runtime" and (

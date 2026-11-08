@@ -15,9 +15,9 @@ from memory_core.consolidation import record_short_term_recalls, undecorate_sear
 from memory_core.consolidation.store import recall_store_path
 from memory_core.flags import FeatureFlags
 from memory_core.host import HostKit, SessionState
-from memory_core.tools.common import MemoryToolInputError
+from memory_core.tools.common import MemoryToolError, MemoryToolInputError
 from memory_core.tools.memory_get import execute_memory_get_tool
-from memory_core.tools.memory_search import execute_memory_search_tool
+from memory_core.tools.memory_search import MemorySearchToolContext, execute_memory_search_tool
 
 NOW_MS = 1_790_375_400_000  # 2026-09-25 22:30 UTC
 SESSION = SessionState.new(session_key="agent:main:main", session_id="s1")
@@ -65,17 +65,50 @@ def _files(root) -> dict[str, bytes]:
     }
 
 
-def test_dispatch_memory_search_equals_execute_memory_search_tool(tmp_path):
+def test_dispatch_memory_search_equals_execute_memory_search_tool(tmp_path, monkeypatch):
     _seed(tmp_path)
     kit = _kit(tmp_path)
     args = {"query": "zephyrquartz", "maxResults": 3}
+    context = MemorySearchToolContext(clock=lambda: NOW_MS)
+    monkeypatch.setattr(
+        kit_module, "execute_memory_search_tool",
+        lambda *args, **kwargs: execute_memory_search_tool(*args, context=context, **kwargs),
+    )
 
     result = kit.dispatch("memory_search", args, session=SESSION)
 
     assert result == execute_memory_search_tool(
-        kit.memory.config, kit.memory.store, args, agent_session_key=SESSION.session_key
+        kit.memory.config, kit.memory.store, args, agent_session_key=SESSION.session_key,
+        context=context,
     )
     assert [hit["path"] for hit in result["results"]] == ["MEMORY.md"]
+
+
+def test_dispatch_search_prepares_aliases_without_mutating_caller(tmp_path, monkeypatch):
+    kit = _kit(tmp_path)
+    arguments = {"query": "cedar", "max_results": "3", "min_score": "0"}
+    observed = []
+    monkeypatch.setattr(
+        kit_module, "execute_memory_search_tool",
+        lambda _config, _store, params, **_options: observed.append(params) or {"results": []},
+    )
+
+    assert kit.dispatch("memory_search", arguments, session=SESSION) == {"results": []}
+    assert observed == [{"query": "cedar", "maxResults": "3", "minScore": "0"}]
+    assert arguments == {"query": "cedar", "max_results": "3", "min_score": "0"}
+
+
+def test_dispatch_search_preserves_ordinary_tool_error(tmp_path, monkeypatch):
+    kit = _kit(tmp_path)
+
+    def refused(*_args, **_options):
+        raise MemoryToolError("Memory is disabled for this agent.", tool="memory_search")
+
+    monkeypatch.setattr(kit_module, "execute_memory_search_tool", refused)
+    assert kit.dispatch("memory_search", {"query": "cedar"}, session=SESSION) == {
+        "status": "error", "tool": "memory_search",
+        "error": "Memory is disabled for this agent.",
+    }
 
 
 def test_dispatch_accepts_mappings_json_text_and_none(tmp_path):
@@ -317,10 +350,15 @@ def test_parallel_searches_record_every_recall(tmp_path):
     assert entries["memory:memory/2026-09-25.md:1:2"]["recallCount"] == 40
 
 
-def test_dispatcher_equals_dispatch_with_the_session(tmp_path):
+def test_dispatcher_equals_dispatch_with_the_session(tmp_path, monkeypatch):
     # HostKit.dispatcher (docs/host_kit.md, F24): FlushRequest.dispatch's two-argument shape.
     _seed(tmp_path)
     kit = _kit(tmp_path)
+    context = MemorySearchToolContext(clock=lambda: NOW_MS)
+    monkeypatch.setattr(
+        kit_module, "execute_memory_search_tool",
+        lambda *args, **kwargs: execute_memory_search_tool(*args, context=context, **kwargs),
+    )
     run_tool = kit.dispatcher(SESSION)
     calls = [
         ("memory_search", {"query": "zephyrquartz", "maxResults": 3}),

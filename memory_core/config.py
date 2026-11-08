@@ -15,7 +15,7 @@ class MemoryConfig:
     workspace_dir: Path
     agent_id: str = "main"
     store_path: Path | None = None
-    citation_mode: str = "on"
+    citation_mode: str = "auto"
     memory_get_max_chars: int = 12_000
     memory_get_default_lines: int = 120
     # The defaults are the tag's fixed hybrid weights and its on-by-default MMR and temporal
@@ -33,6 +33,11 @@ class MemoryConfig:
     # search without a corpus covers memory files only. The index itself is the host's:
     # sessions are indexed when the workspace is given a state directory.
     session_search: bool = True
+    # Resolved memorySearch.query defaults used by the raw model-facing tool.
+    # Append new options so existing positional construction keeps its meaning.
+    # Convenience clients may still pass their own explicit limits.
+    search_max_results: int = 6
+    search_min_score: float = 0.35
 
     def effective_flags(self) -> FeatureFlags:
         """Resolve feature flags; explicit `flags` wins over legacy booleans."""

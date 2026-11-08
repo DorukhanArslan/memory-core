@@ -153,8 +153,9 @@ lifecycle owner. Classifications are 15 present, 46 partial, zero missing and th
 The stored annotation path is now verified within its declared profile; other manager/host
 contracts, alternate tokenizers, universal ICU and optional accelerated KNN remain open. The
 warm first-recall and Unicode path-order diagnostics remain visible and uncredited. Fixed scope
-is unchanged at 64 contracts and 128 acceptance points. The 54-case first report passes; the
-new integrated gate and full regression results remain pending.
+is unchanged at 64 contracts and 128 acceptance points. The previous integrated gate retained 944 matches and two differences in 946 cases,
+with 3,037 regression tests passing. The new search boundary batch has 69 first-pass matches;
+its committed integrated gate and final regression checks are pending.
 
 | Contract | OpenClaw entry | Python entry | Python surface |
 | --- | --- | --- | --- |
@@ -179,10 +180,10 @@ new integrated gate and full regression results remain pending.
 | `retrieval.mmr` | [applyMMRToHybridResults](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/mmr.ts#L32) | [apply_mmr_to_hybrid_results](../memory_core/index/mmr.py#L130) | present |
 | `retrieval.temporal-decay` | [applyTemporalDecayToHybridResults](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/temporal-decay.ts#L112) | [apply_temporal_decay_to_hybrid_results](../memory_core/index/temporal_decay.py#L122) | partial |
 | `retrieval.importance-project` | [applyImportanceMultiplier](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/importance.ts#L9) | [SQLiteMemoryStore.attach_recall_metadata](../memory_core/index/sqlite_store.py#L869) | present |
-| `tools.search-contract` | [createMemorySearchTool](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.ts#L226) | [memory_search_tool_definition](../memory_core/tools/memory_search.py#L149) | partial |
+| `tools.search-contract` | [createMemorySearchTool](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.ts#L226) | [memory_search_tool_definition](../memory_core/tools/memory_search.py#L153) | partial |
 | `tools.get-contract` | [createMemoryGetTool](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.ts#L569) | [memory_get_tool_definition](../memory_core/tools/memory_get.py#L85) | partial |
-| `tools.deadline-cooldown` | [runMemorySearchWithDeadline](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/search-deadline.ts#L28) | [_DeadlineWorker](../memory_core/tools/memory_search.py#L416) | partial |
-| `tools.unavailable-partial` | [buildMemorySearchUnavailableResult](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.shared.ts#L93) | [build_memory_search_unavailable_result](../memory_core/tools/memory_search.py#L171) | partial |
+| `tools.deadline-cooldown` | [runMemorySearchWithDeadline](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/search-deadline.ts#L28) | [_DeadlineWorker](../memory_core/tools/memory_search.py#L441) | partial |
+| `tools.unavailable-partial` | [buildMemorySearchUnavailableResult](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.shared.ts#L93) | [build_memory_search_unavailable_result](../memory_core/tools/memory_search.py#L175) | partial |
 | `sessions.corpus-admission` | [listSessionTranscriptCorpusEntriesForAgent](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/session-transcript-corpus.ts#L560) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L43) | partial |
 | `sessions.transcript-filtering` | [buildSessionEntryInProcess](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/session-files.ts#L667) | [build_session_entry](../memory_core/session_entry.py#L649) | partial |
 | `sessions.visibility-lineage` | [filterMemorySearchHitsBySessionVisibility](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/session-search-visibility.ts#L164) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L43) | partial |
@@ -193,7 +194,7 @@ new integrated gate and full regression results remain pending.
 | `prompt.runtime-context` | [buildMemoryPromptSection](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory-tool-contract.ts#L131) | [build_prompt_section](../memory_core/prompt_section.py#L15) | partial |
 | `prompt.history-repair` | [limitHistoryTurns](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/embedded-agent-runner/history.ts#L37) | [limit_history_turns](../memory_core/history.py#L19) | partial |
 | `flush.plan-target` | [buildMemoryFlushPlan](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/flush-plan.ts#L63) | [build_memory_flush_plan_from_config](../memory_core/memory_flush.py#L301) | partial |
-| `flush.trigger-usage` | [runMemoryFlushIfNeeded](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/auto-reply/reply/agent-runner-memory.ts#L1117) | [HostKit.prepare_flush](../memory_core/host/kit.py#L576) | present |
+| `flush.trigger-usage` | [runMemoryFlushIfNeeded](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/auto-reply/reply/agent-runner-memory.ts#L1117) | [HostKit.prepare_flush](../memory_core/host/kit.py#L577) | present |
 | `flush.execute-finalize` | [runMemoryFlushIfNeeded](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/auto-reply/reply/agent-runner-memory.ts#L1117) | [FlushRequest](../memory_core/host/flush.py#L191) | partial |
 | `compaction.memory-budget` | [compactMemoryForBudget](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory-budget.ts#L180) | [compact_memory_for_budget](../memory_core/memory_budget.py#L190) | present |
 | `compaction.context-assembly` | [assembleHarnessContextEngine](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/harness/context-engine-lifecycle.ts#L133) | [assemble_context_engine_messages](../memory_core/context_engine_lifecycle.py#L26) | partial |
@@ -219,7 +220,7 @@ new integrated gate and full regression results remain pending.
 | `engine.numeric-boundaries` | [asFiniteNumber](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/normalization-core/src/number-coercion.ts#L4) | [js_to_fixed](../memory_core/consolidation/_util.py#L63) | partial |
 | `engine.unicode-collation` | [sliceUtf16Safe](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/normalization-core/src/utf16-slice.ts#L30) | [utf16_slice](../memory_core/bootstrap/_js.py#L96) | partial |
 | `engine.datetime-regex` | [resolveCronStyleNow](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/current-time.ts#L23) | [format_current_time_line](../memory_core/current_time.py#L198) | partial |
-| `host.turn-barrier` | [beginForegroundSessionMaintenance](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/session-maintenance/coordinator.ts#L181) | [HostKit.after_turn](../memory_core/host/kit.py#L526) | host-owned |
+| `host.turn-barrier` | [beginForegroundSessionMaintenance](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/session-maintenance/coordinator.ts#L181) | [HostKit.after_turn](../memory_core/host/kit.py#L527) | host-owned |
 | `host.restart-recall` | [loadSessionStore](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/plugin-sdk/session-store-runtime.ts#L263) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L43) | host-owned |
 | `host.update-isolation` | [consolidateMemory](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/dreaming-consolidation.ts#L396) | [MemoryCurator.replace_memory_entry](../memory_core/curation.py#L939) | partial |
 
@@ -232,3 +233,16 @@ python -m equivalence.source_map --reference /path/to/openclaw-v2026.9.9
 This checks the exact clean reference commit, tracked module hashes, literal source anchors, Python locations and complete inventory coverage. It does not execute those behaviors. Actual differential cases still run through `scripts/check_equivalence.py`; the full acceptance gate remains incomplete until every required point is tested.
 
 The module dependency inventory is a source-level index of literal specifiers, including type-only imports and declarations. Variable plugin imports and runtime callback wiring remain explicit host/integration work.
+
+
+The search boundary now has an actual SDK factory in
+[`search_factory.py`](../memory_core/tools/search_factory.py), live configuration revocation,
+argument preparation and a production JSON envelope. Its first 69 comparisons retain the
+complete public results, errors and citation/source metadata: 46 original source helpers,
+12 separately authenticated official definition/preparation cases and 11 actual provider-none
+whole-tool flows. Eight compiled owners and protected memory-index workers are required only
+for the whole-tool profile; helper cases cannot impersonate that profile. The declared JSON
+carrier codec verifies text/details agreement and preserves both original envelopes; it does
+not claim identical number spelling or whitespace across engines. Real transcript visibility,
+provider/fallback/bootstrap, stale/rebuild lifecycle and deadline transitions remain open.
+No acceptance credit is inferred from the source inventory alone.

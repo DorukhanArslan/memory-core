@@ -42,14 +42,10 @@ _SNAKE_BOUNDARY_RE = re.compile(r"([a-z0-9])([A-Z])")
 _MISSING = object()
 
 
-class MemoryToolInputError(ValueError):
-    """Invalid tool input (OpenClaw ``ToolInputError``, HTTP-like status 400).
+class MemoryToolError(ValueError):
+    """An ordinary native tool ``Error``, without an input-error status."""
 
-    Raised before any search work starts. Hosts that run a tool loop turn it
-    into the tool result the model sees with :meth:`to_tool_error`.
-    """
-
-    status = 400
+    name = "Error"
 
     def __init__(self, message: str, *, tool: str | None = None):
         super().__init__(message)
@@ -58,6 +54,17 @@ class MemoryToolInputError(ValueError):
 
     def to_tool_error(self, tool: str | None = None) -> dict[str, str]:
         return to_tool_error(self, tool=tool or self.tool or "tool")
+
+
+class MemoryToolInputError(MemoryToolError):
+    """Invalid tool input (OpenClaw ``ToolInputError``, HTTP-like status 400).
+
+    Raised before any search work starts. Hosts that run a tool loop turn it
+    into the tool result the model sees with :meth:`to_tool_error`.
+    """
+
+    status = 400
+    name = "ToolInputError"
 
 
 def to_tool_error(error: BaseException, *, tool: str) -> dict[str, str]:
@@ -199,7 +206,7 @@ def read_string_param(
     allow_empty: bool = False,
 ) -> str | None:
     """``readStringParam``: non-strings and blank strings read as missing."""
-    label = label or key
+    label = key if label is None else label
     raw = _read_param_raw(params, key)
     if not isinstance(raw, str):
         if required:
@@ -223,7 +230,7 @@ def read_positive_integer_param(
     """``readPositiveIntegerParam``: present but not a positive safe integer raises."""
     number = _read_strict_number(params, key)
     value = _as_positive_safe_integer(number) if number is not None else None
-    error_message = message or f"{key} must be a positive integer"
+    error_message = f"{key} must be a positive integer" if message is None else message
     raw = _read_param_raw(params, key)
     # A blank string reads as omitted (common.ts isBlankParamValue).
     if value is None and not _is_nullish(raw) and not _is_blank_string(raw):
@@ -245,9 +252,10 @@ def read_finite_number_param(
 ) -> float | None:
     """``readFiniteNumberParam``: present but not a finite number raises."""
     value = _read_strict_number(params, key)
-    error_message = message or f"{key} must be a finite number"
+    error_message = f"{key} must be a finite number" if message is None else message
     if value is None:
-        if not _is_nullish(_read_param_raw(params, key)):
+        raw = _read_param_raw(params, key)
+        if not _is_nullish(raw) and not _is_blank_string(raw):
             raise MemoryToolInputError(error_message)
         return None
     if min_value is not None:
@@ -270,4 +278,4 @@ def read_corpus_param(
         return None
     if raw in allowed:
         return raw
-    raise MemoryToolInputError(f"corpus must be one of: {', '.join(allowed)}")
+    raise MemoryToolError(f"corpus must be one of: {', '.join(allowed)}")

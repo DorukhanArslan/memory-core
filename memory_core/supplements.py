@@ -26,6 +26,24 @@ class MemoryCorpusSupplement(Protocol):
 
 
 @dataclass(frozen=True)
+class RegisteredMemoryCorpusSupplement:
+    """A host-registered supplement with its real plugin identity.
+
+    Registration lets the corpus coordinator reproduce native plugin-id order
+    and failure attribution. Anonymous supplements remain supported separately.
+    """
+
+    plugin_id: str
+    supplement: MemoryCorpusSupplement
+
+    def search(self, *, query: str, max_results: int, corpus: str) -> list[MemoryCorpusResult]:
+        return self.supplement.search(query=query, max_results=max_results, corpus=corpus)
+
+    def get(self, *, path: str, corpus: str) -> MemoryCorpusResult | None:
+        return self.supplement.get(path=path, corpus=corpus)
+
+
+@dataclass(frozen=True)
 class StaticMemoryCorpusSupplement:
     results: list[MemoryCorpusResult]
 

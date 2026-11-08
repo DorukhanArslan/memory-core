@@ -6,9 +6,8 @@ a :class:`CorpusAttempt`; :func:`compose_memory_corpus_metadata` turns the attem
 into the ``corpora`` / ``warning`` / ``error`` / ``timedOut`` fields the tool
 results carry, so a failed corpus is reported instead of hidden by a successful one.
 
-Deviation: upstream orders and labels supplements by plugin id; memory-core's
-supplements are anonymous, so they keep the host's list order and a failure of more
-than one is joined without a prefix.
+Registered supplements use native plugin-id ordering and failure labels. Legacy
+anonymous supplements keep their host-list positions and have no invented labels.
 """
 
 from __future__ import annotations
@@ -17,6 +16,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
+from memory_core.bootstrap._js import locale_sort_key
+from memory_core.supplements import RegisteredMemoryCorpusSupplement
 from memory_core.tools.common import format_error_message
 
 # memory/search-deadline.ts DEFAULT_MEMORY_SEARCH_TIMEOUT_MS.
@@ -89,22 +90,44 @@ def settle_supplements(
     run: Callable[[Any], T],
     merge: Callable[[list[T]], T],
 ) -> CorpusAttempt:
-    """``settleMemorySupplements``: run every supplement, keep the ones that succeeded."""
+    """Run every supplement, retaining successes and registered failure identities.
+
+    Registered entries are sorted by plugin id. In a mixed list, anonymous
+    entries retain their positions while the registered entries fill their
+    existing slots in sorted order. This preserves the legacy anonymous API.
+    """
     if not supplements:
         return CorpusAttempt(corpus="wiki", outcome="not-registered")
     completed: list[T] = []
-    failures: list[str] = []
-    for supplement in supplements:
+    failures: list[tuple[str | None, str]] = []
+    registered = iter(sorted(
+        (entry for entry in supplements if isinstance(entry, RegisteredMemoryCorpusSupplement)),
+        key=lambda entry: locale_sort_key(entry.plugin_id),
+    ))
+    ordered = [
+        next(registered) if isinstance(entry, RegisteredMemoryCorpusSupplement) else entry
+        for entry in supplements
+    ]
+    for supplement in ordered:
         try:
             completed.append(run(supplement))
         except Exception as error:
-            failures.append(format_error_message(error))
+            plugin_id = (
+                supplement.plugin_id
+                if isinstance(supplement, RegisteredMemoryCorpusSupplement)
+                else None
+            )
+            failures.append((plugin_id, format_error_message(error)))
     value = merge(completed)
     if not failures:
         return CorpusAttempt(corpus="wiki", outcome="ok", value=value)
     # A supplement's failure is the plugin's, never this tool's deadline.
+    error_message = "; ".join(
+        f"{plugin_id}: {error}" if len(failures) > 1 and plugin_id is not None else error
+        for plugin_id, error in failures
+    )
     return CorpusAttempt(
-        corpus="wiki", outcome="unavailable", value=value, error="; ".join(failures)
+        corpus="wiki", outcome="unavailable", value=value, error=error_message
     )
 
 

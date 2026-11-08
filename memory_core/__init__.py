@@ -33,7 +33,7 @@ from memory_core.host import (
     TurnState,
     TurnUsage,
 )
-from memory_core.tools.common import MemoryToolInputError
+from memory_core.tools.common import MemoryToolError, MemoryToolInputError
 from memory_core.workspace import UnsafeMemoryPathError
 
 __version__ = "0.2.0"
@@ -68,6 +68,7 @@ __all__ = [
     "OPENCLAW_COMPAT_LAYOUT",
     # Errors that reach a host.
     "MemoryToolInputError",
+    "MemoryToolError",
     "CurationError",
     "UnsafeMemoryPathError",
     "WorkspaceStateMigrationRequiredError",

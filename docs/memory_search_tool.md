@@ -1,299 +1,255 @@
 # memory_search Tool Contract
 
-`memory_search` follows OpenClaw's memory-core tool
-(`extensions/memory-core/src/tools.ts`, `tools.shared.ts`) at pin
-`4c42815348ae336bf18e16ab049b6dbe0e4b8223`. This page covers what a host sees:
-params, errors, result shapes, the deadline, the cooldown and index-identity
-gating. The "Deviations" section lists where memory-core differs from upstream on
-purpose; `docs/parity_matrix.md` records the evidence.
+The active reference is OpenClaw **v2026.9.9**, commit
+`bcfc88812a35243893585dbeca87ca41b48272ca`. Its production factory and query path
+live in `extensions/memory-core/src/tools.ts`, `tools.shared.ts`,
+`tools.citations.ts`, `memory-tool-contract.ts`, and `memory-search-tool-query.ts`.
+This page describes the Python boundary and its explicit host responsibilities.
+The acceptance target is `tools.search-contract`; this work does not establish
+full deadline, provider lifecycle, session visibility, or recall parity.
 
-## Entry points
+## Entry points and defaults
 
-| Call | Use it for |
+| Entry point | Arguments and result |
 | --- | --- |
-| `execute_memory_search_tool(config, store, params)` | The model's raw tool-call arguments (a mapping). |
-| `memory_search(config, store, *, query, max_results=5, min_score=0.0, corpus="all")` | Python calls. `None` for a param means "omitted". |
-| `Memory.search(...)` | The facade; same defaults as `memory_search`. |
+| `execute_memory_search_tool(config, store, params)` | Reads raw model arguments and returns the complete provider-neutral payload dictionary. |
+| `memory_search(config, store, *, query, max_results=6, min_score=0.35, corpus="all")` | Python convenience form of the raw executor. `None` means the numeric argument was omitted. |
+| `Memory.search(query, max_results=5, min_score=0.0, corpus="all")` | Existing SDK convenience defaults; these are explicit arguments to the tool. |
+| `create_memory_search_tool(config, store, ...)` | Creates the model-facing factory object, or returns `None` when disabled. Its `execute(tool_call_id, params)` returns the native-shaped JSON envelope. |
 
-`memory_search_tool_definition()` returns the upstream tool's name, verbatim
-description and JSON schema as `{"name", "description", "parameters"}` (the
-shape `MemoryCurator.tool_definitions()` uses; wrap it in the host's tool
-format). The description tells the model to pass on the `warning` and `action`
-of an unavailable or paused result, so hosts should send it unchanged.
-`memory_get` has the same pair: `execute_memory_get_tool(config, params)` reads
-`path` (required, JavaScript trim), `from` and `lines` (positive integers) and
-raises `MemoryToolInputError` tagged `memory_get`, and
-`memory_get_tool_definition()` returns its definition.
-
-Both tools take the parsed argument mapping. A JSON string, or anything else
-that is not a mapping, reads as `{}` (upstream `asToolParamsRecord`), so the
-call fails with `query required` / `path required`; parse the model's argument
-text first. (`MemoryCurator.dispatch` also accepts the JSON text.)
-
-`execute_memory_search_tool` and `memory_search` also take `supplements=`,
-`agent_session_key=` (a cooldown-key fallback) and `runtime_identity=` (`MEMORY_CORE_RUNTIME_IDENTITY` by default,
-`OPENCLAW_COMPAT_RUNTIME_IDENTITY` for OpenClaw's exact texts).
-
-## Params
-
-Params are read before any search work, in this order
-(`readStringParam` / `readPositiveIntegerParam` / `readFiniteNumberParam`,
-`src/agents/tools/common.ts`):
-
-| Param | Accepted | Error message |
-| --- | --- | --- |
-| `query` | a string that is not blank after trimming; the trimmed text is searched | `query required` |
-| `maxResults` / `max_results` | a positive safe integer, or a strict numeric string (`"5"`, `"1e1"`, `" +5 "`, `"5.0"`) | `maxResults must be a positive integer` |
-| `minScore` / `min_score` | a finite number, or a strict numeric string (`"0.3"`, `".5"`, `"-2e-1"`) | `minScore must be a finite number` |
-| `corpus` | any string (trimmed); non-strings and blanks read as omitted | none |
-
-- `True`/`False`, lists, `"0x10"`, `"1_000"`, full-width digits, `NaN` and
-  `inf` are rejected. A missing key or `None` reads as omitted.
-- The snake_case alias is read only when the camelCase key is absent:
-  `{"maxResults": None, "max_results": 1}` means "maxResults omitted".
-- Invalid input raises `MemoryToolInputError` (`status == 400`), the port of
-  upstream `ToolInputError`. It is not a result payload. A host tool loop sends
-  the model `error.to_tool_error()`, which is what OpenClaw's tool adapter
-  sends (`src/agents/agent-tool-definition-adapter.ts`):
+The raw tool resolves omitted numeric arguments from
+`MemoryConfig.search_max_results` and `MemoryConfig.search_min_score`, whose
+defaults are **6** and **0.35**. Explicit model arguments take precedence.
+`Memory.search` retains its explicit **5 / 0.0** convenience policy; this is an
+SDK extension, not an alternative claim about the native defaults. An omitted
+raw `corpus` searches configured primary sources without querying wiki
+supplements. The Python convenience calls default to `corpus="all"`.
 
 ```python
-from memory_core import MemoryToolInputError
-from memory_core.tools.memory_search import execute_memory_search_tool
+from memory_core.tools.search_factory import create_memory_search_tool
 
-try:
-    result = execute_memory_search_tool(config, store, {"query": "x", "maxResults": 0})
-except MemoryToolInputError as error:
-    result = error.to_tool_error()
-# {"status": "error", "tool": "memory_search", "error": "maxResults must be a positive integer"}
+tool = create_memory_search_tool(memory.config, memory.store)
+if tool is not None:
+    definition = tool.definition
+    arguments = tool.prepare_arguments({"query": "What tea do I prefer?", "max_results": 3})
+    envelope = tool.execute("call-1", arguments)
+    payload = envelope["details"]
 ```
 
-### Blank queries
+The factory definition contains `label`, `name`, `description`, and `parameters`.
+`memory_search_tool_definition(index_sessions=False, extra_paths=())` provides
+the provider-neutral name, description, and schema without a factory object.
+Session indexing and configured extra paths change the source guidance.
+`extra_paths` describes sources the host indexes; it does not add an indexing
+implementation.
 
-`memory_search` and the facade raise as well, so the change reaches every caller
-built on them: `Memory.search("")` and `SubjectMemory.prepare_live_turn` with a
-blank `user_utterance` (a silent ASR turn, for example) raise
-`MemoryToolInputError("query required")`. Before this
-contract port they returned `{"results": [], "disabled": True, "error": "query
-required"}` and recall injected nothing. Hosts that can pass blank input must
-skip recall for it or catch the error. `tests/unit/test_client.py` pins this;
-whether the facade should return an empty recall instead is an open decision.
+`prepare_memory_search_arguments` normalizes `max_results` and `min_score` to
+camelCase and removes their aliases. Explicit camelCase properties win,
+including null and invalid values. With no aliases, it returns the original
+input. It does not mutate the caller's arguments.
 
-### Corpus
-
-`corpus` is checked against `memory|wiki|all|sessions` like upstream's `readCorpusParam`: an unknown
-value fails closed with `corpus must be one of: memory, wiki, all, sessions` instead of searching
-every source, and a blank string reads as omitted. (The schema enum is also enforced by the host's
-argument validation.)
-
-| `corpus` | Memory index | Supplements | Result mix |
-| --- | --- | --- | --- |
-| `memory` | memory files only | no | memory hits |
-| `sessions` | session transcripts only | no | session hits |
-| `wiki` | not searched | yes | supplement hits |
-| `all` | every source | yes | balanced: up to `ceil(max/2)` per side, then backfill |
-| omitted or blank | the default sources | no | memory and session hits |
-
-The default sources are memory and sessions; with `MemoryConfig.session_search=False` they are
-memory only and `corpus=sessions` is refused (`Session transcript search is not enabled.`).
-
-## Results
-
-Success:
-
-```python
-{"results": [...], "provider": "openai-compatible", "model": "text-embedding-3-small", "citations": "on"}
-```
-
-`provider`/`model` are absent when memory was not searched (`corpus=wiki`). FTS-only stores report
-`none` / `fts-only`.
-
-`corpus=wiki` and `corpus=all` report each corpus they covered, so a failure of one is not hidden by
-the results of the other:
+`serialize_search_tool_result(payload)` implements the native `jsonResult`
+boundary:
 
 ```python
 {
-    "results": [...],
-    "citations": "on",
-    "corpora": [
-        {"corpus": "memory", "outcome": "unavailable", "error": "provider exploded"},
-        {"corpus": "wiki", "outcome": "ok"},
-    ],
-    "warning": "Memory corpus unavailable: provider exploded",
-    "error": "provider exploded",
+    "content": [{"type": "text", "text": "<pretty-printed JSON of the complete payload>"}],
+    "details": payload,
 }
 ```
 
-`outcome` is `ok`, `partial`, `unavailable` or `not-registered`. With `corpus=all` a failed memory
-corpus is such an outcome and **not** the unavailable result below: a host that calls
-`memory_search()` with its default `corpus="all"` must read `warning`, `error` and `corpora`
-(or pass `corpus="memory"`, or `corpus=None`, to get the unavailable result). The tool's description
-tells the model to surface a corpus warning to the user.
+The direct executor returns `payload` itself. Comparing that dictionary with
+the native envelope's `details` is a transport mapping; it must retain every
+observable payload field. The envelope's text represents that same full payload.
 
-A search that hit its deadline but has memory-file keyword matches returns them as a partial result:
-`partial: true`, `timedOut`, `timeoutMs`, the `partial` outcome of the memory corpus and the warning
-`Only memory-file keyword matches are included; semantic memory retrieval did not finish within the
-search time limit. Session transcript results are not included.` A partial result records no
-cooldown.
+## Arguments and errors
 
-Unavailable (a timeout, an error, or an active cooldown):
+Pass a parsed mapping. A JSON string or another non-record input reads as an
+empty record, so a missing query fails validation. Parameters are read in order:
+`query`, `maxResults`, `minScore`, then `corpus`.
+
+| Parameter | Accepted input | Failure |
+| --- | --- | --- |
+| `query` | A nonblank string, trimmed with ECMAScript whitespace rules. | `query required` |
+| `maxResults` / `max_results` | A positive safe integer or strict numeric string, such as `"5.0"` or `"1e1"`. | `maxResults must be a positive integer` |
+| `minScore` / `min_score` | A finite number or strict numeric string, such as `".5"` or `"-2e-1"`. | `minScore must be a finite number` |
+| `corpus` | `memory`, `wiki`, `all`, or `sessions`. Blank and non-string values read as omitted. | `corpus must be one of: memory, wiki, all, sessions` |
+
+Missing or null numeric values and blank numeric strings read as omitted.
+Booleans, lists, hexadecimal strings, numeric separators, full-width digits,
+NaN, and infinity are rejected. Snake_case lookup applies only when the
+camelCase key is absent.
+
+Query and numeric errors raise `MemoryToolInputError`, whose native exception
+name is `ToolInputError` and whose status is `400`. An unknown corpus raises
+the ordinary `MemoryToolError`, whose native name is `Error` and which has no
+status. Both expose the error message and a `to_tool_error()` host-loop form:
+
+```python
+{
+    "status": "error",
+    "tool": "memory_search",
+    "error": "maxResults must be a positive integer",
+}
+```
+
+This host-loop result is distinct from exception metadata and from the
+unavailable search payload below. Blank facade queries raise too; hosts should
+skip recall for silent input or handle that error.
+
+## Corpus and trusted host policy
+
+| Corpus | Primary store | Wiki supplements | Result policy |
+| --- | --- | --- | --- |
+| `memory` | Memory files only. | Not queried. | Primary ranking. |
+| `sessions` | Indexed transcripts only. | Not queried. | Host session policy applies. |
+| `wiki` | Not queried. | Queried. | Supplement ranking. |
+| `all` | Configured primary sources. | Queried. | Balanced streams, then backfill. |
+| Omitted or blank | Configured primary sources. | Not queried. | Primary ranking. |
+
+`MemoryConfig.session_search=False` excludes sessions from ordinary searches
+and refuses an explicit model `corpus="sessions"` with guidance. Trusted
+conversation recall may select sessions independently. In particular,
+`MemorySearchToolContext.conversation_recall_corpus="sessions"` forces that
+corpus even when the model requests `all` or `wiki`. It does not make a model
+argument authoritative or implement the host's full session-visibility policy.
+
+`active_project_keys`, `agent_session_key`, `runtime_identity`, `supplements`,
+and `context` are trusted executor keyword arguments. They are absent from the
+model schema. Active project keys are copied once per call and retained across
+its search/fallback stages. Registered supplements use
+`RegisteredMemoryCorpusSupplement(plugin_id, supplement)` for stable plugin-id
+ordering and failure labels; anonymous existing supplements remain supported.
+
+The factory accepts `get_config`, which is read at creation and on each
+execution. A missing or disabled live configuration revokes the tool before
+query validation. `FeatureFlags.memory=False` and `context.enabled` also gate
+factory availability. A live configuration cannot route an existing store to
+a different workspace, agent, or index; create a tool with the matching store
+instead.
+
+## Results and citations
+
+An ordinary result includes `results`, `provider`, `citations`, and search
+`debug`. An embedding provider also supplies its `model`. The actual SQLite
+FTS-only status reports `provider="none"` and **omits `model`**. Wiki-only
+results omit primary provider/model/debug fields. A custom host manager's
+explicit model, fallback, and mode are retained when present.
+
+Each primary hit preserves all public fields emitted by its retrieval branch,
+including score components, a vector candidate ID when present, null versus
+omitted annotations, project keys, and provenance. Keyword-only hits do not
+acquire a vector score, and vector-only hits do not acquire component scores.
+The internal ranking timestamp `sourceMtime` is not a public hit field.
+Presentation adds `corpus=source` and strips memory annotation carriers from
+the snippet. Search results are **not** reclamped with the `memory_get` read
+budget and do not gain `truncated` or `originalChars` fields.
+
+`MemoryConfig.citation_mode` defaults to `auto`; invalid host values also
+resolve to `auto`.
+
+| Mode | Primary hit presentation |
+| --- | --- |
+| `on` | Include citations. |
+| `off` | Omit the `citation` property and source suffix. |
+| `auto` | Include citations for direct/default sessions; omit them when the parsed agent-session rest contains a `channel` or `group` token. |
+
+The `citation` value is a label such as `MEMORY.md#L1-L3`, without a `Source:`
+prefix. When included, the snippet preserves leading whitespace, trims only
+its end, and appends `\n\nSource: MEMORY.md#L1-L3`. Supplements retain their own
+presentation. Only primary results actually returned after corpus blending
+receive the primary presentation.
+
+## Manager status and diagnostics
+
+`MemorySearchToolContext` connects a genuine host manager to the production
+executor. Its fields are:
+
+| Field | Meaning |
+| --- | --- |
+| `status` | Optional callable returning current manager status. Otherwise the tool reads a store status method, or actual SQLite provider, index identity, flags, and per-source counts. |
+| `runtime_debug` | Optional callable reading manager-emitted debug events. The last event provides configured mode/fallback; the last bootstrap event is retained. |
+| `manager_ms` | Optional measured manager-acquisition duration. Without an explicit context, the factory measures acquisition of its ready store; direct executor calls may omit it. |
+| `clock` | Millisecond clock, real wall clock by default. Tests can inject a controlled clock into the same timing path. |
+| `conversation_recall_corpus` | Trusted recall corpus policy. |
+| `enabled` | Boolean or live callable for host enablement. |
+
+The tool computes `searchMs`, `toolMs`, `outsideSearchMs`, `hits`,
+`candidateHits`, `withheldHits`, and `searchWindow` from actual execution.
+Optional native fields remain absent when the manager did not emit them.
+Normal builtin FTS search has debug `effectiveMode="n/a"` and no top-level
+`mode`; the tool does not infer a runtime event from a desired test outcome.
+
+`lastSyncError` produces `stale=true` with warning/action guidance. Index
+identity diagnostics retain their cause-specific behavior: configuration
+mismatch, missing metadata, runtime-owned format changes, newer index formats,
+and previous repair failures have different guidance. A runtime-owned failed
+repair reports that the existing index was left unchanged. A live
+`custom.automaticRebuildNotice` produces a new notice only when its sequence
+changes during this search; an old notice is not replayed on every request.
+Rebuild, staleness, recovery, and partial-corpus warnings compose with corpus
+outcomes without dropping the other diagnostics.
+
+These callbacks provide production status, not prebuilt expected results.
+They do not implement an automatic sync lifecycle for a standalone Python
+store. The host still owns reindexing and any manager acquisition/retirement.
+
+## Unavailable, deadline, and cooldown behavior
+
+A primary failure without another requested corpus returns:
 
 ```python
 {
     "results": [],
     "disabled": True,
     "unavailable": True,
-    "timedOut": True,
-    "timeoutMs": 30000,
-    "error": "memory_search timed out after 30s",
-    "warning": "Memory search did not finish within its time limit.",
-    "action": "Retry memory_search after a short wait: ...",
-    "debug": {"warning": "...", "action": "...", "error": "memory_search timed out after 30s"},
+    "error": "provider failure reason",
+    "warning": "Memory search is unavailable due to an embedding/provider error.",
+    "action": "Check embedding provider configuration and retry memory_search.",
+    "debug": {"warning": "...", "action": "...", "error": "provider failure reason"},
 }
 ```
 
-`error` is the trimmed reason, or `memory search unavailable` if there is none.
-The warning and action are chosen by the lower-cased reason:
+The reason is trimmed, defaulting to `memory search unavailable`. Explicit
+warning/action overrides win. The canonical-session migration error code
+`SESSION_CANONICAL_KEY_MIGRATION_REQUIRED` takes precedence over quota text;
+other branches recognize quota, missing SQLite runtime, genuine deadline
+provenance, and generic provider failure. Runtime-specific advice comes from
+`RuntimeIdentity`; `OPENCLAW_COMPAT_RUNTIME_IDENTITY` supplies OpenClaw's exact
+CLI/Gateway wording, while the default uses Python host guidance.
 
-| Reason matches | Warning / action |
-| --- | --- |
-| `insufficient_quota`, `quota` or `429` | provider quota exhausted / top up or switch provider |
-| `missing node:sqlite`, `no such built-in module: node:sqlite` | runtime lacks SQLite (text from `RuntimeIdentity`) |
-| a deadline (provenance from the deadline owner, not the text) | did not finish within its time limit / retry after a short wait, then inspect the index (text from `RuntimeIdentity`) |
-| anything else | embedding/provider error / check provider configuration |
+A genuine search deadline adds `timedOut=true` and `timeoutMs=30000`. A provider
+message that merely says `memory_search timed out after 30s` does not acquire
+deadline provenance. The active native constant is 30 seconds.
 
-Paused (the index identity is missing or mismatched): the same shape, with
-`error` set to the identity reason, the fixed warning
-`Tell the user: memory search is paused because the memory index was built with a different embedding provider/model/settings.`
-and `RuntimeIdentity.memory_search_paused_action` as the action. Under the
-memory-core identity that action is
-`Tell the user to run: SQLiteMemoryStore.reindex(workspace).`
-In OpenClaw compat mode it is upstream's text, which names two `openclaw` CLI
-commands that both reindex. The memory-core text keeps upstream's "Tell the user"
-frame and names only the reindex call (`index_identity()` only reports and never
-lifts the pause). In memory-core the host owns reindexing, so the model relays a step
-that an end user of the host app cannot take; whether the memory-core text should
-address the host instead is an open decision.
+The existing Python workers have a 30-second per-corpus deadline and a
+60-second failure cooldown. Wiki queries remain independent. Memory-file
+keyword evidence can produce a partial response after a semantic deadline;
+session transcript results are excluded from that partial fallback. Paused
+indexes and partial results do not record a cooldown. Python scopes cooldowns
+by the resolved store path plus agent identity to isolate independent hosted
+workspaces. This is an explicit SDK extension to native agent-based keys.
 
-The live recall helper keeps only `results`: `SubjectMemory.prepare_live_turn`
-drops the `disabled`, `warning` and `action` of an unavailable or paused result,
-so recall injects nothing and nobody is told. The helper is adapter-only (no
-upstream counterpart; `LangGraphMemoryRecall`, which did the same, was removed in
-0.2.0, pending Doruk's confirmation as L1 in docs/integrations/langgraph.md). The upstream
-shape is
-the model's own `memory_search` call through `HostKit.tools()` and
-`HostKit.dispatch`, which return the whole payload; a host that needs the signal
-without the kit calls `Memory.search` (or `execute_memory_search_tool`) and
-checks `disabled`.
+Deadline, cancellation, cooldown configuration invalidation, automatic sync,
+closed-manager refresh, provider transitions, and full session visibility
+remain separately tracked contracts. Verifying the warning/output branches
+here does not close those broader contracts. A Python fallback performs a fresh
+keyword query; the native manager can retain a previously filtered partial
+snapshot. An in-flight embedding HTTP request is not interrupted by SQLite
+cancellation.
 
-## Deadline and cooldown
+## Evidence and historical references
 
-- Each corpus (memory, and the wiki supplements) runs on its own daemon worker thread with a 30 s
-  deadline (`MEMORY_SEARCH_TOOL_TIMEOUT_MS`; 15 s before v2026.9.6). This works from any thread and
-  inside a running event loop. On timeout the caller gets the unavailable result
-  (`memory_search timed out after 30s`) at once, or a partial result when keyword hits exist (see
-  above). Then the search's
-  `CancellationSignal` is aborted: the open SQLite statement is interrupted and
-  `SQLiteMemoryStore.search` stops at its next checkpoint (before and after the
-  query embedding, and between FTS probes). A search only reads, so the
-  abandoned worker leaves nothing half-written.
-- A timeout or error starts a 60 s cooldown (`MEMORY_SEARCH_TOOL_COOLDOWN_MS`).
-  Cooldowns are process-wide and keyed by the store's resolved path plus
-  `config.agent_id ?? agent_session_key ?? "default"`
-  (`memory_search_tool_cooldown_key`). While a cooldown is active, memory is
-  not searched and the unavailable result repeats the recorded error.
-- The cooldown keeps the failure that started it (error, deadline provenance, error code), so a
-  replayed deadline still reads as a deadline.
-- `corpus=wiki` never reads or records a cooldown. `corpus=all` still searches
-  supplements during a cooldown and reports the memory corpus as unavailable. A paused index and a
-  partial result record no cooldown.
-- Only stores that open the same index file with the same agent id share a
-  cooldown. Workspaces and live subjects that all use the default
-  `agent_id="main"` have separate indexes, so one failing never pauses the
-  others.
-- Tests call `reset_memory_search_tool_cooldowns()`;
-  `tests/conftest.py` does this around every test.
+Current `tools.search-contract` evidence must run the pinned production
+factory and real search engine, compare the complete public payload and
+exception metadata, and retain the native envelope. Controlled clocks exercise
+the real timing code. Helper-only fixtures supplement whole-tool cases;
+they do not establish the complete contract by themselves. See
+`docs/parity_matrix.md` for the acceptance ledger and current evidence.
 
-## Index identity
-
-`SQLiteMemoryStore.reindex` stores what the index was built with as JSON under
-the key `memory_index_meta_v1` in the `memory_index_meta` table: `model`
-(`fts-only` without embeddings), `provider` (`none`), `providerKey` (the SHA-256
-of the provider's cache-key JSON; `OpenAICompatibleEmbeddingProvider` includes
-its base URL but never the API key), `sources`, `scopeHash`, `chunkTokens` 400,
-`chunkOverlap` 80, `ftsTokenizer` `unicode61`, and `vectorDims` when embedded.
-
-`store.index_identity()` compares this record with the current store. It
-returns `{"status": "valid"}`, or the first failing check, with the reason
-worded exactly as upstream's `resolveMemoryIndexIdentityState`:
-
-1. `index metadata is missing`
-2. `index was built for model <stored>, expected <current>`
-3. `index was built for provider <stored>, expected <current>`
-4. `index provider settings changed`
-5. `index sources changed`
-6. `index scope changed`
-7. `index chunking changed`
-8. `index vector dimensions are missing`
-9. `index FTS tokenizer changed`
-
-While the identity is not valid, `store.search` returns no hits and
-`memory_search` returns the paused result. `reindex` writes fresh metadata.
-Stores created before this table existed, and stores that were never
-reindexed, read as `index metadata is missing` until their next reindex.
-`Memory.from_workspace()` reindexes by default. Switching `vector_search`, the
-embedding model or the endpoint therefore pauses search until the host
-reindexes.
-
-Upgrading: an index built before identity gating has no stored identity, so
-every search on it returns the paused result until it is reindexed. Hosts that
-open stores with `Memory.from_workspace(reindex=False)`, or keep a store open
-across the upgrade, must call `SQLiteMemoryStore.reindex(workspace)` (`memory.store.reindex(memory.workspace)`
-on the facade) once after upgrading.
-
-## Deviations from upstream
-
-- `store_path` stays configurable (default `<workspace>/.memory-core/<agent_id>.sqlite`,
-  decision Q15). Upstream ignores `memorySearch.store.path` and uses
-  `<stateDir>/agents/<agentId>/agent/openclaw-agent.sqlite`.
-- The cooldown key adds the store's resolved path to upstream's
-  `agentId ?? agentSessionKey ?? "default"` (`tools.ts:76-81`). Upstream's
-  agent owns exactly one workspace and one index; in memory-core every
-  `Memory.from_workspace()` store and every `SubjectMemory` workspace defaults
-  to `agent_id="main"`, so an agent-only key would let one workspace's
-  provider error pause memory search in all of them for 60 s.
-- Omitted `maxResults`/`minScore` fall back to 5 / 0.0 (the memory-core facade
-  defaults); upstream reads the agent config (6 / 0.35). The facade and
-  `memory_search` default to `corpus="all"`, where upstream's default is an
-  omitted corpus. So during a cooldown a default call returns an empty success
-  instead of the unavailable result. Pass `corpus=None` for upstream's
-  omitted-corpus behaviour.
-- There is no sync lifecycle. Upstream rebuilds a missing identity on its next
-  sync and runs a forced sync after an empty result; memory-core pauses until the
-  host calls `reindex`.
-- Error messages keep the explicit cause chain (`formatErrorMessage`) but skip
-  upstream's token redaction. Redact tool results if provider errors can carry
-  secrets.
-- Not ported: provider identity aliases, `extraPaths` and multimodal indexing
-  (the scope hash is fixed to upstream's defaults), the manager-context error
-  and closed-store refresh branches (a memory-core store is built by the host), the
-  QMD backend, session-visibility filtering, and the success `fallback`,
-  `mode` and `debug` fields.
-- Embedding HTTP calls are not interrupted. An abandoned worker finishes its
-  current provider call, then stops at the next checkpoint.
-- Under the memory-core identity, the SQLite warning and action wording is
-  memory-core's own (upstream's names its Node runtime).
-
-## Oracle coverage
-
-Each of these runs the real TypeScript export at the pin
-(`scripts/openclaw_oracle_runner.ts`, `tests/integration/test_openclaw_ts_oracle.py`):
-
-| Operation | Fixtures |
-| --- | --- |
-| `memorySearch` with `rawParams` (through the real `toToolDefinitions` wrapper) | 18 invalid-param cases, 7 accepted coercion/alias/corpus cases |
-| `memorySearchUnavailableResult` | 13 reasons and overrides (compat identity, exact) |
-| `memorySearchToolSequence` | 17 tool calls in one process: cooldown record/replay/expiry, the wiki and all rules, the supplement-phase rule, a timeout |
-| `memoryIndexIdentity` | 26 identity states, 5 provider-key, 4 source and 2 scope-hash cases |
-| `memorySearch` with `embeddingModel` | end-to-end pause after a model change |
-| `memoryToolDefinitions` | the `memory_search` and `memory_get` names, descriptions and schemas |
-| `memoryGet` with `rawParams` (through the real `toToolDefinitions` wrapper) | 19 `memory_get` param cases |
+Earlier oracle operations such as `memorySearch`,
+`memorySearchUnavailableResult`, `memorySearchToolSequence`,
+`memoryIndexIdentity`, `memoryToolDefinitions`, and `memoryGet` remain useful
+historical regression coverage in `tests/integration/test_openclaw_ts_oracle.py`
+and `scripts/openclaw_oracle_runner.ts`. Their older pins, projected shapes,
+and fixture counts must not be presented as fresh v2026.9.9 whole-tool proof.

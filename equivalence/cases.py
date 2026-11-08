@@ -208,6 +208,7 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.hybrid_scoring import build_hybrid_scoring_cases
     from equivalence.exact_path_priority import build_exact_path_priority_cases
     from equivalence.importance_project import build_importance_project_cases
+    from equivalence.search_contract import build_search_contract_cases
     from equivalence.embedding_cache import build_embedding_cache_cases
     from equivalence.incremental_index import build_incremental_index_cases
     from equivalence.index_publication import build_index_publication_cases
@@ -227,6 +228,7 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     cases.extend(build_hybrid_scoring_cases())
     cases.extend(build_exact_path_priority_cases())
     cases.extend(build_importance_project_cases())
+    cases.extend(build_search_contract_cases())
     cases.extend(build_embedding_cache_cases())
     cases.extend(build_incremental_index_cases())
     cases.extend(build_index_publication_cases())
@@ -255,6 +257,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation in {"search-contract", "search-contract-runtime", "search-contract-helper-runtime"}:
+        from equivalence.search_contract import run_search_contract
+
+        return run_search_contract(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation in {"importance-project", "importance-project-runtime"}:
         from equivalence.importance_project import run_importance_project
 

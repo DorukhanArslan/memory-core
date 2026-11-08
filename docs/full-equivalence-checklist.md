@@ -1137,3 +1137,54 @@ project-name consistency, exact source-map validation and staged diff checks pas
 These final results and the legacy Lab assertion are recorded in a documentation/test follow-up;
 SDK implementation, differential adapters and source inventory are unchanged from the tested
 implementation commit.
+
+
+### Memory-search tool boundary implementation
+
+The `tools.search-contract` batch targets **+2 acceptance points**, from **33/128
+(25.8%)** to **35/128 (27.3%)** if the committed integrated gate verifies the final
+fixtures. The fixed scope remains 64 contracts and 128 acceptance points.
+
+The pre-change SDK baseline at `3b2c42f72b36ff8b3aff427ea5ec931f7237a3a4` is retained in
+`.equivalence-results/search-contract-python-baseline.json`: the raw tool returned five
+results, rejected a blank numeric score and emitted citation/truncation fields that the
+native result omits. The implementation now uses native raw defaults (six results, minimum
+score 0.35), configured query defaults, blank numeric omission, ordinary corpus errors,
+canonical citation presentation and full public source metadata. The Python convenience
+API deliberately keeps its explicit five-result/zero-score arguments.
+
+The production factory provides the genuine definition, alias preparation, live configuration
+revocation, captured-store ownership validation and complete JSON result envelope. Its default
+manager timing measures the actual ready-store lookup; hosts can supply their measured
+manager acquisition and live status/debug events. `FeatureFlags.memory` controls factory
+availability and is appended to preserve prior positional fields. The new query settings
+also preserve existing `MemoryConfig` positional arguments. `HostKit` prepares model aliases
+and handles ordinary tool errors; its provider-neutral dictionary API remains intact.
+The default citation mode is `auto`, including matching direct/group/channel presentation.
+A related prompt guard now accepts `auto`, preserving working chat preparation.
+
+The first report, `.equivalence-results/search-contract-first.json`, records **69 matches,
+zero mismatches and zero blocked cases**, before acceptance mapping. It executes 46 original
+source helpers, 12 separately authenticated compiled definition/preparation cases and 11
+actual provider-none whole-tool cases. The latter construct the real native manager and
+require all eight compiled owners plus protected index workers. Provenance guards reject
+missing owners, forged traces and selecting the helper profile for a whole-tool fixture.
+Official release execution retains `sourceBuildReproduced: false`; it is not a claim of a
+locally reproduced source build. The source helper process uses Node's built-in TypeScript
+transform support on unchanged authenticated source.
+
+Every public envelope, ordered result, error name/status/message, debug field, warning and
+source field survives comparison. The declared JSON carrier codec first uses the actual
+JSON transport, verifies text/details agreement and compares the decoded complete payload.
+Both original text carriers and envelopes remain in raw evidence. JSON whitespace and
+numeric spelling are not claimed byte-identical; absent and null JSON fields remain distinct.
+There is no score rounding, result sorting or public-field projection.
+
+Independent review tightened the configured-default fixture so its minimum score separates
+a stored importance-10 result from ordinary hits, and aligned disabled-config inputs on
+both sides. These final refinements and mapped acceptance points await the committed full
+gate. The bounded profile covers memory-file provider-none searches and registered wiki
+supplements, including partial/multiple failure ordering. Real transcript visibility,
+provider/fallback/bootstrap execution, stale/rebuild lifecycle, deadline/cooldown timing and
+all other contracts remain uncredited by this batch. The existing Unicode path-order and
+warm first-recall differences remain visible. No paid provider calls are required.

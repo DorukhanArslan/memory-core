@@ -10,7 +10,9 @@ from memory_core.client import Memory
 from memory_core.config import MemoryConfig
 from memory_core.flags import FeatureFlags
 from memory_core.host import HostKit, SessionState
-from memory_core.tools.memory_search import execute_memory_search_tool, memory_search_tool_definition
+from memory_core.tools.memory_search import (
+    MemorySearchToolContext, execute_memory_search_tool, memory_search_tool_definition,
+)
 
 
 _ALPHA = "github.com/acme/Alpha"
@@ -73,15 +75,19 @@ def test_public_memory_api_routes_host_projects_and_preserves_metadata(tmp_path,
 
 def test_model_project_arguments_cannot_override_trusted_host_context(tmp_path):
     memory = _memory(tmp_path)
+    context = MemorySearchToolContext(clock=lambda: 1_738_368_000_000)
     arguments = {"query": "emberquartz", "maxResults": 2,
                  "activeProjectKeys": [_BETA], "active_project_keys": [_BETA]}
 
     trusted = execute_memory_search_tool(
-        memory.config, memory.store, arguments, active_project_keys=[_ALPHA],
+        memory.config, memory.store, arguments, active_project_keys=[_ALPHA], context=context,
     )
-    untrusted_only = execute_memory_search_tool(memory.config, memory.store, arguments)
+    untrusted_only = execute_memory_search_tool(
+        memory.config, memory.store, arguments, context=context,
+    )
     ordinary = execute_memory_search_tool(
         memory.config, memory.store, {"query": "emberquartz", "maxResults": 2},
+        context=context,
     )
 
     assert trusted["results"][0]["projectKey"] == _ALPHA

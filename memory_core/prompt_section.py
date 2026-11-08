@@ -13,8 +13,8 @@ _PRIOR_WORK = "prior work, decisions, dates, people, preferences, or todos"
 
 
 def build_prompt_section(available_tools: set[str], *, citations_mode: str) -> list[str]:
-    if citations_mode not in {"on", "off"}:
-        raise ValueError("citations_mode must be 'on' or 'off'")
+    if citations_mode not in {"on", "off", "auto"}:
+        raise ValueError("citations_mode must be 'on', 'off' or 'auto'")
 
     has_memory_search = "memory_search" in available_tools
     has_memory_get = "memory_get" in available_tools

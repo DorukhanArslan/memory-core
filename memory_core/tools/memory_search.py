@@ -7,12 +7,10 @@
 into ``{"status": "error", "tool": "memory_search", "error": ...}`` with
 ``to_tool_error()``.
 
-``corpus`` has no enum check in the tool itself (the schema enum
-``memory|wiki|all|sessions`` in ``tools.shared.ts`` is enforced by the agent
-loop's argument validation, which the host owns). An omitted or unknown corpus
-searches every indexed source and skips supplements, as upstream.
+``corpus`` is checked by the tool's parameter reader as well as its published
+schema. An omitted corpus searches the host's configured indexed sources.
 
-The search runs under a 15 s deadline in a worker thread. On timeout the
+The search runs under a 30 s deadline in a worker thread. On timeout the
 caller gets the unavailable result at once and the worker's
 :class:`~memory_core.cancellation.CancellationSignal` is aborted, which interrupts
 the open SQLite statement and stops the store at its next checkpoint; the
@@ -51,7 +49,11 @@ from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.project_name import DIST_NAME
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.supplements import MemoryCorpusResult, MemoryCorpusSupplement, sort_corpus_results
-from memory_core.tools.citations import citation_label, clamp_text, source_label
+from memory_core.tools.citations import (
+    build_memory_search_presentation,
+    resolve_memory_citations_mode,
+    should_include_citations,
+)
 from memory_core.tools.corpus import (
     CorpusAttempt,
     CorpusFailure,
@@ -64,7 +66,7 @@ from memory_core.tools.memory_get import (
     MEMORY_TOOL_FILES_DESCRIPTION,
 )
 from memory_core.tools.common import (
-    MemoryToolInputError,
+    MemoryToolError,
     as_tool_params_record,
     format_error_message,
     read_corpus_param,
@@ -106,15 +108,13 @@ MEMORY_SEARCH_TOOL_PARAMETERS: dict[str, Any] = {
 }
 
 # tools.ts MEMORY_SEARCH_TOOL_COOLDOWN_MS and memory/search-deadline.ts
-# DEFAULT_MEMORY_SEARCH_TIMEOUT_MS (15 s at the pin).
+# DEFAULT_MEMORY_SEARCH_TIMEOUT_MS (30 s at the pin).
 MEMORY_SEARCH_TOOL_TIMEOUT_MS = 30_000
 MEMORY_SEARCH_TOOL_COOLDOWN_MS = 60_000
 
-# Used when the caller omits maxResults/minScore. Upstream falls back to the
-# agent's memorySearch.query config (6 / 0.35, src/agents/memory-search.ts);
-# memory-core keeps its facade defaults (documented deviation).
-DEFAULT_MEMORY_SEARCH_MAX_RESULTS = 5
-DEFAULT_MEMORY_SEARCH_MIN_SCORE = 0.0
+# Resolved native memorySearch.query defaults; explicit tool parameters win.
+DEFAULT_MEMORY_SEARCH_MAX_RESULTS = 6
+DEFAULT_MEMORY_SEARCH_MIN_SCORE = 0.35
 # tools.ts: `Math.max(1, maxResults ?? 10)` caps the merged memory+supplement list.
 MEMORY_SEARCH_MERGE_DEFAULT_MAX_RESULTS = 10
 
@@ -139,6 +139,10 @@ MEMORY_SEARCH_PROVIDER_ERROR_WARNING = (
 MEMORY_SEARCH_PROVIDER_ERROR_ACTION = (
     "Check embedding provider configuration and retry memory_search."
 )
+MEMORY_SEARCH_SESSION_MIGRATION_CODE = "SESSION_CANONICAL_KEY_MIGRATION_REQUIRED"
+MEMORY_SEARCH_SESSION_MIGRATION_WARNING = (
+    "Memory search is unavailable because the session catalog requires canonical-key migration."
+)
 # tools.ts:168-188 (the action names the runtime's reindex command, so it
 # comes from RuntimeIdentity).
 PAUSED_MEMORY_INDEX_REASON = "memory index identity is missing or mismatched"
@@ -146,24 +150,24 @@ _QUOTA_ERROR_RE = re.compile(r"insufficient_quota|quota|429")
 _MISSING_SQLITE_RE = re.compile(r"missing node:sqlite|no such built-?in module: node:sqlite")
 
 
-def memory_search_tool_definition(*, index_sessions: bool = False) -> dict[str, Any]:
+def memory_search_tool_definition(
+    *, index_sessions: bool = False, extra_paths: Sequence[str | Path] = (),
+) -> dict[str, Any]:
     """``{"name", "description", "parameters"}`` of the upstream ``memory_search`` tool.
 
     Same provider-neutral shape as ``MemoryCurator.tool_definitions()``; wrap it
     in the host's tool format. The description tells the model to pass on the
     unavailable/paused ``warning`` and ``action``. The schema's ``corpus`` enum
-    is enforced by the host's argument validation, not by
-    :func:`execute_memory_search_tool`.
+    is also checked by :func:`execute_memory_search_tool`.
     """
+    sources = MEMORY_TOOL_FILES_DESCRIPTION
+    if extra_paths:
+        sources += ", configured extra paths"
+    if index_sessions:
+        sources += ", indexed session transcripts"
     return {
         "name": MEMORY_SEARCH_TOOL_NAME,
-        "description": (
-            MEMORY_SEARCH_TOOL_DESCRIPTION_TEMPLATE.format(
-                search=f"{MEMORY_TOOL_FILES_DESCRIPTION}, indexed session transcripts"
-            )
-            if index_sessions
-            else MEMORY_SEARCH_TOOL_DESCRIPTION
-        ),
+        "description": MEMORY_SEARCH_TOOL_DESCRIPTION_TEMPLATE.format(search=sources),
         "parameters": copy.deepcopy(MEMORY_SEARCH_TOOL_PARAMETERS),
     }
 
@@ -175,6 +179,7 @@ def build_memory_search_unavailable_result(
     action: str | None = None,
     agent_id: str | None = None,
     deadline: bool = False,
+    code: str | None = None,
     runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
 ) -> dict:
     """``buildMemorySearchUnavailableResult`` (tools.shared.ts:92-150).
@@ -191,7 +196,9 @@ def build_memory_search_unavailable_result(
     is_quota_error = _QUOTA_ERROR_RE.search(normalized_reason) is not None
     is_missing_sqlite = _MISSING_SQLITE_RE.search(normalized_reason) is not None
     if warning is None:
-        if is_quota_error:
+        if code == MEMORY_SEARCH_SESSION_MIGRATION_CODE:
+            warning = MEMORY_SEARCH_SESSION_MIGRATION_WARNING
+        elif is_quota_error:
             warning = MEMORY_SEARCH_QUOTA_WARNING
         elif is_missing_sqlite:
             warning = runtime_identity.memory_search_sqlite_unavailable_warning
@@ -200,7 +207,9 @@ def build_memory_search_unavailable_result(
         else:
             warning = MEMORY_SEARCH_PROVIDER_ERROR_WARNING
     if action is None:
-        if is_quota_error:
+        if code == MEMORY_SEARCH_SESSION_MIGRATION_CODE:
+            action = runtime_identity.memory_search_session_migration_action
+        elif is_quota_error:
             action = MEMORY_SEARCH_QUOTA_ACTION
         elif is_missing_sqlite:
             action = runtime_identity.memory_search_sqlite_unavailable_action
@@ -248,6 +257,7 @@ def build_paused_memory_index_unavailable_result(
     agent_id: str | None = None,
     keyword_only: bool = False,
     runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+    status: Mapping[str, Any] | None = None,
 ) -> dict:
     """``buildPausedMemoryIndexUnavailableResult`` over ``resolveMemoryIndexSearchDiagnostic``.
 
@@ -263,6 +273,18 @@ def build_paused_memory_index_unavailable_result(
         and diagnostic.get("status") == "mismatched"
         and diagnostic.get("versionOrder") == "newer"
     )
+    status = status or {}
+    sync_error = status.get("lastSyncError")
+    sync_error = js_trim(sync_error) if isinstance(sync_error, str) else ""
+    repair_failure = sync_error if diagnostic.get("owner") == "openclaw" else ""
+    if repair_failure and not newer_index:
+        agent = f" --agent {js_trim(agent_id)}" if agent_id and js_trim(agent_id) else ""
+        return build_memory_search_unavailable_result(
+            repair_failure,
+            warning=f"Memory index repair failed: {repair_failure}. The existing index was left unchanged.",
+            action="Run: " + runtime_identity.memory_index_repair_failed_guidance.format(agent=agent),
+            runtime_identity=runtime_identity,
+        )
     if diagnostic.get("owner") == "configuration":
         cause = f"the current memory configuration no longer matches the index ({reason})"
     elif diagnostic.get("code") == "metadata_missing":
@@ -280,6 +302,8 @@ def build_paused_memory_index_unavailable_result(
         if keyword_only
         else runtime_identity.memory_index_rebuild_guidance
     ).format(agent=agent)
+    if status:
+        guidance = _rebuild_guidance(status, agent_id, runtime_identity)
     action = (
         f"Tell the user to upgrade {runtime_identity.memory_index_product_name} or reindex "
         f"explicitly: {guidance}"
@@ -288,7 +312,8 @@ def build_paused_memory_index_unavailable_result(
     )
     return build_memory_search_unavailable_result(
         reason,
-        warning=f"Tell the user: memory search is paused because {cause}.",
+        warning=(f"Tell the user: memory search is paused because {cause}."
+                 + (f" Previous memory sync failed: {repair_failure}." if repair_failure else "")),
         action=action,
         runtime_identity=runtime_identity,
     )
@@ -465,6 +490,29 @@ class MemorySearchParams:
     corpus: str | None
 
 
+def _wall_clock_ms() -> float:
+    return time.time() * 1000
+
+
+@dataclass(frozen=True)
+class MemorySearchToolContext:
+    """Trusted manager/host context, never model-authored tool arguments.
+
+    ``status`` reads the manager's current public status. Keep its nested rebuild
+    notice object live, as the manager mutates that object while repairing an index.
+    ``runtime_debug`` reads debug events emitted by the real search manager; the
+    tool owns elapsed times and result counts. A clock is injectable for hosts
+    with a controlled clock, without changing the production timing path.
+    """
+
+    status: Callable[[], Mapping[str, Any]] | None = None
+    runtime_debug: Callable[[], Mapping[str, Any] | Sequence[Mapping[str, Any]]] | None = None
+    manager_ms: float | None = None
+    clock: Callable[[], float] = _wall_clock_ms
+    conversation_recall_corpus: str | None = None
+    enabled: bool | Callable[[], bool] = True
+
+
 def read_memory_search_params(params: object) -> MemorySearchParams:
     """Read tool-call params exactly like ``createMemorySearchTool`` (tools.ts:402-412).
 
@@ -478,7 +526,7 @@ def read_memory_search_params(params: object) -> MemorySearchParams:
         max_results = read_positive_integer_param(raw, "maxResults")
         min_score = read_finite_number_param(raw, "minScore")
         corpus = read_corpus_param(raw, MEMORY_SEARCH_CORPORA)
-    except MemoryToolInputError as error:
+    except MemoryToolError as error:
         error.tool = MEMORY_SEARCH_TOOL_NAME
         raise
     return MemorySearchParams(
@@ -498,6 +546,7 @@ def execute_memory_search_tool(
     agent_session_key: str | None = None,
     runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
     active_project_keys: Sequence[str] | None = None,
+    context: MemorySearchToolContext | None = None,
 ) -> dict:
     """Run ``memory_search`` on raw tool-call params (the model's arguments).
 
@@ -506,6 +555,12 @@ def execute_memory_search_tool(
     id), falling back to ``agent_session_key`` and then ``"default"``. Only
     stores that open the same index file with the same agent id share it.
     """
+    context = context or MemorySearchToolContext()
+    enabled = context.enabled() if callable(context.enabled) else context.enabled
+    if not enabled:
+        raise MemoryToolError(
+            "Memory is disabled for this agent. Enable memory search for this agent, then retry."
+        )
     parsed = read_memory_search_params(params)
     # Like native MemoryToolOptions, this is trusted host context rather than
     # a model-authored tool parameter. Keep one snapshot across worker/fallback.
@@ -518,6 +573,7 @@ def execute_memory_search_tool(
         agent_session_key=agent_session_key,
         runtime_identity=runtime_identity,
         active_project_keys=active_projects,
+        context=context,
     )
 
 
@@ -533,6 +589,7 @@ def memory_search(
     agent_session_key: str | None = None,
     runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
     active_project_keys: Sequence[str] | None = None,
+    context: MemorySearchToolContext | None = None,
 ) -> dict:
     """Python-call form of the tool; ``None`` for a param means "omitted"."""
     return execute_memory_search_tool(
@@ -543,6 +600,7 @@ def memory_search(
         agent_session_key=agent_session_key,
         runtime_identity=runtime_identity,
         active_project_keys=active_project_keys,
+        context=context,
     )
 
 
@@ -567,6 +625,146 @@ def _failure_attempt(corpus: str, failure: CorpusFailure, value: Any = None) -> 
     )
 
 
+def _read_manager_status(
+    store: SQLiteMemoryStore, context: MemorySearchToolContext,
+) -> Mapping[str, Any]:
+    if context.status is not None:
+        return context.status()
+    status_reader = getattr(store, "status", None)
+    if callable(status_reader):
+        return status_reader()
+    embeddings = store.embeddings
+    status: dict[str, Any] = {
+        "provider": embeddings.provider_id if embeddings is not None else "none",
+        "custom": {"indexIdentity": store.index_identity()},
+    }
+    if embeddings is not None:
+        status["model"] = embeddings.model
+    elif not isinstance(store, SQLiteMemoryStore):
+        # Anonymous legacy backends supplied no manager status API. Preserve
+        # their historical model label; actual SQLite FTS status omits it.
+        status["model"] = "fts-only"
+    if isinstance(store, SQLiteMemoryStore):
+        status["backend"] = "builtin"
+        status["fts"] = {"enabled": store.flags.text_search, "available": True}
+        with store.connect() as db:
+            status["sourceCounts"] = [
+                {"source": source, "chunks": count}
+                for source, count in db.execute("SELECT source,COUNT(*) FROM chunks GROUP BY source")
+            ]
+    return status
+
+
+def _status_identity(status: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    custom = status.get("custom")
+    identity = custom.get("indexIdentity") if isinstance(custom, Mapping) else None
+    return identity if isinstance(identity, Mapping) else None
+
+
+def _capture_rebuild_notice(status: Mapping[str, Any]) -> Callable[[], str | None]:
+    custom = status.get("custom")
+    notice = custom.get("automaticRebuildNotice") if isinstance(custom, Mapping) else None
+    notice = notice if isinstance(notice, Mapping) else {}
+    sequence = notice.get("sequence")
+
+    def read() -> str | None:
+        warning = notice.get("warning")
+        return warning if notice.get("sequence") != sequence and isinstance(warning, str) else None
+
+    return read
+
+
+def _rebuild_guidance(
+    status: Mapping[str, Any], agent_id: str | None, runtime_identity: RuntimeIdentity,
+) -> str:
+    requested = status.get("requestedProvider")
+    provider = status.get("provider")
+    configured = (
+        js_trim(requested) if isinstance(requested, str) and js_trim(requested)
+        else js_trim(provider) if isinstance(provider, str) else ""
+    )
+    agent = f" --agent {js_trim(agent_id)}" if agent_id and js_trim(agent_id) else ""
+    template = (
+        runtime_identity.memory_index_rebuild_guidance_keyword_only
+        if configured == "none" else runtime_identity.memory_index_rebuild_guidance
+    )
+    return template.format(agent=agent)
+
+
+def _resolve_search_staleness(
+    status: Mapping[str, Any], agent_id: str | None, runtime_identity: RuntimeIdentity,
+) -> dict[str, Any] | None:
+    identity = _status_identity(status)
+    diagnostic = resolve_paused_memory_index_identity(identity) if identity is not None else None
+    sync_error = status.get("lastSyncError")
+    sync_error = js_trim(sync_error) if isinstance(sync_error, str) else ""
+    guidance = _rebuild_guidance(status, agent_id, runtime_identity)
+    if diagnostic is not None:
+        reason = diagnostic["reason"]
+        newer = (diagnostic.get("status") == "mismatched"
+                 and diagnostic.get("owner") == "openclaw"
+                 and diagnostic.get("versionOrder") == "newer")
+        if diagnostic.get("owner") == "openclaw" and sync_error and not newer:
+            agent = f" --agent {js_trim(agent_id)}" if agent_id and js_trim(agent_id) else ""
+            return {
+                "stale": True,
+                "warning": f"Memory index repair failed: {sync_error}. The existing index was left unchanged.",
+                "action": "Run: " + runtime_identity.memory_index_repair_failed_guidance.format(agent=agent),
+            }
+        prior = (
+            f" Previous memory sync failed: {sync_error}."
+            if diagnostic.get("owner") == "openclaw" and sync_error else ""
+        )
+        return {
+            "stale": True,
+            "warning": f"Memory index is stale: {reason} (owner: {diagnostic.get('owner')}, "
+            f"code: {diagnostic.get('code')}). Search results may be incomplete.{prior}",
+            "action": (
+                f"Upgrade {runtime_identity.memory_index_product_name} or reindex explicitly: "
+                if newer else "Run: "
+            ) + guidance,
+        }
+    if sync_error:
+        return {
+            "stale": True,
+            "warning": f"Memory index is stale: {sync_error}. Search results may be incomplete.",
+            "action": f"Run: {guidance}",
+        }
+    return None
+
+
+def _runtime_debug_events(context: MemorySearchToolContext) -> list[Mapping[str, Any]]:
+    emitted = context.runtime_debug() if context.runtime_debug is not None else []
+    return [emitted] if isinstance(emitted, Mapping) else list(emitted)
+
+
+def _search_debug(
+    *, status: Mapping[str, Any], context: MemorySearchToolContext, started_at: float,
+    hits: int, candidates: int, filtered: int, window: int,
+    effective_mode: str | None = None,
+) -> tuple[dict[str, Any], str | None]:
+    events = _runtime_debug_events(context)
+    latest = events[-1] if events else {}
+    debug: dict[str, Any] = {
+        "effectiveMode": effective_mode or "n/a",
+        "searchMs": max(0, context.clock() - started_at),
+        "hits": hits,
+        "candidateHits": candidates,
+        "withheldHits": max(0, candidates - filtered),
+        "searchWindow": window,
+    }
+    for name, owner in (("backend", status), ("configuredMode", latest), ("fallback", latest)):
+        if name in owner:
+            debug[name] = owner[name]
+    if context.manager_ms is not None:
+        debug["managerMs"] = context.manager_ms
+    bootstrap = next((event["embeddingBootstrap"] for event in reversed(events)
+                      if event.get("embeddingBootstrap")), None)
+    if bootstrap is not None:
+        debug["embeddingBootstrap"] = bootstrap
+    return debug, effective_mode or latest.get("effectiveMode")
+
+
 def _run_memory_search_tool(
     config: MemoryConfig,
     store: SQLiteMemoryStore,
@@ -576,24 +774,28 @@ def _run_memory_search_tool(
     agent_session_key: str | None,
     runtime_identity: RuntimeIdentity,
     active_project_keys: Sequence[str] | None = None,
+    context: MemorySearchToolContext,
 ) -> dict:
     """``createMemorySearchTool``'s execute (tools.ts:402-702).
 
     Memory and the wiki supplements are separate corpora, each with its own deadline
     and outcome; the result reports every corpus it covered (``corpora``), so a failed
-    corpus is surfaced next to the results of the other. Deviations: no staleness,
-    rebuild notices or recall recording (the host owns the index), and a deadline
+    corpus is surfaced next to the results of the other. A deadline
     leaves the keyword-only pass to a fresh FTS query instead of a snapshot of the
     manager's first stage.
     """
-    requested_corpus = params.corpus
-    if requested_corpus == "sessions" and not config.session_search:
+    requested_corpus = (
+        "sessions" if context.conversation_recall_corpus == "sessions" else params.corpus
+    )
+    if (requested_corpus == "sessions" and not config.session_search
+            and context.conversation_recall_corpus is None):
         return build_memory_search_unavailable_result(
             MEMORY_SEARCH_SESSIONS_DISABLED_REASON,
             warning=MEMORY_SEARCH_SESSIONS_DISABLED_WARNING,
             action=runtime_identity.memory_search_sessions_disabled_action,
             runtime_identity=runtime_identity,
         )
+    tool_started_at = context.clock()
     cooldown_key = memory_search_tool_cooldown_key(
         config, store, agent_session_key=agent_session_key
     )
@@ -603,39 +805,75 @@ def _run_memory_search_tool(
         read_memory_search_tool_cooldown_failure(cooldown_key) if searches_memory else None
     )
     max_results = (
-        params.max_results if params.max_results is not None else DEFAULT_MEMORY_SEARCH_MAX_RESULTS
+        params.max_results if params.max_results is not None else config.search_max_results
     )
     min_score = (
-        params.min_score if params.min_score is not None else DEFAULT_MEMORY_SEARCH_MIN_SCORE
+        params.min_score if params.min_score is not None else config.search_min_score
     )
+    rebuild_readers: list[Callable[[], str | None]] = []
+    search_state: dict[str, Any] = {}
+
+    def read_rebuild_warning() -> str | None:
+        warnings = list(dict.fromkeys(warning for read in rebuild_readers if (warning := read())))
+        return " ".join(warnings) or None
 
     def search_memory_worker(signal: CancellationSignal) -> dict:
+        started_at = context.clock()
+        search_state["started_at"] = started_at
+        status = _read_manager_status(store, context)
+        rebuild_readers.append(_capture_rebuild_notice(status))
+        sources = _memory_sources_for_corpus(requested_corpus, session_search=config.session_search)
+        if requested_corpus == "sessions":
+            sources = {"sessions"}
+        window = max_results
+        if sources is None or "sessions" in sources:
+            indexed_count = sum(
+                entry.get("chunks", 0) for entry in status.get("sourceCounts", [])
+                if sources is None or entry.get("source") in sources
+            )
+            window = min(200, indexed_count if indexed_count > 0 else 200)
+        search_state["window"] = window
         host_options: dict[str, Any] = {}
         if active_project_keys is not None:
             host_options["active_project_keys"] = active_project_keys
         hits = store.search(
             params.query,
-            max_results=max_results,
+            max_results=window,
             min_score=min_score,
-            sources=_memory_sources_for_corpus(
-                requested_corpus, session_search=config.session_search
-            ),
+            sources=sources,
             signal=signal,
             **host_options,
         )
         # tools.ts:563-568: a missing or mismatched index identity pauses search
         # (no cooldown). Upstream's empty-result forced sync retry has no
         # counterpart: memory-core reindexes only when the host asks.
-        paused = resolve_paused_memory_index_identity(store.index_identity())
-        if paused is not None:
-            return {"paused": paused}
-        # OpenClaw reports FTS-only mode as provider "none" / model "fts-only" when no
-        # embedding provider is configured.
-        embeddings = store.embeddings
+        status = _read_manager_status(store, context)
+        identity = _status_identity(status)
+        paused = resolve_paused_memory_index_identity(
+            identity if identity is not None else store.index_identity()
+        )
+        fts = status.get("fts") or {}
+        chunking_upgrade = (paused is not None and paused.get("owner") == "openclaw"
+                            and paused.get("code") == "chunking_version"
+                            and paused.get("chunkingVersionOnly") is True
+                            and bool(fts.get("enabled") and fts.get("available")))
+        if paused is not None and not chunking_upgrade:
+            return {"paused": paused, "status": status}
+        # Public status owns model-field presence; FTS-only status omits it.
+        candidates = [_serialize_result(item) for item in hits]
+        filtered = [item for item in candidates if sources is None or item["source"] in sources]
+        retained = filtered[:max_results]
+        debug, mode = _search_debug(
+            status=status, context=context, started_at=started_at, hits=len(retained),
+            candidates=len(candidates), filtered=len(filtered), window=window,
+        )
         return {
-            "results": [_serialize_result(config, item) for item in hits],
-            "provider": embeddings.provider_id if embeddings is not None else "none",
-            "model": embeddings.model if embeddings is not None else "fts-only",
+            "results": retained,
+            **{key: status[key] for key in ("provider", "model", "fallback") if key in status},
+            **({"mode": mode} if mode is not None else {}),
+            "staleness": _resolve_search_staleness(status, config.agent_id, runtime_identity),
+            "automaticRebuildWarning": read_rebuild_warning(),
+            "debug": debug,
         }
 
     def wiki_worker(signal: CancellationSignal) -> CorpusAttempt:
@@ -676,6 +914,9 @@ def _run_memory_search_tool(
                 cooldown_key=cooldown_key,
                 runtime_identity=runtime_identity,
                 active_project_keys=active_project_keys,
+                context=context,
+                search_state=search_state,
+                read_rebuild_warning=read_rebuild_warning,
             )
     wiki: CorpusAttempt | None = None
     if wiki_deadline_worker is not None:
@@ -701,6 +942,8 @@ def _run_memory_search_tool(
             memory.error,
             agent_id=config.agent_id,
             deadline=memory.deadline,
+            code=memory.code,
+            warning=read_rebuild_warning(),
             runtime_identity=runtime_identity,
         )
     wiki_results = [] if wiki is None or wiki.outcome == "not-registered" else (wiki.value or [])
@@ -729,15 +972,31 @@ def _run_memory_search_tool(
     recovery = (memory_value or {}).get("unavailableResult")
     response: dict[str, Any] = {"results": results}
     # provider/model stay unset when memory was not searched (tools.ts:677-685).
-    if memory_value is not None and "provider" in memory_value:
-        response["provider"] = memory_value["provider"]
-        response["model"] = memory_value["model"]
-    response["citations"] = config.citation_mode
-    if attempts:
+    if memory_value is not None:
+        response.update({key: memory_value[key] for key in ("provider", "model", "fallback", "mode")
+                         if key in memory_value})
+    citations_mode = resolve_memory_citations_mode(config.citation_mode)
+    response["citations"] = citations_mode
+    # A supplement owns its own presentation. Only returned primary evidence
+    # receives the manager's corpus/citation/annotation presentation.
+    surfaced = {id(result) for result in results}
+    recalled = [result for result in memory_results if id(result) in surfaced]
+    presented = build_memory_search_presentation(
+        recalled, should_include_citations(citations_mode, agent_session_key),
+    )
+    presentation = {id(raw): row for raw, row in zip(recalled, presented, strict=True)}
+    response["results"] = [presentation.get(id(result), result) for result in results]
+    staleness = (memory_value or {}).get("staleness")
+    if staleness:
+        response.update(staleness)
+    automatic_rebuild_warning = (memory_value or {}).get("automaticRebuildWarning")
+    if attempts or automatic_rebuild_warning:
         response.update(
             compose_memory_corpus_metadata(
                 attempts,
                 [
+                    *([automatic_rebuild_warning] if automatic_rebuild_warning else []),
+                    *([staleness["warning"]] if staleness and staleness.get("warning") else []),
                     *([recovery["warning"]] if recovery and recovery.get("warning") else []),
                     *(
                         [MEMORY_SEARCH_PARTIAL_WARNING]
@@ -752,6 +1011,13 @@ def _run_memory_search_tool(
     # Another corpus can succeed while primary memory still needs repair.
     if recovery and recovery.get("action"):
         response["action"] = recovery["action"]
+    debug = (memory_value or {}).get("debug")
+    if debug is not None:
+        elapsed = max(0, context.clock() - tool_started_at)
+        response["debug"] = {
+            **debug, "toolMs": elapsed,
+            "outsideSearchMs": max(0, elapsed - debug["searchMs"]),
+        }
     return response
 
 
@@ -766,6 +1032,9 @@ def _settle_memory_attempt(
     cooldown_key: str,
     runtime_identity: RuntimeIdentity,
     active_project_keys: Sequence[str] | None = None,
+    context: MemorySearchToolContext,
+    search_state: Mapping[str, Any],
+    read_rebuild_warning: Callable[[], str | None],
 ) -> CorpusAttempt:
     """The memory corpus's attempt from its worker's outcome (``attemptMemoryCorpus``)."""
     if outcome.status == "ok":
@@ -776,7 +1045,11 @@ def _settle_memory_attempt(
                 agent_id=config.agent_id,
                 keyword_only=store.embeddings is None or not store.flags.vector_search,
                 runtime_identity=runtime_identity,
+                status=value.get("status"),
             )
+            rebuild_warning = read_rebuild_warning()
+            if rebuild_warning:
+                unavailable["warning"] = f"{unavailable['warning']} {rebuild_warning}"
             # Neither a cooldown nor a failure of the search itself.
             return CorpusAttempt(
                 corpus="memory",
@@ -798,14 +1071,25 @@ def _settle_memory_attempt(
         except Exception:
             keyword_hits = []
         if keyword_hits:
-            embeddings = store.embeddings
+            status = _read_manager_status(store, context)
+            raw_hits = [_serialize_result(item) for item in keyword_hits]
+            debug, mode = _search_debug(
+                status=status, context=context,
+                started_at=search_state.get("started_at", context.clock()),
+                hits=len(raw_hits), candidates=len(raw_hits), filtered=len(raw_hits),
+                window=search_state.get("window", max_results), effective_mode="keyword-only",
+            )
+            debug["fallback"] = outcome.error
             return CorpusAttempt(
                 corpus="memory",
                 outcome="partial",
                 value={
-                    "results": [_serialize_result(config, item) for item in keyword_hits],
-                    "provider": embeddings.provider_id if embeddings is not None else "none",
-                    "model": embeddings.model if embeddings is not None else "fts-only",
+                    "results": raw_hits,
+                    **{key: status[key] for key in ("provider", "model", "fallback") if key in status},
+                    "mode": mode,
+                    "staleness": _resolve_search_staleness(status, config.agent_id, runtime_identity),
+                    "automaticRebuildWarning": read_rebuild_warning(),
+                    "debug": debug,
                 },
                 error=outcome.error,
                 deadline=True,
@@ -816,7 +1100,7 @@ def _settle_memory_attempt(
     return CorpusAttempt(
         corpus="memory",
         outcome="unavailable",
-        value={"results": []},
+        value={"results": [], "automaticRebuildWarning": read_rebuild_warning()},
         error=outcome.error,
         code=outcome.code,
         deadline=outcome.deadline,
@@ -877,12 +1161,12 @@ def _merge_corpus_results(
     )[:max_results]
 
 
-def _serialize_result(config: MemoryConfig, item) -> dict:
-    snippet = clamp_text(item.snippet, max_chars=config.memory_get_max_chars)
-    citation = citation_label(item.path, item.start_line, item.end_line)
-    snippet_text = snippet.text
-    if config.citation_mode == "on":
-        snippet_text = f"{snippet.text.strip()}\n\nSource: {citation}"
+def _serialize_result(item) -> dict:
+    """The manager's complete raw result, before tool-only presentation.
+
+    The search snippet already owns its retrieval budget. The memory_get read
+    budget must not truncate it a second time or add fields absent upstream.
+    """
     to_payload = getattr(item, "to_payload", None)
     if callable(to_payload):
         # The store owns native result-field presence for keyword, vector and
@@ -901,15 +1185,11 @@ def _serialize_result(config: MemoryConfig, item) -> dict:
     # This indexed timestamp supports ranking, not the public tool contract.
     result.pop("sourceMtime", None)
     result.update({
-        "corpus": item.source,
         "path": item.path,
         "startLine": item.start_line,
         "endLine": item.end_line,
         "score": item.score,
-        "snippet": snippet_text,
+        "snippet": item.snippet,
         "source": item.source,
-        "citation": source_label(item.path, item.start_line, item.end_line),
-        "truncated": snippet.truncated,
-        "originalChars": snippet.original_chars,
     })
     return result

@@ -15,6 +15,8 @@ const operations = {
   "index-lifecycle-runtime": ["index-lifecycle.mjs", "runIndexLifecycle"],
   "flush-trigger-runtime": ["flush-runtime.mjs", "runFlushRuntime"],
   "flush-execution-runtime": ["flush-execution.mjs", "runFlushExecution"],
+  "search-contract-runtime": ["search-contract-runtime.mjs", "runSearchContractRuntime"],
+  "search-contract-helper-runtime": ["search-contract-runtime.mjs", "runSearchContractHelperRuntime"],
 };
 const results = [];
 for (const testCase of request.cases) {

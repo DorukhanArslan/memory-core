@@ -20,6 +20,7 @@ def test_case_catalog_is_deterministic_unique_and_standard_json():
         "retrieval.hybrid-scoring",
         "retrieval.exact-path-priority",
         "retrieval.importance-project",
+        "tools.search-contract",
         "engine.unicode-collation",
         "storage.discovery", "storage.path-safety", "indexing.identity",
         "indexing.embedding-cache", "indexing.incremental-sync",

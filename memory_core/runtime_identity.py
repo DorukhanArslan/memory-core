@@ -53,6 +53,9 @@ class RuntimeIdentity:
     # reports and never lifts the pause.
     memory_index_rebuild_guidance: str = "SQLiteMemoryStore.reindex(workspace)."
     memory_index_rebuild_guidance_keyword_only: str = "SQLiteMemoryStore.reindex(workspace)."
+    memory_index_repair_failed_guidance: str = (
+        "Inspect this agent's memory sync failure before retrying the search."
+    )
     # memory_search deadline guidance (OpenClaw extensions/memory-core/src/tools.shared.ts
     # buildMemorySearchUnavailableResult `deadlineAction`, which names two CLI commands);
     # `{agent_id}` is the agent in the second form.
@@ -71,6 +74,10 @@ class RuntimeIdentity:
     memory_search_sessions_disabled_action: str = (
         "If an exact session-history capability is available for this run, use it. Otherwise, "
         "ask the host to enable session search (MemoryConfig.session_search)."
+    )
+    memory_search_session_migration_action: str = (
+        "Stop the host and migrate its session catalog to canonical keys, then restart it "
+        "and retry memory_search."
     )
     # Transcript row recorded for a heartbeat turn instead of the full heartbeat
     # prompt (OpenClaw src/auto-reply/heartbeat.ts INTERNAL_WAKE_TRANSCRIPT_PROMPTS.heartbeat,
@@ -130,6 +137,9 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
         "openclaw memory status --index{agent}. Rebuilding uses keyword indexing only and does "
         "not call an embedding provider."
     ),
+    memory_index_repair_failed_guidance=(
+        "openclaw memory status --deep{agent}. Resolve the reported sync failure before retrying the search."
+    ),
     memory_search_deadline_action_for_agent=(
         "Retry memory_search after a short wait: a memory-corpus timeout pauses retries for "
         "up to a minute. If memory-corpus timeouts persist, run: openclaw memory status --deep "
@@ -141,6 +151,9 @@ OPENCLAW_COMPAT_RUNTIME_IDENTITY = RuntimeIdentity(
         "ask the operator to enable semantic session search by enabling "
         "memory.search.experimental.sessionMemory and adding \"sessions\" to "
         "memory.search.sources."
+    ),
+    memory_search_session_migration_action=(
+        "Stop the Gateway and run openclaw doctor --fix, then restart the Gateway and retry memory_search."
     ),
     heartbeat_transcript_prompt=_OPENCLAW_WAKE_PROMPTS["heartbeat"],
     internal_wake_transcript_prompts=tuple(_OPENCLAW_WAKE_PROMPTS.values()),

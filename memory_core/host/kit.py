@@ -74,7 +74,8 @@ from memory_core.prompt_section import build_prompt_section
 from memory_core.runtime_context_prompt import build_runtime_context_system_context
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.session_memory import SessionMemoryResult, SlugGenerator, save_session_memory
-from memory_core.tools.common import MemoryToolInputError, to_tool_error
+from memory_core.tools.common import MemoryToolError, to_tool_error
+from memory_core.tools.search_factory import prepare_memory_search_arguments
 from memory_core.tools.memory_get import (
     MEMORY_GET_TOOL_NAME,
     execute_memory_get_tool,
@@ -379,11 +380,11 @@ class HostKit:
             return tool_error(name, f"tool {name} is not available")
         try:
             if name == MEMORY_SEARCH_TOOL_NAME:
-                return self._memory_search(args, session)
+                return self._memory_search(prepare_memory_search_arguments(args), session)
             if name == MEMORY_GET_TOOL_NAME:
                 return execute_memory_get_tool(self._memory.config, args)
             return self._curator.dispatch(name, args)
-        except MemoryToolInputError as error:
+        except MemoryToolError as error:
             return error.to_tool_error(name)
         except Exception as error:
             return to_tool_error(error, tool=name)

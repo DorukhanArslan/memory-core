@@ -30,7 +30,7 @@ from memory_core.bootstrap._js import js_trim
 from memory_core.config import MemoryConfig
 from memory_core.supplements import MemoryCorpusSupplement
 from memory_core.tools.common import (
-    MemoryToolInputError,
+    MemoryToolError,
     as_tool_params_record,
     format_error_message,
     read_corpus_param,
@@ -114,7 +114,7 @@ def read_memory_get_params(params: object) -> MemoryGetParams:
         from_line = read_positive_integer_param(raw, "from")
         lines = read_positive_integer_param(raw, "lines")
         corpus = read_corpus_param(raw, MEMORY_GET_CORPORA)
-    except MemoryToolInputError as error:
+    except MemoryToolError as error:
         error.tool = MEMORY_GET_TOOL_NAME
         raise
     return MemoryGetParams(path=path, from_line=from_line, lines=lines, corpus=corpus)

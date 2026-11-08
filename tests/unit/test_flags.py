@@ -65,7 +65,7 @@ def test_fts_only_works_without_embedding_provider(tmp_path):
     result = memory.search("ERR_CRM_409_CONFLICT")
 
     assert result["provider"] == "none"
-    assert result["model"] == "fts-only"
+    assert "model" not in result
     assert [item["path"] for item in result["results"]] == ["memory/2026-07-05.md"]
 
 
@@ -91,7 +91,8 @@ def test_fts_only_relaxes_min_score_when_strict_pass_is_empty(tmp_path):
     assert [item["path"] for item in results] == ["memory/2026-07-05.md"]
 
 
-def test_fts_only_search_is_deterministic(tmp_path):
+def test_fts_only_search_is_deterministic(tmp_path, monkeypatch):
+    monkeypatch.setattr("memory_core.tools.memory_search.time.time", lambda: 1.0)
     memory = _fts_only_memory(tmp_path)
 
     first = memory.search("supervisor approval refund exception")

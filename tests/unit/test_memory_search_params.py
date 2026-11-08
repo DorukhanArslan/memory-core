@@ -8,6 +8,7 @@ from memory_core.flags import FeatureFlags
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.supplements import StaticMemoryCorpusSupplement
 from memory_core.tools.common import (
+    MemoryToolError,
     MemoryToolInputError,
     read_finite_number_param,
     read_positive_integer_param,
@@ -182,8 +183,14 @@ def test_unknown_or_omitted_corpus_searches_every_source_without_supplements(tmp
     assert corpora("all") == ["memory", "sessions", "wiki"]
     assert corpora(None) == ["memory", "sessions"]
     assert corpora("") == ["memory", "sessions"]
-    with pytest.raises(MemoryToolInputError, match="corpus must be one of: memory, wiki, all, sessions"):
+    # Native tools.ts readCorpusParam throws an ordinary Error, without status 400.
+    with pytest.raises(
+        MemoryToolError, match="corpus must be one of: memory, wiki, all, sessions"
+    ) as raised:
         corpora("bogus")
+    assert raised.value.name == "Error"
+    assert raised.value.tool == "memory_search"
+    assert not hasattr(raised.value, "status")
 
 
 def test_execute_memory_search_tool_accepts_raw_model_arguments(tmp_path: Path):

@@ -454,7 +454,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit",
           "anchor": "class HostKit:",
-          "line": 207
+          "line": 208
         }
       ],
       "implementation": "partial",
@@ -744,7 +744,7 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_run_memory_search_tool",
           "anchor": "def _run_memory_search_tool(",
-          "line": 570
+          "line": 768
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -1202,13 +1202,13 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.__init__",
           "anchor": "    def __init__(",
-          "line": 217
+          "line": 218
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "memory_search",
           "anchor": "def memory_search(",
-          "line": 524
+          "line": 580
         }
       ],
       "implementation": "present",
@@ -1244,26 +1244,38 @@
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "memory_search_tool_definition",
-          "anchor": "def memory_search_tool_definition(*, index_sessions: bool = False) -> dict[str, Any]:",
-          "line": 149
+          "anchor": "def memory_search_tool_definition(",
+          "line": 153
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "read_memory_search_params",
           "anchor": "def read_memory_search_params(params: object) -> MemorySearchParams:",
-          "line": 468
+          "line": 516
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "execute_memory_search_tool",
           "anchor": "def execute_memory_search_tool(",
-          "line": 492
+          "line": 540
+        },
+        {
+          "path": "memory_core/tools/search_factory.py",
+          "symbol": "create_memory_search_tool",
+          "anchor": "def create_memory_search_tool(",
+          "line": 132
+        },
+        {
+          "path": "memory_core/tools/citations.py",
+          "symbol": "build_memory_search_presentation",
+          "anchor": "def build_memory_search_presentation(",
+          "line": 42
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Definitions, parameter coercion, ordered serialization and supplemental corpora have Python owners; native visibility/trusted-source context, recall recording and active-project context are not present in the Python tool boundary.",
-        "Python explicitly omits native staleness/rebuild notices, so citation and warning shapes need whole-tool comparisons rather than helper-only score checks."
+        "Production factory, live configuration revocation, alias preparation, native numeric defaults and canonical citations have Python owners; actual provider-none stored searches compare complete ordered JSON envelopes, errors, debug fields and registered wiki warnings.",
+        "Trusted host context supplies session corpus overrides, active projects, status, runtime events and measured ready-store acquisition. General transcript visibility, native provider/fallback/bootstrap and stale/rebuild lifecycle execution remain separate unverified profiles; the raw ready-store executor may omit managerMs unless supplied by the host."
       ]
     },
     {
@@ -1355,19 +1367,19 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_DeadlineWorker",
           "anchor": "class _DeadlineWorker:",
-          "line": 416
+          "line": 441
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "read_memory_search_tool_cooldown_failure",
           "anchor": "def read_memory_search_tool_cooldown_failure(key: str) -> CorpusFailure | None:",
-          "line": 343
+          "line": 368
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "record_memory_search_tool_cooldown",
           "anchor": "def record_memory_search_tool_cooldown(",
-          "line": 380
+          "line": 405
         }
       ],
       "implementation": "partial",
@@ -1407,24 +1419,24 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "build_memory_search_unavailable_result",
           "anchor": "def build_memory_search_unavailable_result(",
-          "line": 171
+          "line": 175
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_settle_memory_attempt",
           "anchor": "def _settle_memory_attempt(",
-          "line": 758
+          "line": 1024
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_merge_corpus_results",
           "anchor": "def _merge_corpus_results(",
-          "line": 848
+          "line": 1132
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python records per-corpus success/failure and partial result metadata, but fallback partials are obtained by another FTS query and omit native stale/rebuild state.",
+        "Python records per-corpus success/failure and partial result metadata. Trusted host status now supplies stale/rebuild notices, but fallback partials still use another FTS query; actual provider deadlines, stale/rebuild transitions and later-query recovery require paired lifecycle evidence.",
         "Later explicit-query recovery is represented by Python cooldown expiry and explicit host index repair, not the complete native provider/index lifecycle; failure order and dispatch counts require paired tests."
       ]
     },
@@ -1635,7 +1647,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 726
+          "line": 727
         }
       ],
       "implementation": "partial",
@@ -1859,7 +1871,7 @@
       "implementation": "partial",
       "notes": [
         "Runtime markers default to Memory Core identity; native marker behavior requires the explicit OpenClaw compatibility identity.",
-        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1\u20139999."
+        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1–9999."
       ]
     },
     {
@@ -2010,7 +2022,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.prepare_flush",
           "anchor": "    def prepare_flush(",
-          "line": 576
+          "line": 577
         },
         {
           "path": "memory_core/memory_flush.py",
@@ -2046,7 +2058,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 526
+          "line": 527
         }
       ],
       "implementation": "present",
@@ -2944,7 +2956,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 526
+          "line": 527
         }
       ],
       "implementation": "partial",
@@ -3335,7 +3347,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 526
+          "line": 527
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -3536,7 +3548,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 526
+          "line": 527
         },
         {
           "path": "demo/lab_chat.py",
@@ -3587,7 +3599,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 726
+          "line": 727
         },
         {
           "path": "demo/lab_runtime.py",
@@ -3632,7 +3644,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.dispatcher",
           "anchor": "    def dispatcher(",
-          "line": 391
+          "line": 392
         },
         {
           "path": "memory_core/live/__init__.py",

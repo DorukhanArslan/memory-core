@@ -12,6 +12,10 @@ class FeatureFlags:
     mirrors OpenClaw's `provider: "none"` FTS-only mode, where keyword
     results keep their full text score and no embedder is ever invoked.
 
+    ``memory`` controls availability of the model-facing search-tool factory.
+    It does not gate direct store or Python retrieval calls; hosts may keep
+    using those while withholding the model-facing capability.
+
     `subject_promotion` gates scored consolidation on live subject workspaces
     (`memory_core.live.SubjectConsolidation`, a Q16 extension without an upstream
     counterpart, off by default): disabled means every call raises before
@@ -29,6 +33,8 @@ class FeatureFlags:
     temporal_decay: bool = True
     subject_promotion: bool = False
     curated_memory_writes: bool = True
+    # Resolved host policy for whether the model-facing search tool is offered.
+    memory: bool = True
 
     def __post_init__(self) -> None:
         if not self.vector_search and not self.text_search:

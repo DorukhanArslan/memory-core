@@ -16,6 +16,7 @@ from memory_core.tools.common import format_error_message
 from memory_core.tools.memory_search import (
     MEMORY_SEARCH_TOOL_COOLDOWN_MS,
     MEMORY_SEARCH_TOOL_TIMEOUT_MS,
+    MemorySearchToolContext,
     build_memory_search_unavailable_result,
     memory_search,
     memory_search_tool_cooldown_key,
@@ -227,13 +228,13 @@ def test_store_errors_become_unavailable_results_with_a_cooldown(tmp_path, clock
     # not searched.
     assert wiki == {
         "results": [],
-        "citations": "on",
+        "citations": "auto",
         "corpora": [{"corpus": "wiki", "outcome": "not-registered"}],
         "warning": "Wiki corpus is not registered; results do not cover that requested corpus.",
     }
     assert all_corpora == {
         "results": [],
-        "citations": "on",
+        "citations": "auto",
         "corpora": [
             {"corpus": "memory", "outcome": "unavailable", "error": "provider exploded"},
             {"corpus": "wiki", "outcome": "not-registered"},
@@ -389,13 +390,15 @@ def test_deadline_runs_from_an_event_loop_and_from_other_threads(tmp_path):
     store = SQLiteMemoryStore(cfg, None)
     store.reindex(MemoryWorkspace(tmp_path))
 
+    context = MemorySearchToolContext(clock=lambda: 100)
+
     async def inside_loop():
-        return memory_search(cfg, store, query="glacier")
+        return memory_search(cfg, store, query="glacier", context=context)
 
     from_loop = asyncio.run(inside_loop())
     from_thread = {}
     worker = threading.Thread(
-        target=lambda: from_thread.update(memory_search(cfg, store, query="glacier"))
+        target=lambda: from_thread.update(memory_search(cfg, store, query="glacier", context=context))
     )
     worker.start()
     worker.join(5)

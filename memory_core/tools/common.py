@@ -12,7 +12,7 @@ Port of OpenClaw's built-in tool helpers:
 - ``src/agents/agent-tool-definition-adapter.ts``: a thrown tool error reaches
   the model as ``{"status": "error", "tool": <name>, "error": <message>}``
   (``buildToolExecutionErrorResult`` with ``describeToolExecutionError``).
-- ``src/infra/errors.ts``: ``formatErrorMessage`` (cause chain, no redaction).
+- ``src/infra/errors.ts``: ``formatErrorMessage`` (cause chain and host redaction).
 
 Values follow JavaScript semantics: ``True``/``False`` are not numbers,
 strings are trimmed with the ECMAScript whitespace set, and numeric strings
@@ -27,6 +27,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from memory_core.bootstrap._js import js_trim
+from memory_core.redact import redact_sensitive_text
 
 # Number.MAX_SAFE_INTEGER.
 MAX_SAFE_INTEGER = 2**53 - 1
@@ -82,13 +83,13 @@ def to_tool_error(error: BaseException, *, tool: str) -> dict[str, str]:
 
 
 def format_error_message(error: object) -> str:
-    """``formatErrorMessage`` (``src/infra/errors.ts:69-111``) without redaction.
+    """``formatErrorMessage`` with the host's current logging redaction policy.
 
     An exception reads as its message (its type name when blank), followed by
     each explicit ``raise ... from`` cause message and string/number ``code``
-    as `` | <text>``, skipping repeats. Upstream then runs a best-effort token
-    redaction (``redactSensitiveText``); memory-core does not port it, so hosts
-    whose provider errors can carry secrets should redact tool results.
+    as `` | <text>``, skipping repeats. The assembled diagnostic goes through
+    ``redactSensitiveText`` without explicit options, like the native policy
+    wrapper: registered exact values first, then the host's configured patterns.
     """
     if isinstance(error, BaseException):
         formatted = str(error) or type(error).__name__
@@ -112,10 +113,8 @@ def format_error_message(error: object) -> str:
             elif isinstance(code, int | float) and not isinstance(code, bool):
                 append(str(code))
             cause = cause.__cause__
-        return formatted
-    if isinstance(error, str):
-        return error
-    return str(error)
+        return redact_sensitive_text(formatted, config="host")
+    return redact_sensitive_text(str(error), config="host")
 
 
 def as_tool_params_record(params: object) -> Mapping[str, Any]:

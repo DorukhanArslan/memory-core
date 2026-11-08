@@ -49,8 +49,10 @@ from memory_core.index.hybrid import HYBRID_METADATA_MISSING
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.session_visibility import (
+    SessionAgentSelectionRequiredError,
     SessionVisibilityContext,
     filter_memory_search_hits_by_session_visibility,
+    resolve_memory_search_tool_agent,
     resolve_memory_search_source_policy,
 )
 from memory_core.supplements import (
@@ -542,6 +544,10 @@ def execute_memory_search_tool(
         raise MemoryToolError(
             "Memory is disabled for this agent. Enable memory search for this agent, then retry."
         )
+    resolve_memory_search_tool_agent(
+        agent_session_key, config.agent_id,
+        context.session_visibility.policy if context.session_visibility is not None else None,
+    )
     execution = _search_execution(context)
     if execution.signal is not None:
         execution.signal.throw_if_aborted()
@@ -570,6 +576,8 @@ def execute_memory_search_tool(
 
     try:
         return run_memory_corpus_deadline("memory_search", run, context=execution)
+    except SessionAgentSelectionRequiredError:
+        raise
     except Exception as error:
         if execution.signal is not None and execution.signal.aborted:
             raise resolve_memory_search_abort_error(execution.signal)
@@ -1231,6 +1239,8 @@ def _settle_memory_attempt(
     read_rebuild_warning: Callable[[], str | None],
 ) -> CorpusAttempt:
     """The memory corpus's attempt from its worker's outcome (``attemptMemoryCorpus``)."""
+    if isinstance(outcome.exception, SessionAgentSelectionRequiredError):
+        raise outcome.exception
     if outcome.status == "ok":
         value = outcome.value
         if "paused" in value:

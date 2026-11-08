@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 import json
 import math
+import os
 from pathlib import Path
 import re
 import stat
@@ -163,7 +164,7 @@ class MemoryCoreSessionCorpus:
         files = []
         for directory in dirs:
             try:
-                candidates = list(directory.iterdir())
+                candidates = sorted(directory.iterdir(), key=lambda entry: os.fsencode(entry.name))
             except FileNotFoundError:
                 continue
             for path in candidates:

@@ -308,7 +308,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 705
+          "line": 708
         }
       ],
       "implementation": "present",
@@ -400,13 +400,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 461
+          "line": 464
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 705
+          "line": 708
         },
         {
           "path": "memory_core/index/preparation.py",
@@ -442,7 +442,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._reindex_locked",
           "anchor": "    def _reindex_locked(self, workspace: MemoryWorkspace, *, force: bool) -> int:",
-          "line": 484
+          "line": 487
         },
         {
           "path": "memory_core/client.py",
@@ -501,7 +501,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
           "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
-          "line": 415
+          "line": 418
         }
       ],
       "implementation": "partial",
@@ -536,7 +536,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 461
+          "line": 464
         },
         {
           "path": "memory_core/workspace.py",
@@ -548,7 +548,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "read_index_source",
           "anchor": "def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:",
-          "line": 134
+          "line": 137
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -601,7 +601,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 461
+          "line": 464
         },
         {
           "path": "memory_core/consolidation/origins.py",
@@ -613,7 +613,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 315
+          "line": 318
         },
         {
           "path": "memory_core/index/publication.py",
@@ -631,7 +631,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.read_published_index",
           "anchor": "    def read_published_index(self, *, db: sqlite3.Connection | None = None) -> dict:",
-          "line": 297
+          "line": 300
         },
         {
           "path": "memory_core/index/publication.py",
@@ -696,7 +696,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 461
+          "line": 464
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -738,7 +738,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 751
+          "line": 754
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -750,13 +750,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_connection",
           "anchor": "    def _search_connection(self, signal: CancellationSignal | None) -> Iterator[sqlite3.Connection]:",
-          "line": 225
+          "line": 228
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
           "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
-          "line": 415
+          "line": 418
         }
       ],
       "implementation": "partial",
@@ -784,26 +784,64 @@
           "symbol": "searchChunksByEmbedding",
           "anchor": "export async function searchChunksByEmbedding(params: {",
           "line": 70
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/embedding-vector.ts",
+          "symbol": "cosineSimilarity",
+          "anchor": "export function cosineSimilarity(a: number[], b: number[]): number {",
+          "line": 42
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/embedding-vector.ts",
+          "symbol": "decodeMemoryEmbedding",
+          "anchor": "export function decodeMemoryEmbedding(bytes: Uint8Array): number[] {",
+          "line": 26
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-search-shared.ts",
+          "symbol": "projectMemorySearchRow",
+          "anchor": "export function projectMemorySearchRow(",
+          "line": 23
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-search-shared.ts",
+          "symbol": "resolveSnippetProjection",
+          "anchor": "export function resolveSnippetProjection(column: \"text\" | \"c.text\", snippetMaxChars: number) {",
+          "line": 45
         }
       ],
       "python": [
         {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "SQLiteMemoryStore.search_vector_candidates",
+          "anchor": "    def search_vector_candidates(",
+          "line": 820
+        },
+        {
           "path": "memory_core/index/vector.py",
           "symbol": "cosine_similarity",
           "anchor": "def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:",
-          "line": 7
+          "line": 9
+        },
+        {
+          "path": "memory_core/index/vector.py",
+          "symbol": "decode_memory_embedding",
+          "anchor": "def decode_memory_embedding(raw: str | bytes | bytearray | memoryview) -> list[float]:",
+          "line": 31
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 817
+          "line": 950
         }
       ],
-      "implementation": "partial",
+      "implementation": "present",
       "notes": [
-        "Python computes cosine over JSON embeddings fetched for every source-filtered row, then trims candidates; native uses sqlite KNN or bounded fallback batches and provider-model identity filtering.",
-        "Zero-vector/dimension handling has Python code, but native fallback/KNN candidate order and cancellation boundaries cannot be inferred from the cosine helper."
+        "Both fixed vector-scoring acceptance points are verified for the explicitly paired portable CPU capability: native optional vector acceleration unavailable/disabled and SDK CPU backend. Authenticated named bindings execute the original bounded SQLite scan, binary64 codec/cosine and row projection; broad facade initialization, optional sqlite-vec KNN, accelerated float32 behavior and full-manager execution remain unverified.",
+        "Cosine uses the shared minimum-length prefix for both norms, including empty and zero vectors. Stored JSON/binary64 vectors reject corrupt/non-finite coordinates; non-finite candidate scores are excluded. Actual per-chunk model identity, truthy aliases and source filtering precede stable finite top-K selection in signed-rowid order with 256-row batches.",
+        "Public search_vector_candidates returns pre-hybrid ordered source/range identities and snippets, with payload hydration inside each batch snapshot, SQLite-encoding byte projection and UTF-16 truncation. Normal public search retains its all-zero query guard, identity gate, whole-generation read transaction and later path ordering; caller-supplied lower-level connections retain transaction ownership.",
+        "The retained old-prefix diagnostic observes actual SDK score 0 versus native 1 for [1, 0] and [1]. Both the original uncredited 40-case comparison and reviewed registered 40-case comparison match without rounding outputs. Batch mutation and an actual external WAL writer exercise payload/vector snapshot pairing; cancellation diagnostics retain no acceptance credit."
       ]
     },
     {
@@ -1320,7 +1358,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "read_index_source",
           "anchor": "def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:",
-          "line": 134
+          "line": 137
         }
       ],
       "implementation": "partial",
@@ -2589,7 +2627,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 461
+          "line": 464
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -2601,7 +2639,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 315
+          "line": 318
         }
       ],
       "implementation": "partial",
@@ -3102,7 +3140,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 461
+          "line": 464
         },
         {
           "path": "memory_core/consolidation/artifacts.py",
@@ -3126,7 +3164,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 315
+          "line": 318
         }
       ],
       "implementation": "partial",
@@ -3915,6 +3953,21 @@
       "exportedDeclarations": []
     },
     {
+      "path": "extensions/memory-core/src/memory/manager-search-shared.ts",
+      "sha256": "410b3078f6e59379ba8db3fc5d4a07343447bd2e0d409b4d4bc9aa1617f28bc4",
+      "sourceImports": [
+        "openclaw/plugin-sdk/memory-core-host-engine-knn",
+        "openclaw/plugin-sdk/memory-core-host-engine-storage"
+      ],
+      "exportedDeclarations": [
+        "MemorySearchRow",
+        "SearchRowResult",
+        "buildMemoryModelFilter",
+        "projectMemorySearchRow",
+        "resolveSnippetProjection"
+      ]
+    },
+    {
       "path": "extensions/memory-core/src/memory/manager-search-vector.ts",
       "sha256": "3ba4ecfed4e65f4a3c84c673c24d57466eaae8b82c5defe3a54e0f91298cdf4d",
       "sourceImports": [
@@ -4417,6 +4470,17 @@
         "resolveMemoryHostAgentWorkspaceDir",
         "resolveMemoryHostSearchPathConfig",
         "resolveRememberAcrossConversations"
+      ]
+    },
+    {
+      "path": "packages/memory-host-sdk/src/host/embedding-vector.ts",
+      "sha256": "515e3d73f9e6adff455f6f3db477d253fac0a10e44b53179d47683d101068de9",
+      "sourceImports": [],
+      "exportedDeclarations": [
+        "cosineSimilarity",
+        "decodeMemoryEmbedding",
+        "encodeMemoryEmbedding",
+        "parseEmbedding"
       ]
     },
     {

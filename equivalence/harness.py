@@ -102,6 +102,12 @@ def _reference_bindings(checkout: Path, *, cache: bool, publication: bool,
         extension = prepare_index_bindings(checkout)
         for key in ("allowedResolutions", "projectionEvidence"):
             bindings.setdefault(key, []).extend(extension[key])
+    if "vector-scoring" in reuse_operations:
+        from equivalence.vector_bindings import prepare_vector_bindings
+
+        extension = prepare_vector_bindings(checkout)
+        for key in ("allowedResolutions", "projectionEvidence"):
+            bindings.setdefault(key, []).extend(extension[key])
     if reuse_operations:
         from equivalence.reuse_bindings import prepare_reuse_bindings
 
@@ -423,6 +429,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         reuse_operations = frozenset(case["operation"] for case in cases
                                      if case["operation"] in {
                                          "bootstrap-budget", "flush-contract", "flush-target", "session-projection",
+                                         "vector-scoring",
                                      })
         native_storage = required_artifact_execution or bool(reuse_operations)
         cache_bindings = any(case["operation"] == "embedding-cache" for case in cases)

@@ -16,6 +16,7 @@ def test_case_catalog_is_deterministic_unique_and_standard_json():
     assert {case["requirement"] for case in first} == {
         "lexical.fts-query", "lexical.tokenization", "lexical.bm25",
         "retrieval.temporal-decay", "retrieval.mmr",
+        "retrieval.vector-scoring",
         "storage.discovery", "storage.path-safety", "indexing.identity",
         "indexing.embedding-cache", "indexing.incremental-sync",
         "indexing.transaction-publication",

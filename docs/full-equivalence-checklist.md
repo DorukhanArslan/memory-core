@@ -26,7 +26,7 @@ The reference repository is `https://github.com/openclaw/openclaw.git`. Python-o
 
 The [source map](equivalence-source-map.md) links all 64 contracts and 128 acceptance points
 to the pinned upstream code and the current Python implementation. The inventory records
-105 upstream source modules, their tracked hashes, literal dependencies and exported
+107 upstream source modules, their tracked hashes, literal dependencies and exported
 declarations. Source presence and inventory validation do not establish behavior or add
 any differential-test coverage.
 
@@ -77,7 +77,7 @@ Entries remain pending until their complete acceptance conditions are verified a
 
 ### Retrieval and ranking
 
-- [ ] **`retrieval.vector-scoring` — Match vector candidate scoring.** Compare cosine scoring, candidate bounds, zero vectors and incompatible dimensions. Compare ordered source/range identities before downstream hybrid ranking.
+- [x] **`retrieval.vector-scoring` — Match vector candidate scoring.** Compare cosine scoring, candidate bounds, zero vectors and incompatible dimensions. Compare ordered source/range identities before downstream hybrid ranking. Verified for the paired portable CPU fallback capability; optional accelerated KNN remains unverified.
 - [ ] **`retrieval.hybrid-scoring` — Match hybrid merge and score gates.** Compare vector-only, text-only, overlapping and disjoint candidates with configured weights. Check selection, minimum-score boundaries and lexical fallback without dropping result fields.
 - [ ] **`retrieval.exact-path-priority` — Match exact-path retrieval priority.** Exercise exact paths, basename matches, partial paths and body-only matches. Compare path specificity tiers, ties and interaction with content score.
 - [ ] **`retrieval.mmr` — Match diversity reranking.** Compare disabled/enabled MMR, duplicate text, equal scores, stable ties and lambda boundaries. Exercise CJK, empty and punctuation-only snippets and preserve output ordering.
@@ -846,3 +846,53 @@ visible and grants no acceptance credit; a full-equivalence pass remains unavail
 regression validation passed **2,727 tests**; the same **1,625 historical oracle/live checks**
 remain gated off and grant no acceptance credit. Ruff, project-name consistency, source-map and
 staged diff checks passed.
+
+### Portable CPU vector candidates — 2026-11-08
+
+This batch completes **`retrieval.vector-scoring.outcomes`** and
+**`retrieval.vector-scoring.boundaries`** for the explicitly paired portable CPU capability:
+native optional vector acceleration is unavailable/disabled, and the SDK uses its CPU backend.
+Verified acceptance advances from 25/128 to **27/128 (21.1%)**, leaving **101 points (78.9%)**
+unverified. This does not implement or verify optional sqlite-vec KNN, float32 accelerated
+distance behavior or full memory-manager execution. The fixed **64 contracts, 128 acceptance
+points** and scope SHA-256
+`a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9` remain unchanged. The
+inventory now maps **107 upstream modules**; classifications are 13 present, 47 partial,
+one missing and three host-owned.
+
+The actual old SDK cosine at commit `b3dbfc5ad4d62aab0303c7803104c1b60679e0d2` returned zero
+for `[1, 0]` versus `[1]`, while the actual native helper returned one. The retained
+`.equivalence-results/vector-prefix-baseline.json` records that difference without acceptance
+credit. Cosine now uses the shared minimum-length prefix for both norms, including empty and
+zero-vector behavior. Corrupt or non-finite stored vectors decode as empty; non-finite candidate
+scores are excluded.
+
+Public `SQLiteMemoryStore.search_vector_candidates` returns raw ordered candidates before
+hybrid ranking. It filters actual per-chunk model identity, truthy aliases and sources before
+bounding candidates; scans signed SQLite rowids in batches of 256; and retains stable descending
+finite top-K scores, with ties in rowid order. Payload hydration shares each batch's snapshot.
+Bounded snippet projection respects the database encoding and final UTF-16 truncation. Normal
+public search retains its all-zero query guard, identity check, whole-generation read transaction
+and later path ordering. Lower-level callers that supply a connection retain their transaction
+ownership; autocommit batch snapshots finish before the cooperative yield.
+
+The reference executes the unchanged original SQLite scan, binary64 codec/cosine and row
+projection owners. [vector_bindings.py](../equivalence/vector_bindings.py) authenticates exact
+named bindings and source hashes while bypassing broad facade initialization. Reports explicitly
+exclude accelerated KNN and full-manager execution. The **40 new cases** include incompatible
+lengths, zero/non-finite values, model/source filtering, candidate limits/ties, signed rowid batch
+boundaries, Unicode/NUL snippets and SQLite encodings, cancellation, batch mutation and an actual
+external WAL writer during scoring. Cancellation diagnostics retain no acceptance credit.
+
+The first actual comparison, `.equivalence-results/vector-scoring-first.json`, records **40
+matches, zero mismatches and zero blocked cases** with `covers: []` before registration. After
+reviewed point assignment, `.equivalence-results/vector-scoring-registered.json` also records
+**40 matches, zero mismatches and zero blocked cases**. Compared outputs are unrounded; reports
+retain exact inputs, capability profile, status and loaded-file evidence. Matched outputs are not
+duplicated per row; mismatch outputs remain available when a comparison differs.
+
+The default catalog now contains **761 cases**. Final integrated and regression validation is
+recorded after the runs; the planned full report is `.equivalence-results/vector-scoring-full.json`.
+The existing warm first-recall comparison remains registered, visible and uncredited, and
+`flush.execute-finalize.boundaries` stays open even if a later timing-dependent run matches.
+The full contract still has **101 uncovered acceptance points**.

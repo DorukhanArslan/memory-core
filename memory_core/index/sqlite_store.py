@@ -5,13 +5,14 @@ from copy import deepcopy
 import errno
 import hashlib
 import json
+import math
 import os
 import re
 import sqlite3
 import stat
 import time
 import unicodedata
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
@@ -71,6 +72,7 @@ from memory_core.index.identity import (
 )
 from memory_core.index.keywords import extract_keywords
 from memory_core.index.publication import (
+    CHUNK_DETAILS_TABLE,
     PreparedChunk,
     PreparedIndexRevision,
     PreparedSource,
@@ -89,7 +91,7 @@ from memory_core.index.temporal_decay import (
     TemporalDecayConfig,
     apply_temporal_decay_to_hybrid_results,
 )
-from memory_core.index.vector import cosine_similarity
+from memory_core.index.vector import cosine_similarity, decode_memory_embedding
 from memory_core.workspace import MemoryFile, MemoryWorkspace, workspace_index_lock
 
 # OpenClaw caps per-keyword FTS fallback probes so long conversational queries
@@ -99,6 +101,7 @@ KEYWORD_FALLBACK_SEARCH_TERM_LIMIT = 6
 # DEFAULT_HYBRID_CANDIDATE_MULTIPLIER.
 SEARCH_CANDIDATE_UNIVERSE = 200
 HYBRID_CANDIDATE_MULTIPLIER = 4
+VECTOR_FALLBACK_BATCH_SIZE = 256
 
 # Chunking recorded in the index identity (chunk_markdown defaults; upstream
 # DEFAULT_CHUNK_TOKENS / DEFAULT_CHUNK_OVERLAP, src/agents/memory-search.ts).
@@ -814,6 +817,136 @@ class SQLiteMemoryStore:
             )
         return self._finalize_keyword_only(hits, max_results, min_score)[:max_results]
 
+    def search_vector_candidates(
+        self,
+        query_vec: Sequence[float],
+        *,
+        limit: int,
+        provider_model: str | None = None,
+        provider_model_aliases: Sequence[str] | None = None,
+        sources: set[str] | None = None,
+        snippet_max_chars: int = SNIPPET_MAX_CHARS,
+        signal: CancellationSignal | None = None,
+        db: sqlite3.Connection | None = None,
+    ) -> list[HybridVectorResult]:
+        """Return bounded CPU vector candidates before hybrid ranking.
+
+        This is the ``searchVector`` fallback / ``searchChunksByEmbedding`` owner:
+        filter actual per-chunk models and sources, scan by signed SQLite rowid,
+        keep finite top-K scores and hydrate contenders before yielding. Equal
+        scores retain rowid order. The ordinary search calls this same path under
+        its identity gate and generation-wide read transaction; it additionally
+        skips all-zero query vectors before calling the candidate owner.
+
+        Without ``db``, this method owns a read transaction. A supplied connection
+        retains its caller's existing transaction and lifetime, allowing lower
+        level callers to choose their own snapshot ownership.
+        """
+        if not query_vec or limit <= 0:
+            return []
+        _checkpoint(signal)
+        if provider_model is None:
+            identities = self._provider_identities()
+            provider_model = identities[0]["model"]
+            if provider_model_aliases is None:
+                provider_model_aliases = [identity["model"] for identity in identities[1:]]
+        aliases = provider_model_aliases or ()
+        models = list(dict.fromkeys([provider_model, *(alias for alias in aliases if alias)]))
+        try:
+            if db is not None:
+                return self._search_vector_candidates(
+                    db, query_vec, limit, models, sources, snippet_max_chars, signal
+                )
+            with self._search_connection(signal) as connection:
+                return self._search_vector_candidates(
+                    connection, query_vec, limit, models, sources, snippet_max_chars, signal
+                )
+        except sqlite3.OperationalError:
+            # A signal may interrupt SQLite before the next bounded-scan checkpoint.
+            _checkpoint(signal)
+            raise
+
+    @staticmethod
+    def _search_vector_candidates(
+        db: sqlite3.Connection,
+        query_vec: Sequence[float],
+        limit: int,
+        models: list[str],
+        sources: set[str] | None,
+        snippet_max_chars: int,
+        signal: CancellationSignal | None,
+    ) -> list[HybridVectorResult]:
+        source_filter = _source_filter_clause(sources)
+        model_filter = (
+            "d.model = ?" if len(models) == 1
+            else f"d.model IN ({', '.join('?' for _ in models)})"
+        )
+        scan = (
+            "SELECT c.rowid, c.embedding FROM chunks c "
+            f"JOIN {CHUNK_DETAILS_TABLE} d ON d.chunk_id=c.id WHERE {model_filter}"
+        )
+        tail = source_filter.and_sql + " ORDER BY c.rowid ASC LIMIT ?"
+        bounded_snippet = (
+            type(snippet_max_chars) is int and 0 < snippet_max_chars <= 2 ** 53 - 1
+        )
+        projection = (
+            "COALESCE(substr(CAST(c.text AS BLOB), 1, ?), CAST(c.text AS BLOB))"
+            if bounded_snippet else "c.text"
+        )
+        payload_sql = (
+            "SELECT c.id, c.path, c.start_line, c.end_line, c.source, "
+            f"{projection} FROM chunks c WHERE c.rowid = ?"
+        )
+        text_encoding = db.execute("PRAGMA encoding").fetchone()[0].lower()
+        top: list[HybridVectorResult] = []
+        last_rowid: int | None = None
+        while True:
+            statement = scan + (" AND c.rowid > ?" if last_rowid is not None else "") + tail
+            parameters = (
+                *models, *((last_rowid,) if last_rowid is not None else ()),
+                *source_filter.params, VECTOR_FALLBACK_BATCH_SIZE,
+            )
+            batch_size = 0
+            with _vector_batch_snapshot(db), closing(db.execute(statement, parameters)) as cursor:
+                # Keep SQLite's statement snapshot open while hydrating scored
+                # contenders. Closing it first could join an old vector score
+                # to a payload replaced by another connection in this batch.
+                for rowid, embedding in cursor:
+                    batch_size += 1
+                    last_rowid = rowid
+                    score = cosine_similarity(query_vec, decode_memory_embedding(embedding))
+                    if not math.isfinite(score) or (
+                        len(top) >= limit and score <= top[-1].vector_score
+                    ):
+                        continue
+                    payload_parameters = (
+                        *((snippet_max_chars * 4,) if bounded_snippet else ()), rowid,
+                    )
+                    payload = db.execute(payload_sql, payload_parameters).fetchone()
+                    snippet = payload[5]
+                    if isinstance(snippet, bytes):
+                        snippet = snippet.decode(text_encoding, errors="replace")
+                    result = HybridVectorResult(
+                        id=payload[0], path=payload[1], start_line=payload[2], end_line=payload[3],
+                        source=payload[4], snippet=truncate_utf16_safe(snippet, snippet_max_chars),
+                        vector_score=score,
+                    )
+                    if len(top) < limit:
+                        top.append(result)
+                        if len(top) == limit:
+                            top.sort(key=lambda item: -item.vector_score)
+                    else:
+                        top[-1] = result
+                        top.sort(key=lambda item: -item.vector_score)
+            if batch_size < VECTOR_FALLBACK_BATCH_SIZE:
+                break
+            # No SQLite iterator is held over the cooperative yield. Native uses
+            # setImmediate; synchronous Python yields to its cancellation owner.
+            time.sleep(0)
+            _checkpoint(signal)
+        top.sort(key=lambda item: -item.vector_score)
+        return top
+
     def _search_candidates(
         self,
         query: str,
@@ -848,26 +981,12 @@ class SQLiteMemoryStore:
             vector: list[HybridVectorResult] = []
             if vector_ready and any(value != 0 for value in query_embedding):
                 match_exact_path = prepare_exact_path_matcher(query)
-                rows = db.execute(
-                    "SELECT id, path, start_line, end_line, source, text, embedding FROM chunks"
-                    + source_filter.sql,
-                    source_filter.params,
-                ).fetchall()
-                scored = [
-                    HybridVectorResult(
-                        id=row[0],
-                        path=row[1],
-                        start_line=row[2],
-                        end_line=row[3],
-                        source=row[4],
-                        snippet=truncate_utf16_safe(row[5], SNIPPET_MAX_CHARS),
-                        vector_score=cosine_similarity(query_embedding, json.loads(row[6])),
-                        exact_path_specificity=match_exact_path(row[1]),
+                vector = [
+                    dataclasses.replace(item, exact_path_specificity=match_exact_path(item.path))
+                    for item in self.search_vector_candidates(
+                        query_embedding, limit=candidates, sources=sources, signal=signal, db=db,
                     )
-                    for row in rows
                 ]
-                scored.sort(key=lambda item: -item.vector_score)
-                vector = scored[:candidates]
         _checkpoint(signal)
 
         if not vector_ready:
@@ -1247,6 +1366,26 @@ def _path_plans(query: str) -> list[tuple[str | None, list[str]]]:
             seen.add(key)
             plans.append((match_query, substring_terms))
     return plans
+
+
+@contextmanager
+def _vector_batch_snapshot(db: sqlite3.Connection) -> Iterator[None]:
+    """Keep the last prefetched vector and its payload in one SQLite snapshot."""
+    if db.in_transaction:
+        yield
+        return
+    # CPython steps a cursor ahead before returning its current row. In a
+    # caller-owned autocommit connection the final step could otherwise release
+    # the batch snapshot before the last contender's payload is read. Native's
+    # iterator retains that snapshot until its next call instead.
+    db.execute("SAVEPOINT memory_vector_batch")
+    try:
+        yield
+    except BaseException:
+        db.execute("ROLLBACK TO memory_vector_batch")
+        raise
+    finally:
+        db.execute("RELEASE memory_vector_batch")
 
 
 def _checkpoint(signal: CancellationSignal | None) -> None:

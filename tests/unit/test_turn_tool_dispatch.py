@@ -1,5 +1,6 @@
 """Actual tool outcomes feed trust before retry writes and persisted provenance."""
 from dataclasses import asdict
+import asyncio
 import json
 from pathlib import Path
 import subprocess
@@ -61,6 +62,27 @@ def test_preparation_happens_after_real_observation_and_cannot_hide_network_tain
         model_result_preparer=prepare)
     assert dispatcher.dispatch("web", {}, tool_call_id="web") == {"content": [{"type": "text", "text": "bounded"}]}
     assert phases == [("observe", True, True), ("prepare", True, True)]
+
+
+def test_async_dispatch_waits_for_source_outcome_before_tainting():
+    async def run():
+        state = TurnTrust("turn", sender_is_owner=True)
+        entered, settle = asyncio.Event(), asyncio.Event()
+        async def web(_id, _args):
+            entered.set()
+            await settle.wait()
+            return {"content": [{"type": "text", "text": "settled network result"}]}
+        dispatcher = TurnToolDispatcher(state, [TurnTool("web", web, "network")])
+        with pytest.raises(TypeError, match="dispatch_async"):
+            dispatcher.dispatch("web", {}, tool_call_id="sync-refused")
+        task = asyncio.create_task(dispatcher.dispatch_async("web", {}, tool_call_id="async"))
+        await entered.wait()
+        assert not state.is_tainted()
+        settle.set()
+        result = await task
+        assert result["content"][0]["text"] == "settled network result"
+        assert state.is_tainted()
+    asyncio.run(run())
 
 
 def test_dispatched_network_retry_quarantine_and_assistant_source_survive_real_process_reopen(tmp_path):

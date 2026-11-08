@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
+import inspect
 from typing import Any
 
 from memory_core.turn_trust import TurnTrust
@@ -61,8 +62,29 @@ class TurnToolDispatcher:
         if not isinstance(arguments, Mapping) or not isinstance(tool_call_id, str):
             raise TypeError("Tool calls require mapping arguments and an explicit call id")
         tool = self._tools[name]
+        if inspect.iscoroutinefunction(tool.execute):
+            raise TypeError("Async tool sources require dispatch_async")
         try:
             result = tool.execute(tool_call_id, arguments)
+        except Exception as error:
+            detail = {"name": getattr(error, "name", type(error).__name__), "message": str(error),
+                      **{key: deepcopy(value) for key, value in vars(error).items() if key not in {"name", "stack"}}}
+            self._observe(tool, tool_call_id, arguments, error=detail)
+            raise
+        self._observe(tool, tool_call_id, arguments, result=deepcopy(result))
+        return self._model_result_preparer(result) if self._model_result_preparer else result
+
+    async def dispatch_async(self, name: str, arguments: Mapping[str, Any], *, tool_call_id: str) -> Any:
+        """Observe async tools only after their actual source execution settles."""
+        if name not in self._tools:
+            raise KeyError(f"Unknown registered tool: {name}")
+        if not isinstance(arguments, Mapping) or not isinstance(tool_call_id, str):
+            raise TypeError("Tool calls require mapping arguments and an explicit call id")
+        tool = self._tools[name]
+        try:
+            result = tool.execute(tool_call_id, arguments)
+            if inspect.isawaitable(result):
+                result = await result
         except Exception as error:
             detail = {"name": getattr(error, "name", type(error).__name__), "message": str(error),
                       **{key: deepcopy(value) for key, value in vars(error).items() if key not in {"name", "stack"}}}

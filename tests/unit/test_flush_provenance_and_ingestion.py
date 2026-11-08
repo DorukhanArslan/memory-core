@@ -60,7 +60,10 @@ def test_the_flush_records_the_daily_notes_trust(tmp_path: Path) -> None:
     flush.dispatch("write", {"path": TARGET, "content": "- First fact about the codename velvetkiwi."})
     flush.dispatch("write", {"path": TARGET, "content": "- Second fact."})
     record = _records(store, root)[TARGET]
-    assert record.origin_class == "agent" and record.session_id == "s1" and record.session_key == "agent:main:main"
+    # Native maintenance clears sender ownership even for a trusted source turn.
+    assert record.origin_class == "untrusted"
+    assert record.session_id == flush.execution_session_id != "s1"
+    assert record.session_key == flush.execution_session_key != "agent:main:main"
     import hashlib
 
     assert record.file_hash == hashlib.sha256((root / TARGET).read_bytes()).hexdigest()
@@ -85,7 +88,7 @@ def test_without_a_store_the_flush_writes_untracked(tmp_path: Path) -> None:
     root.mkdir()
     flush = _flush(_kit(root))
     result = flush.dispatch("write", {"path": TARGET, "content": "- Plain fact about the codename."})
-    assert result["action"] == "appended" and (root / TARGET).read_text().endswith("codename.\n")
+    assert result["action"] == "appended" and (root / TARGET).read_text().endswith("codename.")
 
 
 def test_a_failed_append_rolls_the_record_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -93,14 +96,12 @@ def test_a_failed_append_rolls_the_record_back(tmp_path: Path, monkeypatch: pyte
     root.mkdir()
     store = MemoryArtifactProvenanceStore(tmp_path / "prov.sqlite")
     flush = _flush(_kit(root, artifact_provenance=store))
-    real_open = Path.open
+    from memory_core import workspace as workspace_module
 
-    def failing_open(self: Path, mode: str = "r", *args: Any, **kwargs: Any):
-        if self.name == "2026-09-25.md" and "a" in mode:
-            raise OSError("disk full")
-        return real_open(self, mode, *args, **kwargs)
+    def failing_write(_descriptor: int, _data: bytes):
+        raise OSError("disk full")
 
-    monkeypatch.setattr(Path, "open", failing_open)
+    monkeypatch.setattr(workspace_module.os, "write", failing_write)
     result = flush.dispatch("write", {"path": TARGET, "content": "- A fact that cannot be written."})
     assert result["status"] == "error"
     assert TARGET not in _records(store, root)

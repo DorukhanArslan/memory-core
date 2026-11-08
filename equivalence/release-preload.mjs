@@ -64,22 +64,92 @@ Object.defineProperty(globalThis, "fetch", {
     throw Error("Network requests are disabled in provider-none release comparisons");
   },
 });
+const captureArea = path.join(context.stateDirectory, "tmp", "plugin-captures");
+const capturePattern = /^tmp\/plugin-captures\/[0-9a-f-]{36}\/captures\/openclaw-plugin-build-[A-Za-z0-9]{6}\/package-0\/node_modules\/equivalence\/flush-execution\.mjs$/;
+const capturePolicies = context.fixtureSourceCaptures ?? [];
+if (!Array.isArray(capturePolicies) || capturePolicies.length > 1) throw Error("Invalid fixture source capture policy");
+const captureSource = capturePolicies[0];
+if (captureSource && (captureSource.basename !== "flush-execution.mjs"
+    || path.basename(captureSource.sourcePath) !== "flush-execution.mjs"
+    || permitted.get(captureSource.sourcePath)?.kind !== "oracle"
+    || permitted.get(captureSource.sourcePath)?.sha256 !== captureSource.sha256)) {
+  throw Error("Fixture captures require the specific reviewed provider fixture");
+}
+function isCapturePath(filename) {
+  return filename === captureArea || filename.startsWith(captureArea + path.sep);
+}
+function rejectCapture(filename) {
+  const relative = path.relative(context.stateDirectory, filename).replaceAll(path.sep, "/");
+  trace({ event: "rejected", code: "unverified-fixture-source-capture",
+    basename: path.basename(filename),
+    ...(relative && relative !== ".." && !relative.startsWith("../") && !path.isAbsolute(relative)
+      ? { ownedStatePath: relative } : {}),
+  });
+  throw Error("Fixture code requires an independent exact reviewed source capture");
+}
+function fixtureCaptureAuthority(filename) {
+  const absolute = path.resolve(filename);
+  const relative = path.relative(context.stateDirectory, absolute).replaceAll(path.sep, "/");
+  if (!captureSource || !capturePattern.test(relative)) return rejectCapture(absolute);
+  let cursor = context.stateDirectory;
+  for (const component of relative.split("/").slice(0, -1)) {
+    const directory = fs.lstatSync(cursor);
+    if (!directory.isDirectory() || directory.isSymbolicLink()) return rejectCapture(absolute);
+    cursor = path.join(cursor, component);
+  }
+  const parent = fs.lstatSync(path.dirname(absolute));
+  const info = fs.lstatSync(absolute);
+  if (!parent.isDirectory() || parent.isSymbolicLink() || !info.isFile()
+      || info.isSymbolicLink() || info.nlink !== 1 || fs.realpathSync(absolute) !== absolute
+      || info.size !== fs.statSync(captureSource.sourcePath).size) return rejectCapture(absolute);
+  const raw = fs.readFileSync(absolute);
+  if (hash(raw) !== captureSource.sha256) return rejectCapture(absolute);
+  const proofRelative = `fixture-source-captures/${hash(Buffer.from(relative + "\0" + captureSource.sha256))}.mjs`;
+  const proofDirectory = path.join(context.evidenceDirectory, "fixture-source-captures");
+  fs.mkdirSync(proofDirectory, { recursive: true, mode: 0o700 });
+  const proofParent = fs.lstatSync(proofDirectory);
+  if (!proofParent.isDirectory() || proofParent.isSymbolicLink()
+      || fs.realpathSync(proofDirectory) !== proofDirectory) return rejectCapture(absolute);
+  const proof = path.join(context.evidenceDirectory, proofRelative);
+  if (!fs.existsSync(proof)) fs.writeFileSync(proof, raw, { flag: "wx", mode: 0o600 });
+  const proofInfo = fs.lstatSync(proof);
+  if (!proofInfo.isFile() || proofInfo.isSymbolicLink() || proofInfo.nlink !== 1
+      || hash(fs.readFileSync(proof)) !== captureSource.sha256) return rejectCapture(absolute);
+  return { kind: "fixture-capture", path: captureSource.sourcePath, sourcePath: captureSource.sourcePath,
+    capturePath: relative, proofPath: proofRelative, sha256: captureSource.sha256 };
+}
 function authority(url) {
   if (url.startsWith("node:")) return undefined;
   if (!url.startsWith("file:")) {
     trace({ event: "rejected", code: "unsupported-module-source" });
     throw Error("Runtime imports require authenticated artifact files");
   }
-  const filename = fs.realpathSync(fileURLToPath(url));
+  const lexical = path.resolve(fileURLToPath(url));
+  if (isCapturePath(lexical)) return fixtureCaptureAuthority(lexical);
+  const filename = fs.realpathSync(lexical);
   const record = permitted.get(filename);
   if (!record || hash(fs.readFileSync(filename)) !== record.sha256) {
-    trace({ event: "rejected", code: "unverified-module-bytes" });
+    const relative = path.relative(context.stateDirectory, filename).replaceAll(path.sep, "/");
+    trace({ event: "rejected", code: "unverified-module-bytes",
+      basename: path.basename(filename),
+      ...(relative && relative !== ".." && !relative.startsWith("../") && !path.isAbsolute(relative)
+        ? { ownedStatePath: relative } : {}),
+    });
     throw Error("Runtime import is not an authenticated artifact or reviewed oracle file");
   }
   return record;
 }
 registerHooks({
   resolve(specifier, resolveContext, nextResolve) {
+    // Node resolves a symlink before returning its URL. Validate the lexical
+    // native-capture path first so a link cannot inherit the original's authority.
+    let lexical;
+    if (specifier.startsWith("file:")) lexical = path.resolve(fileURLToPath(specifier));
+    else if (path.isAbsolute(specifier)) lexical = path.resolve(specifier);
+    else if (specifier.startsWith(".") && resolveContext.parentURL?.startsWith("file:")) {
+      lexical = path.resolve(path.dirname(fileURLToPath(resolveContext.parentURL)), specifier);
+    }
+    if (lexical && isCapturePath(lexical)) fixtureCaptureAuthority(lexical);
     const resolved = nextResolve(specifier, resolveContext);
     const record = authority(resolved.url);
     if (record && resolved.url.endsWith(".node")) trace({ event: "resolve-native", ...record });

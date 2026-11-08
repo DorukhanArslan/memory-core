@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import os
 import threading
-from pathlib import Path
 
 import pytest
 
@@ -77,7 +77,7 @@ def test_public_flush_checks_authority_through_completion(tmp_path, method):
     assert len(checks) > dispatch_checks
     assert outcome.entries == ("- velvetkiwi",)
     assert outcome.session.entry["memoryFlush"] == {"kind": "succeeded", "compactionCount": 0}
-    assert (tmp_path / TARGET).read_text() == "- velvetkiwi\n"
+    assert (tmp_path / TARGET).read_text() == "- velvetkiwi"
 
 
 @pytest.mark.parametrize("method", ["after_turn", "request_flush"])
@@ -234,7 +234,7 @@ def test_cancelled_request_cannot_write_or_stamp_success(tmp_path, monkeypatch, 
     def unexpected(*args, **kwargs):
         pytest.fail("cancelled request reached a mutation or stamp")
 
-    monkeypatch.setattr(flush_module, "append_daily_memory_file", unexpected)
+    monkeypatch.setattr(flush_module, "append_memory_flush_file", unexpected)
     monkeypatch.setattr(flush_module, "record_memory_flush_success", unexpected)
     monkeypatch.setattr(flush_module, "record_memory_flush_failure", unexpected)
     with pytest.raises(OSError) as dispatch_error:
@@ -295,7 +295,7 @@ def test_completion_authority_failure_closes_request_without_recording_result(
     with pytest.raises(asyncio.CancelledError):
         flush.complete(session, error=completion_error)
 
-    assert (tmp_path / TARGET).read_text() == "- committed\n"
+    assert (tmp_path / TARGET).read_text() == "- committed"
     assert "memoryFlush" not in session.entry
     with pytest.raises(RuntimeError, match="already completed"):
         flush.complete(session)
@@ -326,7 +326,7 @@ def test_complete_rejects_in_flight_flush_mutation(tmp_path, monkeypatch, blocke
     entered = threading.Barrier(2)
     release = threading.Barrier(2)
     original = (
-        flush_module.append_daily_memory_file
+        flush_module.append_memory_flush_file
         if blocked_operation == "append"
         else kit.memory.store.reindex
     )
@@ -337,7 +337,7 @@ def test_complete_rejects_in_flight_flush_mutation(tmp_path, monkeypatch, blocke
         return original(*args, **kwargs)
 
     if blocked_operation == "append":
-        monkeypatch.setattr(flush_module, "append_daily_memory_file", blocked)
+        monkeypatch.setattr(flush_module, "append_memory_flush_file", blocked)
     else:
         monkeypatch.setattr(kit.memory.store, "reindex", blocked)
     results = []
@@ -365,7 +365,7 @@ def test_complete_rejects_in_flight_flush_mutation(tmp_path, monkeypatch, blocke
     assert flush.complete(session).entries == ("- kept",)
     with pytest.raises(RuntimeError, match="already completed"):
         flush.dispatch("write", {"path": TARGET, "content": "- after complete"})
-    assert (tmp_path / TARGET).read_text() == "- kept\n"
+    assert (tmp_path / TARGET).read_text() == "- kept"
 
 
 def test_authority_callbacks_can_reenter_request_without_deadlocking(tmp_path):
@@ -407,7 +407,7 @@ def test_authority_callbacks_can_reenter_request_without_deadlocking(tmp_path):
     assert len(refusals) >= 2
     assert all(message == "the flush request has an in-flight dispatch" for message in refusals[:-1])
     assert refusals[-1] == "the flush request is already completed"
-    assert (tmp_path / TARGET).read_text() == "- kept\n"
+    assert (tmp_path / TARGET).read_text() == "- kept"
 
 
 def test_index_failure_keeps_committed_receipt_with_authority_checks(tmp_path, monkeypatch):
@@ -426,7 +426,7 @@ def test_index_failure_keeps_committed_receipt_with_authority_checks(tmp_path, m
     assert result["action"] == "appended"
     assert result["afterWriteError"] == "index unavailable"
     assert outcome.entries == ("- committed once",)
-    assert (tmp_path / TARGET).read_text() == "- committed once\n"
+    assert (tmp_path / TARGET).read_text() == "- committed once"
 
 
 @pytest.mark.parametrize("error_type", [RuntimeError, OSError, asyncio.CancelledError])
@@ -540,7 +540,7 @@ def test_provenance_callback_cancellation_rolls_back_without_appending(
         flush.dispatch("write", {"path": TARGET, "content": "- stale"})
 
     assert caught.value is error
-    assert reservations == ["- original\n- stale\n"]
+    assert reservations == ["- original\n- stale"]
     assert store.list(tmp_path) == previous
     assert (tmp_path / TARGET).read_text() == "- original\n"
 
@@ -605,27 +605,30 @@ def test_cancellation_after_open_closes_handle_without_appending(tmp_path, monke
 
     kit = _kit(tmp_path)
     flush = _request(kit, _session(), "request_flush", assert_current)
-    original_open = Path.open
-    handles = []
+    original_open = os.open
+    descriptors = []
 
-    def open_file(path, mode="r", *args, **kwargs):
+    def open_file(path, flags, *args, **kwargs):
         nonlocal cancelled
-        handle = original_open(path, mode, *args, **kwargs)
-        if path == tmp_path / TARGET and mode == "a":
-            handles.append(handle)
+        descriptor = original_open(path, flags, *args, **kwargs)
+        if path == tmp_path / TARGET and flags & os.O_APPEND:
+            descriptors.append(descriptor)
             cancelled = True
-        return handle
+        return descriptor
 
     def unexpected_index(*args):
         pytest.fail("cancelled append reached index refresh")
 
-    monkeypatch.setattr(Path, "open", open_file)
+    monkeypatch.setattr(os, "open", open_file)
     monkeypatch.setattr(kit.memory.store, "reindex", unexpected_index)
     with pytest.raises(RuntimeError) as caught:
         flush.dispatch("write", {"path": TARGET, "content": "- stale"})
 
     assert caught.value is error
-    assert len(handles) == 1 and handles[0].closed
+    assert len(descriptors) == 1
+    with pytest.raises(OSError) as closed:
+        os.fstat(descriptors[0])
+    assert closed.value.errno == errno.EBADF
     assert (tmp_path / TARGET).read_bytes() == b""
 
 
@@ -643,7 +646,7 @@ def test_postappend_cancellation_retains_committed_entry_and_skips_index(
     kit = _kit(tmp_path)
     session = _session()
     flush = _request(kit, session, "request_flush", assert_current)
-    original_append = flush_module.append_daily_memory_file
+    original_append = flush_module.append_memory_flush_file
 
     def append(*args, **kwargs):
         nonlocal cancelled
@@ -654,7 +657,7 @@ def test_postappend_cancellation_retains_committed_entry_and_skips_index(
     def unexpected_index(*args):
         pytest.fail("postappend cancellation reached index refresh")
 
-    monkeypatch.setattr(flush_module, "append_daily_memory_file", append)
+    monkeypatch.setattr(flush_module, "append_memory_flush_file", append)
     monkeypatch.setattr(kit.memory.store, "reindex", unexpected_index)
     if error_type is asyncio.CancelledError:
         with pytest.raises(error_type) as caught:
@@ -665,7 +668,7 @@ def test_postappend_cancellation_retains_committed_entry_and_skips_index(
         assert result["action"] == "appended"
         assert result["afterWriteError"] == str(error)
 
-    assert (tmp_path / TARGET).read_text() == "- committed once\n"
+    assert (tmp_path / TARGET).read_text() == "- committed once"
     assert "memoryFlush" not in session.entry
     # A subsequent authority check succeeds only when the host restores its authority.
     cancelled = False

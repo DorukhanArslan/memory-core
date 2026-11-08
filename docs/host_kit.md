@@ -37,8 +37,9 @@ Rules the kit keeps:
   host's; the kit returns what to send and takes back what came out.
 - It keeps no per-session state. The host stores a small `SessionState` value next to its own
   session record and passes it in; the kit returns updated copies.
-- It writes only through the existing write paths: `MemoryWorkspace.append_daily_memory` (under
-  the shared per-file lock, see Thread safety), the curation tools behind
+- It writes through `MemoryWorkspace.append_daily_memory` for curated daily notes and
+  `append_memory_flush_file` for exact flush content (under the shared per-file lock, see
+  Thread safety), the curation tools behind
   `FeatureFlags.curated_memory_writes`, `save_session_memory`, the automation store, and the
   flush target's empty-file creation (`ensure_memory_flush_target_file`, entry point 4).
 
@@ -67,6 +68,8 @@ class HostKit:
         automation_store: AutomationStore | None = None,
         now_ms: Callable[[], int] | None = None,
         flush_config: Mapping[str, Any] | None = None,
+        flush_read_tool: Mapping[str, Any] | None = None,
+        flush_read_dispatch: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None,
     ) -> None: ...
 
     @classmethod
@@ -102,6 +105,11 @@ class HostKit:
   host without a ritual in limited-mode "Bootstrap Pending" on every turn until `memory/`
   appears (decision Q4). `False` marks setup complete at once (the core extension);
   `True` seeds even an empty file. The Lab passes `True` with its templates.
+- `flush_read_tool` and `flush_read_dispatch` register the host's generic `read` tool for flush
+  runs. Supply both together; the definition must be named `read` and the callback must be
+  callable. The kit copies the definition, checks authority before and after dispatch, and
+  returns successful read results unchanged. The host owns read admission, media handling and
+  the tool's implementation. Omitting both offers the append-only `write` alone.
 - `__init__` does no I/O beyond validating the timezone and the curation policy against the
   layout (the curator is built there), so a host whose settings change (the Lab) builds a new
   kit per request.
@@ -644,7 +652,10 @@ class FlushRequest:
     target: str                                 # plan.relative_path, memory/YYYY-MM-DD.md
     reason: str                                 # the trigger's reason, or forced (request_flush)
     messages: tuple[dict[str, str], ...]        # system, transcript text rows, user
-    tools: tuple[dict[str, Any], ...]           # the append-only write tool only
+    tools: tuple[dict[str, Any], ...]           # optional host read, then append-only write
+    run_id: str                                # identity of this maintenance run
+    execution_session_id: str                  # internal effects session, distinct from source
+    execution_session_key: str
 
     def dispatch(self, name: str, arguments: Mapping[str, Any] | str | None) -> dict[str, Any]
     def complete(
@@ -653,6 +664,9 @@ class FlushRequest:
         *,
         error: BaseException | str | None = None,
         redact: Callable[[str], str] | None = None,
+        payloads: Sequence[Mapping[str, Any]] | None = None,
+        cancelled: bool = False,
+        payload_is_renderable: Callable[[Mapping[str, Any]], bool] | None = None,
     ) -> FlushOutcome
 
 @dataclass(frozen=True)
@@ -661,6 +675,7 @@ class FlushOutcome:
     wrote: bool
     entries: tuple[str, ...]                    # appended texts, in order
     failure: MemoryFlushFailureOutcome | None
+    cancelled: bool = False
 ```
 
 The plan, the decision and the session live on `TurnRecord`; the request carries only what the
@@ -668,6 +683,19 @@ flush run needs. The flush run's model output is never delivered: a host that st
 (a framework's token stream, server-sent events) tags the flush run's model calls out of that
 stream or runs them outside it (LangGraph: `TAG_NOSTREAM`). Upstream runs the flush as detached
 maintenance whose output no channel sees (F7).
+
+The host uses `execution_session_id` and `execution_session_key` for the model run's internal
+effects session; each request has its own `run_id`. Flush provenance records those execution
+identities. The original source session still owns the compaction cycle: pass its current
+`SessionState` to `complete()`. The request's identity properties are read-only.
+
+Automatic maintenance from `prepare_flush` and `after_turn` records flush artifacts as
+`untrusted`, including when the source turn was owned and untainted. Native
+`createSessionMaintenanceFollowup` clears `senderIsOwner`
+(`src/agents/session-maintenance/run.ts:111`); a false `untrusted_turn` value or callback cannot
+promote that maintenance writer. The explicitly forced `request_flush` extension retains the
+caller's `untrusted_turn` policy, read at each write. Existing quarantine remains sticky.
+The saved-session hook keeps its separate source-origin and source-session provenance rules.
 
 - `messages`: one system message, the text of the transcript's user and assistant rows (string
   content, or the `text`, `input_text` and `output_text` blocks of a content list joined as
@@ -688,35 +716,42 @@ maintenance whose output no channel sees (F7).
   here), and no host system prompt (upstream prepends the run's `extraSystemPrompt`; a host with
   one prepends it to the system message itself).
 - `tools`: upstream offers a flush run only `read` and an append-only `write`
-  (`src/agents/agent-tools.ts:91,665-692`). memory-core has no generic `read`, so the kit offers the
-  `write` tool alone: upstream's schema and description (`src/agents/sessions/tools/write.ts:42-47,
+  (`src/agents/agent-tools.ts:91,665-692`). The kit offers a delegated host `read` when configured,
+  followed by `write`: upstream's schema and description (`src/agents/sessions/tools/write.ts:42-47,
   523-525`) plus the wrapper's suffix `During memory flush, this tool may only append to <target>.`
   (`src/agents/agent-tools.read.ts:760`), script-extracted. It replaces the Lab's own wording in
   `demo/chat_engine.py:_memory_write_tool`.
 - `dispatch("write", {path, content})`, after the argument checks of `HostKit.dispatch`:
   - `path` must be a non-blank string and `content` a string (empty allowed, as upstream's
-    `allowEmpty`); otherwise an error payload (`path required`, `content required`; memory-core wording,
-    upstream's message adds a retry hint and the received keys);
+    `allowEmpty`); otherwise the error names missing parameters, received keys/type hints and
+    the request to supply correct parameters before retrying;
   - a path starting with `@`, or one that does not resolve to the target (relative to the root, or
     absolute), returns upstream's `Memory flush writes are restricted to <target>; use that path
     only.` (`agent-tools.read.ts:787-790`); an absolute path that resolves to the target is accepted;
-  - empty content, and content whose stripped text is exactly `NO_REPLY` (decision Q12; the same
-    rule as `MemoryCurator.append_daily_note`, which shares the append), writes nothing and returns
-    `{"status": "ok", "tool": "write", "path": target, "action": "skipped"}` (memory-core's write rule;
-    `NO_REPLY_FACTS: ...` and other text that only starts with the token is appended);
-  - otherwise the content is appended through the shared locked daily append (the path
-    `MemoryCurator.append_daily_note` uses, so both refuse the same symlinks and hard links), the
+  - `append_memory_flush_file` preserves the supplied content, including whitespace, trailing
+    newlines and literal `NO_REPLY`. It inserts one separator newline only for nonempty content
+    when an existing nonempty file does not end in a newline and the new content does not start
+    with one. It adds no terminal newline. An empty append succeeds and can create a missing
+    file, while leaving existing file bytes unchanged. This supersedes the flush part of Q12;
+    `MemoryCurator.append_daily_note` retains its separate skip/newline rules;
+  - the exact append shares curation's per-file lock and stricter symlink/hard-link admission, the
     store is reindexed, and the payload is `{"status": "ok", "tool": "write", "path": target,
     "action": "appended", "text": "Appended content to <target>."}` (upstream's text, `:828`;
-    script-extracted). The authority check runs before appending, after acquiring the actual file
+    script-extracted). It also carries native `content` text blocks and `details: {"changed": true}`.
+    Recoverable tool errors carry JSON text in `content`, the error payload in `details` and
+    `isError: True`, matching the tool message seen by the native model loop. The model can
+    correct the tool call and continue; this tool message is distinct from a failed final reply.
+    The authority check runs before appending, after acquiring the actual file
     lock, before provenance reservation and before opening/writing, including after provenance
     callbacks. Revocation while waiting for that lock or during provenance recording prevents
-    the append and rolls back any reserved provenance. Precommit authority exceptions retain
+    the append and rolls back any reserved provenance. Authority exceptions retain
     their identity, including `asyncio.CancelledError`; a provenance rollback failure is retained
-    as a chained cause. After a committed append, an ordinary `Exception` from the next authority
-    check or reindex keeps the ok payload and adds `afterWriteError`; the host keeps the write
-    and does not retry it. A `BaseException` cancellation propagates, with committed bytes and
-    the request's appended entry retained;
+    as a chained cause. After a successful append, an ordinary authority exception returns an
+    error receipt plus `afterWriteError`; a reindex exception keeps the ok receipt and adds
+    `afterWriteError`. Both retain the append. A `BaseException` cancellation propagates with
+    committed bytes and the request's appended entry retained. A write, fsync or close failure can
+    also leave bytes without recording a successful entry; provenance rolls back, so an error
+    alone does not prove no write occurred;
   - other names return `tool <name> is not available`; ordinary append errors are payloads.
 - `complete(session, ...)` writes the session entry of the host's current state for this session
   (the flush may run detached while the next turn's `before_turn`, tool calls and model call run and
@@ -724,13 +759,26 @@ maintenance whose output no channel sees (F7).
   `record_memory_flush_success(entry, flushed_compaction_count=<the count when the
   request was made>)`, as upstream stamps `flushedCompactionCount`, or with `error`
   `record_memory_flush_failure(entry, error=..., redact=...)` (three strikes mark the cycle
-  flushed). The flush reply's text is never delivered and never enters the transcript (upstream
-  also treats an empty reply as silent). A cancelled run is not completed: upstream records nothing
-  for a cancelled flush. `complete()` rejects an in-flight dispatch with `RuntimeError`; the
+  flushed). Pass resolved model `payloads` so renderable rows whose `isError` is exactly `True`
+  prevent a success stamp. Their nonblank text is joined for the failure message; renderable
+  nontext errors use `Memory flush returned an error response`. The default classifier covers
+  text, media, channel data, location and voice fields. Supply `payload_is_renderable` for the
+  host's presentation, interactive or TTS-only error payloads; without it those shapes raise
+  `ValueError` and cannot stamp success. Recoverable tool-error receipts alone do not fail a
+  model run that later succeeds.
+  The flush reply's text is never delivered and never enters the source transcript. For a
+  cancelled run, call `complete(cancelled=True)` or pass a recognized cancellation exception:
+  the returned outcome has `cancelled=True`, retains accepted writes and records no new stamp
+  or failure strike. `complete()` rejects an in-flight dispatch with `RuntimeError`; the
   host joins its tool calls before completing. It closes the request before calling
   `assert_current`, so a failing completion check records neither a success nor a failure stamp
   and the request stays closed. A second `complete()`, or a `dispatch` after it, raises
   `RuntimeError` (host error).
+- `FlushOutcome.entries` records each successful write call, including an empty string.
+  `wrote=True` means a write call settled successfully; it does not imply the bytes changed.
+  Provenance retains the native wrapper's empty-content edge: for an existing file without a
+  final newline, its projected hash can include a separator while an empty append leaves the
+  actual bytes unchanged. Provenance rollback restores the record, not appended file bytes.
 - One maintenance lane per session: the kit keeps no pending-flush state, so until `complete()`
   stamps the cycle, `after_turn` on a session over the threshold returns another request for the
   same cycle. The host runs a session's next `after_turn` only after the pending flush completed or
@@ -901,7 +949,8 @@ class HeartbeatOutcome:
 | filesystem failure outside a tool | raise `OSError` |
 | flush target cannot be created | `after_turn`: `TurnRecord.flush_failure`, one strike (upstream `recordFailure`); `request_flush`: raise, no strike |
 | flush authority check raises before append or completion | exception propagates; no failure strike or completion stamp |
-| an ordinary authority or reindex exception follows a committed flush write | ok payload with `afterWriteError`; committed append retained |
+| an ordinary authority exception follows a successful flush append | error receipt with `afterWriteError`; committed append retained |
+| a reindex exception follows a successful flush append | ok receipt with `afterWriteError`; committed append retained |
 | a `BaseException` cancellation follows a committed flush write | cancellation propagates; committed append and request entry retained |
 | a reindex fails after a committed curated write | ok payload with `afterWriteError` (core rule) |
 
@@ -926,8 +975,8 @@ async twin of any method: the core is synchronous (sqlite3, the sync embedding c
 ### Thread safety
 
 - A `HostKit` is immutable after construction and safe to share across threads.
-- Writes in one process are serialized per file: the flush write and the curated daily note
-  share one per-file lock (moved out of `memory_core/curation.py:_target_lock` into
+- Writes in one process are serialized per file: exact flush writes and curated daily-note
+  appends use separate helpers with one shared per-file lock (moved out of `memory_core/curation.py:_target_lock` into
   `memory_core/workspace.py`, next to the shared locked daily append), MEMORY.md, USER.md and
   PROACTIVE_PREFERENCES.md keep curation's per-file locks, `FileAutomationStore` keeps its lock,
   and every read-modify-write of the short-term recall store (recall recording, the promotion's
@@ -1073,17 +1122,13 @@ tool definitions and the Memory Recall section (`memory_core/prompt_section.py`,
 tag's `buildMemoryPromptSection` wording differs (entry points 1 and 3). Recall tracking uses the
 pin-era `record_short_term_recalls`, whose recall days are UTC dates (entry point 2).
 
-Labelled deviations of the flush run (entry point 4):
+Current implementation differences of the flush run (entry point 4):
 
-- Bytes: upstream appends the content verbatim and inserts one newline only when the file is not
-  empty, lacks a trailing newline and the content does not start with one
-  (`agent-tools.read.ts:716-720`, `@openclaw/fs-safe` `prependNewlineIfNeeded`);
-  `append_daily_memory` inserts the separator whenever a non-empty file lacks a trailing newline
-  (also before content that starts with one), strips the content's trailing newlines and always
-  ends the entry with `\n`.
-- Empty content and the exact `NO_REPLY` token write nothing (memory-core's write rule, decision Q12;
-  upstream appends even the token verbatim).
-- The missing-parameter messages are memory-core's.
+- The historical byte normalization, empty/`NO_REPLY` skip and missing-parameter wording
+  deviations are superseded for flush writes. `append_memory_flush_file` preserves exact content
+  with the native separator rule and exposes native content/details receipts. The curated
+  daily-note API keeps its existing skip and newline rules. These implementation changes alone
+  do not grant native execution/finalization acceptance credit.
 - Messages carry the rows' text only, and no host system prompt.
 - The target file and the write refuse symlinks and hard links (stricter than upstream).
 
@@ -1121,9 +1166,10 @@ Doruk answered Q1-Q12 on 2026-09-28 with the recommendations:
   `lab:<kind>:<id>` key.
 - Q11. The documented lane rule stays (a session's next `after_turn` waits for `complete()`); no
   pending marker.
-- Q12. The flush write and the curated daily note skip only the exact `NO_REPLY` token
+- Q12 (historical; superseded for flush writes). The flush write and the curated daily note skipped only the exact `NO_REPLY` token
   (`content.strip() == "NO_REPLY"`), not a prefix, so `NO_REPLY_FACTS: ...` writes. The remaining
-  deviation stays labelled: upstream's `write` appends even the exact token verbatim.
+  deviation was labelled: upstream's `write` appends even the exact token verbatim. Current flush
+  writes preserve that token and empty content exactly; the curated daily note retains Q12.
 
 Review points not taken, with the reason:
 

@@ -93,6 +93,20 @@
       "pin": "upstream-pnpm-lock"
     },
     {
+      "name": "ajv",
+      "version": "8.20.0",
+      "location": "node_modules/ajv",
+      "integrity": "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "ajv-formats",
+      "version": "3.0.1",
+      "location": "node_modules/ajv-formats",
+      "integrity": "sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
       "name": "balanced-match",
       "version": "4.0.4",
       "location": "node_modules/balanced-match",
@@ -128,6 +142,20 @@
       "pin": "upstream-pnpm-lock"
     },
     {
+      "name": "content-type",
+      "version": "1.0.5",
+      "location": "node_modules/content-type",
+      "integrity": "sha512-nTjqfcBFEipKdXCv4YDQWCfmcLZKm81ldF0pAopTvyrFGVbcR6P/VAAd5G7N+0tTr8QqiU0tFadD6FK4NtJwOA==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "cross-spawn",
+      "version": "7.0.6",
+      "location": "node_modules/cross-spawn",
+      "integrity": "sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
       "name": "diff",
       "version": "9.0.0",
       "location": "node_modules/diff",
@@ -149,10 +177,31 @@
       "pin": "upstream-pnpm-lock"
     },
     {
+      "name": "eventsource",
+      "version": "3.0.7",
+      "location": "node_modules/eventsource",
+      "integrity": "sha512-CRT1WTyuQoD771GW56XEZFQ/ZoSfWid1alKGDYMmkt2yl8UXrVR4pspqWNEcqKvVIzg6PAltWjxcSSPrboA4iA==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "eventsource-parser",
+      "version": "3.1.1",
+      "location": "node_modules/eventsource-parser",
+      "integrity": "sha512-EKN1vKAMcZ8MlYMpaNuxN6R9yakzH6uajHcHVTqWJzvu5pWw9DyhbP35HH8MVBQ+dZjAfDxk+A8NiR9KWaXiyQ==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
       "name": "execa",
       "version": "10.0.1",
       "location": "node_modules/execa",
       "integrity": "sha512-ge98qjkRK4IB7tL7Ju/6qmm5LHoH1eEMt5FNZrz3f4UIYhF28lggX20z3FaX1sgc67msLEn0N0BscOs29iuwyw==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "fast-deep-equal",
+      "version": "3.1.3",
+      "location": "node_modules/fast-deep-equal",
+      "integrity": "sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==",
       "pin": "upstream-pnpm-lock"
     },
     {
@@ -174,6 +223,13 @@
       "version": "3.0.2",
       "location": "node_modules/fast-string-width",
       "integrity": "sha512-gX8LrtNEI5hq8DVUfRQMbr5lpaS4nMIWV+7XEbXk2b8kiQIizgnlr12B4dA3ZEx3308ze0O4Q1R+cHts8kyUJg==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "fast-uri",
+      "version": "4.2.1",
+      "location": "node_modules/fast-uri",
+      "integrity": "sha512-TmHQgewjHtMq1E5QKA0tOE0yeYGQs25KZC/ziJpubRtWI15W92e6vPFydWOeZBVROSHBYw/QhD9d5OefdD6LDg==",
       "pin": "upstream-pnpm-lock"
     },
     {
@@ -251,6 +307,27 @@
       "version": "2.1.0",
       "location": "node_modules/is-unicode-supported",
       "integrity": "sha512-mE00Gnza5EEB3Ds0HfMyllZzbBrmLOX3vfWoj9A9PEnTfratQ/BcaJOuMhnkhjXvb2+FkY3VuHqtAGpTPmglFQ==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "isexe",
+      "version": "2.0.0",
+      "location": "node_modules/isexe",
+      "integrity": "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "jiti",
+      "version": "2.7.0",
+      "location": "node_modules/jiti",
+      "integrity": "sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "json-schema-traverse",
+      "version": "1.0.0",
+      "location": "node_modules/json-schema-traverse",
+      "integrity": "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==",
       "pin": "upstream-pnpm-lock"
     },
     {
@@ -338,6 +415,20 @@
       "pin": "upstream-pnpm-lock"
     },
     {
+      "name": "path-key",
+      "version": "3.1.1",
+      "location": "node_modules/path-key",
+      "integrity": "sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "pkce-challenge",
+      "version": "5.0.1",
+      "location": "node_modules/pkce-challenge",
+      "integrity": "sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
       "name": "pretty-ms",
       "version": "9.3.1",
       "location": "node_modules/pretty-ms",
@@ -359,10 +450,31 @@
       "pin": "upstream-pnpm-lock"
     },
     {
+      "name": "require-from-string",
+      "version": "2.0.2",
+      "location": "node_modules/require-from-string",
+      "integrity": "sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
       "name": "semver",
       "version": "7.8.5",
       "location": "node_modules/semver",
       "integrity": "sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "shebang-command",
+      "version": "2.0.0",
+      "location": "node_modules/shebang-command",
+      "integrity": "sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "shebang-regex",
+      "version": "3.0.0",
+      "location": "node_modules/shebang-regex",
+      "integrity": "sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==",
       "pin": "upstream-pnpm-lock"
     },
     {
@@ -415,6 +527,13 @@
       "pin": "upstream-pnpm-lock"
     },
     {
+      "name": "which",
+      "version": "2.0.2",
+      "location": "node_modules/which",
+      "integrity": "sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
       "name": "which-command",
       "version": "0.1.0",
       "location": "node_modules/which-command",
@@ -454,6 +573,13 @@
       "version": "4.6.5",
       "location": "node_modules/zod",
       "integrity": "sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "zod-to-json-schema",
+      "version": "3.25.2",
+      "location": "node_modules/zod-to-json-schema",
+      "integrity": "sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==",
       "pin": "upstream-pnpm-lock"
     }
   ],

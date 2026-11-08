@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from memory_core.bootstrap._js import js_trim
+from memory_core.bootstrap._js import js_trim, js_utf8_encode
 from memory_core.memory_paths import (
     SESSION_CORPUS_FILE_RE,
     MemoryPathNotAllowedError,
@@ -256,9 +256,9 @@ def append_daily_memory_file(
 ) -> Path:
     """:meth:`MemoryWorkspace.append_daily_memory` under the file's write lock.
 
-    The shared daily append of the curated daily note and the memory flush's ``write`` tool:
-    ``rel_path`` must be ``memory/YYYY-MM-DD.md`` and pass :func:`check_writable_memory_file`.
-    ``provenance`` is the write observer of the flush (:mod:`memory_core.memory_write_provenance`).
+    The curated daily note append: ``rel_path`` must be ``memory/YYYY-MM-DD.md`` and pass
+    :func:`check_writable_memory_file`. The flush tool uses :func:`append_memory_flush_file`
+    to preserve its exact content. ``provenance`` is the optional memory write observer.
     ``assert_current`` is a prompt synchronous raising check, run under the file lock and again
     before the append commits, including after provenance callbacks.
     """
@@ -271,6 +271,128 @@ def append_daily_memory_file(
         return MemoryWorkspace(resolved).append_daily_memory(
             rel_path, entry, provenance=provenance, assert_current=assert_current
         )
+
+
+def append_memory_flush_file(
+    root: str | os.PathLike[str],
+    rel_path: str,
+    content: str,
+    *,
+    provenance: MemoryWriteProvenanceObserver | None = None,
+    assert_current: Callable[[], None] | None = None,
+) -> Path:
+    """Append a flush tool's exact UTF-8 content under its file write lock.
+
+    Unlike the curated daily-note append, empty strings, whitespace and ``NO_REPLY``
+    are ordinary tool content. No trailing newline is added. The native fs-safe
+    append separates nonempty content only when neither side supplies a newline.
+    Path admission retains the SDK's stricter refusal of symlinks and hard links.
+
+    Provenance follows the original flush wrapper's precommit text projection,
+    including its empty-content edge: a non-newline-terminated existing file gets
+    a projected separator even though fs-safe's empty append changes no bytes.
+    """
+    if not isinstance(content, str):
+        raise TypeError("flush content must be a string")
+    validate_daily_memory_path(rel_path)
+    resolved = Path(root).resolve()
+    target = resolved / rel_path
+    encoded = js_utf8_encode(content)
+
+    def check_current() -> None:
+        if assert_current is not None:
+            assert_current()
+
+    with workspace_file_lock(resolved, rel_path):
+        check_current()
+        check_writable_memory_file(resolved, rel_path)
+        check_current()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        check_current()
+        try:
+            before = target.read_bytes().decode("utf-8", errors="replace")
+        except FileNotFoundError:
+            before = ""
+        provenance_separator = "\n" if before and not before.endswith("\n") and not content.startswith("\n") else ""
+
+        def commit() -> None:
+            check_current()
+            check_writable_memory_file(resolved, rel_path)
+            flags = os.O_RDWR | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+            flags |= getattr(os, "O_BINARY", 0)
+            created = False
+            try:
+                descriptor = os.open(target, flags | os.O_EXCL, 0o666)
+                created = True
+            except FileExistsError:
+                descriptor = os.open(target, flags, 0o666)
+            dispatched = False
+            identity = None
+            try:
+                identity = os.fstat(descriptor)
+
+                def check_handle() -> None:
+                    check_current()
+                    check_writable_memory_file(resolved, rel_path)
+                    current = os.stat(target, follow_symlinks=False)
+                    if (not stat.S_ISREG(identity.st_mode) or identity.st_nlink != 1
+                            or (current.st_dev, current.st_ino) != (identity.st_dev, identity.st_ino)):
+                        raise UnsafeMemoryPathError(f"memory flush target changed during append: {rel_path}")
+
+                check_handle()
+                separator = b""
+                if encoded and identity.st_size > 0 and not encoded.startswith(b"\n"):
+                    os.lseek(descriptor, -1, os.SEEK_END)
+                    if os.read(descriptor, 1) != b"\n":
+                        separator = b"\n"
+                payload = separator + encoded
+                offset = 0
+                while offset < len(payload):
+                    check_handle()
+                    dispatched = True
+                    written = os.write(descriptor, payload[offset:offset + 512 * 1024])
+                    if written <= 0:
+                        raise OSError(errno.EIO, "file write made no progress")
+                    offset += written
+                # Empty appends still create a missing file and settle successfully.
+                dispatched = True
+                os.fsync(descriptor)
+            finally:
+                try:
+                    os.close(descriptor)
+                finally:
+                    if created and not dispatched and identity is not None:
+                        try:
+                            current = os.stat(target, follow_symlinks=False)
+                            if (current.st_dev, current.st_ino) == (identity.st_dev, identity.st_ino):
+                                target.unlink()
+                        except FileNotFoundError:
+                            pass
+            if created:
+                directory_descriptor = None
+                try:
+                    directory_descriptor = os.open(target.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+                    os.fsync(directory_descriptor)
+                except OSError:
+                    pass  # native fs-safe syncs a newly created file's parent best-effort
+                finally:
+                    if directory_descriptor is not None:
+                        try:
+                            os.close(directory_descriptor)
+                        except OSError:
+                            pass
+
+        if provenance is None:
+            commit()
+        else:
+            check_current()
+            provenance.write(
+                absolute_path=target,
+                content_before=before,
+                content_after=before + provenance_separator + encoded.decode("utf-8"),
+                commit=commit,
+            )
+    return target
 
 
 @dataclass(frozen=True)

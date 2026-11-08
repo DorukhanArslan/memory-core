@@ -213,6 +213,7 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.flush_contract import build_flush_contract_cases
     from equivalence.flush_target import build_flush_target_cases
     from equivalence.flush_runtime import build_flush_runtime_cases
+    from equivalence.flush_execution import build_flush_execution_cases
     from equivalence.session_projection import build_session_projection_cases
     from equivalence.storage_discovery import build_storage_discovery_cases
     from equivalence.storage_paths import build_storage_path_cases
@@ -227,6 +228,7 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     cases.extend(build_flush_contract_cases())
     cases.extend(build_flush_target_cases())
     cases.extend(build_flush_runtime_cases())
+    cases.extend(build_flush_execution_cases())
     cases.extend(build_session_projection_cases())
     cases.extend(build_storage_discovery_cases())
     cases.extend(build_storage_path_cases())
@@ -277,6 +279,10 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.flush_runtime import run_flush_runtime
 
         return run_flush_runtime(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "flush-execution-runtime":
+        from equivalence.flush_execution import run_flush_execution
+
+        return run_flush_execution(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "embedding-cache":
         from equivalence.embedding_cache import run_embedding_cache
 

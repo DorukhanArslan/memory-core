@@ -26,7 +26,7 @@ The reference repository is `https://github.com/openclaw/openclaw.git`. Python-o
 
 The [source map](equivalence-source-map.md) links all 64 contracts and 128 acceptance points
 to the pinned upstream code and the current Python implementation. The inventory records
-103 upstream source modules, their tracked hashes, literal dependencies and exported
+105 upstream source modules, their tracked hashes, literal dependencies and exported
 declarations. Source presence and inventory validation do not establish behavior or add
 any differential-test coverage.
 
@@ -794,3 +794,55 @@ tests**; the same **1,625 historical oracle/live checks** remain gated off and g
 credit. Old Lab and LangGraph assertions that added completion tokens to a fresh maintenance
 snapshot were corrected against the observed native behavior. Ruff, project-name consistency,
 source-map and staged diff checks passed.
+
+### Flush execution and finalization — 2026-11-08
+
+This batch completes **`flush.execute-finalize.outcomes`** only. Verified acceptance advances to
+**25/128 (19.5%)**, leaving **103 points (80.5%)** unverified. The boundaries point remains open,
+so the containing `flush.execute-finalize` checkbox stays unchecked. Source classifications
+remain 12 present, 48 partial, one missing and three host-owned. The inventory maps **105 upstream
+modules**, adding the actual maintenance-followup and internal-session-identity owners. The fixed
+**64 contracts, 128 acceptance points** and scope SHA-256
+`a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9` remain unchanged.
+
+The reference executes the authenticated official model/tool loop through the native provider
+plugin contract. A labelled scripted provider emits the declared replies; actual native session,
+append, provenance, indexing and finalization owners run. Reviewed source-owner identities remain
+separate from compiled artifact identities, and **`sourceBuildReproduced: false`** remains explicit.
+The authenticated release runtime uses **83 packages and 24,707 installed files**. The Python
+candidate calls public SDK APIs directly and does not delegate its implementation to Node.
+
+The **15 new execution cases** bring the default catalog to **721**. Fourteen reviewed cases
+cover the outcomes point: exact content and conditional separators, empty/whitespace and literal
+`NO_REPLY` writes, sequential tool rounds, read-before-append, recovered tool errors, model errors
+after writes, captured compaction cycles, cancellation before/after writes, failure exhaustion,
+automatic-maintenance trust and quarantine after an external edit. Resolved model payloads drive
+completion; source-session stamps remain separate from internal execution/provenance identities.
+Automatic `prepare_flush`/`after_turn` maintenance is always an `untrusted` writer because native
+maintenance clears sender ownership. The labelled forced `request_flush` extension keeps its
+caller's trust policy; the saved-session hook keeps source-origin and source-session provenance.
+
+The first trusted report, `.equivalence-results/flush-execution-first.json`, retains **13 matches,
+two mismatches and zero blocked cases**. The recovered-tool-error case exposed one SDK difference:
+its tool message had `isError: False` where the complete native loop supplied `True`. The minimal
+receipt fix preserves the recoverable error and allows the later model reply to succeed. The
+actual corrected comparison, `.equivalence-results/flush-execution-tool-error-final.json`, records
+**one match, zero mismatches or blocked cases**. The other 13 passing cases remain unchanged;
+focused regression validation passed **126 tests**.
+
+The remaining warm-index case stays registered with **`covers: []`** and an explicit
+`declaredDeviation`; it is not an expected-failure substitution or input normalization. In the
+trusted first report, the SDK's first query returned one hit while native returned none. The
+separate `.equivalence-results/flush-execution-warm-diagnostic.json` previously observed an older
+native snippet (`obsoletekiwi\n`) while the SDK returned the updated content
+(`obsoletekiwi\nfreshmangosteen`). Native recall after synchronization agrees. These captures
+show a real first-recall generation boundary, not a guarantee that native always returns stale
+content. Timing may let a later run match; that cannot close
+**`flush.execute-finalize.boundaries`** or establish a host queue/durable next-turn barrier.
+
+The committed full-gate report, `.equivalence-results/flush-execution-full.json`, includes all
+**721 cases** and retains **103 uncovered acceptance points**. Its actual warm comparison remains
+visible and grants no acceptance credit; a full-equivalence pass remains unavailable. Full
+regression validation passed **2,727 tests**; the same **1,625 historical oracle/live checks**
+remain gated off and grant no acceptance credit. Ruff, project-name consistency, source-map and
+staged diff checks passed.

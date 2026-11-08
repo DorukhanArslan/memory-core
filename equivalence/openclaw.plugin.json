@@ -1,0 +1,9 @@
+{
+  "id": "fixture-memory-model",
+  "providers": ["fixture-memory-model"],
+  "configSchema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  }
+}

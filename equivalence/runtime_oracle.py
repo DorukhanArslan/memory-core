@@ -25,10 +25,17 @@ MAX_DIAGNOSTIC_BYTES = 16 * 1024 * 1024
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
 _TRACE = re.compile(r"([1-9][0-9]*)-([0-9]+)\.jsonl\Z")
 _CONTEXT_ENV = "MEMORY_EQ_RELEASE_CONTEXT"
+_FIXTURE_CAPTURE = re.compile(
+    r"tmp/plugin-captures/[0-9a-f-]{36}/captures/openclaw-plugin-build-[A-Za-z0-9]{6}"
+    r"/package-0/node_modules/equivalence/flush-execution\.mjs\Z"
+)
 _OPERATIONS = {
     "index-lifecycle-runtime": ("index-lifecycle.mjs", None, True),
     "flush-trigger-runtime": (
         "flush-runtime.mjs", "dist/agent-runner-memory-Cc4lCZcs.mjs", False,
+    ),
+    "flush-execution-runtime": (
+        "flush-execution.mjs", "dist/agent-runner-memory-Cc4lCZcs.mjs", True,
     ),
 }
 
@@ -67,9 +74,10 @@ def _relative(value: object) -> str:
 class ReleaseOracleExecution:
     """One fresh provider-none process with a trusted preload inherited by workers."""
 
-    def __init__(self, config: dict, adapter_hashes: dict[str, str]):
+    def __init__(self, config: dict, adapter_hashes: dict[str, str], *, fixture_captures: bool = False):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
+        self.fixture_captures = fixture_captures
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
@@ -131,7 +139,16 @@ class ReleaseOracleExecution:
                 "evidenceDirectory": str(self.evidence_directory),
                 "stateDirectory": str(self.state_directory), "configPath": str(self.config_path),
                 "providerMode": "none", "fetchPolicy": "deny",
+                "fixtureSourceCaptures": [],
             }
+            if self.fixture_captures:
+                fixture = str((ROOT / "equivalence/flush-execution.mjs").resolve())
+                if fixture not in self._locals:
+                    raise RuntimeOracleError("Fixture captures require the reviewed flush execution adapter.")
+                self._context["fixtureSourceCaptures"] = [{
+                    "sourcePath": fixture, "sha256": self._locals[fixture],
+                    "basename": "flush-execution.mjs",
+                }]
             raw = (json.dumps(self._context, separators=(",", ":"), allow_nan=False) + "\n").encode()
             self.context_path.write_bytes(raw)
             self.context_path.chmod(0o600)
@@ -192,7 +209,7 @@ class ReleaseOracleExecution:
         if not traces or len(traces) > MAX_TRACE_FILES:
             raise RuntimeOracleError("The release oracle returned missing or excessive thread traces.")
         total = 0
-        loaded, bootstrap, worker_imports, local_imports = {}, [], [], set()
+        loaded, bootstrap, worker_imports, local_imports, captures = {}, [], [], set(), {}
         for trace in traces:
             filename = _TRACE.fullmatch(trace.name)
             if filename is None:
@@ -227,6 +244,33 @@ class ReleaseOracleExecution:
                         raise RuntimeOracleError("An oracle import did not match its reviewed adapter.")
                     if event["event"] == "load" and thread == 0:
                         local_imports.add(path)
+                elif kind == "fixture-capture":
+                    source = event.get("sourcePath")
+                    capture = event.get("capturePath")
+                    proof = event.get("proofPath")
+                    if (not self.fixture_captures or case.get("operation") != "flush-execution-runtime"
+                            or source != str((ROOT / "equivalence/flush-execution.mjs").resolve())
+                            or path != source or self._locals.get(source) != digest
+                            or not isinstance(capture, str) or not _FIXTURE_CAPTURE.fullmatch(capture)):
+                        raise RuntimeOracleError("A fixture source capture has no reviewed owner.")
+                    expected_proof = "fixture-source-captures/" + _digest(
+                        (capture + "\0" + digest).encode()
+                    ) + ".mjs"
+                    if proof != expected_proof:
+                        raise RuntimeOracleError("A fixture source capture has invalid retained proof.")
+                    proof_directory = self.evidence_directory / "fixture-source-captures"
+                    if (proof_directory.is_symlink() or not proof_directory.is_dir()
+                            or proof_directory.resolve() != proof_directory):
+                        raise RuntimeOracleError("A fixture source capture proof escaped its owned directory.")
+                    proof_bytes = _regular(self.evidence_directory / proof, MAX_DIAGNOSTIC_BYTES)
+                    if _digest(proof_bytes) != digest:
+                        raise RuntimeOracleError("A retained fixture source capture changed its bytes.")
+                    if event["event"] == "load":
+                        captures[capture] = {
+                            "sourcePath": source, "capturePath": capture, "sha256": digest,
+                            "proofPath": proof, "proofSha256": _digest(proof_bytes),
+                            "bytes": len(proof_bytes),
+                        }
                 elif kind == "release":
                     key = (event.get("package"), path)
                     if self._packages.get(key) != digest:
@@ -246,6 +290,12 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("The reviewed release runner and case adapter did not execute.")
         if required_owner is not None and ("node_modules/openclaw", required_owner) not in loaded:
             raise RuntimeOracleError("The actual native flush runtime owner did not execute.")
+        if case.get("operation") == "flush-execution-runtime" and not captures:
+            raise RuntimeOracleError("The native provider loader did not execute a reviewed fixture source capture.")
+        if operation == "flush-execution-runtime" and (
+            "node_modules/openclaw", "dist/extensions/memory-core/manager-runtime.js"
+        ) not in loaded:
+            raise RuntimeOracleError("The actual native memory manager did not execute during flush comparison.")
         if requires_worker and not any(
             item["path"].endswith("/memory-index.worker.js") for item in worker_imports
         ):
@@ -261,8 +311,15 @@ class ReleaseOracleExecution:
         diagnostic = _json(raw)
         if not isinstance(diagnostic, list):
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
+        if operation == "flush-execution-runtime" and not any(
+            isinstance(row, dict) and isinstance(row.get("modelCalls"), list) and row["modelCalls"]
+            for row in diagnostic
+        ):
+            raise RuntimeOracleError("The scripted provider did not observe an actual native model callback.")
         answer = deepcopy(result)
         answer["releaseSources"] = release_sources
+        if captures:
+            answer["fixtureCaptures"] = [captures[key] for key in sorted(captures)]
         answer["releaseTrace"] = {"kind": "authenticated-process-thread-trace",
                                   "threads": bootstrap, "protectedWorkerThreads": sum(
                                       not item["isMainThread"] for item in bootstrap),

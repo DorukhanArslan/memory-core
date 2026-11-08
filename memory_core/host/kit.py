@@ -235,6 +235,8 @@ class HostKit:
         on_event: Callable[[dict[str, Any]], None] | None = None,
         artifact_provenance: MemoryArtifactProvenanceStore | None = None,
         flush_config: Mapping[str, Any] | None = None,
+        flush_read_tool: Mapping[str, Any] | None = None,
+        flush_read_dispatch: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None,
     ) -> None:
         self._memory = memory
         # Writes, ingestion and indexing must consult the same host trust ledger.
@@ -257,6 +259,14 @@ class HostKit:
         )
         self._timezone = timezone
         self._flush_config = deepcopy(dict(flush_config)) if flush_config is not None else {}
+        if (flush_read_tool is None) != (flush_read_dispatch is None):
+            raise ValueError("flush_read_tool and flush_read_dispatch must be supplied together")
+        if flush_read_tool is not None and flush_read_tool.get("name") != "read":
+            raise ValueError("the delegated flush read tool must be named read")
+        if flush_read_dispatch is not None and not callable(flush_read_dispatch):
+            raise TypeError("flush_read_dispatch must be callable")
+        self._flush_read_tool = deepcopy(dict(flush_read_tool)) if flush_read_tool is not None else None
+        self._flush_read_dispatch = flush_read_dispatch
         self._time_format = resolve_time_format(time_format)
         self._identity = identity
         self._bootstrap_max_chars = bootstrap_max_chars
@@ -877,6 +887,11 @@ class HostKit:
             untrusted=untrusted,
             session_key=session.session_key,
             assert_current=assert_current,
+            read_tool=self._flush_read_tool,
+            read_dispatch=self._flush_read_dispatch,
+            agent_id=session.session_key.split(":")[1]
+            if session.session_key.startswith("agent:") else "main",
+            maintenance=reason != _FORCED_FLUSH_REASON,
         )
 
     def _flush_messages(

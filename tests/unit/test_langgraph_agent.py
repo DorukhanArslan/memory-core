@@ -252,7 +252,7 @@ def test_due_flush_runs_after_the_reply_and_writes_the_daily_file(tmp_path: Path
     # The reply was in the stream before the flush model call started (upstream order).
     assert recording.at_flush == ["capture_trust", "prepare", "agent", "tools", "agent"]
     assert seen == ["capture_trust", "prepare", "agent", "tools", "agent", "maintain"]
-    assert (tmp_path / DAILY).read_text(encoding="utf-8") == FACT + "\n"
+    assert (tmp_path / DAILY).read_text(encoding="utf-8") == FACT
     assert _session(state).entry["memoryFlush"] == {"kind": "succeeded", "compactionCount": 0}
     assert state["memory_maintenance"] == {
         "flush": "token_threshold",
@@ -302,7 +302,7 @@ def test_flush_turn_is_restricted_to_the_write_tool_and_not_streamed(tmp_path: P
     )
     assert "maintain" not in nodes
     assert not any(chunk.content == "NO_REPLY" for chunk, _ in chunks)
-    assert (tmp_path / DAILY).read_text(encoding="utf-8") == FACT + "\n"
+    assert (tmp_path / DAILY).read_text(encoding="utf-8") == FACT
 
 
 def _two_turns(root: Path):
@@ -319,7 +319,7 @@ def test_second_turn_finds_the_flushed_fact(tmp_path: Path):
     (hit,) = search["results"]
     assert (hit["path"], hit["startLine"]) == (DAILY, 1)
     assert FACT in hit["snippet"]
-    assert hit["citation"] == f"Source: {DAILY}#L1-L2"
+    assert hit["citation"] == f"Source: {DAILY}#L1"
     # The second turn's model input replays the first turn's transcript.
     replayed = [message.content for message in _chat_calls(model)[2].messages[1:]]
     assert replayed[:4] == ["Our codename is velvetkiwi.", "", replayed[2], "reply 1"]
@@ -332,7 +332,7 @@ def test_second_turn_past_the_threshold_reads_already_flushed(tmp_path: Path):
     assert len(_flush_calls(model)) == 2  # one flush turn: a write call and its reply
     assert state["memory_maintenance"]["flush"] == "already_flushed"
     assert state["memory_maintenance"]["target"] is None
-    assert (tmp_path / DAILY).read_text(encoding="utf-8") == FACT + "\n"
+    assert (tmp_path / DAILY).read_text(encoding="utf-8") == FACT
 
 
 def test_session_state_survives_in_the_checkpointer(tmp_path: Path):
@@ -688,7 +688,7 @@ def test_new_keeps_the_session_key_and_rotates_the_session_id(tmp_path: Path):
     assert new.entry["sessionId"] == "id-2"
     assert after["memory_maintenance"]["flush"] == "token_threshold"
     assert len(_flush_calls(model)) == 4
-    assert (tmp_path / DAILY).read_text(encoding="utf-8") == f"{FACT}\n{FACT}\n"
+    assert (tmp_path / DAILY).read_text(encoding="utf-8") == f"{FACT}\n{FACT}"
 
 
 def test_session_key_mapping_names_the_session(tmp_path: Path):
@@ -1232,18 +1232,20 @@ def _trust_kit(root: Path):
 @pytest.mark.parametrize("owner,tainted,origin", [
     (True, False, "agent"), (False, False, "untrusted"), (True, True, "untrusted"),
 ])
-def test_host_trust_controls_flush_and_session_save(tmp_path: Path, owner, tainted, origin):
+def test_host_trust_controls_flush_and_session_save(tmp_path: Path, monkeypatch, owner, tainted, origin):
     root = tmp_path / "workspace"
     kit, trust = _trust_kit(root)
+    records = _spy(monkeypatch, kit, "after_turn")
     _, _, graph = _graph(root, memory_script(), kit=kit)
     context = example.AgentContext(trust=example.TurnTrust(owner, tainted))
 
     first = _say(graph, "Our codename is velvetkiwi.", context=context)
 
     record = trust.read(workspace_dir=root, relative_path=DAILY)
-    assert record.origin_class == origin
+    assert record.origin_class == "untrusted"  # detached maintenance is not the source owner
     assert record.file_hash == hashlib.sha256((root / DAILY).read_bytes()).hexdigest()
-    assert record.session_id == _session(first).session_id
+    assert record.session_id == records[0].flush.execution_session_id != _session(first).session_id
+    assert record.session_key == records[0].flush.execution_session_key != _session(first).session_key
     assert first["memory_turn_trust"] is None
     assert transcript_rows(first["messages"])[0]["__openclaw"]["senderIsOwner"] is owner
 
@@ -1254,6 +1256,7 @@ def test_host_trust_controls_flush_and_session_save(tmp_path: Path, owner, taint
     assert record.origin_class == origin
     assert record.file_hash == hashlib.sha256(saved.read_bytes()).hexdigest()
     assert record.session_id == _session(first).session_id
+    assert record.session_key == _session(first).session_key
 
 
 def test_trust_survives_a_failed_model_call_without_fresh_context(tmp_path: Path):

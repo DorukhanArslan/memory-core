@@ -84,6 +84,9 @@ def _implementation_identity() -> dict[str, Any]:
 
 def _adapter_identity() -> dict[str, str]:
     paths = sorted((ROOT / "equivalence").glob("*.py")) + sorted((ROOT / "equivalence").glob("*.mjs"))
+    fixture_manifest = ROOT / "equivalence/openclaw.plugin.json"
+    if fixture_manifest.is_file():
+        paths.append(fixture_manifest)
     return {path.name: _digest(path) for path in paths}
 
 
@@ -253,8 +256,11 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
             from equivalence.runtime_oracle import ReleaseOracleExecution, RuntimeOracleError
 
             try:
+                context_options = ({"fixture_captures": True}
+                                   if len(cases) == 1 and cases[0]["operation"] == "flush-execution-runtime"
+                                   else {})
                 execution = resources.enter_context(ReleaseOracleExecution(
-                    release_runtime, _adapter_identity()))
+                    release_runtime, _adapter_identity(), **context_options))
                 # Only this reviewed preload is supplied. User Node options,
                 # credentials, proxy/auth state and provider keys stay absent.
                 env.update(execution.env)
@@ -394,7 +400,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             cases = build_cases() if cases is None else cases
             python_runner = run_python if python_runner is None else python_runner
         requirements, _ = _validate_scope(scope, cases)
-        runtime_operations = {"index-lifecycle-runtime", "flush-trigger-runtime"}
+        runtime_operations = {"index-lifecycle-runtime", "flush-trigger-runtime", "flush-execution-runtime"}
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
         report["manifestSha256"] = {"reference": _digest(reference_path), "scope": _digest(scope_path)}
@@ -465,7 +471,20 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 except (OSError, ValueError):
                     raise HarnessError("flush-runtime-owner-unavailable",
                                        "The reviewed native flush owner/export could not be verified.") from None
+            flush_execution = any(case["operation"] == "flush-execution-runtime" for case in runtime_cases)
+            if flush_execution:
+                from equivalence.flush_execution_bindings import prepare_flush_execution_bindings
+
+                try:
+                    report["flushExecutionBindings"] = prepare_flush_execution_bindings(
+                        checkout, Path(runtime_config["runtimeRoot"]),
+                    )
+                except (OSError, ValueError):
+                    raise HarnessError("flush-execution-owner-unavailable",
+                                       "The reviewed native flush execution owners could not be verified.") from None
             report["releaseSources"], report["releaseTraces"], report["runtimeDiagnostics"] = [], [], []
+            if flush_execution:
+                report["fixtureCaptures"] = []
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -480,6 +499,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 for loaded in native["releaseSources"]:
                     observed_release[(loaded["package"], loaded["path"])] = loaded
                 report["releaseTraces"].append({"id": case["id"], **native["releaseTrace"]})
+                if flush_execution:
+                    report["fixtureCaptures"].extend(
+                        {"id": case["id"], **capture} for capture in native.get("fixtureCaptures", [])
+                    )
                 report["runtimeDiagnostics"].extend(
                     {"side": "native", **diagnostic} for diagnostic in native["runtimeDiagnostics"])
             try:
@@ -489,6 +512,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     checkout, Path(runtime_config["runtimeRoot"]),
                 ) != report["flushRuntimeBindings"]:
                     raise ValueError("Flush runtime owner/export changed.")
+                if flush_execution and prepare_flush_execution_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]),
+                ) != report["flushExecutionBindings"]:
+                    raise ValueError("Flush execution owners or fixture metadata changed.")
             except (OSError, ValueError, RuntimeError):
                 raise HarnessError("release-runtime-changed",
                                    "Official runtime artifact bytes changed during comparison.") from None

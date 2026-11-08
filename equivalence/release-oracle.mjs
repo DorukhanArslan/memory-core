@@ -12,6 +12,7 @@ if (context.providerMode !== "none") throw Error("Only provider-none release com
 const operations = {
   "index-lifecycle-runtime": ["index-lifecycle.mjs", "runIndexLifecycle"],
   "flush-trigger-runtime": ["flush-runtime.mjs", "runFlushRuntime"],
+  "flush-execution-runtime": ["flush-execution.mjs", "runFlushExecution"],
 };
 const results = [];
 for (const testCase of request.cases) {

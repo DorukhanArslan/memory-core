@@ -40,7 +40,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 347
+          "line": 469
         }
       ],
       "implementation": "partial",
@@ -74,13 +74,13 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_read_path",
           "anchor": "    def resolve_memory_read_path(self, raw_path: str) -> tuple[str, Path | None]:",
-          "line": 384
+          "line": 506
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_path",
           "anchor": "    def resolve_memory_path(self, rel_path: str) -> Path:",
-          "line": 375
+          "line": 497
         },
         {
           "path": "memory_core/workspace.py",
@@ -542,7 +542,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 347
+          "line": 469
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -560,7 +560,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(self) -> list[MemoryFile]:",
-          "line": 319
+          "line": 441
         },
         {
           "path": "memory_core/index/publication.py",
@@ -1256,7 +1256,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(self) -> list[MemoryFile]:",
-          "line": 319
+          "line": 441
         }
       ],
       "implementation": "partial",
@@ -1314,7 +1314,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryFile",
           "anchor": "class MemoryFile:",
-          "line": 277
+          "line": 399
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -1420,7 +1420,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 706
+          "line": 716
         }
       ],
       "implementation": "partial",
@@ -1795,7 +1795,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.prepare_flush",
           "anchor": "    def prepare_flush(",
-          "line": 556
+          "line": 566
         },
         {
           "path": "memory_core/memory_flush.py",
@@ -1831,7 +1831,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 506
+          "line": 516
         }
       ],
       "implementation": "present",
@@ -1866,6 +1866,18 @@
           "symbol": "wrapToolMemoryFlushAppendOnlyWrite",
           "anchor": "export function wrapToolMemoryFlushAppendOnlyWrite(",
           "line": 738
+        },
+        {
+          "path": "src/agents/session-maintenance/run.ts",
+          "symbol": "createSessionMaintenanceFollowup",
+          "anchor": "export function createSessionMaintenanceFollowup(params: {",
+          "line": 48
+        },
+        {
+          "path": "src/config/sessions/internal-session-key.ts",
+          "symbol": "resolveInternalSessionEffectsIdentity",
+          "anchor": "export function resolveInternalSessionEffectsIdentity(params: {",
+          "line": 14
         }
       ],
       "python": [
@@ -1873,28 +1885,37 @@
           "path": "memory_core/host/flush.py",
           "symbol": "FlushRequest",
           "anchor": "class FlushRequest:",
-          "line": 85
+          "line": 191
         },
         {
           "path": "memory_core/host/flush.py",
           "symbol": "dispatch",
           "anchor": "def dispatch(self, name: str, arguments: Mapping[str, Any] | str | None) -> dict[str, Any]:",
-          "line": 125
+          "line": 263
         },
         {
           "path": "memory_core/host/flush.py",
           "symbol": "complete",
           "anchor": "def complete(",
-          "line": 229
+          "line": 391
+        },
+        {
+          "path": "memory_core/workspace.py",
+          "symbol": "append_memory_flush_file",
+          "anchor": "def append_memory_flush_file(",
+          "line": 276
         }
       ],
       "implementation": "partial",
       "notes": [
         "FlushRequest exposes messages/tools and finalizes stamps. HostKit.after_turn and request_flush carry an optional raising authority check through request creation, dispatch and completion; the host still owns the model loop, authority state and next-turn barrier.",
-        "The Python write path skips empty content and NO_REPLY, normalizes appended trailing newlines and has distinct argument-error payloads; exact native append/tool-result behavior is not established by these helpers.",
-        "A committed append followed by an ordinary authority or reindex exception returns appended plus afterWriteError; BaseException cancellation propagates while committed bytes and the request entry remain. The host preserves the write without retry.",
+        "The flush write uses its own locked exact-content append, including empty strings, whitespace and literal NO_REPLY, with the native separator rule and no automatic terminal newline. Curated daily-note skip/newline behavior remains separate. Write receipts add native content/details and compatible legacy fields. Recovered tool errors carry isError: true as the native loop presents them to the model; this remains distinct from a terminal error in resolved model payloads.",
+        "After a successful append, an ordinary authority exception returns an error receipt plus afterWriteError; reindex failure retains an ok receipt plus afterWriteError. BaseException cancellation propagates with committed bytes and the request entry retained. Write/fsync errors can leave bytes while provenance rolls back, so a tool error alone does not establish absence of a write.",
         "The shared append checks authority under the actual file lock and before provenance reservation/open/write, including after provenance callbacks. Precommit revocation prevents an append and preserves provenance rollback and authority exception identity, with rollback failures chained as causes. Completion rejects in-flight dispatch, closes before its callback and records no success/failure stamp if the check raises. Python regressions cover these boundaries; the native target-helper cases do not verify host queue ordering or durable barriers.",
-        "During target preparation, HostKit.after_turn and request_flush preserve the original authority exception when descriptor cleanup also fails, chain the close error as its cause and record no cancellation strike. The standalone ensure_memory_flush_target_file helper retains native close-error priority."
+        "During target preparation, HostKit.after_turn and request_flush preserve the original authority exception when descriptor cleanup also fails, chain the close error as its cause and record no cancellation strike. The standalone ensure_memory_flush_target_file helper retains native close-error priority.",
+        "FlushRequest exposes read-only run_id and distinct internal execution session identities used for write provenance; complete receives the current source SessionState. HostKit optionally delegates a read definition/callback. Completion consumes resolved model payloads, uses a host classifier for richer UI error shapes and preserves the source entry without a new stamp on cancellation. Fourteen reviewed native execution fixtures cover outcomes only; warm first-recall generation behavior and host queue/barrier acceptance remain open.",
+        "Native createSessionMaintenanceFollowup clears senderIsOwner, so automatic prepare_flush/after_turn artifacts are always untrusted even for an owned, untainted source. A false untrusted_turn callback cannot promote maintenance; the forced request_flush extension retains caller policy. Source-session capture keeps its separate source origin/identity rules. The actual maintenance-followup and internal-session-identity owners are mapped without expanding the fixed contract.",
+        "The actual authenticated official model/tool loop supplies native session, append, provenance, indexing and finalizer behavior through a labelled scripted provider. Source-owner and compiled-artifact identities remain separate with sourceBuildReproduced: false. The registered warm-index case retains covers: [] and a declaredDeviation, with genuine first-recall differences preserved; later synchronized recall agrees and timing can let a later first query match. This does not complete execute-finalize boundaries."
       ]
     },
     {
@@ -2708,7 +2729,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 506
+          "line": 516
         }
       ],
       "implementation": "partial",
@@ -3099,7 +3120,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 506
+          "line": 516
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -3300,7 +3321,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 506
+          "line": 516
         },
         {
           "path": "demo/lab_chat.py",
@@ -3351,7 +3372,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 706
+          "line": 716
         },
         {
           "path": "demo/lab_runtime.py",
@@ -3396,7 +3417,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.dispatcher",
           "anchor": "    def dispatcher(",
-          "line": 375
+          "line": 385
         },
         {
           "path": "memory_core/live/__init__.py",
@@ -5147,6 +5168,32 @@
       ]
     },
     {
+      "path": "src/agents/session-maintenance/run.ts",
+      "sha256": "043485f2d937b849c800f01b19d88ef5f0a5e9a997f42fded38641ee45ff0987",
+      "sourceImports": [
+        "../../auto-reply/reply/queue.js",
+        "../../config/sessions/types.js",
+        "../../config/types.openclaw.js",
+        "../../gateway/scheduled-run-gateway-context.js",
+        "../../infra/abort-signal.js",
+        "../../infra/agent-events.js",
+        "../../infra/errors.js",
+        "../../logging/subsystem.js",
+        "../../plugins/runtime/gateway-request-scope.js",
+        "../../process/gateway-work-admission.js",
+        "../../sessions/session-lifecycle-admission.js",
+        "../command/maintenance-budget.js",
+        "../command/runtime-loaders.js",
+        "../sessions/compaction/request-budget.js",
+        "./coordinator.js"
+      ],
+      "exportedDeclarations": [
+        "SessionMaintenanceRequest",
+        "createSessionMaintenanceFollowup",
+        "scheduleSessionMaintenance"
+      ]
+    },
+    {
       "path": "src/agents/session-transcript-repair.ts",
       "sha256": "3e079db308f3d6df90a85ffb51b05a8e4fc567d5fac3928acd4ac7973ac0982b",
       "sourceImports": [
@@ -5482,6 +5529,18 @@
       "exportedDeclarations": [
         "collectHeartbeatTaskMigrationFindings",
         "maybeMigrateHeartbeatTasksToCron"
+      ]
+    },
+    {
+      "path": "src/config/sessions/internal-session-key.ts",
+      "sha256": "b90d07c0b5da6945ff005ea452c409b438919777cb584efaad0d0aa8ecedb397",
+      "sourceImports": [
+        "../../routing/session-key.js",
+        "node:crypto"
+      ],
+      "exportedDeclarations": [
+        "isInternalSessionEffectsKey",
+        "resolveInternalSessionEffectsIdentity"
       ]
     },
     {

@@ -151,11 +151,13 @@ def test_quickstart_runs_the_memory_tools_and_the_flush(tmp_path: Path, monkeypa
         "path": target,
         "action": "appended",
         "text": f"Appended content to {target}.",
+        "content": [{"type": "text", "text": f"Appended content to {target}."}],
+        "details": {"changed": True},
     }
-    assert (tmp_path / "my-agent-app" / target).read_text(encoding="utf-8") == llm.FACT + "\n"
+    assert (tmp_path / "my-agent-app" / target).read_text(encoding="utf-8") == llm.FACT
     (hit,) = llm.searches[1]["results"]
     assert (hit["path"], hit["startLine"]) == (target, 1)
-    assert hit["citation"] == f"Source: {target}#L1-L2"
+    assert hit["citation"] == f"Source: {target}#L1"
     assert llm.FACT in hit["snippet"]
     # One flush run over turn 1's text: complete() stamped the compaction cycle and the loop
     # kept that state, so turn 2, past the threshold too, reads already_flushed.

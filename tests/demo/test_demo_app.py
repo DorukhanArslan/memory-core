@@ -1121,7 +1121,7 @@ def test_flush_runs_after_the_reply_once_per_compaction_cycle(client, lab, monke
     assert visible == [(f"memory/{lab.today()}.md", "flush")]
     # Decision Q3: a flush write records no daily recall signals.
     assert not any(diff["path"] == "memory/.dreams/short-term-recall.json" for diff in detail["diffs"])
-    assert (lab.root / "memory" / f"{lab.today()}.md").read_text(encoding="utf-8") == "- Redis 7.2 staging upgrade done.\n"
+    assert (lab.root / "memory" / f"{lab.today()}.md").read_text(encoding="utf-8") == "- Redis 7.2 staging upgrade done."
     assert {name: (lab.root / name).read_text(encoding="utf-8") for name in before} == before
     assert not (lab.root / "MEMORY.md").exists()
     assert lab.session("main").messages[-1] == {"role": "assistant", "content": "Üç."}
@@ -1143,7 +1143,7 @@ def test_flush_runs_after_the_reply_once_per_compaction_cycle(client, lab, monke
         # Before the flush run: the request is abandoned, as a scripted turn's.
         ("running", {"name": "flush", "status": "skip", "ms": 0, "detail": "stopped by the client"}, ""),
         # After the flush run: the run stays recorded.
-        ("run", {"name": "flush", "status": "ok", "detail": "günlük dosyaya yazdı"}, "- Stop note.\n"),
+        ("run", {"name": "flush", "status": "ok", "detail": "günlük dosyaya yazdı"}, "- Stop note."),
     ],
 )
 def test_stop_during_the_flush_keeps_the_delivered_reply(client, lab, monkeypatch, stop_at, flush_stage, written):

@@ -175,7 +175,7 @@ def test_flush_offers_only_the_upstream_write_tool(tmp_path):
         },
     )
     assert json.loads(json.dumps(record.flush.tools)) == list(record.flush.tools)
-    assert record.flush.dispatch("add_memory_entry", {"section": "A", "text": "b"}) == {
+    assert record.flush.dispatch("add_memory_entry", {"section": "A", "text": "b"})["details"] == {
         "status": "error",
         "tool": "add_memory_entry",
         "error": "tool add_memory_entry is not available",
@@ -194,8 +194,10 @@ def test_flush_write_appends_to_the_target_and_reindexes(tmp_path):
         "path": TARGET,
         "action": "appended",
         "text": "Appended content to memory/2026-09-25.md.",
+        "content": [{"type": "text", "text": "Appended content to memory/2026-09-25.md."}],
+        "details": {"changed": True},
     }
-    assert (tmp_path / TARGET).read_text() == "- velvetkiwi codename\n"
+    assert (tmp_path / TARGET).read_text() == "- velvetkiwi codename"
     hits = kit.dispatch("memory_search", {"query": "velvetkiwi"}, session=_session())["results"]
     assert [hit["path"] for hit in hits] == [TARGET]
 
@@ -212,7 +214,7 @@ def test_flush_write_keeps_the_append_when_the_reindex_fails(tmp_path, monkeypat
     result = flush.dispatch("write", {"path": TARGET, "content": "- kept"})
 
     assert result["action"] == "appended" and result["afterWriteError"] == "index broke"
-    assert (tmp_path / TARGET).read_text() == "- kept\n"
+    assert (tmp_path / TARGET).read_text() == "- kept"
     assert flush.complete(_session()).entries == ("- kept",)
 
 
@@ -249,7 +251,7 @@ def test_flush_write_accepts_the_absolute_target_path(tmp_path):
     result = flush.dispatch("write", {"path": str(tmp_path / TARGET), "content": "- absolute"})
 
     assert result["action"] == "appended"
-    assert (tmp_path / TARGET).read_text() == "- absolute\n"
+    assert (tmp_path / TARGET).read_text() == "- absolute"
 
 
 def test_flush_write_elsewhere_returns_the_upstream_restriction(tmp_path):
@@ -267,30 +269,29 @@ def test_flush_write_elsewhere_returns_the_upstream_restriction(tmp_path):
         "memory/../memory/other.md",
         str(tmp_path / "memory" / "2026-09-24.md"),
     ):
-        assert flush.dispatch("write", {"path": path, "content": "x"}) == restricted
-    assert flush.dispatch("write", {"content": "x"})["error"] == "path required"
-    assert flush.dispatch("write", {"path": TARGET})["error"] == "content required"
+        assert flush.dispatch("write", {"path": path, "content": "x"})["details"] == restricted
+    assert flush.dispatch("write", {"content": "x"})["error"] == (
+        "Missing required parameter: path (received: content). Supply correct parameters before retrying."
+    )
+    assert flush.dispatch("write", {"path": TARGET})["error"] == (
+        "Missing required parameter: content (received: path). Supply correct parameters before retrying."
+    )
     assert flush.dispatch("write", "[]")["error"] == "arguments must be a JSON object"
     assert (tmp_path / TARGET).read_text() == ""
 
 
-def test_flush_write_skips_empty_content_and_the_exact_no_reply_token(tmp_path):
+def test_flush_write_preserves_empty_content_and_the_exact_no_reply_token(tmp_path):
     flush = _due(_kit(tmp_path)).flush
 
     for content in ("", "  \n", "NO_REPLY", "  NO_REPLY\n"):
-        assert flush.dispatch("write", {"path": TARGET, "content": content}) == {
-            "status": "ok",
-            "tool": "write",
-            "path": TARGET,
-            "action": "skipped",
-        }
-    assert (tmp_path / TARGET).read_text() == ""
-    # Only the exact token is silent (decision Q12, the curated daily note's rule too).
+        assert flush.dispatch("write", {"path": TARGET, "content": content})["details"] == {"changed": True}
+    assert (tmp_path / TARGET).read_bytes() == b"  \nNO_REPLY\n  NO_REPLY\n"
+    # A model's silent final reply is distinct from literal content passed to write.
     for content in ("NO_REPLY nothing to keep", "NO_REPLY_FACTS: tea"):
         assert flush.dispatch("write", {"path": TARGET, "content": content})["action"] == "appended"
-    assert (tmp_path / TARGET).read_text() == "NO_REPLY nothing to keep\nNO_REPLY_FACTS: tea\n"
+    assert (tmp_path / TARGET).read_text() == "  \nNO_REPLY\n  NO_REPLY\nNO_REPLY nothing to keep\nNO_REPLY_FACTS: tea"
     outcome = flush.complete(_session())
-    assert outcome.entries == ("NO_REPLY nothing to keep", "NO_REPLY_FACTS: tea")
+    assert outcome.entries == ("", "  \n", "NO_REPLY", "  NO_REPLY\n", "NO_REPLY nothing to keep", "NO_REPLY_FACTS: tea")
 
 
 def test_flush_write_refuses_a_symlinked_daily_file(tmp_path):
@@ -352,7 +353,7 @@ def test_an_abandoned_flush_is_requested_again(tmp_path):
     retry.flush.dispatch("write", {"path": TARGET, "content": "- once"})
     outcome = retry.flush.complete(retry.session)
     assert kit.after_turn(outcome.session, transcript=TRANSCRIPT, usage=DUE).flush is None
-    assert (tmp_path / TARGET).read_text() == "- once\n"
+    assert (tmp_path / TARGET).read_text() == "- once"
 
 
 def test_flush_complete_rejects_another_session(tmp_path):

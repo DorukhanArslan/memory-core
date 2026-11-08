@@ -158,11 +158,11 @@ def test_reference_process_requires_both_main_and_native_worker_preloads(transpo
         execution.collect(result, [case])
 
 
-def _flush_trace(execution, config):
+def _flush_trace(execution, config, adapter="flush-runtime.mjs"):
     local = [{"event": "load", "pid": 111, "threadId": 0, "kind": "oracle",
               "path": str((ROOT / "equivalence" / name).resolve()),
               "sha256": execution._locals[str((ROOT / "equivalence" / name).resolve())]}
-             for name in ("release-oracle.mjs", "flush-runtime.mjs")]
+             for name in ("release-oracle.mjs", adapter)]
     return [_bootstrap(execution, 0), *local,
             _load(config, "dist/agent-runner-memory-Cc4lCZcs.mjs", 0)]
 
@@ -188,6 +188,49 @@ def test_flush_source_validation_cannot_relax_the_default_manager_or_select_arbi
         validate_release_sources(config, [source])
     with pytest.raises(ReleaseRuntimeError, match="reviewed runtime entry"):
         validate_release_sources(config, [source], required_entry="dist/labelled-console-worker.mjs")
+
+
+@pytest.mark.parametrize("missing", ["runner", "manager", "worker"])
+def test_flush_execution_requires_the_actual_runner_manager_and_protected_index_worker(transport, missing):
+    previous, config, case, result = transport
+    case["operation"] = "flush-execution-runtime"
+    with ReleaseOracleExecution(config, previous.adapter_hashes, fixture_captures=True) as execution:
+        # A labelled trace fixture supplies valid capture/model proof so each
+        # negative fails for its missing real owner, not for disabled captures.
+        # Real Node capture imports are exercised in test_fixture_provider_capture.
+        source = str((ROOT / "equivalence/flush-execution.mjs").resolve())
+        digest = execution._locals[source]
+        capture = (
+            "tmp/plugin-captures/00000000-0000-4000-8000-000000000001/captures/"
+            "openclaw-plugin-build-abc123/package-0/node_modules/equivalence/flush-execution.mjs"
+        )
+        proof_relative = "fixture-source-captures/" + _hash((capture + "\0" + digest).encode()) + ".mjs"
+        proof = execution.evidence_directory / proof_relative
+        proof.parent.mkdir()
+        proof.write_bytes(Path(source).read_bytes())
+        events = _flush_trace(execution, config, "flush-execution.mjs")
+        events.append(_load(config, "dist/extensions/memory-core/manager-runtime.js", 0))
+        events.append({"event": "load", "kind": "fixture-capture", "pid": 111, "threadId": 0,
+                       "path": source, "sourcePath": source, "sha256": digest,
+                       "capturePath": capture, "proofPath": proof_relative})
+        omitted_path = {
+            "runner": "dist/agent-runner-memory-Cc4lCZcs.mjs",
+            "manager": "dist/extensions/memory-core/manager-runtime.js",
+        }.get(missing)
+        if omitted_path is not None:
+            events = [event for event in events if event.get("path") != omitted_path]
+        _trace(execution, 0, events)
+        if missing != "worker":
+            _trace(execution, 1, [_bootstrap(execution, 1),
+                                _load(config, "dist/extensions/memory-core/memory-index.worker.js", 1)])
+        _evidence(execution, case, [{"modelCalls": [{"labelledTransportFixture": True}]}])
+        expected = {
+            "runner": "actual native flush runtime owner",
+            "manager": "actual native memory manager",
+            "worker": "actual native memory worker",
+        }[missing]
+        with pytest.raises(RuntimeOracleError, match=expected):
+            execution.collect(result, [case])
 
 
 @pytest.mark.parametrize("missing", ["adapter", "owner", "bootstrap"])

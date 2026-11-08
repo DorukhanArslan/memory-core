@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from equivalence import flush_runtime_bindings, harness, release_runtime, runtime_oracle
+from equivalence import flush_execution_bindings, flush_runtime_bindings, harness, release_runtime, runtime_oracle
 
 
 def _git(root, *args):
@@ -76,6 +76,8 @@ def release_suite(tmp_path, monkeypatch):
     monkeypatch.setattr(harness, "_oracle", native)
     monkeypatch.setattr(flush_runtime_bindings, "prepare_flush_runtime_bindings",
                         lambda *_args: {"kind": "labelled-flush-owner-fixture"})
+    monkeypatch.setattr(flush_execution_bindings, "prepare_flush_execution_bindings",
+                        lambda *_args: {"kind": "labelled-flush-execution-fixture"})
     return {"checkout": checkout, "node": node, "reference_path": reference,
             "scope_path": scope, "cases": cases, "python_runner": python,
             "release_runtime_root": tmp_path / "runtime"}, calls, config
@@ -95,7 +97,7 @@ def test_missing_official_artifacts_block_before_python_and_do_not_fall_back(rel
     assert report["cases"] == []
 
 
-@pytest.mark.parametrize("operation", ["index-lifecycle-runtime", "flush-trigger-runtime"])
+@pytest.mark.parametrize("operation", ["index-lifecycle-runtime", "flush-trigger-runtime", "flush-execution-runtime"])
 def test_each_native_case_uses_a_fresh_dispatch_and_preserves_truthful_evidence(release_suite, operation):
     options, calls, _ = release_suite
     for case in options["cases"]:
@@ -117,6 +119,10 @@ def test_each_native_case_uses_a_fresh_dispatch_and_preserves_truthful_evidence(
         assert report["flushRuntimeBindings"] == {"kind": "labelled-flush-owner-fixture"}
     else:
         assert "flushRuntimeBindings" not in report
+    if operation == "flush-execution-runtime":
+        assert report["flushExecutionBindings"] == {"kind": "labelled-flush-execution-fixture"}
+    else:
+        assert "flushExecutionBindings" not in report
     assert "runtimeRoot" not in report["releaseRuntime"]
     assert all("directory" not in item and "files" not in item
                for item in report["releaseRuntime"]["packages"])
@@ -167,10 +173,18 @@ def test_failed_native_case_is_not_retried_or_replaced_by_python(release_suite, 
 
 
 @pytest.mark.parametrize("when", ["before", "after"])
-def test_unverified_flush_owner_blocks_credit_without_a_source_or_python_fallback(release_suite, monkeypatch, when):
+@pytest.mark.parametrize("operation,module,function,code", [
+    ("flush-trigger-runtime", flush_runtime_bindings,
+     "prepare_flush_runtime_bindings", "flush-runtime-owner-unavailable"),
+    ("flush-execution-runtime", flush_execution_bindings,
+     "prepare_flush_execution_bindings", "flush-execution-owner-unavailable"),
+])
+def test_unverified_flush_owner_blocks_credit_without_a_source_or_python_fallback(
+    release_suite, monkeypatch, when, operation, module, function, code,
+):
     options, calls, _ = release_suite
     for case in options["cases"]:
-        case["operation"] = "flush-trigger-runtime"
+        case["operation"] = operation
     checked = 0
 
     def owner(*_args):
@@ -180,18 +194,21 @@ def test_unverified_flush_owner_blocks_credit_without_a_source_or_python_fallbac
             raise ValueError("Labelled unverified compiled export.")
         return {"kind": "labelled-flush-owner-fixture", "digest": str(checked)}
 
-    monkeypatch.setattr(flush_runtime_bindings, "prepare_flush_runtime_bindings", owner)
-    report, code = harness.run_suite(**options)
-    assert code == 2
+    monkeypatch.setattr(module, function, owner)
+    report, exit_code = harness.run_suite(**options)
+    assert exit_code == 2
     assert report["errors"][0]["code"] == (
-        "flush-runtime-owner-unavailable" if when == "before" else "release-runtime-changed"
+        code if when == "before" else "release-runtime-changed"
     )
     assert calls["python"] == []
     assert len(calls["oracle"]) == (0 if when == "before" else 2)
 
 
 @pytest.mark.parametrize("mode", ["valid", "evidence-rejected", "trailing-stdout"])
-def test_oracle_context_forwards_only_reviewed_environment_and_requires_exact_protocol(tmp_path, monkeypatch, mode):
+@pytest.mark.parametrize("operation", ["index-lifecycle-runtime", "flush-execution-runtime"])
+def test_oracle_context_forwards_only_reviewed_environment_and_requires_exact_protocol(
+    tmp_path, monkeypatch, mode, operation,
+):
     node = tmp_path / "labelled-node"
     node.write_text(f"#!{sys.executable}\n" + '''
 import json,os,sys
@@ -210,9 +227,10 @@ print(json.dumps({'kind':'official-release-runtime-comparison','sources':[],
     class Context:
         env = {"NODE_OPTIONS": "--import=/trusted/preload.mjs"}
 
-        def __init__(self, config, hashes):
+        def __init__(self, config, hashes, *, fixture_captures=False):
             assert config == {"fixture": True}
             assert "release-preload.mjs" in hashes
+            assert fixture_captures is (operation == "flush-execution-runtime")
 
         def __enter__(self):
             seen.append("entered")
@@ -232,7 +250,7 @@ print(json.dumps({'kind':'official-release-runtime-comparison','sources':[],
     monkeypatch.setattr(runtime_oracle, "ReleaseOracleExecution", Context)
     monkeypatch.setenv("NODE_OPTIONS", "UNREVIEWED_NODE_FLAG")
     monkeypatch.setenv("OPENROUTER_API_KEY", "LABELLED_PRIVATE_VALUE")
-    case = {"id": "labelled-case", "operation": "index-lifecycle-runtime", "input": {}}
+    case = {"id": "labelled-case", "operation": operation, "input": {}}
     if mode == "valid":
         result = harness._oracle(node, runner, tmp_path, [case], 5, release_runtime={"fixture": True})
         assert result["sources"] == []

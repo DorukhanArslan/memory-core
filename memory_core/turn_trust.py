@@ -26,6 +26,38 @@ def with_assistant_turn_taint(message: dict[str, Any], tainted: bool) -> dict[st
     return {**message, "__openclaw": {**_taint_metadata(message), "turnTainted": True}}
 
 
+def with_tool_result_content_source(message: dict[str, Any], source: str | None) -> dict[str, Any]:
+    """Apply the agent-core registered source to an emitted tool-result message."""
+    if source is None:
+        return message
+    if source != "network":
+        raise ValueError("The supported registered tool content source is network")
+    return {**message, "__openclaw": {**_taint_metadata(message), "resultContentSource": source}}
+
+
+def build_tool_result_message(
+    tool_call: Mapping[str, Any], result: Mapping[str, Any], *, is_error: bool,
+    timestamp_ms: int | float, result_content_source: str | None = None,
+) -> dict[str, Any]:
+    """The ordinary JSON result-message owner from agent-loop.ts.
+
+    Execution, hook decisions and diagnostic/private result capabilities are
+    owned by the caller. This owner preserves admitted content block objects.
+    """
+    message = {"role": "toolResult", "toolCallId": tool_call["id"], "toolName": tool_call["name"],
+               "content": result.get("content") if result.get("content") is not None else [],
+               **({"details": result["details"]} if "details" in result else {}),
+               "isError": is_error, "timestamp": timestamp_ms}
+    return with_tool_result_content_source(message, result_content_source)
+
+
+def build_tool_execution_error_result(error: BaseException) -> dict[str, Any]:
+    """Coerce an actual Error execution outcome without the diagnostic formatter."""
+    if not isinstance(error, BaseException):
+        raise TypeError("This execution-error boundary requires an actual exception")
+    return {"content": [{"type": "text", "text": str(error)}], "details": {}}
+
+
 def is_active_turn_tainted(messages) -> bool:
     """Read the actual current transcript turn; a user boundary ends older taint."""
     for message in reversed(messages):

@@ -4,7 +4,10 @@ import json
 
 import pytest
 
-from memory_core.turn_trust import TurnTrust, is_active_turn_tainted, with_assistant_turn_taint
+from memory_core.turn_trust import (
+    TurnTrust, build_tool_execution_error_result, build_tool_result_message,
+    is_active_turn_tainted, with_assistant_turn_taint, with_tool_result_content_source,
+)
 
 
 def test_only_actual_network_nonpresentation_outcomes_taint_and_taint_is_sticky():
@@ -61,3 +64,26 @@ def test_transcript_active_turn_read_stops_at_new_user_and_keeps_network_result_
     assert is_active_turn_tainted(transcript)
     assert not is_active_turn_tainted([*transcript, {"role": "user", "content": "new turn"}])
     assert is_active_turn_tainted([{"role": "assistant", "__openclaw": {"turnTainted": True}}])
+
+
+def test_real_result_message_owner_keeps_content_details_and_source_without_metadata_forgery():
+    result = {"content": [{"type": "text", "text": "network result", "extra": True}],
+              "details": {"nested": [False, None]}, "outerOnly": "actual tool return stays separate"}
+    message = build_tool_result_message({"id": "call", "name": "web"}, result, is_error=False,
+                                        timestamp_ms=1000, result_content_source="network")
+    assert message == {"role": "toolResult", "toolCallId": "call", "toolName": "web",
+                       "content": result["content"], "details": result["details"], "isError": False,
+                       "timestamp": 1000, "__openclaw": {"resultContentSource": "network"}}
+    assert message["content"] is result["content"] and message["details"] is result["details"]
+    assert build_tool_result_message({"id": "call", "name": "read"}, {"content": None},
+                                     is_error=False, timestamp_ms=1000) == {
+        "role": "toolResult", "toolCallId": "call", "toolName": "read", "content": [],
+        "isError": False, "timestamp": 1000}
+    assert with_tool_result_content_source(message, None) is message
+
+
+def test_execution_error_owner_keeps_original_message_for_later_model_sanitization():
+    error = RuntimeError("literal fixture failure")
+    error.code = "FIXTURE"
+    assert build_tool_execution_error_result(error) == {
+        "content": [{"type": "text", "text": "literal fixture failure"}], "details": {}}

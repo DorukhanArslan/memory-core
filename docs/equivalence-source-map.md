@@ -164,7 +164,7 @@ in 1,086 cases.
 The newly observed OS-specific loop diagnostic remains uncredited alongside the earlier two
 differences. No claim of full equivalence follows from these bounded results.
 
-The current inventory maps **137 upstream modules**, with 15 present, 46 partial and three
+The current inventory maps **163 upstream modules**, with 15 present, 46 partial and three
 host-owned Python classifications. The shared-deadline package maps the actual control,
 signal, worker and corpus owners in
 `memory_core/tools/deadline.py`, together with get/search coordination and SQLite pre-deadline
@@ -192,7 +192,7 @@ in the [checklist](full-equivalence-checklist.md).
 | Contract | OpenClaw entry | Python entry | Python surface |
 | --- | --- | --- | --- |
 | `storage.discovery` | [listMemoryFiles](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/internal.ts#L266) | [list_memory_files](../memory_core/workspace.py#L61) | partial |
-| `storage.path-safety` | [readMemoryFile](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/read-file.ts#L34) | [MemoryWorkspace.resolve_memory_read_path](../memory_core/workspace.py#L525) | partial |
+| `storage.path-safety` | [readMemoryFile](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/read-file.ts#L34) | [MemoryWorkspace.resolve_memory_read_path](../memory_core/workspace.py#L527) | partial |
 | `storage.atomic-writes` | [commitMemoryContent](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/short-term-promotion-memory-write.ts#L139) | [MemoryCurator._write_target](../memory_core/curation.py#L1153) | partial |
 | `storage.workspace-isolation` | [resolveMemoryHostAgentWorkspaceDir](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/config-utils.ts#L164) | [SubjectMemory.open](../memory_core/live/__init__.py#L390) | partial |
 | `lexical.tokenization` | [tokenize](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/tokenize.ts#L6) | [tokenize](../memory_core/index/mmr.py#L17) | present |
@@ -216,9 +216,9 @@ in the [checklist](full-equivalence-checklist.md).
 | `tools.get-contract` | [createMemoryGetTool](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.ts#L569) | [create_memory_get_tool](../memory_core/tools/get_factory.py#L96) | partial |
 | `tools.deadline-cooldown` | [runMemorySearchWithDeadline](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/search-deadline.ts#L28) | [MemoryToolDeadlineContext](../memory_core/tools/deadline.py#L66) | partial |
 | `tools.unavailable-partial` | [buildMemorySearchUnavailableResult](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.shared.ts#L93) | [build_memory_search_unavailable_result](../memory_core/tools/memory_search.py#L192) | partial |
-| `sessions.corpus-admission` | [listSessionTranscriptCorpusEntriesForAgent](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/session-transcript-corpus.ts#L560) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L78) | partial |
+| `sessions.corpus-admission` | [listSessionTranscriptCorpusEntriesForAgent](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/session-transcript-corpus.ts#L560) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L79) | partial |
 | `sessions.transcript-filtering` | [buildSessionEntryInProcess](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/session-files.ts#L667) | [build_session_entry](../memory_core/session_entry.py#L649) | partial |
-| `sessions.visibility-lineage` | [filterMemorySearchHitsBySessionVisibility](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/session-search-visibility.ts#L164) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L78) | partial |
+| `sessions.visibility-lineage` | [filterMemorySearchHitsBySessionVisibility](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/session-search-visibility.ts#L164) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L79) | partial |
 | `sessions.reset-hook` | [saveSessionMemoryNow](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/hooks/bundled/session-memory/handler.ts#L126) | [save_session_memory](../memory_core/session_memory.py#L1089) | partial |
 | `sessions.durable-context` | [appendTranscriptMessage](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/config/sessions/session-accessor.sqlite-transcript-write.ts#L427) | [SessionState](../memory_core/host/session.py#L45) | host-owned |
 | `prompt.bootstrap-discovery` | [ensureAgentWorkspace](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/workspace.ts#L715) | [initialize_agent_workspace](../memory_core/bootstrap/lifecycle.py#L420) | partial |
@@ -253,7 +253,7 @@ in the [checklist](full-equivalence-checklist.md).
 | `engine.unicode-collation` | [sliceUtf16Safe](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/normalization-core/src/utf16-slice.ts#L30) | [utf16_slice](../memory_core/bootstrap/_js.py#L96) | partial |
 | `engine.datetime-regex` | [resolveCronStyleNow](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/current-time.ts#L23) | [format_current_time_line](../memory_core/current_time.py#L198) | partial |
 | `host.turn-barrier` | [beginForegroundSessionMaintenance](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/session-maintenance/coordinator.ts#L181) | [HostKit.after_turn](../memory_core/host/kit.py#L548) | host-owned |
-| `host.restart-recall` | [loadSessionStore](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/plugin-sdk/session-store-runtime.ts#L263) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L78) | host-owned |
+| `host.restart-recall` | [loadSessionStore](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/plugin-sdk/session-store-runtime.ts#L263) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L79) | host-owned |
 | `host.update-isolation` | [consolidateMemory](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/dreaming-consolidation.ts#L396) | [MemoryCurator.replace_memory_entry](../memory_core/curation.py#L939) | partial |
 
 ## Validation

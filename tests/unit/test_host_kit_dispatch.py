@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 
 import pytest
@@ -218,6 +219,10 @@ def test_dispatch_records_recalls_only_with_dreaming_enabled(tmp_path):
     twin = tmp_path / "twin"
     for root in (tmp_path / "off", tmp_path / "on", twin):
         _seed(root)
+        # These workspaces represent identical source observations, including
+        # the indexed mtime now retained in each result's provenance.
+        for source in (root / "MEMORY.md", root / "memory" / "2026-09-25.md"):
+            os.utime(source, (NOW_MS / 1000, NOW_MS / 1000))
     args = {"query": "quokkabyte importer"}
 
     _kit(tmp_path / "off").dispatch("memory_search", args, session=SESSION)

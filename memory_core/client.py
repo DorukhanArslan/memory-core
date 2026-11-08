@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from memory_core.bootstrap import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
 from memory_core.config import MemoryConfig
@@ -93,7 +94,11 @@ class Memory:
         max_results: int = 5,
         min_score: float = 0.0,
         corpus: str = "all",
+        active_project_keys: Sequence[str] | None = None,
     ) -> dict:
+        host_options: dict[str, Any] = {}
+        if active_project_keys is not None:
+            host_options["active_project_keys"] = active_project_keys
         return memory_search(
             self.config,
             self.store,
@@ -101,6 +106,7 @@ class Memory:
             max_results=max_results,
             min_score=min_score,
             corpus=corpus,
+            **host_options,
         )
 
     def get(

@@ -7,7 +7,6 @@ production APIs. Comparisons retain complete ordered rows without rounding.
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import fields
 import json
 from pathlib import Path
 import tempfile
@@ -266,9 +265,8 @@ _KEYS = {"startLine": "start_line", "endLine": "end_line", "textScore": "text_sc
 
 
 def _keyword_payload(hit: Any) -> dict[str, Any]:
-    """Rename every genuine dataclass field; do not select a result subset."""
-    reverse = {value: key for key, value in _KEYS.items()}
-    return {reverse.get(field.name, field.name): getattr(hit, field.name) for field in fields(hit)}
+    """Use the complete production payload, including each present annotation."""
+    return hit.to_payload()
 
 
 def run_exact_path_priority(arguments: dict[str, Any], *,

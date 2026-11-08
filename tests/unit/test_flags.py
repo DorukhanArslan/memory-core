@@ -79,7 +79,8 @@ def test_fts_only_keyword_hits_keep_full_text_score(tmp_path):
         # The raw BM25 score is `textScore`; the ranking score adds the tag's lexical boost
         # (query overlap, path and length), capped at 1, and no text weight scales it.
         assert 1 >= item["score"] >= item["textScore"] > 0
-        assert item["vectorScore"] == 0
+        # Native keyword-only payloads expose the text component only.
+        assert "vectorScore" not in item
 
 
 def test_fts_only_relaxes_min_score_when_strict_pass_is_empty(tmp_path):
@@ -150,11 +151,16 @@ def test_text_search_disabled_uses_vector_only_scores(tmp_path):
     )
 
     results = memory.search("supervisor approval")["results"]
+    internal = memory.store.search("supervisor approval")
 
     assert results
-    for item in results:
-        assert item["score"] == item["vectorScore"]
-        assert item["textScore"] == 0
+    assert len(results) == len(internal)
+    for item, candidate in zip(results, internal, strict=True):
+        assert item["score"] == candidate.vector_score
+        # The raw vector owner retains its ID, while public component scores
+        # are present only on hybrid results.
+        assert isinstance(item["id"], str)
+        assert "vectorScore" not in item and "textScore" not in item
 
 
 def test_both_search_modes_disabled_is_invalid():

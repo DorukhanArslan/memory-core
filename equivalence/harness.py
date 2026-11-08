@@ -112,7 +112,7 @@ def _reference_bindings(checkout: Path, *, cache: bool, publication: bool,
             )] for key in ("allowedResolutions", "projectionEvidence")}
         for key in ("allowedResolutions", "projectionEvidence"):
             bindings.setdefault(key, []).extend(extension[key])
-    if reuse_operations & {"hybrid-scoring", "exact-path-priority"}:
+    if reuse_operations & {"hybrid-scoring", "exact-path-priority", "importance-project"}:
         from equivalence.hybrid_bindings import prepare_hybrid_bindings
 
         extension = prepare_hybrid_bindings(checkout)
@@ -122,6 +122,12 @@ def _reference_bindings(checkout: Path, *, cache: bool, publication: bool,
         from equivalence.exact_path_bindings import prepare_exact_path_bindings
 
         extension = prepare_exact_path_bindings(checkout)
+        for key in ("allowedResolutions", "projectionEvidence"):
+            bindings.setdefault(key, []).extend(extension[key])
+    if "importance-project" in reuse_operations:
+        from equivalence.importance_project_bindings import prepare_importance_project_bindings
+
+        extension = prepare_importance_project_bindings(checkout)
         for key in ("allowedResolutions", "projectionEvidence"):
             bindings.setdefault(key, []).extend(extension[key])
     if reuse_operations:
@@ -425,6 +431,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         runtime_operations = {
             "index-lifecycle-runtime", "flush-trigger-runtime", "flush-execution-runtime",
             "exact-path-runtime",
+            "importance-project-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -449,6 +456,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                      if case["operation"] in {
                                          "bootstrap-budget", "flush-contract", "flush-target", "session-projection",
                                          "vector-scoring", "hybrid-scoring", "exact-path-priority",
+                                         "importance-project",
                                      })
         native_storage = required_artifact_execution or bool(reuse_operations)
         cache_bindings = any(case["operation"] == "embedding-cache" for case in cases)
@@ -519,6 +527,21 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 except (OSError, ValueError):
                     raise HarnessError("exact-path-runtime-owner-unavailable",
                                        "The reviewed native keyword priority owners could not be verified.") from None
+            importance_project_runtime = any(
+                case["operation"] == "importance-project-runtime" for case in runtime_cases
+            )
+            if importance_project_runtime:
+                from equivalence.importance_project_runtime_bindings import (
+                    prepare_importance_project_runtime_bindings,
+                )
+
+                try:
+                    report["importanceProjectRuntimeBindings"] = prepare_importance_project_runtime_bindings(
+                        checkout, Path(runtime_config["runtimeRoot"]),
+                    )
+                except (OSError, ValueError):
+                    raise HarnessError("importance-project-runtime-owner-unavailable",
+                                       "The reviewed native stored-ranking owners could not be verified.") from None
             report["releaseSources"], report["releaseTraces"], report["runtimeDiagnostics"] = [], [], []
             if flush_execution:
                 report["fixtureCaptures"] = []
@@ -557,6 +580,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     checkout, Path(runtime_config["runtimeRoot"]),
                 ) != report["exactPathRuntimeBindings"]:
                     raise ValueError("Exact-path keyword owners or compiled export changed.")
+                if importance_project_runtime and prepare_importance_project_runtime_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]),
+                ) != report["importanceProjectRuntimeBindings"]:
+                    raise ValueError("Importance/project source or compiled owners changed.")
             except (OSError, ValueError, RuntimeError):
                 raise HarnessError("release-runtime-changed",
                                    "Official runtime artifact bytes changed during comparison.") from None

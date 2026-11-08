@@ -26,6 +26,7 @@ for (const [operation, filename, name] of [
   ["vector-scoring", "vector-scoring.mjs", "runVectorScoring"],
   ["hybrid-scoring", "hybrid-scoring.mjs", "runHybridScoring"],
   ["exact-path-priority", "exact-path-priority.mjs", "runExactPathPriority"],
+  ["importance-project", "importance-project.mjs", "runImportanceProject"],
   ["embedding-cache", "embedding-cache.mjs", "runEmbeddingCache"],
   ["incremental-index", "incremental-index.mjs", "runIncrementalIndex"],
   ["index-publication", "index-publication.mjs", "runIndexPublication"],

@@ -10,10 +10,10 @@ index ingestion and persistence of those annotations are separate responsibiliti
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from enum import Enum
 import math
-from typing import Any
+from typing import Any, TypeVar
 
 from memory_core.bootstrap._js import js_trim, js_truthy, locale_sort_key
 from memory_core.index.mmr import apply_mmr_to_hybrid_results
@@ -49,6 +49,7 @@ class HybridVectorResult:
     triggers: _MetadataText = HYBRID_METADATA_MISSING
     project_key: _MetadataText = HYBRID_METADATA_MISSING
     provenance: Any = HYBRID_METADATA_MISSING
+    source_mtime: float | None | _MissingHybridMetadata = HYBRID_METADATA_MISSING
 
 
 @dataclass(frozen=True)
@@ -84,17 +85,32 @@ class HybridResult:
     triggers: _MetadataText = HYBRID_METADATA_MISSING
     project_key: _MetadataText = HYBRID_METADATA_MISSING
     provenance: Any = HYBRID_METADATA_MISSING
+    source_mtime: float | None | _MissingHybridMetadata = HYBRID_METADATA_MISSING
+    _vector_id: str | _MissingHybridMetadata = field(default=HYBRID_METADATA_MISSING, repr=False)
+    _retrieval_mode: str = field(default="hybrid", repr=False, compare=False)
+
+    @property
+    def id(self) -> str:
+        """Only the native vector-only result retains its candidate identifier."""
+        if self._vector_id is HYBRID_METADATA_MISSING:
+            raise AttributeError("This result has no candidate id")
+        return self._vector_id
 
     def to_payload(self) -> dict[str, Any]:
         """Return the complete observable result, preserving absent versus null annotations."""
         payload = {
             "path": self.path, "startLine": self.start_line, "endLine": self.end_line,
-            "score": self.score, "vectorScore": self.vector_score, "textScore": self.text_score,
+            "score": self.score,
             "snippet": self.snippet, "source": self.source,
         }
+        if self._retrieval_mode == "hybrid":
+            payload["vectorScore"] = self.vector_score
+        if self._retrieval_mode != "vector":
+            payload["textScore"] = self.text_score
         for name, value in (
             ("importance", self.importance), ("triggers", self.triggers),
             ("projectKey", self.project_key), ("provenance", self.provenance),
+            ("sourceMtime", self.source_mtime), ("id", self._vector_id),
         ):
             if value is not HYBRID_METADATA_MISSING:
                 payload[name] = value
@@ -165,6 +181,43 @@ def _project_score_multiplier(project_key: _MetadataText, active_projects: set[s
     if not project_key or project_key is HYBRID_METADATA_MISSING or not active_projects:
         return 1.0
     return 1.15 if all(key in active_projects for key in _project_keys(project_key) if key) else 0.9
+
+
+_Result = TypeVar("_Result")
+
+
+def _ranking_value(entry: Any, name: str) -> Any:
+    if isinstance(entry, Mapping):
+        return entry.get("projectKey" if name == "project_key" else name,
+                         HYBRID_METADATA_MISSING)
+    return getattr(entry, name, HYBRID_METADATA_MISSING)
+
+
+def _ranking_score(entry: _Result, score: float) -> _Result:
+    if isinstance(entry, Mapping):
+        return {**entry, "score": score}  # type: ignore[return-value]
+    return replace(entry, score=score)  # type: ignore[type-var,return-value]
+
+
+def apply_importance_multiplier(results: list[_Result]) -> list[_Result]:
+    """Apply the native bounded importance multiplier without losing result fields."""
+    return [_ranking_score(entry, _ranking_value(entry, "score")
+                           * _importance_multiplier(_ranking_value(entry, "importance")))
+            for entry in results]
+
+
+def apply_project_ranking(
+    results: list[_Result], active_project_keys: list[str] | tuple[str, ...] | None = None,
+) -> list[_Result]:
+    """Filter malformed annotations and apply exact, host-owned active-project keys."""
+    active_projects = set(active_project_keys) if active_project_keys else None
+    eligible = [entry for entry in results
+                if INVALID_PROJECT_ANNOTATION_KEY not in _project_keys(
+                    _ranking_value(entry, "project_key"))]
+    if not active_projects:
+        return eligible
+    return [_ranking_score(entry, _ranking_value(entry, "score") * _project_score_multiplier(
+        _ranking_value(entry, "project_key"), active_projects)) for entry in eligible]
 
 
 def score_exact_path_tie_for_temporal_decay(content_score: float) -> float:
@@ -314,15 +367,8 @@ def merge_hybrid_results(
     )
     active_projects = set(active_project_keys) if active_project_keys else None
     rankable: list[_Ranked] = []
-    for entry in decayed:
-        # A malformed stored project annotation excludes the candidate even
-        # when no active project filter is configured.
-        if INVALID_PROJECT_ANNOTATION_KEY in _project_keys(entry.project_key):
-            continue
-        entry.score *= _importance_multiplier(entry.importance)
+    for entry in apply_project_ranking(apply_importance_multiplier(decayed), active_project_keys):
         project_multiplier = _project_score_multiplier(entry.project_key, active_projects)
-        if active_projects:
-            entry.score *= project_multiplier
         # Exact tiers and recall-only LIKE hits keep their public confidence; their private
         # ranking score still includes every weighting pass.
         entry.ranking_score = entry.score
@@ -433,6 +479,8 @@ def select_hybrid_search_results(
 
 
 __all__ = [
+    "apply_importance_multiplier",
+    "apply_project_ranking",
     "HYBRID_METADATA_MISSING",
     "HybridKeywordResult",
     "HybridResult",

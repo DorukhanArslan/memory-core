@@ -237,6 +237,7 @@ class HostKit:
         flush_config: Mapping[str, Any] | None = None,
         flush_read_tool: Mapping[str, Any] | None = None,
         flush_read_dispatch: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None,
+        active_project_keys: Sequence[str] | None = None,
     ) -> None:
         self._memory = memory
         # Writes, ingestion and indexing must consult the same host trust ledger.
@@ -269,6 +270,11 @@ class HostKit:
         self._flush_read_dispatch = flush_read_dispatch
         self._time_format = resolve_time_format(time_format)
         self._identity = identity
+        # Project ranking context is supplied by the trusted host, never by
+        # model-authored memory_search arguments. This kit stays immutable.
+        self._active_project_keys = (
+            tuple(active_project_keys) if active_project_keys is not None else None
+        )
         self._bootstrap_max_chars = bootstrap_max_chars
         self._bootstrap_total_max_chars = bootstrap_total_max_chars
         self._context_injection = context_injection
@@ -401,12 +407,16 @@ class HostKit:
 
     def _memory_search(self, args: dict[str, Any], session: SessionState) -> dict[str, Any]:
         memory = self._memory
+        host_options: dict[str, Any] = {}
+        if self._active_project_keys is not None:
+            host_options["active_project_keys"] = self._active_project_keys
         result = execute_memory_search_tool(
             memory.config,
             memory.store,
             args,
             agent_session_key=session.session_key,
             runtime_identity=self._identity,
+            **host_options,
         )
         if self._dreaming_enabled and not result.get("unavailable"):
             # tools.ts:491-507: with dreaming enabled, a successful search records its

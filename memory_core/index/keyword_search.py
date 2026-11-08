@@ -14,9 +14,11 @@ import re
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from memory_core.bootstrap._js import js_trim, locale_sort_key
 from memory_core.index.cjk_chars import utf16_length
+from memory_core.index.hybrid import HYBRID_METADATA_MISSING
 
 EXACT_PATH_CANDIDATE_LIMIT = 200
 SNIPPET_MAX_CHARS = 700
@@ -35,6 +37,27 @@ class KeywordHit:
     path_score: float = 0.0
     exact_path_specificity: int = 0
     has_body_match: bool = True
+    importance: Any = HYBRID_METADATA_MISSING
+    triggers: Any = HYBRID_METADATA_MISSING
+    project_key: Any = HYBRID_METADATA_MISSING
+    provenance: Any = HYBRID_METADATA_MISSING
+    source_mtime: Any = HYBRID_METADATA_MISSING
+
+    def to_payload(self) -> dict[str, Any]:
+        """Serialize every native keyword field, retaining only present annotations."""
+        result = {
+            "id": self.id, "path": self.path, "startLine": self.start_line,
+            "endLine": self.end_line, "source": self.source, "snippet": self.snippet,
+            "score": self.score, "textScore": self.text_score, "pathScore": self.path_score,
+            "exactPathSpecificity": self.exact_path_specificity,
+            "hasBodyMatch": self.has_body_match,
+        }
+        for key, value in (("importance", self.importance), ("triggers", self.triggers),
+                           ("projectKey", self.project_key), ("provenance", self.provenance),
+                           ("sourceMtime", self.source_mtime)):
+            if value is not HYBRID_METADATA_MISSING:
+                result[key] = value
+        return result
 
 
 def _word_tokens(raw: str) -> list[str]:

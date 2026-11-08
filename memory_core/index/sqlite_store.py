@@ -14,7 +14,7 @@ import unicodedata
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import closing, contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
@@ -35,9 +35,13 @@ from memory_core.index.fts import bm25_rank_to_score, build_fts_query
 from memory_core.bootstrap._js import js_json_stringify, js_trim, js_utf8_encode, locale_sort_key
 from memory_core.index.cjk_chars import truncate_utf16_safe
 from memory_core.index.hybrid import (
+    HYBRID_METADATA_MISSING,
     HybridKeywordResult,
     HybridResult,
     HybridVectorResult,
+    _project_score_multiplier,
+    apply_importance_multiplier,
+    apply_project_ranking,
     merge_hybrid_results,
     score_exact_path_tie_for_temporal_decay,
     select_hybrid_search_results,
@@ -74,6 +78,8 @@ from memory_core.index.identity import (
 from memory_core.index.keywords import extract_keywords
 from memory_core.index.publication import (
     CHUNK_DETAILS_TABLE,
+    CHUNK_PROVENANCE_TABLE,
+    CHUNK_RECALL_TABLE,
     PreparedChunk,
     PreparedIndexRevision,
     PreparedSource,
@@ -103,6 +109,7 @@ KEYWORD_FALLBACK_SEARCH_TERM_LIMIT = 6
 SEARCH_CANDIDATE_UNIVERSE = 200
 HYBRID_CANDIDATE_MULTIPLIER = 4
 VECTOR_FALLBACK_BATCH_SIZE = 256
+_RecallCandidate = TypeVar("_RecallCandidate", KeywordHit, HybridVectorResult)
 
 # Chunking recorded in the index identity (chunk_markdown defaults; upstream
 # DEFAULT_CHUNK_TOKENS / DEFAULT_CHUNK_OVERLAP, src/agents/memory-search.ts).
@@ -760,6 +767,7 @@ class SQLiteMemoryStore:
         min_score: float = 0.0,
         sources: set[str] | None = None,
         signal: CancellationSignal | None = None,
+        active_project_keys: Sequence[str] | None = None,
     ) -> list[HybridResult]:
         """Search the index; ``signal`` aborts it at the next checkpoint.
 
@@ -782,18 +790,22 @@ class SQLiteMemoryStore:
         # memory/manager.ts:680-685: no hits unless the index identity is valid.
         if self.index_identity()["status"] != "valid":
             return []
-        window = max(SEARCH_CANDIDATE_UNIVERSE, max_results)
+        window = (SEARCH_CANDIDATE_UNIVERSE if active_project_keys
+                  else max(SEARCH_CANDIDATE_UNIVERSE, max_results))
         results = self._search_candidates(
             normalized,
             max_results=window,
             min_score=min_score,
             sources=sources,
             signal=signal,
+            active_project_keys=active_project_keys,
         )
-        return results[:max_results]
+        return [dataclasses.replace(result, source_mtime=HYBRID_METADATA_MISSING)
+                for result in results[:max_results]]
 
     def search_memory_keywords(
-        self, query: str, *, max_results: int = 5, min_score: float = 0.0
+        self, query: str, *, max_results: int = 5, min_score: float = 0.0,
+        active_project_keys: Sequence[str] | None = None,
     ) -> list[HybridResult]:
         """Memory-file keyword hits without the query embedding.
 
@@ -808,7 +820,8 @@ class SQLiteMemoryStore:
             or not self.flags.text_search
         ):
             return []
-        window = max(SEARCH_CANDIDATE_UNIVERSE, max_results)
+        window = (SEARCH_CANDIDATE_UNIVERSE if active_project_keys
+                  else max(SEARCH_CANDIDATE_UNIVERSE, max_results))
         candidates = min(200, max(1, window * HYBRID_CANDIDATE_MULTIPLIER))
         with self._search_connection(None) as db:
             if self.index_identity(db=db)["status"] != "valid":
@@ -816,7 +829,96 @@ class SQLiteMemoryStore:
             hits = self._search_keyword_with_fallback(
                 db, normalized, candidates, _source_filter_clause({"memory"}), None
             )
-        return self._finalize_keyword_only(hits, max_results, min_score)[:max_results]
+            hits = self.attach_recall_metadata(hits, db=db)
+        return [dataclasses.replace(result, source_mtime=HYBRID_METADATA_MISSING)
+                for result in self._finalize_keyword_only(
+                    hits, min(window, max_results), min_score,
+                    active_project_keys=active_project_keys,
+                )[:max_results]]
+
+    def read_recall_metadata(
+        self, ids: Sequence[str], *, db: sqlite3.Connection | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Read current chunk-backed annotations; missing metadata never deletes a live hit."""
+        if not ids:
+            return {}
+        if db is None:
+            with self._search_connection(None) as connection:
+                return self.read_recall_metadata(ids, db=connection)
+        rows = db.execute(
+            "SELECT c.id,r.importance,r.triggers,r.project_key,p.origin_class,p.session_kind,"
+            "p.observed_at,p.supersedes_key FROM chunks c "
+            f"LEFT JOIN {CHUNK_RECALL_TABLE} r ON r.chunk_id=c.id "
+            f"LEFT JOIN {CHUNK_PROVENANCE_TABLE} p ON p.chunk_id=c.id "
+            f"WHERE c.id IN ({','.join('?' for _ in ids)})", tuple(ids),
+        )
+        result: dict[str, dict[str, Any]] = {}
+        for chunk_id, importance, triggers, project_key, origin, kind, observed, supersedes in rows:
+            metadata = {"id": chunk_id, "importance": importance,
+                        "triggers": triggers, "project_key": project_key}
+            if (origin in {"owner", "agent", "untrusted", "system"}
+                    and kind in {"interactive", "cron", "heartbeat", "subagent", "unknown"}
+                    and isinstance(observed, (int, float)) and not isinstance(observed, bool)):
+                provenance = {"originClass": origin, "sessionKind": kind, "observedAt": observed}
+                if isinstance(supersedes, str) and js_trim(supersedes):
+                    provenance["supersedesKey"] = supersedes
+                metadata["provenance"] = provenance
+            result[chunk_id] = metadata
+        return result
+
+    def attach_recall_metadata(
+        self, candidates: Sequence[_RecallCandidate], *, db: sqlite3.Connection | None = None,
+        include_memory_mtimes: bool = True, signal: CancellationSignal | None = None,
+    ) -> list[_RecallCandidate]:
+        """Enrich retained keyword/vector candidates in the same leased read generation."""
+        if not candidates:
+            return []
+        if db is None:
+            with self._search_connection(signal) as connection:
+                return self.attach_recall_metadata(
+                    candidates, db=connection, include_memory_mtimes=include_memory_mtimes,
+                    signal=signal,
+                )
+        _checkpoint(signal)
+        metadata = self.read_recall_metadata([candidate.id for candidate in candidates], db=db)
+        live = [candidate for candidate in candidates if candidate.id in metadata]
+        mtimes: dict[tuple[str, str], Any] = {}
+        for source in ("memory", "sessions"):
+            if source == "memory" and not include_memory_mtimes:
+                continue
+            paths = list(dict.fromkeys(candidate.path for candidate in live
+                                       if candidate.source == source))
+            if paths:
+                mtimes.update(((source, path), mtime) for path, mtime in db.execute(
+                    f"SELECT path,mtime FROM {INDEX_SOURCES_TABLE} WHERE source=? AND path IN "
+                    f"({','.join('?' for _ in paths)})", (source, *paths),
+                ))
+        result = []
+        for candidate in live:
+            row = metadata[candidate.id]
+            changes = {"source_mtime": mtimes.get((candidate.source, candidate.path),
+                                                  HYBRID_METADATA_MISSING)}
+            importance = row["importance"]
+            if isinstance(importance, (int, float)) and not isinstance(importance, bool):
+                changes["importance"] = importance
+            for snake in ("triggers", "project_key"):
+                value = row[snake]
+                if isinstance(value, str) and js_trim(value):
+                    changes[snake] = js_trim(value)
+            if "provenance" in row:
+                changes["provenance"] = row["provenance"]
+            result.append(dataclasses.replace(candidate, **changes))
+        _checkpoint(signal)
+        return result
+
+    @staticmethod
+    def _source_mtimes(
+        source: str, candidates: Sequence[Any],
+    ) -> dict[str, float | None] | None:
+        entries = [candidate for candidate in candidates if candidate.source == source]
+        return ({candidate.path: (None if candidate.source_mtime is HYBRID_METADATA_MISSING
+                                  else candidate.source_mtime) for candidate in entries}
+                if entries else None)
 
     def search_vector_candidates(
         self,
@@ -956,6 +1058,7 @@ class SQLiteMemoryStore:
         min_score: float,
         sources: set[str] | None,
         signal: CancellationSignal | None,
+        active_project_keys: Sequence[str] | None = None,
     ) -> list[HybridResult]:
         source_filter = _source_filter_clause(sources)
         candidates = min(200, max(1, max_results * HYBRID_CANDIDATE_MULTIPLIER))
@@ -979,6 +1082,7 @@ class SQLiteMemoryStore:
                 keyword = self._search_keyword_with_fallback(
                     db, query, candidates, source_filter, signal
                 )
+                keyword = self.attach_recall_metadata(keyword, db=db, signal=signal)
             vector: list[HybridVectorResult] = []
             if vector_ready and any(value != 0 for value in query_embedding):
                 match_exact_path = prepare_exact_path_matcher(query)
@@ -988,16 +1092,21 @@ class SQLiteMemoryStore:
                         query_embedding, limit=candidates, sources=sources, signal=signal, db=db,
                     )
                 ]
+                vector = self.attach_recall_metadata(vector, db=db, signal=signal)
         _checkpoint(signal)
 
         if not vector_ready:
-            return self._finalize_keyword_only(keyword, max_results, min_score)
+            return self._finalize_keyword_only(
+                keyword, max_results, min_score, active_project_keys=active_project_keys,
+            )
 
         decay = TemporalDecayConfig(
             enabled=self.flags.temporal_decay,
             half_life_days=self.config.temporal_decay_half_life_days,
         )
         workspace_dir = str(self.config.workspace_dir)
+        session_mtimes = self._source_mtimes("sessions", [*keyword, *vector])
+        memory_mtimes = self._source_mtimes("memory", [*keyword, *vector])
         if not self.flags.text_search:
             # Vector-only mode mirrors OpenClaw's non-hybrid path: raw vector scores, decay,
             # a strict min-score filter, no keyword relaxation.
@@ -1012,14 +1121,26 @@ class SQLiteMemoryStore:
                         text_score=0.0,
                         snippet=item.snippet,
                         source=item.source,
+                        importance=item.importance,
+                        triggers=item.triggers,
+                        project_key=item.project_key,
+                        provenance=item.provenance,
+                        source_mtime=item.source_mtime,
+                        _vector_id=item.id,
+                        _retrieval_mode="vector",
                     )
                     for item in vector
                 ],
                 temporal_decay=decay,
                 workspace_dir=workspace_dir,
+                session_source_mtimes=session_mtimes,
+                memory_source_mtimes=memory_mtimes,
             )
             return sorted(
-                (item for item in decayed if item.score >= min_score),
+                (item for item in apply_project_ranking(
+                    apply_importance_multiplier(decayed),
+                    list(active_project_keys) if active_project_keys is not None else None,
+                ) if item.score >= min_score),
                 key=lambda item: (
                     -item.score,
                     locale_sort_key(item.path),
@@ -1043,6 +1164,10 @@ class SQLiteMemoryStore:
                     ranking_score=hit.score,
                     path_score=hit.path_score,
                     exact_path_specificity=hit.exact_path_specificity,
+                    importance=hit.importance,
+                    triggers=hit.triggers,
+                    project_key=hit.project_key,
+                    provenance=hit.provenance,
                 )
                 for hit in keyword
             ],
@@ -1052,13 +1177,17 @@ class SQLiteMemoryStore:
             temporal_decay=decay,
             mmr_enabled=self.flags.mmr,
             mmr_lambda=self.config.mmr_lambda,
+            session_source_mtimes=session_mtimes,
+            memory_source_mtimes=memory_mtimes,
+            active_project_keys=list(active_project_keys) if active_project_keys is not None else None,
         )
         return select_hybrid_search_results(
             merged=merged, keyword=keyword, max_results=max_results, min_score=min_score
         )
 
     def _finalize_keyword_only(
-        self, hits: list[KeywordHit], max_results: int, min_score: float
+        self, hits: list[KeywordHit], max_results: int, min_score: float, *,
+        active_project_keys: Sequence[str] | None = None, now_ms: int | None = None,
     ) -> list[HybridResult]:
         """``finalizeKeywordOnlyResults``: decay, tier sort, strict then relaxed min score."""
         applies_decay = self.flags.temporal_decay
@@ -1082,14 +1211,22 @@ class SQLiteMemoryStore:
                 half_life_days=self.config.temporal_decay_half_life_days,
             ),
             workspace_dir=str(self.config.workspace_dir),
+            session_source_mtimes=self._source_mtimes("sessions", hits),
+            memory_source_mtimes=self._source_mtimes("memory", hits),
+            now_ms=now_ms,
         )
         ranked = sorted(
-            decayed, key=lambda hit: keyword_hit_sort_key(hit, prefer_exact_body=not applies_decay)
+            apply_project_ranking(
+                apply_importance_multiplier(decayed),
+                list(active_project_keys) if active_project_keys is not None else None,
+            ), key=lambda hit: keyword_hit_sort_key(hit, prefer_exact_body=not applies_decay)
         )
         # Specificity and adjusted body relevance are preserved before the exact public
         # scores are normalized.
         ranked = [
-            dataclasses.replace(hit, score=1.0) if hit.exact_path_specificity > 0 else hit
+            dataclasses.replace(hit, score=_project_score_multiplier(
+                hit.project_key, set(active_project_keys) if active_project_keys else None,
+            )) if hit.exact_path_specificity > 0 else hit
             for hit in ranked
         ]
         strict = [hit for hit in ranked if hit.score >= min_score]
@@ -1104,6 +1241,12 @@ class SQLiteMemoryStore:
                 text_score=hit.text_score,
                 snippet=hit.snippet,
                 source=hit.source,
+                importance=hit.importance,
+                triggers=hit.triggers,
+                project_key=hit.project_key,
+                provenance=hit.provenance,
+                source_mtime=hit.source_mtime,
+                _retrieval_mode="keyword",
             )
             for hit in selected
         ]

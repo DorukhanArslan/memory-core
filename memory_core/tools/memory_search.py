@@ -38,7 +38,7 @@ import math
 import re
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -46,6 +46,7 @@ from typing import Any
 from memory_core.bootstrap._js import js_trim
 from memory_core.cancellation import CancellationSignal
 from memory_core.config import MemoryConfig
+from memory_core.index.hybrid import HYBRID_METADATA_MISSING
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.project_name import DIST_NAME
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
@@ -496,6 +497,7 @@ def execute_memory_search_tool(
     supplements: list[MemoryCorpusSupplement] | None = None,
     agent_session_key: str | None = None,
     runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+    active_project_keys: Sequence[str] | None = None,
 ) -> dict:
     """Run ``memory_search`` on raw tool-call params (the model's arguments).
 
@@ -505,6 +507,9 @@ def execute_memory_search_tool(
     stores that open the same index file with the same agent id share it.
     """
     parsed = read_memory_search_params(params)
+    # Like native MemoryToolOptions, this is trusted host context rather than
+    # a model-authored tool parameter. Keep one snapshot across worker/fallback.
+    active_projects = tuple(active_project_keys) if active_project_keys is not None else None
     return _run_memory_search_tool(
         config,
         store,
@@ -512,6 +517,7 @@ def execute_memory_search_tool(
         supplements=supplements or [],
         agent_session_key=agent_session_key,
         runtime_identity=runtime_identity,
+        active_project_keys=active_projects,
     )
 
 
@@ -526,6 +532,7 @@ def memory_search(
     supplements: list[MemoryCorpusSupplement] | None = None,
     agent_session_key: str | None = None,
     runtime_identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+    active_project_keys: Sequence[str] | None = None,
 ) -> dict:
     """Python-call form of the tool; ``None`` for a param means "omitted"."""
     return execute_memory_search_tool(
@@ -535,6 +542,7 @@ def memory_search(
         supplements=supplements,
         agent_session_key=agent_session_key,
         runtime_identity=runtime_identity,
+        active_project_keys=active_project_keys,
     )
 
 
@@ -567,6 +575,7 @@ def _run_memory_search_tool(
     supplements: list[MemoryCorpusSupplement],
     agent_session_key: str | None,
     runtime_identity: RuntimeIdentity,
+    active_project_keys: Sequence[str] | None = None,
 ) -> dict:
     """``createMemorySearchTool``'s execute (tools.ts:402-702).
 
@@ -601,6 +610,9 @@ def _run_memory_search_tool(
     )
 
     def search_memory_worker(signal: CancellationSignal) -> dict:
+        host_options: dict[str, Any] = {}
+        if active_project_keys is not None:
+            host_options["active_project_keys"] = active_project_keys
         hits = store.search(
             params.query,
             max_results=max_results,
@@ -609,6 +621,7 @@ def _run_memory_search_tool(
                 requested_corpus, session_search=config.session_search
             ),
             signal=signal,
+            **host_options,
         )
         # tools.ts:563-568: a missing or mismatched index identity pauses search
         # (no cooldown). Upstream's empty-result forced sync retry has no
@@ -662,6 +675,7 @@ def _run_memory_search_tool(
                 min_score=min_score,
                 cooldown_key=cooldown_key,
                 runtime_identity=runtime_identity,
+                active_project_keys=active_project_keys,
             )
     wiki: CorpusAttempt | None = None
     if wiki_deadline_worker is not None:
@@ -751,6 +765,7 @@ def _settle_memory_attempt(
     min_score: float,
     cooldown_key: str,
     runtime_identity: RuntimeIdentity,
+    active_project_keys: Sequence[str] | None = None,
 ) -> CorpusAttempt:
     """The memory corpus's attempt from its worker's outcome (``attemptMemoryCorpus``)."""
     if outcome.status == "ok":
@@ -774,8 +789,11 @@ def _settle_memory_attempt(
         # The keyword pass is what a deadline leaves: memory-file FTS hits without the
         # query embedding. A failed or empty pass is an ordinary unavailable corpus.
         try:
+            host_options: dict[str, Any] = {}
+            if active_project_keys is not None:
+                host_options["active_project_keys"] = active_project_keys
             keyword_hits = store.search_memory_keywords(
-                params.query, max_results=max_results, min_score=min_score
+                params.query, max_results=max_results, min_score=min_score, **host_options,
             )
         except Exception:
             keyword_hits = []
@@ -865,17 +883,33 @@ def _serialize_result(config: MemoryConfig, item) -> dict:
     snippet_text = snippet.text
     if config.citation_mode == "on":
         snippet_text = f"{snippet.text.strip()}\n\nSource: {citation}"
-    return {
+    to_payload = getattr(item, "to_payload", None)
+    if callable(to_payload):
+        # The store owns native result-field presence for keyword, vector and
+        # hybrid retrieval. Retain every public field it exposes.
+        result = dict(to_payload())
+    else:
+        # Existing custom result objects retain their component diagnostics.
+        result = {"vectorScore": item.vector_score, "textScore": item.text_score}
+        for public, attribute in (
+            ("importance", "importance"), ("triggers", "triggers"),
+            ("projectKey", "project_key"), ("provenance", "provenance"),
+        ):
+            value = getattr(item, attribute, HYBRID_METADATA_MISSING)
+            if value is not HYBRID_METADATA_MISSING:
+                result[public] = value
+    # This indexed timestamp supports ranking, not the public tool contract.
+    result.pop("sourceMtime", None)
+    result.update({
         "corpus": item.source,
         "path": item.path,
         "startLine": item.start_line,
         "endLine": item.end_line,
         "score": item.score,
-        "vectorScore": item.vector_score,
-        "textScore": item.text_score,
         "snippet": snippet_text,
         "source": item.source,
         "citation": source_label(item.path, item.start_line, item.end_line),
         "truncated": snippet.truncated,
         "originalChars": snippet.original_chars,
-    }
+    })
+    return result

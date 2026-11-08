@@ -192,6 +192,18 @@ For `Memory.from_workspace()` and `HostKit.open()`, hybrid search is the default
 Without one, initialization raises an error. To use local keyword search, explicitly set `FeatureFlags(vector_search=False)`.
 See [Feature Flags](docs/feature_flags.md) for search controls.
 
+Stored importance and project annotations participate in ranking. Supply the current project
+from trusted application context:
+
+```python
+result = memory.search("project decisions", active_project_keys=["alpha"])
+kit = HostKit(memory, active_project_keys=["alpha"])
+```
+
+`HostKit.open(..., active_project_keys=["alpha"])` accepts the same option. The model-facing
+`memory_search` schema is unchanged; tool arguments cannot override this host context. Trigger
+annotations are returned as metadata and do not automatically select or inject memories.
+
 ## Run the Lab
 
 See the memory layer at work in a browser: inspect prompts, search results, saved notes, and session events.

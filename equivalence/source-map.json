@@ -1972,31 +1972,31 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog",
           "anchor": "class MemorySessionCatalog:",
-          "line": 268
+          "line": 273
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.upsert_session",
           "anchor": "    def upsert_session(",
-          "line": 477
+          "line": 482
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 963
+          "line": 991
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1048
+          "line": 1076
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_archive",
           "anchor": "    def record_archive(",
-          "line": 937
+          "line": 965
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -2020,19 +2020,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_participant",
           "anchor": "    def record_participant(",
-          "line": 842
+          "line": 870
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_participants",
           "anchor": "    def list_participants(",
-          "line": 909
+          "line": 937
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.load_session_metadata",
           "anchor": "    def load_session_metadata(",
-          "line": 1138
+          "line": 1166
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -2044,7 +2044,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.get_session_entry",
           "anchor": "    def get_session_entry(",
-          "line": 449
+          "line": 454
         }
       ],
       "implementation": "partial",
@@ -2236,7 +2236,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1048
+          "line": 1076
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -2410,25 +2410,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1048
+          "line": 1076
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_reset_cutoff",
           "anchor": "    def read_reset_cutoff(",
-          "line": 1076
+          "line": 1104
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 963
+          "line": 991
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.tombstone_session",
           "anchor": "    def tombstone_session(",
-          "line": 952
+          "line": 980
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -2628,25 +2628,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.append_message",
           "anchor": "    def append_message(",
-          "line": 682
+          "line": 710
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_continuation",
           "anchor": "    def read_continuation(",
-          "line": 1082
+          "line": 1110
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_anchor",
           "anchor": "    def read_anchor(",
-          "line": 802
+          "line": 830
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_transcript_instances",
           "anchor": "    def list_transcript_instances(",
-          "line": 984
+          "line": 1012
         },
         {
           "path": "memory_core/session_context.py",

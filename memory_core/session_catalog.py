@@ -106,6 +106,11 @@ def _finite(value: object) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 
+def _transcript_event_id(event: object) -> str | None:
+    value = event.get("id") if isinstance(event, Mapping) else None
+    return (js_trim(value) or None) if isinstance(value, str) else None
+
+
 def _internal_key(key: str) -> bool:
     end = key.find(":", 6)
     return key.startswith("agent:") and end >= 0 and key[end + 1:].startswith("internal-session-effects:")
@@ -592,6 +597,29 @@ class MemorySessionCatalog:
                 "SELECT event_json,byte_size FROM memory_session_events WHERE agent=? AND session_id=? ORDER BY seq",
                 (self.agent_id, session_id),
             ).fetchall()
+            # The native SQL identity owner keeps the first row for a nonempty,
+            # trimmed event ID. Unidentified rows remain distinct physical rows.
+            seen = set() if replace else {
+                identity for row in previous
+                if (identity := _transcript_event_id(json.loads(row["event_json"]))) is not None
+            }
+            admitted = []
+            for event, text in zip(events, serialized, strict=True):
+                identity = _transcript_event_id(event)
+                if identity is not None:
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                admitted.append((event, text))
+            events = [event for event, _text in admitted]
+            serialized = [text for _event, text in admitted]
+            if not serialized and not replace:
+                return
+            if replace and not serialized and not previous and db.execute(
+                "SELECT 1 FROM memory_session_transcript_state WHERE agent=? AND session_id=?",
+                (self.agent_id, session_id),
+            ).fetchone() is None:
+                return
             if replace:
                 db.execute("DELETE FROM memory_session_events WHERE agent=? AND session_id=?", (self.agent_id, session_id))
             start = db.execute("SELECT COALESCE(MAX(seq),0) FROM memory_session_events WHERE agent=? AND session_id=?",

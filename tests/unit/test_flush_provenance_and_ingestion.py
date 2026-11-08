@@ -269,9 +269,17 @@ def test_the_host_kit_passes_recall_events_to_the_host(tmp_path: Path) -> None:
     (root / "MEMORY.md").write_text("- The quokkabyte importer is documented here.\n", "utf-8")
     events: list[dict[str, Any]] = []
     kit = _kit(root, dreaming_enabled=True, on_event=events.append)
-    result = kit.dispatch("memory_search", {"query": "quokkabyte importer"}, session=SESSION)
+    # Exercise both recall-event paths independently of dated-hit decay and
+    # the native 0.35 default relevance threshold.
+    result = kit.dispatch(
+        "memory_search", {"query": "quokkabyte importer", "minScore": 0}, session=SESSION,
+    )
     assert result["results"]
     types = [event["type"] for event in events]
     assert types[0] == "memory.recall.recorded"
     assert set(types) <= {"memory.recall.recorded", "memory.recall.skipped"}
     assert events[0]["resultCount"] >= 1 and events[0]["results"][0]["path"] == "memory/2026-09-25.md"
+    recalls = json.loads(recall_store_path(root).read_text("utf-8"))["entries"]
+    assert [entry["snippet"] for entry in recalls.values()] == [
+        "- The quokkabyte importer runs at night.",
+    ]

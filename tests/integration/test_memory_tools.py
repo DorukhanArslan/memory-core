@@ -263,8 +263,8 @@ def test_memory_search_returns_hybrid_results(tmp_path: Path):
     assert result["model"] == "fake-deterministic"
     assert result["results"][0]["path"] == "MEMORY.md"
     assert result["results"][0]["corpus"] == "memory"
-    assert result["citations"] == "on"
-    assert result["results"][0]["citation"] == "Source: MEMORY.md#L1-L2"
+    assert result["citations"] == "auto"
+    assert result["results"][0]["citation"] == "MEMORY.md#L1-L2"
     assert result["results"][0]["snippet"].endswith("\n\nSource: MEMORY.md#L1-L2")
 
 
@@ -446,7 +446,7 @@ def test_memory_search_corpus_all_balances_memory_and_supplements(tmp_path: Path
     assert len(paths_by_corpus) == 5
 
 
-def test_memory_search_clamps_snippets_and_reports_truncation(tmp_path: Path):
+def test_memory_search_preserves_snippets_independent_of_memory_get_budget(tmp_path: Path):
     (tmp_path / "MEMORY.md").write_text(
         "User likes lemon pepper wings with blue cheese.\n", encoding="utf-8"
     )
@@ -461,10 +461,12 @@ def test_memory_search_clamps_snippets_and_reports_truncation(tmp_path: Path):
     result = memory_search(cfg, store, query="lemon pepper", max_results=1, min_score=0.0)
 
     first = result["results"][0]
-    assert first["snippet"] == "User likes\n\nSource: MEMORY.md#L1-L2"
-    assert first["truncated"] is True
-    assert first["originalChars"] > 10
-    assert first["citation"] == "Source: MEMORY.md#L1-L2"
+    assert first["snippet"] == (
+        "User likes lemon pepper wings with blue cheese.\n\nSource: MEMORY.md#L1-L2"
+    )
+    assert "truncated" not in first
+    assert "originalChars" not in first
+    assert first["citation"] == "MEMORY.md#L1-L2"
 
 
 def test_temporal_decay_affects_store_search_order(tmp_path: Path):

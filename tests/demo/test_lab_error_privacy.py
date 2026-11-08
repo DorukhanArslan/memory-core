@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 
 import pytest
 
@@ -161,16 +162,37 @@ def test_returned_diagnostics_are_private_before_tool_records_events_and_feedbac
         assert toolbox.calls[0]["result"]["cause"] == {"code": "ECONNREFUSED"}
 
 
-def test_successful_tool_content_is_unchanged(lab):
+def test_successful_tool_content_is_unchanged(lab, monkeypatch):
     lab.ensure()
     store = lab.store(lab.resolve_embedding({}), mode="text")
     lab.reindex(store)
     kit = lab.kit(store)
     toolbox = LabToolbox(lab, kit, lab.session("main"), None, secrets=(KEY,))
+    owner_dispatch = HostKit.dispatch
+    owner_results = []
+
+    def capture_owner_result(self, *args, **kwargs):
+        result = owner_dispatch(self, *args, **kwargs)
+        # Capture the complete result before the Lab's privacy boundary. One
+        # real search keeps its genuine timing fields comparable without a
+        # second operation, field projection, or replacement payload.
+        owner_results.append(deepcopy(result))
+        return result
+
+    monkeypatch.setattr(HostKit, "dispatch", capture_owner_result)
 
     record = toolbox.dispatch("c1", "memory_search", '{"query":"note"}')
 
-    assert record["result"] == {"results": [], "provider": "none", "model": "fts-only", "citations": "on"}
+    assert len(owner_results) == 1
+    assert record["result"] == owner_results[0]
+    assert record["result"]["results"] == []
+    assert record["result"]["provider"] == "none"
+    assert "model" not in record["result"]
+    assert record["result"]["citations"] == "auto"
+    assert set(record["result"]["debug"]) == {
+        "backend", "effectiveMode", "searchMs", "hits", "candidateHits",
+        "withheldHits", "searchWindow", "toolMs", "outsideSearchMs",
+    }
 
 
 @pytest.mark.parametrize("result", [

@@ -257,7 +257,15 @@ def test_has_tool_calls_counts_invalid_calls():
     assert not has_tool_calls(HumanMessage("hi"))
 
 
-def test_tool_messages_answer_every_call_through_dispatch(tmp_path: Path):
+def test_tool_messages_answer_every_call_through_dispatch(tmp_path: Path, monkeypatch):
+    import memory_core.host.kit as kit_module
+    from memory_core.tools.memory_search import MemorySearchToolContext, execute_memory_search_tool
+
+    context = MemorySearchToolContext(clock=lambda: 1_790_375_400_000)
+    monkeypatch.setattr(
+        kit_module, "execute_memory_search_tool",
+        lambda *args, **kwargs: execute_memory_search_tool(*args, context=context, **kwargs),
+    )
     (tmp_path / "MEMORY.md").write_text("- The project codename is velvetkiwi.\n", encoding="utf-8")
     kit = _kit(tmp_path)
     dispatch = kit.dispatcher(_session())

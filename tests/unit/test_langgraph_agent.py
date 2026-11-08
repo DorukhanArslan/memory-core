@@ -173,7 +173,15 @@ def test_build_graph_requires_the_model_context_window(tmp_path: Path):
         example.build_graph(_kit(tmp_path), ScriptedChatModel(script=lambda _messages: None))
 
 
-def test_turn_offers_the_kit_tools_and_answers_memory_search(tmp_path: Path):
+def test_turn_offers_the_kit_tools_and_answers_memory_search(tmp_path: Path, monkeypatch):
+    import memory_core.host.kit as kit_module
+    from memory_core.tools.memory_search import MemorySearchToolContext, execute_memory_search_tool
+
+    context = MemorySearchToolContext(clock=lambda: NOW_MS)
+    monkeypatch.setattr(
+        kit_module, "execute_memory_search_tool",
+        lambda *args, **kwargs: execute_memory_search_tool(*args, context=context, **kwargs),
+    )
     kit, model, graph = _graph(tmp_path, memory_script(usage=1_000))
 
     state = _say(graph, "Our codename is velvetkiwi.")
@@ -319,7 +327,8 @@ def test_second_turn_finds_the_flushed_fact(tmp_path: Path):
     (hit,) = search["results"]
     assert (hit["path"], hit["startLine"]) == (DAILY, 1)
     assert FACT in hit["snippet"]
-    assert hit["citation"] == f"Source: {DAILY}#L1"
+    assert hit["citation"] == f"{DAILY}#L1"
+    assert f"Source: {hit['citation']}" in hit["snippet"]
     # The second turn's model input replays the first turn's transcript.
     replayed = [message.content for message in _chat_calls(model)[2].messages[1:]]
     assert replayed[:4] == ["Our codename is velvetkiwi.", "", replayed[2], "reply 1"]

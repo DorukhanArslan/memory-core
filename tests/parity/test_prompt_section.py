@@ -92,4 +92,4 @@ def test_prompt_section_with_citations_off_matches_upstream_text():
 
 def test_prompt_section_rejects_invalid_citations_mode():
     with pytest.raises(ValueError):
-        build_prompt_section({"memory_search"}, citations_mode="auto")
+        build_prompt_section({"memory_search"}, citations_mode="invalid")

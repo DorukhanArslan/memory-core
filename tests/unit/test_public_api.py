@@ -33,6 +33,7 @@ ROOT_API = {
     "MEMORY_CORE_WORKSPACE_LAYOUT",
     "OPENCLAW_COMPAT_LAYOUT",
     "MemoryToolInputError",
+    "MemoryToolError",
     "CurationError",
     "UnsafeMemoryPathError",
     "WorkspaceStateMigrationRequiredError",

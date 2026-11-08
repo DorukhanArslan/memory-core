@@ -801,14 +801,14 @@ def test_tool_loop_dispatches_curation_and_memory_tools(client, lab, monkeypatch
     tool_reply = engine.calls[1]["messages"][-1]
     assert tool_reply["role"] == "tool" and tool_reply["tool_call_id"] == "c2"
     recalled = json.loads(tool_reply["content"])
-    assert recalled["provider"] == "none" and recalled["model"] == "fts-only"
-    assert recalled["citations"] == "on"
+    assert recalled["provider"] == "none" and "model" not in recalled
+    assert recalled["citations"] == "auto"
     # The immediately following tool call must see the committed USER.md
     # directive, without waiting for another turn or reopening the Lab.
     assert len(recalled["results"]) == 1
     assert recalled["results"][0]["path"] == "USER.md"
     assert "Always answer briefly, in bullet points." in recalled["results"][0]["snippet"]
-    assert recalled["results"][0]["citation"].startswith("Source: USER.md#L")
+    assert recalled["results"][0]["citation"].startswith("USER.md#L")
     assert "- Always answer briefly, in bullet points." in (lab.root / "USER.md").read_text(encoding="utf-8")
     detail = frames_of(frames, "turn_done")[0]["detail"]
     # The flush follows the reply (v2026.9.6 session maintenance, decision Q1).
@@ -2096,13 +2096,13 @@ def test_default_lab_is_fts_only_and_never_builds_an_embedder(client, lab, embed
     status = client.get("/api/lab/index/status").json()
 
     assert result["mode"] == "text"
-    assert result["provider"] == "none" and result["model"] == "fts-only"
+    assert result["provider"] == "none" and "model" not in result
     assert result["embeddings"]["mode"] == "fts-only"
     assert result["embeddings"]["label"] == "yalnız FTS"
     assert "openrouter.ai" in result["embeddings"]["reason"]
     assert "vectorScore" not in result["results"][0]
     assert result["results"][0]["textScore"] > 0
-    assert result["results"][0]["citation"].startswith(f"Source: memory/{lab.today()}.md#L")
+    assert result["results"][0]["citation"].startswith(f"memory/{lab.today()}.md#L")
     assert result["identity"]["status"] == "valid"
     assert result["reindexed"] is True and isinstance(result["ms"], int)
     assert hybrid.status_code == 400 and hybrid.json()["code"] == "fts_only"

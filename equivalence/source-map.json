@@ -2404,7 +2404,7 @@
           "path": "memory_core/consolidation/recall.py",
           "symbol": "is_contaminated_dreaming_snippet",
           "anchor": "def is_contaminated_dreaming_snippet(raw: str, *, allow_transcript_turn_snippet: bool = False) -> bool:",
-          "line": 606
+          "line": 607
         }
       ],
       "implementation": "partial",

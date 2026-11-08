@@ -596,7 +596,8 @@ def undecorate_search_results(results: Iterable[Mapping[str, Any]]) -> list[dict
         snippet = item.get("snippet")
         citation = item.get("citation")
         if isinstance(snippet, str) and isinstance(citation, str) and citation:
-            suffix = f"\n\n{citation}"
+            label = citation if citation.startswith("Source: ") else f"Source: {citation}"
+            suffix = f"\n\n{label}"
             if snippet.endswith(suffix):
                 item["snippet"] = snippet[: -len(suffix)]
         undecorated.append(item)

@@ -1188,3 +1188,29 @@ supplements, including partial/multiple failure ordering. Real transcript visibi
 provider/fallback/bootstrap execution, stale/rebuild lifecycle, deadline/cooldown timing and
 all other contracts remain uncredited by this batch. The existing Unicode path-order and
 warm first-recall differences remain visible. No paid provider calls are required.
+
+
+The first committed integrated report, `.equivalence-results/search-contract-full.json`,
+ran all **1,015 cases** against `582f5bd8a4f4f0c97348fccc49c23d9320724da5`: **1,013 matches,
+two retained mismatches, zero blocked cases and no runner errors**. All 69 search cases
+matched, including the tightened configured-default and disabled-config inputs. Both search
+acceptance points passed in that report; 93 other acceptance points remained uncovered.
+The only differences were the existing Unicode path-order and warm first-recall diagnostics.
+
+The first complete regression log retained **3,241 passes and 11 failures**, with the same
+1,625 historical/live checks skipped. Ten failures were prior shape/clock/API expectations;
+the remaining event fixture now supplies `minScore=0` explicitly so dated-hit decay does not
+change its event-delivery purpose. A stronger persisted-snippet assertion then exposed a
+real integration defect: the recall recorder failed to remove the new plain-label citation
+suffix. The first new regressions retain three failures before the fix. Undecoration now
+removes the actual `Source:` suffix while retaining legacy prefixed-label compatibility,
+metadata and caller inputs. All 25 targeted recall/ingestion checks pass after the fix.
+These changes add no acceptance points and do not broaden the fixed scope.
+
+Affected demo/integration and LangGraph checks pass with complete payloads retained under
+paired clocks. The official wheel/sdist script passed isolated core-only installs, imports,
+real FTS HostKit flow, dependency checks and public API typing on the first implementation.
+Initial package checks were blocked by missing cache entries and sandbox proxy access; their
+logs were preserved, and the unchanged script succeeded with official dependencies and the
+inherited proxy/TLS settings. Final source validation, the full regression rerun, clean
+package consumers and the final integrated comparison are pending for the recall fix.

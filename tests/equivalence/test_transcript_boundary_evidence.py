@@ -1,4 +1,5 @@
 """Non-executing wire fixtures test evidence rejection, never native equivalence."""
+from copy import deepcopy
 import hashlib
 
 import pytest
@@ -43,7 +44,7 @@ def _fixture(tmp_path, *, source="jsonl", compressed=False, observer=False):
            "constructorSkipped": True, "managerFixture": False, "indexManagerConstructed": False,
            "clock": {"owner": "node:test", "apis": ["Date"], "nowMs": _NOW,
                      "dateConstructorReplaced": True, "setTimeoutUnchanged": True, "performanceNowUnchanged": True},
-           "mutations": [{"op": "initial", "input": input["initial"]}],
+           "mutations": [{"op": "initial", "input": input["initial"]}], "writeCalls": [],
            "reads": [{"request": {"absPath": identity, "options": options}, "result": result}],
            "sourceCaptures": [], "cacheCaptures": [],
            "observerCalls": [{"readIndex": 0, "message": event["message"], "timestampMs": _NOW}] if observer else [],
@@ -52,6 +53,8 @@ def _fixture(tmp_path, *, source="jsonl", compressed=False, observer=False):
     workers = []
     if source == "sqlite":
         raw["sourceCaptures"] = [{"scope": scope, "entry": {"sessionId": "boundary", "updatedAt": _NOW}, "events": [event]}]
+        raw["writeCalls"] = [{"request": {"scope": deepcopy(scope), "events": deepcopy([event])},
+                              "capture": deepcopy(raw["sourceCaptures"][0])}]
         loaded.update(SQLITE_BOUNDARY_ARTIFACTS)
         if not observer:
             loaded.update(TRANSCRIPT_WORKER_PARENT_ARTIFACTS)
@@ -190,3 +193,31 @@ def test_unknown_native_entry_metadata_must_be_preserved(tmp_path):
     fixture[0]["result"] = map_get_fixture_paths(
         {"provider": "none", "reads": [fixture[2][0]["reads"][0]["result"]]}, fixture[2][0]["fixtureBase"])
     _validate(fixture, tmp_path)
+
+
+def test_actual_writer_input_and_transformed_persisted_source_remain_distinct(tmp_path):
+    fixture = _fixture(tmp_path, source="sqlite")
+    # A literal duplicate identity is supplied to the genuine writer. This wire
+    # fixture gives its independently observed stored result, without replaying
+    # or asserting the private deduplication algorithm in the evidence guard.
+    duplicate = {"type": "leaf", "id": "u1"}
+    fixture[1]["input"]["initial"]["events"].append(duplicate)
+    fixture[2][0]["writeCalls"][0]["request"]["events"].append(deepcopy(duplicate))
+    _validate(fixture, tmp_path)
+    assert len(fixture[2][0]["writeCalls"][0]["request"]["events"]) == 2
+    assert len(fixture[2][0]["sourceCaptures"][0]["events"]) == 1
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda f: f[2][0]["writeCalls"].clear(),
+    lambda f: f[2][0]["writeCalls"][0]["request"]["events"].clear(),
+    lambda f: f[2][0]["writeCalls"][0]["request"]["scope"].update(sessionId="other"),
+    lambda f: f[2][0]["writeCalls"][0]["capture"]["events"].clear(),
+    lambda f: f[2][0]["writeCalls"][0]["capture"]["entry"].update(unretainedNativeMetadata=True),
+    lambda f: f[2][0]["writeCalls"][0].pop("capture"),
+])
+def test_literal_writer_request_and_actual_stored_source_chain_cannot_be_substituted(tmp_path, mutation):
+    fixture = _fixture(tmp_path, source="sqlite")
+    mutation(fixture)
+    with pytest.raises(RuntimeOracleError):
+        _validate(fixture, tmp_path)

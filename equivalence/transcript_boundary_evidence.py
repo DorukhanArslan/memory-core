@@ -64,7 +64,7 @@ def validate_transcript_boundary_raw(
                 and re.fullmatch(r"native-transcript-boundary-[A-Za-z0-9_-]+", Path(base).name) is not None,
                 "Transcript source evidence escaped its owned fixture directory")
         require(set(raw) == {"fixtureBase", "kind", "source", "constructorSkipped", "managerFixture",
-                             "indexManagerConstructed", "clock", "mutations", "reads", "sourceCaptures",
+                             "indexManagerConstructed", "clock", "mutations", "writeCalls", "reads", "sourceCaptures",
                              "cacheCaptures", "observerCalls", "environmentFault"},
                 "Transcript source evidence omitted or invented an observation channel")
         require(raw.get("kind") == "boundary" and raw.get("source") == source
@@ -97,7 +97,7 @@ def validate_transcript_boundary_raw(
                 "Source reads require ordered literal mutation/read steps")
         read_steps = [step for step in steps if step.get("op") == "read"]
         require(bool(read_steps), "A transcript boundary fixture did not execute a source read")
-        for name in ("reads", "sourceCaptures", "cacheCaptures", "observerCalls", "mutations"):
+        for name in ("reads", "sourceCaptures", "cacheCaptures", "observerCalls", "mutations", "writeCalls"):
             require(isinstance(raw[name], list), "A source observation channel is not a complete ordered array")
         require(all(isinstance(read, dict) and set(read) == {"request", "result"}
                     and isinstance(read["request"], dict) and isinstance(read["result"], dict) for read in raw["reads"]),
@@ -113,6 +113,19 @@ def validate_transcript_boundary_raw(
             if step.get("op") != "read":
                 mutations.append({"op": step.get("op"), **({"label": step["label"]} if "label" in step else {}), "input": step})
         require(_same_json(raw["mutations"], mutations), "Actual transcript mutations differ from the shared literal inputs")
+        write_inputs = [mutation["input"] for mutation in mutations
+                        if mutation["op"] in {"initial", "write", "replace-events"}] if source == "sqlite" else []
+        require(len(raw["writeCalls"]) == len(write_inputs),
+                "Actual SQLite writer requests or post-write source captures were dropped or duplicated")
+        for call, value in zip(raw["writeCalls"], write_inputs, strict=True):
+            require(isinstance(call, dict) and set(call) == {"request", "capture"}
+                    and _same_json(call["request"], {"scope": scope, "events": value.get("events") or []}),
+                    "The original SQLite writer did not receive the shared complete literal request")
+            captured = call["capture"]
+            require(isinstance(captured, dict) and set(captured) == {"scope", "entry", "events"}
+                    and _same_json(captured["scope"], scope) and isinstance(captured["entry"], dict)
+                    and isinstance(captured["events"], list),
+                    "The actual completed SQLite writer lost its complete persisted source capture")
         compressed = source == "jsonl" and filename.endswith(".zst")
         require(len(raw["cacheCaptures"]) == (len(read_steps) if compressed else 0),
                 "Archive cache observations were dropped or attached to another source profile")
@@ -146,6 +159,11 @@ def validate_transcript_boundary_raw(
             state_events = arguments["initial"].get("events") or []
             state_mtime = arguments["initial"].get("mtimeMs", now)
         read_index = 0
+        write_index = 0
+        stored_source = None
+        if source == "sqlite" and "initial" in arguments and arguments["initial"] is not None:
+            stored_source = raw["writeCalls"][write_index]["capture"]
+            write_index += 1
         worker_needed = False
         for step in steps:
             operation = step.get("op")
@@ -160,6 +178,9 @@ def validate_transcript_boundary_raw(
                     state_kind, state_bytes = ("symlink" if operation == "symlink" else "file"), encoded
                     state_events = step.get("events") or []
                     state_mtime = step.get("mtimeMs", now)
+                    if source == "sqlite":
+                        stored_source = raw["writeCalls"][write_index]["capture"]
+                        write_index += 1
                 else:
                     state_kind, state_bytes = ("missing" if operation == "remove" else "directory"), None
                 continue
@@ -212,8 +233,12 @@ def validate_transcript_boundary_raw(
             if source == "sqlite":
                 require(set(capture) in ({"scope", "entry", "events"}, {"scope", "error"})
                         and _same_json(capture.get("scope"), scope), "A SQLite capture read another catalog owner or transcript")
-                if "events" in capture:
-                    require(_same_json(capture["events"], state_events), "The persisted SQLite source events differ from the shared literal writer input")
+                if stored_source is not None:
+                    require(_same_json(capture, stored_source),
+                            "A SQLite read source differs from the complete actual post-write persisted capture")
+                elif "events" in capture:
+                    require(_same_json(capture["events"], state_events),
+                            "An unwritten SQLite source invented persisted transcript events")
                 else:
                     require(isinstance(capture.get("error"), dict), "An unavailable SQLite source lost its actual operational failure")
                 worker_needed |= not observing and "parseYieldEveryLines" not in options

@@ -70,6 +70,9 @@ class HostKit:
         flush_config: Mapping[str, Any] | None = None,
         flush_read_tool: Mapping[str, Any] | None = None,
         flush_read_dispatch: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None,
+        active_project_keys: Sequence[str] | None = None,
+        session_visibility: SessionVisibilityContext | None = None,
+        source_policy: Mapping[str, Any] | None = None,
     ) -> None: ...
 
     @classmethod
@@ -79,6 +82,9 @@ class HostKit:
         *,
         embedding_provider: EmbeddingProvider | None = None,
         config: MemoryConfig | None = None,
+        session_catalog: MemorySessionCatalog | None = None,
+        session_visibility: SessionVisibilityContext | None = None,
+        source_policy: Mapping[str, Any] | None = None,
         **options,  # the keyword options of __init__
     ) -> HostKit: ...
 
@@ -86,6 +92,13 @@ class HostKit:
     curator: MemoryCurator    # read-only; the curator dispatch() uses
     def ensure(self) -> WorkspaceInitResult: ...
 ```
+
+Session transcripts use the optional persisted `session_catalog`, supplied to `open()` or
+to `Memory.from_workspace()`. The kit inherits that memory's visibility and source policy;
+explicit constructor policies override the inherited values. Each `memory_search` dispatch
+uses the actual `SessionState.session_key`. Model arguments cannot replace the requester,
+policy or catalog. See [Session Authority](session_authority.md) for complete SDK wiring,
+explicit transcript persistence/index refresh and guarded current-session source reads.
 
 - Every option is an input some core function already takes:
   `layout`, `templates`, `seed_bootstrap` (`initialize_agent_workspace`); `timezone` and

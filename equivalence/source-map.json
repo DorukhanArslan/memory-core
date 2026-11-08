@@ -34,13 +34,13 @@
           "path": "memory_core/workspace.py",
           "symbol": "list_memory_files",
           "anchor": "def list_memory_files(workspace_dir: Path) -> list[Path]:",
-          "line": 60
+          "line": 61
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 469
+          "line": 486
         }
       ],
       "implementation": "partial",
@@ -74,19 +74,19 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_read_path",
           "anchor": "    def resolve_memory_read_path(self, raw_path: str) -> tuple[str, Path | None]:",
-          "line": 506
+          "line": 525
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_path",
           "anchor": "    def resolve_memory_path(self, rel_path: str) -> Path:",
-          "line": 497
+          "line": 516
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "check_writable_memory_file",
           "anchor": "def check_writable_memory_file(root: Path, rel_path: str) -> None:",
-          "line": 223
+          "line": 224
         }
       ],
       "implementation": "partial",
@@ -126,13 +126,13 @@
           "path": "memory_core/workspace.py",
           "symbol": "append_daily_memory_file",
           "anchor": "def append_daily_memory_file(",
-          "line": 249
+          "line": 250
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "workspace_file_lock",
           "anchor": "def workspace_file_lock(root: Path, rel_path: str) -> threading.Lock:",
-          "line": 205
+          "line": 206
         }
       ],
       "implementation": "partial",
@@ -308,7 +308,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 722
+          "line": 729
         }
       ],
       "implementation": "present",
@@ -400,13 +400,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 478
+          "line": 485
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 722
+          "line": 729
         },
         {
           "path": "memory_core/index/preparation.py",
@@ -442,19 +442,19 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._reindex_locked",
           "anchor": "    def _reindex_locked(self, workspace: MemoryWorkspace, *, force: bool) -> int:",
-          "line": 501
+          "line": 508
         },
         {
           "path": "memory_core/client.py",
           "symbol": "Memory.from_workspace",
           "anchor": "    def from_workspace(",
-          "line": 64
+          "line": 69
         },
         {
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit",
           "anchor": "class HostKit:",
-          "line": 208
+          "line": 211
         }
       ],
       "implementation": "partial",
@@ -501,7 +501,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
           "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
-          "line": 432
+          "line": 439
         }
       ],
       "implementation": "partial",
@@ -536,13 +536,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 478
+          "line": 485
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 469
+          "line": 486
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -554,13 +554,13 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_index_entry",
           "anchor": "    def read_index_entry(self, file: SessionCorpusFile) -> SessionEntry:",
-          "line": 105
+          "line": 336
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(self) -> list[MemoryFile]:",
-          "line": 441
+          "line": 449
         },
         {
           "path": "memory_core/index/publication.py",
@@ -601,7 +601,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 478
+          "line": 485
         },
         {
           "path": "memory_core/consolidation/origins.py",
@@ -613,7 +613,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 332
+          "line": 339
         },
         {
           "path": "memory_core/index/publication.py",
@@ -631,7 +631,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.read_published_index",
           "anchor": "    def read_published_index(self, *, db: sqlite3.Connection | None = None) -> dict:",
-          "line": 314
+          "line": 321
         },
         {
           "path": "memory_core/index/publication.py",
@@ -696,7 +696,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 478
+          "line": 485
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -738,25 +738,25 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 768
+          "line": 775
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_run_memory_search_tool",
           "anchor": "def _run_memory_search_tool(",
-          "line": 812
+          "line": 839
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_connection",
           "anchor": "    def _search_connection(self, signal: CancellationSignal | None) -> Iterator[sqlite3.Connection]:",
-          "line": 241
+          "line": 248
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
           "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
-          "line": 432
+          "line": 439
         }
       ],
       "implementation": "partial",
@@ -815,7 +815,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search_vector_candidates",
           "anchor": "    def search_vector_candidates(",
-          "line": 950
+          "line": 957
         },
         {
           "path": "memory_core/index/vector.py",
@@ -833,7 +833,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 1080
+          "line": 1087
         }
       ],
       "implementation": "present",
@@ -953,7 +953,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search_path_candidates",
           "anchor": "    def search_path_candidates(",
-          "line": 1423
+          "line": 1430
         },
         {
           "path": "memory_core/index/keyword_search.py",
@@ -1160,13 +1160,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.attach_recall_metadata",
           "anchor": "    def attach_recall_metadata(",
-          "line": 896
+          "line": 903
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.read_recall_metadata",
           "anchor": "    def read_recall_metadata(",
-          "line": 866
+          "line": 873
         },
         {
           "path": "memory_core/index/hybrid.py",
@@ -1184,31 +1184,31 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._finalize_keyword_only",
           "anchor": "    def _finalize_keyword_only(",
-          "line": 1260
+          "line": 1267
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 768
+          "line": 775
         },
         {
           "path": "memory_core/client.py",
           "symbol": "Memory.search",
           "anchor": "    def search(",
-          "line": 90
+          "line": 111
         },
         {
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.__init__",
           "anchor": "    def __init__(",
-          "line": 218
+          "line": 221
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "memory_search",
           "anchor": "def memory_search(",
-          "line": 581
+          "line": 589
         }
       ],
       "implementation": "present",
@@ -1275,19 +1275,19 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "memory_search_tool_definition",
           "anchor": "def memory_search_tool_definition(",
-          "line": 163
+          "line": 168
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "read_memory_search_params",
           "anchor": "def read_memory_search_params(params: object) -> MemorySearchParams:",
-          "line": 489
+          "line": 497
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "execute_memory_search_tool",
           "anchor": "def execute_memory_search_tool(",
-          "line": 513
+          "line": 521
         },
         {
           "path": "memory_core/tools/search_factory.py",
@@ -1341,7 +1341,7 @@
       "implementation": "partial",
       "notes": [
         "Production factory, live configuration revocation, alias preparation, native numeric defaults and canonical citations have Python owners; actual provider-none stored searches compare complete ordered JSON envelopes, errors, debug fields and registered wiki warnings.",
-        "Trusted host context supplies session corpus overrides, active projects, status, runtime events and measured ready-store acquisition. General transcript visibility, native provider/fallback/bootstrap and stale/rebuild lifecycle execution remain separate unverified profiles; the raw ready-store executor may omit managerMs unless supplied by the host."
+        "Trusted host context supplies source policy, session visibility, active projects, status, runtime events and measured ready-store acquisition. Provider/fallback/bootstrap and stale/rebuild lifecycle execution remain separate bounded profiles; a raw ready-store executor may omit managerMs unless the host supplies it."
       ]
     },
     {
@@ -1632,19 +1632,19 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "read_memory_search_tool_cooldown_failure",
           "anchor": "def read_memory_search_tool_cooldown_failure(",
-          "line": 377
+          "line": 382
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "record_memory_search_tool_cooldown",
           "anchor": "def record_memory_search_tool_cooldown(",
-          "line": 420
+          "line": 425
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_search_configuration_key",
           "anchor": "def _search_configuration_key(",
-          "line": 629
+          "line": 650
         },
         {
           "path": "memory_core/cancellation.py",
@@ -1727,19 +1727,19 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "build_memory_search_unavailable_result",
           "anchor": "def build_memory_search_unavailable_result(",
-          "line": 185
+          "line": 190
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_settle_memory_attempt",
           "anchor": "def _settle_memory_attempt(",
-          "line": 1173
+          "line": 1217
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_merge_corpus_results",
           "anchor": "def _merge_corpus_results(",
-          "line": 1269
+          "line": 1313
         },
         {
           "path": "memory_core/tools/corpus.py",
@@ -1769,13 +1769,13 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_run_memory_search_tool",
           "anchor": "def _run_memory_search_tool(",
-          "line": 812
+          "line": 839
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 1080
+          "line": 1087
         },
         {
           "path": "memory_core/tools/memory_get.py",
@@ -1809,6 +1809,114 @@
           "symbol": "sessionExclusionReason",
           "anchor": "export function sessionExclusionReason(",
           "line": 156
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-session-sync-ops.ts",
+          "symbol": "MemoryManagerSessionSyncOps.listSessionCorpusEntries",
+          "anchor": "  protected async listSessionCorpusEntries()",
+          "line": 72
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-session-sync-state.ts",
+          "symbol": "isMemorySessionIndexable",
+          "anchor": "export function isMemorySessionIndexable(",
+          "line": 12
+        },
+        {
+          "path": "src/agents/memory-search-source-policy.ts",
+          "symbol": "resolveMemorySearchSourcePolicy",
+          "anchor": "export function resolveMemorySearchSourcePolicy(",
+          "line": 26
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-entry.ts",
+          "symbol": "upsertSessionEntryCore",
+          "anchor": "export async function upsertSessionEntryCore(",
+          "line": 294
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-entry.ts",
+          "symbol": "listSessionTranscriptInstances",
+          "anchor": "export function listSessionTranscriptInstances(",
+          "line": 262
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-entry-list.read.ts",
+          "symbol": "listSessionEntriesReadOnly",
+          "anchor": "export function listSessionEntriesReadOnly(",
+          "line": 105
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-read.ts",
+          "symbol": "readTranscriptExportSnapshotReadOnlySync",
+          "anchor": "export function readTranscriptExportSnapshotReadOnlySync(",
+          "line": 112
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-transcript-write.ts",
+          "symbol": "replaceTranscriptEventsSync",
+          "anchor": "export function replaceTranscriptEventsSync(",
+          "line": 238
+        },
+        {
+          "path": "src/plugin-sdk/memory-core-host-engine-sessions.ts",
+          "symbol": "loadMemorySessionMetadata",
+          "anchor": "export function loadMemorySessionMetadata(",
+          "line": 77
+        },
+        {
+          "path": "extensions/memory-core/src/session-ingestion.ts",
+          "symbol": "resolveAdmissionPolicy",
+          "anchor": "export function resolveAdmissionPolicy(",
+          "line": 139
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-participants.native.ts",
+          "symbol": "recordSessionParticipant",
+          "anchor": "export function recordSessionParticipant(",
+          "line": 34
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-participant-read.ts",
+          "symbol": "listSessionParticipantsReadOnly",
+          "anchor": "export function listSessionParticipantsReadOnly(",
+          "line": 8
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-participant-projection.ts",
+          "symbol": "participantRecordsBySessionKey",
+          "anchor": "export function participantRecordsBySessionKey(",
+          "line": 81
+        },
+        {
+          "path": "src/config/sessions/session-participant-identity.ts",
+          "symbol": "participantIdentityNamespace",
+          "anchor": "export function participantIdentityNamespace(",
+          "line": 13
+        },
+        {
+          "path": "packages/gateway-protocol/src/schema/session-participant.ts",
+          "symbol": "SESSION_EXPANDED_PARTICIPANT_LIMIT",
+          "anchor": "export const SESSION_EXPANDED_PARTICIPANT_LIMIT = 32;",
+          "line": 9
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-provenance.ts",
+          "symbol": "resolveSessionEntryProvenanceRow",
+          "anchor": "export function resolveSessionEntryProvenanceRow<T extends SessionProvenanceRow>(params: {",
+          "line": 32
+        },
+        {
+          "path": "packages/session-url-contract/src/session-key.ts",
+          "symbol": "isIncognitoSessionKey",
+          "anchor": "export function isIncognitoSessionKey(",
+          "line": 10
+        },
+        {
+          "path": "src/state/openclaw-agent-db.paths.ts",
+          "symbol": "resolveIncognitoOpenClawAgentSqlitePath",
+          "anchor": "export function resolveIncognitoOpenClawAgentSqlitePath(",
+          "line": 73
         }
       ],
       "python": [
@@ -1816,7 +1924,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus",
           "anchor": "class MemoryCoreSessionCorpus:",
-          "line": 43
+          "line": 77
         },
         {
           "path": "memory_core/consolidation/session_ingestion.py",
@@ -1828,19 +1936,123 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_index_entry",
           "anchor": "    def read_index_entry(self, file: SessionCorpusFile) -> SessionEntry:",
-          "line": 105
+          "line": 336
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(self) -> list[MemoryFile]:",
-          "line": 441
+          "line": 449
+        },
+        {
+          "path": "memory_core/session_corpus.py",
+          "symbol": "MemoryCoreSessionCorpus.discover_entries",
+          "anchor": "    def discover_entries(",
+          "line": 179
+        },
+        {
+          "path": "memory_core/session_corpus.py",
+          "symbol": "MemoryCoreSessionCorpus.discover_admitted_entries",
+          "anchor": "    def discover_admitted_entries(",
+          "line": 280
+        },
+        {
+          "path": "memory_core/session_corpus.py",
+          "symbol": "MemoryCoreSessionCorpus.read_source_entry",
+          "anchor": "    def read_source_entry(",
+          "line": 399
+        },
+        {
+          "path": "memory_core/session_corpus.py",
+          "symbol": "is_memory_session_indexable",
+          "anchor": "def is_memory_session_indexable(",
+          "line": 59
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog",
+          "anchor": "class MemorySessionCatalog:",
+          "line": 228
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.upsert_session",
+          "anchor": "    def upsert_session(",
+          "line": 419
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.snapshot",
+          "anchor": "    def snapshot(",
+          "line": 678
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.read_transcript",
+          "anchor": "    def read_transcript(",
+          "line": 699
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.record_archive",
+          "anchor": "    def record_archive(",
+          "line": 654
+        },
+        {
+          "path": "memory_core/session_visibility.py",
+          "symbol": "resolve_memory_search_source_policy",
+          "anchor": "def resolve_memory_search_source_policy(",
+          "line": 183
+        },
+        {
+          "path": "memory_core/workspace.py",
+          "symbol": "MemoryWorkspace.discover_indexable_files",
+          "anchor": "    def discover_indexable_files(",
+          "line": 486
+        },
+        {
+          "path": "memory_core/consolidation/session_ingestion.py",
+          "symbol": "resolve_admission_policy",
+          "anchor": "def resolve_admission_policy(",
+          "line": 285
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.record_participant",
+          "anchor": "    def record_participant(",
+          "line": 561
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.list_participants",
+          "anchor": "    def list_participants(",
+          "line": 627
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.load_session_metadata",
+          "anchor": "    def load_session_metadata(",
+          "line": 732
+        },
+        {
+          "path": "memory_core/session_visibility.py",
+          "symbol": "is_incognito_session_key",
+          "anchor": "def is_incognito_session_key(",
+          "line": 64
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.get_session_entry",
+          "anchor": "    def get_session_entry(",
+          "line": 392
         }
       ],
       "implementation": "partial",
       "notes": [
-        "The built-in Python corpus discovers sessions.json entries and existing .jsonl files, classifies their session kind and maintenance flags, and carries the complete projected SessionEntry into indexing.",
-        "Native v2026.9.9 discovers retained SQLite transcript entries and their authoritative metadata/event revisions. That storage integration and participant metadata still require host inputs; JSONL reset-cutoff state remains absent unless a host supplies a fuller entry."
+        "An SDK-owned persisted session catalog now supplies cloned active metadata, transcript generations and raw events, recorded archive identities, mutation watermarks and memory tombstones. Corpus enumeration preserves complete source rows; manager admission separately applies maintenance and forgotten-session gates before workspace indexing.",
+        "Configured source policy is consumed by actual workspace enumeration. Active, retained and archive rows keep distinct admission rules: retained windows require recorded exclusion-sensitive authority, while active plugin/hook metadata is not treated as a universal exclusion.",
+        "The legacy sessions.json/JSONL adapter remains available. This maps SDK host-catalog counterparts rather than promising binary interchange with OpenClaw databases or complete session-accessor/participant-mutation orchestration. Source presence and helper tests do not grant whole-flow acceptance credit.",
+        "Participant identities and prompt aggregates use a separate persisted owner, with the native expanded cap and ordering. Admission metadata intentionally projects participants as an empty list rather than treating those facts as an access grant. Retained window source provenance follows the native monotonic owner across metadata omissions."
       ]
     },
     {
@@ -1861,6 +2073,18 @@
           "symbol": "projectSessionEntryRecord",
           "anchor": "export function projectSessionEntryRecord(value: unknown): unknown {",
           "line": 25
+        },
+        {
+          "path": "src/config/sessions/archive-compression.ts",
+          "symbol": "materializeSessionArchiveForRead",
+          "anchor": "export function materializeSessionArchiveForRead(",
+          "line": 65
+        },
+        {
+          "path": "src/infra/zstd-codec.ts",
+          "symbol": "resolveZstdCodec",
+          "anchor": "export function resolveZstdCodec(",
+          "line": 11
         }
       ],
       "python": [
@@ -1886,27 +2110,45 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_index_entry",
           "anchor": "    def read_index_entry(self, file: SessionCorpusFile) -> SessionEntry:",
-          "line": 105
+          "line": 336
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryFile",
           "anchor": "class MemoryFile:",
-          "line": 399
+          "line": 400
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "read_index_source",
           "anchor": "def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:",
           "line": 146
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.read_transcript",
+          "anchor": "    def read_transcript(",
+          "line": 699
+        },
+        {
+          "path": "memory_core/session_corpus.py",
+          "symbol": "MemoryCoreSessionCorpus.read_source_entry",
+          "anchor": "    def read_source_entry(",
+          "line": 399
+        },
+        {
+          "path": "memory_core/session_archive_codec.py",
+          "symbol": "read_session_transcript_bytes",
+          "anchor": "def read_session_transcript_bytes(",
+          "line": 8
         }
       ],
       "implementation": "partial",
       "notes": [
         "Event projection, reset-cutoff and JSONL filtering helpers exist. The built-in corpus passes the exact projection content, full projection hash, line map and provenance through MemoryFile.index_entry into source preparation, without adding the compatibility renderer final newline.",
-        "The default loader still reads JSONL. Retained SQLite events, archive/event revisions and authoritative reset cutoffs must be supplied by a host; preserving a SessionEntry is not native session-store integration.",
+        "The optional persisted SDK catalog now supplies live transcript event snapshots and authoritative reset cutoffs; the legacy JSONL loader remains separate. An archive reader handles complete plain/Zstandard sources while retaining original file identity, size and timestamps. This is not native binary session-store interoperability.",
         "The 2026-11-08 native JSONL comparison matches 73 complete projections, retaining ordered content, full hashes, raw source ordinals, timestamps, provenance, flags and observed messages. Filtering outcomes are recorded in the behavioral checklist; six reset-only helpers grant no acceptance credit.",
-        "Physical JSONL file-order projection does not verify live SQLite branch selection, integrated reset-cutoff propagation, archive codecs/materialization or corpus admission. The boundaries acceptance point remains open."
+        "The earlier JSONL filtering outcome evidence does not establish all SQLite branch/fence behavior, malformed or concatenated archive codec semantics, or general archive materialization/lifecycle behavior. Integrated admission/visibility profiles belong to their own contracts; this transcript-filtering boundaries point remains open."
       ]
     },
     {
@@ -1927,6 +2169,66 @@
           "symbol": "resolveSessionToolAccess",
           "anchor": "export async function resolveSessionToolAccess(params: {",
           "line": 210
+        },
+        {
+          "path": "src/plugin-sdk/session-visibility.ts",
+          "symbol": "createSessionVisibilityGuard",
+          "anchor": "export async function createSessionVisibilityGuard(",
+          "line": 392
+        },
+        {
+          "path": "src/plugin-sdk/session-visibility-internal.ts",
+          "symbol": "createSessionVisibilityDecisionChecker",
+          "anchor": "export function createSessionVisibilityDecisionChecker(",
+          "line": 113
+        },
+        {
+          "path": "src/plugin-sdk/session-visibility-internal.ts",
+          "symbol": "listSpawnedSessionKeysWithResult",
+          "anchor": "export async function listSpawnedSessionKeysWithResult(",
+          "line": 341
+        },
+        {
+          "path": "src/plugin-sdk/session-transcript-hit.ts",
+          "symbol": "loadCombinedSessionStoreForGateway",
+          "anchor": "export function loadCombinedSessionStoreForGateway(",
+          "line": 24
+        },
+        {
+          "path": "src/plugin-sdk/session-transcript-hit.ts",
+          "symbol": "extractTranscriptIdentityFromSessionsMemoryHit",
+          "anchor": "export function extractTranscriptIdentityFromSessionsMemoryHit(",
+          "line": 76
+        },
+        {
+          "path": "src/plugin-sdk/session-transcript-hit.ts",
+          "symbol": "resolveTranscriptStemToSessionKeys",
+          "anchor": "export function resolveTranscriptStemToSessionKeys(",
+          "line": 96
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/session-reset-recall-read.ts",
+          "symbol": "readSessionResetRecallCutoff",
+          "anchor": "export async function readSessionResetRecallCutoff(",
+          "line": 31
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-read.ts",
+          "symbol": "readTranscriptExportSnapshotReadOnlySync",
+          "anchor": "export function readTranscriptExportSnapshotReadOnlySync(",
+          "line": 112
+        },
+        {
+          "path": "src/agents/agent-scope.ts",
+          "symbol": "resolveSessionAgentIdStrict",
+          "anchor": "export function resolveSessionAgentIdStrict(",
+          "line": 371
+        },
+        {
+          "path": "src/agents/agent-scope-config.ts",
+          "symbol": "AgentSelectionRequiredError",
+          "anchor": "export class AgentSelectionRequiredError extends Error {",
+          "line": 52
         }
       ],
       "python": [
@@ -1934,7 +2236,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus",
           "anchor": "class MemoryCoreSessionCorpus:",
-          "line": 43
+          "line": 77
         },
         {
           "path": "memory_core/consolidation/recall.py",
@@ -1947,12 +2249,91 @@
           "symbol": "resolve_session_reset_recall_cutoff",
           "anchor": "def resolve_session_reset_recall_cutoff(events: list[Any]) -> dict[str, Any]:",
           "line": 569
+        },
+        {
+          "path": "memory_core/session_visibility.py",
+          "symbol": "SessionVisibilityPolicy",
+          "anchor": "class SessionVisibilityPolicy:",
+          "line": 75
+        },
+        {
+          "path": "memory_core/session_visibility.py",
+          "symbol": "SessionVisibilityContext",
+          "anchor": "class SessionVisibilityContext:",
+          "line": 109
+        },
+        {
+          "path": "memory_core/session_visibility.py",
+          "symbol": "filter_memory_search_hits_by_session_visibility",
+          "anchor": "def filter_memory_search_hits_by_session_visibility(",
+          "line": 562
+        },
+        {
+          "path": "memory_core/session_visibility.py",
+          "symbol": "resolve_session_tool_access",
+          "anchor": "def resolve_session_tool_access(",
+          "line": 380
+        },
+        {
+          "path": "memory_core/session_visibility.py",
+          "symbol": "session_visibility_decision",
+          "anchor": "def session_visibility_decision(",
+          "line": 244
+        },
+        {
+          "path": "memory_core/session_visibility.py",
+          "symbol": "extract_transcript_identity_from_sessions_memory_hit",
+          "anchor": "def extract_transcript_identity_from_sessions_memory_hit(",
+          "line": 480
+        },
+        {
+          "path": "memory_core/session_visibility.py",
+          "symbol": "resolve_transcript_stem_to_session_keys",
+          "anchor": "def resolve_transcript_stem_to_session_keys(",
+          "line": 494
+        },
+        {
+          "path": "memory_core/session_visibility.py",
+          "symbol": "read_visible_session_source",
+          "anchor": "def read_visible_session_source(",
+          "line": 443
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.read_transcript",
+          "anchor": "    def read_transcript(",
+          "line": 699
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.read_reset_cutoff",
+          "anchor": "    def read_reset_cutoff(",
+          "line": 726
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.snapshot",
+          "anchor": "    def snapshot(",
+          "line": 678
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.tombstone_session",
+          "anchor": "    def tombstone_session(",
+          "line": 668
+        },
+        {
+          "path": "memory_core/tools/memory_search.py",
+          "symbol": "_run_memory_search_tool",
+          "anchor": "def _run_memory_search_tool(",
+          "line": 839
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python has forgotten-session admission callbacks, reset-cutoff projection and origin recording, but no equivalent of the requester/sandbox/agent-to-agent session visibility guard used to filter native session hits.",
-        "Exact source-history access authorization remains host-owned; a source-backed snippet or lineage record alone does not authorize transcript expansion."
+        "Catalog-backed visibility owners now apply requester, sandbox and agent-to-agent policy to session hits, resolve current/archive transcript identities and aliases, inspect live reset cutoffs and retain source provenance. Source-tool access has a separate guarded read that rechecks the current catalog identity before invoking the raw transcript reader.",
+        "Memory tombstones govern corpus admission and reindex removal; they do not by themselves authorize or revoke the separate source-history reader. Shared/default-agent ownership and retained child links remain explicit host metadata inputs.",
+        "The SDK host guard is not a full Gateway HTTP/runtime implementation. Source mappings and policy helpers do not prove catalog admission, index publication, source access, alias privacy or reset/deletion transitions without their separate real runtime comparisons."
       ]
     },
     {
@@ -1998,7 +2379,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 727
+          "line": 748
         }
       ],
       "implementation": "partial",
@@ -2373,7 +2754,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.prepare_flush",
           "anchor": "    def prepare_flush(",
-          "line": 577
+          "line": 598
         },
         {
           "path": "memory_core/memory_flush.py",
@@ -2409,7 +2790,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 527
+          "line": 548
         }
       ],
       "implementation": "present",
@@ -2481,7 +2862,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "append_memory_flush_file",
           "anchor": "def append_memory_flush_file(",
-          "line": 276
+          "line": 277
         }
       ],
       "implementation": "partial",
@@ -3167,7 +3548,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 478
+          "line": 485
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -3179,7 +3560,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 332
+          "line": 339
         }
       ],
       "implementation": "partial",
@@ -3307,7 +3688,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 527
+          "line": 548
         }
       ],
       "implementation": "partial",
@@ -3447,7 +3828,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus._is_heartbeat_row",
           "anchor": "    def _is_heartbeat_row(self, raw_text: str, role: str) -> bool:",
-          "line": 133
+          "line": 410
         }
       ],
       "implementation": "partial",
@@ -3575,7 +3956,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "workspace_index_lock",
           "anchor": "def workspace_index_lock(root: Path) -> threading.RLock:",
-          "line": 211
+          "line": 212
         }
       ],
       "implementation": "partial",
@@ -3680,7 +4061,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 478
+          "line": 485
         },
         {
           "path": "memory_core/consolidation/artifacts.py",
@@ -3698,13 +4079,13 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 527
+          "line": 548
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 332
+          "line": 339
         }
       ],
       "implementation": "partial",
@@ -3899,7 +4280,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 527
+          "line": 548
         },
         {
           "path": "demo/lab_chat.py",
@@ -3944,13 +4325,13 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus",
           "anchor": "class MemoryCoreSessionCorpus:",
-          "line": 43
+          "line": 77
         },
         {
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 727
+          "line": 748
         },
         {
           "path": "demo/lab_runtime.py",
@@ -3995,7 +4376,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.dispatcher",
           "anchor": "    def dispatcher(",
-          "line": 392
+          "line": 408
         },
         {
           "path": "memory_core/live/__init__.py",
@@ -4584,6 +4965,41 @@
       ]
     },
     {
+      "path": "extensions/memory-core/src/memory/manager-session-sync-ops.ts",
+      "sha256": "3af5c8c2ef2aca054c3d34190941855ab76374c65cd5d6908b6744fb34ea0a4f",
+      "sourceImports": [
+        "../memory-entry-origins.js",
+        "./background-context.js",
+        "./manager-session-reindex.js",
+        "./manager-session-sync-state.js",
+        "./manager-source-state.js",
+        "./manager-sync-control.js",
+        "./manager-watch-ops.js",
+        "node:fs/promises",
+        "node:path",
+        "openclaw/plugin-sdk/memory-core-host-engine-foundation",
+        "openclaw/plugin-sdk/memory-core-host-engine-sessions",
+        "openclaw/plugin-sdk/memory-core-host-engine-storage",
+        "openclaw/plugin-sdk/routing",
+        "openclaw/plugin-sdk/session-store-paths"
+      ],
+      "exportedDeclarations": []
+    },
+    {
+      "path": "extensions/memory-core/src/memory/manager-session-sync-state.ts",
+      "sha256": "ee190fecc3c4d8853ef9cf2aba95f786aa144d2a599818533202200a515c96d6",
+      "sourceImports": [
+        "./manager-source-state.js",
+        "openclaw/plugin-sdk/memory-core-host-engine-sessions"
+      ],
+      "exportedDeclarations": [
+        "MemorySessionStartupFileState",
+        "isMemorySessionIndexable",
+        "resolveMemorySessionStartupState",
+        "resolveMemorySessionSyncPlan"
+      ]
+    },
+    {
       "path": "extensions/memory-core/src/memory/manager-source-sync-ops.ts",
       "sha256": "bc6a8fba716ffe3bd6cb130b3e415a057982b84a494ded95429acf7d7721e4b1",
       "sourceImports": [
@@ -5069,6 +5485,25 @@
       ]
     },
     {
+      "path": "packages/gateway-protocol/src/schema/session-participant.ts",
+      "sha256": "0e13b778c98e1c7160749a0b16ddaeebfa64725d089c03796fdd32cf56f1df28",
+      "sourceImports": [
+        "./closed-object.js",
+        "./primitives.js",
+        "typebox"
+      ],
+      "exportedDeclarations": [
+        "SESSION_EXPANDED_PARTICIPANT_LIMIT",
+        "SESSION_PARTICIPANT_LIMIT",
+        "SessionParticipant",
+        "SessionParticipantIdentity",
+        "SessionParticipantIdentitySchema",
+        "SessionParticipantSchema",
+        "SessionPerson",
+        "SessionPersonSchema"
+      ]
+    },
+    {
       "path": "packages/memory-host-sdk/src/host/config-utils.ts",
       "sha256": "670063dd2236bd0340950d19accb55b022efcaee7be1275491777c5a1f65fa53",
       "sourceImports": [
@@ -5279,6 +5714,18 @@
       ]
     },
     {
+      "path": "packages/memory-host-sdk/src/host/session-reset-recall-read.ts",
+      "sha256": "8bddd41f9438c901061d7afe61a4dece04d7e5d07e31fc47374aaf0cec291ac6",
+      "sourceImports": [
+        "./openclaw-runtime-session.js",
+        "./session-reset-recall.js"
+      ],
+      "exportedDeclarations": [
+        "readSessionResetRecallCutoff",
+        "readSessionResetRecallCutoffInProcess"
+      ]
+    },
+    {
       "path": "packages/memory-host-sdk/src/host/session-transcript-corpus.ts",
       "sha256": "8bc7c3f008e3b4d9c04da985cec647b830c54c2c205f15d4ff834e202585dfb7",
       "sourceImports": [
@@ -5368,6 +5815,22 @@
       ]
     },
     {
+      "path": "packages/session-url-contract/src/session-key.ts",
+      "sha256": "f9115545a74167e58ac551b183566f3c6257f54563eaaea4a68937de8bfaecc4",
+      "sourceImports": [
+        "@openclaw/normalization-core/agent-id",
+        "@openclaw/normalization-core/string-coerce"
+      ],
+      "exportedDeclarations": [
+        "DEFAULT_MAIN_KEY",
+        "ParsedAgentSessionKey",
+        "buildAgentMainSessionKey",
+        "isIncognitoSessionKey",
+        "normalizeMainKey",
+        "parseAgentSessionKeyParts"
+      ]
+    },
+    {
       "path": "src/agents/agent-scope-config.ts",
       "sha256": "97afbaa31c3014db8ac76550907e25b60b449052aee03a7591917391c768b245",
       "sourceImports": [
@@ -5418,6 +5881,57 @@
         "tryResolveLegacyCompatibilityAgentId",
         "tryResolveLegacyDataOwnerAgentId",
         "withAgentRosterFactsBatch"
+      ]
+    },
+    {
+      "path": "src/agents/agent-scope.ts",
+      "sha256": "ef187176518fe241b49b205693cd70dc877e61fabe65e720013b0cf31f43beb7",
+      "sourceImports": [
+        "../config/model-input.js",
+        "../config/sessions/auth-profile-override-provenance.js",
+        "../config/sessions/model-override-provenance.js",
+        "../config/sessions/session-store-owner.js",
+        "../config/sessions/types.js",
+        "../config/types.agent-defaults.js",
+        "../config/types.agents-shared.js",
+        "../config/types.agents.js",
+        "../config/types.js",
+        "../infra/map-size.js",
+        "../infra/path-guards.js",
+        "../routing/session-key.js",
+        "../skills/discovery/agent-filter.js",
+        "./agent-scope-config.js",
+        "./workspace-state-identity.js",
+        "@openclaw/normalization-core/string-coerce"
+      ],
+      "exportedDeclarations": [
+        "AgentModelPrimaryWriteTarget",
+        "AutoFallbackPrimaryProbe",
+        "ModelFallbackAvailability",
+        "SubagentModelConfigSelectionResult",
+        "clearAutoFallbackPrimaryProbeSelection",
+        "entryMatchesAutoFallbackPrimaryProbe",
+        "hasLegacyAutoFallbackWithoutOrigin",
+        "markAutoFallbackPrimaryProbe",
+        "modelFallbackOverrideFromAvailability",
+        "resolveAgentEffectiveModelPrimary",
+        "resolveAgentExecutionContract",
+        "resolveAgentExplicitModelPrimary",
+        "resolveAgentIdByWorkspacePath",
+        "resolveAgentModelFallbacksOverride",
+        "resolveAgentModelPrimaryWriteTarget",
+        "resolveAutoFallbackPrimaryProbe",
+        "resolveEffectiveModelFallbacks",
+        "resolveModelFallbackAvailability",
+        "resolveRunModelFallbacksOverride",
+        "resolveSessionAgentId",
+        "resolveSessionAgentIdStrict",
+        "resolveSessionAgentIds",
+        "resolveSessionAgentIdsStrict",
+        "resolveSubagentModelConfigSelectionResult",
+        "resolveSubagentModelFallbacksOverride",
+        "resolveSubagentSpawnModelFallbacksOverride",
+        "setAgentEffectiveModelPrimary"
       ]
     },
     {
@@ -5870,6 +6384,14 @@
       ]
     },
     {
+      "path": "src/agents/memory-search-source-policy.ts",
+      "sha256": "b95b8ebf49144924307e153162b1302ba5fd48658e647618aec1ff0d54b0b80f",
+      "sourceImports": [],
+      "exportedDeclarations": [
+        "resolveMemorySearchSourcePolicy"
+      ]
+    },
+    {
       "path": "src/agents/session-maintenance/coordinator.ts",
       "sha256": "638588d5a22012f1e892932b08eb6df8cc0cfe0423b63b0139348ebb2a330a44",
       "sourceImports": [
@@ -6301,6 +6823,26 @@
       ]
     },
     {
+      "path": "src/config/sessions/archive-compression.ts",
+      "sha256": "be57fa752f1ee4bcda62090b35e93216665a691b79b8766d84ffe5434b183dda",
+      "sourceImports": [
+        "../../infra/tmp-openclaw-dir.js",
+        "../../infra/zstd-codec.js",
+        "@openclaw/fs-safe/walk",
+        "node:crypto",
+        "node:fs",
+        "node:path"
+      ],
+      "exportedDeclarations": [
+        "SESSION_ARCHIVE_ZSTD_SUFFIX",
+        "decodeSessionArchiveBytes",
+        "encodeSessionArchiveContent",
+        "materializeSessionArchiveForRead",
+        "readSessionArchiveContentSync",
+        "stripSessionArchiveCompressionSuffix"
+      ]
+    },
+    {
       "path": "src/config/sessions/internal-session-key.ts",
       "sha256": "b90d07c0b5da6945ff005ea452c409b438919777cb584efaad0d0aa8ecedb397",
       "sourceImports": [
@@ -6310,6 +6852,168 @@
       "exportedDeclarations": [
         "isInternalSessionEffectsKey",
         "resolveInternalSessionEffectsIdentity"
+      ]
+    },
+    {
+      "path": "src/config/sessions/session-accessor.sqlite-entry-list.read.ts",
+      "sha256": "73ec72c111e4fc7769618761f729f1d5e1ac5e65138b6910d702407c7838ed08",
+      "sourceImports": [
+        "../../infra/kysely-sync.js",
+        "../../infra/sqlite-post-commit.js",
+        "../../infra/sqlite-transaction.js",
+        "../../routing/session-key.js",
+        "../../sessions/session-key-utils.js",
+        "../../state/openclaw-agent-db-readonly.js",
+        "../../state/openclaw-agent-db.generated.js",
+        "../../state/openclaw-agent-db.js",
+        "../../state/openclaw-agent-db.paths.js",
+        "./internal-session-key.js",
+        "./session-accessor.sqlite-contract.js",
+        "./session-accessor.sqlite-entry-cache.js",
+        "./session-accessor.sqlite-entry-cache.types.js",
+        "./session-accessor.sqlite-entry-read.js",
+        "./session-accessor.sqlite-scope.js",
+        "./session-accessor.sqlite-status.js",
+        "./session-accessor.types.js",
+        "./session-canonical-key.js",
+        "./store-entry.js"
+      ],
+      "exportedDeclarations": [
+        "listSessionEntriesReadOnly",
+        "listSqliteSessionEntriesFromDatabase",
+        "readSelectedSessionEntriesInDatabase"
+      ]
+    },
+    {
+      "path": "src/config/sessions/session-accessor.sqlite-entry.ts",
+      "sha256": "6601aceca571e65fcd0a1dbf6ed9e1f546fc2c82dca644f699e3a60b27e29156",
+      "sourceImports": [
+        "../../auto-reply/internal-turn-source.js",
+        "../../infra/kysely-sync.js",
+        "../../infra/sqlite-number.js",
+        "../../state/openclaw-agent-db-readonly-scope.js",
+        "../../state/openclaw-agent-db-readonly.js",
+        "../../state/openclaw-agent-db-transaction.js",
+        "../../state/openclaw-agent-db.js",
+        "../config-env-vars.js",
+        "../paths.js",
+        "./internal-session-key.js",
+        "./metadata.js",
+        "./runtime-types.js",
+        "./session-accessor.sqlite-contract.js",
+        "./session-accessor.sqlite-entry-admission.js",
+        "./session-accessor.sqlite-entry-equality.js",
+        "./session-accessor.sqlite-entry-list.read.js",
+        "./session-accessor.sqlite-entry-mutation.js",
+        "./session-accessor.sqlite-entry-store.js",
+        "./session-accessor.sqlite-exact-read.js",
+        "./session-accessor.sqlite-history.js",
+        "./session-accessor.sqlite-identity.js",
+        "./session-accessor.sqlite-initial-entry.js",
+        "./session-accessor.sqlite-maintenance-kick.js",
+        "./session-accessor.sqlite-normalize.js",
+        "./session-accessor.sqlite-scope.js",
+        "./session-accessor.sqlite-status.js",
+        "./session-accessor.types.js",
+        "./session-canonical-key.js",
+        "./session-entry-lineage.js",
+        "./session-entry-provenance.js",
+        "./session-entry-snapshots.js",
+        "./session-history-eviction.js",
+        "./session-store-path.js",
+        "./types.js"
+      ],
+      "exportedDeclarations": [
+        "hasSessionEntriesByStatusReadOnly",
+        "listSessionChildEntriesReadOnly",
+        "listSessionEntriesByStatus",
+        "listSessionEntryKeysReadOnly",
+        "listSessionEntryRows",
+        "listSessionTranscriptInstances",
+        "loadSessionEntry",
+        "loadSessionEntryReadOnly",
+        "loadSessionEntryReadOnlyInScope",
+        "patchSessionEntryCore",
+        "patchSessionEntryTarget",
+        "readSessionUpdatedAtCore",
+        "recordInboundSessionMeta",
+        "replaceSessionEntry",
+        "replaceSessionEntrySync",
+        "resolveSessionKeyBySessionId",
+        "updateSessionLastRoute",
+        "updateSessionLastRouteInScope",
+        "upsertSessionEntryCore",
+        "withSessionEntryReadOnlyScope"
+      ]
+    },
+    {
+      "path": "src/config/sessions/session-accessor.sqlite-participant-projection.ts",
+      "sha256": "e629448152fec6732c0d6ba61c3724ab3bfaebb3b03cb418d206602ada1e95de",
+      "sourceImports": [
+        "../../infra/kysely-sync.js",
+        "../../state/openclaw-agent-db-contract.js",
+        "../../state/openclaw-agent-db.generated.js",
+        "../../state/openclaw-state-db-schema-helpers.js",
+        "./session-accessor.sqlite-entry-cache-state.js",
+        "./session-participant-identity.js",
+        "./session-participant-prepared-read.js",
+        "./types.js",
+        "kysely",
+        "node:sqlite"
+      ],
+      "exportedDeclarations": [
+        "SessionParticipantRecord",
+        "participantRecordsBySessionKey",
+        "prepareSqliteSessionParticipantProjection",
+        "projectSqliteSessionParticipants",
+        "projectSqliteSessionParticipantsBatch",
+        "readSqliteSessionParticipantProjection"
+      ]
+    },
+    {
+      "path": "src/config/sessions/session-accessor.sqlite-participant-read.ts",
+      "sha256": "7c40aae93d2b6b7438428169c7566935171e64db41775876721c2afbafb4a697",
+      "sourceImports": [
+        "../../state/openclaw-agent-db-readonly.js",
+        "./session-accessor.sqlite-participant-projection.js",
+        "./session-accessor.sqlite-scope.js"
+      ],
+      "exportedDeclarations": [
+        "listSessionParticipantsReadOnly"
+      ]
+    },
+    {
+      "path": "src/config/sessions/session-accessor.sqlite-participants.native.ts",
+      "sha256": "4dafb7dea69bd122b39c650f4e801d5c79fcc207476217bf8a99dfdbf3efe4ff",
+      "sourceImports": [
+        "../../infra/kysely-sync.js",
+        "../../sessions/session-lifecycle-events.js",
+        "../../state/openclaw-agent-db.js",
+        "../../state/openclaw-agent-session-participants-schema.js",
+        "../../state/user-profiles.js",
+        "./session-accessor.sqlite-contract.js",
+        "./session-accessor.sqlite-entry-cache.js",
+        "./session-accessor.sqlite-scope.js",
+        "./session-entry-provenance.js",
+        "./session-participant-identity.js"
+      ],
+      "exportedDeclarations": [
+        "RecordSessionParticipantResult",
+        "recordSessionParticipant"
+      ]
+    },
+    {
+      "path": "src/config/sessions/session-accessor.sqlite-provenance.ts",
+      "sha256": "3ee47509fcd9ea96f1e952aaac88ac6041c2cddc67e1daf50726fc5de5796b60",
+      "sourceImports": [
+        "../../infra/kysely-sync.js",
+        "../../state/openclaw-agent-db.generated.js",
+        "../../state/openclaw-agent-db.js",
+        "./types.js"
+      ],
+      "exportedDeclarations": [
+        "bindSessionEntryProvenance",
+        "resolveSessionEntryProvenanceRow"
       ]
     },
     {
@@ -6448,6 +7152,20 @@
         "trimTranscriptForManualCompact",
         "withTranscriptWriteLock",
         "withTranscriptWriteTransaction"
+      ]
+    },
+    {
+      "path": "src/config/sessions/session-participant-identity.ts",
+      "sha256": "0f30c429556dddcca6c4e4db52ec19868bba5c17a1782863d3987a45e6019ee1",
+      "sourceImports": [
+        "../../../packages/gateway-protocol/src/schema/session-participant.js",
+        "@openclaw/normalization-core/record-coerce",
+        "typebox/schema"
+      ],
+      "exportedDeclarations": [
+        "mergeParticipantAggregate",
+        "participantIdentityNamespace",
+        "readParticipantIdentity"
       ]
     },
     {
@@ -6712,6 +7430,17 @@
       ]
     },
     {
+      "path": "src/infra/zstd-codec.ts",
+      "sha256": "4ef503fe0fc8f57b7ecb97a04a831fbb15360a28d2b0095e1f28564d545f6f58",
+      "sourceImports": [
+        "node:zlib"
+      ],
+      "exportedDeclarations": [
+        "ZstdCodec",
+        "resolveZstdCodec"
+      ]
+    },
+    {
       "path": "src/logging/redact.ts",
       "sha256": "ecdfdb1e0f4b0f2aa3eb54aad574bb5375ae8da78539ad937b34ba02dd170e7b",
       "sourceImports": [
@@ -6801,6 +7530,22 @@
       ]
     },
     {
+      "path": "src/plugin-sdk/memory-core-host-engine-sessions.ts",
+      "sha256": "e05da58485856c557ae7e37e97dbffba0da0abe8b72d355261ee784d1db12f7b",
+      "sourceImports": [
+        "../../packages/memory-host-sdk/src/engine-sessions.js",
+        "../config/sessions/session-accessor.js",
+        "../config/sessions/session-participant-identity.js",
+        "../routing/session-key.js"
+      ],
+      "exportedDeclarations": [
+        "MemorySessionSelectors",
+        "MemorySessionTarget",
+        "loadMemorySessionMetadata",
+        "resolveMemorySessionTargets"
+      ]
+    },
+    {
       "path": "src/plugin-sdk/session-store-runtime.ts",
       "sha256": "2d98e36a3e04f61a1809b60ac4ffaeb538de0c99ce111b38c8dea2726185bc11",
       "sourceImports": [
@@ -6856,11 +7601,120 @@
       ]
     },
     {
+      "path": "src/plugin-sdk/session-transcript-hit.ts",
+      "sha256": "caec67d0d74087beee16741835a720cdd62d34ff252e1400f52acd63870cf9bb",
+      "sourceImports": [
+        "../../packages/normalization-core/src/string-coerce.js",
+        "../config/sessions/artifacts.js",
+        "../config/sessions/combined-store-gateway.js",
+        "../config/sessions/types.js",
+        "../config/types.openclaw.js",
+        "../routing/session-key.js",
+        "./session-transcript-memory-hit.js",
+        "node:path"
+      ],
+      "exportedDeclarations": [
+        "SessionTranscriptHitIdentity",
+        "extractTranscriptIdentityFromSessionsMemoryHit",
+        "extractTranscriptStemFromSessionsMemoryHit",
+        "loadCombinedSessionStoreForGateway",
+        "resolveTranscriptStemToSessionKeys"
+      ]
+    },
+    {
+      "path": "src/plugin-sdk/session-visibility-internal.ts",
+      "sha256": "89f252bd32762545be633f2b6716c9d1c43c622a7f8b0748a28a22825d00ea02",
+      "sourceImports": [
+        "../../packages/normalization-core/src/string-coerce.js",
+        "../../packages/normalization-core/src/string-normalization.js",
+        "../agents/tools/in-process-gateway.js",
+        "../gateway/call.js",
+        "../gateway/client.js",
+        "../gateway/credentials.js",
+        "../infra/errors.js",
+        "../logger.js",
+        "../routing/session-key.js",
+        "@openclaw/normalization-core/node-crypto",
+        "@openclaw/normalization-core/result"
+      ],
+      "exportedDeclarations": [
+        "LookupFailureKind",
+        "SessionOwnershipLookupFailure",
+        "SessionVisibilityDecision",
+        "SessionVisibilityDecisionAction",
+        "SessionVisibilityDecisionMode",
+        "SessionVisibilityDecisionPolicy",
+        "SessionVisibilityDecisionPresentationAction",
+        "SessionVisibilityDecisionRow",
+        "SessionVisibilityDenialReason",
+        "classifyLookupFailure",
+        "createSessionVisibilityDecisionChecker",
+        "listSpawnedSessionKeysWithResult",
+        "logSessionOwnershipLookupFailure",
+        "lookupFailedDenialMessage",
+        "lookupFailedDenialSuffix",
+        "lookupFailedOperationMessage",
+        "renderSessionVisibilityDenial",
+        "resolveIncognitoSessionAccessDecision",
+        "sessionOwnershipLookupDenied",
+        "sessionOwnershipLookupFailure"
+      ]
+    },
+    {
+      "path": "src/plugin-sdk/session-visibility.ts",
+      "sha256": "75de89f30cb53f1c1d77cc04867f233c2356cec135d8878af711d48d61afeb81",
+      "sourceImports": [
+        "../../packages/normalization-core/src/string-coerce.js",
+        "../config/types.openclaw.js",
+        "../gateway/call.js",
+        "./session-visibility-internal.js",
+        "@openclaw/normalization-core/result"
+      ],
+      "exportedDeclarations": [
+        "AgentToAgentPolicy",
+        "SessionAccessAction",
+        "SessionAccessResult",
+        "SessionToolsVisibility",
+        "SessionVisibilityRow",
+        "createAgentToAgentPolicy",
+        "createSessionVisibilityChecker",
+        "createSessionVisibilityGuard",
+        "createSessionVisibilityRowChecker",
+        "listSpawnedSessionKeys",
+        "resolveEffectiveSessionToolsVisibility",
+        "resolveSandboxSessionToolsVisibility",
+        "resolveSessionToolsVisibility"
+      ]
+    },
+    {
       "path": "src/shared/regexp.ts",
       "sha256": "bafc7ca866952c3df452c25ca0c6ef30756ff2c9f44463ad76da30857aeab35e",
       "sourceImports": [],
       "exportedDeclarations": [
         "escapeRegExp"
+      ]
+    },
+    {
+      "path": "src/state/openclaw-agent-db.paths.ts",
+      "sha256": "830bac274b664ac13b13b9c498e79da318999a2217c0a29062a6a4d7ddfc6cf7",
+      "sourceImports": [
+        "../config/paths.js",
+        "../infra/errno.js",
+        "../infra/path-guards.js",
+        "../routing/session-key.js",
+        "@openclaw/fs-safe/advanced",
+        "node:fs",
+        "node:path"
+      ],
+      "exportedDeclarations": [
+        "INCOGNITO_AGENT_SQLITE_BASENAME",
+        "assertIncognitoAgentDatabasePathAvailable",
+        "createOpenClawAgentDatabasePathMatcher",
+        "isIncognitoOpenClawAgentSqlitePath",
+        "isPersistentOpenClawAgentDatabasePath",
+        "isSameOpenClawAgentDatabasePath",
+        "resolveIncognitoOpenClawAgentSqlitePath",
+        "resolveOpenClawAgentSqlitePath"
       ]
     }
   ]

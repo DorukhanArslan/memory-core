@@ -5,7 +5,7 @@ import os
 import re
 import stat
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -18,9 +18,10 @@ from memory_core.memory_paths import (
     UnsafeMemoryPathError,
     validate_daily_memory_path,
 )
-from memory_core.session_corpus import MemoryCoreSessionCorpus
+from memory_core.session_corpus import MemoryCoreSessionCorpus, is_memory_session_indexable
 
 if TYPE_CHECKING:
+    from memory_core.session_catalog import MemorySessionCatalog
     from memory_core.memory_write_provenance import MemoryWriteProvenanceObserver
     from memory_core.session_entry import SessionEntry
 
@@ -404,6 +405,9 @@ class MemoryFile:
     # An authoritative host projection includes source hash, line mapping and
     # per-line provenance. Plain index_text remains supported for legacy hosts.
     index_entry: SessionEntry | None = None
+    # Authoritative non-file transcript state, supplied by a session catalog.
+    index_mtime_ms: float | None = None
+    index_size: int | None = None
 
 
 @dataclass(frozen=True)
@@ -422,6 +426,8 @@ class MemoryWorkspace:
         openclaw_state_dir: Path | None = None,
         agent_id: str = "main",
         is_session_forgotten: Callable[[str], bool] | None = None,
+        session_catalog: MemorySessionCatalog | None = None,
+        index_sources: Sequence[str] | None = None,
     ):
         # ``is_session_forgotten(session_id)``: forgotten sessions leave the index and stay out
         # (the origins ledger's tombstones, ``MemoryEntryOriginLedger.list_session_tombstones``).
@@ -429,6 +435,8 @@ class MemoryWorkspace:
         self.root = root.resolve()
         self.openclaw_state_dir = openclaw_state_dir.resolve() if openclaw_state_dir else None
         self.agent_id = agent_id
+        self.session_catalog = session_catalog
+        self.index_sources = tuple(index_sources) if index_sources is not None else None
 
     def discover_memory_files(self) -> list[MemoryFile]:
         # Same file list as OpenClaw's memory index (listMemoryFiles); the
@@ -454,15 +462,24 @@ class MemoryWorkspace:
                             source="sessions",
                         )
                     )
-        if self.openclaw_state_dir is not None:
+        if self.openclaw_state_dir is not None or self.session_catalog is not None:
             corpus = MemoryCoreSessionCorpus(
-                self.openclaw_state_dir, agent_id=self.agent_id, is_forgotten=self.is_session_forgotten
+                self.openclaw_state_dir or self.session_catalog.store_path.parent,
+                agent_id=self.agent_id, is_forgotten=self.is_session_forgotten,
+                catalog=self.session_catalog,
             )
             for item in corpus.discover_files():
                 entry = corpus.read_index_entry(item)
+                if not is_memory_session_indexable({
+                    "generatedByDreamingNarrative": entry.generated_by_dreaming_narrative,
+                    "generatedByCronRun": entry.generated_by_cron_run,
+                    "sessionKind": entry.session_kind, "lineProvenance": entry.line_provenance,
+                }):
+                    continue
                 files.append(MemoryFile(
                     item.rel_path, item.abs_path, item.source,
                     index_text=entry.content, index_entry=entry,
+                    index_mtime_ms=item.updated_at_ms, index_size=item.index_size,
                 ))
         return files
 
@@ -473,10 +490,12 @@ class MemoryWorkspace:
         # directory; its recursive memory walk would index such a `.md` as a
         # memory file, and upstream's own corpus files are `.txt`, which the
         # memory walk never picks up.
-        session_files = self.discover_session_transcript_files()
+        sources = set(self.index_sources) if self.index_sources is not None else {"memory", "sessions"}
+        session_files = self.discover_session_transcript_files() if "sessions" in sources else []
         session_paths = {file.rel_path for file in session_files}
         memory_files = [
             file for file in self.discover_memory_files() if file.rel_path not in session_paths
+        ] if "memory" in sources else [
         ]
         return [*memory_files, *session_files]
 

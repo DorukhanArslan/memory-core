@@ -155,13 +155,20 @@ def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:
     index_entry = getattr(file, "index_entry", None)
     if file.index_text is not None or index_entry is not None:
         text = index_entry.content if index_entry is not None else file.index_text
-        try:
-            info = file.abs_path.stat()
-            mtime = info.st_mtime_ns / 1_000_000
-            size = info.st_size if index_entry is not None else len(js_utf8_encode(text))
-        except (FileNotFoundError, NotADirectoryError):
-            mtime = 0.0
-            size = len(js_utf8_encode(text))
+        mtime = file.index_mtime_ms
+        size = file.index_size
+        if mtime is None or size is None:
+            try:
+                info = file.abs_path.stat()
+                if mtime is None:
+                    mtime = info.st_mtime_ns / 1_000_000
+                if size is None:
+                    size = info.st_size if index_entry is not None else len(js_utf8_encode(text))
+            except (FileNotFoundError, NotADirectoryError):
+                if mtime is None:
+                    mtime = 0.0
+                if size is None:
+                    size = len(js_utf8_encode(text))
         return IndexSourceSnapshot(
             file.rel_path, file.source,
             index_entry.hash if index_entry is not None else _text_hash(text), text, mtime, size,

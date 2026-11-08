@@ -142,6 +142,11 @@ Your host executes model turns and stores the returned session state.
 The model uses the offered recall tools; `before_turn()` does not search automatically.
 Replace `call_my_llm` in the host loop example with your model call and tool loop before running it.
 
+For transcript memory, bind a persisted session catalog and trusted requester policy through
+`Memory.from_workspace(..., session_catalog=...)` or `HostKit.open(...)`.
+The [session authority guide](docs/session_authority.md) covers indexing, visibility,
+private conversation recall and authorized source reads.
+
 <details>
 <summary><strong>HostKit lifecycle and integration requirements</strong></summary>
 

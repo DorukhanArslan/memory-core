@@ -48,6 +48,11 @@ from memory_core.config import MemoryConfig
 from memory_core.index.hybrid import HYBRID_METADATA_MISSING
 from memory_core.index.sqlite_store import SQLiteMemoryStore
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
+from memory_core.session_visibility import (
+    SessionVisibilityContext,
+    filter_memory_search_hits_by_session_visibility,
+    resolve_memory_search_source_policy,
+)
 from memory_core.supplements import (
     MemoryCorpusResult, MemoryCorpusSupplement, RegisteredMemoryCorpusSupplement, sort_corpus_results,
 )
@@ -484,6 +489,9 @@ class MemorySearchToolContext:
     execution: MemoryToolDeadlineContext | None = None
     refresh_store: Callable[[], SQLiteMemoryStore | None] | None = None
     sandboxed: bool | None = None
+    session_visibility: SessionVisibilityContext | None = None
+    conversation_recall: Mapping[str, Any] | None = None
+    source_policy: Mapping[str, Any] | None = None
 
 
 def read_memory_search_params(params: object) -> MemorySearchParams:
@@ -538,11 +546,11 @@ def execute_memory_search_tool(
     if execution.signal is not None:
         execution.signal.throw_if_aborted()
     parsed = read_memory_search_params(params)
-    requested_corpus = (
-        "sessions" if context.conversation_recall_corpus == "sessions" else parsed.corpus
-    )
-    if (requested_corpus == "sessions" and not config.session_search
-            and context.conversation_recall_corpus is None):
+    recall = _conversation_recall(context)
+    source_policy = _resolved_source_policy(config, context)
+    requested_corpus = "sessions" if recall and recall.get("corpus") == "sessions" else parsed.corpus
+    if (requested_corpus == "sessions" and "sessions" not in source_policy["searchSources"]
+            and recall is None):
         return build_memory_search_unavailable_result(
             MEMORY_SEARCH_SESSIONS_DISABLED_REASON,
             warning=MEMORY_SEARCH_SESSIONS_DISABLED_WARNING,
@@ -570,7 +578,7 @@ def execute_memory_search_tool(
             record_memory_search_tool_cooldown(
                 memory_search_tool_cooldown_key(config, store, agent_session_key=agent_session_key),
                 format_error_message(error), deadline=deadline, code=error_code(error),
-                config_key=_search_configuration_key(config, store), now_ms=context.clock(),
+                config_key=_search_configuration_key(config, store, context), now_ms=context.clock(),
             )
         return build_memory_search_unavailable_result(
             format_error_message(error), agent_id=config.agent_id, deadline=deadline,
@@ -615,6 +623,19 @@ def _memory_sources_for_corpus(corpus: str | None, *, session_search: bool) -> s
     return None if session_search else {"memory"}
 
 
+def _conversation_recall(context: MemorySearchToolContext) -> Mapping[str, Any] | None:
+    if context.conversation_recall is not None:
+        return context.conversation_recall
+    return {"corpus": context.conversation_recall_corpus} if context.conversation_recall_corpus is not None else None
+
+
+def _resolved_source_policy(config: MemoryConfig, context: MemorySearchToolContext) -> Mapping[str, Any]:
+    return context.source_policy if context.source_policy is not None else resolve_memory_search_source_policy(
+        ["memory", "sessions"] if config.session_search else ["memory"],
+        configured_session_memory=config.session_search,
+    )
+
+
 def _failure_attempt(corpus: str, failure: CorpusFailure, value: Any = None) -> CorpusAttempt:
     return CorpusAttempt(
         corpus=corpus,
@@ -626,7 +647,9 @@ def _failure_attempt(corpus: str, failure: CorpusFailure, value: Any = None) -> 
     )
 
 
-def _search_configuration_key(config: MemoryConfig, store: SQLiteMemoryStore) -> str:
+def _search_configuration_key(
+    config: MemoryConfig, store: SQLiteMemoryStore, context: MemorySearchToolContext | None = None,
+) -> str:
     """Bind a failure to its actual configuration and provider identity.
 
     The store path remains part of the cooldown ownership key. Status counters
@@ -644,7 +667,11 @@ def _search_configuration_key(config: MemoryConfig, store: SQLiteMemoryStore) ->
             "settings": metadata() if callable(metadata) else metadata,
         }
     encoded = json.dumps(
-        {"config": asdict(config), "provider": provider}, sort_keys=True, default=str,
+        {"config": asdict(config), "provider": provider,
+         "sourcePolicy": context.source_policy if context is not None else None,
+         "visibilityPolicy": asdict(context.session_visibility.policy)
+         if context is not None and context.session_visibility is not None else None},
+        sort_keys=True, default=str,
         ensure_ascii=True, separators=(",", ":"),
     )
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
@@ -831,16 +858,16 @@ def _run_memory_search_tool(
     only a valid memory-file snapshot published before the caller stopped
     waiting; no new keyword query runs after expiry.
     """
-    requested_corpus = (
-        "sessions" if context.conversation_recall_corpus == "sessions" else params.corpus
-    )
+    recall = _conversation_recall(context)
+    source_policy = _resolved_source_policy(config, context)
+    requested_corpus = "sessions" if recall and recall.get("corpus") == "sessions" else params.corpus
     tool_started_at = context.clock()
     cooldown_key = memory_search_tool_cooldown_key(
         config, store, agent_session_key=agent_session_key
     )
     searches_memory = requested_corpus != "wiki"
     searches_wiki = requested_corpus in {"wiki", "all"}
-    configuration_key = _search_configuration_key(config, store) if searches_memory else ""
+    configuration_key = _search_configuration_key(config, store, context) if searches_memory else ""
     initial_owner = _store_owner(config, store)
     cooldown = (
         read_memory_search_tool_cooldown_failure(
@@ -868,6 +895,9 @@ def _run_memory_search_tool(
         status = _read_manager_status(store, context)
         rebuild_readers.append(_capture_rebuild_notice(status))
         sources = _memory_sources_for_corpus(requested_corpus, session_search=config.session_search)
+        if context.source_policy is not None and requested_corpus not in {"memory", "sessions"}:
+            sources = set(source_policy["sources"] if recall and recall.get("corpus") == "configured"
+                          else source_policy["searchSources"])
         if requested_corpus == "sessions":
             sources = {"sessions"}
         window = max_results
@@ -901,16 +931,25 @@ def _run_memory_search_tool(
             candidates = [item for item in candidates if item.get("source") == "memory"]
             if not candidates:
                 return
+            filtered = filter_memory_search_hits_by_session_visibility(
+                candidates, context=context.session_visibility, agent_id=config.agent_id,
+                requester_session_key=agent_session_key, sandboxed=context.sandboxed is True,
+                conversation_recall=recall,
+            )
+            if sources is not None:
+                filtered = [item for item in filtered if item.get("source") in sources]
+            if not filtered:
+                return
             partial_status = _read_manager_status(store, context)
             identity = _status_identity(partial_status)
             if identity is not None and resolve_paused_memory_index_identity(identity) is not None:
                 return
-            raw_results = candidates[:max_results]
+            raw_results = filtered[:max_results]
             debug, mode = _search_debug(
                 status=partial_status,
                 context=replace(context, manager_ms=search_state.get("manager_ms", context.manager_ms)),
                 started_at=started_at,
-                hits=len(raw_results), candidates=len(candidates), filtered=len(candidates),
+                hits=len(raw_results), candidates=len(candidates), filtered=len(filtered),
                 window=window, effective_mode="keyword-only",
                 runtime_events=search_state["runtime_events"],
             )
@@ -958,7 +997,12 @@ def _run_memory_search_tool(
             return {"paused": paused, "status": status}
         # Public status owns model-field presence; FTS-only status omits it.
         candidates = [_serialize_result(item) for item in hits]
-        filtered = [item for item in candidates if sources is None or item["source"] in sources]
+        filtered = filter_memory_search_hits_by_session_visibility(
+            candidates, context=context.session_visibility, agent_id=config.agent_id,
+            requester_session_key=agent_session_key, sandboxed=context.sandboxed is True,
+            conversation_recall=recall,
+        )
+        filtered = [item for item in filtered if sources is None or item["source"] in sources]
         retained = filtered[:max_results]
         debug, mode = _search_debug(
             status=status,

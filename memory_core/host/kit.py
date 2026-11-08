@@ -73,7 +73,9 @@ from memory_core.memory_paths import UnsafeMemoryPathError
 from memory_core.prompt_section import build_prompt_section
 from memory_core.runtime_context_prompt import build_runtime_context_system_context
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
+from memory_core.session_catalog import MemorySessionCatalog
 from memory_core.session_memory import SessionMemoryResult, SlugGenerator, save_session_memory
+from memory_core.session_visibility import SessionVisibilityContext
 from memory_core.tools.common import MemoryToolError, to_tool_error
 from memory_core.tools.search_factory import prepare_memory_search_arguments
 from memory_core.tools.memory_get import (
@@ -83,6 +85,7 @@ from memory_core.tools.memory_get import (
 )
 from memory_core.tools.memory_search import (
     MEMORY_SEARCH_TOOL_NAME,
+    MemorySearchToolContext,
     execute_memory_search_tool,
     memory_search_tool_definition,
 )
@@ -239,8 +242,15 @@ class HostKit:
         flush_read_tool: Mapping[str, Any] | None = None,
         flush_read_dispatch: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None,
         active_project_keys: Sequence[str] | None = None,
+        session_visibility: SessionVisibilityContext | None = None,
+        source_policy: Mapping[str, Any] | None = None,
     ) -> None:
         self._memory = memory
+        self._session_visibility = (
+            session_visibility if session_visibility is not None else memory.session_visibility
+        )
+        policy = source_policy if source_policy is not None else memory.source_policy
+        self._source_policy = deepcopy(dict(policy)) if policy is not None else None
         # Writes, ingestion and indexing must consult the same host trust ledger.
         existing_provenance = memory.store.artifact_provenance
         if (artifact_provenance is not None and existing_provenance is not None
@@ -298,6 +308,9 @@ class HostKit:
         *,
         embedding_provider: EmbeddingProvider | None = None,
         config: MemoryConfig | None = None,
+        session_catalog: MemorySessionCatalog | None = None,
+        session_visibility: SessionVisibilityContext | None = None,
+        source_policy: Mapping[str, Any] | None = None,
         **options: Any,
     ) -> HostKit:
         """Open a workspace: the store, the kit, one :meth:`ensure` and one reindex.
@@ -314,6 +327,9 @@ class HostKit:
             config=config,
             initialize=False,
             reindex=False,
+            session_catalog=session_catalog,
+            session_visibility=session_visibility,
+            source_policy=source_policy,
         )
         kit = cls(memory, **options)
         kit.ensure()
@@ -411,6 +427,11 @@ class HostKit:
         host_options: dict[str, Any] = {}
         if self._active_project_keys is not None:
             host_options["active_project_keys"] = self._active_project_keys
+        if self._session_visibility is not None or self._source_policy is not None:
+            host_options["context"] = MemorySearchToolContext(
+                session_visibility=self._session_visibility,
+                source_policy=self._source_policy,
+            )
         result = execute_memory_search_tool(
             memory.config,
             memory.store,

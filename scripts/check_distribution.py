@@ -7,13 +7,15 @@ from email import message_from_bytes
 from email.message import Message
 import os
 from pathlib import Path, PurePosixPath
-import re
 import subprocess
 import sys
 import tarfile
 import tempfile
 import tomllib
 import zipfile
+
+from packaging.markers import Marker
+from packaging.requirements import Requirement
 
 from memory_core.project_name import DIST_NAME, PACKAGE_NAME
 
@@ -68,19 +70,19 @@ def validate_metadata(metadata: Message, *, name: str, version: str) -> None:
     if set(metadata.get_all("Provides-Extra", [])) != {"demo", "langgraph"}:
         raise ValueError("Unexpected optional extras")
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
-    expected = {("", re.sub(r"\s+", "", spec)) for spec in project["dependencies"]}
+    def dependency(spec: str, extra: str | None = None) -> str:
+        requirement = Requirement(spec)
+        if extra is not None:
+            marker = f"extra == '{extra}'"
+            if requirement.marker is not None:
+                marker = f"({requirement.marker}) and {marker}"
+            requirement.marker = Marker(marker)
+        return str(requirement)
+
+    expected = {dependency(spec) for spec in project["dependencies"]}
     for extra, specs in project["optional-dependencies"].items():
-        expected.update((extra, re.sub(r"\s+", "", spec)) for spec in specs)
-    actual = set()
-    for requirement in metadata.get_all("Requires-Dist", []):
-        spec, separator, marker = requirement.partition(";")
-        extra = ""
-        if separator:
-            match = re.fullmatch(r"\s*extra\s*==\s*['\"]([^'\"]+)['\"]\s*", marker)
-            if match is None:
-                raise ValueError(f"Unexpected dependency marker: {marker}")
-            extra = match[1]
-        actual.add((extra, re.sub(r"\s+", "", spec)))
+        expected.update(dependency(spec, extra) for spec in specs)
+    actual = {dependency(spec) for spec in metadata.get_all("Requires-Dist", [])}
     if actual != expected:
         raise ValueError(f"Artifact dependencies differ from declaration: {actual ^ expected}")
 
@@ -114,6 +116,7 @@ SMOKE = '''
 import importlib
 import importlib.metadata
 import importlib.util
+import json
 from pathlib import Path
 import pkgutil
 import sys
@@ -149,7 +152,38 @@ with tempfile.TemporaryDirectory() as scratch:
     assert retrieved["text"].strip() == "- The zephyrquartz project is paused.", retrieved
     record = kit.after_turn(turn.session, transcript=(), usage=core.TurnUsage(1, 1))
     assert record.session.session_id == "s1" and record.flush is None
+    catalog_module = importlib.import_module(package_name + ".session_catalog")
+    visibility = importlib.import_module(package_name + ".session_visibility")
+    catalog = catalog_module.MemorySessionCatalog(root / "sessions.sqlite")
+    catalog.upsert_session("agent:main:dm:alice", {"sessionId": "alice", "chatType": "direct"})
+    catalog.append_events("alice", [{"type": "message", "message": {
+        "role": "user", "content": "Cedar archive authority example",
+    }}])
+    authority = visibility.SessionVisibilityContext.from_catalog(
+        catalog, visibility.SessionVisibilityPolicy(visibility="self"),
+    )
+    session_root = root / "session-workspace"
+    memory = core.Memory.from_workspace(
+        session_root, config=core.MemoryConfig(workspace_dir=session_root, flags=flags),
+        session_catalog=catalog, session_visibility=authority,
+    )
+    hits = memory.search("Cedar", corpus="sessions", min_score=0,
+                         agent_session_key="agent:main:dm:alice")["results"]
+    assert [hit["path"] for hit in hits] == ["sessions/main/alice.jsonl"], hits
+    assert memory.search("Cedar", corpus="sessions", min_score=0)["results"] == []
+    data = json.dumps({"type": "message", "message": {"role": "user", "content": "Cedar"}}).encode()
+    if sys.version_info >= (3, 14):
+        from compression import zstd
+        compressed = zstd.compress(data)
+    else:
+        import zstandard
+        compressed = zstandard.ZstdCompressor().compress(data)
+    archive = root / "source.jsonl.reset.2026-11-09T00-00-00Z.zst"
+    archive.write_bytes(compressed)
+    codec = importlib.import_module(package_name + ".session_archive_codec")
+    assert codec.read_session_transcript_bytes(archive) == data
 print("installed core imports and FTS host lifecycle passed")
+print("installed session authority and compressed archive consumers passed")
 '''
 
 

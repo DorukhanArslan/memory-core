@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from copy import deepcopy
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable
 
@@ -14,8 +15,10 @@ from memory_core.curation import CurationPolicy, CurationResult, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.index.sqlite_store import SQLiteMemoryStore, validate_store_config
 from memory_core.project_name import STATE_DIRNAME
+from memory_core.session_catalog import MemorySessionCatalog, normalize_session_agent_id
+from memory_core.session_visibility import SessionVisibilityContext
 from memory_core.tools.memory_get import memory_get
-from memory_core.tools.memory_search import memory_search
+from memory_core.tools.memory_search import MemorySearchToolContext, memory_search
 from memory_core.workspace import MemoryWorkspace, workspace_index_lock
 
 DEFAULT_MEMORY_MD_TEMPLATE = """# MEMORY.md
@@ -59,6 +62,8 @@ class Memory:
     config: MemoryConfig
     workspace: MemoryWorkspace
     store: SQLiteMemoryStore
+    session_visibility: SessionVisibilityContext | None = None
+    source_policy: Mapping[str, Any] | None = None
 
     @classmethod
     def from_workspace(
@@ -71,9 +76,21 @@ class Memory:
         reindex: bool = True,
         revision_fence: IndexRevisionFence | None = None,
         artifact_provenance: MemoryArtifactProvenanceStore | None = None,
+        session_catalog: MemorySessionCatalog | None = None,
+        session_visibility: SessionVisibilityContext | None = None,
+        source_policy: Mapping[str, Any] | None = None,
     ) -> Memory:
-        workspace = MemoryWorkspace(Path(workspace_dir))
-        resolved_config = config or MemoryConfig(workspace_dir=workspace.root)
+        root = Path(workspace_dir).resolve()
+        resolved_config = config or MemoryConfig(workspace_dir=root)
+        if session_catalog is not None:
+            if session_catalog.agent_id != normalize_session_agent_id(resolved_config.agent_id):
+                raise ValueError("The session catalog belongs to a different agent")
+            if session_visibility is None:
+                session_visibility = SessionVisibilityContext.from_catalog(session_catalog)
+        workspace = MemoryWorkspace(
+            root, agent_id=resolved_config.agent_id, session_catalog=session_catalog,
+            index_sources=source_policy["sources"] if source_policy is not None else None,
+        )
         # Raise on an invalid provider/flag/agent-id combination before any
         # directory or MEMORY.md is created.
         validate_store_config(resolved_config, embedding_provider)
@@ -85,7 +102,11 @@ class Memory:
         )
         if reindex:
             store.reindex(workspace)
-        return cls(config=resolved_config, workspace=workspace, store=store)
+        return cls(
+            config=resolved_config, workspace=workspace, store=store,
+            session_visibility=session_visibility,
+            source_policy=deepcopy(dict(source_policy)) if source_policy is not None else None,
+        )
 
     def search(
         self,
@@ -95,10 +116,25 @@ class Memory:
         min_score: float = 0.0,
         corpus: str = "all",
         active_project_keys: Sequence[str] | None = None,
+        agent_session_key: str | None = None,
+        context: MemorySearchToolContext | None = None,
     ) -> dict:
         host_options: dict[str, Any] = {}
         if active_project_keys is not None:
             host_options["active_project_keys"] = active_project_keys
+        context_options: dict[str, Any] = {}
+        if self.session_visibility is not None and (
+            context is None or context.session_visibility is None
+        ):
+            context_options["session_visibility"] = self.session_visibility
+        if self.source_policy is not None and (context is None or context.source_policy is None):
+            context_options["source_policy"] = deepcopy(dict(self.source_policy))
+        if context_options:
+            context = replace(context or MemorySearchToolContext(), **context_options)
+        if context is not None:
+            host_options["context"] = context
+        if agent_session_key is not None:
+            host_options["agent_session_key"] = agent_session_key
         return memory_search(
             self.config,
             self.store,

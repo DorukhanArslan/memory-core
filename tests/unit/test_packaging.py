@@ -20,11 +20,23 @@ def _project() -> dict:
 
 def _third_party_import_roots() -> set[str]:
     roots: set[str] = set()
+    python314_guard = ast.dump(ast.parse("sys.version_info >= (3, 14)", mode="eval").body)
     for source in (ROOT / PACKAGE_NAME).rglob("*.py"):
-        for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        # compression is stdlib starting in Python 3.14. On older test
+        # interpreters, recognize only imports under its actual version guard.
+        future_stdlib = {
+            id(node)
+            for branch in ast.walk(tree)
+            if isinstance(branch, ast.If) and ast.dump(branch.test) == python314_guard
+            for statement in branch.body
+            for node in ast.walk(statement)
+            if isinstance(node, ast.ImportFrom) and node.module == "compression"
+        }
+        for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 roots.update(alias.name.split(".")[0] for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.level == 0:
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and id(node) not in future_stdlib:
                 roots.add(node.module.split(".")[0])
     return roots - set(sys.stdlib_module_names) - {PACKAGE_NAME}
 
@@ -32,7 +44,7 @@ def _third_party_import_roots() -> set[str]:
 def test_core_dependencies_are_exactly_what_memory_core_imports():
     names = {re.split(r"[\s<>=!~;\[]", spec, maxsplit=1)[0] for spec in _project()["dependencies"]}
 
-    assert names == _third_party_import_roots() == {"httpx"}
+    assert names == _third_party_import_roots() == {"httpx", "zstandard"}
 
 
 def test_demo_and_langgraph_are_the_only_extras_and_dev_tools_a_group():

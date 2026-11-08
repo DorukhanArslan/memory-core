@@ -114,7 +114,10 @@ and refuses an explicit model `corpus="sessions"` with guidance. Trusted
 conversation recall may select sessions independently. In particular,
 `MemorySearchToolContext.conversation_recall_corpus="sessions"` forces that
 corpus even when the model requests `all` or `wiki`. It does not make a model
-argument authoritative or implement the host's full session-visibility policy.
+argument authoritative. Full trusted `conversation_recall` supplies `scope`,
+`anchorSessionKey`, and `corpus`; the session visibility owner validates those
+facts against the live catalog. The legacy corpus shorthand remains a distinct
+SDK convenience and does not manufacture private-recall authority.
 
 `active_project_keys`, `agent_session_key`, `runtime_identity`, `supplements`,
 and `context` are trusted executor keyword arguments. They are absent from the
@@ -187,6 +190,9 @@ executor. Its fields are:
 | `execution` | Optional `MemoryToolDeadlineContext` for parent cancellation, monotonic time, scheduled timers, and event waiting. |
 | `refresh_store` | Optional host callback returning a replacement manager for one recognized closed-store failure. |
 | `sandboxed` | Optional trusted provider context, forwarded to registered search callbacks. |
+| `session_visibility` | Trusted session policy and live catalog/read dependencies, normally bound with `SessionVisibilityContext.from_catalog(catalog, policy)`. |
+| `conversation_recall` | Complete trusted private-recall context; anchor/requester/alias/reset checks apply before source and result limiting. |
+| `source_policy` | Resolved host `sources`, `searchSources`, and `sessionMemory`; ordinary queries and trusted recall can use different indexed sources. |
 
 The tool computes `searchMs`, `toolMs`, `outsideSearchMs`, `hits`,
 `candidateHits`, `withheldHits`, and `searchWindow` from actual execution.

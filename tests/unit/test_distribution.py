@@ -41,6 +41,7 @@ def test_metadata_rejects_missing_or_accidental_runtime_dependencies():
     metadata["Provides-Extra"] = "demo"
     metadata["Provides-Extra"] = "langgraph"
     metadata["Requires-Dist"] = "httpx>=0.27"
+    metadata["Requires-Dist"] = "zstandard>=0.23; python_version < '3.14'"
     metadata["Requires-Dist"] = 'fastapi>=0.115; extra == "demo"'
     metadata["Requires-Dist"] = 'jinja2>=3.1; extra == "demo"'
     metadata["Requires-Dist"] = 'uvicorn>=0.30; extra == "demo"'
@@ -50,6 +51,7 @@ def test_metadata_rejects_missing_or_accidental_runtime_dependencies():
     for requirement in (
         "fastapi>=0.115", 'pytest>=8.3; python_version >= "3.11"',
         'fastapi>=0.115; sys_platform == "win32"',
+        'zstandard>=0.23; python_version < "3.15"',
     ):
         bad = Message()
         for key, value in metadata.items():

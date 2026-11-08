@@ -172,3 +172,61 @@ def test_explicit_host_file_projection_remains_optional_for_legacy_callers(tmp_p
     file = MemoryFile("sessions/main/s1.jsonl", tmp_path / "s1.jsonl", "sessions", "User: text\n")
     assert file.index_entry is None
     assert replace(file, index_text="User: another").index_text == "User: another"
+
+
+@pytest.mark.parametrize("mtime,size", [(0, 0), (1_790_000_000_123, 713)])
+def test_authoritative_transcript_metadata_never_stats_a_logical_sqlite_locator(
+    tmp_path, monkeypatch, mtime, size,
+):
+    from memory_core.index.sqlite_store import read_index_source
+    from memory_core.session_entry import build_session_entry
+
+    locator = tmp_path / "agent:main:dm:reader"
+    entry = build_session_entry([
+        _message("user", "Cobalt catalog fact", owner=True),
+    ], mtime_ms=mtime, session_kind="interactive")
+    file = MemoryFile(
+        "sessions/main/recorded-id.jsonl", locator, "sessions",
+        index_entry=entry, index_mtime_ms=mtime, index_size=size,
+    )
+    stat = Path.stat
+
+    def guarded_stat(path, *args, **kwargs):
+        assert path != locator, "An accessor identity is not a filesystem source"
+        return stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", guarded_stat)
+    snapshot = read_index_source(file)
+    assert (snapshot.mtime, snapshot.size) == (mtime, size)
+    assert snapshot.text == "User: Cobalt catalog fact"
+    assert snapshot.hash == entry.hash
+    assert snapshot.index_entry.line_provenance == entry.line_provenance
+
+
+def test_explicit_session_activity_reaches_the_published_index(tmp_path):
+    from memory_core.config import MemoryConfig
+    from memory_core.flags import FeatureFlags
+    from memory_core.index.sqlite_store import SQLiteMemoryStore
+    from memory_core.session_entry import build_session_entry
+
+    activity = 1_790_000_000_123
+    entry = build_session_entry([
+        _message("user", "Cobalt catalog fact", owner=True),
+    ], mtime_ms=activity, session_kind="interactive")
+    file = MemoryFile(
+        "sessions/main/recorded-id.jsonl", tmp_path / "logical-session", "sessions",
+        index_entry=entry, index_mtime_ms=activity, index_size=713,
+    )
+
+    class CatalogWorkspace(MemoryWorkspace):
+        def discover_indexable_files(self):
+            return [file]
+
+    config = MemoryConfig(workspace_dir=tmp_path, flags=FeatureFlags(vector_search=False))
+    store = SQLiteMemoryStore(config, None)
+    store.reindex(CatalogWorkspace(tmp_path))
+    stored, = store.read_published_index()["sources"]
+    assert (stored["mtime"], stored["size"]) == (activity, 713)
+    results = store.search("Cobalt", min_score=0)
+    assert [hit.path for hit in results] == [file.rel_path]
+    assert results[0].provenance["originClass"] == "owner"

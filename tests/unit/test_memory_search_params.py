@@ -1,3 +1,4 @@
+import json
 import math
 from pathlib import Path
 
@@ -6,6 +7,7 @@ import pytest
 from memory_core.config import MemoryConfig
 from memory_core.flags import FeatureFlags
 from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.session_visibility import SessionVisibilityContext, SessionVisibilityPolicy
 from memory_core.supplements import StaticMemoryCorpusSupplement
 from memory_core.tools.common import (
     MemoryToolError,
@@ -18,6 +20,7 @@ from memory_core.tools.common import (
 )
 from memory_core.tools.memory_search import (
     MemorySearchParams,
+    MemorySearchToolContext,
     execute_memory_search_tool,
     memory_search,
     read_memory_search_params,
@@ -159,9 +162,17 @@ def _write_memory_and_session(tmp_path: Path) -> MemoryWorkspace:
         encoding="utf-8",
     )
     (sessions / "sessions.json").write_text(
-        '{"agent:main:s1":{"sessionFile":"s1.jsonl"}}\n', encoding="utf-8"
+        '{"agent:main:s1":{"sessionId":"s1","sessionFile":"s1.jsonl","chatType":"direct"}}\n', encoding="utf-8"
     )
     return MemoryWorkspace(tmp_path, openclaw_state_dir=tmp_path / "state")
+
+
+def _session_context(tmp_path: Path) -> MemorySearchToolContext:
+    catalog = tmp_path / "state" / "agents" / "main" / "sessions" / "sessions.json"
+    return MemorySearchToolContext(session_visibility=SessionVisibilityContext(
+        policy=SessionVisibilityPolicy(visibility="self"),
+        load_catalog=lambda: json.loads(catalog.read_text(encoding="utf-8")),
+    ))
 
 
 def test_unknown_or_omitted_corpus_searches_every_source_without_supplements(tmp_path: Path):
@@ -174,7 +185,10 @@ def test_unknown_or_omitted_corpus_searches_every_source_without_supplements(tmp
     )
 
     def corpora(corpus):
-        result = memory_search(cfg, store, query="cobalt", corpus=corpus, supplements=[wiki])
+        result = memory_search(
+            cfg, store, query="cobalt", corpus=corpus, supplements=[wiki],
+            agent_session_key="agent:main:s1", context=_session_context(tmp_path),
+        )
         return sorted(item["corpus"] for item in result["results"])
 
     assert corpora("memory") == ["memory"]
@@ -183,6 +197,7 @@ def test_unknown_or_omitted_corpus_searches_every_source_without_supplements(tmp
     assert corpora("all") == ["memory", "sessions", "wiki"]
     assert corpora(None) == ["memory", "sessions"]
     assert corpora("") == ["memory", "sessions"]
+    assert memory_search(cfg, store, query="cobalt", corpus="sessions")["results"] == []
     # Native tools.ts readCorpusParam throws an ordinary Error, without status 400.
     with pytest.raises(
         MemoryToolError, match="corpus must be one of: memory, wiki, all, sessions"
@@ -198,7 +213,8 @@ def test_execute_memory_search_tool_accepts_raw_model_arguments(tmp_path: Path):
     store.reindex(_write_memory_and_session(tmp_path))
 
     result = execute_memory_search_tool(
-        cfg, store, {"query": "cobalt", "max_results": "1", "corpus": " sessions "}
+        cfg, store, {"query": "cobalt", "max_results": "1", "corpus": " sessions "},
+        agent_session_key="agent:main:s1", context=_session_context(tmp_path),
     )
 
     assert [item["path"] for item in result["results"]] == ["sessions/main/s1.jsonl"]

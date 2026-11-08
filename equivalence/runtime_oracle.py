@@ -61,11 +61,337 @@ _OPERATIONS = {
     "deadline-partial-get-runtime": (
         "deadline-partial-runtime.mjs", "dist/tools-DotaQGXh.mjs", False,
     ),
+    "session-contract-runtime": (
+        "session-contract-runtime.mjs", "dist/extensions/memory-core/manager-runtime.js", True,
+    ),
+    "session-contract-helper-runtime": (
+        "session-contract-runtime.mjs", "dist/session-ingestion-Dy5uAq-_.mjs", False,
+    ),
 }
 
 
 class RuntimeOracleError(ValueError):
     """The release process did not provide bounded authenticated execution evidence."""
+
+
+def _validate_session_contract_raw(row: dict, case: dict, diagnostic: list,
+                                   evidence_directory: Path | None = None) -> None:
+    """Bind complete session results to actual accessors, SQL and tool envelopes."""
+    from equivalence.get_contract import map_get_fixture_paths
+    from equivalence.search_contract import _same_json, decode_search_tool_envelope
+
+    if not row["ok"]:
+        return
+    if len(diagnostic) != 1 or not isinstance(diagnostic[0], dict):
+        raise RuntimeOracleError("Session evidence requires one complete owned raw observation.")
+    raw, arguments, public = diagnostic[0], case["input"], row["result"]
+    if case["operation"] == "session-contract-helper-runtime":
+        result = raw.get("result")
+        if (set(raw) != {"result"} or not isinstance(result, dict)
+                or not _same_json({"provider": "none", **result}, public)):
+            raise RuntimeOracleError("Session helper results must retain their complete actual owner output.")
+        if "configs" in arguments and (set(result) != {"policies"}
+                or not isinstance(result["policies"], list)
+                or len(result["policies"]) != len(arguments["configs"])):
+            raise RuntimeOracleError("Every requested admission policy must execute its genuine helper.")
+        return
+    base = raw.get("fixtureBase")
+    if (not isinstance(base, str) or evidence_directory is None or not Path(base).is_absolute()
+            or Path(base).parent != evidence_directory
+            or not re.fullmatch(r"native-session-fixture-[A-Za-z0-9_-]+", Path(base).name)
+            or raw.get("constructorSkipped") is not False or raw.get("managerFixture") is not False):
+        raise RuntimeOracleError("Session flows need owned fixtures and genuine manager construction.")
+    if raw.get("clock") != {"owner": "node:test", "apis": ["Date"], "nowMs": arguments["nowMs"],
+                            "dateConstructorReplaced": True, "setTimeoutUnchanged": True}:
+        raise RuntimeOracleError("Session clocks require only the genuine Node Date fixture control.")
+    selected = arguments.get("config", {})
+    agent_id = arguments.get("agentId", "main")
+    agent_ids = selected.get("agentIds", [agent_id])
+    store_mode = selected.get("sessionStore")
+    store_path = (str(Path(base) / "state/shared/sessions.json") if store_mode == "shared" else
+                  str(Path(base) / "state/custom/{agentId}/sessions.json") if store_mode == "custom-template" else None)
+    defaults = {"workspace": str(Path(base) / "workspace")}
+    if "sandboxVisibility" in selected:
+        defaults["sandbox"] = {"sessionToolsVisibility": selected["sandboxVisibility"]}
+    expected_config = {
+        "agents": {"defaults": defaults, "list": [{"id": item, **({"default": True} if item == agent_id else {})}
+                                                   for item in agent_ids]},
+        "logging": {"level": "silent", "consoleLevel": "silent", "file": str(Path(base) / "native.log")},
+        "session": {**({"store": store_path} if store_path is not None else {}),
+                    "maintenance": {"mode": "warn"}, **selected.get("session", {})},
+        "tools": {"sessions": {"visibility": selected.get("visibility", "agent")}, **selected.get("tools", {})},
+        "memory": {"search": {
+            "enabled": True, "provider": "none", "fallback": "none", "sources": selected.get("sources", ["memory", "sessions"]),
+            "rememberAcrossConversations": selected.get("rememberAcrossConversations", True),
+            "experimental": {"sessionMemory": selected.get("configuredSessionMemory", True)},
+            "store": {"vector": {"enabled": False}}, "sync": {"onSessionStart": False, "onSearch": False, "watch": False},
+            "query": {"minScore": 0, "maxResults": 200, "hybrid": {"temporalDecay": {"enabled": False}}},
+            **({"chunking": selected["chunking"]} if "chunking" in selected else {}),
+        }},
+    }
+    if not _same_json(raw.get("config"), expected_config):
+        raise RuntimeOracleError("Session fixture configuration differs from the complete selected host policy facts.")
+    required_raw = {"fixtureBase", "constructorSkipped", "managerFixture", "sessionWrites", "gatewayRequests", "snapshots",
+                    "lifecycle", "archiveWrites", "reads", "clock", "nativeEnvelopes", "queryErrors", "catalogRequests",
+                    "managerAcquisitions", "queryRequests", "readRequests", "mutations", "config"}
+    if set(raw) != required_raw:
+        raise RuntimeOracleError("Session raw evidence lost an actual configuration, mutation or execution observation.")
+    if set(public) != {"provider", "steps"} or public.get("provider") != "none":
+        raise RuntimeOracleError("Session flow results require their complete provider-none step list.")
+    steps = arguments.get("steps", [{"label": "initial"}])
+    observations, snapshots = public.get("steps"), raw.get("snapshots")
+    if (not isinstance(steps, list) or not isinstance(observations, list) or not isinstance(snapshots, list)
+            or len(steps) != len(observations) or len(steps) != len(snapshots)
+            or any(not isinstance(item, dict) for item in steps + observations + snapshots)):
+        raise RuntimeOracleError("Every driven session step requires one full raw and public snapshot.")
+    labels = [step.get("label") for step in steps]
+    if any(not isinstance(label, str) for label in labels) or len(set(labels)) != len(labels):
+        raise RuntimeOracleError("Session step labels must retain unique driven identities.")
+    if (not isinstance(raw.get("managerAcquisitions"), list) or not raw["managerAcquisitions"]
+            or raw["managerAcquisitions"][0].get("agentId") != arguments.get("agentId", "main")
+            or not all(isinstance(item.get("status"), dict) for item in raw["managerAcquisitions"])):
+        raise RuntimeOracleError("A session flow has no actual manager acquisition/status observation.")
+    expected_catalog_requests = [{"agentId": arguments.get("agentId", "main"),
+                                  "includeContentRevision": False,
+                                  "includeRetainedSqlite": arguments.get("includeRetainedSqlite") is True}
+                                 for _step in steps]
+    if not _same_json(raw.get("catalogRequests"), expected_catalog_requests):
+        raise RuntimeOracleError("Session discovery must execute the exact selected public corpus options.")
+    actual_envelopes, actual_errors = raw.get("nativeEnvelopes"), raw.get("queryErrors")
+    requests = raw.get("queryRequests")
+    if not all(isinstance(items, list) for items in (actual_envelopes, actual_errors, requests, raw.get("reads"), raw.get("readRequests"))):
+        raise RuntimeOracleError("Session queries and reads require complete original execution observations.")
+    by_envelope, by_error = {}, {}
+    for items, target in ((actual_envelopes, by_envelope), (actual_errors, by_error)):
+        for item in items:
+            if not isinstance(item, dict) or (item.get("step"), item.get("queryId")) in target:
+                raise RuntimeOracleError("A session tool reply has a missing or duplicate operation identity.")
+            target[(item.get("step"), item.get("queryId"))] = item
+    if by_envelope.keys() & by_error.keys():
+        raise RuntimeOracleError("A session query cannot claim both a success and a failure.")
+    requested_queries, observed_reads = [], []
+    expected_public_keys = {"label", "catalog", "admitted", "sourceEntries", "published", "indexSources",
+                            "queries", "reads", "ingestionDecisions", "participantRecords"}
+    for step, observed, snapshot in zip(steps, observations, snapshots, strict=True):
+        if (set(observed) != expected_public_keys or snapshot.get("label") != step["label"]
+                or observed.get("label") != step["label"]
+                or set(snapshot) != expected_public_keys | {"fullSql", "sessionSql"}
+                or not _same_json(map_get_fixture_paths({key: snapshot[key] for key in expected_public_keys}, base), observed)):
+            raise RuntimeOracleError("A session result differs from its complete original persisted step snapshot.")
+        sql = snapshot["fullSql"]
+        if (not isinstance(sql, dict) or set(sql) != {"chunks", "sources", "provenance", "recall", "fts"}
+                or any(not isinstance(value, list) for value in sql.values())
+                or not isinstance(snapshot["sessionSql"], dict)):
+            raise RuntimeOracleError("Session publication requires complete underlying index and catalog SQL.")
+        fts_fields = ("id", "path", "source", "start_line", "end_line", "model", "text")
+        if (any(not isinstance(item, dict) or not set(fts_fields) <= item.keys()
+                for item in sql["fts"] + sql["chunks"])
+                or not _same_json([{key: item[key] for key in fts_fields} for item in sql["fts"]],
+                          [{key: item[key] for key in fts_fields} for item in sql["chunks"]])):
+            raise RuntimeOracleError("The full persisted session FTS rows differ from their actual chunk identities and text.")
+        catalog_tables = snapshot["sessionSql"]
+        if (not {"session_nodes", "session_windows", "transcript_events", "session_participants",
+                 "session_transcript_archives", "memory_session_tombstones"} <= catalog_tables.keys()
+                or any(not isinstance(table, dict) or set(table) != {"columns", "rows"}
+                       or not isinstance(table["columns"], list) or not table["columns"]
+                       or not isinstance(table["rows"], list)
+                       or any(set(record) != {column["name"] for column in table["columns"]}
+                              for record in table["rows"])
+                       for table in catalog_tables.values())):
+            raise RuntimeOracleError("Session catalog SQL must retain real table columns and complete source rows.")
+        provenance = {item["chunk_id"]: item for item in sql["provenance"]}
+        recall = {item["chunk_id"]: item for item in sql["recall"]}
+        published = []
+        for chunk in sql["chunks"]:
+            if not isinstance(chunk, dict) or chunk.get("embeddingHex") != "":
+                raise RuntimeOracleError("The actual provider-none publication must retain its empty vectors.")
+            p, r = provenance.get(chunk["id"], {}), recall.get(chunk["id"], {})
+            published.append({"path": chunk["path"], "source": chunk["source"],
+                              "startLine": chunk["start_line"], "endLine": chunk["end_line"], "text": chunk["text"],
+                              "importance": r.get("importance"), "triggers": r.get("triggers"),
+                              "projectKey": r.get("project_key"), "provenance": {
+                                  "originClass": p.get("origin_class"), "sessionKind": p.get("session_kind"),
+                                  "observedAt": p.get("observed_at"), "supersedesKey": p.get("supersedes_key")}})
+        if (not _same_json(published, snapshot["published"])
+                or not _same_json([{"path": item["path"], "source": item["source"]} for item in sql["sources"]], snapshot["indexSources"])):
+            raise RuntimeOracleError("The complete logical session publication differs from actual persisted SQL rows.")
+        if (not isinstance(snapshot["admitted"], list) or not isinstance(snapshot["sourceEntries"], list)
+                or not _same_json([item.get("source") for item in snapshot["sourceEntries"]], snapshot["admitted"])):
+            raise RuntimeOracleError("Every actual admitted source needs its full source projection and reset metadata.")
+        queries = step.get("queries", [])
+        if (not isinstance(snapshot["queries"], list) or len(snapshot["queries"]) != len(queries)
+                or not isinstance(snapshot["reads"], list) or len(snapshot["reads"]) != len(step.get("reads", []))):
+            raise RuntimeOracleError("Session step query/read counts differ from their driven operations.")
+        for query, reply in zip(queries, snapshot["queries"], strict=True):
+            identity = (step["label"], query["id"])
+            requested_queries.append(identity)
+            if (not isinstance(reply, dict) or reply.get("id") != query["id"]
+                    or set(reply) not in ({"id", "candidates", "result"}, {"id", "candidates", "error"})):
+                raise RuntimeOracleError("Session tool results lost their complete query identity or candidates.")
+            if "result" in reply:
+                original = by_envelope.get(identity)
+                if (original is None or not _same_json(decode_search_tool_envelope(original.get("nativeEnvelope")), reply["result"])):
+                    raise RuntimeOracleError("Session tool results differ from their complete original JSON envelopes.")
+            elif identity not in by_error or not _same_json(by_error[identity].get("error"), reply["error"]):
+                raise RuntimeOracleError("Session query errors lost their complete original native metadata.")
+        for request, result in zip(step.get("reads", []), snapshot["reads"], strict=True):
+            if not isinstance(result, dict) or result.get("id") != request["id"]:
+                raise RuntimeOracleError("Current-key source read evidence lost a requested operation.")
+            observed_reads.append({"step": step["label"], **result})
+    if (len(requested_queries) != len(set(requested_queries)) or len(requests) != len(requested_queries)
+            or set(requested_queries) != by_envelope.keys() | by_error.keys()
+            or not _same_json(observed_reads, raw["reads"])):
+        raise RuntimeOracleError("Session calls/reads were duplicated, dropped or detached from actual execution.")
+    flat_queries = [(step["label"], query) for step in steps for query in step.get("queries", [])]
+    for (label, query), request in zip(flat_queries, requests, strict=True):
+        parameters = {"query": query["query"], "maxResults": query.get("maxResults", 200),
+                      "minScore": query.get("minScore", 0), "corpus": query.get("corpus", "sessions")}
+        options = request.get("toolOptions", {})
+        if (request.get("step") != label or request.get("queryId") != query["id"]
+                or not _same_json(request.get("parameters"), parameters)
+                or options.get("agentId") != query.get("agentId", arguments.get("agentId", "main"))
+                or any(not _same_json(options.get(native), query.get(native))
+                       for native in ("conversationRecall", "sandboxed"))
+                or not _same_json(options.get("agentSessionKey"), query.get("requesterSessionKey"))
+                or not _same_json(options.get("config"), expected_config)):
+            raise RuntimeOracleError("Session tools were not called with their complete genuine requester and query arguments.")
+    requested_reads = [(step["label"], read) for step in steps for read in step.get("reads", [])]
+    if len(raw["readRequests"]) != len(requested_reads):
+        raise RuntimeOracleError("Current-session history requests were dropped from raw source access evidence.")
+    for (label, request), actual, result in zip(requested_reads, raw["readRequests"], raw["reads"], strict=True):
+        if (actual.get("step") != label or actual.get("readId") != request["id"]
+                or not _same_json(actual.get("input"), request)):
+            raise RuntimeOracleError("Source history access did not receive the complete requested host arguments.")
+        guard, reader = actual.get("guard"), actual.get("reader")
+        if guard is not None:
+            sandbox_visibility = defaults.get("sandbox", {}).get("sessionToolsVisibility", "spawned")
+            configured_visibility = expected_config["tools"].get("sessions", {}).get("visibility", "all")
+            effective_visibility = ("tree" if request.get("sandboxed") is True and sandbox_visibility != "all"
+                                    else configured_visibility)
+            a2a = expected_config["tools"].get("agentToAgent", {})
+            if (not isinstance(guard, dict) or guard.get("action") != "history"
+                    or guard.get("requesterSessionKey") != request["requesterSessionKey"]
+                    or guard.get("targetSessionKey") != request["targetSessionKey"]
+                    or guard.get("requesterOwned") is not False
+                    or guard.get("visibility") != effective_visibility
+                    or not _same_json(guard.get("a2aPolicy"), {"enabled": a2a.get("enabled") is not False})
+                    or not _same_json(guard.get("sessionReadScopeKey"), request.get("sessionReadScopeKey"))
+                    or ("requesterAgentId" in request and guard.get("requesterAgentId") != request["requesterAgentId"])
+                    or ("targetAgentId" in request and guard.get("targetAgentId") != request["targetAgentId"])):
+                raise RuntimeOracleError("Source history guard arguments differ from their actual requester and target.")
+        elif "error" not in result:
+            raise RuntimeOracleError("A source history result bypassed its real authorization owner.")
+        if reader is not None and (not isinstance(reader, dict) or guard is None
+                or reader.get("agentId") != guard.get("targetAgentId")
+                or reader.get("sessionKey") != request["targetSessionKey"]
+                or reader.get("sessionId") != result.get("sessionId")):
+            raise RuntimeOracleError("The source reader did not use the actual authorized current transcript identity.")
+        if guard is not None:
+            main_key = expected_config["session"].get("mainKey", "main")
+            expected_main = ("global" if expected_config["session"].get("scope") == "global" else
+                             f"agent:{guard['requesterAgentId']}:{main_key.strip().lower() or 'main'}")
+            if request.get("sandboxed") is True and sandbox_visibility != "all":
+                expected_main = None
+            if not _same_json(guard.get("mainSessionKey"), expected_main):
+                raise RuntimeOracleError("Current-session history read scope differs from its real selected main/sandbox context.")
+        if "sessionId" in result and reader is None:
+            raise RuntimeOracleError("A current transcript result has no actual native source-reader call.")
+    writes = [*arguments.get("sessions", []), *(entry for step in steps for entry in step.get("sessions", []))]
+    actual_writes = raw.get("sessionWrites")
+    archives = [*arguments.get("archives", []), *(entry for step in steps for entry in step.get("archives", []))]
+    if (not isinstance(actual_writes, list) or len(actual_writes) != len(writes)
+            or not isinstance(raw.get("archiveWrites"), list) or len(raw["archiveWrites"]) != len(archives)):
+        raise RuntimeOracleError("Session fixture writes and archive registry mutations were dropped from raw evidence.")
+
+    def scope(entry: dict) -> dict:
+        owner = entry.get("agentId", agent_id)
+        store = (str(Path(base) / "state/shared/sessions.json") if store_mode == "shared" else
+                 str(Path(base) / "state/custom" / owner / "sessions.json") if store_mode == "custom-template" else
+                 str(Path(base) / "state/agents" / owner / "sessions/sessions.json"))
+        identity = entry.get("sessionId", entry.get("entry", {}).get("sessionId"))
+        return {"agentId": owner, "sessionKey": entry["sessionKey"], "storePath": store,
+                **({"sessionId": identity} if identity is not None else {})}
+
+    for requested, actual in zip(writes, actual_writes, strict=True):
+        storage = actual.get("storage") if isinstance(actual, dict) else None
+        if (not isinstance(actual, dict) or not _same_json(actual.get("target"), scope(requested))
+                or not _same_json(actual.get("events"), requested.get("events"))
+                or not isinstance(actual.get("transcript"), list)
+                or "readBack" not in actual or not isinstance(actual.get("participantRecords"), dict)
+                or not isinstance(actual.get("participants"), list)
+                or len(actual["participants"]) != len(requested.get("participants", []))
+                or not isinstance(storage, dict) or set(storage) != {"incognito", "databasePath", "pathExists"}
+                or type(storage["incognito"]) is not bool or type(storage["pathExists"]) is not bool
+                or not isinstance(storage["databasePath"], str)
+                or not Path(storage["databasePath"]).is_relative_to(base)):
+            raise RuntimeOracleError("Session metadata/events/participant writes lack their exact actual accessor arguments and readback.")
+        if storage["databasePath"].endswith("/incognito-openclaw-agent.sqlite") and not storage["incognito"]:
+            raise RuntimeOracleError("The actual private database route was detached from its genuine session-key classification.")
+        if storage["incognito"]:
+            if storage["pathExists"] or not storage["databasePath"].endswith("/incognito-openclaw-agent.sqlite"):
+                raise RuntimeOracleError("Incognito source facts must use the actual process-held database sentinel without a disk file.")
+            if "events" in requested and not _same_json(actual["transcript"], requested["events"]):
+                raise RuntimeOracleError("The genuine volatile session accessor lost its actual private transcript records.")
+            for snapshot in snapshots:
+                if (any(entry.get("sessionKey") == requested["sessionKey"] for entry in snapshot["catalog"])
+                        or any(entry.get("sessionKey") == requested["sessionKey"] for entry in snapshot["admitted"])
+                        or any(row.get("session_key") == requested["sessionKey"]
+                               for table in snapshot["sessionSql"].values() for row in table["rows"])):
+                    raise RuntimeOracleError("Process-only session identity leaked into the ordinary persisted corpus or database.")
+    expected_mutations = []
+    for step in steps:
+        for entry in step.get("replaceEvents", []):
+            expected_mutations.append({"step": step["label"], "operation": "replaceEvents",
+                                       "target": scope(entry), "events": entry["events"]})
+        for entry in step.get("deleteSessions", []):
+            expected_mutations.append({"step": step["label"], "operation": "deleteSession",
+                                       "target": {**scope(entry), "archiveTranscript": False}})
+        if step.get("forgetSessions"):
+            expected_mutations.append({"step": step["label"], "operation": "tombstones",
+                                       "ids": [entry if isinstance(entry, str) else entry["sessionId"]
+                                               for entry in step["forgetSessions"]]})
+    mutations = raw.get("mutations")
+    if not isinstance(mutations, list) or len(mutations) != len(expected_mutations):
+        raise RuntimeOracleError("A persisted session rewrite, deletion or tombstone mutation was omitted.")
+    for expected, actual in zip(expected_mutations, mutations, strict=True):
+        if (not isinstance(actual, dict) or any(not _same_json(actual.get(key), value) for key, value in expected.items())
+                or not expected.keys() <= actual.keys() or actual.keys() - expected.keys() - {"result", "recorded"}):
+            raise RuntimeOracleError("Session mutation evidence does not retain the original driven operation and arguments.")
+    tombstones = [{key: value for key, value in mutation.items() if key != "step"}
+                  for mutation in mutations if mutation["operation"] == "tombstones"]
+    if not _same_json(raw.get("lifecycle"), tombstones):
+        raise RuntimeOracleError("Session lifecycle observations were detached from actual persisted tombstones.")
+    for requested, actual in zip(archives, raw["archiveWrites"], strict=True):
+        owner = requested.get("agentId", agent_id)
+        store = scope({"agentId": owner, "sessionKey": "archive-owner"})["storePath"]
+        filename = str(Path(store).parent / requested["name"])
+        if not isinstance(actual, dict) or actual.get("filename") != filename:
+            raise RuntimeOracleError("An archive fixture escaped its actual selected owner path.")
+        encoded = actual.get("descriptor", {}).get("bytes") if "identity" in requested else actual.get("bytes")
+        if (not isinstance(encoded, dict) or set(encoded) != {"type", "data"} or encoded["type"] != "Buffer"
+                or not isinstance(encoded["data"], list)
+                or any(type(value) is not int or not 0 <= value <= 255 for value in encoded["data"])):
+            raise RuntimeOracleError("An actual archive write has no complete original byte buffer.")
+        data = bytes(encoded["data"])
+        if "compressedBytes" in requested:
+            if data != bytes(requested["compressedBytes"]):
+                raise RuntimeOracleError("Actual compressed archive bytes differ from their shared literal fixture.")
+        elif (not data.endswith(b"\n") or not _same_json(
+                [json.loads(line) for line in data.decode("utf-8").splitlines()], requested["events"])):
+            raise RuntimeOracleError("Actual JSONL archive bytes lost or changed an original literal event.")
+        if "identity" in requested:
+            descriptor = {"archiveName": requested["name"], "bytes": encoded,
+                          "createdAt": requested["identity"].get("createdAt", arguments["nowMs"]),
+                          "encoding": "zstd" if "compressedBytes" in requested else "identity", "sha256": _digest(data)}
+            if not _same_json(actual.get("descriptor"), descriptor) or not isinstance(actual.get("rows"), list):
+                raise RuntimeOracleError("Archive registry writes differ from the actual source bytes, encoding or identity facts.")
+            identity = requested["identity"]
+            plan = {"agentId": owner, "sessionId": identity["sessionId"], "reason": identity["reason"],
+                    "archive": descriptor, "snapshot": {"sessionKey": identity["sessionKey"], "generation": identity["generation"]}}
+            if not _same_json(actual.get("plan"), plan):
+                raise RuntimeOracleError("Archive registry persistence did not receive the complete original owner/generation plan.")
+        elif not _same_json(actual.get("bytes"), encoded):
+            raise RuntimeOracleError("Unregistered archive bytes were replaced or omitted from actual source evidence.")
 
 
 def _validate_deadline_partial_raw(row: dict, case: dict, diagnostic: list,
@@ -347,6 +673,9 @@ class ReleaseOracleExecution:
         if (operation == "deadline-partial-runtime" and case["input"].get("toolName") not in {None, "memory_search"}
                 or operation == "deadline-partial-get-runtime" and case["input"].get("toolName") != "memory_get"):
             raise RuntimeOracleError("Deadline search and real-file get profiles cannot impersonate each other.")
+        session_kinds = {"session-contract-runtime": "flow", "session-contract-helper-runtime": "admission-policy"}
+        if operation in session_kinds and case.get("input", {}).get("kind") != session_kinds[operation]:
+            raise RuntimeOracleError("Session admission helpers cannot impersonate genuine persisted session flows.")
         if (not isinstance(row, dict) or operation not in _OPERATIONS
                 or row.get("id") != case.get("id") or type(row.get("ok")) is not bool
                 or set(row) != ({"id", "ok", "result"} if row["ok"] else {"id", "ok", "error"})):
@@ -446,6 +775,11 @@ class ReleaseOracleExecution:
             for name in ("deadline-partial.mjs", "search-contract-runtime.mjs")
         } <= local_imports:
             raise RuntimeOracleError("The actual controlled timer and complete envelope codec owners did not execute.")
+        if operation == "session-contract-runtime" and not {
+            str((ROOT / "equivalence" / name).resolve())
+            for name in ("search-contract-runtime.mjs", "get-contract-runtime.mjs")
+        } <= local_imports:
+            raise RuntimeOracleError("Session results require the original full-envelope and exact owned-root transport codecs.")
         if required_owner is not None and ("node_modules/openclaw", required_owner) not in loaded:
             message = ("The actual native runtime owner did not execute."
                        if operation in {"exact-path-runtime", "importance-project-runtime"}
@@ -474,6 +808,20 @@ class ReleaseOracleExecution:
             if any(("node_modules/openclaw", owner) not in loaded
                    for owner in REQUIRED_LOADED_ARTIFACTS_BY_PROFILE[operation]):
                 raise RuntimeOracleError("The actual native deadline/cooldown/corpus owners did not execute.")
+        if operation in {"session-contract-runtime", "session-contract-helper-runtime"}:
+            from equivalence.session_admission_runtime_bindings import (
+                REQUIRED_LOADED_ARTIFACTS_BY_PROFILE, MEMORY_INDEX_WORKER_ARTIFACTS,
+            )
+
+            if any(("node_modules/openclaw", owner) not in loaded
+                   for owner in REQUIRED_LOADED_ARTIFACTS_BY_PROFILE[operation]):
+                raise RuntimeOracleError("The genuine declared native session flow/helper owners did not execute.")
+            if operation == "session-contract-runtime":
+                by_thread = {}
+                for item in worker_imports:
+                    by_thread.setdefault((item["pid"], item["threadId"]), set()).add(item["path"])
+                if not any(set(MEMORY_INDEX_WORKER_ARTIFACTS) <= paths for paths in by_thread.values()):
+                    raise RuntimeOracleError("Session publication requires its real memory-index wrapper and implementation in one protected worker.")
         if case.get("operation") == "flush-execution-runtime" and not captures:
             raise RuntimeOracleError("The native provider loader did not execute a reviewed fixture source capture.")
         if operation == "flush-execution-runtime" and (
@@ -497,6 +845,34 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
         if operation in {"deadline-partial-runtime", "deadline-partial-get-runtime"}:
             _validate_deadline_partial_raw(row, case, diagnostic, evidence.parent)
+        if operation in {"session-contract-runtime", "session-contract-helper-runtime"}:
+            _validate_session_contract_raw(row, case, diagnostic, evidence.parent)
+            if operation == "session-contract-runtime" and row["ok"]:
+                from equivalence.session_admission_runtime_bindings import (
+                    HOSTED_GATEWAY_ARTIFACTS, ARCHIVE_READ_ARTIFACTS, ARCHIVE_PERSIST_ARTIFACTS,
+                    PARTICIPANT_ARTIFACTS, INCOGNITO_ARTIFACTS,
+                )
+
+                requests = diagnostic[0].get("gatewayRequests")
+                if not isinstance(requests, list):
+                    raise RuntimeOracleError("Session Gateway observations must retain the complete actual request list.")
+                if case["input"].get("gateway") is True and not requests:
+                    raise RuntimeOracleError("The requested hosted session lookup never reached its genuine Gateway owner.")
+                if requests and any(("node_modules/openclaw", owner) not in loaded for owner in HOSTED_GATEWAY_ARTIFACTS):
+                    raise RuntimeOracleError("Hosted session authorization lacks its actual projection, dispatch and Gateway handler owners.")
+                arguments = case["input"]
+                steps = arguments.get("steps", [])
+                archives = [*arguments.get("archives", []), *(entry for step in steps for entry in step.get("archives", []))]
+                writes = [*arguments.get("sessions", []), *(entry for step in steps for entry in step.get("sessions", []))]
+                required = set(ARCHIVE_READ_ARTIFACTS) if archives else set()
+                if any("identity" in entry for entry in archives):
+                    required.update(ARCHIVE_PERSIST_ARTIFACTS)
+                if any(entry.get("participants") for entry in writes):
+                    required.update(PARTICIPANT_ARTIFACTS)
+                if any(entry["storage"]["incognito"] for entry in diagnostic[0]["sessionWrites"]):
+                    required.update(INCOGNITO_ARTIFACTS)
+                if any(("node_modules/openclaw", owner) not in loaded for owner in required):
+                    raise RuntimeOracleError("Actual session archive or participant operations lack their original read/write owners.")
         if operation == "get-contract-runtime" and case["input"]["kind"] == "tool" and row["ok"]:
             from equivalence.get_contract_runtime_bindings import READ_RUNTIME_ARTIFACTS
             from equivalence.search_contract import _same_json, decode_search_tool_envelope

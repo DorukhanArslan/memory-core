@@ -23,6 +23,7 @@ def test_case_catalog_is_deterministic_unique_and_standard_json():
         "tools.search-contract",
         "tools.get-contract",
         "tools.deadline-cooldown", "tools.unavailable-partial",
+        "sessions.corpus-admission", "sessions.visibility-lineage",
         "engine.unicode-collation",
         "storage.discovery", "storage.path-safety", "indexing.identity",
         "indexing.embedding-cache", "indexing.incremental-sync",

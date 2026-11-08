@@ -1,9 +1,11 @@
+import json
 from pathlib import Path
 
 from memory_core.config import MemoryConfig
 from memory_core.embeddings.base import FakeEmbeddingProvider
 from memory_core.flags import FeatureFlags
 from memory_core.index.sqlite_store import SQLiteMemoryStore
+from memory_core.session_visibility import SessionVisibilityContext, SessionVisibilityPolicy
 from memory_core.supplements import StaticMemoryCorpusSupplement
 from memory_core.tools.common import MemoryToolInputError
 from memory_core.tools.memory_get import (
@@ -12,8 +14,15 @@ from memory_core.tools.memory_get import (
     memory_get,
     memory_get_tool_definition,
 )
-from memory_core.tools.memory_search import memory_search, memory_search_tool_definition
+from memory_core.tools.memory_search import MemorySearchToolContext, memory_search, memory_search_tool_definition
 from memory_core.workspace import MemoryWorkspace
+
+
+def _file_session_context(sessions_dir: Path) -> MemorySearchToolContext:
+    return MemorySearchToolContext(session_visibility=SessionVisibilityContext(
+        policy=SessionVisibilityPolicy(visibility="self"),
+        load_catalog=lambda: json.loads((sessions_dir / "sessions.json").read_text(encoding="utf-8")),
+    ))
 
 
 def test_memory_get_reads_line_window(tmp_path: Path):
@@ -152,7 +161,7 @@ def test_memory_get_returns_upstream_error_for_session_search_hits(tmp_path: Pat
         encoding="utf-8",
     )
     (sessions_dir / "sessions.json").write_text(
-        '{"agent:main:session-nebula":{"sessionFile":"session-nebula.jsonl"}}\n',
+        '{"agent:main:session-nebula":{"sessionId":"session-nebula","sessionFile":"session-nebula.jsonl"}}\n',
         encoding="utf-8",
     )
     corpus_dir = tmp_path / "memory" / ".dreams" / "session-corpus"
@@ -166,15 +175,19 @@ def test_memory_get_returns_upstream_error_for_session_search_hits(tmp_path: Pat
     store = SQLiteMemoryStore(cfg, None)
     store.reindex(MemoryWorkspace(tmp_path, openclaw_state_dir=tmp_path / ".openclaw-state"))
 
-    hits = memory_search(cfg, store, query="ORBIT-10", corpus="sessions", max_results=5)
+    raw_paths = sorted(hit.path for hit in store.search("ORBIT-10", sources={"sessions"}, max_results=5))
+    assert raw_paths == [
+        "memory/.dreams/session-corpus/2026-05-07.txt", "sessions/main/session-nebula.jsonl",
+    ]
+    hits = memory_search(
+        cfg, store, query="ORBIT-10", corpus="sessions", max_results=5,
+        agent_session_key="agent:main:session-nebula", context=_file_session_context(sessions_dir),
+    )
     paths = sorted(hit["path"] for hit in hits["results"])
 
-    assert paths == [
-        "memory/.dreams/session-corpus/2026-05-07.txt",
-        "sessions/main/session-nebula.jsonl",
-    ]
+    assert paths == ["sessions/main/session-nebula.jsonl"]
     refused = "path is not an allowed Markdown memory file"
-    for path in paths:
+    for path in raw_paths:
         for corpus in ("memory", "sessions"):
             assert memory_get(cfg, path=path, corpus=corpus) == {
                 "path": path,
@@ -295,7 +308,7 @@ def test_memory_search_preserves_keyword_hits_when_min_score_is_too_strict(
     assert [item["path"] for item in result["results"]] == ["MEMORY.md"]
 
 
-def test_memory_search_indexes_session_transcripts_by_default(tmp_path: Path):
+def test_legacy_synthetic_session_files_need_verified_identity_for_tool_retrieval(tmp_path: Path):
     (tmp_path / "MEMORY.md").write_text("User likes lemon pepper wings.\n", encoding="utf-8")
     session_dir = tmp_path / "memory" / ".dreams" / "session-corpus"
     session_dir.mkdir(parents=True)
@@ -306,11 +319,18 @@ def test_memory_search_indexes_session_transcripts_by_default(tmp_path: Path):
     store = SQLiteMemoryStore(cfg, FakeEmbeddingProvider(dimensions=8))
     store.reindex(MemoryWorkspace(tmp_path))
 
-    result = memory_search(cfg, store, query="cobalt router", max_results=3, min_score=0.0)
-
+    raw = store.search("cobalt router", max_results=3, min_score=0.0)
     assert {
-        (item["path"], item["corpus"]) for item in result["results"]
+        (item.path, item.source) for item in raw
     } >= {("memory/.dreams/session-corpus/2026-05-07.md", "sessions")}
+    # This legacy indexing extension has no native transcript identity. Even a
+    # requester cannot turn that filename into session visibility evidence.
+    for requester in (None, "agent:main:main"):
+        result = memory_search(
+            cfg, store, query="cobalt router", max_results=3, min_score=0.0,
+            agent_session_key=requester,
+        )
+        assert all(item["source"] != "sessions" for item in result["results"])
 
 
 def test_memory_search_indexes_openclaw_state_session_transcripts(tmp_path: Path):
@@ -328,7 +348,7 @@ def test_memory_search_indexes_openclaw_state_session_transcripts(tmp_path: Path
         encoding="utf-8",
     )
     (sessions_dir / "sessions.json").write_text(
-        '{"agent:main:session-nebula":{"sessionFile":"session-nebula.jsonl"}}\n',
+        '{"agent:main:session-nebula":{"sessionId":"session-nebula","sessionFile":"session-nebula.jsonl"}}\n',
         encoding="utf-8",
     )
     cfg = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
@@ -344,6 +364,8 @@ def test_memory_search_indexes_openclaw_state_session_transcripts(tmp_path: Path
         corpus="sessions",
         max_results=3,
         min_score=0.0,
+        agent_session_key="agent:main:session-nebula",
+        context=_file_session_context(sessions_dir),
     )
 
     first = result["results"][0]

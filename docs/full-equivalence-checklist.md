@@ -26,7 +26,7 @@ The reference repository is `https://github.com/openclaw/openclaw.git`. Python-o
 
 The [source map](equivalence-source-map.md) links all 64 contracts and 128 acceptance points
 to the pinned upstream code and the current Python implementation. The inventory records
-116 upstream source modules, their tracked hashes, literal dependencies and exported
+137 upstream source modules, their tracked hashes, literal dependencies and exported
 declarations. Source presence and inventory validation do not establish behavior or add
 any differential-test coverage.
 
@@ -1473,3 +1473,99 @@ The proposed next related package is **`sessions.corpus-admission` +
 It tests which transcripts are admitted and which source-session results/read operations
 remain visible after resets, trust changes and forgotten origins. This remains existing scope;
 no new checklist conditions are added. No additional user information is currently required.
+
+
+### Persisted session admission and authorized lineage — 2026-11-09
+
+This package targets the four original conditions in `sessions.corpus-admission` and
+`sessions.visibility-lineage`: **41 → 45/128** if verified. The fixed 64-contract scope and
+its hash remain unchanged. Counts record verified conditions rather than equal units of
+engineering effort. Acceptance remains at the last committed baseline until integrated
+validation below.
+
+The SDK now has an agent-scoped `MemorySessionCatalog` over its own durable SQLite schema.
+Authoritative metadata, transcript generations, participants, archive bindings and memory
+admission tombstones are separate facts. `MemoryCoreSessionCorpus` enumerates actual active,
+retained and archive identities; manager admission then checks generated/maintenance kinds,
+all-system projections and tombstones. The existing JSONL adapter remains separate. Native
+binary database interchange, full archive publication and reset-hook orchestration are not
+claimed by this catalog implementation.
+
+`MemoryWorkspace` carries the actual projection hash, source coordinates, provenance,
+activity time and exported byte size into indexing, including logical SQLite locators with
+no corresponding transcript file. Genuine complete Zstandard reset/deleted archives are
+read through the Python codec. Python versions before 3.14 use the normal `zstandard` core
+dependency; later versions use standard-library `compression.zstd`. The existing 61 external
+lock records and artifact hashes are unchanged; only the root dependency declaration is
+added, and `uv lock --check --offline` validates it. Native codec edge behavior follows the
+actual Node 24 frame reader; this does not close malformed/archive-cache boundaries in #27.
+
+The trusted visibility context loads live catalog/archive/reset and spawned-session facts.
+Search applies the actual visibility filter before source selection, result limiting and
+withheld/debug counts, including partial and refreshed-manager paths. Ordinary visibility
+can accept any authorized alias; private conversation recall requires every alias to remain
+private and checks its anchor, requester, reset cutoff and archive reason. No requester
+means no transcript hits. Bound requester/agent conflicts retain the native structured error
+at the native stage; memory-only early return remains distinct.
+
+`Memory` and `HostKit` capture the host catalog and visibility/source policies. Model arguments
+cannot replace them or the actual requester in `SessionState`. The source-policy owner
+separates indexed sources from ordinary query sources so remembered transcripts can be
+available to trusted private recall without appearing in ordinary memory-only searches.
+Static host policy affects configuration cooldown identity; live catalog content does not.
+The [session authority guide](session_authority.md) documents actual SDK wiring and explicit
+transcript persistence followed by index refresh. Automatic query sync and the durable
+next-turn barrier remain separate contracts.
+
+The guarded source-read profile authorizes a CURRENT session key through the actual history
+access owner, resolves its current recorded identity and reads complete persisted events.
+Incarnation-specific grants are rechecked where the native owner supplies an expected ID.
+This is distinct from expanding a cached search-hit descriptor or proving an entire history
+tool/UI. Memory tombstones remove memory admission without erasing otherwise authorized
+source history. Persisted reset-boundary records are common input facts; no adapter generates
+native lifecycle events or claims new/reset-hook equivalence.
+
+The native comparison constructs the genuine provider-none index manager and actual session
+SQLite stores. Main process and memory-index worker imports must be authenticated separately;
+generic plugin-state worker counts cannot stand in for index execution. Tree/all ownership
+lookups run the actual hosted in-process Gateway session-list handler and projection over
+those stores, rather than a supplied list of visible keys. Initial archive records use the
+genuine archive insertion owner and actual archive bytes; this is fixture preparation rather
+than full archive-publisher lifecycle proof. Source and official compiled artifact authority
+remain separate, with `sourceBuildReproduced: false`.
+
+Before production changes, `.equivalence-results/session-contract-python-baseline.json`
+ran the actual unchanged SDK at commit `9b0eaa9`: an ordinary tool call with no requester
+returned a registered private transcript hit. The separate default-all diagnostic is retained
+in `session-contract-python-baseline-default-all.json`; same-agent Bob-to-Alice visibility
+under native ordinary `all` is not itself an authorization failure. Neither diagnostic adds
+acceptance credit. The first broad development run is retained at
+`/workspace/scratch/memory-core-session-visibility-broad-first.log` (2,693 passing regression
+tests and three failing old authority/dependency/public-field assertions). The targeted
+corrections preserve real catalog/requester/origins/fence behavior and require no weaker
+visibility policy. Focused corrected results are retained separately.
+
+
+The first formal 50-case report, `.equivalence-results/session-contract-first.json`, is
+**blocked** and grants **zero** credit. Its first compressed archive fixture supplied numeric
+`generation: 0`; the actual native persistence owner requires a nonempty owner generation
+and failed before index acquisition. The subsequent missing-owner attestation error was a
+consequence of that setup failure. The original failure row, raw state, trace summary and
+diagnostic are retained as `session-archive-first-failure.*` under `.equivalence-results`.
+The corrected initial archive facts use coherent nonempty generation, filename suffix and
+creation time. Additional legacy generationless artifacts exercise the actual archive-reason
+branches alongside canonical registry-backed artifacts; neither changes the fixed scope.
+
+The native archive-reason helper currently omits the generation suffix accepted by the
+archive-identity parser. The SDK preserves that actual behavior and does not claim universal
+deleted-archive denial from that helper. Complete indexed results and explicit tombstone
+behavior remain observable. No native guard or source authority was weakened to repair the
+fixture.
+
+Independent review also reproduced an actual SDK admission defect: a process-only incognito
+key entered the ordinary durable catalog and transcript index. The corrected catalog routes
+such state to a process-held SQLite owner, preserving private raw writes while excluding it
+from ordinary catalog/disk/index views. The corpus also excludes those keys in its legacy
+adapter. Native scoped history denies incognito targets before source lookup; it does not
+grant private-self history access. This is part of the original admission/visibility scope,
+with no added acceptance condition or full restart/host-lifecycle claim.

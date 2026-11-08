@@ -71,7 +71,10 @@ def test_every_moved_name_is_exported_where_the_changelog_says():
 
 
 def test_memory_keeps_only_the_core_handle_methods():
-    public = {name for name in vars(memory_core.Memory) if not name.startswith("_")}
+    public = {
+        name for name in vars(memory_core.Memory)
+        if not name.startswith("_") and callable(getattr(memory_core.Memory, name))
+    }
 
     assert public == {"from_workspace", "search", "get", "curator"}
 

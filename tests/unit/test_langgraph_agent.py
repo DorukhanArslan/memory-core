@@ -1418,14 +1418,21 @@ def test_graph_host_ingestion_forget_and_fenced_rebuild(tmp_path: Path, monkeypa
     from memory_core.consolidation.session_ingestion import (
         SessionCorpusEntry, ingest_session_transcript_signals,
     )
+    from memory_core.session_catalog import MemorySessionCatalog
 
     root, host = tmp_path / "workspace", tmp_path / "host"
+    # This fixed-clock lineage fixture should not depend on a recency score gate.
     config = MemoryConfig(workspace_dir=root, store_path=host / "main.sqlite",
-                          flags=FeatureFlags(vector_search=False))
+                          flags=FeatureFlags(vector_search=False), search_min_score=0)
     origins = MemoryEntryOriginLedger(lambda agent: host / f"{agent}.sqlite")
     trust = MemoryArtifactProvenanceStore(host / "trust.sqlite")
+    catalog = MemorySessionCatalog(host / "sessions.sqlite", clock_ms=lambda: NOW_MS)
     memory = Memory.from_workspace(root, config=config, initialize=False, reindex=False,
-                                   revision_fence=origins.revision_fence("main"))
+                                   revision_fence=origins.revision_fence("main"),
+                                   session_catalog=catalog)
+    memory.workspace.is_session_forgotten = lambda session_id: bool(
+        origins.list_session_tombstones("main", [session_id])
+    )
     events = []
     kit = HostKit(memory, now_ms=lambda: NOW_MS, artifact_provenance=trust,
                   dreaming_enabled=True, on_event=events.append)
@@ -1435,13 +1442,17 @@ def test_graph_host_ingestion_forget_and_fenced_rebuild(tmp_path: Path, monkeypa
     first = _say(graph, "Our codename is velvetkiwi.", context=owner)
     session = _session(first)
 
-    # The host owns transcript persistence/enumeration. This test uses scratch JSONL;
-    # the example does not create a second session database or persist transcripts itself.
+    # The host persists the same events in its authoritative catalog and scratch
+    # JSONL ingestion source; the graph itself does not persist transcripts.
+    records = [{"type": "message", "message": {**row, "timestamp": NOW_MS}}
+               for row in transcript_rows(first["messages"])]
+    catalog.upsert_session(session.session_key, {
+        "sessionId": session.session_id, "chatType": "direct", "updatedAt": NOW_MS,
+    })
+    catalog.append_events(session.session_id, records, updated_at_ms=NOW_MS)
     source = host / "agents" / "main" / "sessions" / f"{session.session_id}.jsonl"
     source.parent.mkdir(parents=True)
-    source.write_text("".join(json.dumps({
-        "type": "message", "message": {**row, "timestamp": NOW_MS},
-    }) + "\n" for row in transcript_rows(first["messages"])), "utf-8")
+    source.write_text("".join(json.dumps(row) + "\n" for row in records), "utf-8")
     entry = SessionCorpusEntry("main", session.session_id, str(source),
                                session_key=session.session_key)
 
@@ -1458,14 +1469,19 @@ def test_graph_host_ingestion_forget_and_fenced_rebuild(tmp_path: Path, monkeypa
     assert origins.list("main")
     assert {row.session_id for row in origins.list("main")} == {session.session_id}
     kit.memory.store.reindex(kit.memory.workspace)
+    assert any(hit.path.startswith("memory/.dreams/session-corpus/")
+               for hit in memory.store.search("velvetkiwi", min_score=0))
     found = _say(graph, "What is our project codename? Check your memory.", context=owner)
     hits = [m for m in found["messages"] if m.type == "tool" and "velvetkiwi" in m.content]
     assert hits
-    # Generated session corpus is indexed as "sessions". HostKit records only
-    # memory-corpus recalls, as in upstream tools.ts, so these hits emit no event.
+    # Only identity-backed session hits pass the tool visibility guard. HostKit
+    # records memory-corpus recalls, so these session hits emit no event.
     assert all(hit["corpus"] == "sessions" for hit in json.loads(hits[-1].content)["results"])
+    assert {hit["path"] for hit in json.loads(hits[-1].content)["results"]} == {
+        f"sessions/main/{session.session_id}.jsonl",
+    }
     assert not events
-    assert memory.search("velvetkiwi")["results"]
+    assert memory.search("velvetkiwi", agent_session_key=session.session_key)["results"]
 
     options = dict(config=config, agent_id="main", origins=origins,
                    session_ids=[session.session_id],
@@ -1495,10 +1511,11 @@ def test_graph_host_ingestion_forget_and_fenced_rebuild(tmp_path: Path, monkeypa
     assert origins.list_session_tombstones("main", [session.session_id])
     assert not origins.list("main")
     assert memory.store.reindex(memory.workspace) >= 0
-    assert memory.search("velvetkiwi")["results"] == []
+    assert memory.search("velvetkiwi", agent_session_key=session.session_key)["results"] == []
 
     # Source history/checkpoints still exist; tombstones stop memory ingestion from reviving it.
     assert source.exists()
+    assert catalog.read_transcript(session.session_id, session_key=session.session_key).events
     assert any("velvetkiwi" in str(s.values.get("messages")) for s in graph.get_state_history(THREAD))
     replay = ingest_session_transcript_signals(
         config=config, agent_ids=["main"], corpus_entries=sources, lookback_days=7,

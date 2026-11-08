@@ -176,8 +176,12 @@ no manager substitute. This grants no new index-worker, manager startup, live pr
 transcript visibility, or OS scheduling credit. Source and official release provenance remain
 separate; the release build is not independently reproduced.
 
-All four original deadline/cooldown and unavailable/partial conditions have reviewed matching
-focused evidence, pending the fresh committed full gate. Complete raw envelopes, provider events,
+All four original deadline/cooldown and unavailable/partial conditions pass in the fresh
+committed full gate. Current bounded coverage is **41/128 conditions**, with **87 remaining**;
+19 contracts are complete, three partial and 42 pending. These are verification counts, not
+engineering-effort percentages. All 33 new cases match; the integrated catalog has 1,116
+matches, three uncredited differences and zero blocked cases across 1,119 cases on clean
+implementation `c40225f`. All 3,693 regressions and both clean package consumers pass. Complete raw envelopes, provider events,
 clock cuts, partial flags, warnings and debug durations remain visible. Cross-backend global
 entry order is not promised; complete ordered backend lanes are compared and original global
 interleaving is also retained. SDK-only real SQLite tests verify snapshot publication before

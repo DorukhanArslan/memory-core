@@ -51,22 +51,22 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
-The latest verified bounded baseline has **37/128 acceptance conditions**, with **91 conditions**
-remaining. This is an unweighted count of verified conditions, not a percentage of engineering
-work completed or a time estimate. This includes both get-tool points from real read helpers and complete
-native/SDK factories, alongside the earlier search/ranking points. Provider-none memory/wiki,
-portable filesystem diagnostics, unicode61, printable-ASCII path ties and portable CPU
-profiles remain explicit. All 70 get cases match; the OS-specific loop diagnostic remains
-visible and uncredited. Final regressions passed 3,448 tests and both clean package consumers
-passed. The committed 1,086-case integrated get report records 1,083 matches, three visible
-differences, zero blocked cases and no runner errors.
+The latest verified bounded baseline has **41/128 acceptance conditions**, with **87 conditions**
+remaining. This is an unweighted verification count, not a percentage of engineering work
+completed or a time estimate. The combined deadline/cooldown and unavailable/partial package
+verifies all four of its original conditions under the declared controlled provider/timer
+profile. Previous provider-none memory/wiki, portable read/CPU, unicode61 and printable-ASCII
+tie profiles remain explicit. All 33 new cases match. Final regressions passed **3,693 tests**
+and both clean package consumers passed. The committed integrated report executes **1,119
+cases: 1,116 matches, three visible uncredited differences, zero blocked cases and no runner
+errors**. This remains bounded evidence, not complete OpenClaw equivalence.
 
 | Contract status | Contracts | Verified acceptance points | Remaining acceptance points |
 | --- | ---: | ---: | ---: |
-| Complete | 17 | 34 | 0 |
+| Complete | 19 | 38 | 0 |
 | Partial | 3 | 3 | 3 |
-| Pending verification | 44 | 0 | 88 |
-| Total | 64 | 37 | 91 |
+| Pending verification | 42 | 0 | 84 |
+| Total | 64 | 41 | 87 |
 
 Pending verification does not mean no implementation exists. Partial contracts have outcomes
 verified and boundaries still open: `indexing.identity`, `sessions.transcript-filtering` and
@@ -76,16 +76,16 @@ the entire fixed scope. Infrastructure counts do not add behavioral acceptance p
 
 After each completed batch, update these counts and provide the full completed, partial and
 pending lists, the batch's target and actual acceptance increase, and any information needed
-from the user. The preceding get batch targeted **+2 conditions** and verified **+2**. The next combined
-deadline/cooldown and partial-result batch targets **+4**, from 37 to 41/128, subject to the
-committed integrated gate. Correcting stale status adds **zero** verified conditions. Batch
-sizes follow related behavior and dependencies; they need not increase by two.
+from the user. The latest combined deadline/cooldown and partial-result batch targeted **+4
+conditions** and verified **+4**, from 37 to 41/128 in the committed integrated gate. Correcting
+stale status adds **zero** verified conditions. Batch sizes follow related behavior and
+dependencies; they need not increase by two.
 
 Current status of all 64 contracts:
 
-- **Complete (17):** `lexical.tokenization`, `lexical.fts-query`, `lexical.bm25`, `chunking.markdown-boundaries`, `chunking.utf16-cjk-budget`, `indexing.incremental-sync`, `indexing.transaction-publication`, `retrieval.vector-scoring`, `retrieval.hybrid-scoring`, `retrieval.exact-path-priority`, `retrieval.mmr`, `retrieval.temporal-decay`, `retrieval.importance-project`, `tools.search-contract`, `tools.get-contract`, `prompt.bootstrap-budget`, `flush.trigger-usage`.
+- **Complete (19):** `lexical.tokenization`, `lexical.fts-query`, `lexical.bm25`, `chunking.markdown-boundaries`, `chunking.utf16-cjk-budget`, `indexing.incremental-sync`, `indexing.transaction-publication`, `retrieval.vector-scoring`, `retrieval.hybrid-scoring`, `retrieval.exact-path-priority`, `retrieval.mmr`, `retrieval.temporal-decay`, `retrieval.importance-project`, `tools.search-contract`, `tools.get-contract`, `tools.deadline-cooldown`, `tools.unavailable-partial`, `prompt.bootstrap-budget`, `flush.trigger-usage`.
 - **Partial (3):** `indexing.identity`, `sessions.transcript-filtering`, `flush.execute-finalize`.
-- **Pending verification (44):** `storage.discovery`, `storage.path-safety`, `storage.atomic-writes`, `storage.workspace-isolation`, `chunking.entry-provenance`, `indexing.embedding-cache`, `indexing.query-sync`, `tools.deadline-cooldown`, `tools.unavailable-partial`, `sessions.corpus-admission`, `sessions.visibility-lineage`, `sessions.reset-hook`, `sessions.durable-context`, `prompt.bootstrap-discovery`, `prompt.runtime-context`, `prompt.history-repair`, `flush.plan-target`, `compaction.memory-budget`, `compaction.context-assembly`, `compaction.provider-overflow`, `promotion.recall-signals`, `promotion.ranking-gates`, `promotion.apply-reconcile`, `promotion.deep-consolidation`, `dreaming.light`, `dreaming.rem`, `dreaming.deep`, `dreaming.diary-provenance`, `forget.lineage-tombstones`, `forget.index-fence`, `trust.secret-redaction`, `trust.configured-redaction`, `heartbeat.scratch`, `heartbeat.turn-decisions`, `automation.job-state`, `concurrency.workspace-locks`, `recovery.repair-diagnostics`, `recovery.failure-publication`, `engine.numeric-boundaries`, `engine.unicode-collation`, `engine.datetime-regex`, `host.turn-barrier`, `host.restart-recall`, `host.update-isolation`.
+- **Pending verification (42):** `storage.discovery`, `storage.path-safety`, `storage.atomic-writes`, `storage.workspace-isolation`, `chunking.entry-provenance`, `indexing.embedding-cache`, `indexing.query-sync`, `sessions.corpus-admission`, `sessions.visibility-lineage`, `sessions.reset-hook`, `sessions.durable-context`, `prompt.bootstrap-discovery`, `prompt.runtime-context`, `prompt.history-repair`, `flush.plan-target`, `compaction.memory-budget`, `compaction.context-assembly`, `compaction.provider-overflow`, `promotion.recall-signals`, `promotion.ranking-gates`, `promotion.apply-reconcile`, `promotion.deep-consolidation`, `dreaming.light`, `dreaming.rem`, `dreaming.deep`, `dreaming.diary-provenance`, `forget.lineage-tombstones`, `forget.index-fence`, `trust.secret-redaction`, `trust.configured-redaction`, `heartbeat.scratch`, `heartbeat.turn-decisions`, `automation.job-state`, `concurrency.workspace-locks`, `recovery.repair-diagnostics`, `recovery.failure-publication`, `engine.numeric-boundaries`, `engine.unicode-collation`, `engine.datetime-regex`, `host.turn-barrier`, `host.restart-recall`, `host.update-isolation`.
 
 ### Storage and workspace
 
@@ -124,8 +124,8 @@ Current status of all 64 contracts:
 
 - [x] **`tools.search-contract` — Match memory_search inputs and results.** Compare definitions, accepted parameters, coercion, defaults, corpora and rejection errors. Compare complete ordered payloads, citations, warnings and source metadata. Verified for the declared provider-none memory/wiki profile; other lifecycle/provider/session contracts remain open.
 - [x] **`tools.get-contract` — Match memory_get inputs and results.** Compare allowed files, line windows, UTF-16 budgets, continuation hints and missing sources. Compare exact status/error shapes and returned source text. Verified for the declared portable read/wiki profile; OS-specific loop causes, patterns and filesystem races remain uncredited.
-- [ ] **`tools.deadline-cooldown` — Match deadlines and cooldowns.** Control clocks and slow providers to exercise absolute deadlines and cooldown transitions. Compare subsequent admission, provider call counts and memory/wiki/session independence.
-- [ ] **`tools.unavailable-partial` — Match unavailable and partial corpus outcomes.** Fail individual providers and supplemental corpora independently. Compare partial results, timed-out flags, warnings and recovery on a later explicit query.
+- [x] **`tools.deadline-cooldown` — Match deadlines and cooldowns.** Control clocks and slow providers to exercise absolute deadlines and cooldown transitions. Compare subsequent admission, provider call counts and memory/wiki/session independence. Verified under the declared controlled backend/timer profile; live provider latency, indexed manager startup and transcript visibility are uncredited.
+- [x] **`tools.unavailable-partial` — Match unavailable and partial corpus outcomes.** Fail individual providers and supplemental corpora independently. Compare partial results, timed-out flags, warnings and recovery on a later explicit query. Verified through complete controlled search/get factories and original source owners; general provider/network lifecycle remains uncredited.
 
 ### Sessions and transcript
 
@@ -1360,8 +1360,7 @@ information is required.
 This package targets all four original acceptance conditions in `tools.deadline-cooldown`
 and `tools.unavailable-partial`, from **37 to 41/128**, without changing the fixed 64-contract
 scope. Verification counts are unweighted: four conditions do not imply four equal units of
-work or a fixed percentage of time saved. Acceptance remains at the preceding verified
-baseline until the final committed integrated report below.
+work or a fixed percentage of time saved. The final committed integrated report below verifies all four targeted conditions.
 
 The SDK now shares an actual deadline/signal owner between search and get. Search separates
 an original parent cancellation from a deadline created by its own owner; a provider error
@@ -1432,3 +1431,45 @@ a pending timer handle until cleanup, verified by real scheduler-cancellation as
 
 No paid model calls or credential-bearing fixtures are used. The full gate must keep the
 three existing uncredited diagnostics and every remaining uncovered condition visible.
+
+
+#### Final integrated validation
+
+The fresh strict full report, `.equivalence-results/deadline-partial-full.json`, runs all
+**1,119 cases** on clean implementation **`c40225f87da4ed4362d30bf7633011a7e6ca379c`**.
+It records **1,116 matches, three mismatches, zero blocked cases and no runner errors**.
+All **33 deadline/partial cases match**, and all four reviewed original acceptance conditions
+pass. This batch targeted **+4** and verified **+4**: **37 → 41/128**, with **87 remaining**.
+There are now **19 complete, three partial and 42 pending contracts**. These are unweighted
+verification counts, not an estimate of engineering work or remaining time.
+
+The report fingerprints **131 SDK source files**, SHA-256
+`ea0397841aa7d2e7d30bda105b35d5c6353d4632088743aef3b4b6e2aa78a597`. The fixed reference remains
+`bcfc88812a35243893585dbeca87ca41b48272ca`, scope remains 64 contracts / 128 conditions,
+and scope SHA-256 remains
+`a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9`.
+Source and authenticated release evidence remain separate; `sourceBuildReproduced: false`.
+Incidental protected runtime workers belong to actual SQLite/plugin state; controlled search
+and get receive no new memory-index-worker or index-manager construction credit.
+
+The three ordinary diagnostics remain visible and uncredited, each with `covers: []`:
+`hybrid-unicode-path-collation-diagnostic`, `get-contract-symlink-loop-cause-diagnostic`,
+and `flush-execution-warm-index-first-recall`. Original error causes, full payloads and raw
+observations are preserved. The SDK's stronger eager first-recall guarantee remains intact.
+The full gate therefore returns **mismatched/incomplete**, not a full-equivalence pass.
+
+The complete regression run passed **3,693 tests in 173.30 seconds**. The existing **1,625
+historical/live skips** grant no acceptance credit. The offline distribution check built and
+installed both wheel and sdist into independent consumers, exercised core imports and actual
+FTS host lifecycle, accepted the valid public typing consumer and rejected six invalid calls.
+Logs are `/workspace/scratch/memory-core-deadline-partial-full-tests.log` and
+`/workspace/scratch/memory-core-deadline-partial-distribution.log`. Ruff, project-name consistency,
+source-map validation, Node syntax and staged diff checks passed. No provider credentials
+were forwarded and **zero paid provider calls** were made. Earlier invalid and blocked reports
+remain retained as documented above. This final follow-up changes documentation only.
+
+The proposed next related package is **`sessions.corpus-admission` +
+`sessions.visibility-lineage`**, targeting **+4 original conditions**, or **45/128** if verified.
+It tests which transcripts are admitted and which source-session results/read operations
+remain visible after resets, trust changes and forgotten origins. This remains existing scope;
+no new checklist conditions are added. No additional user information is currently required.

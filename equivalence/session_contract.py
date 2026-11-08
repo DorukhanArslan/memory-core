@@ -96,7 +96,15 @@ def build_session_contract_cases() -> list[dict[str, Any]]:
     for flow in [*_build_admission_flows(), *build_visibility_flows()]:
         cases.append({
             "id": f"session-contract-{flow['name']}", "requirement": flow["requirement"],
-            "operation": "session-contract-runtime", "covers": [], "input": deepcopy(flow["input"]),
+            "operation": "session-contract-runtime",
+            "covers": [flow["requirement"] + ".outcomes", *(
+                [flow["requirement"] + ".boundaries"]
+                if flow["requirement"] == "sessions.corpus-admission" or flow["name"] in {
+                    "compressed-deleted-archive-delete-and-forget",
+                    "visibility-private-recall-persisted-reset-cutoff",
+                } else []
+            )],
+            "input": deepcopy(flow["input"]),
             "driverScope": _FLOW_PROFILE,
             "normalizationPolicy": _POLICY + " The existing complete JSON text-carrier codec verifies "
             "original text against details before decoding. Exact owned fixture root aliases only; "

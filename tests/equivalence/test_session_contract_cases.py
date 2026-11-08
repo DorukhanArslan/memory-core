@@ -11,12 +11,27 @@ from equivalence.get_contract import map_get_fixture_paths
 from equivalence.session_contract import build_session_contract_cases, run_session_contract
 
 
-def test_catalog_is_unique_deterministic_json_and_uncredited_until_actual_proof():
+def test_catalog_is_unique_deterministic_json_and_limits_credit_to_verified_runtime_flows():
     cases = build_session_contract_cases()
     assert cases == build_session_contract_cases()
     assert len({case["id"] for case in cases}) == len(cases)
     assert json.loads(json.dumps(cases, ensure_ascii=False, allow_nan=False)) == cases
-    assert all(case["covers"] == [] for case in cases)
+    helpers = [case for case in cases if case["operation"] != "session-contract-runtime"]
+    assert len(helpers) == 38 and all(case["covers"] == [] for case in helpers)
+    flows = [case for case in cases if case["operation"] == "session-contract-runtime"]
+    assert len(flows) == 12
+    points = [point for case in flows for point in case["covers"]]
+    assert {point: points.count(point) for point in set(points)} == {
+        "sessions.corpus-admission.outcomes": 5,
+        "sessions.corpus-admission.boundaries": 5,
+        "sessions.visibility-lineage.outcomes": 7,
+        "sessions.visibility-lineage.boundaries": 2,
+    }
+    assert all(all(point.startswith(case["requirement"] + ".") for point in case["covers"]) for case in flows)
+    assert {case["id"] for case in flows if "sessions.visibility-lineage.boundaries" in case["covers"]} == {
+        "session-contract-compressed-deleted-archive-delete-and-forget",
+        "session-contract-visibility-private-recall-persisted-reset-cutoff",
+    }
     assert {case["input"]["kind"] for case in cases} == {"admission-policy", "source-policy", "indexable", "flow"}
 
 

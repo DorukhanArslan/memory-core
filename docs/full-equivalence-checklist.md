@@ -26,7 +26,7 @@ The reference repository is `https://github.com/openclaw/openclaw.git`. Python-o
 
 The [source map](equivalence-source-map.md) links all 64 contracts and 128 acceptance points
 to the pinned upstream code and the current Python implementation. The inventory records
-108 upstream source modules, their tracked hashes, literal dependencies and exported
+110 upstream source modules, their tracked hashes, literal dependencies and exported
 declarations. Source presence and inventory validation do not establish behavior or add
 any differential-test coverage.
 
@@ -51,18 +51,17 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
-The latest verified baseline has **29/128 acceptance points (22.7%)**, with **99 points
-(77.3%)** remaining. Counts include the actual hybrid comparisons and their declared profile:
-finite complete payloads with printable-ASCII path ties, exact Unicode content, and the existing
-portable CPU limitation for vector candidates. The full report records 826 matches, two retained
-differences and zero blocked cases; regression validation passed 2,857 tests.
+The latest verified baseline has **31/128 acceptance points (24.2%)**, with **97 points
+(75.8%)** remaining. Counts include actual exact-path source and compiled-method comparisons
+under the paired unicode61 profile, the hybrid printable-ASCII tie profile and portable CPU
+vector capability. Final integrated and regression validation for this batch remains pending.
 
 | Contract status | Contracts | Verified acceptance points | Remaining acceptance points |
 | --- | ---: | ---: | ---: |
-| Complete | 13 | 26 | 0 |
+| Complete | 14 | 28 | 0 |
 | Partial | 3 | 3 | 3 |
-| Pending verification | 48 | 0 | 96 |
-| Total | 64 | 29 | 99 |
+| Pending verification | 47 | 0 | 94 |
+| Total | 64 | 31 | 97 |
 
 Pending verification does not mean no implementation exists. Partial contracts have outcomes
 verified and boundaries still open: `indexing.identity`, `sessions.transcript-filtering` and
@@ -77,9 +76,9 @@ correcting stale checklist status adds **zero** acceptance points.
 
 Current status of all 64 contracts:
 
-- **Complete (13):** `lexical.tokenization`, `lexical.fts-query`, `lexical.bm25`, `chunking.markdown-boundaries`, `chunking.utf16-cjk-budget`, `indexing.incremental-sync`, `indexing.transaction-publication`, `retrieval.vector-scoring`, `retrieval.hybrid-scoring`, `retrieval.mmr`, `retrieval.temporal-decay`, `prompt.bootstrap-budget`, `flush.trigger-usage`.
+- **Complete (14):** `lexical.tokenization`, `lexical.fts-query`, `lexical.bm25`, `chunking.markdown-boundaries`, `chunking.utf16-cjk-budget`, `indexing.incremental-sync`, `indexing.transaction-publication`, `retrieval.vector-scoring`, `retrieval.hybrid-scoring`, `retrieval.exact-path-priority`, `retrieval.mmr`, `retrieval.temporal-decay`, `prompt.bootstrap-budget`, `flush.trigger-usage`.
 - **Partial (3):** `indexing.identity`, `sessions.transcript-filtering`, `flush.execute-finalize`.
-- **Pending verification (48):** `storage.discovery`, `storage.path-safety`, `storage.atomic-writes`, `storage.workspace-isolation`, `chunking.entry-provenance`, `indexing.embedding-cache`, `indexing.query-sync`, `retrieval.exact-path-priority`, `retrieval.importance-project`, `tools.search-contract`, `tools.get-contract`, `tools.deadline-cooldown`, `tools.unavailable-partial`, `sessions.corpus-admission`, `sessions.visibility-lineage`, `sessions.reset-hook`, `sessions.durable-context`, `prompt.bootstrap-discovery`, `prompt.runtime-context`, `prompt.history-repair`, `flush.plan-target`, `compaction.memory-budget`, `compaction.context-assembly`, `compaction.provider-overflow`, `promotion.recall-signals`, `promotion.ranking-gates`, `promotion.apply-reconcile`, `promotion.deep-consolidation`, `dreaming.light`, `dreaming.rem`, `dreaming.deep`, `dreaming.diary-provenance`, `forget.lineage-tombstones`, `forget.index-fence`, `trust.secret-redaction`, `trust.configured-redaction`, `heartbeat.scratch`, `heartbeat.turn-decisions`, `automation.job-state`, `concurrency.workspace-locks`, `recovery.repair-diagnostics`, `recovery.failure-publication`, `engine.numeric-boundaries`, `engine.unicode-collation`, `engine.datetime-regex`, `host.turn-barrier`, `host.restart-recall`, `host.update-isolation`.
+- **Pending verification (47):** `storage.discovery`, `storage.path-safety`, `storage.atomic-writes`, `storage.workspace-isolation`, `chunking.entry-provenance`, `indexing.embedding-cache`, `indexing.query-sync`, `retrieval.importance-project`, `tools.search-contract`, `tools.get-contract`, `tools.deadline-cooldown`, `tools.unavailable-partial`, `sessions.corpus-admission`, `sessions.visibility-lineage`, `sessions.reset-hook`, `sessions.durable-context`, `prompt.bootstrap-discovery`, `prompt.runtime-context`, `prompt.history-repair`, `flush.plan-target`, `compaction.memory-budget`, `compaction.context-assembly`, `compaction.provider-overflow`, `promotion.recall-signals`, `promotion.ranking-gates`, `promotion.apply-reconcile`, `promotion.deep-consolidation`, `dreaming.light`, `dreaming.rem`, `dreaming.deep`, `dreaming.diary-provenance`, `forget.lineage-tombstones`, `forget.index-fence`, `trust.secret-redaction`, `trust.configured-redaction`, `heartbeat.scratch`, `heartbeat.turn-decisions`, `automation.job-state`, `concurrency.workspace-locks`, `recovery.repair-diagnostics`, `recovery.failure-publication`, `engine.numeric-boundaries`, `engine.unicode-collation`, `engine.datetime-regex`, `host.turn-barrier`, `host.restart-recall`, `host.update-isolation`.
 
 ### Storage and workspace
 
@@ -109,7 +108,7 @@ Current status of all 64 contracts:
 
 - [x] **`retrieval.vector-scoring` — Match vector candidate scoring.** Compare cosine scoring, candidate bounds, zero vectors and incompatible dimensions. Compare ordered source/range identities before downstream hybrid ranking. Verified for the paired portable CPU fallback capability; optional accelerated KNN remains unverified.
 - [x] **`retrieval.hybrid-scoring` — Match hybrid merge and score gates.** Compare vector-only, text-only, overlapping and disjoint candidates with configured weights. Check selection, minimum-score boundaries and lexical fallback without dropping result fields. Verified for finite complete payloads with printable-ASCII path ties; the Unicode path-order diagnostic remains uncredited and mismatched.
-- [ ] **`retrieval.exact-path-priority` — Match exact-path retrieval priority.** Exercise exact paths, basename matches, partial paths and body-only matches. Compare path specificity tiers, ties and interaction with content score.
+- [x] **`retrieval.exact-path-priority` — Match exact-path retrieval priority.** Exercise exact paths, basename matches, partial paths and body-only matches. Compare path specificity tiers, ties and interaction with content score. Verified under the paired unicode61 profile, including actual inherited merge/limit methods; universal ICU, trigram and full-manager behavior remain unverified.
 - [x] **`retrieval.mmr` — Match diversity reranking.** Compare disabled/enabled MMR, duplicate text, equal scores, stable ties and lambda boundaries. Exercise CJK, empty and punctuation-only snippets and preserve output ordering.
 - [x] **`retrieval.temporal-decay` — Match recency decay.** Compare enabled/disabled decay, half-life boundaries, future dates and missing timestamps. Compare dated versus evergreen memory paths and session activity timestamps under a fixed clock.
 - [ ] **`retrieval.importance-project` — Match importance and active-project ranking.** Exercise importance annotations, triggers and active/inactive project keys. Compare multipliers and their order relative to path tiers, decay and MMR.
@@ -997,3 +996,54 @@ oracle/live checks** remain skipped and grant no acceptance credit. Ruff, projec
 consistency, exact source-map validation and staged diff checks passed. These final results are
 recorded in a documentation-only follow-up; implementation, adapters and source inventory are
 unchanged from the tested commit.
+
+### Exact-path retrieval priority — 2026-11-08
+
+This batch targets and verifies **+2 points**: **`retrieval.exact-path-priority.outcomes`** and
+**`retrieval.exact-path-priority.boundaries`**. Current acceptance is **31/128 (24.2%)**, with
+**97 points (75.8%)** remaining: **14 complete, three partial and 47 pending contracts**. The
+fixed **64 contracts, 128 acceptance points** and scope SHA-256
+`a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9` remain unchanged. Inventory
+now maps **110 upstream modules**; classifications remain 14 present, 47 partial, zero missing
+and three host-owned. No additional hybrid, Unicode-engine or manager-lifecycle credit is added.
+
+The paired profile uses unicode61 path FTS. Actual unchanged TypeScript functions compare full
+path, basename and stem tiers, normalization and literal folding, partial/body-only candidates,
+SQLite live-row admission, first-chunk snippets, source filters and exact-path candidate bounds.
+Path-to-hybrid component fixtures combine real path candidates with disjoint declared body
+candidates; they do not run the private keyword premerge. The SDK's
+public `search_path_candidates` filters live logical sources before caps and projects the first
+chunk/snippet in the same statement snapshot. Normal search retains explicit 200 exact-path
+headroom, identity checks and its generation transaction. JavaScript trim and UTF-16 snippet
+comparison now match the exercised boundaries. This establishes neither universal ICU collation
+nor trigram execution.
+
+`.equivalence-results/exact-path-old-sdk-baseline.json` retains actual unchanged SDK behavior
+at commit `e0b7c29e16c4595c915960cd3f2645b70c918d7c`: FEFF/0085 whitespace differences, a UTF-16
+snippet choice and an orphan-row 200-candidate cap that returned no live result. The actual source
+comparison, `.equivalence-results/exact-path-source-first.json`, records **49 matches, zero
+mismatches and zero blocked cases**. An authenticated four-file named-binding chain resolves
+`escapeRegExp` to its unchanged source owner; it does not initialize the broad text facade.
+
+The private keyword merge/limit methods are also tested in the authenticated official compiled
+release through `Object.create(MemoryIndexManager.prototype)`. Reviewed source-class/export links
+and compiled artifact hashes remain separate; **`sourceBuildReproduced: false`** and
+**`constructorSkipped: true`** are explicit. No constructor, provider, worker or full-manager
+end-to-end behavior is claimed. An attempted source-class import remained blocked by missing
+`markdown-it` after loading 2,472 sources; its separate diagnostic at
+`/workspace/scratch/exact-class-import-transform-result.json` is retained, with no installation
+used to turn that attempt into evidence.
+
+The first compiled report, `.equivalence-results/exact-path-runtime-first.json`, retains **15
+blocked Python cases**: the initial adapter omitted `python-raw.json` evidence writing. This was
+a diagnostic-wiring failure, not an SDK/native behavior mismatch. The corrected adapter writer
+and its guard passed **41 targeted tests**. Actual
+`.equivalence-results/exact-path-runtime-evidence-fixed.json` then records **15 matches, zero
+mismatches and zero blocked cases**. These original focused reports retain `covers: []`; reviewed
+point assignments belong to the registered catalog and next full gate.
+
+The default catalog now contains **892 cases**. Final integrated and regression validation is
+recorded after the runs; the planned full report is
+`.equivalence-results/exact-path-priority-full.json`. The known warm first-recall and Unicode path-order comparisons remain
+registered, visible and uncredited; they are not normalized into matches. The full contract still
+has **97 uncovered acceptance points** and cannot pass full equivalence.

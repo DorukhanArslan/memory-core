@@ -30,6 +30,9 @@ _FIXTURE_CAPTURE = re.compile(
     r"/package-0/node_modules/equivalence/flush-execution\.mjs\Z"
 )
 _OPERATIONS = {
+    "exact-path-runtime": (
+        "exact-path-runtime.mjs", "dist/extensions/memory-core/manager-runtime.js", False,
+    ),
     "index-lifecycle-runtime": ("index-lifecycle.mjs", None, True),
     "flush-trigger-runtime": (
         "flush-runtime.mjs", "dist/agent-runner-memory-Cc4lCZcs.mjs", False,
@@ -289,7 +292,10 @@ class ReleaseOracleExecution:
                 for name in ("release-oracle.mjs", adapter)} <= local_imports:
             raise RuntimeOracleError("The reviewed release runner and case adapter did not execute.")
         if required_owner is not None and ("node_modules/openclaw", required_owner) not in loaded:
-            raise RuntimeOracleError("The actual native flush runtime owner did not execute.")
+            message = ("The actual native runtime owner did not execute."
+                       if operation == "exact-path-runtime"
+                       else "The actual native flush runtime owner did not execute.")
+            raise RuntimeOracleError(message)
         if case.get("operation") == "flush-execution-runtime" and not captures:
             raise RuntimeOracleError("The native provider loader did not execute a reviewed fixture source capture.")
         if operation == "flush-execution-runtime" and (

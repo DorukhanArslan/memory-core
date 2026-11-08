@@ -1,5 +1,5 @@
 """Keyword retrieval of the memory index (OpenClaw ``memory/manager-search.ts`` and
-``manager-keyword-retrieval.ts`` at v2026.9.6).
+``manager-keyword-retrieval.ts`` at v2026.9.9).
 
 Two surfaces feed one candidate list: the chunk text (FTS5 over ``chunks_fts``, BM25) and the file
 path (FTS5 over ``paths_fts``, with exact-path tiers: a query that names a file, a basename or a
@@ -15,7 +15,7 @@ import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from memory_core.bootstrap._js import locale_sort_key
+from memory_core.bootstrap._js import js_trim, locale_sort_key
 from memory_core.index.cjk_chars import utf16_length
 
 EXACT_PATH_CANDIDATE_LIMIT = 200
@@ -93,7 +93,7 @@ def score_fallback_keyword_result(
 
 
 def _normalize_path_identifier(value: str) -> str:
-    text = value.strip().replace("\\", "/")
+    text = js_trim(value).replace("\\", "/")
     if text.startswith("./"):
         text = text[2:]
     return unicodedata.normalize("NFC", text).lower()
@@ -120,6 +120,71 @@ def prepare_exact_path_matcher(query: str) -> Callable[[str], int]:
         return 1 if normalized_query == stem else 0
 
     return match
+
+
+def build_exact_path_candidate_patterns(query: str) -> list[str]:
+    """Bound SQLite candidates before applying the original-query path matcher."""
+    normalized = js_trim(query).replace("\\", "/")
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
+    if not normalized or normalized == ".":
+        return []
+    canonical = list(dict.fromkeys(
+        (unicodedata.normalize("NFC", normalized), unicodedata.normalize("NFD", normalized))
+    ))
+    forms = dict.fromkeys(canonical)
+    if not normalized.isascii():
+        for form in canonical:
+            forms[form.lower()] = None
+            forms[form.upper()] = None
+
+    def escape_like(value: str) -> str:
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+    patterns: dict[str, None] = {}
+    for form in forms:
+        escaped = escape_like(form)
+        patterns[escaped] = None
+        if "/" not in normalized:
+            for value in (f"{escaped}.%", f"%/{escaped}", f"%/{escaped}.%"):
+                patterns[value] = None
+    if not normalized.isascii():
+        anchors = re.findall(r"[a-z0-9_]+", unicodedata.normalize("NFD", normalized).lower())
+        if anchors:
+            patterns[f"%{escape_like(max(anchors, key=len))}%"] = None
+        if normalized.lower() != normalized.upper():
+            first = next(character for character in normalized if not character.isascii())
+            for anchor in dict.fromkeys((first, first.lower(), first.upper())):
+                patterns[f"%{escape_like(anchor)}%"] = None
+    return list(patterns)
+
+
+def _simple_case_fold(value: str) -> str:
+    """Single-code-point Unicode folding used by literal JavaScript /iu matching.
+
+    Full case folding expands sharp-s and ligatures, unlike a literal /iu
+    expression. Lowercase provides the simple mapping for capital sharp-s and
+    Greek prosgegrammeni; long-s+t has an additional simple ligature mapping.
+    """
+    folded: list[str] = []
+    for character in value:
+        if character == "\ufb05":
+            folded.append("\ufb06")
+            continue
+        full = character.casefold()
+        lower = character.lower()
+        folded.append(full if len(full) == 1 else lower if len(lower) == 1 else character)
+    return "".join(folded)
+
+
+def normalized_literal_contains(value: object, term: object) -> int:
+    """NFC literal substring admission with Unicode simple case folding."""
+    if not isinstance(value, str) or not isinstance(term, str):
+        return 0
+    return int(
+        _simple_case_fold(unicodedata.normalize("NFC", term))
+        in _simple_case_fold(unicodedata.normalize("NFC", value))
+    )
 
 
 def _body_score(hit: KeywordHit) -> float:
@@ -167,7 +232,8 @@ def merge_keyword_search_hits(
             existing.score = body_score if body_score > 0 else existing.path_score
             # Path hits project the first chunk; a real body-match snippet stays authoritative.
             if (result_has_body and not existing_has_body) or (
-                result_has_body == existing_has_body and len(result.snippet) > len(existing.snippet)
+                result_has_body == existing_has_body
+                and utf16_length(result.snippet) > utf16_length(existing.snippet)
             ):
                 existing.snippet = result.snippet
     merged = list(seen.values())

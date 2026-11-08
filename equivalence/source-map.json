@@ -308,7 +308,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 708
+          "line": 709
         }
       ],
       "implementation": "present",
@@ -400,13 +400,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 464
+          "line": 465
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._prepare_source_chunks",
           "anchor": "    def _prepare_source_chunks(entry: IndexSourceSnapshot, tokens: int, overlap: int) -> list[MemoryChunk]:",
-          "line": 708
+          "line": 709
         },
         {
           "path": "memory_core/index/preparation.py",
@@ -442,7 +442,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._reindex_locked",
           "anchor": "    def _reindex_locked(self, workspace: MemoryWorkspace, *, force: bool) -> int:",
-          "line": 487
+          "line": 488
         },
         {
           "path": "memory_core/client.py",
@@ -501,7 +501,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
           "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
-          "line": 418
+          "line": 419
         }
       ],
       "implementation": "partial",
@@ -536,7 +536,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 464
+          "line": 465
         },
         {
           "path": "memory_core/workspace.py",
@@ -548,7 +548,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "read_index_source",
           "anchor": "def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:",
-          "line": 137
+          "line": 138
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -601,7 +601,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 464
+          "line": 465
         },
         {
           "path": "memory_core/consolidation/origins.py",
@@ -613,7 +613,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 318
+          "line": 319
         },
         {
           "path": "memory_core/index/publication.py",
@@ -631,7 +631,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.read_published_index",
           "anchor": "    def read_published_index(self, *, db: sqlite3.Connection | None = None) -> dict:",
-          "line": 300
+          "line": 301
         },
         {
           "path": "memory_core/index/publication.py",
@@ -696,7 +696,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 464
+          "line": 465
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -738,7 +738,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search",
           "anchor": "    def search(",
-          "line": 754
+          "line": 755
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -750,13 +750,13 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_connection",
           "anchor": "    def _search_connection(self, signal: CancellationSignal | None) -> Iterator[sqlite3.Connection]:",
-          "line": 228
+          "line": 229
         },
         {
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.index_identity",
           "anchor": "    def index_identity(self, *, db: sqlite3.Connection | None = None) -> dict[str, Any]:",
-          "line": 418
+          "line": 419
         }
       ],
       "implementation": "partial",
@@ -815,7 +815,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.search_vector_candidates",
           "anchor": "    def search_vector_candidates(",
-          "line": 820
+          "line": 821
         },
         {
           "path": "memory_core/index/vector.py",
@@ -833,7 +833,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore._search_candidates",
           "anchor": "    def _search_candidates(",
-          "line": 950
+          "line": 951
         }
       ],
       "implementation": "present",
@@ -922,9 +922,39 @@
           "symbol": "mergeHybridResults",
           "anchor": "export async function mergeHybridResults<TSource extends HybridSource>(params: {",
           "line": 58
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-search.ts",
+          "symbol": "searchPathKeyword",
+          "anchor": "export async function searchPathKeyword(params: {",
+          "line": 396
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-keyword-retrieval.ts",
+          "symbol": "MemoryKeywordRetrieval.mergeKeywordSearchHits",
+          "anchor": "  private mergeKeywordSearchHits(",
+          "line": 431
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager-keyword-retrieval.ts",
+          "symbol": "MemoryKeywordRetrieval.limitKeywordSearchHits",
+          "anchor": "  private limitKeywordSearchHits(",
+          "line": 479
+        },
+        {
+          "path": "src/shared/regexp.ts",
+          "symbol": "escapeRegExp",
+          "anchor": "export function escapeRegExp(value: string): string {",
+          "line": 2
         }
       ],
       "python": [
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "SQLiteMemoryStore.search_path_candidates",
+          "anchor": "    def search_path_candidates(",
+          "line": 1208
+        },
         {
           "path": "memory_core/index/keyword_search.py",
           "symbol": "prepare_exact_path_matcher",
@@ -935,7 +965,19 @@
           "path": "memory_core/index/keyword_search.py",
           "symbol": "merge_keyword_search_hits",
           "anchor": "def merge_keyword_search_hits(",
-          "line": 146
+          "line": 211
+        },
+        {
+          "path": "memory_core/index/keyword_search.py",
+          "symbol": "limit_keyword_search_hits",
+          "anchor": "def limit_keyword_search_hits(results: list[KeywordHit], non_exact_limit: int) -> list[KeywordHit]:",
+          "line": 248
+        },
+        {
+          "path": "memory_core/index/keyword_search.py",
+          "symbol": "normalized_literal_contains",
+          "anchor": "def normalized_literal_contains(value: object, term: object) -> int:",
+          "line": 180
         },
         {
           "path": "memory_core/index/hybrid.py",
@@ -946,8 +988,11 @@
       ],
       "implementation": "present",
       "notes": [
-        "Python has exact-path specificity, content/body tie scores and merged keyword tiers; this is distinct from merely boosting a basename match.",
-        "Importance/project metadata and modifier order now have Python hybrid counterparts. Their full independent acceptance and exact-path integration remain separate fixed contracts; source presence alone does not prove those ranking conditions."
+        "Both fixed exact-path-priority points are verified under the paired unicode61 profile: full path/basename/stem specificity, partial and body-only candidates, tier/tie order, content-score interaction, live-row admission and bounded headroom. Actual source matcher/SQLite path and path-to-hybrid components execute, with overlap identities preserved; this does not establish universal ICU, trigram or complete manager execution.",
+        "Public search_path_candidates uses live EXISTS admission before caps and first-chunk/snippet projection in the same SQLite statement snapshot. Ordinary search retains explicit 200 exact-path headroom, index identity checks and its generation transaction. JavaScript trim, UTF-16 snippet comparisons and literal Unicode simple folding fix retained old-SDK differences.",
+        "Actual official compiled inherited mergeKeywordSearchHits and limitKeywordSearchHits execute through Object.create(MemoryIndexManager.prototype), without constructor, provider or workers. Source class/export linkage and compiled artifact hashes are separately authenticated; sourceBuildReproduced: false and fullManagerExecutionVerified: false remain explicit.",
+        "The exact escapeRegExp named-binding chain authenticates its unchanged regexp owner while bypassing broad facade initialization. The old-SDK FEFF/0085, UTF-16 and orphan-cap diagnostics remain retained. The first compiled report was blocked by missing Python raw-evidence writer wiring, not a native/SDK behavioral mismatch; corrected evidence records all 15 matches alongside 49 source matches.",
+        "Independent importance/project acceptance, the stored annotation pipeline, optional accelerated KNN, and the existing Unicode-collation/warm first-recall diagnostics remain outside this closure. Source inventory presence is separate from the fixed 64-contract/128-point scope."
       ]
     },
     {
@@ -1391,7 +1436,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "read_index_source",
           "anchor": "def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:",
-          "line": 137
+          "line": 138
         }
       ],
       "implementation": "partial",
@@ -2660,7 +2705,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 464
+          "line": 465
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -2672,7 +2717,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 318
+          "line": 319
         }
       ],
       "implementation": "partial",
@@ -3173,7 +3218,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.reindex",
           "anchor": "    def reindex(self, workspace: MemoryWorkspace, *, force: bool = False) -> int:",
-          "line": 464
+          "line": 465
         },
         {
           "path": "memory_core/consolidation/artifacts.py",
@@ -3197,7 +3242,7 @@
           "path": "memory_core/index/sqlite_store.py",
           "symbol": "SQLiteMemoryStore.publish_prepared_index",
           "anchor": "    def publish_prepared_index(",
-          "line": 318
+          "line": 319
         }
       ],
       "implementation": "partial",
@@ -3938,6 +3983,29 @@
         "MemoryIndexPreparationInput",
         "prepareMemoryIndexChunks",
         "resolveChunkProvenance"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/src/memory/manager-keyword-retrieval.ts",
+      "sha256": "fd754dd63c7c31bc892a36cd300b3107369c46d554abb12e50cf085374123458",
+      "sourceImports": [
+        "./hybrid.js",
+        "./importance.js",
+        "./manager-cpu-worker-runtime.js",
+        "./manager-provider-lifecycle.js",
+        "./manager-retrieval-read.js",
+        "./manager-search.js",
+        "./manager-search.worker.js",
+        "./project-ranking.js",
+        "./temporal-decay.js",
+        "openclaw/plugin-sdk/error-runtime",
+        "openclaw/plugin-sdk/memory-core-host-engine-foundation",
+        "openclaw/plugin-sdk/memory-core-host-engine-sessions",
+        "openclaw/plugin-sdk/memory-core-host-engine-storage"
+      ],
+      "exportedDeclarations": [
+        "KeywordSearchHit",
+        "MemoryRetrievalResult"
       ]
     },
     {
@@ -6194,6 +6262,14 @@
         "updateSessionStore",
         "updateSessionStoreEntry",
         "upsertSessionEntry"
+      ]
+    },
+    {
+      "path": "src/shared/regexp.ts",
+      "sha256": "bafc7ca866952c3df452c25ca0c6ef30756ff2c9f44463ad76da30857aeab35e",
+      "sourceImports": [],
+      "exportedDeclarations": [
+        "escapeRegExp"
       ]
     }
   ]

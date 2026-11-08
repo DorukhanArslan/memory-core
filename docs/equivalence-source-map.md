@@ -110,11 +110,26 @@ binding authenticates its actual curated-annotations owner while bypassing broad
 initialization. Full manager execution and the stored annotation ingestion pipeline remain
 unverified, as does optional accelerated KNN.
 
-Current coverage is **29/128 (22.7%)**, with **99 points (77.3%)** remaining. The inventory maps
-**108 upstream modules**; classifications are 14 present, 47 partial, zero missing and three
+Coverage at that stage was **29/128 (22.7%)**, with **99 points (77.3%)** remaining. The inventory mapped
+**108 upstream modules**; classifications were 14 present, 47 partial, zero missing and three
 host-owned. Importance/project now has a partial source counterpart without acceptance credit.
 The Unicode path-order diagnostic remains an ordinary, uncredited mismatch; numeric helper
 bit comparisons do not close engine points. The warm first-recall boundary also remains open.
+
+The exact-path batch verifies both fixed points through 49 unchanged TypeScript matcher/SQLite
+path and path-to-hybrid component comparisons, plus 15 authenticated official compiled inherited
+keyword merge/limit comparisons. The latter use `Object.create(MemoryIndexManager.prototype)`:
+the constructor, provider, workers and full manager lifecycle are not executed. Reviewed source
+class links and compiled artifact hashes remain separate evidence, with
+`sourceBuildReproduced: false`. An exact named binding resolves `escapeRegExp` to its unchanged
+owner while bypassing broad facade initialization.
+
+Current coverage is **31/128 (24.2%)**, with **97 points (75.8%)** remaining. Source inventory
+maps **110 upstream modules**, adding the actual regexp and private keyword-retrieval owners;
+classifications remain 14 present, 47 partial, zero missing and three host-owned. The paired
+unicode61 profile does not establish universal ICU collation, trigram execution or full-manager
+end-to-end behavior. Existing Unicode path-order and warm first-recall diagnostics remain
+visible and uncredited. Fixed scope remains 64 contracts and 128 acceptance points.
 
 | Contract | OpenClaw entry | Python entry | Python surface |
 | --- | --- | --- | --- |
@@ -129,13 +144,13 @@ bit comparisons do not close engine points. The warm first-recall boundary also 
 | `chunking.utf16-cjk-budget` | [estimateStringChars](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/normalization-core/src/cjk-chars.ts#L79) | [estimate_string_chars](../memory_core/index/cjk_chars.py#L73) | present |
 | `chunking.entry-provenance` | [prepareMemoryIndexChunks](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-index-preparation.ts#L42) | [MemoryChunk](../memory_core/index/chunking.py#L30) | partial |
 | `indexing.identity` | [resolveMemoryIndexIdentityState](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-reindex-state.ts#L222) | [resolve_memory_index_identity_state](../memory_core/index/identity.py#L269) | partial |
-| `indexing.incremental-sync` | [MemoryManagerSyncBase.executeSourceSync](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-sync-base.ts#L294) | [SQLiteMemoryStore.reindex](../memory_core/index/sqlite_store.py#L464) | partial |
-| `indexing.transaction-publication` | [publishMemoryDatabaseTables](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-db-kernel.ts#L108) | [SQLiteMemoryStore.reindex](../memory_core/index/sqlite_store.py#L464) | present |
+| `indexing.incremental-sync` | [MemoryManagerSyncBase.executeSourceSync](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-sync-base.ts#L294) | [SQLiteMemoryStore.reindex](../memory_core/index/sqlite_store.py#L465) | partial |
+| `indexing.transaction-publication` | [publishMemoryDatabaseTables](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-db-kernel.ts#L108) | [SQLiteMemoryStore.reindex](../memory_core/index/sqlite_store.py#L465) | present |
 | `indexing.embedding-cache` | [loadMemoryEmbeddingCache](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-embedding-cache.ts#L40) | [load_memory_embedding_cache](../memory_core/index/embedding_cache.py#L86) | partial |
-| `indexing.query-sync` | [MemorySearchOrchestration.searchCandidates](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search-orchestration.ts#L109) | [SQLiteMemoryStore.search](../memory_core/index/sqlite_store.py#L754) | partial |
-| `retrieval.vector-scoring` | [searchVector](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search-vector.ts#L24) | [SQLiteMemoryStore.search_vector_candidates](../memory_core/index/sqlite_store.py#L820) | present |
+| `indexing.query-sync` | [MemorySearchOrchestration.searchCandidates](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search-orchestration.ts#L109) | [SQLiteMemoryStore.search](../memory_core/index/sqlite_store.py#L755) | partial |
+| `retrieval.vector-scoring` | [searchVector](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search-vector.ts#L24) | [SQLiteMemoryStore.search_vector_candidates](../memory_core/index/sqlite_store.py#L821) | present |
 | `retrieval.hybrid-scoring` | [mergeHybridResults](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/hybrid.ts#L58) | [merge_hybrid_results](../memory_core/index/hybrid.py#L175) | present |
-| `retrieval.exact-path-priority` | [prepareExactPathMatcher](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search.ts#L135) | [prepare_exact_path_matcher](../memory_core/index/keyword_search.py#L102) | present |
+| `retrieval.exact-path-priority` | [prepareExactPathMatcher](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-search.ts#L135) | [SQLiteMemoryStore.search_path_candidates](../memory_core/index/sqlite_store.py#L1208) | present |
 | `retrieval.mmr` | [applyMMRToHybridResults](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/mmr.ts#L32) | [apply_mmr_to_hybrid_results](../memory_core/index/mmr.py#L130) | present |
 | `retrieval.temporal-decay` | [applyTemporalDecayToHybridResults](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/temporal-decay.ts#L112) | [apply_temporal_decay_to_hybrid_results](../memory_core/index/temporal_decay.py#L122) | partial |
 | `retrieval.importance-project` | [applyImportanceMultiplier](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/importance.ts#L9) | [_importance_multiplier](../memory_core/index/hybrid.py#L150) | partial |
@@ -175,7 +190,7 @@ bit comparisons do not close engine points. The warm first-recall boundary also 
 | `automation.job-state` | [computeJobNextRunAtMs](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/cron/service/jobs-scheduling.ts#L317) | [compute_job_next_run_at_ms](../memory_core/automation.py#L275) | partial |
 | `concurrency.workspace-locks` | [withMemoryWorkspaceLock](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory-workspace-lock.ts#L207) | [memory_workspace_lock](../memory_core/consolidation/store.py#L194) | partial |
 | `recovery.repair-diagnostics` | [auditShortTermPromotionArtifacts](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/short-term-promotion-artifacts.ts#L47) | [audit_short_term_promotion_artifacts](../memory_core/consolidation/audit.py#L79) | partial |
-| `recovery.failure-publication` | [publishMemoryDatabaseTables](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-db-kernel.ts#L108) | [SQLiteMemoryStore.reindex](../memory_core/index/sqlite_store.py#L464) | partial |
+| `recovery.failure-publication` | [publishMemoryDatabaseTables](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/manager-db-kernel.ts#L108) | [SQLiteMemoryStore.reindex](../memory_core/index/sqlite_store.py#L465) | partial |
 | `engine.numeric-boundaries` | [asFiniteNumber](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/normalization-core/src/number-coercion.ts#L4) | [js_to_fixed](../memory_core/consolidation/_util.py#L63) | partial |
 | `engine.unicode-collation` | [sliceUtf16Safe](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/normalization-core/src/utf16-slice.ts#L30) | [utf16_slice](../memory_core/bootstrap/_js.py#L96) | partial |
 | `engine.datetime-regex` | [resolveCronStyleNow](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/current-time.ts#L23) | [format_current_time_line](../memory_core/current_time.py#L198) | partial |

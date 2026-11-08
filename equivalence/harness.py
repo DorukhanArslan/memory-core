@@ -102,16 +102,26 @@ def _reference_bindings(checkout: Path, *, cache: bool, publication: bool,
         extension = prepare_index_bindings(checkout)
         for key in ("allowedResolutions", "projectionEvidence"):
             bindings.setdefault(key, []).extend(extension[key])
-    if "vector-scoring" in reuse_operations:
+    if reuse_operations & {"vector-scoring", "exact-path-priority"}:
         from equivalence.vector_bindings import prepare_vector_bindings
 
         extension = prepare_vector_bindings(checkout)
+        if "vector-scoring" not in reuse_operations:
+            extension = {key: [row for row in extension[key] if row["parent"].endswith(
+                "/manager-search-shared.ts"
+            )] for key in ("allowedResolutions", "projectionEvidence")}
         for key in ("allowedResolutions", "projectionEvidence"):
             bindings.setdefault(key, []).extend(extension[key])
-    if "hybrid-scoring" in reuse_operations:
+    if reuse_operations & {"hybrid-scoring", "exact-path-priority"}:
         from equivalence.hybrid_bindings import prepare_hybrid_bindings
 
         extension = prepare_hybrid_bindings(checkout)
+        for key in ("allowedResolutions", "projectionEvidence"):
+            bindings.setdefault(key, []).extend(extension[key])
+    if "exact-path-priority" in reuse_operations:
+        from equivalence.exact_path_bindings import prepare_exact_path_bindings
+
+        extension = prepare_exact_path_bindings(checkout)
         for key in ("allowedResolutions", "projectionEvidence"):
             bindings.setdefault(key, []).extend(extension[key])
     if reuse_operations:
@@ -412,7 +422,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             cases = build_cases() if cases is None else cases
             python_runner = run_python if python_runner is None else python_runner
         requirements, _ = _validate_scope(scope, cases)
-        runtime_operations = {"index-lifecycle-runtime", "flush-trigger-runtime", "flush-execution-runtime"}
+        runtime_operations = {
+            "index-lifecycle-runtime", "flush-trigger-runtime", "flush-execution-runtime",
+            "exact-path-runtime",
+        }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
         report["manifestSha256"] = {"reference": _digest(reference_path), "scope": _digest(scope_path)}
@@ -435,7 +448,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         reuse_operations = frozenset(case["operation"] for case in cases
                                      if case["operation"] in {
                                          "bootstrap-budget", "flush-contract", "flush-target", "session-projection",
-                                         "vector-scoring", "hybrid-scoring",
+                                         "vector-scoring", "hybrid-scoring", "exact-path-priority",
                                      })
         native_storage = required_artifact_execution or bool(reuse_operations)
         cache_bindings = any(case["operation"] == "embedding-cache" for case in cases)
@@ -495,6 +508,17 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 except (OSError, ValueError):
                     raise HarnessError("flush-execution-owner-unavailable",
                                        "The reviewed native flush execution owners could not be verified.") from None
+            exact_path_runtime = any(case["operation"] == "exact-path-runtime" for case in runtime_cases)
+            if exact_path_runtime:
+                from equivalence.exact_path_runtime_bindings import prepare_exact_path_runtime_bindings
+
+                try:
+                    report["exactPathRuntimeBindings"] = prepare_exact_path_runtime_bindings(
+                        checkout, Path(runtime_config["runtimeRoot"]),
+                    )
+                except (OSError, ValueError):
+                    raise HarnessError("exact-path-runtime-owner-unavailable",
+                                       "The reviewed native keyword priority owners could not be verified.") from None
             report["releaseSources"], report["releaseTraces"], report["runtimeDiagnostics"] = [], [], []
             if flush_execution:
                 report["fixtureCaptures"] = []
@@ -529,6 +553,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     checkout, Path(runtime_config["runtimeRoot"]),
                 ) != report["flushExecutionBindings"]:
                     raise ValueError("Flush execution owners or fixture metadata changed.")
+                if exact_path_runtime and prepare_exact_path_runtime_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]),
+                ) != report["exactPathRuntimeBindings"]:
+                    raise ValueError("Exact-path keyword owners or compiled export changed.")
             except (OSError, ValueError, RuntimeError):
                 raise HarnessError("release-runtime-changed",
                                    "Official runtime artifact bytes changed during comparison.") from None

@@ -7,7 +7,6 @@ import hashlib
 import json
 import math
 import os
-import re
 import sqlite3
 import stat
 import time
@@ -47,9 +46,11 @@ from memory_core.index.keyword_search import (
     EXACT_PATH_CANDIDATE_LIMIT,
     SNIPPET_MAX_CHARS,
     KeywordHit,
+    build_exact_path_candidate_patterns,
     keyword_hit_sort_key,
     limit_keyword_search_hits,
     merge_keyword_search_hits,
+    normalized_literal_contains,
     prepare_exact_path_matcher,
     prepare_query_matchers,
     score_fallback_keyword_result,
@@ -1204,12 +1205,39 @@ class SQLiteMemoryStore:
             )
         return hits
 
-    def _first_chunk(self, db: sqlite3.Connection, path: str, source: str):
-        return db.execute(
-            "SELECT id, start_line, end_line, text FROM chunks WHERE path = ? AND source = ? "
-            "ORDER BY start_line, end_line, id LIMIT 1",
-            (path, source),
-        ).fetchone()
+    def search_path_candidates(
+        self,
+        query: str,
+        *,
+        limit: int,
+        exact_path_query: str | None = None,
+        exact_path_limit: int | None = None,
+        sources: set[str] | None = None,
+        snippet_max_chars: int = SNIPPET_MAX_CHARS,
+        db: sqlite3.Connection | None = None,
+    ) -> list[KeywordHit]:
+        """Return actual path candidates before body/hybrid merging.
+
+        ``None`` leaves the exact-path budget implicit: ``limit`` bounds the
+        entire result. An explicit budget reserves additional exact-path
+        headroom. Ordinary search uses the same owner with an explicit budget
+        of 200, inside its existing identity gate and generation transaction.
+        A provided connection retains its caller's lifetime and transaction.
+        """
+        if limit <= 0:
+            return []
+        exact_query = query if exact_path_query is None else exact_path_query
+        source_filter = _source_filter_clause(sources)
+        if db is not None:
+            return self._query_path_hits(
+                db, query, exact_query, limit, source_filter,
+                exact_path_limit=exact_path_limit, snippet_max_chars=snippet_max_chars,
+            )
+        with self._search_connection(None) as connection:
+            return self._query_path_hits(
+                connection, query, exact_query, limit, source_filter,
+                exact_path_limit=exact_path_limit, snippet_max_chars=snippet_max_chars,
+            )
 
     def _query_path_hits(
         self,
@@ -1218,99 +1246,172 @@ class SQLiteMemoryStore:
         exact_path_query: str,
         limit: int,
         source_filter: _SourceFilter,
+        *,
+        exact_path_limit: int | None = EXACT_PATH_CANDIDATE_LIMIT,
+        snippet_max_chars: int = SNIPPET_MAX_CHARS,
     ) -> list[KeywordHit]:
-        """``searchPathKeyword``: exact file, basename and stem matches, then partial path hits."""
+        """``searchPathKeyword`` with bounded, live paths and coherent first chunks."""
         if limit <= 0:
             return []
         match_exact_path = prepare_exact_path_matcher(exact_path_query)
-        db.create_function("memory_exact_path_specificity", 1, match_exact_path, deterministic=True)
+        db.create_function(
+            "memory_exact_path_specificity", 1,
+            lambda value: match_exact_path(value) if isinstance(value, str) else 0,
+            deterministic=True,
+        )
         db.create_function("memory_normalized_contains", 2, _normalized_contains, deterministic=True)
-        where = source_filter.sql
-        exact_rows = []
-        for path, source in db.execute(f"SELECT path, source FROM paths_fts{where}", source_filter.params):
-            specificity = match_exact_path(path)
-            if specificity > 0:
-                exact_rows.append((specificity, path, source))
-        exact_rows.sort(key=lambda row: (-row[0], row[1], row[2]))
-        by_id: dict[str, KeywordHit] = {}
-        for specificity, path, source in exact_rows[:EXACT_PATH_CANDIDATE_LIMIT]:
-            chunk = self._first_chunk(db, path, source)
-            if chunk is None:
-                continue
-            by_id[chunk[0]] = KeywordHit(
-                id=chunk[0],
-                path=path,
-                start_line=chunk[1],
-                end_line=chunk[2],
-                source=source,
-                snippet=truncate_utf16_safe(chunk[3], SNIPPET_MAX_CHARS),
-                score=0.0,
-                text_score=0.0,
-                path_score=0.0,
-                exact_path_specificity=specificity,
-                has_body_match=False,
+        explicit_headroom = exact_path_limit is not None
+        exact_limit = max(0, math.floor(limit if exact_path_limit is None else exact_path_limit))
+        patterns = build_exact_path_candidate_patterns(exact_path_query)
+        plans = _path_plans(query)
+        match_query, initial_terms, _ = plans[0] if plans else (None, [], query)
+        path_filter = source_filter.and_sql.replace("c.source", "paths_fts.source")
+        bounded_snippet = type(snippet_max_chars) is int and 0 < snippet_max_chars <= 2**53 - 1
+        projection = (
+            "COALESCE(substr(CAST(c.text AS BLOB), 1, ?), CAST(c.text AS BLOB))"
+            if bounded_snippet else "c.text"
+        )
+        snippet_params = [snippet_max_chars * 4] if bounded_snippet else []
+        encoding = db.execute("PRAGMA encoding").fetchone()[0].lower()
+
+        def snippet(value: str | bytes) -> str:
+            if isinstance(value, bytes):
+                value = value.decode(encoding, errors="replace")
+            return truncate_utf16_safe(value, snippet_max_chars)
+
+        def terms_clause(terms: list[str]) -> str:
+            return "".join(" AND memory_normalized_contains(paths_fts.path, ?) = 1" for _ in terms)
+
+        # Retain live logical sources before LIMIT. The first-chunk projection
+        # belongs to the same SQLite statement snapshot as path admission.
+        first_chunk_join = (
+            " JOIN chunks c ON c.id = (SELECT candidate.id FROM chunks candidate "
+            "WHERE candidate.path = retained.path AND candidate.source = retained.source "
+            "ORDER BY candidate.start_line, candidate.end_line, candidate.id LIMIT 1)"
+        )
+        live_clause = (
+            " AND EXISTS (SELECT 1 FROM chunks live WHERE live.path = paths_fts.path "
+            "AND live.source = paths_fts.source)"
+        )
+
+        def exact_rows(use_lexical: bool):
+            if use_lexical:
+                candidates = (
+                    "candidates AS MATERIALIZED (SELECT paths_fts.path, paths_fts.source "
+                    "FROM paths_fts WHERE "
+                    + ("paths_fts MATCH ?" if match_query else "1=1")
+                    + terms_clause(initial_terms) + path_filter + "), "
+                    "pattern_candidates AS MATERIALIZED (SELECT path, source FROM candidates WHERE ("
+                    + " OR ".join("path LIKE ? ESCAPE '\\'" for _ in patterns) + "))"
+                )
+                params = [*([match_query] if match_query else []), *initial_terms,
+                          *source_filter.params, *patterns]
+            else:
+                candidates = (
+                    "pattern_candidates AS MATERIALIZED (SELECT paths_fts.path, paths_fts.source "
+                    "FROM paths_fts WHERE ("
+                    + " OR ".join("paths_fts.path LIKE ? ESCAPE '\\'" for _ in patterns)
+                    + ")" + path_filter + ")"
+                )
+                params = [*patterns, *source_filter.params]
+            sql = (
+                "WITH " + candidates + ", scored_paths AS MATERIALIZED ("
+                "SELECT path, source, memory_exact_path_specificity(path) AS specificity "
+                "FROM pattern_candidates), retained AS MATERIALIZED ("
+                "SELECT path, source, specificity FROM scored_paths WHERE specificity > 0 "
+                "AND EXISTS (SELECT 1 FROM chunks live WHERE live.path = scored_paths.path "
+                "AND live.source = scored_paths.source) "
+                "ORDER BY specificity DESC, path ASC, source ASC LIMIT ?) "
+                "SELECT c.id, retained.path, retained.source, c.start_line, c.end_line, "
+                + projection + ", retained.specificity FROM retained" + first_chunk_join
+                + " ORDER BY retained.specificity DESC, retained.path ASC, retained.source ASC"
             )
+            return db.execute(sql, [*params, exact_limit, *snippet_params]).fetchall()
+
+        by_id: dict[str, KeywordHit] = {}
+        if patterns and exact_limit > 0:
+            lexical = exact_path_query.isascii() and (match_query is not None or bool(initial_terms))
+            try:
+                rows = exact_rows(lexical)
+            except sqlite3.OperationalError:
+                if not lexical:
+                    raise
+                rows = exact_rows(False)
+            for identifier, path, source, first, last, text, specificity in rows:
+                by_id[identifier] = KeywordHit(
+                    id=identifier, path=path, start_line=first, end_line=last, source=source,
+                    snippet=snippet(text), score=0.0, text_score=0.0, path_score=0.0,
+                    exact_path_specificity=specificity, has_body_match=False,
+                )
+        if not any(match is not None or terms for match, terms, _ in plans):
+            return list(by_id.values())
+
+        def lexical_rows(match: str | None, terms: list[str], partition: str, result_limit: int):
+            sql = (
+                "WITH retained AS MATERIALIZED (SELECT paths_fts.path, paths_fts.source, "
+                + ("bm25(paths_fts)" if match else "0") + " AS rank FROM paths_fts WHERE "
+                + ("paths_fts MATCH ?" if match else "1=1") + terms_clause(terms)
+                + path_filter + " AND memory_exact_path_specificity(paths_fts.path) "
+                + (">" if partition == "exact" else "=") + " 0" + live_clause
+                + " ORDER BY rank ASC, paths_fts.path ASC, paths_fts.source ASC LIMIT ?) "
+                "SELECT c.id, retained.path, retained.source, c.start_line, c.end_line, "
+                + projection + ", retained.rank FROM retained" + first_chunk_join
+                + " ORDER BY retained.rank ASC, retained.path ASC, retained.source ASC"
+            )
+            params = [*([match] if match else []), *terms, *source_filter.params,
+                      result_limit, *snippet_params]
+            return db.execute(sql, params).fetchall()
+
+        def load_partitions(match: str | None, terms: list[str]):
+            return [
+                *(lexical_rows(match, terms, "exact", exact_limit) if exact_limit > 0 else []),
+                *lexical_rows(match, terms, "non-exact", limit),
+            ]
 
         lexical_by_id: dict[str, KeywordHit] = {}
-        for match_query, terms in _path_plans(query):
-            if match_query is None and not terms:
+        for match, terms, plan_query in plans:
+            if match is None and not terms:
                 continue
-            for partition in ("exact", "non-exact"):
-                part_limit = EXACT_PATH_CANDIDATE_LIMIT if partition == "exact" else limit
-                clause = " AND memory_exact_path_specificity(path) " + (">" if partition == "exact" else "=") + " 0"
-                filters = "".join(" AND memory_normalized_contains(path, ?) = 1" for _ in terms)
-                sql = (
-                    "SELECT path, source, "
-                    + ("bm25(paths_fts)" if match_query else "0")
-                    + " AS rank FROM paths_fts WHERE "
-                    + ("paths_fts MATCH ?" if match_query else "1=1")
-                    + filters
-                    + source_filter.and_sql.replace("c.source", "source")
-                    + clause
-                    + " ORDER BY rank ASC, path ASC, source ASC LIMIT ?"
-                )
-                params = [*( [match_query] if match_query else []), *terms, *source_filter.params, part_limit]
-                for path, source, rank in db.execute(sql, params).fetchall():
-                    chunk = self._first_chunk(db, path, source)
-                    if chunk is None:
-                        continue
-                    path_score = bm25_rank_to_score(float(rank)) if match_query else 1.0
-                    existing = lexical_by_id.get(chunk[0])
-                    if existing is None:
-                        lexical_by_id[chunk[0]] = KeywordHit(
-                            id=chunk[0],
-                            path=path,
-                            start_line=chunk[1],
-                            end_line=chunk[2],
-                            source=source,
-                            snippet=truncate_utf16_safe(chunk[3], SNIPPET_MAX_CHARS),
-                            score=path_score,
-                            text_score=0.0,
-                            path_score=path_score,
-                            exact_path_specificity=match_exact_path(path),
-                            has_body_match=False,
-                        )
-                        continue
+            used_match = match is not None
+            try:
+                rows = load_partitions(match, terms)
+            except sqlite3.OperationalError:
+                if match is None:
+                    raise
+                fallback = list(dict.fromkeys([*_path_tokens(plan_query), *terms]))
+                rows = load_partitions(None, fallback)
+                used_match = False
+            for identifier, path, source, first, last, text, rank in rows:
+                path_score = bm25_rank_to_score(float(rank)) if used_match else 1.0
+                existing = lexical_by_id.get(identifier)
+                if existing is None:
+                    lexical_by_id[identifier] = KeywordHit(
+                        id=identifier, path=path, start_line=first, end_line=last, source=source,
+                        snippet=snippet(text), score=path_score, text_score=0.0,
+                        path_score=path_score, exact_path_specificity=match_exact_path(path),
+                        has_body_match=False,
+                    )
+                else:
                     existing.path_score = max(existing.path_score, path_score)
                     existing.score = max(existing.score, path_score)
+                    existing.exact_path_specificity = max(
+                        existing.exact_path_specificity, match_exact_path(path)
+                    )
         non_exact_count = 0
         for entry in sorted(lexical_by_id.values(), key=_path_hit_sort_key):
             if entry.exact_path_specificity > 0:
                 exact = by_id.get(entry.id)
-                if exact is None:
-                    continue
-                exact.path_score = max(exact.path_score, entry.path_score)
-                exact.score = max(exact.score, entry.score)
-                exact.exact_path_specificity = max(
-                    exact.exact_path_specificity, entry.exact_path_specificity
-                )
-                continue
-            if non_exact_count >= limit:
-                continue
-            by_id[entry.id] = entry
-            non_exact_count += 1
-        # Exact filenames get bounded headroom on top of `limit`.
-        return sorted(by_id.values(), key=_path_hit_sort_key)[: EXACT_PATH_CANDIDATE_LIMIT + limit]
+                if exact is not None:
+                    exact.path_score = max(exact.path_score, entry.path_score)
+                    exact.score = max(exact.score, entry.score)
+                    exact.exact_path_specificity = max(
+                        exact.exact_path_specificity, entry.exact_path_specificity
+                    )
+            elif non_exact_count < limit:
+                by_id[entry.id] = entry
+                non_exact_count += 1
+        result_limit = exact_limit + limit if explicit_headroom else limit
+        return sorted(by_id.values(), key=_path_hit_sort_key)[:result_limit]
 
 
 def _path_hit_sort_key(hit: KeywordHit):
@@ -1324,34 +1425,38 @@ def _path_hit_sort_key(hit: KeywordHit):
     )
 
 
-_PATH_TOKEN_RE = re.compile(r"[\w]+", re.UNICODE)
+def _path_tokens(value: str) -> list[str]:
+    """Literal path terms: Unicode letters, marks and numbers, plus underscore."""
+    tokens: list[str] = []
+    current: list[str] = []
+    for character in value:
+        if character == "_" or unicodedata.category(character)[0] in {"L", "M", "N"}:
+            current.append(character)
+        elif current:
+            tokens.append("".join(current))
+            current = []
+    if current:
+        tokens.append("".join(current))
+    return tokens
 
 
 def _normalized_contains(value: object, term: object) -> int:
-    if not isinstance(value, str) or not isinstance(term, str):
-        return 0
-    return int(
-        unicodedata.normalize("NFC", term).lower() in unicodedata.normalize("NFC", value).lower()
-    )
+    return normalized_literal_contains(value, term)
 
 
-def _path_plans(query: str) -> list[tuple[str | None, list[str]]]:
+def _path_plans(query: str) -> list[tuple[str | None, list[str], str]]:
     """``planPathKeywordSearch`` for the unicode61 tokenizer.
 
     The first plan is the FTS match of the query; for each canonical form a further plan
     matches the ASCII tokens and requires the non-ASCII ones as substrings (unicode61 matches
     whole tokens only).
     """
-    plans: list[tuple[str | None, list[str]]] = [(build_fts_query(query), [])]
+    plans: list[tuple[str | None, list[str], str]] = [(build_fts_query(query), [], query)]
     seen = {json.dumps([plans[0][0], []])}
     for form in dict.fromkeys(
         (unicodedata.normalize("NFC", query), unicodedata.normalize("NFD", query))
     ):
-        tokens = [
-            token
-            for token in _PATH_TOKEN_RE.findall(form)
-            if token.strip()
-        ]
+        tokens = [token for token in _path_tokens(form) if js_trim(token)]
         substring_terms = [token for token in tokens if not token.isascii()]
         if not substring_terms:
             continue
@@ -1364,7 +1469,7 @@ def _path_plans(query: str) -> list[tuple[str | None, list[str]]]:
         key = json.dumps([match_query, substring_terms])
         if key not in seen:
             seen.add(key)
-            plans.append((match_query, substring_terms))
+            plans.append((match_query, substring_terms, form))
     return plans
 
 

@@ -212,6 +212,7 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.get_contract import build_get_contract_cases
     from equivalence.deadline_contract import build_deadline_contract_cases
     from equivalence.session_contract import build_session_contract_cases
+    from equivalence.transcript_boundary_fixtures import build_transcript_boundary_cases
     from equivalence.embedding_cache import build_embedding_cache_cases
     from equivalence.incremental_index import build_incremental_index_cases
     from equivalence.index_publication import build_index_publication_cases
@@ -235,6 +236,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     cases.extend(build_get_contract_cases())
     cases.extend(build_deadline_contract_cases())
     cases.extend(build_session_contract_cases())
+    cases.extend(build_transcript_boundary_cases())
+    from equivalence.durable_session_fixtures import build_durable_session_cases
+
+    cases.extend(build_durable_session_cases())
     cases.extend(build_embedding_cache_cases())
     cases.extend(build_incremental_index_cases())
     cases.extend(build_index_publication_cases())
@@ -263,6 +268,14 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation == "transcript-boundary-runtime":
+        from equivalence.transcript_boundaries import run_transcript_boundary
+
+        return run_transcript_boundary(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "durable-session-runtime":
+        from equivalence.durable_sessions import run_durable_sessions
+
+        return run_durable_sessions(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation in {"session-contract", "session-contract-runtime", "session-contract-helper-runtime"}:
         from equivalence.session_contract import run_session_contract
 

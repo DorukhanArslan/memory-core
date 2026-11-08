@@ -67,6 +67,12 @@ _OPERATIONS = {
     "session-contract-helper-runtime": (
         "session-contract-runtime.mjs", "dist/session-ingestion-Dy5uAq-_.mjs", False,
     ),
+    "transcript-boundary-runtime": (
+        "transcript-boundary-runtime.mjs", "dist/session-files-DVVT4Ngb.mjs", False,
+    ),
+    "durable-session-runtime": (
+        "durable-session-runtime.mjs", "dist/extensions/memory-core/manager-runtime.js", True,
+    ),
 }
 
 
@@ -674,6 +680,7 @@ class ReleaseOracleExecution:
                 or operation == "deadline-partial-get-runtime" and case["input"].get("toolName") != "memory_get"):
             raise RuntimeOracleError("Deadline search and real-file get profiles cannot impersonate each other.")
         session_kinds = {"session-contract-runtime": "flow", "session-contract-helper-runtime": "admission-policy"}
+        session_kinds.update({"transcript-boundary-runtime": "boundary", "durable-session-runtime": "durable"})
         if operation in session_kinds and case.get("input", {}).get("kind") != session_kinds[operation]:
             raise RuntimeOracleError("Session admission helpers cannot impersonate genuine persisted session flows.")
         if (not isinstance(row, dict) or operation not in _OPERATIONS
@@ -692,6 +699,7 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("The release oracle returned missing or excessive thread traces.")
         total = 0
         loaded, bootstrap, worker_imports, local_imports, captures = {}, [], [], set(), {}
+        release_by_pid, local_by_pid, process_parents = {}, {}, {}
         for trace in traces:
             filename = _TRACE.fullmatch(trace.name)
             if filename is None:
@@ -713,6 +721,8 @@ class ReleaseOracleExecution:
                     or first.get("fetchDenied") is not True or first.get("providerMode") != "none"):
                 raise RuntimeOracleError("Runtime thread bootstrap protection was not attested.")
             bootstrap.append({"pid": pid, "threadId": thread, "isMainThread": thread == 0})
+            if thread == 0:
+                process_parents[pid] = first.get("ppid")
             for event in events[1:]:
                 if event.get("pid") != pid or event.get("threadId") != thread:
                     raise RuntimeOracleError("A runtime trace forged another thread identity.")
@@ -726,6 +736,7 @@ class ReleaseOracleExecution:
                         raise RuntimeOracleError("An oracle import did not match its reviewed adapter.")
                     if event["event"] == "load" and thread == 0:
                         local_imports.add(path)
+                        local_by_pid.setdefault(pid, set()).add(path)
                 elif kind == "fixture-capture":
                     source = event.get("sourcePath")
                     capture = event.get("capturePath")
@@ -759,6 +770,8 @@ class ReleaseOracleExecution:
                         raise RuntimeOracleError("A runtime import is not an authenticated release file.")
                     if event["event"] == "load":
                         loaded[key] = {"package": key[0], "path": key[1], "sha256": digest}
+                        if key[0] == "node_modules/openclaw":
+                            release_by_pid.setdefault(pid, set()).add(key[1])
                         if thread > 0:
                             worker_imports.append({"package": key[0], "path": key[1],
                                                    "threadId": thread, "pid": pid})
@@ -822,6 +835,11 @@ class ReleaseOracleExecution:
                     by_thread.setdefault((item["pid"], item["threadId"]), set()).add(item["path"])
                 if not any(set(MEMORY_INDEX_WORKER_ARTIFACTS) <= paths for paths in by_thread.values()):
                     raise RuntimeOracleError("Session publication requires its real memory-index wrapper and implementation in one protected worker.")
+        if operation == "transcript-boundary-runtime":
+            from equivalence.transcript_boundary_runtime_bindings import REQUIRED_BOUNDARY_ARTIFACTS
+
+            if any(("node_modules/openclaw", owner) not in loaded for owner in REQUIRED_BOUNDARY_ARTIFACTS):
+                raise RuntimeOracleError("The original transcript boundary reader and projection owners did not execute.")
         if case.get("operation") == "flush-execution-runtime" and not captures:
             raise RuntimeOracleError("The native provider loader did not execute a reviewed fixture source capture.")
         if operation == "flush-execution-runtime" and (
@@ -843,6 +861,18 @@ class ReleaseOracleExecution:
         diagnostic = _json(raw)
         if not isinstance(diagnostic, list):
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
+        if operation == "transcript-boundary-runtime":
+            from equivalence.transcript_boundary_evidence import validate_transcript_boundary_raw
+
+            validate_transcript_boundary_raw(row, case, diagnostic, evidence.parent,
+                                            release_by_pid=release_by_pid, worker_imports=worker_imports)
+        if operation == "durable-session-runtime":
+            from equivalence.durable_session_evidence import validate_durable_session_raw
+
+            validate_durable_session_raw(row, case, diagnostic, evidence.parent,
+                                        runtime_root=self.config["runtimeRoot"], bootstrap=bootstrap,
+                                        release_by_pid=release_by_pid, local_by_pid=local_by_pid,
+                                        worker_imports=worker_imports, process_parents=process_parents)
         if operation in {"deadline-partial-runtime", "deadline-partial-get-runtime"}:
             _validate_deadline_partial_raw(row, case, diagnostic, evidence.parent)
         if operation in {"session-contract-runtime", "session-contract-helper-runtime"}:

@@ -538,6 +538,20 @@ def _strict_requester_agent(key: str, agent_id: str | None, policy: SessionVisib
     return session_agent or explicit or policy.default_agent_id
 
 
+def resolve_memory_search_tool_agent(
+    session_key: str | None, agent_id: str, policy: SessionVisibilityPolicy | None = None,
+) -> str:
+    """Resolve the trusted tool owner before any model arguments or corpus work.
+
+    Native tool context selection precedes execution, independently of the
+    result filter's legitimate early return for memory-only candidate lists.
+    """
+    return _strict_requester_agent(
+        session_key or "", agent_id,
+        policy or SessionVisibilityPolicy(default_agent_id=normalize_session_agent_id(agent_id)),
+    )
+
+
 def _private_conversation(agent_id: str, entry: Mapping[str, Any] | None, key: str) -> bool:
     if entry is None:
         return False

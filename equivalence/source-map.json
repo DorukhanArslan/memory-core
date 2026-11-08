@@ -40,7 +40,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 486
+          "line": 488
         }
       ],
       "implementation": "partial",
@@ -74,13 +74,13 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_read_path",
           "anchor": "    def resolve_memory_read_path(self, raw_path: str) -> tuple[str, Path | None]:",
-          "line": 525
+          "line": 527
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_path",
           "anchor": "    def resolve_memory_path(self, rel_path: str) -> Path:",
-          "line": 516
+          "line": 518
         },
         {
           "path": "memory_core/workspace.py",
@@ -542,7 +542,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 486
+          "line": 488
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -553,8 +553,8 @@
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_index_entry",
-          "anchor": "    def read_index_entry(self, file: SessionCorpusFile) -> SessionEntry:",
-          "line": 336
+          "anchor": "    def read_index_entry(",
+          "line": 340
         },
         {
           "path": "memory_core/workspace.py",
@@ -744,7 +744,7 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_run_memory_search_tool",
           "anchor": "def _run_memory_search_tool(",
-          "line": 839
+          "line": 847
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -1208,7 +1208,7 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "memory_search",
           "anchor": "def memory_search(",
-          "line": 589
+          "line": 597
         }
       ],
       "implementation": "present",
@@ -1275,19 +1275,19 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "memory_search_tool_definition",
           "anchor": "def memory_search_tool_definition(",
-          "line": 168
+          "line": 170
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "read_memory_search_params",
           "anchor": "def read_memory_search_params(params: object) -> MemorySearchParams:",
-          "line": 497
+          "line": 499
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "execute_memory_search_tool",
           "anchor": "def execute_memory_search_tool(",
-          "line": 521
+          "line": 523
         },
         {
           "path": "memory_core/tools/search_factory.py",
@@ -1632,19 +1632,19 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "read_memory_search_tool_cooldown_failure",
           "anchor": "def read_memory_search_tool_cooldown_failure(",
-          "line": 382
+          "line": 384
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "record_memory_search_tool_cooldown",
           "anchor": "def record_memory_search_tool_cooldown(",
-          "line": 425
+          "line": 427
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_search_configuration_key",
           "anchor": "def _search_configuration_key(",
-          "line": 650
+          "line": 658
         },
         {
           "path": "memory_core/cancellation.py",
@@ -1727,19 +1727,19 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "build_memory_search_unavailable_result",
           "anchor": "def build_memory_search_unavailable_result(",
-          "line": 190
+          "line": 192
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_settle_memory_attempt",
           "anchor": "def _settle_memory_attempt(",
-          "line": 1217
+          "line": 1225
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_merge_corpus_results",
           "anchor": "def _merge_corpus_results(",
-          "line": 1313
+          "line": 1323
         },
         {
           "path": "memory_core/tools/corpus.py",
@@ -1769,7 +1769,7 @@
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_run_memory_search_tool",
           "anchor": "def _run_memory_search_tool(",
-          "line": 839
+          "line": 847
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -1924,7 +1924,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus",
           "anchor": "class MemoryCoreSessionCorpus:",
-          "line": 77
+          "line": 79
         },
         {
           "path": "memory_core/consolidation/session_ingestion.py",
@@ -1935,8 +1935,8 @@
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_index_entry",
-          "anchor": "    def read_index_entry(self, file: SessionCorpusFile) -> SessionEntry:",
-          "line": 336
+          "anchor": "    def read_index_entry(",
+          "line": 340
         },
         {
           "path": "memory_core/workspace.py",
@@ -1948,55 +1948,55 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.discover_entries",
           "anchor": "    def discover_entries(",
-          "line": 179
+          "line": 181
         },
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.discover_admitted_entries",
           "anchor": "    def discover_admitted_entries(",
-          "line": 280
+          "line": 282
         },
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_source_entry",
           "anchor": "    def read_source_entry(",
-          "line": 399
+          "line": 419
         },
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "is_memory_session_indexable",
           "anchor": "def is_memory_session_indexable(",
-          "line": 59
+          "line": 61
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog",
           "anchor": "class MemorySessionCatalog:",
-          "line": 228
+          "line": 268
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.upsert_session",
           "anchor": "    def upsert_session(",
-          "line": 419
+          "line": 477
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 678
+          "line": 963
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 699
+          "line": 1048
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_archive",
           "anchor": "    def record_archive(",
-          "line": 654
+          "line": 937
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -2008,7 +2008,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(",
-          "line": 486
+          "line": 488
         },
         {
           "path": "memory_core/consolidation/session_ingestion.py",
@@ -2020,19 +2020,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_participant",
           "anchor": "    def record_participant(",
-          "line": 561
+          "line": 842
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_participants",
           "anchor": "    def list_participants(",
-          "line": 627
+          "line": 909
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.load_session_metadata",
           "anchor": "    def load_session_metadata(",
-          "line": 732
+          "line": 1138
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -2044,7 +2044,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.get_session_entry",
           "anchor": "    def get_session_entry(",
-          "line": 392
+          "line": 449
         }
       ],
       "implementation": "partial",
@@ -2085,6 +2085,114 @@
           "symbol": "resolveZstdCodec",
           "anchor": "export function resolveZstdCodec(",
           "line": 11
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/session-files.ts",
+          "symbol": "buildSessionEntry",
+          "anchor": "export async function buildSessionEntry(",
+          "line": 625
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/session-provenance.ts",
+          "symbol": "classifySessionMessageOrigin",
+          "anchor": "export function classifySessionMessageOrigin(",
+          "line": 4
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/session-reset-recall.ts",
+          "symbol": "resolveSessionResetRecallCutoff",
+          "anchor": "export function resolveSessionResetRecallCutoff(",
+          "line": 15
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/openclaw-runtime-session.ts",
+          "symbol": "isDreamingNarrativeSessionStoreKey",
+          "anchor": "export function isDreamingNarrativeSessionStoreKey(sessionKey: string): boolean {",
+          "line": 140
+        },
+        {
+          "path": "src/plugin-sdk/memory-core-host-engine-sessions.ts",
+          "symbol": "loadMemorySessionMetadata",
+          "anchor": "export function loadMemorySessionMetadata(params: {",
+          "line": 77
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-read.ts",
+          "symbol": "readTranscriptExportSnapshotReadOnlySync",
+          "anchor": "export function readTranscriptExportSnapshotReadOnlySync(",
+          "line": 112
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-transcript-write.ts",
+          "symbol": "replaceTranscriptEventsSync",
+          "anchor": "export function replaceTranscriptEventsSync(",
+          "line": 238
+        },
+        {
+          "path": "src/plugin-sdk/session-store-runtime.ts",
+          "symbol": "upsertSessionEntry",
+          "anchor": "export async function upsertSessionEntry(params: UpsertSessionEntryParams): Promise<void> {",
+          "line": 529
+        },
+        {
+          "path": "src/config/sessions/archive-compression.ts",
+          "symbol": "readSessionArchiveContentSync",
+          "anchor": "export function readSessionArchiveContentSync(filePath: string): string {",
+          "line": 37
+        },
+        {
+          "path": "packages/memory-host-sdk/src/engine-sessions.ts",
+          "symbol": "buildSessionEntry",
+          "anchor": "  buildSessionEntry,",
+          "line": 5
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/fs-utils.ts",
+          "symbol": "readRegularFile",
+          "anchor": "export { readRegularFile, statRegularFile } from \"@openclaw/fs-safe/advanced\";",
+          "line": 4
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/read-retry.ts",
+          "symbol": "retryTransientMemoryRead",
+          "anchor": "export async function retryTransientMemoryRead<T>(",
+          "line": 25
+        },
+        {
+          "path": "src/config/sessions/session-transcript-read-worker-runtime.ts",
+          "symbol": "prepareSessionEntryInWorker",
+          "anchor": "export async function prepareSessionEntryInWorker(",
+          "line": 99
+        },
+        {
+          "path": "src/config/sessions/session-transcript.worker.ts",
+          "symbol": "serveOwnedWorkerTasks",
+          "anchor": "serveOwnedWorkerTasks(",
+          "line": 85
+        },
+        {
+          "path": "src/infra/runtime-process-entrypoints.ts",
+          "symbol": "runtimeProcessEntrypoints",
+          "anchor": "export const runtimeProcessEntrypoints = {",
+          "line": 14
+        },
+        {
+          "path": "src/infra/runtime-worker-url.ts",
+          "symbol": "resolveRuntimeWorkerUrl",
+          "anchor": "export function resolveRuntimeWorkerUrl(params: {",
+          "line": 7
+        },
+        {
+          "path": "src/infra/worker-task-pool.ts",
+          "symbol": "WorkerTaskPool",
+          "anchor": "export class WorkerTaskPool<Input, Output> {",
+          "line": 12
+        },
+        {
+          "path": "src/infra/tmp-openclaw-dir.ts",
+          "symbol": "DEFAULT_POSIX_TMP_ROOT",
+          "anchor": "export const DEFAULT_POSIX_TMP_ROOT = \"/tmp/openclaw\";",
+          "line": 5
         }
       ],
       "python": [
@@ -2109,8 +2217,8 @@
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_index_entry",
-          "anchor": "    def read_index_entry(self, file: SessionCorpusFile) -> SessionEntry:",
-          "line": 336
+          "anchor": "    def read_index_entry(",
+          "line": 340
         },
         {
           "path": "memory_core/workspace.py",
@@ -2128,13 +2236,13 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 699
+          "line": 1048
         },
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_source_entry",
           "anchor": "    def read_source_entry(",
-          "line": 399
+          "line": 419
         },
         {
           "path": "memory_core/session_archive_codec.py",
@@ -2236,7 +2344,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus",
           "anchor": "class MemoryCoreSessionCorpus:",
-          "line": 77
+          "line": 79
         },
         {
           "path": "memory_core/consolidation/recall.py",
@@ -2266,7 +2374,7 @@
           "path": "memory_core/session_visibility.py",
           "symbol": "filter_memory_search_hits_by_session_visibility",
           "anchor": "def filter_memory_search_hits_by_session_visibility(",
-          "line": 562
+          "line": 576
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -2302,31 +2410,31 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 699
+          "line": 1048
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_reset_cutoff",
           "anchor": "    def read_reset_cutoff(",
-          "line": 726
+          "line": 1076
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 678
+          "line": 963
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.tombstone_session",
           "anchor": "    def tombstone_session(",
-          "line": 668
+          "line": 952
         },
         {
           "path": "memory_core/tools/memory_search.py",
           "symbol": "_run_memory_search_tool",
           "anchor": "def _run_memory_search_tool(",
-          "line": 839
+          "line": 847
         }
       ],
       "implementation": "partial",
@@ -2411,6 +2519,90 @@
           "symbol": "readTranscriptExportSnapshotReadOnlySync",
           "anchor": "export function readTranscriptExportSnapshotReadOnlySync(",
           "line": 112
+        },
+        {
+          "path": "packages/agent-core/src/harness/session/session.ts",
+          "symbol": "buildSessionContext",
+          "anchor": "export function buildSessionContext(",
+          "line": 133
+        },
+        {
+          "path": "packages/agent-core/src/harness/messages.ts",
+          "symbol": "convertToLlm",
+          "anchor": "export function convertToLlm(",
+          "line": 124
+        },
+        {
+          "path": "packages/agent-core/src/harness/session/tool-result-pairing.ts",
+          "symbol": "selectResetKeptEntries",
+          "anchor": "export function selectResetKeptEntries",
+          "line": 394
+        },
+        {
+          "path": "src/config/sessions/transcript-visible-events.ts",
+          "symbol": "selectVisibleTranscriptEvents",
+          "anchor": "export function selectVisibleTranscriptEvents<T>",
+          "line": 32
+        },
+        {
+          "path": "src/config/sessions/transcript-tree.ts",
+          "symbol": "scanSessionTranscriptTree",
+          "anchor": "export function scanSessionTranscriptTree<T>",
+          "line": 180
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-transcript-header.ts",
+          "symbol": "ensureTranscriptHeader",
+          "anchor": "export function ensureTranscriptHeader(",
+          "line": 7
+        },
+        {
+          "path": "src/config/sessions/transcript-header.ts",
+          "symbol": "createSessionTranscriptHeader",
+          "anchor": "export function createSessionTranscriptHeader(",
+          "line": 20
+        },
+        {
+          "path": "src/config/sessions/version.ts",
+          "symbol": "CURRENT_SESSION_VERSION",
+          "anchor": "export const CURRENT_SESSION_VERSION = 4;",
+          "line": 2
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-transcript-state.ts",
+          "symbol": "ensureTranscriptGenerationInTransaction",
+          "anchor": "export function ensureTranscriptGenerationInTransaction(",
+          "line": 104
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-transcript-anchor.ts",
+          "symbol": "createTranscriptEntryAnchor",
+          "anchor": "export function createTranscriptEntryAnchor(",
+          "line": 56
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-transcript-store.ts",
+          "symbol": "appendTranscriptEventInTransaction",
+          "anchor": "export function appendTranscriptEventInTransaction(",
+          "line": 154
+        },
+        {
+          "path": "src/infra/sqlite-integrity-worker.ts",
+          "symbol": "assertSqliteIntegrityInWorker",
+          "anchor": "export function assertSqliteIntegrityInWorker(",
+          "line": 147
+        },
+        {
+          "path": "src/infra/sqlite-integrity.worker.ts",
+          "symbol": "check",
+          "anchor": "async function check(",
+          "line": 41
+        },
+        {
+          "path": "src/infra/sqlite-file-generation.ts",
+          "symbol": "readSqliteIntegrityFileIdentity",
+          "anchor": "export function readSqliteIntegrityFileIdentity(",
+          "line": 9
         }
       ],
       "python": [
@@ -2431,6 +2623,60 @@
           "symbol": "from_json",
           "anchor": "def from_json(cls, data: Mapping[str, Any]) -> SessionState:",
           "line": 121
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.append_message",
+          "anchor": "    def append_message(",
+          "line": 682
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.read_continuation",
+          "anchor": "    def read_continuation(",
+          "line": 1082
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.read_anchor",
+          "anchor": "    def read_anchor(",
+          "line": 802
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.list_transcript_instances",
+          "anchor": "    def list_transcript_instances(",
+          "line": 984
+        },
+        {
+          "path": "memory_core/session_context.py",
+          "symbol": "build_session_context",
+          "anchor": "def build_session_context(",
+          "line": 125
+        },
+        {
+          "path": "memory_core/session_context.py",
+          "symbol": "iterate_session_context_messages",
+          "anchor": "def iterate_session_context_messages(",
+          "line": 102
+        },
+        {
+          "path": "memory_core/session_context.py",
+          "symbol": "convert_to_llm",
+          "anchor": "def convert_to_llm(",
+          "line": 183
+        },
+        {
+          "path": "memory_core/session_transcript_append.py",
+          "symbol": "resolve_message_append_parent",
+          "anchor": "def resolve_message_append_parent(",
+          "line": 181
+        },
+        {
+          "path": "memory_core/session_transcript_append.py",
+          "symbol": "messages_match_for_replay",
+          "anchor": "def messages_match_for_replay(",
+          "line": 153
         }
       ],
       "implementation": "host-owned",
@@ -3625,6 +3871,12 @@
           "symbol": "create_sensitive_text_redactor",
           "anchor": "def create_sensitive_text_redactor(",
           "line": 2004
+        },
+        {
+          "path": "memory_core/session_transcript_append.py",
+          "symbol": "redact_message_for_storage",
+          "anchor": "def redact_message_for_storage(",
+          "line": 57
         }
       ],
       "implementation": "partial",
@@ -3828,7 +4080,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus._is_heartbeat_row",
           "anchor": "    def _is_heartbeat_row(self, raw_text: str, role: str) -> bool:",
-          "line": 410
+          "line": 435
         }
       ],
       "implementation": "partial",
@@ -4325,7 +4577,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus",
           "anchor": "class MemoryCoreSessionCorpus:",
-          "line": 77
+          "line": 79
         },
         {
           "path": "memory_core/host/kit.py",
@@ -5462,6 +5714,67 @@
       ]
     },
     {
+      "path": "packages/agent-core/src/harness/messages.ts",
+      "sha256": "cfa370ab4c489262dc769f30c6b07ce6b90c974a2c6cb49d8a366a5edaf20d64",
+      "sourceImports": [
+        "../types.js",
+        "@openclaw/llm-core",
+        "@openclaw/normalization-core/number-coercion",
+        "@openclaw/normalization-core/record-coerce"
+      ],
+      "exportedDeclarations": [
+        "BRANCH_SUMMARY_PREFIX",
+        "BRANCH_SUMMARY_SUFFIX",
+        "COMPACTION_SUMMARY_PREFIX",
+        "COMPACTION_SUMMARY_SUFFIX",
+        "bashExecutionToText",
+        "convertToLlm",
+        "createBranchSummaryMessage",
+        "createCompactionSummaryMessage",
+        "createCustomMessage",
+        "isRuntimeContextCarrier"
+      ]
+    },
+    {
+      "path": "packages/agent-core/src/harness/session/session.ts",
+      "sha256": "b9da8aab7693741eec60cd43d3e33b36d91e2c2ad2afbc7695320c8bf838350e",
+      "sourceImports": [
+        "../../types.js",
+        "../messages.js",
+        "../types.js",
+        "./tool-result-pairing.js",
+        "@openclaw/ai/transports"
+      ],
+      "exportedDeclarations": [
+        "buildSessionContext",
+        "projectSessionEntryMessage"
+      ]
+    },
+    {
+      "path": "packages/agent-core/src/harness/session/tool-result-pairing.ts",
+      "sha256": "432a3ab386709ea2341f6f336c42eb78eae7ef323ff5f293a69ece53ebb1701b",
+      "sourceImports": [
+        "../../types.js",
+        "../types.js",
+        "@openclaw/normalization-core/record-coerce",
+        "@openclaw/normalization-core/string-coerce"
+      ],
+      "exportedDeclarations": [
+        "DEFAULT_MISSING_TOOL_RESULT_TEXT",
+        "SYNTHETIC_MISSING_TOOL_RESULT_DETAIL_KEY",
+        "classifyToolUseResultPairing",
+        "collectCompletedToolCallBlocks",
+        "createToolCallOccurrenceQueue",
+        "extractToolCallsFromAssistant",
+        "extractToolResultId",
+        "extractToolResultIds",
+        "isSyntheticMissingToolResult",
+        "makeMissingToolResult",
+        "normalizeLegacyToolResultId",
+        "selectResetKeptEntries"
+      ]
+    },
+    {
       "path": "packages/ai/src/transports/provider-compaction-replay.ts",
       "sha256": "5e92aa7282a428cadabf793aedbca84e70553a265479cff486a6e414be2ef6da",
       "sourceImports": [
@@ -5502,6 +5815,17 @@
         "SessionPerson",
         "SessionPersonSchema"
       ]
+    },
+    {
+      "path": "packages/memory-host-sdk/src/engine-sessions.ts",
+      "sha256": "d4c312c0b7fb9a1caac069081869517118d9f0a863fc78dc846a86ed45ad1997",
+      "sourceImports": [
+        "./host/openclaw-runtime-session.js",
+        "./host/query-expansion.js",
+        "./host/session-files.js",
+        "./host/session-reset-recall-read.js"
+      ],
+      "exportedDeclarations": []
     },
     {
       "path": "packages/memory-host-sdk/src/host/config-utils.ts",
@@ -5545,6 +5869,19 @@
         "decodeMemoryEmbedding",
         "encodeMemoryEmbedding",
         "parseEmbedding"
+      ]
+    },
+    {
+      "path": "packages/memory-host-sdk/src/host/fs-utils.ts",
+      "sha256": "17f4e7697239791c99ba487ee26a62ff9bc9b23d2f08cd7e894d1a51e79f2e73",
+      "sourceImports": [
+        "@openclaw/fs-safe/advanced",
+        "@openclaw/fs-safe/path",
+        "@openclaw/fs-safe/root",
+        "@openclaw/fs-safe/walk"
+      ],
+      "exportedDeclarations": [
+        "isFileMissingError"
       ]
     },
     {
@@ -5619,6 +5956,48 @@
       ]
     },
     {
+      "path": "packages/memory-host-sdk/src/host/openclaw-runtime-session.ts",
+      "sha256": "51fed14e0695f0caf97d1b3296ed5cdba7b8867bca4de8611509af68fce14eed",
+      "sourceImports": [
+        "../../../../src/agents/agent-scope.js",
+        "../../../../src/agents/internal-runtime-context.js",
+        "../../../../src/auto-reply/heartbeat-filter.js",
+        "../../../../src/auto-reply/heartbeat.js",
+        "../../../../src/auto-reply/reply/strip-inbound-meta.js",
+        "../../../../src/auto-reply/tokens.js",
+        "../../../../src/config/config-env-vars.js",
+        "../../../../src/config/config.js",
+        "../../../../src/config/sessions/archive-compression.js",
+        "../../../../src/config/sessions/artifacts.js",
+        "../../../../src/config/sessions/main-session.js",
+        "../../../../src/config/sessions/paths.js",
+        "../../../../src/config/sessions/session-accessor.js",
+        "../../../../src/config/sessions/session-cold-storage-read.js",
+        "../../../../src/config/sessions/session-cold-storage-state.js",
+        "../../../../src/config/sessions/session-history.js",
+        "../../../../src/config/sessions/session-transcript-read-worker-runtime.js",
+        "../../../../src/config/sessions/types.js",
+        "../../../../src/infra/heartbeat-events-filter.js",
+        "../../../../src/plugin-sdk/session-store-runtime.js",
+        "../../../../src/routing/session-key.js",
+        "../../../../src/sessions/input-provenance.js",
+        "../../../../src/sessions/session-key-utils.js",
+        "../../../../src/sessions/transcript-events.js",
+        "../../../../src/state/openclaw-agent-db.paths.js",
+        "@openclaw/normalization-core/agent-id",
+        "node:path"
+      ],
+      "exportedDeclarations": [
+        "DREAMING_NARRATIVE_RUN_PREFIX",
+        "extractAgentIdFromSessionPath",
+        "extractAgentIdFromSessionsDir",
+        "isDreamingNarrativeSessionStoreKey",
+        "prepareSessionEntryInWorker",
+        "readSessionResetRecallCutoffInWorker",
+        "readTranscriptContentRevisionSync"
+      ]
+    },
+    {
       "path": "packages/memory-host-sdk/src/host/read-file-shared.ts",
       "sha256": "cc574d3135a6849b6a62ed640a5e502eb23ca066071ce152d704ce861f2f8b5d",
       "sourceImports": [
@@ -5651,6 +6030,17 @@
       "exportedDeclarations": [
         "readAgentMemoryFile",
         "readMemoryFile"
+      ]
+    },
+    {
+      "path": "packages/memory-host-sdk/src/host/read-retry.ts",
+      "sha256": "9cb198e12356e8cf1c3f35dc6d1d4cfaf0f00dbb0c1d74f71b71d8cd42d7c4da",
+      "sourceImports": [
+        "@openclaw/retry"
+      ],
+      "exportedDeclarations": [
+        "isTransientMemoryReadError",
+        "retryTransientMemoryRead"
       ]
     },
     {
@@ -5714,6 +6104,17 @@
       ]
     },
     {
+      "path": "packages/memory-host-sdk/src/host/session-provenance.ts",
+      "sha256": "312eac1018ccb49bd98acee26f70a074fa51ed8c17075ad98b8fbbd62469e63b",
+      "sourceImports": [
+        "./types.js",
+        "@openclaw/normalization-core/record-coerce"
+      ],
+      "exportedDeclarations": [
+        "classifySessionMessageOrigin"
+      ]
+    },
+    {
       "path": "packages/memory-host-sdk/src/host/session-reset-recall-read.ts",
       "sha256": "8bddd41f9438c901061d7afe61a4dece04d7e5d07e31fc47374aaf0cec291ac6",
       "sourceImports": [
@@ -5723,6 +6124,15 @@
       "exportedDeclarations": [
         "readSessionResetRecallCutoff",
         "readSessionResetRecallCutoffInProcess"
+      ]
+    },
+    {
+      "path": "packages/memory-host-sdk/src/host/session-reset-recall.ts",
+      "sha256": "dea5a5ad57b0219692f1e723abe3a5f2cda767cd4888abece657fbd9fc67adb8",
+      "sourceImports": [],
+      "exportedDeclarations": [
+        "SessionResetRecallCutoff",
+        "resolveSessionResetRecallCutoff"
       ]
     },
     {
@@ -7078,6 +7488,37 @@
       ]
     },
     {
+      "path": "src/config/sessions/session-accessor.sqlite-transcript-anchor.ts",
+      "sha256": "e2db126148df6df03a8c09cb628f58130ba34d70b5088817f2446699c316ae74",
+      "sourceImports": [
+        "../../infra/kysely-sync.js",
+        "../../state/openclaw-agent-db.js",
+        "./session-accessor.sqlite-scope.js",
+        "./session-transcript-index.js",
+        "./transcript-entry-anchor.js",
+        "./transcript-message-identity.js"
+      ],
+      "exportedDeclarations": [
+        "createTranscriptEntryAnchor",
+        "readActiveTranscriptEntryAnchor",
+        "readActiveTranscriptEntryAnchorInTransaction"
+      ]
+    },
+    {
+      "path": "src/config/sessions/session-accessor.sqlite-transcript-header.ts",
+      "sha256": "05c4ad331965633ecf0cd850fa7b3e4e1072b62b2728d14f2175a4a5f8dcf79c",
+      "sourceImports": [
+        "../../infra/kysely-sync.js",
+        "../../state/openclaw-agent-db.js",
+        "./session-accessor.sqlite-scope.js",
+        "./session-accessor.sqlite-transcript-store.js",
+        "./transcript-header.js"
+      ],
+      "exportedDeclarations": [
+        "ensureTranscriptHeader"
+      ]
+    },
+    {
       "path": "src/config/sessions/session-accessor.sqlite-transcript-message-append.ts",
       "sha256": "6cbf0606d549cd2fae2e80e63181a0ff81e2eebfe32f8f93f4593d3832947618",
       "sourceImports": [
@@ -7105,6 +7546,77 @@
         "PreparedTranscriptMessageAppend",
         "appendTranscriptMessageInTransaction",
         "prepareTranscriptMessageAppend"
+      ]
+    },
+    {
+      "path": "src/config/sessions/session-accessor.sqlite-transcript-state.ts",
+      "sha256": "c978eebfed78ac252f5f84dd346662ff4c10b51792d1f4d9a9bc6cd91c9489d4",
+      "sourceImports": [
+        "../../infra/kysely-sync.js",
+        "../../infra/sqlite-number.js",
+        "../../state/openclaw-agent-db.js",
+        "./session-accessor.sqlite-contract.js",
+        "./session-accessor.sqlite-entry-cache.js",
+        "./session-accessor.sqlite-scope.js",
+        "./session-accessor.sqlite-status.js",
+        "./session-canonical-key.js",
+        "./session-canonical-validation.js",
+        "./session-cold-storage-state.js",
+        "./store-entry.js",
+        "@openclaw/normalization-core/string-normalization",
+        "node:crypto"
+      ],
+      "exportedDeclarations": [
+        "advanceTranscriptMutationAtInTransaction",
+        "deleteTranscriptEventsInTransaction",
+        "ensureTranscriptGenerationInTransaction",
+        "ensureTranscriptSessionRoot",
+        "readNextTranscriptSeq",
+        "readTranscriptContextVersionInTransaction",
+        "readTranscriptGenerationInTransaction",
+        "readTranscriptMutationStateInTransaction",
+        "rotateTranscriptGenerationInTransaction",
+        "touchTranscriptMutationInTransaction"
+      ]
+    },
+    {
+      "path": "src/config/sessions/session-accessor.sqlite-transcript-store.ts",
+      "sha256": "e658ffefb7c1c8cfc6ad4c416d8f2f20657cb59f8412eac951e1d8e564afa50d",
+      "sourceImports": [
+        "../../agents/runtime/index.js",
+        "../../agents/transcript-code-mode-source.js",
+        "../../agents/transcript-redact.js",
+        "../../infra/kysely-sync.js",
+        "../../logging/redact.js",
+        "../../media/media-facts.js",
+        "../../state/openclaw-agent-db.js",
+        "./session-accessor.sqlite-cli-history-boundary.js",
+        "./session-accessor.sqlite-contract.js",
+        "./session-accessor.sqlite-read.js",
+        "./session-accessor.sqlite-scope.js",
+        "./session-accessor.sqlite-transcript-state.js",
+        "./session-transcript-index.js",
+        "./session-transcript-projection-append.js",
+        "./session-transcript-reconcile.js",
+        "./session-transcript-retained-data.js",
+        "./transcript-message-identity.js",
+        "./transcript-payload.js",
+        "@openclaw/normalization-core/record-coerce",
+        "node:util"
+      ],
+      "exportedDeclarations": [
+        "appendTranscriptEventInTransaction",
+        "appendTranscriptEventsInTransaction",
+        "canonicalizeTranscriptEventMedia",
+        "createTranscriptIdentityInserter",
+        "insertTranscriptRowsWithoutProjectionInTransaction",
+        "readTranscriptMessageByEventId",
+        "readTranscriptMessageByScopedIdempotencyKey",
+        "redactTranscriptMessageForStorage",
+        "replaceSqliteTranscriptEventsInTransaction",
+        "rewriteSqliteTranscriptEventRowsInTransaction",
+        "scheduleTranscriptProjectionReconcile",
+        "updateSqliteTranscriptEventJsonInTransaction"
       ]
     },
     {
@@ -7169,6 +7681,30 @@
       ]
     },
     {
+      "path": "src/config/sessions/session-transcript-read-worker-runtime.ts",
+      "sha256": "7ebf8c229238a6825100d50dd89ea3973494d8ad76662d35f59f0ea70d17ae07",
+      "sourceImports": [
+        "../../infra/bun-sqlite-library.js",
+        "../../infra/runtime-process-entrypoints.js",
+        "../../infra/runtime-worker-url.js",
+        "../../infra/worker-task-pool.js",
+        "../../logging/redact.js",
+        "./session-accessor.sqlite-branches.js",
+        "./session-accessor.sqlite-model-context.js",
+        "./session-accessor.types.js",
+        "./session-history-worker-errors.js",
+        "./session-transcript-read-fence.js",
+        "./session-transcript-worker.types.js"
+      ],
+      "exportedDeclarations": [
+        "prepareSessionEntryInWorker",
+        "readSessionResetRecallCutoffInWorker",
+        "readSessionTranscriptModelContextAsync",
+        "resolveSessionSqliteTargetInWorker",
+        "runSessionBranchSummaryWorkerRequest"
+      ]
+    },
+    {
       "path": "src/config/sessions/session-transcript-worker-runtime.ts",
       "sha256": "74c9c60100612dc05b97831fca096f9005cd27cdf47c5020d0b987229d6893b1",
       "sourceImports": [
@@ -7205,6 +7741,126 @@
         "withSessionCostUsageWorkerDatabases",
         "withSessionHistoryWorkerDatabase",
         "withSessionHistoryWorkerDatabases"
+      ]
+    },
+    {
+      "path": "src/config/sessions/session-transcript.worker.ts",
+      "sha256": "7e50bf974d3fd7b694b4d29007df6cfa896ae8f8bb395911e7b6b1e78008ea03",
+      "sourceImports": [
+        "../../../packages/memory-host-sdk/src/host/session-files.js",
+        "../../../packages/memory-host-sdk/src/host/session-reset-recall-read.js",
+        "../../gateway/server-methods/chat-history-page-kernel.js",
+        "../../gateway/session-history-snapshot.js",
+        "../../gateway/session-history-worker-reader.js",
+        "../../gateway/session-row-transcript-backfill.kernel.js",
+        "../../gateway/session-transcript-preview-reader.js",
+        "../../gateway/session-transcript-title-reader.js",
+        "../../infra/session-cost-usage-cache-read.js",
+        "../../infra/session-cost-usage-worker.js",
+        "../../infra/session-cost-usage-worker.types.js",
+        "../../infra/sqlite-reader-lifecycle.js",
+        "../../infra/sqlite-transaction.js",
+        "../../infra/worker-task-server.js",
+        "../../logging/redact.js",
+        "../../session-cards/progress-card-store.js",
+        "../../state/openclaw-agent-db-readonly-scope.js",
+        "../../state/openclaw-agent-db-readonly.js",
+        "../../state/openclaw-agent-db-validation-cache.js",
+        "../../state/openclaw-quarantine-store.js",
+        "../config-env-vars.js",
+        "./session-accessor.sqlite-active-context.js",
+        "./session-accessor.sqlite-archive-read.js",
+        "./session-accessor.sqlite-archive-store-kernel.js",
+        "./session-accessor.sqlite-branches.js",
+        "./session-accessor.sqlite-current-turn.js",
+        "./session-accessor.sqlite-entry-availability.js",
+        "./session-accessor.sqlite-entry-list.read.js",
+        "./session-accessor.sqlite-entry.js",
+        "./session-accessor.sqlite-model-context.js",
+        "./session-accessor.sqlite-pending-input-receipts.js",
+        "./session-canonical-key.js",
+        "./session-cold-storage-state.js",
+        "./session-entry-read.worker.js",
+        "./session-history-archive-pruning.worker.js",
+        "./session-history-eviction-candidates.js",
+        "./session-history-types.js",
+        "./session-history-worker-errors.js",
+        "./session-membership-facts.js",
+        "./session-sharing-store.kernel.js",
+        "./session-sqlite-target.js",
+        "./session-store-target-inventory.js",
+        "./session-transcript-hydration.worker.js",
+        "./session-transcript-index.js",
+        "./session-transcript-match.js",
+        "./session-transcript-read-fence.js",
+        "./session-transcript-search.js",
+        "./session-transcript-worker.types.js",
+        "@openclaw/normalization-core/record-coerce"
+      ],
+      "exportedDeclarations": []
+    },
+    {
+      "path": "src/config/sessions/transcript-header.ts",
+      "sha256": "df2f0da864f5c642bc2b2f76332525d8dab52feb282fd959247acf99f55bc0b7",
+      "sourceImports": [
+        "./version.js",
+        "@openclaw/normalization-core/number-coercion",
+        "@openclaw/normalization-core/record-coerce",
+        "node:crypto"
+      ],
+      "exportedDeclarations": [
+        "createSessionTranscriptHeader",
+        "readSessionTranscriptHeaderStartedAt",
+        "resolveResetBoundaryHeaderCwd"
+      ]
+    },
+    {
+      "path": "src/config/sessions/transcript-tree.ts",
+      "sha256": "5b24acb49cdc8634ccb4afad80226e371705775fce9945a7ef2426ac219ff945",
+      "sourceImports": [
+        "@openclaw/normalization-core/record-coerce",
+        "@openclaw/normalization-core/string-coerce"
+      ],
+      "exportedDeclarations": [
+        "SessionTranscriptNavigationStorage",
+        "SessionTranscriptTree",
+        "SessionTranscriptTreeNode",
+        "isCanonicalSessionTranscriptEntry",
+        "isSessionTranscriptLeafControl",
+        "isSessionTranscriptSideAppendEntry",
+        "mergeSessionTranscriptTreePaths",
+        "mergeSessionTranscriptVisiblePathWithOpaqueAppendPath",
+        "parseSessionTranscriptTreeEntry",
+        "resolveSessionTranscriptActiveLeafEntryId",
+        "scanSessionTranscriptNavigation",
+        "scanSessionTranscriptTree",
+        "selectSessionTranscriptActiveEntries",
+        "selectSessionTranscriptLeafControlledPath",
+        "selectSessionTranscriptTreePathNodes",
+        "selectSessionTranscriptTreeTipNodes",
+        "visitSessionTranscriptTreePathNodes"
+      ]
+    },
+    {
+      "path": "src/config/sessions/transcript-visible-events.ts",
+      "sha256": "15250a85089fc04749f3e82bb37008b178149acdb85dfc3b0a4387e2386ec774",
+      "sourceImports": [
+        "./transcript-tree.js"
+      ],
+      "exportedDeclarations": [
+        "isTranscriptEntryOnVisiblePath",
+        "resolveVisibleTranscriptAppendParentId",
+        "selectVisibleTranscriptEventEntries",
+        "selectVisibleTranscriptEvents"
+      ]
+    },
+    {
+      "path": "src/config/sessions/version.ts",
+      "sha256": "39a17391fd9d6c7e73d6ea619a04c8fc47c674f70ec14e0bb4d1786f1e2fc3d3",
+      "sourceImports": [],
+      "exportedDeclarations": [
+        "CURRENT_SESSION_VERSION",
+        "MIN_READABLE_SESSION_VERSION"
       ]
     },
     {
@@ -7427,6 +8083,117 @@
         "resolveHeartbeatRunPrompt",
         "shouldPreflightWakeBeforeBusy",
         "truncateHeartbeatPreview"
+      ]
+    },
+    {
+      "path": "src/infra/runtime-process-entrypoints.ts",
+      "sha256": "23576e3d35022ff7d7c4b4b163587d826b7e2b96b7e84533f8ac92189c7f3752",
+      "sourceImports": [],
+      "exportedDeclarations": [
+        "SQLITE_READONLY_CHILD_ARG",
+        "runtimeProcessEntrypoints"
+      ]
+    },
+    {
+      "path": "src/infra/runtime-worker-url.ts",
+      "sha256": "9b694a778a84725e989ad2380195557993afbf25dc97e64112f7a65b2a2087e0",
+      "sourceImports": [
+        "../daemon/runtime-binary.js",
+        "@openclaw/fs-safe/json",
+        "node:path",
+        "node:url"
+      ],
+      "exportedDeclarations": [
+        "resolveRuntimeWorkerArgv",
+        "resolveRuntimeWorkerThreadExecArgv",
+        "resolveRuntimeWorkerUrl",
+        "runtimeNeedsTypeScriptLoader"
+      ]
+    },
+    {
+      "path": "src/infra/sqlite-file-generation.ts",
+      "sha256": "98f0ef241747ad0fb22564ea229c0dacd84231ef961194f67b1446ebd7e076ab",
+      "sourceImports": [
+        "./file-descriptor.js",
+        "@openclaw/fs-safe/advanced",
+        "node:fs"
+      ],
+      "exportedDeclarations": [
+        "SqliteFileGeneration",
+        "parseSqliteFileGeneration",
+        "readSqliteIntegrityFileIdentity",
+        "readStableSqliteFileGeneration",
+        "sameSqliteFileGeneration",
+        "serializeSqliteFileGeneration"
+      ]
+    },
+    {
+      "path": "src/infra/sqlite-integrity-worker.ts",
+      "sha256": "6a8b51ac07775ccb5963857dde418d04c81657a69d1bbe72b3557c10a16f2803",
+      "sourceImports": [
+        "../logging/subsystem.js",
+        "../shared/deferred.js",
+        "./runtime-process-url.js",
+        "./runtime-worker-url.js",
+        "./sqlite-file-generation.js",
+        "./sqlite-integrity-worker-error.js",
+        "./sqlite-integrity.js",
+        "./sqlite-readonly-worker.js",
+        "@openclaw/fs-safe/advanced",
+        "@openclaw/normalization-core/error-coercion",
+        "node:async_hooks",
+        "node:child_process",
+        "node:perf_hooks"
+      ],
+      "exportedDeclarations": [
+        "SqliteIntegrityWorkerInput",
+        "SqliteIntegrityWorkerMessage",
+        "SqliteIntegrityWorkerPhase",
+        "SqliteIntegrityWorkerResult",
+        "assertSqliteIntegrityInWorker",
+        "withSqliteIntegrityWorkerScope"
+      ]
+    },
+    {
+      "path": "src/infra/sqlite-integrity.worker.ts",
+      "sha256": "f6420abc3be00c1352be662598357448b1048fc6b1f5203025432295a5a2f550",
+      "sourceImports": [
+        "./node-sqlite.js",
+        "./sqlite-busy-timeout.js",
+        "./sqlite-file-generation.js",
+        "./sqlite-integrity-worker.js",
+        "./sqlite-integrity.js",
+        "./sqlite-maintenance-cache.js",
+        "@openclaw/normalization-core/error-coercion",
+        "node:events",
+        "node:perf_hooks",
+        "node:sqlite"
+      ],
+      "exportedDeclarations": []
+    },
+    {
+      "path": "src/infra/tmp-openclaw-dir.ts",
+      "sha256": "a0e74b9fb4e9b53215d7bc1fa830d539345a98a973d5b308db9db5de20d8afed",
+      "sourceImports": [
+        "./sealed-runtime-registry.js",
+        "@openclaw/fs-safe/temp"
+      ],
+      "exportedDeclarations": [
+        "DEFAULT_POSIX_TMP_ROOT",
+        "ResolvePreferredOpenClawTmpDirOptions",
+        "resolvePreferredOpenClawTmpDir"
+      ]
+    },
+    {
+      "path": "src/infra/worker-task-pool.ts",
+      "sha256": "fcaafd845ed8a9285ea385a05a4324e01a6c5bfc29a5fca99b69705054be8bca",
+      "sourceImports": [
+        "./worker-task-pool-core.js",
+        "./worker-task-pool.types.js"
+      ],
+      "exportedDeclarations": [
+        "WorkerTaskPool",
+        "createOwnedWorkerTaskPool"
       ]
     },
     {

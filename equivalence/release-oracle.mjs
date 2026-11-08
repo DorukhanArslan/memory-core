@@ -23,6 +23,8 @@ const operations = {
   "deadline-partial-get-runtime": ["deadline-partial-runtime.mjs", "runDeadlineGetRuntime"],
   "session-contract-runtime": ["session-contract-runtime.mjs", "runSessionContractRuntime"],
   "session-contract-helper-runtime": ["session-contract-runtime.mjs", "runSessionContractHelperRuntime"],
+  "transcript-boundary-runtime": ["transcript-boundary-runtime.mjs", "runTranscriptBoundaryRuntime"],
+  "durable-session-runtime": ["durable-session-runtime.mjs", "runDurableSessionRuntime"],
 };
 const results = [];
 for (const testCase of request.cases) {

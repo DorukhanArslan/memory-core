@@ -145,7 +145,9 @@ Replace `call_my_llm` in the host loop example with your model call and tool loo
 For transcript memory, bind a persisted session catalog and trusted requester policy through
 `Memory.from_workspace(..., session_catalog=...)` or `HostKit.open(...)`.
 The [session authority guide](docs/session_authority.md) covers indexing, visibility,
-private conversation recall and authorized source reads.
+private conversation recall and authorized source reads. The
+[durable session guide](docs/durable_session_context.md) shows genuine message appends,
+process reconstruction and provider-adapter integration for the supported JSON profile.
 
 <details>
 <summary><strong>HostKit lifecycle and integration requirements</strong></summary>

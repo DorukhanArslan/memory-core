@@ -469,6 +469,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "deadline-partial-runtime",
             "deadline-partial-get-runtime",
             "session-contract-runtime", "session-contract-helper-runtime",
+            "transcript-boundary-runtime", "durable-session-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -636,6 +637,26 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     raise HarnessError("session-contract-runtime-owner-unavailable",
                                        "The reviewed native session admission/visibility owners could not be verified.") from None
             report["releaseSources"], report["releaseTraces"], report["runtimeDiagnostics"] = [], [], []
+            if any(case["operation"] == "transcript-boundary-runtime" for case in runtime_cases):
+                from equivalence.transcript_boundary_runtime_bindings import prepare_transcript_boundary_runtime_bindings
+
+                try:
+                    report["transcriptBoundaryRuntimeBindings"] = prepare_transcript_boundary_runtime_bindings(
+                        checkout, Path(runtime_config["runtimeRoot"]),
+                    )
+                except (OSError, ValueError):
+                    raise HarnessError("transcript-boundary-runtime-owner-unavailable",
+                                       "The original transcript boundary owners could not be verified.") from None
+            if any(case["operation"] == "durable-session-runtime" for case in runtime_cases):
+                from equivalence.durable_session_runtime_bindings import prepare_durable_session_runtime_bindings
+
+                try:
+                    report["durableSessionRuntimeBindings"] = prepare_durable_session_runtime_bindings(
+                        checkout, Path(runtime_config["runtimeRoot"]),
+                    )
+                except (OSError, ValueError):
+                    raise HarnessError("durable-session-runtime-owner-unavailable",
+                                       "The original durable append/context owners could not be verified.") from None
             if flush_execution:
                 report["fixtureCaptures"] = []
             observed_release = {}

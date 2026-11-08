@@ -891,8 +891,17 @@ reviewed point assignment, `.equivalence-results/vector-scoring-registered.json`
 retain exact inputs, capability profile, status and loaded-file evidence. Matched outputs are not
 duplicated per row; mismatch outputs remain available when a comparison differs.
 
-The default catalog now contains **761 cases**. Final integrated and regression validation is
-recorded after the runs; the planned full report is `.equivalence-results/vector-scoring-full.json`.
-The existing warm first-recall comparison remains registered, visible and uncredited, and
-`flush.execute-finalize.boundaries` stays open even if a later timing-dependent run matches.
-The full contract still has **101 uncovered acceptance points**.
+The committed full-gate report, `.equivalence-results/vector-scoring-full.json`, executes all
+**761 cases** against implementation commit `bc7a83ea4421def784bcbbd9c81678b89b57ec80` with a
+clean tracked tree. It records **760 matches, one mismatch and zero blocked cases**. The sole
+difference is the existing `flush-execution-warm-index-first-recall` comparison; it remains
+registered, visible and uncredited. `flush.execute-finalize.boundaries` stays open even if a
+later timing-dependent run matches. The full gate therefore reports `mismatched`, not a
+full-equivalence pass, and still has **101 uncovered acceptance points**. All 40 vector cases
+match; both declared CPU vector points are covered. No provider credentials were forwarded and
+no paid provider calls were made.
+
+Full regression validation passed **2,781 tests** in 131.77 seconds. The same **1,625 historical
+oracle/live checks** remain skipped and grant no acceptance credit. Ruff, project-name
+consistency, source-map validation and staged diff checks passed. These results are recorded in
+this documentation-only follow-up; implementation, adapters and source inventory are unchanged.

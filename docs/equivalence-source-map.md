@@ -147,15 +147,17 @@ Keyword-only, vector-only and hybrid payloads preserve the native component/id f
 internal source mtimes are removed from public results. Trigger metadata preservation does not
 establish automatic trigger/project candidate admission or prompt injection.
 
-Current coverage is **33/128 (25.8%)**, with **95 points (74.2%)** remaining. The inventory maps
+Current coverage is **35/128 (27.3%)**, with **93 points (72.7%)** remaining. The inventory maps
 **113 upstream modules**, adding both actual recall-reader owners and the public manager
 lifecycle owner. Classifications are 15 present, 46 partial, zero missing and three host-owned.
 The stored annotation path is now verified within its declared profile; other manager/host
 contracts, alternate tokenizers, universal ICU and optional accelerated KNN remain open. The
 warm first-recall and Unicode path-order diagnostics remain visible and uncredited. Fixed scope
-is unchanged at 64 contracts and 128 acceptance points. The previous integrated gate retained 944 matches and two differences in 946 cases,
-with 3,037 regression tests passing. The new search boundary batch has 69 first-pass matches;
-its committed integrated gate and final regression checks are pending.
+is unchanged at 64 contracts and 128 acceptance points. The final search integrated gate retains 1,013 matches and two existing differences in
+1,015 cases, including all 69 search cases, on clean implementation `cff2ff0`. The final
+recall-fix source passes 3,260 regression tests and isolated wheel/sdist checks. Both search
+points pass within the declared profile; 93 acceptance points and the two uncredited
+differences remain. No claim of full equivalence follows from these bounded results.
 
 | Contract | OpenClaw entry | Python entry | Python surface |
 | --- | --- | --- | --- |

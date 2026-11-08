@@ -30,6 +30,11 @@ def _tar(files, *, special=None):
     return output.getvalue()
 
 
+LITERAL_PATCH = (b"diff --git a/dist/index.js b/dist/index.js\nindex " + b"0" * 40 + b".." + b"1" * 40
+                 + b" 100644\n--- a/dist/index.js\n+++ b/dist/index.js\n@@ -1 +1 @@\n"
+                 b"-export const realArtifact = true;\n+export const realArtifact = 'patched';\n")
+
+
 @pytest.fixture
 def packages(tmp_path, monkeypatch):
     destination = tmp_path / "npm"
@@ -49,63 +54,45 @@ def packages(tmp_path, monkeypatch):
         "get-stream": {"@sec-ant/readable-stream": "0.4.1", "is-stream": "4.0.1"},
         "npm-run-path": {"path-key": "4.0.0", "unicorn-magic": "0.3.0"},
         "pretty-ms": {"parse-ms": "4.0.0"},
+        "mdast-util-from-markdown": {"micromark": "4.0.2"},
+        "micromark": {"debug": "4.4.3"},
+        "debug": {"ms": "2.1.3"},
+        "@openclaw/proxyline": {"undici": "8.10.2"},
     }
+    contexts = {name: "(supports-color@10.2.2)" for name in (
+        "mdast-util-from-markdown", "micromark", "debug",
+    )}
+    contexts["@openclaw/proxyline"] = f"(patch_hash={deps.PACKAGE_PATCHES[0][3]})(undici@8.10.2)"
     for name, version in (
         ("@openclaw/fs-safe", "0.21.1"),
         ("@openclaw/fs-safe-linux-x64-gnu", "0.21.1"),
-        ("p-map", "7.0.8"),
-        ("kysely", "0.29.6"),
-        ("semver", "7.8.5"),
-        ("chalk", "6.0.0"),
-        ("tslog", "5.2.0"),
-        ("string-width", "8.2.2"),
-        ("get-east-asian-width", "1.7.0"),
-        ("strip-ansi", "7.2.0"),
-        ("ansi-regex", "6.3.0"),
-        ("zod", "4.6.5"),
-        ("json5", "2.2.3"),
-        ("commander", "15.0.0"),
-        ("typebox", "1.3.34"),
-        ("execa", "10.0.1"),
-        ("import-meta-resolve", "4.2.0"),
-        ("@sindresorhus/merge-streams", "4.0.0"),
-        ("figures", "6.1.0"),
-        ("get-stream", "9.0.1"),
-        ("human-signals", "8.0.1"),
-        ("is-plain-obj", "4.1.0"),
-        ("is-stream", "4.0.1"),
-        ("npm-run-path", "6.0.0"),
-        ("pretty-ms", "9.3.1"),
-        ("signal-exit", "4.1.0"),
-        ("strip-final-newline", "4.0.0"),
-        ("which-command", "0.1.0"),
-        ("yoctocolors", "2.2.0"),
-        ("is-unicode-supported", "2.1.0"),
-        ("@sec-ant/readable-stream", "0.4.1"),
-        ("path-key", "4.0.0"),
-        ("unicorn-magic", "0.3.0"),
-        ("parse-ms", "4.0.0"),
+        *deps.ADDITIONAL_PACKAGES,
     ):
         package = {"name": name, "version": version}
         if name in edges:
             package["dependencies"] = {key: "^" + value for key, value in edges[name].items()}
+        root = name.removeprefix("@types/") if name.startswith("@types/") else "package"
         raw = _tar({
-            "package/package.json": json.dumps(package).encode(),
-            "package/dist/index.js": b"export const realArtifact = true;\n",
+            f"{root}/package.json": json.dumps(package).encode(),
+            f"{root}/dist/index.js": b"export const realArtifact = true;\n",
         })
         raw_by_package[name] = raw
         quote = "'" if name.startswith("@") else ""
         sections.append(f"  {quote}{name}@{version}{quote}:\n"
                         f"    resolution: {{integrity: {_integrity(raw)}}}\n")
-        key = f"  {quote}{name}@{version}{quote}:"
+        key = f"  {quote}{name}@{version}{contexts.get(name, '')}{quote}:"
         if name in edges:
             snapshots.append(key + "\n    dependencies:\n" + "".join(
-                f"      {dependency}: {version}\n" for dependency, version in edges[name].items()
+                f"      {dependency}: {version}{contexts.get(dependency, '')}\n"
+                for dependency, version in edges[name].items()
             ))
         else:
             snapshots.append(key + " {}\n")
     lock = ("packages:\n" + "\n".join(sections) + "\nsnapshots:\n" + "\n".join(snapshots)).encode()
     monkeypatch.setattr(deps, "_committed_lock", lambda _: ("a" * 40, lock))
+    monkeypatch.setattr(deps, "_committed_patch", lambda _checkout, _lock, name, _version:
+                        (LITERAL_PATCH, {"path": deps.PACKAGE_PATCHES[0][2], "sha256": deps._sha(LITERAL_PATCH)})
+                        if name == "@openclaw/proxyline" else None)
     monkeypatch.setattr(deps, "_target", lambda: "linux-x64-gnu")
     calls = []
 
@@ -121,21 +108,7 @@ def test_setup_authenticates_and_extracts_only_pinned_artifacts_without_scripts(
     destination, _, calls = packages
     config = deps.prepare_dependencies(Path("unused"), destination, download=True)
     assert calls == [("@openclaw/fs-safe", "0.21.1"),
-                     ("@openclaw/fs-safe-linux-x64-gnu", "0.21.1"), ("p-map", "7.0.8"),
-                     ("kysely", "0.29.6"), ("semver", "7.8.5"), ("chalk", "6.0.0"),
-                     ("tslog", "5.2.0"), ("string-width", "8.2.2"),
-                     ("get-east-asian-width", "1.7.0"), ("strip-ansi", "7.2.0"),
-                     ("ansi-regex", "6.3.0"), ("zod", "4.6.5"),
-                     ("json5", "2.2.3"), ("commander", "15.0.0"), ("typebox", "1.3.34"),
-                     ("execa", "10.0.1"), ("import-meta-resolve", "4.2.0"),
-                     ("@sindresorhus/merge-streams", "4.0.0"), ("figures", "6.1.0"),
-                     ("get-stream", "9.0.1"), ("human-signals", "8.0.1"),
-                     ("is-plain-obj", "4.1.0"), ("is-stream", "4.0.1"), ("npm-run-path", "6.0.0"),
-                     ("pretty-ms", "9.3.1"), ("signal-exit", "4.1.0"),
-                     ("strip-final-newline", "4.0.0"), ("which-command", "0.1.0"),
-                     ("yoctocolors", "2.2.0"), ("is-unicode-supported", "2.1.0"),
-                     ("@sec-ant/readable-stream", "0.4.1"), ("path-key", "4.0.0"),
-                     ("unicorn-magic", "0.3.0"), ("parse-ms", "4.0.0")]
+                     ("@openclaw/fs-safe-linux-x64-gnu", "0.21.1"), *deps.ADDITIONAL_PACKAGES]
     assert config["kind"] == "verified-npm-artifacts"
     assert config["referenceCommit"] == "a" * 40
     assert all(len(package["files"]) == 2 for package in config["packages"])
@@ -158,6 +131,7 @@ def test_verification_never_downloads_missing_artifacts(packages):
     "wrong-string-width-version", "wrong-width-dependency-version", "missing-width-dependency",
     "wrong-zod-version", "missing-zod", "wrong-json5-version", "wrong-commander-version",
     "wrong-typebox-version", "missing-typebox",
+    "wrong-patch-hash", "missing-patch", "unknown-patch",
 ])
 def test_setup_rejects_packages_and_versions_outside_the_authorized_list(
     packages, tmp_path, monkeypatch, change,
@@ -202,6 +176,12 @@ def test_setup_rejects_packages_and_versions_outside_the_authorized_list(
     elif change == "missing-typebox":
         manifest["additionalPackages"] = [package for package in manifest["additionalPackages"]
                                           if package["name"] != "typebox"]
+    elif change == "wrong-patch-hash":
+        manifest["patches"][0]["sha256"] = "0" * 64
+    elif change == "missing-patch":
+        manifest.pop("patches")
+    elif change == "unknown-patch":
+        manifest["patches"].append({"name": "another-package", "version": "1.0.0"})
     else:
         manifest = []
     root = tmp_path / "suite"
@@ -258,6 +238,57 @@ def test_archived_bytes_are_reauthenticated_on_each_verification(packages):
         deps.prepare_dependencies(Path("unused"), destination)
 
 
+def test_patched_package_retains_original_archive_integrity_and_authenticates_derived_bytes(packages):
+    destination, raw, calls = packages
+    config = deps.prepare_dependencies(Path("unused"), destination, download=True)
+    package = next(item for item in config["packages"] if item["name"] == "@openclaw/proxyline")
+    assert package["integrity"] == _integrity(raw[package["name"]])
+    assert package["patch"] == {"path": deps.PACKAGE_PATCHES[0][2], "sha256": deps._sha(LITERAL_PATCH)}
+    target = Path(package["directory"]) / "dist/index.js"
+    assert target.read_bytes() == b"export const realArtifact = 'patched';\n"
+    target.write_bytes(b"export const realArtifact = true;\n")
+    before = len(calls)
+    with pytest.raises(deps.DependencyError, match="Installed dependency bytes differ"):
+        deps.prepare_dependencies(Path("unused"), destination, download=True)
+    assert target.read_bytes() == b"export const realArtifact = true;\n"
+    assert len(calls) == before
+
+
+@pytest.mark.parametrize("change", ["context", "old-count", "new-offset", "traversal", "new-file", "mode", "duplicate"])
+def test_literal_dependency_patch_rejects_inexact_hunks_and_unsafe_file_operations(change):
+    files = {"dist/index.js": b"export const realArtifact = true;\n"}
+    patch = LITERAL_PATCH
+    if change == "context":
+        patch = patch.replace(b"-export const realArtifact = true;", b"-export const realArtifact = false;")
+    elif change == "old-count":
+        patch = patch.replace(b"@@ -1 +1 @@", b"@@ -1,2 +1 @@")
+    elif change == "new-offset":
+        patch = patch.replace(b"@@ -1 +1 @@", b"@@ -1 +2 @@")
+    elif change == "traversal":
+        patch = patch.replace(b"dist/index.js", b"../index.js")
+    elif change == "new-file":
+        files = {}
+    elif change == "mode":
+        patch = patch.replace(b"100644", b"100755")
+    else:
+        patch += patch
+    before = dict(files)
+    with pytest.raises(deps.DependencyError, match="unsupported or mismatched literal hunks"):
+        deps._apply_literal_patch(files, patch)
+    assert files == before
+
+
+def test_literal_dependency_patch_preserves_missing_final_newlines_and_unmodified_files(monkeypatch):
+    prefix = LITERAL_PATCH.split(b"@@ ", 1)[0]
+    patch = prefix + (b"@@ -1 +1 @@\n-old\n\\ No newline at end of file\n"
+                      b"+new\n\\ No newline at end of file\n")
+    files = {"dist/index.js": b"old", "untouched.js": b"stable\n"}
+    assert deps._apply_literal_patch(files, patch) == {"dist/index.js": b"new", "untouched.js": b"stable\n"}
+    monkeypatch.setattr(deps, "MAX_PATCH_BYTES", 1)
+    with pytest.raises(deps.DependencyError, match="patch exceeds the size limit"):
+        deps._apply_literal_patch(files, patch)
+
+
 @pytest.mark.parametrize("name", ["package/../escape", "/package/absolute", "package/./bad", "other/file", "package\\escape"])
 def test_authenticated_tarball_cannot_escape_or_alias_paths(name):
     raw = _tar({"package/package.json": b"{}", name: b"payload"})
@@ -273,6 +304,19 @@ def test_authenticated_tarball_rejects_nonregular_entries(kind):
     raw = _tar({"package/package.json": b"{}"}, special=info)
     with pytest.raises(deps.DependencyError, match="non-regular"):
         deps._archive_files(raw, _integrity(raw))
+
+
+def test_definitelytyped_prefix_requires_the_exact_requested_package_and_a_single_root():
+    raw = _tar({"mdast/package.json": b"{}", "mdast/index.d.ts": b"export {};"})
+    assert deps._archive_files(raw, _integrity(raw), "@types/mdast") == {
+        "package.json": b"{}", "index.d.ts": b"export {};",
+    }
+    for name in ("", "mdast", "@types/unist", "@types/../mdast"):
+        with pytest.raises(deps.DependencyError, match="unsafe path"):
+            deps._archive_files(raw, _integrity(raw), name)
+    mixed = _tar({"mdast/package.json": b"{}", "package/extra.js": b"payload"})
+    with pytest.raises(deps.DependencyError, match="mixed package roots"):
+        deps._archive_files(mixed, _integrity(mixed), "@types/mdast")
 
 
 def test_authenticated_archive_size_and_extraction_size_are_bounded(monkeypatch):
@@ -323,6 +367,51 @@ snapshots:
     duplicate = lock + b"---\nsnapshots:\n  string-width@8.2.2: {}\n"
     with pytest.raises(deps.DependencyError, match="not uniquely pinned"):
         deps._runtime_dependencies(duplicate, "string-width", "8.2.2")
+
+
+def test_peer_context_snapshots_require_one_exact_version_and_reject_ambiguous_contexts():
+    lock = b"""snapshots:
+  mdast-util-from-markdown@2.0.3(supports-color@10.2.2):
+    dependencies:
+      micromark: 4.0.2(supports-color@10.2.2)
+    transitivePeerDependencies:
+      - supports-color
+"""
+    assert deps._runtime_dependencies(lock, "mdast-util-from-markdown", "2.0.3") == {
+        "micromark": "4.0.2",
+    }
+    duplicate = lock + b"  mdast-util-from-markdown@2.0.3(supports-color@9.0.0): {}\n"
+    with pytest.raises(deps.DependencyError, match="not uniquely pinned"):
+        deps._runtime_dependencies(duplicate, "mdast-util-from-markdown", "2.0.3")
+    for suffix in (b"(supports-color@latest)", b"(supports-color@^10.0.0)", b"trailing"):
+        invalid = lock.replace(b"4.0.2(supports-color@10.2.2)", b"4.0.2" + suffix)
+        with pytest.raises(deps.DependencyError, match="unsupported or ambiguous edges"):
+            deps._runtime_dependencies(invalid, "mdast-util-from-markdown", "2.0.3")
+
+
+def test_patched_snapshot_requires_the_exact_authorized_patch_identity():
+    name, version, _, sha256 = deps.PACKAGE_PATCHES[0]
+    lock = (f"snapshots:\n  '{name}@{version}(patch_hash={sha256})(undici@8.10.2)':\n"
+            "    dependencies:\n      undici: 8.10.2\n").encode()
+    assert deps._runtime_dependencies(lock, name, version) == {"undici": "8.10.2"}
+    for changed in (lock.replace(sha256.encode(), b"0" * 64),
+                    lock.replace(f"(patch_hash={sha256})".encode(), b""),
+                    lock + lock.replace(sha256.encode(), b"0" * 64)):
+        with pytest.raises(deps.DependencyError, match="not uniquely pinned"):
+            deps._runtime_dependencies(changed, name, version)
+
+
+def test_mandatory_peer_dependencies_are_included_and_optional_peers_are_excluded():
+    package = {"name": "transport", "version": "1.0.0", "peerDependencies": {
+        "undici": ">=8 <9", "ws": "^8.0.0",
+    }, "peerDependenciesMeta": {"ws": {"optional": True}}}
+    lock = b"snapshots:\n  transport@1.0.0:\n    dependencies:\n      undici: 8.10.2\n"
+    deps._validate_runtime_closure(package, lock, {"undici": "8.10.2"})
+    with pytest.raises(deps.DependencyError, match="runtime dependencies"):
+        deps._validate_runtime_closure(package, lock, {})
+    package["peerDependenciesMeta"] = {}
+    with pytest.raises(deps.DependencyError, match="runtime dependencies"):
+        deps._validate_runtime_closure(package, lock, {"undici": "8.10.2", "ws": "8.21.3"})
 
 
 @pytest.mark.parametrize("change", ["unlisted", "wrong-version", "missing-declaration", "invalid-declaration"])
@@ -383,3 +472,29 @@ def test_standalone_verification_rejects_wrong_reference_and_modified_lock(tmp_p
     manifest.write_text(json.dumps({"commit": "0" * 40}))
     with pytest.raises(deps.DependencyError, match="does not match"):
         deps._committed_lock(checkout)
+
+
+def test_dependency_patch_requires_matching_committed_bytes_and_lock_hash(tmp_path, monkeypatch):
+    checkout = tmp_path / "reference"
+    relative = "patches/transport.patch"
+    patch = checkout / relative
+    patch.parent.mkdir(parents=True)
+    patch.write_bytes(LITERAL_PATCH)
+    for args in (("init", "-q"), ("add", "."),
+                 ("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+                  "commit", "-qm", "Pinned patch fixture")):
+        subprocess.run(["git", *args], cwd=checkout, check=True, capture_output=True)
+    sha256 = deps._sha(LITERAL_PATCH)
+    monkeypatch.setattr(deps, "PACKAGE_PATCHES", (("@openclaw/proxyline", "0.3.12", relative, sha256),))
+    lock = f"patchedDependencies:\n  '@openclaw/proxyline@0.3.12': {sha256}\n".encode()
+    assert deps._committed_patch(checkout, lock, "@openclaw/proxyline", "0.3.12") == (
+        LITERAL_PATCH, {"path": relative, "sha256": sha256},
+    )
+    with pytest.raises(deps.DependencyError, match="not uniquely pinned"):
+        deps._committed_patch(checkout, lock.replace(sha256.encode(), b"0" * 64), "@openclaw/proxyline", "0.3.12")
+    duplicate = lock + f"  '@openclaw/proxyline@0.3.12': {'0' * 64}\n".encode()
+    with pytest.raises(deps.DependencyError, match="not uniquely pinned"):
+        deps._committed_patch(checkout, duplicate, "@openclaw/proxyline", "0.3.12")
+    patch.write_bytes(LITERAL_PATCH + b"uncommitted change\n")
+    with pytest.raises(deps.DependencyError, match="differs from the pinned committed patch"):
+        deps._committed_patch(checkout, lock, "@openclaw/proxyline", "0.3.12")

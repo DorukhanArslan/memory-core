@@ -1,8 +1,10 @@
-"""Reuse flush-plan fixtures against the actual native owners.
+"""Reuse flush fixtures against the actual native owners.
 
-The token gate probes do not exercise runMemoryFlushIfNeeded's transcript
-accounting, heartbeat exclusions, durable stamps or failure retry lifecycle.
-Those acceptance points deliberately remain uncredited.
+Complete plans and target preparation execute over the declared fixture domain.
+Python's date limits and stricter filesystem admission, plus the native target's
+authority-revocation checks, leave plan/target acceptance incomplete. Exported
+token gates do not prove runtime transcript accounting, heartbeat exclusions,
+durable stamps or retry state. All acceptance points remain uncredited.
 """
 
 from __future__ import annotations
@@ -160,15 +162,13 @@ def build_prospective_flush_contract_cases() -> list[dict[str, Any]]:
 
 
 def build_flush_contract_cases() -> list[dict[str, Any]]:
-    """Register executable owner kernels; retain blocked full-owner fixtures above.
+    """Register all 111 source comparisons with no whole-acceptance credit.
 
-    The complete SDK plan needs acorn, target preparation needs
-    mdast-util-from-markdown, and the token gate needs partial-json in the
-    current authenticated environment. Their real blocked reports remain
-    evidence; helper matches receive no whole-acceptance credit.
+    The prospective builder name remains available for existing callers.
+    Dependencies execute from the verified pinned source graph; plans, targets
+    and token gates are included in every registered run.
     """
-    return [case for case in build_prospective_flush_contract_cases()
-            if case["input"]["kind"] in {"fresh", "error"}]
+    return build_prospective_flush_contract_cases()
 
 
 def run_flush_contract(arguments: dict[str, Any]) -> Any:

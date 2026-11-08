@@ -1,4 +1,5 @@
 """Fixture integrity checks; native equivalence requires the pinned-source run."""
+from collections import Counter
 from copy import deepcopy
 import json
 
@@ -17,19 +18,14 @@ def test_flush_fixtures_are_reproducible_unique_json_and_honest_about_scope():
     assert len({case["id"] for case in cases}) == len(cases)
     assert json.loads(json.dumps(cases, allow_nan=False)) == cases
     assert all(case["covers"] == [] for case in cases)
-    assert {case["input"]["kind"] for case in cases} == {
-        "fresh", "error",
+    assert Counter(case["input"]["kind"] for case in cases) == {
+        "plan": 62, "target": 8, "gate": 19, "fresh": 10, "threshold": 4, "error": 8,
     }
-    prospective = build_prospective_flush_contract_cases()
-    assert {case["input"]["kind"] for case in prospective} == {
-        "plan", "target", "gate", "fresh", "threshold", "error",
-    }
-    assert len({case["id"] for case in prospective}) == len(prospective)
-    assert all(case["covers"] == [] for case in prospective)
+    assert cases == build_prospective_flush_contract_cases()
 
 
 def test_flush_transport_preserves_inputs_and_returns_complete_standard_json():
-    for case in [*build_flush_contract_cases(), *build_prospective_flush_contract_cases()]:
+    for case in build_flush_contract_cases():
         before = deepcopy(case)
         output = run_flush_contract(case["input"])
         json.dumps(output, allow_nan=False)

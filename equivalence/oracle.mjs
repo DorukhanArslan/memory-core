@@ -8,6 +8,13 @@ import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
+Object.defineProperty(globalThis, "fetch", {
+  configurable: false, writable: false,
+  value: async function deniedSourceOracleFetch() {
+    throw Error("Network fetches are disabled in model-free source comparisons");
+  },
+});
+
 const root = fs.realpathSync(process.argv[2]);
 // Load the argument/fixture adapters before installing the reference-only hook.
 // Their source hashes are retained separately by the Python harness.
@@ -53,6 +60,29 @@ const trackedSources = new Set(trackedFiles.split("\0").filter(Boolean));
 const sources = new Set();
 const sourceUrl = (relative) => pathToFileURL(path.join(root, relative)).href;
 const isInside = (candidate) => candidate === root || candidate.startsWith(root + path.sep);
+const sourcePaths = trackedSources.has("tsconfig.json")
+  ? JSON.parse(fs.readFileSync(path.join(root, "tsconfig.json"), "utf8")).compilerOptions?.paths ?? {}
+  : {};
+function declaredWorkspaceSource(specifier) {
+  if (!specifier.startsWith("@openclaw/") && !specifier.startsWith("openclaw/plugin-sdk/")) return;
+  let mapped = sourcePaths[specifier];
+  if (!mapped && /^openclaw\/plugin-sdk\/[a-z][a-z0-9-]*$/.test(specifier)
+      && JSON.stringify(sourcePaths["openclaw/plugin-sdk/*"]) === '["./src/plugin-sdk/*.ts"]') {
+    mapped = [`./src/plugin-sdk/${specifier.split("/").at(-1)}.ts`];
+  }
+  if (!mapped) return;
+  if (!Array.isArray(mapped) || mapped.length !== 1 || typeof mapped[0] !== "string"
+      || !/^\.\/(?:packages|src)\/[A-Za-z0-9_./-]+\.ts$/.test(mapped[0])) {
+    throw Error("Unsupported declared workspace source mapping");
+  }
+  const relative = mapped[0].slice(2);
+  if (relative.split("/").includes("..") || !trackedSources.has(relative)
+      || !isInside(fs.realpathSync(path.join(root, relative)))) {
+    throw Error("Workspace source mapping escapes the tracked reference");
+  }
+  sources.add("tsconfig.json");
+  return relative;
+}
 const publicSources = new Map([
   ["openclaw/plugin-sdk/string-coerce-runtime", "src/plugin-sdk/string-coerce-runtime.ts"],
   ["openclaw/plugin-sdk/memory-core-host-engine-schema", "src/plugin-sdk/memory-core-host-engine-schema.ts"],
@@ -69,6 +99,8 @@ registerHooks({
         return { url: sourceUrl(projection.target), shortCircuit: true };
       }
     }
+    const declared = declaredWorkspaceSource(specifier);
+    if (declared) return { url: sourceUrl(declared), shortCircuit: true };
     if (publicSources.has(specifier)) {
       return { url: sourceUrl(publicSources.get(specifier)), shortCircuit: true };
     }

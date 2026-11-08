@@ -1,8 +1,8 @@
 """Verified npm artifacts for source-only reference execution.
 
 The application does not depend on these packages. They are the pinned native
-reference's filesystem and SQL dependencies and its platform binary. No install scripts
-run, and dependency files remain separate from committed TypeScript evidence.
+reference's runtime libraries and its filesystem platform binary. No install
+scripts run, and dependency files remain separate from committed TypeScript evidence.
 Every verification checks downloaded archive integrity against the pinned
 upstream lockfile, then checks every extracted byte against that archive.
 """
@@ -31,6 +31,11 @@ ROOT = Path(__file__).resolve().parents[1]
 MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 128 * 1024 * 1024
 MAX_FILES = 10000
+MAX_PATCH_BYTES = 1024 * 1024
+PACKAGE_PATCHES = (
+    ("@openclaw/proxyline", "0.3.12", "patches/@openclaw__proxyline@0.3.12.patch",
+     "9e0969d2dc0abb32610053fba342756afb56f4996c90adfdc34f21ad090fbb0f"),
+)
 ADDITIONAL_PACKAGES = (
     ("p-map", "7.0.8"),
     ("kysely", "0.29.6"),
@@ -64,6 +69,62 @@ ADDITIONAL_PACKAGES = (
     ("path-key", "4.0.0"),
     ("unicorn-magic", "0.3.0"),
     ("parse-ms", "4.0.0"),
+    ("acorn", "8.18.0"),
+    ("mdast-util-from-markdown", "2.0.3"),
+    ("partial-json", "0.1.7"),
+    ("@types/mdast", "4.0.4"),
+    ("@types/unist", "3.0.3"),
+    ("decode-named-character-reference", "1.3.0"),
+    ("devlop", "1.1.0"),
+    ("mdast-util-to-string", "4.0.0"),
+    ("micromark", "4.0.2"),
+    ("micromark-util-decode-numeric-character-reference", "2.0.2"),
+    ("micromark-util-decode-string", "2.0.1"),
+    ("micromark-util-normalize-identifier", "2.0.1"),
+    ("micromark-util-symbol", "2.0.1"),
+    ("micromark-util-types", "2.0.2"),
+    ("unist-util-stringify-position", "4.0.0"),
+    ("character-entities", "2.0.2"),
+    ("dequal", "2.0.3"),
+    ("@types/debug", "4.1.13"),
+    ("debug", "4.4.3"),
+    ("micromark-core-commonmark", "2.0.3"),
+    ("micromark-factory-space", "2.0.1"),
+    ("micromark-util-character", "2.1.1"),
+    ("micromark-util-chunked", "2.0.1"),
+    ("micromark-util-combine-extensions", "2.0.1"),
+    ("micromark-util-encode", "2.0.1"),
+    ("micromark-util-resolve-all", "2.0.1"),
+    ("micromark-util-sanitize-uri", "2.0.1"),
+    ("micromark-util-subtokenize", "2.1.0"),
+    ("@types/ms", "2.1.0"),
+    ("ms", "2.1.3"),
+    ("micromark-factory-destination", "2.0.1"),
+    ("micromark-factory-label", "2.0.1"),
+    ("micromark-factory-title", "2.0.1"),
+    ("micromark-factory-whitespace", "2.0.1"),
+    ("micromark-util-classify-character", "2.0.1"),
+    ("micromark-util-html-tag-name", "2.0.1"),
+    ("mdast-util-gfm-table", "2.0.0"),
+    ("micromark-extension-gfm-table", "2.1.2"),
+    ("markdown-table", "3.0.4"),
+    ("mdast-util-to-markdown", "2.1.2"),
+    ("longest-streak", "3.1.0"),
+    ("mdast-util-phrasing", "4.1.0"),
+    ("unist-util-visit", "5.1.0"),
+    ("zwitch", "2.0.4"),
+    ("unist-util-is", "6.0.1"),
+    ("unist-util-visit-parents", "6.0.2"),
+    ("openai", "7.20.0"),
+    ("ws", "8.21.3"),
+    ("ipaddr.js", "2.5.0"),
+    ("hosted-git-info", "10.1.1"),
+    ("dotenv", "18.0.1"),
+    ("p-limit", "7.3.3"),
+    ("lru-cache", "11.5.2"),
+    ("yocto-queue", "1.2.2"),
+    ("@openclaw/proxyline", "0.3.12"),
+    ("undici", "8.10.2"),
 )
 
 
@@ -86,7 +147,10 @@ def _manifest() -> dict:
             or value.get("version") != "0.21.1"
             or not isinstance(value.get("nativeTargets"), list)
             or value.get("additionalPackages") != [
-                {"name": name, "version": version} for name, version in ADDITIONAL_PACKAGES]):
+                {"name": name, "version": version} for name, version in ADDITIONAL_PACKAGES]
+            or value.get("patches") != [
+                {"name": name, "version": version, "path": path, "sha256": sha256}
+                for name, version, path, sha256 in PACKAGE_PATCHES]):
         raise DependencyError("The reference dependency manifest is invalid.")
     return value
 
@@ -132,7 +196,111 @@ def _integrity(lock: bytes, name: str, version: str) -> str:
     return matches[0]
 
 
-def _archive_files(raw: bytes, integrity: str) -> dict[str, bytes]:
+def _committed_patch(checkout: Path, lock: bytes, name: str, version: str) -> tuple[bytes, dict] | None:
+    specification = next((item for item in PACKAGE_PATCHES if item[:2] == (name, version)), None)
+    if specification is None:
+        return None
+    _, _, relative, sha256 = specification
+    stanza = re.findall(r"(?ms)^patchedDependencies:\n(.*?)(?=^\S|\Z)", lock.decode("utf-8"))
+    key = re.escape(f"  '{name}@{version}': ")
+    hashes = [value for section in stanza for value in re.findall(key + r"([0-9a-f]{64})$", section, re.MULTILINE)]
+    if hashes != [sha256]:
+        raise DependencyError("The reference dependency patch is not uniquely pinned in the lockfile.")
+    try:
+        patch = checkout / relative
+        _assert_safe_directory(patch.parent)
+        _assert_regular(patch)
+        current = patch.read_bytes()
+        committed = subprocess.run(["git", "show", f"HEAD:{relative}"], cwd=checkout,
+                                   check=True, capture_output=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        raise DependencyError("The pinned reference dependency patch could not be verified.") from None
+    if len(current) > MAX_PATCH_BYTES or current != committed or _sha(current) != sha256:
+        raise DependencyError("The dependency patch differs from the pinned committed patch.")
+    return current, {"path": relative, "sha256": sha256}
+
+
+def _apply_literal_patch(files: dict[str, bytes], patch: bytes) -> dict[str, bytes]:
+    """Apply bounded unified hunks to existing archive files, without subprocesses.
+
+    No file creation, deletion, rename, mode changes, binary deltas, offset
+    searching, or fuzzy context matching is supported.
+    """
+    if len(patch) > MAX_PATCH_BYTES:
+        raise DependencyError("The reference dependency patch exceeds the size limit.")
+    lines = patch.splitlines(keepends=True)
+    changed: dict[str, bytes] = {}
+    cursor = 0
+
+    def invalid() -> DependencyError:
+        return DependencyError("The reference dependency patch has unsupported or mismatched literal hunks.")
+
+    while cursor < len(lines):
+        header = re.fullmatch(rb"diff --git a/([A-Za-z0-9_./-]+) b/\1\n", lines[cursor])
+        if header is None or cursor + 3 >= len(lines):
+            raise invalid()
+        relative = header[1].decode("ascii")
+        path = PurePosixPath(relative)
+        if (path.is_absolute() or ".." in path.parts or path.as_posix() != relative
+                or relative not in files or relative in changed or len(changed) >= 100):
+            raise invalid()
+        if (re.fullmatch(rb"index [0-9a-f]{40}\.\.[0-9a-f]{40} 100644\n", lines[cursor + 1]) is None
+                or lines[cursor + 2] != b"--- a/" + header[1] + b"\n"
+                or lines[cursor + 3] != b"+++ b/" + header[1] + b"\n"):
+            raise invalid()
+        cursor += 4
+        source = files[relative].splitlines(keepends=True)
+        output: list[bytes] = []
+        position = 0
+        hunks = 0
+        while cursor < len(lines) and lines[cursor].startswith(b"@@ "):
+            hunk = re.fullmatch(rb"@@ -(\d{1,9})(?:,(\d{1,9}))? \+(\d{1,9})(?:,(\d{1,9}))? @@[^\n]*\n", lines[cursor])
+            if hunk is None or hunks >= 1000:
+                raise invalid()
+            old_count = int(hunk[2]) if hunk[2] is not None else 1
+            new_count = int(hunk[4]) if hunk[4] is not None else 1
+            old_start = int(hunk[1]) - (1 if old_count else 0)
+            new_start = int(hunk[3]) - (1 if new_count else 0)
+            if old_start < position or old_start > len(source):
+                raise invalid()
+            output.extend(source[position:old_start])
+            if new_start != len(output):
+                raise invalid()
+            cursor += 1
+            body: list[tuple[bytes, bytes]] = []
+            while cursor < len(lines) and lines[cursor][:1] in (b" ", b"+", b"-", b"\\"):
+                line = lines[cursor]
+                if line == b"\\ No newline at end of file\n":
+                    if not body or not body[-1][1].endswith(b"\n"):
+                        raise invalid()
+                    prefix, content = body[-1]
+                    body[-1] = (prefix, content[:-1])
+                else:
+                    if line[:1] == b"\\" or not line.endswith(b"\n"):
+                        raise invalid()
+                    body.append((line[:1], line[1:]))
+                cursor += 1
+            before = [content for prefix, content in body if prefix != b"+"]
+            after = [content for prefix, content in body if prefix != b"-"]
+            if (len(before) != old_count or len(after) != new_count
+                    or source[old_start:old_start + old_count] != before):
+                raise invalid()
+            output.extend(after)
+            position = old_start + old_count
+            hunks += 1
+        if not hunks:
+            raise invalid()
+        output.extend(source[position:])
+        changed[relative] = b"".join(output)
+    if not changed:
+        raise invalid()
+    result = files | changed
+    if sum(map(len, result.values())) > MAX_EXTRACTED_BYTES:
+        raise DependencyError("The patched reference dependency exceeds the extracted size limit.")
+    return result
+
+
+def _archive_files(raw: bytes, integrity: str, name: str = "") -> dict[str, bytes]:
     """Authenticate the archive before inspecting its bounded, regular contents."""
     if len(raw) > MAX_ARCHIVE_BYTES:
         raise DependencyError("The reference dependency archive exceeds the size limit.")
@@ -141,14 +309,24 @@ def _archive_files(raw: bytes, integrity: str) -> dict[str, bytes]:
         raise DependencyError("The reference dependency archive failed its pinned integrity check.")
     files: dict[str, bytes] = {}
     total = 0
+    # DefinitelyTyped publishes its authenticated archives below the package
+    # basename (for example mdast/), rather than npm's usual package/ prefix.
+    # Only the requested, pinned @types package may authorize that alternate.
+    roots = {"package"}
+    if re.fullmatch(r"@types/[a-z0-9][a-z0-9._-]*", name):
+        roots.add(name.removeprefix("@types/"))
+    archive_root = None
     try:
         with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as archive:
             for member in archive:
                 path = PurePosixPath(member.name)
                 if (path.is_absolute() or ".." in path.parts or "\\" in member.name
-                        or not path.parts or path.parts[0] != "package"
+                        or not path.parts or path.parts[0] not in roots
                         or path.as_posix() != member.name.rstrip("/")):
                     raise DependencyError("A reference dependency archive contains an unsafe path.")
+                if archive_root is not None and path.parts[0] != archive_root:
+                    raise DependencyError("A reference dependency archive contains mixed package roots.")
+                archive_root = path.parts[0]
                 if member.isdir():
                     continue
                 if not member.isfile() or len(path.parts) < 2:
@@ -180,13 +358,23 @@ def _runtime_dependencies(lock: bytes, name: str, version: str) -> dict[str, str
     # an identically named package-resolution stanza elsewhere in the file.
     sections = re.findall(r"(?ms)^snapshots:\n(.*?)(?=^---(?:\n|$)|\Z)", lock.decode("utf-8"))
     quoted = "'" if name.startswith("@") else ""
-    key = quoted + name + "@" + version + quoted
+    # A peer context changes pnpm's snapshot identity, but not the tarball's
+    # exact version. The flat oracle supports only one snapshot per version;
+    # reject multiple contexts even when their mandatory edges happen to agree.
+    peer_context = r"(?:\([@a-zA-Z0-9_./-]+@\d+\.\d+\.\d+\))*"
+    patch = next((item[3] for item in PACKAGE_PATCHES if item[:2] == (name, version)), None)
+    contexts = r"(?P<context>(?:\(patch_hash=[0-9a-f]{64}\))?" + peer_context + ")"
+    key = re.escape(quoted + name + "@" + version) + contexts + re.escape(quoted)
     matches = [(section, match) for section in sections
-               for match in re.finditer(r"^  " + re.escape(key) + r":(.*)$", section, re.MULTILINE)]
+               for match in re.finditer(r"^  " + key + r":(?P<inline>.*)$", section, re.MULTILINE)]
     if len(matches) != 1:
         raise DependencyError("The dependency runtime snapshot is not uniquely pinned.")
     snapshots, match = matches[0]
-    if match.group(1).strip() == "{}":
+    context = match["context"]
+    if ((patch is not None and not context.startswith(f"(patch_hash={patch})"))
+            or (patch is None and context.startswith("(patch_hash="))):
+        raise DependencyError("The dependency runtime snapshot is not uniquely pinned.")
+    if match["inline"].strip() == "{}":
         return {}
     remainder = snapshots[match.end():]
     end = re.search(r"\n  \S", remainder)
@@ -199,7 +387,7 @@ def _runtime_dependencies(lock: bytes, name: str, version: str) -> dict[str, str
         elif line.startswith("    ") and not line.startswith("      "):
             reading = False
         elif reading and line.strip():
-            edge = re.fullmatch(r"      '?([@a-zA-Z0-9_./-]+)'?: (\d+\.\d+\.\d+)", line)
+            edge = re.fullmatch(r"      '?([@a-zA-Z0-9_./-]+)'?: (\d+\.\d+\.\d+)" + peer_context, line)
             if edge is None or edge[1] in edges:
                 raise DependencyError("The dependency runtime snapshot has unsupported or ambiguous edges.")
             edges[edge[1]] = edge[2]
@@ -208,10 +396,14 @@ def _runtime_dependencies(lock: bytes, name: str, version: str) -> dict[str, str
 
 def _validate_runtime_closure(package: dict, lock: bytes, authorized: dict[str, str]) -> None:
     declared = package.get("dependencies", {})
-    if not isinstance(declared, dict):
+    peers = package.get("peerDependencies", {})
+    metadata = package.get("peerDependenciesMeta", {})
+    if (not isinstance(declared, dict) or not isinstance(peers, dict) or not isinstance(metadata, dict)
+            or any(not isinstance(item, dict) for item in metadata.values())):
         raise DependencyError("The authenticated package has invalid runtime dependencies.")
+    mandatory = set(declared) | {name for name in peers if metadata.get(name, {}).get("optional") is not True}
     edges = _runtime_dependencies(lock, package["name"], package["version"])
-    if set(declared) != set(edges) or any(authorized.get(name) != version for name, version in edges.items()):
+    if mandatory != set(edges) or any(authorized.get(name) != version for name, version in edges.items()):
         raise DependencyError("The authenticated runtime dependencies differ from the authorized lockfile closure.")
 
 
@@ -321,7 +513,7 @@ def _prepare_dependencies(checkout: Path, destination: Path, download: bool) -> 
             raw = _download(name, version)
         else:
             raise DependencyError("The reference dependency archive is missing; run the dependency install command.")
-        files = _archive_files(raw, integrity)
+        files = _archive_files(raw, integrity, name)
         try:
             package = json.loads(files["package.json"])
         except (ValueError, UnicodeError):
@@ -329,6 +521,9 @@ def _prepare_dependencies(checkout: Path, destination: Path, download: bool) -> 
         if package.get("name") != name or package.get("version") != version:
             raise DependencyError("The authenticated dependency has the wrong name or version.")
         _validate_runtime_closure(package, lock, authorized)
+        patch = _committed_patch(checkout, lock, name, version)
+        if patch is not None:
+            files = _apply_literal_patch(files, patch[0])
         directory = destination / "node_modules" / name
         if download:
             if not archive.exists():
@@ -339,7 +534,8 @@ def _prepare_dependencies(checkout: Path, destination: Path, download: bool) -> 
                 _publish_files(directory, files)
         evidence = _verify_tree(directory, files)
         packages.append({"name": name, "version": version, "integrity": integrity,
-                         "directory": str(directory), "files": evidence})
+                         "directory": str(directory), "files": evidence}
+                        | ({"patch": patch[1]} if patch is not None else {}))
     return {"schemaVersion": 1, "kind": "verified-npm-artifacts", "referenceCommit": commit,
             "lockfileSha256": _sha(lock), "packages": packages}
 
@@ -384,7 +580,9 @@ def main() -> int:
                       "referenceCommit": config["referenceCommit"],
                       "lockfileSha256": config["lockfileSha256"],
                       "packages": [{key: package[key] for key in ("name", "version", "integrity")}
-                                   | {"files": len(package["files"])} for package in config["packages"]],
+                                   | {"files": len(package["files"])}
+                                   | ({"patch": package["patch"]} if "patch" in package else {})
+                                   for package in config["packages"]],
                       "installScriptsRun": False}))
     return 0
 

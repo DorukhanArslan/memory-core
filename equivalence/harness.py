@@ -260,6 +260,21 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                 env.update(execution.env)
             except (OSError, ValueError):
                 raise HarnessError("runtime-context-invalid", "The verified release execution context is unavailable.") from None
+        else:
+            # Broad native facades may consult configuration while importing.
+            # Keep that state and logging inside this invocation's owned tree;
+            # no user home, configured secret or ambient OpenClaw state crosses
+            # the credential-free reference boundary.
+            source_root = Path(resources.enter_context(tempfile.TemporaryDirectory(
+                prefix="memory-source-oracle-")))
+            source_config = source_root / "openclaw.json"
+            source_config.write_text(json.dumps({
+                "logging": {"level": "silent", "consoleLevel": "silent",
+                            "file": str(source_root / "native.log")},
+                "session": {"maintenance": {"mode": "warn"}},
+            }), encoding="utf-8")
+            env.update({"OPENCLAW_STATE_DIR": str(source_root / "state"),
+                        "OPENCLAW_CONFIG_PATH": str(source_config)})
         # Native retry helpers use TS parameter properties. Node's own source
         # loader executes these with its built-in transform support; no modified
         # reference files or precompiled stand-ins are used.

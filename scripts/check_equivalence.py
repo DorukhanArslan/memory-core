@@ -21,7 +21,7 @@ def main() -> int:
     parser.add_argument("--smoke", action="store_true",
                         help="Compare registered cases only; does not establish full equivalence.")
     parser.add_argument("--include-prospective", action="store_true",
-                        help="Also execute retained prospective fixtures; import blockers remain failures.")
+                        help="Compatibility option; completed prospective fixtures are now registered by default.")
     parser.add_argument("--dependencies", type=Path, default=ROOT / ".reference/npm",
                         help="Verified native npm artifact cache (prepared explicitly; no implicit downloads).")
     parser.add_argument("--release-runtime", type=Path, default=ROOT / ".reference/release-runtime",

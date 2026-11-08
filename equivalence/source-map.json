@@ -1326,7 +1326,9 @@
       "implementation": "partial",
       "notes": [
         "Event projection, reset-cutoff and JSONL filtering helpers exist. The built-in corpus passes the exact projection content, full projection hash, line map and provenance through MemoryFile.index_entry into source preparation, without adding the compatibility renderer final newline.",
-        "The default loader still reads JSONL. Retained SQLite events, archive/event revisions and authoritative reset cutoffs must be supplied by a host; preserving a SessionEntry is not native session-store integration."
+        "The default loader still reads JSONL. Retained SQLite events, archive/event revisions and authoritative reset cutoffs must be supplied by a host; preserving a SessionEntry is not native session-store integration.",
+        "The 2026-11-08 native JSONL comparison matches 73 complete projections, retaining ordered content, full hashes, raw source ordinals, timestamps, provenance, flags and observed messages. Filtering outcomes are recorded in the behavioral checklist; six reset-only helpers grant no acceptance credit.",
+        "Physical JSONL file-order projection does not verify live SQLite branch selection, integrated reset-cutoff propagation, archive codecs/materialization or corpus admission. The boundaries acceptance point remains open."
       ]
     },
     {
@@ -1757,7 +1759,8 @@
       "implementation": "partial",
       "notes": [
         "Python target preparation intentionally refuses symlinked parents and symlink, hard-linked or non-regular targets beyond the native target preparation checks.",
-        "Host time-format/timezone fallback and Python supported-date range differ as documented in memory_core.current_time."
+        "Host time-format/timezone fallback and Python supported-date range differ as documented in memory_core.current_time.",
+        "The complete retained native flush matrix now executes original source owners. Matching plan/target fixtures do not close acceptance: dates below year 1000 or above 9999, documented host time-format/timezone boundaries, stricter Python filesystem admission and native assertCurrent authority revocation remain outside the verified domain."
       ]
     },
     {
@@ -1814,7 +1817,8 @@
       ],
       "implementation": "partial",
       "notes": [
-        "Trigger and failure-exhaustion decisions are implemented over supplied usage and session metadata. The host must provide actual transcript byte counts, provider usage and compaction lifecycle updates, and durably commit returned state before another turn."
+        "Trigger and failure-exhaustion decisions are implemented over supplied usage and session metadata. The host must provide actual transcript byte counts, provider usage and compaction lifecycle updates, and durably commit returned state before another turn.",
+        "The 2026-11-08 native flush matrix matches exported usage/compaction gates and error helpers, but those cases retain empty coverage. Actual transcript/provider accounting, heartbeat exclusions and durable retry/exhaustion stamps remain unverified runtime behavior."
       ]
     },
     {

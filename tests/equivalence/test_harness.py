@@ -69,6 +69,13 @@ if mode=='environment':
     assert 'EQUIVALENCE_PRIVATE_FIXTURE' not in os.environ
     assert 'OPENROUTER_API_KEY' not in os.environ
     assert 'NODE_OPTIONS' not in os.environ
+    assert 'HOME' not in os.environ
+    owned_config=pathlib.Path(os.environ['OPENCLAW_CONFIG_PATH'])
+    assert owned_config.parent.name.startswith('memory-source-oracle-')
+    config=json.loads(owned_config.read_text())
+    assert config['logging']['consoleLevel']=='silent'
+    assert pathlib.Path(config['logging']['file']).parent==owned_config.parent
+    assert pathlib.Path(os.environ['OPENCLAW_STATE_DIR']).parent==owned_config.parent
 source={'path':'probe.ts','sha256':hashlib.sha256((root/'probe.ts').read_bytes()).hexdigest()}
 if mode=='bad-source': source['sha256']='0'*64
 if mode=='untracked-source':

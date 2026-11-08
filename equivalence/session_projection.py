@@ -2,9 +2,10 @@
 
 The old test modules are fixture sources only: their oracle adapters and expected
 values never execute. This batch compares the host-supplied JSONL projection,
-including raw source ordinals. Live SQLite branch selection, archive codecs and
-host archive admission remain outside this batch, so neither fixed acceptance
-point is marked complete.
+including raw source ordinals. The complete native JSONL projections cover the
+transcript filtering outcomes point. Live SQLite branch selection, archive codecs
+and host archive admission remain outside this batch; the boundaries point stays
+open.
 """
 
 from __future__ import annotations
@@ -53,7 +54,8 @@ def _case(name: str, arguments: dict[str, Any], source: str) -> dict[str, Any]:
         "requirement": "sessions.transcript-filtering",
         "operation": "session-projection",
         "input": {"mtimeMs": MTIME_MS, **deepcopy(arguments)},
-        "covers": [],
+        "covers": ([] if arguments.get("resetOnly")
+                   else ["sessions.transcript-filtering.outcomes"]),
         "fixtureSource": source,
     }
 
@@ -152,14 +154,14 @@ def build_prospective_session_projection_cases() -> list[dict[str, Any]]:
 
 
 def build_session_projection_cases() -> list[dict[str, Any]]:
-    """Return the six supported native probes; broader imports remain pending.
+    """Return all 79 fixtures verified against the native JSONL reader.
 
-    All 79 prospective fixtures remain available through the explicit builder.
-    Their blocked attempts are retained in session-projection-first.json and
-    the distinct session-projection-*.json reports under .equivalence-results.
+    The first complete native comparison is retained in
+    .equivalence-results/session-completion-04-hosted-git-info.json. Earlier
+    blocked reports remain separate. Reset helpers receive no outcomes credit,
+    and archive codecs, admission and integrated reset fences remain unproved.
     """
-    return [case for case in build_prospective_session_projection_cases()
-            if case["input"].get("resetOnly")]
+    return build_prospective_session_projection_cases()
 
 
 def run_session_projection(arguments: dict[str, Any]) -> dict[str, Any]:

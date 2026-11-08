@@ -590,25 +590,89 @@ the Python SDK. The scope remains exactly **64 contracts and 128 acceptance poin
 scope digest and the inventory's 103 upstream modules are unchanged.
 
 
-The prospective builders also preserve the complete 111 flush and 79 session fixtures.
-Their 166 additional cases remain explicit, rather than being reported as passes or
-missing implementations. The latest broad probes are blocked by source-graph imports:
-`acorn` for 62 plan cases, `mdast-util-from-markdown` for eight target and 73 session
-cases, and `partial-json` for 23 gate/threshold cases. They can be included explicitly
-with `scripts/check_equivalence.py --include-prospective` (alongside the usual required
-arguments); failures remain failures. Both session points and all plan/trigger points
-stay open. Original inputs, first captures and blocked reports remain retained.
+### Initial broad source probes — 2026-11-08 (superseded)
 
-Source-only setup now authenticates 34 packages against the pinned upstream lockfile,
-including the mandatory dependency closure encountered while probing those owners.
-All added archives were available locally and authenticated before extraction; no
-install scripts or provider calls ran. Broad source owners still require the named
-additional packages. These dependencies belong to the test authority, not the Python SDK.
+At the initial fixture-reuse baseline, the prospective builders preserved the complete
+111 flush and 79 session fixtures, but the 166 additional cases were import-blocked.
+The broad probes encountered `acorn` for 62 plan cases, `mdast-util-from-markdown`
+for eight target and 73 session cases, and `partial-json` for 23 gate/threshold cases.
+Those captures established no implementation mismatches or acceptance coverage. At
+that baseline, source-only setup authenticated 34 packages against the pinned lockfile.
+The import blockers were subsequently resolved by the source setup below; they are
+historical diagnostics, not current blocked cases.
+
+The retained baseline reports are `.equivalence-results/reused-fixtures-subset-first.json`
+(**463 matched, zero mismatched or blocked**),
+`.equivalence-results/reused-fixtures-prospective.json` (**166 import-blocked**) and
+`.equivalence-results/reused-fixtures-full.json` (**107 uncovered acceptance points**).
+They describe that earlier baseline and remain available without rewriting their results.
+
+### Flush and session source completion — 2026-11-08
+
+The complete retained flush and session matrices now execute against the original pinned
+native source owners. The focused reports record **111 flush matches** and **79 session
+matches**, each with zero mismatches or blocked cases. This adds executable comparisons
+for all 166 formerly import-blocked fixtures: 93 flush and 73 session cases beyond the
+24 probes in the previous registered catalog. No production Python change was required.
+The default catalog contains **629 cases** (463 previous plus 166). The integrated
+subset comparison matched all 629 with zero mismatches or blocked cases.
+
+The flush cases compare complete plans and prompts, model/configuration coercion, reserve
+terms, byte-size parsing, timezone and clock fallback, target validation and surviving file
+contents, exported token/compaction gates, and error text/cause chains. All 111 retain
+`covers: []`. Plan evidence does not settle dates below year 1000 or above 9999 and the
+documented host time-format/timezone boundaries. Python target preparation still has
+stricter filesystem admission, and native `assertCurrent` authority revocation is untested.
+Exported gates do not establish actual transcript/provider usage accounting, heartbeat
+exclusions, durable retry/exhaustion stamps or execution/finalization. All existing flush
+acceptance points remain open.
+
+The 73 complete session JSONL projections compare ordered text, full hashes, raw source
+ordinals and line maps, timestamps, provenance, session flags, observed messages and prefix
+hash checks. Inputs include tree/side-branch rows in physical file order, tool rows,
+heartbeat and recalled-content markers, failed/mirrored messages and malformed rows.
+These comparisons cover **`sessions.transcript-filtering.outcomes`**. Six standalone reset
+helpers retain `covers: []`. Raw JSONL projection does not verify live SQLite branch
+selection, integrated reset-cutoff propagation, archive codecs/materialization or corpus
+admission; `sessions.transcript-filtering.boundaries` and the containing contract stay open.
+Plain reset/deleted archive filenames in the fixtures do not establish those integrations.
+
+| Fixed acceptance coverage | Covered | Remaining | Progress |
+| --- | ---: | ---: | ---: |
+| Previous chunking and bootstrap batch | 21 / 128 | 107 | 16.4% |
+| Verified session projection outcomes | 22 / 128 | 106 | 17.2% |
+
+The remaining **106/128 points (82.8%)** measure unverified acceptance conditions, not
+missing implementations or development effort. The fixed scope remains **64 contracts and
+128 acceptance points** with the same scope digest and 103 mapped upstream modules. Source
+classifications remain 11 present, 49 partial, one missing and three host-owned.
+
+Source-only setup now authenticates **90 packages and 8,762 installed files**. Every archive
+is checked against the exact pinned Git lockfile SRI. `@openclaw/proxyline` 0.3.12 also uses
+the original committed `patches/@openclaw__proxyline@0.3.12.patch`: setup checks its Git bytes,
+lockfile patch hash and SHA-256, applies only those literal hunks, and records patch evidence
+separately from archive integrity. No package lifecycle script runs. These packages belong
+to the test authority and add no dependency to the Python SDK.
+
+Workspace imports resolve through static aliases in the original tracked `tsconfig.json`
+and checked package exports. Reports retain the configuration SHA-256 alongside loaded
+source hashes. Broad flush/session owners execute their source dependency graph; the older
+narrowly verified chunking/bootstrap reexport projections retain their declared boundaries.
+Reference source is unchanged. Comparisons use owned state/log directories, deny network
+fetches and make no paid provider calls.
+
+Current focused reports are `.equivalence-results/flush-completion-registered.json` and
+`.equivalence-results/session-completion-05-registered.json`. Their full-gate status remains
+incomplete wherever fixed acceptance points are uncovered; a passing focused comparison
+cannot complete the full contract. First failures and import-blocked captures remain
+historical artifacts. All retained fixtures now run by default; `--include-prospective`
+remains an accepted, idempotent compatibility option and adds no duplicate cases.
 
 
-Integrated evidence is retained at `.equivalence-results/reused-fixtures-subset-first.json`
-(**463 matched, zero mismatched or blocked**) and
-`.equivalence-results/reused-fixtures-prospective.json` (**166 import-blocked**, zero
-implementation mismatches established). The committed full-gate run is retained at
-`.equivalence-results/reused-fixtures-full.json`; it requires the unchanged complete scope
-and stays incomplete with 107 uncovered points. No paid provider call was made.
+Integrated results are retained at `.equivalence-results/completed-fixtures-subset-first.json`
+(**629 matched, zero mismatched or blocked**). The committed full-gate report is
+`.equivalence-results/completed-fixtures-full.json`; it retains **106 uncovered acceptance
+points**, so this remains partial verification of the fixed contract. The final regression
+run passed **2,490 tests**; the same 1,625 historical oracle/live checks remained gated off
+and grant no acceptance credit. Ruff, project-name consistency, source-map and staged diff
+checks passed. No production Python implementation changed in this completion batch.

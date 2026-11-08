@@ -21,6 +21,7 @@ def test_case_catalog_is_deterministic_unique_and_standard_json():
         "indexing.transaction-publication",
         "chunking.markdown-boundaries", "chunking.utf16-cjk-budget",
         "prompt.bootstrap-budget", "flush.trigger-usage", "sessions.transcript-filtering",
+        "flush.plan-target",
     }
 
 
@@ -53,17 +54,19 @@ def test_unknown_operation_is_an_error_not_a_success_placeholder():
         run_python({"operation": "unimplemented-rem-phase", "input": {}})
 
 
-def test_prospective_fixtures_remain_explicit_without_dropping_registered_cases():
+def test_completed_prospective_fixtures_are_registered_without_dropping_inputs():
+    from equivalence.flush_contract import build_prospective_flush_contract_cases
+    from equivalence.session_projection import build_prospective_session_projection_cases
+
     registered = {case["id"]: case for case in build_cases()}
     all_cases = build_cases(include_prospective=True)
     assert len({case["id"] for case in all_cases}) == len(all_cases)
-    assert {case["id"]: case for case in all_cases if case["id"] in registered} == registered
-    prospective = [case for case in all_cases if case["id"] not in registered]
-    assert len(prospective) == 166
-    assert {case["requirement"] for case in prospective} == {
-        "flush.plan-target", "flush.trigger-usage", "sessions.transcript-filtering",
-    }
-    assert all(case["covers"] == [] for case in prospective)
+    assert {case["id"]: case for case in all_cases} == registered
+    completed = [*build_prospective_flush_contract_cases(),
+                 *build_prospective_session_projection_cases()]
+    assert len(completed) == 190
+    assert all(case["id"] in registered and registered[case["id"]]["input"] == case["input"]
+               for case in completed)
     assert all_cases == build_cases(include_prospective=True)
 
 

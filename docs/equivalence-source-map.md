@@ -30,6 +30,25 @@ fixture inputs are reused without importing their expected outputs or treating t
 oracle results as v2026.9.9 evidence. The fixed contract remains 64 requirements, 128 acceptance
 points and 103 mapped upstream modules. Current comparison results are in the checklist.
 
+
+The later 2026-11-08 flush/session completion executes the broad original source owners
+using static workspace aliases from tracked `tsconfig.json` and checked package exports.
+Execution reports record the configuration hash and loaded source hashes. Source setup now
+authenticates 90 packages and 8,762 installed files against the pinned Git lockfile SRI;
+the exact committed `@openclaw/proxyline` 0.3.12 patch is verified against Git, its lockfile
+patch hash and SHA-256 and recorded separately from archive integrity. No lifecycle scripts
+run and reference source is unchanged. The older narrow reexport projections retain their
+original scope.
+
+Focused comparisons match all 111 flush and 79 session fixtures. The 73 complete JSONL
+projections cover session filtering outcomes; six reset-only helpers receive no acceptance
+credit. Live SQLite branch selection, integrated reset propagation, archive codecs and corpus
+admission remain unverified. Flush plan/target and trigger acceptance remain open despite
+matching the bounded fixtures. Current verified coverage is 22/128 (17.2%), with 106 points
+remaining; this inventory itself grants none of that behavioral credit. Classifications
+remain 11 present, 49 partial, one missing and three host-owned. Historical import-blocked
+captures are superseded by the focused reports listed in the checklist.
+
 | Contract | OpenClaw entry | Python entry | Python surface |
 | --- | --- | --- | --- |
 | `storage.discovery` | [listMemoryFiles](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/internal.ts#L266) | [list_memory_files](../memory_core/workspace.py#L60) | partial |

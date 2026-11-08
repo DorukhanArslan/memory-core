@@ -347,9 +347,19 @@ the subset passes. Missing or modified reference sources, a wrong commit, runner
 and behavioral mismatches cannot produce a successful acceptance result.
 Push and pull-request CI run the differential subset; manual equivalence workflow runs also
 require the full contract. Neither the offline suite nor a green subset proves full equivalence.
-Retained fixture inputs are reused for fresh native comparisons. Add
-`--include-prospective` to execute the preserved broader flush/session fixtures as well;
-their import blockers remain visible failures and receive no acceptance credit.
+Retained fixture inputs are reused for fresh native comparisons. All 111 flush and
+79 session fixtures now execute by default; `--include-prospective` remains an idempotent
+compatibility option. Focused native comparisons match all of those fixtures without a
+production Python change. Session JSONL projection outcomes bring verified acceptance
+coverage to **22/128 (17.2%)**, leaving **106 points (82.8%)** unverified. Session boundaries
+and all flush acceptance points remain open; the [checklist](docs/full-equivalence-checklist.md)
+records the exact evidence and limits. Earlier import-blocked captures remain historical.
+
+Source setup authenticates 90 packages and 8,762 installed files against the pinned lockfile.
+The original committed patch for `@openclaw/proxyline` 0.3.12 is verified against Git, its
+lockfile patch hash and SHA-256, with patch evidence separate from archive integrity.
+Workspace aliases come from the tracked upstream configuration, whose hash is retained in
+execution reports. Setup runs no package lifecycle scripts and leaves reference source unchanged.
 
 The installed package contains `memory_core/` and inline type annotations through `py.typed`.
 Clean consumer checks cover selected interfaces; dynamic options and some callbacks still accept `Any`.

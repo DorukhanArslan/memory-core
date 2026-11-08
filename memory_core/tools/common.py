@@ -106,7 +106,11 @@ def format_error_message(error: object) -> str:
         cause = error.__cause__
         while cause is not None and id(cause) not in seen:
             seen.add(id(cause))
-            append(str(cause))
+            message = str(cause)
+            if message and message in formatted:
+                seen_messages.add(message)
+            else:
+                append(message)
             code = getattr(cause, "code", None)
             if isinstance(code, str):
                 append(code)

@@ -57,6 +57,15 @@ def test_diagnostic_uses_current_host_pattern_config_and_registry_even_when_patt
     assert format_error_message(text) == "CUST-1234 hidden-credential token=abcdef…wxyz"
 
 
+def test_embedded_cause_message_is_not_repeated_but_its_code_remains():
+    inner = RuntimeError("transport failed")
+    inner.code = "ECONNRESET"
+    outer = RuntimeError("request failed: transport failed (ECONNRESET)")
+    outer.__cause__ = inner
+
+    assert format_error_message(outer) == "request failed: transport failed (ECONNRESET) | ECONNRESET"
+
+
 def test_memory_get_redacts_actual_file_read_failure(tmp_path: Path, monkeypatch):
     filename = tmp_path / "MEMORY.md"
     filename.write_text("Readable content.\n", encoding="utf-8")

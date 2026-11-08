@@ -32,7 +32,7 @@ from equivalence.dependencies import (
 )
 
 
-MANIFEST_SHA256 = "f96a871ed899d1e0f4f15e6844dfca11e82accd0e1927942dd84c3533a2c8859"
+MANIFEST_SHA256 = "f6daa4b70254cde372699983171ca6cc8846dc648b5a02128b7f7a9e652f87ff"
 REFERENCE_COMMIT = "bcfc88812a35243893585dbeca87ca41b48272ca"
 VERSION = "2026.9.9"
 MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
@@ -299,7 +299,10 @@ def prepare_release_runtime(checkout: Path, destination: Path, download: bool = 
         raise ReleaseRuntimeError("The compiled reference artifacts could not be safely authenticated.") from None
 
 
-def validate_release_sources(config: dict, sources: object) -> None:
+def validate_release_sources(
+    config: dict, sources: object, *,
+    required_entry: str = "dist/extensions/memory-core/manager-runtime.js",
+) -> None:
     """Check the loaded-file subset without presenting compiled bytes as TS source."""
     if not isinstance(sources, list) or not sources:
         raise ReleaseRuntimeError("The compiled reference returned no loaded-file evidence.")
@@ -314,8 +317,13 @@ def validate_release_sources(config: dict, sources: object) -> None:
         if key in seen or key not in allowed or source.get("sha256") != allowed[key]:
             raise ReleaseRuntimeError("Loaded compiled reference bytes are not authenticated artifacts.")
         seen.add(key)
-    if ("node_modules/openclaw", "dist/extensions/memory-core/manager-runtime.js") not in seen:
-        raise ReleaseRuntimeError("The compiled reference did not execute its real memory manager entry.")
+    if required_entry not in {
+        "dist/extensions/memory-core/manager-runtime.js",
+        "dist/agent-runner-memory-Cc4lCZcs.mjs",
+    }:
+        raise ReleaseRuntimeError("The compiled reference requires a reviewed runtime entry.")
+    if ("node_modules/openclaw", required_entry) not in seen:
+        raise ReleaseRuntimeError("The compiled reference did not execute its required real runtime entry.")
 
 
 def main() -> int:

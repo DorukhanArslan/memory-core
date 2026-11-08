@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, get_args
@@ -61,12 +62,12 @@ from memory_core.memory_flush import (
     MemoryFlushFailureOutcome,
     MemoryFlushPlan,
     MemoryFlushTriggerDecision,
-    build_memory_flush_plan,
+    build_memory_flush_plan_from_config,
     ensure_memory_flush_target_file,
-    explain_memory_flush_trigger,
     has_already_flushed_for_current_compaction,
     record_memory_flush_failure,
-    resolve_fresh_session_total_tokens,
+    resolve_memory_flush_runtime_accounting,
+    resolve_memory_flush_runtime_skip,
 )
 from memory_core.memory_paths import UnsafeMemoryPathError
 from memory_core.prompt_section import build_prompt_section
@@ -130,7 +131,7 @@ class TurnRecord:
     """
 
     session: SessionState
-    flush_plan: MemoryFlushPlan
+    flush_plan: MemoryFlushPlan | None
     flush_decision: MemoryFlushTriggerDecision
     flush: FlushRequest | None = None
     flush_failure: MemoryFlushFailureOutcome | None = None
@@ -233,6 +234,7 @@ class HostKit:
         now_ms: Callable[[], int] | None = None,
         on_event: Callable[[dict[str, Any]], None] | None = None,
         artifact_provenance: MemoryArtifactProvenanceStore | None = None,
+        flush_config: Mapping[str, Any] | None = None,
     ) -> None:
         self._memory = memory
         # Writes, ingestion and indexing must consult the same host trust ledger.
@@ -254,6 +256,7 @@ class HostKit:
             else layout.bootstrap_file in (self._templates or {})
         )
         self._timezone = timezone
+        self._flush_config = deepcopy(dict(flush_config)) if flush_config is not None else {}
         self._time_format = resolve_time_format(time_format)
         self._identity = identity
         self._bootstrap_max_chars = bootstrap_max_chars
@@ -511,14 +514,19 @@ class HostKit:
         redact: Callable[[str], str] | None = None,
         untrusted_turn: bool | Callable[[], bool] = False,
         assert_current: Callable[[], None] | None = None,
+        transcript_events: Sequence[Mapping[str, Any]] | None = None,
+        prompt_for_estimate: str = "",
+        memory_flush_writable: bool = True,
+        is_cli: bool = False,
     ) -> TurnRecord:
         """Record a completed turn and decide the memory flush (docs/host_kit.md, entry 4).
 
         Upstream v2026.9.6 decides the flush after a delivered reply, in session maintenance
         (src/auto-reply/reply/agent-runner-result-complete.ts:288, agent-runner-maintenance.ts),
-        with ``promptForEstimate: ""`` (src/agents/session-maintenance/run.ts:218-232): the token
-        count is the fresh total plus the last output (``resolveEffectivePromptTokens`` without
-        an estimate, memory-flush.ts:28-39). ``context_window_tokens`` defaults to
+        with ``promptForEstimate: ""`` (src/agents/session-maintenance/run.ts:218-232).
+        Fresh totals do not read transcript usage when that estimate is empty. Stale totals
+        recover provider usage and projected trailing messages from ``transcript_events``
+        (or ``transcript`` wrapped as message events). ``context_window_tokens`` defaults to
         :data:`DEFAULT_CONTEXT_WINDOW_TOKENS`; without ``transcript_bytes`` the transcript-size
         gate stays off. Heartbeat sessions never flush. A due flush first creates its empty
         target (``ensure_memory_flush_target_file``, agent-runner-memory.ts:1447-1451), then
@@ -537,28 +545,67 @@ class HostKit:
         before completion records a result. Its exception propagates without a failure strike.
         Supply a synchronous check that returns promptly; the host owns its authority state.
         """
+        return self.prepare_flush(
+            apply_turn_usage(session, usage), transcript=transcript,
+            context_window_tokens=context_window_tokens, transcript_bytes=transcript_bytes,
+            redact=redact, untrusted_turn=untrusted_turn, assert_current=assert_current,
+            transcript_events=transcript_events, prompt_for_estimate=prompt_for_estimate,
+            memory_flush_writable=memory_flush_writable, is_cli=is_cli,
+        )
+
+    def prepare_flush(
+        self,
+        session: SessionState,
+        *,
+        transcript: Sequence[Mapping[str, Any]] = (),
+        context_window_tokens: int | None = None,
+        transcript_bytes: int | None = None,
+        transcript_events: Sequence[Mapping[str, Any]] | None = None,
+        prompt_for_estimate: str = "",
+        memory_flush_writable: bool = True,
+        is_cli: bool = False,
+        is_heartbeat: bool | None = None,
+        redact: Callable[[str], str] | None = None,
+        untrusted_turn: bool | Callable[[], bool] = False,
+        assert_current: Callable[[], None] | None = None,
+    ) -> TurnRecord:
+        """Evaluate a persisted session's flush without recording a new model usage.
+
+        This is the native maintenance admission path. Supply active context-eligible
+        chronological ``transcript_events`` and their actual serialized ``transcript_bytes``
+        from one host storage snapshot. If events are omitted, visible ``transcript`` messages
+        are used for usage recovery. The host persists the returned session and serializes
+        maintenance per session; this kit neither owns a turn queue nor guesses byte sizes.
+        ``prompt_for_estimate`` is empty for maintenance, or the next input for a preflight
+        projection. ``memory_flush_writable`` and ``is_cli`` describe the host runtime.
+        """
         window = (
             context_window_tokens
             if context_window_tokens is not None
             else DEFAULT_CONTEXT_WINDOW_TOKENS
         )
-        recorded = apply_turn_usage(session, usage)
+        recorded = session
         entry = dict(recorded.entry)
+        heartbeat = recorded.kind == "heartbeat" if is_heartbeat is None else is_heartbeat
+        skip = resolve_memory_flush_runtime_skip(
+            entry=entry, session_key=recorded.session_key,
+            memory_flush_writable=memory_flush_writable, is_heartbeat=heartbeat, is_cli=is_cli,
+        )
+        if skip is not None:
+            return TurnRecord(session=recorded, flush_plan=None, flush_decision=skip)
         plan = self._flush_plan(window)
-        total = resolve_fresh_session_total_tokens(entry)
-        token_count = (
-            int(total) + (recorded.last_output_tokens or 0)
-            if total is not None and total > 0
-            else None
+        events = transcript_events if transcript_events is not None else tuple(
+            {"type": "message", "message": dict(message)} for message in transcript
         )
-        decision = explain_memory_flush_trigger(
-            entry=entry,
-            plan=plan,
-            context_window_tokens=window,
-            token_count=token_count,
-            transcript_byte_size=transcript_bytes,
-            is_heartbeat=recorded.kind == "heartbeat",
+        accounting = resolve_memory_flush_runtime_accounting(
+            entry=entry, plan=plan, context_window_tokens=window,
+            transcript_events=events, transcript_byte_size=transcript_bytes,
+            prompt_for_estimate=prompt_for_estimate, session_key=recorded.session_key,
+            identity=self._identity,
         )
+        decision = accounting.decision
+        entry = accounting.entry if accounting.entry is not None else entry
+        recorded = replace(recorded, entry=entry)
         if not decision.should_flush:
             return TurnRecord(session=recorded, flush_plan=plan, flush_decision=decision)
         authority_error: BaseException | None = None
@@ -626,6 +673,8 @@ class HostKit:
         ):
             return None
         plan = self._flush_plan(DEFAULT_CONTEXT_WINDOW_TOKENS)
+        if plan is None:
+            return None
         authority_error: BaseException | None = None
 
         def check_current() -> None:
@@ -791,11 +840,14 @@ class HostKit:
             agent_id=agent_id,
         )
 
-    def _flush_plan(self, context_window_tokens: int) -> MemoryFlushPlan:
-        return build_memory_flush_plan(
+    def _flush_plan(self, context_window_tokens: int) -> MemoryFlushPlan | None:
+        return build_memory_flush_plan_from_config(
             workspace_dir=self._root,
             now_ms=self._clock(),
-            timezone=self._timezone,
+            cfg={"agents": {"defaults": {
+                "userTimezone": self._timezone,
+                "compaction": {"memoryFlush": self._flush_config},
+            }}},
             context_window_tokens=context_window_tokens,
             time_format=self._time_format,
         )

@@ -10,6 +10,7 @@ import subprocess
 import pytest
 
 from equivalence.runtime_oracle import ReleaseOracleExecution, RuntimeOracleError, ROOT
+from equivalence.release_runtime import ReleaseRuntimeError, validate_release_sources
 
 
 def _hash(raw):
@@ -25,6 +26,7 @@ def transport(tmp_path):
         "dist/extensions/memory-core/manager-runtime.js": b"// Labelled manager transport fixture.\n",
         "dist/extensions/memory-core/memory-index.worker.js": b"// Labelled worker transport fixture.\n",
         "dist/labelled-console-worker.mjs": b"console.log('worker retirement');\n",
+        "dist/agent-runner-memory-Cc4lCZcs.mjs": b"// Labelled flush transport fixture.\n",
     }
     for relative, raw in files.items():
         path = runtime / relative
@@ -153,6 +155,56 @@ def test_reference_process_requires_both_main_and_native_worker_preloads(transpo
     _valid(execution, config, case)
     (execution.trace_directory / "111-1.jsonl").unlink()
     with pytest.raises(RuntimeOracleError, match="worker"):
+        execution.collect(result, [case])
+
+
+def _flush_trace(execution, config):
+    local = [{"event": "load", "pid": 111, "threadId": 0, "kind": "oracle",
+              "path": str((ROOT / "equivalence" / name).resolve()),
+              "sha256": execution._locals[str((ROOT / "equivalence" / name).resolve())]}
+             for name in ("release-oracle.mjs", "flush-runtime.mjs")]
+    return [_bootstrap(execution, 0), *local,
+            _load(config, "dist/agent-runner-memory-Cc4lCZcs.mjs", 0)]
+
+
+def test_flush_trace_requires_its_own_reviewed_adapter_and_native_owner_without_index_worker(transport):
+    execution, config, case, result = transport
+    case["operation"] = "flush-trigger-runtime"
+    _trace(execution, 0, _flush_trace(execution, config))
+    _evidence(execution, case, [{"outcome": "skipped", "entry": {"totalTokensFresh": False}}])
+    enriched = execution.collect(result, [case])
+    assert enriched["releaseTrace"]["protectedWorkerThreads"] == 0
+    assert enriched["releaseSources"][0]["path"] == "dist/agent-runner-memory-Cc4lCZcs.mjs"
+    assert enriched["runtimeDiagnostics"][0]["rawSnapshots"][0]["outcome"] == "skipped"
+
+
+def test_flush_source_validation_cannot_relax_the_default_manager_or_select_arbitrary_artifacts(transport):
+    _, config, _, _ = transport
+    owner = "dist/agent-runner-memory-Cc4lCZcs.mjs"
+    event = _load(config, owner, 0)
+    source = {key: event[key] for key in ("package", "path", "sha256")}
+    validate_release_sources(config, [source], required_entry=owner)
+    with pytest.raises(ReleaseRuntimeError, match="required real runtime entry"):
+        validate_release_sources(config, [source])
+    with pytest.raises(ReleaseRuntimeError, match="reviewed runtime entry"):
+        validate_release_sources(config, [source], required_entry="dist/labelled-console-worker.mjs")
+
+
+@pytest.mark.parametrize("missing", ["adapter", "owner", "bootstrap"])
+def test_flush_runtime_cannot_reuse_an_index_trace_or_omit_its_authority(transport, missing):
+    execution, config, case, result = transport
+    case["operation"] = "flush-trigger-runtime"
+    events = _flush_trace(execution, config)
+    if missing == "adapter":
+        events = [event for event in events if not str(event.get("path", "")).endswith("flush-runtime.mjs")]
+    elif missing == "owner":
+        events = [event for event in events if not str(event.get("path", "")).endswith("agent-runner-memory-Cc4lCZcs.mjs")]
+        events.append(_load(config, "dist/extensions/memory-core/manager-runtime.js", 0))
+    else:
+        events.pop(0)
+    _trace(execution, 0, events)
+    _evidence(execution, case)
+    with pytest.raises(RuntimeOracleError):
         execution.collect(result, [case])
 
 

@@ -109,7 +109,7 @@ Entries remain pending until their complete acceptance conditions are verified a
 ### Flush and compaction
 
 - [ ] **`flush.plan-target` — Match flush plan and target selection.** Compare enabled/disabled configuration, model selection, timezone and daily target validation. Compare prompts, reserve terms and failure before a target can be safely prepared.
-- [ ] **`flush.trigger-usage` — Match flush trigger accounting.** Feed fresh/stale usage, missing usage, transcript byte limits and compaction counters. Compare trigger decisions, heartbeat exclusions and retry/exhaustion state.
+- [x] **`flush.trigger-usage` — Match flush trigger accounting.** Feed fresh/stale usage, missing usage, transcript byte limits and compaction counters. Compare trigger decisions, heartbeat exclusions and retry/exhaustion state.
 - [ ] **`flush.execute-finalize` — Match flush execution and finalization.** Run the same labelled model/tool sequence through both hosts. Compare append-only writes, index readiness, provenance and successful or failed cycle stamps.
 - [ ] **`compaction.memory-budget` — Match curated memory budget compaction.** Exercise promotion sections mixed with user text and exact size/loss limits. Compare preserved bytes, removed sections, deferral and reconciliation markers.
 - [ ] **`compaction.context-assembly` — Match context assembly and compaction replay.** Compare active transcript projections, summaries, checkpoints, tool-result bounds and replay decisions. Retain trailing required results and provider continuation data across restart.
@@ -732,3 +732,65 @@ all **651 cases**, with zero mismatches or blocked cases. The committed full-gat
 **106 acceptance points** remain uncovered. The full regression run passed **2,571 tests**;
 the same **1,625 historical oracle/live checks** remain gated off and grant no acceptance
 credit. Ruff, project-name consistency, source-map and staged diff checks passed.
+
+### Runtime flush accounting and retry state — 2026-11-08
+
+This batch completes **`flush.trigger-usage.outcomes`** and
+**`flush.trigger-usage.boundaries`**. Verified acceptance advances from **22/128 (17.2%)** to
+**24/128 (18.8%)**, leaving **104/128 points (81.2%)** unverified. The fixed scope remains
+**64 contracts and 128 acceptance points**, scope SHA-256
+`a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9`, and **103 mapped upstream
+modules**. Source classifications are now 12 present, 48 partial, one missing and three host-owned.
+
+The reference executes the official compiled `runMemoryFlushIfNeeded`, authenticated separately
+from tracked TypeScript source. Reports retain reviewed source-owner and compiled-export hashes,
+release archive/file authentication, loaded release files and runtime traces. The publisher's
+version/build-commit attestation is not an independently reproduced source build:
+**`sourceBuildReproduced: false`**. Runtime dependencies authenticate **65 packages and 23,917
+installed files**. The actual memory plugin resolves the initial plan; a declared infrastructure
+failure on its second plan resolution occurs only after the real runtime gate admits an attempt.
+This exercises accounting, admission and failure/exhaustion persistence without reaching a model.
+
+The **55 new runtime cases** bring the default catalog from 651 to **706**. They compare fresh,
+stale, missing and versioned usage; provider context/cache components; projected trailing user
+and tool messages; output-read proximity boundaries; reset/compaction/CLI/unavailable-context
+barriers and the 512-event tail; actual active-transcript UTF-8 byte limits; disabled configuration;
+heartbeat, CLI, read-only and incognito exclusions; compaction-cycle suppression; and repeated
+preparation failures through exhaustion and the next cycle. Native transcripts and failure stamps
+use the actual SQLite session accessor. The Python driver calls public `HostKit.prepare_flush`,
+persists returned `SessionState` as JSON and reconstructs it between attempts. Incognito state
+remains process-local in both drivers.
+
+`.equivalence-results/flush-runtime-first.json` retains **52 matches and two mismatches** across
+the initial 54 cases. Both differences were transport issues: the CLI fixture needed the native
+provider registry, and reset byte accounting needed the public active-context window rather than
+all physical event rows. Neither required another production change. The corrected two cases and
+an added reset-discarded-byte-force boundary all match in
+`.equivalence-results/flush-runtime-boundaries.json` (**three matches, zero mismatches or blocked
+cases**). The original 52 passing cases remain. Earlier reports are retained without rewriting
+their results.
+
+The paired diagnostic `.equivalence-results/flush-runtime-legacy-paired.json` executes the actual
+old public `after_turn` at commit `f884f5701e276ee8a0b551a6ae23af70a536a518` alongside the observed
+native runtime. With a fresh prompt total of 175,999 and completion of one, the old path admitted
+a flush; native maintenance with an empty estimate skipped it. The current path uses a fresh
+maintenance total directly. Stale/missing usage recovers a reliable transcript snapshot and
+projected trailing messages; a nonblank next prompt reads fresh transcript output only at the
+positive threshold's 8,192-token proximity boundary. Recovered prompt totals do not reduce an
+existing fresh snapshot. The [host guide](host_kit.md) documents the persisted-state entry point
+and required transcript/byte snapshot.
+
+Comparison preserves owned accounting, compaction and flush fields, including absent fields,
+attempt admission, outcomes, persisted state and actual transcript bytes. Host storage metadata
+and native visible-error rendering are outside this trigger-accounting comparison; raw evidence
+remains separate. These cases grant no `flush.execute-finalize`, model/tool write, host queue,
+durable next-turn barrier or general storage equivalence credit. Both `flush.plan-target` points
+also remain open.
+
+The committed full-gate report, `.equivalence-results/flush-runtime-full.json`, records **706
+matches, zero mismatches and zero blocked cases**. It retains the **104 uncovered acceptance
+points**, so the full contract remains incomplete. Full regression validation passed **2,641
+tests**; the same **1,625 historical oracle/live checks** remain gated off and grant no acceptance
+credit. Old Lab and LangGraph assertions that added completion tokens to a fresh maintenance
+snapshot were corrected against the observed native behavior. Ruff, project-name consistency,
+source-map and staged diff checks passed.

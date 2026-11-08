@@ -43,10 +43,10 @@ original scope.
 Focused comparisons match all 111 flush and 79 session fixtures. The 73 complete JSONL
 projections cover session filtering outcomes; six reset-only helpers receive no acceptance
 credit. Live SQLite branch selection, integrated reset propagation, archive codecs and corpus
-admission remain unverified. Flush plan/target and trigger acceptance remain open despite
-matching the bounded fixtures. Current verified coverage is 22/128 (17.2%), with 106 points
-remaining; this inventory itself grants none of that behavioral credit. Classifications
-remain 11 present, 49 partial, one missing and three host-owned. Historical import-blocked
+admission remain unverified. At that stage, flush plan/target and trigger acceptance remained
+open despite matching the bounded fixtures. That batch brought verified coverage to 22/128
+(17.2%), with 106 points remaining; this inventory itself grants none of that behavioral credit.
+Classifications were 11 present, 49 partial, one missing and three host-owned. Historical import-blocked
 captures are superseded by the focused reports listed in the checklist.
 
 The subsequent target-authority batch compares the original `ensureMemoryFlushTargetFile`
@@ -57,8 +57,21 @@ case retains `covers: []`; stricter Python filesystem admission and the remainin
 conditions keep both acceptance points open. The public host methods carry an optional raising
 check through request creation, locked append and completion. Host-side cancellation, provenance
 rollback and completion races have Python regression evidence; this does not establish native
-host queue or durable next-turn barrier equivalence. Fixed coverage remains 22/128 (17.2%), with
-106 points (82.8%) remaining.
+host queue or durable next-turn barrier equivalence. At that stage, coverage remained 22/128
+(17.2%), with 106 points (82.8%) remaining.
+
+The runtime trigger batch separately executes the authenticated official compiled
+`runMemoryFlushIfNeeded` with its actual plugin plan, SQLite transcript accessor and persisted
+failure stamps. Reviewed source identities and release artifact identities remain separate;
+**`sourceBuildReproduced: false`**. A declared second-plan preparation failure follows actual
+trigger admission and prevents model execution. Python uses public `HostKit.prepare_flush` over
+persisted state, with active transcript events and actual serialized bytes supplied by the host.
+The 55-case matrix covers both `flush.trigger-usage` acceptance points, bringing current verified
+coverage to **24/128 (18.8%)**, with **104 points (81.2%)** remaining. It grants no full flush
+execution, host queue or durable barrier credit. The inventory classification is now 12 present,
+48 partial, one missing and three host-owned; the fixed scope and 103 upstream modules are
+unchanged. Retained focused diagnostics and final integrated validation are documented in the
+[checklist](full-equivalence-checklist.md).
 
 | Contract | OpenClaw entry | Python entry | Python surface |
 | --- | --- | --- | --- |
@@ -96,8 +109,8 @@ host queue or durable next-turn barrier equivalence. Fixed coverage remains 22/1
 | `prompt.bootstrap-budget` | [buildBootstrapContextFiles](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/embedded-agent-helpers/bootstrap.ts#L401) | [build_bootstrap_context_files](../memory_core/bootstrap/budget.py#L393) | present |
 | `prompt.runtime-context` | [buildMemoryPromptSection](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory-tool-contract.ts#L131) | [build_prompt_section](../memory_core/prompt_section.py#L15) | partial |
 | `prompt.history-repair` | [limitHistoryTurns](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/embedded-agent-runner/history.ts#L37) | [limit_history_turns](../memory_core/history.py#L19) | partial |
-| `flush.plan-target` | [buildMemoryFlushPlan](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/flush-plan.ts#L63) | [build_memory_flush_plan_from_config](../memory_core/memory_flush.py#L272) | partial |
-| `flush.trigger-usage` | [shouldRunMemoryFlush](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/auto-reply/reply/memory-flush.ts#L122) | [resolve_fresh_session_total_tokens](../memory_core/memory_flush.py#L341) | partial |
+| `flush.plan-target` | [buildMemoryFlushPlan](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/flush-plan.ts#L63) | [build_memory_flush_plan_from_config](../memory_core/memory_flush.py#L301) | partial |
+| `flush.trigger-usage` | [runMemoryFlushIfNeeded](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/auto-reply/reply/agent-runner-memory.ts#L1117) | [HostKit.prepare_flush](../memory_core/host/kit.py#L556) | present |
 | `flush.execute-finalize` | [runMemoryFlushIfNeeded](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/auto-reply/reply/agent-runner-memory.ts#L1117) | [FlushRequest](../memory_core/host/flush.py#L85) | partial |
 | `compaction.memory-budget` | [compactMemoryForBudget](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory-budget.ts#L180) | [compact_memory_for_budget](../memory_core/memory_budget.py#L190) | present |
 | `compaction.context-assembly` | [assembleHarnessContextEngine](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/harness/context-engine-lifecycle.ts#L133) | [assemble_context_engine_messages](../memory_core/context_engine_lifecycle.py#L26) | partial |
@@ -123,7 +136,7 @@ host queue or durable next-turn barrier equivalence. Fixed coverage remains 22/1
 | `engine.numeric-boundaries` | [asFiniteNumber](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/normalization-core/src/number-coercion.ts#L4) | [js_to_fixed](../memory_core/consolidation/_util.py#L63) | partial |
 | `engine.unicode-collation` | [sliceUtf16Safe](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/normalization-core/src/utf16-slice.ts#L30) | [utf16_slice](../memory_core/bootstrap/_js.py#L96) | partial |
 | `engine.datetime-regex` | [resolveCronStyleNow](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/current-time.ts#L23) | [format_current_time_line](../memory_core/current_time.py#L198) | partial |
-| `host.turn-barrier` | [beginForegroundSessionMaintenance](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/session-maintenance/coordinator.ts#L181) | [HostKit.after_turn](../memory_core/host/kit.py#L503) | host-owned |
+| `host.turn-barrier` | [beginForegroundSessionMaintenance](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/session-maintenance/coordinator.ts#L181) | [HostKit.after_turn](../memory_core/host/kit.py#L506) | host-owned |
 | `host.restart-recall` | [loadSessionStore](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/plugin-sdk/session-store-runtime.ts#L263) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L43) | host-owned |
 | `host.update-isolation` | [consolidateMemory](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/dreaming-consolidation.ts#L396) | [MemoryCurator.replace_memory_entry](../memory_core/curation.py#L939) | partial |
 

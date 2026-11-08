@@ -42,7 +42,7 @@ def test_after_turn_records_a_fresh_token_snapshot(tmp_path):
         "totalTokensVersion": 1,
     }
     assert record.session.last_output_tokens == 120
-    assert record.flush_decision.total_tokens == 5120
+    assert record.flush_decision.total_tokens == 5000
     assert record.flush_decision.reason == "under_threshold"
     assert dict(session.entry) == {"sessionId": "s1", "compactionCount": 0}
 
@@ -64,10 +64,10 @@ def test_after_turn_without_usage_reports_missing_tokens(tmp_path):
 
 
 CASES = [
-    # (entry, usage, window, transcript bytes, the token count the kit must pass: total + output)
-    ({}, TurnUsage(1000, 50), None, None, 1050),
+    # Empty maintenance prompts keep fresh persisted usage without an output transcript read.
+    ({}, TurnUsage(1000, 50), None, None, 1000),
     ({}, TurnUsage(176_000), None, None, 176_000),
-    ({}, TurnUsage(175_900, 100), None, None, 176_000),
+    ({}, TurnUsage(175_900, 100), None, None, 175_900),
     ({"memoryFlush": {"kind": "succeeded", "compactionCount": 0}}, TurnUsage(180_000), None, None,
      180_000),
     ({"compactionCount": 1, "memoryFlush": {"kind": "succeeded", "compactionCount": 0}},
@@ -114,10 +114,10 @@ def test_after_turn_uses_no_prompt_estimate(tmp_path):
     record = _kit(tmp_path).after_turn(_session(), transcript=(), usage=TurnUsage(175_990, 5))
 
     assert record.flush_decision.threshold == 176_000
-    assert record.flush_decision.total_tokens == 175_995
+    assert record.flush_decision.total_tokens == 175_990
     assert record.flush_decision.reason == "under_threshold"
     assert _kit(tmp_path).after_turn(_session(), transcript=(), usage=TurnUsage(175_990, 10)).flush_decision.reason == (
-        "token_threshold"
+        "under_threshold"
     )
 
 

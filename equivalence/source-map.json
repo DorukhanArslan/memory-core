@@ -454,7 +454,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit",
           "anchor": "class HostKit:",
-          "line": 206
+          "line": 207
         }
       ],
       "implementation": "partial",
@@ -1420,7 +1420,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 657
+          "line": 706
         }
       ],
       "implementation": "partial",
@@ -1741,19 +1741,19 @@
           "path": "memory_core/memory_flush.py",
           "symbol": "build_memory_flush_plan_from_config",
           "anchor": "def build_memory_flush_plan_from_config(",
-          "line": 272
+          "line": 301
         },
         {
           "path": "memory_core/memory_flush.py",
           "symbol": "validate_daily_memory_target",
           "anchor": "def validate_daily_memory_target(relative_path: str) -> str:",
-          "line": 184
+          "line": 213
         },
         {
           "path": "memory_core/memory_flush.py",
           "symbol": "ensure_memory_flush_target_file",
           "anchor": "def ensure_memory_flush_target_file(",
-          "line": 602
+          "line": 808
         }
       ],
       "implementation": "partial",
@@ -1772,6 +1772,12 @@
       ],
       "upstream": [
         {
+          "path": "src/auto-reply/reply/agent-runner-memory.ts",
+          "symbol": "runMemoryFlushIfNeeded",
+          "anchor": "export async function runMemoryFlushIfNeeded(params: {",
+          "line": 1117
+        },
+        {
           "path": "src/auto-reply/reply/memory-flush.ts",
           "symbol": "shouldRunMemoryFlush",
           "anchor": "export function shouldRunMemoryFlush(params: {",
@@ -1782,44 +1788,58 @@
           "symbol": "hasAlreadyFlushedForCurrentCompaction",
           "anchor": "export function hasAlreadyFlushedForCurrentCompaction(",
           "line": 170
-        },
-        {
-          "path": "src/auto-reply/reply/agent-runner-memory.ts",
-          "symbol": "runMemoryFlushIfNeeded",
-          "anchor": "export async function runMemoryFlushIfNeeded(params: {",
-          "line": 1117
         }
       ],
       "python": [
         {
+          "path": "memory_core/host/kit.py",
+          "symbol": "HostKit.prepare_flush",
+          "anchor": "    def prepare_flush(",
+          "line": 556
+        },
+        {
+          "path": "memory_core/memory_flush.py",
+          "symbol": "resolve_memory_flush_runtime_accounting",
+          "anchor": "def resolve_memory_flush_runtime_accounting(",
+          "line": 541
+        },
+        {
+          "path": "memory_core/flush_token_estimation.py",
+          "symbol": "estimate_flush_messages_tokens",
+          "anchor": "def estimate_flush_messages_tokens(",
+          "line": 105
+        },
+        {
           "path": "memory_core/memory_flush.py",
           "symbol": "resolve_fresh_session_total_tokens",
           "anchor": "def resolve_fresh_session_total_tokens(entry: dict[str, Any] | None) -> int | float | None:",
-          "line": 341
+          "line": 370
         },
         {
           "path": "memory_core/memory_flush.py",
           "symbol": "explain_memory_flush_trigger",
           "anchor": "def explain_memory_flush_trigger(",
-          "line": 424
+          "line": 630
         },
         {
           "path": "memory_core/memory_flush.py",
           "symbol": "record_memory_flush_failure",
           "anchor": "def record_memory_flush_failure(",
-          "line": 566
+          "line": 772
         },
         {
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 503
+          "line": 506
         }
       ],
-      "implementation": "partial",
+      "implementation": "present",
       "notes": [
-        "Trigger and failure-exhaustion decisions are implemented over supplied usage and session metadata. The host must provide actual transcript byte counts, provider usage and compaction lifecycle updates, and durably commit returned state before another turn.",
-        "The 2026-11-08 native flush matrix matches exported usage/compaction gates and error helpers, but those cases retain empty coverage. Actual transcript/provider accounting, heartbeat exclusions and durable retry/exhaustion stamps remain unverified runtime behavior."
+        "HostKit.prepare_flush evaluates persisted SessionState without recording new usage; after_turn records its new usage then delegates. The host supplies chronological active transcript events and actual serialized byte counts from one storage snapshot, persists the returned entry and owns maintenance serialization.",
+        "Empty maintenance prompts do not read transcript output for fresh totals. Stale/missing totals recover a reliable provider snapshot plus projected trailing messages within the native 512-event tail and reset/barrier rules. A nonblank next prompt permits fresh output reads at the 8192-token proximity boundary. Recovered prompt totals never reduce a fresh snapshot.",
+        "The compaction-planning estimator preserves UTF-16/CJK, tool-result projection and omission accounting without per-message overhead. Runtime exclusions precede planning/transcript access; trigger, compaction-cycle suppression and preparation failure/exhaustion transitions remain separate from model execution, flush writes and host queue barriers.",
+        "The 55-case actual runtime matrix covers both fixed trigger-usage acceptance points using the separately authenticated official compiled runMemoryFlushIfNeeded, original plugin plan resolver and SQLite transcript/failure persistence. Source-owner and compiled-export hashes remain separate provenance, with sourceBuildReproduced: false. A declared second-plan preparation failure follows the real gate and prevents model execution; no model/tool write, full flush finalization or host queue/barrier credit is claimed."
       ]
     },
     {
@@ -2688,7 +2708,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 503
+          "line": 506
         }
       ],
       "implementation": "partial",
@@ -3079,7 +3099,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 503
+          "line": 506
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -3280,7 +3300,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 503
+          "line": 506
         },
         {
           "path": "demo/lab_chat.py",
@@ -3331,7 +3351,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 657
+          "line": 706
         },
         {
           "path": "demo/lab_runtime.py",
@@ -3376,7 +3396,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.dispatcher",
           "anchor": "    def dispatcher(",
-          "line": 372
+          "line": 375
         },
         {
           "path": "memory_core/live/__init__.py",

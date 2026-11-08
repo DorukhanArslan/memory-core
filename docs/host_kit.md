@@ -66,6 +66,7 @@ class HostKit:
         dreaming_enabled: bool = False,
         automation_store: AutomationStore | None = None,
         now_ms: Callable[[], int] | None = None,
+        flush_config: Mapping[str, Any] | None = None,
     ) -> None: ...
 
     @classmethod
@@ -92,8 +93,10 @@ class HostKit:
   `CurationPolicy.for_layout(layout)`); the bootstrap caps, `context_injection` and
   `truncation_warning_mode` (`build_workspace_context`); `dreaming_enabled` (recall tracking,
   see `dispatch`); `automation_store` (default `FileAutomationStore(root)`); `now_ms` (epoch-ms
-  clock, as `MemoryCurator` takes it). The agent id is `memory.config.agent_id`. The Lab uses
-  each of them except `identity` (memory-core's compat markers).
+  clock, as `MemoryCurator` takes it); `flush_config` (the native `memoryFlush` configuration,
+  including `enabled`, soft threshold, transcript-byte limit and model). The agent id is
+  `memory.config.agent_id`. The Lab keeps the default `flush_config` and `identity`
+  (memory-core's compat markers).
 - `seed_bootstrap=None` (default) seeds BOOTSTRAP.md only when `templates` supplies the layout's
   bootstrap file. memory-core has no ritual text of its own, so an empty BOOTSTRAP.md would leave a
   host without a ritual in limited-mode "Bootstrap Pending" on every turn until `memory/`
@@ -169,8 +172,9 @@ class TurnUsage:
     completion_tokens: int | None = None
 ```
 
-A host without provider usage passes `None` (the token gate then reports `missing_tokens`,
-as upstream without a fresh total) or its own estimate. The kit invents no estimate.
+A host without new provider usage passes `None` or its own labelled estimate. Flush accounting
+can recover a reliable provider snapshot from the actual transcript; without one or a fresh
+stored total, the token gate reports `missing_tokens`. The kit does not invent provider usage.
 
 ## Turn lifecycle
 
@@ -449,7 +453,7 @@ class ToolCallRepair:
   filesystem; `ValueError` for an unknown session kind, run kind or context mode (host errors). No
   model is involved, so nothing is a payload here.
 
-### 4. `after_turn(session, ...)` and the flush request
+### 4. `after_turn(session, ...)`, `prepare_flush(session, ...)` and the flush request
 
 ```python
 def after_turn(
@@ -463,12 +467,16 @@ def after_turn(
     redact: Callable[[str], str] | None = None,
     untrusted_turn: bool | Callable[[], bool] = False,
     assert_current: Callable[[], None] | None = None,
+    transcript_events: Sequence[Mapping[str, Any]] | None = None,
+    prompt_for_estimate: str = "",
+    memory_flush_writable: bool = True,
+    is_cli: bool = False,
 ) -> TurnRecord
 
 @dataclass(frozen=True)
 class TurnRecord:
-    session: SessionState                      # with this turn's token snapshot
-    flush_plan: MemoryFlushPlan                # the plan for this window (meter terms)
+    session: SessionState                      # includes any recovered token snapshot or strike
+    flush_plan: MemoryFlushPlan | None         # absent for disabled/excluded runs
     flush_decision: MemoryFlushTriggerDecision
     flush: FlushRequest | None                 # set when the decision flushes
     flush_failure: MemoryFlushFailureOutcome | None  # the flush was due but its setup failed
@@ -481,24 +489,23 @@ auto-compacted, or with compaction disabled), and maintenance calls `runMemoryFl
 with `promptForEstimate: ""` (`src/agents/session-maintenance/run.ts:218-232`), then compaction.
 The other call site is the checkpoint before preflight compaction
 (`agent-runner-execute.ts:145-176`), which runs only when that compaction runs
-(`agent-runner-memory.ts:875-889`). `after_turn` is the first site; the second needs host
-compaction and is a non-goal. The Lab follows this order since Task 9a (decision Q1); its
+(`agent-runner-memory.ts:875-889`). `after_turn` follows the first site's order; running host
+compaction remains a non-goal. The Lab follows this order since Task 9a (decision Q1); its
 pre-turn flush with the incoming prompt's estimate was the pin-era order.
 
-- Composes:
+- `after_turn` records the new usage, then delegates to `prepare_flush`:
   1. the token snapshot: `usage.prompt_tokens > 0` becomes a fresh v1 total (`totalTokens`,
      `totalTokensFresh: True`, `totalTokensVersion: SESSION_TOTAL_TOKENS_VERSION`) and
      `completion_tokens` the session's `last_output_tokens`; otherwise `totalTokensFresh: False`;
-  2. `memory_core/memory_flush.py:build_memory_flush_plan(now_ms, timezone, context_window_tokens,
-     time_format)`; `context_window_tokens` defaults to upstream `DEFAULT_CONTEXT_TOKENS`
-     (200,000, `src/agents/defaults.ts:6`; the constant moves here from `demo/lab_runtime.py`);
-  3. `explain_memory_flush_trigger(entry, plan, context_window_tokens, token_count,
-     transcript_byte_size=transcript_bytes, is_heartbeat=kind == "heartbeat")` with
-     `token_count` = the fresh total plus `last_output_tokens` (none without a fresh total, as
-     the Lab computes it today). No prompt estimate: maintenance computes
-     `resolveEffectivePromptTokens(base, output, undefined)`
-     (`src/auto-reply/reply/memory-flush.ts:28-39`). Without `transcript_bytes` the
-     transcript-size gate stays off (unknown size never forces);
+  2. runtime exclusions for incognito, read-only, heartbeat and CLI runs precede plan construction
+     and transcript access. Otherwise `build_memory_flush_plan_from_config` uses `flush_config`,
+     the kit's clock/timezone and the supplied window; `context_window_tokens` defaults to
+     upstream `DEFAULT_CONTEXT_TOKENS` (200,000, `src/agents/defaults.ts:6`);
+  3. `resolve_memory_flush_runtime_accounting` recovers or projects usage and evaluates the token,
+     transcript-byte and compaction-cycle gates. With the empty maintenance estimate, a fresh
+     stored total is used directly: the prior completion in `last_output_tokens` is not added.
+     Stale or missing totals can recover actual transcript usage as described below. Without
+     `transcript_bytes`, the transcript-size gate stays off (unknown size never forces);
   4. when the decision flushes, `ensure_memory_flush_target_file(root, plan.relative_path)`, then
      the `FlushRequest`. Upstream creates `memory/` and opens the target for append before the flush
      run (`agent-runner-memory.ts:1447-1451`, `memory-flush-session.ts:64-96`), so an empty daily
@@ -518,6 +525,51 @@ pre-turn flush with the incoming prompt's estimate was the pin-era order.
   below. The one forced flush is the extension below.
 
 ```python
+def prepare_flush(
+    self,
+    session: SessionState,
+    *,
+    transcript: Sequence[Mapping[str, Any]] = (),
+    context_window_tokens: int | None = None,
+    transcript_bytes: int | None = None,
+    transcript_events: Sequence[Mapping[str, Any]] | None = None,
+    prompt_for_estimate: str = "",
+    memory_flush_writable: bool = True,
+    is_cli: bool = False,
+    is_heartbeat: bool | None = None,
+    redact: Callable[[str], str] | None = None,
+    untrusted_turn: bool | Callable[[], bool] = False,
+    assert_current: Callable[[], None] | None = None,
+) -> TurnRecord
+```
+
+Use `prepare_flush` for maintenance over persisted `SessionState`; it preserves that state's
+usage instead of recording a new model call. Supply chronological active `transcript_events`
+and their actual serialized `transcript_bytes` from one storage snapshot. `transcript` supplies
+the visible messages for the requested model turn. When events are omitted, the kit wraps those
+visible messages as events for usage recovery; it cannot recover omitted usage or reset metadata.
+The host stores every returned `record.session`, including recovered usage and preparation
+failure stamps, before the next maintenance attempt. `is_heartbeat=None` uses the session kind;
+an explicit value describes a host heartbeat invocation.
+
+With stale or missing usage, accounting examines at most the last 512 active events for the latest
+usable provider snapshot, respecting reset, compaction, unavailable-context and legacy CLI
+barriers. It projects later context-eligible messages, including bounded tool results, without
+mutating the stored transcript. A recovered prompt snapshot updates the returned entry only when
+the stored total is stale/missing or the recovered prompt is larger. The gate includes the
+recovered completion and any next-prompt estimate when a usable prompt base exists.
+
+For preflight accounting, a nonblank `prompt_for_estimate` supplies the next user input. A fresh
+total reads transcript output only when the flush threshold is positive and that total plus the
+estimate is at least the threshold minus 8,192 tokens. An empty maintenance estimate does not trigger that read. The
+compaction-planning estimator uses native UTF-16/CJK and tool-result omission accounting;
+it adds no per-message overhead. It estimates prompt content, rather than provider billing usage.
+
+Incognito, read-only, heartbeat and CLI exclusions return no plan or request. A disabled
+`flush_config` also returns no plan or request. The kit supplies admission and state transitions;
+the host still owns persistence, its maintenance queue and the next-turn barrier.
+
+```python
 def request_flush(
     self, session: SessionState, *, transcript: Sequence[Mapping[str, Any]],
     untrusted_turn: bool | Callable[[], bool] = False,
@@ -528,7 +580,8 @@ def request_flush(
 A memory-core extension (decision Q6; upstream has no forced flush), for a host action such as the
 Lab's `/flush`. It does not touch the token snapshot and keeps the two guards a forced run must
 not skip: a `heartbeat` session gets `None`, and so does a compaction cycle that already flushed or
-failed three times (`has_already_flushed_for_current_compaction`). Otherwise it returns the
+failed three times (`has_already_flushed_for_current_compaction`). A disabled `flush_config`
+also returns `None`. Otherwise it returns the
 request `after_turn` builds for a due flush (target file first, the same messages and tool), with
 `reason` `forced`. A target that cannot be created raises (`UnsafeMemoryPathError`, `OSError`) and
 records nothing: the forced run is outside upstream's gate, so there is no strike to mirror.
@@ -550,8 +603,8 @@ created before the failing checkpoint. Filesystem failures still propagate, incl
 failure that occurs while another exception is unwinding. Omitting the callback preserves the
 existing API behavior and filesystem safeguards.
 
-`after_turn` and `request_flush` retain the callback on the request and check again after building
-its messages. An authority exception propagates unchanged instead of becoming a tool error or a
+`prepare_flush`, `after_turn` and `request_flush` retain the callback on the request and check
+again after building its messages. An authority exception propagates unchanged instead of becoming a tool error or a
 setup failure strike. If closing the prepared target also fails, these host methods preserve
 the original authority exception and chain the close failure as its cause. The standalone target
 helper retains native close-error priority. For example, the core's cancellation signal supplies
@@ -1307,8 +1360,9 @@ follows Task 9.
   real-browser check of the chat, flush, `/new` and heartbeat flows on the :8010 preview at 1280,
   820 and 640 px (the Lab's breakpoints), with the scripted engine named as scripted.
 - Landed 2026-09-28: 9a `7f78de1` (with `a5906cf` for Q12, `8a00d00` for `request_flush` and
-  `363d471` removing `record_daily_memory_flush`), 9b `5ffee1c`, 9c `ca54643`. The flush test's
-  window 5,333 flushes after the second turn, the first whose usage (1,990 + 40) passes 2,000.
+  `363d471` removing `record_daily_memory_flush`), 9b `5ffee1c`, 9c `ca54643`. The historical
+  flush test used a window of 5,333 and added completion tokens (1,990 + 40) to cross 2,000.
+  Current maintenance accounting uses a fresh prompt total without that addition (entry point 4).
   Tests added beyond the list: `test_scripted_turn_decides_the_flush_but_runs_no_flush_turn`,
   `test_manual_flush_skips_a_heartbeat_session`,
   `test_bare_new_reconciles_a_pending_bootstrap_before_the_reset_prompt`,

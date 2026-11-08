@@ -22,7 +22,8 @@ decides. Writes stay append-only to ``memory/YYYY-MM-DD.md`` (``memory_core.memo
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import tzinfo
 import math
@@ -60,6 +61,7 @@ from memory_core.current_time import (
     utc_and_local_instants,
 )
 from memory_core.memory_paths import UnsafeMemoryPathError, validate_daily_memory_path
+from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
 from memory_core.workspace import check_writable_memory_file, workspace_file_lock
 
 __all__ = [
@@ -80,6 +82,7 @@ __all__ = [
     "MemoryFlushFailureOutcome",
     "MemoryFlushPlan",
     "MemoryFlushTriggerDecision",
+    "MemoryFlushRuntimeAccounting",
     "UnsafeMemoryFlushTargetError",
     "append_current_time_line",
     "build_memory_flush_plan",
@@ -97,6 +100,8 @@ __all__ = [
     "resolve_effective_compaction_reserve_tokens",
     "resolve_fresh_session_total_tokens",
     "resolve_memory_flush_threshold",
+    "resolve_memory_flush_runtime_accounting",
+    "resolve_memory_flush_runtime_skip",
     "should_force_memory_flush_by_transcript_size",
     "should_run_memory_flush",
     "should_run_memory_flush_trigger",
@@ -144,6 +149,30 @@ class MemoryFlushTriggerDecision:
     already_flushed: bool = False
     total_tokens: int | float | None = None
     threshold: int | None = None
+
+
+@dataclass(frozen=True)
+class MemoryFlushRuntimeAccounting:
+    """A flush admission snapshot; the host persists ``entry`` before the next turn.
+
+    Transcript events are the host's active, context-eligible chronological projection;
+    storage and the actual byte-size snapshot remain host responsibilities.
+    """
+
+    entry: dict[str, Any] | None
+    decision: MemoryFlushTriggerDecision
+    read_transcript_usage: bool = False
+    check_transcript_size: bool = False
+    prompt_token_estimate: int | None = None
+    transcript_prompt_tokens: int | None = None
+    transcript_output_tokens: int | float | None = None
+
+
+_TRANSCRIPT_OUTPUT_READ_BUFFER_TOKENS = 8192
+_TRANSCRIPT_USAGE_TAIL_MAX_EVENTS = 512
+_INCOGNITO_SESSION_KEY = re.compile(
+    r"^agent:[^:]+:(?:dashboard|subagent|internal-session-effects):incognito-[^:]+$"
+)
 
 
 # --- prompts (flush-plan.ts) ---------------------------------------------------------------
@@ -419,6 +448,183 @@ def should_force_memory_flush_by_transcript_size(
 
 
 # --- runtime trigger (runMemoryFlushIfNeeded) ---------------------------------------------
+
+
+def resolve_memory_flush_runtime_skip(
+    *,
+    entry: Mapping[str, Any] | None,
+    session_key: str | None = None,
+    memory_flush_writable: bool = True,
+    is_heartbeat: bool = False,
+    is_cli: bool = False,
+) -> MemoryFlushTriggerDecision | None:
+    """Admission exclusions before plan construction or transcript access."""
+    if (entry is not None and entry.get("incognito") is True) or (
+        isinstance(session_key, str)
+        and _INCOGNITO_SESSION_KEY.fullmatch(js_trim(session_key).lower())
+    ):
+        return MemoryFlushTriggerDecision(False, "runtime_skip:incognito")
+    if not memory_flush_writable:
+        return MemoryFlushTriggerDecision(False, "runtime_skip:not_writable")
+    if is_heartbeat:
+        return MemoryFlushTriggerDecision(False, "runtime_skip:heartbeat")
+    if is_cli:
+        return MemoryFlushTriggerDecision(False, "runtime_skip:cli")
+    return None
+
+
+def _derive_flush_context_prompt_tokens(usage: Mapping[str, Any]) -> int | float | None:
+    context = usage.get("contextUsage")
+    if isinstance(context, Mapping):
+        if context.get("state") == "unavailable":
+            return None
+        if context.get("state") == "available":
+            return context["promptTokens"]
+    prompt = sum(usage.get(key, 0) for key in ("input", "cacheRead", "cacheWrite"))
+    if prompt > 0:
+        return prompt
+    total, output = usage.get("total"), usage.get("output")
+    if (_is_number(total) and _is_finite_number(total) and total > 0
+            and _is_number(output) and _is_finite_number(output) and output >= 0):
+        return total - output if total > output else None
+    return None
+
+
+def _read_flush_transcript_usage(
+    events: Sequence[Any],
+) -> tuple[int | float | None, int | float | None, list[dict[str, Any]]]:
+    """Read the latest usable usage anchor, respecting native reset/barrier rules."""
+    from memory_core.transcript_tree import (  # noqa: PLC0415
+        select_session_transcript_leaf_controlled_path,
+    )
+    from memory_core.usage_normalization import has_nonzero_usage, normalize_usage  # noqa: PLC0415
+
+    active = select_session_transcript_leaf_controlled_path(list(events))
+    selected = list(events) if active is None else active
+    trailing: list[dict[str, Any]] = []
+    for event in reversed(selected[-_TRANSCRIPT_USAGE_TAIL_MAX_EVENTS:]):
+        if not isinstance(event, Mapping):
+            continue
+        raw_message = event.get("message")
+        message = dict(raw_message) if isinstance(raw_message, Mapping) else None
+        raw_usage = message.get("usage") if message is not None else None
+        if raw_usage is None:
+            raw_usage = event.get("usage")
+        if event.get("type") in {"compaction", "reset"} or (
+            message is not None
+            and message.get("api") == "cli"
+            and isinstance(raw_usage, Mapping)
+            and "contextUsage" not in raw_usage
+        ):
+            return None, None, []
+        usage = normalize_usage(raw_usage)
+        if usage is not None:
+            context = usage.get("contextUsage")
+            unavailable = isinstance(context, Mapping) and context.get("state") == "unavailable"
+            if unavailable and all(
+                not (_is_number(usage.get(key)) and usage[key] > 0)
+                for key in ("input", "output", "cacheRead", "cacheWrite", "total")
+            ):
+                return None, None, []
+            if has_nonzero_usage(usage):
+                output = usage.get("output")
+                return (
+                    _derive_flush_context_prompt_tokens(usage),
+                    output if _is_number(output) and _is_finite_number(output) and output > 0 else None,
+                    list(reversed(trailing)),
+                )
+        if message is not None:
+            trailing.append(message)
+    return None, None, []
+
+
+def resolve_memory_flush_runtime_accounting(
+    *,
+    entry: Mapping[str, Any] | None,
+    plan: MemoryFlushPlan | None,
+    context_window_tokens: int | float,
+    transcript_events: Sequence[Any] = (),
+    transcript_byte_size: int | float | None = None,
+    prompt_for_estimate: str | None = "",
+    session_key: str | None = None,
+    memory_flush_writable: bool = True,
+    is_heartbeat: bool = False,
+    is_cli: bool = False,
+    identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+) -> MemoryFlushRuntimeAccounting:
+    """Port the admission/accounting part of native ``runMemoryFlushIfNeeded``.
+
+    The host supplies active transcript events and the actual serialized byte count from
+    one storage snapshot. Fresh totals read transcript usage only when a nonblank next
+    prompt puts them within 8,192 tokens of the threshold. Empty maintenance prompts do
+    not add a prior completion to a fresh total. Stale/missing totals recover the latest
+    reliable usage anchor plus projected trailing messages; a larger recovered prompt
+    becomes a fresh session snapshot. Inputs and transcript messages are never mutated.
+    """
+    copied_entry = deepcopy(dict(entry)) if entry is not None else None
+    skip = resolve_memory_flush_runtime_skip(
+        entry=copied_entry, session_key=session_key, memory_flush_writable=memory_flush_writable,
+        is_heartbeat=is_heartbeat, is_cli=is_cli,
+    )
+    if skip is not None:
+        return MemoryFlushRuntimeAccounting(copied_entry, skip)
+    if plan is None:
+        return MemoryFlushRuntimeAccounting(copied_entry, MemoryFlushTriggerDecision(False, "disabled"))
+
+    from memory_core.flush_token_estimation import estimate_flush_messages_tokens  # noqa: PLC0415
+
+    trimmed_prompt = js_trim(prompt_for_estimate) if isinstance(prompt_for_estimate, str) else ""
+    estimate = estimate_flush_messages_tokens(
+        [{"role": "user", "content": trimmed_prompt}], identity=identity
+    ) if trimmed_prompt else None
+    estimate = estimate if estimate is not None and estimate > 0 else None
+    persisted = resolve_fresh_session_total_tokens(copied_entry)
+    threshold = resolve_memory_flush_threshold(
+        context_window_tokens=context_window_tokens,
+        reserve_tokens_floor=plan.reserve_tokens_floor,
+        soft_threshold_tokens=plan.soft_threshold_tokens,
+    )
+    read_usage = copied_entry is not None and (
+        persisted is None
+        or (estimate is not None and threshold > 0
+            and persisted + estimate >= threshold - _TRANSCRIPT_OUTPUT_READ_BUFFER_TOKENS)
+    )
+    check_size = copied_entry is not None and (
+        _is_number(plan.force_flush_transcript_bytes)
+        and _is_finite_number(plan.force_flush_transcript_bytes) and plan.force_flush_transcript_bytes > 0
+    )
+    transcript_prompt, transcript_output, trailing = (
+        _read_flush_transcript_usage(transcript_events) if read_usage else (None, None, [])
+    )
+    derived_prompt: int | None = None
+    if _is_number(transcript_prompt) and _is_finite_number(transcript_prompt) and transcript_prompt > 0:
+        from memory_core.tool_result_projection import (  # noqa: PLC0415
+            create_tool_result_prompt_projection_state,
+            truncate_oversized_tool_results_in_messages,
+        )
+
+        projected = truncate_oversized_tool_results_in_messages(
+            trailing, context_window_tokens,
+            projection_state=create_tool_result_prompt_projection_state(),
+        ).messages if trailing else []
+        derived_prompt = math.ceil(transcript_prompt) + estimate_flush_messages_tokens(
+            projected, identity=identity
+        )
+        if copied_entry is not None and (persisted is None or derived_prompt > persisted):
+            copied_entry.update({
+                "totalTokens": derived_prompt, "totalTokensFresh": True,
+                "totalTokensVersion": SESSION_TOTAL_TOKENS_VERSION,
+            })
+    base = max(persisted if persisted is not None else 0, derived_prompt or 0)
+    projected_count = base + (transcript_output or 0) + (estimate or 0) if base > 0 else None
+    decision = explain_memory_flush_trigger(
+        entry=copied_entry, plan=plan, context_window_tokens=context_window_tokens,
+        token_count=projected_count,
+        transcript_byte_size=transcript_byte_size if check_size else None,
+    )
+    return MemoryFlushRuntimeAccounting(
+        copied_entry, decision, read_usage, check_size, estimate, derived_prompt, transcript_output,
+    )
 
 
 def explain_memory_flush_trigger(

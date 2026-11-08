@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from equivalence import harness, release_runtime, runtime_oracle
+from equivalence import flush_runtime_bindings, harness, release_runtime, runtime_oracle
 
 
 def _git(root, *args):
@@ -74,6 +74,8 @@ def release_suite(tmp_path, monkeypatch):
 
     monkeypatch.setattr(release_runtime, "prepare_release_runtime", prepare)
     monkeypatch.setattr(harness, "_oracle", native)
+    monkeypatch.setattr(flush_runtime_bindings, "prepare_flush_runtime_bindings",
+                        lambda *_args: {"kind": "labelled-flush-owner-fixture"})
     return {"checkout": checkout, "node": node, "reference_path": reference,
             "scope_path": scope, "cases": cases, "python_runner": python,
             "release_runtime_root": tmp_path / "runtime"}, calls, config
@@ -93,8 +95,11 @@ def test_missing_official_artifacts_block_before_python_and_do_not_fall_back(rel
     assert report["cases"] == []
 
 
-def test_each_native_case_uses_a_fresh_dispatch_and_preserves_truthful_evidence(release_suite):
+@pytest.mark.parametrize("operation", ["index-lifecycle-runtime", "flush-trigger-runtime"])
+def test_each_native_case_uses_a_fresh_dispatch_and_preserves_truthful_evidence(release_suite, operation):
     options, calls, _ = release_suite
+    for case in options["cases"]:
+        case["operation"] = operation
     report, code = harness.run_suite(**options)
     assert code == 0, report["errors"]
     assert len(calls["prepare"]) == 2  # Entire runtime authenticated before and after.
@@ -108,6 +113,10 @@ def test_each_native_case_uses_a_fresh_dispatch_and_preserves_truthful_evidence(
     }
     assert all(row["referenceMode"] == "authenticated-official-release" for row in report["cases"])
     assert report["releaseRuntime"]["buildAttestation"]["sourceBuildReproduced"] is False
+    if operation == "flush-trigger-runtime":
+        assert report["flushRuntimeBindings"] == {"kind": "labelled-flush-owner-fixture"}
+    else:
+        assert "flushRuntimeBindings" not in report
     assert "runtimeRoot" not in report["releaseRuntime"]
     assert all("directory" not in item and "files" not in item
                for item in report["releaseRuntime"]["packages"])
@@ -155,6 +164,30 @@ def test_failed_native_case_is_not_retried_or_replaced_by_python(release_suite, 
     assert code == 2
     assert len(calls["oracle"]) == 1 and calls["python"] == []
     assert report["cases"][0]["code"] == "oracle-case-failed"
+
+
+@pytest.mark.parametrize("when", ["before", "after"])
+def test_unverified_flush_owner_blocks_credit_without_a_source_or_python_fallback(release_suite, monkeypatch, when):
+    options, calls, _ = release_suite
+    for case in options["cases"]:
+        case["operation"] = "flush-trigger-runtime"
+    checked = 0
+
+    def owner(*_args):
+        nonlocal checked
+        checked += 1
+        if when == "before":
+            raise ValueError("Labelled unverified compiled export.")
+        return {"kind": "labelled-flush-owner-fixture", "digest": str(checked)}
+
+    monkeypatch.setattr(flush_runtime_bindings, "prepare_flush_runtime_bindings", owner)
+    report, code = harness.run_suite(**options)
+    assert code == 2
+    assert report["errors"][0]["code"] == (
+        "flush-runtime-owner-unavailable" if when == "before" else "release-runtime-changed"
+    )
+    assert calls["python"] == []
+    assert len(calls["oracle"]) == (0 if when == "before" else 2)
 
 
 @pytest.mark.parametrize("mode", ["valid", "evidence-rejected", "trailing-stdout"])

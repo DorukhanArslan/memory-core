@@ -110,7 +110,8 @@ def flush_view(lab: LabRuntime, session: LabSession, record: TurnRecord | None) 
         "tokenSource": session.token_source,
         "transcriptBytes": transcript_byte_size(session),
         "forceFlushTranscriptBytes": (
-            record.flush_plan.force_flush_transcript_bytes if record is not None else None
+            record.flush_plan.force_flush_transcript_bytes
+            if record is not None and record.flush_plan is not None else None
         ),
         "compactionCount": entry.get("compactionCount", 0),
         "memoryFlush": memory_flush or None,
@@ -118,7 +119,8 @@ def flush_view(lab: LabRuntime, session: LabSession, record: TurnRecord | None) 
         "memoryFlushFailureCount": (
             memory_flush.get("failureCount", 0) if memory_flush.get("kind") == "failed" else 0
         ),
-        "target": record.flush_plan.relative_path if record is not None else None,
+        "target": record.flush_plan.relative_path
+        if record is not None and record.flush_plan is not None else None,
         "timeFormat": LAB_TIME_FORMAT,
         "timeFormatSource": "host-supplied (upstream detects the host's 12/24-hour format)",
         "mode": "threshold",

@@ -394,8 +394,9 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             cases = build_cases() if cases is None else cases
             python_runner = run_python if python_runner is None else python_runner
         requirements, _ = _validate_scope(scope, cases)
-        runtime_cases = [case for case in cases if case["operation"] == "index-lifecycle-runtime"]
-        source_cases = [case for case in cases if case["operation"] != "index-lifecycle-runtime"]
+        runtime_operations = {"index-lifecycle-runtime", "flush-trigger-runtime"}
+        runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
+        source_cases = [case for case in cases if case["operation"] not in runtime_operations]
         report["manifestSha256"] = {"reference": _digest(reference_path), "scope": _digest(scope_path)}
         source_map = ROOT / "equivalence/source-map.json"
         if (reference_path.resolve() == ROOT / "equivalence/reference.json"
@@ -453,6 +454,17 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 {key: value for key, value in package.items() if key not in {"directory", "files"}}
                 for package in runtime_config["packages"]
             ]
+            flush_runtime = any(case["operation"] == "flush-trigger-runtime" for case in runtime_cases)
+            if flush_runtime:
+                from equivalence.flush_runtime_bindings import prepare_flush_runtime_bindings
+
+                try:
+                    report["flushRuntimeBindings"] = prepare_flush_runtime_bindings(
+                        checkout, Path(runtime_config["runtimeRoot"]),
+                    )
+                except (OSError, ValueError):
+                    raise HarnessError("flush-runtime-owner-unavailable",
+                                       "The reviewed native flush owner/export could not be verified.") from None
             report["releaseSources"], report["releaseTraces"], report["runtimeDiagnostics"] = [], [], []
             observed_release = {}
             for case in runtime_cases:
@@ -473,6 +485,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             try:
                 if prepare_release_runtime(checkout, release_runtime_root) != runtime_config:
                     raise ValueError("Runtime artifacts changed.")
+                if flush_runtime and prepare_flush_runtime_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]),
+                ) != report["flushRuntimeBindings"]:
+                    raise ValueError("Flush runtime owner/export changed.")
             except (OSError, ValueError, RuntimeError):
                 raise HarnessError("release-runtime-changed",
                                    "Official runtime artifact bytes changed during comparison.") from None

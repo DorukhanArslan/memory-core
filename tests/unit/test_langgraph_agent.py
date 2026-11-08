@@ -256,7 +256,7 @@ def test_due_flush_runs_after_the_reply_and_writes_the_daily_file(tmp_path: Path
     assert _session(state).entry["memoryFlush"] == {"kind": "succeeded", "compactionCount": 0}
     assert state["memory_maintenance"] == {
         "flush": "token_threshold",
-        "tokenCount": 110_020,
+        "tokenCount": 110_000,
         "threshold": THRESHOLD,
         "window": WINDOW,
         "target": DAILY,
@@ -1040,8 +1040,8 @@ def test_stream_usage_decides_whether_a_custom_endpoint_reports_usage(
 
     assert outcomes == {
         "messages, default": (True, None, "missing_tokens", None),
-        "messages, stream_usage": (True, {"include_usage": True}, "under_threshold", 1_239),
-        "updates, default": (False, None, "under_threshold", 1_239),
+        "messages, stream_usage": (True, {"include_usage": True}, "under_threshold", 1_234),
+        "updates, default": (False, None, "under_threshold", 1_234),
     }
 
 
@@ -1102,13 +1102,13 @@ def test_example_main_chats_against_an_openai_compatible_endpoint(
 
     out, err = capsys.readouterr()
     assert out == "stub reply\n"
-    # 1,239 tokens pass the 2,000-token window's threshold; the stub's flush reply writes nothing.
+    # The fresh 1,234-token prompt passes the threshold; maintenance does not add its output.
     setup, maintenance = err.splitlines()
     assert setup == (
         "[memory] my-agent-app/, FTS-only search; context window 2000 (--context-window)"
     )
     assert re.fullmatch(
-        r"\[memory\] flush \(token_threshold, 1239 of 750 tokens\): 0 entries appended to"
+        r"\[memory\] flush \(token_threshold, 1234 of 750 tokens\): 0 entries appended to"
         r" memory/\d{4}-\d{2}-\d{2}\.md",
         maintenance,
     )

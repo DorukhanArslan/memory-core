@@ -9,6 +9,34 @@
   "rootLocation": "node_modules/openclaw",
   "packages": [
     {
+      "name": "@anthropic-ai/sdk",
+      "version": "0.127.0",
+      "location": "node_modules/@anthropic-ai/sdk",
+      "integrity": "sha512-OKiVbG9LHCxjn4fBJZJFy/Bz3hqE1RYpwaeSEDNheQnvz0XNKmGT/Lhkz2Sf1a27Ldt3vVv+BkU81I0U/8EpoQ==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "@clack/core",
+      "version": "1.5.1",
+      "location": "node_modules/@clack/core",
+      "integrity": "sha512-iHTrHA8MtVuLl2TfZySmcKv1qO2PoyC9Z7pfSDozEuV5vtY3/wcOPKJXlqJ5Oq2Cx5DDGQGAMVx6HZfRRoVEbQ==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "@clack/prompts",
+      "version": "1.8.1",
+      "location": "node_modules/@clack/prompts",
+      "integrity": "sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "@earendil-works/pi-tui",
+      "version": "0.86.1",
+      "location": "node_modules/@earendil-works/pi-tui",
+      "integrity": "sha512-FU/zU/zG4RWokcZt+BVXXcieWi5ggvYnWP2kkB5XXjMaHRoy5BDhcZJ9JAnLTN9MwrCRoXgPQxOI0bFqwYeZkQ==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
       "name": "@modelcontextprotocol/sdk",
       "version": "1.31.0",
       "location": "node_modules/@modelcontextprotocol/sdk",
@@ -37,10 +65,24 @@
       "pin": "upstream-pnpm-lock"
     },
     {
+      "name": "@silvia-odwyer/photon-node",
+      "version": "0.3.4",
+      "location": "node_modules/@silvia-odwyer/photon-node",
+      "integrity": "sha512-bnly4BKB3KDTFxrUIcgCLbaeVVS8lrAkri1pEzskpmxu9MdfGQTy8b8EgcD83ywD3RPMsIulY8xJH5Awa+t9fA==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
       "name": "@sindresorhus/merge-streams",
       "version": "4.0.0",
       "location": "node_modules/@sindresorhus/merge-streams",
       "integrity": "sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "@stablelib/base64",
+      "version": "1.0.1",
+      "location": "node_modules/@stablelib/base64",
+      "integrity": "sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==",
       "pin": "upstream-pnpm-lock"
     },
     {
@@ -86,6 +128,13 @@
       "pin": "upstream-pnpm-lock"
     },
     {
+      "name": "diff",
+      "version": "9.0.0",
+      "location": "node_modules/diff",
+      "integrity": "sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
       "name": "dotenv",
       "version": "18.0.1",
       "location": "node_modules/dotenv",
@@ -107,10 +156,45 @@
       "pin": "upstream-pnpm-lock"
     },
     {
+      "name": "fast-sha256",
+      "version": "1.3.0",
+      "location": "node_modules/fast-sha256",
+      "integrity": "sha512-n11RGP/lrWEFI/bWdygLxhI+pVeo1ZYIVwvvPkW7azl/rOy+F3HYRZ2K5zeE9mmkhQppyv9sQFx0JM9UabnpPQ==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "fast-string-truncated-width",
+      "version": "3.0.3",
+      "location": "node_modules/fast-string-truncated-width",
+      "integrity": "sha512-0jjjIEL6+0jag3l2XWWizO64/aZVtpiGE3t0Zgqxv0DPuxiMjvB3M24fCyhZUO4KomJQPj3LTSUnDP3GpdwC0g==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "fast-string-width",
+      "version": "3.0.2",
+      "location": "node_modules/fast-string-width",
+      "integrity": "sha512-gX8LrtNEI5hq8DVUfRQMbr5lpaS4nMIWV+7XEbXk2b8kiQIizgnlr12B4dA3ZEx3308ze0O4Q1R+cHts8kyUJg==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "fast-wrap-ansi",
+      "version": "0.2.2",
+      "location": "node_modules/fast-wrap-ansi",
+      "integrity": "sha512-7F2Fl+TjRSenLqlU3UjSH0iyqopqoZIu7eZVpEirP2g1GtWa2G/ecEmBdgz31+Mxr+ELclgg6sokpSFIQiZ02Q==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
       "name": "figures",
       "version": "6.1.0",
       "location": "node_modules/figures",
       "integrity": "sha512-d+l3qxjSesT4V7v2fh+QnmFnUWv9lSpjarhShNTgBOfA0ttejbQUAlHLitbjkoRiDulW0OPoQPYIGhIC8ohejg==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "get-east-asian-width",
+      "version": "1.6.0",
+      "location": "node_modules/get-east-asian-width",
+      "integrity": "sha512-QRbvDIbx6YklUe6RxeTeleMR0yv3cYH6PsPZHcnVn7xv7zO1BHN8r0XETu8n6Ye3Q+ahtSarc3WgtNWmehIBfA==",
       "pin": "upstream-pnpm-lock"
     },
     {
@@ -132,6 +216,13 @@
       "version": "8.0.1",
       "location": "node_modules/human-signals",
       "integrity": "sha512-eKCa6bwnJhvxj14kZk5NCPc6Hb6BdsU9DZcOnmQKSnO1VKrfV0zCvtttPZUsBvjmNDn8rpcJfpwSYnHBjc95MQ==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "ignore",
+      "version": "7.0.9",
+      "location": "node_modules/ignore",
+      "integrity": "sha512-brTTsvFRt5C1gGHtPst/281UjPD5t9fBqbgoMPlVWy11ZLTPfu7HxK4ZYqO9H7o/yC9rSTCI85EaQ4OoY12qYw==",
       "pin": "upstream-pnpm-lock"
     },
     {
@@ -174,6 +265,13 @@
       "version": "11.5.2",
       "location": "node_modules/lru-cache",
       "integrity": "sha512-4pfM1Ff0x50o0tQwb5ucw/RzNyD0/YJME6IVcStalZuMWxdt3sR3huStTtxz4PUmvZfRguvDejasvQ2kifR11g==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "marked",
+      "version": "18.0.11",
+      "location": "node_modules/marked",
+      "integrity": "sha512-HnslJfsZkRPBDJRHvVtAaWlZHEpSu7u8LgQuJCELjRKuWR+hpq4A7sLq3p8HaI9ypVoXDXxV34CsQJEe1+J5Aw==",
       "pin": "upstream-pnpm-lock"
     },
     {
@@ -247,6 +345,13 @@
       "pin": "upstream-pnpm-lock"
     },
     {
+      "name": "rastermill",
+      "version": "0.3.3",
+      "location": "node_modules/rastermill",
+      "integrity": "sha512-tnNH+jymMZxcGfR+w32fbD9xpDytCrHEyYx/OCFTTIf2gAcaiasUSurBA3lObRrRHy1leitG0QRfJB6mV/SJ4w==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
       "name": "readdirp",
       "version": "5.1.1",
       "location": "node_modules/readdirp",
@@ -265,6 +370,20 @@
       "version": "4.1.0",
       "location": "node_modules/signal-exit",
       "integrity": "sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "sisteransi",
+      "version": "1.0.5",
+      "location": "node_modules/sisteransi",
+      "integrity": "sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==",
+      "pin": "upstream-pnpm-lock"
+    },
+    {
+      "name": "standardwebhooks",
+      "version": "1.1.1",
+      "location": "node_modules/standardwebhooks",
+      "integrity": "sha512-bCbX9ZEyFkWPsRz7Bl3NuQUJohmwGSev/yhr7vhaGPlc4AfIrspIRa6cPTBuI1ItmrTDJ4d/S2hCsfe4+vQGnQ==",
       "pin": "upstream-pnpm-lock"
     },
     {

@@ -1070,13 +1070,13 @@ def test_flush_runs_after_the_reply_once_per_compaction_cycle(client, lab, monke
     lab.settings.context_window_tokens = 5_333
     engine = use_engine(monkeypatch, StubEngine(
         [("Bir.", []), ("İki.", []), *flush_write(lab, "- Redis 7.2 staging upgrade done."), ("Üç.", [])],
-        usage={"promptTokens": 1_500, "completionTokens": 40, "totalTokens": 1_540},
+        usage={"promptTokens": 1_990, "completionTokens": 40, "totalTokens": 2_030},
     ))
     client.get("/api/lab/state")
     before = {name: (lab.root / name).read_text(encoding="utf-8") for name in ("AGENTS.md", "SOUL.md", "USER.md")}
 
     first = send(client, "Bugün staging ortamında Redis'i 7.2 sürümüne yükselttik.")
-    engine.usage = {"promptTokens": 1_990, "completionTokens": 40, "totalTokens": 2_030}
+    engine.usage = {"promptTokens": 2_000, "completionTokens": 40, "totalTokens": 2_040}
     second = send(client, "CI süresi 14 dakikadan 9 dakikaya indi.")
     third = send(client, "Yarın yük testi var.")
 
@@ -1084,8 +1084,9 @@ def test_flush_runs_after_the_reply_once_per_compaction_cycle(client, lab, monke
     assert [item["reason"] for item in decisions] == ["under_threshold", "token_threshold", "already_flushed"]
     assert decisions[1]["threshold"] == 2_000
     assert (decisions[1]["reserveTokensFloor"], decisions[1]["softThresholdTokens"]) == (1_333, 2_000)
-    # Post-reply maintenance counts no prompt estimate (promptForEstimate: "").
-    assert decisions[1]["totalTokens"] == 1_990 + 40 and "promptTokenEstimate" not in decisions[1]
+    # Empty maintenance prompts do not read output usage for fresh persisted totals.
+    assert decisions[0]["totalTokens"] == 1_990  # 1,990 + 40 does not trigger the flush.
+    assert decisions[1]["totalTokens"] == 2_000 and "promptTokenEstimate" not in decisions[1]
     assert decisions[1]["tokenSource"] == "provider usage"
     assert decisions[1]["order"].startswith("after the reply")
     # The reply streams first; the flush turn runs after it and never reaches the chat.

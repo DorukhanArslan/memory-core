@@ -9,15 +9,20 @@ const context = JSON.parse(fs.readFileSync(contextPath, "utf8"));
 const request = JSON.parse(fs.readFileSync(0, "utf8"));
 if (!Array.isArray(request.cases) || request.cases.length !== 1) throw Error("Use one fresh release process per case");
 if (context.providerMode !== "none") throw Error("Only provider-none release comparisons are supported");
-const { runIndexLifecycle } = await import(new URL("./index-lifecycle.mjs", import.meta.url).href);
+const operations = {
+  "index-lifecycle-runtime": ["index-lifecycle.mjs", "runIndexLifecycle"],
+  "flush-trigger-runtime": ["flush-runtime.mjs", "runFlushRuntime"],
+};
 const results = [];
 for (const testCase of request.cases) {
   const caseHash = crypto.createHash("sha256").update(testCase.id).digest("hex");
   const evidenceDirectory = path.join(context.evidenceDirectory, caseHash);
   fs.mkdirSync(evidenceDirectory, { recursive: true });
   try {
-    if (testCase.operation !== "index-lifecycle-runtime") throw Error("Unsupported release oracle operation");
-    const result = await runIndexLifecycle(testCase.input, {
+    const binding = operations[testCase.operation];
+    if (!Object.hasOwn(operations, testCase.operation)) throw Error("Unsupported release oracle operation");
+    const adapter = await import(new URL(binding[0], import.meta.url).href);
+    const result = await adapter[binding[1]](testCase.input, {
       ...context.runtime, evidenceDirectory,
       stateDirectory: context.stateDirectory, configPath: context.configPath,
     });

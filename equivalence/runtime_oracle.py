@@ -25,6 +25,12 @@ MAX_DIAGNOSTIC_BYTES = 16 * 1024 * 1024
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
 _TRACE = re.compile(r"([1-9][0-9]*)-([0-9]+)\.jsonl\Z")
 _CONTEXT_ENV = "MEMORY_EQ_RELEASE_CONTEXT"
+_OPERATIONS = {
+    "index-lifecycle-runtime": ("index-lifecycle.mjs", None, True),
+    "flush-trigger-runtime": (
+        "flush-runtime.mjs", "dist/agent-runner-memory-Cc4lCZcs.mjs", False,
+    ),
+}
 
 
 class RuntimeOracleError(ValueError):
@@ -170,7 +176,8 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("Release oracle comparisons require one fresh isolated case.")
         case = cases[0]
         row = result["results"][0]
-        if (not isinstance(row, dict) or case.get("operation") != "index-lifecycle-runtime"
+        operation = case.get("operation")
+        if (not isinstance(row, dict) or operation not in _OPERATIONS
                 or row.get("id") != case.get("id") or type(row.get("ok")) is not bool
                 or set(row) != ({"id", "ok", "result"} if row["ok"] else {"id", "ok", "error"})):
             raise RuntimeOracleError("The release oracle returned an unexpected case identity.")
@@ -233,13 +240,21 @@ class ReleaseOracleExecution:
                     raise RuntimeOracleError("A runtime import has an unknown authority.")
         if not any(item["isMainThread"] for item in bootstrap):
             raise RuntimeOracleError("The release main process did not execute its trusted preload.")
+        adapter, required_owner, requires_worker = _OPERATIONS[operation]
         if not {str((ROOT / "equivalence" / name).resolve())
-                for name in ("release-oracle.mjs", "index-lifecycle.mjs")} <= local_imports:
-            raise RuntimeOracleError("The reviewed release runner and lifecycle adapter did not execute.")
-        if not any(item["path"].endswith("/memory-index.worker.js") for item in worker_imports):
+                for name in ("release-oracle.mjs", adapter)} <= local_imports:
+            raise RuntimeOracleError("The reviewed release runner and case adapter did not execute.")
+        if required_owner is not None and ("node_modules/openclaw", required_owner) not in loaded:
+            raise RuntimeOracleError("The actual native flush runtime owner did not execute.")
+        if requires_worker and not any(
+            item["path"].endswith("/memory-index.worker.js") for item in worker_imports
+        ):
             raise RuntimeOracleError("The actual native memory worker did not inherit runtime protection.")
         release_sources = [loaded[key] for key in sorted(loaded)]
-        validate_release_sources(self.config, release_sources)
+        if required_owner is None:
+            validate_release_sources(self.config, release_sources)
+        else:
+            validate_release_sources(self.config, release_sources, required_entry=required_owner)
         case_hash = _digest(case["id"].encode("utf-8"))
         evidence = self.evidence_directory / case_hash / "native-raw.json"
         raw = _regular(evidence, MAX_DIAGNOSTIC_BYTES)

@@ -39,7 +39,7 @@ function trace(event) {
   if (fs.existsSync(traceFile) && fs.statSync(traceFile).size > 8 * 1024 * 1024) throw Error("Runtime trace limit exceeded");
   fs.appendFileSync(traceFile, JSON.stringify({ ...event, pid: process.pid, threadId }) + "\n", { mode: 0o600 });
 }
-trace({ event: "bootstrap", isMainThread, contextSha256: hash(rawContext), preloadSha256: own.sha256,
+trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: hash(rawContext), preloadSha256: own.sha256,
         fetchDenied: true, providerMode: "none" });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.

@@ -18,6 +18,8 @@ from memory_core.heartbeat import (
     is_silent_reply_payload_text,
 )
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
+from memory_core.redact import capture_sensitive_text_redaction_snapshot, create_sensitive_text_redactor
+from memory_core.secret_registry import get_secret_redaction_registry_revision
 from memory_core.session_artifacts import (
     is_session_archive_artifact_name,
     is_usage_counted_session_transcript_file_name,
@@ -356,24 +358,39 @@ class MemoryCoreSessionCorpus:
         if file.transcript_source == "sqlite":
             if self.catalog is None or file.session_id is None:
                 raise ValueError("SQLite transcript projection requires its authoritative catalog")
-            snapshot = self.catalog.read_transcript(file.session_id, session_key=file.session_key)
-            if snapshot is None:
-                return None
-            entry = build_session_entry(
-                events=snapshot.events,
-                mtime_ms=file.updated_at_ms if file.updated_at_ms is not None else snapshot.updated_at_ms,
-                session_key=file.session_key, session_kind=file.session_kind,
-                generated_by_dreaming_narrative=file.generated_by_dreaming_narrative,
-                generated_by_cron_run=file.generated_by_cron_run,
-                runtime_identity=self.runtime_identity, redact_text=self.redact_text,
-                on_transcript_message=on_transcript_message,
+            # The native background SQLite task receives one exact-secret
+            # snapshot and may publish only while its registry revision holds.
+            # Observers, host callbacks and process-local incognito sources keep
+            # their live in-process policy, just like the native callback path.
+            guarded = (
+                on_transcript_message is None and self.redact_text is None
+                and not is_incognito_session_key(file.session_key or "")
+                and self.catalog._memory_uri is None
             )
-            entry._extra.update({
-                "path": file.rel_path, "absPath": str(file.abs_path),
-                "mtimeMs": file.updated_at_ms if file.updated_at_ms is not None else snapshot.updated_at_ms,
-                "revisionMs": snapshot.mutation_at_ms, "size": snapshot.size_bytes,
-            })
-            return entry
+            for _attempt in range(2 if guarded else 1):
+                redaction = capture_sensitive_text_redaction_snapshot() if guarded else None
+                snapshot = self.catalog.read_transcript(file.session_id, session_key=file.session_key)
+                entry = None if snapshot is None else build_session_entry(
+                    events=snapshot.events,
+                    mtime_ms=file.updated_at_ms if file.updated_at_ms is not None else snapshot.updated_at_ms,
+                    session_key=file.session_key, session_kind=file.session_kind,
+                    generated_by_dreaming_narrative=file.generated_by_dreaming_narrative,
+                    generated_by_cron_run=file.generated_by_cron_run,
+                    runtime_identity=self.runtime_identity,
+                    redact_text=create_sensitive_text_redactor(redaction) if redaction else self.redact_text,
+                    apply_default_redaction=not guarded,
+                    on_transcript_message=on_transcript_message,
+                )
+                if redaction and redaction.registry_revision != get_secret_redaction_registry_revision():
+                    continue
+                if entry is not None:
+                    entry._extra.update({
+                        "path": file.rel_path, "absPath": str(file.abs_path),
+                        "mtimeMs": file.updated_at_ms if file.updated_at_ms is not None else snapshot.updated_at_ms,
+                        "revisionMs": snapshot.mutation_at_ms, "size": snapshot.size_bytes,
+                    })
+                return entry
+            raise MemoryToolError("Session transcript redaction changed during preparation; retry the operation.")
         try:
             return self._read_file_index_entry(file, on_transcript_message=on_transcript_message)
         except Exception:

@@ -52,24 +52,24 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest verified bounded baseline has **47/128 acceptance conditions (36.7%)**, with
-**81 conditions** remaining. This percentage counts unweighted verified conditions; it is
+The latest verified bounded baseline has **52/128 acceptance conditions (40.6%)**, with
+**76 conditions** remaining. This percentage counts unweighted verified conditions; it is
 not engineering effort, elapsed work or a time estimate. The fixed scope remains 64 contracts
-and 128 conditions. The latest durable-context batch targeted **+2** and verified
-**+2**, from **45 to 47/128**.
+and 128 conditions. The latest storage-and-turn-trust batch targeted **+5** and verified
+**+5**, from **47 to 52/128**.
 
-The fresh integrated report executes **1,179 cases: 1,175 matches,
+The fresh integrated report executes **1,239 cases: 1,235 matches,
 4 visible uncredited differences and 0 blocked cases**, with no runner errors.
-All **4,521 regression tests** and both clean package consumers pass. The same 1,625
+All **4,768 regression tests** and both clean package consumers pass. The same 1,625
 historical/live skips grant no acceptance credit. The full gate remains `mismatched`;
 these results do not establish complete OpenClaw equivalence.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 22 | 44 | 0 |
-| Partial | 3 | 3 | 3 |
-| Pending verification | 39 | 0 | 78 |
-| Total | 64 | 47 | 81 |
+| Complete | 24 | 48 | 0 |
+| Partial | 4 | 4 | 4 |
+| Pending verification | 36 | 0 | 72 |
+| Total | 64 | 52 | 76 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -80,10 +80,10 @@ Current status of all 64 contracts:
 
 | No. | Contract | Status | Verified conditions |
 | ---: | --- | --- | ---: |
-| 1 | `storage.discovery` | Pending verification | 0/2 |
+| 1 | `storage.discovery` | Complete | 2/2 |
 | 2 | `storage.path-safety` | Pending verification | 0/2 |
 | 3 | `storage.atomic-writes` | Pending verification | 0/2 |
-| 4 | `storage.workspace-isolation` | Pending verification | 0/2 |
+| 4 | `storage.workspace-isolation` | Complete | 2/2 |
 | 5 | `lexical.tokenization` | Complete | 2/2 |
 | 6 | `lexical.fts-query` | Complete | 2/2 |
 | 7 | `lexical.bm25` | Complete | 2/2 |
@@ -131,7 +131,7 @@ Current status of all 64 contracts:
 | 49 | `forget.lineage-tombstones` | Pending verification | 0/2 |
 | 50 | `forget.index-fence` | Pending verification | 0/2 |
 | 51 | `trust.secret-redaction` | Pending verification | 0/2 |
-| 52 | `trust.configured-redaction` | Pending verification | 0/2 |
+| 52 | `trust.configured-redaction` | Partial | 1/2 |
 | 53 | `heartbeat.scratch` | Pending verification | 0/2 |
 | 54 | `heartbeat.turn-decisions` | Pending verification | 0/2 |
 | 55 | `automation.job-state` | Pending verification | 0/2 |
@@ -149,10 +149,10 @@ Current status of all 64 contracts:
 
 ### Storage and workspace
 
-- [ ] **`storage.discovery` — Discover exactly the eligible memory files.** Compare roots, nested Markdown, case sensitivity, order, hidden artifacts and disappearing files. Exclude or admit symlinks and non-regular files exactly as the pinned reference does.
+- [x] **`storage.discovery` — Discover exactly the eligible memory files.** Compare roots, nested Markdown, case sensitivity, order, hidden artifacts and disappearing files. Exclude or admit symlinks and non-regular files exactly as the pinned reference does.
 - [ ] **`storage.path-safety` — Enforce memory path and read boundaries.** Exercise absolute, relative, traversal, encoded and symlink paths. Compare rejected operations, result shapes and absence of unintended writes.
 - [ ] **`storage.atomic-writes` — Publish writes atomically.** Compare append, replace, exclusive creation and concurrent rename outcomes. Inject write, flush, fsync and publication failures and inspect the surviving files.
-- [ ] **`storage.workspace-isolation` — Keep workspace and subject state separate.** Reuse one host configuration across distinct workspaces and subjects. Prove files, indexes, recalls and maintenance state cannot cross the selected boundary.
+- [x] **`storage.workspace-isolation` — Keep workspace and subject state separate.** Reuse one host configuration across distinct workspaces and subjects. Prove files, indexes, recalls and maintenance state cannot cross the selected boundary.
 
 ### Lexical and chunking
 
@@ -1748,3 +1748,74 @@ Logs are `/workspace/scratch/memory-core-durable-full-tests.log` and
 `.equivalence-results/durable-distribution-lifecycle-final.log`. The integrated report records
 clean tested implementation `74162b9`; this results update changes documentation only.
 No paid provider requests occurred and no provider credentials were forwarded.
+
+## Verified Storage and Stored Turn Trust Batch
+
+This fixed-scope batch targeted and verified **five additional acceptance conditions**, from
+**47 to 52/128 (40.6%)**. There are **76 conditions remaining**, with **24 contracts complete,
+four partial and 36 pending verification**. These are unweighted verified condition counts,
+not a percentage of engineering effort. Discovery and workspace isolation each close both
+conditions; configured redaction closes only its owner/taint/provenance boundary. Its regex,
+mode and full-context outcome condition remains open. No acceptance scope was added or removed.
+
+The final integrated report is `.equivalence-results/storage-turn-trust-locked-full.json`:
+**1,239 cases, 1,235 matched, four visible uncredited differences, zero blocked cases and no
+runner errors**, completed in 1,597.315089 seconds. Its clean tested commit is
+`d3fc35ce86e99914d6a4d3dc667197ffa55504e1`, with 143 SDK source files and source SHA-256
+`d7488a5523e3c868c7ee23725964c365de7685ff3d8aa5322033ea9f371830f0`.
+The scope SHA-256 remains
+`a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9`.
+Reference OpenClaw remains `v2026.9.9`, commit
+`bcfc88812a35243893585dbeca87ca41b48272ca`. Runtime profiles use the authenticated
+published release, with `sourceBuildReproduced: false`; they do not claim a rebuilt release.
+
+Discovery evidence retains 76 actual original-source scenarios and their SDK counterparts,
+including UTF-16 wildcards, Unicode 17 POSIX classes, roots, pruning, duplicates, symlinks,
+non-regular files, disappearing sources and operational errors. Complete error type, message,
+code, path and cause are compared; original language-specific exception facts remain raw.
+The generic SDK IO bridge follows the original Node system-error facts rather than rewriting
+individual test results. Glob parsing uses the declared `bracex` and `wcmatch` dependencies;
+the Unicode facts have a reproducible exact-runtime generator and Unicode license notice.
+
+Three genuine workspace lifecycles reuse one original multi-agent configuration and one SDK
+host configuration across selected subjects. The predeclared host-routing mapping preserves
+both actual configurations and namespaces. Real files, index publication, recalls, daily
+checkpoint state and handle reopen are observed. Direct mismatched workspace configuration
+now fails before side effects. This proves the stated workspace/subject boundary; it does
+not claim interchangeable database schemas or the separate full process-restart contract.
+The complete 79-case focused storage/error report is retained as
+`storage-boundaries-full-errors-79.json` in the storage worktree.
+
+Two original AgentLoop flows exercise actual registered local/network tools, failed network
+execution, controlled retries, new owner/non-owner turns, sticky file quarantine, assistant
+trust stamping and a fresh-process stored-session reopen. The only source substitution is
+one authenticated, unchanged, dependency-free original turn-taint module; all other owners
+remain in the official runtime. Its explicit mixed-source profile is separate from the
+ordinary release profile. Complete outer tool returns/errors, messages, live trust, artifact
+records and stored source provenance are compared. Native coding-tool presentation and
+internal diagnostic hashes remain raw and are outside this declared outer-tool comparison.
+The original failed-network hash prefix is validated from the actual thrown outcome; no
+hash is fabricated or rewritten. The first rejected validator capture remains unverified;
+the corrected two-case report matches both cases.
+
+The final run uses **Node 24.16.0, ICU 78.3, Unicode 17**, with executable SHA-256
+`b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca1341bb059`, and Python 3.12.14
+with the declared locked `bracex 3.2.2` and `wcmatch 10.2.1`. Preliminary package resolution
+failed because registry range metadata was absent from the offline cache. The superseded
+full comparison was explicitly cancelled and retained as unverified before updating the
+older local glob dependencies. The first full regression run also exposed a stale test
+expecting an unmasked token from a now-redacted tool diagnostic; the exact masked expectation
+was corrected. No production policy or failed result was weakened to pass these checks.
+
+Fresh full regressions pass **4,768 tests in 345.14 seconds**. The same **1,625 historical/live
+skips add no credit**. Both clean offline wheel and sdist consumers pass: core-only imports,
+real dispatch, live write provenance, stored trust, append/continuation/replay, Unicode glob
+facts, fail-closed workspace ownership and public typing. Evidence logs are
+`/workspace/scratch/memory-core-storage-trust-locked-full-tests.log` and
+`.equivalence-results/storage-trust-distribution-locked-deps.log`.
+
+All four ordinary uncredited differences remain visible: Unicode path collation, symlink-loop
+cause shape, first recall during a native background refresh, and same-size/same-millisecond
+compressed transcript cache freshness. No score tolerance or diagnostic reassignment hides
+them. The full gate remains **mismatched**, not full equivalence. There were zero paid provider
+calls and no provider credentials forwarded. This closeout changes documentation only.

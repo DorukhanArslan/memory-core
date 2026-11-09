@@ -13,6 +13,7 @@ from copy import deepcopy
 from dataclasses import fields, is_dataclass
 import hashlib
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import sqlite3
@@ -47,6 +48,23 @@ def _source_path(value):
     if path.is_absolute() or ".." in path.parts or len(path.parts) != 2 or path.parts[0] != "memory" or path.suffix != ".md":
         raise ValueError("The saved source must be a relative daily memory Markdown path")
     return str(path)
+
+
+def _validate_policy(policy):
+    if (not isinstance(policy, dict) or set(policy) != {"configuredSources", "rememberAcrossConversations",
+            "configuredSessionMemory", "sourceMtimeMs"} or policy["configuredSources"] != ["memory"]
+            or type(policy["rememberAcrossConversations"]) is not bool or policy["configuredSessionMemory"] is not False
+            or type(policy["sourceMtimeMs"]) not in (int, float) or not math.isfinite(policy["sourceMtimeMs"])
+            or policy["sourceMtimeMs"] < 0):
+        raise ValueError("The source-policy experiment accepts only its explicit bounded host policy")
+
+
+def _source_metadata(workspace, relative):
+    source = _source(workspace, relative)
+    info = (workspace / relative).lstat()
+    return {"source": source, "stat": {"dev": info.st_dev, "ino": info.st_ino, "mode": info.st_mode,
+        "nlink": info.st_nlink, "size": info.st_size, "atimeNs": str(info.st_atime_ns),
+        "mtimeNs": str(info.st_mtime_ns), "ctimeNs": str(info.st_ctime_ns)}}
 
 
 def _source(workspace: Path, relative: str):
@@ -112,9 +130,18 @@ async def _run_phase(request):
     from memory_core.host.lifecycle import HostModelResult, HostSessionRunner
     from memory_core.host.session import SessionState, TurnUsage
     from memory_core.session_catalog import MemorySessionCatalog
+    from memory_core.session_visibility import resolve_memory_search_source_policy
 
-    if set(request) != {"identity", "nowMs", "phase", "directory", "sourcePath"}:
+    required = {"identity", "nowMs", "phase", "directory", "sourcePath"}
+    if set(request) not in (required, required | {"policy"}):
         raise ValueError("A host child accepts only identity, clock, its own phase and owned locations")
+    selected_policy = request.get("policy")
+    if "policy" in request:
+        _validate_policy(selected_policy)
+    resolved_policy = (resolve_memory_search_source_policy(selected_policy["configuredSources"],
+        remember_across_conversations=selected_policy["rememberAcrossConversations"],
+        configured_session_memory=selected_policy["configuredSessionMemory"])
+        if selected_policy is not None else None)
     root = Path(request["directory"])
     if not root.is_absolute() or root.is_symlink():
         raise ValueError("A host phase requires its real absolute owned directory")
@@ -132,6 +159,8 @@ async def _run_phase(request):
            "implementationRoot": str(Path(memory_core.__file__).resolve().parents[1]),
            "request": deepcopy(request), "environmentKeys": sorted(os.environ),
            "opens": [], "turns": [], "snapshots": []}
+    if selected_policy is not None:
+        raw["policyResolution"] = {"input": deepcopy(selected_policy), "result": deepcopy(resolved_policy)}
     runners = []
 
     def locations(agent):
@@ -148,11 +177,13 @@ async def _run_phase(request):
                   "catalogBefore": _sqlite_snapshot(paths["catalog"]), "indexBefore": _sqlite_snapshot(paths["index"])}
         catalog = MemorySessionCatalog(paths["catalog"], agent_id=agent, store_path=paths["sessionStore"], clock_ms=lambda: now)
         config = MemoryConfig(workspace_dir=paths["workspace"], agent_id=agent, store_path=paths["index"],
-            citation_mode="off", session_search=False, search_max_results=5, search_min_score=0,
+            citation_mode="off", session_search=resolved_policy["sessionMemory"] if resolved_policy is not None else False,
+            search_max_results=5, search_min_score=0,
             flags=FeatureFlags(vector_search=False, temporal_decay=False))
         runner = HostSessionRunner.open(paths["workspace"], config=config, catalog=catalog,
             session=SessionState.new(session_key=selected["sessionKey"], session_id=selected["sessionId"]),
-            source_policy={"sources": ["memory"]}, timezone="UTC", now_ms=lambda: now)
+            source_policy=resolved_policy if resolved_policy is not None else {"sources": ["memory"]},
+            timezone="UTC", now_ms=lambda: now)
         record.update(config=_plain(config), session=runner.session.to_json(),
                       indexAfterOpen=runner.kit.memory.store.read_published_index())
         raw["opens"].append(record)
@@ -203,8 +234,21 @@ async def _run_phase(request):
             observed = _observed_tool_result(turn, "save-daily-note")
             record["toolCalls"].append({"name": "append_daily_note", "id": "save-daily-note", "arguments": arguments,
                                        "assistant": assistant, "returned": deepcopy(result), "observed": observed})
+            if selected_policy is not None:
+                source_relative = result["path"]
+                path = runner.kit.memory.workspace.resolve_memory_path(source_relative)
+                metadata = {"operation": "os.utime", "path": str(path),
+                    "before": _source_metadata(runner.kit.memory.workspace.root, source_relative),
+                    "publishedBefore": runner.kit.memory.store.read_published_index()}
+                instant_ns = int(selected_policy["sourceMtimeMs"] * 1_000_000)
+                metadata["arguments"] = {"ns": [str(instant_ns), str(instant_ns)]}
+                returned = os.utime(path, ns=(instant_ns, instant_ns))
+                metadata["returnedNone"] = returned is None
+                metadata["after"] = _source_metadata(runner.kit.memory.workspace.root, source_relative)
+                metadata["publishedAfterMetadataChange"] = runner.kit.memory.store.read_published_index()
+                record["sourceMetadata"] = metadata
             record["terminalInput"] = _model_input(turn)
-            record["assistant"] = _assistant_text(turn, "Saved the note.")
+            record["assistant"] = _assistant_text(turn, phase.get("saveAck", "Saved the note."))
             return HostModelResult(TurnUsage(20, 3))
 
         outcome = await runner.run_turn(phase["savePrompt"], execute=execute, request_id="host-restart-save")
@@ -285,6 +329,8 @@ def run_host_restart(arguments: dict[str, Any], *, evidence_directory: Path | No
     value = deepcopy(arguments)
     if value.get("kind") != "host-restart-recall" or [phase.get("label") for phase in value.get("phases", [])] != ["produce", "restart"]:
         raise ValueError("Host restart requires a producer process followed by one restarted reader process")
+    if "policy" in value:
+        _validate_policy(value["policy"])
     raw = {"kind": "host-restart-recall", "coordinatorPid": os.getpid(), "input": value, "phases": []}
     results = []
     with tempfile.TemporaryDirectory(prefix="python-host-restart-") as temporary:
@@ -298,6 +344,8 @@ def run_host_restart(arguments: dict[str, Any], *, evidence_directory: Path | No
             for phase in value["phases"]:
                 request = {"identity": value["identity"], "nowMs": value["nowMs"], "phase": phase,
                            "directory": str(root), "sourcePath": relative}
+                if "policy" in value:
+                    request["policy"] = deepcopy(value["policy"])
                 wire = json.dumps(request, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
                 argv = [sys.executable, "-m", "equivalence.host_restart_phase_cli"]
                 record = {"label": phase["label"], "request": deepcopy(request), "requestJson": wire,

@@ -79,7 +79,7 @@ from memory_core.session_catalog import MemorySessionCatalog
 from memory_core.session_memory import SessionMemoryResult, SlugGenerator, save_session_memory
 from memory_core.session_visibility import SessionVisibilityContext
 from memory_core.tools.common import MemoryToolError, to_tool_error
-from memory_core.tools.search_factory import prepare_memory_search_arguments
+from memory_core.tools.search_factory import create_memory_search_tool, prepare_memory_search_arguments
 from memory_core.tools.memory_get import (
     MEMORY_GET_TOOL_NAME,
     execute_memory_get_tool,
@@ -88,7 +88,6 @@ from memory_core.tools.memory_get import (
 from memory_core.tools.memory_search import (
     MEMORY_SEARCH_TOOL_NAME,
     MemorySearchToolContext,
-    execute_memory_search_tool,
     memory_search_tool_definition,
 )
 
@@ -436,22 +435,26 @@ class HostKit:
 
     def _memory_search(self, args: dict[str, Any], session: SessionState) -> dict[str, Any]:
         memory = self._memory
-        host_options: dict[str, Any] = {}
-        if self._active_project_keys is not None:
-            host_options["active_project_keys"] = self._active_project_keys
-        if self._session_visibility is not None or self._source_policy is not None:
-            host_options["context"] = MemorySearchToolContext(
-                session_visibility=self._session_visibility,
-                source_policy=self._source_policy,
-            )
-        result = execute_memory_search_tool(
+        tool = create_memory_search_tool(
             memory.config,
             memory.store,
-            args,
+            context=MemorySearchToolContext(
+                clock=self._clock,
+                session_visibility=self._session_visibility,
+                source_policy=self._source_policy,
+            ),
             agent_session_key=session.session_key,
+            active_project_keys=self._active_project_keys,
             runtime_identity=self._identity,
-            **host_options,
         )
+        if tool is None:
+            raise MemoryToolError(
+                "Memory is disabled for this agent. Enable memory search for this agent, then retry.",
+                tool=MEMORY_SEARCH_TOOL_NAME,
+            )
+        # The registered tool owns acquisition, owner validation and its complete
+        # JSON carrier. The kit's established API returns those actual details.
+        result = tool.execute(MEMORY_SEARCH_TOOL_NAME, args)["details"]
         if self._dreaming_enabled and not result.get("unavailable"):
             # tools.ts:491-507: with dreaming enabled, a successful search records its
             # memory-corpus hits (raw, without the Source: citation) off the reply path and

@@ -89,7 +89,7 @@ function sqlObservation(manager) {
 }
 
 export async function runHostRestartPhase(request, stdin = JSON.stringify(request)) {
-  const { directory, runtimeRoot, nowMs, identity, phase, sourcePath } = request;
+  const { directory, runtimeRoot, nowMs, identity, phase, sourcePath, policy } = request;
   if (![directory, runtimeRoot].every(value => typeof value === "string" && path.isAbsolute(value)) ||
       !Number.isFinite(nowMs) || !["produce", "restart"].includes(phase?.label) ||
       typeof sourcePath !== "string" || path.isAbsolute(sourcePath) || sourcePath.split(/[\\/]/).includes("..")) {
@@ -97,6 +97,13 @@ export async function runHostRestartPhase(request, stdin = JSON.stringify(reques
   }
   if (phase.label === "restart" && Object.keys(phase).some(key => !["label", "recall", "beforeGet"].includes(key))) {
     throw Error("The fresh process cannot receive a producer phase or saved content");
+  }
+  if (policy !== undefined && (!policy || typeof policy !== "object" || Array.isArray(policy) ||
+      Object.keys(policy).sort().join(",") !== "configuredSessionMemory,configuredSources,rememberAcrossConversations,sourceMtimeMs" ||
+      !Array.isArray(policy.configuredSources) || policy.configuredSources.some(source => !["memory", "sessions"].includes(source)) ||
+      typeof policy.rememberAcrossConversations !== "boolean" || typeof policy.configuredSessionMemory !== "boolean" ||
+      !Number.isFinite(policy.sourceMtimeMs))) {
+    throw Error("The host phase requires the unchanged optional explicit source policy");
   }
   process.env.OPENCLAW_STATE_DIR = path.join(directory, "state");
   process.env.OPENCLAW_CONFIG_PATH = path.join(directory, "openclaw.json");
@@ -119,6 +126,13 @@ export async function runHostRestartPhase(request, stdin = JSON.stringify(reques
     runtimeConfig.setRuntimeConfigSnapshot(cfg); clearConfig = runtimeConfig.clearRuntimeConfigSnapshot;
     const runtime = await imp("dist/extensions/memory-core/manager-runtime.js");
     closeManagers = runtime.closeAllMemoryIndexManagers;
+    if (policy !== undefined) {
+      const { t: resolveMemorySearchConfig } = await imp("dist/memory-search-CIhUURbE.mjs");
+      raw.resolvedMemorySearch = [identity.agentId, identity.isolatedAgentId].map(agentId => ({
+        agentId, config: resolveMemorySearchConfig(cfg, agentId),
+      }));
+      raw.sourceMetadataSetup = [];
+    }
     const lifecycle = await imp("dist/openclaw-agent-db-lifecycle-B8sSLgPo.mjs");
     closeAgentDatabases = lifecycle.s;
     const { configureMemoryCoreDreamingState } = await imp("dist/extensions/memory-core/runtime-api.js");
@@ -214,7 +228,23 @@ export async function runHostRestartPhase(request, stdin = JSON.stringify(reques
         let response, derivation;
         if (save) {
           if (ordinal === 0) response = call(`${label}:write`, "write", { path: save.path, content: save.content });
-          else if (ordinal === 1) { response = terminal("Saved."); done = true; }
+          else if (ordinal === 1) {
+            if (policy !== undefined) {
+              const actualWrite = loop.toolEvents.find(event => event.toolName === "write");
+              if (!actualWrite || actualWrite.isError) throw Error("Source metadata setup requires a completed genuine write result");
+              const filename = path.join(activeWorkspace, save.path);
+              const metadata = { operation: "set-source-mtime", trigger: transported(actualWrite),
+                before: mutationObservation(filename), calls: [] };
+              raw.sourceMetadataSetup.push(metadata);
+              const arguments_ = [filename, policy.sourceMtimeMs / 1000, policy.sourceMtimeMs / 1000];
+              const result = fsSync.utimesSync(...arguments_);
+              metadata.calls.push({ operation: "utimesSync", arguments: arguments_, returnedUndefined: result === undefined });
+              metadata.after = mutationObservation(filename);
+              metadata.contentUnchanged = metadata.before.hex === metadata.after.hex;
+              if (!metadata.contentUnchanged) throw Error("The source metadata operation changed the actual saved corpus bytes");
+            }
+            response = terminal(phase.saveAck ?? "Saved."); done = true;
+          }
           else throw Error("The save model requested an undeclared response");
         } else if (ordinal === 0) {
           response = call(`${label}:search`, "memory_search", { query: phase.recall.query, maxResults: 5, minScore: 0, corpus: "memory" });

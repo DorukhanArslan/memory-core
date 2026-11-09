@@ -34,6 +34,19 @@ export async function runHostRestartRuntime(input, runtimeConfig) {
       query: { maxResults: 5, minScore: 0, hybrid: { temporalDecay: { enabled: false } } },
     } },
   };
+  if (input.policy !== undefined) {
+    const policy = input.policy;
+    if (!policy || typeof policy !== "object" || Array.isArray(policy) ||
+        Object.keys(policy).sort().join(",") !== "configuredSessionMemory,configuredSources,rememberAcrossConversations,sourceMtimeMs" ||
+        !Array.isArray(policy.configuredSources) || policy.configuredSources.some(source => !["memory", "sessions"].includes(source)) ||
+        typeof policy.rememberAcrossConversations !== "boolean" || typeof policy.configuredSessionMemory !== "boolean" ||
+        !Number.isFinite(policy.sourceMtimeMs)) {
+      throw Error("The optional shared source policy requires explicit recognized controls and source metadata");
+    }
+    config.memory.search.sources = [...policy.configuredSources];
+    config.memory.search.rememberAcrossConversations = policy.rememberAcrossConversations;
+    config.memory.search.experimental = { sessionMemory: policy.configuredSessionMemory };
+  }
   await fs.writeFile(path.join(directory, "openclaw.json"), JSON.stringify(config));
   const raw = { kind: input.kind, input, fixtureBase: directory, config,
     coordinatorPid: process.pid, coordinatorPpid: process.ppid, children: [] };
@@ -42,7 +55,8 @@ export async function runHostRestartRuntime(input, runtimeConfig) {
     for (const phase of input.phases) {
       const request = { directory, runtimeRoot: runtimeConfig.runtimeRoot,
         nowMs: input.nowMs, identity: input.identity, phase,
-        sourcePath: input.phases[0].write.path };
+        sourcePath: input.phases[0].write.path,
+        ...(input.policy === undefined ? {} : { policy: input.policy }) };
       const stdin = JSON.stringify(request);
       const argv = [fileURLToPath(new URL("./host-restart-phase-cli.mjs", import.meta.url))];
       const startedAtNs = process.hrtime.bigint().toString();

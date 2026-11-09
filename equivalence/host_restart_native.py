@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LOCAL = ("host-restart-entry.mjs", "host-restart-preload.mjs", "host-restart-runtime.mjs",
          "host-restart-phase.mjs", "host-restart-phase-cli.mjs", "release-preload.mjs",
          "model-runtime-observation.mjs")
+POLICY_LOCAL = ("host-restart-policy-entry.mjs", "host-restart-policy-preload.mjs", *LOCAL[2:])
 
 
 def digest(path):
@@ -26,7 +27,7 @@ def write_json(path, value):
     Path(path).write_text(json.dumps(value, ensure_ascii=True, indent=2, allow_nan=False) + "\n", encoding="utf8")
 
 
-def validate_traces(directory, context, runtime, authority, *, process_pid, coordinator_pid, raw):
+def validate_traces(directory, context, runtime, authority, *, process_pid, coordinator_pid, raw, policy=False):
     from equivalence.host_restart_bindings import (
         REQUIRED_HOST_ARTIFACTS, WRITE_ARTIFACTS, READ_ARTIFACTS,
         PUBLICATION_PARENT_ARTIFACTS, PLUGIN_STATE_PARENT_ARTIFACTS,
@@ -34,6 +35,10 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, coor
     )
 
     originals = {(p["location"], f["path"]): f["sha256"] for p in runtime["packages"] for f in p["files"]}
+    profile_key = "hostRestartPolicyProfile" if policy else "hostRestartProfile"
+    event = "host-restart-policy-bootstrap" if policy else "host-restart-bootstrap"
+    preload = "host-restart-policy-preload.mjs" if policy else "host-restart-preload.mjs"
+    entry = "host-restart-policy-entry.mjs" if policy else "host-restart-entry.mjs"
     locals_ = {item["path"]: item["sha256"] for item in context["allowedLocal"]}
     children = raw["children"]
     if raw["coordinatorPid"] != process_pid or raw["coordinatorPpid"] != coordinator_pid:
@@ -64,15 +69,15 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, coor
                 or trace.name != f'{first["pid"]}-{first["threadId"]}.jsonl'):
             raise ValueError("Missing exact restart process/worker authority")
         bootstraps.append(first)
-        own = [row for row in rows if row.get("event") == "host-restart-bootstrap"]
-        if (len(own) != 1 or own[0].get("profile") != context["hostRestartProfile"]
-                or own[0].get("preloadSha256") != locals_[str(ROOT / "equivalence/host-restart-preload.mjs")]):
+        own = [row for row in rows if row.get("event") == event]
+        if (len(own) != 1 or own[0].get("profile") != context[profile_key]
+                or own[0].get("preloadSha256") != locals_[str(ROOT / "equivalence" / preload)]):
             raise ValueError("Missing independent restart capability attestation")
         for row in rows[1:]:
-            if (row.get("event") not in {"load", "resolve-native", "host-restart-bootstrap"}
+            if (row.get("event") not in {"load", "resolve-native", event}
                     or row.get("pid") != first["pid"] or row.get("threadId") != first["threadId"]):
                 raise ValueError("Unknown, rejected or reassigned restart trace event")
-            if row["event"] == "host-restart-bootstrap":
+            if row["event"] == event:
                 continue
             if row["kind"] == "release":
                 key = row["package"], row["path"]
@@ -93,7 +98,7 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, coor
             or any(row["ppid"] != (coordinator_pid if row["pid"] == process_pid else process_pid) for row in mains)):
         raise ValueError("The real restart process ancestry differs from the protected coordinator")
     for pid in pids:
-        actors = ("host-restart-entry.mjs", "host-restart-runtime.mjs") if pid == process_pid else ("host-restart-phase-cli.mjs", "host-restart-phase.mjs")
+        actors = (entry, "host-restart-runtime.mjs") if pid == process_pid else ("host-restart-phase-cli.mjs", "host-restart-phase.mjs")
         if not {str(ROOT / "equivalence" / name) for name in actors} <= local_loads.get(pid, set()):
             raise ValueError("A real coordinator/host omitted its protected role adapter")
     for child in children:
@@ -102,6 +107,9 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, coor
         loaded = main_loads.get(child["pid"], set())
         required = (*REQUIRED_HOST_ARTIFACTS, *READ_ARTIFACTS, *PUBLICATION_PARENT_ARTIFACTS,
                     *PLUGIN_STATE_PARENT_ARTIFACTS, *(WRITE_ARTIFACTS if child["label"] == "produce" else ()))
+        if policy:
+            from equivalence.host_restart_policy_bindings import ADDITIONAL_REQUIRED_HOST_ARTIFACTS
+            required = (*required, *ADDITIONAL_REQUIRED_HOST_ARTIFACTS)
         missing = sorted(set(required) - loaded)
         if missing:
             raise ValueError(f"The actual host omitted declared original owners: {missing}")
@@ -120,8 +128,12 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, coor
             "traces": [{"name": path.name, "sha256": digest(path), "text": path.read_text()} for path in traces]}
 
 
-def run_native_case(case, node, runtime, directory, *, timeout=120):
-    validate_case(case)
+def _run_native_case(case, node, runtime, directory, *, timeout, policy):
+    if policy:
+        from equivalence.host_restart_policy import CASE_HASHES as hashes, validate_case as validate_literal
+    else:
+        hashes, validate_literal = CASE_HASHES, validate_case
+    validate_literal(case)
     node = Path(node).resolve()
     authority = prepare_model_node_authority(node)
     directory = Path(directory).resolve()
@@ -129,23 +141,27 @@ def run_native_case(case, node, runtime, directory, *, timeout=120):
     traces, evidence = directory / "traces", directory / "evidence"
     traces.mkdir()
     evidence.mkdir()
-    profile = {"kind": "host-restart-recall-development", "operation": case["operation"],
-               "caseId": case["id"], "caseWireSha256": CASE_HASHES[case["id"]],
+    profile_key = "hostRestartPolicyProfile" if policy else "hostRestartProfile"
+    preload = "host-restart-policy-preload.mjs" if policy else "host-restart-preload.mjs"
+    entry = "host-restart-policy-entry.mjs" if policy else "host-restart-entry.mjs"
+    local = POLICY_LOCAL if policy else LOCAL
+    profile = {"kind": "host-restart-policy-development" if policy else "host-restart-recall-development", "operation": case["operation"],
+               "caseId": case["id"], "caseWireSha256": hashes[case["id"]],
                "nodeRuntime": authority, "acceptancePointsAwarded": 0}
     context = {"schemaVersion": 1, "kind": "release-oracle-execution", "runtime": runtime,
                "providerMode": "none", "fetchPolicy": "deny", "approvedNodeRuntime": authority,
-               "hostRestartProfile": profile,
-               "allowedLocal": [{"path": str(ROOT / "equivalence" / name), "sha256": digest(ROOT / "equivalence" / name)} for name in LOCAL],
+               profile_key: profile,
+               "allowedLocal": [{"path": str(ROOT / "equivalence" / name), "sha256": digest(ROOT / "equivalence" / name)} for name in local],
                "traceDirectory": str(traces), "evidenceDirectory": str(evidence),
                "stateDirectory": str(directory / "state"), "configPath": str(directory / "openclaw.json"),
                "approvedReferenceSources": [], "fixtureSourceCaptures": []}
     context_path = directory / "context.json"
     write_json(context_path, context)
     env = {"PATH": str(node.parent) + os.pathsep + os.defpath, "LANG": "C.UTF-8", "TZ": "UTC",
-           "NODE_OPTIONS": f'--import={ROOT / "equivalence/host-restart-preload.mjs"}',
+           "NODE_OPTIONS": f'--import={ROOT / "equivalence" / preload}',
            "MEMORY_EQ_RELEASE_CONTEXT": str(context_path)}
     with (directory / "stdout.json").open("wb") as stdout, (directory / "stderr.log").open("wb") as stderr:
-        process = subprocess.Popen([str(node), str(ROOT / "equivalence/host-restart-entry.mjs")],
+        process = subprocess.Popen([str(node), str(ROOT / "equivalence" / entry)],
             env=env, cwd=ROOT, stdin=subprocess.PIPE, stdout=stdout, stderr=stderr,
             start_new_session=os.name == "posix")
         try:
@@ -167,8 +183,11 @@ def run_native_case(case, node, runtime, directory, *, timeout=120):
     if not isinstance(raw, list) or len(raw) != 1 or Path(raw[0]["fixtureBase"]).parent != evidence:
         raise ValueError("Restart borrowed another case's evidence directory")
     trace = validate_traces(traces, {**context, "_sha256": digest(context_path)}, runtime, authority,
-                            process_pid=process.pid, coordinator_pid=os.getpid(), raw=raw[0])
-    from equivalence.host_restart_evidence import validate_capture
+                            process_pid=process.pid, coordinator_pid=os.getpid(), raw=raw[0], policy=policy)
+    if policy:
+        from equivalence.host_restart_policy_evidence import validate_capture
+    else:
+        from equivalence.host_restart_evidence import validate_capture
     validate_capture(case, raw[0], returned["result"], native=True)
     for item in context["allowedLocal"]:
         if digest(item["path"]) != item["sha256"]:
@@ -178,3 +197,13 @@ def run_native_case(case, node, runtime, directory, *, timeout=120):
     return {"kind": "official-release-host-restart-development", "results": [returned],
             "releaseSources": trace["loaded"], "releaseTrace": trace,
             "runtimeDiagnostics": raw, "evidenceDirectory": str(directory)}
+
+
+def run_native_case(case, node, runtime, directory, *, timeout=120):
+    """The original three-literal capability; policy inputs remain inadmissible."""
+    return _run_native_case(case, node, runtime, directory, timeout=timeout, policy=False)
+
+
+def run_native_policy_case(case, node, runtime, directory, *, timeout=120):
+    """Separate frozen policy capability with the same authenticated transport."""
+    return _run_native_case(case, node, runtime, directory, timeout=timeout, policy=True)

@@ -173,15 +173,7 @@ def test_build_graph_requires_the_model_context_window(tmp_path: Path):
         example.build_graph(_kit(tmp_path), ScriptedChatModel(script=lambda _messages: None))
 
 
-def test_turn_offers_the_kit_tools_and_answers_memory_search(tmp_path: Path, monkeypatch):
-    import memory_core.host.kit as kit_module
-    from memory_core.tools.memory_search import MemorySearchToolContext, execute_memory_search_tool
-
-    context = MemorySearchToolContext(clock=lambda: NOW_MS)
-    monkeypatch.setattr(
-        kit_module, "execute_memory_search_tool",
-        lambda *args, **kwargs: execute_memory_search_tool(*args, context=context, **kwargs),
-    )
+def test_turn_offers_the_kit_tools_and_answers_memory_search(tmp_path: Path):
     kit, model, graph = _graph(tmp_path, memory_script(usage=1_000))
 
     state = _say(graph, "Our codename is velvetkiwi.")

@@ -76,8 +76,12 @@ def _read(case, public, initial, terminal, tool_calls, assistant, *, failure):
     require(public["answer"] == expected == _text(assistant), "The terminal answer did not come from the actual tool result")
 
 
-def validate_capture(case, raw, result, *, native):
-    validate_case(case)
+def _validate_capture(case, raw, result, *, native, policy):
+    if policy:
+        from equivalence.host_restart_policy import validate_case as validate_literal
+    else:
+        validate_literal = validate_case
+    validate_literal(case)
     value = case["input"]
     require(raw["input"] == value and result["provider"] == "none", "The host consumed another case or a provider")
     records = raw["children"] if native else raw["phases"]
@@ -92,6 +96,7 @@ def validate_capture(case, raw, result, *, native):
     for ordinal, record in enumerate(records):
         request = record["request"]
         require(request == {"directory": raw["fixtureBase"], **({"runtimeRoot": request["runtimeRoot"]} if native else {}),
+                **({"policy": value["policy"]} if policy else {}),
                 "identity": identity, "nowMs": value["nowMs"], "phase": value["phases"][ordinal],
                 "sourcePath": value["phases"][0]["write"]["path"]}, "A reader inherited a full case or an undeclared carrier")
         if ordinal == 1:
@@ -162,7 +167,9 @@ def validate_capture(case, raw, result, *, native):
                     require(memory["chunks"] == 0 and token not in _wire(chunks), "The isolated native index contains primary memory")
                 else:
                     snapshot = next(item for item in phase["snapshots"] if item["session"] == "isolated")
-                    require(snapshot["source"]["kind"] == "missing" and not snapshot["published"]["chunks"],
+                    chunks = snapshot["published"]["chunks"]
+                    clean = (not any(item["source"] == "memory" for item in chunks) and token not in _wire(chunks)) if policy else not chunks
+                    require(snapshot["source"]["kind"] == "missing" and clean,
                             "The isolated SDK workspace/index contains the primary corpus")
         source = public_phase["source"]
         if ordinal == 1 and "beforeGet" in request["phase"]:
@@ -181,6 +188,10 @@ def validate_capture(case, raw, result, *, native):
         observed.append(public_phase)
     require(result == {"provider": "none", "phases": observed}, "A comparable result differs from its full host observations")
     return {"structuralCustodyPassed": True, "acceptancePointsAwarded": 0}
+
+
+def validate_capture(case, raw, result, *, native):
+    return _validate_capture(case, raw, result, native=native, policy=False)
 
 
 def replay_case(case, directory):

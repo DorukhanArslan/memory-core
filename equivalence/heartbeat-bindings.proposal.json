@@ -1,0 +1,104 @@
+{
+  "kind": "fixed-heartbeat-scratch-original-bindings",
+  "referenceCommit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+  "sourceBuildReproduced": false,
+  "sourceDeclarations": [
+    {
+      "path": "src/cron/scratch-contract.ts",
+      "sha256": "78a2fc107ad4e5bb2af33accc8728013d77abcf785d0d498207ab9f751c14e27"
+    },
+    {
+      "path": "src/cron/scratch-store.ts",
+      "sha256": "04dc0f6937aa65dc0aaec4ed4eefa9115b1578b26ac65b47af926260b7583712"
+    },
+    {
+      "path": "src/cron/store/key.ts",
+      "sha256": "b0fb6c24eb4104427d3a2767ca041db9cdceac6833972d6fc0d07a26d422c67c"
+    },
+    {
+      "path": "src/cron/store/row-codec.ts",
+      "sha256": "f50366a8ee1a5a5eb075df3a8d80fbf15ee6e6ffd162c1aa59711e2c89aafd54"
+    },
+    {
+      "path": "src/state/openclaw-state-db.ts",
+      "sha256": "8f4f7a1a7cecb4d4e4ab9b762e85785ed1476d66bc195ef8f157efdc7871704c"
+    }
+  ],
+  "compiledArtifacts": [
+    {
+      "path": "dist/scratch-contract-B-Laspel.mjs",
+      "sha256": "48b547c772979d454611a91c29348cae00776c175448eb0756fcfdaa90951c3f",
+      "exports": {
+        "assertCronJobScratchContent": "n",
+        "CRON_JOB_SCRATCH_MAX_BYTES": "t"
+      }
+    },
+    {
+      "path": "dist/scratch-store-BsjpiVxl.mjs",
+      "sha256": "17a3373733a1af33974c11601436fc3a081f21daef252e94c805eef533204768",
+      "exports": {
+        "readCronJobScratchState": "r",
+        "writeCronJobScratch": "o",
+        "deleteCronJobScratch": "t",
+        "hashCronScratchSource": "n",
+        "readHeartbeatMonitorScratch": "i",
+        "readHeartbeatMonitorScratchReadOnly": "a"
+      }
+    },
+    {
+      "path": "dist/row-codec-CFdZvBgt.mjs",
+      "sha256": "a28523efc77832a776926e5735a90f867c8482da97ac8c48aca5dfe4a4bce279",
+      "exports": {
+        "upsertCronJobRow": "h",
+        "replaceCronRows": "u",
+        "deleteCronJobRowInDatabase": "n",
+        "loadCronRows": "a"
+      }
+    },
+    {
+      "path": "dist/key-BBZ40bDq.mjs",
+      "sha256": "2a21777dac5cb9375d52155212eff0ed59b01771b8532a2dcb925bde1e37ab08",
+      "exports": {
+        "cronStoreKey": "t"
+      }
+    },
+    {
+      "path": "dist/openclaw-state-db-Dh2awMJ8.mjs",
+      "sha256": "e5aad1c1e5a6d9b1ed371c2a176cf39015d3d3d8293d9aa9128b977cc540f75b",
+      "exports": {
+        "runOpenClawStateWriteTransaction": "l",
+        "openOpenClawStateDatabase": "r"
+      }
+    }
+  ],
+  "executionRoles": {
+    "capability": "heartbeat-scratch-store",
+    "clock": {
+      "owner": "node:test",
+      "apis": [
+        "Date"
+      ],
+      "nowMs": 2000000000000,
+      "setTimeout": "unchanged",
+      "perPhaseFreshProcess": true
+    },
+    "workerRole": "none: direct synchronous original scratch owners; any worker bootstrap is rejected in this profile",
+    "backend": "genuine Node node:sqlite through original openOpenClawStateDatabase and runOpenClawStateWriteTransaction; no provider or vector backend",
+    "entryRoles": {
+      "dist/scratch-contract-B-Laspel.mjs": "cap/hash boundary inputs; helper-only, no condition credit",
+      "dist/scratch-store-BsjpiVxl.mjs": "required executed scratch owner per process",
+      "dist/row-codec-CFdZvBgt.mjs": "original fixture owner create/replace/delete only; no fabricated revisions",
+      "dist/openclaw-state-db-Dh2awMJ8.mjs": "original durable synchronous DB transaction owner",
+      "dist/key-BBZ40bDq.mjs": "original store partition key"
+    },
+    "transport": {
+      "stdout": "one awaited complete JSON envelope",
+      "raw": "complete input and API output per call; original error class/attributes/cause/full stack retained",
+      "exceptionCodec": "only HeartbeatScratchTooLargeError -> Error; unknown errors remain original",
+      "absenceCodec": "undefined -> {absent:true}; no coalescing to currentRevision0",
+      "setCodec": "fixture helper returned Sets require explicit tagged encoding, no public scratch result change"
+    },
+    "acceptancePointsAwarded": 0,
+    "covers": []
+  }
+}

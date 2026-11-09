@@ -257,6 +257,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     cases.extend(build_storage_discovery_cases())
     cases.extend(build_workspace_isolation_cases())
     cases.extend(build_storage_path_cases())
+    from equivalence.bootstrap_discovery_fixtures import build_bootstrap_discovery_cases
+
+    cases.extend(build_bootstrap_discovery_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -272,6 +275,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation == "bootstrap-discovery-runtime":
+        from equivalence.bootstrap_discovery_sdk import run_bootstrap_discovery
+
+        return run_bootstrap_discovery(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "turn-trust-runtime":
         from equivalence.turn_trust_runtime import run_turn_trust
 

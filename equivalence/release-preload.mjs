@@ -16,6 +16,25 @@ const context = JSON.parse(rawContext);
 if (context.schemaVersion !== 1 || context.providerMode !== "none" || context.fetchPolicy !== "deny") {
   throw Error("Unsupported release execution policy");
 }
+const bootstrapProfile = context.bootstrapDiscoveryProfile;
+let bootstrapRuntime;
+if (bootstrapProfile !== undefined) {
+  const approved = { nodeVersion: "v24.16.0", icuVersion: "78.3", unicodeVersion: "17.0",
+    sha256: "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd" };
+  const identity = bootstrapProfile?.nodeRuntime;
+  if (JSON.stringify(Object.keys(bootstrapProfile ?? {}).sort()) !== JSON.stringify(["inputKind", "kind", "nodeRuntime", "operation"]) ||
+      bootstrapProfile.kind !== "approved-bootstrap-discovery-profile" || bootstrapProfile.operation !== "bootstrap-discovery-runtime" ||
+      bootstrapProfile.inputKind !== "workspace-bootstrap" || !identity ||
+      JSON.stringify(Object.keys(identity).sort()) !== JSON.stringify(["execPath", "icuVersion", "nodeVersion", "sha256", "unicodeVersion"]) ||
+      (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
+    throw Error("Unapproved compiled bootstrap execution scope");
+  }
+  bootstrapRuntime = { execPath: fs.realpathSync(process.execPath), nodeVersion: process.version,
+    icuVersion: process.versions.icu, unicodeVersion: process.versions.unicode,
+    sha256: hash(fs.readFileSync(process.execPath)) };
+  if (Object.entries(approved).some(([key, value]) => identity[key] !== value) ||
+      Object.entries(bootstrapRuntime).some(([key, value]) => identity[key] !== value)) throw Error("Unapproved bootstrap Node/ICU/Unicode executable");
+}
 const permitted = new Map();
 for (const entry of context.allowedLocal) {
   permitted.set(fs.realpathSync(entry.path), { kind: "oracle", path: fs.realpathSync(entry.path), sha256: entry.sha256 });
@@ -52,7 +71,8 @@ function trace(event) {
   fs.appendFileSync(traceFile, JSON.stringify({ ...event, pid: process.pid, threadId }) + "\n", { mode: 0o600 });
 }
 trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: hash(rawContext), preloadSha256: own.sha256,
-        fetchDenied: true, providerMode: "none" });
+        fetchDenied: true, providerMode: "none",
+        ...(bootstrapProfile ? { runtime: bootstrapRuntime, bootstrapProfile } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.
 // This executes in every worker as well as the parent, before native imports.

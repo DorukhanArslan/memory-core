@@ -325,6 +325,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     from equivalence.turn_trust_source_authority import prepare_turn_taint_source_authority
 
                     context_options["turn_taint_source"] = prepare_turn_taint_source_authority(checkout)
+                if len(cases) == 1 and cases[0]["operation"] == "bootstrap-discovery-runtime":
+                    from equivalence.bootstrap_discovery_profile import prepare_bootstrap_discovery_profile
+
+                    context_options["bootstrap_profile"] = prepare_bootstrap_discovery_profile(node)
                 execution = resources.enter_context(ReleaseOracleExecution(
                     release_runtime, _adapter_identity(), **context_options))
                 # Only this reviewed preload is supplied. User Node options,
@@ -491,6 +495,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "transcript-boundary-runtime", "durable-session-runtime",
             "turn-trust-runtime",
             "workspace-isolation-runtime",
+            "bootstrap-discovery-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -700,6 +705,16 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 except (OSError, ValueError):
                     raise HarnessError("turn-trust-runtime-owner-unavailable",
                                        "The original mixed-source turn and release tool owners could not be verified.") from None
+            bootstrap_runtime = any(case["operation"] == "bootstrap-discovery-runtime" for case in runtime_cases)
+            if bootstrap_runtime:
+                from equivalence.bootstrap_discovery_bindings import prepare_bootstrap_discovery_bindings
+                from equivalence.bootstrap_discovery_profile import prepare_bootstrap_node_authority
+
+                try:
+                    report["bootstrapDiscoveryRuntimeBindings"] = prepare_bootstrap_discovery_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                    report["bootstrapDiscoveryNodeAuthority"] = prepare_bootstrap_node_authority(node)
+                except (OSError, ValueError):
+                    raise HarnessError("bootstrap-discovery-owner-unavailable", "The original whole bootstrap callers or approved executable could not be verified.") from None
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -723,6 +738,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             try:
                 if prepare_release_runtime(checkout, release_runtime_root) != runtime_config:
                     raise ValueError("Runtime artifacts changed.")
+                if bootstrap_runtime and (
+                    prepare_bootstrap_discovery_bindings(checkout, Path(runtime_config["runtimeRoot"])) != report["bootstrapDiscoveryRuntimeBindings"]
+                    or prepare_bootstrap_node_authority(node) != report["bootstrapDiscoveryNodeAuthority"]
+                ):
+                    raise ValueError("Bootstrap source, artifact, template or executable authority changed.")
                 if flush_runtime and prepare_flush_runtime_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]),
                 ) != report["flushRuntimeBindings"]:

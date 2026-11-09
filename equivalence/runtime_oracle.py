@@ -83,6 +83,9 @@ _OPERATIONS = {
     "workspace-isolation-runtime": (
         "workspace-isolation-runtime.mjs", "dist/extensions/memory-core/manager-runtime.js", True,
     ),
+    "bootstrap-discovery-runtime": (
+        "bootstrap-discovery-runtime.mjs", "dist/workspace-C0LMBmap.mjs", False,
+    ),
 }
 
 
@@ -608,17 +611,24 @@ class ReleaseOracleExecution:
     """One fresh provider-none process with a trusted preload inherited by workers."""
 
     def __init__(self, config: dict, adapter_hashes: dict[str, str], *, fixture_captures: bool = False,
-                 turn_taint_source: dict | None = None):
+                 turn_taint_source: dict | None = None, bootstrap_profile: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
         self.turn_taint_source = deepcopy(turn_taint_source)
+        self.bootstrap_profile = deepcopy(bootstrap_profile)
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
 
     def __enter__(self):
         try:
+            if self.bootstrap_profile is not None:
+                from equivalence.bootstrap_discovery_profile import validate_bootstrap_discovery_profile
+
+                if self.fixture_captures or self.turn_taint_source is not None:
+                    raise RuntimeOracleError("The compiled bootstrap profile cannot borrow source or fixture-capture capabilities.")
+                self.bootstrap_profile = validate_bootstrap_discovery_profile(self.bootstrap_profile)
             if self.turn_taint_source is not None:
                 from equivalence.turn_trust_source_authority import validate_turn_taint_source_authority
 
@@ -681,6 +691,8 @@ class ReleaseOracleExecution:
                 "fixtureSourceCaptures": [],
                 "approvedReferenceSources": [self.turn_taint_source] if self.turn_taint_source else [],
             }
+            if self.bootstrap_profile is not None:
+                self._context["bootstrapDiscoveryProfile"] = self.bootstrap_profile
             if self.fixture_captures:
                 fixture = str((ROOT / "equivalence/flush-execution.mjs").resolve())
                 if fixture not in self._locals:
@@ -837,6 +849,14 @@ class ReleaseOracleExecution:
         case = cases[0]
         row = result["results"][0]
         operation = case.get("operation")
+        if (self.bootstrap_profile is not None) is not (operation == "bootstrap-discovery-runtime"):
+            raise RuntimeOracleError("Only the declared bootstrap caller may use its approved executable capability.")
+        if self.bootstrap_profile is not None:
+            from equivalence.bootstrap_discovery_profile import validate_bootstrap_discovery_profile
+
+            validate_bootstrap_discovery_profile(self.bootstrap_profile)
+            if case.get("input", {}).get("kind") != self.bootstrap_profile["inputKind"]:
+                raise RuntimeOracleError("A different bootstrap input kind cannot borrow the compiled caller profile.")
         if (self.turn_taint_source is not None) is not (operation == "turn-trust-runtime"):
             raise RuntimeOracleError("The single source-owner capability is restricted to the declared mixed turn-trust profile.")
         if self.turn_taint_source is not None:
@@ -871,6 +891,8 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("Release memory fixtures require provider none.")
         if operation == "turn-trust-runtime" and not row["ok"]:
             raise RuntimeOracleError("The real turn-trust caller did not complete its registered execution and persistence flow.")
+        if operation == "bootstrap-discovery-runtime" and not row["ok"]:
+            raise RuntimeOracleError("The genuine compiled bootstrap caller did not complete its full observation flow.")
         if _digest(_regular(self.context_path, MAX_TRACE_BYTES)) != self._context_digest:
             raise RuntimeOracleError("The owned release execution configuration changed.")
         for path, digest in self._locals.items():
@@ -883,11 +905,14 @@ class ReleaseOracleExecution:
         loaded, bootstrap, worker_imports, local_imports, captures = {}, [], [], set(), {}
         release_by_pid, local_by_pid, process_parents = {}, {}, {}
         reference_source_imports = []
+        bootstrap_trace_files = []
         for trace in traces:
             filename = _TRACE.fullmatch(trace.name)
             if filename is None:
                 raise RuntimeOracleError("A release thread trace has an invalid identity.")
             raw = _regular(trace, MAX_SINGLE_TRACE_BYTES)
+            if self.bootstrap_profile is not None:
+                bootstrap_trace_files.append({"name": trace.name, "bytes": len(raw), "sha256": _digest(raw), "text": raw.decode("utf-8")})
             total += len(raw)
             if total > MAX_TRACE_BYTES or not raw.endswith(b"\n"):
                 raise RuntimeOracleError("Release thread traces are excessive or incomplete.")
@@ -904,6 +929,11 @@ class ReleaseOracleExecution:
                     or first.get("fetchDenied") is not True or first.get("providerMode") != "none"):
                 raise RuntimeOracleError("Runtime thread bootstrap protection was not attested.")
             bootstrap.append({"pid": pid, "threadId": thread, "isMainThread": thread == 0})
+            if self.bootstrap_profile is not None:
+                if (first.get("bootstrapProfile") != self.bootstrap_profile
+                        or first.get("runtime") != self.bootstrap_profile["nodeRuntime"]):
+                    raise RuntimeOracleError("A bootstrap process or worker used an unapproved executable or profile.")
+                bootstrap[-1].update(runtime=deepcopy(first["runtime"]), bootstrapProfile=deepcopy(first["bootstrapProfile"]))
             if thread == 0:
                 process_parents[pid] = first.get("ppid")
             for event in events[1:]:
@@ -992,6 +1022,11 @@ class ReleaseOracleExecution:
             if any(("node_modules/openclaw", owner) not in loaded for owner in REQUIRED_LOADED_ARTIFACTS):
                 raise RuntimeOracleError("The actual declared workspace/file/index/recall/checkpoint owners did not execute.")
             validate_workspace_isolation_workers(worker_imports)
+        if operation == "bootstrap-discovery-runtime":
+            from equivalence.bootstrap_discovery_bindings import BASELINE_COMPILED_ARTIFACTS
+
+            if any(("node_modules/openclaw", owner) not in loaded for owner in BASELINE_COMPILED_ARTIFACTS):
+                raise RuntimeOracleError("The genuine bootstrap setup, loader, policy, state, hook and selection owners did not execute.")
         if required_owner is not None and ("node_modules/openclaw", required_owner) not in loaded:
             message = ("The actual native runtime owner did not execute."
                        if operation in {"exact-path-runtime", "importance-project-runtime"}
@@ -1060,6 +1095,21 @@ class ReleaseOracleExecution:
         diagnostic = _json(raw)
         if not isinstance(diagnostic, list):
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
+        bootstrap_transport = None
+        if operation == "bootstrap-discovery-runtime":
+            from equivalence.bootstrap_discovery_evidence import validate_bootstrap_discovery_raw
+
+            bootstrap_transport = {"kind": "actual-bootstrap-discovery-validator-inputs", "adapterRoot": str(ROOT),
+                "runtimeRoot": self.config["runtimeRoot"], "profile": deepcopy(self.bootstrap_profile),
+                "row": deepcopy(row), "case": deepcopy(case), "bootstrap": deepcopy(bootstrap),
+                "processParents": deepcopy(process_parents),
+                "releaseByPid": {str(pid): sorted(paths) for pid, paths in release_by_pid.items()},
+                "localByPid": {str(pid): sorted(paths) for pid, paths in local_by_pid.items()},
+                "rawProcessWorkerTraces": bootstrap_trace_files}
+            validate_bootstrap_discovery_raw(row, case, diagnostic, evidence.parent, runtime_root=self.config["runtimeRoot"],
+                bootstrap=bootstrap, release_by_pid=release_by_pid, local_by_pid=local_by_pid,
+                process_parents=process_parents)
+            diagnostic = _json(raw)
         if operation == "transcript-boundary-runtime":
             from equivalence.transcript_boundary_evidence import validate_transcript_boundary_raw
 
@@ -1171,6 +1221,8 @@ class ReleaseOracleExecution:
                                   "nativeBinaryPolicy": "all artifact bytes authenticated before and after execution"}
         answer["runtimeDiagnostics"] = [{"id": case["id"], "sha256": _digest(raw),
                                           "rawSnapshots": diagnostic}]
+        if bootstrap_transport is not None:
+            answer["releaseTrace"]["bootstrapDiscoveryTransport"] = bootstrap_transport
         if self.turn_taint_source is not None:
             if len(reference_source_imports) != 1:
                 raise RuntimeOracleError("The mixed profile must actually load its sole original source owner exactly once.")

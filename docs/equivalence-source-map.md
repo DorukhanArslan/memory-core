@@ -176,11 +176,11 @@ no manager substitute. This grants no new index-worker, manager startup, live pr
 transcript visibility, or OS scheduling credit. Source and official release provenance remain
 separate; the release build is not independently reproduced.
 
-Current bounded coverage is **47/128 conditions**, with **81 remaining**:
-22 contracts complete, 3 partial and 39 pending. These are unweighted verification
+Current bounded coverage is **52/128 conditions**, with **76 remaining**:
+24 contracts complete, 4 partial and 36 pending. These are unweighted verification
 counts, not engineering-effort percentages. The fresh integrated catalog records
-**1,175 matches, 4 uncredited differences and zero blocked cases across 1,179 cases**
-on clean implementation `74162b9`. All 4,521 regressions and both clean package
+**1,235 matches, 4 uncredited differences and zero blocked cases across 1,239 cases**
+on clean implementation `d3fc35c`. All 4,768 regressions and both clean package
 consumers pass. Complete raw source, tool, publication and authority evidence remains retained;
 source and official compiled release provenance stay separate. Source inventory itself adds
 no acceptance credit. The [checklist](full-equivalence-checklist.md) contains all 64 statuses,

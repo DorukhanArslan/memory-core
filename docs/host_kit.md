@@ -4,6 +4,10 @@ The API contract below remains useful to hosts. Its dated implementation plans
 and v2026.9.6 comparison notes are historical; current v2026.9.9 acceptance work
 is tracked in [Full Equivalence Checklist](full-equivalence-checklist.md).
 
+[Host Session Lifecycle](host_session_lifecycle.md) documents the current
+`HostSessionRunner` API for automatic per-session admission, durable transcript records,
+memory writes and awaited index publication around an application's model callback.
+
 Status: specification and TDD plan, written 2026-09-28 on `feat/host-kit` (from `main`
 `b829bad`), revised after review the same day. Implemented on that branch the same night:
 Tasks 1-8 and the kit parts of Task 10's docs. Task 9 (the Lab's flush, `/new` and heartbeat run)

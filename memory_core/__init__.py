@@ -24,6 +24,11 @@ from memory_core.host import (
     HeartbeatOutcome,
     HeartbeatRun,
     HostKit,
+    HostModelResult,
+    HostSessionRunner,
+    HostTurn,
+    HostTurnFailure,
+    HostTurnOutcome,
     NewSession,
     ResetTurn,
     SessionState,
@@ -43,6 +48,11 @@ __all__ = [
     # The host kit: one HostKit per workspace, one SessionState per session, and the
     # handles its entry points return.
     "HostKit",
+    "HostModelResult",
+    "HostSessionRunner",
+    "HostTurn",
+    "HostTurnFailure",
+    "HostTurnOutcome",
     "SessionState",
     "TurnUsage",
     "TurnContext",

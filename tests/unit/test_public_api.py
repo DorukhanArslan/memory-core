@@ -12,6 +12,11 @@ from memory_core.curation import CurationConflictError, CurationUnavailableError
 ROOT_API = {
     "__version__",
     "HostKit",
+    "HostModelResult",
+    "HostSessionRunner",
+    "HostTurn",
+    "HostTurnFailure",
+    "HostTurnOutcome",
     "SessionState",
     "TurnUsage",
     "TurnContext",

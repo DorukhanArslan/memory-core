@@ -5,6 +5,11 @@ recorded separately in the [promotion apply/reconciliation closeout](promotion_a
 its fresh integrated baseline verifies 64/128 conditions. That later evidence
 does not rerun or relabel this maintenance package's original captures.
 
+The later [host restart development packet](host_restart_recall_development_closeout.md)
+adds three authenticated but mismatched process comparisons and awards zero
+conditions. The current verified baseline remains 64/128, with 64 remaining;
+this document's 62/128 figures below describe its historical maintenance baseline.
+
 This package integrates already reviewed fixes for the existing promotion and
 heartbeat contracts. It adds no acceptance condition and awards **zero new
 acceptance points**. The last full differential baseline remains **62/128

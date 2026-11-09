@@ -74,8 +74,13 @@ retained preparation failures and authority limits. The earlier
 [promotion/heartbeat maintenance integration](promotion_heartbeat_integration_closeout.md)
 awarded zero conditions; the [initial family development packet](promotion_apply_family_development_closeout.md)
 also awarded zero. Their historical captures are not relabeled as executions of
-this changed SDK or these completed acceptance callers. Whole-host restart remains
-unverified and is the recommended next package.
+this changed SDK or these completed acceptance callers. The new
+[host restart development packet](host_restart_recall_development_closeout.md)
+executes three authenticated process-restart comparisons: all three retain
+complete-result differences, with zero blocked cases or runner errors. It awards
+zero conditions and changes no SDK production source. Its fresh full regressions
+pass **6,785 tests**, with the same **1,648 uncredited skips**. Whole-host restart
+remains unverified; source-policy and transcript-publication alignment is the next work.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |

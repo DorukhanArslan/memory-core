@@ -371,7 +371,7 @@ def run_python(case: dict[str, Any]) -> Any:
     if operation == "storage-discovery":
         from equivalence.storage_discovery import run_storage_discovery
 
-        return run_storage_discovery(arguments)
+        return run_storage_discovery(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "storage-read-paths":
         from equivalence.storage_paths import run_storage_paths
 

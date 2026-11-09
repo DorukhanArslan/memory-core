@@ -92,7 +92,7 @@ def list_memory_files(
     except (FileNotFoundError, NotADirectoryError):
         memory_dir_stat = None
     except OSError as exc:
-        raise MemorySourceScanError(memory_dir, exc) from exc
+        raise MemorySourceScanError(memory_dir, exc, operation="lstat") from exc
     if (
         memory_dir_stat is not None
         and not stat.S_ISLNK(memory_dir_stat.st_mode)
@@ -107,7 +107,7 @@ def list_memory_files(
         except (FileNotFoundError, NotADirectoryError):
             continue
         except OSError as exc:
-            raise MemorySourceScanError(extra_root, exc) from exc
+            raise MemorySourceScanError(extra_root, exc, operation="lstat") from exc
         if stat.S_ISLNK(extra_stat.st_mode):
             if on_skipped_symlink_root is not None:
                 on_skipped_symlink_root(extra_root)
@@ -205,13 +205,20 @@ def _matches_extra_path(entry: tuple[Path, str | None], candidate: Path, *, dire
 class MemorySourceScanError(RuntimeError):
     """An operational failure while enumerating a memory source.
 
-    The path and errno code mirror the native scan diagnostic. A missing source
-    is intentionally not a scan failure and is handled by discovery itself.
+    The path, string code and unmodified public cause mirror the native scan
+    diagnostic. Standard system errors cross the actual IO bridge; its original
+    Python exception remains available separately. Missing sources are handled
+    by discovery itself rather than becoming scan failures.
     """
 
-    def __init__(self, path: Path, cause: OSError):
+    def __init__(self, path: Path, cause: OSError, *, operation: str | None = None):
+        from memory_core._memory_scan_io import bridge_scan_io_error
+
+        cause = bridge_scan_io_error(cause, operation, path)
         self.path = path
-        self.code = errno.errorcode.get(cause.errno)
+        supplied_code = getattr(cause, "code", None)
+        self.code = supplied_code if isinstance(supplied_code, str) else errno.errorcode.get(getattr(cause, "errno", None))
+        self.cause = cause
         code = f" ({self.code})" if self.code else ""
         super().__init__(f"memory source scan failed at {path}{code}: {cause}")
 
@@ -229,7 +236,7 @@ def _resolve_canonical_root_memory_file(root: Path) -> Path | None:
     except (FileNotFoundError, NotADirectoryError):
         pass
     except OSError as exc:
-        raise MemorySourceScanError(root, exc) from exc
+        raise MemorySourceScanError(root, exc, operation="scandir") from exc
     return None
 
 
@@ -241,7 +248,7 @@ def _is_regular_markdown_file(path: Path) -> bool:
     except (FileNotFoundError, NotADirectoryError):
         return False
     except OSError as exc:
-        raise MemorySourceScanError(path, exc) from exc
+        raise MemorySourceScanError(path, exc, operation="lstat") from exc
     return stat.S_ISREG(file_stat.st_mode) and path.name.endswith(".md")
 
 
@@ -261,11 +268,16 @@ def _collect_memory_files_from_dir(
         try:
             if current != directory and stat.S_ISLNK(os.lstat(current).st_mode):
                 return
+        except (FileNotFoundError, NotADirectoryError):
+            return
+        except OSError as exc:
+            raise MemorySourceScanError(current, exc, operation="lstat") from exc
+        try:
             real_dir = os.path.realpath(current, strict=True)
         except (FileNotFoundError, NotADirectoryError):
             return
         except OSError as exc:
-            raise MemorySourceScanError(current, exc) from exc
+            raise MemorySourceScanError(current, exc, operation="realpath") from exc
         if real_dir in visited:
             return
         visited.add(real_dir)
@@ -275,7 +287,7 @@ def _collect_memory_files_from_dir(
         except (FileNotFoundError, NotADirectoryError):
             return
         except OSError as exc:
-            raise MemorySourceScanError(current, exc) from exc
+            raise MemorySourceScanError(current, exc, operation="scandir") from exc
         for entry in entries:
             if entry.is_symlink():
                 continue

@@ -52,7 +52,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 597
+          "line": 609
         },
         {
           "path": "memory_core/workspace.py",
@@ -65,6 +65,18 @@
           "symbol": "matches_posix_glob",
           "anchor": "def matches_posix_glob(",
           "line": 129
+        },
+        {
+          "path": "memory_core/workspace.py",
+          "symbol": "MemorySourceScanError",
+          "anchor": "class MemorySourceScanError(",
+          "line": 205
+        },
+        {
+          "path": "memory_core/_memory_scan_io.py",
+          "symbol": "bridge_scan_io_error",
+          "anchor": "def bridge_scan_io_error(",
+          "line": 30
         }
       ],
       "implementation": "partial",
@@ -72,7 +84,8 @@
         "Default discovery includes MEMORY.md, USER.md and nested memory/*.md, with global UTF-16 ordering and visible operational scan failures; paired filesystem cases exercise roots, hidden/repair paths, symlinks, non-regular entries and disappearance.",
         "Configured extra paths/patterns and multimodal discovery remain unsupported; the default-root subset does not complete either full discovery acceptance point.",
         "Default discovery retains exact roots, nested Markdown, UTF-16 order, hidden/repair exclusions, symlink/nonregular boundaries and operational scan failures.",
-        "The public filesystem API accepts configured extra roots, pattern unions, skipped-symlink callbacks and image/audio extension eligibility. Node 24.16 Unicode 17 POSIX-category facts preserve the original matcher independently of host Python Unicode versions. This is discovery, not binary ingestion or embeddings. Extended comparisons remain uncredited until independent review."
+        "The public filesystem API accepts configured extra roots, pattern unions, skipped-symlink callbacks and image/audio extension eligibility. Node 24.16 Unicode 17 POSIX-category facts preserve the original matcher independently of host Python Unicode versions. This is discovery, not binary ingestion or embeddings. Extended comparisons remain uncredited until independent review.",
+        "Full scan-error messages and causes cross a production IO bridge using actual errno, operation and path; exact Node 24 Linux system-error facts and builtin formatter hashes are reproducibly generated. Original Python exceptions and native descriptor/stack/OS details remain raw. The earlier category-only comparison does not prove this contract."
       ]
     },
     {
@@ -100,19 +113,19 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_read_path",
           "anchor": "    def resolve_memory_read_path(self, raw_path: str) -> tuple[str, Path | None]:",
-          "line": 636
+          "line": 648
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_path",
           "anchor": "    def resolve_memory_path(self, rel_path: str) -> Path:",
-          "line": 627
+          "line": 639
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "check_writable_memory_file",
           "anchor": "def check_writable_memory_file(root: Path, rel_path: str) -> None:",
-          "line": 326
+          "line": 338
         }
       ],
       "implementation": "partial",
@@ -152,13 +165,13 @@
           "path": "memory_core/workspace.py",
           "symbol": "append_daily_memory_file",
           "anchor": "def append_daily_memory_file(",
-          "line": 352
+          "line": 364
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "workspace_file_lock",
           "anchor": "def workspace_file_lock(root: Path, rel_path: str) -> threading.Lock:",
-          "line": 308
+          "line": 320
         }
       ],
       "implementation": "partial",
@@ -606,7 +619,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 597
+          "line": 609
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -624,7 +637,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(self) -> list[MemoryFile]:",
-          "line": 558
+          "line": 570
         },
         {
           "path": "memory_core/index/publication.py",
@@ -2006,7 +2019,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(self) -> list[MemoryFile]:",
-          "line": 558
+          "line": 570
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -2072,7 +2085,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(",
-          "line": 597
+          "line": 609
         },
         {
           "path": "memory_core/consolidation/session_ingestion.py",
@@ -2288,7 +2301,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryFile",
           "anchor": "class MemoryFile:",
-          "line": 502
+          "line": 514
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -3244,7 +3257,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "append_memory_flush_file",
           "anchor": "def append_memory_flush_file(",
-          "line": 379
+          "line": 391
         }
       ],
       "implementation": "partial",
@@ -4536,7 +4549,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "workspace_index_lock",
           "anchor": "def workspace_index_lock(root: Path) -> threading.RLock:",
-          "line": 314
+          "line": 326
         }
       ],
       "implementation": "partial",

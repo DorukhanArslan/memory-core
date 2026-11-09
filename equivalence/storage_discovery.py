@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+import traceback
 from unittest.mock import patch
 from typing import Any
 
@@ -124,6 +125,8 @@ def build_storage_discovery_cases() -> list[dict[str, Any]]:
         ("extra-outside-operational-failure", {"files": {"../outside/note.md": "outside"},
             "extraPaths": ["../outside"], "failure": {"operation": "scan", "path": "../outside", "code": "EACCES"}}),
         ("extra-disappearing-directory", {"files": extra_files, "extraPaths": ["notes"], "removeOnScan": "notes/sub"}),
+        ("extra-real-intermediate-symlink-loop", {"symlinks": {"loop": "loop"}, "extraPaths": ["loop/notes"]}),
+        ("extra-real-overlong-component", {"extraPaths": ["x" * 260]}),
     ])
     for name, pattern in (("leaf", "*.md"), ("recursive", "**/*.md"), ("braces", "{a,b}.md"),
                           ("extglob", "@(a|b).md"), ("negative-extglob", "!(b).md"),
@@ -158,11 +161,21 @@ def build_storage_discovery_cases() -> list[dict[str, Any]]:
         scenarios.append((f"extra-multimodal-{name}", {"files": media_files, "extraPaths": ["media"],
                                                     "multimodal": settings}))
     for name, value in scenarios:
+        if "failure" in value:
+            value["failure"]["message"] = "injected filesystem failure"
         cases.append({
             "id": f"discovery-{name}", "requirement": "storage.discovery",
             "operation": "storage-discovery", "input": deepcopy(value),
             # Coverage stays unclaimed until actual native comparison succeeds.
             "covers": [],
+            "normalizationPolicy": (
+                "Complete scan-error type/message/code/path/cause envelopes are compared. Only the exact "
+                "owned fixture-base prefix maps to $FIXTURE; physical error paths are retained raw. "
+                "Native and SDK fixtures raise the same literal injected Error name/message/code/path "
+                "facts. Complete actual exception properties, stacks and OS details remain separate raw "
+                "diagnostics. Adapters preserve actual production error messages. Standard OS errors "
+                "cross the production Node-compatible IO bridge; original Python exceptions remain raw."
+            ),
         })
     return cases
 
@@ -202,7 +215,48 @@ def _fixture(root: Path, arguments: dict) -> None:
             operation(root / target, path)
 
 
-def run_storage_discovery(arguments: dict[str, Any]) -> dict:
+def _scan_error_envelope(error: BaseException) -> dict:
+    code = getattr(error, "code", None)
+    if code is None and isinstance(error, OSError):
+        code = errno.errorcode.get(error.errno)
+    path = getattr(error, "path", getattr(error, "filename", None))
+    cause = getattr(error, "cause", error.__cause__)
+    return {"type": getattr(error, "name", type(error).__name__), "message": str(error),
+            "code": code, "path": str(path) if path is not None else None,
+            "cause": _scan_error_envelope(cause) if cause is not None else None}
+
+
+def _raw_scan_error(error: BaseException) -> dict:
+    def value(item):
+        if isinstance(item, BaseException):
+            return _raw_scan_error(item)
+        if isinstance(item, (str, int, float, bool)) or item is None:
+            return item
+        if isinstance(item, Path):
+            return str(item)
+        if isinstance(item, (tuple, list)):
+            return [value(entry) for entry in item]
+        if isinstance(item, dict):
+            return {key: value(entry) for key, entry in item.items()}
+        return repr(item)
+
+    properties = {key: value(item) for key, item in vars(error).items()}
+    for field in ("errno", "strerror", "filename", "filename2", "winerror"):
+        if hasattr(error, field):
+            properties[field] = value(getattr(error, field))
+    return {"type": type(error).__name__, "module": type(error).__module__,
+            "qualifiedType": type(error).__qualname__, "name": getattr(error, "name", type(error).__name__),
+            "message": str(error),
+            "args": value(error.args), "properties": properties,
+            "stack": "".join(traceback.format_exception(error)),
+            "cause": _raw_scan_error(error.__cause__) if error.__cause__ is not None else None,
+            "context": _raw_scan_error(error.__context__) if error.__context__ is not None
+                       and error.__context__ is not error.__cause__ else None,
+            "suppressContext": error.__suppress_context__}
+
+
+def run_storage_discovery(arguments: dict[str, Any], *, evidence_directory: Path | None = None) -> dict:
+    from equivalence.get_contract import map_get_fixture_paths
     from memory_core.workspace import MemorySourceScanError, list_memory_files
 
     with tempfile.TemporaryDirectory(prefix="memory-core-discovery-") as directory:
@@ -211,6 +265,17 @@ def run_storage_discovery(arguments: dict[str, Any]) -> dict:
         failure = arguments.get("failure")
         remove_on_scan = arguments.get("removeOnScan")
         original_scan, original_stat = os.scandir, os.lstat
+        raw = {"kind": "storage-discovery", "fixtureBase": directory, "workspaceRoot": str(root),
+               "input": deepcopy(arguments), "snapshots": []}
+
+        class FixtureFilesystemError(OSError):
+            """The same literal Error facts supplied at the native IO boundary."""
+
+            name = "Error"
+
+            def __init__(self, message, code, path):
+                super().__init__(message)
+                self.code, self.path = code, str(path)
 
         def injected(operation: str, path: str | os.PathLike) -> None:
             if isinstance(path, int):
@@ -220,7 +285,7 @@ def run_storage_discovery(arguments: dict[str, Any]) -> dict:
                 _remove(absolute)
             if (failure and operation == failure["operation"]
                     and absolute == Path(os.path.abspath(root / failure["path"]))):
-                raise OSError(getattr(errno, failure["code"]), "injected filesystem failure", str(absolute))
+                raise FixtureFilesystemError(failure["message"], failure["code"], absolute)
 
         def scan(path):
             injected("scan", path)
@@ -241,12 +306,15 @@ def run_storage_discovery(arguments: dict[str, Any]) -> dict:
                         extra_paths.append({**entry, "path": entry["path"].replace("$FIXTURE", directory)})
                 callback = skipped.append if arguments.get("captureSkippedSymlinkRoots") else None
                 files = list_memory_files(root, extra_paths, arguments.get("multimodal"), callback)
-                return {"files": [os.path.relpath(path, root).replace(os.sep, "/") for path in files],
+                result = {"files": [os.path.relpath(path, root).replace(os.sep, "/") for path in files],
                         **({"skippedSymlinkRoots": [os.path.relpath(path, root).replace(os.sep, "/") for path in skipped]}
                            if callback else {})}
+                raw["snapshots"].append({"result": deepcopy(result)})
+                return result
             except MemorySourceScanError as exc:
-                return {"error": {"type": type(exc).__name__, "code": exc.code,
-                                  "path": os.path.relpath(exc.path, root).replace(os.sep, "/")}}
+                result = {"error": _scan_error_envelope(exc)}
+                raw["snapshots"].append({"result": deepcopy(result), "exception": _raw_scan_error(exc)})
+                return result
 
         with ExitStack() as stack:
             if arguments.get("homeRoot"):
@@ -261,4 +329,13 @@ def run_storage_discovery(arguments: dict[str, Any]) -> dict:
                     (root / current).parent.mkdir(parents=True, exist_ok=True)
                     (root / previous).rename(root / current)
                 snapshots.append(snapshot())
-        return {"snapshots": snapshots}
+        result = {"snapshots": snapshots}
+        raw["result"] = deepcopy(result)
+        if evidence_directory is not None:
+            import json
+
+            evidence_directory = Path(evidence_directory)
+            evidence_directory.mkdir(parents=True, exist_ok=True)
+            (evidence_directory / "python-raw.json").write_text(json.dumps([raw], indent=2) + "\n")
+
+        return map_get_fixture_paths(result, directory)

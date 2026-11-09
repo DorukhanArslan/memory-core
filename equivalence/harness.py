@@ -804,9 +804,30 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
         if after != report["reference"]:
             raise HarnessError("reference-changed", "The reference checkout changed during comparison.")
         report["sources"] = oracle.get("sources", [])
+        source_diagnostic_cases = [case for case in source_cases if case["operation"] == "storage-discovery"]
+        if source_diagnostic_cases:
+            from equivalence.storage_discovery_evidence import validate_storage_discovery_diagnostic
+
+            diagnostics = oracle.get("sourceDiagnostics", [])
+            native_discovery = {entry["id"]: entry for entry in diagnostics}
+            if (len(native_discovery) != len(diagnostics)
+                    or set(native_discovery) != {case["id"] for case in source_diagnostic_cases}):
+                raise HarnessError("discovery-evidence-invalid", "Every discovery case needs complete original raw evidence")
+            for case in source_diagnostic_cases:
+                original = next(row for row in oracle["results"] if row["id"] == case["id"])
+                if not original["ok"]:
+                    continue
+                try:
+                    validate_storage_discovery_diagnostic(native_discovery[case["id"]], case["input"],
+                                                          original["result"], side="native")
+                except (ValueError, TypeError, KeyError):
+                    raise HarnessError("discovery-evidence-invalid", "Complete native discovery errors were not retained") from None
+            report["sourceDiagnostics"] = [{"side": "native", **entry}
+                                           for entry in diagnostics]
         native_rows = {row["id"]: row for row in oracle["results"]}
+        python_diagnostic_cases = [*runtime_cases, *source_diagnostic_cases]
         python_diagnostics = (Path(resources.enter_context(tempfile.TemporaryDirectory(
-            prefix="memory-python-runtime-evidence-"))) if runtime_cases else None)
+            prefix="memory-python-runtime-evidence-"))) if python_diagnostic_cases else None)
         for case in cases:
             row = {"id": case["id"], "requirement": case["requirement"], "covers": case["covers"],
                    "operation": case["operation"], "input": case["input"]}
@@ -829,15 +850,16 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             else:
                 try:
                     python_case = deepcopy(case)
-                    if case in runtime_cases:
+                    if case in python_diagnostic_cases:
                         directory = python_diagnostics / hashlib.sha256(case["id"].encode()).hexdigest()
                         python_case["_diagnosticDirectory"] = directory
+                    if case in runtime_cases:
                         row["referenceMode"] = (
                             "authenticated-mixed-original-source-and-release"
                             if case["operation"] == "turn-trust-runtime" else "authenticated-official-release"
                         )
                     python = python_runner(python_case)
-                    if case in runtime_cases:
+                    if case in python_diagnostic_cases:
                         evidence = directory / "python-raw.json"
                         info = evidence.lstat()
                         if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
@@ -847,7 +869,12 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         snapshots = _json(raw.decode("utf-8"))
                         if not isinstance(snapshots, list):
                             raise ValueError("Runtime diagnostics must retain raw snapshot rows.")
-                        report["runtimeDiagnostics"].append({
+                        if case in source_diagnostic_cases:
+                            if len(snapshots) != 1:
+                                raise ValueError("Discovery requires one complete diagnostic record")
+                            validate_storage_discovery_diagnostic(snapshots[0], case["input"], python, side="python")
+                        diagnostic_key = "runtimeDiagnostics" if case in runtime_cases else "sourceDiagnostics"
+                        report[diagnostic_key].append({
                             "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
                             "rawSnapshots": snapshots,
                         })

@@ -43,6 +43,8 @@ def test_root_operational_failure_is_not_a_successful_empty_scan(tmp_path: Path,
     assert caught.value.code == "EACCES"
     assert caught.value.path == tmp_path
     assert isinstance(caught.value.__cause__, PermissionError)
+    assert caught.value.cause is caught.value.__cause__
+    assert str(caught.value) == f"memory source scan failed at {tmp_path} (EACCES): {caught.value.cause}"
 
 
 def test_failed_subdirectory_cannot_publish_partial_discovery(tmp_path: Path, monkeypatch):
@@ -109,7 +111,10 @@ def test_injected_fixture_failures_restore_os_functions_and_preserve_inputs():
     before = deepcopy(case)
     scan, file_stat = os.scandir, os.lstat
     assert run_storage_discovery(case["input"]) == {"snapshots": [{"error": {
-        "type": "MemorySourceScanError", "code": "EACCES", "path": "memory/blocked",
+        "type": "MemorySourceScanError", "code": "EACCES", "path": "$FIXTURE/workspace/memory/blocked",
+        "message": "memory source scan failed at $FIXTURE/workspace/memory/blocked (EACCES): injected filesystem failure",
+        "cause": {"type": "Error", "code": "EACCES", "path": "$FIXTURE/workspace/memory/blocked",
+                  "message": "injected filesystem failure", "cause": None},
     }}]}
     assert os.scandir is scan and os.lstat is file_stat
     assert case == before

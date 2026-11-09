@@ -184,8 +184,11 @@ const number = (value) => typeof value === "string"
   ? ({ nan: Number.NaN, infinity: Number.POSITIVE_INFINITY, "-infinity": Number.NEGATIVE_INFINITY })[value]
   : value;
 
-async function execute(operation, input) {
-  if (adapters.has(operation)) return adapters.get(operation)(input, (relative) => import(sourceUrl(relative)));
+const sourceDiagnostics = [];
+async function execute(operation, input, id) {
+  if (adapters.has(operation)) return adapters.get(operation)(input, (relative) => import(sourceUrl(relative)), {
+    recordDiagnostic: (record) => sourceDiagnostics.push({ id, ...record }),
+  });
   const source = (name) => import(sourceUrl(`extensions/memory-core/src/memory/${name}.ts`));
   switch (operation) {
     case "fts-query":
@@ -222,13 +225,14 @@ async function execute(operation, input) {
 const results = [];
 for (const testCase of request.cases) {
   try {
-    results.push({ id: testCase.id, ok: true, result: await execute(testCase.operation, testCase.input) });
+    results.push({ id: testCase.id, ok: true, result: await execute(testCase.operation, testCase.input, testCase.id) });
   } catch (error) {
     results.push({ id: testCase.id, ok: false, error: { type: error.name, message: error.message } });
   }
 }
 process.stdout.write(JSON.stringify({
   results,
+  sourceDiagnostics,
   sources: [...sources].sort().map((relative) => ({
     path: relative,
     sha256: crypto.createHash("sha256").update(fs.readFileSync(path.join(root, relative))).digest("hex"),

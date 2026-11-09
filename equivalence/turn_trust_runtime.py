@@ -47,6 +47,9 @@ def _files(workspace):
 def _reopen(request):
     import memory_core
 
+    if (set(request) != {"directory", "input"} or not isinstance(request["input"], dict)
+            or set(request["input"]) != {"nowMs", "agentId", "sessionId", "sessionKey"}):
+        raise ValueError("A fresh storage reader accepts only its owned root and literal source identity")
     root, value = Path(request["directory"]), request["input"]
     catalog, ledger, corpus = _owners(root, value)
     stored = catalog.read_transcript(value["sessionId"], session_key=value["sessionKey"])
@@ -167,7 +170,10 @@ def run_turn_trust(arguments: dict[str, Any], *, evidence_directory: Path | None
                           "trust": {"tainted": trust.is_tainted()}}
                 turns.append(output)
                 raw["turns"].append(deepcopy(output))
-            request = {"directory": str(root), "input": value}
+            request = {"directory": str(root), "input": {
+                "nowMs": now, "agentId": value.get("agentId", "main"),
+                "sessionId": identifier, "sessionKey": key,
+            }}
             wire = json.dumps(request, ensure_ascii=False, separators=(",", ":"))
             process = subprocess.run([sys.executable, "-m", "equivalence.turn_trust_runtime", "--reopen"],
                 input=wire, text=True, capture_output=True, cwd=Path(__file__).resolve().parents[1], check=False)

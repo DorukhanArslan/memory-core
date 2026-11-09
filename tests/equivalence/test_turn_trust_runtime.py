@@ -27,6 +27,8 @@ def test_actual_tools_and_fresh_storage_reopen_retain_complete_public_and_raw_re
     assert reopened["raw"]["ppid"] == raw["coordinatorPid"]
     assert Path(reopened["raw"]["implementationRoot"]) == Path(__file__).resolve().parents[2]
     assert reopened["raw"]["request"] == raw["reopen"]["request"]
+    assert raw["reopen"]["request"] == {"directory": raw["fixtureBase"], "input": {
+        key: case["input"][key] for key in ("nowMs", "agentId", "sessionId", "sessionKey")}}
     assert raw["sessionSql"] == reopened["raw"]["sessionSql"]
     assert {"memory_session_nodes", "memory_session_events", "memory_session_windows"} <= raw["sessionSql"].keys()
     expected = {"provider": "none", "turns": raw["turns"], **reopened["result"]}
@@ -50,6 +52,15 @@ def test_actual_tools_and_fresh_storage_reopen_retain_complete_public_and_raw_re
                 assert observation.get("result") == outcome.get("result")
                 assert observation.get("error") == outcome.get("error")
     assert not Path(raw["fixtureBase"]).exists()
+
+
+def test_fresh_reader_refuses_scripts_or_prior_outputs_as_child_input(tmp_path):
+    from equivalence.turn_trust_runtime import _reopen
+
+    identity = {"nowMs": 1000, "agentId": "main", "sessionId": "session", "sessionKey": "agent:main:dm:trust"}
+    for forbidden in ("turns", "tools", "messages", "history", "sourceEntry", "writeResult"):
+        with pytest.raises(ValueError, match="literal source identity"):
+            _reopen({"directory": str(tmp_path), "input": {**identity, forbidden: []}})
 
 
 def test_network_result_taints_same_turn_retry_and_new_turn_is_clean_while_file_quarantine_persists():

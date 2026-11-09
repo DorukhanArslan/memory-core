@@ -10,6 +10,7 @@ import pytest
 
 from memory_core import _unicode_letter_ranges as facts
 from memory_core.project_name import PACKAGE_NAME
+from memory_core.redact_user_patterns import compile_config_regex
 from memory_core.unicode_letter_property import LETTER_PROPERTY_ALIASES, letter_property_class_body
 from scripts.generate_unicode_letter_ranges import render_module
 
@@ -75,10 +76,11 @@ def all_codepoints():
 
 @pytest.mark.parametrize("source,flags,expected", _BITMAPS, ids=[f"{source}/{flags}" for source, flags, _ in _BITMAPS])
 def test_entire_codepoint_bitmap_matches_pinned_native_engine(source, flags, expected, all_codepoints):
-    body = letter_property_class_body("L", unicode_mode=True, negate=r"\P" in source)
-    pattern = ("[^" if source.startswith("[^") else "[") + body + "]+"
+    compiled = compile_config_regex(source, flags)
+    assert compiled.reason is None
+    pattern = compiled.regex.regex
     bitmap = bytearray(0x110000)
-    for match in re.finditer(pattern, all_codepoints, re.I if "i" in flags else 0):
+    for match in pattern.finditer(all_codepoints):
         bitmap[match.start():match.end()] = b"\1" * (match.end() - match.start())
     assert hashlib.sha256(bitmap).hexdigest() == expected
 

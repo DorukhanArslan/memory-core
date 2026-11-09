@@ -182,15 +182,16 @@ def _phase(request):
         ensure = None
         if "ensure" in step:
             literal = step["ensure"]
-            arguments = {"layout": layout, "templates": {**templates, **literal.get("templates", {})},
+            arguments = {"layout": layout, "templates": templates,
+                         "ensure_bootstrap_files": literal.get("ensureBootstrapFiles", False),
                          "skip_optional": literal.get("skipOptionalBootstrapFiles", False), "now_ms": value["nowMs"]}
-            if literal.get("ensureBootstrapFiles") is not True:
-                arguments["ensureBootstrapFiles"] = literal.get("ensureBootstrapFiles")
+            if "templates" in literal:
+                arguments["creation_templates"] = literal["templates"]
             arguments.update({key: item for key, item in literal.items()
                               if key not in {"ensureBootstrapFiles", "templates", "skipOptionalBootstrapFiles"}})
             result, error = call(label, "initialize_agent_workspace", {"root": workspace, **arguments},
                                  lambda: initialize_agent_workspace(workspace, **arguments))
-            ensure = {"error": _error(error)} if error else {"bootstrapPending": result.bootstrap_status == "pending"}
+            ensure = {"error": _error(error)} if error else {"bootstrapPending": result.bootstrap_pending}
         loaded, load_error = call(label, "load_workspace_bootstrap_files", {"root": workspace, "layout": layout},
                                   lambda: load_workspace_bootstrap_files(workspace, layout))
         runs = []

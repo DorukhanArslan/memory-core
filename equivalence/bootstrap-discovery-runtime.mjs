@@ -23,6 +23,7 @@ function observe(value, seen = new Set()) {
 }
 function stableError(error) {
   if (error === null || typeof error !== "object") return observe(error);
+  if (Array.isArray(error)) return error.map(stableError);
   return { name: error.name, message: error.message,
     ...Object.fromEntries(Object.getOwnPropertyNames(error).filter((key) => !["name", "message", "stack"].includes(key))
       .map((key) => [key, key === "cause" ? stableError(error[key]) : observe(error[key])])) };

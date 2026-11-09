@@ -213,7 +213,7 @@
           "path": "memory_core/bootstrap/lifecycle.py",
           "symbol": "_write_file_if_missing",
           "anchor": "def _write_file_if_missing(path: Path, content: str) -> bool:",
-          "line": 290
+          "line": 297
         },
         {
           "path": "memory_core/consolidation/promotion.py",
@@ -2921,7 +2921,7 @@
           "path": "memory_core/bootstrap/lifecycle.py",
           "symbol": "initialize_agent_workspace",
           "anchor": "def initialize_agent_workspace(",
-          "line": 417
+          "line": 424
         },
         {
           "path": "memory_core/bootstrap/files.py",
@@ -3054,7 +3054,7 @@
       "implementation": "partial",
       "notes": [
         "Runtime markers default to Memory Core identity; native marker behavior requires the explicit OpenClaw compatibility identity.",
-        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1\u20139999."
+        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1–9999."
       ]
     },
     {

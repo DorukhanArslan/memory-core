@@ -68,6 +68,7 @@ from memory_core.bootstrap.layout import (
 )
 from memory_core.bootstrap.lifecycle import (
     LegacyWorkspaceStateMigration,
+    WorkspaceBootstrapSeedConflictError,
     WorkspaceInitResult,
     WorkspaceSetupState,
     WorkspaceStateMigrationError,
@@ -136,6 +137,7 @@ __all__ = [
     "ToolsMdMigrationResult",
     "TrimBootstrapResult",
     "WorkspaceBootstrapFile",
+    "WorkspaceBootstrapSeedConflictError",
     "WorkspaceContext",
     "WorkspaceInitResult",
     "WorkspaceLayout",

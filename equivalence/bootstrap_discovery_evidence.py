@@ -25,6 +25,8 @@ def _same(left, right, message):
 
 
 def _stable_error(error):
+    if isinstance(error, list):
+        return [_stable_error(item) for item in error]
     if not isinstance(error, dict):
         return error
     return {key: _stable_error(value) if key == "cause" else value
@@ -128,7 +130,8 @@ def validate_bootstrap_discovery_raw(row, case, diagnostic, evidence_directory, 
                 _require(set(call) == {"label", "owner", "request", "error"} | ({"warnings"} if owner == "resolveBootstrapFilesForRun" else set()), "An original bootstrap error channel was dropped")
             else:
                 _require(set(call) == {"label", "owner", "request", "result", "returnedUndefined"} | ({"warnings"} if owner == "resolveBootstrapFilesForRun" else set())
-                         and type(call["returnedUndefined"]) is bool, "An original complete bootstrap return was dropped")
+                         and type(call["returnedUndefined"]) is bool
+                         and call["returnedUndefined"] is (call["result"] == {"type": "undefined"}), "An original complete bootstrap return was dropped")
             return call
 
         _require(len(raw["snapshots"]) == len(value["steps"]), "A complete setup/filesystem snapshot was omitted")

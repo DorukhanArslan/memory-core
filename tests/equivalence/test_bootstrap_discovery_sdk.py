@@ -67,8 +67,8 @@ def test_supported_ensure_and_state_use_complete_real_sdk_returns(captures):
     assert len(ensures) == 3
     assert all(call["result"]["type"] == "WorkspaceInitResult" for call in ensures)
     assert set(ensures[0]["result"]["fields"]) == {
-        "root", "created_files", "created_dirs", "bootstrap_seeded", "bootstrap_removed", "state", "bootstrap_status"}
-    assert public["steps"][0]["ensure"] == {"bootstrapPending": ensures[0]["result"]["fields"]["bootstrap_status"] == "pending"}
+        "root", "created_files", "created_dirs", "bootstrap_seeded", "bootstrap_removed", "state", "bootstrap_status", "bootstrap_pending"}
+    assert public["steps"][0]["ensure"] == {"bootstrapPending": ensures[0]["result"]["fields"]["bootstrap_pending"]}
     assert observation["stateFormat"] == "memory-core-workspace-state-json"
     state_file = next(row for row in observation["snapshots"][-1]["workspace"] if row["path"] == ".memory-core/workspace-state.json")
     state = json.loads(bytes.fromhex(state_file["bytes"]["hex"]))
@@ -92,6 +92,16 @@ def test_same_session_read_runs_real_loader_again_after_each_mutation(captures):
     assert len([call for call in calls if call["owner"] == "filter_bootstrap_files"]) == 4
 
 
+def test_creation_overrides_reach_their_own_api_without_replacing_the_baseline(captures):
+    case, public, _ = captures["custom-three-templates-and-optional-skip"]
+    observation = _observation(captures, "custom-three-templates-and-optional-skip")
+    call = next(call for call in observation["calls"] if call["owner"] == "initialize_agent_workspace")
+    assert call["request"]["templates"] == case["input"]["packagedTemplates"]
+    assert call["request"]["creation_templates"] == case["input"]["steps"][0]["ensure"]["templates"]
+    assert public["steps"][0]["ensure"] == {"bootstrapPending": False}
+    assert public["steps"][0]["setupCompleted"] is True
+
+
 def test_default_layout_extension_and_created_directories_are_never_dropped(captures):
     _, public, _ = captures["memory-core-layout-extension"]
     loaded = public["steps"][0]["loaded"]
@@ -103,9 +113,6 @@ def test_default_layout_extension_and_created_directories_are_never_dropped(capt
 
 
 @pytest.mark.parametrize("suffix,keyword,owner", [
-    ("unsupported-purpose", "purpose", "initialize_agent_workspace"),
-    ("unsupported-runtime-managed-provisioning", "provisioning", "initialize_agent_workspace"),
-    ("unsupported-ensure-bootstrap-false", "ensureBootstrapFiles", "initialize_agent_workspace"),
     ("unsupported-configured-classification", "config", "filter_bootstrap_files"),
 ])
 def test_unsupported_intents_execute_the_real_sdk_signature(captures, suffix, keyword, owner):
@@ -116,6 +123,22 @@ def test_unsupported_intents_execute_the_real_sdk_signature(captures, suffix, ke
     assert "traceback" in call["error"] and "args" in call["error"]
     assert keyword in call["request"]
     assert "seed_bootstrap" not in call["request"]
+
+
+@pytest.mark.parametrize("suffix,keyword", [
+    ("unsupported-purpose", "purpose"),
+    ("unsupported-runtime-managed-provisioning", "provisioning"),
+    ("unsupported-ensure-bootstrap-false", "ensure_bootstrap_files"),
+])
+def test_previously_unsupported_options_reach_the_new_real_production_api(captures, suffix, keyword):
+    observation = _observation(captures, suffix)
+    call = next(call for call in observation["calls"] if call["owner"] == "initialize_agent_workspace")
+    assert keyword in call["request"] and "error" not in call
+    assert call["result"]["type"] == "WorkspaceInitResult"
+    assert type(call["result"]["fields"]["bootstrap_pending"]) is bool
+    if keyword == "provisioning":
+        assert call["result"]["fields"]["state"] is None
+        assert call["result"]["fields"]["bootstrap_status"] is None
 
 
 def test_guarded_io_keeps_complete_bytes_inode_link_and_unreadable_metadata(captures):

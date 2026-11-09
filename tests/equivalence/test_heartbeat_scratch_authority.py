@@ -1,7 +1,8 @@
 """The scratch lane cannot borrow unrelated execution or source authority."""
 import pytest
+from pathlib import Path
 
-from equivalence.heartbeat_node_authority import APPROVED_NODE, validate_heartbeat_node_authority
+from equivalence.heartbeat_node_authority import APPROVED_NODE, validate_heartbeat_node_authority, prepare_heartbeat_node_authority
 from equivalence.heartbeat_scratch_probe import build_cases, _same_json_wire
 
 
@@ -45,3 +46,17 @@ def test_input_wire_comparison_preserves_exact_utf16_and_normalization_forms():
     assert _same_json_wire({"input": "a\ud83d\ude00b"}, {"input": "a😀b"})
     assert not _same_json_wire({"input": "\ud800"}, {"input": "�"})
     assert not _same_json_wire({"input": "café"}, {"input": "cafe\u0301"})
+
+
+def test_store_capability_rejects_the_unused_old_doctor_profile():
+    value = _capability()
+    value["profile"] = "heartbeat-scratch-doctor"
+    with pytest.raises(ValueError):
+        validate_heartbeat_node_authority(value)
+
+
+@pytest.mark.parametrize("variable", ["MEMORY_EQ_DOCTOR_CONTEXT", "MEMORY_EQ_RELEASE_CONTEXT"])
+def test_store_constructor_rejects_other_contexts_before_executable_access(monkeypatch, variable):
+    monkeypatch.setenv(variable, "/unused-foreign-context")
+    with pytest.raises(ValueError, match="contexts"):
+        prepare_heartbeat_node_authority(Path("/nonexistent-node"), "heartbeat-scratch-store")

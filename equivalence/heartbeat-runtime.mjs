@@ -7,6 +7,10 @@ import { pathToFileURL } from "node:url";
 import { mock } from "node:test";
 
 const context = JSON.parse(await fs.readFile(process.env.MEMORY_EQ_HEARTBEAT_CONTEXT, "utf8"));
+if (process.env.MEMORY_EQ_DOCTOR_CONTEXT || process.env.MEMORY_EQ_RELEASE_CONTEXT ||
+    context.capability?.kind !== "heartbeat-scratch-node-capability" || context.capability?.profile !== "heartbeat-scratch-store") {
+  throw Error("STORE requires its exclusive reviewed execution capability");
+}
 if (process.argv[2] !== context.requestPath) throw Error("Heartbeat request does not match its capability");
 const bytes = await fs.readFile(context.requestPath);
 if (crypto.createHash("sha256").update(bytes).digest("hex") !== context.requestSha256) throw Error("Heartbeat input changed");

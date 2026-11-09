@@ -11,7 +11,7 @@ APPROVED_NODE = {
     "nodeVersion": "v24.16.0", "icuVersion": "78.3", "unicodeVersion": "17.0",
     "sha256": "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd",
 }
-PROFILES = frozenset({"heartbeat-scratch-store", "heartbeat-scratch-doctor"})
+PROFILES = frozenset({"heartbeat-scratch-store"})
 
 
 def validate_heartbeat_node_authority(value: dict) -> dict:
@@ -28,6 +28,8 @@ def validate_heartbeat_node_authority(value: dict) -> dict:
 
 
 def prepare_heartbeat_node_authority(executable: Path, profile: str) -> dict:
+    if os.environ.get("MEMORY_EQ_DOCTOR_CONTEXT") or os.environ.get("MEMORY_EQ_RELEASE_CONTEXT"):
+        raise ValueError("STORE authority cannot run inside Doctor or release execution contexts")
     if profile not in PROFILES:
         raise ValueError("An unrelated profile cannot borrow heartbeat scratch authority")
     executable = executable.resolve(strict=True)

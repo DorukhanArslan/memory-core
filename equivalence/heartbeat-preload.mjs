@@ -13,6 +13,7 @@ import { Console } from "node:console";
 
 const sha = (value) => crypto.createHash("sha256").update(value).digest("hex");
 const contextPath = process.env.MEMORY_EQ_HEARTBEAT_CONTEXT;
+if (process.env.MEMORY_EQ_DOCTOR_CONTEXT || process.env.MEMORY_EQ_RELEASE_CONTEXT) throw Error("STORE cannot borrow Doctor or release context authority");
 if (!contextPath || !path.isAbsolute(contextPath)) throw Error("Owned heartbeat context is required");
 const raw = fs.readFileSync(contextPath);
 if (raw.length > 64 * 1024 * 1024) throw Error("Heartbeat context exceeds its bound");
@@ -20,7 +21,7 @@ const context = JSON.parse(raw);
 const cap = context.capability;
 if (context.kind !== "heartbeat-scratch-execution" || context.providerMode !== "none" || context.fetchPolicy !== "deny" ||
     !cap || Object.keys(cap).sort().join() !== "kind,node,profile" || cap.kind !== "heartbeat-scratch-node-capability" ||
-    !["heartbeat-scratch-store", "heartbeat-scratch-doctor"].includes(cap.profile) ||
+    cap.profile !== "heartbeat-scratch-store" ||
     Object.keys(context).sort().join() !== "allowedLocal,capability,fetchPolicy,kind,providerMode,requestPath,requestSha256,runtime,traceDirectory") {
   throw Error("Only the explicit heartbeat scratch capability is accepted");
 }

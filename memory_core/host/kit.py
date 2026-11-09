@@ -58,6 +58,7 @@ from memory_core.host.flush import FlushRequest
 from memory_core.host.heartbeat_run import HeartbeatRun
 from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
 from memory_core.host.tool_calls import ToolCallRepair, repair_tool_calls
+from memory_core.memory_write_provenance import MemoryWriteProvenanceObserver
 from memory_core.memory_flush import (
     MemoryFlushFailureOutcome,
     MemoryFlushPlan,
@@ -379,6 +380,7 @@ class HostKit:
         arguments: Mapping[str, Any] | str | None,
         *,
         session: SessionState,
+        write_provenance: MemoryWriteProvenanceObserver | None = None,
     ) -> dict[str, Any]:
         """Run one tool call of the model and return the payload to send back verbatim.
 
@@ -387,6 +389,8 @@ class HostKit:
         invalid JSON, a non-object, a tool :meth:`tools` does not offer, bad params and refused
         curated writes (``MemoryToolInputError``), and any other ``Exception`` a tool raises.
         ``TypeError`` for a non-string name or arguments of another type.
+        ``write_provenance`` is a trusted host observer for this call's curated commits;
+        it is not read from model arguments and does not mutate the shared kit.
         """
         try:
             args = read_tool_call(name, arguments)
@@ -399,26 +403,31 @@ class HostKit:
                 return self._memory_search(prepare_memory_search_arguments(args), session)
             if name == MEMORY_GET_TOOL_NAME:
                 return execute_memory_get_tool(self._memory.config, args)
-            return self._curator.dispatch(name, args)
+            if write_provenance is None:
+                return self._curator.dispatch(name, args)
+            return self._curator.dispatch(name, args, write_provenance=write_provenance)
         except MemoryToolError as error:
             return error.to_tool_error(name)
         except Exception as error:
             return to_tool_error(error, tool=name)
 
     def dispatcher(
-        self, session: SessionState
+        self, session: SessionState, *, write_provenance: MemoryWriteProvenanceObserver | None = None
     ) -> Callable[[str, Mapping[str, Any] | str | None], dict[str, Any]]:
         """:meth:`dispatch` bound to ``session``: ``FlushRequest.dispatch``'s two-argument shape.
 
         One tool-answering helper then serves a turn and its flush run. The returned function
         looks :meth:`dispatch` up at each call and adds nothing to it; ``TypeError`` at once for
         a ``session`` that is not a :class:`SessionState` (docs/host_kit.md, F24).
+        An optional ``write_provenance`` binds the owning turn's live write observer.
         """
         if not isinstance(session, SessionState):
             raise TypeError("session must be a SessionState")
 
         def run_tool(name: str, arguments: Mapping[str, Any] | str | None) -> dict[str, Any]:
-            return self.dispatch(name, arguments, session=session)
+            if write_provenance is None:
+                return self.dispatch(name, arguments, session=session)
+            return self.dispatch(name, arguments, session=session, write_provenance=write_provenance)
 
         return run_tool
 

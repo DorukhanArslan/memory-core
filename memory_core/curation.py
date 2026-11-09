@@ -91,6 +91,7 @@ import secrets
 import stat
 import time
 from collections.abc import Callable, Iterable, Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -117,6 +118,7 @@ from memory_core.flags import FeatureFlags
 from memory_core.memory_budget import PROMOTION_SECTION_HEADING_RE, parse_memory_blocks
 from memory_core.memory_flush import SILENT_REPLY_TOKEN
 from memory_core.memory_paths import UnsafeMemoryPathError
+from memory_core.memory_write_provenance import MemoryWriteProvenanceObserver
 from memory_core.tools.common import MemoryToolInputError, format_error_message
 from memory_core.workspace import append_daily_memory_file, workspace_file_lock
 
@@ -756,6 +758,11 @@ def _is_plain_file_name(name: str) -> bool:
     )
 
 
+_dispatch_write_provenance: ContextVar[tuple[object, MemoryWriteProvenanceObserver | None] | None] = ContextVar(
+    "curation_dispatch_write_provenance", default=None
+)
+
+
 class MemoryCurator:
     """Curated writes for one workspace root.
 
@@ -834,6 +841,7 @@ class MemoryCurator:
         arguments: Mapping[str, object] | str | None = None,
         *,
         memory_flush: bool = False,
+        write_provenance: MemoryWriteProvenanceObserver | None = None,
     ) -> dict:
         """Run one tool call; ``arguments`` is a mapping or its JSON text.
 
@@ -846,12 +854,14 @@ class MemoryCurator:
         ``afterWriteError``. Raises
         ``CurationUnavailableError`` for a tool that is not on offer (unknown
         name, flag off, memory flush, policy). Blank optional arguments count
-        as absent.
+        as absent. ``write_provenance`` belongs to the trusted host dispatch only;
+        concurrent calls on this curator retain their separate observers.
         """
         if name not in CURATION_OPERATIONS:
             raise CurationUnavailableError(f"unknown curation tool: {name}")
         self._require(name, self._target_for(name), memory_flush=memory_flush)
         args = _parse_arguments(arguments, tool=name)
+        token = _dispatch_write_provenance.set((self, write_provenance))
         try:
             result = self._dispatch_call(name, args, memory_flush=memory_flush)
         except CurationUnavailableError:
@@ -862,7 +872,13 @@ class MemoryCurator:
             raise MemoryToolInputError(
                 f"write failed: {exc.strerror or exc}", tool=name
             ) from exc
+        finally:
+            _dispatch_write_provenance.reset(token)
         return result.to_tool_result()
+
+    def _current_write_provenance(self) -> MemoryWriteProvenanceObserver | None:
+        current = _dispatch_write_provenance.get()
+        return current[1] if current is not None and current[0] is self else None
 
     def _dispatch_call(self, name: str, args: dict, *, memory_flush: bool) -> CurationResult:
         if name == ADD_MEMORY_ENTRY:
@@ -1005,7 +1021,11 @@ class MemoryCurator:
         if raw.strip() in ("", SILENT_REPLY_TOKEN):
             return CurationResult(APPEND_DAILY_NOTE, rel_path, "skipped", False)
         try:
-            append_daily_memory_file(self.root, rel_path, raw)
+            observer = self._current_write_provenance()
+            if observer is None:
+                append_daily_memory_file(self.root, rel_path, raw)
+            else:
+                append_daily_memory_file(self.root, rel_path, raw, provenance=observer)
         except UnsafeMemoryPathError as exc:
             raise CurationError(str(exc)) from exc
         return self._run_after_write(CurationResult(APPEND_DAILY_NOTE, rel_path, "appended", True))
@@ -1163,9 +1183,17 @@ class MemoryCurator:
                 os.fsync(handle.fileno())
             if mode is not None:
                 os.chmod(temporary, mode)
-            if self._read_target(name) != before:
-                raise CurationConflictError(f"{name} changed during the write; read it again")
-            os.replace(temporary, path)
+            def commit() -> None:
+                if self._read_target(name) != before:
+                    raise CurationConflictError(f"{name} changed during the write; read it again")
+                os.replace(temporary, path)
+
+            observer = self._current_write_provenance()
+            if observer is None:
+                commit()
+            else:
+                observer.write(absolute_path=path, content_before=before or "",
+                               content_after=content, commit=commit)
         except BaseException:
             with contextlib.suppress(FileNotFoundError):
                 os.unlink(temporary)

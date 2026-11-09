@@ -319,6 +319,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                 context_options = ({"fixture_captures": True}
                                    if len(cases) == 1 and cases[0]["operation"] == "flush-execution-runtime"
                                    else {})
+                if len(cases) == 1 and cases[0]["operation"] == "turn-trust-runtime":
+                    from equivalence.turn_trust_source_authority import prepare_turn_taint_source_authority
+
+                    context_options["turn_taint_source"] = prepare_turn_taint_source_authority(checkout)
                 execution = resources.enter_context(ReleaseOracleExecution(
                     release_runtime, _adapter_identity(), **context_options))
                 # Only this reviewed preload is supplied. User Node options,
@@ -470,6 +474,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "deadline-partial-get-runtime",
             "session-contract-runtime", "session-contract-helper-runtime",
             "transcript-boundary-runtime", "durable-session-runtime",
+            "turn-trust-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -659,6 +664,16 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                                        "The original durable append/context owners could not be verified.") from None
             if flush_execution:
                 report["fixtureCaptures"] = []
+            if any(case["operation"] == "turn-trust-runtime" for case in runtime_cases):
+                from equivalence.turn_trust_runtime_bindings import prepare_turn_trust_runtime_bindings
+
+                try:
+                    report["turnTrustRuntimeBindings"] = prepare_turn_trust_runtime_bindings(
+                        checkout, Path(runtime_config["runtimeRoot"]),
+                    )
+                except (OSError, ValueError):
+                    raise HarnessError("turn-trust-runtime-owner-unavailable",
+                                       "The original mixed-source turn and release tool owners could not be verified.") from None
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -791,7 +806,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     if case in runtime_cases:
                         directory = python_diagnostics / hashlib.sha256(case["id"].encode()).hexdigest()
                         python_case["_diagnosticDirectory"] = directory
-                        row["referenceMode"] = "authenticated-official-release"
+                        row["referenceMode"] = (
+                            "authenticated-mixed-original-source-and-release"
+                            if case["operation"] == "turn-trust-runtime" else "authenticated-official-release"
+                        )
                     python = python_runner(python_case)
                     if case in runtime_cases:
                         evidence = directory / "python-raw.json"

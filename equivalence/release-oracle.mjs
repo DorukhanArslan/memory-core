@@ -25,6 +25,7 @@ const operations = {
   "session-contract-helper-runtime": ["session-contract-runtime.mjs", "runSessionContractHelperRuntime"],
   "transcript-boundary-runtime": ["transcript-boundary-runtime.mjs", "runTranscriptBoundaryRuntime"],
   "durable-session-runtime": ["durable-session-runtime.mjs", "runDurableSessionRuntime"],
+  "turn-trust-runtime": ["turn-trust-runtime.mjs", "runTurnTrustRuntime"],
 };
 const results = [];
 for (const testCase of request.cases) {
@@ -38,6 +39,7 @@ for (const testCase of request.cases) {
     const result = await adapter[binding[1]](testCase.input, {
       ...context.runtime, evidenceDirectory,
       stateDirectory: context.stateDirectory, configPath: context.configPath,
+      approvedReferenceSources: context.approvedReferenceSources ?? [],
     });
     results.push({ id: testCase.id, ok: true, result });
   } catch (error) {

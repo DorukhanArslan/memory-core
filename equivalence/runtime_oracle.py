@@ -73,6 +73,9 @@ _OPERATIONS = {
     "durable-session-runtime": (
         "durable-session-runtime.mjs", "dist/extensions/memory-core/manager-runtime.js", True,
     ),
+    "turn-trust-runtime": (
+        "turn-trust-runtime.mjs", "dist/agent-tools-HIqp3eTk.mjs", False,
+    ),
 }
 
 
@@ -546,16 +549,22 @@ def _relative(value: object) -> str:
 class ReleaseOracleExecution:
     """One fresh provider-none process with a trusted preload inherited by workers."""
 
-    def __init__(self, config: dict, adapter_hashes: dict[str, str], *, fixture_captures: bool = False):
+    def __init__(self, config: dict, adapter_hashes: dict[str, str], *, fixture_captures: bool = False,
+                 turn_taint_source: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
+        self.turn_taint_source = deepcopy(turn_taint_source)
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
 
     def __enter__(self):
         try:
+            if self.turn_taint_source is not None:
+                from equivalence.turn_trust_source_authority import validate_turn_taint_source_authority
+
+                self.turn_taint_source = validate_turn_taint_source_authority(self.turn_taint_source)
             runtime_root = Path(self.config["runtimeRoot"])
             if not runtime_root.is_absolute() or not runtime_root.is_dir():
                 raise RuntimeOracleError("An authenticated absolute release runtime is required.")
@@ -612,6 +621,7 @@ class ReleaseOracleExecution:
                 "stateDirectory": str(self.state_directory), "configPath": str(self.config_path),
                 "providerMode": "none", "fetchPolicy": "deny",
                 "fixtureSourceCaptures": [],
+                "approvedReferenceSources": [self.turn_taint_source] if self.turn_taint_source else [],
             }
             if self.fixture_captures:
                 fixture = str((ROOT / "equivalence/flush-execution.mjs").resolve())
@@ -666,6 +676,12 @@ class ReleaseOracleExecution:
         case = cases[0]
         row = result["results"][0]
         operation = case.get("operation")
+        if (self.turn_taint_source is not None) is not (operation == "turn-trust-runtime"):
+            raise RuntimeOracleError("The single source-owner capability is restricted to the declared mixed turn-trust profile.")
+        if self.turn_taint_source is not None:
+            from equivalence.turn_trust_source_authority import validate_turn_taint_source_authority
+
+            validate_turn_taint_source_authority(self.turn_taint_source)
         search_profile_kinds = {"search-contract-runtime": {"tool"},
                                 "search-contract-helper-runtime": {"definition", "prepare-arguments"}}
         if (operation in search_profile_kinds
@@ -680,7 +696,8 @@ class ReleaseOracleExecution:
                 or operation == "deadline-partial-get-runtime" and case["input"].get("toolName") != "memory_get"):
             raise RuntimeOracleError("Deadline search and real-file get profiles cannot impersonate each other.")
         session_kinds = {"session-contract-runtime": "flow", "session-contract-helper-runtime": "admission-policy"}
-        session_kinds.update({"transcript-boundary-runtime": "boundary", "durable-session-runtime": "durable"})
+        session_kinds.update({"transcript-boundary-runtime": "boundary", "durable-session-runtime": "durable",
+                              "turn-trust-runtime": "turn-trust"})
         if operation in session_kinds and case.get("input", {}).get("kind") != session_kinds[operation]:
             raise RuntimeOracleError("Session admission helpers cannot impersonate genuine persisted session flows.")
         if (not isinstance(row, dict) or operation not in _OPERATIONS
@@ -689,6 +706,8 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("The release oracle returned an unexpected case identity.")
         if row["ok"] and (not isinstance(row["result"], dict) or row["result"].get("provider") != "none"):
             raise RuntimeOracleError("Release memory fixtures require provider none.")
+        if operation == "turn-trust-runtime" and not row["ok"]:
+            raise RuntimeOracleError("The real turn-trust caller did not complete its registered execution and persistence flow.")
         if _digest(_regular(self.context_path, MAX_TRACE_BYTES)) != self._context_digest:
             raise RuntimeOracleError("The owned release execution configuration changed.")
         for path, digest in self._locals.items():
@@ -700,6 +719,7 @@ class ReleaseOracleExecution:
         total = 0
         loaded, bootstrap, worker_imports, local_imports, captures = {}, [], [], set(), {}
         release_by_pid, local_by_pid, process_parents = {}, {}, {}
+        reference_source_imports = []
         for trace in traces:
             filename = _TRACE.fullmatch(trace.name)
             if filename is None:
@@ -737,6 +757,15 @@ class ReleaseOracleExecution:
                     if event["event"] == "load" and thread == 0:
                         local_imports.add(path)
                         local_by_pid.setdefault(pid, set()).add(path)
+                elif kind == "reference-source":
+                    approved = self.turn_taint_source
+                    if (operation != "turn-trust-runtime" or approved is None or path != approved["path"]
+                            or digest != approved["sha256"] or event.get("relativePath") != approved["relativePath"]
+                            or event.get("referenceCommit") != approved["referenceCommit"] or thread != 0):
+                        raise RuntimeOracleError("A reference source import escaped its exact mixed-profile authority.")
+                    if event["event"] == "load":
+                        reference_source_imports.append({"path": path, "relativePath": approved["relativePath"],
+                            "sha256": digest, "referenceCommit": approved["referenceCommit"], "pid": pid, "threadId": thread})
                 elif kind == "fixture-capture":
                     source = event.get("sourcePath")
                     capture = event.get("capturePath")
@@ -873,6 +902,14 @@ class ReleaseOracleExecution:
                                         runtime_root=self.config["runtimeRoot"], bootstrap=bootstrap,
                                         release_by_pid=release_by_pid, local_by_pid=local_by_pid,
                                         worker_imports=worker_imports, process_parents=process_parents)
+        if operation == "turn-trust-runtime":
+            from equivalence.turn_trust_evidence import validate_turn_trust_raw
+
+            validate_turn_trust_raw(row, case, diagnostic, evidence.parent,
+                                   approved_source=self.turn_taint_source,
+                                   reference_source_imports=reference_source_imports, bootstrap=bootstrap,
+                                   release_by_pid=release_by_pid, local_by_pid=local_by_pid,
+                                   process_parents=process_parents, worker_imports=worker_imports)
         if operation in {"deadline-partial-runtime", "deadline-partial-get-runtime"}:
             _validate_deadline_partial_raw(row, case, diagnostic, evidence.parent)
         if operation in {"session-contract-runtime", "session-contract-helper-runtime"}:
@@ -960,4 +997,8 @@ class ReleaseOracleExecution:
                                   "nativeBinaryPolicy": "all artifact bytes authenticated before and after execution"}
         answer["runtimeDiagnostics"] = [{"id": case["id"], "sha256": _digest(raw),
                                           "rawSnapshots": diagnostic}]
+        if self.turn_taint_source is not None:
+            if len(reference_source_imports) != 1:
+                raise RuntimeOracleError("The mixed profile must actually load its sole original source owner exactly once.")
+            answer["releaseTrace"]["mixedReferenceSourceImports"] = reference_source_imports
         return answer

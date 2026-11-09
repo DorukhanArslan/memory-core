@@ -20,6 +20,18 @@ const permitted = new Map();
 for (const entry of context.allowedLocal) {
   permitted.set(fs.realpathSync(entry.path), { kind: "oracle", path: fs.realpathSync(entry.path), sha256: entry.sha256 });
 }
+const sourceAuthorities = context.approvedReferenceSources ?? [];
+if (!Array.isArray(sourceAuthorities) || sourceAuthorities.length > 1) throw Error("Unsupported reference source authority");
+for (const entry of sourceAuthorities) {
+  if (entry.kind !== "pinned-reference-source" || entry.referenceCommit !== "bcfc88812a35243893585dbeca87ca41b48272ca" ||
+      entry.relativePath !== "src/agents/embedded-agent-runner/run/turn-taint-state.ts" ||
+      entry.sha256 !== "7fd28e4064c555256feeaace2dbabb8b08d31ce1e0d7baaf1a1d7b20380723fe" ||
+      entry.export !== "createAgentTurnTaintState" || entry.zeroRuntimeDependencies !== true ||
+      !path.isAbsolute(entry.checkout) || entry.path !== path.join(entry.checkout, entry.relativePath) ||
+      fs.realpathSync(entry.path) !== entry.path || permitted.has(entry.path)) throw Error("Unapproved reference source import");
+  permitted.set(entry.path, { kind: "reference-source", path: entry.path, relativePath: entry.relativePath,
+    sha256: entry.sha256, referenceCommit: entry.referenceCommit });
+}
 for (const entry of context.runtime.packages) {
   const directory = fs.realpathSync(entry.directory);
   for (const file of entry.files) {

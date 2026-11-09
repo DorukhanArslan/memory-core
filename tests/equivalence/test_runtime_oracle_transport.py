@@ -139,6 +139,26 @@ def test_model_binary_capability_does_not_grant_reference_source_imports(transpo
         assert execution._context["fixtureSourceCaptures"] == []
 
 
+@pytest.mark.parametrize("thread", (0, 1))
+@pytest.mark.parametrize("field", ("sha256", "nodeVersion", "icuVersion", "unicodeVersion", "execPath"))
+def test_model_parent_and_worker_bootstrap_reject_tampered_runtime_attestation(transport, thread, field):
+    from equivalence.model_runtime_authority import APPROVED_NODE_RUNTIME
+
+    execution, config, case, result = transport
+    authority = {"execPath": "/reviewed/node", **APPROVED_NODE_RUNTIME}
+    execution.model_node_runtime = authority
+    case["operation"] = "model-tool-result-runtime"
+    _valid(execution, config, case)
+    for trace in execution.trace_directory.iterdir():
+        events = [json.loads(line) for line in trace.read_text().splitlines()]
+        events[0]["runtime"] = dict(authority)
+        if events[0]["threadId"] == thread:
+            events[0]["runtime"][field] = "tampered-actual-runtime-field"
+        trace.write_text("".join(json.dumps(event) + "\n" for event in events))
+    with pytest.raises(RuntimeOracleError, match="approved model binary authority"):
+        execution.collect(result, [case])
+
+
 def test_real_preload_keeps_worker_console_on_stderr_and_denies_unreviewed_execution(transport):
     """An optional Node transport check; the labelled files are not parity evidence."""
     node = shutil.which("node")

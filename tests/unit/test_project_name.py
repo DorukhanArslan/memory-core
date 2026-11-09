@@ -186,9 +186,8 @@ def test_a_probe_rename_leaves_no_old_spelling_and_every_upstream_spelling(probe
     old = rename_project.read_declaration(ROOT)
     renamed = _tree_bytes(probe_tree)
     stale = {
-        path: [match.group() for match in rename_project.name_matches(data.decode("utf-8"), old)]
-        for path, data in renamed.items()
-        if rename_project.in_scope(path)
+        path: [match.group() for match in rename_project.name_matches(text, old)]
+        for path, text in rename_project.read_texts(probe_tree).items()
     }
 
     assert {path: found for path, found in stale.items() if found} == {}
@@ -200,6 +199,14 @@ def test_a_probe_rename_leaves_no_old_spelling_and_every_upstream_spelling(probe
         for path, spans in _protected_by_file(ROOT).items()
     }
     original = _tree_bytes(ROOT)
+    # The real renamer skips non-UTF-8 data, including authenticated compressed
+    # evidence. Its bytes must survive even if a containing package moves.
+    text_paths = rename_project.read_texts(ROOT)
+    for path, data in original.items():
+        if path not in text_paths:
+            target = (path.replace(f"{old.package}/", "probe_kit/", 1)
+                      if path.startswith(f"{old.package}/") else path)
+            assert renamed[target] == data
     untouched = [path for path in original if not rename_project.in_scope(path)]
     assert untouched
     assert {path: renamed[path] == original[path] for path in untouched} == {

@@ -3,6 +3,8 @@ from concurrent.futures import ThreadPoolExecutor
 import errno
 import threading
 
+import pytest
+
 import memory_core.curation as curation_module
 from memory_core.client import Memory
 from memory_core.config import MemoryConfig
@@ -85,13 +87,14 @@ def test_two_thread_dispatches_on_one_kit_keep_distinct_observers(tmp_path, monk
     assert records["USER.md"].origin_class == "untrusted"
 
 
-def test_failed_atomic_commit_rolls_back_reserved_provenance_and_restores_dispatch_context(tmp_path, monkeypatch):
+@pytest.mark.parametrize("code,uncertain", [(errno.EIO, True), (errno.EACCES, False)])
+def test_failed_atomic_commit_retains_owner_classification_and_restores_dispatch_context(tmp_path, monkeypatch, code, uncertain):
     root, ledger, kit = _setup(tmp_path)
     replace = curation_module.os.replace
 
     def fail(source, target):
         if target == root / "MEMORY.md":
-            raise OSError(errno.EIO, "Owned commit failed")
+            raise OSError(code, "Owned commit failed")
         return replace(source, target)
 
     monkeypatch.setattr(curation_module.os, "replace", fail)
@@ -99,11 +102,19 @@ def test_failed_atomic_commit_rolls_back_reserved_provenance_and_restores_dispat
     result = kit.dispatch("add_memory_entry", {"section": "Facts", "text": "Never committed."},
                           session=SESSION, write_provenance=observer)
     assert result["status"] == "error"
-    assert not (root / "MEMORY.md").exists() and ledger.list(root) == []
+    assert not (root / "MEMORY.md").exists()
+    records = ledger.list(root)
+    if uncertain:
+        # The stub knows it did not replace, but the real publisher dispatched
+        # an EIO rename and cannot turn that private knowledge into a guarantee.
+        assert result["publication"] == "uncertain"
+        assert len(records) == 1 and records[0][1].origin_class == "untrusted"
+    else:
+        assert "publication" not in result and records == []
     assert list(root.glob(".*.tmp")) == []
     assert kit.dispatch("append_daily_note", {"text": "Default untracked call.", "date": "2026-11-10"},
                         session=SESSION)["status"] == "ok"
-    assert ledger.list(root) == []
+    assert ledger.list(root) == records
 
 
 def test_file_is_rechecked_after_provenance_reservation_before_atomic_replace(tmp_path):

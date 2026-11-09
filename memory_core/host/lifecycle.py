@@ -33,6 +33,7 @@ from memory_core.turn_trust import (
 )
 
 _STATE = "sdkHostLifecycle"
+_KEEP_PUBLICATION = object()
 _ENTRY_FIELDS = ("sessionId", "compactionCount", "totalTokens", "totalTokensFresh",
                  "totalTokensVersion", "memoryFlush")
 
@@ -43,6 +44,7 @@ class HostTurnFailure:
     error_type: str
     message: str
     committed: bool = False
+    publication: Literal["committed", "uncertain"] | None = None
 
 
 @dataclass(frozen=True)
@@ -67,10 +69,12 @@ class HostTurnOutcome:
     flush: FlushOutcome | None = None
     cancelled: bool = False
     payloads: tuple[Mapping[str, Any], ...] = ()
+    memory_publication: Literal["none", "committed", "uncertain"] = "none"
 
     @property
     def ready(self) -> bool:
-        return self.index_status == "ready" and not self.failures and not self.cancelled
+        return (self.index_status == "ready" and not self.failures and not self.cancelled
+                and self.memory_publication != "uncertain")
 
 
 @dataclass
@@ -89,6 +93,7 @@ class _RunCapture:
     accepted: bool = False
     flush: FlushOutcome | None = None
     payloads: tuple[Mapping[str, Any], ...] = ()
+    memory_publication: Literal["none", "committed", "uncertain"] = "none"
 
 
 @dataclass
@@ -204,6 +209,8 @@ class HostTurn:
         self._completed_calls: set[str] = set()
         self._counter = 0
         if flush is None:
+            self._publication_tools = frozenset(spec["name"] for spec in runner.kit.tools()
+                if spec["name"] in CURATION_OPERATIONS)
             observer = trust.write_observer(store=runner.artifact_provenance,
                 mutation_root=runner.kit.memory.workspace.root, workspace_dir=runner.kit.memory.workspace.root,
                 session_id=session.session_id, session_key=session.session_key, now=runner._clock)
@@ -213,6 +220,7 @@ class HostTurn:
             tools.extend(runner.extra_tools)
             self.tools = tuple(deepcopy(runner.kit.tools()))
         else:
+            self._publication_tools = frozenset()
             tools = [TurnTool(spec["name"], lambda _id, args, name=spec["name"]: flush.dispatch(name, args))
                      for spec in flush.tools]
             self.tools = tuple(deepcopy(flush.tools))
@@ -274,6 +282,8 @@ class HostTurn:
         with self._guard:
             if not self._open:
                 raise RuntimeError("The host turn is closed")
+            if _memory_publication(self._receipts, None) == "uncertain":
+                raise RuntimeError("A memory publication is uncertain; acknowledge the current files before another tool dispatch")
             call = self._pending.get(tool_call_id)
             if call is None or call["name"] != name or dict(call["arguments"]) != dict(arguments):
                 raise ValueError("Dispatch must match a recorded assistant tool call")
@@ -282,7 +292,8 @@ class HostTurn:
             self._active += 1
             receipt = {"turnId": self.turn_id, "toolCallId": call["id"], "name": call["name"],
                        "arguments": deepcopy(call["arguments"]), "sourceExecuted": False,
-                       "maintenance": self.flush_request is not None}
+                       "maintenance": self.flush_request is not None,
+                       "memoryPublicationOwner": call["name"] in self._publication_tools}
             self._receipts.append(receipt)
             return _DispatchReservation(call, receipt)
 
@@ -516,13 +527,16 @@ class HostSessionRunner:
         failures = [HostTurnFailure("producer", "CancelledError", "The admitted producer was cancelled", capture.accepted)]
         if capture.accepted:
             try:
-                self._persist(capture.state, needs_index=True, turn_id=turn_id)
+                self._persist(capture.state, needs_index=True, turn_id=turn_id,
+                    pending_memory_publication=_pending_publication(capture.receipts, turn_id, self.kit))
             except Exception as error:
                 failures.append(_failure("cancel-finalization", error, committed=True))
         return HostTurnOutcome(turn_id, capture.state, tuple(capture.messages), tuple(capture.appends),
             tuple(capture.receipts), capture.accepted, _memory_wrote(capture.receipts, capture.flush),
             "failed" if capture.accepted else "not-run", tuple(failures), capture.flush,
-            cancelled=True, payloads=tuple(deepcopy(capture.payloads)))
+            cancelled=True, payloads=tuple(deepcopy(capture.payloads)),
+            memory_publication=_memory_publication(capture.receipts, capture.flush,
+                                                   inherited=capture.memory_publication))
 
     def _assert_identity(self) -> None:
         current = self.catalog.get_session_entry(self.session.session_key)
@@ -533,6 +547,12 @@ class HostSessionRunner:
         self._assert_identity()
         if self._cancel_requested.is_set():
             raise asyncio.CancelledError("Host maintenance was cancelled")
+
+    def _assert_publication_owner(self, pending: Mapping[str, Any]) -> None:
+        if (pending["workspace"] != str(self.kit.memory.workspace.root.resolve())
+                or pending["indexPath"] != str(self.kit.memory.store.path.resolve())
+                or pending["provenancePath"] != str(self.artifact_provenance.path.resolve())):
+            raise RuntimeError("The pending memory publication belongs to a different workspace, index or provenance store")
 
     def _load(self) -> tuple[SessionState, dict[str, Any], bool]:
         current = self.catalog.get_session_entry(self.session.session_key)
@@ -560,7 +580,10 @@ class HostSessionRunner:
             "completedBootstrapTurn": auxiliary.get("completedBootstrapTurn", self.session.completed_bootstrap_turn)})
         return state, continuation, auxiliary.get("needsIndex") is True
 
-    def _persist(self, state: SessionState, *, needs_index: bool, turn_id: str) -> None:
+    def _persist(self, state: SessionState, *, needs_index: bool, turn_id: str,
+                 pending_memory_publication: object = _KEEP_PUBLICATION,
+                 expected_pending_turn_id: str | None = None,
+                 acknowledgment: Mapping[str, Any] | None = None) -> None:
         current = self.catalog.get_session_entry(state.session_key)
         if current is None or current.get("sessionId") != state.session_id:
             raise RuntimeError("The current session incarnation changed during this turn")
@@ -568,16 +591,100 @@ class HostSessionRunner:
         if continuation is None:
             raise RuntimeError("The current transcript disappeared during this turn")
         entry = deepcopy(continuation["instanceEntry"])
+        auxiliary = deepcopy(dict(entry.get(_STATE, {})))
+        if expected_pending_turn_id is not None:
+            pending = _stored_pending_publication(entry)
+            if pending is None or pending["turnId"] != expected_pending_turn_id:
+                raise RuntimeError("The pending memory publication changed; acknowledge its current turn id")
+            self._assert_publication_owner(pending)
         for key in _ENTRY_FIELDS:
             if key in state.entry:
                 entry[key] = deepcopy(state.entry[key])
             else:
                 entry.pop(key, None)
-        entry[_STATE] = {"version": 1, "kind": state.kind, "lastOutputTokens": state.last_output_tokens,
+        auxiliary.update({"version": 1, "kind": state.kind, "lastOutputTokens": state.last_output_tokens,
             "seenTruncationSignatures": list(state.seen_truncation_signatures),
-            "completedBootstrapTurn": state.completed_bootstrap_turn, "needsIndex": needs_index, "lastTurnId": turn_id}
+            "completedBootstrapTurn": state.completed_bootstrap_turn, "needsIndex": needs_index, "lastTurnId": turn_id})
+        if pending_memory_publication is not _KEEP_PUBLICATION:
+            if pending_memory_publication is None:
+                auxiliary.pop("pendingMemoryPublication", None)
+            else:
+                auxiliary["pendingMemoryPublication"] = deepcopy(pending_memory_publication)
+        if acknowledgment is not None:
+            auxiliary["lastMemoryPublicationAcknowledgment"] = deepcopy(dict(acknowledgment))
+        entry[_STATE] = auxiliary
         entry["updatedAt"] = self._clock()
         self.catalog.upsert_session(state.session_key, entry)
+
+    async def acknowledge_memory_publication(self, *, expected_turn_id: str) -> None:
+        """Accept CURRENT files, reindex them and release the matching uncertainty.
+
+        This is the host's explicit acknowledgment after inspecting the saved
+        files. It does not establish which historical write survived, replay a
+        tool, or assert that requested bytes still exist. Cancellation before
+        acknowledgment commits, index failure, identity rotation and a changed
+        pending turn keep the marker.
+        The same in-process session lane used by run_turn owns this operation.
+        """
+        if not isinstance(expected_turn_id, str) or not expected_turn_id:
+            raise ValueError("expected_turn_id must be a nonempty string")
+        ancestors = tuple(owner for owner in _current_lanes.get() if owner.active)
+        if any(owner.key == self._lane_key for owner in ancestors):
+            raise RuntimeError("A model callback cannot acknowledge its own active session turn")
+        release = await _acquire_lane(self._lane_key)
+        admission = _Admission(self._lane_key)
+        token = _current_lanes.set((*ancestors, admission))
+        cancelled = asyncio.Event()
+
+        async def acknowledge() -> None:
+            self._assert_identity()
+            state, continuation, _ = self._load()
+            pending = _stored_pending_publication(continuation["instanceEntry"])
+            if pending is None or pending["turnId"] != expected_turn_id:
+                raise RuntimeError("No matching pending memory publication; inspect its current turn id")
+            self._assert_publication_owner(pending)
+            if cancelled.is_set():
+                raise asyncio.CancelledError("The memory publication acknowledgment was cancelled")
+            await self._blocking(self.kit.memory.store.reindex, self.kit.memory.workspace)
+            if cancelled.is_set():
+                raise asyncio.CancelledError("The memory publication acknowledgment was cancelled")
+            # Read the live metadata after IO, preserving independent edits.
+            self._assert_identity()
+            state, _, _ = self._load()
+            self._persist(state, needs_index=False, turn_id=expected_turn_id,
+                pending_memory_publication=None, expected_pending_turn_id=expected_turn_id,
+                acknowledgment={"turnId": expected_turn_id, "acknowledgedAt": self._clock(),
+                    "workspace": pending["workspace"], "indexPath": pending["indexPath"],
+                    "provenancePath": pending["provenancePath"]})
+            self.session = state
+
+        producer = asyncio.create_task(acknowledge())
+        cancellation = None
+        try:
+            while True:
+                try:
+                    await asyncio.shield(producer)
+                    break
+                except asyncio.CancelledError as error:
+                    cancellation = error
+                    cancelled.set()
+                    if producer.done() and producer.cancelled():
+                        break
+            if cancellation is not None:
+                raise cancellation
+        finally:
+            # shield keeps an accepted synchronous index source alive; never
+            # release the lane while it can still publish into this workspace.
+            joining = asyncio.create_task(self._join_blocking())
+            while not joining.done():
+                try:
+                    await asyncio.shield(joining)
+                except asyncio.CancelledError:
+                    cancelled.set()
+            joining.result()
+            admission.active = False
+            _current_lanes.reset(token)
+            release()
 
     async def run_turn(self, user_message: str | Mapping[str, Any], *,
                        execute: Callable[[HostTurn], Awaitable[HostModelResult | None]],
@@ -661,6 +768,16 @@ class HostSessionRunner:
         try:
             state, continuation, needs_index = self._load()
             capture.state = state
+            pending = _stored_pending_publication(continuation["instanceEntry"])
+            if pending is not None:
+                capture.memory_publication = "uncertain"
+                phase = "publication-reconciliation"
+                failures.append(HostTurnFailure(phase, "MemoryPublicationUncertain",
+                    format_error_message(
+                        f"Acknowledge current memory files for pending turn {pending['turnId']} before admitting another message"),
+                    publication="uncertain"))
+                return HostTurnOutcome(turn_id, state, (), (), (), False, False, "not-run",
+                    tuple(failures), memory_publication="uncertain")
             if needs_index:
                 phase = "index-repair"
                 await self._blocking(self.kit.memory.store.reindex, self.kit.memory.workspace)
@@ -698,6 +815,13 @@ class HostSessionRunner:
                 capture.messages = messages
             phase = "after-turn"
             continuation = self.catalog.read_continuation(state.session_id, session_key=state.session_key)
+            if _memory_publication(receipts, None) == "uncertain":
+                state = apply_turn_usage(state, result.usage)
+                capture.state = state
+                # Optional maintenance must not add writes to an unresolved
+                # publication. Settlement below records the real receipt first.
+                phase = "publication-reconciliation"
+                raise RuntimeError("A memory publication is uncertain; acknowledge current files before continuing")
             try:
                 record = self.kit.after_turn(state, transcript=messages, usage=result.usage,
                     context_window_tokens=context_window_tokens, transcript_events=continuation["visibleEvents"],
@@ -772,7 +896,11 @@ class HostSessionRunner:
         except asyncio.CancelledError as error:
             failures.append(_failure(phase, error, committed=accepted))
         except Exception as error:
-            failures.append(_failure(phase, error, committed=accepted))
+            if phase == "publication-reconciliation" and _memory_publication(receipts, None) == "uncertain":
+                failures.append(HostTurnFailure(phase, type(error).__name__, format_error_message(error),
+                    _memory_wrote(receipts, None), "uncertain"))
+            else:
+                failures.append(_failure(phase, error, committed=accepted))
         finally:
             if turn is not None:
                 await turn._close_and_join()
@@ -786,15 +914,16 @@ class HostSessionRunner:
                         error = receipt["error"]
                         failures.append(HostTurnFailure("tool", error["type"], format_error_message(error["message"])))
                     elif isinstance(actual, Mapping) and (actual.get("status") == "error" or actual.get("isError") is True):
+                        publication = _receipt_publication(receipt)
                         failures.append(HostTurnFailure("tool", "ToolExecutionFailure",
                             format_error_message(actual.get("error") or actual.get("text") or actual),
-                            bool(actual.get("afterWriteError"))))
-                index_errors = [row["result"]["afterWriteError"] for row in receipts
-                                if isinstance(row.get("result"), Mapping) and row["result"].get("afterWriteError")]
+                            _memory_wrote([receipt], None), publication))
+                index_errors = [error for row in receipts if (error := _after_write_error(row))]
                 for error in index_errors:
                     failures.append(HostTurnFailure("tool-index", "IndexPublicationFailure", format_error_message(error), True))
                 try:
-                    self._persist(state, needs_index=True, turn_id=turn_id)
+                    self._persist(state, needs_index=True, turn_id=turn_id,
+                        pending_memory_publication=_pending_publication(receipts, turn_id, self.kit))
                     if index_errors:
                         index_status = "failed"
                     else:
@@ -808,15 +937,62 @@ class HostSessionRunner:
                 index_status = "failed"
         return HostTurnOutcome(turn_id, state, tuple(messages), tuple(deepcopy(appends)), tuple(receipts),
             accepted, _memory_wrote(receipts, flush_outcome), index_status, tuple(failures), flush_outcome,
-            payloads=tuple(deepcopy(result.payloads)))
+            payloads=tuple(deepcopy(result.payloads)),
+            memory_publication=_memory_publication(receipts, flush_outcome,
+                                                   inherited=capture.memory_publication))
 
 
 def _memory_wrote(receipts, flush_outcome: FlushOutcome | None) -> bool:
-    return bool(any(isinstance(row.get("result"), Mapping) and (
-                    row["name"] in CURATION_OPERATIONS and row["result"].get("status") == "ok"
+    return bool(any(_receipt_publication(row) == "committed" or isinstance(row.get("result"), Mapping) and (
+                    row.get("memoryPublicationOwner") is True and row["result"].get("status") == "ok"
                     and row["result"].get("action") not in {"unchanged", "skipped"}
                     or row.get("maintenance") is True and row["name"] == "write"
                     and row["result"].get("action") == "appended"
                     and (row["result"].get("status") == "ok" or bool(row["result"].get("afterWriteError"))))
                     for row in receipts)
                 or flush_outcome is not None and flush_outcome.wrote)
+
+
+def _receipt_publication(receipt) -> Literal["committed", "uncertain"] | None:
+    if receipt.get("memoryPublicationOwner") is not True:
+        return None
+    result = receipt.get("result")
+    value = result.get("publication") if isinstance(result, Mapping) else None
+    return value if isinstance(value, str) and value in {"committed", "uncertain"} else None
+
+
+def _after_write_error(receipt):
+    if (receipt.get("memoryPublicationOwner") is not True
+            and not (receipt.get("maintenance") is True and receipt.get("name") == "write")):
+        return None
+    result = receipt.get("result")
+    return result.get("afterWriteError") if isinstance(result, Mapping) else None
+
+
+def _memory_publication(receipts, flush_outcome, *, inherited="none") -> Literal["none", "committed", "uncertain"]:
+    if inherited == "uncertain" or any(_receipt_publication(row) == "uncertain" for row in receipts):
+        return "uncertain"
+    return "committed" if _memory_wrote(receipts, flush_outcome) else "none"
+
+
+def _pending_publication(receipts, turn_id, kit):
+    return ({"turnId": turn_id, "publication": "uncertain",
+             "workspace": str(kit.memory.workspace.root.resolve()),
+             "indexPath": str(kit.memory.store.path.resolve()),
+             "provenancePath": str(kit.memory.store.artifact_provenance.path.resolve())}
+            if _memory_publication(receipts, None) == "uncertain" else _KEEP_PUBLICATION)
+
+
+def _stored_pending_publication(entry):
+    auxiliary = entry.get(_STATE, {})
+    pending = auxiliary.get("pendingMemoryPublication")
+    if pending is None:
+        return None
+    if (not isinstance(pending, Mapping)
+            or set(pending) != {"turnId", "publication", "workspace", "indexPath", "provenancePath"}
+            or not isinstance(pending["turnId"], str) or not pending["turnId"]
+            or any(not isinstance(pending[name], str) or not Path(pending[name]).is_absolute()
+                   for name in ("workspace", "indexPath", "provenancePath"))
+            or pending["publication"] != "uncertain"):
+        raise ValueError("The stored memory publication uncertainty is invalid")
+    return pending

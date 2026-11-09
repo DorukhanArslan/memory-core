@@ -130,11 +130,18 @@ finished and the turn has no recorded failure or cancellation.
 | Field | Meaning |
 | --- | --- |
 | `transcript_committed` | This request has a durable user admission; partial model/tool records can also exist after failure. |
-| `memory_writes_committed` | An SDK memory write actually committed, including a committed flush body. |
+| `memory_writes_committed` | At least one SDK memory publication is known to have committed, including a flush body. This does not promise those bytes survived a later external edit. |
+| `memory_publication` | `none`, `committed`, or `uncertain`; uncertainty takes precedence even when another write is known to have committed. |
 | `index_status` | `ready`, `failed`, or `not-run`; it is separate from file commitment. |
-| `failures` | Phase, error type, message and known commitment for each visible failure. |
+| `failures` | Phase, error type, message, known commitment and the publisher's optional `publication` state for each visible failure. |
 | `appends`, `tools` | Actual durable append results and complete execution receipts. |
 | `flush` | The actual completion state, including write/failure/cancellation facts. |
+
+`memory_publication="none"` means these selected owners supplied no publication fact;
+it is not a guarantee that every failed external tool or low-level append left no partial
+IO. The explicit uncertainty policy below consumes checked replacement receipts. Ordinary
+append IO errors retain their own error contract and are not assigned an invented publisher
+state by this integration.
 
 A committed file with `afterWriteError` remains committed. The outcome reports the index
 failure, persists `needsIndex`, and does not repeat the write. The next admission attempts
@@ -149,6 +156,30 @@ releases that unused reservation, and does not claim a file write or successful 
 If cancellation or session rotation withdraws maintenance authority after a flush body has
 already committed, the outcome preserves that commitment and closes the flush as cancelled
 without stamping success or restoring the older current session.
+
+A checked publisher can report `publication="committed"` after its rename succeeded but
+later verification failed. The outcome preserves that historical fact, reports the failure
+and indexes the actual current file; the file may already contain an external replacement.
+`publication="uncertain"` means the dispatched mutation cannot be resolved from its receipt.
+It does not mean no write occurred. The runner preserves that state in the catalog before
+indexing and refuses further dispatches and subsequent admissions, including after reopening.
+Successful indexing alone cannot clear it, and optional memory maintenance does not run.
+The original trust quarantine remains attached to either dispatched publication state.
+
+After the host has inspected and accepted the **current** files, acknowledge the exact pending
+turn explicitly:
+
+```python
+await runner.acknowledge_memory_publication(expected_turn_id=outcome.turn_id)
+```
+
+The acknowledgment holds the same session lane, checks the current session identity,
+pending turn and bound workspace/index/provenance stores, performs a real index refresh,
+and records its turn id, owner paths and time before clearing
+only that matching marker. It makes no provider call and does not replay the write or assert
+that the original requested bytes survived. An index failure, changed owner, stale turn id,
+or cancellation before acknowledgment commits leaves the uncertainty pending. Index source
+custody remains held until the actual producer finishes, even after caller cancellation.
 
 Public `HostTurnFailure.message` values pass through the shared error formatter and its
 configured redaction policy. Complete tool receipts, raw model/tool messages and append
@@ -183,6 +214,9 @@ for the same canonical catalog/agent/session key share a lane. Concurrent use fr
 event loop fails closed; a model callback cannot recursively enter its own session lane.
 Separate sessions can run independently. External filesystem writes and competing processes
 are outside this lane; catalog transactions and existing source-revision checks still apply.
+Live identity and pending-turn checks fence cooperating runners; they are not an atomic
+compare-and-set against unrelated direct catalog writes. Hosts must serialize those raw
+metadata edits themselves while a turn or acknowledgment owns the session.
 
 Incognito lifecycle writes are explicitly unsupported. The runner refuses them before
 workspace initialization instead of turning private conversation content into durable

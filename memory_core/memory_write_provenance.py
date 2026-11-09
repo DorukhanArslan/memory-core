@@ -28,6 +28,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
+from memory_core.atomic_publication import MemoryAtomicPublicationError
 from memory_core.consolidation.artifact_provenance import (
     MemoryArtifactProvenanceStore,
     normalize_memory_artifact_relative_path,
@@ -127,6 +128,12 @@ class MemoryWriteProvenanceObserver:
         try:
             commit()
         except BaseException as error:
+            # A dispatched publisher can no longer promise that no write took
+            # place. Keep the original sticky quarantine; its content hash
+            # still prevents it from blessing an external replacement.
+            if (isinstance(error, MemoryAtomicPublicationError)
+                    and error.publication in {"committed", "uncertain"}):
+                raise
             if rollback is not None:
                 try:
                     rollback()

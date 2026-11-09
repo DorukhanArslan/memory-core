@@ -1747,6 +1747,35 @@ def test_heartbeat_scratch_draft_saved_on_its_base_revision_conflicts(client, la
     assert "heartbeat.scratch_conflict" in event_types(client)
 
 
+def test_heartbeat_scratch_draft_owner_conflicts_after_same_job_recreation(client, lab):
+    client.get("/api/lab/state")
+    initial = put_scratch(client, "- original\n", expectedRevision=0)["scratch"]
+    token = initial["monitor"]
+    store = FileAutomationStore(lab.root)
+    store.remove_heartbeat_monitor("main", cleanup_scratch=True)
+    replacement = store.enroll_heartbeat_monitor("main", token["jobId"])
+    store.write_job_scratch("main", replacement.job_id, "- replacement\n", now_ms=lab.now_ms())
+    assert store.read_job_scratch("main", replacement.job_id).current_revision == initial["currentRevision"]
+
+    response = client.put("/api/lab/heartbeat/scratch", json={
+        "content": "- stale draft\n", "expectedRevision": initial["currentRevision"], "monitor": token})
+
+    assert response.status_code == 409
+    assert response.json()["scratch"]["content"] == "- replacement\n"
+    assert response.json()["scratch"]["monitor"]["generation"] > token["generation"]
+    assert FileAutomationStore(lab.root).read_job_scratch("main", replacement.job_id).content == "- replacement\n"
+
+
+def test_heartbeat_read_and_invalid_initial_edit_do_not_enroll_monitor(client, lab):
+    client.get("/api/lab/state")
+    client.get("/api/lab/heartbeat")
+    store = FileAutomationStore(lab.root)
+    assert store.heartbeat_ownership_enabled is False
+    response = client.put("/api/lab/heartbeat/scratch", json={"content": "a" * 262145})
+    assert response.status_code == 400
+    assert FileAutomationStore(lab.root).heartbeat_ownership_enabled is False
+
+
 def test_heartbeat_scratch_stores_a_lone_surrogate_as_u_fffd(client, lab):
     # Node's UTF-8 conversion: the stored row holds U+FFFD, sized and hashed like Node.
     client.get("/api/lab/state")

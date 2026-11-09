@@ -24,7 +24,8 @@ LOCAL_FILES = ("equivalence/heartbeat-preload.mjs", "equivalence/heartbeat-runti
                "equivalence/heartbeat_scratch_probe.py", "equivalence/heartbeat_node_authority.py",
                "equivalence/heartbeat_runtime_bindings.py")
 SDK_FILES = ("memory_core/heartbeat_scratch.py", "memory_core/automation.py", "memory_core/_heartbeat_constants.py",
-             "memory_core/bootstrap/_js.py")
+             "memory_core/bootstrap/_js.py", "memory_core/heartbeat_ownership.py",
+             "memory_core/host/kit.py", "memory_core/host/heartbeat_run.py")
 NOW = 2_000_000_000_000
 OWNER = {"agentId": "main", "jobId": "owner-main", "partition": "main"}
 
@@ -127,10 +128,15 @@ def sdk_phase(request):
 
     def store(partition):
         if partition not in stores:
-            stores[partition] = FileAutomationStore(directory / "partitions" / partition)
+            stores[partition] = FileAutomationStore(directory / "partitions" / partition, require_monitor_owner=True)
         return stores[partition]
 
-    raw, values = {"calls": [], "snapshots": []}, []
+    raw, values = {"calls": [], "snapshots": [], "initialization": []}, []
+    if input_value["initialize"]:
+        from dataclasses import asdict
+        for owner in input_value["owners"]:
+            result = store(owner.get("partition", "main")).enroll_heartbeat_monitor(owner["agentId"], owner["jobId"])
+            raw["initialization"].append({"api": "enroll_heartbeat_monitor", "input": owner, "result": asdict(result)})
     for step in input_value["steps"]:
         owner = store(step.get("partition", "main"))
         agent_id, job_id = step.get("agentId", "main"), step.get("jobId", "owner-main")
@@ -143,20 +149,20 @@ def sdk_phase(request):
             elif step["op"] == "hash":
                 value = hash_heartbeat_scratch_source(_text(step["content"]))
             elif step["op"] == "read":
-                value = owner.read_scratch(agent_id).to_json()
+                value = owner.read_job_scratch(agent_id, job_id).to_json()
             elif step["op"] in {"readMonitor", "readMonitorReadOnly"}:
-                # Deliberately use the actual requested public API. An absent API
-                # produces its real exception; no local monitor state is supplied.
-                result = getattr(owner, "read_heartbeat_monitor_scratch")(agent_id)
-                value = result.to_json() if hasattr(result, "to_json") else result
+                result = owner.read_heartbeat_monitor_scratch(agent_id)
+                value = result.to_json() if result is not None else {"absent": True}
             elif step["op"] == "write":
-                value = owner.write_scratch(agent_id, None if step["content"] is None else _text(step["content"]),
+                value = owner.write_job_scratch(agent_id, job_id, None if step["content"] is None else _text(step["content"]),
                     expected_revision=step.get("expectedRevision"), source_sha256=step.get("sourceSha256"),
                     now_ms=step.get("nowMs", input_value["nowMs"])).to_json()
             elif step["op"] == "delete":
-                value = owner.delete_scratch(agent_id, expected_revision=step.get("expectedRevision"))
+                value = owner.delete_job_scratch(agent_id, job_id, expected_revision=step.get("expectedRevision"))
             elif step["op"] == "removeOwner":
-                value = getattr(owner, "remove_heartbeat_monitor")(agent_id, cleanup_scratch=step.get("cleanupScratch", False))
+                record["fixtureMutationResult"] = owner.remove_heartbeat_monitor(agent_id, job_id=job_id,
+                    cleanup_scratch=step.get("cleanupScratch", False))
+                value = None  # The native owner-row fixture mutation also returns no public scratch result.
             else:
                 raise ValueError("Undeclared heartbeat SDK operation")
             record["result"] = value

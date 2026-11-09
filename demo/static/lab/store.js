@@ -76,6 +76,7 @@ export const store = {
     hbReplyResult: null,
     hbScratchDraft: null,
     hbScratchBase: null,
+    hbScratchOwnerBase: null,
     hbScratchError: null,
     hbMigration: null,
     consolidationPane: 'scored',

@@ -53,6 +53,7 @@ from memory_core.current_time import DEFAULT_TIME_FORMAT, TimeFormat, resolve_ti
 from memory_core.curation import CurationPolicy, MemoryCurator
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.heartbeat import prepare_heartbeat_turn, resolve_message_text
+from memory_core.heartbeat_scratch import resolve_heartbeat_store_scratch
 from memory_core.host._calls import ToolCallRefused, read_tool_call, tool_error
 from memory_core.host.flush import FlushRequest
 from memory_core.host.heartbeat_run import HeartbeatRun
@@ -858,10 +859,11 @@ class HostKit:
         agent_id = self._memory.config.agent_id
         started_at = schedule_now_ms if schedule_now_ms is not None else self._clock()
         store = self._automation_store
+        scratch, scratch_owner = resolve_heartbeat_store_scratch(store, agent_id)
         due = due_automation_jobs(store.list_jobs(agent_id=agent_id), started_at)
         turn = prepare_heartbeat_turn(
             now_ms=self._clock(),
-            scratch=store.read_scratch(agent_id),
+            scratch=scratch,
             scheduled_tasks=heartbeat_scheduled_tasks(due),
             source=source,
             reason=reason,
@@ -891,6 +893,9 @@ class HostKit:
             started_at_ms=started_at,
             store=store,
             agent_id=agent_id,
+            scratch_owner=scratch_owner,
+            scratch_revision=scratch.current_revision,
+            owned_scratch=bool(getattr(store, "heartbeat_ownership_enabled", False)),
         )
 
     def _flush_plan(self, context_window_tokens: int) -> MemoryFlushPlan | None:

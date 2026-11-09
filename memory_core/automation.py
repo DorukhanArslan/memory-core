@@ -35,8 +35,9 @@ tasks out of the scratch and into jobs in one write (upstream: one state-DB tran
 
 Not ported (documented in docs/parity_matrix.md): ``cron`` and ``at`` schedules, pacing,
 triggers, delivery, error backoff and auto-disable, stagger, startup catch-up, the heartbeat
-monitor job itself (its cadence is ``memory_core.heartbeat.resolve_heartbeat_interval_ms``; memory-core
-keys the monitor scratch by agent id) and job ids other than the host's own strings.
+monitor scheduling itself (its cadence is ``memory_core.heartbeat.resolve_heartbeat_interval_ms``)
+and job ids other than the host's own strings. FileAutomationStore optionally persists monitor
+ownership and job-keyed scratch without constructing or running a scheduler.
 """
 
 from __future__ import annotations
@@ -60,12 +61,16 @@ from memory_core._heartbeat_constants import (
 from memory_core.bootstrap._js import js_json_stringify, js_trim, locale_sort_key
 from memory_core.heartbeat import HeartbeatScheduledTask
 from memory_core.heartbeat_scratch import (
+    HeartbeatMonitorOwner,
+    HeartbeatMonitorScratch,
     HeartbeatScratchState,
     HeartbeatScratchStore,
     HeartbeatScratchWrite,
     apply_heartbeat_scratch_delete,
     apply_heartbeat_scratch_write,
+    assert_heartbeat_scratch_content,
 )
+from memory_core import heartbeat_ownership as _owners
 from memory_core.project_name import STATE_DIRNAME
 
 __all__ = [
@@ -428,11 +433,22 @@ class FileAutomationStore:
     of lost updates. A job row it cannot load (a shape memory-core does not model, or values the
     cron store would not load) is skipped by ``list_jobs``, reported by
     :meth:`skipped_job_rows` and kept untouched by ``save_jobs``.
+
+    Legacy per-agent scratch remains the default until explicit
+    ``enroll_heartbeat_monitor``. ``require_monitor_owner=True`` rejects unowned
+    writes even before enrollment. Once persisted, ownership applies to every
+    later instance regardless of its constructor flag. Callers explicitly
+    enroll each configured agent, optionally adopting its legacy scratch once;
+    reads and heartbeat previews never enroll. This optional state interface
+    does not add monitor jobs to the scheduler's ``AutomationJob`` collection.
     """
 
-    def __init__(self, root: str | os.PathLike[str]):
+    def __init__(self, root: str | os.PathLike[str], *, require_monitor_owner: bool = False):
+        if type(require_monitor_owner) is not bool:
+            raise TypeError("require_monitor_owner must be a boolean")
         self.root = Path(os.path.abspath(os.path.expanduser(os.fspath(root))))
         self.path = self.root.joinpath(*AUTOMATION_STORE_PARTS)
+        self._require_monitor_owner = require_monitor_owner
 
     # -- file plumbing
 
@@ -448,9 +464,11 @@ class FileAutomationStore:
             data["scratch"] = {}
         if not isinstance(data.get("jobs"), list):
             data["jobs"] = []
+        _owners.validate_catalog(data)
         return data
 
     def _save(self, data: dict[str, Any]) -> None:
+        _owners.validate_catalog(data)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         fd, temp = tempfile.mkstemp(prefix=".automation.", suffix=".tmp", dir=self.path.parent)
         try:
@@ -481,8 +499,130 @@ class FileAutomationStore:
 
     # -- scratch
 
+    def _owned(self, data: dict[str, Any]) -> bool:
+        return self._require_monitor_owner or _owners.CATALOG_KEY in data
+
+    @property
+    def heartbeat_ownership_enabled(self) -> bool:
+        """Whether explicit ownership applies; reading never enrolls or writes.
+
+        The opt-in is sticky once enrollment persists its catalog. Reopening a
+        default legacy-compatible instance cannot revive a removed monitor.
+        """
+        return self._owned(self._load())
+
+    def enroll_heartbeat_monitor(
+        self, agent_id: str, job_id: str | None = None, *, adopt_legacy_scratch: bool = False,
+    ) -> HeartbeatMonitorOwner:
+        """Explicit host configuration, independent of scheduling execution.
+
+        Re-enrolling the same active job is idempotent. Replacement or revival
+        increments the retained generation and leaves the previous job's
+        scratch as an orphan. Legacy scratch is adopted only by an explicit
+        request at first enrollment, preserving its existing revision.
+        """
+        _owners.identity(agent_id)
+        job_id = _owners.identity(job_id if job_id is not None else f"heartbeat:{agent_id}")
+        with self._locked() as data:
+            value = _owners.catalog(data, create=True)
+            current = _owners.active_owner(data, agent_id)
+            other = value["owners"].get(job_id)
+            if other is not None and other["agentId"] != agent_id:
+                raise ValueError("heartbeat job belongs to a different agent")
+            if current is not None and current.job_id == job_id:
+                return current
+            previous = value["agents"].get(agent_id)
+            generation = (previous["generation"] if previous is not None else 0) + 1
+            _owners.bounded_integer(generation, minimum=1)
+            if current is not None:
+                value["owners"][current.job_id]["active"] = False
+            value["agents"][agent_id] = {"jobId": job_id, "generation": generation}
+            value["owners"][job_id] = {"agentId": agent_id, "generation": generation, "active": True}
+            if adopt_legacy_scratch and previous is None and agent_id in data["scratch"]:
+                value["scratch"][job_id] = data["scratch"].pop(agent_id)
+            self._save(data)
+            return HeartbeatMonitorOwner(agent_id, job_id, generation)
+
+    def read_heartbeat_monitor_scratch(self, agent_id: str) -> HeartbeatMonitorScratch | None:
+        """Resolve the current monitor without enrolling, repairing or writing."""
+        data = self._load()
+        owner = _owners.active_owner(data, agent_id)
+        return (HeartbeatMonitorScratch(owner, _owners.job_state(data, agent_id, owner.job_id))
+                if owner is not None else None)
+
+    def remove_heartbeat_monitor(
+        self, agent_id: str, *, job_id: str | None = None, expected_generation: int | None = None,
+        cleanup_scratch: bool = False,
+    ) -> bool:
+        """Retire the owner, optionally deleting its scratch in the same write.
+
+        Retained orphan rows remain accessible by job id for cleanup/recovery;
+        monitor lookup returns ``None`` and every late writer is rejected.
+        """
+        with self._locked() as data:
+            value = _owners.catalog(data)
+            selected = _owners.agent_job(data, agent_id)
+            record = value["owners"].get(selected)
+            if expected_generation is not None:
+                _owners.bounded_integer(expected_generation, minimum=1)
+            if (record is None or (job_id is not None and selected != job_id)
+                    or (expected_generation is not None and record["generation"] != expected_generation)):
+                return False
+            changed = record["active"] or (cleanup_scratch and selected in value["scratch"])
+            record["active"] = False
+            if cleanup_scratch:
+                value["scratch"].pop(selected, None)
+            if changed:
+                self._save(data)
+            return changed
+
+    def read_job_scratch(self, agent_id: str, job_id: str) -> HeartbeatScratchState:
+        """Read one known job's retained scratch, including a retired owner."""
+        _owners.identity(agent_id)
+        _owners.identity(job_id)
+        return _owners.job_state(self._load(), agent_id, job_id)
+
+    def write_job_scratch(
+        self, agent_id: str, job_id: str, content: str | None, *, expected_revision: int | None = None,
+        expected_owner_generation: int | None = None, source_sha256: str | None = None,
+        now_ms: int | None = None,
+    ) -> HeartbeatScratchWrite:
+        """Atomically check durable owner identity/generation and scratch CAS."""
+        if content is not None:
+            assert_heartbeat_scratch_content(content)
+        _owners.identity(agent_id)
+        _owners.identity(job_id)
+        with self._locked() as data:
+            result, changed = _owners.write_owned(data, agent_id, job_id, content,
+                now_ms=time.time_ns() // 1_000_000 if now_ms is None else now_ms,
+                expected_revision=expected_revision, expected_owner_generation=expected_owner_generation,
+                source_sha256=source_sha256)
+            if changed:
+                self._save(data)
+            return result
+
+    def delete_job_scratch(
+        self, agent_id: str, job_id: str, *, expected_revision: int | None = None,
+    ) -> bool:
+        """Guarded cleanup/rollback; retired owner identity remains durable."""
+        _owners.identity(agent_id)
+        _owners.identity(job_id)
+        with self._locked() as data:
+            state = _owners.job_state(data, agent_id, job_id)
+            if expected_revision is not None:
+                _owners.bounded_integer(expected_revision)
+            new_state, deleted = apply_heartbeat_scratch_delete(state, expected_revision=expected_revision)
+            if deleted and job_id in _owners.catalog(data)["scratch"]:
+                _owners.put_job_state(data, job_id, new_state)
+                self._save(data)
+            return deleted
+
     def read_scratch(self, agent_id: str) -> HeartbeatScratchState:
-        return HeartbeatScratchState.from_json(self._load()["scratch"].get(agent_id))
+        data = self._load()
+        if self._owned(data):
+            job_id = _owners.agent_job(data, agent_id)
+            return _owners.job_state(data, agent_id, job_id) if job_id is not None else HeartbeatScratchState()
+        return HeartbeatScratchState.from_json(data["scratch"].get(agent_id))
 
     def write_scratch(
         self,
@@ -492,8 +632,19 @@ class FileAutomationStore:
         expected_revision: int | None = None,
         source_sha256: str | None = None,
         now_ms: int | None = None,
+        expected_owner_generation: int | None = None,
     ) -> HeartbeatScratchWrite:
+        if content is not None:
+            assert_heartbeat_scratch_content(content)
         with self._locked() as data:
+            if self._owned(data):
+                result, changed = _owners.write_owned(data, agent_id, _owners.agent_job(data, agent_id), content,
+                    now_ms=time.time_ns() // 1_000_000 if now_ms is None else now_ms,
+                    expected_revision=expected_revision, expected_owner_generation=expected_owner_generation,
+                    source_sha256=source_sha256)
+                if changed:
+                    self._save(data)
+                return result
             state = HeartbeatScratchState.from_json(data["scratch"].get(agent_id))
             new_state, result = apply_heartbeat_scratch_write(
                 state,
@@ -509,6 +660,16 @@ class FileAutomationStore:
 
     def delete_scratch(self, agent_id: str, *, expected_revision: int | None = None) -> bool:
         with self._locked() as data:
+            if self._owned(data):
+                job_id = _owners.agent_job(data, agent_id)
+                state = _owners.job_state(data, agent_id, job_id) if job_id is not None else HeartbeatScratchState()
+                if expected_revision is not None:
+                    _owners.bounded_integer(expected_revision)
+                new_state, deleted = apply_heartbeat_scratch_delete(state, expected_revision=expected_revision)
+                if deleted and job_id is not None and job_id in _owners.catalog(data)["scratch"]:
+                    _owners.put_job_state(data, job_id, new_state)
+                    self._save(data)
+                return deleted
             state = HeartbeatScratchState.from_json(data["scratch"].get(agent_id))
             new_state, deleted = apply_heartbeat_scratch_delete(
                 state, expected_revision=expected_revision
@@ -563,6 +724,8 @@ class FileAutomationStore:
         scratch_content: str | None = None,
         scratch_expected_revision: int | None = None,
         scratch_source_sha256: str | None = None,
+        scratch_job_id: str | None = None,
+        scratch_owner_generation: int | None = None,
         now_ms: int | None = None,
     ) -> HeartbeatScratchWrite | None:
         """Upsert ``jobs`` by id and drop ``remove`` ids in one atomic write.
@@ -573,24 +736,45 @@ class FileAutomationStore:
         returned. Jobs are stored as :func:`assert_automation_jobs_can_persist` normalizes them;
         a job it refuses raises ``ValueError`` before anything is written (upstream's cron
         store runs ``assertCronStoreCanPersist`` on every save).
+
+        For an owned scratch commit, ``scratch_job_id`` and
+        ``scratch_owner_generation`` retain a writer's captured owner. Removing
+        a monitor id through ``remove`` retires that owner and cleans its scratch
+        in this same transaction. Combining its removal with a scratch write is
+        refused atomically. Ordinary task job writes preserve the legacy API.
         """
         jobs = assert_automation_jobs_can_persist(jobs)
+        if scratch_agent_id is not None and scratch_content is not None:
+            assert_heartbeat_scratch_content(scratch_content)
         with self._locked() as data:
             result: HeartbeatScratchWrite | None = None
             if scratch_agent_id is not None:
-                state = HeartbeatScratchState.from_json(data["scratch"].get(scratch_agent_id))
-                new_state, result = apply_heartbeat_scratch_write(
-                    state,
-                    scratch_content,
-                    now_ms=int(time.time() * 1000) if now_ms is None else int(now_ms),
-                    expected_revision=scratch_expected_revision,
-                    source_sha256=scratch_source_sha256,
-                )
+                if self._owned(data):
+                    job_id = scratch_job_id or _owners.agent_job(data, scratch_agent_id)
+                    if job_id in set(remove):
+                        state = _owners.job_state(data, scratch_agent_id, job_id)
+                        return HeartbeatScratchWrite(False, state.current_revision, reason="revision-conflict")
+                    result, _changed = _owners.write_owned(data, scratch_agent_id, job_id, scratch_content,
+                        now_ms=time.time_ns() // 1_000_000 if now_ms is None else now_ms,
+                        expected_revision=scratch_expected_revision, expected_owner_generation=scratch_owner_generation,
+                        source_sha256=scratch_source_sha256)
+                else:
+                    state = HeartbeatScratchState.from_json(data["scratch"].get(scratch_agent_id))
+                    new_state, result = apply_heartbeat_scratch_write(
+                        state, scratch_content, now_ms=int(time.time() * 1000) if now_ms is None else int(now_ms),
+                        expected_revision=scratch_expected_revision, source_sha256=scratch_source_sha256)
+                    self._put_scratch(data, scratch_agent_id, new_state)
                 if not result.ok:
                     return result
-                self._put_scratch(data, scratch_agent_id, new_state)
             by_id = {job.id: job for job in jobs}
             removed = set(remove)
+            if self._owned(data):
+                ownership = _owners.catalog(data)
+                for job_id in removed:
+                    owner = ownership["owners"].get(job_id)
+                    if owner is not None:
+                        owner["active"] = False
+                        ownership["scratch"].pop(job_id, None)
             kept: list[dict[str, Any]] = []
             for item in data["jobs"]:
                 job_id = item.get("id") if isinstance(item, dict) else None

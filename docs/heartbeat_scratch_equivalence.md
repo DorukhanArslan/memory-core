@@ -55,6 +55,47 @@ A missing monitor lifecycle API produces its actual Python exception. The
 adapter supplies no local monitor emulation, scratch CAS algorithm, migration
 algorithm or expected outputs.
 
+The subsequent owned-store adapter calls the production
+`enroll_heartbeat_monitor`, `read_heartbeat_monitor_scratch`,
+`read_job_scratch`, `write_job_scratch`, `delete_job_scratch` and
+`remove_heartbeat_monitor` APIs directly. It uses the same 17 native inputs and
+the same original native exports. Owner fixture setup invokes the real SDK
+enrollment API with the fixture's literal agent/job identities; ownership is
+never implemented in the adapter. Python `None` from monitor lookup uses the
+already declared absent-monitor transport tag. The original pre-fix packets
+remain separate and unchanged.
+
+For production hosts, ownership is an explicit extension:
+
+```python
+store = FileAutomationStore(root, require_monitor_owner=True)
+owner = store.enroll_heartbeat_monitor("main", "configured-monitor-main")
+monitor = store.read_heartbeat_monitor_scratch("main")  # read-only
+result = store.write_job_scratch(
+    "main", owner.job_id, "- Check the queue\n",
+    expected_revision=monitor.state.current_revision,
+    expected_owner_generation=owner.generation,
+    now_ms=now_ms,
+)
+```
+
+Enrollment belongs to configuration, never to each turn or preview. The catalog
+is durable and remains active after removal and reopening through the legacy
+constructor. Its job-keyed orphan content and revision tombstones remain
+available through explicit job reads; monitor lookup returns absence after
+owner removal. Generations persist across removal/re-enrollment and reject
+captured writers even if a job id and scratch revision are reused. The existing
+atomic store transaction checks ownership and scratch revision together.
+`save_jobs` uses that guard for combined scratch commits and cleans ownership
+when a configured monitor id is removed.
+
+`HostKit.heartbeat_prompt` resolves the actual monitor and captures its owner
+without enrollment. `HeartbeatRun.write_scratch` writes through that captured
+job/generation and revision. The Lab's explicit edit enrolls/adopts legacy state
+once; subsequent browser drafts carry the captured owner as well as revision.
+Default legacy custom stores retain their original interface. No monitor
+cadence, scheduler execution or provider call is added by this extension.
+
 Doctor observations require a private runtime copy plus separately authenticated
 `croner@10.0.1`. The original source lock pins
 `sha512-ixNtAJndqh173VQ4KodSdJEI6nuioBWI0V1ITNKhZZsO0pEMoDxz539T4FTTbSZ/xIOSuDnzxLVRqBVSvPNE2g==`.

@@ -76,6 +76,7 @@ from memory_core.heartbeat_scratch import (
     HeartbeatScratchState,
     HeartbeatScratchTooLargeError,
     HeartbeatScratchWrite,
+    HeartbeatMonitorEnrollmentConflictError,
     assert_heartbeat_scratch_content,
     resolve_heartbeat_store_scratch,
 )
@@ -244,15 +245,20 @@ def write_scratch(lab: LabRuntime, payload: dict[str, Any]) -> dict[str, Any]:
             raise LabError(400, str(error), code="scratch_too_large") from error
     store = automation_store(lab)
     newly_enrolled = not store.heartbeat_ownership_enabled
+    enrolled_owner = None
     if newly_enrolled:
         # The explicit edit is host configuration, unlike read-only previews.
         # Existing legacy content/revision is adopted only on this first opt-in.
-        store.enroll_heartbeat_monitor(HEARTBEAT_AGENT_ID, adopt_legacy_scratch=True)
-    monitor = store.read_heartbeat_monitor_scratch(HEARTBEAT_AGENT_ID)
-    selected = captured if "monitor" in payload else (
-        {"jobId": monitor.owner.job_id, "generation": monitor.owner.generation} if monitor else None)
-    if selected is None and newly_enrolled and monitor is not None:
-        selected = {"jobId": monitor.owner.job_id, "generation": monitor.owner.generation}
+        try:
+            enrolled_owner = store.enroll_heartbeat_monitor(
+                HEARTBEAT_AGENT_ID, adopt_legacy_scratch=True, require_unconfigured=True)
+        except HeartbeatMonitorEnrollmentConflictError:
+            # Ownership changed after the initial read. A missing token cannot
+            # be rebound to whichever monitor currently happens to exist.
+            pass
+    selected = captured
+    if selected is None and enrolled_owner is not None:
+        selected = {"jobId": enrolled_owner.job_id, "generation": enrolled_owner.generation}
     try:
         if selected is None:
             state, _owner = resolve_heartbeat_store_scratch(store, HEARTBEAT_AGENT_ID)

@@ -48,6 +48,7 @@ __all__ = [
     "HeartbeatScratchWrite",
     "HeartbeatMonitorOwner",
     "HeartbeatMonitorScratch",
+    "HeartbeatMonitorEnrollmentConflictError",
     "OwnedHeartbeatScratchStore",
     "resolve_heartbeat_store_scratch",
     "apply_heartbeat_scratch_delete",
@@ -61,6 +62,10 @@ REVISION_CONFLICT = "revision-conflict"
 
 class HeartbeatScratchTooLargeError(ValueError):
     """Scratch content over :data:`CRON_JOB_SCRATCH_MAX_BYTES` (upstream's thrown ``Error``)."""
+
+
+class HeartbeatMonitorEnrollmentConflictError(ValueError):
+    """Another configuration action already established monitor ownership."""
 
 
 def _utf8_length(content: str) -> int:
@@ -292,6 +297,7 @@ class OwnedHeartbeatScratchStore(HeartbeatScratchStore, Protocol):
 
     def enroll_heartbeat_monitor(
         self, agent_id: str, job_id: str | None = None, *, adopt_legacy_scratch: bool = False,
+        require_unconfigured: bool = False,
     ) -> HeartbeatMonitorOwner: ...
 
     def remove_heartbeat_monitor(

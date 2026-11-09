@@ -1683,6 +1683,8 @@ def heartbeat_run(client, **payload):
 
 
 def put_scratch(client, content, **extra):
+    if "monitor" not in extra:
+        extra["monitor"] = client.get("/api/lab/heartbeat").json()["scratch"]["monitor"]
     response = client.put("/api/lab/heartbeat/scratch", json={"content": content, **extra})
     assert response.status_code == 200, response.text
     return response.json()
@@ -1774,6 +1776,37 @@ def test_heartbeat_read_and_invalid_initial_edit_do_not_enroll_monitor(client, l
     response = client.put("/api/lab/heartbeat/scratch", json={"content": "a" * 262145})
     assert response.status_code == 400
     assert FileAutomationStore(lab.root).heartbeat_ownership_enabled is False
+
+
+@pytest.mark.parametrize("cut", ["before-enrollment", "after-enrollment"])
+def test_initial_heartbeat_edit_keeps_exact_enrolled_owner_across_a_real_race(client, lab, monkeypatch, cut):
+    client.get("/api/lab/state")
+    assert client.get("/api/lab/heartbeat").json()["scratch"]["monitor"] is None
+    original = FileAutomationStore.enroll_heartbeat_monitor
+    observed = {}
+
+    def competing_enrollment(store, agent_id, job_id=None, **options):
+        if cut == "before-enrollment":
+            replacement = original(store, agent_id, job_id)
+            observed["replacement"] = replacement
+            observed["bytes"] = store.path.read_bytes()
+            return original(store, agent_id, job_id, **options)
+        captured = original(store, agent_id, job_id, **options)
+        store.remove_heartbeat_monitor(agent_id, cleanup_scratch=True)
+        observed["replacement"] = original(store, agent_id, captured.job_id)
+        observed["bytes"] = store.path.read_bytes()
+        return captured
+
+    monkeypatch.setattr(FileAutomationStore, "enroll_heartbeat_monitor", competing_enrollment)
+    response = client.put("/api/lab/heartbeat/scratch", json={
+        "content": "must not enter the replacement owner", "expectedRevision": 0, "monitor": None})
+
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "revision_conflict"
+    store = FileAutomationStore(lab.root)
+    assert store.path.read_bytes() == observed["bytes"]
+    assert store.read_heartbeat_monitor_scratch("main").owner == observed["replacement"]
+    assert store.read_scratch("main").to_json() == {"currentRevision": 0}
 
 
 def test_heartbeat_scratch_stores_a_lone_surrogate_as_u_fffd(client, lab):

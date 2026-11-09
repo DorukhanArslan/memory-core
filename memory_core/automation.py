@@ -63,6 +63,7 @@ from memory_core.heartbeat import HeartbeatScheduledTask
 from memory_core.heartbeat_scratch import (
     HeartbeatMonitorOwner,
     HeartbeatMonitorScratch,
+    HeartbeatMonitorEnrollmentConflictError,
     HeartbeatScratchState,
     HeartbeatScratchStore,
     HeartbeatScratchWrite,
@@ -515,6 +516,7 @@ class FileAutomationStore:
 
     def enroll_heartbeat_monitor(
         self, agent_id: str, job_id: str | None = None, *, adopt_legacy_scratch: bool = False,
+        require_unconfigured: bool = False,
     ) -> HeartbeatMonitorOwner:
         """Explicit host configuration, independent of scheduling execution.
 
@@ -522,10 +524,14 @@ class FileAutomationStore:
         increments the retained generation and leaves the previous job's
         scratch as an orphan. Legacy scratch is adopted only by an explicit
         request at first enrollment, preserving its existing revision.
+        ``require_unconfigured`` atomically refuses an already persisted
+        ownership catalog, so a first edit cannot adopt a competing owner.
         """
         _owners.identity(agent_id)
         job_id = _owners.identity(job_id if job_id is not None else f"heartbeat:{agent_id}")
         with self._locked() as data:
+            if require_unconfigured and _owners.CATALOG_KEY in data:
+                raise HeartbeatMonitorEnrollmentConflictError("heartbeat ownership was configured before enrollment")
             value = _owners.catalog(data, create=True)
             current = _owners.active_owner(data, agent_id)
             other = value["owners"].get(job_id)

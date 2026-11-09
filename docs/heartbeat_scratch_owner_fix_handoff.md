@@ -151,3 +151,21 @@ not represented by the historical 17-case producer hash `b2326ef`: that packet
 remains unchanged and its claim remains limited to the recorded inputs. No
 native packet was rerun for this previously unexercised malformed SDK state.
 Subsequent full-gate or Doctor evidence must bind the corrected SDK source hash.
+
+A second independent consumer review found a first-edit enrollment race: the
+Lab discarded the exact owner returned by enrollment and could bind a
+`monitor: null` request to a competing replacement owner. The Lab now retains
+the returned job/generation snapshot and never substitutes a later lookup.
+First enrollment can require an unconfigured catalog atomically under the
+store lock; if another request established ownership first, a missing token
+conflicts. Once ownership is active, Lab edits must carry their captured owner
+token. The browser already carries that token, and the TestClient helper now
+captures it through the actual read endpoint.
+
+Two public LabRuntime/HTTP regressions insert real competing enrollment before
+the first enrollment, or removal/re-enrollment after enrollment but before its
+original return. Both `revision: 0, monitor: null` requests now conflict and
+leave the competing replacement bytes unchanged. The heartbeat TestClient
+selection passes 26 tests outside the sandbox with both provider keys blank;
+the expanded core selection remains 96 passed. This consumer correction also
+does not rewrite or reattribute the historical 17-case packet.

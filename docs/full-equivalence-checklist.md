@@ -52,24 +52,24 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest verified bounded baseline has **45/128 acceptance conditions (35.2%)**, with
-**83 conditions** remaining. This percentage counts unweighted verified conditions; it is
+The latest verified bounded baseline has **47/128 acceptance conditions (36.7%)**, with
+**81 conditions** remaining. This percentage counts unweighted verified conditions; it is
 not engineering effort, elapsed work or a time estimate. The fixed scope remains 64 contracts
-and 128 conditions. The latest persisted-session batch targeted **+4** and verified
-**+4**, from **41 to 45/128**.
+and 128 conditions. The latest durable-context batch targeted **+2** and verified
+**+2**, from **45 to 47/128**.
 
-The fresh integrated report executes **1,169 cases: 1,166 matches,
-3 visible uncredited differences and 0 blocked cases**, with no runner errors.
-All **4,370 regression tests** and both clean package consumers pass. The same 1,625
+The fresh integrated report executes **1,179 cases: 1,175 matches,
+4 visible uncredited differences and 0 blocked cases**, with no runner errors.
+All **4,521 regression tests** and both clean package consumers pass. The same 1,625
 historical/live skips grant no acceptance credit. The full gate remains `mismatched`;
 these results do not establish complete OpenClaw equivalence.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 21 | 42 | 0 |
+| Complete | 22 | 44 | 0 |
 | Partial | 3 | 3 | 3 |
-| Pending verification | 40 | 0 | 80 |
-| Total | 64 | 45 | 83 |
+| Pending verification | 39 | 0 | 78 |
+| Total | 64 | 47 | 81 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -109,7 +109,7 @@ Current status of all 64 contracts:
 | 27 | `sessions.transcript-filtering` | Partial | 1/2 |
 | 28 | `sessions.visibility-lineage` | Complete | 2/2 |
 | 29 | `sessions.reset-hook` | Pending verification | 0/2 |
-| 30 | `sessions.durable-context` | Pending verification | 0/2 |
+| 30 | `sessions.durable-context` | Complete | 2/2 |
 | 31 | `prompt.bootstrap-discovery` | Pending verification | 0/2 |
 | 32 | `prompt.bootstrap-budget` | Complete | 2/2 |
 | 33 | `prompt.runtime-context` | Pending verification | 0/2 |
@@ -193,7 +193,7 @@ Current status of all 64 contracts:
 - [ ] **`sessions.transcript-filtering` — Match transcript extraction and filtering.** Compare JSONL trees, tool rows, heartbeat markers, recalled content and failed or mirrored messages. Exercise reset fences, malformed rows and supported archives without inventing stored text.
 - [x] **`sessions.visibility-lineage` — Match source-session visibility and lineage.** Vary visible sessions, source identities, trust and forgotten origins. Compare hits, provenance and source reads before and after reset or deletion.
 - [ ] **`sessions.reset-hook` — Match new/reset memory capture.** Compare transcript projection, naming, timezone, slug behavior and exclusive publication. Verify source lines, trust records, collision handling and recall after the hook.
-- [ ] **`sessions.durable-context` — Preserve durable conversation context.** Persist actual transcript and session metadata and reconstruct the host in a fresh process. Compare continuation, ordering and retained context without relying on process-local lists.
+- [x] **`sessions.durable-context` — Preserve durable conversation context.** Persist actual transcript and session metadata and reconstruct the host in a fresh process. Compare continuation, ordering and retained context without relying on process-local lists.
 
 ### Prompt and bootstrap
 
@@ -1675,3 +1675,76 @@ only documentation; tested implementation and comparison adapters remain unchang
 The next package targets durable context's **two original conditions**, or **45 → 47/128**
 if verified. The actual compressed-cache diagnostic stays visible under transcript filtering;
 it does not earn the remaining archive-boundary condition.
+
+### Durable context across three fresh processes — 2026-11-09
+
+This batch targets and verifies **two original conditions**:
+`sessions.durable-context.outcomes` and `sessions.durable-context.boundaries`.
+Acceptance advances **45 → 47/128 (36.7%)**, leaving **81 conditions**:
+**22 complete, three partial and 39 pending contracts**. Both durable cases cover the same
+two conditions; they do not create four points. The scope remains 64 contracts and its
+SHA-256 is unchanged. Transcript filtering's remaining boundary stays open.
+
+`MemorySessionCatalog.append_message` now owns ordinary JSON message persistence: header,
+parent/branch selection, generation anchor, replay/conflict decisions and role-aware storage
+redaction share one write transaction. `read_continuation` reads actual durable events and
+metadata in one snapshot, reconstructing the selected context, full model messages and
+non-persisted history-prelude markers. Current participant projections come from real SQL
+records; session/lifecycle rotation persists the original recovery-clear patch. A raw import
+keeps the first normalized nonempty event identity while preserving unidentified rows.
+These are production owners, not comparison-adapter output changes.
+
+The [durable session guide](durable_session_context.md) shows actual SDK wiring, provider
+adapter responsibilities and reopen semantics. The current profile is ordinary JSON with
+provider-none indexing. It does not claim provider-signed replay, media migration, pending
+input custody, a complete host turn barrier or the separate host-restart orchestration.
+Process-only private state is intentionally absent in new processes.
+
+Each native and SDK case uses **three distinct, ordered fresh OS processes**: write, reopen
+and continue, then reopen and verify. The next process receives literal identity/action
+inputs and the same persisted root, never another process's reconstructed history or output.
+Complete requests, hashes, exit status, stdout/stderr, SQL tables, source/index publication,
+recall, model context, provenance and real append/read anchors remain retained. The third
+process performs zero application upserts/appends and leaves observed metadata, events,
+context and published SQL unchanged. Native integrity child processes and actual index
+workers are separately authenticated; optional fast paths are not replaced with fake workers.
+
+The only generated-identity codec maps actual valid append/read-anchor generations through
+one cross-phase bijection and recognized producer store paths through an exact owner alias.
+Raw values remain retained. There is no score tolerance, output sorting or expected-context
+injection. Native settings genuinely force temporal decay enabled with a 30-day half-life;
+SDK comparison uses that same effective policy and the literal phase wall clock. Original
+Date and SDK decay-clock seams preserve real timers and performance clocks.
+
+The first formal packet, `transcript-durable-first.json`, is retained as **blocked**. Its
+validator incorrectly equated literal writer inputs with persisted output when the original
+writer dropped a duplicate event identity. Original failed temporary raw state had already
+been cleaned; that absence is recorded explicitly. The separately labelled exact reproduction
+retains complete original stdout/raw/traces. The corrected writer attestation binds the exact
+request to its genuine immediate post-write capture and subsequent reads. Generic rejected
+runtime evidence is now captured before cleanup, explicitly unverified and without credit.
+
+The valid corrected packet, `transcript-durable-corrected.json`, retained **six matches and
+four differences**. Genuine SDK repairs address raw event identity and regular-file admission;
+participant/recovery fields now come from their real owners. Ranking used mismatched effective
+settings in the SDK driver; it now follows the original settings producer and common wall clock.
+The fresh `transcript-durable-final-focused.json` records **nine matches, one visible cache
+difference, zero blocked cases and no errors**, with both complete durable flows matching.
+Its original coverage remains empty; independent review approved the two condition assignments
+before registration. All eight source-boundary cases remain uncredited.
+
+The final strict integrated report, `.equivalence-results/transcript-durable-full.json`, runs
+**1,179 cases: 1,175 matched, four mismatched, zero blocked and no runner errors**. The original
+three uncredited diagnostics remain; the fourth is
+`transcript-boundary-compressed-same-size-mtime-cache-diagnostic`: the original reader returns
+cached A after same-size, same-truncated-millisecond replacement while the SDK reads current B.
+This remains an ordinary mismatch under transcript filtering, with no boundary credit and no
+weakened SDK freshness. The full gate remains `mismatched`, not full equivalence.
+
+Full regressions pass **4,521 tests in 290.04 seconds**, with the same 1,625 historical/live
+skips adding no credit. Clean offline wheel and sdist consumers pass, including actual new
+append, reopen/continuation and idempotent replay APIs, compressed archives and public typing.
+Logs are `/workspace/scratch/memory-core-durable-full-tests.log` and
+`.equivalence-results/durable-distribution-lifecycle-final.log`. The integrated report records
+clean tested implementation `74162b9`; this results update changes documentation only.
+No paid provider requests occurred and no provider credentials were forwarded.

@@ -13,6 +13,7 @@ class OpenAICompatibleEmbeddingProvider:
         model: str,
         base_url: str = "https://api.openai.com/v1",
         timeout: float = 30.0,
+        max_input_tokens: int | float | None = None,
     ):
         if not api_key:
             raise ValueError("api_key is required for OpenAI-compatible embeddings")
@@ -20,6 +21,7 @@ class OpenAICompatibleEmbeddingProvider:
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.max_input_tokens = max_input_tokens
 
     def cache_key_data(self) -> dict[str, str]:
         # Hashed into the index identity's providerKey, so an index built for

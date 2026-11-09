@@ -23,6 +23,7 @@ from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenan
 from memory_core.consolidation.origins import IndexRevisionFence, MemoryIndexRevisionConflictError
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.index.chunking import MemoryChunk, chunk_markdown
+from memory_core.index.embedding_limits import enforce_embedding_max_input_tokens
 from memory_core.index.embedding_cache import (
     clear_memory_embedding_cache_identities,
     collect_memory_cached_embeddings,
@@ -600,6 +601,9 @@ class SQLiteMemoryStore:
             key: self._prepare_source_chunks(entry, chunk_tokens, chunk_overlap)
             for key, entry in snapshots.items() if key in changed
         }
+        if provider is not None:
+            prepared = {key: enforce_embedding_max_input_tokens(self.embeddings, source_chunks)
+                        for key, source_chunks in prepared.items()}
         chunks = [chunk for source_chunks in prepared.values() for chunk in source_chunks]
         embeddings: list[list[float]] = [[] for _ in chunks]
         if provider is not None and chunks:

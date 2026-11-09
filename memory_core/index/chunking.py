@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from memory_core.bootstrap._js import JS_SPACE_CLASS
 from memory_core.index.cjk_chars import (
@@ -24,6 +24,12 @@ from memory_core.index.cjk_chars import (
 
 _HEADING_RE = re.compile(r"#{1,6}(?:[" + JS_SPACE_CLASS + r"]|$)")
 _SURROGATE_RE = re.compile("[\ud800-\udfff]")
+
+
+def _chunk_id(path: str, start_line: int, end_line: int, text: str) -> str:
+    return hashlib.sha256(
+        f"{path}:{start_line}:{end_line}:{text}".encode("utf-8", "surrogatepass")
+    ).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -38,6 +44,10 @@ class MemoryChunk:
     # inherits its full span); None outside per-entry chunking.
     entry_start_line: int | None = None
     entry_end_line: int | None = None
+
+    def with_text(self, text: str) -> MemoryChunk:
+        """Retain source/entry spans while replacing a fragment's text identity."""
+        return replace(self, text=text, id=_chunk_id(self.path, self.start_line, self.end_line, text))
 
 
 def curated_markdown_entry_kind(line: str) -> str | None:
@@ -176,9 +186,7 @@ def chunk_markdown(
 
     chunks: list[MemoryChunk] = []
     for start_line, end_line, chunk_text, entry_start_line, entry_end_line in raw:
-        digest = hashlib.sha256(
-            f"{path}:{start_line}:{end_line}:{chunk_text}".encode("utf-8", "surrogatepass")
-        ).hexdigest()
+        digest = _chunk_id(path, start_line, end_line, chunk_text)
         chunks.append(
             MemoryChunk(
                 id=digest,

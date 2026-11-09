@@ -442,13 +442,25 @@ class FileAutomationStore:
     enroll each configured agent, optionally adopting its legacy scratch once;
     reads and heartbeat previews never enroll. This optional state interface
     does not add monitor jobs to the scheduler's ``AutomationJob`` collection.
+
+    ``store_path`` selects an explicit storage filename; relative names are
+    rooted at ``root``. The default filename and the workspace root retain
+    their existing meaning, and locking and atomic replacement follow the
+    selected filename.
     """
 
-    def __init__(self, root: str | os.PathLike[str], *, require_monitor_owner: bool = False):
+    def __init__(
+        self, root: str | os.PathLike[str], *, require_monitor_owner: bool = False,
+        store_path: str | os.PathLike[str] | None = None,
+    ):
         if type(require_monitor_owner) is not bool:
             raise TypeError("require_monitor_owner must be a boolean")
         self.root = Path(os.path.abspath(os.path.expanduser(os.fspath(root))))
-        self.path = self.root.joinpath(*AUTOMATION_STORE_PARTS)
+        if store_path is None:
+            self.path = self.root.joinpath(*AUTOMATION_STORE_PARTS)
+        else:
+            selected = Path(os.path.expanduser(os.fspath(store_path)))
+            self.path = Path(os.path.abspath(selected if selected.is_absolute() else self.root / selected))
         self._require_monitor_owner = require_monitor_owner
 
     # -- file plumbing
@@ -532,24 +544,51 @@ class FileAutomationStore:
         with self._locked() as data:
             if require_unconfigured and _owners.CATALOG_KEY in data:
                 raise HeartbeatMonitorEnrollmentConflictError("heartbeat ownership was configured before enrollment")
-            value = _owners.catalog(data, create=True)
+            return self._enroll_heartbeat_monitor_unlocked(
+                data, agent_id, job_id, adopt_legacy_scratch=adopt_legacy_scratch,
+            )
+
+    def ensure_heartbeat_monitor(
+        self, agent_id: str, *, adopt_legacy_scratch: bool = False,
+    ) -> HeartbeatMonitorOwner:
+        """Explicitly prepare a configured monitor without replacing its owner.
+
+        An existing active owner is returned exactly, including a custom job id
+        and its generation. Otherwise enrollment and optional first adoption of
+        legacy scratch share the same locked transaction. This method performs
+        configuration work; construction and read APIs never call it.
+        """
+        _owners.identity(agent_id)
+        with self._locked() as data:
             current = _owners.active_owner(data, agent_id)
-            other = value["owners"].get(job_id)
-            if other is not None and other["agentId"] != agent_id:
-                raise ValueError("heartbeat job belongs to a different agent")
-            if current is not None and current.job_id == job_id:
-                return current
-            previous = value["agents"].get(agent_id)
-            generation = (previous["generation"] if previous is not None else 0) + 1
-            _owners.bounded_integer(generation, minimum=1)
             if current is not None:
-                value["owners"][current.job_id]["active"] = False
-            value["agents"][agent_id] = {"jobId": job_id, "generation": generation}
-            value["owners"][job_id] = {"agentId": agent_id, "generation": generation, "active": True}
-            if adopt_legacy_scratch and previous is None and agent_id in data["scratch"]:
-                value["scratch"][job_id] = data["scratch"].pop(agent_id)
-            self._save(data)
-            return HeartbeatMonitorOwner(agent_id, job_id, generation)
+                return current
+            return self._enroll_heartbeat_monitor_unlocked(
+                data, agent_id, f"heartbeat:{agent_id}", adopt_legacy_scratch=adopt_legacy_scratch,
+            )
+
+    def _enroll_heartbeat_monitor_unlocked(
+        self, data: dict[str, Any], agent_id: str, job_id: str, *, adopt_legacy_scratch: bool,
+    ) -> HeartbeatMonitorOwner:
+        """Apply explicit enrollment while the caller holds this store's lock."""
+        value = _owners.catalog(data, create=True)
+        current = _owners.active_owner(data, agent_id)
+        other = value["owners"].get(job_id)
+        if other is not None and other["agentId"] != agent_id:
+            raise ValueError("heartbeat job belongs to a different agent")
+        if current is not None and current.job_id == job_id:
+            return current
+        previous = value["agents"].get(agent_id)
+        generation = (previous["generation"] if previous is not None else 0) + 1
+        _owners.bounded_integer(generation, minimum=1)
+        if current is not None:
+            value["owners"][current.job_id]["active"] = False
+        value["agents"][agent_id] = {"jobId": job_id, "generation": generation}
+        value["owners"][job_id] = {"agentId": agent_id, "generation": generation, "active": True}
+        if adopt_legacy_scratch and previous is None and agent_id in data["scratch"]:
+            value["scratch"][job_id] = data["scratch"].pop(agent_id)
+        self._save(data)
+        return HeartbeatMonitorOwner(agent_id, job_id, generation)
 
     def read_heartbeat_monitor_scratch(self, agent_id: str) -> HeartbeatMonitorScratch | None:
         """Resolve the current monitor without enrolling, repairing or writing."""
@@ -611,11 +650,24 @@ class FileAutomationStore:
 
     def delete_job_scratch(
         self, agent_id: str, job_id: str, *, expected_revision: int | None = None,
+        expected_owner_generation: int | None = None,
     ) -> bool:
-        """Guarded cleanup/rollback; retired owner identity remains durable."""
+        """Guarded cleanup/rollback; retired owner identity remains durable.
+
+        With ``expected_owner_generation``, only the exact active captured
+        owner may delete. A retired, replaced or re-enrolled owner returns
+        ``False`` without changing its scratch. Omitting this optional guard
+        retains the existing API for deliberate orphan cleanup.
+        """
         _owners.identity(agent_id)
         _owners.identity(job_id)
         with self._locked() as data:
+            if expected_owner_generation is not None:
+                _owners.bounded_integer(expected_owner_generation, minimum=1)
+                current = _owners.active_owner(data, agent_id)
+                if (current is None or current.job_id != job_id
+                        or current.generation != expected_owner_generation):
+                    return False
             state = _owners.job_state(data, agent_id, job_id)
             if expected_revision is not None:
                 _owners.bounded_integer(expected_revision)

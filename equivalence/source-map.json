@@ -219,7 +219,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_append_to_memory",
           "anchor": "def _append_to_memory(",
-          "line": 1529
+          "line": 1548
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
@@ -3069,7 +3069,7 @@
       "implementation": "partial",
       "notes": [
         "Runtime markers default to Memory Core identity; native marker behavior requires the explicit OpenClaw compatibility identity.",
-        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1–9999."
+        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1\u20139999."
       ]
     },
     {
@@ -3380,7 +3380,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_commit_promotion",
           "anchor": "def _commit_promotion(",
-          "line": 923
+          "line": 940
         }
       ],
       "implementation": "present",
@@ -3590,13 +3590,13 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "rank_short_term_promotion_candidates",
           "anchor": "def rank_short_term_promotion_candidates(",
-          "line": 773
+          "line": 776
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "evaluate_short_term_promotion_candidates",
           "anchor": "def evaluate_short_term_promotion_candidates(",
-          "line": 815
+          "line": 826
         },
         {
           "path": "memory_core/consolidation/recall.py",
@@ -3642,25 +3642,25 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "run_short_term_promotion",
           "anchor": "def run_short_term_promotion(",
-          "line": 315
+          "line": 318
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_plan_apply_stage",
           "anchor": "def _plan_apply_stage(",
-          "line": 611
+          "line": 614
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_commit_promotion",
           "anchor": "def _commit_promotion(",
-          "line": 923
+          "line": 940
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "build_promotion_applied_event",
           "anchor": "def build_promotion_applied_event(",
-          "line": 1189
+          "line": 1206
         }
       ],
       "implementation": "present",
@@ -4819,7 +4819,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "evaluate_short_term_promotion_candidates",
           "anchor": "def evaluate_short_term_promotion_candidates(",
-          "line": 815
+          "line": 826
         },
         {
           "path": "memory_core/index/identity.py",

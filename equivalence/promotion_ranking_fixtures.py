@@ -98,4 +98,9 @@ def build_promotion_ranking_cases():
         "old-phase": {"key": "old-phase", "lightHits": 3, "remHits": 2,
                       "lastLightAt": "2026-02-01T10:01:00.000Z", "lastRemAt": "2026-02-01T10:01:00.000Z"}},
         diagnostic=True)
+    add("limit-boundaries", [_entry("first"), _entry("second", path="memory/2026-04-02.md")], [
+        _query("negative", limit=-1), _query("fraction-below-one", limit=.5),
+        _query("fraction-above-one", limit=1.9), _query("unbounded-null", limit=None),
+        _query("unbounded-boolean", limit=True),
+    ])
     return profiles

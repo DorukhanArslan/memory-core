@@ -89,6 +89,7 @@ from memory_core.consolidation.policy import (
 )
 from memory_core.consolidation.recall import (
     is_contaminated_dreaming_snippet,
+    is_short_term_memory_path,
     is_short_term_session_corpus_path,
     is_workspace_contained_path,
     normalize_memory_path,
@@ -832,9 +833,15 @@ def evaluate_short_term_promotion_candidates(
     evaluations = []
     for raw in store["entries"].values():
         key = str(raw.get("key") or "")
+        path = str(raw.get("path") or "")
         if not key or (not include_promoted and raw.get("promotedAt")):
             continue
-        if is_contaminated_dreaming_snippet(str(raw.get("snippet") or "")):
+        if not is_short_term_memory_path(path):
+            continue
+        if is_contaminated_dreaming_snippet(
+            str(raw.get("snippet") or ""),
+            allow_transcript_turn_snippet=is_short_term_session_corpus_path(path),
+        ):
             continue
         recall_count = to_int(raw.get("recallCount"), 0)
         daily_count = to_int(raw.get("dailyCount"), 0)
@@ -1255,7 +1262,9 @@ def _evaluation_to_candidate(evaluation: PromotionEvaluation) -> PromotionCandid
         last_recalled_at=evaluation.last_recalled_at,
         age_days=evaluation.age_days,
         concept_tags=evaluation.concept_tags,
-        components=dict(evaluation.components),
+        # The phase boost contributes to the score, while the public candidate
+        # exposes the six weighted components. Evaluations retain its diagnostic.
+        components={key: evaluation.components[key] for key in PROMOTION_COMPONENT_WEIGHTS},
         recall_days=evaluation.recall_days,
         claim_hash=evaluation.claim_hash,
         project_key=evaluation.project_key,

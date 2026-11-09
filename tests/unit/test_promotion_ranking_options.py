@@ -118,3 +118,41 @@ def test_nonfinite_weight_gate_uses_raw_score_before_output_clamping(tmp_path: P
     config = _workspace(tmp_path)
     candidates = _rank(config, weights={"relevance": weight}, min_score=0.75)
     assert [c.score for c in candidates] == [0]
+
+
+@pytest.mark.parametrize("path", ["MEMORY.md", "random.md", "memory/dreaming/2026-04-01.md"])
+def test_rank_excludes_non_short_term_store_paths(tmp_path: Path, path: str):
+    assert _rank(_workspace(tmp_path, path=path)) == []
+
+
+@pytest.mark.parametrize("extension", ["md", "txt"])
+def test_rank_preserves_transcript_turns_only_in_the_session_corpus(tmp_path: Path, extension: str):
+    config = _workspace(
+        tmp_path, path=f"memory/.dreams/session-corpus/2026-04-01.{extension}",
+        snippet="User: Prefers cedar tea.\nAssistant: Recorded.",
+    )
+    assert [candidate.key for candidate in _rank(config)] == ["boundary"]
+
+
+def test_rank_still_excludes_transcript_scaffolding_in_a_daily_file(tmp_path: Path):
+    assert _rank(_workspace(tmp_path, snippet="User: Prefers cedar tea.")) == []
+
+
+def test_rank_exposes_six_score_components_and_retains_phase_boost_in_evaluations(tmp_path: Path):
+    config = _workspace(tmp_path)
+    (tmp_path / "memory/.dreams/phase-signals.json").write_text(json.dumps({
+        "version": 1, "updatedAt": NOW_ISO, "entries": {
+            "boundary": {"key": "boundary", "lightHits": 3, "remHits": 3,
+                         "lastLightAt": NOW_ISO, "lastRemAt": NOW_ISO},
+        },
+    }))
+    candidate = _rank(config)[0]
+    evaluation = evaluate_short_term_promotion_candidates(
+        config=config, now_ms=NOW_MS, min_score=0, min_recall_count=0, min_unique_queries=0,
+    )[0]
+    assert set(candidate.components) == set(PROMOTION_COMPONENT_WEIGHTS)
+    assert evaluation.components["phaseBoost"] > 0
+    assert candidate.score == evaluation.score
+    base_score = sum(PROMOTION_COMPONENT_WEIGHTS[key] * value
+                     for key, value in candidate.components.items())
+    assert candidate.score == pytest.approx(base_score + evaluation.components["phaseBoost"])

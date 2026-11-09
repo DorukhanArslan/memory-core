@@ -166,13 +166,19 @@ def validate_turn_trust_raw(row, case, diagnostic, evidence_directory, *, approv
                 == expected_observation_order, "The original host/dispatch observation order was changed or repaired")
         dispatched = [observed for observed in observations if observed["origin"] == "dispatched-tool"]
         require(len(dispatched) == len(calls), "Original dispatched outcome callbacks were dropped or fabricated")
-        for (turn_id, attempt_id, call), observed in zip(calls, dispatched, strict=True):
+        for (turn_id, attempt_id, call), observed, invoked in zip(
+            calls, dispatched, raw["toolInvocations"], strict=True,
+        ):
             require((observed["turnId"], observed["attemptId"], observed["toolCallId"], observed["observation"]["toolName"])
                     == (turn_id, attempt_id, call["id"], call["name"]),
                     "A source observation was attributed to another original wrapped invocation")
             fact = observed["observation"]
+            # The original hashToolOutcome owner prefixes thrown execution
+            # errors with "error:". Retain that opaque producer value and bind
+            # its form to the actual captured invocation; do not recalculate it.
+            result_hash_pattern = r"error:[0-9a-f]{64}" if "error" in invoked else r"[0-9a-f]{64}"
             require(re.fullmatch(re.escape(call["name"]) + r":[0-9a-f]{64}", fact["argsHash"])
-                    and re.fullmatch(r"[0-9a-f]{64}", fact["resultHash"]),
+                    and re.fullmatch(result_hash_pattern, fact["resultHash"]),
                     "Actual dispatched diagnostic hashes were dropped or replaced")
             same({key: fact[key] for key in ("resultContentSource",) if key in fact},
                  {key: by_name[call["name"]][key] for key in ("resultContentSource",) if key in by_name[call["name"]]},

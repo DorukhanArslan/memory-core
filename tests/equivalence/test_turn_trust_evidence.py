@@ -15,7 +15,7 @@ from equivalence.turn_trust_runtime_bindings import (
 _NOW = 1794268800000
 
 
-def _fixture(tmp_path):
+def _fixture(tmp_path, *, execution_error=False):
     base = str(tmp_path / "native-turn-trust-fixture")
     workspace = base + "/workspace"
     scope = {"agentId": "main", "storePath": base + "/state/agents/main/sessions/sessions.json",
@@ -25,6 +25,7 @@ def _fixture(tmp_path):
              "baseUrl": "https://fixture.invalid", "reasoning": False, "input": ["text"],
              "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 10000, "maxTokens": 1000}
     network = {"content": [{"type": "text", "text": "A"}], "details": {"source": "fixture"}, "outerOnly": [True, None]}
+    error = {"name": "Error", "message": "Labelled execution error", "code": "FIXTURE_ERROR"}
     write_result = {"content": [{"type": "text", "text": "Written"}], "details": {"changed": True}, "outerOnly": {"kept": 1}}
 
     def assistant(content, identifier, reason):
@@ -38,7 +39,8 @@ def _fixture(tmp_path):
     host = {"toolName": "host_presentation", "argsHash": "", "resultHash": "", "resultContentSource": "network",
             "presentationOnly": True, "terminalPresentation": "Fixture host update"}
     value = {"kind": "turn-trust", "nowMs": _NOW, "agentId": "main", "sessionId": "trust", "sessionKey": scope["sessionKey"],
-             "tools": [{"name": "web", "resultContentSource": "network", "result": network}], "writeResult": write_result,
+             "tools": [{"name": "web", "resultContentSource": "network",
+                        **({"error": error} if execution_error else {"result": network})}], "writeResult": write_result,
              "turns": [{"id": "turn", "senderIsOwner": True, "prompt": prompt, "presentationObservations": [host],
                         "attempts": [{"id": "a", "responses": [first]}, {"id": "b", "responses": [second, final]}]}]}
     cfg = {"agents": {"defaults": {"workspace": workspace}, "list": [{"id": "main", "default": True}]},
@@ -58,8 +60,10 @@ def _fixture(tmp_path):
     tools = [{"name": d["name"], "label": d["name"], "description": "Literal fixture tool",
               "parameters": {"type": "object", "properties": {}, "additionalProperties": True},
               **({"resultContentSource": d["resultContentSource"]} if "resultContentSource" in d else {})} for d in definitions]
-    tool_messages = [{"role": "toolResult", "toolCallId": "fetch", "toolName": "web", "content": network["content"],
-                      "details": network["details"], "isError": False, "timestamp": _NOW, "__openclaw": {"resultContentSource": "network"}},
+    error_result = {"content": [{"type": "text", "text": error["message"]}], "details": {}}
+    first_result = error_result if execution_error else network
+    tool_messages = [{"role": "toolResult", "toolCallId": "fetch", "toolName": "web", "content": first_result["content"],
+                      "details": first_result["details"], "isError": execution_error, "timestamp": _NOW, "__openclaw": {"resultContentSource": "network"}},
                      {"role": "toolResult", "toolCallId": "write", "toolName": "write_memory", "content": write_result["content"],
                       "details": write_result["details"], "isError": False, "timestamp": _NOW}]
     second_stamped, final_stamped = deepcopy(second), deepcopy(final)
@@ -79,14 +83,18 @@ def _fixture(tmp_path):
         raw["toolFactoryCalls"].append({**identity, "options": deepcopy(options), "callbackIdentity": {
              "sameTurnTaintReader": True, "sameTurnOutcomeObserver": True}, "toolNames": ["write"], "taintedAtConstruction": index == 1})
         literal_call = attempt["responses"][0]["content"][0]
+        failed = index == 0 and execution_error
         outcome = {"id": literal_call["id"], "name": literal_call["name"], "input": literal_call["arguments"],
-                   "result": network if index == 0 else write_result}
+                   **({"error": error} if failed else {"result": network if index == 0 else write_result})}
         raw["toolInvocations"].append({**identity, "toolCallId": outcome["id"], "toolName": outcome["name"],
-             "arguments": deepcopy(outcome["input"]), "result": deepcopy(outcome["result"]), "identity": {
-                 "receiverIsOriginalWrapped": True, "argumentArrayForwardedUnchanged": True, "resultReturnedUnchanged": True}})
+             "arguments": deepcopy(outcome["input"]),
+             **({"error": deepcopy(error), "stack": "Labelled execution error receipt"} if failed else {"result": deepcopy(outcome["result"])}),
+             "identity": {"receiverIsOriginalWrapped": True, "argumentArrayForwardedUnchanged": True,
+                          "errorRethrownUnchanged" if failed else "resultReturnedUnchanged": True}})
         raw["nativeObservations"].append({**identity, "toolCallId": outcome["id"], "origin": "dispatched-tool",
              "observation": {"toolName": outcome["name"], "argsHash": outcome["name"] + ":" + "c" * 64,
-                             "resultHash": "d" * 64, **({"resultContentSource": "network"} if index == 0 else {})},
+                             "resultHash": ("error:" if failed else "") + "d" * 64,
+                             **({"resultContentSource": "network"} if index == 0 else {})},
              "before": index == 1, "after": True})
         messages = deepcopy(messages_by_attempt[index])
         snapshot = {"turnId": "turn", "id": attempt["id"], "messages": messages, "toolOutcomes": [deepcopy(outcome)],
@@ -103,8 +111,9 @@ def _fixture(tmp_path):
             results = []
             if response_index == 0:
                 lifecycle += [{"type": "tool_execution_start", "toolCallId": outcome["id"], "toolName": outcome["name"], "args": outcome["input"]},
-                              {"type": "tool_execution_end", "toolCallId": outcome["id"], "toolName": outcome["name"], "result": outcome["result"],
-                               "isError": False, "executionStarted": True},
+                              {"type": "tool_execution_end", "toolCallId": outcome["id"], "toolName": outcome["name"],
+                               "result": error_result if failed else outcome["result"],
+                               "isError": failed, "executionStarted": True},
                               {"type": "message_start", "message": tool_messages[index]}, {"type": "message_end", "message": tool_messages[index]}]
                 results = [tool_messages[index]]
             lifecycle.append({"type": "turn_end", "message": actual, "toolResults": results})
@@ -166,6 +175,22 @@ def _recapture_child(fixture):
 
 def test_complete_labelled_mixed_caller_protocol_is_accepted(tmp_path):
     _validate(_fixture(tmp_path))
+
+
+def test_original_error_prefixed_diagnostic_hash_is_preserved(tmp_path):
+    # Pinned hashToolOutcome returns error:<digest> for an actually thrown
+    # execution error. This tests the complete error protocol, not a hash port.
+    fixture = _fixture(tmp_path, execution_error=True)
+    assert fixture[2][0]["nativeObservations"][1]["observation"]["resultHash"] == "error:" + "d" * 64
+    _validate(fixture)
+
+
+@pytest.mark.parametrize("execution_error,forged_hash", [(True, "d" * 64), (False, "error:" + "d" * 64)])
+def test_result_hash_form_must_match_the_actual_execution_result(tmp_path, execution_error, forged_hash):
+    fixture = _fixture(tmp_path, execution_error=execution_error)
+    fixture[2][0]["nativeObservations"][1]["observation"]["resultHash"] = forged_hash
+    with pytest.raises(RuntimeOracleError, match="diagnostic hashes"):
+        _validate(fixture)
 
 
 @pytest.mark.parametrize("mutation", [
@@ -255,6 +280,7 @@ def test_original_throw_shape_preserves_properties_and_object_forwarding(tmp_pat
     invoked.update(error=deepcopy(error), stack="Error: Declared remote error\n fixture-owner")
     invoked["identity"].pop("resultReturnedUnchanged")
     invoked["identity"]["errorRethrownUnchanged"] = True
+    raw["nativeObservations"][1]["observation"]["resultHash"] = "error:" + "d" * 64
     carrier = {"content": [{"type": "text", "text": error["message"]}], "details": {}}
     message = next(item for item in raw["attempts"][0]["messages"] if item.get("role") == "toolResult")
     message.update(**deepcopy(carrier), isError=True)

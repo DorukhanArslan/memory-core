@@ -116,6 +116,38 @@ registry range metadata for `bracex` and is retained unchanged. No production or
 test requirement was weakened. Source inventory validates 64 contracts, 128
 conditions and 196 upstream modules; inventory itself grants no credit.
 
-Fresh full regression and full differential catalog results will be recorded
-below when complete. Until then, the last complete verified baseline remains
-62/128, with 66 conditions remaining. No full-equivalence claim is made.
+## Completed integrated baseline
+
+The fresh complete catalog ran on clean implementation
+`b090394d2729031cf239619b7ed7bbeecac8f379`, with 156 SDK files and source SHA-256
+`0944d2bcdd15096e59e1ec3715d47e57013427fec85dc47c541fa176c8739997`.
+It completed in 1,460.268716 seconds: **1,403 cases, 1,389 matched, 14 mismatched,
+zero blocked and no runner errors**. All eight whole-apply families match both
+existing conditions. This package targeted **+2** and verified **+2**:
+**62 → 64/128 (50.0%)**, with **64 conditions remaining**. The scope is unchanged.
+There are 29 complete, six partial and 29 pending contracts. The percentage
+counts unweighted conditions; it is not an effort or time estimate.
+
+The retained complete report `work/promotion-apply-integrated-full.json` has
+428,615,477 bytes and SHA-256
+`df6e393b4f0affb17db5058506c54d8b58bfef5438a2c993c59886131c55d5dc`.
+It is separate from every development/failed report above. The corrected full
+regression run passes **6,759 tests, zero failures, 1,648 skips** in 301.75 seconds.
+Both installed wheel/sdist consumers pass again on the same clean commit, fully
+offline after cache preparation, including public typing and all ten invalid calls.
+The 23 skips beyond the historical 1,625 are existing transport guards bound to an
+old absolute runtime path; the real catalog explicitly uses the exact approved
+binary at its new path. No skip receives acceptance credit. Source inventory,
+Ruff and diff checks pass.
+
+The 14 differences remain visible: Unicode path collation, same-size compressed
+transcript cache freshness, first warm-flush recall, eight redaction/identity/regex
+diagnostics, two bootstrap boundary cases, and primitive promotion provenance.
+Two covered boundary conditions remain unverified in addition to 62 uncovered
+conditions, so **64 remain**, not 62. The full gate remains `mismatched` and
+`fullScopePassed` remains false. No complete OpenClaw equivalence or source-build
+reproduction is claimed. Whole-host restart is the recommended next package.
+
+The full report and large local packets/logs remain under ignored `work/` and
+`.equivalence-results/`; pushing Git commits does not upload them. Three sealed
+transport-only capture pairs and their producer manifest are tracked separately.

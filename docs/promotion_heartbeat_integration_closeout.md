@@ -1,5 +1,10 @@
 # Promotion and heartbeat maintenance integration
 
+This is the historical zero-credit maintenance closeout. Subsequent work is
+recorded separately in the [promotion apply/reconciliation closeout](promotion_apply_reconcile_closeout.md):
+its fresh integrated baseline verifies 64/128 conditions. That later evidence
+does not rerun or relabel this maintenance package's original captures.
+
 This package integrates already reviewed fixes for the existing promotion and
 heartbeat contracts. It adds no acceptance condition and awards **zero new
 acceptance points**. The last full differential baseline remains **62/128

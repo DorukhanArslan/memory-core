@@ -52,37 +52,37 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest verified bounded baseline has **62/128 acceptance conditions (48.4%)**, with
-**66 conditions** remaining. This percentage counts unweighted verified conditions; it is
+The latest verified bounded baseline has **64/128 acceptance conditions (50.0%)**, with
+**64 conditions** remaining. This percentage counts unweighted verified conditions; it is
 not engineering effort, elapsed work or a time estimate. The fixed scope remains 64 contracts
-and 128 conditions. The latest atomic-write, path-read, memory-budget, bootstrap and ranking batch targeted **+8** and verified
-**+8**, from **54 to 62/128**.
+and 128 conditions. The promotion application/reconciliation batch targeted **+2** and
+verified **+2**, from **62 to 64/128**.
 
-The last full differential report, on `21177bf`, executes **1,395 cases: 1,381 matches,
-14 visible uncredited differences and 0 blocked cases**, with no runner errors.
-All **6,433 regression tests** and both clean package consumers pass. The same 1,625
-historical/live skips grant no acceptance credit. The full gate remains `mismatched`;
-these results do not establish complete OpenClaw equivalence.
+The fresh complete differential report on clean `b090394` executes **1,403 cases:
+1,389 matches, 14 visible differences and 0 blocked cases**, with no runner errors.
+All eight registered whole-apply families match both original conditions, including
+complete callback requests and actual lock-time rechecks/publication receipts.
+Fresh full regressions pass **6,759 tests**; both clean offline package consumers pass.
+The **1,648 skips** grant no acceptance credit: 1,625 historical/live skips plus
+23 existing transport guards bound to an old absolute runtime installation path.
+The genuine differential run uses the explicitly authenticated approved binary.
+The full gate remains `mismatched`; these results do not establish complete OpenClaw equivalence.
 
-The subsequent promotion/heartbeat maintenance integration passes **6,713 regression
-tests**, both clean package consumers and the affected lint-follow-up guards. It awards
-**+0 conditions** and does not rerun or reattribute the historical full differential
-report to the changed SDK. The verified baseline remains **62/128**, with **66 remaining**.
-See the [integration closeout](promotion_heartbeat_integration_closeout.md) for actual
-SDK source identities, retained first failure, bounded original comparisons and limits.
-That integration was the user's earlier stop point. Work has resumed with the
-[promotion apply family development packet](promotion_apply_family_development_closeout.md):
-eight separate whole-operation inputs now execute against the real original and SDK
-owners. This is development evidence with empty coverage, not a registered acceptance
-batch; the verified baseline remains 62/128. The historical full differential report
-above has not been rerun or reattributed to these new comparison callers.
+See the [promotion apply closeout](promotion_apply_reconcile_closeout.md) for exact source,
+report and runtime identities, the actual model-request serialization correction,
+retained preparation failures and authority limits. The earlier
+[promotion/heartbeat maintenance integration](promotion_heartbeat_integration_closeout.md)
+awarded zero conditions; the [initial family development packet](promotion_apply_family_development_closeout.md)
+also awarded zero. Their historical captures are not relabeled as executions of
+this changed SDK or these completed acceptance callers. Whole-host restart remains
+unverified and is the recommended next package.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 28 | 56 | 0 |
+| Complete | 29 | 58 | 0 |
 | Partial | 6 | 6 | 6 |
-| Pending verification | 30 | 0 | 60 |
-| Total | 64 | 62 | 66 |
+| Pending verification | 29 | 0 | 58 |
+| Total | 64 | 64 | 64 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -135,7 +135,7 @@ Current status of all 64 contracts:
 | 40 | `compaction.provider-overflow` | Pending verification | 0/2 |
 | 41 | `promotion.recall-signals` | Pending verification | 0/2 |
 | 42 | `promotion.ranking-gates` | Partial | 1/2 |
-| 43 | `promotion.apply-reconcile` | Pending verification | 0/2 |
+| 43 | `promotion.apply-reconcile` | Complete | 2/2 |
 | 44 | `promotion.deep-consolidation` | Pending verification | 0/2 |
 | 45 | `dreaming.light` | Pending verification | 0/2 |
 | 46 | `dreaming.rem` | Pending verification | 0/2 |
@@ -236,7 +236,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 
 - [ ] **`promotion.recall-signals` — Match recall recording.** Compare filtering, deduplication, query hashes, day boundaries, retention and recall events. Verify ground truth source ranges and origin recording before published recall state.
 - [ ] **`promotion.ranking-gates` — Match promotion ranking and gates.** Compare scores, custom weights, tie order, diversity, age, trust and visibility gates. Include exact score thresholds and promoted-entry visibility.
-- [ ] **`promotion.apply-reconcile` — Match promotion application and reconciliation.** Compare MEMORY.md/DREAMS.md, markers, authoritative candidates and applied/rejected receipts. Interleave candidate changes and verify lock-time rechecks and publication order.
+- [x] **`promotion.apply-reconcile` — Match promotion application and reconciliation.** Compare MEMORY.md/DREAMS.md, markers, authoritative candidates and applied/rejected receipts. Interleave candidate changes and verify lock-time rechecks and publication order. Verified through all eight frozen provider-free whole-operation families, complete callback envelopes, physical/API readbacks and live owner receipts; general model plans and origin-reservation behavior remain separate.
 - [ ] **`promotion.deep-consolidation` — Match model-assisted consolidation.** Feed identical deterministic model plans for added, merged, superseded and rejected entries. Compare preimages, loss safeguards, history, origin changes and deterministic fallback.
 
 ### Dreaming phases
@@ -1977,3 +1977,40 @@ and approved Node 24.16.0 / ICU 78.3 / Unicode 17 binary. `sourceBuildReproduced
 false. There were **zero paid provider calls and no forwarded provider credentials**.
 The full gate intentionally remains `mismatched`; these bounded results establish neither
 complete OpenClaw equivalence nor the still-unverified host restart/turn conditions.
+
+
+### Promotion application and reconciliation closeout — 2026-11-09
+
+This batch targets and verifies **two existing conditions**, from 62 to **64/128
+(50.0%)**, with **64 remaining**: 29 complete, six partial and 29 pending contracts.
+All eight exact family wires execute against the genuine pinned original apply
+and real SDK owner. The strict registration rejects a missing family or changed
+literal/owner/coverage before comparison. The old one-input capability remains unchanged.
+
+The clean integrated implementation is `b090394d2729031cf239619b7ed7bbeecac8f379`:
+156 SDK files, SHA-256 `0944d2bcdd15096e59e1ec3715d47e57013427fec85dc47c541fa176c8739997`.
+The complete report is `work/promotion-apply-integrated-full.json`, SHA-256
+`df6e393b4f0affb17db5058506c54d8b58bfef5438a2c993c59886131c55d5dc`,
+428,615,477 bytes. It executes **1,403 cases: 1,389 matched, 14 mismatched,
+zero blocked and no runner errors**, in 1,460.268716 seconds. Every promotion apply
+case matches both conditions. All 6,759 regressions and both clean offline wheel
+and sdist consumers pass; 1,648 historical/live/optional transport skips add no credit.
+
+The production correction sends JavaScript-compatible numeric text in actual model
+requests (`1.0` becomes `1`, including correct negative-zero/exponent handling).
+It changes the consolidation prompt serializer, not expected outputs or the global
+bootstrap serializer. Callback requests/results are actual comparison data.
+Original physical recall carriers remain distinct from actual original normalized
+API reads; real exported normalization/retention observations establish that mapping.
+
+The [detailed closeout](promotion_apply_reconcile_closeout.md) preserves blocked
+preparation reports, real differing before requests, adversarial guard failures,
+consumer cache setup failure and limits. The named origin fixture does not create
+an agent-origin row after original provenance normalization; no general origin,
+model-plan, worker SQL transaction or host restart condition is claimed. Exact
+Node 24.16.0 / ICU 78.3 / Unicode 17 and official artifacts remain authenticated;
+source-build reproduction remains false. There were no paid provider calls.
+
+The report retains **62 uncovered conditions** plus the two covered-but-unverified
+bootstrap/ranking boundary conditions: **64 remain**, not 62. All 14 differences
+stay visible and the full gate remains `mismatched`.

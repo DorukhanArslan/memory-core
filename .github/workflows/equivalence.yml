@@ -13,7 +13,8 @@ jobs:
   differential:
     name: Differential subset (full contract on manual runs)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The registered catalog took 38 minutes locally; manual runs execute it twice.
+    timeout-minutes: 120
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       OPENAI_API_KEY: ""

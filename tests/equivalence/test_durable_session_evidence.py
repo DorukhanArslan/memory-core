@@ -8,7 +8,8 @@ import pytest
 from equivalence.durable_session_codec import map_durable_session_identities
 from equivalence.durable_session_evidence import validate_durable_session_raw
 from equivalence.durable_session_runtime_bindings import (
-    MEMORY_INDEX_WORKER_ARTIFACTS, REQUIRED_PHASE_ARTIFACTS,
+    MEMORY_INDEX_WORKER_ARTIFACTS, REQUIRED_PHASE_ARTIFACTS, RANKING_DEFAULT_ARTIFACTS,
+    METADATA_PROJECTION_ARTIFACTS, ROTATED_PRIVATE_FIELDS_ARTIFACTS,
 )
 from equivalence.runtime_oracle import ROOT, RuntimeOracleError
 
@@ -29,7 +30,7 @@ def _fixture(tmp_path):
     workers = []
     for index, phase in enumerate(value["phases"]):
         pid = 101 + index
-        release[pid] = set(REQUIRED_PHASE_ARTIFACTS)
+        release[pid] = set(REQUIRED_PHASE_ARTIFACTS) | set(RANKING_DEFAULT_ARTIFACTS) | set(METADATA_PROJECTION_ARTIFACTS)
         local[pid] = {str(ROOT / "equivalence" / name) for name in
                       ("durable-session-phase.mjs", "durable-session-phase-cli.mjs", "get-contract-runtime.mjs")}
         if index < 2:
@@ -45,6 +46,8 @@ def _fixture(tmp_path):
         observed = {"label": phase["label"], "pid": pid, "ppid": 100, "fixtureBase": str(base), "request": request,
                     "clock": {"owner": "node:test", "apis": ["Date"], "nowMs": 1000, "dateConstructorReplaced": True,
                               "setTimeoutUnchanged": True, "performanceNowUnchanged": True},
+                    "resolvedManagerSettings": {"query": {"hybrid": {"temporalDecay": {"enabled": True, "halfLifeDays": 30}}},
+                                                "store": {"databasePath": str(base / "state/agents/main/agent/openclaw-agent.sqlite")}},
                     "sessionWrites": [], "appendWrites": [], "sourceReads": [],
                     "contextRequests": [{"input": {"agentId": "main",
                                                     "storePath": str(base / "state/agents/main/sessions/sessions.json"),
@@ -201,3 +204,45 @@ def test_codec_requires_actual_recognized_producer_anchor(field, value):
     anchor = {"generation": "a" * 32, "storePath": "$FIXTURE/db", "agentId": "main", field: value}
     with pytest.raises(ValueError, match="recognized producer"):
         map_durable_session_identities([{"appendResults": [{"result": {"anchor": anchor}}]}], ["$FIXTURE/db"])
+
+
+@pytest.mark.parametrize("fault", ["omitted", "disabled", "half-life", "bool-as-number", "wrong-store", "owner"])
+def test_actual_resolved_temporal_decay_policy_cannot_be_dropped_or_rewritten(tmp_path, fault):
+    fixture = _fixture(tmp_path)
+    observed = fixture[2][0]["phases"][2]["raw"]
+    if fault == "omitted":
+        observed.pop("resolvedManagerSettings")
+    elif fault == "disabled":
+        observed["resolvedManagerSettings"]["query"]["hybrid"]["temporalDecay"]["enabled"] = False
+    elif fault == "half-life":
+        observed["resolvedManagerSettings"]["query"]["hybrid"]["temporalDecay"]["halfLifeDays"] = 365
+    elif fault == "bool-as-number":
+        observed["resolvedManagerSettings"]["query"]["hybrid"]["temporalDecay"]["enabled"] = 1
+    elif fault == "wrong-store":
+        observed["resolvedManagerSettings"]["store"]["databasePath"] = "/unowned/database.sqlite"
+    else:
+        fixture[-1]["release_by_pid"][103].difference_update(RANKING_DEFAULT_ARTIFACTS)
+    _recapture(fixture)
+    with pytest.raises(RuntimeOracleError, match="resolved manager settings"):
+        _validate(fixture)
+
+
+def test_complete_canonical_metadata_getter_projection_owner_is_required(tmp_path):
+    fixture = _fixture(tmp_path)
+    fixture[-1]["release_by_pid"][103].difference_update(METADATA_PROJECTION_ARTIFACTS)
+    with pytest.raises(RuntimeOracleError, match="canonical metadata"):
+        _validate(fixture)
+
+
+def test_generation_private_field_owner_is_conditional_on_actual_upsert(tmp_path):
+    fixture = _fixture(tmp_path)
+    fixture[1]["input"]["phases"][0]["sessions"] = [{"entry": {"sessionId": "one"}}]
+    first = fixture[2][0]["phases"][0]
+    first["requestJson"] = json.dumps(first["request"])
+    first["requestSha256"] = hashlib.sha256(first["requestJson"].encode()).hexdigest()
+    _recapture(fixture)
+    # This fixture stops at owner admission before evaluating the later synthetic
+    # write payload; no candidate/private field-clearing algorithm is replayed.
+    with pytest.raises(RuntimeOracleError, match="generation-private-field"):
+        _validate(fixture)
+    assert not set(ROTATED_PRIVATE_FIELDS_ARTIFACTS) & fixture[-1]["release_by_pid"][101]

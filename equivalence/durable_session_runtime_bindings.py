@@ -113,6 +113,98 @@ COMPILED_ANCHORS = {'dist/session-BA9qunLx.mjs': ('function buildSessionContext(
                                                      'fork(entry, [], {'),
  'dist/sqlite-file-generation-Z_oSlnyK.mjs': ('function '
                                               'readSqliteIntegrityFileIdentity(',)}
+
+SOURCE_HASHES.update({'extensions/memory-core/src/memory/manager.ts': 'c4995b1e83db3e9aa4fbc6bdcffe4ddb36d9a5769396a0b1fd4ee2934c5c8173',
+ 'src/agents/memory-search.ts': 'a1edad1e59255c5657af97d636be2517a3704f2ca3950e4a06f06892647092b2',
+ 'src/plugin-sdk/memory-core-host-engine-foundation.ts': '5ec673cb42dc14662c6be1b4e405d4242f9a24cfa933e8200b98cb329227fb8c'})
+SOURCE_ANCHORS.update({'extensions/memory-core/src/memory/manager.ts': ('  protected readonly '
+                                                  'settings: '
+                                                  'ResolvedMemorySearchConfig;',
+                                                  '    this.settings = {'),
+ 'src/agents/memory-search.ts': ('export function resolveMemorySearchConfig(',
+                                 'const DEFAULT_TEMPORAL_DECAY_ENABLED = true;',
+                                 'const DEFAULT_TEMPORAL_DECAY_HALF_LIFE_DAYS '
+                                 '= 30;'),
+ 'src/plugin-sdk/memory-core-host-engine-foundation.ts': ('  '
+                                                          'resolveMemorySearchConfig,',)})
+COMPILED_HASHES.update({'dist/memory-search-CIhUURbE.mjs': 'e015aeaa8d8e062eb792ae58d2e4537e5b0f665ea97b946979e644444304a148'})
+COMPILED_ANCHORS.update({'dist/memory-search-CIhUURbE.mjs': ('function resolveMemorySearchConfig(cfg, '
+                                     'agentId) {',
+                                     'const DEFAULT_TEMPORAL_DECAY_ENABLED = '
+                                     'true;',
+                                     'const '
+                                     'DEFAULT_TEMPORAL_DECAY_HALF_LIFE_DAYS = '
+                                     '30;')})
+RANKING_DEFAULT_ARTIFACTS = ("dist/memory-search-CIhUURbE.mjs",)
+
+
+SOURCE_HASHES.update({'src/agents/main-session-recovery/main-session-recovery-clear.ts': 'ff3fae295eeed9836100d599b4d102fa2f93a230f317aae4fdfe68dfe0d73452',
+ 'src/config/sessions/session-accessor.sqlite-entry-read.ts': 'f6a4515bca2982da03d0fbf960b4c83a59b2b796e23193dc1d5ec12c671b904c',
+ 'src/config/sessions/session-accessor.sqlite-participant-projection.ts': 'e629448152fec6732c0d6ba61c3724ab3bfaebb3b03cb418d206602ada1e95de',
+ 'src/config/sessions/session-accessor.sqlite-status.ts': 'b3e9f3913b29bf94121242b05e107a7f8c76b1ccf50eae94f81facb26efd9511',
+ 'src/config/sessions/store-entry-shape.ts': '2ca9bdadf9de3ad8c48a77cd8351e70bc45aa4bafd77e58e62be397b94da1511',
+ 'src/plugin-sdk/session-store-runtime-internal.ts': 'd2de13b9d4d421a7097f5d4216c9ae97598345ddbefc57d6d345224891f36ed3',
+ 'src/plugin-sdk/session-store-runtime.ts': '2d98e36a3e04f61a1809b60ac4ffaeb538de0c99ce111b38c8dea2726185bc11'})
+SOURCE_ANCHORS.update({'src/agents/main-session-recovery/main-session-recovery-clear.ts': ('export '
+                                                                     'const '
+                                                                     'MAIN_SESSION_RECOVERY_CLEAR_PATCH: '
+                                                                     'Partial<MainRecoveryStateFields> '
+                                                                     '= {',),
+ 'src/config/sessions/session-accessor.sqlite-entry-read.ts': ('export '
+                                                               'function '
+                                                               'parseReadableSqliteSessionEntryRow(',),
+ 'src/config/sessions/session-accessor.sqlite-participant-projection.ts': ('export '
+                                                                           'function '
+                                                                           'projectSqliteSessionParticipants(',),
+ 'src/config/sessions/session-accessor.sqlite-status.ts': ('export function '
+                                                           'parseSessionEntryJson(',),
+ 'src/config/sessions/store-entry-shape.ts': ('export function '
+                                              'projectCanonicalSessionEntryShape(value: '
+                                              'Record<string, unknown>): '
+                                              'SessionEntry {',),
+ 'src/plugin-sdk/session-store-runtime-internal.ts': ('export function '
+                                                      'clearGenerationPrivateFieldsForRotatedSessionPatch(',),
+ 'src/plugin-sdk/session-store-runtime.ts': ('export async function '
+                                             'upsertSessionEntry(params: '
+                                             'UpsertSessionEntryParams): '
+                                             'Promise<void> {',)})
+COMPILED_HASHES.update({'dist/main-session-recovery-clear-BczELu-B.mjs': 'ba2bf263f897a47409122d91a727a7af7a74e619f78f7aaa4da8284f9745da47',
+ 'dist/session-accessor.sqlite-entry-read-CMIsjDi7.mjs': 'cad4258ac1e98dcf2979cbdad92b60555e94ecfbe1985d6d0acdc59e3b19a8c9',
+ 'dist/session-accessor.sqlite-status-DGBuIDuw.mjs': '8218c5bc1715b532c5f01b9e8c09bcacbbb2d55f8e606c02f840528f03df03ff',
+ 'dist/session-store-runtime-C3lQUqXM.mjs': '42c91a431b20934055e124edf556bffdb57e203615f814fd6c6067654c5caf20',
+ 'dist/store-entry-shape-fsGxEPpp.mjs': '03494cf016554ef04bd7e2f636f5b1d1e165ac87a87b681a4ed0742ce1248a23'})
+COMPILED_ANCHORS.update({'dist/main-session-recovery-clear-BczELu-B.mjs': ('const '
+                                                   'MAIN_SESSION_RECOVERY_CLEAR_PATCH '
+                                                   '= {',
+                                                   'MAIN_SESSION_RECOVERY_CLEAR_PATCH '
+                                                   'as t'),
+ 'dist/session-accessor.sqlite-entry-read-CMIsjDi7.mjs': ('function '
+                                                          'projectSqliteSessionParticipants(database, '
+                                                          'sessionKey, entry) '
+                                                          '{',
+                                                          'function '
+                                                          'parseReadableSqliteSessionEntryRow(database, '
+                                                          'row, projection = '
+                                                          '"full") {'),
+ 'dist/session-accessor.sqlite-status-DGBuIDuw.mjs': ('function '
+                                                      'parseSessionEntryJson(row, '
+                                                      'projection = "full") '
+                                                      '{',),
+ 'dist/session-store-runtime-C3lQUqXM.mjs': ('function '
+                                             'clearGenerationPrivateFieldsForRotatedSessionPatch(existingEntry, '
+                                             'publicPatch) {',),
+ 'dist/store-entry-shape-fsGxEPpp.mjs': ('function '
+                                         'projectCanonicalSessionEntryShape(value) '
+                                         '{',
+                                         'projectCanonicalSessionEntryShape as '
+                                         'n')})
+SOURCE_HASHES["src/config/sessions/session-entry-projection.ts"] = "48eae1e011e50fc043e63f59dd308f003a7898d510fe0847fbab4b2e4508410f"
+SOURCE_ANCHORS["src/config/sessions/session-entry-projection.ts"] = ("export const SESSION_ENTRY_PRIVATE_CLEAR_PATCH =",)
+COMPILED_HASHES["dist/session-accessor.sqlite-transcript-write-C5YumkFZ.mjs"] = "3dd200872aa5e053a0ab9342b8a107af7fd6a4b1b9a490d2052d55742040c951"
+COMPILED_ANCHORS["dist/session-accessor.sqlite-transcript-write-C5YumkFZ.mjs"] = ("const SESSION_ENTRY_PRIVATE_CLEAR_PATCH =",)
+METADATA_PROJECTION_ARTIFACTS = ("dist/store-entry-shape-fsGxEPpp.mjs", "dist/session-accessor.sqlite-status-DGBuIDuw.mjs", "dist/session-accessor.sqlite-entry-read-CMIsjDi7.mjs")
+ROTATED_PRIVATE_FIELDS_ARTIFACTS = ("dist/session-store-runtime-C3lQUqXM.mjs", "dist/main-session-recovery-clear-BczELu-B.mjs", "dist/session-accessor.sqlite-transcript-write-C5YumkFZ.mjs")
+
 REQUIRED_PHASE_ARTIFACTS = (
     "dist/extensions/memory-core/manager-runtime.js",
     "dist/session-accessor-CiKKTlbe.mjs",
@@ -136,6 +228,12 @@ def prepare_durable_session_runtime_bindings(checkout: Path, runtime_root: Path)
     sources, source_evidence = _owners(checkout, SOURCE_HASHES, SOURCE_ANCHORS, committed=True)
     _, compiled = _owners(runtime_root, COMPILED_HASHES, COMPILED_ANCHORS, committed=False)
     specs = (
+        ("src/plugin-sdk/session-store-runtime-internal.ts", "../config/sessions/session-entry-projection.js", ("SESSION_ENTRY_PRIVATE_CLEAR_PATCH",)),
+        ("src/plugin-sdk/session-store-runtime.ts", "./session-store-runtime-internal.js", ("clearGenerationPrivateFieldsForRotatedSessionPatch",)),
+        ("src/plugin-sdk/session-store-runtime-internal.ts", "../agents/main-session-recovery/main-session-recovery-clear.js", ("MAIN_SESSION_RECOVERY_CLEAR_PATCH",)),
+        ("src/config/sessions/session-accessor.sqlite-status.ts", "./store-entry-shape.js", ("projectCanonicalSessionEntryShape",)),
+        ("src/config/sessions/session-accessor.sqlite-entry-read.ts", "./session-accessor.sqlite-participant-projection.js", ("projectSqliteSessionParticipants",)),
+        ("extensions/memory-core/src/memory/manager.ts", "openclaw/plugin-sdk/memory-core-host-engine-foundation", ("resolveMemorySearchConfig",)),
         ("src/infra/sqlite-integrity-worker.ts", "node:child_process", ("fork",)),
         ("src/infra/sqlite-integrity-worker.ts", "./sqlite-file-generation.js", ("readSqliteIntegrityFileIdentity",)),
         ("packages/agent-core/src/harness/session/session.ts", "../messages.js",
@@ -149,6 +247,8 @@ def prepare_durable_session_runtime_bindings(checkout: Path, runtime_root: Path)
     )
     links = [_named_link(sources, module, specifier, names, kind="import")
              for module, specifier, names in specs]
+    links.append(_named_link(sources, "src/plugin-sdk/memory-core-host-engine-foundation.ts",
+                             "../agents/memory-search.js", ("resolveMemorySearchConfig",), kind="export"))
     return {"kind": "official-release-durable-session-owners", "referenceCommit": REFERENCE_COMMIT,
         "sourceBuildReproduced": False, "constructorSkipped": False, "managerFixture": False,
         "providerTransportVerified": False, "fullHostOrchestrationVerified": False,
@@ -157,6 +257,12 @@ def prepare_durable_session_runtime_bindings(checkout: Path, runtime_root: Path)
         "phaseOrder": ["write", "continue", "verify"], "distinctOSProcessesRequired": True,
         "requiredArtifactsInEveryPhase": list(REQUIRED_PHASE_ARTIFACTS),
         "requiredArtifactsWhenAppending": list(APPEND_PHASE_ARTIFACTS),
+        "requiredArtifactsWhenRetainingResolvedManagerSettings": list(RANKING_DEFAULT_ARTIFACTS),
+        "resolvedManagerSettingsRetained": True,
+        "originalTemporalDecayDefaults": {"enabled": True, "halfLifeDays": 30},
+        "scoreNormalizationPermitted": False,
+        "requiredMetadataProjectionArtifacts": list(METADATA_PROJECTION_ARTIFACTS),
+        "requiredPrivateFieldOwnerArtifactsWhenUpserting": list(ROTATED_PRIVATE_FIELDS_ARTIFACTS),
         "requiredWorkerArtifactsWhenIndexWorkExecutes": list(MEMORY_INDEX_WORKER_ARTIFACTS),
         "forcedIndexPhases": ["write", "continue"], "verificationSyncForced": False,
         "headerVersion": 4,

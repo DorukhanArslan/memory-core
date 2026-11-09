@@ -8,7 +8,8 @@ import re
 
 from equivalence.durable_session_codec import map_durable_session_identities
 from equivalence.durable_session_runtime_bindings import (
-    APPEND_PHASE_ARTIFACTS, MEMORY_INDEX_WORKER_ARTIFACTS, REQUIRED_PHASE_ARTIFACTS,
+    APPEND_PHASE_ARTIFACTS, MEMORY_INDEX_WORKER_ARTIFACTS, REQUIRED_PHASE_ARTIFACTS, RANKING_DEFAULT_ARTIFACTS,
+    METADATA_PROJECTION_ARTIFACTS, ROTATED_PRIVATE_FIELDS_ARTIFACTS,
 )
 from equivalence.get_contract import map_get_fixture_paths
 from equivalence.search_contract import _same_json
@@ -102,6 +103,19 @@ def validate_durable_session_raw(row, case, diagnostic, evidence_directory, *, r
         loaded = release_by_pid.get(pid, set())
         require(set(REQUIRED_PHASE_ARTIFACTS) <= loaded,
                 "A durable process omitted its original persisted-read, branch, model-context or manager owner.")
+        require(set(METADATA_PROJECTION_ARTIFACTS) <= loaded,
+                "A durable getter omitted its actual canonical metadata or participant projection owner.")
+        if phase.get("sessions"):
+            require(set(ROTATED_PRIVATE_FIELDS_ARTIFACTS) <= loaded,
+                    "A durable upsert omitted its actual generation-private-field and recovery-clear owner.")
+        settings = observed.get("resolvedManagerSettings")
+        require(isinstance(settings, dict)
+                and set(RANKING_DEFAULT_ARTIFACTS) <= loaded
+                and _same_json(settings.get("query", {}).get("hybrid", {}).get("temporalDecay"),
+                               {"enabled": True, "halfLifeDays": 30})
+                and settings.get("store", {}).get("databasePath") == str(
+                    Path(base) / "state" / "agents" / value.get("agentId", "main") / "agent/openclaw-agent.sqlite"),
+                "The actual resolved manager settings must retain the original enabled/30-day decay policy and store identity.")
         if phase.get("appendMessages"):
             require(set(APPEND_PHASE_ARTIFACTS) <= loaded,
                     "An append phase omitted its real message, header, mutation or anchor owner.")

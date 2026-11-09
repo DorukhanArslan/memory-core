@@ -40,3 +40,4 @@ async def invalid_lifecycle(runner: HostSessionRunner, workspace: Path) -> None:
         session="invalid")  # E: arg-type
     await runner.run_turn(42, execute=valid_model)  # E: arg-type
     HostModelResult(usage="tokens")  # E: arg-type
+    await runner.acknowledge_memory_publication(expected_turn_id=42)  # E: arg-type

@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterable, AsyncIterator, Callable, Mapping
 from pathlib import Path
-from typing import Any, assert_type
+from typing import Any, Literal, assert_type
 
 from memory_core import (
     EmbeddingProvider,
@@ -75,6 +75,10 @@ async def lifecycle_contract(workspace: Path) -> None:
     assert_type(outcome, HostTurnOutcome)
     assert_type(outcome.ready, bool)
     assert_type(outcome.session, SessionState)
+    assert_type(outcome.memory_publication, Literal["none", "committed", "uncertain"])
+    if outcome.memory_publication == "uncertain":
+        assert_type(await runner.acknowledge_memory_publication(
+            expected_turn_id=outcome.turn_id), None)
 
 
 def host_contract(workspace: Path) -> None:

@@ -268,12 +268,15 @@ with tempfile.TemporaryDirectory() as scratch:
 
         first = await runner.run_turn("Remember lifecycleonyx.", execute=save)
         assert first.ready and first.memory_writes_committed and first.index_status == "ready"
+        assert first.memory_publication == "committed"
         second = await runner.run_turn("Find lifecycleonyx.", execute=recall)
         assert second.ready and second.index_status == "ready"
+        assert second.memory_publication == "none"
         restored = catalog_module.MemorySessionCatalog(catalog.path).read_continuation(
             "installed-lifecycle", session_key="agent:main:dm:installed-lifecycle")
         assert len(restored["events"]) == 9
         assert restored["instanceEntry"]["sdkHostLifecycle"]["needsIndex"] is False
+        assert "pendingMemoryPublication" not in restored["instanceEntry"]["sdkHostLifecycle"]
 
     asyncio.run(lifecycle_consumer())
 print("installed core imports and FTS host lifecycle passed")

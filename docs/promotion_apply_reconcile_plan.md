@@ -91,9 +91,9 @@ before the actual whole-operation differences and boundary evidence are reviewed
 
 ## Capability review readiness
 
-The separate capability and both observation callers are now implemented for
-this one literal. No promotion invocation or native capture has been performed,
-and production SDK source is unchanged from `21177bf`.
+The separate capability and both observation callers were frozen at `57fd03e`
+for this one literal. At that freeze no promotion invocation or native capture
+had been performed, and production SDK source was unchanged from `21177bf`.
 
 The canonical case wire is the ASCII, sorted-key, compact JSON object containing
 exactly `id`, `operation`, and `input`: 1,694 bytes, SHA-256
@@ -122,4 +122,53 @@ The focused before-capture gate passed 240 capability, binding, structural-evide
 and observer tests, including existing independent-profile guards. Structural
 transport fixtures are explicitly synthetic and supply no native evidence.
 Ruff, diff checks, and approved Node 24.16 syntax checks passed. The first genuine
-comparison remains contingent on review of this exact capability manifest.
+comparison was held until independent peer and root review of this exact manifest.
+
+## Retained first before comparison
+
+The first protected paired comparison ran at clean `57fd03e`, with the same
+reviewed literal and unchanged capability. It completed in 20.729082 seconds:
+zero matches, one genuine difference, zero blocked cases, and no errors. Coverage
+remains empty and no condition credit is assigned.
+
+The immutable report is
+`.equivalence-results/promotion-apply-zero-rehydrated-first-paired-1.json`:
+23,694,135 bytes, SHA-256
+`98ecee00660553554026552bc7aadf367b663685239ac0dadecaeedd32b358e3`.
+The native raw carrier hashes to
+`e99ad9e7ebd7052dd1281adb5539dbee048acf748b935e3177afe44073fa172e`.
+
+OpenClaw returned all eight apply fields, with zero applied/appended/reconciled
+or compacted candidates and one complete rejection: category `source rehydration`,
+reason `source rehydration failed`. The SDK raised the actual
+`builtins.IsADirectoryError`, errno 21, while `_commit_promotion` called
+`read_text_if_exists` on MEMORY.md. The complete before and after document,
+canonical recall, and event observations matched across sides and stayed
+unchanged. Only the operation outcome differed.
+
+All original worker, process, source and artifact guards passed. A separate
+read-only replay verified the actual raw carrier and all 3,360 trace events.
+The native process retained one main thread and one protected worker with the
+reviewed three-part worker route. Its nine configured factory acquisitions
+include the initial workspace lease. SDK observer receipts show its actual
+promotion sidecar acquired and released before the directory error. Final-file
+absence is not used as proof of native lock ordering. Temporary fixture roots
+are retired; the report retains the actual live observations.
+
+## Bounded early-return correction
+
+The existing non-writing SDK result constructor is factored into one helper.
+The public owner now returns it after authoritative gates, rehydration and
+rejection collection, before any preplan, MEMORY read, promotion lock resolution,
+or model callback. The private commit helper keeps the same defensive empty-plan
+guard before IO. Rich evaluations, rejection receipts and index counts remain
+actual SDK fields; the trust gates are unchanged.
+
+Six real SDK regressions cover directory MEMORY with and without an active
+model, actual POSIX read denial, an actual held sidecar, authoritative untrusted
+origin rejection, and the defensive private path. The held-lock regression only
+bounds retries to zero; both lock owners remain the genuine implementation.
+The focused promotion/canonical/numeric/atomic and evidence gate passed 279 tests.
+The refreshed source inventory validates all 64 contracts and 128 existing
+conditions without behavioral credit. The same single paired input will be run
+once more after a clean source freeze; broader requirement 43 remains open.

@@ -428,6 +428,10 @@ def run_short_term_promotion(
         ),
         **gates,
     )
+    if not plan.rehydrated:
+        return _no_live_promotion_run(
+            store=store, plan=plan, ranked=ranked, evaluations=evaluations
+        )
     preplan: _PrePlan | None = None
     if active is not None:
         preplan = _plan_before_lock(
@@ -942,6 +946,36 @@ def format_memory_dreaming_day(now_ms: int, timezone: str | None = None) -> str:
     return datetime.fromtimestamp(now_ms / 1000).strftime("%Y-%m-%d")
 
 
+def _no_live_promotion_run(
+    *,
+    store: ReindexableStore,
+    plan: _ApplyPlan,
+    ranked: Sequence[PromotionCandidate],
+    evaluations: list[PromotionEvaluation],
+) -> MemoryPromotionRun:
+    """Return authoritative rejections before planning, MEMORY IO or write locks."""
+    summary = (
+        f"ranked {len(ranked)} short-term promotion candidate(s); "
+        f"evaluated {len(evaluations)} candidate(s); "
+        f"rehydrated {len(plan.rehydrated)}; "
+    )
+    return MemoryPromotionRun(
+        target=PROMOTION_TARGET,
+        summary=f"{summary}appending 0; reconciled 0",
+        outcome=PromotionWriteOutcome(
+            should_write=False,
+            target=PROMOTION_TARGET,
+            entry="",
+            reason="no live promotion candidates" if ranked else "no promotion candidates",
+        ),
+        diff="",
+        indexed_files=0,
+        chunks=store.count_chunks(),
+        evaluated_candidates=evaluations,
+        rejected_candidates=tuple(plan.describe(candidate) for candidate in plan.current),
+    )
+
+
 def _commit_promotion(
     *,
     config: MemoryConfig,
@@ -962,6 +996,11 @@ def _commit_promotion(
     origins: MemoryEntryOriginLedger | None,
 ) -> tuple[MemoryPromotionRun, Any]:
     """The lock body of ``applyShortTermPromotions``: revalidate, commit MEMORY.md, mark, prune."""
+    if not plan.rehydrated:
+        return _no_live_promotion_run(
+            store=store, plan=plan, ranked=ranked, evaluations=evaluations
+        ), None
+
     from memory_core.consolidation.llm_consolidation import (
         DeepConsolidationCommit,
         commit_deep_consolidation,
@@ -981,24 +1020,6 @@ def _commit_promotion(
         f"evaluated {len(evaluations)} candidate(s); "
         f"rehydrated {len(plan.rehydrated)}; "
     )
-    if not plan.rehydrated:
-        run = MemoryPromotionRun(
-            target=target,
-            summary=f"{summary}appending 0; reconciled 0",
-            outcome=PromotionWriteOutcome(
-                should_write=False,
-                target=target,
-                entry="",
-                reason="no live promotion candidates" if ranked else "no promotion candidates",
-            ),
-            diff="",
-            indexed_files=0,
-            chunks=store.count_chunks(),
-            evaluated_candidates=evaluations,
-            rejected_candidates=tuple(plan.describe(c) for c in plan.current),
-        )
-        return run, None
-
     # Revalidate against the store as it is under the locks.
     latest_entries = _readable_store_entries(read_recall_store(recall_path, now_ms))
     authoritative: list[PromotionCandidate] = []

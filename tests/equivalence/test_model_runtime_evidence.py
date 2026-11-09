@@ -184,6 +184,27 @@ process.stdout.write(JSON.stringify({...modelError(error),aggregate:modelError(n
     assert value["aggregate"]["errors"][0]["code"] == "ORIGINAL_CODE"
 
 
+def test_original_stream_bytes_survive_every_forced_utf8_chunk_boundary():
+    node = Path("/workspace/openclaw-memory-bridge/node_modules/node/bin/node")
+    if not node.is_file():
+        pytest.skip("The reviewed Node executable is unavailable for this transport check")
+    script = """import {PassThrough} from 'node:stream';
+import {observeModelChildStreams} from './equivalence/model-runtime-observation.mjs';
+const text='prefix 😀𐐀 İ é suffix'; const bytes=Buffer.from(text);
+for(let cut=1;cut<bytes.length;cut++){
+  const child={stdout:new PassThrough(),stderr:new PassThrough()};
+  const read=observeModelChildStreams(child);
+  for(const stream of [child.stdout,child.stderr]){
+    stream.write(bytes.subarray(0,cut));stream.end(bytes.subarray(cut));
+  }
+  const observed=read();if(observed.stdout!==text||observed.stderr!==text)throw Error('lost original UTF-8 bytes');
+}
+process.stdout.write(JSON.stringify({cuts:bytes.length-1,exact:true}));"""
+    process = subprocess.run([str(node), "--input-type=module", "--eval", script], cwd=ROOT,
+                             check=True, capture_output=True, text=True, env={"LANG": "C.UTF-8", "TZ": "UTC"})
+    assert json.loads(process.stdout)["exact"] is True
+
+
 def _session_protocol(tmp_path):
     """Labelled transport facts, never an upstream behavioral oracle."""
     base = str(tmp_path / "native-model-session-fixture")

@@ -4,7 +4,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { modelChildEnvironment, modelRuntimeIdentity } from "./model-runtime-observation.mjs";
+import { modelChildEnvironment, modelRuntimeIdentity, observeModelChildStreams } from "./model-runtime-observation.mjs";
 
 export function modelSessionPhaseInput(input, label) {
   const identity = Object.fromEntries(["nowMs", "agentId", "sessionId", "sessionKey"].map((key) => [key, input[key]]));
@@ -34,12 +34,12 @@ export async function runModelSessionRuntime(input, runtimeConfig) {
       const record = { label: phase.label, pid: child.pid, request, requestJson,
         requestSha256: crypto.createHash("sha256").update(requestJson).digest("hex"), argv,
         environmentKeys: Object.keys(environment).sort(), startedAtNs: process.hrtime.bigint().toString() };
-      let stdout = "", stderr = "";
-      child.stdout.on("data", (chunk) => { stdout += chunk; }); child.stderr.on("data", (chunk) => { stderr += chunk; });
+      const streams = observeModelChildStreams(child);
       child.stdin.end(requestJson);
       const exit = await new Promise((resolve, reject) => {
         child.once("error", reject); child.once("close", (code, signal) => resolve({ code, signal }));
       });
+      const { stdout, stderr } = streams();
       Object.assign(record, { exit, finishedAtNs: process.hrtime.bigint().toString(), stdout, stderr });
       raw.phases.push(record);
       const output = JSON.parse(stdout); record.raw = output.raw;

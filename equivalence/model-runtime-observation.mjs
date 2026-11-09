@@ -25,6 +25,16 @@ export function modelChildEnvironment() {
     NODE_OPTIONS: process.env.NODE_OPTIONS, MEMORY_EQ_RELEASE_CONTEXT: process.env.MEMORY_EQ_RELEASE_CONTEXT };
 }
 
+export function observeModelChildStreams(child) {
+  let stdout = "", stderr = "";
+  // Decode across byte chunks with Node's own incremental UTF-8 decoder.
+  // Stringifying each Buffer independently corrupts a split multibyte scalar.
+  child.stdout.setEncoding("utf8"); child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  return () => ({ stdout, stderr });
+}
+
 export function modelError(error) {
   const seen = new Set();
   const observe = (value) => {

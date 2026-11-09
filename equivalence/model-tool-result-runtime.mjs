@@ -4,7 +4,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { modelChildEnvironment, modelRuntimeIdentity } from "./model-runtime-observation.mjs";
+import { modelChildEnvironment, modelRuntimeIdentity, observeModelChildStreams } from "./model-runtime-observation.mjs";
 
 export async function runModelToolResultRuntime(input, runtimeConfig) {
   if (input.kind !== "model-helper") throw Error("The helper profile cannot impersonate a full session");
@@ -20,12 +20,12 @@ export async function runModelToolResultRuntime(input, runtimeConfig) {
     raw.child = { pid: child.pid, request, requestJson,
       requestSha256: crypto.createHash("sha256").update(requestJson).digest("hex"), argv,
       environmentKeys: Object.keys(environment).sort(), startedAtNs: process.hrtime.bigint().toString() };
-    let stdout = "", stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk; }); child.stderr.on("data", (chunk) => { stderr += chunk; });
+    const streams = observeModelChildStreams(child);
     child.stdin.end(requestJson);
     const exit = await new Promise((resolve, reject) => {
       child.once("error", reject); child.once("close", (code, signal) => resolve({ code, signal }));
     });
+    const { stdout, stderr } = streams();
     Object.assign(raw.child, { exit, finishedAtNs: process.hrtime.bigint().toString(), stdout, stderr });
     const output = JSON.parse(stdout); raw.child.raw = output.raw;
     if (exit.code !== 0 || output.fatal) throw Error(`The actual whole-result helper failed: ${JSON.stringify(output)}`);

@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { mapGetFixturePaths } from "./get-contract-runtime.mjs";
+import { observeModelChildStreams } from "./model-runtime-observation.mjs";
 
 const literalInputs = [
   { secret: "worker-fixture-credential", sessionKind: "interactive", mutations: 0 },
@@ -39,9 +40,7 @@ export async function runTrustWorkerRuntime(input, runtimeConfig) {
   try {
     const child = spawn(process.execPath, argv, { env, stdio: ["ignore", "pipe", "pipe"] });
     raw.child.pid = child.pid;
-    let stdout = "", stderr = "";
-    child.stdout.on("data", chunk => { stdout += chunk; });
-    child.stderr.on("data", chunk => { stderr += chunk; });
+    const streams = observeModelChildStreams(child);
     const timer = setTimeout(() => child.kill("SIGKILL"), 60000);
     let exit;
     try {
@@ -49,6 +48,7 @@ export async function runTrustWorkerRuntime(input, runtimeConfig) {
         child.once("error", reject); child.once("close", (code, signal) => resolve({ code, signal }));
       });
     } finally { clearTimeout(timer); }
+    const { stdout, stderr } = streams();
     Object.assign(raw.child, { exit, stdout, stderr });
     if (exit.code !== 0) throw Error("The genuine native worker experiment failed; complete streams were retained");
     const observation = JSON.parse(stdout); raw.child.observation = observation;

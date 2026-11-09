@@ -1,7 +1,7 @@
 """Literal bounded inputs for the original entry identity/provenance contract.
 
-No expected outputs or acceptance registration live here. The byte-limit inputs
-also reproduce the pinned primitive without paid embedding calls.
+Literal inputs and explicit condition coverage live here; expected outputs come
+from the original owners. Byte-limit inputs require no paid embedding calls.
 """
 from copy import deepcopy
 import random
@@ -12,6 +12,11 @@ ENTRY_PROVENANCE_OPERATIONS = {
     "session-projection": "entry-session-publication-runtime",
     "prepared-provider": "entry-provider-preparation-runtime",
 }
+
+ENTRY_PROVENANCE_ACCEPTANCE = (
+    "chunking.entry-provenance.outcomes",
+    "chunking.entry-provenance.boundaries",
+)
 
 
 def embedding_byte_limit_inputs():
@@ -26,7 +31,7 @@ def embedding_byte_limit_inputs():
 
 
 def build_entry_provenance_cases():
-    """Pending genuine runtime profiles; neither condition is credited here."""
+    """Require all three authenticated profiles for each approved condition."""
     scenarios = [
         ("canonical-collision-invalidation", {"kind": "published-memory", "mtimeMs": 1700000000000,
             "files": {"MEMORY.md": "a" * 5000}, "steps": [
@@ -77,7 +82,8 @@ def build_entry_provenance_cases():
                  "syncSessions": [{"agentId": "main", "sessionId": "entry-provenance", "sessionKey": key}],
                  "events": [*deepcopy(events), {"type": "reset", "id": "bad-reset", "firstKeptEntryId": "missing"}]},
         ]}))
-    return [{"id": "entry-provenance-" + name, "requirement": "chunking.entry-provenance", "covers": [],
+    return [{"id": "entry-provenance-" + name, "requirement": "chunking.entry-provenance",
+             "covers": list(ENTRY_PROVENANCE_ACCEPTANCE),
              "operation": ENTRY_PROVENANCE_OPERATIONS[value["kind"]], "input": deepcopy(value),
              "driverScope": "Actual original preparation/publication owners and real SDK reindex over literal memory/session inputs. "
                 "Memory and session phases use genuine public provider-none manager get/dirty/sync/close. The provider case uses the "

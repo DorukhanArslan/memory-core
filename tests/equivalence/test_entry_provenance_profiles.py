@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from equivalence.entry_provenance_fixtures import ENTRY_PROVENANCE_OPERATIONS, build_entry_provenance_cases
+from equivalence.entry_provenance_fixtures import (
+    ENTRY_PROVENANCE_ACCEPTANCE, ENTRY_PROVENANCE_OPERATIONS, build_entry_provenance_cases,
+)
 from equivalence.entry_provenance_runtime import run_entry_provenance
 
 
@@ -23,7 +25,7 @@ def _capture():
     return json.loads(raw)
 
 
-def test_fixed_catalog_retains_all_three_real_boundaries_without_registration_or_credit():
+def test_fixed_catalog_requires_all_three_original_profiles_for_both_conditions():
     cases = build_entry_provenance_cases()
     capture = _capture()
     # Historical uncredited captures used one umbrella routing label. Preserve
@@ -32,8 +34,15 @@ def test_fixed_catalog_retains_all_three_real_boundaries_without_registration_or
     for case in original_cases:
         assert case["operation"] == "entry-provenance-runtime"
         case["operation"] = ENTRY_PROVENANCE_OPERATIONS[case["input"]["kind"]]
-    assert cases == original_cases
-    assert len(cases) == 3 and all(case["covers"] == [] for case in cases)
+        assert case["covers"] == []  # Historical captures remain uncredited.
+    assert [{k: v for k, v in case.items() if k != "covers"} for case in cases] == [
+        {k: v for k, v in case.items() if k != "covers"} for case in original_cases]
+    assert len(cases) == 3 and all(case["covers"] == list(ENTRY_PROVENANCE_ACCEPTANCE) for case in cases)
+    assert {case["id"] for case in cases} == {
+        "entry-provenance-canonical-collision-invalidation",
+        "entry-provenance-provider-entry-fragments",
+        "entry-provenance-session-provenance-replacement-reset",
+    }
     assert {case["operation"] for case in cases} == set(ENTRY_PROVENANCE_OPERATIONS.values())
     assert all("No provider loop/transport" in case["driverScope"] for case in cases)
     changed = deepcopy(cases)

@@ -230,12 +230,11 @@
       ],
       "implementation": "partial",
       "notes": [
-        "Python curation uses a temporary file, file fsync and replacement, but suppresses parent-directory fsync errors; daily writes use a distinct append path and process-local locks.",
-        "Native commitMemoryContent classifies uncertain/committed publication and supports a guarded in-place permission fallback; these failure branches are not represented by the Python curation write contract.",
         "The real curator and forget callers use a shared checked publication owner with preimage checks, exclusive temporary creation, preserved regular-file modes and post-rename identity verification. Curator source admission remains stricter than the generic writer; it never opts into promotion-only in-place repair.",
         "The actual promotion caller opts into permission fallback, restores the old bytes after an in-place write/sync failure, and deep consolidation retains real reserved lineage after dispatched publication errors. Rooted daily append preserves partial bytes and plain errors, private exclusive bootstrap creation stages all bytes before visibility, and existing bootstrap entries remain unchanged.",
         "Development probes retain complete errors, causes, FsSafe categories, surviving bytes/modes and physical receipts. Append and replacement parent-directory fsync are best-effort; retained-directory bootstrap staging ignores only parent-sync EPERM and exposes a real published receipt on other post-publication sync failures. This distinction replaces the earlier broad parent-fsync assumption.",
-        "Genuine per-process kernel EFBIG, literal write/fsync faults, checked concurrent replacements and exclusive creation during staging are development observations only. Physical receipt bigint identities/timestamps/temp names remain noninterchangeable in the retained full-error comparison. Broader cleanup/close, indeterminate bootstrap publication, authenticated whole-condition proof and caller reconciliation for plain partial append remain unverified; no acceptance credit is assigned."
+        "Genuine per-process kernel EFBIG, literal write/fsync faults, checked concurrent replacements and exclusive creation during staging are development observations only. Physical receipt bigint identities/timestamps/temp names remain noninterchangeable in the retained full-error comparison. Broader cleanup/close, indeterminate bootstrap publication, authenticated whole-condition proof and caller reconciliation for plain partial append remain unverified; no acceptance credit is assigned.",
+        "The SDK session runner durably records a producer intent before actual provenance/file mutation and retains it across partial IO, terminal cancellation or failed final state persistence. This SDK reconciliation policy does not turn development probes into native atomic-write equivalence credit."
       ]
     },
     {
@@ -590,13 +589,27 @@
           "symbol": "HostKit",
           "anchor": "class HostKit:",
           "line": 212
+        },
+        {
+          "path": "memory_core/index/embedding_limits.py",
+          "symbol": "enforce_embedding_max_input_tokens",
+          "anchor": "def enforce_embedding_max_input_tokens(",
+          "line": 64
+        },
+        {
+          "path": "memory_core/index/sqlite_store.py",
+          "symbol": "read_index_source",
+          "anchor": "def read_index_source(",
+          "line": 147
         }
       ],
       "implementation": "partial",
       "notes": [
         "The preparation owner strips annotation carriers before chunking, derives recall annotations from the original entry span, partitions session chunks at reset boundaries, and reduces session line provenance before remapping ranges to original transcript lines.",
         "Production reindex persists canonical source/path/range/content-hash/model chunk IDs plus chunk hash, model, update time, provenance and recall fields through the prepared publication owner. The public chunk_markdown helper retains its existing ID contract; explicitly supplied prepared IDs and metadata are preserved.",
-        "The source reader validates canonical workspace paths for default agent/system/untrusted classification. SDK/store construction accepts an artifact-provenance ledger, and HostKit shares that owner across writes, ingestion and indexing so recorded untrusted memory stays quarantined when changed sources are prepared or reopened. Metadata-only trust transitions do not refresh otherwise unchanged sources automatically; authoritative retained-session events remain host inputs."
+        "The source reader validates canonical workspace paths for default agent/system/untrusted classification. SDK/store construction accepts an artifact-provenance ledger, and HostKit shares that owner across writes, ingestion and indexing so recorded untrusted memory stays quarantined when changed sources are prepared or reopened. Metadata-only trust transitions do not refresh otherwise unchanged sources automatically; authoritative retained-session events remain host inputs.",
+        "Three authenticated official-release profiles require every declared identity/provenance outcome and boundary: actual public memory sync through unchanged/same-bytes/same-size-time replacement, five real session provenance/reset phases, and original provider-limited preparation plus real source-kernel publication. Full physical SQL/schema/counts, caller traces and provider representations remain retained; no binary schema or provider-loop equivalence is claimed.",
+        "Canonical duplicate IDs use the original last-wins upsert semantics without invented salts. Provider byte fragmentation retains complete entry spans and metadata; SQLite session fingerprints retain actual revisions while unchanged content refreshes metadata without republishing chunks. Both acceptance conditions require all three case IDs; the integrated gate determines the current verified status."
       ]
     },
     {
@@ -2886,7 +2899,7 @@
           "line": 187
         }
       ],
-      "implementation": "host-owned",
+      "implementation": "partial",
       "notes": [
         "SessionState serializes memory-related metadata only. It neither appends model/tool transcript events nor commits session metadata and transcript messages into a durable session store.",
         "A host must durably store and reopen transcripts, replay metadata, flush stamps and returned SessionState; serialization helpers do not implement crash-safe continuation."
@@ -4980,7 +4993,7 @@
           "line": 722
         }
       ],
-      "implementation": "host-owned",
+      "implementation": "partial",
       "notes": [
         "The low-level immutable HostKit still returns maintenance requests. HostSessionRunner adds an explicit process-local per-session admission lane, durable catalog/context recording, actual registered dispatch, due flush settlement, real writer/index completion and fail-closed repair before the next model callback.",
         "Real SDK cancellation, rejected executor submission, session rotation, inherited callback context and committed-write/index-failure regressions are exercised. This is a stronger synchronous publication policy than the observed native background refresh, not proof of the complete original Gateway host path. Both host.turn-barrier conditions remain uncredited.",
@@ -5033,7 +5046,7 @@
           "line": 590
         }
       ],
-      "implementation": "host-owned",
+      "implementation": "partial",
       "notes": [
         "The durable catalog can reconstruct model context from session identity, and HostSessionRunner reloads its saved auxiliary state and repairs an outstanding index marker before admission. The installed SDK example performs real save, immediate recall and a fresh catalog reopen.",
         "A complete natural two-host process-restart/model recall comparison is still required; neither the example nor durable helper coverage closes this separate host contract. The existing Lab runtime retains process-local live sessions.",

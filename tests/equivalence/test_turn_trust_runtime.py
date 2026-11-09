@@ -34,10 +34,15 @@ def test_actual_tools_and_fresh_storage_reopen_retain_complete_public_and_raw_re
     assert len(result["storedEvents"]) == len(raw["appends"]) + 1
     assert result["storedEvents"][0]["type"] == "session" and result["storedEvents"][0]["version"] == 4
     assert [event["id"] for event in result["storedEvents"][1:]] == [entry["eventId"] for entry in raw["appends"]]
+    assert raw["presentationObservations"] == [{
+        "origin": "trusted-host-presentation", "turnId": turn["id"], "observation": observation,
+        "before": False, "after": False,
+    } for turn in case["input"]["turns"] for observation in turn.get("presentationObservations", [])]
     for turn in result["turns"]:
         for attempt in turn["attempts"]:
             observations, = [entry["observations"] for entry in raw["toolObservations"]
                              if entry["turnId"] == turn["id"] and entry["attemptId"] == attempt["id"]]
+            assert all(entry["origin"] == "dispatched-tool" for entry in raw["toolObservations"])
             assert len(observations) == len(attempt["toolOutcomes"])
             for observation, outcome in zip(observations, attempt["toolOutcomes"], strict=True):
                 assert observation["toolCallId"] == outcome["id"] and observation["toolName"] == outcome["name"]

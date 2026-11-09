@@ -74,11 +74,19 @@ def run_turn_trust(arguments: dict[str, Any], *, evidence_directory: Path | None
         key, identifier, now = value["sessionKey"], value["sessionId"], value["nowMs"]
         catalog.upsert_session(key, {"sessionId": identifier, "updatedAt": now})
         raw = {"fixtureBase": str(root), "coordinatorPid": os.getpid(), "input": deepcopy(value),
-               "toolObservations": [], "writes": [], "appends": [], "turns": [], "reopen": None}
+               "toolObservations": [], "presentationObservations": [], "writes": [],
+               "appends": [], "turns": [], "reopen": None}
         turns = []
         try:
             for turn in value["turns"]:
                 trust = TurnTrust(turn["id"], sender_is_owner=turn.get("senderIsOwner"))
+                for presentation in turn.get("presentationObservations", []):
+                    before = trust.is_tainted()
+                    trust.observe(presentation)
+                    raw["presentationObservations"].append({
+                        "origin": "trusted-host-presentation", "turnId": turn["id"],
+                        "observation": deepcopy(presentation), "before": before, "after": trust.is_tainted(),
+                    })
                 observer = trust.write_observer(store=ledger, mutation_root=workspace, workspace_dir=workspace,
                                                 session_id=identifier, session_key=key, now=lambda: now)
                 sequence = 0
@@ -152,6 +160,7 @@ def run_turn_trust(arguments: dict[str, Any], *, evidence_directory: Path | None
                                 "artifacts": _artifact_records(ledger, workspace), "files": _files(workspace)}
                     attempts.append(snapshot)
                     raw["toolObservations"].append({"turnId": turn["id"], "attemptId": attempt["id"],
+                                                     "origin": "dispatched-tool",
                                                      "observations": observations,
                                                      "writerOriginClass": trust.resolve_origin_class()})
                 output = {"id": turn["id"], "attempts": attempts,

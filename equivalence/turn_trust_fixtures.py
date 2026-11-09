@@ -66,6 +66,9 @@ def build_turn_trust_cases():
              ]},
          ]},
         {"id": "new-clean-turn", "senderIsOwner": True,
+         "presentationObservations": [{"toolName": "host_presentation", "argsHash": "", "resultHash": "",
+             "resultContentSource": "network", "presentationOnly": True,
+             "terminalPresentation": "Fixture presentation update."}],
          "prompt": _prompt("A new owner turn writes two local notes.", True), "attempts": [
              {"id": "clean-attempt", "responses": [
                  _call("local-read", "local_fixture", {}),

@@ -30,6 +30,10 @@ def test_scripts_cover_same_turn_retry_new_turn_nonowner_and_real_error_source()
     assert calls[0]["name"] == "web_fixture" and calls[1]["name"] == "write_memory"
     writes = [call["arguments"]["path"] for call in calls if call["name"] == "write_memory"]
     assert writes == ["memory/2026-11-10.md", "memory/2026-11-10.md", "memory/clean.md"]
+    presentation, = network["turns"][1]["presentationObservations"]
+    assert presentation["presentationOnly"] is True and presentation["resultContentSource"] == "network"
+    assert presentation["argsHash"] == presentation["resultHash"] == ""
+    assert "toolCallId" not in presentation
     failure = cases[1]["input"]
     assert failure["turns"][0]["senderIsOwner"] is False
     assert failure["tools"][-1]["resultContentSource"] == "network" and "error" in failure["tools"][-1]

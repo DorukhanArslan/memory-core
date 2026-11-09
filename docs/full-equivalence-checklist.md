@@ -58,11 +58,20 @@ not engineering effort, elapsed work or a time estimate. The fixed scope remains
 and 128 conditions. The latest atomic-write, path-read, memory-budget, bootstrap and ranking batch targeted **+8** and verified
 **+8**, from **54 to 62/128**.
 
-The fresh integrated report executes **1,395 cases: 1,381 matches,
+The last full differential report, on `21177bf`, executes **1,395 cases: 1,381 matches,
 14 visible uncredited differences and 0 blocked cases**, with no runner errors.
 All **6,433 regression tests** and both clean package consumers pass. The same 1,625
 historical/live skips grant no acceptance credit. The full gate remains `mismatched`;
 these results do not establish complete OpenClaw equivalence.
+
+The subsequent promotion/heartbeat maintenance integration passes **6,713 regression
+tests**, both clean package consumers and the affected lint-follow-up guards. It awards
+**+0 conditions** and does not rerun or reattribute the historical full differential
+report to the changed SDK. The verified baseline remains **62/128**, with **66 remaining**.
+See the [integration closeout](promotion_heartbeat_integration_closeout.md) for actual
+SDK source identities, retained first failure, bounded original comparisons and limits.
+Work is paused after this package at the user's request; further prepared work remains
+in separate branches and awaits the next command.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |

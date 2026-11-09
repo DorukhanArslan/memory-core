@@ -60,3 +60,11 @@ actual error text, storage layout and physical metadata remain raw differences.
 The historical before packets are never attributed to this SDK source. All
 cases retain empty covers and zero credit until whole #53 review and a fresh
 integrated gate.
+
+The corrected packet has since passed independent read-only review of all 44
+phase pairs and 776 sealed artifacts. The unchanged full comparisons still
+differ in all 22 cases, so there is no acceptance credit. Actual preview,
+durable monitor, custom filename, guarded rollback and confirmed-zombie fixes
+are integrated and regression-tested. See the
+[maintenance closeout](promotion_heartbeat_integration_closeout.md) for exact
+producer identities, whole-suite/package results and the stop point.

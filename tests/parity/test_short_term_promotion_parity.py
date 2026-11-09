@@ -190,19 +190,60 @@ def test_changed_stale_lock_is_not_unlinked_during_steal(tmp_path: Path, monkeyp
 
 def test_promotion_run_returns_locked_result_when_lock_is_active(tmp_path: Path):
     config = MemoryConfig(workspace_dir=tmp_path, store_path=tmp_path / "memory.sqlite")
-    (tmp_path / "MEMORY.md").write_text("# MEMORY.md\n", encoding="utf-8")
+    memory = tmp_path / "MEMORY.md"
+    memory.write_text("# MEMORY.md\n", encoding="utf-8")
     now = ms(datetime(2026, 5, 8, 12, 0, tzinfo=UTC))
+    daily = tmp_path / "memory" / "2026-05-08.md"
+    daily.parent.mkdir(parents=True)
+    daily.write_text("# 2026-05-08\n\n- Move backups to S3 Glacier.\n", encoding="utf-8")
+    record_short_term_recalls(
+        config=config,
+        query="glacier backup",
+        results=[{
+            "path": "memory/2026-05-08.md",
+            "source": "memory",
+            "startLine": 3,
+            "endLine": 3,
+            "snippet": "- Move backups to S3 Glacier.",
+            "score": 1,
+        }],
+        now_ms=now,
+    )
+    gates = {"limit": 5, "min_score": 0, "min_recall_count": 1, "min_unique_queries": 1}
+    candidates = rank_short_term_promotion_candidates(config=config, now_ms=now, **gates)
+    assert [candidate.key for candidate in candidates] == ["memory:memory/2026-05-08.md:3:3"]
+    recall_path = tmp_path / "memory" / ".dreams" / "short-term-recall.json"
+    memory_before, daily_before, recall_before = (
+        memory.read_bytes(), daily.read_bytes(), recall_path.read_bytes()
+    )
+    store = fake_store(config)
 
-    with acquire_short_term_promotion_lock(config=config, now_ms=now):
+    with acquire_short_term_promotion_lock(config=config, now_ms=now) as lock:
+        assert lock.acquired is True
+        lock_path = tmp_path / SHORT_TERM_LOCK_RELATIVE_PATH
+        held_lock = lock_path.read_bytes()
         run = run_short_term_promotion(
             config=config,
-            store=fake_store(config),
+            store=store,
             now_ms=now,
             timezone="Europe/Istanbul",
+            **gates,
         )
+        assert memory.read_bytes() == memory_before
+        assert daily.read_bytes() == daily_before
+        assert recall_path.read_bytes() == recall_before
+        assert lock_path.read_bytes() == held_lock
 
     assert run.outcome.should_write is False
     assert run.outcome.reason == "promotion locked"
+    assert run.applied_candidates == ()
+
+    # The same real source is promotable once its competing owner releases the lock.
+    unlocked = run_short_term_promotion(
+        config=config, store=store, now_ms=now, timezone="Europe/Istanbul", **gates
+    )
+    assert unlocked.outcome.should_write is True
+    assert [candidate.key for candidate in unlocked.applied_candidates] == [candidates[0].key]
 
 
 def test_audit_reports_unreadable_recall_store(tmp_path: Path):

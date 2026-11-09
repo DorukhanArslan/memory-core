@@ -3583,6 +3583,18 @@
           "symbol": "normalizeWeights",
           "anchor": "export function normalizeWeights(weights?: Partial<PromotionWeights>): PromotionWeights {",
           "line": 542
+        },
+        {
+          "path": "extensions/memory-core/src/short-term-promotion-utils.ts",
+          "symbol": "normalizeShortTermRecallStore",
+          "anchor": "export function normalizeShortTermRecallStore(",
+          "line": 327
+        },
+        {
+          "path": "extensions/memory-core/src/short-term-promotion-store.ts",
+          "symbol": "normalizeShortTermPhaseSignalStore",
+          "anchor": "function normalizeShortTermPhaseSignalStore(",
+          "line": 99
         }
       ],
       "python": [
@@ -3603,6 +3615,30 @@
           "symbol": "is_contaminated_dreaming_snippet",
           "anchor": "def is_contaminated_dreaming_snippet(raw: str, *, allow_transcript_turn_snippet: bool = False) -> bool:",
           "line": 607
+        },
+        {
+          "path": "memory_core/consolidation/store.py",
+          "symbol": "read_canonical_recall_store",
+          "anchor": "def read_canonical_recall_store(",
+          "line": 262
+        },
+        {
+          "path": "memory_core/consolidation/store.py",
+          "symbol": "read_canonical_phase_signal_store",
+          "anchor": "def read_canonical_phase_signal_store(",
+          "line": 271
+        },
+        {
+          "path": "memory_core/consolidation/store_normalization.py",
+          "symbol": "normalize_short_term_recall_store",
+          "anchor": "def normalize_short_term_recall_store(",
+          "line": 100
+        },
+        {
+          "path": "memory_core/consolidation/store_normalization.py",
+          "symbol": "normalize_short_term_phase_signal_store",
+          "anchor": "def normalize_short_term_phase_signal_store(",
+          "line": 147
         }
       ],
       "implementation": "partial",
@@ -6099,6 +6135,27 @@
         "recordGroundedShortTermCandidates",
         "recordShortTermRecalls",
         "resolveShortTermSourcePathCandidates"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/src/short-term-promotion-store.ts",
+      "sha256": "556c7e10323eb889e857d2cda41a5a6cd78e7e456ee99b2205b491dac547ea84",
+      "sourceImports": [
+        "./dreaming-state.js",
+        "./short-term-promotion-types.js",
+        "./short-term-promotion-utils.js",
+        "openclaw/plugin-sdk/string-coerce-runtime"
+      ],
+      "exportedDeclarations": [
+        "emptyPhaseSignalStore",
+        "normalizeShortTermPhaseSignalStore",
+        "readPhaseSignalStore",
+        "readShortTermStore",
+        "readStore",
+        "resolvePhaseSignalPath",
+        "resolveStorePath",
+        "writePhaseSignalStore",
+        "writeStore"
       ]
     },
     {

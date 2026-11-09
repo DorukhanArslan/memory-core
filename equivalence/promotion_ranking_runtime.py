@@ -28,7 +28,9 @@ def run_promotion_ranking(arguments, *, evidence_directory=None):
         evaluate_short_term_promotion_candidates, rank_short_term_promotion_candidates,
     )
     from memory_core.consolidation.store import (
-        phase_signal_store_path, read_phase_signal_store, read_recall_store,
+        phase_signal_store_path,
+        read_canonical_phase_signal_store as read_phase_signal_store,
+        read_canonical_recall_store as read_recall_store,
         recall_store_path, write_recall_store,
     )
 

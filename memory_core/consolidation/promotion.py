@@ -1249,7 +1249,7 @@ def _evaluation_to_candidate(evaluation: PromotionEvaluation) -> PromotionCandid
         path=evaluation.path,
         start_line=evaluation.start_line,
         end_line=evaluation.end_line,
-        snippet=evaluation.snippet,
+        snippet=normalize_snippet(evaluation.snippet),
         recall_count=evaluation.recall_count,
         daily_count=evaluation.daily_count,
         grounded_count=evaluation.grounded_count,

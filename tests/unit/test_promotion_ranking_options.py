@@ -131,7 +131,9 @@ def test_rank_preserves_transcript_turns_only_in_the_session_corpus(tmp_path: Pa
         tmp_path, path=f"memory/.dreams/session-corpus/2026-04-01.{extension}",
         snippet="User: Prefers cedar tea.\nAssistant: Recorded.",
     )
-    assert [candidate.key for candidate in _rank(config)] == ["boundary"]
+    candidates = _rank(config)
+    assert [candidate.key for candidate in candidates] == ["boundary"]
+    assert candidates[0].snippet == "User: Prefers cedar tea. Assistant: Recorded."
 
 
 def test_rank_still_excludes_transcript_scaffolding_in_a_daily_file(tmp_path: Path):

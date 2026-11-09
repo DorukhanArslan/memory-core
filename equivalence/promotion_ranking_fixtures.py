@@ -105,4 +105,18 @@ def build_promotion_ranking_cases():
     ])
     add("primitive-provenance-safety-diagnostic", [_entry("malformed-trust", provenance=1)],
         [_query("rank")], diagnostic=True)
+    add("numeric-gate-normalization", [
+        _entry("one-signal", path="memory/2026-04-01-one.md", recallCount=1,
+               totalScore=.74, maxScore=.74, userQueryHashes=["a"], queryHashes=["a"]),
+        _entry("three-signals", path="memory/2026-04-01-three.md"),
+        _entry("aged-three", path="memory/2026-03-19-aged.md", lastRecalledAt="2026-03-19T22:01:00.000Z"),
+    ], [
+        _query("fractional-signals", minRecallCount=3.9, weights=RELEVANCE_ONLY),
+        _query("negative-signals", minRecallCount=-1, weights=RELEVANCE_ONLY),
+        _query("fractional-diversity", minUniqueQueries=3.9, weights=RELEVANCE_ONLY),
+        _query("negative-diversity", minUniqueQueries=-1, weights=RELEVANCE_ONLY),
+        _query("fractional-age", maxAgeDays=14.9, weights=RELEVANCE_ONLY),
+        _query("score-above-one", minScore=1.1, weights=RELEVANCE_ONLY),
+        _query("score-below-zero", minScore=-1, weights=RELEVANCE_ONLY),
+    ])
     return profiles

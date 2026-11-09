@@ -1,6 +1,29 @@
-"""Literal pending #38 cases; no expected outcomes or acceptance claims."""
+"""Literal independently reviewed #38 cases; expected outcomes remain source-owned."""
 from copy import deepcopy
 
+
+MEMORY_BUDGET_ACCEPTANCE = (
+    "compaction.memory-budget.outcomes",
+    "compaction.memory-budget.boundaries",
+)
+
+# Every family is required together for either original condition. These are
+# registration guards, not expected outputs or authority for historical reports.
+MEMORY_BUDGET_REQUIRED_CASE_IDS = (
+    "memory-budget-mixed-sections-and-limits",
+    "memory-budget-sdk-marker-extension-diagnostic",
+    "memory-budget-fit",
+    "memory-budget-compact",
+    "memory-budget-defer",
+    "memory-budget-reconcile",
+    "memory-budget-marker-preservation-boundaries",
+    "memory-budget-foreign-marker-reconcile",
+    "memory-budget-non-js-space-prefix-reconcile",
+    "memory-budget-non-js-space-key-reconcile",
+    "memory-budget-js-bom-space-prefix-reconcile",
+    "memory-budget-js-bom-space-key-reconcile",
+    "memory-budget-literal-line-endings-fit",
+)
 
 NOW_MS = 1779811200000
 DAY = "2026-05-26T16:00:00.000Z"
@@ -115,9 +138,10 @@ def build_memory_budget_cases():
     line_endings = deepcopy(values[2][2])
     line_endings["files"]["MEMORY.md"] = "# Personal notes\r\nKeep this exact user text.\rA separate literal CR and \U0001f600.\r\n"
     values.append(("literal-line-endings-fit", "memory-budget-apply-runtime", line_endings))
-    return [{"id": "memory-budget-" + name, "requirement": "compaction.memory-budget", "covers": [],
+    return [{"id": "memory-budget-" + name, "requirement": "compaction.memory-budget", "covers": list(MEMORY_BUDGET_ACCEPTANCE),
         "operation": operation, "input": deepcopy(value),
-        "driverScope": "Original compact helper or genuine apply owner over literal persisted source/recall inputs. "
+        "driverScope": "Ordinary JSON with explicit ISO dates: original compact helper and genuine OpenClaw-compatible apply owner "
+            "over literal persisted source/recall inputs. All thirteen case families jointly support either original condition. "
             "Complete original return, document bytes, recall state and promotion events; both own raw APIs/SQL/FS retained. "
             "No provider, configuration-resolver, ranking, general promotion or lock-equivalence claim.",
         "normalizationPolicy": "Only exact owned fixture-root prefixes map to $FIXTURE. "

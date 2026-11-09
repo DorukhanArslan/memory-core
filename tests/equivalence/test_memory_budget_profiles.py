@@ -1,4 +1,4 @@
-"""Pending budget routes exercise real SDK persistence without granting credit."""
+"""Reviewed registrations retain every required real SDK/persistence boundary."""
 from copy import deepcopy
 import json
 import os
@@ -9,7 +9,9 @@ import pytest
 
 from equivalence.cases import build_cases, run_python
 from equivalence.get_contract import map_get_fixture_paths
-from equivalence.memory_budget_fixtures import build_memory_budget_cases
+from equivalence.memory_budget_fixtures import (
+    MEMORY_BUDGET_ACCEPTANCE, MEMORY_BUDGET_REQUIRED_CASE_IDS, build_memory_budget_cases,
+)
 from equivalence.memory_budget_profile import prepare_memory_budget_profile, validate_memory_budget_input, validate_memory_budget_profile
 from equivalence.runtime_oracle import ReleaseOracleExecution, RuntimeOracleError
 
@@ -23,10 +25,26 @@ def _profile(operation):
     return prepare_memory_budget_profile(operation, NODE)
 
 
-def test_default_catalog_and_sdk_dispatch_retain_all_complete_pending_boundaries():
+def test_default_catalog_requires_all_thirteen_profiles_for_both_original_conditions():
     cases = build_memory_budget_cases()
     default = {case["id"]: case for case in build_cases()}
-    assert len(cases) == 13 and all(case["covers"] == [] for case in cases)
+    required = {
+        "memory-budget-mixed-sections-and-limits", "memory-budget-sdk-marker-extension-diagnostic",
+        "memory-budget-fit", "memory-budget-compact", "memory-budget-defer", "memory-budget-reconcile",
+        "memory-budget-marker-preservation-boundaries", "memory-budget-foreign-marker-reconcile",
+        "memory-budget-non-js-space-prefix-reconcile", "memory-budget-non-js-space-key-reconcile",
+        "memory-budget-js-bom-space-prefix-reconcile", "memory-budget-js-bom-space-key-reconcile",
+        "memory-budget-literal-line-endings-fit",
+    }
+    assert len(cases) == len(MEMORY_BUDGET_REQUIRED_CASE_IDS) == 13
+    assert {case["id"] for case in cases} == set(MEMORY_BUDGET_REQUIRED_CASE_IDS) == required
+    assert MEMORY_BUDGET_ACCEPTANCE == (
+        "compaction.memory-budget.outcomes", "compaction.memory-budget.boundaries")
+    assert all(case["covers"] == list(MEMORY_BUDGET_ACCEPTANCE) for case in cases)
+    for point in MEMORY_BUDGET_ACCEPTANCE:
+        assert {case["id"] for case in default.values() if point in case["covers"]} == required
+    assert all("Ordinary JSON with explicit ISO dates" in case["driverScope"] for case in cases)
+    assert all("genuine OpenClaw-compatible apply owner" in case["driverScope"] for case in cases)
     assert all(default[case["id"]] == case for case in cases)
     mutated = deepcopy(cases)
     mutated[0]["input"]["cases"][0]["params"]["newSection"] = "different literal"

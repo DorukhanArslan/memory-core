@@ -294,6 +294,11 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
                 or not set(case["covers"]) <= points[case["requirement"]]):
             raise HarnessError("cases-invalid", "Cases must have unique identities and valid acceptance-point coverage.")
         case_ids.add(case["id"])
+    from equivalence.promotion_ranking_acceptance import validate_promotion_ranking_acceptance
+    try:
+        validate_promotion_ranking_acceptance(cases)
+    except ValueError as error:
+        raise HarnessError("cases-invalid", str(error)) from None
     return requirements, points
 
 

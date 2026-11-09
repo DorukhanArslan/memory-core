@@ -1,6 +1,8 @@
 """Literal promotion ranking inputs, declared before protected comparisons."""
 from copy import deepcopy
 
+from equivalence.promotion_ranking_acceptance import promotion_ranking_coverage
+
 
 NOW_MS = 1775210460000
 NOW_ISO = "2026-04-03T10:01:00.000Z"
@@ -29,10 +31,16 @@ def build_promotion_ranking_cases():
     def add(name, entries, queries, phase=None, *, diagnostic=False):
         profiles.append({"id": "promotion-ranking-" + name,
             "requirement": "promotion.ranking-gates", "operation": "promotion-ranking-runtime",
-            "covers": [], "driverScope": "Genuine original rank and SQLite store owners; real SDK rank over its JSON store. "
+            "covers": promotion_ranking_coverage("promotion-ranking-" + name),
+            "driverScope": "Typed numeric gates and proper-object provenance with ordinary JSON/ISO date inputs: "
+                "genuine original rank and SQLite store owners; real SDK rank over its JSON store. "
                 "Whole ordered candidates and logical before/after state; full independent physical state remains raw. "
-                "No provider, apply or host lifecycle claim.",
-            "declaredDeviation": "Uncredited diagnostic input." if diagnostic else "Uncredited pending independent review.",
+                "No provider, apply, host lifecycle, arbitrary date parsing or general fatal-error/code/cause parity claim.",
+            "declaredDeviation": ("The original normalizer drops primitive provenance before ranking; SDK rejects it as untrusted. "
+                "This deliberate stronger privacy policy is a visible boundary mismatch, never an outcomes claim."
+                if name == "primitive-provenance-safety-diagnostic" else
+                "Whole original diagnostic output remains compared within the qualified ordinary input scope."
+                if diagnostic else "No declared deviation within the qualified ordinary input scope."),
             "input": {"kind": "promotion-ranking", "nowMs": NOW_MS,
                 "store": {"version": 1, "updatedAt": NOW_ISO,
                           "entries": {entry["key"]: deepcopy(entry) for entry in entries}},

@@ -51,13 +51,18 @@ def build_entry_provenance_cases():
             "entry": {"sessionId": "entry-provenance", "chatType": "direct", "updatedAt": 1800000000000},
             "events": events}], "steps": [
                 {"label": "initial", "nowMs": 1800000000000, "force": True},
-                {"label": "replace-provenance", "nowMs": 1800000001000, "force": True, "events": [
+                {"label": "revision-only", "nowMs": 1800000000500, "force": False, "events": deepcopy(events),
+                 "syncSessions": [{"agentId": "main", "sessionId": "entry-provenance", "sessionKey": key}]},
+                {"label": "replace-provenance", "nowMs": 1800000001000, "force": False,
+                 "syncSessions": [{"agentId": "main", "sessionId": "entry-provenance", "sessionKey": key}], "events": [
                     *deepcopy(events[:1]),
                     {**deepcopy(events[1]), "message": {**deepcopy(events[1]["message"]), "__openclaw": {"senderIsOwner": False}}},
                     *deepcopy(events[2:])]},
-                {"label": "valid-reset", "nowMs": 1800000002000, "force": True,
+                {"label": "valid-reset", "nowMs": 1800000002000, "force": False,
+                 "syncSessions": [{"agentId": "main", "sessionId": "entry-provenance", "sessionKey": key}],
                  "events": [*deepcopy(events), {"type": "reset", "id": "reset", "firstKeptEntryId": "tainted"}]},
-                {"label": "invalid-reset", "nowMs": 1800000003000, "force": True,
+                {"label": "invalid-reset", "nowMs": 1800000003000, "force": False,
+                 "syncSessions": [{"agentId": "main", "sessionId": "entry-provenance", "sessionKey": key}],
                  "events": [*deepcopy(events), {"type": "reset", "id": "bad-reset", "firstKeptEntryId": "missing"}]},
         ]}))
     return [{"id": "entry-provenance-" + name, "requirement": "chunking.entry-provenance", "covers": [],

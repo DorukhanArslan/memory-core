@@ -103,4 +103,6 @@ def build_promotion_ranking_cases():
         _query("fraction-above-one", limit=1.9), _query("unbounded-null", limit=None),
         _query("unbounded-boolean", limit=True),
     ])
+    add("primitive-provenance-safety-diagnostic", [_entry("malformed-trust", provenance=1)],
+        [_query("rank")], diagnostic=True)
     return profiles

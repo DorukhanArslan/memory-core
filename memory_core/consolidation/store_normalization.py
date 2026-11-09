@@ -2,8 +2,8 @@
 
 Ports ``normalizeShortTermRecallStore`` and ``normalizeShortTermPhaseSignalStore``
 from the pinned original memory plugin. These views do not rewrite the JSON
-extension stores. An explicitly malformed provenance value remains untrusted;
-this preserves the SDK's stronger admission rule for malformed trust metadata.
+extension stores. Explicit malformed primitive provenance is treated as untrusted,
+a deliberately stricter admission policy than the original primitive-value path.
 """
 from __future__ import annotations
 

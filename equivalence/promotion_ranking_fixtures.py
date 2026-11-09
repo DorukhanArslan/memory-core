@@ -119,4 +119,10 @@ def build_promotion_ranking_cases():
         _query("score-above-one", minScore=1.1, weights=RELEVANCE_ONLY),
         _query("score-below-zero", minScore=-1, weights=RELEVANCE_ONLY),
     ])
+    add("current-default-query-diversity", [
+        _entry("two-queries", path="memory/2026-04-01-two.md",
+               userQueryHashes=["a", "b"], queryHashes=["a", "b"]),
+        _entry("three-queries", path="memory/2026-04-01-three.md"),
+    ], [_query("invalid-restores-current-default", minUniqueQueries=-1, weights=RELEVANCE_ONLY),
+        _query("explicit-two-stays-configurable", minUniqueQueries=2, weights=RELEVANCE_ONLY)])
     return profiles

@@ -99,11 +99,13 @@ Reference source-build reproduction remains false.
 
 ## Stop point
 
-At the user's request, work stops after this integration closeout. The eight
-additional promotion inputs and whole-host restart proof remain preparation
-work in separate branches. They have not been merged or awarded acceptance
-credit. No next task, new protected capture, provider request or environment
-publication is started as part of this closeout.
+At the user's request, work stops after this integration closeout. Expanded
+executable preparation for the eight additional promotion inputs and whole-host
+restart proof remains in separate branches. The provisional promotion literal
+proposal included in this package is not an executed or accepted comparison.
+The expanded adapters are not merged and receive no acceptance credit. No next
+task, new protected capture, provider request or environment publication is
+started as part of this closeout.
 
 The status of every contract is retained in
 [the full checklist](full-equivalence-checklist.md). No additional user detail

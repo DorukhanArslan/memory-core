@@ -1799,7 +1799,7 @@ hash is fabricated or rewritten. The first rejected validator capture remains un
 the corrected two-case report matches both cases.
 
 The final run uses **Node 24.16.0, ICU 78.3, Unicode 17**, with executable SHA-256
-`b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca1341bb059`, and Python 3.12.14
+`b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd`, and Python 3.12.14
 with the declared locked `bracex 3.2.2` and `wcmatch 10.2.1`. Preliminary package resolution
 failed because registry range metadata was absent from the offline cache. The superseded
 full comparison was explicitly cancelled and retained as unverified before updating the

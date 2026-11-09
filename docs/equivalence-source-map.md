@@ -164,7 +164,7 @@ in 1,086 cases.
 The newly observed OS-specific loop diagnostic remains uncredited alongside the earlier two
 differences. No claim of full equivalence follows from these bounded results.
 
-The current inventory maps **163 upstream modules**, with 15 present, 46 partial and three
+The current inventory maps **171 upstream modules**, with 15 present, 46 partial and three
 host-owned Python classifications. The shared-deadline package maps the actual control,
 signal, worker and corpus owners in
 `memory_core/tools/deadline.py`, together with get/search coordination and SQLite pre-deadline

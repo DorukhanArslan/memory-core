@@ -383,18 +383,23 @@ class MemoryCoreSessionCorpus:
         self, file: SessionCorpusFile, *,
         on_transcript_message: Callable[[object, int], None] | None = None,
     ) -> SessionEntry | None:
-        info = file.abs_path.stat()
+        info = file.abs_path.lstat()
         if not stat.S_ISREG(info.st_mode):
             return None
         seconds, nanos = divmod(info.st_mtime_ns, 1_000_000_000)
         mtime_ms = seconds * 1000 + nanos / 1_000_000
         file_size = info.st_size
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        with os.fdopen(os.open(file.abs_path, flags), "rb") as stream:
+            opened = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(opened.st_mode)
+                    or (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino)):
+                return None
+            raw = stream.read()
         if file.abs_path.name.endswith(".zst"):
-            from memory_core.session_archive_codec import read_session_transcript_bytes
+            from memory_core.session_archive_codec import decode_session_transcript_bytes
 
-            raw = read_session_transcript_bytes(file.abs_path)
-        else:
-            raw = file.abs_path.read_bytes()
+            raw = decode_session_transcript_bytes(raw, compressed=True)
         entry = build_session_entry(
             records=parse_jsonl_records(raw.decode("utf-8", errors="replace")),
             mtime_ms=mtime_ms,

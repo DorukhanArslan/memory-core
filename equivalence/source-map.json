@@ -1960,7 +1960,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_source_entry",
           "anchor": "    def read_source_entry(",
-          "line": 419
+          "line": 424
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -1972,31 +1972,31 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog",
           "anchor": "class MemorySessionCatalog:",
-          "line": 273
+          "line": 311
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.upsert_session",
           "anchor": "    def upsert_session(",
-          "line": 482
+          "line": 521
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 991
+          "line": 1032
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1076
+          "line": 1119
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_archive",
           "anchor": "    def record_archive(",
-          "line": 965
+          "line": 1006
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -2020,19 +2020,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_participant",
           "anchor": "    def record_participant(",
-          "line": 870
+          "line": 911
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_participants",
           "anchor": "    def list_participants(",
-          "line": 937
+          "line": 978
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.load_session_metadata",
           "anchor": "    def load_session_metadata(",
-          "line": 1166
+          "line": 1209
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -2044,7 +2044,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.get_session_entry",
           "anchor": "    def get_session_entry(",
-          "line": 454
+          "line": 492
         }
       ],
       "implementation": "partial",
@@ -2236,19 +2236,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1076
+          "line": 1119
         },
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_source_entry",
           "anchor": "    def read_source_entry(",
-          "line": 419
+          "line": 424
         },
         {
           "path": "memory_core/session_archive_codec.py",
           "symbol": "read_session_transcript_bytes",
           "anchor": "def read_session_transcript_bytes(",
           "line": 8
+        },
+        {
+          "path": "memory_core/session_archive_codec.py",
+          "symbol": "decode_session_transcript_bytes",
+          "anchor": "def decode_session_transcript_bytes(",
+          "line": 17
         }
       ],
       "implementation": "partial",
@@ -2410,25 +2416,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1076
+          "line": 1119
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_reset_cutoff",
           "anchor": "    def read_reset_cutoff(",
-          "line": 1104
+          "line": 1147
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 991
+          "line": 1032
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.tombstone_session",
           "anchor": "    def tombstone_session(",
-          "line": 980
+          "line": 1021
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -2603,6 +2609,72 @@
           "symbol": "readSqliteIntegrityFileIdentity",
           "anchor": "export function readSqliteIntegrityFileIdentity(",
           "line": 9
+        },
+        {
+          "path": "extensions/memory-core/src/memory/manager.ts",
+          "symbol": "MemoryIndexManager.settings",
+          "anchor": "  protected readonly settings: ResolvedMemorySearchConfig;",
+          "line": 88
+        },
+        {
+          "path": "src/agents/memory-search.ts",
+          "symbol": "resolveMemorySearchConfig",
+          "anchor": "export function resolveMemorySearchConfig(",
+          "line": 273
+        },
+        {
+          "path": "src/plugin-sdk/memory-core-host-engine-foundation.ts",
+          "symbol": "resolveMemorySearchConfig",
+          "anchor": "  resolveMemorySearchConfig,",
+          "line": 12
+        },
+        {
+          "path": "src/agents/main-session-recovery/main-session-recovery-clear.ts",
+          "symbol": "MAIN_SESSION_RECOVERY_CLEAR_PATCH",
+          "anchor": "export const MAIN_SESSION_RECOVERY_CLEAR_PATCH: Partial<MainRecoveryStateFields> = {",
+          "line": 33
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-entry-read.ts",
+          "symbol": "parseReadableSqliteSessionEntryRow",
+          "anchor": "export function parseReadableSqliteSessionEntryRow(",
+          "line": 196
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-participant-projection.ts",
+          "symbol": "projectSqliteSessionParticipants",
+          "anchor": "export function projectSqliteSessionParticipants(",
+          "line": 126
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-status.ts",
+          "symbol": "parseSessionEntryJson",
+          "anchor": "export function parseSessionEntryJson(",
+          "line": 84
+        },
+        {
+          "path": "src/config/sessions/store-entry-shape.ts",
+          "symbol": "projectCanonicalSessionEntryShape",
+          "anchor": "export function projectCanonicalSessionEntryShape(value: Record<string, unknown>): SessionEntry {",
+          "line": 49
+        },
+        {
+          "path": "src/plugin-sdk/session-store-runtime-internal.ts",
+          "symbol": "clearGenerationPrivateFieldsForRotatedSessionPatch",
+          "anchor": "export function clearGenerationPrivateFieldsForRotatedSessionPatch(",
+          "line": 102
+        },
+        {
+          "path": "src/plugin-sdk/session-store-runtime.ts",
+          "symbol": "upsertSessionEntry",
+          "anchor": "export async function upsertSessionEntry(params: UpsertSessionEntryParams): Promise<void> {",
+          "line": 529
+        },
+        {
+          "path": "src/config/sessions/session-entry-projection.ts",
+          "symbol": "SESSION_ENTRY_PRIVATE_CLEAR_PATCH",
+          "anchor": "export const SESSION_ENTRY_PRIVATE_CLEAR_PATCH =",
+          "line": 15
         }
       ],
       "python": [
@@ -2628,25 +2700,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.append_message",
           "anchor": "    def append_message(",
-          "line": 710
+          "line": 751
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_continuation",
           "anchor": "    def read_continuation(",
-          "line": 1110
+          "line": 1153
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_anchor",
           "anchor": "    def read_anchor(",
-          "line": 830
+          "line": 871
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_transcript_instances",
           "anchor": "    def list_transcript_instances(",
-          "line": 1012
+          "line": 1053
         },
         {
           "path": "memory_core/session_context.py",
@@ -4080,7 +4152,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus._is_heartbeat_row",
           "anchor": "    def _is_heartbeat_row(self, raw_text: str, role: str) -> bool:",
-          "line": 435
+          "line": 440
         }
       ],
       "implementation": "partial",
@@ -6794,11 +6866,48 @@
       ]
     },
     {
+      "path": "src/agents/main-session-recovery/main-session-recovery-clear.ts",
+      "sha256": "ff3fae295eeed9836100d599b4d102fa2f93a230f317aae4fdfe68dfe0d73452",
+      "sourceImports": [
+        "../../config/sessions.js"
+      ],
+      "exportedDeclarations": [
+        "MAIN_SESSION_RECOVERY_CLEAR_PATCH",
+        "buildMainSessionRecoveryClearPatch",
+        "clearMainSessionRecoveryAfterAgentRun",
+        "removeMainSessionRecoveryForegroundClaim"
+      ]
+    },
+    {
       "path": "src/agents/memory-search-source-policy.ts",
       "sha256": "b95b8ebf49144924307e153162b1302ba5fd48658e647618aec1ff0d54b0b80f",
       "sourceImports": [],
       "exportedDeclarations": [
         "resolveMemorySearchSourcePolicy"
+      ]
+    },
+    {
+      "path": "src/agents/memory-search.ts",
+      "sha256": "a1edad1e59255c5657af97d636be2517a3704f2ca3950e4a06f06892647092b2",
+      "sourceImports": [
+        "../config/config.js",
+        "../memory-host-sdk/host/config-utils.js",
+        "../memory-host-sdk/multimodal.js",
+        "../plugins/memory-embedding-provider-runtime.js",
+        "../secrets/runtime-degraded-state.js",
+        "../secrets/runtime-memory-secret-owner.js",
+        "../state/openclaw-agent-db.paths.js",
+        "../utils.js",
+        "./agent-scope.js",
+        "./memory-search-source-policy.js",
+        "@openclaw/model-catalog-core/provider-id"
+      ],
+      "exportedDeclarations": [
+        "ResolvedMemorySearchConfig",
+        "ResolvedMemorySearchSyncConfig",
+        "resolveMemorySearchConfig",
+        "resolveMemorySearchIndexConfig",
+        "resolveMemorySearchSyncConfig"
       ]
     },
     {
@@ -7295,6 +7404,44 @@
       ]
     },
     {
+      "path": "src/config/sessions/session-accessor.sqlite-entry-read.ts",
+      "sha256": "f6a4515bca2982da03d0fbf960b4c83a59b2b796e23193dc1d5ec12c671b904c",
+      "sourceImports": [
+        "../../infra/kysely-sync.js",
+        "../../infra/sqlite-schema-facts.js",
+        "../../routing/session-key.js",
+        "../../state/openclaw-agent-db.generated.js",
+        "../../state/openclaw-agent-db.js",
+        "./session-accessor.sqlite-contract.js",
+        "./session-accessor.sqlite-owner-projection.js",
+        "./session-accessor.sqlite-participant-projection.js",
+        "./session-accessor.sqlite-status.js",
+        "./session-canonical-key.js",
+        "./session-canonical-row.js",
+        "./session-entry-json.js",
+        "./session-entry-snapshots.js",
+        "./store-entry.js",
+        "./types.js",
+        "kysely",
+        "node:sqlite",
+        "node:util"
+      ],
+      "exportedDeclarations": [
+        "ResolvedSessionEntryRow",
+        "parseReadableSqliteSessionEntryRow",
+        "parseReadableSqliteSessionEntryRows",
+        "prepareExactSessionEntryRowReads",
+        "prepareSqliteSessionEntryRowDecoder",
+        "readExactSessionEntryRow",
+        "readExactSessionEntryRowValidated",
+        "readQualifiedSessionEntryRow",
+        "readSessionEntryRow",
+        "readSessionEntryRowScan",
+        "readSessionEntryTargetRow",
+        "validateDeliveryCanonicalSessionEntry"
+      ]
+    },
+    {
       "path": "src/config/sessions/session-accessor.sqlite-entry.ts",
       "sha256": "6601aceca571e65fcd0a1dbf6ed9e1f546fc2c82dca644f699e3a60b27e29156",
       "sourceImports": [
@@ -7488,6 +7635,30 @@
       ]
     },
     {
+      "path": "src/config/sessions/session-accessor.sqlite-status.ts",
+      "sha256": "b3e9f3913b29bf94121242b05e107a7f8c76b1ccf50eae94f81facb26efd9511",
+      "sourceImports": [
+        "../../infra/kysely-sync.js",
+        "../../state/openclaw-agent-db.generated.js",
+        "../../state/openclaw-agent-db.js",
+        "./session-accessor.sqlite-contract.js",
+        "./session-accessor.sqlite-owner-projection.js",
+        "./session-entry-json.js",
+        "./session-entry-snapshots.js",
+        "./store-entry-shape.js",
+        "./types.js",
+        "kysely"
+      ],
+      "exportedDeclarations": [
+        "hasSessionEntriesByStatus",
+        "normalizeStatus",
+        "parseSessionEntryJson",
+        "readSessionEntriesByStatus",
+        "selectSessionEntryRows",
+        "sessionEntryInventoryJson"
+      ]
+    },
+    {
       "path": "src/config/sessions/session-accessor.sqlite-transcript-anchor.ts",
       "sha256": "e2db126148df6df03a8c09cb628f58130ba34d70b5088817f2446699c316ae74",
       "sourceImports": [
@@ -7667,6 +7838,22 @@
       ]
     },
     {
+      "path": "src/config/sessions/session-entry-projection.ts",
+      "sha256": "48eae1e011e50fc043e63f59dd308f003a7898d510fe0847fbab4b2e4508410f",
+      "sourceImports": [
+        "./cli-session-binding.js",
+        "./session-model-fallback.js",
+        "./types.js"
+      ],
+      "exportedDeclarations": [
+        "COMPACTION_RUN_USAGE_CLEAR_PATCH",
+        "SESSION_ENTRY_PRIVATE_CLEAR_PATCH",
+        "projectCompactionAccountingPatch",
+        "projectPublicSessionEntry",
+        "projectPublicSessionEntryPatch"
+      ]
+    },
+    {
       "path": "src/config/sessions/session-participant-identity.ts",
       "sha256": "0f30c429556dddcca6c4e4db52ec19868bba5c17a1782863d3987a45e6019ee1",
       "sourceImports": [
@@ -7798,6 +7985,24 @@
         "@openclaw/normalization-core/record-coerce"
       ],
       "exportedDeclarations": []
+    },
+    {
+      "path": "src/config/sessions/store-entry-shape.ts",
+      "sha256": "2ca9bdadf9de3ad8c48a77cd8351e70bc45aa4bafd77e58e62be397b94da1511",
+      "sourceImports": [
+        "../../../packages/gateway-protocol/src/session-agent-status.js",
+        "../../routing/session-key.js",
+        "./paths.js",
+        "./types.js",
+        "@openclaw/normalization-core/number-coercion",
+        "@openclaw/normalization-core/record-coerce",
+        "@openclaw/normalization-core/string-coerce"
+      ],
+      "exportedDeclarations": [
+        "normalizePersistedSessionEntryShape",
+        "projectCanonicalSessionEntryShape",
+        "stripRuntimeOnlySessionSkillsFields"
+      ]
     },
     {
       "path": "src/config/sessions/transcript-header.ts",
@@ -8297,6 +8502,25 @@
       ]
     },
     {
+      "path": "src/plugin-sdk/memory-core-host-engine-foundation.ts",
+      "sha256": "5ec673cb42dc14662c6be1b4e405d4242f9a24cfa933e8200b98cb329227fb8c",
+      "sourceImports": [
+        "../../packages/memory-host-sdk/src/host/fs-utils.js",
+        "../agents/agent-scope.js",
+        "../agents/memory-search.js",
+        "../config/config.js",
+        "../config/paths.js",
+        "../config/sessions/paths.js",
+        "../config/types.tools.js",
+        "../infra/fs-safe.js",
+        "../logging/subsystem.js",
+        "../sessions/transcript-events.js",
+        "../shared/global-singleton.js",
+        "../utils.js"
+      ],
+      "exportedDeclarations": []
+    },
+    {
       "path": "src/plugin-sdk/memory-core-host-engine-sessions.ts",
       "sha256": "e05da58485856c557ae7e37e97dbffba0da0abe8b72d355261ee784d1db12f7b",
       "sourceImports": [
@@ -8310,6 +8534,26 @@
         "MemorySessionTarget",
         "loadMemorySessionMetadata",
         "resolveMemorySessionTargets"
+      ]
+    },
+    {
+      "path": "src/plugin-sdk/session-store-runtime-internal.ts",
+      "sha256": "d2de13b9d4d421a7097f5d4216c9ae97598345ddbefc57d6d345224891f36ed3",
+      "sourceImports": [
+        "../agents/main-session-recovery/main-session-recovery-clear.js",
+        "../config/sessions/session-accessor.js",
+        "../config/sessions/session-entry-projection.js",
+        "../config/sessions/types.js"
+      ],
+      "exportedDeclarations": [
+        "SessionStoreReadParams",
+        "clearGenerationPrivateFieldsForRotatedSessionPatch",
+        "generationValidPrivateFieldsForSameSession",
+        "projectPluginSessionEntry",
+        "projectPluginSessionEntryPatch",
+        "projectPluginSessionStore",
+        "reconcilePluginSessionStore",
+        "toSessionAccessScope"
       ]
     },
     {

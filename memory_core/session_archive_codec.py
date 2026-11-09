@@ -11,8 +11,12 @@ def read_session_transcript_bytes(path: Path) -> bytes:
     A registered archive keeps its source identity and filesystem metadata;
     decoding does not publish a second materialized transcript or index it.
     """
-    data = path.read_bytes()
-    if not path.name.endswith(".zst"):
+    return decode_session_transcript_bytes(path.read_bytes(), compressed=path.name.endswith(".zst"))
+
+
+def decode_session_transcript_bytes(data: bytes, *, compressed: bool) -> bytes:
+    """Decode an already admitted file without reopening its path."""
+    if not compressed:
         return data
     if sys.version_info >= (3, 14):
         from compression import zstd

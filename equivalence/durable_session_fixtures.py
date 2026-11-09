@@ -21,6 +21,9 @@ PROFILE = (
     "and actual append/read anchors remain observed. No provider call, pending-input "
     "custody, provider-signed replay, media migration, live writer fence or full turn "
     "barrier is claimed. The third process receives no mutations or prior output history."
+    " Actual native settings fix temporal decay to enabled with a 30-day half-life; "
+    "the SDK uses that same policy. Native Date and only the SDK decay module's "
+    "datetime.now use each literal phase clock; timers and performance remain real."
 )
 NORMALIZATION = (
     "Complete native and SDK owner results, with full private SQL/process evidence retained. "

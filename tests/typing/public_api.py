@@ -22,6 +22,9 @@ from memory_core import (
 )
 from memory_core.adapters.langgraph import tool_messages, transcript_rows, turn_usage
 from memory_core.host import FlushOutcome, FlushRequest
+from memory_core.host.managed_index import ManagedSQLiteMemoryStore
+from memory_core.index.hybrid import HybridResult
+from memory_core.workspace import MemoryWorkspace
 from memory_core.session_catalog import MemorySessionCatalog
 from memory_core.live import (
     JsonlTraceSink,
@@ -121,3 +124,14 @@ async def live_contract(workspace: Path) -> None:
         session_id="session", transcript="hello", summary_llm=summary,
         redactor=sanitize_text, output_redactor=sanitize_text, trace_sink=sink,
     ), SessionSummaryResult)
+
+
+def managed_contract(workspace: Path) -> None:
+    config = MemoryConfig(workspace_dir=workspace, flags=FeatureFlags(vector_search=False))
+    memory_workspace = MemoryWorkspace(workspace)
+    store = ManagedSQLiteMemoryStore(config, memory_workspace)
+    assert_type(store.search("needle", max_results=3, sources={"memory"}), list[HybridResult])
+    assert_type(store.status(), dict[str, Any])
+    assert_type(store.reindex(memory_workspace, force=True), int)
+    store.close()
+    assert_type(store.closed, bool)

@@ -51,12 +51,20 @@ def _source_path(value):
 
 
 def _validate_policy(policy):
-    if (not isinstance(policy, dict) or set(policy) != {"configuredSources", "rememberAcrossConversations",
-            "configuredSessionMemory", "sourceMtimeMs"} or policy["configuredSources"] != ["memory"]
+    required = {"configuredSources", "rememberAcrossConversations", "configuredSessionMemory", "sourceMtimeMs"}
+    managed = required | {"producerPublication", "indexLifecycle", "runtimeIdentity"}
+    if (not isinstance(policy, dict) or set(policy) not in (required, required | {"producerPublication"}, managed)
+            or policy["configuredSources"] != ["memory"]
             or type(policy["rememberAcrossConversations"]) is not bool or policy["configuredSessionMemory"] is not False
             or type(policy["sourceMtimeMs"]) not in (int, float) or not math.isfinite(policy["sourceMtimeMs"])
             or policy["sourceMtimeMs"] < 0):
         raise ValueError("The source-policy experiment accepts only its explicit bounded host policy")
+    if "producerPublication" in policy and policy["producerPublication"] != {
+            "operation": "force-rebuild-after-source-metadata"}:
+        raise ValueError("The producer publication experiment requires its exact explicit rebuild operation")
+    if "indexLifecycle" in policy and (policy["indexLifecycle"] != "managed"
+            or policy["runtimeIdentity"] != "openclaw-compatible"):
+        raise ValueError("The managed index requires its exact declared lifecycle and runtime identity")
 
 
 def _source_metadata(workspace, relative):
@@ -142,6 +150,7 @@ async def _run_phase(request):
         remember_across_conversations=selected_policy["rememberAcrossConversations"],
         configured_session_memory=selected_policy["configuredSessionMemory"])
         if selected_policy is not None else None)
+    managed = selected_policy is not None and selected_policy.get("indexLifecycle") == "managed"
     root = Path(request["directory"])
     if not root.is_absolute() or root.is_symlink():
         raise ValueError("A host phase requires its real absolute owned directory")
@@ -180,10 +189,32 @@ async def _run_phase(request):
             citation_mode="off", session_search=resolved_policy["sessionMemory"] if resolved_policy is not None else False,
             search_max_results=5, search_min_score=0,
             flags=FeatureFlags(vector_search=False, temporal_decay=False))
-        runner = HostSessionRunner.open(paths["workspace"], config=config, catalog=catalog,
-            session=SessionState.new(session_key=selected["sessionKey"], session_id=selected["sessionId"]),
-            source_policy=resolved_policy if resolved_policy is not None else {"sources": ["memory"]},
-            timezone="UTC", now_ms=lambda: now)
+        session = SessionState.new(session_key=selected["sessionKey"], session_id=selected["sessionId"])
+        if managed:
+            from memory_core.client import Memory
+            from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
+            from memory_core.host import HostKit
+            from memory_core.host.managed_index import ManagedSQLiteMemoryStore
+            from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
+            from memory_core.session_visibility import SessionVisibilityContext
+            from memory_core.workspace import MemoryWorkspace
+
+            workspace = MemoryWorkspace(paths["workspace"], agent_id=agent, session_catalog=catalog,
+                                        index_sources=resolved_policy["sources"])
+            ledger = MemoryArtifactProvenanceStore(paths["index"].with_name(f"{paths['index'].stem}.provenance.sqlite"))
+            store = ManagedSQLiteMemoryStore(config, workspace, artifact_provenance=ledger,
+                                            runtime_identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY)
+            memory = Memory(config, workspace, store, SessionVisibilityContext.from_catalog(catalog),
+                            deepcopy(resolved_policy))
+            kit = HostKit(memory, artifact_provenance=ledger, timezone="UTC", now_ms=lambda: now,
+                          identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY)
+            runner = HostSessionRunner(kit, catalog, session=session)
+            record["managedStatusAfterOpen"] = deepcopy(store.status())
+            record["managedLifecycleAfterOpen"] = store.lifecycle_snapshot()
+        else:
+            runner = HostSessionRunner.open(paths["workspace"], config=config, catalog=catalog,
+                session=session, source_policy=resolved_policy if resolved_policy is not None else {"sources": ["memory"]},
+                timezone="UTC", now_ms=lambda: now)
         record.update(config=_plain(config), session=runner.session.to_json(),
                       indexAfterOpen=runner.kit.memory.store.read_published_index())
         raw["opens"].append(record)
@@ -207,13 +238,16 @@ async def _run_phase(request):
                 data = path.read_bytes()
                 files.append({"path": str(path.relative_to(workspace)), "hex": data.hex(),
                               "sha256": hashlib.sha256(data).hexdigest()})
-        raw["snapshots"].append({"session": session_name, "workspace": str(workspace),
+        observed = {"session": session_name, "workspace": str(workspace),
             "source": _source(workspace, relative), "files": files,
             "catalog": _sqlite_snapshot(catalog.path), "continuations": continuations,
             "published": runner.kit.memory.store.read_published_index(),
             "provenance": _sqlite_snapshot(runner.artifact_provenance.path),
             "settlement": {"activeTurn": runner._active_turn is not None,
-                           "outstandingBlockingSources": runner._blocking_count}})
+                           "outstandingBlockingSources": runner._blocking_count}}
+        if managed:
+            observed["managedLifecycle"] = runner.kit.memory.store.lifecycle_snapshot()
+        raw["snapshots"].append(observed)
 
     async def save():
         write = phase["write"]
@@ -230,10 +264,15 @@ async def _run_phase(request):
             record["modelInput"] = _model_input(turn)
             arguments = {"text": write["text"]}
             assistant = _assistant_call(turn, "append_daily_note", arguments, "save-daily-note")
+            before = runner.kit.memory.store.lifecycle_snapshot() if managed else None
             result = await turn.dispatch_async("save-daily-note", "append_daily_note", arguments)
             observed = _observed_tool_result(turn, "save-daily-note")
-            record["toolCalls"].append({"name": "append_daily_note", "id": "save-daily-note", "arguments": arguments,
-                                       "assistant": assistant, "returned": deepcopy(result), "observed": observed})
+            call = {"name": "append_daily_note", "id": "save-daily-note", "arguments": arguments,
+                    "assistant": assistant, "returned": deepcopy(result), "observed": observed}
+            if managed:
+                call.update(managedLifecycleBefore=before,
+                            managedLifecycleAfter=runner.kit.memory.store.lifecycle_snapshot())
+            record["toolCalls"].append(call)
             if selected_policy is not None:
                 source_relative = result["path"]
                 path = runner.kit.memory.workspace.resolve_memory_path(source_relative)
@@ -253,6 +292,14 @@ async def _run_phase(request):
 
         outcome = await runner.run_turn(phase["savePrompt"], execute=execute, request_id="host-restart-save")
         record["outcome"] = _plain(outcome)
+        if selected_policy is not None and "producerPublication" in selected_policy:
+            publication = {"operation": "SQLiteMemoryStore.reindex", "request": {"force": True},
+                "publishedBefore": runner.kit.memory.store.read_published_index(),
+                "sourceBefore": _source_metadata(runner.kit.memory.workspace.root, relative)}
+            record["producerPublication"] = publication
+            publication["returned"] = runner.kit.memory.store.reindex(runner.kit.memory.workspace, force=True)
+            publication["publishedAfter"] = runner.kit.memory.store.read_published_index()
+            publication["sourceAfter"] = _source_metadata(runner.kit.memory.workspace.root, relative)
         snapshot("writer", runner)
 
     async def recall(session_name):
@@ -267,10 +314,15 @@ async def _run_phase(request):
 
             async def dispatch(name, arguments, call_id):
                 assistant = _assistant_call(turn, name, arguments, call_id)
+                before = runner.kit.memory.store.lifecycle_snapshot() if managed else None
                 returned = await turn.dispatch_async(call_id, name, arguments)
                 observed = _observed_tool_result(turn, call_id)
-                record["toolCalls"].append({"name": name, "id": call_id, "arguments": deepcopy(arguments),
-                    "assistant": assistant, "returned": deepcopy(returned), "observed": observed})
+                call = {"name": name, "id": call_id, "arguments": deepcopy(arguments),
+                    "assistant": assistant, "returned": deepcopy(returned), "observed": observed}
+                if managed:
+                    call.update(managedLifecycleBefore=before,
+                                managedLifecycleAfter=runner.kit.memory.store.lifecycle_snapshot())
+                record["toolCalls"].append(call)
                 return observed["payload"]
 
             public["search"] = await dispatch("memory_search", {"query": instruction["query"],
@@ -316,6 +368,14 @@ async def _run_phase(request):
     raw["result"] = deepcopy(result)
     raw["settlement"] = [{"session": name, "activeTurn": runner._active_turn is not None,
                            "outstandingBlockingSources": runner._blocking_count} for name, runner in runners]
+    if managed:
+        raw["closeReceipts"] = []
+        for name, runner in runners:
+            store = runner.kit.memory.store
+            before = store.lifecycle_snapshot()
+            returned = store.close()
+            raw["closeReceipts"].append({"session": name, "before": before,
+                "returnedNone": returned is None, "after": store.lifecycle_snapshot()})
     return {"result": result, "raw": raw}
 
 

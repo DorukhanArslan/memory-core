@@ -5161,13 +5161,20 @@
           "symbol": "HostSessionRunner._load",
           "anchor": "    def _load(",
           "line": 590
+        },
+        {
+          "path": "memory_core/host/managed_index.py",
+          "symbol": "ManagedSQLiteMemoryStore",
+          "anchor": "class ManagedSQLiteMemoryStore(",
+          "line": 32
         }
       ],
       "implementation": "partial",
       "notes": [
         "The durable catalog can reconstruct model context from session identity, and HostSessionRunner reloads its saved auxiliary state and repairs an outstanding index marker before admission. The installed SDK example performs real save, immediate recall and a fresh catalog reopen.",
         "A complete natural two-host process-restart/model recall comparison is still required; neither the example nor durable helper coverage closes this separate host contract. The existing Lab runtime retains process-local live sessions.",
-        "Saved memory and host-supplied transcript corpora can reopen, but the Lab stores live sessions in RAM; durable transcript/SessionState storage and a fresh-process continuation path must be supplied and tested by the host."
+        "Saved memory and host-supplied transcript corpora can reopen, but the Lab stores live sessions in RAM; durable transcript/SessionState storage and a fresh-process continuation path must be supplied and tested by the host.",
+        "An optional provider-none managed SQLite owner performs genuine cold-search bootstrap, live repair notices and physical operation close custody; the default eager host lifecycle is unchanged. Separate strict transcript-publication and managed process fixtures retain the remaining session-publication cadence difference and do not close this contract."
       ],
       "acceptancePoints": [
         "host.restart-recall.outcomes",

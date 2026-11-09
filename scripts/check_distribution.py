@@ -114,6 +114,7 @@ def inspect_distribution(artifact: Path, *, version: str) -> None:
 # The text fixture is shared with tests/unit/test_host_kit_dispatch.py.
 SMOKE = '''
 import asyncio
+from dataclasses import replace
 import importlib
 import importlib.metadata
 import importlib.util
@@ -279,12 +280,30 @@ with tempfile.TemporaryDirectory() as scratch:
         assert "pendingMemoryPublication" not in restored["instanceEntry"]["sdkHostLifecycle"]
 
     asyncio.run(lifecycle_consumer())
+    managed_module = importlib.import_module(package_name + ".host.managed_index")
+    managed_root = root / "managed-cold"
+    managed_config = core.MemoryConfig(workspace_dir=managed_root, flags=flags, session_search=False)
+    cold_memory = core.Memory.from_workspace(managed_root, config=managed_config,
+        initialize=False, reindex=False, source_policy={"sources": ["memory"]})
+    cold_memory.workspace.append_daily_memory("memory/2026-11-09.md", "- The managedcedar project is ready.")
+    managed_store = managed_module.ManagedSQLiteMemoryStore(managed_config, cold_memory.workspace)
+    managed_kit = core.HostKit(replace(cold_memory, store=managed_store), now_ms=lambda: 1794182400000)
+    assert managed_store.index_identity()["status"] == "missing"
+    managed_result = managed_kit.dispatch("memory_search", {"query": "managedcedar", "minScore": 0}, session=state)
+    assert managed_result["results"][0]["path"] == "memory/2026-11-09.md"
+    assert managed_result["warning"] == managed_store.lifecycle_snapshot()["automaticRebuildNotice"]["warning"]
+    assert managed_store.lifecycle_snapshot()["repairCount"] == 1
+    repeated = managed_kit.dispatch("memory_search", {"query": "managedcedar", "minScore": 0}, session=state)
+    assert "warning" not in repeated
+    managed_store.close()
+    assert managed_store.closed and managed_store.lifecycle_snapshot()["activeOperations"] == 0
 print("installed core imports and FTS host lifecycle passed")
 print("installed session authority and compressed archive consumers passed")
 print("installed durable append, continuation and replay consumers passed")
 print("installed real dispatch, live write provenance and stored turn trust consumers passed")
 print("installed extra discovery, Unicode facts and workspace owner consumers passed")
 print("installed serialized save, immediate recall and reopened context consumers passed")
+print("installed managed cold bootstrap, live notice, warm recall and physical close consumer passed")
 '''
 
 

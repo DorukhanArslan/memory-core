@@ -6,6 +6,27 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 
+function validSourcePolicy(policy) {
+  if (!policy || typeof policy !== "object" || Array.isArray(policy)) return false;
+  const keys = ["configuredSessionMemory", "configuredSources", "rememberAcrossConversations", "sourceMtimeMs"];
+  if (Object.hasOwn(policy, "producerPublication")) {
+    const publication = policy.producerPublication;
+    if (!publication || typeof publication !== "object" || Array.isArray(publication) ||
+        Object.keys(publication).join(",") !== "operation" ||
+        publication.operation !== "force-rebuild-after-source-metadata") return false;
+    keys.push("producerPublication");
+  }
+  if (Object.hasOwn(policy, "indexLifecycle") || Object.hasOwn(policy, "runtimeIdentity")) {
+    if (!Object.hasOwn(policy, "producerPublication") || policy.indexLifecycle !== "managed" ||
+        policy.runtimeIdentity !== "openclaw-compatible") return false;
+    keys.push("indexLifecycle", "runtimeIdentity");
+  }
+  return Object.keys(policy).sort().join(",") === keys.sort().join(",") &&
+    Array.isArray(policy.configuredSources) && policy.configuredSources.every(source => ["memory", "sessions"].includes(source)) &&
+    typeof policy.rememberAcrossConversations === "boolean" && typeof policy.configuredSessionMemory === "boolean" &&
+    Number.isFinite(policy.sourceMtimeMs);
+}
+
 export async function runHostRestartRuntime(input, runtimeConfig) {
   if (input?.kind !== "host-restart-recall" || !Number.isFinite(input.nowMs) ||
       input.phases?.length !== 2 || input.phases[0].label !== "produce" ||
@@ -36,11 +57,7 @@ export async function runHostRestartRuntime(input, runtimeConfig) {
   };
   if (input.policy !== undefined) {
     const policy = input.policy;
-    if (!policy || typeof policy !== "object" || Array.isArray(policy) ||
-        Object.keys(policy).sort().join(",") !== "configuredSessionMemory,configuredSources,rememberAcrossConversations,sourceMtimeMs" ||
-        !Array.isArray(policy.configuredSources) || policy.configuredSources.some(source => !["memory", "sessions"].includes(source)) ||
-        typeof policy.rememberAcrossConversations !== "boolean" || typeof policy.configuredSessionMemory !== "boolean" ||
-        !Number.isFinite(policy.sourceMtimeMs)) {
+    if (!validSourcePolicy(policy)) {
       throw Error("The optional shared source policy requires explicit recognized controls and source metadata");
     }
     config.memory.search.sources = [...policy.configuredSources];

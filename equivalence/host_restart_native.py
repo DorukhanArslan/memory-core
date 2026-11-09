@@ -17,6 +17,29 @@ LOCAL = ("host-restart-entry.mjs", "host-restart-preload.mjs", "host-restart-run
          "host-restart-phase.mjs", "host-restart-phase-cli.mjs", "release-preload.mjs",
          "model-runtime-observation.mjs")
 POLICY_LOCAL = ("host-restart-policy-entry.mjs", "host-restart-policy-preload.mjs", *LOCAL[2:])
+PUBLICATION_LOCAL = ("host-restart-publication-entry.mjs", "host-restart-publication-preload.mjs", *LOCAL[2:])
+MANAGED_LOCAL = ("host-restart-managed-entry.mjs", "host-restart-managed-preload.mjs", *LOCAL[2:])
+
+
+def _lane(policy, publication, managed=False):
+    if publication and not policy:
+        raise ValueError("Publication requires its separate source-policy capability")
+    if managed:
+        if not publication:
+            raise ValueError("Managed execution requires its independent publication capability")
+        return ("hostRestartManagedProfile", "host-restart-managed-bootstrap",
+                "host-restart-managed-preload.mjs", "host-restart-managed-entry.mjs",
+                "host-restart-managed-development", MANAGED_LOCAL)
+    if publication:
+        return ("hostRestartPublicationProfile", "host-restart-publication-bootstrap",
+                "host-restart-publication-preload.mjs", "host-restart-publication-entry.mjs",
+                "host-restart-publication-development", PUBLICATION_LOCAL)
+    if policy:
+        return ("hostRestartPolicyProfile", "host-restart-policy-bootstrap",
+                "host-restart-policy-preload.mjs", "host-restart-policy-entry.mjs",
+                "host-restart-policy-development", POLICY_LOCAL)
+    return ("hostRestartProfile", "host-restart-bootstrap", "host-restart-preload.mjs",
+            "host-restart-entry.mjs", "host-restart-recall-development", LOCAL)
 
 
 def digest(path):
@@ -27,7 +50,7 @@ def write_json(path, value):
     Path(path).write_text(json.dumps(value, ensure_ascii=True, indent=2, allow_nan=False) + "\n", encoding="utf8")
 
 
-def validate_traces(directory, context, runtime, authority, *, process_pid, coordinator_pid, raw, policy=False):
+def validate_traces(directory, context, runtime, authority, *, process_pid, coordinator_pid, raw, policy=False, publication=False, managed=False):
     from equivalence.host_restart_bindings import (
         REQUIRED_HOST_ARTIFACTS, WRITE_ARTIFACTS, READ_ARTIFACTS,
         PUBLICATION_PARENT_ARTIFACTS, PLUGIN_STATE_PARENT_ARTIFACTS,
@@ -35,10 +58,7 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, coor
     )
 
     originals = {(p["location"], f["path"]): f["sha256"] for p in runtime["packages"] for f in p["files"]}
-    profile_key = "hostRestartPolicyProfile" if policy else "hostRestartProfile"
-    event = "host-restart-policy-bootstrap" if policy else "host-restart-bootstrap"
-    preload = "host-restart-policy-preload.mjs" if policy else "host-restart-preload.mjs"
-    entry = "host-restart-policy-entry.mjs" if policy else "host-restart-entry.mjs"
+    profile_key, event, preload, entry, _, _ = _lane(policy, publication, managed)
     locals_ = {item["path"]: item["sha256"] for item in context["allowedLocal"]}
     children = raw["children"]
     if raw["coordinatorPid"] != process_pid or raw["coordinatorPpid"] != coordinator_pid:
@@ -110,6 +130,9 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, coor
         if policy:
             from equivalence.host_restart_policy_bindings import ADDITIONAL_REQUIRED_HOST_ARTIFACTS
             required = (*required, *ADDITIONAL_REQUIRED_HOST_ARTIFACTS)
+        if publication:
+            from equivalence.host_restart_publication_bindings import ADDITIONAL_REQUIRED_HOST_ARTIFACTS
+            required = (*required, *ADDITIONAL_REQUIRED_HOST_ARTIFACTS)
         missing = sorted(set(required) - loaded)
         if missing:
             raise ValueError(f"The actual host omitted declared original owners: {missing}")
@@ -128,8 +151,12 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, coor
             "traces": [{"name": path.name, "sha256": digest(path), "text": path.read_text()} for path in traces]}
 
 
-def _run_native_case(case, node, runtime, directory, *, timeout, policy):
-    if policy:
+def _run_native_case(case, node, runtime, directory, *, timeout, policy, publication=False, managed=False):
+    if managed:
+        from equivalence.host_restart_managed import CASE_HASHES as hashes, validate_case as validate_literal
+    elif publication:
+        from equivalence.host_restart_publication import CASE_HASHES as hashes, validate_case as validate_literal
+    elif policy:
         from equivalence.host_restart_policy import CASE_HASHES as hashes, validate_case as validate_literal
     else:
         hashes, validate_literal = CASE_HASHES, validate_case
@@ -141,11 +168,8 @@ def _run_native_case(case, node, runtime, directory, *, timeout, policy):
     traces, evidence = directory / "traces", directory / "evidence"
     traces.mkdir()
     evidence.mkdir()
-    profile_key = "hostRestartPolicyProfile" if policy else "hostRestartProfile"
-    preload = "host-restart-policy-preload.mjs" if policy else "host-restart-preload.mjs"
-    entry = "host-restart-policy-entry.mjs" if policy else "host-restart-entry.mjs"
-    local = POLICY_LOCAL if policy else LOCAL
-    profile = {"kind": "host-restart-policy-development" if policy else "host-restart-recall-development", "operation": case["operation"],
+    profile_key, _, preload, entry, kind, local = _lane(policy, publication, managed)
+    profile = {"kind": kind, "operation": case["operation"],
                "caseId": case["id"], "caseWireSha256": hashes[case["id"]],
                "nodeRuntime": authority, "acceptancePointsAwarded": 0}
     context = {"schemaVersion": 1, "kind": "release-oracle-execution", "runtime": runtime,
@@ -183,8 +207,12 @@ def _run_native_case(case, node, runtime, directory, *, timeout, policy):
     if not isinstance(raw, list) or len(raw) != 1 or Path(raw[0]["fixtureBase"]).parent != evidence:
         raise ValueError("Restart borrowed another case's evidence directory")
     trace = validate_traces(traces, {**context, "_sha256": digest(context_path)}, runtime, authority,
-                            process_pid=process.pid, coordinator_pid=os.getpid(), raw=raw[0], policy=policy)
-    if policy:
+                            process_pid=process.pid, coordinator_pid=os.getpid(), raw=raw[0], policy=policy, publication=publication, managed=managed)
+    if managed:
+        from equivalence.host_restart_managed_evidence import validate_capture
+    elif publication:
+        from equivalence.host_restart_publication_evidence import validate_capture
+    elif policy:
         from equivalence.host_restart_policy_evidence import validate_capture
     else:
         from equivalence.host_restart_evidence import validate_capture
@@ -207,3 +235,13 @@ def run_native_case(case, node, runtime, directory, *, timeout=120):
 def run_native_policy_case(case, node, runtime, directory, *, timeout=120):
     """Separate frozen policy capability with the same authenticated transport."""
     return _run_native_case(case, node, runtime, directory, timeout=timeout, policy=True)
+
+
+def run_native_publication_case(case, node, runtime, directory, *, timeout=120):
+    """Independent genuine producer rebuild and postcommit transcript capability."""
+    return _run_native_case(case, node, runtime, directory, timeout=timeout, policy=True, publication=True)
+
+
+def run_native_managed_case(case, node, runtime, directory, *, timeout=120):
+    """Independent managed-index capability; no capability's literals are widened."""
+    return _run_native_case(case, node, runtime, directory, timeout=timeout, policy=True, publication=True, managed=True)

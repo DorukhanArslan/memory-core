@@ -5,8 +5,9 @@ from pathlib import Path
 
 from memory_core import (
     FeatureFlags, HostKit, HostModelResult, HostSessionRunner, HostTurn,
-    SessionState,
+    SessionState, MemoryConfig,
 )
+from memory_core.host.managed_index import ManagedSQLiteMemoryStore
 from memory_core.live import JsonlTraceSink, SubjectMemory
 from memory_core.session_catalog import MemorySessionCatalog
 
@@ -41,3 +42,8 @@ async def invalid_lifecycle(runner: HostSessionRunner, workspace: Path) -> None:
     await runner.run_turn(42, execute=valid_model)  # E: arg-type
     HostModelResult(usage="tokens")  # E: arg-type
     await runner.acknowledge_memory_publication(expected_turn_id=42)  # E: arg-type
+
+
+def invalid_managed(store: ManagedSQLiteMemoryStore, config: MemoryConfig) -> None:
+    store.search("needle", max_results="many")  # E: arg-type
+    ManagedSQLiteMemoryStore(config, "not a workspace")  # E: arg-type

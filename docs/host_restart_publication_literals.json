@@ -1,0 +1,265 @@
+{
+  "kind": "host-restart-publication-development-literals",
+  "acceptancePointsAwarded": 0,
+  "cases": [
+    {
+      "id": "host-restart-publication-memory-ascii",
+      "operation": "host-restart-publication-runtime",
+      "requirement": "host.restart-recall",
+      "covers": [],
+      "input": {
+        "kind": "host-restart-recall",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:publication-1-writer",
+            "sessionId": "host-publication-1-writer"
+          },
+          "fresh": {
+            "sessionKey": "agent:main:publication-1-fresh",
+            "sessionId": "host-publication-1-fresh"
+          },
+          "restarted": {
+            "sessionKey": "agent:main:publication-1-restarted",
+            "sessionId": "host-publication-1-restarted"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:publication-1-isolated",
+            "sessionId": "host-publication-1-isolated"
+          }
+        },
+        "phases": [
+          {
+            "label": "produce",
+            "savePrompt": "Please remember that my drink preference is aurorakumquat-739 tea.",
+            "write": {
+              "path": "memory/2026-11-09.md",
+              "text": "My drink preference is aurorakumquat-739 tea.",
+              "content": "My drink preference is aurorakumquat-739 tea.\n"
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            },
+            "saveAck": "Saved."
+          },
+          {
+            "label": "restart",
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": false,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          }
+        }
+      }
+    },
+    {
+      "id": "host-restart-publication-memory-unicode",
+      "operation": "host-restart-publication-runtime",
+      "requirement": "host.restart-recall",
+      "covers": [],
+      "input": {
+        "kind": "host-restart-recall",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:publication-2-writer",
+            "sessionId": "host-publication-2-writer"
+          },
+          "fresh": {
+            "sessionKey": "agent:main:publication-2-fresh",
+            "sessionId": "host-publication-2-fresh"
+          },
+          "restarted": {
+            "sessionKey": "agent:main:publication-2-restarted",
+            "sessionId": "host-publication-2-restarted"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:publication-2-isolated",
+            "sessionId": "host-publication-2-isolated"
+          }
+        },
+        "phases": [
+          {
+            "label": "produce",
+            "savePrompt": "Please remember that my drink preference is Ihlamur-ğüşİ-482 ☕.",
+            "write": {
+              "path": "memory/2026-11-09.md",
+              "text": "My drink preference is Ihlamur-ğüşİ-482 ☕.",
+              "content": "My drink preference is Ihlamur-ğüşİ-482 ☕.\n"
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            },
+            "saveAck": "Saved."
+          },
+          {
+            "label": "restart",
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": false,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          }
+        }
+      }
+    },
+    {
+      "id": "host-restart-publication-indexed-sessions",
+      "operation": "host-restart-publication-runtime",
+      "requirement": "host.restart-recall",
+      "covers": [],
+      "input": {
+        "kind": "host-restart-recall",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:publication-3-writer",
+            "sessionId": "host-publication-3-writer"
+          },
+          "fresh": {
+            "sessionKey": "agent:main:publication-3-fresh",
+            "sessionId": "host-publication-3-fresh"
+          },
+          "restarted": {
+            "sessionKey": "agent:main:publication-3-restarted",
+            "sessionId": "host-publication-3-restarted"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:publication-3-isolated",
+            "sessionId": "host-publication-3-isolated"
+          }
+        },
+        "phases": [
+          {
+            "label": "produce",
+            "savePrompt": "Please remember that my drink preference is aurorakumquat-739 tea.",
+            "write": {
+              "path": "memory/2026-11-09.md",
+              "text": "My drink preference is aurorakumquat-739 tea.",
+              "content": "My drink preference is aurorakumquat-739 tea.\n"
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            },
+            "saveAck": "Saved."
+          },
+          {
+            "label": "restart",
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": true,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          }
+        }
+      }
+    },
+    {
+      "id": "host-restart-publication-get-failure",
+      "operation": "host-restart-publication-runtime",
+      "requirement": "host.restart-recall",
+      "covers": [],
+      "input": {
+        "kind": "host-restart-recall",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:publication-4-writer",
+            "sessionId": "host-publication-4-writer"
+          },
+          "fresh": {
+            "sessionKey": "agent:main:publication-4-fresh",
+            "sessionId": "host-publication-4-fresh"
+          },
+          "restarted": {
+            "sessionKey": "agent:main:publication-4-restarted",
+            "sessionId": "host-publication-4-restarted"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:publication-4-isolated",
+            "sessionId": "host-publication-4-isolated"
+          }
+        },
+        "phases": [
+          {
+            "label": "produce",
+            "savePrompt": "Please remember that my drink preference is cedarquince-913 tea.",
+            "write": {
+              "path": "memory/2026-11-09.md",
+              "text": "My drink preference is cedarquince-913 tea.",
+              "content": "My drink preference is cedarquince-913 tea.\n"
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            },
+            "saveAck": "Saved."
+          },
+          {
+            "label": "restart",
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            },
+            "beforeGet": {
+              "operation": "replace-source-with-directory"
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": false,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          }
+        }
+      }
+    }
+  ]
+}

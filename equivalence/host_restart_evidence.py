@@ -76,8 +76,12 @@ def _read(case, public, initial, terminal, tool_calls, assistant, *, failure):
     require(public["answer"] == expected == _text(assistant), "The terminal answer did not come from the actual tool result")
 
 
-def _validate_capture(case, raw, result, *, native, policy):
-    if policy:
+def _validate_capture(case, raw, result, *, native, policy, publication=False, managed=False):
+    if managed:
+        from equivalence.host_restart_managed import validate_case as validate_literal
+    elif publication:
+        from equivalence.host_restart_publication import validate_case as validate_literal
+    elif policy:
         from equivalence.host_restart_policy import validate_case as validate_literal
     else:
         validate_literal = validate_case
@@ -121,7 +125,11 @@ def _validate_capture(case, raw, result, *, native, policy):
             for session in phase["sessions"]:
                 require(session["initialEvents"] == [] and session["historyConstruction"]["messages"] == []
                         and session["scope"]["sessionKey"] not in session["loadedStore"], "A fresh identity discarded existing session history")
-                require(session["persistence"] and all(item["result"]["appended"] for item in session["persistence"]), "The native host did not persist actual loop messages")
+                if publication:
+                    require(session["persistence"] and all(item["result"]["kind"] == "result" and item["result"]["result"]["appended"] for item in session["persistence"]),
+                            "The native strict host owner did not commit actual loop messages")
+                else:
+                    require(session["persistence"] and all(item["result"]["appended"] for item in session["persistence"]), "The native host did not persist actual loop messages")
             writer = phase["loops"][0] if ordinal == 0 else None
             if writer:
                 events = writer["toolEvents"]

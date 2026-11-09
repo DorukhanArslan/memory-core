@@ -13,6 +13,27 @@ const OPENCLAW_BUILTIN_MEMORY_PLUGIN_ID = "memory-core";
 const transported = value => JSON.parse(JSON.stringify(value));
 const errorRecord = error => ({ name: error.name, message: error.message, stack: error.stack });
 
+function validSourcePolicy(policy) {
+  if (!policy || typeof policy !== "object" || Array.isArray(policy)) return false;
+  const keys = ["configuredSessionMemory", "configuredSources", "rememberAcrossConversations", "sourceMtimeMs"];
+  if (Object.hasOwn(policy, "producerPublication")) {
+    const publication = policy.producerPublication;
+    if (!publication || typeof publication !== "object" || Array.isArray(publication) ||
+        Object.keys(publication).join(",") !== "operation" ||
+        publication.operation !== "force-rebuild-after-source-metadata") return false;
+    keys.push("producerPublication");
+  }
+  if (Object.hasOwn(policy, "indexLifecycle") || Object.hasOwn(policy, "runtimeIdentity")) {
+    if (!Object.hasOwn(policy, "producerPublication") || policy.indexLifecycle !== "managed" ||
+        policy.runtimeIdentity !== "openclaw-compatible") return false;
+    keys.push("indexLifecycle", "runtimeIdentity");
+  }
+  return Object.keys(policy).sort().join(",") === keys.sort().join(",") &&
+    Array.isArray(policy.configuredSources) && policy.configuredSources.every(source => ["memory", "sessions"].includes(source)) &&
+    typeof policy.rememberAcrossConversations === "boolean" && typeof policy.configuredSessionMemory === "boolean" &&
+    Number.isFinite(policy.sourceMtimeMs);
+}
+
 function decodeEnvelope(envelope) {
   const value = transported(envelope);
   if (value?.content?.[0]?.type !== "text" || typeof value.content[0].text !== "string") {
@@ -98,11 +119,7 @@ export async function runHostRestartPhase(request, stdin = JSON.stringify(reques
   if (phase.label === "restart" && Object.keys(phase).some(key => !["label", "recall", "beforeGet"].includes(key))) {
     throw Error("The fresh process cannot receive a producer phase or saved content");
   }
-  if (policy !== undefined && (!policy || typeof policy !== "object" || Array.isArray(policy) ||
-      Object.keys(policy).sort().join(",") !== "configuredSessionMemory,configuredSources,rememberAcrossConversations,sourceMtimeMs" ||
-      !Array.isArray(policy.configuredSources) || policy.configuredSources.some(source => !["memory", "sessions"].includes(source)) ||
-      typeof policy.rememberAcrossConversations !== "boolean" || typeof policy.configuredSessionMemory !== "boolean" ||
-      !Number.isFinite(policy.sourceMtimeMs))) {
+  if (policy !== undefined && !validSourcePolicy(policy)) {
     throw Error("The host phase requires the unchanged optional explicit source policy");
   }
   process.env.OPENCLAW_STATE_DIR = path.join(directory, "state");
@@ -118,7 +135,8 @@ export async function runHostRestartPhase(request, stdin = JSON.stringify(reques
       setTimeoutUnchanged: setTimeout === beforeTimeout, performanceNowUnchanged: performance.now === beforePerformance },
     sessions: [], loops: [], toolFactoryCalls: [], toolOutcomes: [], maintenance: [], snapshots: [], mutations: [], closeReceipts: [] };
   const imp = file => import(pathToFileURL(path.join(runtimeRoot, file)).href);
-  let clearConfig, closeManagers, closeAgentDatabases;
+  let clearConfig, closeManagers, closeAgentDatabases, strictTranscriptAppend,
+    readTranscriptUpdateVersion, unsubscribeTranscriptUpdates;
   const managers = new Map();
   let output, failure;
   try {
@@ -144,6 +162,17 @@ export async function runHostRestartPhase(request, stdin = JSON.stringify(reques
     const { x: createStream } = await imp("dist/llm-ASoRyt-k.mjs");
     const sessions = await imp("dist/plugin-sdk/session-store-runtime.js");
     const accessor = await imp("dist/session-accessor-CiKKTlbe.mjs");
+    if (policy?.producerPublication !== undefined) {
+      const transcript = await imp("dist/plugin-sdk/session-transcript-runtime.js");
+      strictTranscriptAppend = transcript.appendSessionTranscriptMessageByIdentityStrict;
+      const notifications = await imp("dist/transcript-events-Ce9wKss8.mjs");
+      readTranscriptUpdateVersion = notifications.s;
+      raw.transcriptUpdates = [];
+      raw.transcriptUpdateVersions = { beforeRegistration: readTranscriptUpdateVersion() };
+      unsubscribeTranscriptUpdates = notifications.r(update => {
+        raw.transcriptUpdates.push({ version: readTranscriptUpdateVersion(), update: transported(update) });
+      });
+    }
     const artifacts = await imp("dist/memory-artifact-provenance-DhnyWiV1.mjs");
     const model = { id: "fixture-restart-model", name: "Fixture restart model", api: "openai-completions", provider: "openai",
       baseUrl: "https://fixture.invalid", reasoning: false, input: ["text"],
@@ -292,8 +321,27 @@ export async function runHostRestartPhase(request, stdin = JSON.stringify(reques
         if (event.type === "tool_execution_end") loop.toolEvents.push(transported(event));
         if (event.type === "message_end") {
           const options = { message: event.message, eventId: `${label}:message:${eventIndex++}`, now: nowMs, cwd: activeWorkspace };
-          const result = await accessor.appendTranscriptMessage(scope, options);
-          session.persistence.push({ scope, options: transported(options), result, returnedUndefined: result === undefined });
+          if (strictTranscriptAppend) {
+            const params = { ...scope, ...options, config: cfg, updateMode: "inline", runId: `host-restart:${label}` };
+            const receipt = { scope, options: transported(options), event: transported(event),
+              method: "appendSessionTranscriptMessageByIdentityStrict", params: transported(params),
+              versionBefore: readTranscriptUpdateVersion(), updateOffsetBefore: raw.transcriptUpdates.length };
+            session.persistence.push(receipt);
+            try {
+              const result = await strictTranscriptAppend(params);
+              Object.assign(receipt, { result, returnedUndefined: result === undefined,
+                versionAfter: readTranscriptUpdateVersion(), updateOffsetAfter: raw.transcriptUpdates.length });
+              if (result.kind !== "result") throw Error(`The original strict transcript append returned ${result.kind}`);
+            } catch (error) {
+              receipt.error = errorRecord(error);
+              receipt.versionAfter = readTranscriptUpdateVersion();
+              receipt.updateOffsetAfter = raw.transcriptUpdates.length;
+              throw error;
+            }
+          } else {
+            const result = await accessor.appendTranscriptMessage(scope, options);
+            session.persistence.push({ scope, options: transported(options), result, returnedUndefined: result === undefined });
+          }
         }
       };
       const user = { role: "user", content: [{ type: "text", text: prompt }], timestamp: nowMs };
@@ -323,7 +371,9 @@ export async function runHostRestartPhase(request, stdin = JSON.stringify(reques
       await runLoop("writer", identity.writer, identity.agentId, phase.savePrompt, phase.write);
       const manager = await getManager(identity.agentId);
       manager.markMemoryWatchDirty(); raw.maintenance.push({ operation: "markMemoryWatchDirty", agentId: identity.agentId });
-      const syncRequest = { reason: "host-restart-fixture" };
+      const syncRequest = policy?.producerPublication !== undefined
+        ? { reason: "host-restart-producer-publication", force: true }
+        : { reason: "host-restart-fixture" };
       const synced = await manager.sync(syncRequest);
       raw.maintenance.push({ operation: "sync", request: syncRequest, agentId: identity.agentId,
         result: synced, returnedUndefined: synced === undefined, status: manager.status() });
@@ -353,6 +403,8 @@ export async function runHostRestartPhase(request, stdin = JSON.stringify(reques
         failure ??= error;
       }
     }
+    if (readTranscriptUpdateVersion) raw.transcriptUpdateVersions.afterClose = readTranscriptUpdateVersion();
+    unsubscribeTranscriptUpdates?.();
     clearConfig?.(); mock.timers.reset();
     await fs.writeFile(path.join(directory, `${phase.label}-raw.json`), JSON.stringify(raw));
   }

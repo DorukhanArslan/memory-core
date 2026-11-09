@@ -336,6 +336,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
 
                 if len(cases) == 1 and cases[0]["operation"] in ENTRY_PROVENANCE_PROFILES:
                     context_options["entry_profile"] = prepare_entry_provenance_profile(cases[0]["operation"], node)
+                from equivalence.atomic_publication_profile import ATOMIC_PUBLICATION_PROFILES, prepare_atomic_publication_profile
+
+                if len(cases) == 1 and cases[0]["operation"] in ATOMIC_PUBLICATION_PROFILES:
+                    context_options["atomic_profile"] = prepare_atomic_publication_profile(cases[0]["operation"], node)
                 execution = resources.enter_context(ReleaseOracleExecution(
                     release_runtime, _adapter_identity(), **context_options))
                 # Only this reviewed preload is supplied. User Node options,
@@ -531,6 +535,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "workspace-isolation-runtime",
             "model-session-runtime", "model-tool-result-runtime", "trust-worker-runtime", "model-tool-error-runtime",
             "entry-memory-publication-runtime", "entry-session-publication-runtime", "entry-provider-preparation-runtime",
+            "atomic-commit-runtime", "atomic-append-runtime", "atomic-bootstrap-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -804,6 +809,15 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
                 report["entryProvenanceRuntimeBindings"] = prepare_entry_provenance_bindings(checkout, Path(runtime_config["runtimeRoot"]))
                 report["entryProvenanceNodeAuthority"] = prepare_model_node_authority(node)
+            from equivalence.atomic_publication_profile import ATOMIC_PUBLICATION_PROFILES
+
+            atomic_operations = {case["operation"] for case in runtime_cases} & set(ATOMIC_PUBLICATION_PROFILES)
+            if atomic_operations:
+                from equivalence.atomic_publication_bindings import prepare_atomic_publication_bindings
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report["atomicPublicationRuntimeBindings"] = prepare_atomic_publication_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                report["atomicPublicationNodeAuthority"] = prepare_model_node_authority(node)
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -834,6 +848,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     if (prepare_entry_provenance_bindings(checkout, Path(runtime_config["runtimeRoot"])) != report["entryProvenanceRuntimeBindings"]
                             or prepare_model_node_authority(node) != report["entryProvenanceNodeAuthority"]):
                         raise ValueError("Entry source/artifact/profile or executable authority changed.")
+                if atomic_operations and (
+                        prepare_atomic_publication_bindings(checkout, Path(runtime_config["runtimeRoot"])) != report["atomicPublicationRuntimeBindings"]
+                        or prepare_model_node_authority(node) != report["atomicPublicationNodeAuthority"]):
+                    raise ValueError("Atomic source/artifact/profile or executable authority changed.")
                 if new_model_operations and prepare_model_node_authority(node) != report["modelNodeAuthority"]:
                     raise ValueError("The approved model boundary executable changed.")
                 if flush_runtime and prepare_flush_runtime_bindings(

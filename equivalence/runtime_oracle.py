@@ -19,6 +19,7 @@ from typing import Any
 
 from equivalence.release_runtime import ReleaseRuntimeError, validate_release_sources
 from equivalence.entry_provenance_profile import ENTRY_PROVENANCE_PROFILES, validate_entry_provenance_profile
+from equivalence.atomic_publication_profile import ATOMIC_PUBLICATION_PROFILES, validate_atomic_publication_profile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -104,6 +105,15 @@ _OPERATIONS = {
     ),
     "entry-provider-preparation-runtime": (
         "entry-provenance-runtime.mjs", "dist/manager-index-preparation-wXpJtJiU.mjs", False,
+    ),
+    "atomic-commit-runtime": (
+        "atomic-publication-runtime.mjs", "dist/short-term-promotion-memory-write-DLJgScco.mjs", False,
+    ),
+    "atomic-append-runtime": (
+        "atomic-publication-runtime.mjs", ("node_modules/@openclaw/fs-safe", "dist/root.js"), False,
+    ),
+    "atomic-bootstrap-runtime": (
+        "atomic-publication-runtime.mjs", "dist/workspace-C0LMBmap.mjs", False,
     ),
 }
 
@@ -634,13 +644,14 @@ class ReleaseOracleExecution:
 
     def __init__(self, config: dict, adapter_hashes: dict[str, str], *, fixture_captures: bool = False,
                  turn_taint_source: dict | None = None, model_node_runtime: dict | None = None,
-                 entry_profile: dict | None = None):
+                 entry_profile: dict | None = None, atomic_profile: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
         self.turn_taint_source = deepcopy(turn_taint_source)
         self.model_node_runtime = deepcopy(model_node_runtime)
         self.entry_profile = deepcopy(entry_profile)
+        self.atomic_profile = deepcopy(atomic_profile)
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
@@ -649,8 +660,13 @@ class ReleaseOracleExecution:
         try:
             if self.entry_profile is not None:
                 self.entry_profile = validate_entry_provenance_profile(self.entry_profile)
-                if self.model_node_runtime is not None or self.turn_taint_source is not None or self.fixture_captures:
+                if self.model_node_runtime is not None or self.turn_taint_source is not None or self.fixture_captures or self.atomic_profile is not None:
                     raise RuntimeOracleError("Entry provenance cannot borrow model, source-owner or fixture-source capabilities.")
+            if self.atomic_profile is not None:
+                self.atomic_profile = validate_atomic_publication_profile(self.atomic_profile)
+                if any((self.entry_profile is not None, self.model_node_runtime is not None,
+                        self.turn_taint_source is not None, self.fixture_captures)):
+                    raise RuntimeOracleError("Atomic publication cannot borrow model, entry, source or fixture capabilities.")
             if self.model_node_runtime is not None:
                 from equivalence.model_runtime_authority import validate_model_node_authority
 
@@ -722,6 +738,9 @@ class ReleaseOracleExecution:
             if self.entry_profile is not None:
                 self._context["approvedNodeRuntime"] = self.entry_profile["nodeRuntime"]
                 self._context["entryProvenanceProfile"] = self.entry_profile
+            if self.atomic_profile is not None:
+                self._context["approvedNodeRuntime"] = self.atomic_profile["nodeRuntime"]
+                self._context["atomicPublicationProfile"] = self.atomic_profile
             if self.fixture_captures:
                 fixture = str((ROOT / "equivalence/flush-execution.mjs").resolve())
                 if fixture not in self._locals:
@@ -878,6 +897,12 @@ class ReleaseOracleExecution:
         case = cases[0]
         row = result["results"][0]
         operation = case.get("operation")
+        if (self.atomic_profile is not None) is not (operation in ATOMIC_PUBLICATION_PROFILES):
+            raise RuntimeOracleError("The atomic capability is restricted to its three declared original owners.")
+        if self.atomic_profile is not None:
+            validate_atomic_publication_profile(self.atomic_profile)
+            if self.atomic_profile["operation"] != operation or self.atomic_profile["inputKind"] != case.get("input", {}).get("kind"):
+                raise RuntimeOracleError("Atomic commit, append and bootstrap profiles cannot impersonate one another.")
         if (self.entry_profile is not None) is not (operation in ENTRY_PROVENANCE_PROFILES):
             raise RuntimeOracleError("The entry capability is restricted to its three explicit compiled profiles.")
         if self.entry_profile is not None:
@@ -920,7 +945,7 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("Release memory fixtures require provider none.")
         if operation == "turn-trust-runtime" and not row["ok"]:
             raise RuntimeOracleError("The real turn-trust caller did not complete its registered execution and persistence flow.")
-        if operation in {*MODEL_RUNTIME_OPERATIONS, *ENTRY_PROVENANCE_PROFILES} and not row["ok"]:
+        if operation in {*MODEL_RUNTIME_OPERATIONS, *ENTRY_PROVENANCE_PROFILES, *ATOMIC_PUBLICATION_PROFILES} and not row["ok"]:
             raise RuntimeOracleError("The real model boundary caller did not complete its declared original execution and output transport.")
         if _digest(_regular(self.context_path, MAX_TRACE_BYTES)) != self._context_digest:
             raise RuntimeOracleError("The owned release execution configuration changed.")
@@ -933,6 +958,7 @@ class ReleaseOracleExecution:
         total = 0
         loaded, bootstrap, worker_imports, local_imports, captures = {}, [], [], set(), {}
         release_by_pid, local_by_pid, process_parents = {}, {}, {}
+        atomic_loaded_by_pid, atomic_native_by_pid = {}, {}
         reference_source_imports = []
         entry_trace_files = []
         for trace in traces:
@@ -958,14 +984,20 @@ class ReleaseOracleExecution:
                     or first.get("preloadSha256") != self._preload_digest
                     or first.get("fetchDenied") is not True or first.get("providerMode") != "none"):
                 raise RuntimeOracleError("Runtime thread bootstrap protection was not attested.")
-            node_authority = self.model_node_runtime or (self.entry_profile["nodeRuntime"] if self.entry_profile is not None else None)
+            node_authority = (self.model_node_runtime
+                              or (self.entry_profile["nodeRuntime"] if self.entry_profile is not None else None)
+                              or (self.atomic_profile["nodeRuntime"] if self.atomic_profile is not None else None))
             if node_authority is not None and first.get("runtime") != node_authority:
                 raise RuntimeOracleError("The actual native process or worker omitted its approved model binary authority.")
             if self.entry_profile is not None and first.get("entryProfile") != self.entry_profile:
                 raise RuntimeOracleError("The actual entry process or worker omitted its exact compiled profile authority.")
+            if self.atomic_profile is not None and first.get("atomicProfile") != self.atomic_profile:
+                raise RuntimeOracleError("The actual atomic process omitted its exact compiled profile authority.")
             bootstrap.append({"pid": pid, "threadId": thread, "isMainThread": thread == 0,
                               **({"runtime": first["runtime"]} if node_authority is not None else {}),
                               **({"entryProfile": first["entryProfile"]} if self.entry_profile is not None else {})})
+            if self.atomic_profile is not None:
+                bootstrap[-1]["atomicProfile"] = first["atomicProfile"]
             if thread == 0:
                 process_parents[pid] = first.get("ppid")
             for event in events[1:]:
@@ -1023,12 +1055,15 @@ class ReleaseOracleExecution:
                     if self._packages.get(key) != digest:
                         raise RuntimeOracleError("A runtime import is not an authenticated release file.")
                     if event["event"] == "load":
+                        atomic_loaded_by_pid.setdefault((pid, thread), set()).add(key)
                         loaded[key] = {"package": key[0], "path": key[1], "sha256": digest}
                         if key[0] == "node_modules/openclaw":
                             release_by_pid.setdefault(pid, set()).add(key[1])
                         if thread > 0:
                             worker_imports.append({"package": key[0], "path": key[1],
                                                    "threadId": thread, "pid": pid})
+                    elif event["event"] == "resolve-native":
+                        atomic_native_by_pid.setdefault((pid, thread), set()).add(key)
                 else:
                     raise RuntimeOracleError("A runtime import has an unknown authority.")
         if not any(item["isMainThread"] for item in bootstrap):
@@ -1054,7 +1089,8 @@ class ReleaseOracleExecution:
             if any(("node_modules/openclaw", owner) not in loaded for owner in REQUIRED_LOADED_ARTIFACTS):
                 raise RuntimeOracleError("The actual declared workspace/file/index/recall/checkpoint owners did not execute.")
             validate_workspace_isolation_workers(worker_imports)
-        if required_owner is not None and ("node_modules/openclaw", required_owner) not in loaded:
+        required_key = required_owner if isinstance(required_owner, tuple) else ("node_modules/openclaw", required_owner)
+        if required_owner is not None and required_key not in loaded:
             message = ("The actual native runtime owner did not execute."
                        if operation in {"exact-path-runtime", "importance-project-runtime"}
                        else "The actual native flush runtime owner did not execute.")
@@ -1174,6 +1210,24 @@ class ReleaseOracleExecution:
             validate_trust_worker_profile_raw(row, case, diagnostic, evidence.parent, runtime_root=self.config["runtimeRoot"],
                 bootstrap=bootstrap, release_by_pid=release_by_pid, local_by_pid=local_by_pid,
                 process_parents=process_parents, worker_imports=worker_imports)
+        if operation in ATOMIC_PUBLICATION_PROFILES:
+            from equivalence.atomic_publication_bindings import REQUIRED_ARTIFACTS_BY_OPERATION, NATIVE_BINDING_OWNER
+            from equivalence.atomic_publication_evidence import AtomicEvidenceError, validate_atomic_publication_raw
+
+            if len(diagnostic) != 1 or not isinstance(diagnostic[0], dict) or len(bootstrap) != 1 or worker_imports:
+                raise RuntimeOracleError("Atomic publication needs its single genuine protected process and complete raw IO.")
+            actor = (diagnostic[0].get("pid"), diagnostic[0].get("threadId"))
+            if actor != (bootstrap[0]["pid"], 0):
+                raise RuntimeOracleError("Atomic raw observations came from a different process or thread.")
+            owners = atomic_loaded_by_pid.get(actor, set())
+            binaries = atomic_native_by_pid.get(actor, set())
+            for owner in REQUIRED_ARTIFACTS_BY_OPERATION[operation]:
+                if owner not in owners and not (owner == NATIVE_BINDING_OWNER and owner in binaries):
+                    raise RuntimeOracleError("An actual atomic owner or default native binary escaped its authenticated process.")
+            try:
+                validate_atomic_publication_raw(case, row["result"], diagnostic[0], evidence_directory=evidence.parent)
+            except AtomicEvidenceError as error:
+                raise RuntimeOracleError(str(error)) from error
         if operation == "model-tool-error-runtime":
             from equivalence.model_tool_error_evidence import validate_model_tool_error_raw
 

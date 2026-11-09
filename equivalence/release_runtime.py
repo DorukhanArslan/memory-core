@@ -301,7 +301,7 @@ def prepare_release_runtime(checkout: Path, destination: Path, download: bool = 
 
 def validate_release_sources(
     config: dict, sources: object, *,
-    required_entry: str = "dist/extensions/memory-core/manager-runtime.js",
+    required_entry: str | tuple[str, str] = "dist/extensions/memory-core/manager-runtime.js",
 ) -> None:
     """Check the loaded-file subset without presenting compiled bytes as TS source."""
     if not isinstance(sources, list) or not sources:
@@ -327,9 +327,13 @@ def validate_release_sources(
         "dist/session-manager-a8MFS1Kk.mjs",
         "dist/embedded-agent-tool-results-Bhhd5B_V.mjs",
         "dist/manager-index-preparation-wXpJtJiU.mjs",
+        "dist/short-term-promotion-memory-write-DLJgScco.mjs",
+        "dist/workspace-C0LMBmap.mjs",
+        ("node_modules/@openclaw/fs-safe", "dist/root.js"),
     }:
         raise ReleaseRuntimeError("The compiled reference requires a reviewed runtime entry.")
-    if ("node_modules/openclaw", required_entry) not in seen:
+    required_key = required_entry if isinstance(required_entry, tuple) else ("node_modules/openclaw", required_entry)
+    if required_key not in seen:
         raise ReleaseRuntimeError("The compiled reference did not execute its required real runtime entry.")
 
 

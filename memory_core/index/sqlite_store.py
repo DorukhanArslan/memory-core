@@ -462,10 +462,12 @@ class SQLiteMemoryStore:
             with closing(self.connect()) as connection:
                 connection.execute("BEGIN")
                 return self.index_identity(db=connection)
+        identities = self._provider_identities()
         return resolve_memory_index_identity_state(
             meta=self.read_index_meta(db=db),
             provider=self._index_provider(),
-            provider_key=self._provider_key(),
+            provider_key=identities[0]["providerKey"],
+            provider_aliases=identities[1:],
             provider_key_known=True,
             configured_sources=resolve_configured_sources_for_meta(CONFIGURED_SOURCES),
             configured_scope_hash=resolve_configured_scope_hash(),
@@ -736,7 +738,10 @@ class SQLiteMemoryStore:
         assert_sources_current()
         has_chunks = bool(chunks) or any(previous_counts.get(key, 0) for key in remaining_old)
         vector_dims = active_dimensions if provider is not None and has_chunks else None
-        published_meta = dict(next_meta)
+        # Ordinary source sync keeps an already-admitted stored namespace,
+        # including the canonical identity of a declared compatible alias.
+        # A full rebuild selects the current provider's canonical namespace.
+        published_meta = dict(meta) if not rebuild and isinstance(meta, dict) else dict(next_meta)
         if vector_dims is not None:
             published_meta["vectorDims"] = vector_dims
         updated_at = time.time_ns() // 1_000_000

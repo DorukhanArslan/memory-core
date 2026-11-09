@@ -35,6 +35,7 @@ if (context.atomicPublicationProfile !== undefined) {
       profile.kind !== "approved-atomic-publication-profile" || !Object.hasOwn(kinds, profile.operation) ||
       profile.inputKind !== kinds[profile.operation] ||
       JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
+      !context.atomicCaseBinding || context.atomicCaseBinding.operation !== profile.operation ||
       context.entryProvenanceProfile !== undefined ||
       (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved atomic original-owner profile capability");
@@ -217,3 +218,9 @@ registerHooks({
     return nextLoad(url, loadContext);
   },
 });
+if (context.atomicPublicationProfile) {
+  const { installAtomicReturnCheckpoint } = await import(new URL("./atomic-return-checkpoint.mjs", import.meta.url).href);
+  installAtomicReturnCheckpoint(context, trace);
+} else if (context.atomicCaseBinding !== undefined) {
+  throw Error("An atomic case cannot borrow another profile's trusted return observer");
+}

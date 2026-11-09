@@ -9,6 +9,7 @@ import errno
 import json
 import os
 from pathlib import Path
+import hashlib
 import re
 import stat
 import traceback
@@ -427,6 +428,11 @@ def _validate_fault_binding(expected, observed, events):
     afters = [item for item in events.values() if item["seq"] > before["seq"] and item.get("when") == "after"
               and same_call(item, before) and item.get("operation") != "fault"]
     effect = expected["effect"]
+    if effect in {"reject-before", "reject-after", "partial-write"}:
+        error = fault.get("error")
+        if (not isinstance(error, dict) or error.get("name") != "Error"
+                or error.get("code") != expected["code"] or error.get("message") != expected["message"]):
+            raise AtomicEvidenceError("The actual injected producer error differs from its literal code and message")
     if effect == "reject-before":
         if related is not before:
             raise AtomicEvidenceError("A pre-dispatch rejection cannot claim a completed syscall")
@@ -467,6 +473,13 @@ def validate_atomic_publication_raw(case: dict, public: dict, raw: dict, *, evid
             or raw.get("input") != case.get("input") or type(raw.get("pid")) is not int
             or raw.get("pid", 0) <= 0 or raw.get("threadId") != 0):
         raise AtomicEvidenceError("Atomic evidence must execute its literal request and original process")
+    if expected_side == "native":
+        backend = raw.get("defaultNativeBinding")
+        if (not isinstance(backend, dict) or backend.get("available") is not True
+                or backend.get("overrideVariablesAbsent") is not True
+                or not isinstance(backend.get("functions"), list)
+                or not {"createStagedFile", "stagedFileMatches", "removeStagedFile", "closeOwnedFd", "renameReplace", "renameNoReplace"} <= set(backend["functions"])):
+            raise AtomicEvidenceError("Native atomic observations require their genuine default available backend without overrides")
     base = Path(raw.get("fixtureBase", ""))
     if (not base.is_absolute() or evidence_directory is not None and base.parent != evidence_directory
             or not base.name.startswith(("native-atomic-", "python-atomic-"))):
@@ -573,3 +586,59 @@ def validate_atomic_publication_raw(case: dict, public: dict, raw: dict, *, evid
 def dump_atomic_raw(directory: Path, raw: dict) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "python-raw.json").write_text(json.dumps([raw], ensure_ascii=False, indent=2) + "\n")
+
+
+def validate_atomic_return_checkpoint(case, raw, events, *, raw_bytes: bytes, input_sha256: str) -> dict:
+    """Keep owner-return and process-exit observations at their actual phases."""
+    if not isinstance(events, list) or not events:
+        raise AtomicEvidenceError("Atomic return observations require their trusted actual lifecycle trace")
+    for event in events:
+        if (event.get("caseId") != case["id"] or event.get("inputSha256") != input_sha256
+                or event.get("fixtureBase") != raw["fixtureBase"] or event.get("pid") != raw["pid"]
+                or event.get("threadId") != 0):
+            raise AtomicEvidenceError("An atomic lifecycle event borrowed another case, actor or fixture")
+    starts = [event for event in events if event["event"] == "atomic-owner-start"]
+    settles = [event for event in events if event["event"] == "atomic-owner-settle"]
+    returns = [event for event in events if event["event"] == "atomic-return-checkpoint"]
+    exit_starts = [event for event in events if event["event"] == "atomic-exit-start"]
+    exit_ends = [event for event in events if event["event"] == "atomic-exit-end"]
+    steps = [request["id"] for request in raw["requests"]]
+    if ([event.get("stepId") for event in starts] != steps
+            or sorted(event.get("stepId") for event in settles) != sorted(steps)
+            or len(returns) != 1 or len(exit_starts) != 1 or len(exit_ends) != 1):
+        raise AtomicEvidenceError("Atomic original calls, settlements, return checkpoint and exit must be unique and complete")
+    checkpoint, exit_start, exit_end = returns[0], exit_starts[0], exit_ends[0]
+    if (not all(events.index(start) < events.index(next(item for item in settles if item["stepId"] == start["stepId"])) < events.index(checkpoint) for start in starts)
+            or not events.index(checkpoint) < events.index(exit_start) < events.index(exit_end)
+            or exit_start.get("checkpointCompleted") is not True):
+        raise AtomicEvidenceError("Atomic lifecycle observations were collected out of the actual call/return/exit order")
+    if (checkpoint.get("rawSha256") != hashlib.sha256(raw_bytes).hexdigest()
+            or checkpoint.get("rawBytes") != len(raw_bytes) or checkpoint.get("ioEventCount") != len(raw["ioEvents"])
+            or checkpoint.get("subjectTree") != raw["snapshots"]["after"]
+            or starts[0].get("beforeTree") != raw["snapshots"]["before"]):
+        raise AtomicEvidenceError("The independent trusted return checkpoint differs from its complete actual journal or physical tree")
+    for request, start in zip(raw["requests"], starts):
+        settlement = next(event for event in settles if event["stepId"] == request["id"])
+        if (start.get("owner") != request["owner"] or start.get("arguments") != request["arguments"]
+                or settlement.get("owner") != request["owner"] or settlement.get("arguments") != request["arguments"]
+                or settlement.get("outcome") != request["outcome"]
+                or request["outcome"]["status"] == "rejected" and settlement.get("rawError") != request.get("rawError")):
+            raise AtomicEvidenceError("The trusted original Promise settlement differs from the adapter's complete actual owner result")
+    if checkpoint.get("settlements") != [{key: value for key, value in event.items()
+                                          if key not in {"event", "caseId", "inputSha256", "fixtureBase", "pid", "threadId"}}
+                                         for event in settles]:
+        raise AtomicEvidenceError("The atomic return checkpoint lost the original actual settlement sequence")
+    actual_exit = _read_surviving_tree(Path(raw["fixtureBase"]))
+    if exit_end.get("error") is not None or exit_end.get("subjectTree") != actual_exit:
+        raise AtomicEvidenceError("The independently reread post-process tree differs from the original trusted exit observation")
+    for event in events:
+        if event["event"] == "atomic-exit-io":
+            if not events.index(exit_start) < events.index(event) < events.index(exit_end):
+                raise AtomicEvidenceError("An original exit IO observation escaped its actual process-exit phase")
+            arguments = event.get("arguments")
+            if (not isinstance(arguments, list) or not arguments or not isinstance(arguments[0], str)
+                    or not Path(arguments[0]).is_relative_to(Path(raw["fixtureBase"]) / "subject")):
+                raise AtomicEvidenceError("The original exit observer captured an ambient IO path")
+    return {"kind": "trusted-original-owner-return-and-process-exit-observations",
+            "events": events, "postProcessSubjectTree": actual_exit,
+            "operationReturnEqualsProcessExit": raw["snapshots"]["after"] == actual_exit}

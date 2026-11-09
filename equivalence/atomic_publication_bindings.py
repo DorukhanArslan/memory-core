@@ -156,10 +156,16 @@ NATIVE_BINARY_SHA256 = "f1aad2619542e43af6f28606e7514054bd0824814f2a2bb4b72f5e16
 EXTERNAL_HASHES.update({
     "dist/durability.js": "2a9c105a960e36d3e4a429020e9bb7f77ffdf72a284e533d4208546e58655583",
     "dist/publish-file.js": "37ac0cc109152e3470b1973be933a4d344cdf892ec85fd999c4fe660da086818",
+    "dist/temp-cleanup.js": "62ed4a1a2acb7367857014b67bbd14f32b497673e410667cb54c402ad30009bb",
+    "dist/file-identity.js": "7a402c9423810d389dd0c7f9574d076bc9319c60b14fb06247b5ffbef4034973",
 })
 EXTERNAL_ANCHORS.update({
     "dist/durability.js": ('export { isHardlinkFallbackError, publishFileExclusive, } from "./publish-file.js";',),
     "dist/publish-file.js": ("export function isHardlinkFallbackError(error) {",),
+    "dist/temp-cleanup.js": ("function cleanupRegisteredTempPathsSync() {",
+                             "export function registerTempPathForExit(tempPath, options) {",
+                             'process.once("exit", cleanupRegisteredTempPathsSync);'),
+    "dist/file-identity.js": ("export function sameFileIdentityForCleanup(left, right, platform = process.platform) {",),
 })
 
 SOURCE_LINKS = (
@@ -191,6 +197,8 @@ COMPILED_LINKS = (
 )
 
 EXTERNAL_LINKS = (
+    ("dist/replace-file-temp-owner.js", "./temp-cleanup.js", (("registerTempPathForExit", "registerTempPathForExit"),), "import"),
+    ("dist/temp-cleanup.js", "./file-identity.js", (("sameFileIdentityForCleanup", "sameFileIdentityForCleanup"),), "import"),
     ("dist/durability.js", "./publish-file.js", (("isHardlinkFallbackError", "isHardlinkFallbackError"),), "export"),
     ("dist/root.js", "./root-impl.js", (("root", "root"),), "export"),
     ("dist/atomic.js", "./replace-file.js", (("replaceFileAtomic", "replaceFileAtomic"),), "export"),
@@ -220,6 +228,7 @@ COMMIT_EXTERNAL_ARTIFACTS = (
     "dist/atomic.js", "dist/advanced.js", "dist/replace-file.js", "dist/replace-file-descriptor.js",
     "dist/replace-file-temp-owner.js", "dist/replace-file-mode.js", "dist/file-cleanup.js", "dist/file-sync.js",
     "dist/write-file-handle.js", "dist/write-queue.js", "dist/strict-file-identity.js", "dist/errors.js",
+    "dist/temp-cleanup.js", "dist/file-identity.js",
 )
 APPEND_EXTERNAL_ARTIFACTS = (
     "dist/root.js", "dist/root-impl.js", "dist/write-file-handle.js", "dist/replace-file-temp-owner.js",

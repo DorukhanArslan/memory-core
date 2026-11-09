@@ -115,6 +115,30 @@ file bytes, modes, descriptor identities and stage observations. Failed or
 rejected evidence is retained with its original streams. The collector checks
 that every declared fault actually dispatched; an untriggered fault cannot pass.
 
+## Return and exit observation phases
+
+The second protected attempt is retained as blocked at the replacement
+read/cleanup/close case. Its independent reread happened after process exit,
+while the adapter's snapshot was at owner return. The genuine original
+`registerTempPathForExit` handler removed the retained stage between those phases.
+This timing assumption was rejected rather than used to discard either tree.
+
+An atomic-only immutable preload observer now invokes each exact original export
+from the host-bound literal case. It accepts only the declared step ID and owned
+fixture root, never a supplied function, outcome or tree. Original Promise
+settlement and full producer errors are recorded by the trusted observer. Once
+all declared calls settle, exactly one return checkpoint reads the entire subject
+through original pre-hook no-follow descriptor operations and binds the actual
+native journal bytes/hash and IO count. Unknown, duplicate and out-of-phase calls
+are rejected. The adapter tree is compared to this independent return tree.
+
+Original process-exit handlers remain installed. Scoped transparent observers
+retain actual owned exit cleanup IO, a separate trusted exit tree, and an anchored
+post-process collector reread. A genuine operation-return/process-exit difference
+is retained explicitly, without pretending the phases are identical. This profile
+compares operation-return behavior; it does not claim SDK/reference process-exit
+registry interchangeability or restart behavior.
+
 ## Receipt codec
 
 The following codec is declared before capture. It does not claim physical

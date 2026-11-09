@@ -433,16 +433,9 @@ async function runAtomicRuntime(kind, operation, input, runtimeConfig) {
       overrideVariablesAbsent: ["FS_SAFE_NATIVE_MODE", "OPENCLAW_FS_SAFE_NATIVE_MODE", "FS_SAFE_PYTHON_MODE", "OPENCLAW_FS_SAFE_PYTHON_MODE"].every((key) => process.env[key] === undefined),
       functions: binding === undefined ? [] : Object.keys(binding).filter((name) => typeof binding[name] === "function").sort() };
     if (!binding || !raw.defaultNativeBinding.overrideVariablesAbsent) throw Error("Atomic proof requires its genuine default native filesystem backend");
-    let original, owner;
-    if (kind === "commit") {
-      const module = await imp("dist/short-term-promotion-memory-write-DLJgScco.mjs");
-      original = module.commitMemoryContent; owner = "commitMemoryContent";
-    } else if (kind === "bootstrap") {
-      const module = await imp("dist/workspace-C0LMBmap.mjs"); original = module.u; owner = "publishBootstrapFile";
-    } else {
-      const module = await imp("../@openclaw/fs-safe/dist/root.js");
-      const root = await module.root(subject); original = root.append.bind(root); owner = "Root.append";
-    }
+    const owner = kind === "commit" ? "commitMemoryContent" : kind === "bootstrap" ? "publishBootstrapFile" : "Root.append";
+    const invokeOriginal = globalThis[Symbol.for("memory.equivalence.atomic.invoke")];
+    if (typeof invokeOriginal !== "function") throw Error("Atomic original owners require their trusted exact-case invocation observer");
     observation = new AtomicIoObservation(input, raw, subject, target, binding);
     raw.snapshots.before = await snapshot(subject, observation.original.promises);
     observation.install();
@@ -456,8 +449,7 @@ async function runAtomicRuntime(kind, operation, input, runtimeConfig) {
         const request = { id, owner, arguments: structuredClone(arguments_) }; raw.requests.push(request);
         observation.event("request", "target", "before", { path: target, arguments: { method: owner, args: jsonValue(arguments_) } });
         try {
-          const returned = kind === "commit" ? await original(arguments_) : kind === "bootstrap" ? await original(target, content)
-            : await original(input.path, content, arguments_.options);
+          const returned = await invokeOriginal(id, fixtureBase);
           const outcome = { id, status: "fulfilled", value: returned ?? null }; request.outcome = outcome; return outcome;
         } catch (error) {
           const outcome = { id, status: "rejected", error: publicAtomicError(error) };
@@ -486,6 +478,11 @@ async function runAtomicRuntime(kind, operation, input, runtimeConfig) {
     if (observation) raw.snapshots.after = await snapshot(subject, observation.original.promises);
     process.umask(previousMask);
     await fs.writeFile(path.join(runtimeConfig.evidenceDirectory, "native-raw.json"), JSON.stringify([raw]));
+    if (raw.adapterError === undefined) {
+      const checkpoint = globalThis[Symbol.for("memory.equivalence.atomic.return-checkpoint")];
+      if (typeof checkpoint !== "function") throw Error("Atomic return boundary has no independent trusted observer");
+      checkpoint(fixtureBase);
+    }
   }
   return encodeAtomicPublic({ provider: "none", outcomes: raw.outcomes,
     snapshots: { before: logical(raw.snapshots.before), after: logical(raw.snapshots.after) } }, raw);

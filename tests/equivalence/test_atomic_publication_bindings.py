@@ -84,7 +84,7 @@ def test_exact_three_entries_and_native_dependency_are_explicit_without_executio
         "package": "node_modules/@openclaw/fs-safe", "path": "dist/root.js", "export": "root",
     }
     assert len(result["sourceBindings"]) == 8 and len(result["compiledBindings"]) == 8
-    assert len(result["externalRuntimeBindings"]) == 28 and len(result["nativeBinaryBindings"]) == 1
+    assert len(result["externalRuntimeBindings"]) == 30 and len(result["nativeBinaryBindings"]) == 1
     for key in ("sourceBuildReproduced", "providerTransportVerified", "managerExecutionVerified",
                 "indexExecutionVerified", "workerExecutionVerified", "fullAgentToolExecutionVerified",
                 "fullPromotionSchedulerExecutionVerified", "receiptPhysicalInterchangeabilityClaimed"):
@@ -99,7 +99,7 @@ def test_exact_three_entries_and_native_dependency_are_explicit_without_executio
     assert bindings.NATIVE_BINDING_OWNER not in bindings.REQUIRED_ARTIFACTS_BY_OPERATION["atomic-append-runtime"]
     assert bindings.NATIVE_BINDING_OWNER in bindings.REQUIRED_ARTIFACTS_BY_OPERATION["atomic-bootstrap-runtime"]
     assert len(result["sourceImportLinks"]) == 9 and len(result["compiledImportLinks"]) == 10
-    assert len(result["externalImportLinks"]) == 20
+    assert len(result["externalImportLinks"]) == 22
 
 
 OWNERS = [(kind, path) for kind, hashes in (("source", bindings.SOURCE_HASHES),

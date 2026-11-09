@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -12,8 +13,9 @@ import pytest
 from equivalence.atomic_publication_cases import build_atomic_publication_cases
 from equivalence.atomic_publication_evidence import (
     AtomicEvidenceError, SAFE_INTEGER, encode_atomic_public, validate_atomic_publication_raw,
+    validate_atomic_return_checkpoint, _read_surviving_tree,
 )
-from equivalence.atomic_publication_profile import validate_atomic_publication_profile
+from equivalence.atomic_publication_profile import validate_atomic_publication_profile, prepare_atomic_case_binding
 from equivalence.atomic_publication_runtime import run_atomic_publication
 from equivalence.model_runtime_authority import APPROVED_NODE_RUNTIME
 from equivalence.release_runtime import ReleaseRuntimeError, validate_release_sources
@@ -42,6 +44,8 @@ def test_real_sdk_errors_and_surviving_tree_pass_independent_reread(tmp_path):
 
 def test_native_collector_rejects_sdk_owner_impersonation(tmp_path):
     case, public, raw = _observation(tmp_path)
+    raw["defaultNativeBinding"] = {"available": True, "overrideVariablesAbsent": True,
+        "functions": ["createStagedFile", "stagedFileMatches", "removeStagedFile", "closeOwnedFd", "renameReplace", "renameNoReplace"]}
     with pytest.raises(AtomicEvidenceError, match="impersonate"):
         validate_atomic_publication_raw(case, public, raw, expected_side="native")
 
@@ -61,6 +65,25 @@ def test_fault_cannot_claim_a_different_actual_operation_or_occurrence(tmp_path)
     related["operation"] = "close"
     with pytest.raises(AtomicEvidenceError, match="operation"):
         validate_atomic_publication_raw(case, public, raw)
+
+
+def test_injected_error_must_match_the_literal_facts_even_if_raw_and_public_are_changed_together(tmp_path):
+    case, public, raw = _observation(tmp_path)
+    fault = next(event for event in raw["ioEvents"] if event["operation"] == "fault")
+    fault["error"]["code"] = "ENOSPC"
+    fault["rawError"]["properties"]["code"] = "ENOSPC"
+    with pytest.raises(AtomicEvidenceError, match="literal code"):
+        validate_atomic_publication_raw(case, public, raw)
+
+
+@pytest.mark.parametrize("field", ["available", "overrideVariablesAbsent"])
+def test_native_collector_rejects_missing_or_overridden_default_backend(tmp_path, field):
+    case, public, raw = _observation(tmp_path)
+    raw["defaultNativeBinding"] = {"available": True, "overrideVariablesAbsent": True,
+        "functions": ["createStagedFile", "stagedFileMatches", "removeStagedFile", "closeOwnedFd", "renameReplace", "renameNoReplace"]}
+    raw["defaultNativeBinding"][field] = False
+    with pytest.raises(AtomicEvidenceError, match="default available"):
+        validate_atomic_publication_raw(case, public, raw, expected_side="native")
 
 
 def test_public_error_must_keep_every_actual_producer_field(tmp_path):
@@ -139,3 +162,71 @@ def test_external_entry_allowlist_is_exact_package_and_path():
     for foreign in ((approved[0], "dist/native.js"), ("node_modules/unreviewed", approved[1]), "dist/arbitrary.mjs"):
         with pytest.raises(ReleaseRuntimeError):
             validate_release_sources(config, sources, required_entry=foreign)
+
+
+def test_return_checkpoint_keeps_a_separate_real_process_exit_tree(tmp_path):
+    case, _, raw = _observation(tmp_path, "replacement-read-cleanup-and-close-fail")
+    data = json.dumps([raw], ensure_ascii=True).encode()
+    identity = prepare_atomic_case_binding(case)
+    common = {"caseId": case["id"], "inputSha256": identity["inputSha256"], "fixtureBase": raw["fixtureBase"],
+              "pid": raw["pid"], "threadId": 0}
+    request = raw["requests"][0]
+    settlement = {"stepId": request["id"], "owner": request["owner"], "arguments": request["arguments"],
+                  "outcome": request["outcome"], "rawError": request["rawError"]}
+    stage = Path(raw["stageAllocations"][0]["path"])
+    stage.unlink()
+    actual_exit = _read_surviving_tree(Path(raw["fixtureBase"]))
+    events = [
+        {**common, "event": "atomic-owner-start", "stepId": request["id"], "owner": request["owner"],
+         "arguments": request["arguments"], "beforeTree": raw["snapshots"]["before"]},
+        {**common, "event": "atomic-owner-settle", **settlement},
+        {**common, "event": "atomic-return-checkpoint", "rawSha256": hashlib.sha256(data).hexdigest(), "rawBytes": len(data),
+         "ioEventCount": len(raw["ioEvents"]), "settlements": [settlement], "subjectTree": raw["snapshots"]["after"]},
+        {**common, "event": "atomic-exit-start", "checkpointCompleted": True},
+        {**common, "event": "atomic-exit-end", "subjectTree": actual_exit},
+    ]
+    # Synthetic lifecycle carriers challenge only guard logic; the separate
+    # protected collector requires actual hash-attested original invocations.
+    result = validate_atomic_return_checkpoint(case, raw, events, raw_bytes=data, input_sha256=identity["inputSha256"])
+    assert result["operationReturnEqualsProcessExit"] is False
+    assert result["postProcessSubjectTree"] == actual_exit
+    broken = deepcopy(events)
+    broken.insert(3, deepcopy(broken[2]))
+    with pytest.raises(AtomicEvidenceError, match="unique"):
+        validate_atomic_return_checkpoint(case, raw, broken, raw_bytes=data, input_sha256=identity["inputSha256"])
+    broken = deepcopy(events)
+    broken[2]["rawSha256"] = "0" * 64
+    with pytest.raises(AtomicEvidenceError, match="journal"):
+        validate_atomic_return_checkpoint(case, raw, broken, raw_bytes=data, input_sha256=identity["inputSha256"])
+
+
+@pytest.mark.skipif(not NODE.is_file(), reason="The approved local codec verifier binary is unavailable")
+def test_trusted_checkpoint_rejects_unknown_steps_and_unsettled_returns_and_is_immutable(tmp_path):
+    case = build_atomic_publication_cases()[0]
+    binding = prepare_atomic_case_binding(case)
+    evidence = tmp_path / "evidence"
+    fixture = evidence / hashlib.sha256(case["id"].encode()).hexdigest() / "native-atomic-test"
+    (fixture / "subject").mkdir(parents=True)
+    context = {"atomicPublicationProfile": {"operation": case["operation"], "inputKind": "commit"},
+               "atomicCaseBinding": binding, "evidenceDirectory": str(evidence), "runtime": {"runtimeRoot": str(tmp_path / "unavailable-runtime")}}
+    filename = tmp_path / "context.json"
+    filename.write_text(json.dumps(context, ensure_ascii=True))
+    program = """
+import fs from 'node:fs';
+import {installAtomicReturnCheckpoint} from './equivalence/atomic-return-checkpoint.mjs';
+const ctx=JSON.parse(fs.readFileSync(process.env.MEMORY_EQ_RELEASE_CONTEXT,'utf8'));
+const base=JSON.parse(fs.readFileSync(0,'utf8')).fixture;
+installAtomicReturnCheckpoint(ctx,()=>{});
+const invoke=Symbol.for('memory.equivalence.atomic.invoke'),checkpoint=Symbol.for('memory.equivalence.atomic.return-checkpoint');
+const errors=[];
+try{await globalThis[invoke]('unknown',base);}catch(error){errors.push(error.message);}
+try{globalThis[checkpoint](base);}catch(error){errors.push(error.message);}
+let immutable=false;try{globalThis[invoke]=()=>{};}catch{immutable=true;}
+process.stdout.write(JSON.stringify({errors,immutable,configurable:Object.getOwnPropertyDescriptor(globalThis,checkpoint).configurable}));
+"""
+    result = subprocess.run([str(NODE), "--input-type=module", "--eval", program], cwd=ROOT,
+        input=json.dumps({"fixture": str(fixture)}), capture_output=True, text=True, check=True, timeout=10,
+        env={"PATH": os.defpath, "LANG": "C.UTF-8", "TZ": "UTC", "MEMORY_EQ_RELEASE_CONTEXT": str(filename)})
+    value = json.loads(result.stdout)
+    assert value == {"errors": ["atomic-checkpoint-duplicate-or-out-of-phase-owner", "atomic-checkpoint-duplicate-or-unsettled-return"],
+                     "immutable": True, "configurable": False}

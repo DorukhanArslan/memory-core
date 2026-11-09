@@ -336,10 +336,12 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
 
                 if len(cases) == 1 and cases[0]["operation"] in ENTRY_PROVENANCE_PROFILES:
                     context_options["entry_profile"] = prepare_entry_provenance_profile(cases[0]["operation"], node)
-                from equivalence.atomic_publication_profile import ATOMIC_PUBLICATION_PROFILES, prepare_atomic_publication_profile
+                from equivalence.atomic_publication_profile import (ATOMIC_PUBLICATION_PROFILES, prepare_atomic_publication_profile,
+                                                                    prepare_atomic_case_binding)
 
                 if len(cases) == 1 and cases[0]["operation"] in ATOMIC_PUBLICATION_PROFILES:
                     context_options["atomic_profile"] = prepare_atomic_publication_profile(cases[0]["operation"], node)
+                    context_options["atomic_case"] = prepare_atomic_case_binding(cases[0])
                 execution = resources.enter_context(ReleaseOracleExecution(
                     release_runtime, _adapter_identity(), **context_options))
                 # Only this reviewed preload is supplied. User Node options,

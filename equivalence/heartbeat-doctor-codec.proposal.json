@@ -1,0 +1,75 @@
+{
+  "kind": "heartbeat-doctor-first-baseline-codec",
+  "scope": "heartbeat.scratch",
+  "covers": [],
+  "acceptancePointsAwarded": 0,
+  "appliedOnlyToComparisonCopy": true,
+  "rawMutationPermitted": false,
+  "rootRelation": {
+    "native": "the actual case-owned native-fixture absolute directory",
+    "sdk": "the actual case-owned sdk-fixture absolute directory",
+    "logical": "<FIXTURE>",
+    "boundary": "replace a literal root only when followed by slash or end; preceding boundary must be start, whitespace, quote, backtick, open bracket, colon, or equals",
+    "relativeComponentsPreserved": true,
+    "sourceAndArchiveBytesTransformed": false,
+    "relocatedArchiveRootEquivalence": false
+  },
+  "typedTransport": {
+    "javascriptUndefined": {
+      "type": "undefined"
+    },
+    "pythonAbsentMonitor": {
+      "type": "undefined"
+    },
+    "bigint": "retain exact decimal tagged value",
+    "binary": "retain exact base64 tagged bytes",
+    "setAndMap": "retain tagged complete iteration values and entries",
+    "messagePort": "retain observer channel identity and every actual outgoing message without replacing the port",
+    "error": "retain actual class, message, codes, causes, attributes and stack in raw; no error-class translation in this Doctor baseline"
+  },
+  "disabled": [
+    "generated monitor-id replacement",
+    "generated archive-directory suffix replacement",
+    "PID replacement",
+    "timestamp or counter replacement",
+    "CLI hint or command replacement",
+    "error text rewriting",
+    "Unicode normalization",
+    "rounding or tolerance",
+    "expected-state fabrication"
+  ],
+  "firstBaseline": "Differences in ids, archive layouts, CLI hints and unsupported SDK preview remain genuine reported differences; none is silently removed.",
+  "fixtureInputGuardsBeforeOriginalImports": {
+    "kind": "heartbeat-doctor-sequence",
+    "operations": [
+      "findings",
+      "preview",
+      "repair",
+      "seedScratch"
+    ],
+    "agentInputs": "literal owned agent ids and 30m/0m cadence strings only; no provider/model/plugin config",
+    "sdkHostMapping": "explicit literal agent list and retain_source flag supplied by the fixture, not computed from an imitation of native resolution",
+    "sourceMutations": "literal owned files, links, chmod and real claim process identities, prepared before a fresh phase",
+    "cfg": "complete actual native config constructed from those literal owned fixture inputs and retained raw",
+    "unknownKindsOrOperations": "reject before importing any original module"
+  },
+  "workerObservers": {
+    "classSubstitutionPermitted": false,
+    "originalMethods": [
+      "Worker.prototype.postMessage",
+      "Worker.prototype.emit",
+      "MessagePort.prototype.postMessage",
+      "Worker.prototype.terminate"
+    ],
+    "effect": "read-only message/exit observations followed by the same original method with the original receiver and arguments",
+    "decisionOrReplySubstitutionPermitted": false,
+    "bootstrap": "every actual carrier requires inherited Doctor-only preload, exact Node identity, Date-only fixture clock and the exact original carrier argv entry",
+    "nestedOrDifferentEntryWorkers": "reject",
+    "terminationReceipt": "Return the exact original Promise; retain its actual fulfilled/rejected value and correlate the actual exit code without converting termination code1 into code0."
+  },
+  "readonlyStateObservations": {
+    "atReturn": "Synchronous original Node node:sqlite readOnly connection with actual query_only receipt and a read transaction immediately after each awaited caller return, before any further await. Retain complete schema/table rows with exact bigints/blobs and complete physical bytes.",
+    "afterCanonicalClose": "Separate actual readonly snapshot after original cacheclose/actorclose/workerretirement; never used as the caller return cut.",
+    "writesOrRevisionFabricationPermitted": false
+  }
+}

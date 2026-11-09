@@ -1,5 +1,6 @@
 // Uncredited exact worker reply observer. Original parent retry and worker remain intact.
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {createRequire,syncBuiltinESMExports} from 'node:module';
@@ -79,7 +80,7 @@ try{
  };
  try{result=await engine.buildSessionEntry(filename,options);}catch(value){error={name:value.name,message:value.message};}
  const after=accessor.loadTranscriptEventsSync(scope);
- console.log(JSON.stringify({scope,filename,source,enumerated,clock,before,after,expected,observations,mutations,callbackObservations,result,error,attempts:attempt}));
+ fsSync.writeFileSync(1,JSON.stringify({scope,filename,source,enumerated,clock,before,after,expected,observations,mutations,callbackObservations,result,error,attempts:attempt})+'\n');
 }finally{
  threads.Worker=OriginalWorker;OriginalWorker.prototype.postMessage=originalPost;syncBuiltinESMExports();
  await closeDatabases();config.clearRuntimeConfigSnapshot();

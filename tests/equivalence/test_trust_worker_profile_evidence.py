@@ -64,6 +64,16 @@ def test_actual_captured_owner_results_bind_to_complete_new_public_transport(ide
     validate_trust_worker_profile_raw(row, case, diagnostic, tmp_path, **kwargs)
 
 
+def test_real_worker_identity_keeps_additional_approved_binary_attestation(tmp_path):
+    from equivalence.model_runtime_authority import APPROVED_NODE_RUNTIME
+
+    row, case, diagnostic, kwargs = _fixture(tmp_path)
+    for entry in kwargs["bootstrap"]:
+        entry["runtime"] = {"execPath": "/approved/node", **APPROVED_NODE_RUNTIME}
+    validate_trust_worker_profile_raw(row, case, diagnostic, tmp_path, **kwargs)
+    assert all(entry["runtime"]["sha256"] == APPROVED_NODE_RUNTIME["sha256"] for entry in kwargs["bootstrap"])
+
+
 @pytest.mark.parametrize("tamper", [
     "public-source", "public-event", "request-bytes", "request-capability", "stdout", "ambient-environment",
     "child-parent", "child-preload", "frozen-owner", "source-owner", "worker-thread", "worker-implementation",

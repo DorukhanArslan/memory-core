@@ -895,6 +895,8 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("Release memory fixtures require provider none.")
         if operation == "turn-trust-runtime" and not row["ok"]:
             raise RuntimeOracleError("The real turn-trust caller did not complete its registered execution and persistence flow.")
+        if operation in MODEL_RUNTIME_OPERATIONS and not row["ok"]:
+            raise RuntimeOracleError("The real model boundary caller did not complete its declared original execution and output transport.")
         if _digest(_regular(self.context_path, MAX_TRACE_BYTES)) != self._context_digest:
             raise RuntimeOracleError("The owned release execution configuration changed.")
         for path, digest in self._locals.items():

@@ -140,7 +140,8 @@ def validate_trust_worker_profile_raw(row, case, diagnostic, evidence_directory,
             for worker in created:
                 thread = worker["threadId"]
                 require(type(thread) is int and thread > 0
-                        and {"pid": pid, "threadId": thread, "isMainThread": False} in bootstrap,
+                        and any(item.get("pid") == pid and item.get("threadId") == thread and item.get("isMainThread") is False
+                                for item in bootstrap),
                         "The captured worker thread bypassed its exact child process preload")
                 loaded = {item["path"] for item in worker_imports
                           if item.get("pid") == pid and item.get("threadId") == thread

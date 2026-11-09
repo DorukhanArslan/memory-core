@@ -114,6 +114,19 @@ def test_new_model_profiles_cannot_omit_the_reviewed_binary_capability(transport
         execution.collect(result, [case])
 
 
+@pytest.mark.parametrize("operation", ("model-session-runtime", "model-tool-result-runtime", "trust-worker-runtime", "model-tool-error-runtime"))
+def test_failed_original_model_callers_are_rejected_before_any_success_claim(transport, operation):
+    from equivalence.model_runtime_authority import APPROVED_NODE_RUNTIME
+
+    execution, _config, case, result = transport
+    execution.model_node_runtime = {"execPath": "/reviewed/node", **APPROVED_NODE_RUNTIME}
+    case["operation"] = operation
+    result["results"][0] = {"id": case["id"], "ok": False,
+                             "error": {"type": "SyntaxError", "message": "labelled missing original output"}}
+    with pytest.raises(RuntimeOracleError, match="did not complete"):
+        execution.collect(result, [case])
+
+
 def test_model_binary_capability_does_not_grant_reference_source_imports(transport):
     from equivalence.model_runtime_authority import APPROVED_NODE_RUNTIME
 

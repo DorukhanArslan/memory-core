@@ -213,6 +213,7 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.deadline_contract import build_deadline_contract_cases
     from equivalence.session_contract import build_session_contract_cases
     from equivalence.transcript_boundary_fixtures import build_transcript_boundary_cases
+    from equivalence.turn_trust_fixtures import build_turn_trust_cases
     from equivalence.embedding_cache import build_embedding_cache_cases
     from equivalence.incremental_index import build_incremental_index_cases
     from equivalence.index_publication import build_index_publication_cases
@@ -237,6 +238,7 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     cases.extend(build_deadline_contract_cases())
     cases.extend(build_session_contract_cases())
     cases.extend(build_transcript_boundary_cases())
+    cases.extend(build_turn_trust_cases())
     from equivalence.durable_session_fixtures import build_durable_session_cases
 
     cases.extend(build_durable_session_cases())
@@ -268,6 +270,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation == "turn-trust-runtime":
+        from equivalence.turn_trust_runtime import run_turn_trust
+
+        return run_turn_trust(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "transcript-boundary-runtime":
         from equivalence.transcript_boundaries import run_transcript_boundary
 

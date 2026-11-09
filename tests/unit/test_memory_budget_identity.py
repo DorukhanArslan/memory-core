@@ -46,10 +46,41 @@ def test_custom_identity_prefix_is_literal_and_does_not_expand_regex_syntax():
     assert compact_memory_for_budget(existing_memory=other, new_section="", budget_chars=1, identity=custom).compacted == other
 
 
-@pytest.mark.parametrize("identity,drops", [(OPENCLAW_COMPAT_RUNTIME_IDENTITY, False), (MEMORY_CORE_RUNTIME_IDENTITY, True)])
-def test_real_promotion_caller_preserves_foreign_prefix_or_compacts_its_own(tmp_path, identity, drops):
+@pytest.mark.parametrize("identity", [None, OPENCLAW_COMPAT_RUNTIME_IDENTITY])
+@pytest.mark.parametrize("change", ["dotted-i", "dotless-i", "key-cr", "key-ls", "key-ps", "project-cr", "project-ls", "project-ps"])
+def test_lookalike_prefixes_and_js_dot_line_boundaries_preserve_all_user_bytes(identity, change):
+    existing = _block(OPENCLAW_COMPAT_RUNTIME_IDENTITY.promotion_marker_prefix)
+    if change in {"dotted-i", "dotless-i"}:
+        existing = existing.replace("promotion:", "promot" + ("\u0130" if change == "dotted-i" else "\u0131") + "on:")
+    else:
+        separator = {"cr": "\r", "ls": "\u2028", "ps": "\u2029"}[change.split("-")[1]]
+        existing = (existing.replace("promotion:old", "promotion:old" + separator + "user") if change.startswith("key-") else
+            existing.replace("\n<!--", "\n### Project: owner" + separator + "user\n<!--"))
+    result = compact_memory_for_budget(existing_memory=existing, new_section="", budget_chars=1, identity=identity)
+    assert result.compacted == existing and result.dropped_dates == ()
+
+
+def test_ascii_case_still_folds_and_non_ascii_custom_prefix_remains_literal():
+    own = OPENCLAW_COMPAT_RUNTIME_IDENTITY.promotion_marker_prefix
+    existing = _block(own).replace(own, own.upper())
+    assert compact_memory_for_budget(existing_memory=existing, new_section="", budget_chars=1,
+        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY).compacted == ""
+    custom = replace(MEMORY_CORE_RUNTIME_IDENTITY, promotion_marker_prefix="host.\u03a3+:")
+    assert compact_memory_for_budget(existing_memory=_block(custom.promotion_marker_prefix), new_section="", budget_chars=1,
+        identity=custom).compacted == ""
+    lookalike = _block("host.\u03c3+:")
+    assert compact_memory_for_budget(existing_memory=lookalike, new_section="", budget_chars=1,
+        identity=custom).compacted == lookalike
+
+
+@pytest.mark.parametrize("identity,prefix,drops", [
+    (OPENCLAW_COMPAT_RUNTIME_IDENTITY, MEMORY_CORE_RUNTIME_IDENTITY.promotion_marker_prefix, False),
+    (MEMORY_CORE_RUNTIME_IDENTITY, MEMORY_CORE_RUNTIME_IDENTITY.promotion_marker_prefix, True),
+    (MEMORY_CORE_RUNTIME_IDENTITY, OPENCLAW_COMPAT_RUNTIME_IDENTITY.promotion_marker_prefix, True),
+])
+def test_real_promotion_caller_keeps_core_legacy_dual_and_compatibility_strict(tmp_path, identity, prefix, drops):
     target = tmp_path / "MEMORY.md"
-    before = _block(MEMORY_CORE_RUNTIME_IDENTITY.promotion_marker_prefix)
+    before = _block(prefix)
     target.write_text(before)
     relative = "memory/2026-05-08.md"
     daily = tmp_path / relative
@@ -69,3 +100,55 @@ def test_real_promotion_caller_preserves_foreign_prefix_or_compacts_its_own(tmp_
     else:
         assert target.read_text() == before
         assert run.rejected_candidates[0].category == "memory budget"
+
+
+@pytest.mark.parametrize("before", [
+    "# Personal notes\r\nKeep this exact user text.\rA separate literal CR and 😀.\r\n",
+    "# Personal notes\rOnly bare CR separates these user lines.\r",
+])
+def test_real_promotion_preserves_original_line_endings_and_publication_preimage(tmp_path, monkeypatch, before):
+    import memory_core.atomic_publication as publication
+    from memory_core.consolidation._util import read_text_if_exists
+
+    target = tmp_path / "MEMORY.md"
+    encoded = before.encode("utf-8")
+    target.write_bytes(encoded)
+    # The shared helper's existing default stays unchanged for other readers.
+    assert read_text_if_exists(target) == before.replace("\r\n", "\n").replace("\r", "\n")
+    assert read_text_if_exists(target, preserve_newlines=True) == before
+    daily = tmp_path / "memory" / "2026-05-08.md"
+    daily.parent.mkdir()
+    daily.write_text("# Source\n\n- A saved preference.\n")
+    config = MemoryConfig(tmp_path, flags=FeatureFlags(vector_search=False))
+    now = 1779811200000
+    record_short_term_recalls(config=config, query="preference", results=[{"path": "memory/2026-05-08.md",
+        "startLine": 3, "endLine": 3, "snippet": "- A saved preference.", "score": 1}], now_ms=now)
+    original = publication.commit_memory_content
+    requests = []
+
+    def commit(path, **kwargs):
+        requests.append((path, kwargs.copy()))
+        return original(path, **kwargs)
+
+    monkeypatch.setattr(publication, "commit_memory_content", commit)
+    run = run_short_term_promotion(config=config, store=SQLiteMemoryStore(config, None), now_ms=now,
+        timezone="UTC", min_score=0, min_recall_count=0, min_unique_queries=0,
+        identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY)
+    assert run.appended == 1 and run.reconciled_existing == 0
+    request_path, request = requests[0]
+    assert len(requests) == 1 and request_path == target
+    assert request["expected_content"] == before
+    assert request["expected_hash"] == publication.hash_memory_content(before)
+    assert target.read_bytes() == request["content"].encode("utf-8")
+    assert target.read_bytes().startswith(encoded)
+
+
+def test_optional_preserving_reader_keeps_missing_and_strict_utf8_policy(tmp_path):
+    from memory_core.consolidation._util import read_text_if_exists
+
+    target = tmp_path / "MEMORY.md"
+    assert read_text_if_exists(target) == read_text_if_exists(target, preserve_newlines=True) == ""
+    target.write_bytes(b"invalid UTF8 \xff\r\n")
+    for preserve in (False, True):
+        with pytest.raises(UnicodeDecodeError):
+            read_text_if_exists(target, preserve_newlines=preserve)

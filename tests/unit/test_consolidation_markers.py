@@ -1,4 +1,4 @@
-"""Neutral promotion marker (decision Q22): identity-chosen writer, two-prefix reader."""
+"""Q22 dual core reader and the explicitly qualified compatibility writer/reader."""
 
 from __future__ import annotations
 
@@ -143,7 +143,7 @@ def test_upstream_marker_written_before_the_switch_reconciles_without_duplicate(
     assert all(_promoted_at(config).values())
 
 
-def test_switching_identity_back_and_forth_never_duplicates(tmp_path: Path):
+def test_core_remains_dual_but_compatibility_reconciles_only_its_own_marker(tmp_path: Path):
     config = _workspace(tmp_path)
     _recall(config, 3, "- Move backups to S3 Glacier.")
     _promote(config)
@@ -155,8 +155,18 @@ def test_switching_identity_back_and_forth_never_duplicates(tmp_path: Path):
 
     run = _promote(config, identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY)
 
-    assert (run.appended, run.reconciled_existing) == (0, 1)
-    assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == after_neutral
+    assert (run.appended, run.reconciled_existing) == (1, 0)
+    after_compatibility = (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
+    assert after_compatibility.startswith(after_neutral)
+    assert after_compatibility.count(format_promotion_marker(KEY_ONE, MEMORY_CORE_RUNTIME_IDENTITY)) == 1
+    assert after_compatibility.count(format_promotion_marker(KEY_ONE, OPENCLAW_COMPAT_RUNTIME_IDENTITY)) == 1
+    for identity in (MEMORY_CORE_RUNTIME_IDENTITY, OPENCLAW_COMPAT_RUNTIME_IDENTITY):
+        store = json.loads(store_path.read_text(encoding="utf-8"))
+        del store["entries"][KEY_ONE]["promotedAt"]
+        store_path.write_text(json.dumps(store), encoding="utf-8")
+        repeated = _promote(config, identity=identity)
+        assert (repeated.appended, repeated.reconciled_existing) == (0, 1)
+        assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == after_compatibility
 
 
 def test_snippets_carrying_either_marker_are_never_recorded(tmp_path: Path):

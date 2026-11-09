@@ -77,6 +77,7 @@ from memory_core.consolidation.markers import (
     extract_promotion_markers,
     format_promotion_marker,
     line_range_overlaps_dreaming_fence,
+    promotion_marker_reader_identity,
 )
 from memory_core.consolidation.origins import MemoryEntryOriginLedger, prune_memory_entry_origins
 from memory_core.consolidation.policy import (
@@ -746,8 +747,8 @@ def _plan_before_lock(
     )
 
     memory_path = MemoryWorkspace(config.workspace_dir).resolve_memory_path(PROMOTION_TARGET)
-    existing = read_text_if_exists(memory_path)
-    markers = set(extract_promotion_markers(existing))
+    existing = read_text_if_exists(memory_path, preserve_newlines=True)
+    markers = set(extract_promotion_markers(existing, identity=promotion_marker_reader_identity(identity)))
     to_append = [candidate for candidate in plan.rehydrated if candidate.key not in markers]
     if not to_append:
         return None
@@ -948,10 +949,11 @@ def _commit_promotion(
     )
 
     workspace = MemoryWorkspace(config.workspace_dir)
+    reader_identity = promotion_marker_reader_identity(identity)
     workspace_dir = Path(config.workspace_dir)
     target = PROMOTION_TARGET
     target_path = workspace.resolve_memory_path(target)
-    before = read_text_if_exists(target_path)
+    before = read_text_if_exists(target_path, preserve_newlines=True)
     recall_path = recall_store_path(workspace_dir)
     summary = (
         f"ranked {len(ranked)} short-term promotion candidate(s); "
@@ -1010,8 +1012,8 @@ def _commit_promotion(
         if not is_contaminated_dreaming_snippet(current.snippet):
             authoritative.append(current)
 
-    existing = read_text_if_exists(target_path)
-    markers = set(extract_promotion_markers(existing))
+    existing = read_text_if_exists(target_path, preserve_newlines=True)
+    markers = set(extract_promotion_markers(existing, identity=reader_identity))
     to_append = [c for c in authoritative if c.key not in markers]
     commit: DeepConsolidationCommit | None = None
     if consolidation is not None and preplan is not None and to_append:
@@ -1043,8 +1045,8 @@ def _commit_promotion(
                 f"{DISPLAY_NAME}: {commit.skipped_reason}; using append-only fallback."
             )
         # A failed rename or an outside edit leaves MEMORY.md as it is now.
-        existing = read_text_if_exists(target_path)
-        markers = set(extract_promotion_markers(existing))
+        existing = read_text_if_exists(target_path, preserve_newlines=True)
+        markers = set(extract_promotion_markers(existing, identity=reader_identity))
         to_append = [c for c in authoritative if c.key not in markers]
     to_append_keys = {c.key for c in to_append}
     already_written = [c for c in authoritative if c.key not in to_append_keys]
@@ -1064,7 +1066,7 @@ def _commit_promotion(
             entry_text,
             memory_file_max_chars=memory_file_max_chars,
             max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
-            identity=identity,
+            identity=reader_identity,
         )
         if deferred_reason:
             for candidate in to_append:
@@ -1075,7 +1077,7 @@ def _commit_promotion(
                     f"because {deferred_reason}."
                 )
         else:
-            committed_content = read_text_if_exists(target_path)
+            committed_content = read_text_if_exists(target_path, preserve_newlines=True)
     appended = to_append if committed_content is not None and not consolidated else []
     committed = [*already_written, *(to_append if consolidated else appended)]
 
@@ -1087,18 +1089,19 @@ def _commit_promotion(
             retained_preimage_keys = {
                 key
                 for item in read_memory_preimages(workspace_dir)
-                for key in extract_promotion_markers(str(item.get("content", "")))
+                for key in extract_promotion_markers(str(item.get("content", "")), identity=reader_identity)
             }
         prune_memory_entry_origins(
             origins,
             workspace_dir=workspace_dir,
             agent_ids=origin_agent_ids,
-            entry_keys=extract_promotion_markers(existing),
+            entry_keys=extract_promotion_markers(existing, identity=reader_identity),
             retained_entry_keys={
-                *extract_promotion_markers(committed_content),
+                *extract_promotion_markers(committed_content, identity=reader_identity),
                 *_readable_store_entries(read_recall_store(recall_path, now_ms)),
                 *retained_preimage_keys,
             },
+            identity=reader_identity,
         )
     indexed_files = 0
     reindex_error = None
@@ -1111,7 +1114,7 @@ def _commit_promotion(
         # Published before the locks are released; the skip note is written after they are.
         record_deep_consolidation_history(consolidation, workspace_dir, commit, now_ms=now_ms)
 
-    after = read_text_if_exists(target_path)
+    after = read_text_if_exists(target_path, preserve_newlines=True)
     committed_keys = {c.key for c in committed}
     deferred = tuple(to_append) if deferred_reason else ()
     outcome = PromotionWriteOutcome(
@@ -1545,7 +1548,7 @@ def _append_to_memory(
     nothing is written and the reason is returned (the "memory budget" rejection).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    existing = read_text_if_exists(path)
+    existing = read_text_if_exists(path, preserve_newlines=True)
     budget_chars = (
         max(0, math.floor(memory_file_max_chars))
         if isinstance(memory_file_max_chars, int | float) and math.isfinite(memory_file_max_chars)

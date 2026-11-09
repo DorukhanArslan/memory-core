@@ -7,6 +7,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from memory_core.config import MemoryConfig
 from memory_core.consolidation import (
     DeepConsolidation,
@@ -260,3 +262,18 @@ def test_curated_project_annotation_and_markers_fold_like_js() -> None:
         "abc"
     ]
     assert extract_promotion_markers(f"<!-- {OPENCLAW_PROMOTION_MARKER_PREFIX[:-1]}\u212a:abc -->") == []
+
+
+@pytest.mark.parametrize("separator", ["\r\n", "\r"])
+def test_real_consolidation_preimage_keeps_original_line_endings_and_hash(tmp_path, separator):
+    from memory_core.consolidation.llm_consolidation import hash_memory_content
+
+    before = MEMORY.replace("\n", separator)
+    config, store = _workspace(tmp_path, memory=before)
+    result = _deep(config, store, consolidation=_consolidation(_added))
+    assert result.promotion is not None
+    assert result.promotion.outcome.reason == "short-term promotion consolidated"
+    preimage, = read_memory_preimages(config.workspace_dir)
+    assert preimage["content"] == before
+    assert preimage["contentHash"] == hash_memory_content(before)
+    assert (config.workspace_dir / "MEMORY.md").read_bytes() == result.promotion.consolidation.content.encode("utf-8")

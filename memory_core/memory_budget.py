@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from functools import cmp_to_key
 from typing import Literal
 
-from memory_core.bootstrap._js import JS_SPACE, js_trim, locale_compare, utf16_len
+from memory_core.bootstrap._js import JS_SPACE, js_i_pattern, js_trim, locale_compare, utf16_len
 from memory_core.runtime_identity import (
     MEMORY_CORE_RUNTIME_IDENTITY,
     OPENCLAW_COMPAT_RUNTIME_IDENTITY,
@@ -36,7 +36,7 @@ from memory_core.runtime_identity import (
 
 # Legacy calls without an explicit identity recognize both historical marker prefixes.
 _PREFIX_ALTERNATION = "|".join(
-    re.escape(identity.promotion_marker_prefix)
+    js_i_pattern(re.escape(identity.promotion_marker_prefix))
     for identity in (MEMORY_CORE_RUNTIME_IDENTITY, OPENCLAW_COMPAT_RUNTIME_IDENTITY)
 )
 
@@ -71,11 +71,12 @@ class CompactMemoryResult:
     dropped_dates: tuple[str, ...]
 
 
-_SUBSECTION_HEADING_RE = re.compile(rf"^### (?:Global|Project: .+?){JS_SPACE}*\Z")
+_JS_DOT = r"[^\r\n\u2028\u2029]"
+_SUBSECTION_HEADING_RE = re.compile(rf"^### (?:Global|Project: {_JS_DOT}+?){JS_SPACE}*\Z")
 _ATX_HEADING_RE = re.compile(r"^ {0,3}#{1,6}(?:[ \t]|\Z)")
 _SETEXT_UNDERLINE_RE = re.compile(r"^ {0,3}(?:=+|-+)[ \t]*\Z")
 _ENTRY_MARKER_RE = re.compile(
-    rf"^<!--{JS_SPACE}*(?:{_PREFIX_ALTERNATION}).*-->{JS_SPACE}*\Z", re.IGNORECASE
+    rf"^<!--{JS_SPACE}*(?:{_PREFIX_ALTERNATION}){_JS_DOT}*-->{JS_SPACE}*\Z"
 )
 
 
@@ -83,7 +84,7 @@ def _entry_marker_re(identity: RuntimeIdentity | None) -> re.Pattern[str]:
     if identity is None:
         return _ENTRY_MARKER_RE
     return re.compile(
-        rf"^<!--{JS_SPACE}*{re.escape(identity.promotion_marker_prefix)}.*-->{JS_SPACE}*\Z", re.IGNORECASE
+        rf"^<!--{JS_SPACE}*{js_i_pattern(re.escape(identity.promotion_marker_prefix))}{_JS_DOT}*-->{JS_SPACE}*\Z"
     )
 
 
@@ -145,7 +146,8 @@ def parse_memory_blocks(content: str, *, identity: RuntimeIdentity | None = None
     as generated only when its whole body is marker + bullet entries (with ``### Global`` /
     ``### Project:`` subsections), a setext heading line ends it, anything else is preserved.
     An explicit identity owns only its literal promotion-marker prefix; omitting it retains
-    the legacy recognition of both built-in runtime prefixes.
+    the legacy recognition of both built-in runtime prefixes. ASCII prefix letters use the
+    original non-Unicode ``/i`` rule; non-ASCII custom prefix characters match literally.
     """
     if not content:
         return []

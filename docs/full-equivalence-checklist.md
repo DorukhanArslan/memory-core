@@ -70,8 +70,12 @@ tests**, both clean package consumers and the affected lint-follow-up guards. It
 report to the changed SDK. The verified baseline remains **62/128**, with **66 remaining**.
 See the [integration closeout](promotion_heartbeat_integration_closeout.md) for actual
 SDK source identities, retained first failure, bounded original comparisons and limits.
-Work is paused after this package at the user's request; further prepared work remains
-in separate branches and awaits the next command.
+That integration was the user's earlier stop point. Work has resumed with the
+[promotion apply family development packet](promotion_apply_family_development_closeout.md):
+eight separate whole-operation inputs now execute against the real original and SDK
+owners. This is development evidence with empty coverage, not a registered acceptance
+batch; the verified baseline remains 62/128. The historical full differential report
+above has not been rerun or reattributed to these new comparison callers.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |

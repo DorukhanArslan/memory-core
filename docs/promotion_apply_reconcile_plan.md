@@ -200,6 +200,13 @@ or close either requirement 43 condition.
 
 ## Prepared follow-up literals
 
+**2026-11-09 follow-up:** the eight saved inputs now have a separate executable
+development caller and a protected paired run. See the
+[family development closeout](promotion_apply_family_development_closeout.md).
+The original one-input capability below remains unchanged; the family is not
+registered in the full acceptance catalog and awards no conditions. Statements
+below about the inputs being non-executable describe their original proposal.
+
 `promotion_apply_followup_literals.json` proposes eight additional whole-operation
 inputs for the already fixed scope: authoritative stale-candidate overrides with
 moved source lines; mixed successful/rejected authoritative receipts; real

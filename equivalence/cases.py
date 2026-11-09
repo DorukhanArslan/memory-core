@@ -260,6 +260,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.redaction_fixtures import build_redaction_cases
 
     cases.extend(build_redaction_cases())
+    from equivalence.entry_provenance_fixtures import build_entry_provenance_cases
+
+    cases.extend(build_entry_provenance_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -275,6 +278,10 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
 def run_python(case: dict[str, Any]) -> Any:
     """Execute the installed Python implementation; never manufacture a match."""
     operation, arguments = case["operation"], case["input"]
+    if operation in {"entry-memory-publication-runtime", "entry-session-publication-runtime", "entry-provider-preparation-runtime"}:
+        from equivalence.entry_provenance_runtime import run_entry_provenance
+
+        return run_entry_provenance(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation in {"redaction-policy-source", "model-session-runtime", "model-tool-result-runtime"}:
         from equivalence.redaction_sdk import run_redaction_policy, run_model_sessions, run_model_tool_result
 

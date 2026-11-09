@@ -23,6 +23,7 @@ from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenan
 from memory_core.consolidation.origins import IndexRevisionFence, MemoryIndexRevisionConflictError
 from memory_core.embeddings.base import EmbeddingProvider
 from memory_core.index.chunking import MemoryChunk, chunk_markdown
+from memory_core.index.embedding_limits import enforce_embedding_max_input_tokens
 from memory_core.index.embedding_cache import (
     clear_memory_embedding_cache_identities,
     collect_memory_cached_embeddings,
@@ -169,9 +170,17 @@ def read_index_source(file: MemoryFile) -> IndexSourceSnapshot | None:
                     mtime = 0.0
                 if size is None:
                     size = len(js_utf8_encode(text))
+        source_hash = index_entry.hash if index_entry is not None else _text_hash(text)
+        if file.source == "sessions" and index_entry is not None:
+            revision = getattr(index_entry, "_extra", {}).get("revisionMs")
+            if revision is not None:
+                # SQLite mutation timestamps are positive millisecond numbers;
+                # REAL-backed integral values use the same spelling as JS.
+                revision_text = str(int(revision)) if isinstance(revision, float) and revision.is_integer() else str(revision)
+                source_hash = f"sqlite:{revision_text}:{source_hash}"
         return IndexSourceSnapshot(
             file.rel_path, file.source,
-            index_entry.hash if index_entry is not None else _text_hash(text), text, mtime, size,
+            source_hash, text, mtime, size,
             index_entry=deepcopy(index_entry),
         )
     try:
@@ -519,12 +528,15 @@ class SQLiteMemoryStore:
             generation, previous_workspace, needs_rebuild = db.execute(
                 f"SELECT revision, workspace, needs_rebuild FROM {INDEX_SYNC_TABLE} WHERE id = 1"
             ).fetchone()
+            previous_source_rows = db.execute(
+                f"SELECT source, path, hash, chunk_count, mtime, size FROM {INDEX_SOURCES_TABLE}"
+            ).fetchall()
             previous_sources = {
                 (source, path): (chunk_hash, chunk_count)
-                for source, path, chunk_hash, chunk_count in db.execute(
-                    f"SELECT source, path, hash, chunk_count FROM {INDEX_SOURCES_TABLE}"
-                )
+                for source, path, chunk_hash, chunk_count, _, _ in previous_source_rows
             }
+            previous_source_metadata = {(source, path): (chunk_hash, mtime, size)
+                                        for source, path, chunk_hash, _, mtime, size in previous_source_rows}
             previous_counts = {
                 (source, path): count for source, path, count in db.execute(
                     "SELECT source, path, COUNT(*) FROM chunks GROUP BY source, path"
@@ -537,10 +549,15 @@ class SQLiteMemoryStore:
             or self.index_identity()["status"] != "valid"
         )
         snapshots = self._read_source_snapshots(workspace)
+        def content_hash(key, value):
+            return value.rsplit(":", 1)[-1] if key[0] == "sessions" and value.startswith("sqlite:") else value
+
         changed = {
             key for key, entry in snapshots.items()
             if rebuild or key in metadata_missing
-            or previous_sources.get(key) != (entry.hash, previous_counts.get(key, 0))
+            or key not in previous_sources
+            or previous_sources[key][1] != previous_counts.get(key, 0)
+            or content_hash(key, previous_sources[key][0]) != content_hash(key, entry.hash)
         }
         removed = (set(previous_sources) | set(previous_counts)) - snapshots.keys()
         remaining_old = snapshots.keys() - changed
@@ -591,15 +608,46 @@ class SQLiteMemoryStore:
                     "Memory source changed while refresh was being prepared; retry the index refresh."
                 )
 
+        metadata_updates = {key for key in snapshots.keys() - changed if key[0] == "sessions"
+                            and previous_source_metadata.get(key) !=
+                            (snapshots[key].hash, snapshots[key].mtime, snapshots[key].size)}
+
+        def refresh_source_metadata(db):
+            for key in metadata_updates:
+                entry = snapshots[key]
+                updated = db.execute(
+                    f"UPDATE {INDEX_SOURCES_TABLE} SET hash=?,mtime=?,size=? "
+                    "WHERE source=? AND path=? AND hash=?",
+                    (entry.hash, entry.mtime, entry.size, key[0], key[1], previous_sources[key][0]),
+                ).rowcount
+                if updated != 1:
+                    raise MemoryIndexSourceChangedError(
+                        "Memory session source changed during metadata refresh; retry the index refresh."
+                    )
+
+        def assert_owner_and_refresh_metadata(db):
+            assert_owner(db)
+            refresh_source_metadata(db)
+
         if not rebuild and not changed and not removed:
+            if metadata_updates:
+                assert_sources_current()
             with self.connect() as db:
+                if metadata_updates:
+                    db.execute("BEGIN IMMEDIATE")
                 assert_owner(db)
+                if metadata_updates:
+                    refresh_source_metadata(db)
+                    db.execute(f"UPDATE {INDEX_SYNC_TABLE} SET revision=revision+1 WHERE id=1")
             return len(snapshots)
 
         prepared: dict[tuple[str, str], list[MemoryChunk]] = {
             key: self._prepare_source_chunks(entry, chunk_tokens, chunk_overlap)
             for key, entry in snapshots.items() if key in changed
         }
+        if provider is not None:
+            prepared = {key: enforce_embedding_max_input_tokens(self.embeddings, source_chunks)
+                        for key, source_chunks in prepared.items()}
         chunks = [chunk for source_chunks in prepared.values() for chunk in source_chunks]
         embeddings: list[list[float]] = [[] for _ in chunks]
         if provider is not None and chunks:
@@ -721,7 +769,7 @@ class SQLiteMemoryStore:
             PreparedIndexRevision(tuple(sources), js_json_stringify(published_meta),
                                   workspace=workspace_root, replace_all=bool(rebuild),
                                   removed_sources=tuple(removed)),
-            generation, owner_check=assert_owner, expected_fence_revision=expected_fence,
+            generation, owner_check=assert_owner_and_refresh_metadata, expected_fence_revision=expected_fence,
         )
         return len(snapshots)
 

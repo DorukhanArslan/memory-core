@@ -5,6 +5,11 @@ from typing import Protocol
 
 
 class EmbeddingProvider(Protocol):
+    """Embedding callbacks; optional ``max_input_tokens`` declares their input byte budget.
+
+    Without that metadata, pre-embedding splitting uses the pinned local/remote
+    defaults and batch ceiling. Existing providers need not define the attribute.
+    """
     provider_id: str
     model: str
 

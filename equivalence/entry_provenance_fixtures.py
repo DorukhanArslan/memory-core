@@ -30,20 +30,25 @@ def build_entry_provenance_cases():
                  "write": {"MEMORY.md": "a" * 4999 + "b"}},
             ]}),
         ("provider-entry-fragments", {"kind": "prepared-provider", "nowMs": 1800000000000, "mtimeMs": 1700000000000,
-            "path": "MEMORY.md", "content": "- " + "abcdefghijklmnop" * 6 + " <!-- importance: 7 -->",
+            "path": "MEMORY.md", "content": "# Saved entries\n- " + "abcdefghijklmnop" * 6 + " <!-- importance: 7 --><!--trigger: first--><!--project: Alpha-->\n"
+                "- A separate entry stays separate. <!--importance: 2--><!--trigger: second--><!--project: Beta-->",
             "provider": {"id": "fixture", "model": "fixture-limit", "maxInputTokens": 16}, "embeddingVector": [1, 0], "hardMaxInputTokens": 8000,
             "chunking": {"tokens": 400, "overlap": 80}}),
     ]
     key = "agent:main:direct:entry-provenance"
     events = [
         {"type": "session", "version": 4, "id": "entry-provenance", "timestamp": "2026-11-09T00:00:00.000Z", "cwd": "/fixture/workspace"},
-        {"type": "message", "id": "owner", "message": {"role": "user", "content": "Earlier owner context. " * 40,
+        {"type": "message", "id": "owner", "message": {"role": "user", "content": "Earlier owner context. " * 3,
             "timestamp": 1794182400000, "__openclaw": {"senderIsOwner": True}}},
-        {"type": "message", "id": "assistant", "message": {"role": "assistant", "content": "Assistant continuation. " * 40,
+        {"type": "message", "id": "assistant", "message": {"role": "assistant", "content": "Assistant continuation. " * 3,
             "timestamp": 1794182401000}},
-        {"type": "message", "id": "tainted", "message": {"role": "user", "content": "Retained untrusted context. " * 40,
+        {"type": "message", "id": "system", "message": {"role": "user", "content": "A retained host-generated status.",
+            "timestamp": 1794182401500, "provenance": {"kind": "internal_system", "sourceTool": "fixture-host"}}},
+        {"type": "message", "id": "system-answer", "message": {"role": "assistant", "content": "Acknowledged host status.",
+            "timestamp": 1794182401600}},
+        {"type": "message", "id": "tainted", "message": {"role": "user", "content": "Retained untrusted context. " * 3,
             "timestamp": 1794182402000, "__openclaw": {"senderIsOwner": False, "turnTainted": True}}},
-        {"type": "message", "id": "after", "message": {"role": "assistant", "content": "Later answer. " * 40,
+        {"type": "message", "id": "after", "message": {"role": "assistant", "content": "Later answer. " * 3,
             "timestamp": 1794182403000, "__openclaw": {"turnTainted": True}}},
     ]
     scenarios.append(("session-provenance-replacement-reset", {"kind": "session-projection", "sessionKey": key,
@@ -66,4 +71,14 @@ def build_entry_provenance_cases():
                  "events": [*deepcopy(events), {"type": "reset", "id": "bad-reset", "firstKeptEntryId": "missing"}]},
         ]}))
     return [{"id": "entry-provenance-" + name, "requirement": "chunking.entry-provenance", "covers": [],
-             "operation": "entry-provenance-runtime", "input": deepcopy(value)} for name, value in scenarios]
+             "operation": "entry-provenance-runtime", "input": deepcopy(value),
+             "driverScope": "Actual original preparation/publication owners and real SDK reindex over literal memory/session inputs. "
+                "Memory and session phases use genuine public provider-none manager get/dirty/sync/close. The provider case uses the "
+                "original exported text preparation and source-index kernel with literal external vectors; SDK calls its actual generic embedder. "
+                "No provider loop/transport, targeted multi-session scheduling, generated reset hook or multimodal equivalence claim.",
+             "normalizationPolicy": "Compare complete ordered canonical SQL columns and exact vector numbers; physical SQLite source row IDs, "
+                "schemas, every raw row, source calls and provider representations remain raw. Query order is fixed by explicit common SQL "
+                "ORDER BY clauses, with no output sorting/identity repair/tolerance. Only exact owned fixture-root prefixes map to $FIXTURE. "
+                "Native text embeddingInput objects and SDK embedder strings are explicit text-only interface representations; complete originals "
+                "and returned vectors remain raw. Ordered fragments retain repeated observed canonical IDs, exposing collisions and last-wins publication."}
+            for name, value in scenarios]

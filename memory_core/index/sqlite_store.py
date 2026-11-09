@@ -654,7 +654,7 @@ class SQLiteMemoryStore:
             for key, entry in snapshots.items() if key in changed
         }
         if provider is not None:
-            prepared = {key: enforce_embedding_max_input_tokens(self.embeddings, source_chunks)
+            prepared = {key: enforce_embedding_max_input_tokens(embedding_provider, source_chunks)
                         for key, source_chunks in prepared.items()}
         chunks = [chunk for source_chunks in prepared.values() for chunk in source_chunks]
         embeddings: list[list[float]] = [[] for _ in chunks]

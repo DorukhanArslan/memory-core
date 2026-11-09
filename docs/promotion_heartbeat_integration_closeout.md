@@ -1,5 +1,10 @@
 # Promotion and heartbeat maintenance integration
 
+The latest [shared managed-host restart closeout](host_restart_session_closeout.md)
+verifies **66/128 conditions**, with **62 remaining**, on a fresh complete catalog.
+It adds two original restart conditions; this historical maintenance package still
+awards zero and its original captures remain unchanged.
+
 This is the historical zero-credit maintenance closeout. Subsequent work is
 recorded separately in the [promotion apply/reconciliation closeout](promotion_apply_reconcile_closeout.md):
 its fresh integrated baseline verifies 64/128 conditions. That later evidence
@@ -7,7 +12,7 @@ does not rerun or relabel this maintenance package's original captures.
 
 The later [host restart development packet](host_restart_recall_development_closeout.md)
 adds three authenticated but mismatched process comparisons and awards zero
-conditions. The current verified baseline remains 64/128, with 64 remaining;
+conditions. At that stage the verified baseline was 64/128, with 64 remaining;
 this document's 62/128 figures below describe its historical maintenance baseline.
 The [source-policy/factory follow-up](host_restart_policy_closeout.md) subsequently
 fixes HostKit clock/acquisition wiring and retains the remaining restart
@@ -17,12 +22,12 @@ matching restart scenarios and one remaining sessions mismatch. It keeps the
 same 64/128 verified baseline and does not relabel this maintenance evidence.
 The later [session publication owner package](session_publication_closeout.md)
 adds scoped refresh, real committed notifications and query-generation custody.
-It also awards zero conditions; managed runner integration and fresh process
-comparison remain open.
+It also awards zero conditions. Its later managed runner and complete process
+comparison are now recorded in the new closeout linked above.
 
 This package integrates already reviewed fixes for the existing promotion and
 heartbeat contracts. It adds no acceptance condition and awards **zero new
-acceptance points**. The last full differential baseline remains **62/128
+acceptance points**. This package's historical full differential baseline remains **62/128
 (48.4%)**, with **66 conditions remaining**: 28 complete, six partial and 30
 pending contracts. This percentage measures verified conditions, not effort or
 time. The fixed 64-contract scope SHA-256 is

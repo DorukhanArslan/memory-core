@@ -52,21 +52,26 @@ Comparisons must not normalize away behavior. A platform-specific path, generate
 Entries remain pending until their complete acceptance conditions are verified against `v2026.9.9`. Their detailed acceptance points and stable identifiers are in [scope.json](../equivalence/scope.json). A helper that already exists in Python still needs the new differential evidence. A known difference must stay visible until its implementation and tests agree. Bounded passing subsets are recorded below without closing the containing contract.
 
 <!-- CURRENT-VERIFICATION-START -->
-The latest verified bounded baseline has **64/128 acceptance conditions (50.0%)**, with
-**64 conditions** remaining. This percentage counts unweighted verified conditions; it is
+The latest verified bounded baseline has **66/128 acceptance conditions (51.6%)**, with
+**62 conditions** remaining. This percentage counts unweighted verified conditions; it is
 not engineering effort, elapsed work or a time estimate. The fixed scope remains 64 contracts
-and 128 conditions. The promotion application/reconciliation batch targeted **+2** and
-verified **+2**, from **62 to 64/128**.
+and 128 conditions. The shared managed-host restart batch targeted **+2** and verified
+**+2**, from **64 to 66/128**.
 
-The fresh complete differential report on clean `b090394` executes **1,403 cases:
-1,389 matches, 14 visible differences and 0 blocked cases**, with no runner errors.
-All eight registered whole-apply families match both original conditions, including
-complete callback requests and actual lock-time rechecks/publication receipts.
-Fresh full regressions pass **6,759 tests**; both clean offline package consumers pass.
-The **1,648 skips** grant no acceptance credit: 1,625 historical/live skips plus
-23 existing transport guards bound to an old absolute runtime installation path.
-The genuine differential run uses the explicitly authenticated approved binary.
-The full gate remains `mismatched`; these results do not establish complete OpenClaw equivalence.
+The fresh complete differential report on clean `9d13b19` executes **1,407 cases:
+1,393 matches, 14 visible differences and 0 blocked cases**, with no runner errors.
+All four independently frozen host-restart cases match both original conditions, including
+actual source-backed fresh-chat/process retrieval, truthful pending state and real read failure.
+Full regressions pass **7,138 tests**; both offline installed package consumers pass,
+including public typing and **24 rejected invalid calls**. The **1,648 skips** grant no
+acceptance credit. The full gate remains `mismatched`; 60 uncovered conditions and two
+registered but unresolved boundaries remain. These results do not establish complete OpenClaw equivalence.
+
+See the [shared managed-host restart closeout](host_restart_session_closeout.md) for exact
+source, full report, runtime identities and retained preparation failures. The earlier promotion
+application/reconciliation batch verified **62 → 64/128** on clean `b090394`, with
+1,403 cases, 1,389 matches, 14 differences and zero blocked cases. It remains historical
+and is not relabeled as an execution of the changed SDK.
 
 See the [promotion apply closeout](promotion_apply_reconcile_closeout.md) for exact source,
 report and runtime identities, the actual model-request serialization correction,
@@ -79,8 +84,7 @@ this changed SDK or these completed acceptance callers. The new
 executes three authenticated process-restart comparisons: all three retain
 complete-result differences, with zero blocked cases or runner errors. It awards
 zero conditions and changes no SDK production source. Its fresh full regressions
-pass **6,785 tests**, with the same **1,648 uncredited skips**. Whole-host restart
-remains unverified. The later [source-policy/factory follow-up](host_restart_policy_closeout.md)
+pass **6,785 tests**, with the same **1,648 uncredited skips**. That diagnostic packet did not verify the whole restart contract. The later [source-policy/factory follow-up](host_restart_policy_closeout.md)
 changes HostKit search dispatch, aligns explicit source policies and retains four
 new mismatched diagnostic cases with zero blocked/errors. Its changed SDK has
 separate evidence; the complete `b090394` catalog above remains historical.
@@ -93,18 +97,19 @@ blocked/errors, with **6,929 passing regressions** and **1,648 uncredited skips*
 Both installed offline package consumers pass. The later
 [session publication owner package](session_publication_closeout.md) implements
 scoped atomic refresh, real post-commit notifications, a session queue and
-query read-generation admission. Its explicit managed runner and fresh paired
-process comparison remain the next work. The changed SDK passes **6,991 full
+query read-generation admission. That package left the explicit managed runner and fresh paired
+process comparison as follow-up work. The changed SDK passes **6,991 full
 regressions**, with **1,648 uncredited skips**, and both offline installed
-package consumers. All restart packets award zero conditions and keep
-the last verified baseline at 64/128; the current changed SDK is not a new full-catalog pass.
+package consumers. Those earlier restart packets award zero conditions and retain their
+64/128 historical baseline. The new [shared managed-host package](host_restart_session_closeout.md)
+completes the two original restart conditions against the fresh complete catalog above.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |
-| Complete | 29 | 58 | 0 |
+| Complete | 30 | 60 | 0 |
 | Partial | 6 | 6 | 6 |
-| Pending verification | 29 | 0 | 58 |
-| Total | 64 | 64 | 64 |
+| Pending verification | 28 | 0 | 56 |
+| Total | 64 | 66 | 62 |
 
 Pending verification can include existing implementation. Partial contracts retain one open
 condition. Infrastructure sections 1–3 remain **20/22 tasks completed**; infrastructure and
@@ -177,7 +182,7 @@ Current status of all 64 contracts:
 | 60 | `engine.unicode-collation` | Pending verification | 0/2 |
 | 61 | `engine.datetime-regex` | Pending verification | 0/2 |
 | 62 | `host.turn-barrier` | Pending verification | 0/2 |
-| 63 | `host.restart-recall` | Pending verification | 0/2 |
+| 63 | `host.restart-recall` | Complete | 2/2 |
 | 64 | `host.update-isolation` | Pending verification | 0/2 |
 
 <!-- CURRENT-VERIFICATION-END -->
@@ -299,7 +304,7 @@ pre-open race authority, full raw filesystem evidence and broader SDK-only limit
 ### Host lifecycle acceptance
 
 - [ ] **`host.turn-barrier` — Finalize memory before the next turn.** Drive a natural first-turn save and an immediate follow-up in both host paths. Compare committed and searchable memory, serialized maintenance and visible failure before next admission.
-- [ ] **`host.restart-recall` — Recall across fresh chats and process restart.** Use the same saved corpus with a fresh session and then a fresh host process. Compare source-backed retrieval and state continuity with facts omitted from the new prompt.
+- [x] **`host.restart-recall` — Recall across fresh chats and process restart.** Use the same saved corpus with a fresh session and then a fresh host process. Compare source-backed retrieval and state continuity with facts omitted from the new prompt.
 - [ ] **`host.update-isolation` — Update current facts while preserving isolation.** Replace a prior preference, retain unrelated facts and query from independent user/workspace scopes. Compare current versus superseded answers and honest write/index failure reporting.
 
 ## 5. Completion evidence and release decision
@@ -2036,3 +2041,26 @@ source-build reproduction remains false. There were no paid provider calls.
 The report retains **62 uncovered conditions** plus the two covered-but-unverified
 bootstrap/ranking boundary conditions: **64 remain**, not 62. All 14 differences
 stay visible and the full gate remains `mismatched`.
+
+
+## Shared managed-host restart acceptance (2026-11-10)
+
+The [shared managed-host closeout](host_restart_session_closeout.md) verifies the two
+original `host.restart-recall` conditions: **64 → 66/128 (51.6%)**, **62 remaining**.
+Its fresh full catalog on clean `9d13b19` contains **1,407 cases: 1,393 matched,
+14 mismatched, zero blocked and no runner errors**. All four new closed-family
+cases match with verified process, source, publication and real-error custody.
+The prior 1,403 case definitions and all earlier restart diagnostic captures remain unchanged.
+
+The SDK shares one actual owner across chats, preserves read generations, publishes
+memory separately from pending sessions, and guards catalog acknowledgments with
+an atomic revision CAS. Eager defaults retain their full publication barrier.
+Full regressions pass **7,138 tests**, with **1,648 uncredited skips**; both offline
+installed artifacts and **24 negative public typing cases** pass. The full gate
+remains `mismatched`: **60 uncovered conditions plus two registered unresolved
+boundaries** remain. No full OpenClaw-equivalence claim follows.
+
+The next original contract is `host.update-isolation` (#64): replace a preference,
+retain unrelated facts and independent users/workspaces, and report genuine write/index
+failures. For example, changing tea to coffee must update later recall while preserving
+another user's records. `host.turn-barrier` (#62) remains a separate contract.

@@ -1,0 +1,2162 @@
+{
+  "kind": "host-restart-session-acceptance-closeout",
+  "preparedDate": "2026-11-10",
+  "timezone": "Europe/Istanbul",
+  "acceptanceIncrease": 2,
+  "verifiedBefore": 64,
+  "verifiedAfter": 66,
+  "remaining": 62,
+  "fixedScopeSha256": "a8e066e63970dd0be734485d62a5932640894b8c0a42f47ac3eb67f784cbc7b9",
+  "fullCatalog": {
+    "report": "work/host-restart-session-full-001.json",
+    "reportSha256": "ea41a771eb5905a359c03153cbe2a1accc7306b4615b88d011082ffb5ac8f085",
+    "bytes": 462990976,
+    "mode": "full",
+    "status": "mismatched",
+    "fullScopePassed": false,
+    "summary": {
+      "matched": 1393,
+      "mismatched": 14,
+      "blocked": 0,
+      "uncoveredAcceptance": 60
+    },
+    "cases": 1407,
+    "errors": [],
+    "verified": 66,
+    "total": 128,
+    "remaining": 62,
+    "contractStates": {
+      "complete": 30,
+      "partial": 6,
+      "pending": 28
+    },
+    "durationSeconds": 1584.152651,
+    "implementation": {
+      "gitCommit": "9d13b192d7b124700988cea61b78ed3949d77380",
+      "trackedWorkingTreeDirty": false,
+      "sourceSha256": "1243192c301ee4b634f7a8dc65d525199317e08597073ee3de2f6735f2b91975",
+      "sourceFiles": 159
+    },
+    "hostFamilyComplete": true,
+    "hostCases": [
+      {
+        "id": "host-restart-session-memory-ascii",
+        "status": "matched",
+        "covers": [
+          "host.restart-recall.outcomes",
+          "host.restart-recall.boundaries"
+        ],
+        "runtimeEvidenceValidated": true
+      },
+      {
+        "id": "host-restart-session-memory-unicode",
+        "status": "matched",
+        "covers": [
+          "host.restart-recall.outcomes",
+          "host.restart-recall.boundaries"
+        ],
+        "runtimeEvidenceValidated": true
+      },
+      {
+        "id": "host-restart-session-indexed-sessions",
+        "status": "matched",
+        "covers": [
+          "host.restart-recall.outcomes",
+          "host.restart-recall.boundaries"
+        ],
+        "runtimeEvidenceValidated": true
+      },
+      {
+        "id": "host-restart-session-get-failure",
+        "status": "matched",
+        "covers": [
+          "host.restart-recall.outcomes",
+          "host.restart-recall.boundaries"
+        ],
+        "runtimeEvidenceValidated": true
+      }
+    ]
+  },
+  "node": {
+    "execPath": "/workspace/memory-core/work/node-v24.16.0-linux-x64/bin/node",
+    "nodeVersion": "v24.16.0",
+    "icuVersion": "78.3",
+    "unicodeVersion": "17.0",
+    "sha256": "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd"
+  },
+  "cases": [
+    {
+      "id": "host-restart-session-memory-ascii",
+      "requirement": "host.restart-recall",
+      "covers": [
+        "host.restart-recall.outcomes",
+        "host.restart-recall.boundaries"
+      ],
+      "operation": "host-restart-session-runtime",
+      "input": {
+        "kind": "host-restart-recall",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:session-1-writer",
+            "sessionId": "host-session-1-writer"
+          },
+          "fresh": {
+            "sessionKey": "agent:main:session-1-fresh",
+            "sessionId": "host-session-1-fresh"
+          },
+          "restarted": {
+            "sessionKey": "agent:main:session-1-restarted",
+            "sessionId": "host-session-1-restarted"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:session-1-isolated",
+            "sessionId": "host-session-1-isolated"
+          }
+        },
+        "phases": [
+          {
+            "label": "produce",
+            "savePrompt": "Please remember that my drink preference is aurorakumquat-739 tea.",
+            "write": {
+              "path": "memory/2026-11-09.md",
+              "text": "My drink preference is aurorakumquat-739 tea.",
+              "content": "My drink preference is aurorakumquat-739 tea.\n"
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            },
+            "saveAck": "Saved."
+          },
+          {
+            "label": "restart",
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": false,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          },
+          "indexLifecycle": "session-managed",
+          "runtimeIdentity": "openclaw-compatible"
+        }
+      },
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "status": "matched",
+      "nativeResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "textScore": 1.9999960000079996e-06,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "textScore": 1.9999960000079996e-06,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "corpora": [],
+                  "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          }
+        ]
+      },
+      "sdkResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "textScore": 1.9999960000079996e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "textScore": 1.9999960000079996e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "corpora": [],
+                  "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          }
+        ]
+      },
+      "rawDiagnostics": {
+        "native": {
+          "sha256": "53889d767b284cc2c1504d0a8da3bc87815ff3e5b0f72029eb714b8af0b3c958",
+          "validationStatus": "verified"
+        },
+        "python": {
+          "sha256": "e0746d614ff5187a4b9ef9fc41b8188099e5e24bdb12aaff608c5b8b37acbfc5",
+          "validationStatus": "verified"
+        }
+      },
+      "custody": {
+        "native": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "snapshot": "after-real-write-and-explicit-sync",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is aurorakumquat-739 tea.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is aurorakumquat-739 tea.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is aurorakumquat-739 tea.\n"
+                    }
+                  ]
+                },
+                {
+                  "agentId": "other",
+                  "chunks": []
+                }
+              ]
+            }
+          ],
+          "acceptancePointsAwarded": 0,
+          "producerForcePublicationPassed": true,
+          "committedTranscriptNotificationsPassed": true,
+          "originalSessionRuntimeExecuted": true
+        },
+        "sdk": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "session": "writer",
+              "revision": 1,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is aurorakumquat-739 tea.\n"
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "session": "fresh",
+              "revision": 1,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is aurorakumquat-739 tea.\n"
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "session": "restarted",
+              "revision": 1,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is aurorakumquat-739 tea.\n"
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "session": "isolated",
+              "revision": 1,
+              "chunks": []
+            }
+          ],
+          "acceptancePointsAwarded": 0,
+          "producerForcePublicationPassed": true,
+          "committedTranscriptNotificationsPassed": null,
+          "sharedSessionOwnerCustodyPassed": true,
+          "sessionPublicationCustodyPassed": true,
+          "truthfulReadinessPassed": true
+        },
+        "structuralCustodyPassed": true,
+        "differences": [],
+        "acceptancePointsAwarded": 0
+      }
+    },
+    {
+      "id": "host-restart-session-memory-unicode",
+      "requirement": "host.restart-recall",
+      "covers": [
+        "host.restart-recall.outcomes",
+        "host.restart-recall.boundaries"
+      ],
+      "operation": "host-restart-session-runtime",
+      "input": {
+        "kind": "host-restart-recall",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:session-2-writer",
+            "sessionId": "host-session-2-writer"
+          },
+          "fresh": {
+            "sessionKey": "agent:main:session-2-fresh",
+            "sessionId": "host-session-2-fresh"
+          },
+          "restarted": {
+            "sessionKey": "agent:main:session-2-restarted",
+            "sessionId": "host-session-2-restarted"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:session-2-isolated",
+            "sessionId": "host-session-2-isolated"
+          }
+        },
+        "phases": [
+          {
+            "label": "produce",
+            "savePrompt": "Please remember that my drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.",
+            "write": {
+              "path": "memory/2026-11-09.md",
+              "text": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.",
+              "content": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.\n"
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            },
+            "saveAck": "Saved."
+          },
+          {
+            "label": "restart",
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": false,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          },
+          "indexLifecycle": "session-managed",
+          "runtimeIdentity": "openclaw-compatible"
+        }
+      },
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "status": "matched",
+      "nativeResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "textScore": 1.9999960000079996e-06,
+                      "snippet": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.\n",
+              "hex": "4d79206472696e6b20707265666572656e63652069732049686c616d75722dc49fc3bcc59fc4b02d34383220e298952e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "textScore": 1.9999960000079996e-06,
+                      "snippet": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "corpora": [],
+                  "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.\n",
+              "hex": "4d79206472696e6b20707265666572656e63652069732049686c616d75722dc49fc3bcc59fc4b02d34383220e298952e0a"
+            }
+          }
+        ]
+      },
+      "sdkResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "snippet": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.\n",
+                      "source": "memory",
+                      "textScore": 1.9999960000079996e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.\n",
+              "hex": "4d79206472696e6b20707265666572656e63652069732049686c616d75722dc49fc3bcc59fc4b02d34383220e298952e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "snippet": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.\n",
+                      "source": "memory",
+                      "textScore": 1.9999960000079996e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "corpora": [],
+                  "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.\n",
+              "hex": "4d79206472696e6b20707265666572656e63652069732049686c616d75722dc49fc3bcc59fc4b02d34383220e298952e0a"
+            }
+          }
+        ]
+      },
+      "rawDiagnostics": {
+        "native": {
+          "sha256": "551a2053b7cb947142b277af2c96d0607e9311751de5c184a1249abbd04d4155",
+          "validationStatus": "verified"
+        },
+        "python": {
+          "sha256": "85f30479e14fdaa731e2bc0067e83c17e93dc197a6cbb73e3b4cd0ed94f5c77d",
+          "validationStatus": "verified"
+        }
+      },
+      "custody": {
+        "native": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "snapshot": "after-real-write-and-explicit-sync",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.\n"
+                    }
+                  ]
+                },
+                {
+                  "agentId": "other",
+                  "chunks": []
+                }
+              ]
+            }
+          ],
+          "acceptancePointsAwarded": 0,
+          "producerForcePublicationPassed": true,
+          "committedTranscriptNotificationsPassed": true,
+          "originalSessionRuntimeExecuted": true
+        },
+        "sdk": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "session": "writer",
+              "revision": 1,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.\n"
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "session": "fresh",
+              "revision": 1,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.\n"
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "session": "restarted",
+              "revision": 1,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is Ihlamur-\u011f\u00fc\u015f\u0130-482 \u2615.\n"
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "session": "isolated",
+              "revision": 1,
+              "chunks": []
+            }
+          ],
+          "acceptancePointsAwarded": 0,
+          "producerForcePublicationPassed": true,
+          "committedTranscriptNotificationsPassed": null,
+          "sharedSessionOwnerCustodyPassed": true,
+          "sessionPublicationCustodyPassed": true,
+          "truthfulReadinessPassed": true
+        },
+        "structuralCustodyPassed": true,
+        "differences": [],
+        "acceptancePointsAwarded": 0
+      }
+    },
+    {
+      "id": "host-restart-session-indexed-sessions",
+      "requirement": "host.restart-recall",
+      "covers": [
+        "host.restart-recall.outcomes",
+        "host.restart-recall.boundaries"
+      ],
+      "operation": "host-restart-session-runtime",
+      "input": {
+        "kind": "host-restart-recall",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:session-3-writer",
+            "sessionId": "host-session-3-writer"
+          },
+          "fresh": {
+            "sessionKey": "agent:main:session-3-fresh",
+            "sessionId": "host-session-3-fresh"
+          },
+          "restarted": {
+            "sessionKey": "agent:main:session-3-restarted",
+            "sessionId": "host-session-3-restarted"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:session-3-isolated",
+            "sessionId": "host-session-3-isolated"
+          }
+        },
+        "phases": [
+          {
+            "label": "produce",
+            "savePrompt": "Please remember that my drink preference is aurorakumquat-739 tea.",
+            "write": {
+              "path": "memory/2026-11-09.md",
+              "text": "My drink preference is aurorakumquat-739 tea.",
+              "content": "My drink preference is aurorakumquat-739 tea.\n"
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            },
+            "saveAck": "Saved."
+          },
+          {
+            "label": "restart",
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": true,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          },
+          "indexLifecycle": "session-managed",
+          "runtimeIdentity": "openclaw-compatible"
+        }
+      },
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "status": "matched",
+      "nativeResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871451369304057,
+                      "textScore": 2.2797875486708737e-06,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871451369304057,
+                      "textScore": 2.2797875486708737e-06,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "corpora": [],
+                  "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          }
+        ]
+      },
+      "sdkResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871451369304057,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "textScore": 2.2797875486708737e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871451369304057,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "textScore": 2.2797875486708737e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "corpora": [],
+                  "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          }
+        ]
+      },
+      "rawDiagnostics": {
+        "native": {
+          "sha256": "1166aec856646724b52d68ddbd79201efc9414b360960e9ccc26da812c4dce5c",
+          "validationStatus": "verified"
+        },
+        "python": {
+          "sha256": "850972188f52cbd2dc24fdf58566f9a66acd6dc06b65fe5280047d489f4b661a",
+          "validationStatus": "verified"
+        }
+      },
+      "custody": {
+        "native": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "snapshot": "after-real-write-and-explicit-sync",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is aurorakumquat-739 tea.\n"
+                    },
+                    {
+                      "path": "sessions/main/host-session-3-writer.jsonl",
+                      "source": "sessions",
+                      "text": "User: Please remember that my drink preference is aurorakumquat-739 tea.\nAssistant: Saved."
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is aurorakumquat-739 tea.\n"
+                    },
+                    {
+                      "path": "sessions/main/host-session-3-writer.jsonl",
+                      "source": "sessions",
+                      "text": "User: Please remember that my drink preference is aurorakumquat-739 tea.\nAssistant: Saved."
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is aurorakumquat-739 tea.\n"
+                    },
+                    {
+                      "path": "sessions/main/host-session-3-writer.jsonl",
+                      "source": "sessions",
+                      "text": "User: Please remember that my drink preference is aurorakumquat-739 tea.\nAssistant: Saved."
+                    },
+                    {
+                      "path": "sessions/main/host-session-3-fresh.jsonl",
+                      "source": "sessions",
+                      "text": "User: What drink preference did I ask you to remember?\nAssistant: My drink preference is aurorakumquat-739 tea."
+                    },
+                    {
+                      "path": "sessions/main/host-session-3-restarted.jsonl",
+                      "source": "sessions",
+                      "text": "User: What drink preference did I ask you to remember?\nAssistant: My drink preference is aurorakumquat-739 tea."
+                    }
+                  ]
+                },
+                {
+                  "agentId": "other",
+                  "chunks": [
+                    {
+                      "path": "sessions/other/host-session-3-isolated.jsonl",
+                      "source": "sessions",
+                      "text": "User: What drink preference did I ask you to remember?"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "acceptancePointsAwarded": 0,
+          "producerForcePublicationPassed": true,
+          "committedTranscriptNotificationsPassed": true,
+          "originalSessionRuntimeExecuted": true
+        },
+        "sdk": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "session": "writer",
+              "revision": 1,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is aurorakumquat-739 tea.\n"
+                },
+                {
+                  "path": "sessions/main/host-session-3-writer.jsonl",
+                  "source": "sessions",
+                  "text": "User: Please remember that my drink preference is aurorakumquat-739 tea.\nAssistant: Saved."
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "session": "fresh",
+              "revision": 1,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is aurorakumquat-739 tea.\n"
+                },
+                {
+                  "path": "sessions/main/host-session-3-writer.jsonl",
+                  "source": "sessions",
+                  "text": "User: Please remember that my drink preference is aurorakumquat-739 tea.\nAssistant: Saved."
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "session": "restarted",
+              "revision": 2,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is aurorakumquat-739 tea.\n"
+                },
+                {
+                  "path": "sessions/main/host-session-3-restarted.jsonl",
+                  "source": "sessions",
+                  "text": "User: What drink preference did I ask you to remember?\nAssistant: My drink preference is aurorakumquat-739 tea."
+                },
+                {
+                  "path": "sessions/main/host-session-3-fresh.jsonl",
+                  "source": "sessions",
+                  "text": "User: What drink preference did I ask you to remember?\nAssistant: My drink preference is aurorakumquat-739 tea."
+                },
+                {
+                  "path": "sessions/main/host-session-3-writer.jsonl",
+                  "source": "sessions",
+                  "text": "User: Please remember that my drink preference is aurorakumquat-739 tea.\nAssistant: Saved."
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "session": "isolated",
+              "revision": 1,
+              "chunks": [
+                {
+                  "path": "sessions/other/host-session-3-isolated.jsonl",
+                  "source": "sessions",
+                  "text": "User: What drink preference did I ask you to remember?"
+                }
+              ]
+            }
+          ],
+          "acceptancePointsAwarded": 0,
+          "producerForcePublicationPassed": true,
+          "committedTranscriptNotificationsPassed": null,
+          "sharedSessionOwnerCustodyPassed": true,
+          "sessionPublicationCustodyPassed": true,
+          "truthfulReadinessPassed": true
+        },
+        "structuralCustodyPassed": true,
+        "differences": [],
+        "acceptancePointsAwarded": 0
+      }
+    },
+    {
+      "id": "host-restart-session-get-failure",
+      "requirement": "host.restart-recall",
+      "covers": [
+        "host.restart-recall.outcomes",
+        "host.restart-recall.boundaries"
+      ],
+      "operation": "host-restart-session-runtime",
+      "input": {
+        "kind": "host-restart-recall",
+        "nowMs": 1794182400000,
+        "identity": {
+          "agentId": "main",
+          "isolatedAgentId": "other",
+          "writer": {
+            "sessionKey": "agent:main:session-4-writer",
+            "sessionId": "host-session-4-writer"
+          },
+          "fresh": {
+            "sessionKey": "agent:main:session-4-fresh",
+            "sessionId": "host-session-4-fresh"
+          },
+          "restarted": {
+            "sessionKey": "agent:main:session-4-restarted",
+            "sessionId": "host-session-4-restarted"
+          },
+          "isolated": {
+            "sessionKey": "agent:other:session-4-isolated",
+            "sessionId": "host-session-4-isolated"
+          }
+        },
+        "phases": [
+          {
+            "label": "produce",
+            "savePrompt": "Please remember that my drink preference is cedarquince-913 tea.",
+            "write": {
+              "path": "memory/2026-11-09.md",
+              "text": "My drink preference is cedarquince-913 tea.",
+              "content": "My drink preference is cedarquince-913 tea.\n"
+            },
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            },
+            "saveAck": "Saved."
+          },
+          {
+            "label": "restart",
+            "recall": {
+              "prompt": "What drink preference did I ask you to remember?",
+              "query": "drink preference"
+            },
+            "beforeGet": {
+              "operation": "replace-source-with-directory"
+            }
+          }
+        ],
+        "policy": {
+          "configuredSources": [
+            "memory"
+          ],
+          "rememberAcrossConversations": false,
+          "configuredSessionMemory": false,
+          "sourceMtimeMs": 1794182400000,
+          "producerPublication": {
+            "operation": "force-rebuild-after-source-metadata"
+          },
+          "indexLifecycle": "session-managed",
+          "runtimeIdentity": "openclaw-compatible"
+        }
+      },
+      "referenceMode": "authenticated-official-release",
+      "runtimeEvidenceValidated": true,
+      "status": "matched",
+      "nativeResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "textScore": 1.9999960000079996e-06,
+                      "snippet": "My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is cedarquince-913 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is cedarquince-913 tea."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is cedarquince-913 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e63652069732063656461727175696e63652d393133207465612e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "textScore": 1.9999960000079996e-06,
+                      "snippet": "My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "path": "memory/2026-11-09.md",
+                  "text": "",
+                  "status": "error",
+                  "code": "MEMORY_READ_FAILED",
+                  "error": "path must be a regular file | not a file | not-file"
+                },
+                "answer": "{\"path\":\"memory/2026-11-09.md\",\"text\":\"\",\"status\":\"error\",\"code\":\"MEMORY_READ_FAILED\",\"error\":\"path must be a regular file | not a file | not-file\"}"
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "corpora": [],
+                  "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "directory"
+            }
+          }
+        ]
+      },
+      "sdkResult": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "snippet": "My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "textScore": 1.9999960000079996e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is cedarquince-913 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is cedarquince-913 tea."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is cedarquince-913 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e63652069732063656461727175696e63652d393133207465612e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "snippet": "My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "textScore": 1.9999960000079996e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "path": "memory/2026-11-09.md",
+                  "text": "",
+                  "status": "error",
+                  "code": "MEMORY_READ_FAILED",
+                  "error": "path must be a regular file | not a file | not-file"
+                },
+                "answer": "{\"path\":\"memory/2026-11-09.md\",\"text\":\"\",\"status\":\"error\",\"code\":\"MEMORY_READ_FAILED\",\"error\":\"path must be a regular file | not a file | not-file\"}"
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "corpora": [],
+                  "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "directory"
+            }
+          }
+        ]
+      },
+      "rawDiagnostics": {
+        "native": {
+          "sha256": "a7c8e053947e8ab45786f9f36f9614f2be63105da48af792e351d3e9e0c81216",
+          "validationStatus": "verified"
+        },
+        "python": {
+          "sha256": "9c3c2e399226c7ad85d0a9aebd96c2b5fc918cd7a6d99b0d58da13195eaf7393",
+          "validationStatus": "verified"
+        }
+      },
+      "custody": {
+        "native": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "snapshot": "after-real-write-and-explicit-sync",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is cedarquince-913 tea.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is cedarquince-913 tea.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": []
+                },
+                {
+                  "agentId": "other",
+                  "chunks": []
+                }
+              ]
+            }
+          ],
+          "acceptancePointsAwarded": 0,
+          "producerForcePublicationPassed": true,
+          "committedTranscriptNotificationsPassed": true,
+          "originalSessionRuntimeExecuted": true
+        },
+        "sdk": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "session": "writer",
+              "revision": 1,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is cedarquince-913 tea.\n"
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "session": "fresh",
+              "revision": 1,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is cedarquince-913 tea.\n"
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "session": "restarted",
+              "revision": 2,
+              "chunks": []
+            },
+            {
+              "phase": "restart",
+              "session": "isolated",
+              "revision": 1,
+              "chunks": []
+            }
+          ],
+          "acceptancePointsAwarded": 0,
+          "producerForcePublicationPassed": true,
+          "committedTranscriptNotificationsPassed": null,
+          "sharedSessionOwnerCustodyPassed": true,
+          "sessionPublicationCustodyPassed": true,
+          "truthfulReadinessPassed": true
+        },
+        "structuralCustodyPassed": true,
+        "differences": [],
+        "acceptancePointsAwarded": 0
+      }
+    }
+  ],
+  "regressions": {
+    "worktree": "work/managed-host-test-fix",
+    "log": "work/managed-host-full-regressions-002.log",
+    "testOnlyCommit": "327380a84d5c12c447393e5c621f2ac8fd09570e",
+    "state": "passed",
+    "mergeOnlyAfterMainFullGateEnds": true,
+    "passed": 7138,
+    "skipped": 1648,
+    "failed": 0,
+    "durationSeconds": 393.28,
+    "logSha256": "f43adcabdcfa712959ccc61ed3b88116c19e40b069f65c6f5066f59b80bbfc82",
+    "sourceFilesAggregate": "2af41017d2f6f42eac1b73d08015bf1ead35e3a08b991ac524ac5ca3a3293b79"
+  },
+  "installedConsumers": {
+    "sessionId": 88342,
+    "log": "work/managed-host-distribution-002.log",
+    "wheel": "passed",
+    "sdist": "passed",
+    "invalidTypedCalls": 24
+  },
+  "historicalDevelopmentReports": [
+    {
+      "path": "work/host-restart-session/attempt-001-development/report.json",
+      "sha256": "cdaa9a250f13a4c5bfa294088e04f4482249b67dc736757405212b30dbef7b48",
+      "size": 16631822,
+      "summary": {
+        "match": 0,
+        "mismatch": 0,
+        "blocked": 4
+      },
+      "errors": [],
+      "authenticationPassed": true,
+      "identity": {
+        "gitCommit": "d60e682acc257dcd27f4df7dc49c29f80eabc93e",
+        "trackedWorkingTreeDirty": true,
+        "sourceSha256": "986f747719d703db51d9d188fb8b868ab46c11613d90461e15b3f641f17e59a3",
+        "sourceFiles": 159
+      }
+    },
+    {
+      "path": "work/host-restart-session/attempt-002-development/report.json",
+      "sha256": "eb34cc5d1272ef45ca2c5d735df85a72f0eafc64340e4ab1fd8e8bc3d0be131b",
+      "size": 16650123,
+      "summary": {
+        "match": 4,
+        "mismatch": 0,
+        "blocked": 0
+      },
+      "errors": [],
+      "authenticationPassed": true,
+      "identity": {
+        "gitCommit": "d60e682acc257dcd27f4df7dc49c29f80eabc93e",
+        "trackedWorkingTreeDirty": true,
+        "sourceSha256": "f3ab32ae5076ced1715180f1dbbe5c8d6bd9a65ccefabab002540dcc5c26f4b8",
+        "sourceFiles": 159
+      }
+    }
+  ],
+  "historicalPreflightAudit": {
+    "path": "work/host-restart-session-audit-002.json",
+    "sha256": "16252423d1db7f2aeeb550925dd2cb621c978f3e47e9c1a870b255a935c83b1d",
+    "distinctFromFinalCleanSdk": true
+  },
+  "limits": [
+    "Provider-none controlled host profile; no paid provider calls.",
+    "Full catalog remains mismatched with 14 visible differences and 60 uncovered conditions.",
+    "Earlier development captures retain their original source identities and statuses."
+  ]
+}

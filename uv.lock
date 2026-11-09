@@ -1,10 +1,10 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.12' and python_full_version < '3.15' and sys_platform == 'emscripten'",
     "python_full_version >= '3.15' and sys_platform != 'emscripten'",
+    "python_full_version >= '3.12' and python_full_version < '3.15' and sys_platform == 'emscripten'",
     "(python_full_version < '3.15' and sys_platform != 'emscripten') or (python_full_version < '3.12' and sys_platform == 'emscripten')",
 ]
 
@@ -37,6 +37,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/3b/72/5562aabb8dd7181e8e860622a38bea08d17842b99ecd4c91f84ac95251b0/anyio-4.14.1.tar.gz", hash = "sha256:8d648a3544c1a700e3ff78615cd679e4c5c3f149904287e73687b2596963629e", size = 254831, upload-time = "2026-06-24T20:56:06.017Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b0/7b/90df4a0a816d98d6ea26f559d87836d494a2cf1fcf063be67df50a7bcc30/anyio-4.14.1-py3-none-any.whl", hash = "sha256:4e5533c5b8ff0a24f5d7a176cbe6877129cd183893f66b537f8f227d10527d72", size = 124875, upload-time = "2026-06-24T20:56:04.413Z" },
+]
+
+[[package]]
+name = "bracex"
+version = "3.2.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/2d/1f/b7ce2efe406b87bb3693d587b91bcd8fa9030888870ceff29e4a0d233cb2/bracex-3.2.2.tar.gz", hash = "sha256:d18976160b3ba01a57d5c53a5c8c3aa2506efa9e0a3a62467251f82b8f563fde", size = 34980, upload-time = "2026-11-07T21:28:25.433Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/21/b5/52a750a062db07ba056cde1c52c802b898a96b70953389a0b2247e18f210/bracex-3.2.2-py3-none-any.whl", hash = "sha256:284d59c4656e5a0421ff691402074bd5847049d50410535764a2c522a47095bc", size = 14151, upload-time = "2026-11-07T21:28:24.028Z" },
 ]
 
 [[package]]
@@ -807,7 +816,9 @@ wheels = [
 name = "memory-core"
 source = { editable = "." }
 dependencies = [
+    { name = "bracex" },
     { name = "httpx" },
+    { name = "wcmatch" },
     { name = "zstandard", marker = "python_full_version < '3.14'" },
 ]
 
@@ -833,12 +844,14 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "bracex", specifier = ">=3.2.2,<4" },
     { name = "fastapi", marker = "extra == 'demo'", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", marker = "extra == 'demo'", specifier = ">=3.1" },
     { name = "langchain-core", marker = "extra == 'langgraph'", specifier = ">=1.6" },
     { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.2" },
     { name = "uvicorn", marker = "extra == 'demo'", specifier = ">=0.30" },
+    { name = "wcmatch", specifier = ">=10.1,<11" },
     { name = "zstandard", marker = "python_full_version < '3.14'", specifier = ">=0.23" },
 ]
 provides-extras = ["demo", "langgraph"]
@@ -1666,6 +1679,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/2e/41/06cce5dbb9f77591512957710ac709e60b12e6216a2f2d0d607fd49706e8/uvicorn-0.50.0.tar.gz", hash = "sha256:0c92e1bc2259cb7faa4fcef774a5966588f2e88542744550b66799fba10b76f1", size = 93257, upload-time = "2026-07-04T05:03:26.33Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/3a/eb70620ca2bf8213603d5c731460687c49fee38b0072f0b4a637781f0a53/uvicorn-0.50.0-py3-none-any.whl", hash = "sha256:05f0eb19edf38208f79f43df8a63081b48df31b0cd1e5997be957a4dc97d1b19", size = 72716, upload-time = "2026-07-04T05:03:24.848Z" },
+]
+
+[[package]]
+name = "wcmatch"
+version = "10.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "bracex" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/11/15/dc61746d8c0852f6d711ad09c774b63cf7c8211aa49e30871ac3d342b7e2/wcmatch-10.2.1.tar.gz", hash = "sha256:ecac70a5c70e62ba854b78318d3a1408e8651f8f1c96e5837743b71aa6a4fb92", size = 132497, upload-time = "2026-07-02T17:21:48.484Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/82/ba/20b48eedeab5316bf9a502bb9eb7e3b1588bd61d0f565822fefa8f06e10b/wcmatch-10.2.1-py3-none-any.whl", hash = "sha256:2d775395b93f233af66690f62cb9d52b084ec159a31cc4084f4069d72f437acd", size = 39763, upload-time = "2026-07-02T17:21:47.134Z" },
 ]
 
 [[package]]

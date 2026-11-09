@@ -44,7 +44,7 @@ def _third_party_import_roots() -> set[str]:
 def test_core_dependencies_are_exactly_what_memory_core_imports():
     names = {re.split(r"[\s<>=!~;\[]", spec, maxsplit=1)[0] for spec in _project()["dependencies"]}
 
-    assert names == _third_party_import_roots() == {"httpx", "zstandard"}
+    assert names == _third_party_import_roots() == {"httpx", "zstandard", "wcmatch", "bracex"}
 
 
 def test_demo_and_langgraph_are_the_only_extras_and_dev_tools_a_group():

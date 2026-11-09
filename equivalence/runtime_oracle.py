@@ -67,6 +67,9 @@ _OPERATIONS = {
     "session-contract-helper-runtime": (
         "session-contract-runtime.mjs", "dist/session-ingestion-Dy5uAq-_.mjs", False,
     ),
+    "workspace-isolation-runtime": (
+        "workspace-isolation-runtime.mjs", "dist/extensions/memory-core/manager-runtime.js", True,
+    ),
 }
 
 
@@ -676,6 +679,8 @@ class ReleaseOracleExecution:
         session_kinds = {"session-contract-runtime": "flow", "session-contract-helper-runtime": "admission-policy"}
         if operation in session_kinds and case.get("input", {}).get("kind") != session_kinds[operation]:
             raise RuntimeOracleError("Session admission helpers cannot impersonate genuine persisted session flows.")
+        if operation == "workspace-isolation-runtime" and case.get("input", {}).get("kind") != "flow":
+            raise RuntimeOracleError("Workspace isolation requires its actual multi-owner runtime profile.")
         if (not isinstance(row, dict) or operation not in _OPERATIONS
                 or row.get("id") != case.get("id") or type(row.get("ok")) is not bool
                 or set(row) != ({"id", "ok", "result"} if row["ok"] else {"id", "ok", "error"})):
@@ -775,11 +780,18 @@ class ReleaseOracleExecution:
             for name in ("deadline-partial.mjs", "search-contract-runtime.mjs")
         } <= local_imports:
             raise RuntimeOracleError("The actual controlled timer and complete envelope codec owners did not execute.")
-        if operation == "session-contract-runtime" and not {
+        if operation in {"session-contract-runtime", "workspace-isolation-runtime"} and not {
             str((ROOT / "equivalence" / name).resolve())
             for name in ("search-contract-runtime.mjs", "get-contract-runtime.mjs")
         } <= local_imports:
             raise RuntimeOracleError("Session results require the original full-envelope and exact owned-root transport codecs.")
+        if operation == "workspace-isolation-runtime":
+            from equivalence.workspace_isolation_runtime_bindings import REQUIRED_LOADED_ARTIFACTS
+            from equivalence.workspace_isolation_evidence import validate_workspace_isolation_workers
+
+            if any(("node_modules/openclaw", owner) not in loaded for owner in REQUIRED_LOADED_ARTIFACTS):
+                raise RuntimeOracleError("The actual declared workspace/file/index/recall/checkpoint owners did not execute.")
+            validate_workspace_isolation_workers(worker_imports)
         if required_owner is not None and ("node_modules/openclaw", required_owner) not in loaded:
             message = ("The actual native runtime owner did not execute."
                        if operation in {"exact-path-runtime", "importance-project-runtime"}
@@ -845,6 +857,10 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
         if operation in {"deadline-partial-runtime", "deadline-partial-get-runtime"}:
             _validate_deadline_partial_raw(row, case, diagnostic, evidence.parent)
+        if operation == "workspace-isolation-runtime" and row["ok"]:
+            from equivalence.workspace_isolation_evidence import validate_workspace_isolation_raw
+
+            validate_workspace_isolation_raw(case, row["result"], diagnostic, evidence.parent)
         if operation in {"session-contract-runtime", "session-contract-helper-runtime"}:
             _validate_session_contract_raw(row, case, diagnostic, evidence.parent)
             if operation == "session-contract-runtime" and row["ok"]:

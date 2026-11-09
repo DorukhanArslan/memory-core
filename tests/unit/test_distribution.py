@@ -12,6 +12,7 @@ def test_wheel_rejects_private_or_checkout_files():
         "memory_core/__init__.py", "memory_core/py.typed",
         "memory_core-0.2.0.dist-info/METADATA",
         "memory_core-0.2.0.dist-info/licenses/LICENSE.openclaw",
+        "memory_core-0.2.0.dist-info/licenses/LICENSE.unicode",
     }
     validate_files(valid, kind="wheel")
     for forbidden in (".env", "workspace/MEMORY.md", "demo/app.py", "trace/live.jsonl"):
@@ -22,12 +23,13 @@ def test_wheel_rejects_private_or_checkout_files():
 def test_artifacts_require_types_and_upstream_notice():
     for kind, valid in (
         ("wheel", {"memory_core/__init__.py", "memory_core/py.typed",
-                   "memory_core-0.2.0.dist-info/licenses/LICENSE.openclaw"}),
+                   "memory_core-0.2.0.dist-info/licenses/LICENSE.openclaw",
+                   "memory_core-0.2.0.dist-info/licenses/LICENSE.unicode"}),
         ("sdist", {"memory_core/__init__.py", "memory_core/py.typed", "LICENSE.openclaw",
-                   "pyproject.toml", "README.md", "CHANGELOG.md", "PKG-INFO", ".gitignore"}),
+                   "LICENSE.unicode", "pyproject.toml", "README.md", "CHANGELOG.md", "PKG-INFO", ".gitignore"}),
     ):
         validate_files(valid, kind=kind)
-        for required in ("memory_core/py.typed", next(p for p in valid if p.endswith("LICENSE.openclaw"))):
+        for required in ("memory_core/py.typed", *(p for p in valid if p.endswith(("LICENSE.openclaw", "LICENSE.unicode")))):
             with pytest.raises(ValueError, match="Missing artifact file"):
                 validate_files(valid - {required}, kind=kind)
 
@@ -38,9 +40,12 @@ def test_metadata_rejects_missing_or_accidental_runtime_dependencies():
     metadata["Version"] = "0.2.0"
     metadata["Requires-Python"] = ">=3.11"
     metadata["License-File"] = "LICENSE.openclaw"
+    metadata["License-File"] = "LICENSE.unicode"
     metadata["Provides-Extra"] = "demo"
     metadata["Provides-Extra"] = "langgraph"
     metadata["Requires-Dist"] = "httpx>=0.27"
+    metadata["Requires-Dist"] = "wcmatch>=10.1,<11"
+    metadata["Requires-Dist"] = "bracex>=3.2.2,<4"
     metadata["Requires-Dist"] = "zstandard>=0.23; python_version < '3.14'"
     metadata["Requires-Dist"] = 'fastapi>=0.115; extra == "demo"'
     metadata["Requires-Dist"] = 'jinja2>=3.1; extra == "demo"'

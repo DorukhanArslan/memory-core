@@ -2,11 +2,12 @@
 
 The adapters arrange isolated filesystem inputs, inject named OS failures, and
 serialize paths/error codes. They do not enumerate eligible files themselves.
-Extra-path patterns and multimodal discovery remain uncovered by this subset.
+Extra-root options control filesystem discovery only; embeddings are not exercised.
 """
 from __future__ import annotations
 
 from contextlib import ExitStack
+from copy import deepcopy
 import errno
 import os
 from pathlib import Path
@@ -88,12 +89,79 @@ def build_storage_discovery_cases() -> list[dict[str, Any]]:
         ("memory-stat-operational-error", {"files": {"memory/note.md": "note"},
                                           "failure": {"operation": "stat", "path": "memory", "code": "EIO"}}),
     ]
+    extra_files = {"MEMORY.md": "root", "USER.md": "user", "memory/base.md": "default",
+                   "notes/a.md": "a", "notes/b.md": "b", "notes/sub/c.md": "c",
+                   "notes/sub/.hidden.md": "hidden", "notes/.top.md": "hidden",
+                   "notes/a.txt": "text", "notes/.openclaw-repair/repair.md": "repair"}
+    scenarios.extend([
+        ("extra-relative-directory", {"files": extra_files, "extraPaths": ["notes"]}),
+        ("extra-absolute-outside-workspace", {"files": {**extra_files, "../outside/note.md": "outside"},
+                                              "extraPaths": ["$FIXTURE/outside"]}),
+        ("extra-explicit-file-ignores-pattern", {"files": extra_files,
+            "extraPaths": [{"path": "notes/a.md", "pattern": "never-matches/**"}]}),
+        ("extra-order-and-duplicate-roots", {"files": extra_files,
+            "extraPaths": ["notes/b.md", " notes/a.md ", "notes", "notes", "./notes", "", {"path": "notes", "pattern": None}]}),
+        ("extra-default-deduplication", {"files": extra_files, "extraPaths": [".", "memory", "MEMORY.md"]}),
+        ("extra-root-legacy-and-repair-exclusions", {"files": {
+            "MEMORY.md": "canonical", "memory.md": "legacy", ".openclaw-repair/root-memory/copy.md": "repair",
+            ".openclaw-repair/unrelated.md": "unrelated", "notes/memory.md": "ordinary nested name",
+        }, "extraPaths": ["memory.md", ".openclaw-repair/root-memory", ".openclaw-repair", "notes"]}),
+        ("extra-home-roots", {"files": {**extra_files, "../home/notes/home.md": "home"}, "homeRoot": True,
+                              "extraPaths": ["~/notes", "~\\notes", "~"]}),
+        ("extra-missing-and-nonregular-roots", {"files": extra_files, "fifos": ["pipe.md"],
+                                               "extraPaths": ["missing", "pipe.md", "notes/a.txt"]}),
+        ("extra-symlink-roots-and-descendants", {"files": extra_files,
+            "symlinks": {"alias": "notes", "alias.md": "notes/a.md", "notes/link.md": "notes/a.md"},
+            "extraPaths": ["alias", "alias.md", "notes"], "captureSkippedSymlinkRoots": True}),
+        ("extra-union-and-normalized-patterns", {"files": extra_files, "extraPaths": [
+            {"path": " notes ", "pattern": " a.md "}, {"path": "notes", "pattern": "sub\\**\\*.md"},
+            {"path": "./notes", "pattern": "b.md"}, {"path": "notes", "pattern": "a.md"}]}),
+        ("extra-pattern-pruning-failure", {"files": extra_files,
+            "extraPaths": [{"path": "notes", "pattern": "a.md"}],
+            "failure": {"operation": "scan", "path": "notes/sub", "code": "EACCES"}}),
+        ("extra-operational-failure", {"files": extra_files, "extraPaths": ["notes"],
+            "failure": {"operation": "scan", "path": "notes/sub", "code": "EACCES"}}),
+        ("extra-outside-operational-failure", {"files": {"../outside/note.md": "outside"},
+            "extraPaths": ["../outside"], "failure": {"operation": "scan", "path": "../outside", "code": "EACCES"}}),
+        ("extra-disappearing-directory", {"files": extra_files, "extraPaths": ["notes"], "removeOnScan": "notes/sub"}),
+    ])
+    for name, pattern in (("leaf", "*.md"), ("recursive", "**/*.md"), ("braces", "{a,b}.md"),
+                          ("extglob", "@(a|b).md"), ("negative-extglob", "!(b).md"),
+                          ("character-class", "[ab].md"), ("negated-class", "[!b].md"),
+                          ("explicit-hidden", "**/.*.md"), ("directory-star", "sub/**"),
+                          ("directory-recursion", "sub/**/*.md"), ("invalid-bracket", "[a.md"),
+                          ("leading-negation-literal", "!*.md")):
+        scenarios.append((f"extra-pattern-{name}", {"files": extra_files,
+                          "extraPaths": [{"path": "notes", "pattern": pattern}]}))
+    edge_files = {**extra_files, "notes/😀.md": "supplementary", "notes/𐀀.md": "supplementary letter",
+                  "notes/é.md": "letter", "notes/α.md": "letter", "notes/𞛀.md": "Unicode 17 letter",
+                  "notes/1.md": "digit", "notes/!.md": "punctuation", "notes/ .md": "blank",
+                  "notes/\x01.md": "control", "notes/a1.md": "range one", "notes/a999.md": "range last"}
+    for name, pattern in (("utf16-one-unit", "?.md"), ("utf16-two-units", "??.md"),
+                          ("utf16-bracket", "[😀].md"), ("literal-parent", "sub/../*.md"),
+                          ("globstar-parent", "sub/**/../deep/*.md"), ("leading-dot-segment", "./*.md"),
+                          ("trailing-slash", "a.md/"), ("large-brace-range", "a{1..1100}.md")):
+        scenarios.append((f"extra-pattern-{name}", {"files": edge_files,
+                          "extraPaths": [{"path": "notes", "pattern": pattern}]}))
+    for name in ("alnum", "alpha", "ascii", "blank", "cntrl", "digit", "graph", "lower", "print",
+                 "punct", "space", "upper", "word", "xdigit"):
+        scenarios.append((f"extra-pattern-posix-{name}", {"files": edge_files,
+                          "extraPaths": [{"path": "notes", "pattern": f"[[:{name}:]].md"}]}))
+    media_files = {"MEMORY.md": "root", "memory/default.png": "default remains markdown only",
+                   "media/note.md": "markdown", "media/image.PNG": "image", "media/sound.MP3": "audio",
+                   "media/sub/clip.flac": "audio", "media/video.mp4": "unsupported", "media/.image.jpg": "hidden"}
+    for name, settings in (("disabled", {"enabled": False, "modalities": ["image", "audio"], "maxFileBytes": 1}),
+                           ("image", {"enabled": True, "modalities": ["image"], "maxFileBytes": 1}),
+                           ("audio", {"enabled": True, "modalities": ["audio"], "maxFileBytes": 1}),
+                           ("all", {"enabled": True, "modalities": ["image", "audio"], "maxFileBytes": 1}),
+                           ("empty", {"enabled": True, "modalities": [], "maxFileBytes": 1})):
+        scenarios.append((f"extra-multimodal-{name}", {"files": media_files, "extraPaths": ["media"],
+                                                    "multimodal": settings}))
     for name, value in scenarios:
         cases.append({
             "id": f"discovery-{name}", "requirement": "storage.discovery",
-            "operation": "storage-discovery", "input": value,
-            # Default-root behavior is proven by these cases, but the full
-            # acceptance points also encompass unsupported extra-path sources.
+            "operation": "storage-discovery", "input": deepcopy(value),
+            # Coverage stays unclaimed until actual native comparison succeeds.
             "covers": [],
         })
     return cases
@@ -147,11 +215,11 @@ def run_storage_discovery(arguments: dict[str, Any]) -> dict:
         def injected(operation: str, path: str | os.PathLike) -> None:
             if isinstance(path, int):
                 return
-            absolute = Path(path)
-            if operation == "scan" and remove_on_scan and absolute == root / remove_on_scan:
+            absolute = Path(os.path.abspath(path))
+            if operation == "scan" and remove_on_scan and absolute == Path(os.path.abspath(root / remove_on_scan)):
                 _remove(absolute)
             if (failure and operation == failure["operation"]
-                    and absolute == root / failure["path"]):
+                    and absolute == Path(os.path.abspath(root / failure["path"]))):
                 raise OSError(getattr(errno, failure["code"]), "injected filesystem failure", str(absolute))
 
         def scan(path):
@@ -164,13 +232,25 @@ def run_storage_discovery(arguments: dict[str, Any]) -> dict:
 
         def snapshot() -> dict:
             try:
-                return {"files": [path.relative_to(root).as_posix()
-                                  for path in list_memory_files(root)]}
+                skipped = []
+                extra_paths = []
+                for entry in arguments.get("extraPaths", []):
+                    if isinstance(entry, str):
+                        extra_paths.append(entry.replace("$FIXTURE", directory))
+                    else:
+                        extra_paths.append({**entry, "path": entry["path"].replace("$FIXTURE", directory)})
+                callback = skipped.append if arguments.get("captureSkippedSymlinkRoots") else None
+                files = list_memory_files(root, extra_paths, arguments.get("multimodal"), callback)
+                return {"files": [os.path.relpath(path, root).replace(os.sep, "/") for path in files],
+                        **({"skippedSymlinkRoots": [os.path.relpath(path, root).replace(os.sep, "/") for path in skipped]}
+                           if callback else {})}
             except MemorySourceScanError as exc:
                 return {"error": {"type": type(exc).__name__, "code": exc.code,
-                                  "path": exc.path.relative_to(root).as_posix()}}
+                                  "path": os.path.relpath(exc.path, root).replace(os.sep, "/")}}
 
         with ExitStack() as stack:
+            if arguments.get("homeRoot"):
+                stack.enter_context(patch.object(Path, "home", return_value=Path(directory) / "home"))
             stack.enter_context(patch("os.scandir", scan))
             stack.enter_context(patch("os.lstat", file_stat))
             snapshots = [snapshot()]

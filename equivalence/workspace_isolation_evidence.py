@@ -7,6 +7,9 @@ owners; they never supply isolation outcomes, accepted hits or expected state.
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import UTC, datetime
+import hashlib
+import json
 import re
 
 from equivalence.get_contract import map_get_fixture_paths
@@ -21,6 +24,96 @@ OWNER_FIELDS = {"agentId", "workspace", "files", "published", "indexSources", "q
 def _require(condition: object, message: str) -> None:
     if not condition:
         raise ValueError(message)
+
+
+def _expected_configuration(value: dict, base: str) -> dict:
+    explicit = value["config"]["layout"] == "explicit"
+    agents = [{"id": owner["agentId"], **({"default": True} if index == 0 else {}),
+               **({"workspace": str(Path(base) / owner["workspace"])} if explicit else {})}
+              for index, owner in enumerate(value["owners"])]
+    return {
+        "agents": {"defaults": {"workspace": base if explicit else str(Path(base) / value["owners"][0]["workspace"])},
+                   "list": agents},
+        "logging": {"level": "silent", "consoleLevel": "silent", "file": str(Path(base) / "native.log")},
+        "plugins": {"entries": {"memory-core": {"config": {"dreaming": {"enabled": False}}}}},
+        "memory": {"search": {"enabled": True, "provider": "none", "fallback": "none", "sources": ["memory"],
+                  "store": {"vector": {"enabled": False}},
+                  "sync": {"onSessionStart": False, "onSearch": False, "watch": False},
+                  "query": {"minScore": 0, "maxResults": 200, "hybrid": {"temporalDecay": {"enabled": False}}}}},
+    }
+
+
+def _sql_publication(sql: dict) -> tuple[list, list]:
+    required = {"memory_index_chunks", "memory_index_sources", "memory_index_chunks_fts",
+                "memory_index_chunk_provenance", "memory_index_chunk_recall_metadata"}
+    _require(required <= set(sql), "Native workspace private index SQL was not retained")
+    for table in sql.values():
+        _require(set(table) == {"columns", "rows"} and isinstance(table["columns"], list)
+                 and isinstance(table["rows"], list), "Native workspace private SQL lost its schema/rows")
+        columns = {column["name"] for column in table["columns"]}
+        _require(all(isinstance(row, dict) and set(row) == columns for row in table["rows"]),
+                 "Native workspace private SQL lost actual row columns")
+    chunks = sql["memory_index_chunks"]["rows"]
+    provenance = {row["chunk_id"]: row for row in sql["memory_index_chunk_provenance"]["rows"]}
+    recalls = {row["chunk_id"]: row for row in sql["memory_index_chunk_recall_metadata"]["rows"]}
+    fts = {row["id"]: row for row in sql["memory_index_chunks_fts"]["rows"]}
+    _require(len(fts) == len(chunks), "Native workspace FTS rows differ from actual chunks")
+    published = []
+    for chunk in sorted(chunks, key=lambda row: (row["source"], row["path"], row["start_line"],
+                                                row["end_line"], row["text"], row["id"])):
+        actual_fts = fts.get(chunk["id"], {})
+        _require(chunk.get("model") == "fts-only" and chunk.get("embedding") == {"type": "bytes", "hex": ""},
+                 "Native workspace changed the genuine provider-none index representation")
+        _require(all(actual_fts.get(key) == chunk.get(key)
+                     for key in ("id", "path", "source", "start_line", "end_line", "text", "model")),
+                 "Native workspace FTS rows differ from actual chunks")
+        recall, origin = recalls.get(chunk["id"], {}), provenance.get(chunk["id"], {})
+        published.append({"path": chunk["path"], "source": chunk["source"],
+                          "startLine": chunk["start_line"], "endLine": chunk["end_line"], "text": chunk["text"],
+                          "importance": recall.get("importance"), "triggers": recall.get("triggers"),
+                          "projectKey": recall.get("project_key"), "provenance": {
+                              "originClass": origin.get("origin_class"), "sessionKind": origin.get("session_kind"),
+                              "observedAt": origin.get("observed_at"), "supersedesKey": origin.get("supersedes_key"),
+                          }})
+    sources = [{"path": row["path"], "source": row["source"]}
+               for row in sorted(sql["memory_index_sources"]["rows"], key=lambda row: (row["source"], row["path"]))]
+    return published, sources
+
+
+def _state_publication(snapshot: dict, workspace: str, now_ms: int, base: str) -> tuple[dict, dict]:
+    plugin_sql = snapshot.get("pluginStateSql", [])
+    _require(isinstance(plugin_sql, list) and any("plugin_state_entries" in row.get("fullSql", {})
+             for row in plugin_sql), "Native maintenance/recall plugin-state SQLite was not retained")
+    workspace_key = hashlib.sha256(workspace.replace("\\", "/").encode()).hexdigest()
+    namespaces = {"short-term-recall": {}, "short-term-meta": {}, "dreaming-daily-ingestion": {}}
+    seen = set()
+    for database in plugin_sql:
+        _require(Path(database["filename"]).is_relative_to(Path(base) / "state"),
+                 "Native workspace plugin-state database escaped its owned state root")
+        table = database.get("fullSql", {}).get("plugin_state_entries")
+        if table is None:
+            continue
+        columns = {column["name"] for column in table["columns"]}
+        for row in table["rows"]:
+            _require(set(row) == columns, "Native plugin-state SQL lost actual row columns")
+            if row.get("plugin_id") != "memory-core" or row.get("namespace") not in namespaces:
+                continue
+            payload = json.loads(row["value_json"])
+            if payload.get("workspaceKey") != workspace_key:
+                continue
+            key = payload.get("key")
+            _require(set(payload) == {"version", "workspaceKey", "workspaceDir", "key", "value"}
+                     and payload["version"] == 1 and payload["workspaceDir"] == workspace and isinstance(key, str),
+                     "Native workspace plugin-state scope differs from its original owner")
+            identity = (row["namespace"], row["entry_key"])
+            _require(identity not in seen and row["entry_key"] == workspace_key + ":" + hashlib.sha256(key.encode()).hexdigest(),
+                     "Native workspace plugin-state key differs from its original workspace/key owner")
+            seen.add(identity)
+            namespaces[row["namespace"]][key] = payload["value"]
+    now_iso = datetime.fromtimestamp(now_ms / 1000, UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    meta = namespaces["short-term-meta"].get("recall", {})
+    return ({"version": 1, "updatedAt": meta.get("updatedAt", now_iso), "entries": namespaces["short-term-recall"]},
+            {"version": 1, "files": namespaces["dreaming-daily-ingestion"]})
 
 
 def validate_workspace_isolation_workers(worker_imports: list[dict]) -> None:
@@ -54,6 +147,8 @@ def validate_workspace_isolation_raw(
                        "dateConstructorReplaced": True, "setTimeoutUnchanged": True,
                        "performanceNowUnchanged": True}, "Native workspace clock changed unsupported APIs")
     cfg = raw.get("configuration", {})
+    _require(_same_json(cfg, _expected_configuration(value, base)),
+             "Native workspace complete host configuration differs from the selected literal fixture")
     settings = cfg.get("memory", {}).get("search", {})
     _require(settings.get("provider") == settings.get("fallback") == "none"
              and settings.get("sources") == ["memory"], "Native workspace manager changed its provider/source boundary")
@@ -66,7 +161,11 @@ def validate_workspace_isolation_raw(
     _require([row.get("agentId") for row in resolutions] == owner_ids, "Native workspace resolutions are incomplete")
     resolved = {row["agentId"]: row["engineWorkspace"] for row in resolutions}
     for row in resolutions:
+        requested = next(owner["workspace"] for owner in value["owners"] if owner["agentId"] == row["agentId"])
+        expected_workspace = Path(base) / requested
         _require(isinstance(row.get("engineWorkspace"), str)
+                 and expected_workspace.is_relative_to(base)
+                 and row.get("requestedWorkspace") == row.get("engineWorkspace") == str(expected_workspace)
                  and row.get("hostWorkspace") == row["engineWorkspace"],
                  "The actual host/engine owners selected different workspace boundaries")
     acquisitions = raw.get("managerAcquisitions", [])
@@ -123,11 +222,12 @@ def validate_workspace_isolation_raw(
             _require(_same_json(map_get_fixture_paths({key: owner[key] for key in OWNER_FIELDS}, base), transported),
                      "Native workspace output changed an observed logical field")
             sql = owner.get("fullSql", {})
-            _require({"memory_index_chunks", "memory_index_sources", "memory_index_chunks_fts"} <= set(sql),
-                     "Native workspace private index SQL was not retained")
-            for table in sql.values():
-                _require(set(table) == {"columns", "rows"} and isinstance(table["columns"], list)
-                         and isinstance(table["rows"], list), "Native workspace private SQL lost its schema/rows")
+            actual_published, actual_sources = _sql_publication(sql)
+            _require(_same_json(actual_published, owner["published"]) and _same_json(actual_sources, owner["indexSources"]),
+                     "Native workspace logical publication detached from its actual complete private SQL")
+            actual_recall, actual_daily = _state_publication(snapshot, owner["workspace"], value["nowMs"], base)
+            _require(_same_json(actual_recall, owner["recallStore"]) and _same_json(actual_daily, owner["dailyIngestionState"]),
+                     "Native workspace recall/maintenance readback detached from its actual scoped plugin-state SQL")
             queries = [query for query in step.get("queries", []) if query["agentId"] == owner["agentId"]]
             _require([query.get("id") for query in owner["queries"]] == [query["id"] for query in queries],
                      "Native workspace query identities changed")

@@ -27,26 +27,50 @@
           "symbol": "collectMemoryFilesFromDir",
           "anchor": "async function collectMemoryFilesFromDir(",
           "line": 231
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/internal.ts",
+          "symbol": "normalizeExtraMemoryPathEntries",
+          "anchor": "export function normalizeExtraMemoryPathEntries(",
+          "line": 106
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/internal.ts",
+          "symbol": "matchesExtraMemoryPathEntry",
+          "anchor": "export function matchesExtraMemoryPathEntry(",
+          "line": 131
+        },
+        {
+          "path": "packages/memory-host-sdk/src/host/multimodal.ts",
+          "symbol": "classifyMemoryMultimodalPath",
+          "anchor": "export function classifyMemoryMultimodalPath(",
+          "line": 100
         }
       ],
       "python": [
         {
           "path": "memory_core/workspace.py",
           "symbol": "list_memory_files",
-          "anchor": "def list_memory_files(workspace_dir: Path) -> list[Path]:",
+          "anchor": "def list_memory_files(",
           "line": 61
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 486
+          "line": 595
+        },
+        {
+          "path": "memory_core/_memory_glob.py",
+          "symbol": "matches_posix_glob",
+          "anchor": "def matches_posix_glob(",
+          "line": 125
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Default discovery includes MEMORY.md, USER.md and nested memory/*.md, with global UTF-16 ordering and visible operational scan failures; paired filesystem cases exercise roots, hidden/repair paths, symlinks, non-regular entries and disappearance.",
-        "Configured extra paths/patterns and multimodal discovery remain unsupported; the default-root subset does not complete either full discovery acceptance point."
+        "Default discovery retains exact roots, nested Markdown, UTF-16 order, hidden/repair exclusions, symlink/nonregular boundaries and operational scan failures.",
+        "The public filesystem API accepts configured extra roots, pattern unions, skipped-symlink callbacks and image/audio extension eligibility. Node 24.16 Unicode 17 POSIX-category facts preserve the original matcher independently of host Python Unicode versions. This is discovery, not binary ingestion or embeddings. Extended comparisons remain uncredited until independent review."
       ]
     },
     {
@@ -74,19 +98,19 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_read_path",
           "anchor": "    def resolve_memory_read_path(self, raw_path: str) -> tuple[str, Path | None]:",
-          "line": 525
+          "line": 634
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.resolve_memory_path",
           "anchor": "    def resolve_memory_path(self, rel_path: str) -> Path:",
-          "line": 516
+          "line": 625
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "check_writable_memory_file",
           "anchor": "def check_writable_memory_file(root: Path, rel_path: str) -> None:",
-          "line": 224
+          "line": 326
         }
       ],
       "implementation": "partial",
@@ -126,13 +150,13 @@
           "path": "memory_core/workspace.py",
           "symbol": "append_daily_memory_file",
           "anchor": "def append_daily_memory_file(",
-          "line": 250
+          "line": 352
         },
         {
           "path": "memory_core/workspace.py",
           "symbol": "workspace_file_lock",
           "anchor": "def workspace_file_lock(root: Path, rel_path: str) -> threading.Lock:",
-          "line": 206
+          "line": 308
         }
       ],
       "implementation": "partial",
@@ -159,6 +183,24 @@
           "symbol": "resolveAgentWorkspaceDir",
           "anchor": "export function resolveAgentWorkspaceDir(",
           "line": 468
+        },
+        {
+          "path": "extensions/memory-core/src/short-term-promotion-record.ts",
+          "symbol": "recordShortTermRecalls",
+          "anchor": "export async function recordShortTermRecalls(",
+          "line": 137
+        },
+        {
+          "path": "extensions/memory-core/src/dreaming-ingestion-state.ts",
+          "symbol": "readDailyIngestionState",
+          "anchor": "export async function readDailyIngestionState(",
+          "line": 169
+        },
+        {
+          "path": "extensions/memory-core/src/dreaming-state.ts",
+          "symbol": "readMemoryCoreWorkspaceEntries",
+          "anchor": "export async function readMemoryCoreWorkspaceEntries",
+          "line": 114
         }
       ],
       "python": [
@@ -179,12 +221,30 @@
           "symbol": "_rebase_config_onto_subject",
           "anchor": "def _rebase_config_onto_subject(config: MemoryConfig, workspace: Path) -> MemoryConfig:",
           "line": 832
+        },
+        {
+          "path": "memory_core/client.py",
+          "symbol": "Memory.from_workspace",
+          "anchor": "    def from_workspace(",
+          "line": 69
+        },
+        {
+          "path": "memory_core/consolidation/recall.py",
+          "symbol": "record_short_term_recalls",
+          "anchor": "def record_short_term_recalls(",
+          "line": 218
+        },
+        {
+          "path": "memory_core/consolidation/daily_ingestion.py",
+          "symbol": "read_daily_ingestion_state",
+          "anchor": "def read_daily_ingestion_state(",
+          "line": 487
         }
       ],
       "implementation": "partial",
       "notes": [
-        "SubjectMemory rebases workspace/index locations and refuses an externally shared store path; direct MemoryConfig use still depends on the host selecting the correct workspace and agent.",
-        "Native agent routing and Python subject routing use different host boundaries; recalls, ledgers and maintenance isolation require paired multi-workspace flows rather than a path-only claim."
+        "SubjectMemory rebases one shared config onto actual subject workspaces; direct Memory.from_workspace rejects a mismatched config owner before side effects while preserving explicit store overrides for matching owners.",
+        "The paired runtime profile maps configured native agents to SDK subjects explicitly, retains both actual namespace/config/store schemas and compares complete files, index publication, public tools, awaited recall and daily maintenance checkpoint state across owner switches, changes and reopen. Generated maintenance jobs and full agent/subject host API interchange are not claimed. Cases remain uncredited pending independent proof review."
       ]
     },
     {
@@ -542,7 +602,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(self) -> list[MemoryFile]:",
-          "line": 486
+          "line": 595
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -560,7 +620,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(self) -> list[MemoryFile]:",
-          "line": 449
+          "line": 558
         },
         {
           "path": "memory_core/index/publication.py",
@@ -1196,7 +1256,7 @@
           "path": "memory_core/client.py",
           "symbol": "Memory.search",
           "anchor": "    def search(",
-          "line": 111
+          "line": 116
         },
         {
           "path": "memory_core/host/kit.py",
@@ -1942,7 +2002,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_session_transcript_files",
           "anchor": "    def discover_session_transcript_files(self) -> list[MemoryFile]:",
-          "line": 449
+          "line": 558
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -2008,7 +2068,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryWorkspace.discover_indexable_files",
           "anchor": "    def discover_indexable_files(",
-          "line": 486
+          "line": 595
         },
         {
           "path": "memory_core/consolidation/session_ingestion.py",
@@ -2116,7 +2176,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "MemoryFile",
           "anchor": "class MemoryFile:",
-          "line": 400
+          "line": 502
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -2603,7 +2663,7 @@
       "implementation": "partial",
       "notes": [
         "Runtime markers default to Memory Core identity; native marker behavior requires the explicit OpenClaw compatibility identity.",
-        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1–9999."
+        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1\u20139999."
       ]
     },
     {
@@ -2862,7 +2922,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "append_memory_flush_file",
           "anchor": "def append_memory_flush_file(",
-          "line": 277
+          "line": 379
         }
       ],
       "implementation": "partial",
@@ -3956,7 +4016,7 @@
           "path": "memory_core/workspace.py",
           "symbol": "workspace_index_lock",
           "anchor": "def workspace_index_lock(root: Path) -> threading.RLock:",
-          "line": 212
+          "line": 314
         }
       ],
       "implementation": "partial",
@@ -4481,6 +4541,32 @@
       ]
     },
     {
+      "path": "extensions/memory-core/src/dreaming-ingestion-state.ts",
+      "sha256": "1d4fca365fa88ef871766adccb85bface2aaff04e4ed54ce996f187ae5150905",
+      "sourceImports": [
+        "./dreaming-state.js",
+        "openclaw/plugin-sdk/string-coerce-runtime"
+      ],
+      "exportedDeclarations": [
+        "DAILY_MEMORY_FILENAME_RE",
+        "DailyIngestionFileState",
+        "DailyIngestionState",
+        "DailyMemoryFile",
+        "SESSION_INGESTION_MAX_TRACKED_MESSAGES_PER_SESSION",
+        "SessionIngestionFileState",
+        "SessionIngestionState",
+        "compareDailyMemoryFilesByNewestDay",
+        "normalizeDailyIngestionState",
+        "normalizeMemoryDay",
+        "normalizeSessionIngestionState",
+        "parseDailyMemoryFileName",
+        "readDailyIngestionState",
+        "readSessionIngestionState",
+        "writeDailyIngestionState",
+        "writeSessionIngestionState"
+      ]
+    },
+    {
       "path": "extensions/memory-core/src/dreaming-narrative.ts",
       "sha256": "1274c328923b0d4d219a0ca5dae16535aca0d9aaf1a4b3b6f8223a05400c9818",
       "sourceImports": [
@@ -4551,6 +4637,40 @@
       "exportedDeclarations": [
         "auditDreamingArtifacts",
         "repairDreamingArtifacts"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/src/dreaming-state.ts",
+      "sha256": "b115fa0ce1c2757abc282f2822d08dc365c07a3b88c6e90ff7b1e7b87fb64458",
+      "sourceImports": [
+        "node:crypto",
+        "node:path",
+        "node:timers/promises",
+        "openclaw/plugin-sdk/plugin-state-runtime"
+      ],
+      "exportedDeclarations": [
+        "DREAMING_DAILY_INGESTION_NAMESPACE",
+        "DREAMING_MEMORY_BACKUP_NAMESPACE",
+        "DREAMING_SESSION_INGESTION_FILES_NAMESPACE",
+        "DREAMING_SESSION_INGESTION_SEEN_NAMESPACE",
+        "MemoryCoreOpenKeyedStore",
+        "SESSION_BACKFILL_REWIND_NAMESPACE",
+        "SESSION_SEEN_HASHES_PER_CHUNK",
+        "SHORT_TERM_LOCK_MAX_ENTRIES",
+        "SHORT_TERM_LOCK_NAMESPACE",
+        "SHORT_TERM_META_NAMESPACE",
+        "SHORT_TERM_PHASE_SIGNAL_NAMESPACE",
+        "SHORT_TERM_RECALL_NAMESPACE",
+        "clearMemoryCoreWorkspaceNamespace",
+        "configureMemoryCoreDreamingState",
+        "deleteMemoryCoreWorkspaceEntry",
+        "memoryCoreStateReference",
+        "memoryCoreWorkspaceStateKey",
+        "normalizeMemoryCoreWorkspaceKey",
+        "openMemoryCoreStateStore",
+        "readMemoryCoreWorkspaceEntries",
+        "writeMemoryCoreWorkspaceEntries",
+        "writeMemoryCoreWorkspaceEntry"
       ]
     },
     {
@@ -5616,6 +5736,23 @@
         "readCuratedMemoryTriggerCandidates",
         "readCuratedProjectMemoryCandidates",
         "readMemoryRecallMetadata"
+      ]
+    },
+    {
+      "path": "packages/memory-host-sdk/src/host/multimodal.ts",
+      "sha256": "56cff2cd3c18f57fed4336532c8b73d64f19e3d8f1058fd51979fb48ed7954ae",
+      "sourceImports": [
+        "@openclaw/normalization-core/string-coerce"
+      ],
+      "exportedDeclarations": [
+        "MemoryMultimodalModality",
+        "MemoryMultimodalSettings",
+        "buildCaseInsensitiveExtensionGlob",
+        "buildMemoryMultimodalLabel",
+        "classifyMemoryMultimodalPath",
+        "getMemoryMultimodalExtensions",
+        "isMemoryMultimodalEnabled",
+        "normalizeMemoryMultimodalSettings"
       ]
     },
     {

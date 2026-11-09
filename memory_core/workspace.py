@@ -5,7 +5,7 @@ import os
 import re
 import stat
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -58,8 +58,12 @@ def is_memory_path(rel_path: str) -> bool:
     return normalized.startswith("memory/")
 
 
-def list_memory_files(workspace_dir: Path) -> list[Path]:
-    """Default-root portion of OpenClaw ``listMemoryFiles`` (v2026.9.9).
+def list_memory_files(
+    workspace_dir: Path, extra_paths: Sequence[str | Mapping[str, str]] | None = None,
+    multimodal: Mapping[str, object] | None = None,
+    on_skipped_symlink_root: Callable[[Path], None] | None = None,
+) -> list[Path]:
+    """OpenClaw ``listMemoryFiles`` filesystem discovery (v2026.9.9).
 
     Returns paths in upstream order: the root ``MEMORY.md`` when it is a real
     file (exact name, not a symlink), root ``USER.md``, then every ``*.md`` under
@@ -70,9 +74,9 @@ def list_memory_files(workspace_dir: Path) -> list[Path]:
     by realpath. Missing entries are ignored; operational scan errors are
     reported instead of publishing an apparently successful partial scan.
 
-    Not ported: ``extraPaths`` and multimodal files (memory-core has no config for
-    them), and the ``shouldSkipRootMemoryAuxiliaryPath`` guard, which can only
-    match for extra paths outside ``memory/``.
+    Extra roots retain their configured order and union their glob patterns.
+    Image/audio extension discovery is an explicit extra-root opt-in; discovery
+    does not imply support for multimodal embeddings or binary-file reads.
     """
     root = Path(workspace_dir)
     result: list[Path] = []
@@ -95,6 +99,25 @@ def list_memory_files(workspace_dir: Path) -> list[Path]:
         and stat.S_ISDIR(memory_dir_stat.st_mode)
     ):
         _collect_memory_files_from_dir(memory_dir, result)
+    for extra_root, entries in _extra_memory_paths(root, extra_paths).items():
+        if _skip_root_auxiliary(root, extra_root):
+            continue
+        try:
+            extra_stat = os.lstat(extra_root)
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        except OSError as exc:
+            raise MemorySourceScanError(extra_root, exc) from exc
+        if stat.S_ISLNK(extra_stat.st_mode):
+            if on_skipped_symlink_root is not None:
+                on_skipped_symlink_root(extra_root)
+        elif stat.S_ISDIR(extra_stat.st_mode):
+            _collect_memory_files_from_dir(
+                extra_root, result, multimodal=multimodal,
+                should_skip_path=lambda path: _skip_root_auxiliary(root, path), extra_path_entries=entries,
+            )
+        elif stat.S_ISREG(extra_stat.st_mode) and _allowed_memory_file(extra_root, multimodal):
+            result.append(extra_root)
     if len(result) <= 1:
         return result
     seen: set[str] = set()
@@ -109,6 +132,74 @@ def list_memory_files(workspace_dir: Path) -> list[Path]:
         seen.add(key)
         deduped.append(entry)
     return deduped
+
+
+def _extra_memory_paths(
+    workspace: Path, configured: Sequence[str | Mapping[str, str]] | None,
+) -> dict[Path, list[tuple[Path, str | None]]]:
+    normalized = {}
+    for entry in configured or ():
+        path = js_trim(entry if isinstance(entry, str) else entry["path"])
+        raw_pattern = None if isinstance(entry, str) else entry.get("pattern")
+        pattern = js_trim(raw_pattern) or None if raw_pattern is not None else None
+        if path:
+            normalized[(path, pattern)] = (path, pattern)
+    grouped: dict[Path, list[tuple[Path, str | None]]] = {}
+    for path, pattern in normalized.values():
+        if path == "~":
+            path = str(Path.home())
+        elif path.startswith(("~/", "~\\")):
+            path = str(Path.home() / path[2:])
+        absolute = Path(os.path.abspath(os.path.join(workspace, path)))
+        grouped.setdefault(absolute, []).append((absolute, pattern.replace("\\", "/") if pattern else None))
+    return grouped
+
+
+def _skip_root_auxiliary(workspace: Path, path: Path) -> bool:
+    relative = os.path.relpath(path, workspace).replace(os.sep, "/")
+    return relative == "memory.md" or relative == ".openclaw-repair/root-memory" or relative.startswith(
+        ".openclaw-repair/root-memory/"
+    )
+
+
+def _allowed_memory_file(path: Path, multimodal: Mapping[str, object] | None) -> bool:
+    if path.name.endswith(".md"):
+        return True
+    if not multimodal or multimodal.get("enabled") is not True:
+        return False
+    extensions = {
+        "image": (".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"),
+        "audio": (".mp3", ".wav", ".ogg", ".opus", ".m4a", ".m2a", ".aac", ".flac"),
+    }
+    return any(str(path).lower().endswith(extensions[modality]) for modality in multimodal.get("modalities", ())
+               if modality in extensions)
+
+
+def _matches_extra_path(entry: tuple[Path, str | None], candidate: Path, *, directory: bool = False) -> bool:
+    root, pattern = entry
+    if not pattern:
+        return True
+    relative = os.path.relpath(candidate, root)
+    if relative == ".":
+        return True
+    if relative == ".." or relative.startswith(".." + os.sep):
+        return False
+    relative = relative.replace(os.sep, "/")
+    from memory_core._memory_glob import matches_posix_glob
+
+    def matches(value: str) -> bool:
+        return matches_posix_glob(relative, value)
+
+    try:
+        if not directory:
+            return matches(pattern)
+        segments = pattern.split("/")
+        if re.search(r"[\{\[\(]", pattern) or any(segment in {".", ".."} for segment in segments):
+            return True
+        parents = len(segments) if segments[-1] == "**" else len(segments) - 1
+        return any(matches("/".join(segments[:count])) for count in range(1, parents + 1))
+    except Exception:
+        return False
 
 
 class MemorySourceScanError(RuntimeError):
@@ -154,7 +245,11 @@ def _is_regular_markdown_file(path: Path) -> bool:
     return stat.S_ISREG(file_stat.st_mode) and path.name.endswith(".md")
 
 
-def _collect_memory_files_from_dir(directory: Path, files: list[Path]) -> None:
+def _collect_memory_files_from_dir(
+    directory: Path, files: list[Path], *, multimodal: Mapping[str, object] | None = None,
+    should_skip_path: Callable[[Path], bool] | None = None,
+    extra_path_entries: Sequence[tuple[Path, str | None]] | None = None,
+) -> None:
     # collectMemoryFilesFromDir over @openclaw/fs-safe walkDirectory with
     # `symlinks: "skip"`: each directory is visited once by realpath, entries
     # are pushed before descending. listMemoryFiles then sorts the complete
@@ -185,11 +280,18 @@ def _collect_memory_files_from_dir(directory: Path, files: list[Path]) -> None:
             if entry.is_symlink():
                 continue
             full_path = current / entry.name
+            if should_skip_path is not None and should_skip_path(full_path):
+                continue
             if entry.is_file(follow_symlinks=False):
-                if entry.name.endswith(".md"):
+                if _allowed_memory_file(full_path, multimodal) and (extra_path_entries is None or any(
+                    _matches_extra_path(item, full_path) for item in extra_path_entries
+                )):
                     collected.append(full_path)
             elif entry.is_dir(follow_symlinks=False) and entry.name != OPENCLAW_REPAIR_DIRNAME:
-                visit(full_path)
+                if extra_path_entries is None or any(
+                    _matches_extra_path(item, full_path, directory=True) for item in extra_path_entries
+                ):
+                    visit(full_path)
 
     visit(directory)
     files.extend(sorted(collected, key=lambda item: str(item).encode("utf-16-be", "surrogatepass")))
@@ -438,12 +540,19 @@ class MemoryWorkspace:
         self.session_catalog = session_catalog
         self.index_sources = tuple(index_sources) if index_sources is not None else None
 
-    def discover_memory_files(self) -> list[MemoryFile]:
+    def discover_memory_files(
+        self, *, extra_paths: Sequence[str | Mapping[str, str]] | None = None,
+        multimodal: Mapping[str, object] | None = None,
+        on_skipped_symlink_root: Callable[[Path], None] | None = None,
+    ) -> list[MemoryFile]:
         # Same file list as OpenClaw's memory index (listMemoryFiles); the
         # relative path mirrors buildFileEntry (path.relative + "/" separators).
+        files = (list_memory_files(self.root) if extra_paths is None and multimodal is None
+                 and on_skipped_symlink_root is None else
+                 list_memory_files(self.root, extra_paths, multimodal, on_skipped_symlink_root))
         return [
-            MemoryFile(path.relative_to(self.root).as_posix(), path)
-            for path in list_memory_files(self.root)
+            MemoryFile(os.path.relpath(path, self.root).replace(os.sep, "/"), path)
+            for path in files
         ]
 
     def discover_session_transcript_files(self) -> list[MemoryFile]:

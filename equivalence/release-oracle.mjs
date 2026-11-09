@@ -23,6 +23,7 @@ const operations = {
   "deadline-partial-get-runtime": ["deadline-partial-runtime.mjs", "runDeadlineGetRuntime"],
   "session-contract-runtime": ["session-contract-runtime.mjs", "runSessionContractRuntime"],
   "session-contract-helper-runtime": ["session-contract-runtime.mjs", "runSessionContractHelperRuntime"],
+  "workspace-isolation-runtime": ["workspace-isolation-runtime.mjs", "runWorkspaceIsolationRuntime"],
 };
 const results = [];
 for (const testCase of request.cases) {

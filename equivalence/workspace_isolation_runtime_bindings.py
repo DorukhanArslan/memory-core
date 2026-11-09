@@ -31,7 +31,10 @@ SOURCE_ANCHORS = {'packages/memory-host-sdk/src/host/config-utils.ts': ('export 
                                       'resolveAgentWorkspaceDir(',),
  'src/plugin-sdk/memory-core-host-engine-foundation.ts': ('  '
                                                           'resolveAgentWorkspaceDir,',),
- 'src/agents/memory-search.ts': ('export function resolveMemorySearchConfig(',),
+ 'src/agents/memory-search.ts': ('export function resolveMemorySearchConfig(',
+                               'const DEFAULT_TEMPORAL_DECAY_ENABLED = true;',
+                               'const DEFAULT_TEMPORAL_DECAY_HALF_LIFE_DAYS = 30;',
+                               'enabled: DEFAULT_TEMPORAL_DECAY_ENABLED,'),
  'extensions/memory-core/src/memory/manager.ts': ('export class '
                                                   'MemoryIndexManager ',),
  'extensions/memory-core/src/memory/manager-registry.ts': ('export function '
@@ -83,7 +86,10 @@ COMPILED_ANCHORS = {'dist/plugin-sdk/memory-core-host-engine-foundation.js': ('f
                                     'resolveMemoryHostAgentWorkspaceDir as i,'),
  'dist/agent-scope-config-Dm6T00l4.mjs': ('function resolveAgentWorkspaceDir(',
                                           'resolveAgentWorkspaceDir as d,'),
- 'dist/memory-search-CIhUURbE.mjs': ('function resolveMemorySearchConfig(',),
+ 'dist/memory-search-CIhUURbE.mjs': ('function resolveMemorySearchConfig(',
+                                  'const DEFAULT_TEMPORAL_DECAY_ENABLED = true;',
+                                  'const DEFAULT_TEMPORAL_DECAY_HALF_LIFE_DAYS = 30;',
+                                  'enabled: DEFAULT_TEMPORAL_DECAY_ENABLED,'),
  'dist/extensions/memory-core/manager-runtime.js': ('var MemoryIndexManager = '
                                                     'class '
                                                     'MemoryIndexManager ',),
@@ -138,6 +144,15 @@ def prepare_workspace_isolation_runtime_bindings(checkout: Path, runtime_root: P
         "sourceBindings": sources, "compiledBindings": compiled, "sourceImportLinks": links,
         "requiredLoadedArtifacts": list(REQUIRED_LOADED_ARTIFACTS),
         "requiredMemoryIndexWorkerArtifacts": list(MEMORY_INDEX_WORKER_ARTIFACTS),
+        "temporalPolicyAuthority": {
+            "originalOwner": "src/agents/memory-search.ts",
+            "compiledOwner": "dist/memory-search-CIhUURbE.mjs",
+            "originalResolver": "resolveMemorySearchConfig",
+            "enabled": True, "halfLifeDays": 30,
+            "configuredHybridTemporalDecayOverrideRead": False,
+            "requestedAndActualResolvedSettingsRetained": True,
+            "sdkClockSeam": "memory_core.index.temporal_decay.datetime.now",
+        },
         "fixtureBoundary": "One host configuration selects each actual agent workspace and real provider-none "
             "manager. Literal file writes, actual manager/tool searches, awaited recall recording and typed "
             "daily-ingestion checkpoint writes execute against those selected owners. Managers close and "

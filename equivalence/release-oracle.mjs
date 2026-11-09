@@ -34,6 +34,7 @@ const operations = {
   "entry-memory-publication-runtime": ["entry-provenance-runtime.mjs", "runEntryMemoryPublicationRuntime"],
   "entry-session-publication-runtime": ["entry-provenance-runtime.mjs", "runEntrySessionPublicationRuntime"],
   "entry-provider-preparation-runtime": ["entry-provenance-runtime.mjs", "runEntryProviderPreparationRuntime"],
+  "promotion-ranking-runtime": ["promotion-ranking-runtime.mjs", "runPromotionRankingRuntime"],
 };
 const results = [];
 for (const testCase of request.cases) {
@@ -41,6 +42,10 @@ for (const testCase of request.cases) {
   const evidenceDirectory = path.join(context.evidenceDirectory, caseHash);
   fs.mkdirSync(evidenceDirectory, { recursive: true });
   try {
+    if (Boolean(context.promotionRankingProfile) !== (testCase.operation === "promotion-ranking-runtime") ||
+        context.promotionRankingProfile && testCase.input?.kind !== "promotion-ranking") {
+      throw Error("The independent ranking capability cannot execute another operation or input contract");
+    }
     const binding = operations[testCase.operation];
     if (!Object.hasOwn(operations, testCase.operation)) throw Error("Unsupported release oracle operation");
     const adapter = await import(new URL(binding[0], import.meta.url).href);

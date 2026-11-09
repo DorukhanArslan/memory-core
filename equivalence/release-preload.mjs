@@ -28,6 +28,16 @@ if (context.entryProvenanceProfile !== undefined) {
     throw Error("Unapproved compiled entry provenance profile capability");
   }
 }
+if (context.promotionRankingProfile !== undefined) {
+  const profile = context.promotionRankingProfile;
+  if (!profile || Object.keys(profile).sort().join() !== "inputKind,kind,nodeRuntime,operation" ||
+      profile.kind !== "approved-promotion-ranking-profile" || profile.operation !== "promotion-ranking-runtime" ||
+      profile.inputKind !== "promotion-ranking" || context.entryProvenanceProfile !== undefined ||
+      JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
+      (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
+    throw Error("Unapproved compiled promotion ranking profile capability");
+  }
+}
 const permitted = new Map();
 for (const entry of context.allowedLocal) {
   permitted.set(fs.realpathSync(entry.path), { kind: "oracle", path: fs.realpathSync(entry.path), sha256: entry.sha256 });
@@ -80,7 +90,8 @@ if (context.approvedNodeRuntime !== undefined) {
 }
 trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: hash(rawContext), preloadSha256: own.sha256,
         fetchDenied: true, providerMode: "none", ...(approvedNodeRuntime ? { runtime: approvedNodeRuntime } : {}),
-        ...(context.entryProvenanceProfile ? { entryProfile: context.entryProvenanceProfile } : {}) });
+        ...(context.entryProvenanceProfile ? { entryProfile: context.entryProvenanceProfile } : {}),
+        ...(context.promotionRankingProfile ? { promotionProfile: context.promotionRankingProfile } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.
 // This executes in every worker as well as the parent, before native imports.

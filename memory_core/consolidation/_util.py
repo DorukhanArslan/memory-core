@@ -40,10 +40,17 @@ def append_distinct(values: list[str], value: str, limit: int) -> list[str]:
     return next_values[-limit:]
 
 
-def read_text_if_exists(path: Path) -> str:
+def read_text_if_exists(path: Path, *, preserve_newlines: bool = False) -> str:
+    """Read optional text, preserving MEMORY.md preimage bytes when requested.
+
+    Other consolidation readers retain their legacy universal-newline behavior.
+    MEMORY.md readers opt in because the publication owner compares the decoded
+    original bytes, including CRLF and bare CR, before committing a replacement.
+    """
     if not path.exists():
         return ""
-    return path.read_text(encoding="utf-8")
+    with path.open("r", encoding="utf-8", newline="" if preserve_newlines else None) as handle:
+        return handle.read()
 
 
 def to_int(value: Any, fallback: int) -> int:

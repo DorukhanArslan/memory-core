@@ -330,6 +330,8 @@ def validate_release_sources(
         "dist/short-term-promotion-memory-write-DLJgScco.mjs",
         "dist/workspace-C0LMBmap.mjs",
         ("node_modules/@openclaw/fs-safe", "dist/root.js"),
+        "dist/memory-budget-BodJnew-.mjs",
+        "dist/short-term-promotion-MX1vHJuE.mjs",
     }:
         raise ReleaseRuntimeError("The compiled reference requires a reviewed runtime entry.")
     required_key = required_entry if isinstance(required_entry, tuple) else ("node_modules/openclaw", required_entry)

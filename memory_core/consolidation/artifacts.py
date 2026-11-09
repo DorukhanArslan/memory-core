@@ -34,6 +34,7 @@ from memory_core.consolidation.origins import (
     prune_memory_entry_origins,
 )
 from memory_core.consolidation.store import memory_workspace_lock
+from memory_core.runtime_identity import RuntimeIdentity
 
 CONSOLIDATION_BACKUP_LIMIT = 8
 PREIMAGE_FILE = "consolidation-preimages.json"
@@ -64,6 +65,7 @@ def store_memory_preimage(
     agent_ids: Iterable[str] = (),
     retained_entry_keys: Collection[str] = frozenset(),
     ledger: MemoryEntryOriginLedger | None = None,
+    identity: RuntimeIdentity | None = None,
 ) -> set[str]:
     """``storeMemoryPreimage``: keep the last :data:`CONSOLIDATION_BACKUP_LIMIT` MEMORY.md snapshots.
 
@@ -84,16 +86,17 @@ def store_memory_preimage(
     entries = sorted(by_key.values(), key=lambda item: str(item.get("createdAt", "")))
     kept = entries[-CONSOLIDATION_BACKUP_LIMIT:]
     write_json_atomic(preimage_path(workspace), {"version": 1, "entries": kept})
-    retained = {key for item in kept for key in extract_promotion_markers(str(item.get("content", "")))}
+    retained = {key for item in kept for key in extract_promotion_markers(str(item.get("content", "")), identity=identity)}
     if ledger is not None:
         prune_memory_entry_origins(
             ledger,
             workspace_dir=workspace,
             agent_ids=agent_ids,
             entry_keys=[
-                key for item in current for key in extract_promotion_markers(str(item.get("content", "")))
+                key for item in current for key in extract_promotion_markers(str(item.get("content", "")), identity=identity)
             ],
             retained_entry_keys={*retained, *retained_entry_keys},
+            identity=identity,
         )
     return retained
 

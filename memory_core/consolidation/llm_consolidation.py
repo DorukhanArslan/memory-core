@@ -55,6 +55,7 @@ from memory_core.consolidation.artifacts import (  # noqa: F401  (re-exported na
     store_memory_preimage,
 )
 from memory_core.consolidation.curated_annotations import extract_project_keys_from_curated_entry
+from memory_core.consolidation.markers import promotion_marker_reader_identity
 from memory_core.consolidation.origins import MemoryEntryOriginLedger, reserve_memory_entry_origins
 from memory_core.consolidation.promotion import (
     DEFAULT_DEEP_DREAMING_MAX_PRIOR_ENTRY_LOSS_FRACTION,
@@ -667,7 +668,7 @@ def run_llm_consolidation(
         return LlmConsolidationOutcome(False, "no model")
     workspace = Path(workspace_dir)
     memory_path = workspace / "MEMORY.md"
-    existing = read_text_if_exists(memory_path)
+    existing = read_text_if_exists(memory_path, preserve_newlines=True)
     eligible = filter_consolidation_candidates(candidates)
     plan = consolidate_memory(
         model=model,
@@ -694,7 +695,7 @@ def run_llm_consolidation(
     )
     if result is None:
         return LlmConsolidationOutcome(False, "rejected")
-    store_memory_preimage(workspace, existing, now_ms)
+    store_memory_preimage(workspace, existing, now_ms, identity=promotion_marker_reader_identity(identity))
     memory_path.write_text(result.content, encoding="utf-8")
     recall_path = workspace / "memory" / ".dreams" / "short-term-recall.json"
     if recall_path.exists():
@@ -849,7 +850,7 @@ def commit_deep_consolidation(
     )
     if not plan_is_current:
         return DeepConsolidationCommit()
-    existing = read_text_if_exists(memory_path)
+    existing = read_text_if_exists(memory_path, preserve_newlines=True)
     if hash_memory_content(existing) != base_hash:
         return DeepConsolidationCommit(skipped_reason="MEMORY.md changed while consolidation was running")
     result = apply_memory_consolidation_plan(
@@ -871,6 +872,7 @@ def commit_deep_consolidation(
             agent_ids=origin_agent_ids,
             retained_entry_keys=retained_entry_keys,
             ledger=origins,
+            identity=promotion_marker_reader_identity(identity),
         )
     except Exception as error:
         deep.log.warning(
@@ -889,7 +891,7 @@ def commit_deep_consolidation(
         if origins is not None
         else None
     )
-    if hash_memory_content(read_text_if_exists(memory_path)) != base_hash:
+    if hash_memory_content(read_text_if_exists(memory_path, preserve_newlines=True)) != base_hash:
         if rollback_origins is not None:
             rollback_origins()
         return DeepConsolidationCommit(

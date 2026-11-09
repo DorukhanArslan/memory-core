@@ -15,19 +15,24 @@ Neutral marker (decision Q22, 2026-09-26): the prefix comes from
 :class:`~memory_core.runtime_identity.RuntimeIdentity`. The default
 ``MEMORY_CORE_RUNTIME_IDENTITY`` writes ``memory-core-memory-promotion:``;
 ``OPENCLAW_COMPAT_RUNTIME_IDENTITY`` writes upstream's
-``openclaw-memory-promotion:`` byte for byte. Readers accept both prefixes, so
+``openclaw-memory-promotion:`` byte for byte. Default readers accept both prefixes, so
 files written by OpenClaw or in either mode reconcile without duplicates, and a
 snippet carrying either marker is pipeline scaffolding (upstream only knows its
 own prefix). Markers written under an earlier project name are not read, so
 reconciliation can append their entries a second time (README › Rename the
 Project).
+
+An explicit compatibility/custom promotion flow selects its own reader identity for
+reconciliation, budget compaction, preimages and builtin origin pruning. Ordinary
+core promotion keeps the default dual reader. Custom non-ASCII prefix characters
+are literal; this does not promise a general Unicode case-folding engine.
 """
 
 from __future__ import annotations
 
 import re
 
-from memory_core.bootstrap._js import js_i_pattern, js_iu_keyword_pattern
+from memory_core.bootstrap._js import JS_SPACE, js_i_pattern, js_iu_keyword_pattern, js_trim
 from memory_core.runtime_identity import (
     OPENCLAW_COMPAT_RUNTIME_IDENTITY,
     MEMORY_CORE_RUNTIME_IDENTITY,
@@ -41,8 +46,8 @@ PROMOTION_MARKER_PREFIXES = (MEMORY_CORE_PROMOTION_MARKER_PREFIX, OPENCLAW_PROMO
 # Upstream reads markers with /giu (simple case folding: U+017F and U+212A fold onto ASCII) and the
 # dreaming fences with /i (ASCII-only folding), so neither can use Python's re.IGNORECASE.
 _PREFIX_ALTERNATION = "|".join(js_iu_keyword_pattern(prefix) for prefix in PROMOTION_MARKER_PREFIXES)
-_PROMOTION_MARKER_RE = re.compile(rf"<!--\s*(?:{_PREFIX_ALTERNATION})([^\n]+?)\s*-->")
-_PROMOTION_MARKER_START_RE = re.compile(rf"<!--\s*(?:{_PREFIX_ALTERNATION})")
+_PROMOTION_MARKER_RE = re.compile(rf"<!--{JS_SPACE}*(?:{_PREFIX_ALTERNATION})([^\n]*?){JS_SPACE}*-->")
+_PROMOTION_MARKER_START_RE = re.compile(rf"<!--{JS_SPACE}*(?:{_PREFIX_ALTERNATION})")
 _DREAMING_FENCE_START_RE = re.compile(
     js_i_pattern(r"<!--\s*openclaw:dreaming:")
     + "[a-zA-Z][a-zA-Z0-9-]*"
@@ -62,16 +67,26 @@ def format_promotion_marker(
     return f"<!-- {identity.promotion_marker_prefix}{key} -->"
 
 
-def extract_promotion_markers(memory_text: str) -> list[str]:
+def promotion_marker_reader_identity(identity: RuntimeIdentity) -> RuntimeIdentity | None:
+    """Keep ordinary core's Q22 dual reader; explicit compatibility/custom owns one prefix."""
+    return None if identity == MEMORY_CORE_RUNTIME_IDENTITY else identity
+
+
+def extract_promotion_markers(memory_text: str, *, identity: RuntimeIdentity | None = None) -> list[str]:
     """Return the recall keys of every promotion marker in ``memory_text``, in order.
 
     Matches upstream ``extractPromotionMarkers`` for each prefix in
     :data:`PROMOTION_MARKER_PREFIXES`: whitespace after ``<!--`` and before
-    ``-->`` is optional and the prefix is case-insensitive.
+    ``-->`` is optional and the prefix is case-insensitive. ``identity=None`` retains
+    the Q22 dual-prefix reader; an explicit identity selects only its own prefix.
+    Non-ASCII custom prefix characters match literally; generic Unicode case parity
+    for custom runtime identities is not claimed.
     """
     markers = []
-    for match in _PROMOTION_MARKER_RE.finditer(memory_text):
-        key = match.group(1).strip()
+    pattern = (_PROMOTION_MARKER_RE if identity is None else re.compile(
+        rf"<!--{JS_SPACE}*{js_iu_keyword_pattern(identity.promotion_marker_prefix)}([^\n]*?){JS_SPACE}*-->"))
+    for match in pattern.finditer(memory_text):
+        key = js_trim(match.group(1))
         if key:
             markers.append(key)
     return markers

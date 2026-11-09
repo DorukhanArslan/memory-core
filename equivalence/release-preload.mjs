@@ -23,6 +23,7 @@ if (context.entryProvenanceProfile !== undefined) {
   if (!profile || Object.keys(profile).sort().join() !== "inputKind,kind,nodeRuntime,operation" ||
       profile.kind !== "approved-entry-provenance-profile" || !Object.hasOwn(kinds, profile.operation) ||
       profile.inputKind !== kinds[profile.operation] || context.bootstrapDiscoveryProfile !== undefined ||
+      context.memoryBudgetProfile !== undefined ||
       JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
       (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved compiled entry provenance profile capability");
@@ -37,6 +38,7 @@ if (context.atomicPublicationProfile !== undefined) {
       JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
       !context.atomicCaseBinding || context.atomicCaseBinding.operation !== profile.operation ||
       context.entryProvenanceProfile !== undefined || context.bootstrapDiscoveryProfile !== undefined ||
+      context.memoryBudgetProfile !== undefined ||
       (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved atomic original-owner profile capability");
   }
@@ -52,6 +54,7 @@ if (bootstrapProfile !== undefined) {
       bootstrapProfile.inputKind !== "workspace-bootstrap" || !identity ||
       context.approvedNodeRuntime !== undefined || context.entryProvenanceProfile !== undefined ||
       context.atomicPublicationProfile !== undefined || context.atomicCaseBinding !== undefined ||
+      context.memoryBudgetProfile !== undefined ||
       JSON.stringify(Object.keys(identity).sort()) !== JSON.stringify(["execPath", "icuVersion", "nodeVersion", "sha256", "unicodeVersion"]) ||
       (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved compiled bootstrap execution scope");
@@ -61,6 +64,20 @@ if (bootstrapProfile !== undefined) {
     sha256: hash(fs.readFileSync(process.execPath)) };
   if (Object.entries(approved).some(([key, value]) => identity[key] !== value) ||
       Object.entries(bootstrapRuntime).some(([key, value]) => identity[key] !== value)) throw Error("Unapproved bootstrap Node/ICU/Unicode executable");
+}
+if (context.memoryBudgetProfile !== undefined) {
+  const profile = context.memoryBudgetProfile;
+  const kinds = { "memory-budget-runtime": "memory-budget", "memory-budget-apply-runtime": "memory-budget-apply" };
+  if (!profile || Object.keys(profile).sort().join() !== "inputKind,kind,nodeRuntime,operation" ||
+      profile.kind !== "approved-memory-budget-profile" || !Object.hasOwn(kinds, profile.operation) ||
+      profile.inputKind !== kinds[profile.operation] ||
+      JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
+      context.entryProvenanceProfile !== undefined || context.atomicPublicationProfile !== undefined ||
+      context.atomicCaseBinding !== undefined || context.bootstrapDiscoveryProfile !== undefined ||
+      (context.approvedReferenceSources ?? []).length ||
+      (context.fixtureSourceCaptures ?? []).length) {
+    throw Error("Unapproved compiled memory-budget profile capability");
+  }
 }
 const permitted = new Map();
 for (const entry of context.allowedLocal) {
@@ -116,7 +133,8 @@ trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: has
         fetchDenied: true, providerMode: "none", ...(approvedNodeRuntime ? { runtime: approvedNodeRuntime } : {}),
         ...(context.entryProvenanceProfile ? { entryProfile: context.entryProvenanceProfile } : {}),
         ...(context.atomicPublicationProfile ? { atomicProfile: context.atomicPublicationProfile } : {}),
-        ...(bootstrapProfile ? { runtime: bootstrapRuntime, bootstrapProfile } : {}) });
+        ...(bootstrapProfile ? { runtime: bootstrapRuntime, bootstrapProfile } : {}),
+        ...(context.memoryBudgetProfile ? { budgetProfile: context.memoryBudgetProfile } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.
 // This executes in every worker as well as the parent, before native imports.

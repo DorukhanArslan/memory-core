@@ -305,8 +305,9 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= 120:
         raise HarnessError("timeout-invalid", "The oracle requires a finite timeout of at most 120 seconds.")
     source_policy = len(cases) == 1 and cases[0]["operation"] == "redaction-policy-source"
+    budget_units = len(cases) == 1 and cases[0]["operation"] in {"memory-budget-runtime", "memory-budget-apply-runtime"}
     body = json.dumps({"cases": cases, "dependencies": dependencies,
-                       "bindings": bindings}, ensure_ascii=source_policy, allow_nan=False)
+                       "bindings": bindings}, ensure_ascii=source_policy or budget_units, allow_nan=False)
     # No provider credentials, runtime switches, Node options or user auth state
     # cross into the source-only oracle. There is one dispatch and no retry.
     env = {"PATH": str(node.parent) + os.pathsep + os.defpath, "LANG": "en_US.UTF-8", "TZ": "UTC"}
@@ -346,6 +347,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     from equivalence.bootstrap_discovery_profile import prepare_bootstrap_discovery_profile
 
                     context_options["bootstrap_profile"] = prepare_bootstrap_discovery_profile(node)
+                from equivalence.memory_budget_profile import MEMORY_BUDGET_PROFILES, prepare_memory_budget_profile
+
+                if len(cases) == 1 and cases[0]["operation"] in MEMORY_BUDGET_PROFILES:
+                    context_options["memory_budget_profile"] = prepare_memory_budget_profile(cases[0]["operation"], node)
                 execution = resources.enter_context(ReleaseOracleExecution(
                     release_runtime, _adapter_identity(), **context_options))
                 # Only this reviewed preload is supplied. User Node options,
@@ -543,6 +548,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "entry-memory-publication-runtime", "entry-session-publication-runtime", "entry-provider-preparation-runtime",
             "atomic-commit-runtime", "atomic-append-runtime", "atomic-bootstrap-runtime",
             "bootstrap-discovery-runtime",
+            "memory-budget-runtime", "memory-budget-apply-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -835,6 +841,12 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     report["bootstrapDiscoveryNodeAuthority"] = prepare_bootstrap_node_authority(node)
                 except (OSError, ValueError):
                     raise HarnessError("bootstrap-discovery-owner-unavailable", "The original whole bootstrap callers or approved executable could not be verified.") from None
+            if any(case["operation"] in {"memory-budget-runtime", "memory-budget-apply-runtime"} for case in runtime_cases):
+                from equivalence.memory_budget_bindings import prepare_memory_budget_bindings
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report["memoryBudgetRuntimeBindings"] = prepare_memory_budget_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                report["memoryBudgetNodeAuthority"] = prepare_model_node_authority(node)
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -869,6 +881,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                         prepare_atomic_publication_bindings(checkout, Path(runtime_config["runtimeRoot"])) != report["atomicPublicationRuntimeBindings"]
                         or prepare_model_node_authority(node) != report["atomicPublicationNodeAuthority"]):
                     raise ValueError("Atomic source/artifact/profile or executable authority changed.")
+                if "memoryBudgetRuntimeBindings" in report:
+                    if (prepare_memory_budget_bindings(checkout, Path(runtime_config["runtimeRoot"])) != report["memoryBudgetRuntimeBindings"]
+                            or prepare_model_node_authority(node) != report["memoryBudgetNodeAuthority"]):
+                        raise ValueError("Memory-budget source/artifact/profile or executable authority changed.")
                 if new_model_operations and prepare_model_node_authority(node) != report["modelNodeAuthority"]:
                     raise ValueError("The approved model boundary executable changed.")
                 if bootstrap_runtime and (

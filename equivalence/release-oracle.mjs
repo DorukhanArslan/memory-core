@@ -38,6 +38,8 @@ const operations = {
   "atomic-commit-runtime": ["atomic-publication-runtime.mjs", "runAtomicCommitRuntime"],
   "atomic-append-runtime": ["atomic-publication-runtime.mjs", "runAtomicAppendRuntime"],
   "atomic-bootstrap-runtime": ["atomic-publication-runtime.mjs", "runAtomicBootstrapRuntime"],
+  "memory-budget-runtime": ["memory-budget-runtime.mjs", "runMemoryBudgetRuntime"],
+  "memory-budget-apply-runtime": ["memory-budget-runtime.mjs", "runMemoryBudgetRuntime"],
 };
 const results = [];
 for (const testCase of request.cases) {
@@ -53,6 +55,15 @@ for (const testCase of request.cases) {
         (bootstrapProfile.operation !== testCase.operation || testCase.input?.kind !== bootstrapProfile.inputKind)) {
       throw Error("A different operation or input kind cannot borrow the bootstrap caller before import");
     }
+    const budgetProfile = context.memoryBudgetProfile;
+    const budgetKinds = { "memory-budget-runtime": "memory-budget", "memory-budget-apply-runtime": "memory-budget-apply" };
+    if ((budgetProfile !== undefined) !== Object.hasOwn(budgetKinds, testCase.operation)) {
+      throw Error("The memory-budget executable capability is restricted to its exact compiled callers before import");
+    }
+    if (budgetProfile !== undefined && (budgetProfile.operation !== testCase.operation ||
+        budgetProfile.inputKind !== budgetKinds[testCase.operation] || testCase.input?.kind !== budgetProfile.inputKind)) {
+      throw Error("A different operation or input kind cannot borrow the memory-budget caller before import");
+    }
     const binding = operations[testCase.operation];
     if (!Object.hasOwn(operations, testCase.operation)) throw Error("Unsupported release oracle operation");
     const adapter = await import(new URL(binding[0], import.meta.url).href);
@@ -66,4 +77,6 @@ for (const testCase of request.cases) {
     results.push({ id: testCase.id, ok: false, error: { type: error.name, message: error.message } });
   }
 }
-process.stdout.write(JSON.stringify({kind: "official-release-runtime-comparison", results, sources: []}) + "\n");
+await new Promise((resolve, reject) => process.stdout.write(
+  JSON.stringify({kind: "official-release-runtime-comparison", results, sources: []}) + "\n", "utf8",
+  (error) => error ? reject(error) : resolve()));

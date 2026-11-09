@@ -43,6 +43,7 @@ from typing import Literal, Protocol
 
 from memory_core.bootstrap._js import js_trim
 from memory_core.consolidation.markers import PROMOTION_MARKER_PREFIXES, extract_promotion_markers
+from memory_core.runtime_identity import RuntimeIdentity
 
 OriginClass = Literal["owner", "agent", "untrusted", "system"]
 
@@ -445,13 +446,15 @@ class MemoryEntryOriginLedger:
 
     # -- the index ----------------------------------------------------------------------
 
-    def indexed_promotion_keys(self, agent_id: str) -> set[str] | None:
+    def indexed_promotion_keys(self, agent_id: str, *, identity: RuntimeIdentity | None = None) -> set[str] | None:
         """Promotion keys inside the agent's indexed MEMORY chunks, ``None`` when it has no database.
 
         Upstream reads ``memory_index_chunks`` (``source = 'memory'``, text containing a promotion
         marker) of the agent's database; the host can supply its own reader instead.
         """
         if self._indexed_promotion_keys is not None:
+            # This callback is the host's opaque source authority. Its selected
+            # keys cannot be re-filtered without its underlying source text.
             return self._indexed_promotion_keys(agent_id)
         db = self._open_read(agent_id)
         if db is None:
@@ -460,13 +463,14 @@ class MemoryEntryOriginLedger:
             if not self._table_exists(db, "memory_index_chunks"):
                 return set()
             keys: set[str] = set()
+            prefixes = PROMOTION_MARKER_PREFIXES if identity is None else (identity.promotion_marker_prefix,)
             for (text,) in db.execute(
                 "SELECT text FROM memory_index_chunks WHERE source = 'memory' AND ("
-                + " OR ".join("text LIKE ?" for _ in PROMOTION_MARKER_PREFIXES)
+                + " OR ".join("text LIKE ?" for _ in prefixes)
                 + ")",
-                [f"%{prefix}%" for prefix in PROMOTION_MARKER_PREFIXES],
+                [f"%{prefix}%" for prefix in prefixes],
             ):
-                keys.update(extract_promotion_markers(text))
+                keys.update(extract_promotion_markers(text, identity=identity))
             return keys
 
 
@@ -596,6 +600,7 @@ def prune_memory_entry_origins(
     agent_ids: Iterable[str],
     entry_keys: Iterable[str],
     retained_entry_keys: set[str] | frozenset[str],
+    identity: RuntimeIdentity | None = None,
 ) -> None:
     """``pruneMemoryEntryOrigins``: drop the rows of ``entry_keys`` nothing retains any more.
 
@@ -610,9 +615,10 @@ def prune_memory_entry_origins(
         return
     diary_keys: set[str] = set()
     for name in DREAMS_FILENAMES:
-        diary_keys.update(extract_promotion_markers(read_dreams_file(Path(workspace_dir) / name)))
+        diary_keys.update(extract_promotion_markers(read_dreams_file(Path(workspace_dir) / name), identity=identity))
     for agent_id in dict.fromkeys(agent_ids):
-        indexed = ledger.indexed_promotion_keys(agent_id)
+        indexed = (ledger.indexed_promotion_keys(agent_id) if identity is None
+                   else ledger.indexed_promotion_keys(agent_id, identity=identity))
         ledger.delete(
             agent_id,
             [

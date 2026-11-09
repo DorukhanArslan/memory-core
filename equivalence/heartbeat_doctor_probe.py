@@ -87,16 +87,46 @@ def build_doctor_cases():
     return cases
 
 
+def _error_attribute(value):
+    if isinstance(value, bytes):
+        return {"type": "bytes", "base64": base64.b64encode(value).decode()}
+    if isinstance(value, BaseException):
+        return _error(value)
+    if isinstance(value, (tuple, list)):
+        return [_error_attribute(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _error_attribute(item) for key, item in value.items()}
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return {"type": type(value).__name__, "repr": repr(value)}
+
+
 def _error(error):
     value = {"name": type(error).__name__, "message": str(error), "constructorName": type(error).__name__,
-             "ownProperties": {**vars(error), "args": error.args,
+             "ownProperties": {**_error_attribute(vars(error)), "args": _error_attribute(error.args),
                                "stack": "".join(traceback.format_exception(error))}}
     for key in ("errno", "filename", "filename2"):
         if getattr(error, key, None) is not None:
-            value["ownProperties"][key] = getattr(error, key)
+            value["ownProperties"][key] = _error_attribute(getattr(error, key))
     if error.__cause__ is not None:
         value["ownProperties"]["cause"] = _error(error.__cause__)
     return value
+
+
+def _capture_process(arguments, phase_directory, side, **options):
+    # Keep exact transport bytes even when subprocess raises before returning.
+    try:
+        process = subprocess.run(arguments, capture_output=True, **options)
+    except subprocess.TimeoutExpired as error:
+        for stream, value in (("stdout.json", error.output), ("stderr.log", error.stderr)):
+            if value is not None:
+                (phase_directory / (side + "." + stream)).write_bytes(value)
+        (phase_directory / (side + ".timeout.json")).write_text(json.dumps(_error(error), ensure_ascii=True))
+        raise
+    (phase_directory / (side + ".stdout.json")).write_bytes(process.stdout)
+    (phase_directory / (side + ".stderr.log")).write_bytes(process.stderr)
+    process.check_returncode()
+    return process
 
 
 def _tree(directory):
@@ -550,21 +580,16 @@ def run(checkout, cache, node, output, selected=None):
                     environment = {"PATH": str(node.parent) + os.pathsep + os.defpath, "LANG": "C.UTF-8", "TZ": "UTC",
                                    "OPENAI_API_KEY": "", "OPENROUTER_API_KEY": "", "MEMORY_EQ_DOCTOR_CONTEXT": str(context_path),
                                    "NODE_OPTIONS": "--import=" + (ROOT / ADAPTERS[0]).as_uri()}
-                    native_process = subprocess.run([str(node), str(ROOT / ADAPTERS[1]), str(request_path)], capture_output=True, text=True,
-                                                    cwd=ROOT, timeout=60, env=environment)
-                    (phase_directory / "native.stdout.json").write_text(native_process.stdout)
-                    (phase_directory / "native.stderr.log").write_text(native_process.stderr)
-                    native_process.check_returncode()
+                    native_process = _capture_process([str(node), str(ROOT / ADAPTERS[1]), str(request_path)], phase_directory, "native",
+                                                      cwd=ROOT, timeout=60, env=environment)
                     native = json.loads(native_process.stdout)
                     execution = validate_execution(phase_directory, context, native)
                     sdk_request = {**request, "fixtureDirectory": str(directory / "sdk-fixture")}
                     sdk_path = phase_directory / "sdk-input.json"; sdk_path.write_text(json.dumps(sdk_request, ensure_ascii=True))
-                    sdk_process = subprocess.run([sys.executable, "-m", "equivalence.heartbeat_doctor_probe", "--sdk-phase", str(sdk_path)],
-                        capture_output=True, text=True, cwd=ROOT, timeout=60,
+                    sdk_process = _capture_process([sys.executable, "-m", "equivalence.heartbeat_doctor_probe", "--sdk-phase", str(sdk_path)],
+                        phase_directory, "sdk", cwd=ROOT, timeout=60,
                         env={"PATH": os.defpath, "LANG": "C.UTF-8", "TZ": "UTC", "PYTHONPATH": str(ROOT), "OPENAI_API_KEY": "", "OPENROUTER_API_KEY": ""})
-                    (phase_directory / "sdk.stdout.json").write_text(sdk_process.stdout)
-                    (phase_directory / "sdk.stderr.log").write_text(sdk_process.stderr)
-                    sdk_process.check_returncode(); sdk = json.loads(sdk_process.stdout)
+                    sdk = json.loads(sdk_process.stdout)
                     _validate_public_observation(sdk, input_value)
                     observed_pids = _pid_status(pids)
                     _require_claim_role(case.get("claim"), observed_pids)

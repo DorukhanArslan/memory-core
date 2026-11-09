@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import base64
 import json
 import os
 from pathlib import Path
@@ -13,7 +14,7 @@ import pytest
 from equivalence.heartbeat_doctor_authority import NODE, validate_doctor_authority, prepare_doctor_authority
 from equivalence.heartbeat_node_authority import validate_heartbeat_node_authority, prepare_heartbeat_node_authority
 from equivalence.heartbeat_doctor_probe import (
-    ROOT, CODEC_SHA256, _documents, _validate_decoded_events, _validate_public_observation,
+    ROOT, CODEC_SHA256, _capture_process, _documents, _error, _validate_decoded_events, _validate_public_observation,
     build_doctor_cases, phase,
 )
 from equivalence.heartbeat_doctor_bindings import MANIFEST_SHA256
@@ -199,3 +200,43 @@ def test_public_guard_binds_complete_operations_snapshots_and_envelope():
     changed = deepcopy(actual); changed["result"]["projected"] = True
     with pytest.raises(ValueError, match="envelope"):
         _validate_public_observation(changed, request)
+
+
+@pytest.mark.parametrize("side", ["native", "sdk"])
+def test_timeout_retains_exact_partial_bytes_and_serializable_original_error(tmp_path, monkeypatch, side):
+    output, stderr = b'partial\x00\xff\r\n', b'failure\xfe\r\n'
+    original = subprocess.TimeoutExpired(["synthetic-timeout-guard"], 60, output=output, stderr=stderr)
+    original.nested = {"payload": [output, ValueError("nested original error")]}
+    def timeout(*args, **kwargs):
+        assert kwargs["capture_output"] is True
+        assert "text" not in kwargs
+        raise original
+    monkeypatch.setattr(subprocess, "run", timeout)
+    with pytest.raises(subprocess.TimeoutExpired) as caught:
+        _capture_process(["synthetic-timeout-guard"], tmp_path, side, timeout=60)
+    assert caught.value is original
+    assert (tmp_path / (side + ".stdout.json")).read_bytes() == output
+    assert (tmp_path / (side + ".stderr.log")).read_bytes() == stderr
+    recorded = json.loads((tmp_path / (side + ".timeout.json")).read_bytes())
+    rejection = json.loads(json.dumps({"error": _error(original)}))
+    assert recorded["name"] == rejection["error"]["name"] == "TimeoutExpired"
+    properties = recorded["ownProperties"]
+    assert base64.b64decode(properties["output"]["base64"]) == output
+    assert base64.b64decode(properties["stderr"]["base64"]) == stderr
+    assert properties["nested"]["payload"][1]["name"] == "ValueError"
+    assert properties["nested"]["payload"][1]["message"] == "nested original error"
+
+
+@pytest.mark.parametrize("returncode", [0, 7])
+def test_process_boundary_keeps_exact_bytes_before_actual_exit_status(tmp_path, monkeypatch, returncode):
+    original = subprocess.CompletedProcess(["synthetic-process-guard"], returncode, b'{"raw":"\xff"}\r\n', b'\xfe\r\n')
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: original)
+    if returncode:
+        with pytest.raises(subprocess.CalledProcessError) as caught:
+            _capture_process(original.args, tmp_path, "native")
+        recorded = json.loads(json.dumps(_error(caught.value)))
+        assert base64.b64decode(recorded["ownProperties"]["output"]["base64"]) == original.stdout
+    else:
+        assert _capture_process(original.args, tmp_path, "native") is original
+    assert (tmp_path / "native.stdout.json").read_bytes() == original.stdout
+    assert (tmp_path / "native.stderr.log").read_bytes() == original.stderr

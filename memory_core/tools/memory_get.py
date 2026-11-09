@@ -28,7 +28,7 @@ from __future__ import annotations
 import copy
 import math
 import threading
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -52,7 +52,10 @@ from memory_core.tools.corpus import (
     error_code,
     settle_supplements,
 )
-from memory_core.tools.get_paths import resolve_memory_get_path
+from memory_core.tools.get_paths import resolve_memory_get_read_path
+from memory_core.memory_read import read_memory_file_bytes
+from memory_core.memory_paths import MemoryReadPathError
+from memory_core._memory_scan_io import MemorySourceIOError
 from memory_core.tools.deadline import MemoryToolDeadlineContext, run_memory_corpus_deadline
 
 MEMORY_GET_TOOL_NAME = "memory_get"
@@ -91,7 +94,7 @@ MEMORY_GET_TOOL_PARAMETERS: dict[str, Any] = {
 }
 
 
-def memory_get_tool_definition(*, extra_paths: Sequence[str | Path] = ()) -> dict[str, Any]:
+def memory_get_tool_definition(*, extra_paths: Sequence[str | Path | Mapping[str, str]] = ()) -> dict[str, Any]:
     """``{"name", "description", "parameters"}`` of the upstream ``memory_get`` tool.
 
     Same provider-neutral shape as ``MemoryCurator.tool_definitions()``; wrap it
@@ -139,7 +142,7 @@ def execute_memory_get_tool(
     params: object,
     *,
     supplements: list[MemoryCorpusSupplement] | None = None,
-    extra_paths: Sequence[str | Path] = (),
+    extra_paths: Sequence[str | Path | Mapping[str, str]] = (),
     agent_session_key: str | None = None,
     sandboxed: bool | None = None,
     execution: MemoryToolDeadlineContext | None = None,
@@ -257,7 +260,7 @@ def memory_get(
     lines: int | None = None,
     corpus: str = "memory",
     supplements: list[MemoryCorpusSupplement] | None = None,
-    extra_paths: Sequence[str | Path] = (),
+    extra_paths: Sequence[str | Path | Mapping[str, str]] = (),
     agent_session_key: str | None = None,
     sandboxed: bool | None = None,
     execution: MemoryToolDeadlineContext | None = None,
@@ -330,7 +333,7 @@ def memory_get(
 
 def _read_builtin(
     config: MemoryConfig, *, path: str, from_line: int | None, lines: int | None,
-    extra_paths: Sequence[str | Path] = (),
+    extra_paths: Sequence[str | Path | Mapping[str, str]] = (),
 ) -> dict:
     """``readAgentMemoryFile`` -> ``readMemoryFile``; a refusal or an OS error raises."""
     # memory_search session hits (`sessions/<agent>/*.jsonl` and
@@ -338,18 +341,28 @@ def _read_builtin(
     # the memory-path/`.md` gate; a session-corpus `.md` file is an ordinary memory file.
     rel_path = js_trim(path)
     try:
-        rel_path, memory_path, suggest_read_fallback = resolve_memory_get_path(
+        admitted = resolve_memory_get_read_path(
             config.workspace_dir, path, extra_paths,
         )
-        if memory_path is None:
+        rel_path = admitted.rel_path
+        raw = read_memory_file_bytes(admitted)
+        if raw is None:
             return _not_found(rel_path)
         # Buffer.toString("utf-8"): no newline translation, invalid bytes replaced.
-        content = memory_path.read_bytes().decode("utf-8", errors="replace")
+        content = raw.decode("utf-8", errors="replace")
     except (FileNotFoundError, NotADirectoryError):
         return _not_found(rel_path)
+    except MemorySourceIOError as error:
+        if error.code in {"ENOENT", "ENOTDIR"}:
+            return _not_found(rel_path)
+        raise
+    except MemoryReadPathError as error:
+        if error.code in {"path-mismatch", "not-found"}:
+            return _not_found(rel_path)
+        raise
     return _memory_get_text(
         config, path=rel_path, content=content, from_line=from_line, lines=lines,
-        suggest_read_fallback=suggest_read_fallback,
+        suggest_read_fallback=admitted.suggest_read_fallback,
     )
 
 

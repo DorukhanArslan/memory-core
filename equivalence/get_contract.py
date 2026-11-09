@@ -278,6 +278,11 @@ def _run_excerpt(value: dict[str, Any]) -> dict[str, Any]:
 
 
 def _run_boundary(value: dict[str, Any], *, evidence_directory: Path | None) -> dict[str, Any]:
+    from equivalence.get_fixture_filesystem import (
+        derive_get_filesystem_observation, derive_get_read_race_observation, get_fixture_read_race,
+        owned_get_extra_paths, owned_get_input_path,
+        snapshot_get_fixture,
+    )
     from memory_core.config import MemoryConfig
     from memory_core.flags import FeatureFlags
     from memory_core.supplements import RegisteredMemoryCorpusSupplement
@@ -286,7 +291,13 @@ def _run_boundary(value: dict[str, Any], *, evidence_directory: Path | None) -> 
     with tempfile.TemporaryDirectory(prefix="memory-get-contract-") as temporary:
         directory = Path(temporary)
         workspace, outside = directory / "workspace", directory / "outside"
-        workspace.mkdir()
+        workspace_kind = value.get("workspaceKind", "directory")
+        if workspace_kind == "directory":
+            workspace.mkdir()
+        elif workspace_kind == "file":
+            workspace.write_bytes(b"workspace is a regular file\n")
+        elif workspace_kind != "missing":
+            raise ValueError("Unknown owned workspace fixture kind")
         outside.mkdir()
         settings, options = value.get("config", {}), value.get("options", {})
         config = MemoryConfig(
@@ -319,6 +330,16 @@ def _run_boundary(value: dict[str, Any], *, evidence_directory: Path | None) -> 
                 raise ValueError("A fixture symlink must target an owned root")
             target_root = workspace if target["scope"] == "workspace" else outside
             filename.symlink_to(_fixture_path(target_root, target["path"]))
+        for relative, target in value.get("hardlinks", {}).items():
+            filename = _fixture_path(workspace, relative)
+            filename.parent.mkdir(parents=True, exist_ok=True)
+            if target["scope"] not in {"workspace", "outside"}:
+                raise ValueError("A fixture hardlink must target an owned root")
+            target_root = workspace if target["scope"] == "workspace" else outside
+            filename.hardlink_to(_fixture_path(target_root, target["path"]))
+
+        filesystem = ({"before": snapshot_get_fixture(directory)}
+                      if value.get("observeFilesystem") else None)
 
         requests: list[dict[str, Any]] = []
         providers = [_LiteralSupplement(fixture, requests) for fixture in value.get("supplements", [])]
@@ -327,32 +348,45 @@ def _run_boundary(value: dict[str, Any], *, evidence_directory: Path | None) -> 
         live_config = config
         tool = create_memory_get_tool(
             config, get_config=lambda: live_config, supplements=supplements,
-            extra_paths=settings.get("extraPaths", []),
+            extra_paths=owned_get_extra_paths(value.get("extraPaths", settings.get("extraPaths", [])), directory),
             agent_session_key=options.get("agentSessionKey"), sandboxed=options.get("sandboxed"),
         )
         if tool is None:
             raise ValueError("The actual SDK memory get tool was unavailable")
         steps, raw = [], []
+        race_observation = None
         for index, step in enumerate(value["steps"]):
             live_config = (replace(config, flags=replace(config.effective_flags(), memory=False))
                            if step.get("disableConfig") else config)
             params = deepcopy(step.get("params"))
-            if isinstance(params, dict) and isinstance(params.get("path"), str) and params["path"].startswith("$WORKSPACE/"):
-                params["path"] = str(_fixture_path(workspace, params["path"].removeprefix("$WORKSPACE/")))
-            try:
-                envelope = tool.execute(f"fixture-{index}", params)
-            except Exception as error:
-                result = _error(error)
-                wire = result
-            else:
-                wire = {"result": envelope}
-                result = {"result": decode_search_tool_envelope(envelope)}
+            if isinstance(params, dict) and isinstance(params.get("path"), str):
+                params["path"] = owned_get_input_path(
+                    params["path"], directory, require_owned=bool(value.get("observeFilesystem")),
+                )
+            with get_fixture_read_race(value.get("readRace"), directory) as current_race:
+                try:
+                    envelope = tool.execute(f"fixture-{index}", params)
+                except Exception as error:
+                    result = _error(error)
+                    wire = result
+                else:
+                    wire = {"result": envelope}
+                    result = {"result": decode_search_tool_envelope(envelope)}
+            race_observation = current_race
             steps.append(result)
             raw.append({"index": index, "params": params, **deepcopy(wire),
                         "requests": deepcopy(requests), "fixtureBase": str(directory),
                         "factoryExecuted": True, "provider": "none"})
-        _write_evidence(evidence_directory, raw)
         observed = {"provider": "none", "steps": steps, "requests": requests}
+        if filesystem is not None:
+            filesystem["after"] = snapshot_get_fixture(directory)
+            observed["filesystem"] = derive_get_filesystem_observation(filesystem)
+            snapshot_record = {"kind": "filesystem", "fixtureBase": str(directory), "filesystem": filesystem}
+            if race_observation is not None:
+                snapshot_record["readRace"] = race_observation
+                observed["readRace"] = derive_get_read_race_observation(race_observation, str(directory), native=False)
+            raw.append(snapshot_record)
+        _write_evidence(evidence_directory, raw)
         return map_get_fixture_paths(observed, directory) if value.get("normalizeFixturePaths") else observed
 
 
@@ -374,6 +408,11 @@ def _fixture_path(root: Path, relative: str) -> Path:
     path = Path(relative)
     if path.is_absolute() or ".." in relative.replace("\\", "/").split("/"):
         raise ValueError("Fixture files must remain inside their owned root")
+    for parent in (root, *(root / path).parents):
+        if parent == root.parent:
+            break
+        if parent.is_symlink():
+            raise ValueError("Fixture creation must not follow parent symlinks")
     return root / path
 
 

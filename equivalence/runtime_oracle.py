@@ -653,7 +653,7 @@ class ReleaseOracleExecution:
                  turn_taint_source: dict | None = None, model_node_runtime: dict | None = None,
                  entry_profile: dict | None = None, atomic_profile: dict | None = None,
                  atomic_case: dict | None = None, bootstrap_profile: dict | None = None,
-                 memory_budget_profile: dict | None = None):
+                 memory_budget_profile: dict | None = None, get_read_race_profile: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
@@ -664,21 +664,31 @@ class ReleaseOracleExecution:
         self.atomic_case = deepcopy(atomic_case)
         self.bootstrap_profile = deepcopy(bootstrap_profile)
         self.memory_budget_profile = deepcopy(memory_budget_profile)
+        self.get_read_race_profile = deepcopy(get_read_race_profile)
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
 
     def __enter__(self):
         try:
+            if self.get_read_race_profile is not None:
+                from equivalence.get_read_race_profile import validate_get_read_race_profile
+
+                if any(value is not None for value in (
+                    self.entry_profile, self.model_node_runtime, self.turn_taint_source, self.atomic_profile,
+                    self.atomic_case, self.bootstrap_profile, self.memory_budget_profile,
+                )) or self.fixture_captures:
+                    raise RuntimeOracleError("Get read race authority cannot borrow other native profile capabilities.")
+                self.get_read_race_profile = validate_get_read_race_profile(self.get_read_race_profile)
             if self.memory_budget_profile is not None:
                 self.memory_budget_profile = validate_memory_budget_profile(self.memory_budget_profile)
                 if (self.entry_profile is not None or self.model_node_runtime is not None
                         or self.turn_taint_source is not None or self.fixture_captures or self.atomic_profile is not None
-                        or self.atomic_case is not None or self.bootstrap_profile is not None):
+                        or self.atomic_case is not None or self.bootstrap_profile is not None or self.get_read_race_profile is not None):
                     raise RuntimeOracleError("Memory budget cannot borrow entry, model, source or fixture-source capabilities.")
             if self.entry_profile is not None:
                 self.entry_profile = validate_entry_provenance_profile(self.entry_profile)
-                if self.model_node_runtime is not None or self.turn_taint_source is not None or self.fixture_captures or self.atomic_profile is not None or self.bootstrap_profile is not None or self.memory_budget_profile is not None:
+                if self.model_node_runtime is not None or self.turn_taint_source is not None or self.fixture_captures or self.atomic_profile is not None or self.bootstrap_profile is not None or self.memory_budget_profile is not None or self.get_read_race_profile is not None:
                     raise RuntimeOracleError("Entry provenance cannot borrow model, source-owner or fixture-source capabilities.")
             if self.atomic_profile is not None:
                 self.atomic_profile = validate_atomic_publication_profile(self.atomic_profile)
@@ -686,7 +696,8 @@ class ReleaseOracleExecution:
                 if self.atomic_case["operation"] != self.atomic_profile["operation"]:
                     raise RuntimeOracleError("The atomic return checkpoint cannot borrow a different case owner.")
                 if any((self.entry_profile is not None, self.model_node_runtime is not None,
-                        self.turn_taint_source is not None, self.fixture_captures, self.bootstrap_profile is not None, self.memory_budget_profile is not None)):
+                        self.turn_taint_source is not None, self.fixture_captures, self.bootstrap_profile is not None,
+                        self.memory_budget_profile is not None, self.get_read_race_profile is not None)):
                     raise RuntimeOracleError("Atomic publication cannot borrow model, entry, source or fixture capabilities.")
             elif self.atomic_case is not None:
                 raise RuntimeOracleError("An atomic case binding cannot escape its approved original-owner capability.")
@@ -698,7 +709,8 @@ class ReleaseOracleExecution:
                 from equivalence.bootstrap_discovery_profile import validate_bootstrap_discovery_profile
 
                 if any((self.fixture_captures, self.turn_taint_source is not None, self.model_node_runtime is not None,
-                        self.entry_profile is not None, self.atomic_profile is not None, self.memory_budget_profile is not None)):
+                        self.entry_profile is not None, self.atomic_profile is not None,
+                        self.memory_budget_profile is not None, self.get_read_race_profile is not None)):
                     raise RuntimeOracleError("The compiled bootstrap profile cannot borrow model, entry, atomic, source or fixture-capture capabilities.")
                 self.bootstrap_profile = validate_bootstrap_discovery_profile(self.bootstrap_profile)
             if self.turn_taint_source is not None:
@@ -777,6 +789,8 @@ class ReleaseOracleExecution:
             if self.memory_budget_profile is not None:
                 self._context["approvedNodeRuntime"] = self.memory_budget_profile["nodeRuntime"]
                 self._context["memoryBudgetProfile"] = self.memory_budget_profile
+            if self.get_read_race_profile is not None:
+                self._context["getReadRaceProfile"] = self.get_read_race_profile
             if self.fixture_captures:
                 fixture = str((ROOT / "equivalence/flush-execution.mjs").resolve())
                 if fixture not in self._locals:
@@ -949,6 +963,13 @@ class ReleaseOracleExecution:
             if (self.memory_budget_profile["operation"] != operation
                     or self.memory_budget_profile["inputKind"] != case.get("input", {}).get("kind")):
                 raise RuntimeOracleError("Budget helper and actual promotion-apply profiles cannot impersonate one another.")
+        if self.get_read_race_profile is not None:
+            from equivalence.get_read_race_profile import prepare_get_read_race_profile
+
+            if self.get_read_race_profile != prepare_get_read_race_profile(case, Path(self.config["runtimeRoot"])):
+                raise RuntimeOracleError("The get race capability cannot authorize another operation, hook or mutation.")
+        elif case.get("input", {}).get("readRace") is not None:
+            raise RuntimeOracleError("A read race requires its explicit narrow native hook capability.")
         if (self.entry_profile is not None) is not (operation in ENTRY_PROVENANCE_PROFILES):
             raise RuntimeOracleError("The entry capability is restricted to its three explicit compiled profiles.")
         if self.entry_profile is not None:
@@ -1052,6 +1073,9 @@ class ReleaseOracleExecution:
                 raise RuntimeOracleError("The actual native process or worker omitted its approved model binary authority.")
             if self.entry_profile is not None and first.get("entryProfile") != self.entry_profile:
                 raise RuntimeOracleError("The actual entry process or worker omitted its exact compiled profile authority.")
+            if self.get_read_race_profile is not None:
+                if thread != 0 or first.get("getReadRaceProfile") != self.get_read_race_profile:
+                    raise RuntimeOracleError("The native read race omitted its protected main-process-only hook capability.")
             if self.atomic_profile is not None and first.get("atomicProfile") != self.atomic_profile:
                 raise RuntimeOracleError("The actual atomic process omitted its exact compiled profile authority.")
             bootstrap.append({"pid": pid, "threadId": thread, "isMainThread": thread == 0,
@@ -1068,6 +1092,8 @@ class ReleaseOracleExecution:
                 raise RuntimeOracleError("The actual budget process or worker omitted its exact compiled profile authority.")
             if self.memory_budget_profile is not None:
                 bootstrap[-1]["budgetProfile"] = deepcopy(first["budgetProfile"])
+            if self.get_read_race_profile is not None:
+                bootstrap[-1]["getReadRaceProfile"] = deepcopy(first["getReadRaceProfile"])
             if thread == 0:
                 process_parents[pid] = first.get("ppid")
             for event in events[1:]:
@@ -1435,6 +1461,43 @@ class ReleaseOracleExecution:
                 raw_requests = map_get_fixture_paths(raw_requests, fixture_base)
             if not _same_json(raw_requests, row["result"].get("requests")):
                 raise RuntimeOracleError("Get-tool provider requests differ from retained raw observations.")
+            if case["input"].get("observeFilesystem") is True:
+                from equivalence.get_fixture_filesystem import (
+                    owned_get_input_path, validate_get_filesystem_observation,
+                )
+
+                if not portable_paths:
+                    raise RuntimeOracleError("Owned filesystem comparisons require their declared private-prefix codec.")
+                try:
+                    validate_get_filesystem_observation(
+                        diagnostic[0].get("filesystem"), row["result"].get("filesystem"), fixture_base,
+                    )
+                    if case["input"].get("readRace") is not None:
+                        from equivalence.get_fixture_filesystem import derive_get_read_race_observation
+                        from equivalence.get_read_race_profile import OWNER_HASHES
+
+                        for relative, digest in OWNER_HASHES.items():
+                            package, owner = relative.rsplit("/dist/", 1)
+                            if loaded.get((package, "dist/" + owner), {}).get("sha256") != digest:
+                                raise ValueError("The real pre-open hook and descriptor/root caller owners did not execute")
+                        if not _same_json(derive_get_read_race_observation(
+                            diagnostic[0].get("readRace"), fixture_base, native=True,
+                            filesystem=diagnostic[0]["filesystem"], native_owner_root=Path(self.config["runtimeRoot"]),
+                        ), row["result"].get("readRace")):
+                            raise ValueError("The actual native read-race observations differ from their raw OS facts")
+                    arguments = diagnostic[0].get("nativeArguments")
+                    if not isinstance(arguments, list) or len(arguments) != len(public_steps):
+                        raise ValueError("Every actual read argument must remain in raw evidence")
+                    for index, (actual, requested) in enumerate(zip(arguments, case["input"]["steps"], strict=True)):
+                        expected = deepcopy(requested.get("params"))
+                        if isinstance(expected, dict) and isinstance(expected.get("path"), str):
+                            expected["path"] = owned_get_input_path(
+                                expected["path"], Path(fixture_base), require_owned=True,
+                            )
+                        if not _same_json(actual, {"index": index, "params": expected}):
+                            raise ValueError("Actual tool arguments differ from suffix-preserving owned-token expansion")
+                except (ValueError, TypeError, KeyError) as error:
+                    raise RuntimeOracleError("Owned get filesystem evidence failed raw snapshot or argument authority.") from error
             for index, (original, public) in enumerate(zip(diagnostic[0]["nativeEnvelopes"], public_steps, strict=True)):
                 if (not isinstance(original, dict) or original.get("index") != index
                         or not isinstance(public, dict) or set(public) not in ({"result"}, {"error"})

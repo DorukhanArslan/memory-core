@@ -228,6 +228,7 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.storage_discovery import build_storage_discovery_cases
     from equivalence.storage_boundaries import build_workspace_isolation_cases
     from equivalence.storage_paths import build_storage_path_cases
+    from equivalence.storage_path_contract import build_storage_path_contract_cases
 
     cases.extend(build_index_identity_cases())
     cases.extend(build_vector_scoring_cases())
@@ -257,6 +258,7 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     cases.extend(build_storage_discovery_cases())
     cases.extend(build_workspace_isolation_cases())
     cases.extend(build_storage_path_cases())
+    cases.extend(build_storage_path_contract_cases())
     from equivalence.redaction_fixtures import build_redaction_cases
 
     cases.extend(build_redaction_cases())

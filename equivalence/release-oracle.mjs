@@ -41,6 +41,23 @@ const operations = {
   "memory-budget-runtime": ["memory-budget-runtime.mjs", "runMemoryBudgetRuntime"],
   "memory-budget-apply-runtime": ["memory-budget-runtime.mjs", "runMemoryBudgetRuntime"],
 };
+function sameGetReadRaceLiteral(actual, expected) {
+  if (actual === expected) return true;
+  if (Array.isArray(expected)) return Array.isArray(actual) && actual.length === expected.length &&
+    expected.every((value, index) => sameGetReadRaceLiteral(actual[index], value));
+  if (expected === null || typeof expected !== "object" || actual === null ||
+      typeof actual !== "object" || Array.isArray(actual)) return false;
+  const keys = Object.keys(expected).sort();
+  return JSON.stringify(Object.keys(actual).sort()) === JSON.stringify(keys) &&
+    keys.every((key) => sameGetReadRaceLiteral(actual[key], expected[key]));
+}
+const reviewedGetReadRaceInput = {
+  kind: "tool", normalizeFixturePaths: true, observeFilesystem: true,
+  readRace: { kind: "owned-leaf-to-symlink", hook: "afterPreOpenLstat" },
+  files: { "memory/race.md": "Original admitted bytes.\n" },
+  outsideFiles: { "secret.md": "Owned outside sentinel must not be read.\n" },
+  steps: [{ params: { path: "memory/race.md" } }],
+};
 const results = [];
 for (const testCase of request.cases) {
   const caseHash = crypto.createHash("sha256").update(testCase.id).digest("hex");
@@ -66,11 +83,22 @@ for (const testCase of request.cases) {
     }
     const binding = operations[testCase.operation];
     if (!Object.hasOwn(operations, testCase.operation)) throw Error("Unsupported release oracle operation");
+    const getReadRaceProfile = context.getReadRaceProfile;
+    const requestsReadRace = Object.hasOwn(testCase.input ?? {}, "readRace");
+    if ((getReadRaceProfile !== undefined) !== requestsReadRace) {
+      throw Error("The native read race requires its exact explicit whole-get capability before import");
+    }
+    if (getReadRaceProfile !== undefined && (testCase.operation !== "get-contract-runtime" ||
+        testCase.id !== "storage-path-read-race-owned-leaf-to-symlink" ||
+        !sameGetReadRaceLiteral(testCase.input, reviewedGetReadRaceInput))) {
+      throw Error("The native read race capability is restricted to its exact whole-tool input");
+    }
     const adapter = await import(new URL(binding[0], import.meta.url).href);
     const result = await adapter[binding[1]](testCase.input, {
       ...context.runtime, evidenceDirectory,
       stateDirectory: context.stateDirectory, configPath: context.configPath,
       approvedReferenceSources: context.approvedReferenceSources ?? [],
+      getReadRaceProfile: context.getReadRaceProfile,
     });
     results.push({ id: testCase.id, ok: true, result });
   } catch (error) {

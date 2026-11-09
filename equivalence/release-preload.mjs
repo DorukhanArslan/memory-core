@@ -23,7 +23,7 @@ if (context.entryProvenanceProfile !== undefined) {
   if (!profile || Object.keys(profile).sort().join() !== "inputKind,kind,nodeRuntime,operation" ||
       profile.kind !== "approved-entry-provenance-profile" || !Object.hasOwn(kinds, profile.operation) ||
       profile.inputKind !== kinds[profile.operation] || context.bootstrapDiscoveryProfile !== undefined ||
-      context.memoryBudgetProfile !== undefined ||
+      context.memoryBudgetProfile !== undefined || context.getReadRaceProfile !== undefined ||
       JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
       (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved compiled entry provenance profile capability");
@@ -38,7 +38,7 @@ if (context.atomicPublicationProfile !== undefined) {
       JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
       !context.atomicCaseBinding || context.atomicCaseBinding.operation !== profile.operation ||
       context.entryProvenanceProfile !== undefined || context.bootstrapDiscoveryProfile !== undefined ||
-      context.memoryBudgetProfile !== undefined ||
+      context.memoryBudgetProfile !== undefined || context.getReadRaceProfile !== undefined ||
       (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved atomic original-owner profile capability");
   }
@@ -54,7 +54,7 @@ if (bootstrapProfile !== undefined) {
       bootstrapProfile.inputKind !== "workspace-bootstrap" || !identity ||
       context.approvedNodeRuntime !== undefined || context.entryProvenanceProfile !== undefined ||
       context.atomicPublicationProfile !== undefined || context.atomicCaseBinding !== undefined ||
-      context.memoryBudgetProfile !== undefined ||
+      context.memoryBudgetProfile !== undefined || context.getReadRaceProfile !== undefined ||
       JSON.stringify(Object.keys(identity).sort()) !== JSON.stringify(["execPath", "icuVersion", "nodeVersion", "sha256", "unicodeVersion"]) ||
       (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved compiled bootstrap execution scope");
@@ -74,9 +74,24 @@ if (context.memoryBudgetProfile !== undefined) {
       JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
       context.entryProvenanceProfile !== undefined || context.atomicPublicationProfile !== undefined ||
       context.atomicCaseBinding !== undefined || context.bootstrapDiscoveryProfile !== undefined ||
+      context.getReadRaceProfile !== undefined ||
       (context.approvedReferenceSources ?? []).length ||
       (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved compiled memory-budget profile capability");
+  }
+}
+if (context.getReadRaceProfile !== undefined) {
+  const value = context.getReadRaceProfile;
+  if (!value || Object.keys(value).sort().join() !== "hook,inputKind,kind,module,mutation,operation,sha256" ||
+      value.kind !== "approved-get-read-race-profile" || value.operation !== "get-contract-runtime" ||
+      value.inputKind !== "tool" || value.hook !== "afterPreOpenLstat" || value.mutation !== "owned-leaf-to-symlink" ||
+      value.module !== "node_modules/@openclaw/fs-safe/dist/test-hooks.js" ||
+      value.sha256 !== "207753c214f21d77c7cc82b947f24705c937009a73057ddb08a8ef058334e273" ||
+      !isMainThread || context.entryProvenanceProfile !== undefined || context.approvedNodeRuntime !== undefined ||
+      context.atomicPublicationProfile !== undefined || context.atomicCaseBinding !== undefined ||
+      context.bootstrapDiscoveryProfile !== undefined || context.memoryBudgetProfile !== undefined ||
+      (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
+    throw Error("Unapproved get read race hook capability");
   }
 }
 const permitted = new Map();
@@ -134,7 +149,8 @@ trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: has
         ...(context.entryProvenanceProfile ? { entryProfile: context.entryProvenanceProfile } : {}),
         ...(context.atomicPublicationProfile ? { atomicProfile: context.atomicPublicationProfile } : {}),
         ...(bootstrapProfile ? { runtime: bootstrapRuntime, bootstrapProfile } : {}),
-        ...(context.memoryBudgetProfile ? { budgetProfile: context.memoryBudgetProfile } : {}) });
+        ...(context.memoryBudgetProfile ? { budgetProfile: context.memoryBudgetProfile } : {}),
+        ...(context.getReadRaceProfile ? { getReadRaceProfile: context.getReadRaceProfile } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.
 // This executes in every worker as well as the parent, before native imports.
@@ -246,6 +262,14 @@ registerHooks({
     if (lexical && isCapturePath(lexical)) fixtureCaptureAuthority(lexical);
     const resolved = nextResolve(specifier, resolveContext);
     const record = authority(resolved.url);
+    if (record?.kind === "release" && record.package === "node_modules/@openclaw/fs-safe" &&
+        record.path === "dist/test-hooks.js" && resolveContext.parentURL?.startsWith("file:")) {
+      const parent = authority(resolveContext.parentURL);
+      if (parent?.kind === "oracle" && (!isMainThread || !context.getReadRaceProfile ||
+          path.basename(parent.path) !== "get-contract-runtime.mjs" || record.sha256 !== context.getReadRaceProfile.sha256)) {
+        throw Error("Only the declared whole-get race profile may import the official test hook directly");
+      }
+    }
     if (record && resolved.url.endsWith(".node")) trace({ event: "resolve-native", ...record });
     return resolved;
   },

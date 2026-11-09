@@ -243,17 +243,27 @@ are not readable memory-file paths. Lexical path resolution, allowed-file
 checks, and existing symlink policy apply before the read. Missing permitted
 files return `status="not_found"` with empty text.
 
-The factory and direct APIs accept trusted `extra_paths`, a sequence of plain
-file or directory paths. A configured Markdown file or a Markdown descendant
-of a configured directory can be read outside the built-in memory paths.
+The factory and direct APIs accept trusted `extra_paths`, a sequence of file or
+directory paths and `{"path": ..., "pattern": ...}` entries. A configured
+Markdown file or a matched Markdown descendant of a configured directory can
+be read outside the built-in memory paths. Patterns use the discovery owner's
+POSIX glob matcher; multiple patterns on one root form a union. An explicitly
+configured Markdown file is admitted independently of its pattern.
 Directory descendants do not follow symlinks, regular hard links are allowed,
 and a missing authorized leaf is a missing read. Extra paths change the tool's
 source guidance and actual authorization. A model cannot configure new roots.
 
-Only **plain file/directory entries** are supported here. Native
-`{path, pattern}` entries are unsupported. Native descriptor identity,
-concurrent replacement/race behavior, and complete filesystem equivalence
-remain unverified under separate storage contracts.
+For example, `extra_paths=["notes", {"path": "archive", "pattern": "public/**/*.md"}]`
+authorizes Markdown under `notes` and the matching part of `archive`. These are
+trusted host arguments, separate from the model's closed tool schema.
+
+Actual file bytes come from one checked descriptor. Reads reject final
+symlinks, use a nonblocking nofollow open, and verify root, file, and canonical
+file identities before consuming that descriptor. Hardlinks retain the native
+read policy. A regular-file identity mismatch becomes `not_found`; an open
+redirected to a symlink returns the actual refusal and OS cause. The read owner
+does not reopen the pathname or reject an already consumed excerpt because a
+later pathname change occurred.
 
 Portable filesystem-policy causes are retained in the full tool diagnostic.
 For example, a directory or FIFO leaf reports
@@ -262,15 +272,17 @@ symlink retains the `Symlink escapes root (<root>): <parent>` cause, and a
 non-directory parent retains its path and `ENOTDIR` cause. These are changes
 to diagnostic detail; they do not broaden which files are admitted.
 
-OS-owned cause strings remain platform-specific. The known third
-`storage.path-safety` diagnostic, a parent symlink loop, retains the actual
-Python ELOOP cause and remains outside this portable comparison profile. Its
-stable policy code and prefix do not establish full native diagnostic parity.
-The first raw comparison that exposed the filesystem difference is retained.
-Evidence keeps complete original wire diagnostics; a private-fixture prefix
-codec can identify each run's owned temporary roots without rewriting the
-remaining path, error wording, cause chain, or other result fields. This is not
-a general filesystem-error normalization policy.
+On Linux, ordinary OS failures use the same attributed Node system-error facts
+and IO bridge as discovery, including resolved-target `ENOENT`, `ENOTDIR`, and
+`ELOOP` causes. Original Python exceptions remain available on the IO error.
+The first raw comparisons exposing the cause, pattern, and pre-open replacement
+differences are retained in [the path-safety proof notes](storage_path_safety_proof.md).
+Evidence preserves complete original wire diagnostics; only each run's exact
+owned fixture prefix receives an identity codec. General platform behavior,
+retry timing, and arbitrary replacement schedules remain unverified. The proof
+packets retain their original uncredited metadata. Independent review registers
+both fixed path/read conditions only on the complete eleven-family default set;
+the integrated full gate remains the final acceptance step.
 
 ## Errors and live configuration
 

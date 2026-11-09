@@ -294,6 +294,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
                 or not set(case["covers"]) <= points[case["requirement"]]):
             raise HarnessError("cases-invalid", "Cases must have unique identities and valid acceptance-point coverage.")
         case_ids.add(case["id"])
+    from equivalence.storage_path_acceptance import validate_storage_path_acceptance_registration
+
+    try:
+        validate_storage_path_acceptance_registration(cases)
+    except (TypeError, ValueError) as error:
+        raise HarnessError("cases-invalid", "Path-safety acceptance requires its complete reviewed whole-tool family set.") from error
     return requirements, points
 
 
@@ -351,6 +357,12 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
 
                 if len(cases) == 1 and cases[0]["operation"] in MEMORY_BUDGET_PROFILES:
                     context_options["memory_budget_profile"] = prepare_memory_budget_profile(cases[0]["operation"], node)
+                if len(cases) == 1 and cases[0].get("input", {}).get("readRace") is not None:
+                    from equivalence.get_read_race_profile import prepare_get_read_race_profile
+
+                    context_options["get_read_race_profile"] = prepare_get_read_race_profile(
+                        cases[0], Path(release_runtime["runtimeRoot"]),
+                    )
                 execution = resources.enter_context(ReleaseOracleExecution(
                     release_runtime, _adapter_identity(), **context_options))
                 # Only this reviewed preload is supplied. User Node options,
@@ -847,6 +859,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
                 report["memoryBudgetRuntimeBindings"] = prepare_memory_budget_bindings(checkout, Path(runtime_config["runtimeRoot"]))
                 report["memoryBudgetNodeAuthority"] = prepare_model_node_authority(node)
+            if any(case.get("input", {}).get("readRace") is not None for case in runtime_cases):
+                from equivalence.get_read_race_profile import prepare_get_read_race_bindings
+
+                report["getReadRaceRuntimeBindings"] = prepare_get_read_race_bindings(Path(runtime_config["runtimeRoot"]))
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -1047,6 +1063,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             if len(snapshots) != 1:
                                 raise ValueError("Discovery requires one complete diagnostic record")
                             validate_storage_discovery_diagnostic(snapshots[0], case["input"], python, side="python")
+                        if case["operation"] == "get-contract-runtime" and case["input"].get("observeFilesystem") is True:
+                            from equivalence.get_fixture_filesystem import validate_python_get_filesystem_evidence
+
+                            validate_python_get_filesystem_evidence(snapshots, case["input"], python)
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
                         report[diagnostic_key].append({
                             "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),

@@ -261,7 +261,8 @@ def test_real_all_corpus_search_diagnostic_is_private_before_records_and_feedbac
     result = execute_memory_search_tool(lab.config(mode="text"), store, {"query": "note", "corpus": "all"})
     assert not any(key in result for key in ("status", "unavailable", "disabled"))
     assert result["corpora"][0]["outcome"] == "unavailable"
-    assert result["error"] == FAILURE
+    assert result["error"] == FAILURE.replace(LONG, "a1B2c3…wXyZ")
+    assert LONG not in json.dumps(result)
     monkeypatch.setattr(HostKit, "dispatch", lambda *args, **kwargs: result)
     toolbox = LabToolbox(lab, lab.kit(store), lab.session("main"), None, secrets=(KEY,))
     engine = StubEngine([("", [tool_call("c1", "memory_search", {"query": "note", "corpus": "all"})]),
@@ -272,7 +273,8 @@ def test_real_all_corpus_search_diagnostic_is_private_before_records_and_feedbac
     assert_private(events)
     assert_private(toolbox.calls)
     assert_private(engine.calls[1]["messages"][-1])
-    assert result["error"] == FAILURE
+    assert result["error"] == FAILURE.replace(LONG, "a1B2c3…wXyZ")
+    assert LONG not in json.dumps(result)
 
 
 @pytest.mark.parametrize("name,status", [("memory_search", None), ("memory_get", "ok"),

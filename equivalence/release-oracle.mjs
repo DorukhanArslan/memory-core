@@ -41,6 +41,7 @@ const operations = {
   "memory-budget-runtime": ["memory-budget-runtime.mjs", "runMemoryBudgetRuntime"],
   "memory-budget-apply-runtime": ["memory-budget-runtime.mjs", "runMemoryBudgetRuntime"],
   "promotion-ranking-runtime": ["promotion-ranking-runtime.mjs", "runPromotionRankingRuntime"],
+  "promotion-apply-reconcile-runtime": ["promotion-apply-runtime.mjs", "runPromotionApplyRuntime"],
 };
 function sameGetReadRaceLiteral(actual, expected) {
   if (actual === expected) return true;
@@ -93,7 +94,7 @@ for (const testCase of request.cases) {
       "trust-worker-runtime": null, "model-tool-error-runtime": null };
     const modelAuthority = context.approvedNodeRuntime !== undefined && context.entryProvenanceProfile === undefined &&
       context.atomicPublicationProfile === undefined && context.memoryBudgetProfile === undefined &&
-      context.promotionRankingProfile === undefined;
+      context.promotionRankingProfile === undefined && context.promotionApplyProfile === undefined;
     if (modelAuthority !== Object.hasOwn(modelKinds, testCase.operation) ||
         modelAuthority && modelKinds[testCase.operation] !== null && testCase.input?.kind !== modelKinds[testCase.operation]) {
       throw Error("The model binary capability cannot execute another operation or input contract before import");
@@ -128,6 +129,20 @@ for (const testCase of request.cases) {
         promotionProfile !== undefined && (promotionProfile.operation !== testCase.operation ||
           promotionProfile.inputKind !== "promotion-ranking" || testCase.input?.kind !== promotionProfile.inputKind)) {
       throw Error("The independent ranking capability cannot execute another operation or input contract before import");
+    }
+    const promotionApplyProfile = context.promotionApplyProfile;
+    if ((promotionApplyProfile !== undefined) !== (testCase.operation === "promotion-apply-reconcile-runtime")) {
+      throw Error("The apply capability cannot execute a different original caller before import");
+    }
+    if (promotionApplyProfile !== undefined) {
+      const stable = value => Array.isArray(value) ? value.map(stable) : value !== null && typeof value === "object"
+        ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
+      const wire = JSON.stringify(stable({ id: testCase.id, operation: testCase.operation, input: testCase.input }));
+      if (promotionApplyProfile.operation !== testCase.operation ||
+          promotionApplyProfile.inputKind !== testCase.input?.kind ||
+          crypto.createHash("sha256").update(wire).digest("hex") !== promotionApplyProfile.caseWireSha256) {
+        throw Error("The apply capability cannot execute a changed literal case before import");
+      }
     }
     const binding = operations[testCase.operation];
     if (!Object.hasOwn(operations, testCase.operation)) throw Error("Unsupported release oracle operation");

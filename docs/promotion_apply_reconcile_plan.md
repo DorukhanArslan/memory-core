@@ -88,3 +88,38 @@ Append-only lock contention without consolidation needs a separately reviewed
 exact lock-helper/test-hook profile. No such hook capability or capture is
 included in this first proposal. No points or completion date are promised
 before the actual whole-operation differences and boundary evidence are reviewed.
+
+## Capability review readiness
+
+The separate capability and both observation callers are now implemented for
+this one literal. No promotion invocation or native capture has been performed,
+and production SDK source is unchanged from `21177bf`.
+
+The canonical case wire is the ASCII, sorted-key, compact JSON object containing
+exactly `id`, `operation`, and `input`: 1,694 bytes, SHA-256
+`2c2bcfc960b729ae64acd3878f1f5a3dcd847fe9dabf8dd4b7e12bc277f8379a`.
+Python, the protected preload, pre-import dispatch, and the native caller bind
+this same value. The profile cannot compose with model, source, capture, atomic,
+entry, budget, ranking, bootstrap, or get-race authority.
+
+`promotion_apply_authority_manifest.json` records every authenticated original
+source/compiled hash, named edge, public alias, backend, and native artifact.
+Its preparation only reads and hashes the pinned original files. It authenticates
+35 source owners, 23 compiled owners, and 14 named source edges. The raw evidence
+guard requires the real three-part worker route, actual PID/binary/profile
+attestations, all original eight return fields or the whole actual error, and
+complete sequential file/SQL observations. An actual owner error is an outcome;
+an observer/transport failure blocks collection and is retained separately.
+
+The public envelope is `provider`, `outcome`, `before`, and `after`. Both readback
+sections retain typed documents, complete canonical recall, and actual observed
+events. Native events come from the real persisted-event reader; SDK events come
+from the real callback. Both retain this distinction in their raw evidence.
+Only the exact owned fixture path prefix is mapped to `$FIXTURE`; raw values and
+the SDK's full error/dataclass/index extensions remain retained.
+
+The focused before-capture gate passed 240 capability, binding, structural-evidence,
+and observer tests, including existing independent-profile guards. Structural
+transport fixtures are explicitly synthetic and supply no native evidence.
+Ruff, diff checks, and approved Node 24.16 syntax checks passed. The first genuine
+comparison remains contingent on review of this exact capability manifest.

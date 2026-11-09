@@ -1,0 +1,1094 @@
+{
+  "acceptancePointsAwarded": 0,
+  "applyEntrypoint": {
+    "export": "a",
+    "path": "dist/short-term-promotion-MX1vHJuE.mjs"
+  },
+  "authenticatedOnlyArtifacts": [
+    "dist/plugin-sdk/plugin-state-store-runtime.js"
+  ],
+  "clock": {
+    "apis": [
+      "Date"
+    ],
+    "owner": "node:test",
+    "schedulerReplaced": false
+  },
+  "compiledBindings": [
+    {
+      "anchors": [
+        {
+          "anchor": "function compactMemoryForBudget(",
+          "line": 106
+        },
+        {
+          "anchor": "compactMemoryForBudget as n",
+          "line": 153
+        }
+      ],
+      "path": "dist/memory-budget-BodJnew-.mjs",
+      "sha256": "c2debded932e73622e81e4d695f7804ac7dd3947a77725e3512e35de22d9d005"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "async function applyShortTermPromotions(",
+          "line": 827
+        },
+        {
+          "anchor": "function buildBudgetedMemoryAppend(",
+          "line": 565
+        },
+        {
+          "anchor": "applyShortTermPromotions as a",
+          "line": 1392
+        },
+        {
+          "anchor": "async function rankShortTermPromotionCandidates(",
+          "line": 1313
+        },
+        {
+          "anchor": "rankShortTermPromotionCandidates as t",
+          "line": 1392
+        },
+        {
+          "anchor": "import { n as listMemoryArtifactProvenance } from \"./memory-artifact-provenance-DhnyWiV1.mjs\";",
+          "line": 12
+        },
+        {
+          "anchor": "if (rehydratedSelected.length === 0) return {",
+          "line": 883
+        }
+      ],
+      "path": "dist/short-term-promotion-MX1vHJuE.mjs",
+      "sha256": "be3114e9aa8c448bdeedbd750b41b25ac06bc00ad8a728edb70db376aa3bc1da"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "async function commitMemoryContent(",
+          "line": 88
+        }
+      ],
+      "path": "dist/short-term-promotion-memory-write-HTLC95gL.mjs",
+      "sha256": "0c5107c106706654ac87dba9f499024ff7e7f57fb9e5ffcd7e3e4c01d9732d46"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "async function writeStore(",
+          "line": 802
+        },
+        {
+          "anchor": "async function readStore(",
+          "line": 753
+        },
+        {
+          "anchor": "async function readPhaseSignalStore(",
+          "line": 796
+        },
+        {
+          "anchor": "async function writePhaseSignalStore(",
+          "line": 799
+        },
+        {
+          "anchor": "readStore as a",
+          "line": 808
+        },
+        {
+          "anchor": "writeStore as l",
+          "line": 808
+        }
+      ],
+      "path": "dist/short-term-promotion-store-B6T388Bo.mjs",
+      "sha256": "704c9fa0e2a1fe7c4dc805aa23ad541562d66c47fbb853351ef74b0604c348b8"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "async function readWorkspaceFile(",
+          "line": 14
+        }
+      ],
+      "path": "dist/memory-workspace-files-CC0bKS3d.mjs",
+      "sha256": "7d884a6a33d19ec06d9db6b99b136815548b75841ba3c7029499ab356a631c7e"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "async function withMemoryWorkspaceLock(",
+          "line": 105
+        },
+        {
+          "anchor": "withMemoryWorkspaceLock as g",
+          "line": 521
+        }
+      ],
+      "path": "dist/dreaming-dreams-file-BJzlZFlf.mjs",
+      "sha256": "fbc57813554fc29a6b7c5bcbada4baa21d5f774c33edd54297a3976741fa4492"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "function configureMemoryCoreDreamingState(",
+          "line": 20
+        },
+        {
+          "anchor": "configureMemoryCoreDreamingState as p",
+          "line": 108
+        }
+      ],
+      "path": "dist/dreaming-state-VYUvbU-n.mjs",
+      "sha256": "8676156b95cc8b73d0cc830e1305bc3460eb90f2bf1114d9e5a6b008269a3e2c"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "function resolveMemoryCoreNowMs(",
+          "line": 2
+        },
+        {
+          "anchor": "function resolveMemoryCoreTimestamp(",
+          "line": 6
+        }
+      ],
+      "path": "dist/time-BhFVUM0b.mjs",
+      "sha256": "2eed429a02ba038dbaf5c16e83acfcae6baa0293dc46370475cb00b1d267ae02"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export { createPluginStateKeyedStore, createPluginStateSyncKeyedStore };",
+          "line": 2
+        }
+      ],
+      "path": "dist/plugin-sdk/plugin-state-store-runtime.js",
+      "sha256": "6e34e2530c913403a15ce4f93a3c8fdfbbb7caaa9ea191faa5993c6b469f1e61"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "function createPluginStateKeyedStore(",
+          "line": 606
+        },
+        {
+          "anchor": "createPluginStateKeyedStore as r",
+          "line": 705
+        },
+        {
+          "anchor": "closePluginStateDatabaseAsync as u",
+          "line": 705
+        },
+        {
+          "anchor": "function createCorePluginStateKeyedStore(options)",
+          "line": 697
+        },
+        {
+          "anchor": "createCorePluginStateKeyedStore as t",
+          "line": 705
+        }
+      ],
+      "path": "dist/plugin-state-store-BPUaLoVD.mjs",
+      "sha256": "4d010227d5baea72f1dfc1e117efe2cc1eb596eeab579e6c92c047abf75f7efc"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "async function readMemoryHostEventRecords(",
+          "line": 19
+        },
+        {
+          "anchor": "readMemoryHostEventRecords as n",
+          "line": 35
+        }
+      ],
+      "path": "dist/memory-host-events-C8-U38f1.mjs",
+      "sha256": "8253343c15c8cf22bf861d36108bf707f614f01c78dd53bdf25f93ff0d767862"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "async function registerMemoryHostEvent(",
+          "line": 215
+        }
+      ],
+      "path": "dist/event-store-BeWtwFJV.mjs",
+      "sha256": "e48bf5aaecb7287e3f873251880148cf992492194b61103a467e84e648001cb6"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "async function withFileLock(",
+          "line": 146
+        },
+        {
+          "anchor": "withFileLock as s",
+          "line": 164
+        }
+      ],
+      "path": "dist/file-lock-bsl71RWY.mjs",
+      "sha256": "2c9ba26b97c5f6edbcea933422db39e9bfdc3b3a428b6da37d27dc9e32bbcc94"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "const DEFAULT_PROMOTION_MIN_SCORE =",
+          "line": 4
+        },
+        {
+          "anchor": "const DEFAULT_PROMOTION_MIN_RECALL_COUNT = 3;",
+          "line": 5
+        },
+        {
+          "anchor": "const DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES = 3;",
+          "line": 6
+        }
+      ],
+      "path": "dist/short-term-promotion-types-UVm8XCDd.mjs",
+      "sha256": "2117032ca4a266270aa222f7d7b636b27670af40b81a464823e738e2b8f6e048"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "const DEFAULT_MEMORY_DEEP_DREAMING_MIN_SCORE = .75;",
+          "line": 29
+        }
+      ],
+      "path": "dist/dreaming-dsmlMxw7.mjs",
+      "sha256": "d84a68d61fc08db53d0ec7e408017c940151ff10e11a38430c23415a06ffef83"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "function registerPluginStateInWorker(",
+          "line": 50
+        },
+        {
+          "anchor": "function listPluginStateInKeyRangeInWorker(",
+          "line": 198
+        }
+      ],
+      "path": "dist/plugin-state-worker-client-7ByaGIDy.mjs",
+      "sha256": "bee1c828bf9a23d3aeafd84e91d3dfd2b2d685b2d560fc5a9e01aabcd0346217"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "function executePluginStateCommand(",
+          "line": 9
+        }
+      ],
+      "path": "dist/plugin-state.worker-Bt1nfP3u.mjs",
+      "sha256": "d724a51faf2d46e518a733a47528ac9b629e54b1d4f6afa9007d769021bba9f4"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "function resolveOpenClawStateSqlitePath(",
+          "line": 23
+        },
+        {
+          "anchor": "resolveOpenClawStateSqlitePath as s",
+          "line": 78
+        }
+      ],
+      "path": "dist/openclaw-state-db.paths-rJI64Ab5.mjs",
+      "sha256": "8cecbc669117d451fb3681898c056714e463437f1c6ada6a537609864c0c4214"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "SQLite store worker requires its host port",
+          "line": 16
+        },
+        {
+          "anchor": "async function receive(",
+          "line": 35
+        }
+      ],
+      "path": "dist/infra/sqlite-store.worker.js",
+      "sha256": "b6fb8b9d214bd7d35beb77849e1c44926d4963cacd9fc13af40f8c3b43374d69"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "function createSqliteWorkerBackend(",
+          "line": 27
+        }
+      ],
+      "path": "dist/state/openclaw-state.worker.js",
+      "sha256": "52fdb859d0add218690d0db4358fa5b2f2d2118379163eefb42a35c87f0715d4"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export { createOpenClawStateWorkerLease, executeOpenClawStateWorker,",
+          "line": 2
+        }
+      ],
+      "path": "dist/openclaw-state-worker-store-DRKGvWWN.mjs",
+      "sha256": "d567e4897230641cd70eeeade81cc6281c67bf76626e1fa7cfb19987ce0b73ca"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "function createSharedStateWorkerOwner(",
+          "line": 270
+        }
+      ],
+      "path": "dist/openclaw-state-worker-store-Dy5-mnWx.mjs",
+      "sha256": "8f2ce584b66eec3ff3c876ddab18947e8af6b2a60fbbf3aeb3e020336410e407"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "async function listMemoryArtifactProvenance(params)",
+          "line": 110
+        },
+        {
+          "anchor": "listMemoryArtifactProvenance as n",
+          "line": 131
+        },
+        {
+          "anchor": "import { t as createCorePluginStateKeyedStore } from \"./plugin-state-store-BPUaLoVD.mjs\";",
+          "line": 3
+        }
+      ],
+      "path": "dist/memory-artifact-provenance-DhnyWiV1.mjs",
+      "sha256": "d9058a906197fbec520df32a63257e4bb24b084223aa35871c64e71d1e8c464c"
+    }
+  ],
+  "covers": [],
+  "databasePathEntrypoint": {
+    "export": "s",
+    "path": "dist/openclaw-state-db.paths-rJI64Ab5.mjs"
+  },
+  "eventReadEntrypoint": {
+    "export": "n",
+    "path": "dist/memory-host-events-C8-U38f1.mjs"
+  },
+  "executionPerformed": false,
+  "factoryEntrypoints": {
+    "close": {
+      "export": "u",
+      "path": "dist/plugin-state-store-BPUaLoVD.mjs"
+    },
+    "configure": {
+      "export": "p",
+      "path": "dist/dreaming-state-VYUvbU-n.mjs"
+    },
+    "keyed": {
+      "export": "r",
+      "path": "dist/plugin-state-store-BPUaLoVD.mjs",
+      "pluginId": "memory-core"
+    },
+    "provenanceKeyed": {
+      "export": "t",
+      "namespace": "workspace-files",
+      "ownerId": "core:memory-artifact-provenance",
+      "path": "dist/plugin-state-store-BPUaLoVD.mjs"
+    },
+    "publicKeyed": {
+      "executionRequired": false,
+      "export": "createPluginStateKeyedStore",
+      "path": "dist/plugin-sdk/plugin-state-store-runtime.js"
+    }
+  },
+  "kind": "official-release-promotion-apply-owners",
+  "lockEquivalenceClaimed": false,
+  "managerConstructed": false,
+  "nativeArtifactBindings": [
+    {
+      "nativeBuildReproduced": false,
+      "package": "node_modules/@openclaw/fs-safe-linux-x64-gnu",
+      "path": "fs-safe-native.node",
+      "sha256": "f1aad2619542e43af6f28606e7514054bd0824814f2a2bb4b72f5e16e9ea2d7c"
+    }
+  ],
+  "operation": "promotion-apply-reconcile-runtime",
+  "promotionFileLockEntrypoint": {
+    "export": "s",
+    "path": "dist/file-lock-bsl71RWY.mjs",
+    "reachedAfterZeroRehydratedReturn": false
+  },
+  "provenanceEntrypoint": {
+    "export": "n",
+    "path": "dist/memory-artifact-provenance-DhnyWiV1.mjs"
+  },
+  "providerConstructed": false,
+  "publicationOrderingClaimed": false,
+  "referenceCommit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+  "requiredLoadedArtifacts": [
+    "dist/memory-budget-BodJnew-.mjs",
+    "dist/short-term-promotion-MX1vHJuE.mjs",
+    "dist/short-term-promotion-memory-write-HTLC95gL.mjs",
+    "dist/short-term-promotion-store-B6T388Bo.mjs",
+    "dist/memory-workspace-files-CC0bKS3d.mjs",
+    "dist/dreaming-dreams-file-BJzlZFlf.mjs",
+    "dist/dreaming-state-VYUvbU-n.mjs",
+    "dist/time-BhFVUM0b.mjs",
+    "dist/plugin-state-store-BPUaLoVD.mjs",
+    "dist/memory-host-events-C8-U38f1.mjs",
+    "dist/event-store-BeWtwFJV.mjs",
+    "dist/file-lock-bsl71RWY.mjs",
+    "dist/short-term-promotion-types-UVm8XCDd.mjs",
+    "dist/dreaming-dsmlMxw7.mjs",
+    "dist/plugin-state-worker-client-7ByaGIDy.mjs",
+    "dist/plugin-state.worker-Bt1nfP3u.mjs",
+    "dist/openclaw-state-db.paths-rJI64Ab5.mjs",
+    "dist/infra/sqlite-store.worker.js",
+    "dist/state/openclaw-state.worker.js",
+    "dist/openclaw-state-worker-store-DRKGvWWN.mjs",
+    "dist/openclaw-state-worker-store-Dy5-mnWx.mjs",
+    "dist/memory-artifact-provenance-DhnyWiV1.mjs"
+  ],
+  "requiredPluginStateWorkerArtifact": "dist/plugin-state.worker-Bt1nfP3u.mjs",
+  "requiredWorkerRoute": [
+    "dist/infra/sqlite-store.worker.js",
+    "dist/state/openclaw-state.worker.js",
+    "dist/plugin-state.worker-Bt1nfP3u.mjs"
+  ],
+  "reviewedCaseWireSha256": "2c2bcfc960b729ae64acd3878f1f5a3dcd847fe9dabf8dd4b7e12bc277f8379a",
+  "sourceAliasLink": {
+    "declaration": "import { getOpenClawStateWorkerOwner as owner } from \"./openclaw-state-worker-owner.js\";",
+    "declarationSha256": "9cd5b561335ef48f8690ceed33236dcd364d017d4b7ec507806d2d8948bbc42f",
+    "line": 23,
+    "path": "src/state/openclaw-state-worker-store.ts"
+  },
+  "sourceBindings": [
+    {
+      "anchors": [
+        {
+          "anchor": "export function compactMemoryForBudget(",
+          "line": 180
+        },
+        {
+          "anchor": "const WRITE_OVERHEAD_RESERVE = 21;",
+          "line": 47
+        }
+      ],
+      "path": "extensions/memory-core/src/memory-budget.ts",
+      "sha256": "feba8e1de3c3391d82fb996bcee882da23f9df296c1d68e9bd6b8d4ecf1c305e"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export function buildBudgetedMemoryAppend(",
+          "line": 4
+        }
+      ],
+      "path": "extensions/memory-core/src/memory-budget-append.ts",
+      "sha256": "7037e68a38bcc4c0a92777b49a7051d7795e67a16c8c7ae6d226efa644a06a9c"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export async function applyShortTermPromotions(",
+          "line": 184
+        },
+        {
+          "anchor": "const dailyProvenanceEntries = await listMemoryArtifactProvenance({ workspaceDir });",
+          "line": 208
+        },
+        {
+          "anchor": "  if (rehydratedSelected.length === 0) {",
+          "line": 335
+        },
+        {
+          "anchor": "  const promotionLockTarget = await resolveMemoryPromotionLockTarget(workspaceDir);",
+          "line": 397
+        }
+      ],
+      "path": "extensions/memory-core/src/short-term-promotion-apply.ts",
+      "sha256": "914fb4c452d358540e138a09681b262d1932e6c5f8c2303ab3de9b0e992f522a"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export async function commitMemoryContent(",
+          "line": 139
+        },
+        {
+          "anchor": "export function buildPromotionMarker(",
+          "line": 17
+        }
+      ],
+      "path": "extensions/memory-core/src/short-term-promotion-memory-write.ts",
+      "sha256": "73efe7aded716c4ad1dce87230ef0cd538737491190168b1769765dd8ad092e5"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export function buildPromotionRecallAnnotations(",
+          "line": 57
+        }
+      ],
+      "path": "extensions/memory-core/src/short-term-promotion-metadata.ts",
+      "sha256": "8ee19a393e6ec8fb6370bf3f04d657ab78f053a715468aa772f0d7499b1da278"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export async function rehydratePromotionCandidate(",
+          "line": 288
+        }
+      ],
+      "path": "extensions/memory-core/src/short-term-promotion-rehydrate.ts",
+      "sha256": "3525f10252f5dd72c439d45c224751a76334f9ab2b4447fede7b3cc09bd0652b"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export async function readStore(",
+          "line": 79
+        },
+        {
+          "anchor": "export async function writeStore(",
+          "line": 159
+        },
+        {
+          "anchor": "export async function readPhaseSignalStore(",
+          "line": 142
+        },
+        {
+          "anchor": "export async function writePhaseSignalStore(",
+          "line": 152
+        }
+      ],
+      "path": "extensions/memory-core/src/short-term-promotion-store.ts",
+      "sha256": "556c7e10323eb889e857d2cda41a5a6cd78e7e456ee99b2205b491dac547ea84"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export function formatPromotedSnippetForMemory(",
+          "line": 118
+        },
+        {
+          "anchor": "export function normalizeShortTermRecallStore(",
+          "line": 327
+        },
+        {
+          "anchor": "export function normalizeWeights(",
+          "line": 542
+        },
+        {
+          "anchor": "export function calculateRecencyComponent(",
+          "line": 567
+        }
+      ],
+      "path": "extensions/memory-core/src/short-term-promotion-utils.ts",
+      "sha256": "2c9368be7fcff1581a3e4c706465dc60506fa605cf8db9dba3577fa7cc9274c7"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export type ApplyShortTermPromotionsResult = {",
+          "line": 175
+        },
+        {
+          "anchor": "export const DEFAULT_PROMOTION_MIN_SCORE =",
+          "line": 16
+        },
+        {
+          "anchor": "export const DEFAULT_PROMOTION_MIN_RECALL_COUNT =",
+          "line": 17
+        },
+        {
+          "anchor": "export const DEFAULT_PROMOTION_MIN_UNIQUE_QUERIES =",
+          "line": 18
+        }
+      ],
+      "path": "extensions/memory-core/src/short-term-promotion-types.ts",
+      "sha256": "c97c17dcc52eea9fc9d320fa77be6f0da901331428d6bfc70d289da9e6764daf"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export async function withMemoryWorkspaceLock<T>(",
+          "line": 207
+        },
+        {
+          "anchor": "async function acquireMemoryWorkspaceLock(",
+          "line": 251
+        },
+        {
+          "anchor": "      if (!lockStore.observe || !lockStore.compareAndApply) {",
+          "line": 260
+        }
+      ],
+      "path": "extensions/memory-core/src/memory-workspace-lock.ts",
+      "sha256": "557bf3bdb03a8139af1c3fe40d106b3fb74e8ad20c30969bd888a7bccf25beb2"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export async function readWorkspaceFile(",
+          "line": 28
+        }
+      ],
+      "path": "extensions/memory-core/src/memory-workspace-files.ts",
+      "sha256": "1e7864b563fb9efc44b1b69933199886e49ebe8241b46336f83e1186c62f7f56"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export function configureMemoryCoreDreamingState(",
+          "line": 54
+        },
+        {
+          "anchor": "export async function writeMemoryCoreWorkspaceEntries(",
+          "line": 131
+        },
+        {
+          "anchor": "export async function readMemoryCoreWorkspaceEntries(",
+          "line": 114
+        }
+      ],
+      "path": "extensions/memory-core/src/dreaming-state.ts",
+      "sha256": "b115fa0ce1c2757abc282f2822d08dc365c07a3b88c6e90ff7b1e7b87fb64458"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export function resolveMemoryCoreNowMs(",
+          "line": 1
+        },
+        {
+          "anchor": "export function resolveMemoryCoreTimestamp(",
+          "line": 6
+        }
+      ],
+      "path": "extensions/memory-core/src/time.ts",
+      "sha256": "3bdbf0427b95742be8fceae4107a2949ef184df196c75760eee132d06572fdcc"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export function createPluginStateKeyedStore<T>(",
+          "line": 458
+        },
+        {
+          "anchor": "export function createCorePluginStateKeyedStore<T>(",
+          "line": 613
+        }
+      ],
+      "path": "src/plugin-state/plugin-state-store.ts",
+      "sha256": "361e7571e9c93efde048462fd967e845c6e68a7a9f7a9c6f9a0823b6cad8b530"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export async function appendMemoryHostEvent(",
+          "line": 21
+        },
+        {
+          "anchor": "export async function readMemoryHostEventRecords(",
+          "line": 34
+        }
+      ],
+      "path": "src/memory-host-sdk/events.ts",
+      "sha256": "656dbfaad097f0fc90d7f5494fb2f25bb9f353654c649f5c4b9d2e92571960d4"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export function normalizeMemoryHostEventRecordForStorage(",
+          "line": 149
+        },
+        {
+          "anchor": "export async function registerMemoryHostEvent(",
+          "line": 257
+        }
+      ],
+      "path": "src/memory-host-sdk/event-store.ts",
+      "sha256": "7f4dd921ae8418488af64c909242180ce81977b9a579323b006c416863ddda71"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "  withFileLock,",
+          "line": 13
+        }
+      ],
+      "path": "src/infra/file-lock.ts",
+      "sha256": "7476abe40ade08deb99502672c52a77e41e7f0fa0881fbf45141185637d52c7c"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export async function withFileLock<T>(",
+          "line": 274
+        }
+      ],
+      "path": "src/plugin-sdk/file-lock.ts",
+      "sha256": "ae7f9dc28c1b544f5fb21a129df8ce8ddc172c8ae1b1ead36af21fc19b0aa7ec"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "  createPluginStateKeyedStore,",
+          "line": 11
+        }
+      ],
+      "path": "src/plugin-sdk/plugin-state-store-runtime.ts",
+      "sha256": "ecf895427ac1c6acf31570294fd6c2418dfc7b09a041b0b8f71d44e4d732c998"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export async function rankShortTermPromotionCandidates(",
+          "line": 80
+        }
+      ],
+      "path": "extensions/memory-core/src/short-term-promotion.ts",
+      "sha256": "2c00653755f1ce10d9c933aeda2e44580dbaa97b9c5e33d9596e86f5932d7557"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export function isPromotionOriginBlocked(",
+          "line": 11
+        }
+      ],
+      "path": "extensions/memory-core/src/dreaming-consolidation-candidates.ts",
+      "sha256": "d85ccfe5295655ab8e6ea343f8d3640a06c10fd879536088ad42d4cd48493394"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "  DEFAULT_MEMORY_DEEP_DREAMING_MIN_SCORE,",
+          "line": 23
+        }
+      ],
+      "path": "src/plugin-sdk/memory-core-host-status.ts",
+      "sha256": "5695ca6c4e31068afb7e9f2541595c1e0ba8b86f95c4f8a1e962078fa27497ab"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export const DEFAULT_MEMORY_DEEP_DREAMING_MIN_SCORE = 0.75;",
+          "line": 44
+        },
+        {
+          "anchor": "export const DEFAULT_MEMORY_DEEP_DREAMING_MIN_RECALL_COUNT = 3;",
+          "line": 45
+        },
+        {
+          "anchor": "export const DEFAULT_MEMORY_DEEP_DREAMING_MIN_UNIQUE_QUERIES = 3;",
+          "line": 46
+        }
+      ],
+      "path": "src/memory-host-sdk/dreaming.ts",
+      "sha256": "c4f5299cf96c6701e5217dba3e2f41aeca5b5393e3f0c23e00478a394bbf2daf"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export async function closePluginStateDatabaseAsync()",
+          "line": 501
+        }
+      ],
+      "path": "src/plugin-state/plugin-state-store.sqlite.ts",
+      "sha256": "5c8a00ecd21695bb20acac0be92d0477a9a5533f1795f7b0ee153c1e462a5498"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export function registerPluginStateInWorker(",
+          "line": 91
+        },
+        {
+          "anchor": "export function listPluginStateInKeyRangeInWorker(",
+          "line": 198
+        }
+      ],
+      "path": "src/plugin-state/plugin-state-worker-client.ts",
+      "sha256": "2f6d019d90a079e01a1ee2edcfe13b3be7393baad7b951d1de9bfab69ebdbee3"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export function executePluginStateCommand(",
+          "line": 44
+        }
+      ],
+      "path": "src/plugin-state/plugin-state.worker.ts",
+      "sha256": "7890fdcd60cd75b59816603242cf6446f236a8901d679185da9191630c7de5b0"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export function resolveOpenClawStateSqlitePath(",
+          "line": 27
+        }
+      ],
+      "path": "src/state/openclaw-state-db.paths.ts",
+      "sha256": "e3169d4e1f8df9b1bec5572bb20158c5800d135d26341b2af0920f73a06d95e1"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export function rowToEntry(",
+          "line": 102
+        },
+        {
+          "anchor": "export function bindPluginStateEntry(",
+          "line": 120
+        }
+      ],
+      "path": "src/plugin-state/plugin-state-store.kernel.ts",
+      "sha256": "db0136ba0988fab6cdc5410bd6a459192a0bda964da26dcddfb2584cc5ab2697"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export async function runOpenClawStateWorkerOperation<T>(",
+          "line": 72
+        },
+        {
+          "anchor": "import { getOpenClawStateWorkerOwner as owner } from \"./openclaw-state-worker-owner.js\";",
+          "line": 23
+        }
+      ],
+      "path": "src/state/openclaw-state-worker-store.ts",
+      "sha256": "58194c48d5c2d7047fb6429e37b080b4745d6c2562b583ab54773c8612c3c9da"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "const moduleUrl = resolveRuntimeProcessEntrypointUrl(\"sharedStateStore\");",
+          "line": 54
+        }
+      ],
+      "path": "src/state/openclaw-state-worker-owner.ts",
+      "sha256": "f6cb1576f8bd7f0ce23326e558c7c3968b202e5b03f18e5c41e86488bdc2b127"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export function createSqliteWorkerBackend(",
+          "line": 57
+        }
+      ],
+      "path": "src/state/openclaw-state.worker.ts",
+      "sha256": "0017e2465c09c9d1bc3701005a065a1de989bc84c4b14a265366c555a9fc56b2"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "if (!parentPort)",
+          "line": 45
+        },
+        {
+          "anchor": "async function receive(",
+          "line": 80
+        }
+      ],
+      "path": "src/infra/sqlite-store.worker.ts",
+      "sha256": "c958da27fa03aa7a31b487ad98836d9419539c8c3c0d6cdce52724f82d8702a8"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "export function resolveRuntimeProcessEntrypointUrl(",
+          "line": 16
+        }
+      ],
+      "path": "src/infra/runtime-process-url.ts",
+      "sha256": "0914e78c0e99eecfb49d0aafec3e82d8e6fa61f3a22cfbf97669c0ffc8441f1e"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "const MEMORY_ARTIFACT_PROVENANCE_OWNER_ID = \"core:memory-artifact-provenance\";",
+          "line": 7
+        },
+        {
+          "anchor": "const MEMORY_ARTIFACT_PROVENANCE_NAMESPACE = \"workspace-files\";",
+          "line": 8
+        },
+        {
+          "anchor": "export async function listMemoryArtifactProvenance(params:",
+          "line": 210
+        }
+      ],
+      "path": "src/memory/memory-artifact-provenance.ts",
+      "sha256": "68f4d030c3d6025e390065c296a74f94d46b177497e03655e7820e26215fb373"
+    },
+    {
+      "anchors": [
+        {
+          "anchor": "  listMemoryArtifactProvenance,",
+          "line": 41
+        }
+      ],
+      "path": "src/plugin-sdk/memory-core-host-runtime-core.ts",
+      "sha256": "9d0fc4e1f1ec1f4c4a140a2a5b8cb63246c18091274cc8ffa51b5274b03a653b"
+    }
+  ],
+  "sourceBuildReproduced": false,
+  "sourceFallbackAllowed": false,
+  "sourceImportLinks": [
+    {
+      "bindings": [
+        "readStore",
+        "writeStore"
+      ],
+      "declarationSha256": "a9ad16b494d54d9ea9bb785b7c2e45122f9152a4b220c857f0e61b0f46ed8166",
+      "kind": "import",
+      "line": 45,
+      "path": "extensions/memory-core/src/short-term-promotion-apply.ts",
+      "specifier": "./short-term-promotion-store.js"
+    },
+    {
+      "bindings": [
+        "withMemoryWorkspaceLock"
+      ],
+      "declarationSha256": "060ba0bcf4b7077c4808880ddef12b66b687f765ada1cf3721b02882972cd7d6",
+      "kind": "import",
+      "line": 27,
+      "path": "extensions/memory-core/src/short-term-promotion-apply.ts",
+      "specifier": "./memory-workspace-lock.js"
+    },
+    {
+      "bindings": [
+        "withFileLock"
+      ],
+      "declarationSha256": "086275143a866defc3f30693df42e86cf15aa200ef6e427ce81515d0b9a11268",
+      "kind": "import",
+      "line": 4,
+      "path": "extensions/memory-core/src/short-term-promotion-apply.ts",
+      "specifier": "openclaw/plugin-sdk/file-lock"
+    },
+    {
+      "bindings": [
+        "listMemoryArtifactProvenance"
+      ],
+      "declarationSha256": "6d1a766cd2d4a7037b18ecbc596bd812d6810d4ef8946ed2d620685dbe6ce307",
+      "kind": "import",
+      "line": 5,
+      "path": "extensions/memory-core/src/short-term-promotion-apply.ts",
+      "specifier": "openclaw/plugin-sdk/memory-core-host-runtime-core"
+    },
+    {
+      "bindings": [
+        "resolveMemoryCoreNowMs",
+        "resolveMemoryCoreTimestamp"
+      ],
+      "declarationSha256": "15bad7f38b3f47024ad650a971297b98a16c311da65e4a1bb5b64e4b13191f05",
+      "kind": "import",
+      "line": 62,
+      "path": "extensions/memory-core/src/short-term-promotion-apply.ts",
+      "specifier": "./time.js"
+    },
+    {
+      "bindings": [
+        "readMemoryCoreWorkspaceEntries",
+        "writeMemoryCoreWorkspaceEntries",
+        "writeMemoryCoreWorkspaceEntry"
+      ],
+      "declarationSha256": "00423811cdd8ebb7b2516ecd4dbe52c98230f0acf8c6efee136100fdf5abb44b",
+      "kind": "import",
+      "line": 2,
+      "path": "extensions/memory-core/src/short-term-promotion-store.ts",
+      "specifier": "./dreaming-state.js"
+    },
+    {
+      "bindings": [
+        "SHORT_TERM_LOCK_NAMESPACE",
+        "openMemoryCoreStateStore",
+        "memoryCoreWorkspaceStateKey"
+      ],
+      "declarationSha256": "ee12b54367d922dfc339c56fedae10a58c013fd644c0eb2d4d2dd6461c6233f7",
+      "kind": "import",
+      "line": 15,
+      "path": "extensions/memory-core/src/memory-workspace-lock.ts",
+      "specifier": "./dreaming-state.js"
+    },
+    {
+      "bindings": [
+        "listMemoryArtifactProvenance"
+      ],
+      "declarationSha256": "c29c40dbb111a653413f235d8698c89e264ed5509404d9cb05fb68ab4dcf818f",
+      "kind": "export",
+      "line": 40,
+      "path": "src/plugin-sdk/memory-core-host-runtime-core.ts",
+      "specifier": "../memory/memory-artifact-provenance.js"
+    },
+    {
+      "bindings": [
+        "createCorePluginStateKeyedStore"
+      ],
+      "declarationSha256": "d4a8b700338796f7e0bb25a75521fc7d55d7b6d891c9d56544b1e06ce28ac415",
+      "kind": "import",
+      "line": 5,
+      "path": "src/memory/memory-artifact-provenance.ts",
+      "specifier": "../plugin-state/plugin-state-store.js"
+    },
+    {
+      "bindings": [
+        "createPluginStateKeyedStore"
+      ],
+      "declarationSha256": "7024a81e9ec7c2b704c9d3728586c3db68ae756c6321b02d1a85b76fa8772e60",
+      "kind": "export",
+      "line": 10,
+      "path": "src/plugin-sdk/plugin-state-store-runtime.ts",
+      "specifier": "../plugin-state/plugin-state-store.js"
+    },
+    {
+      "bindings": [
+        "registerPluginStateInWorker",
+        "listPluginStateInKeyRangeInWorker"
+      ],
+      "declarationSha256": "c18733331f01d5d69b7251933c2705e1bfdfed23bbedbaae3df53c35d05a2a55",
+      "kind": "import",
+      "line": 55,
+      "path": "src/plugin-state/plugin-state-store.ts",
+      "specifier": "./plugin-state-worker-client.js"
+    },
+    {
+      "bindings": [
+        "openSharedStateSqliteWorkerStore"
+      ],
+      "declarationSha256": "0255e368f39171e7911cb7fa07135063d31897c83ea68550efe26b7cf3248a52",
+      "kind": "import",
+      "line": 8,
+      "path": "src/state/openclaw-state-worker-owner.ts",
+      "specifier": "../infra/sqlite-worker-store.js"
+    },
+    {
+      "bindings": [
+        "resolveRuntimeProcessEntrypointUrl"
+      ],
+      "declarationSha256": "3be6b43381de8bc747dbb0cc52431b2b2f9ee2c676090e68a7b86c6f1868c7c0",
+      "kind": "import",
+      "line": 3,
+      "path": "src/state/openclaw-state-worker-owner.ts",
+      "specifier": "../infra/runtime-process-url.js"
+    },
+    {
+      "bindings": [
+        "listStoredMemoryHostEvents"
+      ],
+      "declarationSha256": "671d2046ecb3909dcb4024d8db8d19e0d62aa741a8e87a36c0968c1fe0aadf4f",
+      "kind": "import",
+      "line": 3,
+      "path": "src/memory-host-sdk/events.ts",
+      "specifier": "./event-store.js"
+    }
+  ],
+  "storeEntrypoints": {
+    "path": "dist/short-term-promotion-store-B6T388Bo.mjs",
+    "readRecall": "a",
+    "writeRecall": "l"
+  },
+  "workerClock": "Original protected worker clock; only main-thread Date is controlled",
+  "workerImportsRequired": true,
+  "workspaceLeaseEntrypoint": {
+    "export": "g",
+    "initialReadRequired": true,
+    "namespace": "short-term-locks",
+    "path": "dist/dreaming-dreams-file-BJzlZFlf.mjs"
+  }
+}

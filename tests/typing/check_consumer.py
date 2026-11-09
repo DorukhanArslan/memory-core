@@ -86,7 +86,9 @@ def main() -> int:
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
         print(str(error), file=sys.stderr)
         return 1
-    print("installed public typing: valid consumer accepted; 6 invalid calls rejected")
+    negative_count = sum(bool(_EXPECTED.search(line))
+                         for line in (HERE / "invalid_public_api.py").read_text().splitlines())
+    print(f"installed public typing: valid consumer accepted; {negative_count} invalid calls rejected")
     return 0
 
 

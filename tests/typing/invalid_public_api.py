@@ -1,9 +1,14 @@
 """Intentional consumer errors; every expected diagnostic has an E marker."""
 
 from typing import Any
+from pathlib import Path
 
-from memory_core import FeatureFlags, HostKit, SessionState
+from memory_core import (
+    FeatureFlags, HostKit, HostModelResult, HostSessionRunner, HostTurn,
+    SessionState,
+)
 from memory_core.live import JsonlTraceSink, SubjectMemory
+from memory_core.session_catalog import MemorySessionCatalog
 
 
 def wrong_payload(payload: dict[str, Any]) -> str:
@@ -24,3 +29,14 @@ def invalid_contract(kit: HostKit, memory: SubjectMemory) -> None:
         session_id="session", transcript="hello", summary_llm=lambda messages: "- note",
         output_redactor=wrong_output,  # E: arg-type
     )
+
+
+async def valid_model(turn: HostTurn) -> HostModelResult:
+    return HostModelResult()
+
+
+async def invalid_lifecycle(runner: HostSessionRunner, workspace: Path) -> None:
+    HostSessionRunner.open(workspace, catalog=MemorySessionCatalog(workspace / "s.sqlite"),
+        session="invalid")  # E: arg-type
+    await runner.run_turn(42, execute=valid_model)  # E: arg-type
+    HostModelResult(usage="tokens")  # E: arg-type

@@ -206,9 +206,7 @@ The original source hashes are:
 | `memory_core/turn_trust.py` | `294c6e18d8cedc82754ea06c517290ecb6b1e190aea40ede6ff76651fa90d77c` |
 | `memory_core/turn_tool_dispatch.py` | `73b67aef1dd60a06cf4131881a30d5fd5564dbc9160fc07a521c621c35b3116a` |
 
-`turn_tool_dispatch.py` is byte-for-byte unchanged. `turn_trust.py` removes only one extra
-blank line at EOF for the repository whitespace check; its installed SHA-256 is
-`5435221723d07d10d3c692fe60693fa36b693dcc3b3086b55eac3f315735dcbc`.
+Both files remain byte-for-byte unchanged from that verified commit.
 
 They provide `TurnTrust`, registered `TurnTool` execution, assistant trust stamping and
 ordinary result-message construction. The runner owns admission, persistence and settlement;

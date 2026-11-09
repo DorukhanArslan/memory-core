@@ -8,6 +8,10 @@ from memory_core import (
     EmbeddingProvider,
     FeatureFlags,
     HostKit,
+    HostModelResult,
+    HostSessionRunner,
+    HostTurn,
+    HostTurnOutcome,
     Memory,
     MemoryConfig,
     SessionState,
@@ -18,6 +22,7 @@ from memory_core import (
 )
 from memory_core.adapters.langgraph import tool_messages, transcript_rows, turn_usage
 from memory_core.host import FlushOutcome, FlushRequest
+from memory_core.session_catalog import MemorySessionCatalog
 from memory_core.live import (
     JsonlTraceSink,
     LiveTurnContext,
@@ -53,6 +58,23 @@ def sanitize_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 async def chunks(messages: list[dict[str, str]]) -> AsyncIterator[str]:
     yield "done"
+
+
+async def host_model(turn: HostTurn) -> HostModelResult:
+    assert_type(turn.context, TurnContext | None)
+    assert_type(turn.messages, list[dict[str, Any]])
+    return HostModelResult(usage=TurnUsage(20, 2))
+
+
+async def lifecycle_contract(workspace: Path) -> None:
+    catalog = MemorySessionCatalog(workspace / "sessions.sqlite")
+    runner = HostSessionRunner.open(workspace, catalog=catalog,
+        session=SessionState.new(session_key="agent:main:dm:types", session_id="types"))
+    assert_type(runner, HostSessionRunner)
+    outcome = await runner.run_turn("Hello", execute=host_model, execute_flush=host_model)
+    assert_type(outcome, HostTurnOutcome)
+    assert_type(outcome.ready, bool)
+    assert_type(outcome.session, SessionState)
 
 
 def host_contract(workspace: Path) -> None:

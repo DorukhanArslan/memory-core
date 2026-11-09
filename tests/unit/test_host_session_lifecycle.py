@@ -42,6 +42,26 @@ def _answer(turn, text="Done."):
     return HostModelResult(TurnUsage(20, 2))
 
 
+def test_public_model_failure_masks_registered_credentials(tmp_path):
+    from memory_core import secret_registry
+
+    assert not secret_registry.capture_secret_redaction_registry_snapshot().values
+    secret_registry.register_secret_value_for_redaction("fixture-secret-7")
+    try:
+        async def scenario():
+            async def fail(turn):
+                raise RuntimeError("provider refused fixture-secret-7")
+
+            outcome = await _runner(tmp_path).run_turn("Hello", execute=fail)
+            assert outcome.transcript_committed and not outcome.ready
+            assert outcome.failures[0].phase == "model"
+            assert outcome.failures[0].message == "provider refused ***"
+
+        asyncio.run(scenario())
+    finally:
+        secret_registry.reset_secret_redaction_registry()
+
+
 def test_real_note_is_searchable_by_immediate_next_turn_and_context_reopens(tmp_path):
     async def scenario():
         runner = _runner(tmp_path)

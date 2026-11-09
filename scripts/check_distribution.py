@@ -113,6 +113,7 @@ def inspect_distribution(artifact: Path, *, version: str) -> None:
 # This program runs with -I from scratch, using only the installed artifact and core deps.
 # The text fixture is shared with tests/unit/test_host_kit_dispatch.py.
 SMOKE = '''
+import asyncio
 import importlib
 import importlib.metadata
 import importlib.util
@@ -239,11 +240,48 @@ with tempfile.TemporaryDirectory() as scratch:
     else:
         raise AssertionError("A configured workspace owner must not rebind another workspace")
     assert not mismatch.exists()
+
+    async def lifecycle_consumer():
+        runner = core.HostSessionRunner.open(root, catalog=catalog,
+            config=core.MemoryConfig(workspace_dir=root, flags=flags),
+            session=core.SessionState.new(session_key="agent:main:dm:installed-lifecycle",
+                                          session_id="installed-lifecycle"))
+
+        def record_call(turn, identifier, name, arguments):
+            turn.record_message({"role": "assistant", "content": [{"type": "toolCall",
+                "id": identifier, "name": name, "arguments": arguments}]})
+
+        async def save(turn):
+            arguments = {"text": "The lifecycleonyx project is ready."}
+            record_call(turn, "save", "append_daily_note", arguments)
+            receipt = await turn.dispatch_async("save", "append_daily_note", arguments)
+            assert receipt["status"] == "ok"
+            turn.record_message({"role": "assistant", "content": [{"type": "text", "text": "Saved."}]})
+            return core.HostModelResult(core.TurnUsage(20, 3))
+
+        async def recall(turn):
+            arguments = {"query": "lifecycleonyx", "corpus": "memory", "minScore": 0}
+            record_call(turn, "recall", "memory_search", arguments)
+            receipt = await turn.dispatch_async("recall", "memory_search", arguments)
+            assert any("lifecycleonyx" in hit["snippet"] for hit in receipt["results"])
+            turn.record_message({"role": "assistant", "content": [{"type": "text", "text": "Recalled."}]})
+
+        first = await runner.run_turn("Remember lifecycleonyx.", execute=save)
+        assert first.ready and first.memory_writes_committed and first.index_status == "ready"
+        second = await runner.run_turn("Find lifecycleonyx.", execute=recall)
+        assert second.ready and second.index_status == "ready"
+        restored = catalog_module.MemorySessionCatalog(catalog.path).read_continuation(
+            "installed-lifecycle", session_key="agent:main:dm:installed-lifecycle")
+        assert len(restored["events"]) == 9
+        assert restored["instanceEntry"]["sdkHostLifecycle"]["needsIndex"] is False
+
+    asyncio.run(lifecycle_consumer())
 print("installed core imports and FTS host lifecycle passed")
 print("installed session authority and compressed archive consumers passed")
 print("installed durable append, continuation and replay consumers passed")
 print("installed real dispatch, live write provenance and stored turn trust consumers passed")
 print("installed extra discovery, Unicode facts and workspace owner consumers passed")
+print("installed serialized save, immediate recall and reopened context consumers passed")
 '''
 
 

@@ -159,7 +159,7 @@
           "path": "memory_core/curation.py",
           "symbol": "MemoryCurator._write_target",
           "anchor": "    def _write_target(self, name: str, before: str | None, content: str) -> None:",
-          "line": 1153
+          "line": 1173
         },
         {
           "path": "memory_core/workspace.py",
@@ -531,7 +531,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit",
           "anchor": "class HostKit:",
-          "line": 211
+          "line": 212
         }
       ],
       "implementation": "partial",
@@ -1279,7 +1279,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.__init__",
           "anchor": "    def __init__(",
-          "line": 221
+          "line": 222
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -2570,7 +2570,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 748
+          "line": 757
         }
       ],
       "implementation": "partial",
@@ -3149,7 +3149,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.prepare_flush",
           "anchor": "    def prepare_flush(",
-          "line": 598
+          "line": 607
         },
         {
           "path": "memory_core/memory_flush.py",
@@ -3185,7 +3185,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 548
+          "line": 557
         }
       ],
       "implementation": "present",
@@ -4050,12 +4050,30 @@
           "symbol": "format_error_message",
           "anchor": "def format_error_message(",
           "line": 85
+        },
+        {
+          "path": "memory_core/tool_result_persistence.py",
+          "symbol": "settle_session_tool_result",
+          "anchor": "def settle_session_tool_result(",
+          "line": 285
+        },
+        {
+          "path": "memory_core/tool_result_persistence.py",
+          "symbol": "cap_tool_result_for_persistence",
+          "anchor": "def cap_tool_result_for_persistence(",
+          "line": 249
+        },
+        {
+          "path": "memory_core/transcript_image_redaction.py",
+          "symbol": "sanitize_transcript_image_record",
+          "anchor": "def sanitize_transcript_image_record(",
+          "line": 19
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Registered literal secrets, snapshot redactors and structured/model/transcript policies exist; bounded chunking and sanitization order still need comparisons at actual model/tool/transcript entry points.",
-        "Python regex translation and host-controlled secret registration are observable boundaries; helper presence does not establish the latest native pattern, diagnostic and transport policy outcomes."
+        "The default catalog now includes 61 uncredited cases using actual all-source policies, whole-result helpers, guarded three-process AgentSession persistence, SQLite worker retries and whole formatter/get/search errors. Complete raw values, input identity observations, registry revisions and physical SQL remain available; these profiles do not establish full secret-policy equivalence.",
+        "The SDK settlement owner composes actual normalization, persistence caps, model preparation, before-write handling and stored redaction. Ordinary inline images use the actual stored-image policy. Known original-input identity reuse and configured-engine differences remain ordinary visible default comparisons."
       ]
     },
     {
@@ -4263,7 +4281,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 548
+          "line": 557
         },
         {
           "path": "memory_core/turn_trust.py",
@@ -4282,12 +4300,18 @@
           "symbol": "TurnToolDispatcher.dispatch",
           "anchor": "    def dispatch(",
           "line": 55
+        },
+        {
+          "path": "memory_core/unicode_letter_property.py",
+          "symbol": "letter_property_class_body",
+          "anchor": "def letter_property_class_body(",
+          "line": 47
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python accepts a supported subset of JavaScript regex behavior and explicitly rejects unsupported syntax; it cannot assume native RegExp acceptance for every configured source pattern.",
-        "Artifact hash/owner transitions exist, but the host supplies untrusted_turn and session metadata. Native sticky tool-result taint and persisted sender/owner state need a host adapter and end-to-end comparisons."
+        "Two actual AgentLoop/tool/write/stored-session flows establish the bounded owner/taint/provenance condition. One authenticated unchanged dependency-free original TypeScript taint owner is used explicitly with the official release; complete outer results and separate raw coding presentation/diagnostic hashes remain retained. This does not establish the regex/mode/full-context outcome condition.",
+        "Configured Unicode Letter properties use exact Node 24.16/ICU78.3/Unicode17 facts with a reproducible generator and Unicode notice. Mixed case-folding, repeated capture, general-category Lu and direct v-mode differences remain ordinary diagnostics; unsupported source behavior is not counted as a match."
       ]
     },
     {
@@ -4672,7 +4696,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 548
+          "line": 557
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -4873,7 +4897,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 548
+          "line": 557
         },
         {
           "path": "demo/lab_chat.py",
@@ -4886,11 +4910,18 @@
           "symbol": "_maintenance",
           "anchor": "def _maintenance(",
           "line": 469
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "HostSessionRunner.run_turn",
+          "anchor": "    async def run_turn(",
+          "line": 582
         }
       ],
       "implementation": "host-owned",
       "notes": [
-        "HostKit returns maintenance requests and keeps no per-session queue; the Lab lock serializes its turn and maintenance, but the production host must own durable finalization and admission barriers."
+        "The low-level immutable HostKit still returns maintenance requests. HostSessionRunner adds an explicit process-local per-session admission lane, durable catalog/context recording, actual registered dispatch, due flush settlement, real writer/index completion and fail-closed repair before the next model callback.",
+        "Real SDK cancellation, rejected executor submission, session rotation, inherited callback context and committed-write/index-failure regressions are exercised. This is a stronger synchronous publication policy than the observed native background refresh, not proof of the complete original Gateway host path. Both host.turn-barrier conditions remain uncredited."
       ],
       "acceptancePoints": [
         "host.turn-barrier.outcomes",
@@ -4924,18 +4955,25 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 748
+          "line": 757
         },
         {
           "path": "demo/lab_runtime.py",
           "symbol": "process-local Lab sessions",
           "anchor": "self.sessions: dict[str, LabSession] = {}",
           "line": 426
+        },
+        {
+          "path": "memory_core/host/lifecycle.py",
+          "symbol": "HostSessionRunner._load",
+          "anchor": "    def _load(",
+          "line": 537
         }
       ],
       "implementation": "host-owned",
       "notes": [
-        "Saved memory and host-supplied transcript corpora can reopen, but the Lab stores live sessions in RAM; durable transcript/SessionState storage and a fresh-process continuation path must be supplied and tested by the host."
+        "The durable catalog can reconstruct model context from session identity, and HostSessionRunner reloads its saved auxiliary state and repairs an outstanding index marker before admission. The installed SDK example performs real save, immediate recall and a fresh catalog reopen.",
+        "A complete natural two-host process-restart/model recall comparison is still required; neither the example nor durable helper coverage closes this separate host contract. The existing Lab runtime retains process-local live sessions."
       ],
       "acceptancePoints": [
         "host.restart-recall.outcomes",
@@ -4963,13 +5001,13 @@
           "path": "memory_core/curation.py",
           "symbol": "MemoryCurator.replace_memory_entry",
           "anchor": "    def replace_memory_entry(",
-          "line": 939
+          "line": 955
         },
         {
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.dispatcher",
           "anchor": "    def dispatcher(",
-          "line": 408
+          "line": 414
         },
         {
           "path": "memory_core/live/__init__.py",

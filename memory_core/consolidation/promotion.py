@@ -548,7 +548,7 @@ def _js_number_text(value: float) -> str:
 def _to_finite_score(value: Any, fallback: float) -> float:
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return fallback
     return number if math.isfinite(number) and 0 <= number <= 1 else fallback
 
@@ -556,7 +556,7 @@ def _to_finite_score(value: Any, fallback: float) -> float:
 def _to_finite_non_negative_int(value: Any, fallback: int) -> int:
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return fallback
     if not math.isfinite(number):
         return fallback
@@ -631,8 +631,8 @@ def _plan_apply_stage(
     store = read_recall_store(recall_store_path(workspace_dir), now_ms)
     entries = _readable_store_entries(store)
     min_score = _to_finite_score(min_score, DEFAULT_DEEP_DREAMING_MIN_SCORE)
-    min_recall_count = _to_finite_non_negative_int(min_recall_count, 3)
-    min_unique_queries = _to_finite_non_negative_int(min_unique_queries, 2)
+    min_recall_count = _to_finite_non_negative_int(min_recall_count, DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT)
+    min_unique_queries = _to_finite_non_negative_int(min_unique_queries, DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES)
     max_age = _to_finite_non_negative_int(max_age_days, -1)
     selection_limit = (
         max(0, math.floor(limit))
@@ -836,6 +836,10 @@ def evaluate_short_term_promotion_candidates(
     weights: Mapping[str, float] | None = None,
 ) -> list[PromotionEvaluation]:
     """Score every live recall entry and list the gates it fails, best score first."""
+    min_score = _to_finite_score(min_score, DEFAULT_DEEP_DREAMING_MIN_SCORE)
+    min_recall_count = _to_finite_non_negative_int(min_recall_count, DEFAULT_DEEP_DREAMING_MIN_RECALL_COUNT)
+    min_unique_queries = _to_finite_non_negative_int(min_unique_queries, DEFAULT_DEEP_DREAMING_MIN_UNIQUE_QUERIES)
+    max_age_days = _to_finite_non_negative_int(max_age_days, -1)
     store = read_recall_store(recall_store_path(config.workspace_dir), now_ms)
     phase_signals = read_phase_signal_store(phase_signal_store_path(config.workspace_dir), now_ms)
     phase_entries = phase_signals.get("entries", {})

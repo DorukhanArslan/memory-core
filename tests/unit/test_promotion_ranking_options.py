@@ -62,8 +62,8 @@ def _rank(config: MemoryConfig, **options: Any):
         config=config,
         now_ms=NOW_MS,
         limit=options.pop("limit", 10),
-        min_recall_count=0,
-        min_unique_queries=0,
+        min_recall_count=options.pop("min_recall_count", 0),
+        min_unique_queries=options.pop("min_unique_queries", 0),
         **{"min_score": 0, **options},
     )
 
@@ -183,3 +183,19 @@ def test_rank_limit_matches_finite_floor_clamp_and_unbounded_options(tmp_path: P
                                      "path": "memory/2026-04-02.md"}
     filename.write_text(json.dumps(store))
     assert len(_rank(config, limit=limit)) == expected
+
+
+@pytest.mark.parametrize(("options", "entry", "included"), [
+    ({"min_recall_count": 3.9}, {"recallCount": 3, "dailyCount": 0, "totalScore": 2.25}, True),
+    ({"min_recall_count": -1}, {}, False),
+    ({"min_unique_queries": 3.9}, {"userQueryHashes": ["a", "b", "c"]}, True),
+    ({"min_unique_queries": -1}, {"userQueryHashes": ["a", "b"]}, False),
+    ({"min_unique_queries": 2}, {"userQueryHashes": ["a", "b"]}, True),
+    ({"max_age_days": 14.9}, {"lastRecalledAt": "2026-03-19T22:01:00.000Z"}, False),
+    ({"min_score": 1.1}, {}, True),
+    ({"min_score": -1}, {"totalScore": .74, "maxScore": .74}, False),
+    ({"min_recall_count": 10**1000}, {}, False),
+])
+def test_rank_uses_current_reference_gate_floors_and_fallbacks(tmp_path, options, entry, included):
+    config = _workspace(tmp_path, **entry)
+    assert bool(_rank(config, weights=RELEVANCE_ONLY, **options)) is included

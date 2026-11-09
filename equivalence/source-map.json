@@ -219,7 +219,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_append_to_memory",
           "anchor": "def _append_to_memory(",
-          "line": 1548
+          "line": 1552
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
@@ -3380,7 +3380,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_commit_promotion",
           "anchor": "def _commit_promotion(",
-          "line": 940
+          "line": 944
         }
       ],
       "implementation": "present",
@@ -3690,13 +3690,13 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_commit_promotion",
           "anchor": "def _commit_promotion(",
-          "line": 940
+          "line": 944
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "build_promotion_applied_event",
           "anchor": "def build_promotion_applied_event(",
-          "line": 1206
+          "line": 1210
         }
       ],
       "implementation": "present",

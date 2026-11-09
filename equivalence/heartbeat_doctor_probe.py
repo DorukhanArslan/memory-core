@@ -314,15 +314,61 @@ def _require_claim_role(role, observed):
             raise ValueError("The declared claim owner no longer has actual single-thread zombie state")
 
 
+def _validate_public_observation(observation, input_value):
+    if (set(observation) != {"kind", "covers", "result", "raw"} or
+            observation["kind"] != "heartbeat-doctor-observation" or observation["covers"] != [] or
+            set(observation["result"]) != {"operations", "snapshots"}):
+        raise ValueError("Doctor changed its exact public observation envelope")
+    raw = observation["raw"]
+    if ([call["operation"] for call in raw["calls"]] != input_value["ops"] or
+            len(raw["snapshots"]) != len(input_value["ops"]) + 1 or
+            any(("error" in call) == ("result" in call) for call in raw["calls"]) or
+            observation["result"]["operations"] != [{"error": call["error"]} if "error" in call else call["result"] for call in raw["calls"]] or
+            observation["result"]["snapshots"] != raw["snapshots"]):
+        raise ValueError("Doctor omitted or changed a complete actual input/result/snapshot observation")
+
+
+def _validate_decoded_events(trace_events, decoded_rows):
+    expected = {}
+    metadata = {"trace", "line", "event", "messageType", "targetThreadId", "field", "bytes"}
+    for filename, events in trace_events.items():
+        for number, event in enumerate(events, 1):
+            if event["event"] not in {"worker-send", "worker-reply"}:
+                continue
+            message = event["message"]
+            if (event["event"] == "worker-send" and message.get("type") == "execute" and
+                    (not isinstance(message.get("input"), dict) or not isinstance(message["input"].get("base64"), str))):
+                raise ValueError("A real Doctor execute command lacks its complete encoded input")
+            for field in ("input", "value", "preparation"):
+                encoded = message.get(field)
+                if isinstance(encoded, dict) and isinstance(encoded.get("base64"), str):
+                    expected[(filename, number, field)] = {
+                        "trace": filename, "line": number, "event": event["event"],
+                        "messageType": message.get("type", {"type": "undefined"}),
+                        "targetThreadId": event["targetThreadId"], "field": field, "bytes": encoded,
+                    }
+    seen = set()
+    for decoded in decoded_rows:
+        if (not isinstance(decoded, dict) or type(decoded.get("line")) is not int or
+                not isinstance(decoded.get("trace"), str) or not isinstance(decoded.get("field"), str) or
+                set(decoded) not in (metadata | {"value"}, metadata | {"error"})):
+            raise ValueError("Doctor supplied an incomplete or extra decoded-event envelope")
+        key = (decoded["trace"], decoded["line"], decoded["field"])
+        if key in seen or key not in expected:
+            raise ValueError("Doctor duplicated or added a decoded transport event")
+        seen.add(key)
+        if any(decoded[name] != value for name, value in expected[key].items()):
+            raise ValueError("Doctor decoded bytes are not bound to their actual original transport event")
+    if seen != set(expected):
+        raise ValueError("Doctor omitted an actual encoded transport event from decoding")
+
+
 def validate_execution(phase_directory, context, native):
     request = json.loads(Path(context["requestPath"]).read_text())
     input_value = request["input"]
-    if (native.get("kind") != "heartbeat-doctor-observation" or native.get("covers") != [] or
-            native["raw"]["sourceBuildReproduced"] is not False or native["raw"]["gatewayMutationContextInstalled"] is not False or
-            native["raw"]["nowMs"] != input_value["nowMs"] or
-            [call["operation"] for call in native["raw"]["calls"]] != input_value["ops"] or
-            len(native["raw"]["snapshots"]) != len(input_value["ops"]) + 1 or
-            native["result"]["operations"] != [{"error": call["error"]} if "error" in call else call["result"] for call in native["raw"]["calls"]]):
+    _validate_public_observation(native, input_value)
+    if (native["raw"]["sourceBuildReproduced"] is not False or native["raw"]["gatewayMutationContextInstalled"] is not False or
+            native["raw"]["nowMs"] != input_value["nowMs"]):
         raise ValueError("Doctor omitted or changed a complete actual input/result observation")
     for call in native["raw"]["calls"]:
         op = call["operation"]["op"]
@@ -346,12 +392,13 @@ def validate_execution(phase_directory, context, native):
     allowed = {(package["location"], file["path"]): file["sha256"] for package in context["runtime"]["packages"] for file in package["files"]}
     locals_map = {item["path"]: item["sha256"] for item in context["allowedLocal"]}
     digest = hashlib.sha256((phase_directory / "context.json").read_bytes()).hexdigest()
-    all_events, threads = [], {}
+    all_events, threads, trace_events = [], {}, {}
     for file in sorted((phase_directory / "traces").glob("*.jsonl")):
         data = file.read_bytes()
         if len(data) > 32 * 1024 * 1024:
             raise ValueError("A Doctor thread trace exceeded its bound")
         events = [json.loads(line) for line in data.splitlines()]
+        trace_events[file.name] = events
         if not events or events[0]["event"] != "bootstrap" or sum(event["event"] == "bootstrap" for event in events) != 1:
             raise ValueError("Every actual Doctor thread needs one authenticated bootstrap")
         boot = events[0]
@@ -439,13 +486,9 @@ def validate_execution(phase_directory, context, native):
             raise ValueError("Doctor original backend close was actually refused")
     if requested and not any(message["type"] == "close" for message in requests.values()):
         raise ValueError("Doctor did not send the original owned actor close")
+    _validate_decoded_events(trace_events, native["raw"]["workerDecoded"])
     commands = []
     for event in native["raw"]["workerDecoded"]:
-        line = threads[int(event["trace"].split("-")[1].split(".")[0])][event["line"] - 1]
-        if (line["event"] != event["event"] or line["message"].get(event["field"]) != event["bytes"] or
-                line["targetThreadId"] != event["targetThreadId"] or
-                line["message"].get("type", {"type": "undefined"}) != event["messageType"]):
-            raise ValueError("Doctor decoded bytes are not bound to their actual original transport event")
         if event["event"] == "worker-send" and event["field"] == "input" and event["messageType"] == "execute":
             if "error" in event or not isinstance(event.get("value"), dict) or "type" not in event["value"]:
                 raise ValueError("A real Doctor command could not be completely decoded")
@@ -522,6 +565,7 @@ def run(checkout, cache, node, output, selected=None):
                     (phase_directory / "sdk.stdout.json").write_text(sdk_process.stdout)
                     (phase_directory / "sdk.stderr.log").write_text(sdk_process.stderr)
                     sdk_process.check_returncode(); sdk = json.loads(sdk_process.stdout)
+                    _validate_public_observation(sdk, input_value)
                     observed_pids = _pid_status(pids)
                     _require_claim_role(case.get("claim"), observed_pids)
                     (phase_directory / "claim-processes-after.json").write_text(json.dumps(observed_pids))

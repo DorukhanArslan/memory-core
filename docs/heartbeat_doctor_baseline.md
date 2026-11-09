@@ -94,6 +94,14 @@ invented PID values. Each reconstruction phase is a fresh native and SDK
 process. A chmod fixture is restored only during explicit post-case artifact
 cleanup, after all engine observations, with a separate mode/actual-byte receipt.
 
+The collector requires a one-to-one correspondence between every encoded
+input/value/preparation field in the original transport traces and the decoded
+rows. Missing, extra or duplicate decoded rows are rejected before the actual
+command whitelist is evaluated. It also binds each engine's exact public
+operations and complete snapshot list to its retained raw calls and snapshots
+before comparison. The focused authority and completeness suite passes 38
+tests; its synthetic negative inputs are guard tests, not captured evidence.
+
 Run a new first baseline output only after final independent authority review:
 
 ```sh

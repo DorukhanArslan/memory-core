@@ -6,12 +6,16 @@ import json
 import os
 from pathlib import Path
 import subprocess
+from copy import deepcopy
 
 import pytest
 
 from equivalence.heartbeat_doctor_authority import NODE, validate_doctor_authority, prepare_doctor_authority
 from equivalence.heartbeat_node_authority import validate_heartbeat_node_authority, prepare_heartbeat_node_authority
-from equivalence.heartbeat_doctor_probe import ROOT, CODEC_SHA256, _documents, build_doctor_cases, phase
+from equivalence.heartbeat_doctor_probe import (
+    ROOT, CODEC_SHA256, _documents, _validate_decoded_events, _validate_public_observation,
+    build_doctor_cases, phase,
+)
 from equivalence.heartbeat_doctor_bindings import MANIFEST_SHA256
 
 EXECUTABLE = Path("/workspace/openclaw-memory-bridge/node_modules/node/bin/node")
@@ -129,3 +133,69 @@ def test_doctor_documents_are_separate_fixed_authorities_and_no_scope_is_awarded
     assert documents["heartbeat-doctor-codec.proposal.json"]["sha256"] == CODEC_SHA256
     cases = build_doctor_cases()
     assert all(case["requirement"] == "heartbeat.scratch" and case["covers"] == [] for case in cases)
+
+
+def _encoded_guard_fixture():
+    # Deliberately synthetic guard inputs, never represented as captured evidence.
+    blob = {"type": "Uint8Array", "base64": "AA=="}
+    events = [
+        {"event": "worker-send", "targetThreadId": 1,
+         "message": {"type": "execute", "input": blob}},
+        {"event": "worker-reply", "targetThreadId": 1,
+         "message": {"value": blob, "preparation": blob}},
+    ]
+    rows = [{"trace": "guard.jsonl", "line": line, "event": event["event"],
+             "messageType": event["message"].get("type", {"type": "undefined"}),
+             "targetThreadId": 1, "field": field, "bytes": blob,
+             "value": {"type": "unapproved.additional.command"}}
+            for line, event in enumerate(events, 1) for field in ("input", "value", "preparation")
+            if field in event["message"]]
+    return {"guard.jsonl": events}, rows
+
+
+def test_decode_guard_requires_every_original_encoded_transport_field_once():
+    traces, rows = _encoded_guard_fixture()
+    _validate_decoded_events(traces, rows)
+    for omitted in range(len(rows)):
+        with pytest.raises(ValueError, match="omitted"):
+            _validate_decoded_events(traces, rows[:omitted] + rows[omitted + 1:])
+    with pytest.raises(ValueError, match="duplicated or added"):
+        _validate_decoded_events(traces, rows + [deepcopy(rows[0])])
+    extra = {**rows[0], "trace": "unobserved.jsonl"}
+    with pytest.raises(ValueError, match="duplicated or added"):
+        _validate_decoded_events(traces, [*rows, extra])
+    changed = deepcopy(rows)
+    changed[0]["bytes"]["base64"] = "AQ=="
+    with pytest.raises(ValueError, match="not bound"):
+        _validate_decoded_events(traces, changed)
+
+
+@pytest.mark.parametrize("input_value", [None, {}, {"type": "undefined"}, {"base64": 12}])
+def test_decode_guard_rejects_execute_without_complete_encoded_input(input_value):
+    traces, rows = _encoded_guard_fixture()
+    traces["guard.jsonl"][0]["message"]["input"] = input_value
+    with pytest.raises(ValueError, match="encoded input"):
+        _validate_decoded_events(traces, rows)
+
+
+def test_public_guard_binds_complete_operations_snapshots_and_envelope():
+    request = phase("findings")
+    raw = {"calls": [{"operation": {"op": "findings"}, "result": []}],
+           "snapshots": [{"monitors": {}}, {"monitors": {"main": {"type": "undefined"}}}]}
+    actual = {"kind": "heartbeat-doctor-observation", "covers": [], "raw": raw,
+              "result": {"operations": [[]], "snapshots": deepcopy(raw["snapshots"])}}
+    _validate_public_observation(actual, request)
+    for key in ("kind", "covers", "raw", "result"):
+        omitted = deepcopy(actual); del omitted[key]
+        with pytest.raises(ValueError, match="envelope"):
+            _validate_public_observation(omitted, request)
+    for replacement in ([], raw["snapshots"][:1], [{"projected": True}, *raw["snapshots"][1:]]):
+        changed = deepcopy(actual); changed["result"]["snapshots"] = replacement
+        with pytest.raises(ValueError, match="snapshot"):
+            _validate_public_observation(changed, request)
+    changed = deepcopy(actual); changed["result"]["operations"] = []
+    with pytest.raises(ValueError, match="snapshot"):
+        _validate_public_observation(changed, request)
+    changed = deepcopy(actual); changed["result"]["projected"] = True
+    with pytest.raises(ValueError, match="envelope"):
+        _validate_public_observation(changed, request)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from urllib.parse import quote
 
@@ -72,16 +73,23 @@ def test_memory_get_redacts_actual_file_read_failure(tmp_path: Path, monkeypatch
     credential = "demo-reader-credential"
     secret_registry.register_secret_value_for_redaction(credential)
     failure = PermissionError("reader refused " + credential)
-    read_bytes = Path.read_bytes
+    target = filename.stat()
+    read = os.read
+    attempts = []
 
-    def denied(path):
-        if path == filename:
+    def denied(descriptor, size):
+        opened = os.fstat(descriptor)
+        if (opened.st_dev, opened.st_ino) == (target.st_dev, target.st_ino):
+            attempts.append(descriptor)
             raise failure
-        return read_bytes(path)
+        return read(descriptor, size)
 
-    monkeypatch.setattr(Path, "read_bytes", denied)
+    # Exercise the admitted descriptor's real read boundary, including the IO
+    # bridge and public error formatter. The reader never reopens the pathname.
+    monkeypatch.setattr(os, "read", denied)
     result = execute_memory_get_tool(MemoryConfig(workspace_dir=tmp_path), {"path": "MEMORY.md"})
 
+    assert len(attempts) == 1
     assert result == {
         "path": "MEMORY.md", "text": "", "status": "error", "code": "MEMORY_READ_FAILED",
         "error": "reader refused demo-r…tial",

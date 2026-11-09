@@ -1299,6 +1299,7 @@ class ReleaseOracleExecution:
                                 raise ValueError("The real pre-open hook and descriptor/root caller owners did not execute")
                         if not _same_json(derive_get_read_race_observation(
                             diagnostic[0].get("readRace"), fixture_base, native=True,
+                            filesystem=diagnostic[0]["filesystem"], native_owner_root=Path(self.config["runtimeRoot"]),
                         ), row["result"].get("readRace")):
                             raise ValueError("The actual native read-race observations differ from their raw OS facts")
                     arguments = diagnostic[0].get("nativeArguments")

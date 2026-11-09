@@ -136,3 +136,35 @@ def test_sdk_matrix_preserves_raw_envelopes_arguments_and_owned_trees(tmp_path):
             altered[0]["params"] = {"path": "repaired.md"}
             with pytest.raises(ValueError, match="arguments"):
                 validate_python_get_filesystem_evidence(altered, case["input"], result)
+
+
+def test_omitting_even_read_side_effect_stat_fields_cannot_retain_snapshot_authority(tmp_path):
+    base = _roots(tmp_path)
+    raw = _pair(base)
+    observed = derive_get_filesystem_observation(raw)
+    del raw["after"]["entries"][0]["rawStat"]["st_atime_ns"]
+    with pytest.raises(ValueError, match="Every actual Python stat"):
+        validate_get_filesystem_observation(raw, observed, str(base))
+
+
+@pytest.mark.parametrize("tamper", ["events", "environment", "target", "snapshot-identity"])
+def test_real_race_mutation_cannot_lose_dispatch_environment_or_snapshot_identity(tmp_path, tamper):
+    from equivalence.get_read_race_profile import build_storage_path_read_race_cases
+
+    case = build_storage_path_read_race_cases()[0]
+    public = run_get_contract(case["input"], evidence_directory=tmp_path)
+    raw = json.loads((tmp_path / "python-raw.json").read_text())
+    validate_python_get_filesystem_evidence(raw, case["input"], public)
+    record = raw[-1]
+    if tamper == "events":
+        record["readRace"]["events"] = ["arm", "disarm"]
+    elif tamper == "environment":
+        record["readRace"]["environment"]["dispatch"]["VITEST"] = "true"
+    elif tamper == "target":
+        record["readRace"]["mutation"]["target"] = "/unowned/secret.md"
+    else:
+        entry = next(row for row in record["filesystem"]["before"]["entries"]
+                     if row["path"] == "workspace/memory/race.md")
+        entry["rawStat"]["st_ino"] = entry["openedStat"]["st_ino"] = "0"
+    with pytest.raises(ValueError):
+        validate_python_get_filesystem_evidence(raw, case["input"], public)

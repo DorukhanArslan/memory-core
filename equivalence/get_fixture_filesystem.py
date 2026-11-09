@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import stat
 from typing import Any
+from urllib.parse import quote
 
 
 _POSIX = ("mode", "uid", "gid", "nlink", "rdev")
@@ -92,7 +93,9 @@ def get_fixture_read_race(input: Any, base: Path):
         observed["environment"]["afterDisarm"] = environment()
 
 
-def derive_get_read_race_observation(raw: Any, base: str, *, native: bool) -> dict[str, Any]:
+def derive_get_read_race_observation(raw: Any, base: str, *, native: bool,
+                                     filesystem: dict[str, Any] | None = None,
+                                     native_owner_root: Path | None = None) -> dict[str, Any]:
     """Validate the one real mutation; all detailed OS/environment data stay raw."""
     from equivalence.get_read_race_profile import GET_READ_RACE_INPUT
 
@@ -119,13 +122,27 @@ def derive_get_read_race_observation(raw: Any, base: str, *, native: bool) -> di
             or environment.get("dispatch") != before or environment.get("afterDisarm") != before):
         raise ValueError("Actual reads and disarm must retain the original runtime/backend environment")
     if native:
+        caller = "file://" + quote(str(native_owner_root.parent / "@openclaw/fs-safe/dist/local-file-descriptor.js"), safe="/:@") if native_owner_root is not None else None
+        root_caller = "file://" + quote(str(native_owner_root.parent / "@openclaw/fs-safe/dist/root-impl.js"), safe="/:@") if native_owner_root is not None else None
         if (set(environment) != {"before", "duringSetter", "afterSetter", "dispatch", "afterDisarm"}
                 or environment["duringSetter"] != {**before, "NODE_ENV": "test"}
                 or environment["afterSetter"] != before or raw.get("installedHookKeys") != ["afterPreOpenLstat"]
                 or raw.get("hookCleared") is not True
                 or not isinstance(raw.get("callerStack"), str)
-                or "/@openclaw/fs-safe/dist/local-file-descriptor.js:41:" not in raw["callerStack"]):
+                or caller is None or caller + ":41:" not in raw["callerStack"]
+                or root_caller + ":454:" not in raw["callerStack"]):
             raise ValueError("The original native pre-open owner and narrow setter-only environment must be attested")
+    if filesystem is not None:
+        first = {entry["path"]: entry for entry in filesystem["before"]["entries"]}
+        last = {entry["path"]: entry for entry in filesystem["after"]["entries"]}
+        for field, snapshot, relative in (
+            ("beforeStat", first, "workspace/memory/race.md"),
+            ("backupStat", last, "workspace/memory/race.before.md"),
+            ("afterStat", last, "workspace/memory/race.md"),
+            ("targetStat", last, "outside/secret.md"),
+        ):
+            if facts[field] != _facts(snapshot[relative], format):
+                raise ValueError("The actual race inode facts must match the complete owned filesystem observations")
     return {**GET_READ_RACE_INPUT, "dispatches": 1, "disarmed": True}
 
 
@@ -188,9 +205,16 @@ def snapshot_get_fixture(base: Path) -> dict[str, Any]:
 def _facts(entry: dict[str, Any], format: str, *, opened: bool = False) -> dict[str, str]:
     raw = entry["openedStat" if opened else "rawStat"]
     if format == "python-os-stat":
+        if not isinstance(raw, dict) or set(raw) != {key for key in dir(os.stat_result) if key.startswith("st_")}:
+            raise ValueError("Every actual Python stat property must remain in raw evidence")
         return {key: str(raw["st_" + ({"mtimeNs": "mtime_ns", "ctimeNs": "ctime_ns"}.get(key, key))])
                 for key in _WRITE_STAT}
     if format == "node-bigint-stats":
+        if not isinstance(raw, dict) or set(raw) != {
+            "dev", "mode", "nlink", "uid", "gid", "rdev", "blksize", "ino", "size", "blocks",
+            "atimeMs", "mtimeMs", "ctimeMs", "birthtimeMs", "atimeNs", "mtimeNs", "ctimeNs", "birthtimeNs",
+        } or any(not isinstance(value, str) for value in raw.values()):
+            raise ValueError("Every actual Node BigIntStats property must remain in raw evidence")
         return {key: str(raw[key]) for key in _WRITE_STAT}
     raise ValueError("Unknown actual fixture stat format")
 
@@ -282,7 +306,9 @@ def validate_python_get_filesystem_evidence(snapshots: list[Any], arguments: dic
         raise ValueError("SDK fixture observations require their actual absolute owned root")
     validate_get_filesystem_observation(record["filesystem"], public.get("filesystem"), base)
     if arguments.get("readRace") is not None:
-        if not _same_json(derive_get_read_race_observation(record.get("readRace"), base, native=False), public.get("readRace")):
+        if not _same_json(derive_get_read_race_observation(
+            record.get("readRace"), base, native=False, filesystem=record["filesystem"],
+        ), public.get("readRace")):
             raise ValueError("SDK race results lost their actual OS mutation evidence")
     for index, (original, requested, observed) in enumerate(zip(
         snapshots[:-1], arguments["steps"], public["steps"], strict=True,

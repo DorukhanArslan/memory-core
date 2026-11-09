@@ -63,6 +63,12 @@ def cases() -> list[dict]:
         {"type": "base64", "data": "iVBORw0KGgo=\n", "mediaType": " image/GIF ", "media_type": "image/jpeg"},
         {"type": "image_url", "image_url": {"url": "DATA:image/jpeg;base64,iVBORw0KGgo=\n"}},
     ])
+    for count in (8, 9, 22):
+        add(f"unicode-literal-hint-{count}-astral", "prefix:" + "𐐀" * count,
+            patterns=["/(prefix:)(𐐀+)/gu"])
+    add("unicode-literal-odd-hint-boundaries", "prefix:a" + "𐐀" * 8 + "b", patterns=["/(prefix:)(a𐐀+b)/gu"])
+    add("unicode-literal-lone-surrogate", "prefix:" + "\ud800" * 22, patterns=[r"/(prefix:)(\ud800+)/gu"])
+    add("nonunicode-literal-astral-hint", "prefix:" + "𐐀" * 22, patterns=["/(prefix:)((?:𐐀)+)/g"])
     return result
 
 
@@ -134,7 +140,12 @@ def run(checkout: Path, cache: Path, node: Path, output: Path) -> dict:
     output.mkdir(parents=True, exist_ok=False)
     target = json.loads((ROOT / "equivalence/reference.json").read_text())
     adapters = ("equivalence/trust-redaction-source.mjs", "equivalence/trust_redaction_source_probe.py")
-    before = {"reference": _validate_reference(checkout, node, target), "sdk": _implementation_identity(),
+    def node_identity():
+        versions = json.loads(subprocess.run([str(node), "--eval", "process.stdout.write(JSON.stringify({nodeVersion:process.version,icuVersion:process.versions.icu,unicodeVersion:process.versions.unicode}))"],
+            check=True, capture_output=True, text=True, timeout=10).stdout)
+        return {"execPath": str(node.resolve()), "sha256": hashlib.sha256(node.read_bytes()).hexdigest(), **versions}
+
+    before = {"reference": _validate_reference(checkout, node, target), "sdk": _implementation_identity(), "node": node_identity(),
               "adapters": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in adapters}}
     dependencies = prepare_dependencies(checkout, cache)
     request = {"checkout": str(checkout), "fixtureDirectory": str(output / "native-fixture"),
@@ -159,7 +170,9 @@ def run(checkout: Path, cache: Path, node: Path, output: Path) -> dict:
     native = json.loads((output / "native.stdout.json").read_text())
     python = json.loads((output / "sdk.stdout.json").read_text())
     authenticate_capture(checkout, dependencies, native)
-    after = {"reference": _validate_reference(checkout, node, target), "sdk": _implementation_identity(),
+    if native.get("runtime") != before["node"]:
+        raise RuntimeError("The native source process used a different executable or Unicode runtime")
+    after = {"reference": _validate_reference(checkout, node, target), "sdk": _implementation_identity(), "node": node_identity(),
              "adapters": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in adapters}}
     if before != after or dependencies != prepare_dependencies(checkout, cache):
         raise RuntimeError("The compared source/dependency/SDK bytes changed during execution")

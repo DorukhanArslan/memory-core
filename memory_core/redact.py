@@ -1139,7 +1139,10 @@ def _split_form_aware_credential_value(token: str) -> tuple[str, str]:
 
 def _mask_secret_value(token: str, *, hinted: bool = False) -> str:
     maskable, suffix, _, _ = _split_secret_value_for_mask(token)
-    return f"{_mask_token_units(maskable) if hinted else '***'}{suffix}"
+    # Configured /u patterns match code points; native hint lengths and safe
+    # boundaries still count UTF-16 units. Existing unit-string inputs remain
+    # unchanged, and the outer replacement owner rejoins surrogate pairs.
+    return f"{_mask_token_units(to_units(maskable)) if hinted else '***'}{suffix}"
 
 
 # --- Structured authorization parameters (structured-auth-redaction.ts) -------------------------

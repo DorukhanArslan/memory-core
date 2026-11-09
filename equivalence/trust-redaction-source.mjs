@@ -125,6 +125,9 @@ for (const testCase of request.cases) {
 logger.resetLogger();
 process.stdout.write(JSON.stringify({ profile: "explicit-all-source-redaction-policy", sourceFallback: false,
   compiledOpenClawModulesAllowed: false, results,
+  runtime: { execPath: fs.realpathSync(process.execPath), nodeVersion: process.version,
+    icuVersion: process.versions.icu, unicodeVersion: process.versions.unicode,
+    sha256: crypto.createHash("sha256").update(fs.readFileSync(process.execPath)).digest("hex") },
   sources: [...sources].sort().map((relative) => ({ path: relative,
     sha256: crypto.createHash("sha256").update(fs.readFileSync(path.join(root, relative))).digest("hex") })),
   dependencySources: [...dependencySources.values()] }) + "\n");

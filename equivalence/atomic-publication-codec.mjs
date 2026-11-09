@@ -119,15 +119,22 @@ export function encodeAtomicPublic(publicValue, raw) {
         if (value.temporaryBasename !== path.basename(allocation.path) || directory.path !== parent || directory.realPath !== parent) continue;
         let actual;
         try { actual = physicalStat(value.identity); } catch { continue; }
-        let witnessed = false;
+        const live = [];
         for (const event of events.values()) {
           if (event.seq < allocation.afterEvent || event.fd !== allocation.fd) continue;
           if (event.operation === "close" && event.when === "after" && !Object.hasOwn(event, "error")) break;
-          if (event.stat) {
-            const observed = physicalStat(event.stat);
-            if (equalStat({ ...observed, mode: observed.mode & 0o7777n }, actual)) witnessed = true;
-          }
+          if (event.actor === allocation.actor) live.push(event);
         }
+        const publications = [...events.values()].filter((event) => event.seq > allocation.afterEvent && event.actor === allocation.actor &&
+          event.operation === "publish" && event.when === "before" &&
+          (event.path === allocation.path || event.arguments?.args?.[1] === path.basename(allocation.path)));
+        const publicationSeq = publications.length ? Math.min(...publications.map((event) => event.seq)) : -1;
+        const syncs = live.filter((event) => event.operation === "file-sync" && event.when === "after" &&
+          !Object.hasOwn(event, "error") && event.seq < publicationSeq).map((event) => event.seq);
+        const prepared = live.filter((event) => syncs.length && event.seq > Math.max(...syncs) && event.seq < publicationSeq &&
+          event.operation === "fstat" && event.when === "after" && !Object.hasOwn(event, "error") && event.stat);
+        const observed = prepared.length ? physicalStat(prepared.at(-1).stat) : null;
+        const witnessed = observed !== null && equalStat({ ...observed, mode: observed.mode & 0o7777n }, actual);
         const parentStat = allocation.parentStat ?? raw.snapshots?.before?.find((entry) => entry.path === parent)?.stat;
         if (!parentStat || !directory.identity || Object.keys(directory.identity).sort().join() !== "dev,ino") continue;
         if (witnessed && ["dev", "ino"].every((key) => integer(directory.identity[key]) === physicalStat(parentStat)[key] && actual[key] === allocation.stat[key]))
@@ -165,7 +172,8 @@ export function encodeAtomicPublic(publicValue, raw) {
       const result = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, encode(item, key)]));
       const bound = bindings.get(value);
       if (bound) {
-        for (const key of ["dev", "ino", "mtimeNs", "ctimeNs"]) result.identity[key] = `$PHYSICAL:${bound}:${key}`;
+        for (const key of ["dev", "ino", "mtimeNs", "ctimeNs"])
+          result.identity[key] = `$PHYSICAL:${bound}:${["mtimeNs", "ctimeNs"].includes(key) ? "prepared:" : ""}${key}`;
         for (const key of ["dev", "ino"]) result.directory.identity[key] = `$PHYSICAL:${bound}:directory:${key}`;
       }
       return lossless(result);

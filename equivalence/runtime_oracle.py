@@ -1225,7 +1225,8 @@ class ReleaseOracleExecution:
                 if owner not in owners and not (owner == NATIVE_BINDING_OWNER and owner in binaries):
                     raise RuntimeOracleError("An actual atomic owner or default native binary escaped its authenticated process.")
             try:
-                validate_atomic_publication_raw(case, row["result"], diagnostic[0], evidence_directory=evidence.parent)
+                validate_atomic_publication_raw(case, row["result"], diagnostic[0], evidence_directory=evidence.parent,
+                                                expected_side="native", verify_tree=True)
             except AtomicEvidenceError as error:
                 raise RuntimeOracleError(str(error)) from error
         if operation == "model-tool-error-runtime":

@@ -76,7 +76,11 @@ class _LiteralIOError(OSError):
 
 class _ObservedIO:
     def __init__(self, value, root, target, raw, public_error, raw_error):
+        from memory_core import atomic_publication
+
         self.value, self.root, self.target, self.raw = value, root, target, raw
+        self.atomic_module = atomic_publication
+        self.original_rename_no_replace = atomic_publication._rename_no_replace
         self.public_error, self.raw_error = public_error, raw_error
         self.local, self.lock = threading.local(), threading.RLock()
         self.original = {name: getattr(os, name) for name in (
@@ -195,8 +199,9 @@ class _ObservedIO:
                 lambda: self.original["replace"](path, parked), path=path)
             self.fixture_write(Path(path), facts["externalContent"], exclusive=True, mode=0o600)
 
-    def perform(self, operation, role, method, args, invoke, *, path=None, fd=None, select=True):
-        arguments = {"method": "os." + method, "args": args}
+    def perform(self, operation, role, method, args, invoke, *, path=None, fd=None, select=True, bound_paths=None):
+        arguments = {"method": method if "." in method else "os." + method, "args": args,
+                     **({"boundPaths": bound_paths} if bound_paths is not None else {})}
         before = self.event(operation, role, "before", arguments, path=path, fd=fd,
                             **({"stat": self.descriptor_stat(fd)} if fd is not None and self.descriptor_stat(fd) is not None else {}))
         selected = self.selected(operation, role) if select else None
@@ -337,7 +342,19 @@ class _ObservedIO:
                        path=path, fd=descriptor, result=_full_stat(result), stat=_full_stat(result))
         return result
 
+    def rename_no_replace(self, parent_fd, source, destination):
+        parent = self.descriptor_path(parent_fd)
+        if parent is None or not self.owned(parent):
+            return self.original_rename_no_replace(parent_fd, source, destination)
+        source_path, destination_path = Path(parent) / source, Path(parent) / destination
+        return self.perform("publish", "target", "memory_core.atomic_publication._rename_no_replace",
+            [parent_fd, source, destination],
+            lambda _selected: self.original_rename_no_replace(parent_fd, source, destination),
+            path=destination_path, fd=parent_fd,
+            bound_paths={"parent": parent, "source": str(source_path), "destination": str(destination_path)})
+
     def install(self, stack):
+        stack.enter_context(patch.object(self.atomic_module, "_rename_no_replace", self.rename_no_replace))
         stack.enter_context(patch.object(os, "open", self.open))
         stack.enter_context(patch.object(os, "fstat", self.fstat))
         for method in ("close", "read", "write", "pread", "pwrite", "fsync", "fchmod", "ftruncate"):

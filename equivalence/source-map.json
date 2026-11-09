@@ -195,19 +195,19 @@
           "path": "memory_core/atomic_publication.py",
           "symbol": "commit_memory_content",
           "anchor": "def commit_memory_content(",
-          "line": 385
+          "line": 488
         },
         {
           "path": "memory_core/atomic_publication.py",
           "symbol": "append_memory_content",
           "anchor": "def append_memory_content(",
-          "line": 197
+          "line": 207
         },
         {
           "path": "memory_core/atomic_publication.py",
           "symbol": "publish_bootstrap_file",
           "anchor": "def publish_bootstrap_file(path: Path, content: str) -> bool:",
-          "line": 280
+          "line": 456
         },
         {
           "path": "memory_core/bootstrap/lifecycle.py",
@@ -230,11 +230,10 @@
       ],
       "implementation": "partial",
       "notes": [
-        "The real curator and forget callers use a shared checked publication owner with preimage checks, exclusive temporary creation, preserved regular-file modes and post-rename identity verification. Curator source admission remains stricter than the generic writer; it never opts into promotion-only in-place repair.",
-        "The actual promotion caller opts into permission fallback, restores the old bytes after an in-place write/sync failure, and deep consolidation retains real reserved lineage after dispatched publication errors. Rooted daily append preserves partial bytes and plain errors, private exclusive bootstrap creation stages all bytes before visibility, and existing bootstrap entries remain unchanged.",
-        "Development probes retain complete errors, causes, FsSafe categories, surviving bytes/modes and physical receipts. Append and replacement parent-directory fsync are best-effort; retained-directory bootstrap staging ignores only parent-sync EPERM and exposes a real published receipt on other post-publication sync failures. This distinction replaces the earlier broad parent-fsync assumption.",
-        "Genuine per-process kernel EFBIG, literal write/fsync faults, checked concurrent replacements and exclusive creation during staging are development observations only. Physical receipt bigint identities/timestamps/temp names remain noninterchangeable in the retained full-error comparison. Broader cleanup/close, indeterminate bootstrap publication, authenticated whole-condition proof and caller reconciliation for plain partial append remain unverified; no acceptance credit is assigned.",
-        "The SDK session runner durably records a producer intent before actual provenance/file mutation and retains it across partial IO, terminal cancellation or failed final state persistence. This SDK reconciliation policy does not turn development probes into native atomic-write equivalence credit."
+        "The real curator, forget, promotion and bootstrap callers use checked production owners. Rooted append retains dispatched partial bytes and plain errors; promotion alone opts into permission repair. Bootstrap creates complete private files through a retained-directory exclusive rename, preserving an existing winner.",
+        "The first genuine protected Linux packet retained 41 whole-operation cases: 33 matched, 8 ordinary full-field mismatches, no blocked cases. Its original errors, IO and physical trees remain retained. Source build reproduction remains false; no acceptance coverage is assigned by this source inventory.",
+        "Actual source-based SDK corrections preserve preparation/cleanup aggregate phases, append suppressed disposal errors, bootstrap indeterminate/published cleanup receipts and every secondary failure. The exclusive bootstrap primitive uses Linux renameat2(RENAME_NOREPLACE) or Darwin renameatx_np(RENAME_EXCL); unavailable ABIs fail before staging. Darwin execution has not been tested, and Linux evidence does not establish portable equivalence.",
+        "Atomic receipt transport requires independent same-stage allocation, actor/fd generation and prepared post-sync fstat observations before physical tokens. Native-side owner requests, actual fault dispatch and complete surviving trees receive independent validation. A new paired proof and whole-condition review remain required before either original atomic-write condition can close."
       ]
     },
     {
@@ -3069,7 +3068,7 @@
       "implementation": "partial",
       "notes": [
         "Runtime markers default to Memory Core identity; native marker behavior requires the explicit OpenClaw compatibility identity.",
-        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1–9999."
+        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1\u20139999."
       ]
     },
     {

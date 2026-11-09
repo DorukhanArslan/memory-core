@@ -246,24 +246,33 @@ def _receipt_bindings(value, raw, events, stages):
                             or directory.get("realPath") != str(stage_path.parent)):
                         continue
                     actual = _receipt_stat(item["identity"])
-                    candidates = []
+                    live_events = []
                     for event in events.values():
                         if event["seq"] < allocation["afterEvent"] or event.get("fd") != allocation["fd"]:
                             continue
                         if (event.get("operation") == "close" and event.get("when") == "after"
                                 and "error" not in event):
                             break
-                        if isinstance(event.get("stat"), dict):
-                            observed = _stat(event["stat"])
-                            projected = {**observed, "mode": observed["mode"] & 0o7777}
-                            if projected == actual:
-                                candidates.append(event)
+                        if event.get("actor") == allocation["actor"]:
+                            live_events.append(event)
+                    publications = [event for event in events.values()
+                                    if event["seq"] > allocation["afterEvent"] and event.get("actor") == allocation["actor"]
+                                    and event.get("operation") == "publish" and event.get("when") == "before"
+                                    and (event.get("path") == str(stage_path) or event.get("arguments", {}).get("args", [None, None])[1:2] == [stage_path.name])]
+                    publication_seq = min((event["seq"] for event in publications), default=-1)
+                    syncs = [event["seq"] for event in live_events if event.get("operation") == "file-sync"
+                             and event.get("when") == "after" and "error" not in event and event["seq"] < publication_seq]
+                    prepared = [event for event in live_events if syncs and event["seq"] > max(syncs)
+                                and event["seq"] < publication_seq and event.get("operation") == "fstat"
+                                and event.get("when") == "after" and "error" not in event and isinstance(event.get("stat"), dict)]
+                    observed = _stat(prepared[-1]["stat"]) if prepared else None
+                    prepared_matches = observed is not None and {**observed, "mode": observed["mode"] & 0o7777} == actual
                     parent_stat = allocation.get("parentStat")
                     if parent_stat is None:
                         parent_stat = next((entry["stat"] for entry in raw.get("snapshots", {}).get("before", [])
                                             if entry.get("path") == str(stage_path.parent)), None)
                     parent_identity = directory.get("identity", {})
-                    if (actual is not None and candidates and parent_stat is not None
+                    if (actual is not None and prepared_matches and parent_stat is not None
                             and set(parent_identity) == {"dev", "ino"}
                             and all(_integer(parent_identity[key]) == _stat(parent_stat)[key] for key in ("dev", "ino"))
                             and all(actual[key] == allocation["stat"][key] for key in ("dev", "ino"))):
@@ -324,7 +333,8 @@ def encode_atomic_public(public: dict, raw: dict) -> dict:
             if bound:
                 result = {key: encode(item, key) for key, item in value.items()}
                 for key in ("dev", "ino", "mtimeNs", "ctimeNs"):
-                    result["identity"][key] = f"$PHYSICAL:{bound}:{key}"
+                    phase = "prepared:" if key in {"mtimeNs", "ctimeNs"} else ""
+                    result["identity"][key] = f"$PHYSICAL:{bound}:{phase}{key}"
                 for key in ("dev", "ino"):
                     result["directory"]["identity"][key] = f"$PHYSICAL:{bound}:directory:{key}"
                 return result
@@ -334,7 +344,121 @@ def encode_atomic_public(public: dict, raw: dict) -> dict:
     return encode(public)
 
 
-def validate_atomic_publication_raw(case: dict, public: dict, raw: dict, *, evidence_directory: Path | None = None) -> None:
+def _read_surviving_tree(base: Path) -> list[dict]:
+    """Reread the complete subject through owned no-follow directory fds."""
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    outer = os.open(base, flags)
+    result = []
+
+    def physical(info):
+        return {key: str(getattr(info, name)) for key, name in {
+            "dev": "st_dev", "ino": "st_ino", "mode": "st_mode", "nlink": "st_nlink", "size": "st_size",
+            "uid": "st_uid", "gid": "st_gid", "mtimeNs": "st_mtime_ns", "ctimeNs": "st_ctime_ns",
+        }.items()}
+
+    def visit(parent, name, pathname):
+        observed = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        kind = ("file" if stat.S_ISREG(observed.st_mode) else "directory" if stat.S_ISDIR(observed.st_mode)
+                else "symlink" if stat.S_ISLNK(observed.st_mode) else "other")
+        entry = {"path": str(pathname), "kind": kind, "mode": stat.S_IMODE(observed.st_mode), "stat": physical(observed)}
+        opened = None
+        try:
+            if kind in {"file", "directory"}:
+                opened = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | (os.O_DIRECTORY if kind == "directory" else 0), dir_fd=parent)
+                actual = os.fstat(opened)
+                if (actual.st_dev, actual.st_ino, actual.st_mode) != (observed.st_dev, observed.st_ino, observed.st_mode):
+                    raise AtomicEvidenceError("The actual surviving entry changed during independent descriptor admission")
+            if kind == "file":
+                chunks, length = [], 0
+                while chunk := os.read(opened, 65536):
+                    length += len(chunk)
+                    if length > 16 * 1024 * 1024:
+                        raise AtomicEvidenceError("The surviving atomic file exceeds the complete capture bound")
+                    chunks.append(chunk)
+                entry["bytes"] = list(b"".join(chunks))
+            elif kind == "symlink":
+                entry["link"] = os.readlink(name, dir_fd=parent)
+            result.append(entry)
+            if kind == "directory":
+                with os.scandir(opened) as children:
+                    names = sorted(child.name for child in children)
+                for child in names:
+                    visit(opened, child, pathname / child)
+        finally:
+            if opened is not None:
+                os.close(opened)
+
+    try:
+        visit(outer, "subject", base / "subject")
+    finally:
+        os.close(outer)
+    return result
+
+
+def _validate_fault_binding(expected, observed, events):
+    if (observed.get("input") != expected or observed.get("matched") != 1
+            or not isinstance(observed.get("events"), list) or len(observed["events"]) != 1):
+        raise AtomicEvidenceError("An untriggered or altered atomic IO fault cannot pass")
+    fault = events.get(observed["events"][0])
+    if (fault is None or fault.get("operation") != "fault" or fault.get("when") != "after"
+            or fault.get("role") != expected["role"] or fault.get("arguments", {}).get("input") != expected):
+        raise AtomicEvidenceError("A fault cannot borrow an unrelated ordinary IO event")
+    related = events.get(fault["arguments"].get("ioEvent"))
+    if (related is None or related["seq"] >= fault["seq"] or related.get("actor") != fault.get("actor")
+            or related.get("role") != expected["role"] or related.get("operation") != expected["operation"]):
+        raise AtomicEvidenceError("The declared fault differs from its actual actor, role or IO operation")
+
+    def same_call(left, right):
+        return (left.get("actor") == right.get("actor") and left.get("operation") == right.get("operation")
+                and left.get("role") == right.get("role")
+                and all(left.get("arguments", {}).get(key) == right.get("arguments", {}).get(key) for key in ("method", "args")))
+
+    if related.get("when") == "before":
+        before = related
+    else:
+        before = next((item for item in reversed(list(events.values())) if item["seq"] < related["seq"]
+                       and item.get("when") == "before" and same_call(item, related)), None)
+    if before is None:
+        raise AtomicEvidenceError("A fault result has no corresponding actual IO request")
+    attempts = [item for item in events.values() if item["seq"] <= before["seq"] and item.get("when") == "before"
+                and item.get("operation") == expected["operation"] and item.get("role") == expected["role"]]
+    if len(attempts) != expected["occurrence"]:
+        raise AtomicEvidenceError("The fault did not occur at its declared actual IO occurrence")
+    afters = [item for item in events.values() if item["seq"] > before["seq"] and item.get("when") == "after"
+              and same_call(item, before) and item.get("operation") != "fault"]
+    effect = expected["effect"]
+    if effect == "reject-before":
+        if related is not before:
+            raise AtomicEvidenceError("A pre-dispatch rejection cannot claim a completed syscall")
+    elif effect in {"reject-after", "partial-write", "external-inplace", "external-replace"}:
+        completed = next((item for item in afters if item["seq"] < fault["seq"] and "error" not in item and "result" in item), None)
+        if completed is None:
+            raise AtomicEvidenceError("A post-dispatch fault requires the actual completed delegated IO first")
+        if effect == "partial-write":
+            written = completed["result"].get("bytesWritten") if isinstance(completed["result"], dict) else completed["result"]
+            arguments = before["arguments"]
+            if (type(written) is not int or not 0 < written <= expected["bytes"]
+                    or "requestedArgs" not in arguments or "delegatedArgs" not in arguments
+                    or arguments["requestedArgs"] == arguments["delegatedArgs"]):
+                raise AtomicEvidenceError("A partial write lost its actual prefix return or delegated byte window")
+    elif effect == "zero-write":
+        def zero(item):
+            result = item.get("result")
+            return result == 0 or isinstance(result, dict) and result.get("bytesWritten") == 0
+        if related is not before or not zero(fault) or not any(zero(item) for item in afters):
+            raise AtomicEvidenceError("A zero-progress write must retain the actual injected zero return")
+    elif effect != "replace-stage":
+        raise AtomicEvidenceError("The atomic IO fault effect was not declared")
+    if effect in {"replace-stage", "external-inplace", "external-replace"}:
+        mutations = [item for item in events.values() if before["seq"] < item["seq"] < fault["seq"]
+                     and str(item.get("operation", "")).startswith(("fixture.", "fixture-"))]
+        if (not mutations or not any(item.get("when") == "after" and "error" not in item and "result" in item for item in mutations)
+                or not any("write" in item.get("arguments", {}).get("method", "") for item in mutations)):
+            raise AtomicEvidenceError("An external fixture mutation requires its complete actual delegated IO")
+
+
+def validate_atomic_publication_raw(case: dict, public: dict, raw: dict, *, evidence_directory: Path | None = None,
+                                    expected_side: str | None = None, verify_tree: bool = False) -> None:
     """Independently bind the raw carrier before accepting its encoded result."""
     from equivalence.atomic_publication_profile import ATOMIC_PUBLICATION_PROFILES
 
@@ -361,6 +485,9 @@ def validate_atomic_publication_raw(case: dict, public: dict, raw: dict, *, evid
     for request in raw["requests"]:
         content = contents.get(request["id"], request_input["content"])
         native = request.get("owner") in {"commitMemoryContent", "Root.append", "publishBootstrapFile"}
+        if (expected_side == "native" and not native or expected_side == "sdk" and native
+                or expected_side not in {None, "native", "sdk"}):
+            raise AtomicEvidenceError("An atomic side cannot impersonate the other implementation's public owner")
         if raw["kind"] == "commit":
             expected_owner = "commitMemoryContent" if native else "memory_core.atomic_publication.commit_memory_content"
             arguments = ({"filePath": target, "content": content, "expectedContent": request_input["expectedContent"],
@@ -432,13 +559,12 @@ def validate_atomic_publication_raw(case: dict, public: dict, raw: dict, *, evid
         raise AtomicEvidenceError("All declared atomic fault attempts must remain visible")
     events = _event_map(raw)
     for expected, observed in zip(raw["input"].get("faults", []), faults):
-        if (observed.get("input") != expected or observed.get("matched") != 1
-                or not isinstance(observed.get("events"), list) or not observed["events"]
-                or any(seq not in events for seq in observed["events"])):
-            raise AtomicEvidenceError("An untriggered or altered atomic IO fault cannot pass")
+        _validate_fault_binding(expected, observed, events)
     for event in events.values():
         if "error" in event and ("rawError" not in event or event["error"] != _public_from_raw_error(event["rawError"])):
             raise AtomicEvidenceError("An atomic IO error lost its actual original stack, own fields or recursive cause")
+    if verify_tree and _read_surviving_tree(base) != snapshots["after"]:
+        raise AtomicEvidenceError("The complete independently reread surviving tree differs from the retained atomic snapshot")
     expected_public = encode_atomic_public({"provider": "none", "outcomes": raw["outcomes"], "snapshots": logical}, raw)
     if expected_public != public:
         raise AtomicEvidenceError("Atomic output dropped or changed complete raw errors, outcomes, physical facts or order")

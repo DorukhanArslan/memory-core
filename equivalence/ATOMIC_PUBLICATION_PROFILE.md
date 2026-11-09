@@ -135,10 +135,20 @@ receipts are interchangeable between implementations.
    inode, nlink, size, mode, owner, and nanosecond times are checked according to
    their actual producer types and stage/event. The complete original values
    remain retained in raw evidence.
+   A prepared file receipt requires the last actual same-actor fstat after its
+   successful stage sync and before that stage's publication request, within the
+   allocated descriptor generation. Earlier snapshots and reused fd numbers
+   cannot provide its timestamp tokens. Time labels name this `prepared` phase.
 5. A nanosecond value can refer only to that validated stage/event. There is no
    general mtime/ctime normalization, wall-clock fixture, guessed identity,
    cross-object alias, or timestamp tolerance. Any receipt that cannot be bound
    independently remains an ordinary mismatch.
+
+SDK exclusive publication uses the retained-directory Linux
+`renameat2(RENAME_NOREPLACE)` or Darwin `renameatx_np(RENAME_EXCL)` primitive.
+An unavailable ABI fails before allocating a stage. The present authenticated
+execution profile is Linux; Darwin execution is untested and no portability
+equivalence is inferred.
 
 The raw validator precedes token labeling. It must reject a changed receipt stat,
 unowned stage, wrong descriptor, wrong IO event, reused basename, missing producer

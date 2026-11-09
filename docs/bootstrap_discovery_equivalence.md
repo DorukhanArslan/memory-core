@@ -1,8 +1,11 @@
 # Bootstrap discovery: native comparison evidence
 
 This package compares the real OpenClaw bootstrap callers with the Python SDK.
-It does not claim full workspace lifecycle equivalence or award coverage points.
-Every scenario currently has `covers: []`.
+It does not claim full workspace lifecycle equivalence. Following the final
+paired run and independent review, the nine qualified outcomes scenarios cover
+the outcomes condition; all eleven still cover boundaries. Coverage registration
+does not turn the two boundary failures into passes. Integrated credit remains
+subject to the full repository gate.
 
 The fixed condition is `prompt.bootstrap-discovery`:
 
@@ -51,12 +54,14 @@ The literal packet covers initial setup and customization; exact-case/sparse
 files; creation templates and optional-file suppression; repeated reads in one
 session; the SDK's default layout extension; purpose; implicit provisioning;
 configured classification; disabled bootstrap seeding; guarded file reads; and
-the legacy-state gate. Inputs were unchanged between the first and corrected runs.
+the legacy-state gate. All eleven input values were unchanged across all three
+paired runs. Only the classifier's authenticated driver-scope metadata was added.
 
 | Actual proof | Clean SDK commit | Matched | Different | Blocked | Errors |
 | --- | --- | ---: | ---: | ---: | ---: |
 | First paired eleven | `6aa5adbcd073bed813f7dabb39e3057c47cbd05b` | 4 | 7 | 0 | 0 |
 | After genuine creation/provisioning API fixes | `7ecd4c0` | 8 | 3 | 0 | 0 |
+| After the real path/provenance classifier | `a583b17e3ea76f2c19c10cdb89d8a1ab78170b25` | 9 | 2 | 0 | 0 |
 
 The first report is retained unchanged at
 `.equivalence-results/bootstrap-discovery-first-paired-11.json`:
@@ -72,6 +77,19 @@ The corrected report is retained at
 - Bytes: `78671451`
 - SHA256: `18bc3a95796e5142bc1e6bea781dfc27b62e74898331a9977f3eba3bb69c38d9`
 - Actual runtime evidence: eleven Native processes and eleven SDK processes.
+
+The final report is retained at
+`.equivalence-results/bootstrap-discovery-classifier-paired-11.json`:
+
+- Bytes: `78744862`
+- SHA256: `a8ea57174e65610064544d14794676c75ed434bc6546607c1a4ef07b31da270b`
+- Source identity: clean `a583b17e3ea76f2c19c10cdb89d8a1ab78170b25`.
+- Actual runtime evidence: eleven distinct Native processes and eleven distinct
+  SDK child processes, with full requests, API returns, filesystem observations
+  and protected Native import traces.
+- All eleven literal inputs equal the first report's inputs.
+- All reports were captured with `covers: []`; the qualified registration was
+  added afterward, following the acceptance definition and independent review.
 
 The original Native-only development observation remains separate. It demonstrated
 the three genuine exports but is not the paired proof or a source of coverage.
@@ -91,13 +109,14 @@ because it does not read those facts.
 
 The corrected paired run repaired the four original mismatches in those paths.
 All 392 targeted bootstrap, authority, raw replay, transport and atomic-root
-tests passed before that run. The exact source inventory also validated.
+tests passed before that run. The final classifier package passed 622 targeted
+tests before the third run. The exact source inventory also validated.
 
 ## Qualified acceptance definition
 
 The outcomes interpretation is limited to ordinary successful local operations
 using the explicit six-role OpenClaw-compatible layout and the built-in memory
-owner. This definition was declared before the next paired run. It requires
+owner. This definition was declared before the final paired run. It requires
 all nine of these cases to match:
 
 - `bootstrap-discovery-initial-whole-exports`
@@ -123,32 +142,35 @@ The built-in classifier is now implemented through real filesystem paths and
 `MemoryArtifactProvenanceStore`, reusing the index's `classify_memory_path` owner.
 `HostKit` supplies the same trust store its writer and index use. The SDK adapter
 observes the actual nested classifier and store returns without replacing them.
-The next proof still uses the same eleven literal inputs. Coverage remains
-unassigned until its actual result, independent review and the full gate.
+The final run matched all nine required outcomes. Independent review verified
+the clean source identity, unchanged input values, actual configured classifier
+owners and complete result before approving this limited registration. The full
+gate must retain both ordinary boundary differences. Only one of the two fixed
+conditions can qualify from this package.
 
 ## Remaining differences
 
 - The default SDK layout deliberately adds `PROACTIVE_PREFERENCES.md` and its
   extension directories. The explicit `OPENCLAW_COMPAT_LAYOUT` retains the six
   Native roles. The default extension is kept visible in the ordinary packet.
-- At the eight-match checkpoint, configured bootstrap classification was a
-  genuine missing SDK composition, not a missing Native export. The original caller already executes
-  `classifyActiveMemoryWorkspacePaths` through `dist/memory-runtime-BzdCLKPx.mjs`
-  export `n` and the real memory-core workspace classifier/provenance owners.
-  The new SDK owner reads physical filesystem identity and recorded origins;
-  its paired verification is pending. Returning expected file lists from a
-  callback is not equivalent.
 - The SDK's legacy-state gate fails closed and exposes its own complete error
   fields. Native context selection catches setup errors and can continue.
   This stronger SDK behavior and the error differences remain visible.
 
-An independent review must decide any qualified acceptance set. Neither the
-default layout mode nor the legacy/configuration boundaries are silently removed
-to turn this partial result into a full two-point claim.
+The configured classifier mismatch at the eight-match checkpoint was a genuine
+missing SDK composition. The final run verifies its repair through the real
+filesystem and trust-store owners. Third-party registered OpenClaw memory
+runtimes, remote access, hooks and personal-profile overlays are outside the
+qualified built-in local scope; no callback fabricates their outputs.
+
+Neither the default layout mode nor the legacy boundary is removed from the
+packet. The complete eleven-case result remains mismatched.
 
 ## Integration commits
 
-The bootstrap package commits are `19d6810`, `3d2b5a3`, `6aa5adb`, and `7ecd4c0`.
+The bootstrap package commits are `19d6810`, `3d2b5a3`, `6aa5adb`, `7ecd4c0`,
+and `a583b17`. The final registration changes only coverage metadata, its guards
+and this evidence record; it does not change production behavior or fixture inputs.
 The production fix depends on the frozen shared atomic publication package.
 Its local transplants are `a47d674`, `6c25fd7`, and `4084521`, corresponding to
 original commits `13859db`, `e527fc4`, and `6f9878e`. A candidate that already

@@ -537,7 +537,7 @@ _INITIAL_WHOLE_FLOW = {'kind': 'workspace-bootstrap',
 
 
 def build_bootstrap_discovery_cases():
-    """A fixed eleven-case pending packet, including declared ordinary API gaps."""
+    """Fixed qualified outcomes and full boundaries, including both visible differences."""
     if any(hashlib.sha256(_PACKAGED_TEMPLATES[name].encode()).hexdigest() != item["sha256"]
            for name, item in TEMPLATE_ARTIFACTS.items()):
         raise ValueError("Literal packaged template inputs changed without owner review")
@@ -596,6 +596,9 @@ def build_bootstrap_discovery_cases():
     for suffix, scenario in scenarios:
         cases.append((suffix, {"kind": "workspace-bootstrap", "nowMs": 1794182400000, "layout": "openclaw", **scenario}))
     return [{"id": "bootstrap-discovery-" + suffix, "operation": "bootstrap-discovery-runtime", "requirement": "prompt.bootstrap-discovery",
-             "input": {**value, "packagedTemplates": deepcopy(_PACKAGED_TEMPLATES)}, "covers": [],
+             "input": {**value, "packagedTemplates": deepcopy(_PACKAGED_TEMPLATES)},
+             "covers": (["prompt.bootstrap-discovery.outcomes"]
+                        if suffix not in {"memory-core-layout-extension", "legacy-state-gate"} else [])
+                       + ["prompt.bootstrap-discovery.boundaries"],
              **({"driverScope": "builtin-workspace-memory-classifier"} if suffix == "unsupported-configured-classification" else {})}
             for suffix, value in cases]

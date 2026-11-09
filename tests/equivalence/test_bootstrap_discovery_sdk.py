@@ -1,4 +1,4 @@
-"""Real SDK process and wire guards; these cases still have no acceptance credit."""
+"""Real SDK processes, wire guards and the independently reviewed fixed acceptance split."""
 import hashlib
 import json
 import os
@@ -25,7 +25,7 @@ def _observation(captures, suffix):
     return captures[suffix][2]["child"]["observation"]["raw"]
 
 
-def test_fixed_literal_packet_has_no_expected_outputs_or_coverage_credit():
+def test_fixed_literal_packet_has_no_expected_outputs_and_preserves_all_boundaries():
     cases = build_bootstrap_discovery_cases()
     assert len(cases) == 11 and len({case["id"] for case in cases}) == 11
     for case in cases:
@@ -34,7 +34,7 @@ def test_fixed_literal_packet_has_no_expected_outputs_or_coverage_credit():
             expected.add("driverScope")
             assert case["driverScope"] == "builtin-workspace-memory-classifier"
         assert set(case) == expected
-        assert case["covers"] == [] and case["operation"] == "bootstrap-discovery-runtime"
+        assert case["operation"] == "bootstrap-discovery-runtime"
         assert case["requirement"] == "prompt.bootstrap-discovery"
         assert not any("setup" in step for step in case["input"]["steps"])
         for name, artifact in TEMPLATE_ARTIFACTS.items():
@@ -42,6 +42,17 @@ def test_fixed_literal_packet_has_no_expected_outputs_or_coverage_credit():
             assert len(raw) == artifact["bytes"] and hashlib.sha256(raw).hexdigest() == artifact["sha256"]
     cases[0]["input"]["packagedTemplates"]["USER.md"] = "changed"
     assert build_bootstrap_discovery_cases()[0]["input"]["packagedTemplates"]["USER.md"] != "changed"
+
+
+def test_qualified_outcomes_require_all_nine_cases_and_boundaries_include_both_differences():
+    cases = build_bootstrap_discovery_cases()
+    boundary_only = {"bootstrap-discovery-memory-core-layout-extension", "bootstrap-discovery-legacy-state-gate"}
+    assert {case["id"] for case in cases if case["covers"] == ["prompt.bootstrap-discovery.boundaries"]} == boundary_only
+    outcomes = [case for case in cases if "prompt.bootstrap-discovery.outcomes" in case["covers"]]
+    assert len(outcomes) == 9
+    assert all(case["input"]["layout"] == "openclaw" for case in outcomes)
+    assert any(case.get("driverScope") == "builtin-workspace-memory-classifier" for case in outcomes)
+    assert all("prompt.bootstrap-discovery.boundaries" in case["covers"] for case in cases)
 
 
 def test_every_real_case_has_a_distinct_successfully_exited_sdk_process(captures):

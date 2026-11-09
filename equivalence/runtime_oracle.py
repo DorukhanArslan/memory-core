@@ -7,12 +7,15 @@ raw case diagnostics without presenting compiled files as TypeScript sources.
 from __future__ import annotations
 
 from copy import deepcopy
+import base64
 import hashlib
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import stat
 import tempfile
+from typing import Any
 
 from equivalence.release_runtime import ReleaseRuntimeError, validate_release_sources
 
@@ -22,6 +25,7 @@ MAX_TRACE_FILES = 512
 MAX_TRACE_BYTES = 64 * 1024 * 1024
 MAX_SINGLE_TRACE_BYTES = 8 * 1024 * 1024
 MAX_DIAGNOSTIC_BYTES = 16 * 1024 * 1024
+MAX_REJECTED_STREAM_BYTES = 4 * 1024 * 1024
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
 _TRACE = re.compile(r"([1-9][0-9]*)-([0-9]+)\.jsonl\Z")
 _CONTEXT_ENV = "MEMORY_EQ_RELEASE_CONTEXT"
@@ -546,6 +550,57 @@ def _relative(value: object) -> str:
     return value
 
 
+def _owned_directory(root: Path, path: Path) -> int:
+    relative = path.relative_to(root)
+    if ".." in relative.parts or not all(hasattr(os, name) for name in ("O_NOFOLLOW", "O_DIRECTORY")):
+        raise RuntimeOracleError("Rejected diagnostic capture has no safe owned path")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    directory = os.open(root, flags)
+    try:
+        for part in relative.parts:
+            child = os.open(part, flags, dir_fd=directory)
+            os.close(directory)
+            directory = child
+        return directory
+    except BaseException:
+        os.close(directory)
+        raise
+
+
+def _owned_regular(root: Path, path: Path, limit: int) -> bytes:
+    """Read only a bounded ordinary file through an anchored owned directory.
+
+    Rejected diagnostics have no authenticated provenance. Never follow their
+    symlinks into ambient files, including when an intermediate directory is
+    replaced between validation and capture.
+    """
+    relative = path.relative_to(root)
+    if not relative.parts or ".." in relative.parts or not hasattr(os, "O_NOFOLLOW"):
+        raise RuntimeOracleError("Rejected diagnostic capture has no safe owned path")
+    directory = _owned_directory(root, path.parent)
+    descriptor = None
+    try:
+        descriptor = os.open(relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > limit:
+            raise RuntimeOracleError("Rejected diagnostics are not independent bounded regular files")
+        chunks, remaining = [], limit + 1
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        if len(raw) > limit:
+            raise RuntimeOracleError("Rejected diagnostics exceeded their capture bound")
+        return raw
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        os.close(directory)
+
+
 class ReleaseOracleExecution:
     """One fresh provider-none process with a trusted preload inherited by workers."""
 
@@ -667,6 +722,109 @@ class ReleaseOracleExecution:
             if isinstance(error, RuntimeOracleError):
                 raise
             raise RuntimeOracleError("The release oracle returned invalid execution evidence.") from None
+
+    def capture_rejected(
+        self, result: object, cases: list[dict], *, stdout: str, stderr: str,
+    ) -> dict:
+        """Detach bounded original diagnostics before the temporary tree closes.
+
+        Nothing returned here passed execution validation. This separate
+        diagnostic object must never populate authenticated sources, successful
+        runtime diagnostics or case coverage.
+        """
+        capture: dict[str, Any] = {"validationStatus": "rejected", "authenticationStatus": "unverified",
+                   "kind": "rejected-release-runtime-diagnostics", "caseIds": [],
+                   "oracleResult": None, "stdout": None, "stderr": None,
+                   "caseDiagnostics": [], "processWorkerTraces": [], "omissions": []}
+
+        def stream(text: str) -> dict:
+            raw = text.encode("utf-8")
+            # Keep an exact UTF-8 prefix, without inventing a replacement
+            # character when the byte bound splits an original code point.
+            captured = raw[:MAX_REJECTED_STREAM_BYTES].decode("utf-8", errors="ignore")
+            prefix = captured.encode("utf-8")
+            return {"bytes": len(raw), "sha256": _digest(raw), "capturedBytes": len(prefix),
+                    "truncated": len(prefix) != len(raw), "text": captured}
+
+        capture["stdout"], capture["stderr"] = stream(stdout), stream(stderr)
+
+        def artifact(raw: bytes) -> dict:
+            record = {"bytes": len(raw), "sha256": _digest(raw)}
+            try:
+                record["text"] = raw.decode("utf-8")
+            except UnicodeError:
+                record.update(encoding="base64", data=base64.b64encode(raw).decode("ascii"))
+            return record
+        try:
+            serialized = json.dumps(result, ensure_ascii=False, allow_nan=False).encode("utf-8")
+            if len(serialized) > MAX_REJECTED_STREAM_BYTES:
+                raise ValueError("result bound")
+            capture["oracleResult"] = _json(serialized)
+        except (TypeError, ValueError, UnicodeError):
+            capture["omissions"].append({"kind": "oracleResult", "reason": "invalid-or-excessive"})
+        if not self._entered:
+            capture["omissions"].append({"kind": "ownedFiles", "reason": "context-inactive"})
+            return capture
+        remaining_diagnostics = MAX_DIAGNOSTIC_BYTES
+        for case in cases[:MAX_TRACE_FILES]:
+            identifier = case.get("id")
+            if not isinstance(identifier, str):
+                capture["omissions"].append({"kind": "case", "reason": "invalid-identity"})
+                continue
+            capture["caseIds"].append(identifier)
+            name = _digest(identifier.encode("utf-8")) + "/native-raw.json"
+            record = {"id": identifier, "operation": case.get("operation"), "path": name,
+                      "validationStatus": "unverified"}
+            try:
+                request = json.dumps(case, ensure_ascii=False, allow_nan=False).encode("utf-8")
+                if len(request) > MAX_REJECTED_STREAM_BYTES:
+                    raise ValueError("case bound")
+                record["case"] = _json(request)
+                record["caseSha256"] = _digest(request)
+            except (TypeError, ValueError, UnicodeError):
+                record["caseCaptureStatus"] = "invalid-or-excessive"
+            try:
+                raw = _owned_regular(self.root, self.evidence_directory / name, remaining_diagnostics)
+                remaining_diagnostics -= len(raw)
+                record.update(artifact(raw))
+                try:
+                    record["rawSnapshots"] = _json(raw)
+                except (ValueError, UnicodeError):
+                    record["parseStatus"] = "invalid-json"
+            except (OSError, ValueError, UnicodeError):
+                record["captureStatus"] = "unavailable-or-unsafe"
+            capture["caseDiagnostics"].append(record)
+        if len(cases) > MAX_TRACE_FILES:
+            capture["omissions"].append({"kind": "cases", "reason": "count-limit", "omitted": len(cases) - MAX_TRACE_FILES})
+        try:
+            directory = _owned_directory(self.root, self.trace_directory)
+            try:
+                with os.scandir(directory) as listing:
+                    traces: list[str] = []
+                    for entry in listing:
+                        if len(traces) >= MAX_TRACE_FILES:
+                            capture["omissions"].append({"kind": "traces", "reason": "count-limit"})
+                            break
+                        traces.append(entry.name)
+            finally:
+                os.close(directory)
+            total = 0
+            for name in sorted(traces):
+                if not _TRACE.fullmatch(name):
+                    capture["omissions"].append({"kind": "trace", "reason": "invalid-identity"})
+                    continue
+                record = {"name": name, "validationStatus": "unverified"}
+                try:
+                    raw = _owned_regular(self.root, self.trace_directory / name,
+                                         min(MAX_SINGLE_TRACE_BYTES, MAX_TRACE_BYTES - total))
+                    total += len(raw)
+                    record.update(artifact(raw))
+                except (OSError, ValueError, UnicodeError):
+                    record["captureStatus"] = "unavailable-or-unsafe"
+                capture["processWorkerTraces"].append(record)
+        except (OSError, ValueError):
+            capture["omissions"].append({"kind": "traces", "reason": "unavailable-or-unsafe"})
+        return capture
 
     def _collect(self, result: dict, cases: list[dict]) -> dict:
         if (not isinstance(result, dict) or result.get("kind") != "official-release-runtime-comparison"

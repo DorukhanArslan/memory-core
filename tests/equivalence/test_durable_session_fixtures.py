@@ -5,13 +5,14 @@ import json
 from equivalence.durable_session_fixtures import build_durable_session_cases
 
 
-def test_durable_inputs_are_fresh_deterministic_json_and_uncredited():
+def test_durable_inputs_are_fresh_json_and_credit_only_the_original_durable_conditions():
     cases = build_durable_session_cases()
     assert len(cases) == 2
     assert cases == build_durable_session_cases()
     assert len({case["id"] for case in cases}) == 2
     assert json.loads(json.dumps(cases, allow_nan=False)) == cases
-    assert all(case["covers"] == [] and case["requirement"] == "sessions.durable-context"
+    assert all(case["covers"] == ["sessions.durable-context.outcomes", "sessions.durable-context.boundaries"]
+               and case["requirement"] == "sessions.durable-context"
                and case["operation"] == "durable-session-runtime" for case in cases)
     mutated = deepcopy(cases)
     mutated[0]["input"]["phases"][0]["sessions"].clear()

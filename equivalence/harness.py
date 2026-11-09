@@ -35,6 +35,7 @@ class HarnessError(RuntimeError):
     def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code = code
+        self.rejected_evidence: dict | None = None
 
 
 def _json(raw: str) -> Any:
@@ -311,6 +312,7 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
     process = None
     resources = ExitStack()
     execution = None
+    stdout, stderr = "", ""
     try:
         if release_runtime is not None:
             from equivalence.runtime_oracle import ReleaseOracleExecution, RuntimeOracleError
@@ -353,7 +355,7 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    text=True, env=env, cwd=script.parent,
                                    start_new_session=os.name == "posix")
-        stdout, _ = process.communicate(body, timeout=timeout)
+        stdout, stderr = process.communicate(body, timeout=timeout)
         if process.returncode != 0:
             raise HarnessError("oracle-failed", "The TypeScript oracle exited unsuccessfully; no retry was made.")
         if len(stdout.encode("utf-8")) > _MAX_OUTPUT_BYTES:
@@ -364,9 +366,22 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                 result = execution.collect(result, cases)
             except (OSError, ValueError) as error:
                 detail = str(error) if isinstance(error, RuntimeOracleError) else "Invalid execution evidence."
-                raise HarnessError("runtime-evidence-invalid",
-                                   "The release runtime did not provide authenticated process and worker evidence: "
-                                   + detail) from None
+                failure = HarnessError("runtime-evidence-invalid",
+                                       "The release runtime did not provide authenticated process and worker evidence: "
+                                       + detail)
+                try:
+                    # Reparse the original process output: a rejected validator
+                    # must not turn its own mutations into purported raw output.
+                    failure.rejected_evidence = execution.capture_rejected(
+                        _json(stdout), cases, stdout=stdout, stderr=stderr,
+                    )
+                except Exception:
+                    failure.rejected_evidence = {
+                        "validationStatus": "rejected", "authenticationStatus": "unverified",
+                        "kind": "rejected-release-runtime-diagnostics",
+                        "caseIds": [case["id"] for case in cases], "captureStatus": "unavailable-or-unsafe",
+                    }
+                raise failure from None
     except subprocess.TimeoutExpired:
         if process is not None:
             if os.name == "posix":
@@ -867,6 +882,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             report["status"] = "passed"
     except HarnessError as error:
         report["errors"].append({"code": error.code, "message": str(error)})
+        if error.rejected_evidence is not None:
+            # Diagnostics only: successful trace/source/coverage fields stay
+            # empty and the validator rejection remains a blocked report.
+            report.setdefault("rejectedRuntimeEvidence", []).append(error.rejected_evidence)
     except Exception:
         report["errors"].append({"code": "harness-failed", "message": "The acceptance harness could not complete."})
     finally:

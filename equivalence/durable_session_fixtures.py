@@ -2,7 +2,7 @@
 
 These requests contain no expected hits, reconstructed context or prior process
 outputs. Both implementations execute their own persisted transcript, context,
-participant, corpus and index owners. They remain uncredited until reviewed.
+participant, corpus and index owners. Coverage is limited to the reviewed durable flows.
 """
 from __future__ import annotations
 
@@ -21,6 +21,9 @@ PROFILE = (
     "and actual append/read anchors remain observed. No provider call, pending-input "
     "custody, provider-signed replay, media migration, live writer fence or full turn "
     "barrier is claimed. The third process receives no mutations or prior output history."
+    " Actual native settings fix temporal decay to enabled with a 30-day half-life; "
+    "the SDK uses that same policy. Native Date and only the SDK decay module's "
+    "datetime.now use each literal phase clock; timers and performance remain real."
 )
 NORMALIZATION = (
     "Complete native and SDK owner results, with full private SQL/process evidence retained. "
@@ -192,6 +195,8 @@ def build_durable_session_cases() -> list[dict[str, Any]]:
         ],
     }
     return [{"id": f"durable-session-{name}", "requirement": "sessions.durable-context",
-             "operation": "durable-session-runtime", "covers": [], "input": deepcopy(value),
+             "operation": "durable-session-runtime",
+             "covers": ["sessions.durable-context.outcomes", "sessions.durable-context.boundaries"],
+             "input": deepcopy(value),
              "driverScope": PROFILE, "normalizationPolicy": NORMALIZATION}
             for name, value in (("retained-replay-continuation", tea), ("reset-and-private-reopen", reset))]

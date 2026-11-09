@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime
 import hashlib
 import json
 import os
@@ -11,6 +12,7 @@ import sys
 import tempfile
 import time
 from typing import Any
+from unittest.mock import patch
 
 from equivalence.durable_session_codec import map_durable_session_identities
 from equivalence.get_contract import map_get_fixture_paths
@@ -22,6 +24,7 @@ def run_durable_session_phase(request: dict[str, Any]) -> dict[str, Any]:
     from memory_core.config import MemoryConfig
     from memory_core.flags import FeatureFlags
     from memory_core.index.sqlite_store import SQLiteMemoryStore
+    from memory_core.index import temporal_decay
     from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
     from memory_core.session_catalog import MemorySessionCatalog
     from memory_core.session_context import build_session_context, convert_to_llm, is_session_history_prelude
@@ -82,7 +85,8 @@ def run_durable_session_phase(request: dict[str, Any]) -> dict[str, Any]:
     config = MemoryConfig(workspace_dir=workspace, agent_id=agent,
                           store_path=state / "agents" / agent / "agent" / "openclaw-agent.sqlite",
                           session_search=True, search_max_results=200, search_min_score=0,
-                          flags=FeatureFlags(vector_search=False, text_search=True, mmr=False, temporal_decay=False))
+                          temporal_decay_half_life_days=30,
+                          flags=FeatureFlags(vector_search=False, text_search=True, mmr=False, temporal_decay=True))
     store = SQLiteMemoryStore(config, None)
     owner_workspace = MemoryWorkspace(workspace, openclaw_state_dir=state, agent_id=agent,
                                        session_catalog=catalog, index_sources=["sessions"])
@@ -126,10 +130,22 @@ def run_durable_session_phase(request: dict[str, Any]) -> dict[str, Any]:
 
     main = continuation({})
     identity_reads = [continuation(read) for read in phase.get("identityReads", [])]
+
+    class PhaseDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls.fromtimestamp(now / 1000, tz=tz)
+
+    raw["searchPolicy"] = {"temporalDecay": {"enabled": config.flags.temporal_decay,
+                                            "halfLifeDays": config.temporal_decay_half_life_days},
+                           "clock": {"owner": "memory_core.index.temporal_decay.datetime.now", "nowMs": now}}
     queries = []
     for query in phase.get("queries", []):
-        results = store.search(query["query"], max_results=query.get("maxResults", 200),
-                               min_score=query.get("minScore", 0), sources={"sessions"})
+        # The original settings owner fixes decay to true/30 days, regardless of
+        # the obsolete requested knob. Pair only its wall clock with native Date.
+        with patch.object(temporal_decay, "datetime", PhaseDateTime):
+            results = store.search(query["query"], max_results=query.get("maxResults", 200),
+                                   min_score=query.get("minScore", 0), sources={"sessions"})
         output = {"id": query["id"], "results": [result.to_payload() for result in results]}
         queries.append(output)
         raw["queries"].append({"input": deepcopy(query), **deepcopy(output)})

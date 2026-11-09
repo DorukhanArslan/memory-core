@@ -93,6 +93,8 @@ export async function runDurableSessionPhase(request) {
     // each OS process over the same already-persisted SQLite state.
     manager = await runtime.MemoryIndexManager.get({ cfg, agentId });
     if (!manager) throw Error("The genuine durable phase manager was unavailable");
+    if (!manager.settings || typeof manager.settings !== "object") throw Error("The genuine resolved manager settings were unavailable");
+    raw.resolvedManagerSettings = structuredClone(manager.settings);
     const indexState = () => Object.fromEntries([
       ["chunks", "SELECT *,hex(embedding) AS embeddingHex FROM memory_index_chunks ORDER BY source,path,start_line,end_line,id"],
       ["provenance", "SELECT * FROM memory_index_chunk_provenance ORDER BY chunk_id"],

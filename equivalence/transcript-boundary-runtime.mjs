@@ -46,7 +46,7 @@ export async function runTranscriptBoundaryRuntime(input, runtimeConfig) {
     clock: { owner: "node:test", apis: ["Date"], nowMs: Date.now(),
       dateConstructorReplaced: Date !== beforeDate, setTimeoutUnchanged: setTimeout === beforeSetTimeout,
       performanceNowUnchanged: performance.now === beforePerformanceNow },
-    mutations: [], reads: [], sourceCaptures: [], cacheCaptures: [], observerCalls: [],
+    mutations: [], writeCalls: [], reads: [], sourceCaptures: [], cacheCaptures: [], observerCalls: [],
     environmentFault: { input: input.environmentFault ?? null, calls: [], restored: [] } };
   const imp = (relative) => import(pathToFileURL(path.join(runtimeConfig.runtimeRoot, relative)).href);
   let clearConfig;
@@ -70,7 +70,10 @@ export async function runTranscriptBoundaryRuntime(input, runtimeConfig) {
     async function write(value) {
       if (input.source === "sqlite") {
         if (value.rawBytes !== undefined) throw Error("SQLite source mutations must use actual event values");
+        const call = { request: { scope: { ...scope }, events: structuredClone(value.events ?? []) } };
+        raw.writeCalls.push(call);
         await accessor.replaceTranscriptEvents(scope, value.events ?? []);
+        call.capture = await capture();
       } else {
         const bytes = encode(value);
         if (value.sameSize) {

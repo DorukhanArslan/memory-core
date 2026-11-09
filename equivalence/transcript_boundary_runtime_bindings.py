@@ -35,6 +35,8 @@ SOURCE_HASHES = {'packages/memory-host-sdk/src/host/session-files.ts': 'd184bf1a
  'src/infra/worker-task-pool.ts': 'fcaafd845ed8a9285ea385a05a4324e01a6c5bfc29a5fca99b69705054be8bca',
  'src/infra/tmp-openclaw-dir.ts': 'a0e74b9fb4e9b53215d7bc1fa830d539345a98a973d5b308db9db5de20d8afed'}
 
+SOURCE_HASHES["src/config/sessions/session-accessor.sqlite-transcript-store.ts"] = "e658ffefb7c1c8cfc6ad4c416d8f2f20657cb59f8412eac951e1d8e564afa50d"
+
 SOURCE_ANCHORS = {'packages/memory-host-sdk/src/host/session-files.ts': ('export async function buildSessionEntry(',
                                                         'export async function '
                                                         'buildSessionEntryInProcess(',
@@ -100,6 +102,11 @@ SOURCE_ANCHORS = {'packages/memory-host-sdk/src/host/session-files.ts': ('export
  'src/infra/tmp-openclaw-dir.ts': ('export const DEFAULT_POSIX_TMP_ROOT = "/tmp/openclaw";',
                                    'export function resolvePreferredOpenClawTmpDir(')}
 
+SOURCE_ANCHORS["src/config/sessions/session-accessor.sqlite-transcript-store.ts"] = (
+    "export function replaceSqliteTranscriptEventsInTransaction(",
+    "function appendTranscriptEventRowInTransaction(",
+)
+
 COMPILED_HASHES = {'dist/session-files-DVVT4Ngb.mjs': '0a933051a4cf16dd7f5ddb15df3df6d5c950cd1a09b7fd2729d8c86e54842dc9',
  'dist/session-accessor-CiKKTlbe.mjs': '287c41790f551f5e31941cde89854babae25a57976a1a24f992e6e955aaf5f8a',
  'dist/session-accessor.sqlite-entry-BrsmAX-T.mjs': 'bb80d5b238fb5eaeb23a0f2a12d9a978b9cafa3962e78984538d801eb6f86e64',
@@ -119,6 +126,8 @@ COMPILED_HASHES = {'dist/session-files-DVVT4Ngb.mjs': '0a933051a4cf16dd7f5ddb15d
  'dist/fs-utils-WWARJ71o.mjs': 'bada7e55184567bafb6693bac0f34854542e978ef06fd5fe6b082bcf839d39df',
  'dist/read-retry-91Lh2b4l.mjs': 'b767d23b66cead2647683323f33f7380fe20137e7781c01d2e4fca95a4e4b046',
  'dist/tmp-openclaw-dir-BSb3HetY.mjs': 'b5f3f4cfc8211fe003211a12b08d0087c0ec7bcd65969b7ab5c84b0cb49d47c9'}
+
+COMPILED_HASHES["dist/session-accessor.sqlite-transcript-store-DEXEZWnC.mjs"] = "deb4cca4a9d2fc66702e5adc2f3882f620e8d1533fbe7107a7cd95869d54cf5e"
 
 COMPILED_ANCHORS = {'dist/session-files-DVVT4Ngb.mjs': ('async function buildSessionEntry(absPath, opts = {}) {',
                                      'async function buildSessionEntryInProcess(absPath, opts = {}, '
@@ -177,6 +186,12 @@ COMPILED_ANCHORS = {'dist/session-files-DVVT4Ngb.mjs': ('async function buildSes
  'dist/tmp-openclaw-dir-BSb3HetY.mjs': ('const DEFAULT_POSIX_TMP_ROOT = "/tmp/openclaw";',
                                         'function resolvePreferredOpenClawTmpDir(options = {}) {')}
 
+COMPILED_ANCHORS["dist/session-accessor.sqlite-transcript-store-DEXEZWnC.mjs"] = (
+    "function replaceSqliteTranscriptEventsInTransaction(database, resolved, events, options = {}) {",
+    "function appendTranscriptEventRowInTransaction(event, seq, state, createdAtOverride) {",
+    "replaceSqliteTranscriptEventsInTransaction as l",
+)
+
 EXTERNAL_HASHES = {'dist/secure-temp-dir.js': 'c1a9987945911782371292c24670ac4ac9382986e8edfa8fe2981a074c4a9f4b'}
 
 EXTERNAL_ANCHORS = {'dist/secure-temp-dir.js': ('export function resolveSecureTempRoot(options) {',
@@ -191,6 +206,7 @@ REQUIRED_BOUNDARY_ARTIFACTS = (
 SQLITE_BOUNDARY_ARTIFACTS = (
     "dist/session-accessor-CiKKTlbe.mjs", "dist/session-accessor.sqlite-entry-BrsmAX-T.mjs",
     "dist/session-accessor.sqlite-read-BsSfe2AE.mjs", "dist/session-accessor.sqlite-transcript-write-C5YumkFZ.mjs",
+    "dist/session-accessor.sqlite-transcript-store-DEXEZWnC.mjs",
 )
 TRANSCRIPT_WORKER_ARTIFACTS = (
     "dist/config/sessions/session-transcript.worker.js",
@@ -246,6 +262,8 @@ def prepare_transcript_boundary_runtime_bindings(checkout: Path, runtime_root: P
              ("resolveRuntimeWorkerUrl",), "import"),
             ("src/config/sessions/session-transcript-read-worker-runtime.ts", "../../infra/worker-task-pool.js",
              ("WorkerTaskPool",), "import"),
+            ("src/config/sessions/session-accessor.sqlite-transcript-write.ts", "./session-accessor.sqlite-transcript-store.js",
+             ("replaceSqliteTranscriptEventsInTransaction",), "import"),
             ("src/config/sessions/archive-compression.ts", "../../infra/zstd-codec.js", ("resolveZstdCodec",), "import"),
             ("src/config/sessions/archive-compression.ts", "../../infra/tmp-openclaw-dir.js",
              ("resolvePreferredOpenClawTmpDir",), "import"),
@@ -290,7 +308,9 @@ def prepare_transcript_boundary_runtime_bindings(checkout: Path, runtime_root: P
         "profiles": {
             "jsonl": {"physicalLineOrdinals": True, "fileAndCodecErrorsReturnNull": True},
             "sqlite": {"genuineReadAccessor": True, "projectedStoredEventOrdinals": True,
-                       "operationalErrorsPropagate": True, "activeLeafFilteringInAdapter": False},
+                       "operationalErrorsPropagate": True, "activeLeafFilteringInAdapter": False,
+                       "writerInputAndPersistedSourceSeparate": True,
+                       "actualPostWriteCaptureRequired": True},
         },
         "fullHostOrchestrationVerified": False, "restartRecallVerified": False,
         "sourceCacheFreshnessEquivalent": False,

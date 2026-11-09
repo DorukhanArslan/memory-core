@@ -171,6 +171,21 @@ with tempfile.TemporaryDirectory() as scratch:
                          agent_session_key="agent:main:dm:alice")["results"]
     assert [hit["path"] for hit in hits] == ["sessions/main/alice.jsonl"], hits
     assert memory.search("Cedar", corpus="sessions", min_score=0)["results"] == []
+    durable_key = "agent:main:dm:durable"
+    catalog.upsert_session(durable_key, {"sessionId": "durable", "chatType": "direct"})
+    user = {"role": "user", "content": "Remember kumquat tea.", "idempotencyKey": "consumer-first-turn"}
+    first = catalog.append_message("durable", user, session_key=durable_key,
+                                   event_id="consumer-user", cwd=str(session_root))
+    catalog.append_message("durable", {"role": "assistant", "content": [
+        {"type": "text", "text": "The preference is saved."},
+    ]}, session_key=durable_key, event_id="consumer-assistant", cwd=str(session_root))
+    reopened = catalog_module.MemorySessionCatalog(catalog.path)
+    continuation = reopened.read_continuation("durable", session_key=durable_key)
+    assert [message["role"] for message in continuation["llmMessages"]] == ["user", "assistant"]
+    assert continuation["llmMessages"][0]["content"] == "Remember kumquat tea."
+    replay = reopened.append_message("durable", user, session_key=durable_key, event_id="consumer-retry")
+    assert replay["appended"] is False and replay["anchor"]["generation"] == first["anchor"]["generation"]
+    assert len(reopened.read_transcript("durable", session_key=durable_key).events) == 3
     data = json.dumps({"type": "message", "message": {"role": "user", "content": "Cedar"}}).encode()
     if sys.version_info >= (3, 14):
         from compression import zstd
@@ -184,6 +199,7 @@ with tempfile.TemporaryDirectory() as scratch:
     assert codec.read_session_transcript_bytes(archive) == data
 print("installed core imports and FTS host lifecycle passed")
 print("installed session authority and compressed archive consumers passed")
+print("installed durable append, continuation and replay consumers passed")
 '''
 
 

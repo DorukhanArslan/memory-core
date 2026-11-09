@@ -106,6 +106,11 @@ def _finite(value: object) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 
+def _transcript_event_id(event: object) -> str | None:
+    value = event.get("id") if isinstance(event, Mapping) else None
+    return (js_trim(value) or None) if isinstance(value, str) else None
+
+
 def _internal_key(key: str) -> bool:
     end = key.find(":", 6)
     return key.startswith("agent:") and end >= 0 and key[end + 1:].startswith("internal-session-effects:")
@@ -224,6 +229,44 @@ def _window_entry(row: sqlite3.Row) -> dict[str, Any]:
         if row["hook_external_content_source"] in {"gmail", "webhook"}:
             entry["hookExternalContentSource"] = row["hook_external_content_source"]
     return entry
+
+
+def _project_session_participants(
+    db: sqlite3.Connection, agent: str, session_key: str, entry: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project current-entry side facts from the actual participant table.
+
+    Native canonical entry reads discard authored participant projections. The
+    optional read projection supplies identities/count only when real rows exist;
+    aggregate counters and timestamps remain on the separate record API.
+    """
+    projected = {key: value for key, value in entry.items() if key not in {"participants", "participantCount"}}
+    participants = [{"identity": _read_participant_identity(row["identity_namespace"], row["actor_id"])}
+                    for row in db.execute(
+                        "SELECT identity_namespace,actor_id FROM memory_session_participants "
+                        "WHERE agent=? AND session_key=? ORDER BY first_prompted_at,actor_id,identity_namespace",
+                        (agent, session_key),
+                    )]
+    if participants:
+        projected["participants"] = participants
+        projected["participantCount"] = len(participants)
+    return projected
+
+
+def _clear_rotated_session_generation_fields(
+    previous: Mapping[str, Any], replacement: dict[str, Any],
+) -> None:
+    """Apply the public session-store upsert's persisted rotation clear patch."""
+    if not any(field in replacement and replacement[field] != previous.get(field, UNSET)
+               for field in ("sessionId", "lifecycleRevision")):
+        return
+    # SESSION_ENTRY_PRIVATE_CLEAR_PATCH + MAIN_SESSION_RECOVERY_CLEAR_PATCH.
+    # Delivery adoption identity deliberately remains outside the recovery clear.
+    for field in ("activeWriterRunId", "lastRunId", "lifecycleRunId", "mainRestartRecovery",
+                  "pendingProjectGitUrl", "pendingWorktree", "sessionDiffBaselineCapture",
+                  "transcriptByteCompactionLatch", "restartRecoveryRuns"):
+        replacement.pop(field, None)
+    replacement["abortedLastRun"] = False
 
 
 @dataclass(frozen=True)
@@ -458,9 +501,10 @@ class MemorySessionCatalog:
         session_key = self._session_key(session_key)
         agent = self._scope(agent_id)
         with closing(self._connect()) as db:
+            db.execute("BEGIN")
             row = db.execute("SELECT entry_json FROM memory_session_nodes WHERE agent=? AND session_key=?",
                              (agent, session_key)).fetchone()
-            return json.loads(row[0]) if row is not None else None
+            return _project_session_participants(db, agent, session_key, json.loads(row[0])) if row is not None else None
 
     def _changed(self, db: sqlite3.Connection) -> None:
         db.execute("UPDATE memory_session_catalog_state SET revision=revision+1 WHERE agent=?", (self.agent_id,))
@@ -501,6 +545,8 @@ class MemorySessionCatalog:
             ).fetchone()
             previous_entry = json.loads(previous[0]) if previous is not None else {}
             previous_id = previous_entry.get("sessionId")
+            if previous is not None:
+                _clear_rotated_session_generation_fields(previous_entry, data)
             if self._memory_uri is not None and is_incognito_session_key(session_key) and "createdAt" not in data:
                 previous_updated = previous_entry.get("updatedAt")
                 data["createdAt"] = previous_updated if previous_updated is not None else self._clock()
@@ -592,6 +638,29 @@ class MemorySessionCatalog:
                 "SELECT event_json,byte_size FROM memory_session_events WHERE agent=? AND session_id=? ORDER BY seq",
                 (self.agent_id, session_id),
             ).fetchall()
+            # The native SQL identity owner keeps the first row for a nonempty,
+            # trimmed event ID. Unidentified rows remain distinct physical rows.
+            seen = set() if replace else {
+                identity for row in previous
+                if (identity := _transcript_event_id(json.loads(row["event_json"]))) is not None
+            }
+            admitted = []
+            for event, text in zip(events, serialized, strict=True):
+                identity = _transcript_event_id(event)
+                if identity is not None:
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                admitted.append((event, text))
+            events = [event for event, _text in admitted]
+            serialized = [text for _event, text in admitted]
+            if not serialized and not replace:
+                return
+            if replace and not serialized and not previous and db.execute(
+                "SELECT 1 FROM memory_session_transcript_state WHERE agent=? AND session_id=?",
+                (self.agent_id, session_id),
+            ).fetchone() is None:
+                return
             if replace:
                 db.execute("DELETE FROM memory_session_events WHERE agent=? AND session_id=?", (self.agent_id, session_id))
             start = db.execute("SELECT COALESCE(MAX(seq),0) FROM memory_session_events WHERE agent=? AND session_id=?",
@@ -992,7 +1061,9 @@ class MemorySessionCatalog:
         """
         with closing(self._connect()) as db:
             db.execute("BEGIN")
-            current_entries = {row["session_key"]: json.loads(row["entry_json"]) for row in db.execute(
+            current_entries = {row["session_key"]: _project_session_participants(
+                db, self.agent_id, row["session_key"], json.loads(row["entry_json"]),
+            ) for row in db.execute(
                 "SELECT session_key,entry_json FROM memory_session_nodes WHERE agent=?", (self.agent_id,),
             )}
             sql = "SELECT * FROM memory_session_windows WHERE agent=?"
@@ -1125,7 +1196,7 @@ class MemorySessionCatalog:
             context = build_session_context(visible)
             llm_messages = convert_to_llm(context["messages"])
             return {
-                "entry": json.loads(active[0]) if active is not None else None,
+                "entry": _project_session_participants(db, agent, session_key, json.loads(active[0])) if active is not None else None,
                 "instanceEntry": json.loads(window["entry_json"]), "events": events,
                 "visibleEvents": visible, "context": context, "llmMessages": llm_messages,
                 "historyPrelude": [is_session_history_prelude(message) for message in context["messages"]],

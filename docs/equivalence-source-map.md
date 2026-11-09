@@ -164,7 +164,7 @@ in 1,086 cases.
 The newly observed OS-specific loop diagnostic remains uncredited alongside the earlier two
 differences. No claim of full equivalence follows from these bounded results.
 
-The current inventory maps **163 upstream modules**, with 15 present, 46 partial and three
+The current inventory maps **171 upstream modules**, with 15 present, 46 partial and three
 host-owned Python classifications. The shared-deadline package maps the actual control,
 signal, worker and corpus owners in
 `memory_core/tools/deadline.py`, together with get/search coordination and SQLite pre-deadline
@@ -176,18 +176,15 @@ no manager substitute. This grants no new index-worker, manager startup, live pr
 transcript visibility, or OS scheduling credit. Source and official release provenance remain
 separate; the release build is not independently reproduced.
 
-All four original deadline/cooldown and unavailable/partial conditions pass in the fresh
-committed full gate. Current bounded coverage is **41/128 conditions**, with **87 remaining**;
-19 contracts are complete, three partial and 42 pending. These are verification counts, not
-engineering-effort percentages. All 33 new cases match; the integrated catalog has 1,116
-matches, three uncredited differences and zero blocked cases across 1,119 cases on clean
-implementation `c40225f`. All 3,693 regressions and both clean package consumers pass. Complete raw envelopes, provider events,
-clock cuts, partial flags, warnings and debug durations remain visible. Cross-backend global
-entry order is not promised; complete ordered backend lanes are compared and original global
-interleaving is also retained. SDK-only real SQLite tests verify snapshot publication before
-embedding, writer access while a provider waits, and invalidation across revisions and provider
-rotation. Source inventory itself adds no acceptance credit. Final integrated counts are recorded
-in the [checklist](full-equivalence-checklist.md).
+Current bounded coverage is **45/128 conditions**, with **83 remaining**:
+21 contracts complete, 3 partial and 40 pending. These are unweighted verification
+counts, not engineering-effort percentages. The fresh integrated catalog records
+**1,166 matches, 3 uncredited differences and zero blocked cases across 1,169 cases**
+on clean implementation `ac2d366`. All 4,370 regressions and both clean package
+consumers pass. Complete raw source, tool, publication and authority evidence remains retained;
+source and official compiled release provenance stay separate. Source inventory itself adds
+no acceptance credit. The [checklist](full-equivalence-checklist.md) contains all 64 statuses,
+current limitations and retained first failures.
 
 | Contract | OpenClaw entry | Python entry | Python surface |
 | --- | --- | --- | --- |

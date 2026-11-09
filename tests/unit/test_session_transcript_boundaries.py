@@ -78,16 +78,46 @@ def test_disappeared_and_nonregular_file_sources_return_absence(tmp_path):
 
 def test_permission_error_in_file_reader_does_not_invent_an_empty_entry(tmp_path, monkeypatch):
     corpus, file = _source(tmp_path, json.dumps(_message('stored')).encode())
-    read = Path.read_bytes
+    open_file = os.open
 
-    def denied(path):
+    def denied(path, flags, *args, **kwargs):
         if path == file.abs_path:
             raise PermissionError('declared read failure')
-        return read(path)
+        return open_file(path, flags, *args, **kwargs)
 
-    monkeypatch.setattr(Path, 'read_bytes', denied)
+    monkeypatch.setattr(os, 'open', denied)
     assert corpus.read_index_entry(file) is None
     assert corpus.read_source_entry(file) is None
+
+
+@pytest.mark.parametrize('compressed', [False, True])
+def test_file_source_rejects_symlinks_before_reading_or_observing_messages(tmp_path, compressed):
+    corpus, file = _source(tmp_path, json.dumps(_message('Stored fact')).encode(), compressed=compressed)
+    target = tmp_path / 'outside'
+    file.abs_path.rename(target)
+    file.abs_path.symlink_to(target)
+    observed = []
+    assert corpus.read_index_entry(file, on_transcript_message=lambda *args: observed.append(args)) is None
+    assert observed == []
+
+
+@pytest.mark.parametrize('compressed', [False, True])
+def test_file_swapped_to_a_symlink_after_admission_is_not_read(tmp_path, monkeypatch, compressed):
+    corpus, file = _source(tmp_path, json.dumps(_message('Stored fact')).encode(), compressed=compressed)
+    target = tmp_path / 'outside'
+    target.write_bytes(file.abs_path.read_bytes())
+    open_file = os.open
+
+    def swapped(path, flags, *args, **kwargs):
+        if path == file.abs_path:
+            file.abs_path.unlink()
+            file.abs_path.symlink_to(target)
+        return open_file(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, 'open', swapped)
+    observed = []
+    assert corpus.read_index_entry(file, on_transcript_message=lambda *args: observed.append(args)) is None
+    assert observed == []
 
 
 def test_projection_callback_errors_are_nullable_for_file_but_operational_for_sqlite(tmp_path):

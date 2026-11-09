@@ -20,24 +20,25 @@ from packaging.requirements import Requirement
 from memory_core.project_name import DIST_NAME, PACKAGE_NAME
 
 ROOT = Path(__file__).resolve().parents[1]
+NOTICES = ("LICENSE.openclaw", "LICENSE.unicode")
 
 
 def validate_files(files: set[str], *, kind: str) -> None:
     """Validate normalized file names without extracting an untrusted archive."""
     required = {f"{PACKAGE_NAME}/__init__.py", f"{PACKAGE_NAME}/py.typed"}
-    notice = "LICENSE.openclaw"
     if kind == "sdist":
         # Hatch always includes its VCS ignore file in an sdist.
         # https://hatch.pypa.io/latest/plugins/builder/sdist/#default-file-selection
         allowed_root = {"pyproject.toml", "README.md", "CHANGELOG.md", "PKG-INFO",
-                        ".gitignore", notice}
-        required |= {"pyproject.toml", notice}
+                        ".gitignore", *NOTICES}
+        required |= {"pyproject.toml", *NOTICES}
     elif kind == "wheel":
         allowed_root = set()
-        notices = {p for p in files if p.endswith(f".dist-info/licenses/{notice}")}
-        if len(notices) != 1:
-            raise ValueError(f"Missing artifact file: {notice}")
-        required |= notices
+        for notice in NOTICES:
+            matches = {p for p in files if p.endswith(f".dist-info/licenses/{notice}")}
+            if len(matches) != 1:
+                raise ValueError(f"Missing artifact file: {notice}")
+            required |= matches
     else:
         raise ValueError(f"Unknown artifact kind: {kind}")
     for name in files:
@@ -50,7 +51,7 @@ def validate_files(files: set[str], *, kind: str) -> None:
             kind == "wheel" and len(path.parts) >= 2
             and path.parts[0].endswith(".dist-info")
             and "/".join(path.parts[1:]) in {
-                "METADATA", "WHEEL", "RECORD", f"licenses/{notice}",
+                "METADATA", "WHEEL", "RECORD", *(f"licenses/{notice}" for notice in NOTICES),
             }
         )
         if ".." in path.parts or path.is_absolute() or not (
@@ -65,7 +66,7 @@ def validate_metadata(metadata: Message, *, name: str, version: str) -> None:
     for key, expected in (("Name", name), ("Version", version), ("Requires-Python", ">=3.11")):
         if metadata.get(key) != expected:
             raise ValueError(f"{key}: expected {expected!r}, got {metadata.get(key)!r}")
-    if set(metadata.get_all("License-File", [])) != {"LICENSE.openclaw"}:
+    if set(metadata.get_all("License-File", [])) != set(NOTICES):
         raise ValueError("Missing upstream License-File metadata")
     if set(metadata.get_all("Provides-Extra", [])) != {"demo", "langgraph"}:
         raise ValueError("Unexpected optional extras")
@@ -93,9 +94,8 @@ def inspect_distribution(artifact: Path, *, version: str) -> None:
             files = {p for p in archive.namelist() if not p.endswith("/")}
             validate_files(files, kind="wheel")
             metadata_path = next(p for p in files if p.endswith(".dist-info/METADATA"))
-            notice_path = next(p for p in files if p.endswith("/LICENSE.openclaw"))
             metadata = archive.read(metadata_path)
-            notice = archive.read(notice_path)
+            notices = {name: archive.read(next(p for p in files if p.endswith("/" + name))) for name in NOTICES}
     else:
         with tarfile.open(artifact) as archive:
             members = {p.name: p for p in archive.getmembers() if not p.isdir()}
@@ -104,9 +104,9 @@ def inspect_distribution(artifact: Path, *, version: str) -> None:
                 raise ValueError("Unexpected sdist root or non-regular file")
             validate_files({p.removeprefix(prefix) for p in members}, kind="sdist")
             metadata = archive.extractfile(members[prefix + "PKG-INFO"]).read()
-            notice = archive.extractfile(members[prefix + "LICENSE.openclaw"]).read()
+            notices = {name: archive.extractfile(members[prefix + name]).read() for name in NOTICES}
     validate_metadata(message_from_bytes(metadata), name=DIST_NAME, version=version)
-    if notice != (ROOT / "LICENSE.openclaw").read_bytes():
+    if any(content != (ROOT / name).read_bytes() for name, content in notices.items()):
         raise ValueError("Upstream license notice changed in artifact")
 
 
@@ -186,6 +186,30 @@ with tempfile.TemporaryDirectory() as scratch:
     replay = reopened.append_message("durable", user, session_key=durable_key, event_id="consumer-retry")
     assert replay["appended"] is False and replay["anchor"]["generation"] == first["anchor"]["generation"]
     assert len(reopened.read_transcript("durable", session_key=durable_key).events) == 3
+    trust_module = importlib.import_module(package_name + ".turn_trust")
+    dispatch_module = importlib.import_module(package_name + ".turn_tool_dispatch")
+    provenance_module = importlib.import_module(package_name + ".consolidation.artifact_provenance")
+    ledger = provenance_module.MemoryArtifactProvenanceStore(root / "artifact-consumer.sqlite")
+    trust = trust_module.TurnTrust("consumer-turn", sender_is_owner=True)
+    observer = trust.write_observer(store=ledger, mutation_root=session_root, workspace_dir=session_root,
+                                    session_id="durable", session_key=durable_key, now=lambda: 1000)
+    dispatcher = dispatch_module.TurnToolDispatcher(trust, [dispatch_module.TurnTool(
+        "lookup", lambda _call_id, _arguments: {"content": [{"type": "text", "text": "External note"}],
+                                               "extra": {"preserved": True}},
+        result_content_source="network",
+    )])
+    assert not trust.is_tainted()
+    assert dispatcher.dispatch("lookup", {}, tool_call_id="consumer-lookup")["extra"] == {"preserved": True}
+    assert trust.is_tainted()
+    target = session_root / "memory/consumer-turn.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    observer.write(absolute_path=target, content_before="", content_after="External note",
+                   commit=lambda: target.write_text("External note", encoding="utf-8"))
+    assert ledger.read(workspace_dir=session_root, relative_path="memory/consumer-turn.md").origin_class == "untrusted"
+    stamped = trust.stamp_assistant({"role": "assistant", "content": [{"type": "text", "text": "Saved"}]})
+    reopened.append_message("durable", stamped, session_key=durable_key, event_id="consumer-tainted")
+    restored = catalog_module.MemorySessionCatalog(catalog.path).read_continuation("durable", session_key=durable_key)
+    assert restored["llmMessages"][-1]["__openclaw"]["turnTainted"] is True
     data = json.dumps({"type": "message", "message": {"role": "user", "content": "Cedar"}}).encode()
     if sys.version_info >= (3, 14):
         from compression import zstd
@@ -197,9 +221,29 @@ with tempfile.TemporaryDirectory() as scratch:
     archive.write_bytes(compressed)
     codec = importlib.import_module(package_name + ".session_archive_codec")
     assert codec.read_session_transcript_bytes(archive) == data
+    discovery = importlib.import_module(package_name + ".workspace")
+    extra = root / "notes"
+    extra.mkdir()
+    (extra / "😀.md").write_text("Supplementary filename")
+    (extra / "é.md").write_text("One UTF-16 unit")
+    files = discovery.list_memory_files(root, [{"path": "notes", "pattern": "??.md"}])
+    assert [p.name for p in files if p.parent == extra] == ["😀.md"]
+    (extra / "𞛀.md").write_text("Unicode 17 letter")
+    files = discovery.list_memory_files(root, [{"path": "notes", "pattern": "[[:alpha:]].md"}])
+    assert {p.name for p in files if p.parent == extra} == {"é.md", "𞛀.md"}
+    mismatch = root / "another-workspace"
+    try:
+        core.Memory.from_workspace(mismatch, config=kit.memory.config)
+    except ValueError as error:
+        assert "different workspace" in str(error)
+    else:
+        raise AssertionError("A configured workspace owner must not rebind another workspace")
+    assert not mismatch.exists()
 print("installed core imports and FTS host lifecycle passed")
 print("installed session authority and compressed archive consumers passed")
 print("installed durable append, continuation and replay consumers passed")
+print("installed real dispatch, live write provenance and stored turn trust consumers passed")
+print("installed extra discovery, Unicode facts and workspace owner consumers passed")
 '''
 
 

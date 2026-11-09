@@ -26,7 +26,7 @@ def test_case_catalog_is_deterministic_unique_and_standard_json():
         "sessions.corpus-admission", "sessions.visibility-lineage", "sessions.durable-context",
         "trust.configured-redaction",
         "engine.unicode-collation",
-        "storage.discovery", "storage.path-safety", "indexing.identity",
+        "storage.discovery", "storage.workspace-isolation", "storage.path-safety", "indexing.identity",
         "indexing.embedding-cache", "indexing.incremental-sync",
         "indexing.transaction-publication",
         "chunking.markdown-boundaries", "chunking.utf16-cjk-budget",

@@ -8,9 +8,12 @@ dynamic = ["version"]
 description = "memory-core: memory for LLM agents, an unofficial Python port of OpenClaw memory-core"
 readme = "README.md"
 requires-python = ">=3.11"
+license-files = ["LICENSE.openclaw", "LICENSE.unicode"]
 dependencies = [
   "httpx>=0.27",
   "zstandard>=0.23; python_version < '3.14'",
+  "wcmatch>=10.1,<11",
+  "bracex>=3.2.2,<4",
 ]
 
 [project.optional-dependencies]
@@ -48,7 +51,7 @@ path = "memory_core/__init__.py"
 packages = ["memory_core"]
 
 [tool.hatch.build.targets.sdist]
-only-include = ["memory_core", "README.md", "CHANGELOG.md", "LICENSE.openclaw"]
+only-include = ["memory_core", "README.md", "CHANGELOG.md", "LICENSE.openclaw", "LICENSE.unicode"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

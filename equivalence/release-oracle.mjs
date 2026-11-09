@@ -26,6 +26,7 @@ const operations = {
   "transcript-boundary-runtime": ["transcript-boundary-runtime.mjs", "runTranscriptBoundaryRuntime"],
   "durable-session-runtime": ["durable-session-runtime.mjs", "runDurableSessionRuntime"],
   "turn-trust-runtime": ["turn-trust-runtime.mjs", "runTurnTrustRuntime"],
+  "workspace-isolation-runtime": ["workspace-isolation-runtime.mjs", "runWorkspaceIsolationRuntime"],
 };
 const results = [];
 for (const testCase of request.cases) {

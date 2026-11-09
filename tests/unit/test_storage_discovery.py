@@ -115,7 +115,7 @@ def test_injected_fixture_failures_restore_os_functions_and_preserve_inputs():
     assert case == before
 
 
-def test_default_root_subset_does_not_claim_extra_path_coverage():
+def test_discovery_registry_keeps_coverage_unclaimed_until_complete_native_review():
     cases = build_storage_discovery_cases()
     assert cases == build_storage_discovery_cases()
     assert len({case["id"] for case in cases}) == len(cases)

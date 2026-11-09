@@ -226,6 +226,7 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.flush_execution import build_flush_execution_cases
     from equivalence.session_projection import build_session_projection_cases
     from equivalence.storage_discovery import build_storage_discovery_cases
+    from equivalence.storage_boundaries import build_workspace_isolation_cases
     from equivalence.storage_paths import build_storage_path_cases
 
     cases.extend(build_index_identity_cases())
@@ -254,6 +255,7 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     cases.extend(build_flush_execution_cases())
     cases.extend(build_session_projection_cases())
     cases.extend(build_storage_discovery_cases())
+    cases.extend(build_workspace_isolation_cases())
     cases.extend(build_storage_path_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
@@ -282,6 +284,10 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.durable_sessions import run_durable_sessions
 
         return run_durable_sessions(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "workspace-isolation-runtime":
+        from equivalence.storage_boundaries import run_workspace_isolation
+
+        return run_workspace_isolation(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation in {"session-contract", "session-contract-runtime", "session-contract-helper-runtime"}:
         from equivalence.session_contract import run_session_contract
 

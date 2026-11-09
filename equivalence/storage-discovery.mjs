@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { syncBuiltinESMExports } from "node:module";
 
 export async function runStorageDiscovery(input, importReference) {
   const { listMemoryFiles } = await importReference("packages/memory-host-sdk/src/host/internal.ts");
@@ -14,6 +15,7 @@ export async function runStorageDiscovery(input, importReference) {
   const remove = async (value) => fs.rm(value, { force: true, recursive: true });
   const originalScan = fs.readdir;
   const originalStat = fs.lstat;
+  const originalHome = os.homedir;
   try {
     switch (input.workspaceKind) {
       case "missing": break;
@@ -59,11 +61,21 @@ export async function runStorageDiscovery(input, importReference) {
     };
     async function snapshot() {
       try {
-        return { files: (await listMemoryFiles(root)).map(relative) };
+        const extraPaths = (input.extraPaths ?? []).map((entry) => typeof entry === "string"
+          ? entry.replaceAll("$FIXTURE", directory)
+          : { ...entry, path: entry.path.replaceAll("$FIXTURE", directory) });
+        const skipped = [];
+        const callback = input.captureSkippedSymlinkRoots ? (value) => skipped.push(relative(value)) : undefined;
+        return { files: (await listMemoryFiles(root, extraPaths, input.multimodal, callback)).map(relative),
+          ...(callback ? { skippedSymlinkRoots: skipped } : {}) };
       } catch (error) {
         if (error.name !== "MemorySourceScanError") throw error;
         return { error: { type: error.name, code: error.code ?? null, path: relative(error.path) } };
       }
+    }
+    if (input.homeRoot) {
+      os.homedir = () => path.join(directory, "home");
+      syncBuiltinESMExports();
     }
     const snapshots = [await snapshot()];
     for (const step of input.steps ?? []) {
@@ -78,6 +90,8 @@ export async function runStorageDiscovery(input, importReference) {
   } finally {
     fs.readdir = originalScan;
     fs.lstat = originalStat;
+    os.homedir = originalHome;
+    syncBuiltinESMExports();
     await remove(directory);
   }
 }

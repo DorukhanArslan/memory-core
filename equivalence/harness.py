@@ -490,6 +490,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "session-contract-runtime", "session-contract-helper-runtime",
             "transcript-boundary-runtime", "durable-session-runtime",
             "turn-trust-runtime",
+            "workspace-isolation-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -656,6 +657,16 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 except (OSError, ValueError):
                     raise HarnessError("session-contract-runtime-owner-unavailable",
                                        "The reviewed native session admission/visibility owners could not be verified.") from None
+            if any(case["operation"] == "workspace-isolation-runtime" for case in runtime_cases):
+                from equivalence.workspace_isolation_runtime_bindings import prepare_workspace_isolation_runtime_bindings
+
+                try:
+                    report["workspaceIsolationRuntimeBindings"] = prepare_workspace_isolation_runtime_bindings(
+                        checkout, Path(runtime_config["runtimeRoot"]),
+                    )
+                except (OSError, ValueError):
+                    raise HarnessError("workspace-isolation-runtime-owner-unavailable",
+                                       "The reviewed native workspace/index/recall/checkpoint owners could not be verified.") from None
             report["releaseSources"], report["releaseTraces"], report["runtimeDiagnostics"] = [], [], []
             if any(case["operation"] == "transcript-boundary-runtime" for case in runtime_cases):
                 from equivalence.transcript_boundary_runtime_bindings import prepare_transcript_boundary_runtime_bindings

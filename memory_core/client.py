@@ -82,6 +82,11 @@ class Memory:
     ) -> Memory:
         root = Path(workspace_dir).resolve()
         resolved_config = config or MemoryConfig(workspace_dir=root)
+        if Path(resolved_config.workspace_dir).resolve() != root:
+            raise ValueError(
+                "config.workspace_dir belongs to a different workspace; select its matching "
+                "configuration or use SubjectMemory.open to rebase a shared subject configuration"
+            )
         if session_catalog is not None:
             if session_catalog.agent_id != normalize_session_agent_id(resolved_config.agent_id):
                 raise ValueError("The session catalog belongs to a different agent")

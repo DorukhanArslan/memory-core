@@ -20,12 +20,13 @@ OpenClaw is the technical reference. You keep your model, tools, and agent loop;
 ### Why a Python port when OpenClaw already has memory?
 
 OpenClaw already has a TypeScript memory system.
-At the reference release, its [memory plugin](https://github.com/openclaw/openclaw/blob/v2026.9.6/extensions/memory-core/index.ts) registers tools through OpenClaw's plugin API and uses runtime services.
+At the reference release, its [memory plugin](https://github.com/openclaw/openclaw/blob/v2026.9.9/extensions/memory-core/index.ts) registers tools through OpenClaw's plugin API and uses runtime services.
 A Python application can use that code through a bridge or a separate service.
 This SDK offers direct Python memory APIs inside the application you already run.
 You keep your existing model calls, workflow, session store, and deployment.
 
-The core requires Python **3.11 or newer** and has one runtime dependency: `httpx`.
+The core requires Python **3.11 or newer**, with `httpx`, `wcmatch` and `bracex`.
+Python versions before 3.14 also use `zstandard` for compressed transcript archives.
 It uses Python's `sqlite3` module. Normal SDK use needs no Node.js, running OpenClaw instance, or separate vector database.
 Node.js is needed for the upstream oracle tests.
 
@@ -134,11 +135,24 @@ Start with the interface that fits the application you already have.
 | --- | --- | --- |
 | A Python service that needs storage and retrieval | `Memory` | [Quickstart](#quickstart) |
 | An agent with its own model and tool loop | `HostKit` | [Host loop example](examples/quickstart.py) · [Guide](docs/host_kit.md) |
+| A chat that needs durable context and serialized memory finalization | `HostSessionRunner` | [Session lifecycle guide](docs/host_session_lifecycle.md) · [Offline example](examples/host_session_lifecycle.py) |
 | A LangGraph workflow | Graph and checkpoint helpers | [LangGraph guide](docs/integrations/langgraph.md) |
 | A streaming assistant with separate subjects | Live SDK | [Live SDK guide](docs/integrations/live.md) |
 
 `HostKit` prepares memory prompts and tools, dispatches tool calls, and can request a memory flush.
 Your host executes model turns and stores the returned session state.
+
+`HostSessionRunner` connects that kit to a durable session catalog and your async model callbacks.
+It records actual messages and tool results, completes due maintenance through your callback,
+and waits for accepted writes and index publication before admitting the next turn.
+The offline example performs a real save, immediate FTS recall and catalog reopen without a model request:
+
+```bash
+python examples/host_session_lifecycle.py
+```
+
+This SDK publication policy has separate [host equivalence checks](docs/full-equivalence-checklist.md)
+that remain open against OpenClaw's complete runtime.
 The model uses the offered recall tools; `before_turn()` does not search automatically.
 Replace `call_my_llm` in the host loop example with your model call and tool loop before running it.
 

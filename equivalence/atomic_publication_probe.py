@@ -40,17 +40,54 @@ def cases():
     ]]
 
 
-def _error(error):
-    return {'name': getattr(error, 'name', type(error).__name__), 'message': str(error),
-            'code': getattr(error, 'code', errno.errorcode.get(getattr(error, 'errno', None))),
-            'path': str(error.path) if hasattr(error, 'path') else None,
-            'publication': getattr(error, 'publication', None),
-            'cause': _error(error.__cause__) if error.__cause__ is not None else None}
+def promotion_cases():
+    seed = {'initial': '# Memory\n\n- original\n', 'replacement': '# Memory\n\n- replacement\n',
+            'mode': 0o640, 'parentMode': 0o555, 'allowInPlaceFallback': True}
+    return [{'id': name, 'input': {**seed, **extra}} for name, extra in [
+        ('promotion-readonly-directory-fallback', {}),
+        ('promotion-readonly-target-rejects', {'mode': 0o440}),
+        ('promotion-partial-write-restores-original', {'partialBytes': 5,
+            'fault': {'stage': 'fallback-write-partial', 'code': 'EFBIG', 'message': 'literal in-place write failure'}}),
+        ('promotion-file-sync-restores-original',
+            {'fault': {'stage': 'fallback-sync', 'code': 'EIO', 'message': 'literal in-place sync failure'}}),
+    ]]
+
+
+def _error(error, *, absent_publication=True):
+    def observe(value):
+        if isinstance(value, BaseException):
+            return _error(value, absent_publication=absent_publication)
+        if isinstance(value, (tuple, list)):
+            return [observe(item) for item in value]
+        if isinstance(value, dict):
+            return {key: observe(item) for key, item in value.items()}
+        return value
+
+    cause = getattr(error, 'cause', error.__cause__)
+    envelope = {'name': getattr(error, 'name', type(error).__name__), 'message': str(error),
+                'code': getattr(error, 'code', errno.errorcode.get(getattr(error, 'errno', None))),
+                'path': str(error.path) if hasattr(error, 'path') else None,
+                'cause': _error(cause, absent_publication=absent_publication) if cause is not None else None}
+    if absent_publication or hasattr(error, 'publication'):
+        envelope['publication'] = getattr(error, 'publication', None)
+    private = {'name', 'message', 'stack', 'code', 'path', 'cause', 'publication', 'errno', 'syscall', 'original_exception'}
+    envelope.update({key: observe(value) for key, value in vars(error).items() if key not in private})
+    return envelope
 
 
 def _raw_error(error):
-    properties = {key: _raw_error(value) if isinstance(value, BaseException) else str(value) if isinstance(value, Path) else value
-                  for key, value in vars(error).items()}
+    def observe(value):
+        if isinstance(value, BaseException):
+            return _raw_error(value)
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, (tuple, list)):
+            return [observe(item) for item in value]
+        if isinstance(value, dict):
+            return {key: observe(item) for key, item in value.items()}
+        return value
+
+    properties = {key: observe(value) for key, value in vars(error).items()}
     properties.update({key: getattr(error, key) for key in ('errno', 'strerror', 'filename', 'filename2') if hasattr(error, key)})
     return {'type': type(error).__name__, 'module': type(error).__module__, 'message': str(error),
             'properties': properties, 'args': error.args, 'stack': ''.join(traceback.format_exception(error)),
@@ -66,8 +103,10 @@ def sdk_probe(input, directory):
     if input['initial'] is not None:
         target.write_text(input['initial'])
         target.chmod(input['mode'])
+    if 'parentMode' in input:
+        root.chmod(input['parentMode'])
     raw = {'input': input, 'directory': str(directory), 'pid': os.getpid(), 'calls': [], 'tempPaths': []}
-    original = {name: getattr(os, name) for name in ('open', 'fsync', 'replace', 'unlink', 'chmod', 'close')}
+    original = {name: getattr(os, name) for name in ('open', 'fsync', 'replace', 'unlink', 'chmod', 'close', 'write', 'pwrite', 'fchmod', 'ftruncate')}
     paths = {}
     armed = True
 
@@ -86,11 +125,12 @@ def sdk_probe(input, directory):
             raise ProbeIOError(input['fault'], path)
 
     def io_open(path, flags, mode=0o777, *args, **kwargs):
-        fd = original['open'](path, flags, mode, *args, **kwargs)
-        paths[fd] = str(path)
-        raw['calls'].append({'operation': 'open', 'path': str(path), 'flags': flags, 'mode': mode, 'fd': fd})
+        raw['calls'].append({'operation': 'open', 'path': str(path), 'flags': flags, 'mode': mode})
         if flags & os.O_CREAT and flags & os.O_EXCL:
             raw['tempPaths'].append(str(path))
+        fd = original['open'](path, flags, mode, *args, **kwargs)
+        paths[fd] = str(path)
+        raw['calls'][-1]['returnedFd'] = fd
         return fd
 
     def fsync(fd):
@@ -101,7 +141,16 @@ def sdk_probe(input, directory):
             fault('temp-sync', path)
         if path == str(root):
             fault('parent-sync', path)
+        if path == str(target) and input.get('allowInPlaceFallback'):
+            fault('fallback-sync', path)
         return original['fsync'](fd)
+
+    def write(fd, data):
+        raw['calls'].append({'operation': 'write', 'fd': fd, 'bytes': bytes(data).hex()})
+        if (paths.get(fd) == str(target) and input.get('fault', {}).get('stage') == 'fallback-write-partial' and armed):
+            original['pwrite'](fd, data[:input['partialBytes']], 0)
+            fault('fallback-write-partial', target)
+        return original['write'](fd, data)
 
     def replace(source, destination):
         raw['calls'].append({'operation': 'replace', 'source': str(source), 'destination': str(destination)})
@@ -124,16 +173,27 @@ def sdk_probe(input, directory):
 
     def observed(name):
         def call(*args, **kwargs):
-            raw['calls'].append({'operation': name, 'arguments': [str(item) if isinstance(item, Path) else item for item in args]})
+            raw['calls'].append({'operation': name, 'arguments': [
+                str(item) if isinstance(item, Path) else {'type': 'bytes', 'hex': bytes(item).hex()}
+                if isinstance(item, (memoryview, bytes)) else item for item in args]})
             return original[name](*args, **kwargs)
         return call
 
     try:
         with ExitStack() as stack:
             for name, function in [('open', io_open), ('fsync', fsync), ('replace', replace),
-                                   *[(name, observed(name)) for name in ('unlink', 'chmod', 'close')]]:
+                                   ('write', write),
+                                   *[(name, observed(name)) for name in ('unlink', 'chmod', 'close', 'pwrite', 'fchmod', 'ftruncate')]]:
                 stack.enter_context(patch.object(os, name, function))
-            returned = MemoryCurator(root)._write_target('MEMORY.md', input['initial'], input['replacement'])
+            if input.get('allowInPlaceFallback'):
+                from memory_core.atomic_publication import commit_memory_content, hash_memory_content
+
+                raw['actualOwner'] = 'atomic_publication.commit_memory_content (matching promotion opt-in)'
+                returned = commit_memory_content(target, content=input['replacement'], expected_content=input['initial'],
+                                                  expected_hash=hash_memory_content(input['initial']), allow_in_place_fallback=True)
+            else:
+                raw['actualOwner'] = 'curation.MemoryCurator._write_target'
+                returned = MemoryCurator(root)._write_target('MEMORY.md', input['initial'], input['replacement'])
         result = {'status': 'fulfilled', 'returned': returned}
     except BaseException as error:
         raw['exception'] = _raw_error(error)
@@ -167,6 +227,7 @@ def main():
     parser.add_argument('--runtime', type=Path, required=True)
     parser.add_argument('--node', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--profile', choices=['replace', 'promotion-native-only', 'promotion'], default='replace')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
     runtime = prepare_release_runtime(args.checkout, args.runtime)
@@ -177,7 +238,7 @@ def main():
                   'artifacts': {name: hashlib.sha256((args.runtime / 'node_modules/openclaw' / name).read_bytes()).hexdigest() for name in ARTIFACTS},
                   'node': {'path': str(args.node.resolve()), 'sha256': hashlib.sha256(args.node.read_bytes()).hexdigest()},
                   'normalization': 'Only exact owned fixture prefix and each actual exclusive-open temp pathname map to fixed labels. Complete raw original values remain retained; no publication marker is inferred.'}
-    for case in cases():
+    for case in promotion_cases() if args.profile.startswith('promotion') else cases():
         directory = args.output / case['id']
         directory.mkdir()
         native_dir = directory / 'native'
@@ -194,6 +255,10 @@ def main():
         if process.returncode:
             raise RuntimeError(f'Native development probe failed: {case["id"]}; streams retained')
         native = json.loads(process.stdout)
+        if args.profile == 'promotion-native-only':
+            records.append({'id': case['id'], 'input': case['input'], 'nativeOnly': True,
+                            'native': _codec(native['result'], native_dir, native['raw']['tempPaths'])})
+            continue
         sdk = sdk_probe(case['input'], directory / 'sdk')
         (directory / 'sdk.raw.json').write_text(json.dumps(sdk, indent=2))
         native_result = _codec(native['result'], native_dir, native['raw']['tempPaths'])
@@ -204,7 +269,7 @@ def main():
         raise RuntimeError('The authenticated runtime changed during development observations')
     report = {'kind': 'uncredited-atomic-publication-development-observations', 'provenance': provenance, 'cases': records}
     (args.output / 'report.json').write_text(json.dumps(report, indent=2))
-    print(json.dumps({'matched': sum(item['matched'] for item in records), 'cases': len(records), 'coverageCredit': False}))
+    print(json.dumps({'matched': sum(item.get('matched', False) for item in records), 'cases': len(records), 'coverageCredit': False}))
 
 
 if __name__ == '__main__':

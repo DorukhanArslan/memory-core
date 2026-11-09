@@ -152,6 +152,24 @@
           "symbol": "writeFileWithinRoot",
           "anchor": "export async function writeFileWithinRoot(params: {",
           "line": 151
+        },
+        {
+          "path": "src/agents/workspace-bootstrap-publish.ts",
+          "symbol": "publishBootstrapFile",
+          "anchor": "export async function publishBootstrapFile(",
+          "line": 15
+        },
+        {
+          "path": "src/agents/agent-tools.read.ts",
+          "symbol": "appendMemoryFlushContent",
+          "anchor": "async function appendMemoryFlushContent(params: {",
+          "line": 689
+        },
+        {
+          "path": "extensions/memory-core/src/short-term-promotion-apply.ts",
+          "symbol": "applyShortTermPromotions",
+          "anchor": "export async function applyShortTermPromotions(",
+          "line": 184
         }
       ],
       "python": [
@@ -177,14 +195,45 @@
           "path": "memory_core/atomic_publication.py",
           "symbol": "commit_memory_content",
           "anchor": "def commit_memory_content(",
-          "line": 157
+          "line": 385
+        },
+        {
+          "path": "memory_core/atomic_publication.py",
+          "symbol": "append_memory_content",
+          "anchor": "def append_memory_content(",
+          "line": 197
+        },
+        {
+          "path": "memory_core/atomic_publication.py",
+          "symbol": "publish_bootstrap_file",
+          "anchor": "def publish_bootstrap_file(path: Path, content: str) -> bool:",
+          "line": 280
+        },
+        {
+          "path": "memory_core/bootstrap/lifecycle.py",
+          "symbol": "_write_file_if_missing",
+          "anchor": "def _write_file_if_missing(path: Path, content: str) -> bool:",
+          "line": 290
+        },
+        {
+          "path": "memory_core/consolidation/promotion.py",
+          "symbol": "_append_to_memory",
+          "anchor": "def _append_to_memory(",
+          "line": 1529
+        },
+        {
+          "path": "memory_core/consolidation/llm_consolidation.py",
+          "symbol": "commit_deep_consolidation",
+          "anchor": "def commit_deep_consolidation(",
+          "line": 815
         }
       ],
       "implementation": "partial",
       "notes": [
-        "The real curator and forget callers use a shared checked publication owner with preimage checks, exclusive temporary creation, preserved regular-file modes and post-rename identity verification. Curator source admission remains stricter than the generic writer.",
-        "Actual native/current-SDK development probes establish that temporary-file fsync ignores EPERM only and parent-directory fsync is best-effort; directory EIO is swallowed by both. Dispatched rename failures and post-publication inode changes retain actual uncertain/committed owner errors through the curated tool and host payload.",
-        "The native promotion-only in-place permission fallback, rooted append/exclusive creation, broader concurrent rename/failure branches and authenticated whole-condition proof remain unverified. Development observations grant no acceptance credit."
+        "The real curator and forget callers use a shared checked publication owner with preimage checks, exclusive temporary creation, preserved regular-file modes and post-rename identity verification. Curator source admission remains stricter than the generic writer; it never opts into promotion-only in-place repair.",
+        "The actual promotion caller opts into permission fallback, restores the old bytes after an in-place write/sync failure, and deep consolidation retains real reserved lineage after dispatched publication errors. Rooted daily append preserves partial bytes and plain errors, private exclusive bootstrap creation stages all bytes before visibility, and existing bootstrap entries remain unchanged.",
+        "Development probes retain complete errors, causes, FsSafe categories, surviving bytes/modes and physical receipts. Append and replacement parent-directory fsync are best-effort; retained-directory bootstrap staging ignores only parent-sync EPERM and exposes a real published receipt on other post-publication sync failures. This distinction replaces the earlier broad parent-fsync assumption.",
+        "Genuine per-process kernel EFBIG, literal write/fsync faults, checked concurrent replacements and exclusive creation during staging are development observations only. Physical receipt bigint identities/timestamps/temp names remain noninterchangeable in the retained full-error comparison. Broader cleanup/close, indeterminate bootstrap publication, authenticated whole-condition proof and caller reconciliation for plain partial append remain unverified; no acceptance credit is assigned."
       ]
     },
     {
@@ -2872,7 +2921,7 @@
           "path": "memory_core/bootstrap/lifecycle.py",
           "symbol": "initialize_agent_workspace",
           "anchor": "def initialize_agent_workspace(",
-          "line": 420
+          "line": 417
         },
         {
           "path": "memory_core/bootstrap/files.py",
@@ -3639,31 +3688,31 @@
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "consolidate_memory",
           "anchor": "def consolidate_memory(",
-          "line": 532
+          "line": 533
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "apply_memory_consolidation_plan",
           "anchor": "def apply_memory_consolidation_plan(",
-          "line": 435
+          "line": 436
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "plan_deep_consolidation",
           "anchor": "def plan_deep_consolidation(",
-          "line": 776
+          "line": 777
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "commit_deep_consolidation",
           "anchor": "def commit_deep_consolidation(",
-          "line": 814
+          "line": 815
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "record_deep_consolidation_history",
           "anchor": "def record_deep_consolidation_history(",
-          "line": 920
+          "line": 930
         }
       ],
       "implementation": "partial",
@@ -7872,6 +7921,23 @@
         "resolveSandboxedSessionToolContext",
         "resolveSessionToolAccess",
         "runSessionToolActionWithConflictReceipt"
+      ]
+    },
+    {
+      "path": "src/agents/workspace-bootstrap-publish.ts",
+      "sha256": "abad65e904b473f569e4875664fee1d1ff53b6d3d9f8c3cdf428246f079a9659",
+      "sourceImports": [
+        "../infra/directory-durability.js",
+        "../infra/errno.js",
+        "../infra/fs-safe.js",
+        "./workspace-file-read.js",
+        "node:fs/promises",
+        "node:path"
+      ],
+      "exportedDeclarations": [
+        "WorkspaceBootstrapSeedConflictError",
+        "publishAgentInstructions",
+        "publishBootstrapFile"
       ]
     },
     {

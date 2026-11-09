@@ -24,15 +24,16 @@ import hashlib
 import json
 import logging
 import math
-import os
 import re
-import secrets
 import unicodedata
 from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from memory_core.atomic_publication import (
+    MemoryAtomicPublicationError, MemoryWriteConflictError, commit_memory_content,
+)
 from memory_core.project_name import DIST_NAME, DISPLAY_NAME, PACKAGE_NAME
 from memory_core.bootstrap._js import (
     JS_NON_SPACE,
@@ -895,26 +896,35 @@ def commit_deep_consolidation(
             skipped_reason="MEMORY.md changed immediately before the consolidation rename"
         )
     try:
-        _replace_file(memory_path, result.content)
-    except PermissionError:
+        _replace_file(memory_path, result.content, expected_hash=base_hash)
+    except MemoryAtomicPublicationError:
+        # The original caller keeps reserved lineage when mutation was dispatched;
+        # it must not fall back and append or claim that no write took place.
+        raise
+    except Exception as error:
         if rollback_origins is not None:
             rollback_origins()
+        if isinstance(error, MemoryWriteConflictError):
+            return DeepConsolidationCommit(
+                skipped_reason="MEMORY.md changed immediately before the consolidation rename"
+            )
+        code = getattr(error, "code", None)
+        if code is None and isinstance(error, OSError):
+            import errno
+
+            code = errno.errorcode.get(error.errno)
+        if code not in {"EACCES", "EPERM", "EEXIST", "EROFS"}:
+            raise
         return DeepConsolidationCommit(
             skipped_reason="the MEMORY.md directory blocked atomic replacement"
         )
     return DeepConsolidationCommit(result=result, retained_preimage_keys=retained_preimage_keys)
 
 
-def _replace_file(path: Path, content: str) -> None:
+def _replace_file(path: Path, content: str, *, expected_hash: str | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     target = path.resolve() if path.is_symlink() else path
-    temporary = target.with_name(f"{target.name}.promotion.{os.getpid()}.{secrets.token_hex(4)}.tmp")
-    temporary.write_text(content, encoding="utf-8")
-    try:
-        os.replace(temporary, target)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
+    commit_memory_content(target, content=content, expected_hash=expected_hash, temp_prefix=f"{target.name}.promotion")
 
 
 def record_deep_consolidation_history(

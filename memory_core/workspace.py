@@ -765,18 +765,17 @@ class MemoryWorkspace:
             return path
         text = entry.rstrip("\r\n")
         needs_separator = False
-        if path.exists() and path.stat().st_size > 0:
+        if not text.startswith("\n") and path.exists() and path.stat().st_size > 0:
             with path.open("rb") as existing:
                 existing.seek(-1, 2)
                 needs_separator = existing.read(1) != b"\n"
 
         def commit() -> None:
+            from memory_core.atomic_publication import append_memory_content
+
             if assert_current is not None:
                 assert_current()
-            with path.open("a", encoding="utf-8") as handle:
-                if assert_current is not None:
-                    assert_current()
-                handle.write(f"{chr(10) if needs_separator else ''}{text}\n")
+            append_memory_content(path, text + "\n", prepend_newline_if_needed=True, before_write=assert_current)
 
         if provenance is None:
             commit()

@@ -63,7 +63,8 @@ def _reject(tmp_path, preload, context, *, context_variable, additional=None, re
     request.write_text(json.dumps({"kind": "heartbeat-doctor-sequence", "phase": 0, "input": phase("findings"),
                                    "fixtureDirectory": str(tmp_path / "fixture"), **(request_override or {})}))
     context = {**context, "requestPath": str(request), "requestSha256": hashlib.sha256(request.read_bytes()).hexdigest()}
-    context_path = tmp_path / "context.json"; context_path.write_text(json.dumps(context))
+    context_path = tmp_path / "context.json"
+    context_path.write_text(json.dumps(context))
     environment = {"PATH": os.defpath, "LANG": "C.UTF-8", "TZ": "UTC", "OPENAI_API_KEY": "", "OPENROUTER_API_KEY": "",
                    context_variable: str(context_path), **(additional or {})}
     result = subprocess.run([str(EXECUTABLE), "--import", str(ROOT / "equivalence" / preload), "--eval",
@@ -187,17 +188,21 @@ def test_public_guard_binds_complete_operations_snapshots_and_envelope():
               "result": {"operations": [[]], "snapshots": deepcopy(raw["snapshots"])}}
     _validate_public_observation(actual, request)
     for key in ("kind", "covers", "raw", "result"):
-        omitted = deepcopy(actual); del omitted[key]
+        omitted = deepcopy(actual)
+        del omitted[key]
         with pytest.raises(ValueError, match="envelope"):
             _validate_public_observation(omitted, request)
     for replacement in ([], raw["snapshots"][:1], [{"projected": True}, *raw["snapshots"][1:]]):
-        changed = deepcopy(actual); changed["result"]["snapshots"] = replacement
+        changed = deepcopy(actual)
+        changed["result"]["snapshots"] = replacement
         with pytest.raises(ValueError, match="snapshot"):
             _validate_public_observation(changed, request)
-    changed = deepcopy(actual); changed["result"]["operations"] = []
+    changed = deepcopy(actual)
+    changed["result"]["operations"] = []
     with pytest.raises(ValueError, match="snapshot"):
         _validate_public_observation(changed, request)
-    changed = deepcopy(actual); changed["result"]["projected"] = True
+    changed = deepcopy(actual)
+    changed["result"]["projected"] = True
     with pytest.raises(ValueError, match="envelope"):
         _validate_public_observation(changed, request)
 
@@ -302,7 +307,8 @@ def test_interrupted_communication_stops_only_owned_child_and_preserves_streams_
     _install_child(monkeypatch, child)
     # Previously emitted caller-state files are not replaced by forced cleanup.
     original_state = b'{"original":"return-cut"}'
-    state = tmp_path / "native.observation.raw.json"; state.write_bytes(original_state)
+    state = tmp_path / "native.observation.raw.json"
+    state.write_bytes(original_state)
     with pytest.raises(type(failure)) as caught:
         _capture_process(["synthetic-interruption-guard"], tmp_path, "native", timeout=60)
     assert caught.value is failure

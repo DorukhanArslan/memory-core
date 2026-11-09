@@ -16,7 +16,7 @@ import subprocess
 import sys
 
 from equivalence.heartbeat_node_authority import prepare_heartbeat_node_authority
-from equivalence.heartbeat_runtime_bindings import COMPILED_HASHES, prepare_heartbeat_runtime_bindings
+from equivalence.heartbeat_runtime_bindings import prepare_heartbeat_runtime_bindings
 from equivalence.release_runtime import prepare_release_runtime
 
 ROOT = Path(__file__).resolve().parents[1]

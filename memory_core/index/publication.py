@@ -171,21 +171,37 @@ def write_prepared_index(db: sqlite3.Connection, prepared: PreparedIndexRevision
         for chunk in entry.chunks:
             if (chunk.path, chunk.source) != (entry.path, entry.source):
                 raise ValueError("Prepared chunk does not belong to its source")
+            # Equal fragments on one long source line share the native
+            # canonical ID. Its chunk writer updates the existing row and
+            # metadata; keep one corresponding FTS row here as its triggers do.
+            existing = db.execute("SELECT 1 FROM chunks WHERE id = ?", (chunk.id,)).fetchone()
             db.execute(
-                "INSERT INTO chunks VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO chunks VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET text=excluded.text, embedding=excluded.embedding",
                 (chunk.id, chunk.path, chunk.start_line, chunk.end_line, chunk.source,
                  chunk.text, json.dumps(list(chunk.embedding), allow_nan=False)),
             )
+            if existing is not None:
+                db.execute("DELETE FROM chunks_fts WHERE id = ?", (chunk.id,))
             db.execute("INSERT INTO chunks_fts(id, text) VALUES (?, ?)", (chunk.id, chunk.text))
-            db.execute(f"INSERT INTO {CHUNK_DETAILS_TABLE} VALUES (?, ?, ?, ?)",
+            db.execute(f"INSERT INTO {CHUNK_DETAILS_TABLE} VALUES (?, ?, ?, ?) "
+                       "ON CONFLICT(chunk_id) DO UPDATE SET "
+                       "hash=excluded.hash, model=excluded.model, updated_at=excluded.updated_at",
                        (chunk.id, chunk.hash, chunk.model, chunk.updated_at))
             p, r = chunk.provenance, chunk.recall
-            db.execute(f"INSERT INTO {CHUNK_PROVENANCE_TABLE} VALUES (?, ?, ?, ?, ?)",
+            db.execute(f"INSERT INTO {CHUNK_PROVENANCE_TABLE} VALUES (?, ?, ?, ?, ?) "
+                       "ON CONFLICT(chunk_id) DO UPDATE SET origin_class=excluded.origin_class, "
+                       "session_kind=excluded.session_kind, observed_at=excluded.observed_at, "
+                       "supersedes_key=excluded.supersedes_key",
                        (chunk.id, p.origin_class, p.session_kind, p.observed_at, p.supersedes_key))
-            db.execute(f"INSERT INTO {CHUNK_RECALL_TABLE} VALUES (?, ?, ?, ?)",
+            db.execute(f"INSERT INTO {CHUNK_RECALL_TABLE} VALUES (?, ?, ?, ?) "
+                       "ON CONFLICT(chunk_id) DO UPDATE SET importance=excluded.importance, "
+                       "triggers=excluded.triggers, project_key=excluded.project_key",
                        (chunk.id, r.importance, r.triggers, r.project_key))
+        chunk_count = db.execute("SELECT COUNT(*) FROM chunks WHERE source=? AND path=?",
+                                 (entry.source, entry.path)).fetchone()[0]
         db.execute(f"INSERT INTO {INDEX_SOURCES_TABLE} VALUES (?, ?, ?, ?, ?, ?)",
-                   (entry.source, entry.path, entry.hash, entry.mtime, entry.size, len(entry.chunks)))
+                   (entry.source, entry.path, entry.hash, entry.mtime, entry.size, chunk_count))
     db.execute(
         "INSERT INTO memory_index_meta(key, value) VALUES (?, ?) "
         "ON CONFLICT(key) DO UPDATE SET value=excluded.value",

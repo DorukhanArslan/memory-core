@@ -4,6 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const request = JSON.parse(fs.readFileSync(0, "utf8"));
+let output;
 try {
   const { directory, runtimeRoot, input } = request;
   process.env.OPENCLAW_STATE_DIR = path.join(directory, "state");
@@ -37,8 +38,10 @@ try {
     sourceEntry, sourceCutoff: sessionFiles.a(sourceEntry), observations,
     readRequest: { absPath: input.sessionKey, options: { ...options, onTranscriptMessage: true } }, databasePath, sessionSql,
     artifacts: await artifacts.n({ workspaceDir: path.join(directory, "workspace") }) };
-  fs.writeFileSync(1, JSON.stringify(result) + "\n"); config.clearRuntimeConfigSnapshot();
+  output = result; config.clearRuntimeConfigSnapshot();
 } catch (error) {
-  fs.writeFileSync(1, JSON.stringify({ fatal: { name: error.name, message: error.message }, stack: error.stack,
-    pid: process.pid, ppid: process.ppid }) + "\n"); process.exitCode = 1;
+  output = { fatal: { name: error.name, message: error.message }, stack: error.stack,
+    pid: process.pid, ppid: process.ppid }; process.exitCode = 1;
 }
+await new Promise((resolve, reject) => process.stdout.write(JSON.stringify(output) + "\n",
+  (error) => error ? reject(error) : resolve()));

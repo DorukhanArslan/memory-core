@@ -205,6 +205,23 @@ process.stdout.write(JSON.stringify({cuts:bytes.length-1,exact:true}));"""
     assert json.loads(process.stdout)["exact"] is True
 
 
+def test_complete_model_json_survives_nonblocking_stdout_backpressure():
+    node = Path("/workspace/openclaw-memory-bridge/node_modules/node/bin/node")
+    if not node.is_file():
+        pytest.skip("The reviewed Node executable is unavailable for this transport check")
+    script = """import {writeModelJson} from './equivalence/model-runtime-observation.mjs';
+const value={text:'😀İ漢'.repeat(200000),details:{retained:true,tail:'last original field'}};
+await writeModelJson(value);process.stderr.write('complete');"""
+    process = subprocess.run([str(node), "--input-type=module", "--eval", script], cwd=ROOT,
+                             check=True, capture_output=True, timeout=20,
+                             env={"LANG": "C.UTF-8", "TZ": "UTC"})
+    assert json.loads(process.stdout) == {
+        "text": "😀İ漢" * 200000, "details": {"retained": True, "tail": "last original field"},
+    }
+    assert process.stdout.endswith(b"\n")
+    assert process.stderr == b"complete"
+
+
 def _session_protocol(tmp_path):
     """Labelled transport facts, never an upstream behavioral oracle."""
     base = str(tmp_path / "native-model-session-fixture")

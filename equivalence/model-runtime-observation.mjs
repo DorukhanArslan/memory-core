@@ -35,6 +35,14 @@ export function observeModelChildStreams(child) {
   return () => ({ stdout, stderr });
 }
 
+export async function writeModelJson(value) {
+  // Child stdout is a nonblocking pipe. Await its actual write callback so a
+  // large retained observation survives backpressure without partial JSON.
+  await new Promise((resolve, reject) => {
+    process.stdout.write(JSON.stringify(value) + "\n", (error) => error ? reject(error) : resolve());
+  });
+}
+
 export function modelError(error) {
   const seen = new Set();
   const observe = (value) => {

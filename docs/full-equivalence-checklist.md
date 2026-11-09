@@ -86,8 +86,13 @@ new mismatched diagnostic cases with zero blocked/errors. Its changed SDK has
 separate evidence; the complete `b090394` catalog above remains historical.
 Its final full regressions pass **6,826 tests**, with **1,648 uncredited skips**;
 both clean offline wheel/sdist consumers pass against the changed SDK.
-Common producer metadata publication, cold-index bootstrap and session publication
-are the next work. No acceptance count changes in either restart packet.
+The [producer publication/managed-index package](host_restart_managed_closeout.md)
+aligns real producer metadata publication and adds cold-search bootstrap.
+Its separate managed family has **3 matches and 1 sessions mismatch**, zero
+blocked/errors, with **6,929 passing regressions** and **1,648 uncredited skips**.
+Both installed offline package consumers pass. A genuine session-publication
+controller is the next work. All restart packets award zero conditions and keep
+the last verified baseline at 64/128; the current changed SDK is not a new full-catalog pass.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |

@@ -1,5 +1,11 @@
 # Host restart source-policy follow-up — 2026-11-09
 
+The later [producer publication/managed-index follow-up](host_restart_managed_closeout.md)
+adds real force publication, corrects the Native transcript notification caller
+and records three exact managed matches with one remaining sessions mismatch.
+It awards zero conditions and retains the captures below under their original
+SDK/adapter identities.
+
 This follow-up changes HostKit search dispatch and makes the hosts' source
 policies explicit. **The last verified baseline remains 64/128 (50.0%), with
 64 conditions remaining.** Requirement 63 remains pending at 0/2. Neither the

@@ -12,6 +12,9 @@ this document's 62/128 figures below describe its historical maintenance baselin
 The [source-policy/factory follow-up](host_restart_policy_closeout.md) subsequently
 fixes HostKit clock/acquisition wiring and retains the remaining restart
 differences. It also awards zero conditions; historical captures stay unchanged.
+The next [managed-index package](host_restart_managed_closeout.md) records three
+matching restart scenarios and one remaining sessions mismatch. It keeps the
+same 64/128 verified baseline and does not relabel this maintenance evidence.
 
 This package integrates already reviewed fixes for the existing promotion and
 heartbeat contracts. It adds no acceptance condition and awards **zero new

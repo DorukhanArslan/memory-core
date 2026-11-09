@@ -105,6 +105,9 @@ policy or catalog. See [Session Authority](session_authority.md) for complete SD
 explicit transcript persistence/index refresh and guarded current-session source reads.
 The registered search factory measures acquisition with the kit's `now_ms` clock
 and validates that the captured store belongs to the configured workspace/index.
+Hosts that need an explicit provider-none cold-search owner can compose the
+[managed index](managed_memory_index.md) with `Memory` and the existing kit/runner
+constructors. Its real repair notice follows an actual SQLite rebuild.
 
 - Every option is an input some core function already takes:
   `layout`, `templates`, `seed_bootstrap` (`initialize_agent_workspace`); `timezone` and

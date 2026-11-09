@@ -10,6 +10,15 @@ the host kit. 0.1.0 is `main` at `b829bad` (2026-09-27), which had no build syst
 
 ### Added
 
+- Managed provider-none index (2026-11-09): optional
+  `host.managed_index.ManagedSQLiteMemoryStore` performs real cold-search
+  bootstrap, exposes live SQL-derived repair notices and joins admitted physical
+  work on close. It preserves the typed SQLite search API, refuses foreign
+  ownership and leaves newer incompatible indexes unchanged. Existing eager
+  HostKit/HostSessionRunner publication behavior remains unchanged. Separate
+  restart fixtures use real producer rebuild and strict committed transcript
+  notifications; the sessions publication difference remains unverified.
+
 - Release preparation (2026-10-08, build/adapter-only): offline Linux CI for Python
   3.11/3.12 with a frozen development stack and pinned actions; isolated wheel/sdist
   installation, core-only FTS/HostKit smoke and public consumer type checks. `py.typed`

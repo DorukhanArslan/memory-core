@@ -1,0 +1,2582 @@
+{
+  "kind": "host-restart-source-policy-followup",
+  "acceptancePointsAwarded": 0,
+  "covers": [],
+  "defaultCatalogRegistered": false,
+  "fullScopePassed": false,
+  "lastVerifiedAcceptance": {
+    "verified": 64,
+    "total": 128,
+    "remaining": 64,
+    "fullCatalogCommit": "b090394d2729031cf239619b7ed7bbeecac8f379"
+  },
+  "reference": {
+    "tag": "v2026.9.9",
+    "commit": "bcfc88812a35243893585dbeca87ca41b48272ca"
+  },
+  "node": {
+    "execPath": "/workspace/memory-core/work/node-v24.16.0-linux-x64/bin/node",
+    "nodeVersion": "v24.16.0",
+    "icuVersion": "78.3",
+    "unicodeVersion": "17.0",
+    "sha256": "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd"
+  },
+  "implementation": {
+    "comparisonCommit": "31e7087f3dd2848cc45855d878fa3d3711d565d3",
+    "sdkSourceSha256": "f6d56b8a1adbbec27cb71a92b0ba6d568ac3de6d3eb14f01b061ed6a0ca0aabb",
+    "sourceFiles": 156,
+    "sdkAndAdapterHashesMatchCapture": true
+  },
+  "report": {
+    "path": "work/host-restart-policy/attempt-002-clean/report.json",
+    "bytes": 16594075,
+    "sha256": "f2970e8aabb5f16da0b580b50f46335d4298391c82f0bdf4213d1ed98645e2c0",
+    "summary": {
+      "match": 0,
+      "mismatch": 4,
+      "blocked": 0
+    },
+    "errors": [],
+    "finalAuthenticationPassed": true
+  },
+  "retainedAttempts": [
+    {
+      "path": "work/host-restart-policy/attempt-001/report.json",
+      "sha256": "cec6a0949ffca137158b2c2497cac694927aa27513e18a93e4d8361a75dafa4b",
+      "summary": {
+        "match": 0,
+        "mismatch": 4,
+        "blocked": 0
+      },
+      "errors": [],
+      "finalAuthenticationPassed": true,
+      "differencesPerCase": {
+        "host-restart-policy-memory-ascii": 7,
+        "host-restart-policy-memory-unicode": 7,
+        "host-restart-policy-indexed-sessions": 9,
+        "host-restart-policy-get-failure": 7
+      }
+    },
+    {
+      "path": "work/host-restart-policy/attempt-002-clean/report.json",
+      "sha256": "f2970e8aabb5f16da0b580b50f46335d4298391c82f0bdf4213d1ed98645e2c0",
+      "summary": {
+        "match": 0,
+        "mismatch": 4,
+        "blocked": 0
+      },
+      "errors": [],
+      "finalAuthenticationPassed": true,
+      "differencesPerCase": {
+        "host-restart-policy-memory-ascii": 4,
+        "host-restart-policy-memory-unicode": 4,
+        "host-restart-policy-indexed-sessions": 6,
+        "host-restart-policy-get-failure": 4
+      }
+    },
+    {
+      "path": "work/host-restart-policy/original-family-after-fix/report.json",
+      "sha256": "cb8d70f7ff1c5ef50cccd7644f96af78fa6c2e4e31f69897a0601aa94c5ac0ad",
+      "summary": {
+        "match": 0,
+        "mismatch": 3,
+        "blocked": 0
+      },
+      "errors": [],
+      "finalAuthenticationPassed": true,
+      "differencesPerCase": {
+        "host-restart-ascii-recall": 8,
+        "host-restart-unicode-recall": 8,
+        "host-restart-source-replaced-before-get": 8
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "host-restart-policy-memory-ascii",
+      "status": "mismatch",
+      "structuralReplay": {
+        "native": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "snapshot": "after-real-write-and-explicit-sync",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is aurorakumquat-739 tea.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is aurorakumquat-739 tea.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is aurorakumquat-739 tea.\n"
+                    }
+                  ]
+                },
+                {
+                  "agentId": "other",
+                  "chunks": []
+                }
+              ]
+            }
+          ],
+          "acceptancePointsAwarded": 0
+        },
+        "sdk": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "session": "writer",
+              "revision": 2,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is aurorakumquat-739 tea.\n"
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "session": "fresh",
+              "revision": 2,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is aurorakumquat-739 tea.\n"
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "session": "restarted",
+              "revision": 2,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is aurorakumquat-739 tea.\n"
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "session": "isolated",
+              "revision": 1,
+              "chunks": []
+            }
+          ],
+          "acceptancePointsAwarded": 0
+        },
+        "structuralCustodyPassed": true,
+        "differences": [
+          {
+            "path": "$.phases[0].reads[0].search.results[0].provenance.observedAt",
+            "native": 1794182400000,
+            "sdk": 1794233785294
+          },
+          {
+            "path": "$.phases[1].reads[0].search.results[0].provenance.observedAt",
+            "native": 1794182400000,
+            "sdk": 1794233785294
+          },
+          {
+            "path": "$.phases[1].reads[1].search.corpora",
+            "nativePresent": true,
+            "sdkPresent": false,
+            "native": []
+          },
+          {
+            "path": "$.phases[1].reads[1].search.warning",
+            "nativePresent": true,
+            "sdkPresent": false,
+            "native": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider."
+          }
+        ],
+        "acceptancePointsAwarded": 0
+      },
+      "native": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "textScore": 1.9999960000079996e-06,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "textScore": 1.9999960000079996e-06,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "corpora": [],
+                  "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          }
+        ]
+      },
+      "sdk": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "textScore": 1.9999960000079996e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794233785294
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "textScore": 1.9999960000079996e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794233785294
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          }
+        ]
+      },
+      "differences": [
+        {
+          "path": "$.phases[0].reads[0].search.results[0].provenance.observedAt",
+          "native": 1794182400000,
+          "sdk": 1794233785294
+        },
+        {
+          "path": "$.phases[1].reads[0].search.results[0].provenance.observedAt",
+          "native": 1794182400000,
+          "sdk": 1794233785294
+        },
+        {
+          "path": "$.phases[1].reads[1].search.corpora",
+          "nativePresent": true,
+          "sdkPresent": false,
+          "native": []
+        },
+        {
+          "path": "$.phases[1].reads[1].search.warning",
+          "nativePresent": true,
+          "sdkPresent": false,
+          "native": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider."
+        }
+      ],
+      "artifacts": [
+        {
+          "path": "host-restart-policy-memory-ascii/context.json",
+          "sha256": "1b2b6720beb622bc50846c615aeb85070e29e7506dc8bd413da5bfcb5f00cdf5"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/openclaw.json",
+          "sha256": "2206cead32019f3968d36069ba1f4981e2c7a84c4cacf69f858604357bdbb58e"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/produce-raw.json",
+          "sha256": "b1262d67a7e2d3e5b3254c76855c14bfb062c3971c793e72995dacb2c28ac8a5"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/restart-raw.json",
+          "sha256": "7df3bca36e56c53ff5e2d85492ced1f7f8a3032a11cb27ed316184d4c5948ad4"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/state/agents/main/agent/openclaw-agent.sqlite",
+          "sha256": "cb0826c4a728211ee617bbd1ecdc905d2e3e23c6ce027d6d74a8ac1b0122311d"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/state/agents/main/agent/openclaw-agent.sqlite-shm",
+          "sha256": "79b1763c043092b30f8d9bf5a32ce15dd5991827716aeda32007f2746535b008"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/state/agents/main/agent/openclaw-agent.sqlite-wal",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/state/agents/main/agent/openclaw-agent.sqlite.generation-lock.sqlite",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/state/agents/main/agent/openclaw-agent.sqlite.generation-writer.sqlite",
+          "sha256": "83c2c7b1e2eb5c1182b7e49a0978d91b7cd5fec03dcf19b7fabfc8750f8b0554"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/state/agents/main/agent/openclaw-agent.sqlite.reindex-lock.sqlite",
+          "sha256": "af15453dd888cdf834f908aa8fe2332f535e9d52721a50103ea0c3163587b9b7"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/state/agents/other/agent/openclaw-agent.sqlite",
+          "sha256": "1dc3ee0d8346b72edcf9b271e938abaf6a523687becffc4121af6bc767d0eeef"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/state/agents/other/agent/openclaw-agent.sqlite.generation-lock.sqlite",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/state/agents/other/agent/openclaw-agent.sqlite.generation-writer.sqlite",
+          "sha256": "83c2c7b1e2eb5c1182b7e49a0978d91b7cd5fec03dcf19b7fabfc8750f8b0554"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/state/agents/other/agent/openclaw-agent.sqlite.reindex-lock.sqlite",
+          "sha256": "83c2c7b1e2eb5c1182b7e49a0978d91b7cd5fec03dcf19b7fabfc8750f8b0554"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/state/state/openclaw-quarantine.sqlite",
+          "sha256": "69ba00e978c0cb25411c0f4ac292bc05967fe0f4f64158e115759765c9030a69"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/state/state/openclaw.sqlite",
+          "sha256": "23db7cde22d39a27eb051314542429b08c5d78bb3d1ddbf82e3e142f7853a3c7"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-host-restart-FMISzz/workspace/memory/2026-11-09.md",
+          "sha256": "1bbfa1c2e9a0cb0b2b047f176af71a12db753e981ed5b8c2a1e45ceb56a59197"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/native-raw.json",
+          "sha256": "7bb8cf5144cfc8d1ca00200334e8cfe8069aaa0eea01625b41a339efcb1a2017"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/evidence/python-raw.json",
+          "sha256": "836acc33dfb4c37269cba89bbe3c7bc6abf5a4877cb73b925df0b07e97fa02a5"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/sdk-output.json",
+          "sha256": "1ff70affd805027ada8a55a5c23c1d9302e193074618ccdcdb92e917e05fb6eb"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/stdout.json",
+          "sha256": "941503d036e5a25fd1c44d5dff391c7d8e35b6784f89840f118f889bb13bbaba"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/traces/201707-0.jsonl",
+          "sha256": "034d056fbffc26f1934f0e0f3e250bfc95ba4c98faf3f2d4a6c028f55dee9ba7"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/traces/201815-0.jsonl",
+          "sha256": "38b3e4544405581f27a668471fbc75fa078a7c2e0861c2fa6ed0db5591832fcb"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/traces/201815-1.jsonl",
+          "sha256": "172552336e27c7aebdb05487df9e1e3fd7620157391035d99834b391fe8c6763"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/traces/201815-2.jsonl",
+          "sha256": "4710724f4f03494183a5dc05705286022120235f5dda97ea95bd27704a65ca43"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/traces/201815-3.jsonl",
+          "sha256": "0cda3874c6df36a0213d30ff4b3a86e4b03396043b219a4107621f82aafc7908"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/traces/201815-4.jsonl",
+          "sha256": "44ac23f9fdc0f82ba7ea5f0da0fb4307d8e8e0b4b85dcd781407573ae6cd120e"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/traces/201815-5.jsonl",
+          "sha256": "5d38437712e825851e73b4c85228a5fae843feba7b4f252977909e24ad0ff1d6"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/traces/201815-6.jsonl",
+          "sha256": "a76910042c9d4ea12e8da7a77ab447a8b8547dd54b3fb5f753f8377d77fe53f9"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/traces/202801-0.jsonl",
+          "sha256": "b8922687f13abb351788d8f3f21d4a20f1335b8e74f2a4faa903c9887e0bd016"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/traces/202801-1.jsonl",
+          "sha256": "5923b527160e50acc3be832452512a9348cea7a706efd9f7873c2769ae88fb32"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/traces/202801-2.jsonl",
+          "sha256": "af0102047d8a05b36fdaf22850b4543cc75b245f99b9b93b4fc1d6da8a0b8f15"
+        },
+        {
+          "path": "host-restart-policy-memory-ascii/traces/202801-3.jsonl",
+          "sha256": "0a3422279dcc499f2e3f328277c324f8d78d066e288308cdaaf3ce59ea555c79"
+        }
+      ]
+    },
+    {
+      "id": "host-restart-policy-memory-unicode",
+      "status": "mismatch",
+      "structuralReplay": {
+        "native": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "snapshot": "after-real-write-and-explicit-sync",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is Ihlamur-ğüşİ-482 ☕.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is Ihlamur-ğüşİ-482 ☕.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is Ihlamur-ğüşİ-482 ☕.\n"
+                    }
+                  ]
+                },
+                {
+                  "agentId": "other",
+                  "chunks": []
+                }
+              ]
+            }
+          ],
+          "acceptancePointsAwarded": 0
+        },
+        "sdk": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "session": "writer",
+              "revision": 2,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is Ihlamur-ğüşİ-482 ☕.\n"
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "session": "fresh",
+              "revision": 2,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is Ihlamur-ğüşİ-482 ☕.\n"
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "session": "restarted",
+              "revision": 2,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is Ihlamur-ğüşİ-482 ☕.\n"
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "session": "isolated",
+              "revision": 1,
+              "chunks": []
+            }
+          ],
+          "acceptancePointsAwarded": 0
+        },
+        "structuralCustodyPassed": true,
+        "differences": [
+          {
+            "path": "$.phases[0].reads[0].search.results[0].provenance.observedAt",
+            "native": 1794182400000,
+            "sdk": 1794233800599
+          },
+          {
+            "path": "$.phases[1].reads[0].search.results[0].provenance.observedAt",
+            "native": 1794182400000,
+            "sdk": 1794233800599
+          },
+          {
+            "path": "$.phases[1].reads[1].search.corpora",
+            "nativePresent": true,
+            "sdkPresent": false,
+            "native": []
+          },
+          {
+            "path": "$.phases[1].reads[1].search.warning",
+            "nativePresent": true,
+            "sdkPresent": false,
+            "native": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider."
+          }
+        ],
+        "acceptancePointsAwarded": 0
+      },
+      "native": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "textScore": 1.9999960000079996e-06,
+                      "snippet": "My drink preference is Ihlamur-ğüşİ-482 ☕.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is Ihlamur-ğüşİ-482 ☕.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is Ihlamur-ğüşİ-482 ☕."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is Ihlamur-ğüşİ-482 ☕.\n",
+              "hex": "4d79206472696e6b20707265666572656e63652069732049686c616d75722dc49fc3bcc59fc4b02d34383220e298952e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "textScore": 1.9999960000079996e-06,
+                      "snippet": "My drink preference is Ihlamur-ğüşİ-482 ☕.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is Ihlamur-ğüşİ-482 ☕.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is Ihlamur-ğüşİ-482 ☕."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "corpora": [],
+                  "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is Ihlamur-ğüşİ-482 ☕.\n",
+              "hex": "4d79206472696e6b20707265666572656e63652069732049686c616d75722dc49fc3bcc59fc4b02d34383220e298952e0a"
+            }
+          }
+        ]
+      },
+      "sdk": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "snippet": "My drink preference is Ihlamur-ğüşİ-482 ☕.\n",
+                      "source": "memory",
+                      "textScore": 1.9999960000079996e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794233800599
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is Ihlamur-ğüşİ-482 ☕.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is Ihlamur-ğüşİ-482 ☕."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is Ihlamur-ğüşİ-482 ☕.\n",
+              "hex": "4d79206472696e6b20707265666572656e63652069732049686c616d75722dc49fc3bcc59fc4b02d34383220e298952e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "snippet": "My drink preference is Ihlamur-ğüşİ-482 ☕.\n",
+                      "source": "memory",
+                      "textScore": 1.9999960000079996e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794233800599
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is Ihlamur-ğüşİ-482 ☕.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is Ihlamur-ğüşİ-482 ☕."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is Ihlamur-ğüşİ-482 ☕.\n",
+              "hex": "4d79206472696e6b20707265666572656e63652069732049686c616d75722dc49fc3bcc59fc4b02d34383220e298952e0a"
+            }
+          }
+        ]
+      },
+      "differences": [
+        {
+          "path": "$.phases[0].reads[0].search.results[0].provenance.observedAt",
+          "native": 1794182400000,
+          "sdk": 1794233800599
+        },
+        {
+          "path": "$.phases[1].reads[0].search.results[0].provenance.observedAt",
+          "native": 1794182400000,
+          "sdk": 1794233800599
+        },
+        {
+          "path": "$.phases[1].reads[1].search.corpora",
+          "nativePresent": true,
+          "sdkPresent": false,
+          "native": []
+        },
+        {
+          "path": "$.phases[1].reads[1].search.warning",
+          "nativePresent": true,
+          "sdkPresent": false,
+          "native": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider."
+        }
+      ],
+      "artifacts": [
+        {
+          "path": "host-restart-policy-memory-unicode/context.json",
+          "sha256": "d6f39eb1cc020722fc2d73602487b17bfbbab552882c4a533c1870211db08d13"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/openclaw.json",
+          "sha256": "958f5c41666ef11354ac8b7776f561a1c3f90fc01f4f5d60dc35402185a1be3f"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/produce-raw.json",
+          "sha256": "130f55dde625f376ed8f3b687a703337a5ef89bace3e0736be25f2a1e2b87a53"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/restart-raw.json",
+          "sha256": "d5749362976d25c1ebcca5fbd009aebce61d3ba57df02ff08280772a487b08f7"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/state/agents/main/agent/openclaw-agent.sqlite",
+          "sha256": "6e1acd7381fe351854b993ea145e625604e41dbea9322ce2048e2e233db704e5"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/state/agents/main/agent/openclaw-agent.sqlite-shm",
+          "sha256": "6e4f0e49f3ab8667fdbaed49cd93b07c81c8d192c213e82ea0c24b44e5a8c310"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/state/agents/main/agent/openclaw-agent.sqlite-wal",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/state/agents/main/agent/openclaw-agent.sqlite.generation-lock.sqlite",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/state/agents/main/agent/openclaw-agent.sqlite.generation-writer.sqlite",
+          "sha256": "83c2c7b1e2eb5c1182b7e49a0978d91b7cd5fec03dcf19b7fabfc8750f8b0554"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/state/agents/main/agent/openclaw-agent.sqlite.reindex-lock.sqlite",
+          "sha256": "af15453dd888cdf834f908aa8fe2332f535e9d52721a50103ea0c3163587b9b7"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/state/agents/other/agent/openclaw-agent.sqlite",
+          "sha256": "2924c4071129eede6a7cc932712360248b5be882e313f8ba60d1a12fa236d2e2"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/state/agents/other/agent/openclaw-agent.sqlite.generation-lock.sqlite",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/state/agents/other/agent/openclaw-agent.sqlite.generation-writer.sqlite",
+          "sha256": "83c2c7b1e2eb5c1182b7e49a0978d91b7cd5fec03dcf19b7fabfc8750f8b0554"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/state/agents/other/agent/openclaw-agent.sqlite.reindex-lock.sqlite",
+          "sha256": "83c2c7b1e2eb5c1182b7e49a0978d91b7cd5fec03dcf19b7fabfc8750f8b0554"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/state/state/openclaw-quarantine.sqlite",
+          "sha256": "ec920ab5d162d991b32196e28032e717a1bb4c2b17775ed975c6827084ae4b75"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/state/state/openclaw.sqlite",
+          "sha256": "2c36a44f3853e2db36f08a4284e03f977fdcbbb31b427749c8a6fa9384a59011"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-host-restart-crrwho/workspace/memory/2026-11-09.md",
+          "sha256": "1712cf4b91cb672e4d2c454479096db1c04403df3417f211245990411f5448d0"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/native-raw.json",
+          "sha256": "115815eb9e01b858e7154ad7d6d4c83319e5cb82cd527689786c04cdc2868011"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/evidence/python-raw.json",
+          "sha256": "201cfa29032c4632516b2f005511f44052b7343628368b7250de5e5f7bf74c20"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/sdk-output.json",
+          "sha256": "f872ca213e340e1489001b1ca9dd9ee26a909f8686a0d1557b64d09bb2f7c9d5"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/stdout.json",
+          "sha256": "9433c372fe2a7e3897353e9c3b66e74da987535c7f155f7d98a6f49cdc230529"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/traces/204609-0.jsonl",
+          "sha256": "b65919fa7923ac733af06a6da00c628edfe8401efe1205b8eaea130106a64646"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/traces/204620-0.jsonl",
+          "sha256": "db71b05dcb357584293f0d00bf40acbc6566022f4000c89eabdec45d007650a0"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/traces/204620-1.jsonl",
+          "sha256": "1c35d17c90b52ec04740bd4397176f04b55a4658386289d34f4937e60adb60f5"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/traces/204620-2.jsonl",
+          "sha256": "b34a165e071fe3a10d9bd38f274ca19ae8eefe84faab0980cbfd7b6c81cc9d65"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/traces/204620-3.jsonl",
+          "sha256": "a5ed932ad5cdea6bbb8b1c0a0a01062d0c0dabd696667b9af102f5fe23c1939f"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/traces/204620-4.jsonl",
+          "sha256": "8a130326015bc2bf18be90ad0e271ff791dfb46e46875da8d6a9979f6756d304"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/traces/204620-5.jsonl",
+          "sha256": "44371f03f3317b024d9dd4cf88dc4bf8eb1e3904a241e321cef8303264f557bf"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/traces/204620-6.jsonl",
+          "sha256": "6d413b7e64250651238723efa0323fe4240d65db058c4ef9d5c165f351b724f7"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/traces/204985-0.jsonl",
+          "sha256": "c53f27e54fcc0733b28df412d70c03e3fbe6344f6788a56f0691b38951830d3b"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/traces/204985-1.jsonl",
+          "sha256": "5123638f0076e53b6e9cd931dc2be953ad3577315914823e537d1169568641be"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/traces/204985-2.jsonl",
+          "sha256": "0354138996fc7dbf55d6a9e4149eba6c080fc4fdfab540fcaf4fa2799fec2991"
+        },
+        {
+          "path": "host-restart-policy-memory-unicode/traces/204985-3.jsonl",
+          "sha256": "a859cecc94db10d356d69600f57108302ece7b9da209da25588ac63bb8a5a0d9"
+        }
+      ]
+    },
+    {
+      "id": "host-restart-policy-indexed-sessions",
+      "status": "mismatch",
+      "structuralReplay": {
+        "native": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "snapshot": "after-real-write-and-explicit-sync",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is aurorakumquat-739 tea.\n"
+                    },
+                    {
+                      "path": "sessions/main/host-policy-3-writer.jsonl",
+                      "source": "sessions",
+                      "text": "User: Please remember that my drink preference is aurorakumquat-739 tea.\nAssistant: Saved."
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is aurorakumquat-739 tea.\n"
+                    },
+                    {
+                      "path": "sessions/main/host-policy-3-writer.jsonl",
+                      "source": "sessions",
+                      "text": "User: Please remember that my drink preference is aurorakumquat-739 tea.\nAssistant: Saved."
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is aurorakumquat-739 tea.\n"
+                    },
+                    {
+                      "path": "sessions/main/host-policy-3-writer.jsonl",
+                      "source": "sessions",
+                      "text": "User: Please remember that my drink preference is aurorakumquat-739 tea.\nAssistant: Saved."
+                    },
+                    {
+                      "path": "sessions/main/host-policy-3-fresh.jsonl",
+                      "source": "sessions",
+                      "text": "User: What drink preference did I ask you to remember?\nAssistant: My drink preference is aurorakumquat-739 tea."
+                    },
+                    {
+                      "path": "sessions/main/host-policy-3-restarted.jsonl",
+                      "source": "sessions",
+                      "text": "User: What drink preference did I ask you to remember?\nAssistant: My drink preference is aurorakumquat-739 tea."
+                    }
+                  ]
+                },
+                {
+                  "agentId": "other",
+                  "chunks": [
+                    {
+                      "path": "sessions/other/host-policy-3-isolated.jsonl",
+                      "source": "sessions",
+                      "text": "User: What drink preference did I ask you to remember?"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "acceptancePointsAwarded": 0
+        },
+        "sdk": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "session": "writer",
+              "revision": 3,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is aurorakumquat-739 tea.\n"
+                },
+                {
+                  "path": "sessions/main/host-policy-3-writer.jsonl",
+                  "source": "sessions",
+                  "text": "User: Please remember that my drink preference is aurorakumquat-739 tea.\nAssistant: Saved."
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "session": "fresh",
+              "revision": 4,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is aurorakumquat-739 tea.\n"
+                },
+                {
+                  "path": "sessions/main/host-policy-3-fresh.jsonl",
+                  "source": "sessions",
+                  "text": "User: What drink preference did I ask you to remember?\nAssistant: My drink preference is aurorakumquat-739 tea."
+                },
+                {
+                  "path": "sessions/main/host-policy-3-writer.jsonl",
+                  "source": "sessions",
+                  "text": "User: Please remember that my drink preference is aurorakumquat-739 tea.\nAssistant: Saved."
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "session": "restarted",
+              "revision": 5,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is aurorakumquat-739 tea.\n"
+                },
+                {
+                  "path": "sessions/main/host-policy-3-restarted.jsonl",
+                  "source": "sessions",
+                  "text": "User: What drink preference did I ask you to remember?\nAssistant: My drink preference is aurorakumquat-739 tea."
+                },
+                {
+                  "path": "sessions/main/host-policy-3-fresh.jsonl",
+                  "source": "sessions",
+                  "text": "User: What drink preference did I ask you to remember?\nAssistant: My drink preference is aurorakumquat-739 tea."
+                },
+                {
+                  "path": "sessions/main/host-policy-3-writer.jsonl",
+                  "source": "sessions",
+                  "text": "User: Please remember that my drink preference is aurorakumquat-739 tea.\nAssistant: Saved."
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "session": "isolated",
+              "revision": 2,
+              "chunks": [
+                {
+                  "path": "sessions/other/host-policy-3-isolated.jsonl",
+                  "source": "sessions",
+                  "text": "User: What drink preference did I ask you to remember?\nAssistant: No source-backed memory found."
+                }
+              ]
+            }
+          ],
+          "acceptancePointsAwarded": 0
+        },
+        "structuralCustodyPassed": true,
+        "differences": [
+          {
+            "path": "$.phases[0].reads[0].search.results[0].provenance.observedAt",
+            "native": 1794182400000,
+            "sdk": 1794233819404
+          },
+          {
+            "path": "$.phases[1].reads[0].search.results[0].provenance.observedAt",
+            "native": 1794182400000,
+            "sdk": 1794233819404
+          },
+          {
+            "path": "$.phases[1].reads[0].search.results[0].score",
+            "native": 0.6871451369304057,
+            "sdk": 0.6871453051602903
+          },
+          {
+            "path": "$.phases[1].reads[0].search.results[0].textScore",
+            "native": 2.2797875486708737e-06,
+            "sdk": 2.4480174332574698e-06
+          },
+          {
+            "path": "$.phases[1].reads[1].search.corpora",
+            "nativePresent": true,
+            "sdkPresent": false,
+            "native": []
+          },
+          {
+            "path": "$.phases[1].reads[1].search.warning",
+            "nativePresent": true,
+            "sdkPresent": false,
+            "native": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider."
+          }
+        ],
+        "acceptancePointsAwarded": 0
+      },
+      "native": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871451369304057,
+                      "textScore": 2.2797875486708737e-06,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871451369304057,
+                      "textScore": 2.2797875486708737e-06,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "corpora": [],
+                  "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          }
+        ]
+      },
+      "sdk": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871451369304057,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "textScore": 2.2797875486708737e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794233819404
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871453051602903,
+                      "snippet": "My drink preference is aurorakumquat-739 tea.\n",
+                      "source": "memory",
+                      "textScore": 2.4480174332574698e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794233819404
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is aurorakumquat-739 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is aurorakumquat-739 tea."
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is aurorakumquat-739 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e6365206973206175726f72616b756d717561742d373339207465612e0a"
+            }
+          }
+        ]
+      },
+      "differences": [
+        {
+          "path": "$.phases[0].reads[0].search.results[0].provenance.observedAt",
+          "native": 1794182400000,
+          "sdk": 1794233819404
+        },
+        {
+          "path": "$.phases[1].reads[0].search.results[0].provenance.observedAt",
+          "native": 1794182400000,
+          "sdk": 1794233819404
+        },
+        {
+          "path": "$.phases[1].reads[0].search.results[0].score",
+          "native": 0.6871451369304057,
+          "sdk": 0.6871453051602903
+        },
+        {
+          "path": "$.phases[1].reads[0].search.results[0].textScore",
+          "native": 2.2797875486708737e-06,
+          "sdk": 2.4480174332574698e-06
+        },
+        {
+          "path": "$.phases[1].reads[1].search.corpora",
+          "nativePresent": true,
+          "sdkPresent": false,
+          "native": []
+        },
+        {
+          "path": "$.phases[1].reads[1].search.warning",
+          "nativePresent": true,
+          "sdkPresent": false,
+          "native": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider."
+        }
+      ],
+      "artifacts": [
+        {
+          "path": "host-restart-policy-indexed-sessions/context.json",
+          "sha256": "4ae3762def28fad5d1d22c3871ca03d1b4be0eb3c1e0cf1f0bfcbc1d29fa9c40"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/openclaw.json",
+          "sha256": "bd70493d0ccd6c7a5a63eb25e3d8ded1256ac6f1bceaec5c33ea3e63a6cb17bf"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/produce-raw.json",
+          "sha256": "0f60571aab086c727b288e07c24856a2858f02c46754c369e206b05195b4dfeb"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/restart-raw.json",
+          "sha256": "bdf08e22d3694a393f4b503c00f0a97ac8aefe9b19849a310527cbf2ec1c61cf"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/state/agents/main/agent/openclaw-agent.sqlite",
+          "sha256": "15a030dd26ecee9f48ff790f1c717967ed88db019e0233a16947700273322e3c"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/state/agents/main/agent/openclaw-agent.sqlite-shm",
+          "sha256": "245c543a74c550ed0254bfb9b4f439466de2b9772f1184050ee2e766983f5c52"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/state/agents/main/agent/openclaw-agent.sqlite-wal",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/state/agents/main/agent/openclaw-agent.sqlite.generation-lock.sqlite",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/state/agents/main/agent/openclaw-agent.sqlite.generation-writer.sqlite",
+          "sha256": "83c2c7b1e2eb5c1182b7e49a0978d91b7cd5fec03dcf19b7fabfc8750f8b0554"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/state/agents/main/agent/openclaw-agent.sqlite.reindex-lock.sqlite",
+          "sha256": "56cbe885d541425046a369f87b0b6ca23c5d640a7050fd47a609a9b80e8a54f0"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/state/agents/other/agent/openclaw-agent.sqlite",
+          "sha256": "e6631b90b7c7389d299ed64cf2c167589a6f4009891f367eee32d982aba7bbb2"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/state/agents/other/agent/openclaw-agent.sqlite-shm",
+          "sha256": "2fe0db577f9aa9dbab5c1f4e3d847927349639e3c60569ea6357ef2a4e121a5c"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/state/agents/other/agent/openclaw-agent.sqlite-wal",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/state/agents/other/agent/openclaw-agent.sqlite.generation-lock.sqlite",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/state/agents/other/agent/openclaw-agent.sqlite.generation-writer.sqlite",
+          "sha256": "83c2c7b1e2eb5c1182b7e49a0978d91b7cd5fec03dcf19b7fabfc8750f8b0554"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/state/agents/other/agent/openclaw-agent.sqlite.reindex-lock.sqlite",
+          "sha256": "83c2c7b1e2eb5c1182b7e49a0978d91b7cd5fec03dcf19b7fabfc8750f8b0554"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/state/state/openclaw-quarantine.sqlite",
+          "sha256": "439831034c1ffc65f30c565a9315933502e5c49c50efe8d6944ea4b9b544fdba"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/state/state/openclaw.sqlite",
+          "sha256": "123531cc0b04773456d1e7b591d7f6d5b205d69a3812c135ed012083dabaf0d0"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-host-restart-UnsaNQ/workspace/memory/2026-11-09.md",
+          "sha256": "1bbfa1c2e9a0cb0b2b047f176af71a12db753e981ed5b8c2a1e45ceb56a59197"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/native-raw.json",
+          "sha256": "0c41779013f05300b679169bbc7d58e8dbb74b79c0dd43dbe92888d2dd87d371"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/evidence/python-raw.json",
+          "sha256": "e7bd27945debf292cb99daa21c7a1aae070ace0b675a5692e9e5f39955df42b3"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/sdk-output.json",
+          "sha256": "562462bf7058a8985c068c6cf850781d479a348115b025e2fb687bd01d148c24"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/stdout.json",
+          "sha256": "08d6666cf5a12e4863fc02cd00d39d4d227fc55c77f628147470bf3927e75ea6"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205106-0.jsonl",
+          "sha256": "73ed29d8b76be94e1dbed8cf0b7ffd246cb29ee40a951d4cc24a644360f14226"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205117-0.jsonl",
+          "sha256": "fc266441fb6e21ae48c7bfa7b6c503f8a498b5f14d1cfac178ed88119855058d"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205117-1.jsonl",
+          "sha256": "11fcadecb3f42dba40abdbe56b0acf848ce055132da0b00b649788e484d5fecc"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205117-2.jsonl",
+          "sha256": "3e44631e3bdd6427ab06382e9524caf32827e6a17bc8369a43f5dc162c2dec0e"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205117-3.jsonl",
+          "sha256": "d4a9dc293f52636a1dd70e432870ff80d0297a44f126c1d98fe6dcf79d76d525"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205117-4.jsonl",
+          "sha256": "85e8381f9cb6e765532dd73bd70687c654627332ad29352a2dc29b9dcb86a532"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205117-5.jsonl",
+          "sha256": "58a07352ff19c37a4e4df000eed9eb96af057c9eb39ace7500b310474595bda7"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205117-6.jsonl",
+          "sha256": "65327ae90565b612e26d1c1299b453e0751730da8ea11dece3a1a7f466b9dee2"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205117-7.jsonl",
+          "sha256": "3af561bc16f698f2e7dc49ada45d1ee51cef95197804afad98a9ec1b8f009fc7"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205161-0.jsonl",
+          "sha256": "7a4e1e7e12a94f656794b8d67ed07c3140e736b8c37be5af2d744c32e1942492"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205161-1.jsonl",
+          "sha256": "36b1abb4ffe5d9061a7ba1983c0cc54245130b96438f81e25daa331faf0d3d80"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205161-2.jsonl",
+          "sha256": "f1daa6cf205cc3580fce082f0ed0f5f3af6d6598343fd2412eb000864ea2aa87"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205161-3.jsonl",
+          "sha256": "9c74006bcbcaf4685ab46e0dcf78f75cb0ad48df19d8ba56f74195fde789e046"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205161-4.jsonl",
+          "sha256": "c787c439d23de789246dd1303adfc890bbecd373b0bc0491215379bc273e1d96"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205161-5.jsonl",
+          "sha256": "e5e849b7800e84f0775c1a7148cd5e92ed06c8ab7a7a5c2a0f85d44ab007776c"
+        },
+        {
+          "path": "host-restart-policy-indexed-sessions/traces/205161-6.jsonl",
+          "sha256": "bab37a88d7109f7c050987587decc52d7bfb7dd262ee9270e0c804b3e1c2d856"
+        }
+      ]
+    },
+    {
+      "id": "host-restart-policy-get-failure",
+      "status": "mismatch",
+      "structuralReplay": {
+        "native": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "snapshot": "after-real-write-and-explicit-sync",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is cedarquince-913 tea.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "source": "memory",
+                      "text": "My drink preference is cedarquince-913 tea.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "snapshot": "after-active-recall",
+              "owners": [
+                {
+                  "agentId": "main",
+                  "chunks": []
+                },
+                {
+                  "agentId": "other",
+                  "chunks": []
+                }
+              ]
+            }
+          ],
+          "acceptancePointsAwarded": 0
+        },
+        "sdk": {
+          "structuralCustodyPassed": true,
+          "policyResolutionPassed": true,
+          "metadataSyscallCustodyPassed": true,
+          "observedCorpusTimeline": [
+            {
+              "phase": "produce",
+              "session": "writer",
+              "revision": 2,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is cedarquince-913 tea.\n"
+                }
+              ]
+            },
+            {
+              "phase": "produce",
+              "session": "fresh",
+              "revision": 2,
+              "chunks": [
+                {
+                  "path": "memory/2026-11-09.md",
+                  "source": "memory",
+                  "text": "My drink preference is cedarquince-913 tea.\n"
+                }
+              ]
+            },
+            {
+              "phase": "restart",
+              "session": "restarted",
+              "revision": 3,
+              "chunks": []
+            },
+            {
+              "phase": "restart",
+              "session": "isolated",
+              "revision": 1,
+              "chunks": []
+            }
+          ],
+          "acceptancePointsAwarded": 0
+        },
+        "structuralCustodyPassed": true,
+        "differences": [
+          {
+            "path": "$.phases[0].reads[0].search.results[0].provenance.observedAt",
+            "native": 1794182400000,
+            "sdk": 1794233835115
+          },
+          {
+            "path": "$.phases[1].reads[0].search.results[0].provenance.observedAt",
+            "native": 1794182400000,
+            "sdk": 1794233835115
+          },
+          {
+            "path": "$.phases[1].reads[1].search.corpora",
+            "nativePresent": true,
+            "sdkPresent": false,
+            "native": []
+          },
+          {
+            "path": "$.phases[1].reads[1].search.warning",
+            "nativePresent": true,
+            "sdkPresent": false,
+            "native": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider."
+          }
+        ],
+        "acceptancePointsAwarded": 0
+      },
+      "native": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "textScore": 1.9999960000079996e-06,
+                      "snippet": "My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is cedarquince-913 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is cedarquince-913 tea."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is cedarquince-913 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e63652069732063656461727175696e63652d393133207465612e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "textScore": 1.9999960000079996e-06,
+                      "snippet": "My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794182400000
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "path": "memory/2026-11-09.md",
+                  "text": "",
+                  "status": "error",
+                  "code": "MEMORY_READ_FAILED",
+                  "error": "path must be a regular file | not a file | not-file"
+                },
+                "answer": "{\"path\":\"memory/2026-11-09.md\",\"text\":\"\",\"status\":\"error\",\"code\":\"MEMORY_READ_FAILED\",\"error\":\"path must be a regular file | not a file | not-file\"}"
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "corpora": [],
+                  "warning": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider.",
+                  "debug": {
+                    "backend": "builtin",
+                    "effectiveMode": "n/a",
+                    "managerMs": 0,
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "directory"
+            }
+          }
+        ]
+      },
+      "sdk": {
+        "provider": "none",
+        "phases": [
+          {
+            "label": "produce",
+            "reads": [
+              {
+                "session": "fresh",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "snippet": "My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "textScore": 1.9999960000079996e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794233835115
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "status": "ok",
+                  "text": "My drink preference is cedarquince-913 tea.",
+                  "path": "memory/2026-11-09.md",
+                  "from": 1,
+                  "lines": 1
+                },
+                "answer": "My drink preference is cedarquince-913 tea."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "file",
+              "text": "My drink preference is cedarquince-913 tea.\n",
+              "hex": "4d79206472696e6b20707265666572656e63652069732063656461727175696e63652d393133207465612e0a"
+            }
+          },
+          {
+            "label": "restart",
+            "reads": [
+              {
+                "session": "restarted",
+                "query": "drink preference",
+                "search": {
+                  "results": [
+                    {
+                      "path": "memory/2026-11-09.md",
+                      "startLine": 1,
+                      "endLine": 2,
+                      "score": 0.6871448571388571,
+                      "snippet": "My drink preference is cedarquince-913 tea.\n",
+                      "source": "memory",
+                      "textScore": 1.9999960000079996e-06,
+                      "provenance": {
+                        "originClass": "agent",
+                        "sessionKind": "unknown",
+                        "observedAt": 1794233835115
+                      },
+                      "corpus": "memory"
+                    }
+                  ],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 1,
+                    "candidateHits": 1,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": {
+                  "path": "memory/2026-11-09.md",
+                  "text": "",
+                  "status": "error",
+                  "code": "MEMORY_READ_FAILED",
+                  "error": "path must be a regular file | not a file | not-file"
+                },
+                "answer": "{\"path\":\"memory/2026-11-09.md\",\"text\":\"\",\"status\":\"error\",\"code\":\"MEMORY_READ_FAILED\",\"error\":\"path must be a regular file | not a file | not-file\"}"
+              },
+              {
+                "session": "isolated",
+                "query": "drink preference",
+                "search": {
+                  "results": [],
+                  "provider": "none",
+                  "citations": "off",
+                  "debug": {
+                    "effectiveMode": "n/a",
+                    "searchMs": 0,
+                    "hits": 0,
+                    "candidateHits": 0,
+                    "withheldHits": 0,
+                    "searchWindow": 5,
+                    "backend": "builtin",
+                    "managerMs": 0,
+                    "toolMs": 0,
+                    "outsideSearchMs": 0
+                  }
+                },
+                "get": null,
+                "answer": "No source-backed memory found."
+              }
+            ],
+            "source": {
+              "path": "memory/2026-11-09.md",
+              "kind": "directory"
+            }
+          }
+        ]
+      },
+      "differences": [
+        {
+          "path": "$.phases[0].reads[0].search.results[0].provenance.observedAt",
+          "native": 1794182400000,
+          "sdk": 1794233835115
+        },
+        {
+          "path": "$.phases[1].reads[0].search.results[0].provenance.observedAt",
+          "native": 1794182400000,
+          "sdk": 1794233835115
+        },
+        {
+          "path": "$.phases[1].reads[1].search.corpora",
+          "nativePresent": true,
+          "sdkPresent": false,
+          "native": []
+        },
+        {
+          "path": "$.phases[1].reads[1].search.warning",
+          "nativePresent": true,
+          "sdkPresent": false,
+          "native": "Automatic memory index repair was requested. To rebuild manually, run: openclaw memory status --index --agent other. Rebuilding uses keyword indexing only and does not call an embedding provider."
+        }
+      ],
+      "artifacts": [
+        {
+          "path": "host-restart-policy-get-failure/context.json",
+          "sha256": "8c0cb0ca6b5d854d021a19b4f8a9d92997f4978c8d475d1dd8e75c8353fed1df"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/openclaw.json",
+          "sha256": "9065c8dd882c630c9899a4a7aa7d16efc83c8ba8017a49c558d9ada57d9856a9"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/produce-raw.json",
+          "sha256": "4ced5deecc12862db3989c47a10abdf88c0c495d1083984dd794c7be27b675ac"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/restart-raw.json",
+          "sha256": "db62c7393d6816a6a4ef80d620a3ec38e683fdc84c65dde497ea63a31e8e35be"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/retired-source.md",
+          "sha256": "23d814b013acb4c49c8e6d2348d4aa492791398fc59c0a170b14a23268389672"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/state/agents/main/agent/openclaw-agent.sqlite",
+          "sha256": "0cc460b9dd8dc657f0968b0e93cf5c278ffcbbdcd3ca4d664b6d92eeebb6b83a"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/state/agents/main/agent/openclaw-agent.sqlite-shm",
+          "sha256": "5dc59a2cc31a49f74866160bb64cc6041b94e1e655b29cb2db7773951ba61560"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/state/agents/main/agent/openclaw-agent.sqlite-wal",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/state/agents/main/agent/openclaw-agent.sqlite.generation-lock.sqlite",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/state/agents/main/agent/openclaw-agent.sqlite.generation-writer.sqlite",
+          "sha256": "83c2c7b1e2eb5c1182b7e49a0978d91b7cd5fec03dcf19b7fabfc8750f8b0554"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/state/agents/main/agent/openclaw-agent.sqlite.reindex-lock.sqlite",
+          "sha256": "56cbe885d541425046a369f87b0b6ca23c5d640a7050fd47a609a9b80e8a54f0"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/state/agents/other/agent/openclaw-agent.sqlite",
+          "sha256": "09e233882b713b43432e6bcfa7029695b49436daed43982ab07989631724e673"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/state/agents/other/agent/openclaw-agent.sqlite.generation-lock.sqlite",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/state/agents/other/agent/openclaw-agent.sqlite.generation-writer.sqlite",
+          "sha256": "83c2c7b1e2eb5c1182b7e49a0978d91b7cd5fec03dcf19b7fabfc8750f8b0554"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/state/agents/other/agent/openclaw-agent.sqlite.reindex-lock.sqlite",
+          "sha256": "83c2c7b1e2eb5c1182b7e49a0978d91b7cd5fec03dcf19b7fabfc8750f8b0554"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/state/state/openclaw-quarantine.sqlite",
+          "sha256": "003a488085f1af92c1dc9f19248e83473569f25be188eca74e36e8181d285653"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-host-restart-RH2QC1/state/state/openclaw.sqlite",
+          "sha256": "38e640db63a81c89264037895a6a06b0df7a132526309fb2af4d3f1aed2157f4"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/native-raw.json",
+          "sha256": "f55ec300bd88ddccf6dbfaa0e217c70e8facc71157100201ea6e8332d2020369"
+        },
+        {
+          "path": "host-restart-policy-get-failure/evidence/python-raw.json",
+          "sha256": "e6c252ba2135a502986db5b86acab51539648136b0ef269c123666fca550bf17"
+        },
+        {
+          "path": "host-restart-policy-get-failure/sdk-output.json",
+          "sha256": "f44b7a2d6415f846d3880084764738731f3b05d043f3dd74e6cf384d13772f00"
+        },
+        {
+          "path": "host-restart-policy-get-failure/stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "host-restart-policy-get-failure/stdout.json",
+          "sha256": "ed56e9a66243dc1c168d7df9115165d7168da951a97213f87c18812ce7edf542"
+        },
+        {
+          "path": "host-restart-policy-get-failure/traces/205246-0.jsonl",
+          "sha256": "febb2b7dd44c5b41229f88ab4636e90c96b86cd07fe6c749617dfdbbd836bb35"
+        },
+        {
+          "path": "host-restart-policy-get-failure/traces/205258-0.jsonl",
+          "sha256": "8b1944f8a99b4bee6b6050bd827f05cddd8f8e21671cacc77dcdd2a4bfdb432b"
+        },
+        {
+          "path": "host-restart-policy-get-failure/traces/205258-1.jsonl",
+          "sha256": "33ab064c9bc9cf0231d48f2c646630c99466050d9771ceff2673986950832773"
+        },
+        {
+          "path": "host-restart-policy-get-failure/traces/205258-2.jsonl",
+          "sha256": "a5609911aa22cddc37e71d2abb0b50b8a631a7f9bd864ccf7fd28eeb67f60db3"
+        },
+        {
+          "path": "host-restart-policy-get-failure/traces/205258-3.jsonl",
+          "sha256": "3a4f45da8c1672d2c326cef3e055eb53a99af405abecc33e3e0be1e330401f71"
+        },
+        {
+          "path": "host-restart-policy-get-failure/traces/205258-4.jsonl",
+          "sha256": "856d3dcd276e186a2517eee86fc70c443f425afafe4ece173ef598bd4b893115"
+        },
+        {
+          "path": "host-restart-policy-get-failure/traces/205258-5.jsonl",
+          "sha256": "8d80adc1ded00c17778db970a3304eb1299162a31860719c1236c6daf9e9afc2"
+        },
+        {
+          "path": "host-restart-policy-get-failure/traces/205258-6.jsonl",
+          "sha256": "0a903e64db067cfcac090b454c559fddef76be97d6750ec1d32233a48bd9593d"
+        },
+        {
+          "path": "host-restart-policy-get-failure/traces/205295-0.jsonl",
+          "sha256": "eeef8401018865e550cb4bf1b1b24a832ab0cb49ffe0cd14f88d7bb98fbff33f"
+        },
+        {
+          "path": "host-restart-policy-get-failure/traces/205295-1.jsonl",
+          "sha256": "189c7816570ee63fedfa600844acbfa53e88c10ed12a656bc15a7aef7d8ded72"
+        },
+        {
+          "path": "host-restart-policy-get-failure/traces/205295-2.jsonl",
+          "sha256": "badab69a370457a14d8eec59fd06d23be314c3314d99ec4bf0987ac46d78998f"
+        },
+        {
+          "path": "host-restart-policy-get-failure/traces/205295-3.jsonl",
+          "sha256": "17bc22e146c0fa723eb5dbcc409a3cc8423f41f34193f8e36ff33cc9be48ffa4"
+        }
+      ]
+    }
+  ],
+  "validationLogs": {
+    "host-restart-policy-focused.log": {
+      "path": "work/host-restart-policy-focused.log",
+      "sha256": "8ecf2ace108646621164e3ac28cdfa19f75237b844ccc9550075078d7df5f4df"
+    },
+    "host-restart-policy-distributions.log": {
+      "path": "work/host-restart-policy-distributions.log",
+      "sha256": "a4f2fd4d0eec33b31eb2c0a9630e4a879799c15d107183a2bf00a0b456a405b2"
+    },
+    "host-restart-policy-regressions.log": {
+      "path": "work/host-restart-policy-regressions.log",
+      "sha256": "8ef1ca75305b2a0fcbfe3572de8e76eef0d1f77d42c1dc87f75b4b1a1629b175"
+    },
+    "host-restart-policy-corrected-fixtures.log": {
+      "path": "work/host-restart-policy-corrected-fixtures.log",
+      "sha256": "87b1ffae008cb01b1cb73d443fc6366001240a196a4124ad7aea5b0a001096d6"
+    },
+    "host-restart-policy-source-map.log": {
+      "path": "work/host-restart-policy-source-map.log",
+      "sha256": "70c1d22e490509638b9a3db69ae2a9df62d640bf5f71c2d5f4c78b9056c47e88"
+    },
+    "host-restart-policy-source-map-fixed.log": {
+      "path": "work/host-restart-policy-source-map-fixed.log",
+      "sha256": "c3e2c06e120621f6c9b34dc63fc1f54d2d8484896605ebd333f395a4468d618a"
+    },
+    "host-restart-policy-regressions-final.log": {
+      "path": "work/host-restart-policy-regressions-final.log",
+      "sha256": "903cf2c382d0dea938ac5be389a81cb2c94032189399376158d05286ada99765"
+    }
+  },
+  "regressions": {
+    "commit": "3d39398",
+    "passed": 6826,
+    "failed": 0,
+    "skipped": 1648,
+    "durationSeconds": 305.7,
+    "log": "work/host-restart-policy-regressions-final.log",
+    "logSha256": "903cf2c382d0dea938ac5be389a81cb2c94032189399376158d05286ada99765",
+    "acceptancePointsAwarded": 0
+  },
+  "installedPackageConsumers": {
+    "wheel": "passed",
+    "sdist": "passed",
+    "offline": true,
+    "sourceMatchesFinalComparison": true,
+    "log": "work/host-restart-policy-distributions.log"
+  }
+}

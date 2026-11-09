@@ -75,12 +75,19 @@ retained preparation failures and authority limits. The earlier
 awarded zero conditions; the [initial family development packet](promotion_apply_family_development_closeout.md)
 also awarded zero. Their historical captures are not relabeled as executions of
 this changed SDK or these completed acceptance callers. The new
-[host restart development packet](host_restart_recall_development_closeout.md)
+[initial host restart development packet](host_restart_recall_development_closeout.md)
 executes three authenticated process-restart comparisons: all three retain
 complete-result differences, with zero blocked cases or runner errors. It awards
 zero conditions and changes no SDK production source. Its fresh full regressions
 pass **6,785 tests**, with the same **1,648 uncredited skips**. Whole-host restart
-remains unverified; source-policy and transcript-publication alignment is the next work.
+remains unverified. The later [source-policy/factory follow-up](host_restart_policy_closeout.md)
+changes HostKit search dispatch, aligns explicit source policies and retains four
+new mismatched diagnostic cases with zero blocked/errors. Its changed SDK has
+separate evidence; the complete `b090394` catalog above remains historical.
+Its final full regressions pass **6,826 tests**, with **1,648 uncredited skips**;
+both clean offline wheel/sdist consumers pass against the changed SDK.
+Common producer metadata publication, cold-index bootstrap and session publication
+are the next work. No acceptance count changes in either restart packet.
 
 | Contract status | Contracts | Verified conditions | Remaining conditions |
 | --- | ---: | ---: | ---: |

@@ -1,5 +1,10 @@
 # Host restart recall development — 2026-11-09
 
+This is the initial diagnostic packet. The subsequent
+[source-policy/factory follow-up](host_restart_policy_closeout.md) changes SDK
+HostKit dispatch and retains separate captures. It awards zero conditions and
+does not relabel the original source identities or results recorded below.
+
 This package adds executable, authenticated diagnostics for existing requirement
 63, `host.restart-recall`. **Acceptance remains 64/128 (50.0%), with 64 remaining.**
 The contract remains pending at 0/2. All three new literals have `covers: []`,

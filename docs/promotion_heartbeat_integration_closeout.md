@@ -9,6 +9,9 @@ The later [host restart development packet](host_restart_recall_development_clos
 adds three authenticated but mismatched process comparisons and awards zero
 conditions. The current verified baseline remains 64/128, with 64 remaining;
 this document's 62/128 figures below describe its historical maintenance baseline.
+The [source-policy/factory follow-up](host_restart_policy_closeout.md) subsequently
+fixes HostKit clock/acquisition wiring and retains the remaining restart
+differences. It also awards zero conditions; historical captures stay unchanged.
 
 This package integrates already reviewed fixes for the existing promotion and
 heartbeat contracts. It adds no acceptance condition and awards **zero new

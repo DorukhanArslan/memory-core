@@ -20,10 +20,11 @@ from uuid import uuid4
 
 from memory_core.config import MemoryConfig
 from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
-from memory_core.curation import CURATION_OPERATIONS
+from memory_core.curation import APPEND_DAILY_NOTE, CURATION_OPERATIONS
 from memory_core.host.flush import FlushOutcome, FlushRequest
 from memory_core.host.kit import HostKit, TurnContext
 from memory_core.host.session import SessionState, TurnUsage, apply_turn_usage
+from memory_core.memory_write_provenance import _observe_memory_write_entry
 from memory_core.session_catalog import MemorySessionCatalog, normalize_session_agent_id
 from memory_core.session_visibility import is_incognito_session_key, resolve_session_agent_id
 from memory_core.tools.common import format_error_message
@@ -190,9 +191,11 @@ class HostTurn:
 
     def __init__(self, runner: HostSessionRunner, turn_id: str, session: SessionState,
                  context: TurnContext | None, messages: Sequence[Mapping[str, Any]],
-                 trust: TurnTrust, *, flush: FlushRequest | None = None) -> None:
+                 trust: TurnTrust, *, flush: FlushRequest | None = None,
+                 publication_turn_id: str | None = None) -> None:
         self._runner = runner
         self.turn_id = turn_id
+        self._publication_turn_id = publication_turn_id or turn_id
         self.session = session
         self.context = context
         self.flush_request = flush
@@ -293,7 +296,12 @@ class HostTurn:
             receipt = {"turnId": self.turn_id, "toolCallId": call["id"], "name": call["name"],
                        "arguments": deepcopy(call["arguments"]), "sourceExecuted": False,
                        "maintenance": self.flush_request is not None,
-                       "memoryPublicationOwner": call["name"] in self._publication_tools}
+                       "memoryPublicationOwner": call["name"] in self._publication_tools,
+                       "memoryMutationOwner": (call["name"] in self._publication_tools
+                           or self.flush_request is not None and call["name"] == "write"),
+                       "checkedMemoryPublicationOwner": (call["name"] in self._publication_tools
+                           and call["name"] != APPEND_DAILY_NOTE),
+                       "memoryProducerStarted": False, "sourceSettled": False}
             self._receipts.append(receipt)
             return _DispatchReservation(call, receipt)
 
@@ -302,6 +310,7 @@ class HostTurn:
             if reservation.released:
                 return
             reservation.released = True
+            reservation.receipt["sourceSettled"] = True
             self._active -= 1
             if self._active == 0:
                 for loop, future in self._waiters:
@@ -336,8 +345,14 @@ class HostTurn:
         try:
             try:
                 self._runner._assert_identity()
+
+                def before_memory_producer() -> None:
+                    self._runner._ensure_memory_intent(self.session, turn_id=self._publication_turn_id)
+                    receipt["memoryProducerStarted"] = True
+
                 receipt["sourceExecuted"] = call["name"] in self._sources
-                result = self._dispatcher.dispatch(call["name"], call["arguments"], tool_call_id=call["id"])
+                with _observe_memory_write_entry(before_memory_producer if receipt["memoryMutationOwner"] else None):
+                    result = self._dispatcher.dispatch(call["name"], call["arguments"], tool_call_id=call["id"])
                 receipt["result"] = deepcopy(result)
                 payload = _result_message_payload(result)
                 failed = result.get("isError") is True or result.get("status") == "error"
@@ -414,7 +429,8 @@ class HostSessionRunner:
         if catalog.agent_id != normalize_session_agent_id(kit.memory.config.agent_id):
             raise ValueError("HostKit and session catalog belong to different agents")
         ledger = kit.memory.store.artifact_provenance
-        if ledger is None:
+        if (ledger is None or kit._artifact_provenance is None
+                or ledger.path.resolve() != kit._artifact_provenance.path.resolve()):
             raise ValueError("Construct HostKit with artifact_provenance, or use HostSessionRunner.open")
         if kit.memory.workspace.session_catalog is not catalog:
             raise ValueError("HostKit must use this exact session catalog for indexing")
@@ -444,6 +460,8 @@ class HostSessionRunner:
         self._blocking_guard = threading.Lock()
         self._blocking_count = 0
         self._blocking_waiters: list[tuple[asyncio.AbstractEventLoop, asyncio.Future]] = []
+        self._intent_guard = threading.Lock()
+        self._intent_turn_id: str | None = None
 
     @classmethod
     def open(cls, workspace_dir: str | Path, *, catalog: MemorySessionCatalog, session: SessionState,
@@ -549,10 +567,25 @@ class HostSessionRunner:
             raise asyncio.CancelledError("Host maintenance was cancelled")
 
     def _assert_publication_owner(self, pending: Mapping[str, Any]) -> None:
+        ledger = self.kit.memory.store.artifact_provenance
         if (pending["workspace"] != str(self.kit.memory.workspace.root.resolve())
                 or pending["indexPath"] != str(self.kit.memory.store.path.resolve())
-                or pending["provenancePath"] != str(self.artifact_provenance.path.resolve())):
+                or pending["provenancePath"] != str(self.artifact_provenance.path.resolve())
+                or ledger is None or pending["provenancePath"] != str(ledger.path.resolve())):
             raise RuntimeError("The pending memory publication belongs to a different workspace, index or provenance store")
+
+    def _ensure_memory_intent(self, state: SessionState, *, turn_id: str) -> None:
+        """Record custody before the first owned memory producer may mutate."""
+        with self._intent_guard:
+            ledger = self.kit.memory.store.artifact_provenance
+            if ledger is None or ledger.path.resolve() != self.artifact_provenance.path.resolve():
+                raise ValueError("The memory provenance store changed; reopen the runner")
+            if self._intent_turn_id == turn_id:
+                return
+            self._assert_identity()
+            self._persist(state, needs_index=True, turn_id=turn_id,
+                pending_memory_publication=_publication_marker(turn_id, self.kit, stage="intent"))
+            self._intent_turn_id = turn_id
 
     def _load(self) -> tuple[SessionState, dict[str, Any], bool]:
         current = self.catalog.get_session_entry(self.session.session_key)
@@ -712,6 +745,7 @@ class HostSessionRunner:
         turn_id = request_id or uuid4().hex
         try:
             self._cancel_requested = asyncio.Event()
+            self._intent_turn_id = None
             capture = _RunCapture(self.session, [], [], [])
             producer = asyncio.create_task(self._produce(user_message, execute, execute_flush, turn_id,
                 sender_is_owner, context_window_tokens, capture))
@@ -822,14 +856,19 @@ class HostSessionRunner:
                 # publication. Settlement below records the real receipt first.
                 phase = "publication-reconciliation"
                 raise RuntimeError("A memory publication is uncertain; acknowledge current files before continuing")
+
+            def assert_flush_current() -> None:
+                self._assert_maintenance_current()
+                self._ensure_memory_intent(state, turn_id=turn_id)
+
             try:
                 record = self.kit.after_turn(state, transcript=messages, usage=result.usage,
                     context_window_tokens=context_window_tokens, transcript_events=continuation["visibleEvents"],
                     untrusted_turn=lambda: trust.resolve_origin_class() == "untrusted",
-                    assert_current=self._assert_maintenance_current)
-            except asyncio.CancelledError:
+                    assert_current=assert_flush_current)
+            except (asyncio.CancelledError, Exception):
                 # The visible model finished before optional maintenance was
-                # cancelled. Retain its actual usage even though no flush
+                # interrupted. Retain its actual usage even though no flush
                 # target or request may be created by this stale owner.
                 state = apply_turn_usage(state, result.usage)
                 capture.state = state
@@ -847,7 +886,8 @@ class HostSessionRunner:
                     flush_outcome = request.complete(state, cancelled=True)
                     capture.flush = flush_outcome
                 else:
-                    maintenance = HostTurn(self, f"{turn_id}:flush", state, None, request.messages, trust, flush=request)
+                    maintenance = HostTurn(self, f"{turn_id}:flush", state, None, request.messages, trust,
+                        flush=request, publication_turn_id=turn_id)
                     self._active_turn = maintenance
                     flush_error = None
                     flush_result = HostModelResult()
@@ -970,17 +1010,48 @@ def _after_write_error(receipt):
 
 
 def _memory_publication(receipts, flush_outcome, *, inherited="none") -> Literal["none", "committed", "uncertain"]:
-    if inherited == "uncertain" or any(_receipt_publication(row) == "uncertain" for row in receipts):
+    if (inherited == "uncertain" or any(_receipt_publication(row) == "uncertain" for row in receipts)
+            or _unresolved_memory_intent(receipts)):
         return "uncertain"
     return "committed" if _memory_wrote(receipts, flush_outcome) else "none"
 
 
 def _pending_publication(receipts, turn_id, kit):
-    return ({"turnId": turn_id, "publication": "uncertain",
-             "workspace": str(kit.memory.workspace.root.resolve()),
-             "indexPath": str(kit.memory.store.path.resolve()),
-             "provenancePath": str(kit.memory.store.artifact_provenance.path.resolve())}
-            if _memory_publication(receipts, None) == "uncertain" else _KEEP_PUBLICATION)
+    if any(_receipt_publication(row) == "uncertain" for row in receipts):
+        return _publication_marker(turn_id, kit, stage="uncertain")
+    return _publication_marker(turn_id, kit, stage="intent") if _unresolved_memory_intent(receipts) else None
+
+
+def _publication_marker(turn_id, kit, *, stage):
+    return {"turnId": turn_id, "publication": "uncertain", "stage": stage,
+            "workspace": str(kit.memory.workspace.root.resolve()),
+            "indexPath": str(kit.memory.store.path.resolve()),
+            "provenancePath": str(kit.memory.store.artifact_provenance.path.resolve())}
+
+
+def _unresolved_memory_intent(receipts) -> bool:
+    for receipt in receipts:
+        if receipt.get("memoryMutationOwner") is not True or receipt.get("memoryProducerStarted") is not True:
+            continue
+        if "result" not in receipt and "error" not in receipt:
+            if receipt.get("sourceSettled") is True:
+                return True
+            # An in-flight producer is protected by this turn's durable intent;
+            # its own admission must not be blocked by that pending work.
+            continue
+        result = receipt.get("result")
+        if not isinstance(result, Mapping):
+            return True
+        if _receipt_publication(receipt) == "committed":
+            continue
+        if result.get("status") == "ok" and not result.get("isError"):
+            continue
+        if receipt.get("checkedMemoryPublicationOwner") is True and _receipt_publication(receipt) is None:
+            # This exact checked replacement owner raises a typed publication
+            # error after dispatch. Its ordinary refusal has no publication.
+            continue
+        return True
+    return False
 
 
 def _stored_pending_publication(entry):
@@ -988,11 +1059,11 @@ def _stored_pending_publication(entry):
     pending = auxiliary.get("pendingMemoryPublication")
     if pending is None:
         return None
-    if (not isinstance(pending, Mapping)
-            or set(pending) != {"turnId", "publication", "workspace", "indexPath", "provenancePath"}
+    fields = {"turnId", "publication", "workspace", "indexPath", "provenancePath"}
+    if (not isinstance(pending, Mapping) or set(pending) not in (fields, fields | {"stage"})
             or not isinstance(pending["turnId"], str) or not pending["turnId"]
             or any(not isinstance(pending[name], str) or not Path(pending[name]).is_absolute()
                    for name in ("workspace", "indexPath", "provenancePath"))
-            or pending["publication"] != "uncertain"):
+            or pending["publication"] != "uncertain" or pending.get("stage", "uncertain") not in {"intent", "uncertain"}):
         raise ValueError("The stored memory publication uncertainty is invalid")
     return pending

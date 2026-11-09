@@ -10,7 +10,9 @@ other files of :func:`~memory_core.consolidation.artifact_provenance.normalize_m
 first records its trust in the host's :class:`~memory_core.consolidation.artifact_provenance.MemoryArtifactProvenanceStore`
 (``agent`` for a trusted writer on a file that was still the way a trusted write left it, ``untrusted``
 for an untrusted turn, an edit in between, or a file that was already untrusted: the record is sticky),
-then commits the write; a failed commit rolls the record back. The dreaming daily ingestion and the
+then commits the write; an ordinary commit error rolls the record back. The SDK host integration
+keeps quarantine when a checked publisher reports a genuinely dispatched uncertain/committed
+mutation, and can gate producer entry with its durable intent. The dreaming daily ingestion and the
 promotion's daily-file quarantine read the records
 (:mod:`memory_core.consolidation.daily_ingestion`, ``with_daily_file_quarantine``).
 
@@ -25,6 +27,8 @@ import logging
 import os
 import time
 from collections.abc import Callable
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Literal
 
@@ -37,6 +41,17 @@ from memory_core.consolidation.artifact_provenance import (
 LOGGER = logging.getLogger(__name__)
 
 OriginClass = Literal["agent", "untrusted"]
+_write_entry: ContextVar[Callable[[], None] | None] = ContextVar("memory_write_entry", default=None)
+
+
+@contextmanager
+def _observe_memory_write_entry(callback: Callable[[], None] | None):
+    """Bind a trusted host observer to this synchronous source invocation."""
+    token = _write_entry.set(callback)
+    try:
+        yield
+    finally:
+        _write_entry.reset(token)
 
 
 def canonical_path_from_existing_ancestor(file_path: str | os.PathLike[str]) -> str:
@@ -110,7 +125,10 @@ class MemoryWriteProvenanceObserver:
         content_after: str,
         commit: Callable[[], None],
     ) -> None:
-        """Record the write's trust, run ``commit`` and roll the record back when it fails."""
+        """Record trust, retaining checked publisher states and rolling back other failures."""
+        before_write = _write_entry.get()
+        if before_write is not None:
+            before_write()
         relative_path = self._relative_path(absolute_path)
         if relative_path is None:
             commit()

@@ -131,17 +131,18 @@ finished and the turn has no recorded failure or cancellation.
 | --- | --- |
 | `transcript_committed` | This request has a durable user admission; partial model/tool records can also exist after failure. |
 | `memory_writes_committed` | At least one SDK memory publication is known to have committed, including a flush body. This does not promise those bytes survived a later external edit. |
-| `memory_publication` | `none`, `committed`, or `uncertain`; uncertainty takes precedence even when another write is known to have committed. |
+| `memory_publication` | `none`, `committed`, or `uncertain`; a publisher uncertainty or unresolved owned write intent takes precedence even when another write is known to have committed. |
 | `index_status` | `ready`, `failed`, or `not-run`; it is separate from file commitment. |
-| `failures` | Phase, error type, message, known commitment and the publisher's optional `publication` state for each visible failure. |
+| `failures` | Phase, error type, message, known commitment and optional publication/intent uncertainty for each visible failure. |
 | `appends`, `tools` | Actual durable append results and complete execution receipts. |
 | `flush` | The actual completion state, including write/failure/cancellation facts. |
 
-`memory_publication="none"` means these selected owners supplied no publication fact;
+`memory_publication="none"` means these selected owners supplied no publication fact or
+unresolved write intent;
 it is not a guarantee that every failed external tool or low-level append left no partial
-IO. The explicit uncertainty policy below consumes checked replacement receipts. Ordinary
-append IO errors retain their own error contract and are not assigned an invented publisher
-state by this integration.
+IO. An ordinary append IO error retains its original error contract, with no invented lower
+`publication` field. If that owned producer started, the SDK separately keeps its durable
+intent unresolved instead of inferring that the append wrote nothing.
 
 A committed file with `afterWriteError` remains committed. The outcome reports the index
 failure, persists `needsIndex`, and does not repeat the write. The next admission attempts
@@ -166,6 +167,17 @@ indexing and refuses further dispatches and subsequent admissions, including aft
 Successful indexing alone cannot clear it, and optional memory maintenance does not run.
 The original trust quarantine remains attached to either dispatched publication state.
 
+Before the first trusted builtin memory producer enters a turn, the runner durably saves
+an owner-bound `stage="intent"` marker. The real write observer gates file/provenance
+producers; a due flush's existing authority check also gates target preparation. If the
+intent save fails, that producer does not run. Argument validation, skipped/unchanged
+operations and ordinary chat/read-only turns do not leave unresolved intents. The same
+intent stays through all accepted writes and private flush work, and known final settlement
+clears it. An actual uncertain replacement records `stage="uncertain"`; an ambiguous append
+error keeps `stage="intent"`. If final catalog settlement fails or the process stops, the
+prior intent survives for a fresh runner to refuse admission until acknowledgment. This
+does not resume or repeat the interrupted model/provider operation.
+
 After the host has inspected and accepted the **current** files, acknowledge the exact pending
 turn explicitly:
 
@@ -187,7 +199,7 @@ results are private application diagnostics; do not expose those unfiltered in a
 
 Finalization merges owned usage/flush fields into the latest current catalog metadata, preserving
 unrelated caller fields. A small `sdkHostLifecycle` metadata envelope holds auxiliary kit
-state and the publication marker; it never recursively serializes the entry into itself.
+state and the owner-bound intent/publication marker; it never recursively serializes the entry into itself.
 An observed session-incarnation change refuses stale model records and dispatches instead
 of restoring the older current session.
 
@@ -214,6 +226,8 @@ for the same canonical catalog/agent/session key share a lane. Concurrent use fr
 event loop fails closed; a model callback cannot recursively enter its own session lane.
 Separate sessions can run independently. External filesystem writes and competing processes
 are outside this lane; catalog transactions and existing source-revision checks still apply.
+Durable mutation intents cover the exact builtin curation and private flush producers;
+additional host tool implementations retain their own mutation/admission policy.
 Live identity and pending-turn checks fence cooperating runners; they are not an atomic
 compare-and-set against unrelated direct catalog writes. Hosts must serialize those raw
 metadata edits themselves while a turn or acknowledgment owns the session.

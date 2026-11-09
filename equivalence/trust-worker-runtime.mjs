@@ -9,6 +9,9 @@ const OriginalWorker=threads.Worker, originalPost=OriginalWorker.prototype.postM
 const request=JSON.parse(await fs.readFile(process.argv[2],'utf8'));
 const {input,runtimeRoot:root,fixtureDirectory:directory}=request;
 if (![root,directory].every(value=>typeof value==='string' && path.isAbsolute(value))) throw Error('Absolute authenticated runtime and fixture paths required');
+const declaredSecrets=new Set(['worker-fixture-credential','unrelated-worker-credential-2']);
+if(input.secret!=='worker-fixture-credential')throw Error('Only declared synthetic worker credentials are admitted');
+const assertSynthetic=(values)=>{if(!Array.isArray(values)||values.some(value=>!declaredSecrets.has(value)))throw Error('Undeclared registry member; sensitive snapshot was not recorded');};
 await fs.mkdir(directory,{recursive:true});
 process.env.OPENCLAW_STATE_DIR=path.join(directory,'state');
 process.env.OPENCLAW_CONFIG_PATH=path.join(directory,'openclaw.json');
@@ -32,6 +35,7 @@ threads.Worker=new Proxy(OriginalWorker,{construct(target,args,newTarget){
 OriginalWorker.prototype.postMessage=function(message,...rest){
  const url=workers.get(this);
  if(url===expected && message?.input?.kind==='session-entry'){
+  assertSynthetic(message.input.redaction?.registeredSecretValues);
   const ordinal=++attempt, taskId=message.taskId;
   observations.push({event:'preparation-dispatch',ordinal,url,threadId:this.threadId,message:JSON.parse(JSON.stringify(message,(_k,v)=>v instanceof SharedArrayBuffer?{$type:'SharedArrayBuffer',byteLength:v.byteLength}:v))});
   const listener=(reply)=>{
@@ -50,6 +54,7 @@ OriginalWorker.prototype.postMessage=function(message,...rest){
 };
 syncBuiltinESMExports();
 const registry=await imp('dist/secret-redaction-registry-b2B9lcfy.mjs');register=registry.s;revision=registry.r;
+assertSynthetic(registry.t().values);
 const config=await imp('dist/plugin-sdk/config-runtime.js');config.setRuntimeConfigSnapshot(cfg);
 const sessions=await imp('dist/plugin-sdk/session-store-runtime.js');
 const accessor=await imp('dist/session-accessor-CiKKTlbe.mjs');

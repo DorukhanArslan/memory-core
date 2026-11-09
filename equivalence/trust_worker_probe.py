@@ -24,6 +24,12 @@ SDK_FILES = ("memory_core/session_corpus.py", "memory_core/session_entry.py",
              "memory_core/session_catalog.py", "memory_core/redact.py", "memory_core/secret_registry.py")
 ADAPTER_FILES = ("equivalence/trust-worker-runtime.mjs", "equivalence/trust_worker_probe.py",
                  "equivalence/trust_worker_runtime_bindings.py")
+DECLARED_SECRETS = frozenset({"worker-fixture-credential", "unrelated-worker-credential-2"})
+
+
+def _assert_synthetic_registry(values) -> None:
+    if not isinstance(values, (list, tuple)) or any(not isinstance(value, str) or value not in DECLARED_SECRETS for value in values):
+        raise ValueError("Undeclared registry member; sensitive snapshot was not recorded")
 
 
 def _cases() -> list[dict]:
@@ -39,8 +45,12 @@ def _cases() -> list[dict]:
 
 
 def _sdk(input_value: dict, directory: Path) -> dict:
+    if input_value.get("secret") != "worker-fixture-credential":
+        raise ValueError("Only declared synthetic worker credentials are admitted")
+    directory.mkdir()
+    (directory / "openclaw.json").write_text(json.dumps({"logging": {}}))
     import memory_core
-    from memory_core import secret_registry
+    from memory_core import redact, secret_registry
     from memory_core.session_catalog import MemorySessionCatalog
     from memory_core.session_corpus import MemoryCoreSessionCorpus
     from memory_core.session_entry import build_session_entry
@@ -48,7 +58,8 @@ def _sdk(input_value: dict, directory: Path) -> dict:
     if not Path(memory_core.__file__).resolve().is_relative_to(ROOT):
         raise RuntimeError("Worker diagnostic imported an SDK outside its owning worktree")
     secret_registry.reset_secret_redaction_registry()
-    directory.mkdir()
+    redact.configure_logging_redaction(None)
+    _assert_synthetic_registry(secret_registry.capture_secret_redaction_registry_snapshot().values)
     key, session_id = "agent:main:dm:worker-fixture", "worker-fixture"
     source_path = directory / "state/agents/main/sessions/worker-fixture.jsonl"
     catalog = MemorySessionCatalog(directory / "catalog.sqlite", store_path=source_path.with_name("sessions.json"),
@@ -80,6 +91,8 @@ def _sdk(input_value: dict, directory: Path) -> dict:
         if event == "return" and frame.f_code is build_session_entry.__code__:
             ordinal = len(preparations) + 1
             captured = frame.f_back.f_locals.get("redaction")
+            if captured is not None:
+                _assert_synthetic_registry(captured.registered_secret_values)
             preparations.append({"ordinal": ordinal, "actualPreparedEntry": asdict(value),
                                  "actualRegistrySnapshot": asdict(captured) if captured is not None else None})
             if not input_value.get("observer"):
@@ -133,6 +146,7 @@ def _validate_native(value: dict, input_value: dict, runtime_root: str) -> None:
                 or any(message["input"]["options"].get(key) != item for key, item in value["scope"].items())):
             raise ValueError("An original source-worker request or actual successful reply is not authenticated")
         revision = message["input"]["redaction"]["registryRevision"]
+        _assert_synthetic_registry(message["input"]["redaction"]["registeredSecretValues"])
         if previous_revision is not None and revision != previous_revision:
             raise ValueError("A retry must capture the actual current registry revision")
         mutations = [item for item in value["mutations"] if item["ordinal"] == dispatch["ordinal"]]
@@ -181,7 +195,22 @@ def run(checkout: Path, runtime_cache: Path, node: Path, output: Path) -> dict:
         completed.check_returncode()
         native = json.loads(completed.stdout)
         _validate_native(native, case["input"], runtime["runtimeRoot"])
-        sdk = _sdk(case["input"], directory / "sdk-fixture")
+        sdk_directory = directory / "sdk-fixture"
+        sdk_request = directory / "sdk-input.json"
+        sdk_request.write_text(json.dumps({"input": case["input"], "fixtureDirectory": str(sdk_directory)}))
+        sdk_process = subprocess.run(
+            [sys.executable, "-m", "equivalence.trust_worker_probe", "--sdk-case", str(sdk_request)],
+            capture_output=True, text=True, timeout=60, cwd=ROOT,
+            env={"PATH": str(Path(sys.executable).parent) + os.pathsep + os.defpath,
+                 "PYTHONPATH": str(ROOT), "LANG": "en_US.UTF-8", "TZ": "UTC",
+                 "OPENCLAW_STATE_DIR": str(sdk_directory / "state"),
+                 "OPENCLAW_CONFIG_PATH": str(sdk_directory / "openclaw.json"),
+                 "OPENCLAW_HOME": str(sdk_directory)},
+        )
+        (directory / "sdk.stdout.json").write_text(sdk_process.stdout)
+        (directory / "sdk.stderr.log").write_text(sdk_process.stderr)
+        sdk_process.check_returncode()
+        sdk = json.loads(sdk_process.stdout)
         (directory / "sdk.json").write_text(json.dumps(sdk, default=str))
         fields = ("content", "hash", "lineMap", "messageTimestampsMs", "lineProvenance", "sessionKind")
         native_body = {name: native.get("result", {}).get(name) for name in fields}
@@ -204,6 +233,11 @@ def run(checkout: Path, runtime_cache: Path, node: Path, output: Path) -> dict:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--sdk-case":
+        request = json.loads(Path(sys.argv[2]).read_text())
+        json.dump(_sdk(request["input"], Path(request["fixtureDirectory"])), sys.stdout, default=str)
+        sys.stdout.write("\n")
+        raise SystemExit(0)
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
     for argument in ("checkout", "runtime-cache", "node", "output"):

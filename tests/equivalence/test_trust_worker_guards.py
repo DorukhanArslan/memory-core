@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from equivalence.trust_worker_probe import _validate_native
+from equivalence.trust_worker_probe import _assert_synthetic_registry, _validate_native
 
 
 def _capture():
@@ -50,3 +50,10 @@ def test_a_stable_first_reply_cannot_be_reported_as_needing_another_original_ret
     captured["native"]["mutations"].clear()
     with pytest.raises(ValueError, match="must accept a stable preparation"):
         _validate_native(captured["native"], captured["input"], captured["runtimeRoot"])
+
+
+@pytest.mark.parametrize("values", [["not-a-declared-fixture"], [7], [{}], "worker-fixture-credential"])
+def test_sensitive_snapshot_rejection_never_prints_an_undeclared_value(values):
+    with pytest.raises(ValueError) as raised:
+        _assert_synthetic_registry(values)
+    assert str(raised.value) == "Undeclared registry member; sensitive snapshot was not recorded"

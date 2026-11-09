@@ -177,13 +177,70 @@ def test_provider_endpoint_change_never_borrows_another_cache_space(tmp_path):
 def test_declared_provider_alias_can_reuse_equivalent_old_model_space(tmp_path):
     store, workspace, first = create_store(tmp_path, {"memory/a.md": "glacier alpha"})
     store.reindex(workspace)
+    before = published(store)
     other = CountingProvider()
     other.model = "new-compatible-model"
     other.index_identity_aliases = [{"model": first.model, "cacheKeyData": first.cache_key_data()}]
     reopened = SQLiteMemoryStore(store.config, other)
+    assert reopened.index_identity() == {"status": "valid"}
     reopened.reindex(workspace)
     assert other.calls == []
-    assert reopened.read_index_meta()["model"] == "new-compatible-model"
+    assert published(reopened) == before
+    assert reopened.read_index_meta()["model"] == first.model
+    assert reopened.search("glacier", min_score=0)
+
+
+def test_alias_source_update_keeps_canonical_meta_and_both_model_spaces_searchable(tmp_path):
+    store, workspace, first = create_store(tmp_path, {"memory/a.md": "glacier alpha", "memory/b.md": "calendar beta"})
+    store.reindex(workspace)
+    meta = store.read_index_meta()
+    unchanged = rows(store, "SELECT * FROM chunks WHERE path='memory/b.md'")
+    other = CountingProvider()
+    other.model = "new-compatible-model"
+    other.index_identity_aliases = [{"model": first.model, "cacheKeyData": first.cache_key_data()}]
+    reopened = SQLiteMemoryStore(store.config, other)
+    (workspace.root / "memory/a.md").write_text("volcano gamma", encoding="utf-8")
+    reopened.reindex(workspace)
+    assert reopened.read_index_meta() == meta
+    assert rows(reopened, "SELECT * FROM chunks WHERE path='memory/b.md'") == unchanged
+    assert set(row[0] for row in rows(reopened, "SELECT model FROM memory_index_chunk_details")) == {first.model, other.model}
+    assert reopened.index_identity() == {"status": "valid"}
+    assert {hit.path for hit in reopened.search("volcano calendar", min_score=0)} == {"memory/a.md", "memory/b.md"}
+    again = SQLiteMemoryStore(store.config, other)
+    before = published(reopened)
+    again.reindex(workspace)
+    assert published(again) == before
+
+
+def test_undeclared_model_namespace_does_not_reuse_same_text_cache(tmp_path):
+    store, workspace, first = create_store(tmp_path, {"memory/a.md": "glacier alpha"})
+    store.reindex(workspace)
+    other = CountingProvider()
+    other.model = "different-model"
+    reopened = SQLiteMemoryStore(store.config, other)
+    assert reopened.index_identity()["code"] == "model"
+    reopened.reindex(workspace)
+    assert other.calls == [["glacier alpha"]]
+    assert reopened.read_index_meta()["model"] == other.model
+    assert {row[1] for row in cache_rows(reopened)} == {first.model, other.model}
+
+
+def test_declared_alias_does_not_bypass_other_index_settings_or_force_rebuild(tmp_path):
+    store, workspace, first = create_store(tmp_path, {"memory/a.md": "glacier alpha"})
+    store.reindex(workspace)
+    other = CountingProvider()
+    other.model = "new-compatible-model"
+    other.index_identity_aliases = [{"model": first.model, "cacheKeyData": first.cache_key_data()}]
+    reopened = SQLiteMemoryStore(store.config, other)
+    old_meta = store.read_index_meta()
+    corrupted = {**old_meta, "scopeHash": "different-scope"}
+    with reopened.connect() as db:
+        db.execute("UPDATE memory_index_meta SET value=? WHERE key=?", (json.dumps(corrupted), MEMORY_INDEX_META_KEY))
+    assert reopened.index_identity()["code"] == "scope"
+    with reopened.connect() as db:
+        db.execute("UPDATE memory_index_meta SET value=? WHERE key=?", (json.dumps(old_meta), MEMORY_INDEX_META_KEY))
+    reopened.reindex(workspace, force=True)
+    assert reopened.read_index_meta()["model"] == other.model
 
 
 def test_default_cache_capacity_is_applied_at_store_writes(tmp_path, monkeypatch):
@@ -193,8 +250,12 @@ def test_default_cache_capacity_is_applied_at_store_writes(tmp_path, monkeypatch
     })
     store.reindex(workspace)
     assert len(cache_rows(store)) == 2
+    cached = {row[3] for row in cache_rows(store)}
+    missing_texts = {text for text in ("alpha", "beta", "gamma")
+                     if hashlib.sha256(text.encode()).hexdigest() not in cached}
+    before = len(provider.calls)
     store.reindex(workspace, force=True)
-    assert len(provider.calls[-1]) == 1
+    assert {text for call in provider.calls[before:] for text in call} == missing_texts
     assert len(cache_rows(store)) == 2
     assert store.count_chunks() == 3
 
@@ -228,8 +289,9 @@ def test_dimension_change_invalidates_cache_and_explicit_retry_rebuilds_all_sour
         store.reindex(workspace)
     assert published(store) == before
     assert cache_rows(store) == []
+    before_retry = len(provider.calls)
     assert store.reindex(workspace) == 2
-    assert set(provider.calls[-1]) == {"alpha", "beta"}
+    assert sorted(text for call in provider.calls[before_retry:] for text in call) == ["alpha", "beta"]
     assert store.read_index_meta()["vectorDims"] == 2
     assert {len(json.loads(row[0])) for row in rows(store, "SELECT embedding FROM chunks")} == {2}
 

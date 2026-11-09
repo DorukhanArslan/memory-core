@@ -170,5 +170,58 @@ origin rejection, and the defensive private path. The held-lock regression only
 bounds retries to zero; both lock owners remain the genuine implementation.
 The focused promotion/canonical/numeric/atomic and evidence gate passed 279 tests.
 The refreshed source inventory validates all 64 contracts and 128 existing
-conditions without behavioral credit. The same single paired input will be run
-once more after a clean source freeze; broader requirement 43 remains open.
+conditions without behavioral credit.
+
+## Corrected same-input comparison
+
+The single corrected protected pair ran once at clean `b852adb`, with the exact
+same literal and byte-identical callers, capability, catalog, bindings and guards.
+It completed in 25.013156 seconds: one match, zero differences, zero blocked
+cases, and no errors. The complete public envelopes retained in both raw outputs
+match. The SDK now returns the complete source-rehydration rejection without a
+MEMORY read, model call, or promotion sidecar acquisition. Its actual lock
+callback list is empty and no state directory exists at settlement. The richer
+18-field `MemoryPromotionRun`, evaluations and index readbacks remain raw SDK
+extensions.
+
+The immutable corrected report is
+`.equivalence-results/promotion-apply-zero-rehydrated-corrected-paired-1.json`:
+23,667,213 bytes, SHA-256
+`ab676d7cdf5f522db05ec5fc95ed26cade5ff1335979b7945f6380504310f656`.
+Native and SDK raw hashes are respectively
+`0073ab183f204538e2a7ff8cb2523d096b511a778545f289f512ba4ec72f1513`
+and `f6f79527906c824c5bae8d333db0d11165ba1851a96a63d83524c439f664b5e7`.
+The original first report still hashes to `98ecee00660553554026552bc7aadf367b663685239ac0dadecaeedd32b358e3`.
+
+This is a zero-credit subset. Its `incomplete` status and exit code 1 reflect
+128 uncovered conditions in the subset report; the genuine operation comparison
+matches. It does not replace the main repository's broader acceptance results
+or close either requirement 43 condition.
+
+## Prepared follow-up literals
+
+`promotion_apply_followup_literals.json` proposes eight additional whole-operation
+inputs for the already fixed scope: authoritative stale-candidate overrides with
+moved source lines; mixed successful/rejected authoritative receipts; real
+daily-file quarantine; direct append without a stored entry; three completion
+barriers that change the store, source, or MEMORY marker; and one add-only
+preimage/origin/DREAMS publication flow. They contain literal inputs and declared
+host actions, without prepared apply results or desired journal entries. Candidate
+scores remain explicit caller inputs to the original apply API.
+
+They are not registered, executable, or authorized by the current capability.
+The first capability and its single input remain unchanged. A separate family
+manifest/profile review must authenticate the actual provenance-write alias
+`memory-artifact-provenance-DhnyWiV1.mjs:a`, complete genuine completion callbacks,
+and actual preimage/origin agent-database owners and any required backend roles.
+The completion text is a controlled provider-free host response; the original
+parser, fallback and apply decisions remain real. An add-only plan only selects
+an action; the original code derives the entry text from source evidence.
+
+Publication order still requires transparent live receipts from the actual
+write/store/lock owners. Final files and the independent atomic-owner proof do
+not establish the outer apply order. The initial proposed three-part worker
+capability must not be widened silently for provenance, model, or origin paths.
+An append-only held-lock/interleave route, if needed for the direct-candidate
+branch, needs its own exact hook/holder manifest. General merge, supersede,
+loss/history and model-plan equivalence remain requirement 44.

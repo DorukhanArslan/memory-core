@@ -1,0 +1,1152 @@
+{
+  "kind": "promotion-apply-followup-literal-proposal",
+  "status": "Not registered or executable; new independent manifest/capability review required",
+  "firstCapabilityUnchanged": true,
+  "expectedResultsSupplied": false,
+  "acceptancePointsAwarded": 0,
+  "cases": [
+    {
+      "id": "promotion-apply-authoritative-store-and-moved-source",
+      "requirement": "promotion.apply-reconcile",
+      "covers": [],
+      "operation": "promotion-apply-family-runtime",
+      "input": {
+        "kind": "promotion-apply-families",
+        "nowMs": 1779811200000,
+        "directories": [],
+        "files": {
+          "MEMORY.md": "# Personal notes\nKeep this exact user-authored sentence.\n",
+          "memory/2026-05-08.md": "# Source facts\n\nA new preface.\nAnother inserted line.\n- A durable bright kumquat tea preference.\n"
+        },
+        "recall": {
+          "version": 1,
+          "updatedAt": "2026-05-26T16:00:00.000Z",
+          "entries": {
+            "memory:memory/2026-05-08.md:3:3": {
+              "key": "memory:memory/2026-05-08.md:3:3",
+              "path": "memory/2026-05-08.md",
+              "startLine": 3,
+              "endLine": 3,
+              "source": "memory",
+              "snippet": "- A durable bright kumquat tea preference.",
+              "recallCount": 4,
+              "dailyCount": 0,
+              "groundedCount": 0,
+              "maxScore": 1,
+              "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+              "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+              "recallDays": [
+                "2026-05-21",
+                "2026-05-22",
+                "2026-05-23"
+              ],
+              "conceptTags": [],
+              "provenance": {
+                "originClass": "owner",
+                "sessionKind": "unknown",
+                "observedAt": 1
+              },
+              "totalScore": 3.6,
+              "queryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ],
+              "userQueryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ]
+            }
+          }
+        },
+        "candidates": [
+          {
+            "key": "memory:memory/2026-05-08.md:3:3",
+            "path": "memory/stale-location.md",
+            "startLine": 9,
+            "endLine": 9,
+            "source": "memory",
+            "snippet": "A stale supplied snippet.",
+            "recallCount": 4,
+            "dailyCount": 0,
+            "groundedCount": 0,
+            "signalCount": 4,
+            "avgScore": 0.9,
+            "maxScore": 1,
+            "uniqueQueries": 3,
+            "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+            "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+            "ageDays": 1,
+            "score": 0.875,
+            "recallDays": [
+              "2026-05-21",
+              "2026-05-22",
+              "2026-05-23"
+            ],
+            "conceptTags": [],
+            "components": {
+              "frequency": 0.5,
+              "relevance": 0.9,
+              "diversity": 0.6,
+              "recency": 0.9,
+              "consolidation": 0.5,
+              "conceptual": 0
+            },
+            "provenance": {
+              "originClass": "agent",
+              "sessionKind": "unknown",
+              "observedAt": 1
+            }
+          }
+        ],
+        "options": {
+          "timezone": "UTC",
+          "memoryFileMaxChars": 10000,
+          "maxPriorEntryLossFraction": 0.25,
+          "minScore": 0,
+          "minRecallCount": 0,
+          "minUniqueQueries": 0,
+          "limit": 5
+        }
+      },
+      "driverScope": "Actual canonical store overrides stale caller path/span/snippet/provenance; real source rehydration relocates the stored evidence. Caller ranking fields remain literal inputs."
+    },
+    {
+      "id": "promotion-apply-mixed-authoritative-rejection-receipts",
+      "requirement": "promotion.apply-reconcile",
+      "covers": [],
+      "operation": "promotion-apply-family-runtime",
+      "input": {
+        "kind": "promotion-apply-families",
+        "nowMs": 1779811200000,
+        "directories": [],
+        "files": {
+          "MEMORY.md": "# Personal notes\nKeep this exact user-authored sentence.\n",
+          "memory/2026-05-08.md": "# Source facts\n\n- Durable blocked source fact.\n",
+          "memory/2026-05-10.md": "# Source facts\n\n- Durable promoted source fact.\n",
+          "memory/2026-05-11.md": "# Source facts\n\n- Durable live source fact.\n"
+        },
+        "recall": {
+          "version": 1,
+          "updatedAt": "2026-05-26T16:00:00.000Z",
+          "entries": {
+            "memory:memory/2026-05-08.md:3:3": {
+              "key": "memory:memory/2026-05-08.md:3:3",
+              "path": "memory/2026-05-08.md",
+              "startLine": 3,
+              "endLine": 3,
+              "source": "memory",
+              "snippet": "- Durable blocked source fact.",
+              "recallCount": 4,
+              "dailyCount": 0,
+              "groundedCount": 0,
+              "maxScore": 1,
+              "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+              "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+              "recallDays": [
+                "2026-05-21",
+                "2026-05-22",
+                "2026-05-23"
+              ],
+              "conceptTags": [],
+              "provenance": {
+                "originClass": "untrusted",
+                "sessionKind": "unknown",
+                "observedAt": 1
+              },
+              "totalScore": 3.6,
+              "queryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ],
+              "userQueryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ]
+            },
+            "memory:memory/2026-05-09.md:3:3": {
+              "key": "memory:memory/2026-05-09.md:3:3",
+              "path": "memory/2026-05-09.md",
+              "startLine": 3,
+              "endLine": 3,
+              "source": "memory",
+              "snippet": "- Durable missing source fact.",
+              "recallCount": 4,
+              "dailyCount": 0,
+              "groundedCount": 0,
+              "maxScore": 1,
+              "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+              "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+              "recallDays": [
+                "2026-05-21",
+                "2026-05-22",
+                "2026-05-23"
+              ],
+              "conceptTags": [],
+              "provenance": {
+                "originClass": "agent",
+                "sessionKind": "unknown",
+                "observedAt": 1
+              },
+              "totalScore": 3.6,
+              "queryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ],
+              "userQueryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ]
+            },
+            "memory:memory/2026-05-10.md:3:3": {
+              "key": "memory:memory/2026-05-10.md:3:3",
+              "path": "memory/2026-05-10.md",
+              "startLine": 3,
+              "endLine": 3,
+              "source": "memory",
+              "snippet": "- Durable promoted source fact.",
+              "recallCount": 4,
+              "dailyCount": 0,
+              "groundedCount": 0,
+              "maxScore": 1,
+              "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+              "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+              "recallDays": [
+                "2026-05-21",
+                "2026-05-22",
+                "2026-05-23"
+              ],
+              "conceptTags": [],
+              "provenance": {
+                "originClass": "agent",
+                "sessionKind": "unknown",
+                "observedAt": 1
+              },
+              "totalScore": 3.6,
+              "queryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ],
+              "userQueryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ],
+              "promotedAt": "2026-05-25T16:00:00.000Z"
+            },
+            "memory:memory/2026-05-11.md:3:3": {
+              "key": "memory:memory/2026-05-11.md:3:3",
+              "path": "memory/2026-05-11.md",
+              "startLine": 3,
+              "endLine": 3,
+              "source": "memory",
+              "snippet": "- Durable live source fact.",
+              "recallCount": 4,
+              "dailyCount": 0,
+              "groundedCount": 0,
+              "maxScore": 1,
+              "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+              "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+              "recallDays": [
+                "2026-05-21",
+                "2026-05-22",
+                "2026-05-23"
+              ],
+              "conceptTags": [],
+              "provenance": {
+                "originClass": "agent",
+                "sessionKind": "unknown",
+                "observedAt": 1
+              },
+              "totalScore": 3.6,
+              "queryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ],
+              "userQueryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ]
+            }
+          }
+        },
+        "candidates": [
+          {
+            "key": "memory:memory/2026-05-08.md:3:3",
+            "path": "memory/2026-05-08.md",
+            "startLine": 3,
+            "endLine": 3,
+            "source": "memory",
+            "snippet": "- Durable blocked source fact.",
+            "recallCount": 4,
+            "dailyCount": 0,
+            "groundedCount": 0,
+            "signalCount": 4,
+            "avgScore": 0.9,
+            "maxScore": 1,
+            "uniqueQueries": 3,
+            "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+            "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+            "ageDays": 1,
+            "score": 0.875,
+            "recallDays": [
+              "2026-05-21",
+              "2026-05-22",
+              "2026-05-23"
+            ],
+            "conceptTags": [],
+            "components": {
+              "frequency": 0.5,
+              "relevance": 0.9,
+              "diversity": 0.6,
+              "recency": 0.9,
+              "consolidation": 0.5,
+              "conceptual": 0
+            },
+            "provenance": {
+              "originClass": "agent",
+              "sessionKind": "unknown",
+              "observedAt": 1
+            }
+          },
+          {
+            "key": "memory:memory/2026-05-09.md:3:3",
+            "path": "memory/2026-05-09.md",
+            "startLine": 3,
+            "endLine": 3,
+            "source": "memory",
+            "snippet": "- Durable missing source fact.",
+            "recallCount": 4,
+            "dailyCount": 0,
+            "groundedCount": 0,
+            "signalCount": 4,
+            "avgScore": 0.9,
+            "maxScore": 1,
+            "uniqueQueries": 3,
+            "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+            "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+            "ageDays": 1,
+            "score": 0.875,
+            "recallDays": [
+              "2026-05-21",
+              "2026-05-22",
+              "2026-05-23"
+            ],
+            "conceptTags": [],
+            "components": {
+              "frequency": 0.5,
+              "relevance": 0.9,
+              "diversity": 0.6,
+              "recency": 0.9,
+              "consolidation": 0.5,
+              "conceptual": 0
+            },
+            "provenance": {
+              "originClass": "agent",
+              "sessionKind": "unknown",
+              "observedAt": 1
+            }
+          },
+          {
+            "key": "memory:memory/2026-05-10.md:3:3",
+            "path": "memory/2026-05-10.md",
+            "startLine": 3,
+            "endLine": 3,
+            "source": "memory",
+            "snippet": "- Durable promoted source fact.",
+            "recallCount": 4,
+            "dailyCount": 0,
+            "groundedCount": 0,
+            "signalCount": 4,
+            "avgScore": 0.9,
+            "maxScore": 1,
+            "uniqueQueries": 3,
+            "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+            "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+            "ageDays": 1,
+            "score": 0.875,
+            "recallDays": [
+              "2026-05-21",
+              "2026-05-22",
+              "2026-05-23"
+            ],
+            "conceptTags": [],
+            "components": {
+              "frequency": 0.5,
+              "relevance": 0.9,
+              "diversity": 0.6,
+              "recency": 0.9,
+              "consolidation": 0.5,
+              "conceptual": 0
+            },
+            "provenance": {
+              "originClass": "agent",
+              "sessionKind": "unknown",
+              "observedAt": 1
+            }
+          },
+          {
+            "key": "memory:memory/2026-05-11.md:3:3",
+            "path": "memory/2026-05-11.md",
+            "startLine": 3,
+            "endLine": 3,
+            "source": "memory",
+            "snippet": "- Durable live source fact.",
+            "recallCount": 4,
+            "dailyCount": 0,
+            "groundedCount": 0,
+            "signalCount": 4,
+            "avgScore": 0.9,
+            "maxScore": 1,
+            "uniqueQueries": 3,
+            "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+            "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+            "ageDays": 1,
+            "score": 0.875,
+            "recallDays": [
+              "2026-05-21",
+              "2026-05-22",
+              "2026-05-23"
+            ],
+            "conceptTags": [],
+            "components": {
+              "frequency": 0.5,
+              "relevance": 0.9,
+              "diversity": 0.6,
+              "recency": 0.9,
+              "consolidation": 0.5,
+              "conceptual": 0
+            },
+            "provenance": {
+              "originClass": "agent",
+              "sessionKind": "unknown",
+              "observedAt": 1
+            }
+          }
+        ],
+        "options": {
+          "timezone": "UTC",
+          "memoryFileMaxChars": 10000,
+          "maxPriorEntryLossFraction": 0.25,
+          "minScore": 0,
+          "minRecallCount": 0,
+          "minUniqueQueries": 0,
+          "limit": 5
+        }
+      },
+      "driverScope": "One complete apply batch retains successful and rejected receipts from authoritative blocked origin, missing source, already-promoted record, and live source. No desired receipt is supplied."
+    },
+    {
+      "id": "promotion-apply-daily-file-quarantine",
+      "requirement": "promotion.apply-reconcile",
+      "covers": [],
+      "operation": "promotion-apply-family-runtime",
+      "input": {
+        "kind": "promotion-apply-families",
+        "nowMs": 1779811200000,
+        "directories": [],
+        "files": {
+          "MEMORY.md": "# Personal notes\nKeep this exact user-authored sentence.\n",
+          "memory/2026-05-08.md": "# Source facts\n\n- A durable bright kumquat tea preference.\n"
+        },
+        "recall": {
+          "version": 1,
+          "updatedAt": "2026-05-26T16:00:00.000Z",
+          "entries": {
+            "memory:memory/2026-05-08.md:3:3": {
+              "key": "memory:memory/2026-05-08.md:3:3",
+              "path": "memory/2026-05-08.md",
+              "startLine": 3,
+              "endLine": 3,
+              "source": "memory",
+              "snippet": "- A durable bright kumquat tea preference.",
+              "recallCount": 4,
+              "dailyCount": 0,
+              "groundedCount": 0,
+              "maxScore": 1,
+              "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+              "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+              "recallDays": [
+                "2026-05-21",
+                "2026-05-22",
+                "2026-05-23"
+              ],
+              "conceptTags": [],
+              "provenance": {
+                "originClass": "agent",
+                "sessionKind": "unknown",
+                "observedAt": 1
+              },
+              "totalScore": 3.6,
+              "queryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ],
+              "userQueryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ]
+            }
+          }
+        },
+        "candidates": [
+          {
+            "key": "memory:memory/2026-05-08.md:3:3",
+            "path": "memory/2026-05-08.md",
+            "startLine": 3,
+            "endLine": 3,
+            "source": "memory",
+            "snippet": "- A durable bright kumquat tea preference.",
+            "recallCount": 4,
+            "dailyCount": 0,
+            "groundedCount": 0,
+            "signalCount": 4,
+            "avgScore": 0.9,
+            "maxScore": 1,
+            "uniqueQueries": 3,
+            "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+            "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+            "ageDays": 1,
+            "score": 0.875,
+            "recallDays": [
+              "2026-05-21",
+              "2026-05-22",
+              "2026-05-23"
+            ],
+            "conceptTags": [],
+            "components": {
+              "frequency": 0.5,
+              "relevance": 0.9,
+              "diversity": 0.6,
+              "recency": 0.9,
+              "consolidation": 0.5,
+              "conceptual": 0
+            },
+            "provenance": {
+              "originClass": "agent",
+              "sessionKind": "unknown",
+              "observedAt": 1
+            }
+          }
+        ],
+        "options": {
+          "timezone": "UTC",
+          "memoryFileMaxChars": 10000,
+          "maxPriorEntryLossFraction": 0.25,
+          "minScore": 0,
+          "minRecallCount": 0,
+          "minUniqueQueries": 0,
+          "limit": 5
+        },
+        "artifactProvenanceWrites": [
+          {
+            "relativePath": "memory/2026-05-08.md",
+            "contentBefore": "",
+            "contentAfter": "# Source facts\n\n- A durable bright kumquat tea preference.\n",
+            "originClass": "untrusted",
+            "observedAt": 1779811200000
+          }
+        ]
+      },
+      "driverScope": "Seed actual source-write provenance through the real host provenance owner, then apply a trusted-looking recalled candidate. No classification result or private row is injected."
+    },
+    {
+      "id": "promotion-apply-direct-candidate-without-stored-entry",
+      "requirement": "promotion.apply-reconcile",
+      "covers": [],
+      "operation": "promotion-apply-family-runtime",
+      "input": {
+        "kind": "promotion-apply-families",
+        "nowMs": 1779811200000,
+        "directories": [],
+        "files": {
+          "MEMORY.md": "# Personal notes\nKeep this exact user-authored sentence.\n",
+          "memory/2026-05-08.md": "# Source facts\n\n- A durable bright kumquat tea preference.\n"
+        },
+        "recall": {
+          "version": 1,
+          "updatedAt": "2026-05-26T16:00:00.000Z",
+          "entries": {}
+        },
+        "candidates": [
+          {
+            "key": "memory:memory/2026-05-08.md:3:3",
+            "path": "memory/2026-05-08.md",
+            "startLine": 3,
+            "endLine": 3,
+            "source": "memory",
+            "snippet": "- A durable bright kumquat tea preference.",
+            "recallCount": 4,
+            "dailyCount": 0,
+            "groundedCount": 0,
+            "signalCount": 4,
+            "avgScore": 0.9,
+            "maxScore": 1,
+            "uniqueQueries": 3,
+            "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+            "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+            "ageDays": 1,
+            "score": 0.875,
+            "recallDays": [
+              "2026-05-21",
+              "2026-05-22",
+              "2026-05-23"
+            ],
+            "conceptTags": [],
+            "components": {
+              "frequency": 0.5,
+              "relevance": 0.9,
+              "diversity": 0.6,
+              "recency": 0.9,
+              "consolidation": 0.5,
+              "conceptual": 0
+            },
+            "provenance": {
+              "originClass": "agent",
+              "sessionKind": "unknown",
+              "observedAt": 1
+            }
+          }
+        ],
+        "options": {
+          "timezone": "UTC",
+          "memoryFileMaxChars": 10000,
+          "maxPriorEntryLossFraction": 0.25,
+          "minScore": 0,
+          "minRecallCount": 0,
+          "minUniqueQueries": 0,
+          "limit": 5
+        }
+      },
+      "driverScope": "Ordinary append-only apply receives a real source and direct candidate absent from the canonical store; retain all actual store/file/event effects."
+    },
+    {
+      "id": "promotion-apply-prelock-store-change",
+      "requirement": "promotion.apply-reconcile",
+      "covers": [],
+      "operation": "promotion-apply-family-runtime",
+      "input": {
+        "kind": "promotion-apply-families",
+        "nowMs": 1779811200000,
+        "directories": [],
+        "files": {
+          "MEMORY.md": "# Personal notes\nKeep this exact user-authored sentence.\n",
+          "memory/2026-05-08.md": "# Source facts\n\n- A durable bright kumquat tea preference.\n"
+        },
+        "recall": {
+          "version": 1,
+          "updatedAt": "2026-05-26T16:00:00.000Z",
+          "entries": {
+            "memory:memory/2026-05-08.md:3:3": {
+              "key": "memory:memory/2026-05-08.md:3:3",
+              "path": "memory/2026-05-08.md",
+              "startLine": 3,
+              "endLine": 3,
+              "source": "memory",
+              "snippet": "- A durable bright kumquat tea preference.",
+              "recallCount": 4,
+              "dailyCount": 0,
+              "groundedCount": 0,
+              "maxScore": 1,
+              "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+              "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+              "recallDays": [
+                "2026-05-21",
+                "2026-05-22",
+                "2026-05-23"
+              ],
+              "conceptTags": [],
+              "provenance": {
+                "originClass": "agent",
+                "sessionKind": "unknown",
+                "observedAt": 1
+              },
+              "totalScore": 3.6,
+              "queryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ],
+              "userQueryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ]
+            }
+          }
+        },
+        "candidates": [
+          {
+            "key": "memory:memory/2026-05-08.md:3:3",
+            "path": "memory/2026-05-08.md",
+            "startLine": 3,
+            "endLine": 3,
+            "source": "memory",
+            "snippet": "- A durable bright kumquat tea preference.",
+            "recallCount": 4,
+            "dailyCount": 0,
+            "groundedCount": 0,
+            "signalCount": 4,
+            "avgScore": 0.9,
+            "maxScore": 1,
+            "uniqueQueries": 3,
+            "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+            "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+            "ageDays": 1,
+            "score": 0.875,
+            "recallDays": [
+              "2026-05-21",
+              "2026-05-22",
+              "2026-05-23"
+            ],
+            "conceptTags": [],
+            "components": {
+              "frequency": 0.5,
+              "relevance": 0.9,
+              "diversity": 0.6,
+              "recency": 0.9,
+              "consolidation": 0.5,
+              "conceptual": 0
+            },
+            "provenance": {
+              "originClass": "agent",
+              "sessionKind": "unknown",
+              "observedAt": 1
+            }
+          }
+        ],
+        "options": {
+          "timezone": "UTC",
+          "memoryFileMaxChars": 10000,
+          "maxPriorEntryLossFraction": 0.25,
+          "minScore": 0,
+          "minRecallCount": 0,
+          "minUniqueQueries": 0,
+          "limit": 5,
+          "agentId": "main"
+        },
+        "completion": {
+          "text": "The host fixture returns this literal unstructured completion.",
+          "mutationsBeforeReturn": [
+            {
+              "operation": "write-recall-store",
+              "value": {
+                "version": 1,
+                "updatedAt": "2026-05-26T16:00:00.000Z",
+                "entries": {
+                  "memory:memory/2026-05-08.md:3:3": {
+                    "key": "memory:memory/2026-05-08.md:3:3",
+                    "path": "memory/2026-05-08.md",
+                    "startLine": 3,
+                    "endLine": 3,
+                    "source": "memory",
+                    "snippet": "- A durable bright kumquat tea preference.",
+                    "recallCount": 5,
+                    "dailyCount": 0,
+                    "groundedCount": 0,
+                    "maxScore": 1,
+                    "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+                    "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+                    "recallDays": [
+                      "2026-05-21",
+                      "2026-05-22",
+                      "2026-05-23"
+                    ],
+                    "conceptTags": [],
+                    "provenance": {
+                      "originClass": "agent",
+                      "sessionKind": "unknown",
+                      "observedAt": 1
+                    },
+                    "totalScore": 4.5,
+                    "queryHashes": [
+                      "a1",
+                      "a2",
+                      "a3"
+                    ],
+                    "userQueryHashes": [
+                      "a1",
+                      "a2",
+                      "a3"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "driverScope": "Await the genuine public completion callback after actual planning; perform literal real IO before returning the exact declared completion. Original fallback, lock acquisition, revalidation, and publication remain source-owned."
+    },
+    {
+      "id": "promotion-apply-prelock-source-change",
+      "requirement": "promotion.apply-reconcile",
+      "covers": [],
+      "operation": "promotion-apply-family-runtime",
+      "input": {
+        "kind": "promotion-apply-families",
+        "nowMs": 1779811200000,
+        "directories": [],
+        "files": {
+          "MEMORY.md": "# Personal notes\nKeep this exact user-authored sentence.\n",
+          "memory/2026-05-08.md": "# Source facts\n\n- A durable bright kumquat tea preference.\n"
+        },
+        "recall": {
+          "version": 1,
+          "updatedAt": "2026-05-26T16:00:00.000Z",
+          "entries": {
+            "memory:memory/2026-05-08.md:3:3": {
+              "key": "memory:memory/2026-05-08.md:3:3",
+              "path": "memory/2026-05-08.md",
+              "startLine": 3,
+              "endLine": 3,
+              "source": "memory",
+              "snippet": "- A durable bright kumquat tea preference.",
+              "recallCount": 4,
+              "dailyCount": 0,
+              "groundedCount": 0,
+              "maxScore": 1,
+              "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+              "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+              "recallDays": [
+                "2026-05-21",
+                "2026-05-22",
+                "2026-05-23"
+              ],
+              "conceptTags": [],
+              "provenance": {
+                "originClass": "agent",
+                "sessionKind": "unknown",
+                "observedAt": 1
+              },
+              "totalScore": 3.6,
+              "queryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ],
+              "userQueryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ]
+            }
+          }
+        },
+        "candidates": [
+          {
+            "key": "memory:memory/2026-05-08.md:3:3",
+            "path": "memory/2026-05-08.md",
+            "startLine": 3,
+            "endLine": 3,
+            "source": "memory",
+            "snippet": "- A durable bright kumquat tea preference.",
+            "recallCount": 4,
+            "dailyCount": 0,
+            "groundedCount": 0,
+            "signalCount": 4,
+            "avgScore": 0.9,
+            "maxScore": 1,
+            "uniqueQueries": 3,
+            "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+            "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+            "ageDays": 1,
+            "score": 0.875,
+            "recallDays": [
+              "2026-05-21",
+              "2026-05-22",
+              "2026-05-23"
+            ],
+            "conceptTags": [],
+            "components": {
+              "frequency": 0.5,
+              "relevance": 0.9,
+              "diversity": 0.6,
+              "recency": 0.9,
+              "consolidation": 0.5,
+              "conceptual": 0
+            },
+            "provenance": {
+              "originClass": "agent",
+              "sessionKind": "unknown",
+              "observedAt": 1
+            }
+          }
+        ],
+        "options": {
+          "timezone": "UTC",
+          "memoryFileMaxChars": 10000,
+          "maxPriorEntryLossFraction": 0.25,
+          "minScore": 0,
+          "minRecallCount": 0,
+          "minUniqueQueries": 0,
+          "limit": 5,
+          "agentId": "main"
+        },
+        "completion": {
+          "text": "The host fixture returns this literal unstructured completion.",
+          "mutationsBeforeReturn": [
+            {
+              "operation": "write-file",
+              "path": "memory/2026-05-08.md",
+              "text": "# Source facts\n\n- A changed source after planning.\n"
+            }
+          ]
+        }
+      },
+      "driverScope": "Await the genuine public completion callback after actual planning; perform literal real IO before returning the exact declared completion. Original fallback, lock acquisition, revalidation, and publication remain source-owned."
+    },
+    {
+      "id": "promotion-apply-prelock-marker-reconciliation",
+      "requirement": "promotion.apply-reconcile",
+      "covers": [],
+      "operation": "promotion-apply-family-runtime",
+      "input": {
+        "kind": "promotion-apply-families",
+        "nowMs": 1779811200000,
+        "directories": [],
+        "files": {
+          "MEMORY.md": "# Personal notes\nKeep this exact user-authored sentence.\n",
+          "memory/2026-05-08.md": "# Source facts\n\n- A durable bright kumquat tea preference.\n"
+        },
+        "recall": {
+          "version": 1,
+          "updatedAt": "2026-05-26T16:00:00.000Z",
+          "entries": {
+            "memory:memory/2026-05-08.md:3:3": {
+              "key": "memory:memory/2026-05-08.md:3:3",
+              "path": "memory/2026-05-08.md",
+              "startLine": 3,
+              "endLine": 3,
+              "source": "memory",
+              "snippet": "- A durable bright kumquat tea preference.",
+              "recallCount": 4,
+              "dailyCount": 0,
+              "groundedCount": 0,
+              "maxScore": 1,
+              "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+              "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+              "recallDays": [
+                "2026-05-21",
+                "2026-05-22",
+                "2026-05-23"
+              ],
+              "conceptTags": [],
+              "provenance": {
+                "originClass": "agent",
+                "sessionKind": "unknown",
+                "observedAt": 1
+              },
+              "totalScore": 3.6,
+              "queryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ],
+              "userQueryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ]
+            }
+          }
+        },
+        "candidates": [
+          {
+            "key": "memory:memory/2026-05-08.md:3:3",
+            "path": "memory/2026-05-08.md",
+            "startLine": 3,
+            "endLine": 3,
+            "source": "memory",
+            "snippet": "- A durable bright kumquat tea preference.",
+            "recallCount": 4,
+            "dailyCount": 0,
+            "groundedCount": 0,
+            "signalCount": 4,
+            "avgScore": 0.9,
+            "maxScore": 1,
+            "uniqueQueries": 3,
+            "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+            "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+            "ageDays": 1,
+            "score": 0.875,
+            "recallDays": [
+              "2026-05-21",
+              "2026-05-22",
+              "2026-05-23"
+            ],
+            "conceptTags": [],
+            "components": {
+              "frequency": 0.5,
+              "relevance": 0.9,
+              "diversity": 0.6,
+              "recency": 0.9,
+              "consolidation": 0.5,
+              "conceptual": 0
+            },
+            "provenance": {
+              "originClass": "agent",
+              "sessionKind": "unknown",
+              "observedAt": 1
+            }
+          }
+        ],
+        "options": {
+          "timezone": "UTC",
+          "memoryFileMaxChars": 10000,
+          "maxPriorEntryLossFraction": 0.25,
+          "minScore": 0,
+          "minRecallCount": 0,
+          "minUniqueQueries": 0,
+          "limit": 5,
+          "agentId": "main"
+        },
+        "completion": {
+          "text": "The host fixture returns this literal unstructured completion.",
+          "mutationsBeforeReturn": [
+            {
+              "operation": "append-file",
+              "path": "MEMORY.md",
+              "text": "\n<!-- openclaw-memory-promotion:memory:memory/2026-05-08.md:3:3 -->\n- A concurrently recorded source fact.\n"
+            }
+          ]
+        }
+      },
+      "driverScope": "Await the genuine public completion callback after actual planning; perform literal real IO before returning the exact declared completion. Original fallback, lock acquisition, revalidation, and publication remain source-owned."
+    },
+    {
+      "id": "promotion-apply-add-only-preimage-origin-and-dreams-publication",
+      "requirement": "promotion.apply-reconcile",
+      "covers": [],
+      "operation": "promotion-apply-family-runtime",
+      "input": {
+        "kind": "promotion-apply-families",
+        "nowMs": 1779811200000,
+        "directories": [],
+        "files": {
+          "MEMORY.md": "# Personal notes\nKeep this exact user-authored sentence.\n",
+          "memory/2026-05-08.md": "# Source facts\n\n- A durable bright kumquat tea preference.\n"
+        },
+        "recall": {
+          "version": 1,
+          "updatedAt": "2026-05-26T16:00:00.000Z",
+          "entries": {
+            "memory:memory/2026-05-08.md:3:3": {
+              "key": "memory:memory/2026-05-08.md:3:3",
+              "path": "memory/2026-05-08.md",
+              "startLine": 3,
+              "endLine": 3,
+              "source": "memory",
+              "snippet": "- A durable bright kumquat tea preference.",
+              "recallCount": 4,
+              "dailyCount": 0,
+              "groundedCount": 0,
+              "maxScore": 1,
+              "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+              "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+              "recallDays": [
+                "2026-05-21",
+                "2026-05-22",
+                "2026-05-23"
+              ],
+              "conceptTags": [],
+              "provenance": {
+                "originClass": "agent",
+                "sessionKind": "unknown",
+                "observedAt": 1,
+                "sessionId": "session-promotion-fixture"
+              },
+              "totalScore": 3.6,
+              "queryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ],
+              "userQueryHashes": [
+                "a1",
+                "a2",
+                "a3"
+              ]
+            }
+          }
+        },
+        "candidates": [
+          {
+            "key": "memory:memory/2026-05-08.md:3:3",
+            "path": "memory/2026-05-08.md",
+            "startLine": 3,
+            "endLine": 3,
+            "source": "memory",
+            "snippet": "- A durable bright kumquat tea preference.",
+            "recallCount": 4,
+            "dailyCount": 0,
+            "groundedCount": 0,
+            "signalCount": 4,
+            "avgScore": 0.9,
+            "maxScore": 1,
+            "uniqueQueries": 3,
+            "firstRecalledAt": "2026-05-20T16:00:00.000Z",
+            "lastRecalledAt": "2026-05-25T16:00:00.000Z",
+            "ageDays": 1,
+            "score": 0.875,
+            "recallDays": [
+              "2026-05-21",
+              "2026-05-22",
+              "2026-05-23"
+            ],
+            "conceptTags": [],
+            "components": {
+              "frequency": 0.5,
+              "relevance": 0.9,
+              "diversity": 0.6,
+              "recency": 0.9,
+              "consolidation": 0.5,
+              "conceptual": 0
+            },
+            "provenance": {
+              "originClass": "agent",
+              "sessionKind": "unknown",
+              "observedAt": 1,
+              "sessionId": "session-promotion-fixture"
+            }
+          }
+        ],
+        "options": {
+          "timezone": "UTC",
+          "memoryFileMaxChars": 10000,
+          "maxPriorEntryLossFraction": 0.25,
+          "minScore": 0,
+          "minRecallCount": 0,
+          "minUniqueQueries": 0,
+          "limit": 5,
+          "agentId": "main",
+          "workspaceAgentIds": [
+            "main"
+          ]
+        },
+        "completion": {
+          "text": "{\"operations\":[{\"candidateKey\":\"memory:memory/2026-05-08.md:3:3\",\"action\":\"added\",\"priorEntries\":[]}]}",
+          "mutationsBeforeReturn": []
+        }
+      },
+      "driverScope": "One source-backed add-only plan exercises real preimage/origin/DREAMS effects. The literal selects an action only; original code derives resultEntry. General merge/supersede/model-plan equivalence remains requirement44."
+    }
+  ],
+  "separateReviewNeeded": [
+    "Actual completion seam and complete callback request/text/mutation receipts",
+    "Real provenance writer export a and actual rollback-function return receipt",
+    "Actual preimage/origin agent-database owner and any genuinely needed worker roles",
+    "Transparent live publication/lock receipts; no order inferred solely from final files",
+    "Optional append-only contention hook/lock-holder manifest before any such new input"
+  ]
+}

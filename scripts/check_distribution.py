@@ -284,12 +284,14 @@ with tempfile.TemporaryDirectory() as scratch:
     managed_root = root / "managed-cold"
     managed_config = core.MemoryConfig(workspace_dir=managed_root, flags=flags, session_search=False)
     cold_memory = core.Memory.from_workspace(managed_root, config=managed_config,
-        initialize=False, reindex=False, source_policy={"sources": ["memory"]})
+        initialize=False, reindex=False,
+        source_policy=visibility.resolve_memory_search_source_policy(["memory"]))
     cold_memory.workspace.append_daily_memory("memory/2026-11-09.md", "- The managedcedar project is ready.")
     managed_store = managed_module.ManagedSQLiteMemoryStore(managed_config, cold_memory.workspace)
     managed_kit = core.HostKit(replace(cold_memory, store=managed_store), now_ms=lambda: 1794182400000)
     assert managed_store.index_identity()["status"] == "missing"
     managed_result = managed_kit.dispatch("memory_search", {"query": "managedcedar", "minScore": 0}, session=state)
+    assert managed_result["results"], managed_result
     assert managed_result["results"][0]["path"] == "memory/2026-11-09.md"
     assert managed_result["warning"] == managed_store.lifecycle_snapshot()["automaticRebuildNotice"]["warning"]
     assert managed_store.lifecycle_snapshot()["repairCount"] == 1

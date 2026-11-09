@@ -1,0 +1,319 @@
+{
+  "capture": "Unmodified actual all-source response from the first genuine default-profile development process; paths, PIDs, full strings and complete output retained. Gzip is transport only.",
+  "origin": ".equivalence-results/model-default-native-first-development/redaction-policy-host-full-context-cross-16384/native.json",
+  "rawSha256": "5d5e4c235ce1efa742b83f324e790ab8887819dcd83067fc70fbbc0dec6f19a5",
+  "rawBytes": 938625,
+  "gzipSha256": "b49f866dd6ef0b6de2c03d68377662188811d36844272464dac55358f2dc1a6a",
+  "gzipBytes": 27641,
+  "caller": {
+    "process_pid": 1452186,
+    "coordinator_pid": 1452094,
+    "fixture_root": "/tmp/memory-source-oracle-i0flg73m",
+    "node_authority": {
+      "execPath": "/workspace/openclaw-memory-bridge/node_modules/node/bin/node",
+      "nodeVersion": "v24.16.0",
+      "icuVersion": "78.3",
+      "unicodeVersion": "17.0",
+      "sha256": "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd"
+    }
+  },
+  "bindings": {
+    "kind": "explicit-authenticated-all-source-redaction-policy",
+    "referenceCommit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+    "compiledModulesAllowed": false,
+    "sourceFallbackAllowed": false,
+    "sameModuleGraphRequired": true,
+    "freshOrdinaryProcessRequired": true,
+    "testRegistryResetAllowed": false,
+    "sourceBindings": [
+      {
+        "path": "src/logging/redact.ts",
+        "sha256": "ecdfdb1e0f4b0f2aa3eb54aad574bb5375ae8da78539ad937b34ba02dd170e7b",
+        "anchors": [
+          {
+            "anchor": "export function redactSensitiveText(",
+            "line": 771
+          },
+          {
+            "anchor": "export function redactToolPayloadText(",
+            "line": 849
+          },
+          {
+            "anchor": "export function redactModelVisibleSecrets<T>(",
+            "line": 1526
+          }
+        ]
+      },
+      {
+        "path": "src/logging/redact-internal-state.ts",
+        "sha256": "31d768d62ac50efd1d443fd27cec301b95363070be564ed5caa3616608d67def",
+        "anchors": [
+          {
+            "anchor": "export const fullContextToolPayloadRedactionState = {",
+            "line": 13
+          },
+          {
+            "anchor": "export function captureModelVisibleRedactionPolicy(",
+            "line": 27
+          }
+        ]
+      },
+      {
+        "path": "src/logging/redact-internal.ts",
+        "sha256": "94cd7ce5f4ed88d2fcdbc3530e4dd7b291095feff65d76a33cc5de3f73a97e1e",
+        "anchors": [
+          {
+            "anchor": "export function isFullContextToolPayloadRedaction(",
+            "line": 9
+          }
+        ]
+      },
+      {
+        "path": "src/logging/secret-redaction-registry.ts",
+        "sha256": "217d789ec4e6b3896dc7c647d33a8a2eed2df4b754fa0abf93a577296863f689",
+        "anchors": [
+          {
+            "anchor": "export function captureSecretRedactionRegistrySnapshot()",
+            "line": 76
+          },
+          {
+            "anchor": "export function registerSecretValueForRedaction(",
+            "line": 41
+          }
+        ]
+      },
+      {
+        "path": "src/logging/logger.ts",
+        "sha256": "8c7832f365fbb826bf338a5488b8136483fcf515dfe202a25b71e2f38d972b9e",
+        "anchors": [
+          {
+            "anchor": "export function applyLoggingConfig(",
+            "line": 79
+          },
+          {
+            "anchor": "export function resetLogger()",
+            "line": 706
+          }
+        ]
+      },
+      {
+        "path": "src/logging/config.ts",
+        "sha256": "6f69e236903267ccb1b1ab038f7d0a4ed6340015e51ad6fc170c86e9f62d18a4",
+        "anchors": [
+          {
+            "anchor": "export function readLoggingConfig()",
+            "line": 83
+          }
+        ]
+      },
+      {
+        "path": "src/logging/state.ts",
+        "sha256": "ad8e330d6f8ad4fa02bfcca7d7a27dc33375753a3c0fa2392b6e55cc2bc1ab98",
+        "anchors": [
+          {
+            "anchor": "export const loggingState =",
+            "line": 41
+          }
+        ]
+      },
+      {
+        "path": "src/agents/transcript-redact.ts",
+        "sha256": "d7ff59f554d3ef940b20b4276cc58c7d0ab68ba818a289a1d80970fed42ba95c",
+        "anchors": [
+          {
+            "anchor": "export function redactTranscriptMessage(",
+            "line": 721
+          }
+        ]
+      },
+      {
+        "path": "src/agents/transcript-redact-text.ts",
+        "sha256": "0346abdc593ce0dce13dc4919143e6a92ab6ef7855c4ae72ed8f78ef356e8d78",
+        "anchors": [
+          {
+            "anchor": "export function resolveTranscriptLoggingConfig(",
+            "line": 10
+          },
+          {
+            "anchor": "export function redactTranscriptText(",
+            "line": 16
+          }
+        ]
+      },
+      {
+        "path": "src/security/config-regex.ts",
+        "sha256": "438a598fcaebefc20d5e612c52f189bc2a32b83a492399917407e63128d8a1b5",
+        "anchors": [
+          {
+            "anchor": "export function compileConfigRegex(",
+            "line": 40
+          }
+        ]
+      },
+      {
+        "path": "src/security/safe-regex.ts",
+        "sha256": "0067759e19538ca8ffe3f95f3669a519d400243bfd0798bb5384ac84713342e5",
+        "anchors": [
+          {
+            "anchor": "export function compileSafeRegexDetailed(",
+            "line": 328
+          }
+        ]
+      },
+      {
+        "path": "src/logging/redact-pattern-runtime.ts",
+        "sha256": "dfa74d867c6c9b16f6f63cf541841e14d324031ab6034b8c4d856c86f402936c",
+        "anchors": [
+          {
+            "anchor": "export function parseRedactPatternSource(",
+            "line": 2
+          },
+          {
+            "anchor": "export function* iterateRedactMatches(",
+            "line": 126
+          }
+        ]
+      },
+      {
+        "path": "src/logging/redact-bounded.ts",
+        "sha256": "3ef375cc5143424f04d4afdf70ed2ff9075a3820701b3c97e7734079d512150b",
+        "anchors": [
+          {
+            "anchor": "export function replacePatternBounded(",
+            "line": 11
+          }
+        ]
+      }
+    ],
+    "sourceImportLinks": [
+      {
+        "path": "src/logging/redact.ts",
+        "kind": "import",
+        "specifier": "./redact-internal-state.js",
+        "bindings": [
+          "modelVisibleToolTextRedactionState"
+        ],
+        "line": 16,
+        "declarationSha256": "401faf7ddf8d0dac86ab8b87a230d56cd2305a201a24a681bd89a7ee8a97bc36"
+      },
+      {
+        "path": "src/logging/redact.ts",
+        "kind": "import",
+        "specifier": "./redact-internal.js",
+        "bindings": [
+          "isFullContextToolPayloadRedaction"
+        ],
+        "line": 17,
+        "declarationSha256": "a4f5106f086c0d31be42c9da0f0348f657178bab7bcd21357a87ca1730f86b5c"
+      },
+      {
+        "path": "src/logging/redact-internal.ts",
+        "kind": "import",
+        "specifier": "./redact-internal-state.js",
+        "bindings": [
+          "fullContextToolPayloadRedactionState"
+        ],
+        "line": 2,
+        "declarationSha256": "1d8360e66934a9095de37b57debe04da494d0521c16e8cb09173e1e174613877"
+      },
+      {
+        "path": "src/logging/redact-internal-state.ts",
+        "kind": "import",
+        "specifier": "./secret-redaction-registry.js",
+        "bindings": [
+          "getSecretRedactionRegistryRevision"
+        ],
+        "line": 2,
+        "declarationSha256": "a9e5fc7c085c09b1e71e7de21d7e536811919b193fd52dc27e23cf4d1278f87a"
+      },
+      {
+        "path": "src/logging/redact.ts",
+        "kind": "import",
+        "specifier": "./secret-redaction-registry.js",
+        "bindings": [
+          "captureSecretRedactionRegistrySnapshot",
+          "createSecretValueRedactor",
+          "redactRegisteredSecretValues"
+        ],
+        "line": 64,
+        "declarationSha256": "dd393461576f5274ecadfd14036cd3209baa4c17d738945c2c0e35cef74a2596"
+      },
+      {
+        "path": "src/logging/redact.ts",
+        "kind": "import",
+        "specifier": "./config.js",
+        "bindings": [
+          "readLoggingConfig"
+        ],
+        "line": 9,
+        "declarationSha256": "b6cb10d63d658f647d6ff2eae8390ab3a12bc87acb2a75f31aa8606088945c9a"
+      },
+      {
+        "path": "src/logging/config.ts",
+        "kind": "import",
+        "specifier": "./state.js",
+        "bindings": [
+          "APPLIED_LOGGING_CONFIG_UNOWNED",
+          "loggingState"
+        ],
+        "line": 9,
+        "declarationSha256": "59b595e4a63ef800c82d5b6f636a87626107cba09259a627b1b287e8ab180f2d"
+      },
+      {
+        "path": "src/logging/logger.ts",
+        "kind": "import",
+        "specifier": "./state.js",
+        "bindings": [
+          "APPLIED_LOGGING_CONFIG_UNOWNED",
+          "loggingState"
+        ],
+        "line": 42,
+        "declarationSha256": "59b595e4a63ef800c82d5b6f636a87626107cba09259a627b1b287e8ab180f2d"
+      },
+      {
+        "path": "src/agents/transcript-redact.ts",
+        "kind": "import",
+        "specifier": "./transcript-redact-text.js",
+        "bindings": [
+          "redactTranscriptText",
+          "redactTranscriptStructuredFieldValue",
+          "resolveTranscriptLoggingConfig"
+        ],
+        "line": 31,
+        "declarationSha256": "04d5e0b8574d99dbae1e31a3e7fab69ad3900c6a5408de4fe027afba8a15b538"
+      },
+      {
+        "path": "src/agents/transcript-redact-text.ts",
+        "kind": "import",
+        "specifier": "../logging/redact.js",
+        "bindings": [
+          "redactModelVisibleToolPayloadTextWithConfig",
+          "redactToolPayloadTextWithConfig"
+        ],
+        "line": 3,
+        "declarationSha256": "48c59083125ca0e68f289937ac81d27ecdd0280e6063bc03a2542d016855f498"
+      },
+      {
+        "path": "src/logging/redact.ts",
+        "kind": "import",
+        "specifier": "../security/config-regex.js",
+        "bindings": [
+          "compileConfigRegex"
+        ],
+        "line": 8,
+        "declarationSha256": "447cd13fbd35ea700bd164a3cc37b594de4e7a266ca013a517b78ceb7b949d89"
+      },
+      {
+        "path": "src/security/config-regex.ts",
+        "kind": "import",
+        "specifier": "./safe-regex.js",
+        "bindings": [
+          "compileSafeRegexDetailed"
+        ],
+        "line": 2,
+        "declarationSha256": "7bd7ca39da2a0c926b33a2576a79745b2949e55ac867f24d0d69a157693c8034"
+      }
+    ],
+    "covers": []
+  }
+}

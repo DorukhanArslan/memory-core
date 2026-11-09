@@ -39,7 +39,6 @@ from memory_core.bootstrap._js import (
     JS_NON_SPACE,
     JS_SPACE,
     js_iu_keyword_pattern,
-    js_json_stringify,
     js_trim,
     js_trim_end,
     reject_json_constant,
@@ -69,6 +68,7 @@ from memory_core.consolidation.promotion import (
 from memory_core.consolidation.recall import is_short_term_session_corpus_path
 from memory_core.memory_budget import DEFAULT_MEMORY_FILE_MAX_CHARS
 from memory_core.runtime_identity import MEMORY_CORE_RUNTIME_IDENTITY, RuntimeIdentity
+from memory_core.tool_result_text import js_stringify
 
 CONSOLIDATION_TIMEOUT_MS = 60_000
 PROMOTED_SNIPPET_CHARS_PER_TOKEN_ESTIMATE = 4
@@ -195,7 +195,7 @@ def build_consolidation_prompt(
         item["projectKey"] = candidate.project_key
         item["supersedesKey"] = (candidate.provenance or {}).get("supersedesKey")
         items.append(item)
-    return js_json_stringify({"currentMemory": existing_memory, "candidates": items})
+    return js_stringify({"currentMemory": existing_memory, "candidates": items})
 
 
 # --- plan parsing and validation -------------------------------------------------------

@@ -1,5 +1,11 @@
 # Promotion apply family development packet — 2026-11-09
 
+This is the historical zero-credit packet pushed as `4829249`. The subsequent
+[strict gate integration](promotion_apply_reconcile_closeout.md) registers the
+same eight input wires, expands the evidence checks and fixes actual model
+request serialization. Its results have separate producer identities; they do
+not relabel any capture described below.
+
 Work resumed from `20e8a12` without a commit or push. This packet makes the eight
 saved follow-up inputs executable under a **separate development capability**.
 It changes no `memory_core/` production source and leaves the original one-input

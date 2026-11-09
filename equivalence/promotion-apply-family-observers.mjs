@@ -49,6 +49,8 @@ export function callObservers(receipts) {
     restores.push(() => { target[name] = original; });
   }
   return {
+    begin(operation, args) { return record(operation, "before", { arguments: args, descriptors: [] }).sequence; },
+    end(operation, call, result) { record(operation, "after", { call, result }); },
     observeBinding(binding) {
       for (const name of Object.keys(binding)) wrap(binding, name, "native.");
     },

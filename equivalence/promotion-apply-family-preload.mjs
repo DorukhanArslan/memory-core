@@ -11,7 +11,12 @@ const context = JSON.parse(fs.readFileSync(filename, "utf8"));
 const profile = context.promotionApplyFamilyProfile;
 const own = fileURLToPath(import.meta.url);
 const ownHash = crypto.createHash("sha256").update(fs.readFileSync(own)).digest("hex");
+const contextKeys = ["schemaVersion", "kind", "runtime", "providerMode", "fetchPolicy", "approvedNodeRuntime",
+  "promotionApplyFamilyProfile", "allowedLocal", "traceDirectory", "evidenceDirectory", "stateDirectory",
+  "configPath", "approvedReferenceSources", "fixtureSourceCaptures"].sort().join();
 if (!profile || profile.kind !== "promotion-apply-family-development" ||
+    Object.keys(context).sort().join() !== contextKeys ||
+    Object.keys(profile).sort().join() !== ["kind", "operation", "casePath", "caseFileSha256", "caseWireSha256", "nodeRuntime", "acceptancePointsAwarded"].sort().join() ||
     profile.operation !== "promotion-apply-family-runtime" || profile.acceptancePointsAwarded !== 0 ||
     JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
     Object.keys(context).some(key => key.endsWith("Profile") && key !== "promotionApplyFamilyProfile") ||

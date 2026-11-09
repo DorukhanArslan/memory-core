@@ -305,6 +305,12 @@ def _validate_scope(scope: Any, cases: Any) -> tuple[list[dict], dict[str, set[s
         validate_promotion_ranking_acceptance(cases)
     except ValueError as error:
         raise HarnessError("cases-invalid", str(error)) from None
+    from equivalence.promotion_apply_family import validate_registration
+
+    try:
+        validate_registration(cases)
+    except ValueError as error:
+        raise HarnessError("cases-invalid", str(error)) from None
     return requirements, points
 
 
@@ -315,6 +321,21 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
         raise HarnessError("oracle-missing", "The independent TypeScript oracle runner is missing.")
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= 120:
         raise HarnessError("timeout-invalid", "The oracle requires a finite timeout of at most 120 seconds.")
+    if len(cases) == 1 and cases[0]["operation"] == "promotion-apply-family-runtime":
+        from equivalence.promotion_apply_family_native import run_native_case
+
+        if release_runtime is None:
+            raise HarnessError("release-runtime-unavailable", "Whole promotion apply requires its authenticated release runtime.")
+        retained = ROOT / ".equivalence-results" / "promotion-family"
+        retained.mkdir(parents=True, exist_ok=True)
+        attempt = Path(tempfile.mkdtemp(prefix="attempt-", dir=retained)) / "case"
+        try:
+            return run_native_case(cases[0], node, release_runtime, attempt, timeout=timeout)
+        except Exception as error:
+            failure = HarnessError("promotion-apply-evidence-invalid", "Whole promotion original execution/authority failed; no retry was made.")
+            failure.rejected_evidence = {"caseIds": [cases[0]["id"]], "coverageCredit": False,
+                                         "retainedDirectory": str(attempt), "reason": str(error)}
+            raise failure from error
     source_policy = len(cases) == 1 and cases[0]["operation"] == "redaction-policy-source"
     budget_units = len(cases) == 1 and cases[0]["operation"] in {"memory-budget-runtime", "memory-budget-apply-runtime"}
     body = json.dumps({"cases": cases, "dependencies": dependencies,
@@ -574,7 +595,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "atomic-commit-runtime", "atomic-append-runtime", "atomic-bootstrap-runtime",
             "bootstrap-discovery-runtime",
             "memory-budget-runtime", "memory-budget-apply-runtime",
-            "promotion-ranking-runtime", "promotion-apply-reconcile-runtime",
+            "promotion-ranking-runtime", "promotion-apply-reconcile-runtime", "promotion-apply-family-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -892,6 +913,12 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["promotionApplyRuntimeBindings"] = prepare_promotion_apply_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["promotionApplyProfile"] = prepare_promotion_apply_profile(node)
+            if any(case["operation"] == "promotion-apply-family-runtime" for case in runtime_cases):
+                from equivalence.promotion_apply_family_bindings import prepare_family_bindings
+                from equivalence.model_runtime_authority import prepare_model_node_authority
+
+                report["promotionApplyFamilyBindings"] = prepare_family_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                report["promotionApplyFamilyNode"] = prepare_model_node_authority(node)
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -915,6 +942,10 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             try:
                 if prepare_release_runtime(checkout, release_runtime_root) != runtime_config:
                     raise ValueError("Runtime artifacts changed.")
+                if "promotionApplyFamilyBindings" in report and (
+                        prepare_family_bindings(checkout, Path(runtime_config["runtimeRoot"])) != report["promotionApplyFamilyBindings"]
+                        or prepare_model_node_authority(node) != report["promotionApplyFamilyNode"]):
+                    raise ValueError("Whole promotion source/artifact/executable owners changed.")
                 for name, prepare in model_binding_preparers.items():
                     if prepare(checkout, Path(runtime_config["runtimeRoot"])) != report[name]:
                         raise ValueError("A model runtime source/export declaration changed.")
@@ -1106,19 +1137,32 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             from equivalence.get_fixture_filesystem import validate_python_get_filesystem_evidence
 
                             validate_python_get_filesystem_evidence(snapshots, case["input"], python)
+                        if case["operation"] == "promotion-apply-family-runtime":
+                            from equivalence.promotion_apply_family_evidence import validate_pair
+
+                            family_diagnostic = {"id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                                 "rawSnapshots": snapshots, "validationStatus": "unverified"}
+                            report["runtimeDiagnostics"].append(family_diagnostic)
+                            original = next(d for d in report["runtimeDiagnostics"]
+                                            if d["side"] == "native" and d["id"] == case["id"])
+                            validate_pair(case, original["rawSnapshots"][0], snapshots[0], native["result"], python)
+                            family_diagnostic["validationStatus"] = "verified"
                         diagnostic_key = "sourceDiagnostics" if case in source_diagnostic_cases else "runtimeDiagnostics"
-                        report[diagnostic_key].append({
-                            "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
-                            "rawSnapshots": snapshots,
-                        })
+                        if case["operation"] != "promotion-apply-family-runtime":
+                            report[diagnostic_key].append({
+                                "id": case["id"], "side": "python", "sha256": hashlib.sha256(raw).hexdigest(),
+                                "rawSnapshots": snapshots,
+                            })
                     # Reject non-JSON outputs and non-finite values explicitly.
                     python = _json(json.dumps(python, ensure_ascii=False, allow_nan=False))
                     row["status"] = "matched" if _same_json(python, native["result"]) else "mismatched"
                     if row["status"] == "mismatched":
                         row.update(operation=case["operation"], input=case["input"],
                                    python=python, openclaw=native["result"])
-                except Exception:
+                except Exception as error:
                     row.update(status="blocked", code="python-case-failed")
+                    if case["operation"] == "promotion-apply-family-runtime":
+                        row["evidenceError"] = {"name": type(error).__name__, "message": str(error)}
             report["cases"].append(row)
         after_implementation = _implementation_identity()
         if after_implementation["sourceSha256"] != report["implementation"]["sourceSha256"]:

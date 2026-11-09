@@ -277,6 +277,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.promotion_ranking_fixtures import build_promotion_ranking_cases
 
     cases.extend(build_promotion_ranking_cases())
+    from equivalence.promotion_apply_family import build_registered_cases
+
+    cases.extend(build_registered_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -304,6 +307,10 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.promotion_apply_runtime import run_promotion_apply_reconcile
 
         return run_promotion_apply_reconcile(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "promotion-apply-family-runtime":
+        from equivalence.promotion_apply_family_sdk import run_family_sdk
+
+        return run_family_sdk(case, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "promotion-ranking-runtime":
         from equivalence.promotion_ranking_runtime import run_promotion_ranking
 

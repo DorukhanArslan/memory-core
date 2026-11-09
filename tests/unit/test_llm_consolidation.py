@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import replace
+
+import pytest
 
 from memory_core.consolidation import (
     LlmConsolidationOptions,
@@ -17,6 +20,17 @@ from memory_core.consolidation.curated_annotations import (
 )
 
 NOW_MS = 1782986400000
+
+
+@pytest.mark.parametrize("observed_at, wire", [(1.0, "1"), (-0.0, "0"), (1e-7, "1e-7")])
+def test_model_prompt_uses_javascript_number_text_for_recalled_provenance(observed_at, wire):
+    from memory_core.consolidation.llm_consolidation import build_consolidation_prompt
+
+    candidate = replace(_candidate("source-key", "- A durable preference."),
+                        provenance={"originClass": "agent", "sessionKind": "unknown", "observedAt": observed_at})
+    prompt = build_consolidation_prompt("# Current memory\n", [candidate], 200)
+    assert f'"observedAt":{wire}}}' in prompt
+    assert json.loads(prompt)["currentMemory"] == "# Current memory\n"
 
 
 def _candidate(key: str, snippet: str, project: str | None = None) -> PromotionCandidate:

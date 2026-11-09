@@ -1,6 +1,7 @@
-"""Separate, zero-credit development capability for eight whole-apply literals.
+"""Frozen whole-apply literals with separate development and strict registration.
 
-This does not widen the original single-input capability or register coverage.
+This does not widen the original single-input capability. Development cases
+retain empty coverage; registered claims must include the entire exact family.
 The literal hashes bind host inputs, never expected operation results.
 """
 from copy import deepcopy
@@ -9,6 +10,7 @@ import json
 from pathlib import Path
 
 OPERATION = "promotion-apply-family-runtime"
+ACCEPTANCE = ("promotion.apply-reconcile.outcomes", "promotion.apply-reconcile.boundaries")
 CASE_HASHES = {
     "promotion-apply-authoritative-store-and-moved-source": "f8cfb6b12c5b22438dcab17420e781969753a9dac768943b0771d89560da25a4",
     "promotion-apply-mixed-authoritative-rejection-receipts": "035445f91f34c49149d3a5db914ad241b95fef15fc3083e45db80a4b6abf7f46",
@@ -26,13 +28,32 @@ def case_wire(case):
                       sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False).encode()
 
 
-def validate_case(case):
+def validate_case(case, *, registered=False):
+    coverage = list(ACCEPTANCE) if registered else []
     if (not isinstance(case, dict) or case.get("operation") != OPERATION
-            or case.get("covers") != [] or case.get("requirement") != "promotion.apply-reconcile"
+            or case.get("covers") != coverage or case.get("requirement") != "promotion.apply-reconcile"
             or case.get("id") not in CASE_HASHES
             or hashlib.sha256(case_wire(case)).hexdigest() != CASE_HASHES[case["id"]]):
         raise ValueError("Family capability requires an exact separate literal with empty coverage")
     return deepcopy(case)
+
+
+def validate_execution_case(case):
+    return validate_case(case, registered=case.get("covers") == list(ACCEPTANCE))
+
+
+def build_registered_cases():
+    return [{**case, "covers": list(ACCEPTANCE)} for case in build_cases()]
+
+
+def validate_registration(cases):
+    claims = [case for case in cases if set(ACCEPTANCE).intersection(case.get("covers", []))]
+    if not claims:
+        return
+    if len(claims) != len(CASE_HASHES) or {c["id"] for c in claims} != set(CASE_HASHES):
+        raise ValueError("Promotion apply acceptance requires all eight exact whole-operation families")
+    for case in claims:
+        validate_case(case, registered=True)
 
 
 def build_cases():

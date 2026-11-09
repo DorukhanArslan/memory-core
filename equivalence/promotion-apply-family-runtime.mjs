@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { mock } from "node:test";
 import { modelRuntimeIdentity, modelError } from "./model-runtime-observation.mjs";
+const OPENCLAW_BUILTIN_MEMORY_PLUGIN_ID = "memory-core";
 
 const CASE_HASHES = {
   "promotion-apply-authoritative-store-and-moved-source": "f8cfb6b12c5b22438dcab17420e781969753a9dac768943b0771d89560da25a4",
@@ -151,8 +152,8 @@ export async function runPromotionApplyFamily(testCase, runtimeConfig) {
     close = (await imp("dist/plugin-state-store-BPUaLoVD.mjs")).u;
     const configured = dreaming.p(options => {
       const selectedOptions = { ...options, env: environment };
-      const selected = keyed.createPluginStateKeyedStore("memory-core", selectedOptions);
-      raw.factoryCalls.push({ pluginId: "memory-core", options: structuredClone(options),
+      const selected = keyed.createPluginStateKeyedStore(OPENCLAW_BUILTIN_MEMORY_PLUGIN_ID, selectedOptions);
+      raw.factoryCalls.push({ pluginId: OPENCLAW_BUILTIN_MEMORY_PLUGIN_ID, options: structuredClone(options),
         selectedOptions: structuredClone(selectedOptions), returnedMethods: Object.keys(selected) });
       return observer.observeStore(selected, options.namespace);
     });
@@ -181,6 +182,16 @@ export async function runPromotionApplyFamily(testCase, runtimeConfig) {
     async function read(label) {
       const docs = await documents(workspace, names);
       const nowIso = new Date(input.nowMs).toISOString();
+      const physicalStore = await recall.i(workspace, "recall", nowIso);
+      raw.calls.push({ operation: "readShortTermStore", label, workspaceDir: workspace, kind: "recall",
+        nowIso, result: structuredClone(physicalStore) });
+      const normalized = recall.k(physicalStore, nowIso);
+      raw.calls.push({ operation: "normalizeShortTermRecallStore", label, input: structuredClone(physicalStore),
+        nowIso, result: structuredClone(normalized) });
+      const inputBefore = structuredClone(normalized);
+      const retention = recall._(normalized);
+      raw.calls.push({ operation: "enforceShortTermRecallStoreRetention", label, inputBefore,
+        result: structuredClone(normalized), returned: retention });
       const stored = await recall.a(workspace, nowIso);
       raw.calls.push({ operation: "readStore", label, workspaceDir: workspace, nowIso, result: structuredClone(stored) });
       const eventRecords = await events.n({ workspaceDir: workspace, env: environment });
@@ -195,6 +206,7 @@ export async function runPromotionApplyFamily(testCase, runtimeConfig) {
         info: (...args) => raw.calls.push({ operation: "logger.info", args }),
         warn: (...args) => raw.calls.push({ operation: "logger.warn", args }),
       }, subagent: { complete: async argument => {
+        const invocation = observer.begin("host.complete", [argument]);
         const entry = { request: structuredClone(argument), mutations: [] }; raw.completions.push(entry);
         for (const mutation of input.completion.mutationsBeforeReturn) {
           let result;
@@ -204,7 +216,8 @@ export async function runPromotionApplyFamily(testCase, runtimeConfig) {
           else throw Error("Unsupported literal host mutation");
           entry.mutations.push({ input: structuredClone(mutation), returnedUndefined: result === undefined });
         }
-        const result = { text: input.completion.text }; entry.result = structuredClone(result); return result;
+        const result = { text: input.completion.text }; entry.result = structuredClone(result);
+        observer.end("host.complete", invocation, result); return result;
       } } };
     }
     const call = { operation: "applyShortTermPromotions", request: { ...structuredClone({ ...request, consolidation: undefined }),
@@ -217,7 +230,8 @@ export async function runPromotionApplyFamily(testCase, runtimeConfig) {
     call.requestAfter = structuredClone({ ...request, consolidation: undefined });
     await snapshot("settlement-before-readback");
     const after = await read("after"); await snapshot("after-readback");
-    const publicResult = mapPaths({ provider: "none", outcome, before, after }, root);
+    const publicResult = mapPaths({ provider: "none", outcome, before, after,
+      completionCalls: raw.completions.map(({ request, result }) => ({ request, result })) }, root);
     raw.output = structuredClone(publicResult);
     return publicResult;
   } catch (error) { raw.observationError = modelError(error); throw error; }

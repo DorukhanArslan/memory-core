@@ -7,15 +7,20 @@ from pathlib import Path
 from unittest.mock import patch
 
 from equivalence.get_contract import map_get_fixture_paths
-from equivalence.promotion_apply_family import validate_case
+from equivalence.promotion_apply_family import validate_execution_case
 from equivalence.promotion_apply_runtime import (
     _OPTIONS, _documents, _error_record, _filesystem_snapshot, _json_value,
     _public_result, _safe_path, _source_owners, _sqlite_snapshot,
 )
 
 
-def run_family_sdk(case, evidence_directory: Path):
-    value = validate_case(case)["input"]
+def run_family_sdk(case, evidence_directory: Path | None):
+    value = validate_execution_case(case)["input"]
+    if evidence_directory is None:
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory(prefix="sdk-promotion-family-") as directory:
+            return run_family_sdk(case, Path(directory))
     from memory_core.config import MemoryConfig
     from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
     from memory_core.consolidation.llm_consolidation import DeepConsolidation, LlmConsolidationOptions
@@ -27,6 +32,7 @@ def run_family_sdk(case, evidence_directory: Path):
     from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
     from memory_core.consolidation import promotion
 
+    evidence_directory = Path(evidence_directory).resolve()
     evidence_directory.mkdir(parents=True, exist_ok=True)
     root = evidence_directory / "sdk-promotion-apply-fixture"
     root.mkdir()
@@ -37,16 +43,17 @@ def run_family_sdk(case, evidence_directory: Path):
 
     def receipt(operation, **facts):
         raw["receipts"].append({"sequence": len(raw["receipts"]) + 1, "operation": operation, **_json_value(facts)})
+        return raw["receipts"][-1]["sequence"]
 
     def observe_call(operation, original):
         def call(*args, **kwargs):
-            receipt(operation, when="before", arguments=args, keywords=kwargs)
+            call_id = receipt(operation, when="before", arguments=args, keywords=kwargs)
             try:
                 returned = original(*args, **kwargs)
             except BaseException as error:
-                receipt(operation, when="after", error=error)
+                receipt(operation, when="after", call=call_id, error=error)
                 raise
-            receipt(operation, when="after", result=returned)
+            receipt(operation, when="after", call=call_id, result=returned)
             return returned
         return call
 
@@ -96,7 +103,12 @@ def run_family_sdk(case, evidence_directory: Path):
         kwargs = {options[key]: item for key, item in value["options"].items()}
         if "completion" in value:
             def complete(request):
-                entry = {"request": _json_value(request), "mutations": []}
+                call_id = receipt("host.complete", when="before", arguments=[request])
+                public_request = {"agentId": kwargs.get("agent_id"), "message": request.message,
+                                  "extraSystemPrompt": request.system_prompt, "timeoutMs": request.timeout_ms}
+                if request.model is not None:
+                    public_request["model"] = request.model
+                entry = {"request": _json_value(request), "publicRequest": public_request, "mutations": []}
                 raw["completions"].append(entry)
                 for mutation in value["completion"]["mutationsBeforeReturn"]:
                     if mutation["operation"] == "write-recall-store":
@@ -108,6 +120,7 @@ def run_family_sdk(case, evidence_directory: Path):
                             result = stream.write(mutation["text"])
                     entry["mutations"].append({"input": mutation, "result": _json_value(result)})
                 entry["result"] = value["completion"]["text"]
+                receipt("host.complete", when="after", call=call_id, result=entry["result"])
                 return entry["result"]
             kwargs["consolidation"] = DeepConsolidation(model=complete, options=LlmConsolidationOptions(enabled=True))
         kwargs["origins"] = MemoryEntryOriginLedger(lambda agent: root / "agents" / agent / "memory.sqlite")
@@ -137,11 +150,13 @@ def run_family_sdk(case, evidence_directory: Path):
             outcome = {"result": _public_result(run, workspace)}
             raw["richSdkResult"] = _json_value(run)
         snapshot("actual-settlement-before-extra-readback")
-        output = {"provider": "none", "outcome": outcome, "before": before, "after": observe("after")}
+        output = {"provider": "none", "outcome": outcome, "before": before, "after": observe("after"),
+                  "completionCalls": [{"request": c["publicRequest"], "result": {"text": c["result"]}}
+                                      for c in raw["completions"]]}
         raw["indexReadbacks"] = {"published": _json_value(store.read_published_index()), "chunks": store.count_chunks()}
         raw["unmappedOutput"] = output
         raw["output"] = map_get_fixture_paths(output, str(root))
         return raw["output"]
     finally:
         raw["sourceOwners"] = _source_owners()
-        (evidence_directory / "python-raw.json").write_text(json.dumps(raw, ensure_ascii=True, indent=2) + "\n")
+        (evidence_directory / "python-raw.json").write_text(json.dumps([raw], ensure_ascii=True, indent=2) + "\n")

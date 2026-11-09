@@ -2237,8 +2237,9 @@ def redact_tool_payload_text(text: str, *, logging_config: LoggingConfig | None 
     the built-in table (both apply). ``logging_config=None`` reads the host configuration; a
     config marked full-context (:func:`mark_full_context_tool_payload_redaction`) runs the
     whole-context mode."""
+    config = _read_logging_config(logging_config)
     return _redact_tool_payload_text_with_policy(
-        text, logging_config, _resolve_tool_payload_redaction(logging_config)
+        text, config, _resolve_tool_payload_redaction(config)
     )
 
 
@@ -2250,8 +2251,9 @@ def redact_model_visible_tool_payload_text(
 ) -> str:
     """``redactModelVisibleToolPayloadTextWithConfig``: like :func:`redact_tool_payload_text` with
     the narrower tool-payload table (source code in tool output keeps its assignments)."""
+    config = _read_logging_config(logging_config)
     return _redact_tool_payload_text_with_policy(
-        text, logging_config, _resolve_model_visible_redaction(logging_config)
+        text, config, _resolve_model_visible_redaction(config)
     )
 
 

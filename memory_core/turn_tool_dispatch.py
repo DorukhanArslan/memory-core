@@ -1,9 +1,9 @@
 """Execute registered host tools and feed real outcomes to shared turn trust.
 
 This is an SDK callable dispatcher, not the provider loop, approval engine or
-native loop-diagnostic hashing owner. Source classification and presentation
-facts belong to the trusted registration. Arguments and returned JSON cannot
-replace them. Actual complete outcomes are available to the host observer.
+native loop-diagnostic hashing owner. Source classification belongs to the
+trusted registration. Arguments and returned JSON cannot replace it. Actual
+complete outcomes are available to the host observer.
 """
 from __future__ import annotations
 
@@ -21,15 +21,12 @@ class TurnTool:
     name: str
     execute: Callable[[str, Mapping[str, Any]], Any]
     result_content_source: str | None = None
-    presentation_only: bool = False
 
     def __post_init__(self):
         if not isinstance(self.name, str) or not self.name or not callable(self.execute):
             raise ValueError("A host tool requires a name and executable source")
         if self.result_content_source not in {None, "network"}:
             raise ValueError("The supported registered content source is network")
-        if not isinstance(self.presentation_only, bool):
-            raise TypeError("presentation_only must be a trusted boolean")
 
 
 class TurnToolDispatcher:
@@ -50,7 +47,7 @@ class TurnToolDispatcher:
     def _observe(self, tool: TurnTool, call_id: str, arguments, **outcome):
         observation = {"toolName": tool.name, "toolCallId": call_id, "arguments": deepcopy(arguments),
                        **({"resultContentSource": tool.result_content_source} if tool.result_content_source else {}),
-                       **({"presentationOnly": True} if tool.presentation_only else {}), **outcome}
+                       **outcome}
         self.trust.observe(observation)
         if self._on_outcome is not None:
             self._on_outcome(observation)

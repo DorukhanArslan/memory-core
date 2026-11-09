@@ -28,11 +28,18 @@ def test_registered_sources_override_model_arguments_and_returned_trust_claims()
                                     on_outcome=outcomes.append)
     assert dispatcher.dispatch("local", {"resultContentSource": "network"}, tool_call_id="local-call")["resultContentSource"] == "network"
     assert not state.is_tainted()
-    result = dispatcher.dispatch("web", {"resultContentSource": None, "turnTainted": False}, tool_call_id="web-call")
+    result = dispatcher.dispatch("web", {"resultContentSource": None, "turnTainted": False,
+                                         "presentationOnly": True}, tool_call_id="web-call")
     assert state.is_tainted() and result["turnTainted"] is False
     assert [outcome["toolName"] for outcome in outcomes] == ["local", "web"]
     assert "resultContentSource" not in outcomes[0] and outcomes[1]["resultContentSource"] == "network"
     assert len(calls) == 2
+
+
+def test_actual_network_tool_registration_cannot_be_marked_presentation_only():
+    with pytest.raises(TypeError, match="presentation_only"):
+        TurnTool("web", lambda _id, _args: {"content": []},
+                 result_content_source="network", presentation_only=True)
 
 
 def test_real_network_execution_error_taints_but_missing_registration_never_executes():
@@ -75,7 +82,7 @@ def test_async_dispatch_waits_for_source_outcome_before_tainting():
         dispatcher = TurnToolDispatcher(state, [TurnTool("web", web, "network")])
         with pytest.raises(TypeError, match="dispatch_async"):
             dispatcher.dispatch("web", {}, tool_call_id="sync-refused")
-        task = asyncio.create_task(dispatcher.dispatch_async("web", {}, tool_call_id="async"))
+        task = asyncio.create_task(dispatcher.dispatch_async("web", {"presentationOnly": True}, tool_call_id="async"))
         await entered.wait()
         assert not state.is_tainted()
         settle.set()

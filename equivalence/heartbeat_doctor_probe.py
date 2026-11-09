@@ -35,7 +35,7 @@ ADAPTERS = ("equivalence/heartbeat-doctor-preload.mjs", "equivalence/heartbeat-d
             "equivalence/heartbeat_doctor_bindings.py", "equivalence/heartbeat_dependency.py")
 SDK_FILES = ("memory_core/heartbeat_migration.py", "memory_core/automation.py", "memory_core/heartbeat_ownership.py",
              "memory_core/heartbeat_scratch.py", "memory_core/_heartbeat_constants.py", "memory_core/bootstrap/_js.py",
-             "memory_core/bootstrap/tools_md.py")
+             "memory_core/bootstrap/tools_md.py", "memory_core/consolidation/file_lock.py")
 STORE_ISOLATION_FILES = ("equivalence/heartbeat_node_authority.py", "equivalence/heartbeat-preload.mjs",
                          "equivalence/heartbeat-runtime.mjs")
 
@@ -212,9 +212,11 @@ def sdk_doctor_phase(request):
     root, input_value = Path(request["fixtureDirectory"]), request["input"]
     workspace = root / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
-    store = FileAutomationStore(workspace)
+    store_options = {"store_path": root / "custom-cron" / "jobs.json"} if input_value["customStore"] else {}
+    store = FileAutomationStore(workspace, **store_options)
     raw = {"fixtureDirectory": str(root), "hostMapping": input_value["host"], "calls": [], "snapshots": [],
            "pid": os.getpid(), "sourceBuildReproduced": False,
+           "storeConfiguration": {"root": str(workspace), **{key: str(value) for key, value in store_options.items()}},
            "clock": {"owner": "unittest.mock", "target": "memory_core.heartbeat_migration.time.time", "nowMs": input_value["nowMs"]}}
     def snapshot():
         monitors = {agent["id"]: value.to_json() if (value := store.read_heartbeat_monitor_scratch(agent["id"])) is not None
@@ -234,10 +236,9 @@ def sdk_doctor_phase(request):
                             retain_source=input_value["host"]["retainSource"])]
                 elif operation["op"] in {"preview", "repair"}:
                     arguments = {"agent_ids": input_value["host"]["agentIds"],
-                                 "retain_source": input_value["host"]["retainSource"], "now_ms": input_value["nowMs"]}
-                    if operation["op"] == "preview":
-                        # Actual unsupported public input, not an invented local preview.
-                        arguments["should_repair"] = False
+                                 "retain_source": input_value["host"]["retainSource"], "now_ms": input_value["nowMs"],
+                                 "monitor_agent_ids": [agent["id"] for agent in input_value["agents"]],
+                                 "should_repair": operation["op"] == "repair"}
                     call["request"] = {"root": str(workspace), **arguments}
                     returned = migrate_heartbeat_md(workspace, store, **arguments)
                     call["result"] = {"changes": list(returned.changes), "warnings": list(returned.warnings)}
@@ -595,25 +596,30 @@ def run(checkout, cache, node, output, selected=None):
     rows = []
     try:
         for case in cases:
-            directory = output / case["id"]; directory.mkdir()
+            directory = output / case["id"]
+            directory.mkdir()
             pids, _unused, cleanup = _claims(case.get("claim"))
             try:
                 for side in ("native", "sdk"):
                     _fixture(directory / (side + "-fixture"), case["files"], pids)
                 phase_rows = []
                 for ordinal, input_value in enumerate(case["phases"]):
-                    phase_directory = directory / str(ordinal); phase_directory.mkdir(); (phase_directory / "traces").mkdir()
+                    phase_directory = directory / str(ordinal)
+                    phase_directory.mkdir()
+                    (phase_directory / "traces").mkdir()
                     observed_pids = _pid_status(pids)
                     _require_claim_role(case.get("claim"), observed_pids)
                     (phase_directory / "claim-processes-before.json").write_text(json.dumps(observed_pids))
                     request = {"kind": "heartbeat-doctor-sequence", "phase": ordinal, "input": input_value,
                                "fixtureDirectory": str(directory / "native-fixture")}
-                    request_path = phase_directory / "native-input.json"; request_path.write_text(json.dumps(request, ensure_ascii=True))
+                    request_path = phase_directory / "native-input.json"
+                    request_path.write_text(json.dumps(request, ensure_ascii=True))
                     context = {"kind": "heartbeat-doctor-execution", "providerMode": "none", "fetchPolicy": "deny", "capability": capability,
                         "runtime": runtime, "requestPath": str(request_path), "requestSha256": hashlib.sha256(request_path.read_bytes()).hexdigest(),
                         "traceDirectory": str(phase_directory / "traces"), "bindingsSha256": MANIFEST_SHA256, "codecSha256": CODEC_SHA256,
                         "allowedLocal": [{"path": str(ROOT / name), "sha256": identities[name]} for name in ADAPTERS[:2]]}
-                    context_path = phase_directory / "context.json"; context_path.write_text(json.dumps(context))
+                    context_path = phase_directory / "context.json"
+                    context_path.write_text(json.dumps(context))
                     environment = {"PATH": str(node.parent) + os.pathsep + os.defpath, "LANG": "C.UTF-8", "TZ": "UTC",
                                    "OPENAI_API_KEY": "", "OPENROUTER_API_KEY": "", "MEMORY_EQ_DOCTOR_CONTEXT": str(context_path),
                                    "NODE_OPTIONS": "--import=" + (ROOT / ADAPTERS[0]).as_uri()}
@@ -622,7 +628,8 @@ def run(checkout, cache, node, output, selected=None):
                     native = json.loads(native_process.stdout)
                     execution = validate_execution(phase_directory, context, native)
                     sdk_request = {**request, "fixtureDirectory": str(directory / "sdk-fixture")}
-                    sdk_path = phase_directory / "sdk-input.json"; sdk_path.write_text(json.dumps(sdk_request, ensure_ascii=True))
+                    sdk_path = phase_directory / "sdk-input.json"
+                    sdk_path.write_text(json.dumps(sdk_request, ensure_ascii=True))
                     sdk_process = _capture_process([sys.executable, "-m", "equivalence.heartbeat_doctor_probe", "--sdk-phase", str(sdk_path)],
                         phase_directory, "sdk", cwd=ROOT, timeout=60,
                         env={"PATH": os.defpath, "LANG": "C.UTF-8", "TZ": "UTC", "PYTHONPATH": str(ROOT), "OPENAI_API_KEY": "", "OPENROUTER_API_KEY": ""})
@@ -674,7 +681,8 @@ def run(checkout, cache, node, output, selected=None):
 
 def main():
     if len(sys.argv) == 3 and sys.argv[1] == "--sdk-phase":
-        print(json.dumps(sdk_doctor_phase(json.loads(Path(sys.argv[2]).read_text())), ensure_ascii=True)); return
+        print(json.dumps(sdk_doctor_phase(json.loads(Path(sys.argv[2]).read_text())), ensure_ascii=True))
+        return
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("checkout", "runtime-cache", "node", "output"):
         parser.add_argument("--" + name, required=True, type=Path)

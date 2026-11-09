@@ -19,7 +19,7 @@ def test_storage_flow_registration_keeps_the_fixed_original_scope_and_no_unearne
         assert registered[case['id']] == case
         assert case['requirement'] == 'storage.workspace-isolation'
         assert case['operation'] == 'workspace-isolation-runtime'
-        assert case['covers'] == []
+        assert case['covers'] == ['storage.workspace-isolation.outcomes', 'storage.workspace-isolation.boundaries']
         assert all('expected' not in step for step in case['input']['steps'])
 
 

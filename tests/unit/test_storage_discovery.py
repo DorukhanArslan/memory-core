@@ -124,4 +124,6 @@ def test_discovery_registry_keeps_coverage_unclaimed_until_complete_native_revie
     cases = build_storage_discovery_cases()
     assert cases == build_storage_discovery_cases()
     assert len({case["id"] for case in cases}) == len(cases)
-    assert all(case["requirement"] == "storage.discovery" and case["covers"] == [] for case in cases)
+    assert len(cases) == 76
+    assert all(case["requirement"] == "storage.discovery" and "storage.discovery.outcomes" in case["covers"] for case in cases)
+    assert sum("storage.discovery.boundaries" in case["covers"] for case in cases) == 13

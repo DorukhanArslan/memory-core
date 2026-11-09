@@ -93,7 +93,7 @@ def build_workspace_isolation_cases() -> list[dict[str, Any]]:
                        read("outside-owner-read", "bob", "../alice/" + _DAY)]},
         ]
         cases.append({"id": "workspace-isolation-" + name, "requirement": "storage.workspace-isolation",
-                      "operation": "workspace-isolation-runtime", "covers": [],
+                      "operation": "workspace-isolation-runtime", "covers": ["storage.workspace-isolation.outcomes", "storage.workspace-isolation.boundaries"],
                       "input": {"kind": "flow", "nowMs": _NOW, "config": {"layout": layout,
                                 "agents": ["alice", "bob"], "sharedConfigStore": custom_store},
                                 "owners": owners, "files": files, "steps": steps},

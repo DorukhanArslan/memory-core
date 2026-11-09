@@ -65,7 +65,7 @@ class HostTurnOutcome:
     tools: tuple[dict[str, Any], ...]
     transcript_committed: bool
     memory_writes_committed: bool
-    index_status: Literal["ready", "failed", "not-run"]
+    index_status: Literal["ready", "pending", "failed", "not-run"]
     failures: tuple[HostTurnFailure, ...] = ()
     flush: FlushOutcome | None = None
     cancelled: bool = False
@@ -487,6 +487,21 @@ class HostSessionRunner:
     def _clock(self) -> int:
         return int(self.catalog.now_ms())
 
+    def _refresh_index(self, allow_deferred: bool = False) -> bool:
+        """Default hosts retain their full synchronous publication barrier."""
+        self.kit.memory.store.reindex(self.kit.memory.workspace)
+        return True
+
+    def _publication_index_status(self, published: bool) -> Literal["ready", "pending"]:
+        return "ready" if published else "pending"
+
+    def _index_needs_repair(self, auxiliary: Mapping[str, Any]) -> bool:
+        return auxiliary.get("needsIndex") is True
+
+    def _decorate_index_metadata(self, auxiliary: dict[str, Any], *, needs_index: bool,
+                                 scope: Literal["all", "memory", "transcript"]) -> None:
+        auxiliary["needsIndex"] = needs_index
+
     async def _blocking(self, function: Callable[..., Any], *args) -> Any:
         """Keep physical source custody even if its awaiting task is cancelled."""
         with self._blocking_guard:
@@ -584,7 +599,8 @@ class HostSessionRunner:
                 return
             self._assert_identity()
             self._persist(state, needs_index=True, turn_id=turn_id,
-                pending_memory_publication=_publication_marker(turn_id, self.kit, stage="intent"))
+                pending_memory_publication=_publication_marker(turn_id, self.kit, stage="intent"),
+                index_scope="memory")
             self._intent_turn_id = turn_id
 
     def _load(self) -> tuple[SessionState, dict[str, Any], bool]:
@@ -611,12 +627,13 @@ class HostSessionRunner:
             "lastOutputTokens": auxiliary.get("lastOutputTokens", self.session.last_output_tokens),
             "seenTruncationSignatures": auxiliary.get("seenTruncationSignatures", list(self.session.seen_truncation_signatures)),
             "completedBootstrapTurn": auxiliary.get("completedBootstrapTurn", self.session.completed_bootstrap_turn)})
-        return state, continuation, auxiliary.get("needsIndex") is True
+        return state, continuation, self._index_needs_repair(auxiliary)
 
     def _persist(self, state: SessionState, *, needs_index: bool, turn_id: str,
                  pending_memory_publication: object = _KEEP_PUBLICATION,
                  expected_pending_turn_id: str | None = None,
-                 acknowledgment: Mapping[str, Any] | None = None) -> None:
+                 acknowledgment: Mapping[str, Any] | None = None,
+                 index_scope: Literal["all", "memory", "transcript"] = "all") -> None:
         current = self.catalog.get_session_entry(state.session_key)
         if current is None or current.get("sessionId") != state.session_id:
             raise RuntimeError("The current session incarnation changed during this turn")
@@ -638,6 +655,7 @@ class HostSessionRunner:
         auxiliary.update({"version": 1, "kind": state.kind, "lastOutputTokens": state.last_output_tokens,
             "seenTruncationSignatures": list(state.seen_truncation_signatures),
             "completedBootstrapTurn": state.completed_bootstrap_turn, "needsIndex": needs_index, "lastTurnId": turn_id})
+        self._decorate_index_metadata(auxiliary, needs_index=needs_index, scope=index_scope)
         if pending_memory_publication is not _KEEP_PUBLICATION:
             if pending_memory_publication is None:
                 auxiliary.pop("pendingMemoryPublication", None)
@@ -678,7 +696,9 @@ class HostSessionRunner:
             self._assert_publication_owner(pending)
             if cancelled.is_set():
                 raise asyncio.CancelledError("The memory publication acknowledgment was cancelled")
-            await self._blocking(self.kit.memory.store.reindex, self.kit.memory.workspace)
+            published = await self._blocking(self._refresh_index, False)
+            if not published:
+                raise RuntimeError("Memory publication acknowledgment requires an actual index publication")
             if cancelled.is_set():
                 raise asyncio.CancelledError("The memory publication acknowledgment was cancelled")
             # Read the live metadata after IO, preserving independent edits.
@@ -814,8 +834,8 @@ class HostSessionRunner:
                     tuple(failures), memory_publication="uncertain")
             if needs_index:
                 phase = "index-repair"
-                await self._blocking(self.kit.memory.store.reindex, self.kit.memory.workspace)
-                self._persist(state, needs_index=False, turn_id=turn_id)
+                published = await self._blocking(self._refresh_index, True)
+                self._persist(state, needs_index=not published, turn_id=turn_id)
             phase = "before-turn"
             context = self.kit.before_turn(state)
             state = context.session
@@ -832,7 +852,7 @@ class HostSessionRunner:
             capture.accepted = True
             if not saved["appended"]:
                 raise RuntimeError("This request was already admitted; no model turn was repeated")
-            self._persist(state, needs_index=True, turn_id=turn_id)
+            self._persist(state, needs_index=True, turn_id=turn_id, index_scope="transcript")
             continuation = self.catalog.read_continuation(state.session_id, session_key=state.session_key)
             model_messages = continuation["llmMessages"]
             turn = HostTurn(self, turn_id, state, context, model_messages, trust)
@@ -963,13 +983,14 @@ class HostSessionRunner:
                     failures.append(HostTurnFailure("tool-index", "IndexPublicationFailure", format_error_message(error), True))
                 try:
                     self._persist(state, needs_index=True, turn_id=turn_id,
-                        pending_memory_publication=_pending_publication(receipts, turn_id, self.kit))
+                        pending_memory_publication=_pending_publication(receipts, turn_id, self.kit),
+                        index_scope="transcript")
                     if index_errors:
                         index_status = "failed"
                     else:
-                        await self._blocking(self.kit.memory.store.reindex, self.kit.memory.workspace)
-                        self._persist(state, needs_index=False, turn_id=turn_id)
-                        index_status = "ready"
+                        published = await self._blocking(self._refresh_index, True)
+                        self._persist(state, needs_index=not published, turn_id=turn_id)
+                        index_status = self._publication_index_status(published)
                 except Exception as error:
                     index_status = "failed"
                     failures.append(_failure("publication", error, committed=True))

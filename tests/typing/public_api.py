@@ -23,6 +23,7 @@ from memory_core import (
 from memory_core.adapters.langgraph import tool_messages, transcript_rows, turn_usage
 from memory_core.host import FlushOutcome, FlushRequest
 from memory_core.host.managed_index import ManagedSQLiteMemoryStore
+from memory_core.host.managed_session import ManagedHostSession, ManagedHostSessionRunner, ManagedHostTurnOutcome
 from memory_core.host.session_publication import SessionPublicationController
 from memory_core.index.hybrid import HybridResult
 from memory_core.workspace import MemoryWorkspace
@@ -150,3 +151,23 @@ def managed_contract(workspace: Path) -> None:
     assert_type(controller.status(), dict[str, Any])
     store.close()
     assert_type(store.closed, bool)
+
+
+async def managed_host_contract(workspace: Path) -> None:
+    catalog = MemorySessionCatalog(workspace / "catalog.sqlite")
+    config = MemoryConfig(workspace_dir=workspace, flags=FeatureFlags(vector_search=False))
+    owner = ManagedHostSession.open(workspace, catalog=catalog, config=config, initialize=False)
+    runner = owner.runner(SessionState.new(session_key="agent:main:typed", session_id="typed"))
+    assert_type(runner, ManagedHostSessionRunner)
+    assert_type(owner.kit, HostKit)
+    assert_type(owner.store, ManagedSQLiteMemoryStore)
+    assert_type(owner.controller, SessionPublicationController)
+    assert_type(owner.publication_status(), dict[str, Any])
+    assert_type(owner.reindex(force=True), int)
+    assert_type(owner.synchronize(timeout=0.5), dict[str, Any])
+
+    async def model(turn: HostTurn) -> HostModelResult:
+        return HostModelResult()
+
+    assert_type(await runner.run_turn("recall", execute=model), ManagedHostTurnOutcome)
+    owner.close()

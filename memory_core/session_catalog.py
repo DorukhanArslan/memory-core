@@ -657,6 +657,61 @@ class MemorySessionCatalog:
         """Current host activity time used by live catalog consumers."""
         return self._clock()
 
+    def compare_and_patch_host_lifecycle(
+        self, *, expected_revision: int, updates: Mapping[str, Mapping[str, Any]],
+    ) -> bool:
+        """Atomically patch host auxiliary state if its source plan is current.
+
+        The revision must come from this catalog's ``snapshot`` before source
+        inspection. Any intervening catalog mutation rejects the whole batch.
+        Current entries and their exact transcript windows retain every other
+        field; this metadata-only commit emits no transcript dirty hint.
+        """
+        if isinstance(expected_revision, bool) or not isinstance(expected_revision, int) or expected_revision < 0:
+            raise ValueError("A catalog revision must be a nonnegative integer")
+        patches: dict[str, dict[str, Any]] = {}
+        for key, auxiliary in updates.items():
+            if not isinstance(key, str) or not isinstance(auxiliary, Mapping):
+                raise TypeError("Host lifecycle patches require session keys and mappings")
+            if self._key_catalog(key) is not self or _internal_key(key):
+                raise ValueError("Host lifecycle patches require this catalog's visible session keys")
+            canonical = self._session_key(key)
+            if canonical is None or not canonical:
+                raise ValueError("Host lifecycle patches require nonempty session keys")
+            patches[canonical] = json.loads(_json(dict(auxiliary)))
+        with closing(self._connect()) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            revision = db.execute("SELECT revision FROM memory_session_catalog_state WHERE agent=?",
+                                  (self.agent_id,)).fetchone()[0]
+            if revision != expected_revision:
+                return False
+            changed: list[tuple[str, str, str, str]] = []
+            for key, auxiliary in patches.items():
+                row = db.execute("SELECT entry_json FROM memory_session_nodes WHERE agent=? AND session_key=?",
+                                 (self.agent_id, key)).fetchone()
+                if row is None:
+                    return False
+                entry = json.loads(row[0])
+                session_id = entry.get("sessionId")
+                window = db.execute("SELECT entry_json FROM memory_session_windows WHERE agent=? AND session_id=? AND session_key=?",
+                                    (self.agent_id, session_id, key)).fetchone()
+                if window is None:
+                    return False
+                recorded = json.loads(window[0])
+                if entry.get("sdkHostLifecycle") == auxiliary and recorded.get("sdkHostLifecycle") == auxiliary:
+                    continue
+                entry["sdkHostLifecycle"] = auxiliary
+                recorded["sdkHostLifecycle"] = auxiliary
+                changed.append((key, session_id, _json(entry), _json(recorded)))
+            for key, session_id, entry_json, window_json in changed:
+                db.execute("UPDATE memory_session_nodes SET entry_json=? WHERE agent=? AND session_key=?",
+                           (entry_json, self.agent_id, key))
+                db.execute("UPDATE memory_session_windows SET entry_json=? WHERE agent=? AND session_id=? AND session_key=?",
+                           (window_json, self.agent_id, session_id, key))
+            if changed:
+                self._changed(db)
+            return True
+
     def upsert_session(
         self, session_key: str, entry: Mapping[str, Any], *,
         provenance_known: bool = True, acp_owned: bool = False,

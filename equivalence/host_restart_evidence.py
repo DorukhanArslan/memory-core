@@ -76,8 +76,11 @@ def _read(case, public, initial, terminal, tool_calls, assistant, *, failure):
     require(public["answer"] == expected == _text(assistant), "The terminal answer did not come from the actual tool result")
 
 
-def _validate_capture(case, raw, result, *, native, policy, publication=False, managed=False):
-    if managed:
+def _validate_capture(case, raw, result, *, native, policy, publication=False, managed=False, session_managed=False):
+    if session_managed:
+        require(policy and publication and not managed, "Session acceptance requires its independent capability")
+        from equivalence.host_restart_session import validate_case as validate_literal
+    elif managed:
         from equivalence.host_restart_managed import validate_case as validate_literal
     elif publication:
         from equivalence.host_restart_publication import validate_case as validate_literal

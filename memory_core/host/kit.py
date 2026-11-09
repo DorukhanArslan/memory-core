@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -245,6 +245,8 @@ class HostKit:
         active_project_keys: Sequence[str] | None = None,
         session_visibility: SessionVisibilityContext | None = None,
         source_policy: Mapping[str, Any] | None = None,
+        curation_index_sources: Collection[str] | None = None,
+        defer_cold_index: bool = False,
     ) -> None:
         self._memory = memory
         self._session_visibility = (
@@ -296,9 +298,12 @@ class HostKit:
             automation_store if automation_store is not None else FileAutomationStore(self._root)
         )
         self._clock = now_ms or (lambda: time.time_ns() // 1_000_000)
+        self._curation_index_sources = tuple(curation_index_sources) if curation_index_sources is not None else None
+        self._defer_cold_index = defer_cold_index
         # The curator validates the timezone and the policy against the layout.
         self._curator = memory.curator(
-            layout=layout, policy=curation_policy, timezone=timezone, now_ms=self._clock
+            layout=layout, policy=curation_policy, timezone=timezone, now_ms=self._clock,
+            index_sources=self._curation_index_sources, defer_cold_index=defer_cold_index,
         )
         memory.store.artifact_provenance = self._artifact_provenance
 
@@ -345,6 +350,10 @@ class HostKit:
     def curator(self) -> MemoryCurator:
         """The curator :meth:`dispatch` runs curated writes through (reindexes after them)."""
         return self._curator
+
+    def _refresh_owned_index(self) -> bool:
+        return self._memory._refresh_index(sources=self._curation_index_sources,
+                                           defer_cold=self._defer_cold_index)
 
     def ensure(self) -> WorkspaceInitResult:
         """Seed the workspace and run the BOOTSTRAP.md lifecycle.
@@ -802,7 +811,7 @@ class HostKit:
             redactor=redactor,
             artifact_provenance=self._artifact_provenance,
         )
-        self._memory.store.reindex(self._memory.workspace)
+        self._refresh_owned_index()
         workspace_init = self.ensure()
         reset = None
         if not (text and text.strip()):
@@ -940,6 +949,7 @@ class HostKit:
             assert_current=assert_current,
             read_tool=self._flush_read_tool,
             read_dispatch=self._flush_read_dispatch,
+            index_refresh=self._refresh_owned_index,
             agent_id=session.session_key.split(":")[1]
             if session.session_key.startswith("agent:") else "main",
             maintenance=reason != _FORCED_FLUSH_REASON,

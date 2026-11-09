@@ -297,6 +297,12 @@ class SessionPublicationController:
         with self._condition:
             return self._condition.wait_for(lambda: not self._active, timeout)
 
+    def raise_if_failed(self) -> None:
+        """Rethrow the original last publication failure without admitting work."""
+        with self._condition:
+            if self._last_exception is not None:
+                raise self._last_exception
+
     def flush(self, *, reconcile: bool = False, timeout: float | None = None) -> dict[str, Any]:
         """Explicitly publish pending claims once; an explicit call may retry failure."""
         if self.owns_current_job():

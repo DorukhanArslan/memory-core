@@ -17,7 +17,7 @@ function validSourcePolicy(policy) {
     keys.push("producerPublication");
   }
   if (Object.hasOwn(policy, "indexLifecycle") || Object.hasOwn(policy, "runtimeIdentity")) {
-    if (!Object.hasOwn(policy, "producerPublication") || policy.indexLifecycle !== "managed" ||
+    if (!Object.hasOwn(policy, "producerPublication") || !["managed", "session-managed"].includes(policy.indexLifecycle) ||
         policy.runtimeIdentity !== "openclaw-compatible") return false;
     keys.push("indexLifecycle", "runtimeIdentity");
   }

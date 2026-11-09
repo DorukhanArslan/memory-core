@@ -328,6 +328,56 @@ with tempfile.TemporaryDirectory() as scratch:
     finally:
         queued_store.close()
     assert publication.status()["closed"] is True
+    managed_host_module = importlib.import_module(package_name + ".host.managed_session")
+    host_root = root / "managed-host"
+    host_catalog = catalog_module.MemorySessionCatalog(root / "managed-host-catalog.sqlite",
+        clock_ms=lambda: 1794182400000)
+    host_config = core.MemoryConfig(workspace_dir=host_root, flags=flags, session_search=True)
+    host_policy = visibility.resolve_memory_search_source_policy(["memory"],
+        remember_across_conversations=True, configured_session_memory=False)
+    host_options = {"config": host_config, "source_policy": host_policy,
+        "initialize": False, "now_ms": lambda: 1794182400000}
+    host = managed_host_module.ManagedHostSession.open(host_root, catalog=host_catalog, **host_options)
+
+    async def managed_host_consumer(owner, *, save_first):
+        async def save(turn):
+            args = {"text": "The installedmanagedmaple preference is cedar tea."}
+            turn.record_message({"role": "assistant", "content": [{"type": "toolCall", "id": "save", "name": "append_daily_note", "arguments": args}]})
+            result = await turn.dispatch_async("save", "append_daily_note", args)
+            assert result["status"] == "ok"
+            turn.record_message({"role": "assistant", "content": [{"type": "text", "text": "Saved."}]})
+
+        async def recall(turn):
+            args = {"query": "installedmanagedmaple", "corpus": "memory", "minScore": 0}
+            turn.record_message({"role": "assistant", "content": [{"type": "toolCall", "id": "recall", "name": "memory_search", "arguments": args}]})
+            result = await turn.dispatch_async("recall", "memory_search", args)
+            assert result["results"] and "cedar tea" in result["results"][0]["snippet"]
+            turn.record_message({"role": "assistant", "content": [{"type": "text", "text": result["results"][0]["snippet"]}]})
+
+        if save_first:
+            writer = owner.runner(core.SessionState.new(session_key="agent:main:managed-writer", session_id="managed-writer"))
+            saved = await writer.run_turn("Remember installedmanagedmaple.", execute=save)
+            assert saved.transcript_committed and saved.memory_writes_committed
+            assert saved.index_status == "pending" and not saved.ready and not saved.failures
+            assert owner.store.index_identity()["status"] == "missing"
+            owner.reindex(force=True)
+        name = "managed-fresh" if save_first else "managed-reopened"
+        reader = owner.runner(core.SessionState.new(session_key="agent:main:" + name, session_id=name))
+        assert reader.kit is owner.kit
+        recalled = await reader.run_turn("Find the stored preference.", execute=recall)
+        assert recalled.transcript_committed and not recalled.failures
+
+    try:
+        asyncio.run(managed_host_consumer(host, save_first=True))
+    finally:
+        host.close()
+    reopened_catalog = catalog_module.MemorySessionCatalog(host_catalog.path,
+        clock_ms=lambda: 1794182400000)
+    reopened_host = managed_host_module.ManagedHostSession.open(host_root, catalog=reopened_catalog, **host_options)
+    try:
+        asyncio.run(managed_host_consumer(reopened_host, save_first=False))
+    finally:
+        reopened_host.close()
 print("installed core imports and FTS host lifecycle passed")
 print("installed session authority and compressed archive consumers passed")
 print("installed durable append, continuation and replay consumers passed")
@@ -336,6 +386,7 @@ print("installed extra discovery, Unicode facts and workspace owner consumers pa
 print("installed serialized save, immediate recall and reopened context consumers passed")
 print("installed managed cold bootstrap, live notice, warm recall and physical close consumer passed")
 print("installed selected-source publication, committed session queue and read-generation consumers passed")
+print("installed managed shared-host save, pending readiness and reopened recall consumer passed")
 '''
 
 

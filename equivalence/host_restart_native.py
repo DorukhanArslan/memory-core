@@ -1,4 +1,4 @@
-"""Authenticated original host processes; development observations give no credit."""
+"""Authenticated original host processes under separate closed capabilities."""
 from pathlib import Path
 import hashlib
 import json
@@ -19,11 +19,18 @@ LOCAL = ("host-restart-entry.mjs", "host-restart-preload.mjs", "host-restart-run
 POLICY_LOCAL = ("host-restart-policy-entry.mjs", "host-restart-policy-preload.mjs", *LOCAL[2:])
 PUBLICATION_LOCAL = ("host-restart-publication-entry.mjs", "host-restart-publication-preload.mjs", *LOCAL[2:])
 MANAGED_LOCAL = ("host-restart-managed-entry.mjs", "host-restart-managed-preload.mjs", *LOCAL[2:])
+SESSION_LOCAL = ("host-restart-session-entry.mjs", "host-restart-session-preload.mjs", *LOCAL[2:])
 
 
-def _lane(policy, publication, managed=False):
+def _lane(policy, publication, managed=False, session_managed=False):
     if publication and not policy:
         raise ValueError("Publication requires its separate source-policy capability")
+    if session_managed:
+        if managed or not publication:
+            raise ValueError("Session-managed execution requires its independent publication capability")
+        return ("hostRestartSessionProfile", "host-restart-session-bootstrap",
+                "host-restart-session-preload.mjs", "host-restart-session-entry.mjs",
+                "host-restart-session-acceptance", SESSION_LOCAL)
     if managed:
         if not publication:
             raise ValueError("Managed execution requires its independent publication capability")
@@ -50,7 +57,8 @@ def write_json(path, value):
     Path(path).write_text(json.dumps(value, ensure_ascii=True, indent=2, allow_nan=False) + "\n", encoding="utf8")
 
 
-def validate_traces(directory, context, runtime, authority, *, process_pid, coordinator_pid, raw, policy=False, publication=False, managed=False):
+def validate_traces(directory, context, runtime, authority, *, process_pid, coordinator_pid, raw,
+                    policy=False, publication=False, managed=False, session_managed=False):
     from equivalence.host_restart_bindings import (
         REQUIRED_HOST_ARTIFACTS, WRITE_ARTIFACTS, READ_ARTIFACTS,
         PUBLICATION_PARENT_ARTIFACTS, PLUGIN_STATE_PARENT_ARTIFACTS,
@@ -58,7 +66,7 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, coor
     )
 
     originals = {(p["location"], f["path"]): f["sha256"] for p in runtime["packages"] for f in p["files"]}
-    profile_key, event, preload, entry, _, _ = _lane(policy, publication, managed)
+    profile_key, event, preload, entry, _, _ = _lane(policy, publication, managed, session_managed)
     locals_ = {item["path"]: item["sha256"] for item in context["allowedLocal"]}
     children = raw["children"]
     if raw["coordinatorPid"] != process_pid or raw["coordinatorPpid"] != coordinator_pid:
@@ -151,8 +159,14 @@ def validate_traces(directory, context, runtime, authority, *, process_pid, coor
             "traces": [{"name": path.name, "sha256": digest(path), "text": path.read_text()} for path in traces]}
 
 
-def _run_native_case(case, node, runtime, directory, *, timeout, policy, publication=False, managed=False):
-    if managed:
+def _run_native_case(case, node, runtime, directory, *, timeout, policy, publication=False,
+                     managed=False, session_managed=False):
+    # Resolve the closed capability before admitting a literal or creating any
+    # attempt directory. A session-managed profile cannot borrow an old lane.
+    lane = _lane(policy, publication, managed, session_managed)
+    if session_managed:
+        from equivalence.host_restart_session import CASE_HASHES as hashes, validate_case as validate_literal
+    elif managed:
         from equivalence.host_restart_managed import CASE_HASHES as hashes, validate_case as validate_literal
     elif publication:
         from equivalence.host_restart_publication import CASE_HASHES as hashes, validate_case as validate_literal
@@ -168,7 +182,7 @@ def _run_native_case(case, node, runtime, directory, *, timeout, policy, publica
     traces, evidence = directory / "traces", directory / "evidence"
     traces.mkdir()
     evidence.mkdir()
-    profile_key, _, preload, entry, kind, local = _lane(policy, publication, managed)
+    profile_key, _, preload, entry, kind, local = lane
     profile = {"kind": kind, "operation": case["operation"],
                "caseId": case["id"], "caseWireSha256": hashes[case["id"]],
                "nodeRuntime": authority, "acceptancePointsAwarded": 0}
@@ -207,8 +221,12 @@ def _run_native_case(case, node, runtime, directory, *, timeout, policy, publica
     if not isinstance(raw, list) or len(raw) != 1 or Path(raw[0]["fixtureBase"]).parent != evidence:
         raise ValueError("Restart borrowed another case's evidence directory")
     trace = validate_traces(traces, {**context, "_sha256": digest(context_path)}, runtime, authority,
-                            process_pid=process.pid, coordinator_pid=os.getpid(), raw=raw[0], policy=policy, publication=publication, managed=managed)
-    if managed:
+                            process_pid=process.pid, coordinator_pid=os.getpid(), raw=raw[0],
+                            policy=policy, publication=publication, managed=managed,
+                            session_managed=session_managed)
+    if session_managed:
+        from equivalence.host_restart_session_evidence import validate_capture
+    elif managed:
         from equivalence.host_restart_managed_evidence import validate_capture
     elif publication:
         from equivalence.host_restart_publication_evidence import validate_capture
@@ -222,7 +240,8 @@ def _run_native_case(case, node, runtime, directory, *, timeout, policy, publica
             raise ValueError("A protected restart adapter changed during execution")
     if prepare_model_node_authority(node) != authority:
         raise ValueError("Restart executable changed during execution")
-    return {"kind": "official-release-host-restart-development", "results": [returned],
+    return {"kind": ("official-release-host-restart-acceptance" if session_managed
+                     else "official-release-host-restart-development"), "results": [returned],
             "releaseSources": trace["loaded"], "releaseTrace": trace,
             "runtimeDiagnostics": raw, "evidenceDirectory": str(directory)}
 
@@ -245,3 +264,9 @@ def run_native_publication_case(case, node, runtime, directory, *, timeout=120):
 def run_native_managed_case(case, node, runtime, directory, *, timeout=120):
     """Independent managed-index capability; no capability's literals are widened."""
     return _run_native_case(case, node, runtime, directory, timeout=timeout, policy=True, publication=True, managed=True)
+
+
+def run_native_session_case(case, node, runtime, directory, *, timeout=120):
+    """Independent complete-session capability; the harness owns acceptance credit."""
+    return _run_native_case(case, node, runtime, directory, timeout=timeout,
+                            policy=True, publication=True, session_managed=True)

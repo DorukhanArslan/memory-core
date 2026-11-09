@@ -216,6 +216,7 @@ class FlushRequest:
         run_id: str | None = None,
         agent_id: str = "main",
         maintenance: bool = True,
+        index_refresh: Callable[[], bool] | None = None,
     ) -> None:
         self.target = target
         self.reason = reason
@@ -232,6 +233,7 @@ class FlushRequest:
         )
         self._read_dispatch = read_dispatch
         self._memory = memory
+        self._index_refresh = index_refresh or memory._refresh_index
         self._session_id = session_id
         self._provenance = provenance
         self._untrusted = untrusted
@@ -358,7 +360,8 @@ class FlushRequest:
             payload["afterWriteError"] = format_error_message(error)
             return payload
         try:
-            self._memory.store.reindex(self._memory.workspace)
+            if not self._index_refresh():
+                payload["indexStatus"] = "pending"
         except Exception as error:  # the append is committed; report, never retry
             payload["afterWriteError"] = format_error_message(error)
         return payload

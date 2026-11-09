@@ -62,7 +62,7 @@ def _validate_policy(policy):
     if "producerPublication" in policy and policy["producerPublication"] != {
             "operation": "force-rebuild-after-source-metadata"}:
         raise ValueError("The producer publication experiment requires its exact explicit rebuild operation")
-    if "indexLifecycle" in policy and (policy["indexLifecycle"] != "managed"
+    if "indexLifecycle" in policy and (policy["indexLifecycle"] not in {"managed", "session-managed"}
             or policy["runtimeIdentity"] != "openclaw-compatible"):
         raise ValueError("The managed index requires its exact declared lifecycle and runtime identity")
 
@@ -150,7 +150,8 @@ async def _run_phase(request):
         remember_across_conversations=selected_policy["rememberAcrossConversations"],
         configured_session_memory=selected_policy["configuredSessionMemory"])
         if selected_policy is not None else None)
-    managed = selected_policy is not None and selected_policy.get("indexLifecycle") == "managed"
+    session_managed = selected_policy is not None and selected_policy.get("indexLifecycle") == "session-managed"
+    managed = selected_policy is not None and selected_policy.get("indexLifecycle") in {"managed", "session-managed"}
     root = Path(request["directory"])
     if not root.is_absolute() or root.is_symlink():
         raise ValueError("A host phase requires its real absolute owned directory")
@@ -171,6 +172,13 @@ async def _run_phase(request):
     if selected_policy is not None:
         raw["policyResolution"] = {"input": deepcopy(selected_policy), "result": deepcopy(resolved_policy)}
     runners = []
+    shared_owners, owner_unsubscribers = {}, {}
+    if session_managed:
+        raw["ownerAcquisitions"] = []
+
+    def owner_identity(owner, agent):
+        return {"ownerId": id(owner), "storeId": id(owner.store), "controllerId": id(owner.controller),
+                "catalogId": id(owner.catalog), "kitId": id(owner.kit), "agentId": agent}
 
     def locations(agent):
         state = root / "state" / "agents" / agent
@@ -184,13 +192,37 @@ async def _run_phase(request):
         record = {"sessionName": session_name, "agentId": agent, "paths": _plain(paths),
                   "sourceBefore": _source(paths["workspace"], relative),
                   "catalogBefore": _sqlite_snapshot(paths["catalog"]), "indexBefore": _sqlite_snapshot(paths["index"])}
-        catalog = MemorySessionCatalog(paths["catalog"], agent_id=agent, store_path=paths["sessionStore"], clock_ms=lambda: now)
-        config = MemoryConfig(workspace_dir=paths["workspace"], agent_id=agent, store_path=paths["index"],
-            citation_mode="off", session_search=resolved_policy["sessionMemory"] if resolved_policy is not None else False,
-            search_max_results=5, search_min_score=0,
-            flags=FeatureFlags(vector_search=False, temporal_decay=False))
+        reused = session_managed and agent in shared_owners
+        if reused:
+            catalog, config = shared_owners[agent].catalog, shared_owners[agent].kit.memory.config
+        else:
+            catalog = MemorySessionCatalog(paths["catalog"], agent_id=agent, store_path=paths["sessionStore"], clock_ms=lambda: now)
+            config = MemoryConfig(workspace_dir=paths["workspace"], agent_id=agent, store_path=paths["index"],
+                citation_mode="off", session_search=resolved_policy["sessionMemory"] if resolved_policy is not None else False,
+                search_max_results=5, search_min_score=0,
+                flags=FeatureFlags(vector_search=False, temporal_decay=False))
         session = SessionState.new(session_key=selected["sessionKey"], session_id=selected["sessionId"])
-        if managed:
+        if session_managed:
+            from memory_core.host.managed_session import ManagedHostSession
+            from memory_core.runtime_identity import OPENCLAW_COMPAT_RUNTIME_IDENTITY
+
+            if not reused:
+                owner = ManagedHostSession.open(paths["workspace"], catalog=catalog, config=config,
+                    source_policy=deepcopy(resolved_policy), initialize=False,
+                    identity=OPENCLAW_COMPAT_RUNTIME_IDENTITY, timezone="UTC", now_ms=lambda: now)
+                shared_owners[agent] = owner
+                receipt = {**owner_identity(owner, agent), "paths": _plain(paths),
+                    "managedLifecycleAfterConstruction": owner.store.lifecycle_snapshot(),
+                    "publicationAfterConstruction": owner.publication_status(), "transcriptChanges": []}
+                raw["ownerAcquisitions"].append(receipt)
+                owner_unsubscribers[agent] = catalog.subscribe_transcript_changes(
+                    lambda change, receipt=receipt: receipt["transcriptChanges"].append(_plain(change)))
+            owner = shared_owners[agent]
+            runner = owner.runner(session)
+            record.update(sessionManagedOwner=owner_identity(owner, agent), ownerReused=bool(reused),
+                managedStatusAfterOpen=deepcopy(owner.store.status()),
+                managedLifecycleAfterOpen=owner.store.lifecycle_snapshot())
+        elif managed:
             from memory_core.client import Memory
             from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
             from memory_core.host import HostKit
@@ -292,12 +324,22 @@ async def _run_phase(request):
 
         outcome = await runner.run_turn(phase["savePrompt"], execute=execute, request_id="host-restart-save")
         record["outcome"] = _plain(outcome)
+        if session_managed:
+            owner = shared_owners[runner.catalog.agent_id]
+            record.update(outcomeReady=outcome.ready,
+                lifecycleAfterTurn=deepcopy(runner.catalog.get_session_entry(runner.session.session_key)["sdkHostLifecycle"]),
+                sessionPublicationAfterTurn=owner.publication_status())
         if selected_policy is not None and "producerPublication" in selected_policy:
-            publication = {"operation": "SQLiteMemoryStore.reindex", "request": {"force": True},
+            publication = {"operation": "ManagedHostSession.reindex" if session_managed else "SQLiteMemoryStore.reindex", "request": {"force": True},
                 "publishedBefore": runner.kit.memory.store.read_published_index(),
                 "sourceBefore": _source_metadata(runner.kit.memory.workspace.root, relative)}
             record["producerPublication"] = publication
-            publication["returned"] = runner.kit.memory.store.reindex(runner.kit.memory.workspace, force=True)
+            if session_managed:
+                publication["publicationBefore"] = owner.publication_status()
+                publication["returned"] = owner.reindex(force=True)
+                publication["publicationAfter"] = owner.publication_status()
+            else:
+                publication["returned"] = runner.kit.memory.store.reindex(runner.kit.memory.workspace, force=True)
             publication["publishedAfter"] = runner.kit.memory.store.read_published_index()
             publication["sourceAfter"] = _source_metadata(runner.kit.memory.workspace.root, relative)
         snapshot("writer", runner)
@@ -356,6 +398,10 @@ async def _run_phase(request):
         outcome = await runner.run_turn(instruction["prompt"], execute=execute,
             request_id="host-restart-recall-" + session_name)
         record["outcome"] = _plain(outcome)
+        if session_managed:
+            record.update(outcomeReady=outcome.ready,
+                lifecycleAfterTurn=deepcopy(runner.catalog.get_session_entry(runner.session.session_key)["sdkHostLifecycle"]),
+                sessionPublicationAfterTurn=shared_owners[runner.catalog.agent_id].publication_status())
         snapshot(session_name, runner)
         return public
 
@@ -368,7 +414,19 @@ async def _run_phase(request):
     raw["result"] = deepcopy(result)
     raw["settlement"] = [{"session": name, "activeTurn": runner._active_turn is not None,
                            "outstandingBlockingSources": runner._blocking_count} for name, runner in runners]
-    if managed:
+    if session_managed:
+        raw["closeReceipts"] = []
+        for agent, owner in shared_owners.items():
+            receipt = {"owner": owner_identity(owner, agent),
+                "sessions": [name for name, runner in runners if runner.catalog is owner.catalog],
+                "before": owner.store.lifecycle_snapshot(), "publicationBefore": owner.publication_status()}
+            raw["closeReceipts"].append(receipt)
+            returned = owner.close()
+            owner_unsubscribers[agent]()
+            receipt.update(returnedNone=returned is None, after=owner.store.lifecycle_snapshot(),
+                publicationAfter=owner.publication_status(),
+                listenerDiagnosticsAfterClose=_plain(owner.catalog.transcript_listener_diagnostics()))
+    elif managed:
         raw["closeReceipts"] = []
         for name, runner in runners:
             store = runner.kit.memory.store

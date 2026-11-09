@@ -43,8 +43,9 @@ def _validate_native_notifications(phase, fixture_base):
         require(sum(event == persisted for event in transcript["events"]) == 1, "Original transcript readback did not return the actual committed event")
 
 
-def _validate_publication_capture(case, raw, result, *, native, managed=False):
-    base = _validate_policy_capture(case, raw, result, native=native, publication=True, managed=managed)
+def _validate_publication_capture(case, raw, result, *, native, managed=False, session_managed=False):
+    base = _validate_policy_capture(case, raw, result, native=native, publication=True, managed=managed,
+                                    session_managed=session_managed)
     value = case["input"]
     require(value["policy"]["producerPublication"] == {"operation": "force-rebuild-after-source-metadata"},
             "The producer publication stage is not the frozen actual rebuild")

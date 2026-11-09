@@ -91,6 +91,7 @@ Metadata, archive and tombstone changes currently require `reconcile()` or a
 later startup scan. Other processes are observed through discovery; there is
 no cross-process notification bus or background memory-file watcher here.
 Hosts using the existing eager runner still get its full publication behavior.
-An explicit runner that reports pending sessions separately remains integration
-work, as does a fresh paired Native/SDK process comparison. These primitives
-alone add no equivalence acceptance credit.
+The [shared managed host](managed_host_session.md) integrates per-chat runners
+with separate pending session status and actual publication custody. These
+primitives alone add no equivalence acceptance credit; credit belongs to the
+complete authenticated process family in the full comparison gate.

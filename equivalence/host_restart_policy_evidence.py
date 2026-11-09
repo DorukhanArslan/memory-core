@@ -6,8 +6,9 @@ from equivalence.host_restart_evidence import _validate_capture, _text, require
 from equivalence.promotion_apply_family import differences
 
 
-def _validate_policy_capture(case, raw, result, *, native, publication=False, managed=False):
-    _validate_capture(case, raw, result, native=native, policy=True, publication=publication, managed=managed)
+def _validate_policy_capture(case, raw, result, *, native, publication=False, managed=False, session_managed=False):
+    _validate_capture(case, raw, result, native=native, policy=True, publication=publication, managed=managed,
+                      session_managed=session_managed)
     value, policy = case["input"], case["input"]["policy"]
     sources = ["memory", "sessions"] if policy["rememberAcrossConversations"] else ["memory"]
     resolved = {"sources": sources, "searchSources": ["memory"], "sessionMemory": policy["rememberAcrossConversations"]}

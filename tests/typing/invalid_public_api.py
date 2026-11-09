@@ -8,6 +8,7 @@ from memory_core import (
     SessionState, MemoryConfig,
 )
 from memory_core.host.managed_index import ManagedSQLiteMemoryStore
+from memory_core.host.managed_session import ManagedHostSession
 from memory_core.host.session_publication import SessionPublicationController
 from memory_core.live import JsonlTraceSink, SubjectMemory
 from memory_core.session_catalog import MemorySessionCatalog
@@ -60,3 +61,11 @@ def invalid_session_publication(store: ManagedSQLiteMemoryStore, workspace: Memo
     controller.wait_idle(timeout="soon")  # E: arg-type
     SessionPublicationController(store, workspace, "invalid catalog")  # E: arg-type
     catalog.subscribe_transcript_changes("invalid callback")  # E: arg-type
+
+
+def invalid_managed_host(owner: ManagedHostSession, workspace: Path) -> None:
+    ManagedHostSession.open(workspace, catalog="invalid catalog")  # E: arg-type
+    owner.runner("invalid session")  # E: arg-type
+    owner.reindex(force="yes")  # E: arg-type
+    owner.synchronize(timeout="soon")  # E: arg-type
+    owner.close("extra")  # E: call-arg

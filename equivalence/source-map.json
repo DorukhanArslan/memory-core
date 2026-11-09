@@ -350,7 +350,7 @@
           "path": "memory_core/client.py",
           "symbol": "Memory.from_workspace",
           "anchor": "    def from_workspace(",
-          "line": 69
+          "line": 90
         },
         {
           "path": "memory_core/consolidation/recall.py",
@@ -634,7 +634,7 @@
           "path": "memory_core/client.py",
           "symbol": "Memory.from_workspace",
           "anchor": "    def from_workspace(",
-          "line": 69
+          "line": 90
         },
         {
           "path": "memory_core/host/kit.py",
@@ -1396,7 +1396,7 @@
           "path": "memory_core/client.py",
           "symbol": "Memory.search",
           "anchor": "    def search(",
-          "line": 116
+          "line": 137
         },
         {
           "path": "memory_core/host/kit.py",
@@ -2178,25 +2178,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.upsert_session",
           "anchor": "    def upsert_session(",
-          "line": 660
+          "line": 715
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1175
+          "line": 1230
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1262
+          "line": 1317
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_archive",
           "anchor": "    def record_archive(",
-          "line": 1149
+          "line": 1204
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -2220,19 +2220,19 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.record_participant",
           "anchor": "    def record_participant(",
-          "line": 1054
+          "line": 1109
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_participants",
           "anchor": "    def list_participants(",
-          "line": 1121
+          "line": 1176
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.load_session_metadata",
           "anchor": "    def load_session_metadata(",
-          "line": 1352
+          "line": 1407
         },
         {
           "path": "memory_core/session_visibility.py",
@@ -2436,7 +2436,7 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1262
+          "line": 1317
         },
         {
           "path": "memory_core/session_corpus.py",
@@ -2616,25 +2616,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_transcript",
           "anchor": "    def read_transcript(",
-          "line": 1262
+          "line": 1317
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_reset_cutoff",
           "anchor": "    def read_reset_cutoff(",
-          "line": 1290
+          "line": 1345
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.snapshot",
           "anchor": "    def snapshot(",
-          "line": 1175
+          "line": 1230
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.tombstone_session",
           "anchor": "    def tombstone_session(",
-          "line": 1164
+          "line": 1219
         },
         {
           "path": "memory_core/tools/memory_search.py",
@@ -2693,7 +2693,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "on_new_session",
           "anchor": "def on_new_session(",
-          "line": 763
+          "line": 772
         }
       ],
       "implementation": "partial",
@@ -2900,25 +2900,25 @@
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.append_message",
           "anchor": "    def append_message(",
-          "line": 892
+          "line": 947
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_continuation",
           "anchor": "    def read_continuation(",
-          "line": 1296
+          "line": 1351
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.read_anchor",
           "anchor": "    def read_anchor(",
-          "line": 1014
+          "line": 1069
         },
         {
           "path": "memory_core/session_catalog.py",
           "symbol": "MemorySessionCatalog.list_transcript_instances",
           "anchor": "    def list_transcript_instances(",
-          "line": 1196
+          "line": 1251
         },
         {
           "path": "memory_core/session_context.py",
@@ -3297,7 +3297,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.prepare_flush",
           "anchor": "    def prepare_flush(",
-          "line": 613
+          "line": 622
         },
         {
           "path": "memory_core/memory_flush.py",
@@ -3333,7 +3333,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "after_turn",
           "anchor": "def after_turn(",
-          "line": 563
+          "line": 572
         }
       ],
       "implementation": "present",
@@ -3393,13 +3393,13 @@
           "path": "memory_core/host/flush.py",
           "symbol": "dispatch",
           "anchor": "def dispatch(self, name: str, arguments: Mapping[str, Any] | str | None) -> dict[str, Any]:",
-          "line": 263
+          "line": 265
         },
         {
           "path": "memory_core/host/flush.py",
           "symbol": "complete",
           "anchor": "def complete(",
-          "line": 391
+          "line": 394
         },
         {
           "path": "memory_core/workspace.py",
@@ -4471,7 +4471,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 563
+          "line": 572
         },
         {
           "path": "memory_core/turn_trust.py",
@@ -4888,7 +4888,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 563
+          "line": 572
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -5089,7 +5089,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
-          "line": 563
+          "line": 572
         },
         {
           "path": "demo/lab_chat.py",
@@ -5107,7 +5107,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner.run_turn",
           "anchor": "    async def run_turn(",
-          "line": 722
+          "line": 742
         }
       ],
       "implementation": "partial",
@@ -5148,7 +5148,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.on_new_session",
           "anchor": "    def on_new_session(",
-          "line": 763
+          "line": 772
         },
         {
           "path": "demo/lab_runtime.py",
@@ -5160,7 +5160,7 @@
           "path": "memory_core/host/lifecycle.py",
           "symbol": "HostSessionRunner._load",
           "anchor": "    def _load(",
-          "line": 590
+          "line": 606
         },
         {
           "path": "memory_core/host/managed_index.py",
@@ -5185,6 +5185,18 @@
           "symbol": "MemorySessionCatalog.subscribe_transcript_changes",
           "anchor": "    def subscribe_transcript_changes(",
           "line": 399
+        },
+        {
+          "path": "memory_core/host/managed_session.py",
+          "symbol": "ManagedHostSession",
+          "anchor": "class ManagedHostSession:",
+          "line": 44
+        },
+        {
+          "path": "memory_core/session_catalog.py",
+          "symbol": "MemorySessionCatalog.compare_and_patch_host_lifecycle",
+          "anchor": "    def compare_and_patch_host_lifecycle(",
+          "line": 660
         }
       ],
       "implementation": "partial",
@@ -5193,7 +5205,8 @@
         "A complete natural two-host process-restart/model recall comparison is still required; neither the example nor durable helper coverage closes this separate host contract. The existing Lab runtime retains process-local live sessions.",
         "Saved memory and host-supplied transcript corpora can reopen, but the Lab stores live sessions in RAM; durable transcript/SessionState storage and a fresh-process continuation path must be supplied and tested by the host.",
         "An optional provider-none managed SQLite owner performs genuine cold-search bootstrap, live repair notices and physical operation close custody; the default eager host lifecycle is unchanged. Separate strict transcript-publication and managed process fixtures retain the remaining session-publication cadence difference and do not close this contract.",
-        "An explicit session publication controller consumes post-commit catalog hints, reconciles actual admitted source fingerprints, and publishes selected sources through the atomic publisher. Managed binding starts startup work only after a genuine SQLite read snapshot is pinned and joins admitted work on close. Default eager HostSessionRunner publication remains unchanged; this implementation and regression coverage do not establish the Native/SDK process or default scheduling contract."
+        "An explicit session publication controller consumes post-commit catalog hints, reconciles actual admitted source fingerprints, and publishes selected sources through the atomic publisher. Managed binding starts startup work only after a genuine SQLite read snapshot is pinned and joins admitted work on close. Default eager HostSessionRunner publication remains unchanged; this implementation and regression coverage do not establish the Native/SDK process or default scheduling contract.",
+        "An explicit shared ManagedHostSession now integrates scoped memory publication, queued sessions, truthful pending outcomes, and atomic revision-checked catalog acknowledgments. Per-chat runners share one real process owner; ordinary turns do not drain session timers. A separately frozen four-case process family is registered atomically against both original conditions; acceptance depends on complete authenticated matches in the full gate, not these source locations."
       ],
       "acceptancePoints": [
         "host.restart-recall.outcomes",
@@ -5227,7 +5240,7 @@
           "path": "memory_core/host/kit.py",
           "symbol": "HostKit.dispatcher",
           "anchor": "    def dispatcher(",
-          "line": 416
+          "line": 425
         },
         {
           "path": "memory_core/live/__init__.py",

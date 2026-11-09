@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from copy import deepcopy
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable
@@ -20,6 +21,12 @@ from memory_core.session_visibility import SessionVisibilityContext
 from memory_core.tools.memory_get import memory_get
 from memory_core.tools.memory_search import MemorySearchToolContext, memory_search
 from memory_core.workspace import MemoryWorkspace, workspace_index_lock
+from memory_core.memory_write_provenance import MemoryWriteProvenanceObserver
+
+
+_curation_index_pending: ContextVar[tuple[object, dict[str, bool]] | None] = ContextVar(
+    "curation_index_pending", default=None,
+)
 
 DEFAULT_MEMORY_MD_TEMPLATE = """# MEMORY.md
 
@@ -37,6 +44,20 @@ class _IndexedMemoryCurator(MemoryCurator):
     """
 
     _index_after_write: Callable[[CurationResult], None] | None = None
+
+    def dispatch(self, name: str, arguments: Mapping[str, object] | str | None = None, *,
+                 memory_flush: bool = False,
+                 write_provenance: MemoryWriteProvenanceObserver | None = None) -> dict:
+        pending = {"pending": False}
+        token = _curation_index_pending.set((self, pending))
+        try:
+            result = super().dispatch(name, arguments, memory_flush=memory_flush,
+                                      write_provenance=write_provenance)
+            if pending["pending"]:
+                result["indexStatus"] = "pending"
+            return result
+        finally:
+            _curation_index_pending.reset(token)
 
     def _edit(
         self, operation: str, name: str, edit: Callable[[str], tuple[str, str]],
@@ -173,6 +194,8 @@ class Memory:
         policy: CurationPolicy | None = None,
         timezone: str = "UTC",
         now_ms: Callable[[], int] | None = None,
+        index_sources: Collection[str] | None = None,
+        defer_cold_index: bool = False,
     ) -> MemoryCurator:
         """Curated writes for this workspace (memory-core extension, see memory_core.curation).
 
@@ -185,11 +208,23 @@ class Memory:
         in the tool payload).
         The default write and refresh serialize per workspace in this process.
         Replacing ``after_write`` restores the generic unlocked callback contract.
+        An explicit source scope retains the same write/index lock. With
+        ``defer_cold_index``, a cold scoped write commits its file and reports
+        ``indexStatus=pending`` through dispatch instead of bootstrapping other
+        corpora or inventing an indexing error.
         """
+        scope = tuple(index_sources) if index_sources is not None else None
+        if scope is not None and (not scope or not set(scope) <= {"memory", "sessions"}):
+            raise ValueError("Curator index_sources must contain memory/sessions names")
+        if defer_cold_index and scope is None:
+            raise ValueError("Deferred cold indexing requires an explicit source scope")
 
         def reindex(result: CurationResult) -> None:
             if result.path in (layout.memory_file, "USER.md") or result.path.startswith("memory/"):
-                self.store.reindex(self.workspace)
+                published = self._refresh_index(sources=scope, defer_cold=defer_cold_index)
+                marker = _curation_index_pending.get()
+                if not published and marker is not None and marker[0] is curator:
+                    marker[1]["pending"] = True
 
         curator = _IndexedMemoryCurator(
             self.workspace.root,
@@ -202,6 +237,17 @@ class Memory:
         )
         curator._index_after_write = reindex
         return curator
+
+    def _refresh_index(self, *, sources: Collection[str] | None = None,
+                       defer_cold: bool = False) -> bool:
+        """Publish the actual requested scope; deferral never changes store APIs."""
+        if sources is None:
+            self.store.reindex(self.workspace)
+        else:
+            if defer_cold and self.store.index_identity()["status"] != "valid":
+                return False
+            self.store.reindex_sources(self.workspace, sources=sources)
+        return True
 
 
 def initialize_memory_core_workspace(workspace_dir: str | Path) -> None:

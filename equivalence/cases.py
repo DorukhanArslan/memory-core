@@ -280,6 +280,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.promotion_apply_family import build_registered_cases
 
     cases.extend(build_registered_cases())
+    from equivalence.host_restart_session import build_cases as build_host_restart_session_cases
+
+    cases.extend(build_host_restart_session_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -311,6 +314,12 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.promotion_apply_family_sdk import run_family_sdk
 
         return run_family_sdk(case, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "host-restart-session-runtime":
+        from equivalence.host_restart_session import validate_case
+        from equivalence.host_restart_sdk import run_host_restart
+
+        validate_case({key: case[key] for key in ("id", "operation", "requirement", "covers", "input")})
+        return run_host_restart(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "promotion-ranking-runtime":
         from equivalence.promotion_ranking_runtime import run_promotion_ranking
 

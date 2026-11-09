@@ -26,7 +26,7 @@ def _profile(operation):
 def test_default_catalog_and_sdk_dispatch_retain_all_complete_pending_boundaries():
     cases = build_memory_budget_cases()
     default = {case["id"]: case for case in build_cases()}
-    assert len(cases) == 6 and all(case["covers"] == [] for case in cases)
+    assert len(cases) == 13 and all(case["covers"] == [] for case in cases)
     assert all(default[case["id"]] == case for case in cases)
     mutated = deepcopy(cases)
     mutated[0]["input"]["cases"][0]["params"]["newSection"] = "different literal"
@@ -54,7 +54,7 @@ def test_real_sdk_route_preserves_complete_raw_returns_and_persisted_results(cas
     elif case["id"].endswith("defer"):
         assert applied["appended"] == 0 and applied["rejectedCandidates"][0]["category"] == "memory budget"
         assert result["documents"][0]["text"] == case["input"]["files"]["MEMORY.md"]
-    elif case["id"].endswith("reconcile"):
+    elif case["id"] == "memory-budget-reconcile" or "js-bom-space" in case["id"]:
         assert applied["applied"] == applied["reconciledExisting"] == 1 and applied["appended"] == 0
         assert result["documents"][0]["text"] == case["input"]["files"]["MEMORY.md"]
     else:

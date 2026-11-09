@@ -85,6 +85,36 @@ def build_memory_budget_cases():
             "recall": _recall(), "candidates": [_candidate()], "options": {
                 "timezone": "UTC", "memoryFileMaxChars": budget, "maxPriorEntryLossFraction": loss,
                 "minScore": 0, "minRecallCount": 0, "minUniqueQueries": 0, "limit": 5}}))
+    marked = _section("2026-05-01", "k", "An owner-authored block.")
+    preservation = [
+        {"id": "ascii-marker", "params": {"existingMemory": marked, "newSection": "", "budgetChars": 1}},
+        {"id": "uppercase-marker", "params": {"existingMemory": marked.replace("openclaw-memory-promotion:", "OPENCLAW-MEMORY-PROMOTION:"),
+            "newSection": "", "budgetChars": 1}},
+    ]
+    for label, letter in (("dotted-i", "\u0130"), ("dotless-i", "\u0131")):
+        preservation.append({"id": label, "params": {"existingMemory": marked.replace("promotion:", f"promot{letter}on:"),
+            "newSection": "", "budgetChars": 1}})
+    for label, separator in (("bare-cr", "\r"), ("line-separator", "\u2028"), ("paragraph-separator", "\u2029")):
+        preservation.append({"id": "key-" + label, "params": {
+            "existingMemory": marked.replace("promotion:k", "promotion:k" + separator + "user"), "newSection": "", "budgetChars": 1}})
+        preservation.append({"id": "project-" + label, "params": {
+            "existingMemory": marked.replace("\n<!--", "\n### Project: owner" + separator + "user\n<!--"), "newSection": "", "budgetChars": 1}})
+    values.append(("marker-preservation-boundaries", "memory-budget-runtime", {
+        "kind": "memory-budget", "nowMs": NOW_MS, "cases": preservation}))
+    foreign_reconcile = deepcopy(values[5][2])
+    foreign_reconcile["files"]["MEMORY.md"] = foreign_reconcile["files"]["MEMORY.md"].replace(
+        "openclaw-memory-promotion:", "memory-core-memory-promotion:")
+    values.append(("foreign-marker-reconcile", "memory-budget-apply-runtime", foreign_reconcile))
+    for label, token in (("non-js-space", "\u0085"), ("js-bom-space", "\ufeff")):
+        for location in ("prefix", "key"):
+            spaced = deepcopy(values[5][2])
+            text = spaced["files"]["MEMORY.md"]
+            spaced["files"]["MEMORY.md"] = (text.replace("<!-- openclaw", "<!--" + token + "openclaw") if location == "prefix"
+                else text.replace("promotion:" + KEY, "promotion:" + token + KEY))
+            values.append((f"{label}-{location}-reconcile", "memory-budget-apply-runtime", spaced))
+    line_endings = deepcopy(values[2][2])
+    line_endings["files"]["MEMORY.md"] = "# Personal notes\r\nKeep this exact user text.\rA separate literal CR and \U0001f600.\r\n"
+    values.append(("literal-line-endings-fit", "memory-budget-apply-runtime", line_endings))
     return [{"id": "memory-budget-" + name, "requirement": "compaction.memory-budget", "covers": [],
         "operation": operation, "input": deepcopy(value),
         "driverScope": "Original compact helper or genuine apply owner over literal persisted source/recall inputs. "

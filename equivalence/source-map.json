@@ -219,13 +219,13 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_append_to_memory",
           "anchor": "def _append_to_memory(",
-          "line": 1530
+          "line": 1533
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "commit_deep_consolidation",
           "anchor": "def commit_deep_consolidation(",
-          "line": 815
+          "line": 816
         }
       ],
       "implementation": "partial",
@@ -755,7 +755,7 @@
           "path": "memory_core/consolidation/origins.py",
           "symbol": "IndexRevisionFence",
           "anchor": "class IndexRevisionFence:",
-          "line": 473
+          "line": 477
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -3368,24 +3368,26 @@
           "path": "memory_core/memory_budget.py",
           "symbol": "compact_memory_for_budget",
           "anchor": "def compact_memory_for_budget(",
-          "line": 202
+          "line": 204
         },
         {
           "path": "memory_core/memory_budget.py",
           "symbol": "build_budgeted_memory_append",
           "anchor": "def build_budgeted_memory_append(",
-          "line": 261
+          "line": 263
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_commit_promotion",
           "anchor": "def _commit_promotion(",
-          "line": 923
+          "line": 924
         }
       ],
       "implementation": "present",
       "notes": [
-        "The budget parser/compactor accepts an explicit RuntimeIdentity; compatibility mode owns only the original promotion prefix, while omitted identity preserves legacy dual-prefix behavior. The real promotion caller propagates its writing identity. Pending protected comparisons retain whole helper/apply outputs and do not yet establish either acceptance point."
+        "The budget parser/compactor accepts an explicit RuntimeIdentity. Ordinary core promotion consciously keeps the Q22 dual-prefix reader; explicit OpenClaw compatibility uses only the original prefix across compaction, reconciliation, preimages and builtin origin pruning. Custom non-ASCII prefix characters remain literal. Opaque host index callbacks retain host authority outside this qualified builtin profile.",
+        "Generated-block parsing follows the original non-Unicode ASCII-prefix case rule and JavaScript dot line boundaries. Promotion-key extraction uses its original newline-excluding class and JavaScript whitespace/trim rules. MEMORY.md publication/preimage readers preserve literal CRLF and bare CR while other shared-reader calls retain legacy defaults.",
+        "Pending protected comparisons retain complete helper/apply outputs, document bytes, recall state, promotion events and both own raw persistence channels. No coverage is granted until corrected full proof and independent review."
       ]
     },
     {
@@ -3592,13 +3594,13 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "rank_short_term_promotion_candidates",
           "anchor": "def rank_short_term_promotion_candidates(",
-          "line": 773
+          "line": 774
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "evaluate_short_term_promotion_candidates",
           "anchor": "def evaluate_short_term_promotion_candidates(",
-          "line": 815
+          "line": 816
         },
         {
           "path": "memory_core/consolidation/recall.py",
@@ -3644,25 +3646,25 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "run_short_term_promotion",
           "anchor": "def run_short_term_promotion(",
-          "line": 315
+          "line": 316
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_plan_apply_stage",
           "anchor": "def _plan_apply_stage(",
-          "line": 611
+          "line": 612
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_commit_promotion",
           "anchor": "def _commit_promotion(",
-          "line": 923
+          "line": 924
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "build_promotion_applied_event",
           "anchor": "def build_promotion_applied_event(",
-          "line": 1190
+          "line": 1193
         }
       ],
       "implementation": "present",
@@ -3705,31 +3707,31 @@
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "consolidate_memory",
           "anchor": "def consolidate_memory(",
-          "line": 533
+          "line": 534
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "apply_memory_consolidation_plan",
           "anchor": "def apply_memory_consolidation_plan(",
-          "line": 436
+          "line": 437
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "plan_deep_consolidation",
           "anchor": "def plan_deep_consolidation(",
-          "line": 777
+          "line": 778
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "commit_deep_consolidation",
           "anchor": "def commit_deep_consolidation(",
-          "line": 815
+          "line": 816
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
           "symbol": "record_deep_consolidation_history",
           "anchor": "def record_deep_consolidation_history(",
-          "line": 930
+          "line": 932
         }
       ],
       "implementation": "partial",
@@ -3912,13 +3914,13 @@
           "path": "memory_core/consolidation/artifacts.py",
           "symbol": "update_dreams_file",
           "anchor": "def update_dreams_file(",
-          "line": 153
+          "line": 156
         },
         {
           "path": "memory_core/consolidation/artifacts.py",
           "symbol": "append_consolidation_summary",
           "anchor": "def append_consolidation_summary(",
-          "line": 176
+          "line": 179
         }
       ],
       "implementation": "partial",
@@ -3964,7 +3966,7 @@
           "path": "memory_core/consolidation/origins.py",
           "symbol": "MemoryEntryOriginLedger",
           "anchor": "class MemoryEntryOriginLedger:",
-          "line": 132
+          "line": 133
         },
         {
           "path": "memory_core/consolidation/session_ingestion.py",
@@ -4010,7 +4012,7 @@
           "path": "memory_core/consolidation/origins.py",
           "symbol": "IndexRevisionFence",
           "anchor": "class IndexRevisionFence:",
-          "line": 473
+          "line": 477
         },
         {
           "path": "memory_core/index/sqlite_store.py",
@@ -4761,7 +4763,7 @@
           "path": "memory_core/consolidation/artifacts.py",
           "symbol": "write_dreams_file_atomic",
           "anchor": "def write_dreams_file_atomic(",
-          "line": 125
+          "line": 128
         },
         {
           "path": "memory_core/consolidation/forget.py",
@@ -4815,13 +4817,13 @@
           "path": "memory_core/consolidation/_util.py",
           "symbol": "js_to_fixed",
           "anchor": "def js_to_fixed(",
-          "line": 63
+          "line": 70
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "evaluate_short_term_promotion_candidates",
           "anchor": "def evaluate_short_term_promotion_candidates(",
-          "line": 815
+          "line": 816
         },
         {
           "path": "memory_core/index/identity.py",
@@ -4929,7 +4931,7 @@
           "path": "memory_core/consolidation/_util.py",
           "symbol": "parse_ms",
           "anchor": "def parse_ms(",
-          "line": 85
+          "line": 92
         },
         {
           "path": "memory_core/redact_user_patterns.py",

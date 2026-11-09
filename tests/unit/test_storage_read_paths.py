@@ -83,8 +83,8 @@ def test_broken_parent_symlink_is_a_visible_policy_failure(tmp_path):
     assert result["status"] == "error"
     assert result["code"] == "outside-workspace"
     assert result["error"] == (
-        f"file is outside workspace root | Symlink escapes root ({tmp_path.resolve()}): "
-        f"{tmp_path.resolve() / 'memory' / 'broken'}"
+        "file is outside workspace root | ENOENT: no such file or directory, stat '"
+        f"{tmp_path.resolve() / 'memory' / 'missing'}' | ENOENT"
     )
 
 

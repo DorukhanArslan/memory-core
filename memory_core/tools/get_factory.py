@@ -6,7 +6,7 @@ may revoke the capability or update read policy without changing that owner.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -44,7 +44,7 @@ class MemoryGetTool:
     _get_config: Callable[[], MemoryConfig | None] | None
     _supplements: tuple[MemoryCorpusSupplement, ...]
     _owner: tuple[Path, str]
-    _extra_paths: tuple[str | Path, ...]
+    _extra_paths: tuple[str | Path | Mapping[str, str], ...]
     _agent_session_key: str | None
     _sandboxed: bool | None
     _execution: MemoryToolDeadlineContext | None
@@ -98,7 +98,7 @@ def create_memory_get_tool(
     *,
     get_config: Callable[[], MemoryConfig | None] | None = None,
     supplements: Sequence[MemoryCorpusSupplement] | None = None,
-    extra_paths: Sequence[str | Path] = (),
+    extra_paths: Sequence[str | Path | Mapping[str, str]] = (),
     agent_session_key: str | None = None,
     sandboxed: bool | None = None,
     execution: MemoryToolDeadlineContext | None = None,

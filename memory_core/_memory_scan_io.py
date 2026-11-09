@@ -20,18 +20,34 @@ class MemorySourceIOError(RuntimeError):
 
     name = "Error"
 
-    def __init__(self, original: OSError, operation: str, path: Path, code: str):
+    def __init__(self, original: OSError, operation: str, path: Path | None, code: str):
         self.original_exception = original
         self.errno = -abs(original.errno)
-        self.code, self.syscall, self.path = code, operation, str(path)
-        super().__init__(f"{code}: {MESSAGES[code]}, {operation} '{path}'")
+        self.code, self.syscall = code, operation
+        if path is not None:
+            self.path = str(path)
+        super().__init__(f"{code}: {MESSAGES[code]}, {operation}" + (f" '{path}'" if path is not None else ""))
 
 
 def bridge_scan_io_error(original: OSError, operation: str | None, path: Path) -> OSError | MemorySourceIOError:
     """Bridge standard OS errors only; supplied/custom Error messages stay literal."""
+    if operation not in {"scandir", "lstat", "realpath"}:
+        return original
+    return bridge_memory_read_io_error(original, operation, path)
+
+
+def bridge_memory_read_io_error(
+    original: OSError, operation: str, path: Path | None,
+) -> OSError | MemorySourceIOError:
+    """Use the same attributed Node IO formatter at actual secure-read calls.
+
+    Original Python exceptions remain available as ``original_exception`` rather
+    than an extra public cause. Explicit policy errors attach this IO error as
+    their native-shaped cause when the original owner does so.
+    """
     number = original.errno
     code = errno.errorcode.get(number)
-    if (operation not in {"scandir", "lstat", "realpath"} or type(number) is not int
+    if (operation not in {"scandir", "lstat", "realpath", "stat", "open", "fstat", "read", "close"} or type(number) is not int
             or code not in MESSAGES or isinstance(getattr(original, "code", None), str)
             or original.strerror != os.strerror(number)):
         return original

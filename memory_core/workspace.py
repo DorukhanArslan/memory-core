@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from memory_core.bootstrap._js import js_trim, js_utf8_encode
+from memory_core._memory_scan_io import bridge_memory_read_io_error
 from memory_core.memory_paths import (
     SESSION_CORPUS_FILE_RE,
     MemoryPathNotAllowedError,
@@ -658,8 +659,8 @@ class MemoryWorkspace:
         file``; final symlinks and parent symlinks escaping the root retain the
         reference filesystem policy code. Parent symlinks within the root are
         admitted. Paths are resolved lexically first, so ``memory/../AGENTS.md``
-        is refused. Not ported: ``extraPaths`` or the reference's descriptor and
-        concurrent path-identity checks.
+        is refused. Extra roots are owned by ``tools.get_paths``; the actual
+        descriptor read and final identity fences are owned by ``memory_read``.
         """
         path = js_trim(raw_path)
         if not path:
@@ -689,15 +690,33 @@ class MemoryWorkspace:
                 parent_stat = os.lstat(parent)
                 if stat.S_ISLNK(parent_stat.st_mode):
                     try:
-                        resolved_parent = parent.resolve(strict=True)
+                        resolved_parent = Path(os.path.realpath(parent, strict=True))
                     except (FileNotFoundError, NotADirectoryError):
+                        # fs-safe retains the unresolved owned target, then
+                        # observes its directory type. Outside targets are
+                        # refused before this subsequent target observation.
+                        resolved_parent = Path(os.path.realpath(parent))
+                    except OSError as error:
+                        cause = bridge_memory_read_io_error(error, "realpath", parent)
+                        if error.errno == errno.ELOOP:
+                            raise MemoryReadPathError("symlink", "symlink path could not be resolved") from cause
+                        raise cause from None
+                    if not self.is_path_inside_root(resolved_parent):
                         raise MemoryReadPathError(
                             "outside-workspace", "file is outside workspace root"
                         ) from ValueError(f"Symlink escapes root ({self.root}): {parent}")
-                    if not self.is_path_inside_root(resolved_parent) or not resolved_parent.is_dir():
+                    try:
+                        resolved_stat = os.stat(resolved_parent)
+                    except OSError as error:
                         raise MemoryReadPathError(
                             "outside-workspace", "file is outside workspace root",
-                        ) from ValueError(f"Symlink escapes root ({self.root}): {parent}")
+                        ) from bridge_memory_read_io_error(error, "stat", resolved_parent)
+                    if not stat.S_ISDIR(resolved_stat.st_mode):
+                        raise MemoryReadPathError(
+                            "outside-workspace", "file is outside workspace root",
+                        ) from MemoryReadPathError(
+                            "ENOTDIR", f"Path component is not a directory: {resolved_parent}",
+                        )
                 elif not stat.S_ISDIR(parent_stat.st_mode):
                     raise MemoryReadPathError(
                         "outside-workspace", "file is outside workspace root",

@@ -28,6 +28,19 @@ if (context.entryProvenanceProfile !== undefined) {
     throw Error("Unapproved compiled entry provenance profile capability");
   }
 }
+if (context.atomicPublicationProfile !== undefined) {
+  const profile = context.atomicPublicationProfile;
+  const kinds = { "atomic-commit-runtime": "commit", "atomic-append-runtime": "append", "atomic-bootstrap-runtime": "bootstrap" };
+  if (!profile || Object.keys(profile).sort().join() !== "inputKind,kind,nodeRuntime,operation" ||
+      profile.kind !== "approved-atomic-publication-profile" || !Object.hasOwn(kinds, profile.operation) ||
+      profile.inputKind !== kinds[profile.operation] ||
+      JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
+      !context.atomicCaseBinding || context.atomicCaseBinding.operation !== profile.operation ||
+      context.entryProvenanceProfile !== undefined ||
+      (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
+    throw Error("Unapproved atomic original-owner profile capability");
+  }
+}
 const permitted = new Map();
 for (const entry of context.allowedLocal) {
   permitted.set(fs.realpathSync(entry.path), { kind: "oracle", path: fs.realpathSync(entry.path), sha256: entry.sha256 });
@@ -80,7 +93,8 @@ if (context.approvedNodeRuntime !== undefined) {
 }
 trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: hash(rawContext), preloadSha256: own.sha256,
         fetchDenied: true, providerMode: "none", ...(approvedNodeRuntime ? { runtime: approvedNodeRuntime } : {}),
-        ...(context.entryProvenanceProfile ? { entryProfile: context.entryProvenanceProfile } : {}) });
+        ...(context.entryProvenanceProfile ? { entryProfile: context.entryProvenanceProfile } : {}),
+        ...(context.atomicPublicationProfile ? { atomicProfile: context.atomicPublicationProfile } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.
 // This executes in every worker as well as the parent, before native imports.
@@ -204,3 +218,9 @@ registerHooks({
     return nextLoad(url, loadContext);
   },
 });
+if (context.atomicPublicationProfile) {
+  const { installAtomicReturnCheckpoint } = await import(new URL("./atomic-return-checkpoint.mjs", import.meta.url).href);
+  installAtomicReturnCheckpoint(context, trace);
+} else if (context.atomicCaseBinding !== undefined) {
+  throw Error("An atomic case cannot borrow another profile's trusted return observer");
+}

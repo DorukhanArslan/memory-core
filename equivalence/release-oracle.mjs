@@ -34,6 +34,9 @@ const operations = {
   "entry-memory-publication-runtime": ["entry-provenance-runtime.mjs", "runEntryMemoryPublicationRuntime"],
   "entry-session-publication-runtime": ["entry-provenance-runtime.mjs", "runEntrySessionPublicationRuntime"],
   "entry-provider-preparation-runtime": ["entry-provenance-runtime.mjs", "runEntryProviderPreparationRuntime"],
+  "atomic-commit-runtime": ["atomic-publication-runtime.mjs", "runAtomicCommitRuntime"],
+  "atomic-append-runtime": ["atomic-publication-runtime.mjs", "runAtomicAppendRuntime"],
+  "atomic-bootstrap-runtime": ["atomic-publication-runtime.mjs", "runAtomicBootstrapRuntime"],
 };
 const results = [];
 for (const testCase of request.cases) {

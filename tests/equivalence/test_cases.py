@@ -26,7 +26,7 @@ def test_case_catalog_is_deterministic_unique_and_standard_json():
         "sessions.corpus-admission", "sessions.visibility-lineage", "sessions.durable-context",
         "trust.configured-redaction", "trust.secret-redaction",
         "engine.unicode-collation",
-        "storage.discovery", "storage.workspace-isolation", "storage.path-safety", "indexing.identity",
+        "storage.discovery", "storage.workspace-isolation", "storage.path-safety", "storage.atomic-writes", "indexing.identity",
         "indexing.embedding-cache", "indexing.incremental-sync",
         "indexing.transaction-publication",
         "chunking.markdown-boundaries", "chunking.utf16-cjk-budget", "chunking.entry-provenance",
@@ -34,6 +34,17 @@ def test_case_catalog_is_deterministic_unique_and_standard_json():
         "flush.plan-target",
         "flush.execute-finalize",
     }
+
+
+def test_default_catalog_registers_each_reviewed_atomic_case_once_with_unchanged_literals():
+    from equivalence.atomic_publication_cases import build_atomic_publication_cases
+
+    atomic = build_atomic_publication_cases()
+    registered = [case for case in build_cases() if case["requirement"] == "storage.atomic-writes"]
+    assert len(registered) == len({case["id"] for case in registered}) == 41
+    assert registered == atomic
+    assert all(case["covers"][0] == "storage.atomic-writes.outcomes" for case in registered)
+    assert sum("storage.atomic-writes.boundaries" in case["covers"] for case in registered) == 32
 
 
 def test_python_adapters_preserve_inputs_and_return_standard_json():

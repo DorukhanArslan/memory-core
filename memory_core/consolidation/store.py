@@ -252,6 +252,29 @@ def write_recall_store(path: Path, store: dict[str, Any]) -> None:
     write_json_atomic(path, store)
 
 
+def _canonical_store_payload(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+
+def read_canonical_recall_store(path: Path, now_ms: int) -> dict[str, Any]:
+    """Read the promotion owner's canonical in-memory view; leave stored bytes intact."""
+    from memory_core.consolidation.store_normalization import normalize_short_term_recall_store
+
+    canonical = normalize_short_term_recall_store(_canonical_store_payload(path), now_ms)
+    _enforce_short_term_recall_store_retention(canonical)
+    return canonical
+
+
+def read_canonical_phase_signal_store(path: Path, now_ms: int) -> dict[str, Any]:
+    """Read canonical phase metadata without the legacy reader's age eviction."""
+    from memory_core.consolidation.store_normalization import normalize_short_term_phase_signal_store
+
+    return normalize_short_term_phase_signal_store(_canonical_store_payload(path), now_ms)
+
+
 def read_phase_signal_store(path: Path, now_ms: int) -> dict[str, Any]:
     """Read the phase-signal store, dropping entries idle for more than 30 days."""
     if not path.exists():

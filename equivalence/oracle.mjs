@@ -19,6 +19,7 @@ const root = fs.realpathSync(process.argv[2]);
 // Load the argument/fixture adapters before installing the reference-only hook.
 // Their source hashes are retained separately by the Python harness.
 const adapters = new Map();
+let sourcePolicyFrames;
 for (const [operation, filename, name] of [
   ["storage-discovery", "storage-discovery.mjs", "runStorageDiscovery"],
   ["storage-read-paths", "storage-paths.mjs", "runStoragePaths"],
@@ -39,12 +40,21 @@ for (const [operation, filename, name] of [
   ["get-contract", "get-contract.mjs", "runGetContract"],
   ["deadline-partial", "deadline-partial.mjs", "runDeadlinePartial"],
   ["session-contract", "session-contract.mjs", "runSessionContract"],
+  ["redaction-policy-source", "redaction-policy-source.mjs", "runRedactionPolicySource"],
 ]) {
   const url = new URL(filename, import.meta.url);
-  if (fs.existsSync(fileURLToPath(url))) adapters.set(operation, (await import(url.href))[name]);
+  if (fs.existsSync(fileURLToPath(url))) {
+    const module = await import(url.href);
+    adapters.set(operation, module[name]);
+    if (operation === "redaction-policy-source") sourcePolicyFrames = module.readRedactionPolicySourceFrames;
+  }
 }
 const request = JSON.parse(fs.readFileSync(0, "utf8"));
 if (!Array.isArray(request.cases)) throw Error("Supply an array of equivalence cases.");
+const redactionPolicySource = request.cases.some((entry) => entry.operation === "redaction-policy-source");
+if (redactionPolicySource && request.cases.length !== 1) {
+  throw Error("Each source redaction case requires one fresh ordinary process");
+}
 const dependencySources = new Map();
 const packages = (request.dependencies?.packages ?? []).map((entry) => ({
   ...entry, directory: fs.realpathSync(entry.directory),
@@ -171,6 +181,9 @@ registerHooks({
       }
       if (!isInside(source)) throw Error("Reference import escaped the pinned checkout and verified artifacts.");
       const relative = path.relative(root, source).replaceAll(path.sep, "/");
+      if (redactionPolicySource && relative.split("/").includes("dist")) {
+        throw Error("Compiled modules cannot enter the all-source redaction graph");
+      }
       if (!trackedSources.has(relative)) throw Error("Reference import is not a tracked source file.");
       sources.add(relative);
     } else if (!url.startsWith("node:")) {
@@ -235,4 +248,13 @@ process.stdout.write(JSON.stringify({
   })),
   dependencySources: [...dependencySources.values()].sort((a, b) =>
     a.package.localeCompare(b.package) || a.path.localeCompare(b.path)),
+  ...(redactionPolicySource ? { sourceExecution: {
+    profile: "redaction-policy-source", pid: process.pid, ppid: process.ppid,
+    execPath: fs.realpathSync(process.execPath), nodeVersion: process.version,
+    icuVersion: process.versions.icu, unicodeVersion: process.versions.unicode,
+    nodeSha256: crypto.createHash("sha256").update(fs.readFileSync(process.execPath)).digest("hex"),
+    requestCase: request.cases[0], compiledFallbackAllowed: false,
+    ordinaryProcess: !process.env.VITEST && !process.env.NODE_ENV,
+    observations: sourcePolicyFrames(),
+  } } : {}),
 }) + "\n");

@@ -164,7 +164,7 @@ in 1,086 cases.
 The newly observed OS-specific loop diagnostic remains uncredited alongside the earlier two
 differences. No claim of full equivalence follows from these bounded results.
 
-The current inventory maps **171 upstream modules**, with 15 present, 46 partial and three
+The current inventory maps **189 upstream modules**, with 15 present, 46 partial and three
 host-owned Python classifications. The shared-deadline package maps the actual control,
 signal, worker and corpus owners in
 `memory_core/tools/deadline.py`, together with get/search coordination and SQLite pre-deadline
@@ -213,9 +213,9 @@ current limitations and retained first failures.
 | `tools.get-contract` | [createMemoryGetTool](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.ts#L569) | [create_memory_get_tool](../memory_core/tools/get_factory.py#L96) | partial |
 | `tools.deadline-cooldown` | [runMemorySearchWithDeadline](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/memory/search-deadline.ts#L28) | [MemoryToolDeadlineContext](../memory_core/tools/deadline.py#L66) | partial |
 | `tools.unavailable-partial` | [buildMemorySearchUnavailableResult](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/tools.shared.ts#L93) | [build_memory_search_unavailable_result](../memory_core/tools/memory_search.py#L192) | partial |
-| `sessions.corpus-admission` | [listSessionTranscriptCorpusEntriesForAgent](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/session-transcript-corpus.ts#L560) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L79) | partial |
+| `sessions.corpus-admission` | [listSessionTranscriptCorpusEntriesForAgent](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/session-transcript-corpus.ts#L560) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L81) | partial |
 | `sessions.transcript-filtering` | [buildSessionEntryInProcess](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/memory-host-sdk/src/host/session-files.ts#L667) | [build_session_entry](../memory_core/session_entry.py#L649) | partial |
-| `sessions.visibility-lineage` | [filterMemorySearchHitsBySessionVisibility](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/session-search-visibility.ts#L164) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L79) | partial |
+| `sessions.visibility-lineage` | [filterMemorySearchHitsBySessionVisibility](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/session-search-visibility.ts#L164) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L81) | partial |
 | `sessions.reset-hook` | [saveSessionMemoryNow](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/hooks/bundled/session-memory/handler.ts#L126) | [save_session_memory](../memory_core/session_memory.py#L1089) | partial |
 | `sessions.durable-context` | [appendTranscriptMessage](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/config/sessions/session-accessor.sqlite-transcript-write.ts#L427) | [SessionState](../memory_core/host/session.py#L45) | host-owned |
 | `prompt.bootstrap-discovery` | [ensureAgentWorkspace](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/workspace.ts#L715) | [initialize_agent_workspace](../memory_core/bootstrap/lifecycle.py#L420) | partial |
@@ -250,7 +250,7 @@ current limitations and retained first failures.
 | `engine.unicode-collation` | [sliceUtf16Safe](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/packages/normalization-core/src/utf16-slice.ts#L30) | [utf16_slice](../memory_core/bootstrap/_js.py#L96) | partial |
 | `engine.datetime-regex` | [resolveCronStyleNow](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/current-time.ts#L23) | [format_current_time_line](../memory_core/current_time.py#L198) | partial |
 | `host.turn-barrier` | [beginForegroundSessionMaintenance](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/agents/session-maintenance/coordinator.ts#L181) | [HostKit.after_turn](../memory_core/host/kit.py#L548) | host-owned |
-| `host.restart-recall` | [loadSessionStore](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/plugin-sdk/session-store-runtime.ts#L263) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L79) | host-owned |
+| `host.restart-recall` | [loadSessionStore](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/src/plugin-sdk/session-store-runtime.ts#L263) | [MemoryCoreSessionCorpus](../memory_core/session_corpus.py#L81) | host-owned |
 | `host.update-isolation` | [consolidateMemory](https://github.com/openclaw/openclaw/blob/bcfc88812a35243893585dbeca87ca41b48272ca/extensions/memory-core/src/dreaming-consolidation.ts#L396) | [MemoryCurator.replace_memory_entry](../memory_core/curation.py#L939) | partial |
 
 ## Validation

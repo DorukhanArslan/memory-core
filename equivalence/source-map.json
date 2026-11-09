@@ -554,7 +554,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_index_entry",
           "anchor": "    def read_index_entry(",
-          "line": 340
+          "line": 342
         },
         {
           "path": "memory_core/workspace.py",
@@ -1305,37 +1305,37 @@
           "path": "memory_core/tools/common.py",
           "symbol": "as_tool_params_record",
           "anchor": "def as_tool_params_record(",
-          "line": 121
+          "line": 124
         },
         {
           "path": "memory_core/tools/common.py",
           "symbol": "read_string_param",
           "anchor": "def read_string_param(",
-          "line": 199
+          "line": 202
         },
         {
           "path": "memory_core/tools/common.py",
           "symbol": "read_positive_integer_param",
           "anchor": "def read_positive_integer_param(",
-          "line": 223
+          "line": 226
         },
         {
           "path": "memory_core/tools/common.py",
           "symbol": "MemoryToolError",
           "anchor": "class MemoryToolError(",
-          "line": 45
+          "line": 46
         },
         {
           "path": "memory_core/tools/common.py",
           "symbol": "MemoryToolInputError",
           "anchor": "class MemoryToolInputError(",
-          "line": 59
+          "line": 60
         },
         {
           "path": "memory_core/tools/common.py",
           "symbol": "read_finite_number_param",
           "anchor": "def read_finite_number_param(",
-          "line": 243
+          "line": 246
         }
       ],
       "implementation": "partial",
@@ -1459,31 +1459,31 @@
           "path": "memory_core/tools/common.py",
           "symbol": "as_tool_params_record",
           "anchor": "def as_tool_params_record(",
-          "line": 121
+          "line": 124
         },
         {
           "path": "memory_core/tools/common.py",
           "symbol": "read_string_param",
           "anchor": "def read_string_param(",
-          "line": 199
+          "line": 202
         },
         {
           "path": "memory_core/tools/common.py",
           "symbol": "read_positive_integer_param",
           "anchor": "def read_positive_integer_param(",
-          "line": 223
+          "line": 226
         },
         {
           "path": "memory_core/tools/common.py",
           "symbol": "MemoryToolError",
           "anchor": "class MemoryToolError(",
-          "line": 45
+          "line": 46
         },
         {
           "path": "memory_core/tools/common.py",
           "symbol": "MemoryToolInputError",
           "anchor": "class MemoryToolInputError(",
-          "line": 59
+          "line": 60
         },
         {
           "path": "memory_core/tools/memory_get.py",
@@ -1924,7 +1924,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus",
           "anchor": "class MemoryCoreSessionCorpus:",
-          "line": 79
+          "line": 81
         },
         {
           "path": "memory_core/consolidation/session_ingestion.py",
@@ -1936,7 +1936,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_index_entry",
           "anchor": "    def read_index_entry(",
-          "line": 340
+          "line": 342
         },
         {
           "path": "memory_core/workspace.py",
@@ -1948,25 +1948,25 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.discover_entries",
           "anchor": "    def discover_entries(",
-          "line": 181
+          "line": 183
         },
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.discover_admitted_entries",
           "anchor": "    def discover_admitted_entries(",
-          "line": 282
+          "line": 284
         },
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_source_entry",
           "anchor": "    def read_source_entry(",
-          "line": 424
+          "line": 441
         },
         {
           "path": "memory_core/session_corpus.py",
           "symbol": "is_memory_session_indexable",
           "anchor": "def is_memory_session_indexable(",
-          "line": 61
+          "line": 63
         },
         {
           "path": "memory_core/session_catalog.py",
@@ -2218,7 +2218,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_index_entry",
           "anchor": "    def read_index_entry(",
-          "line": 340
+          "line": 342
         },
         {
           "path": "memory_core/workspace.py",
@@ -2242,7 +2242,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus.read_source_entry",
           "anchor": "    def read_source_entry(",
-          "line": 424
+          "line": 441
         },
         {
           "path": "memory_core/session_archive_codec.py",
@@ -2350,7 +2350,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus",
           "anchor": "class MemoryCoreSessionCorpus:",
-          "line": 79
+          "line": 81
         },
         {
           "path": "memory_core/consolidation/recall.py",
@@ -2742,13 +2742,13 @@
           "path": "memory_core/session_transcript_append.py",
           "symbol": "resolve_message_append_parent",
           "anchor": "def resolve_message_append_parent(",
-          "line": 181
+          "line": 193
         },
         {
           "path": "memory_core/session_transcript_append.py",
           "symbol": "messages_match_for_replay",
           "anchor": "def messages_match_for_replay(",
-          "line": 153
+          "line": 165
         }
       ],
       "implementation": "host-owned",
@@ -3930,25 +3930,49 @@
           "path": "memory_core/redact.py",
           "symbol": "redact_sensitive_text",
           "anchor": "def redact_sensitive_text(",
-          "line": 1956
+          "line": 1957
         },
         {
           "path": "memory_core/redact.py",
           "symbol": "redact_model_visible_secrets",
           "anchor": "def redact_model_visible_secrets(",
-          "line": 2478
+          "line": 2479
         },
         {
           "path": "memory_core/redact.py",
           "symbol": "create_sensitive_text_redactor",
           "anchor": "def create_sensitive_text_redactor(",
-          "line": 2004
+          "line": 2005
         },
         {
           "path": "memory_core/session_transcript_append.py",
           "symbol": "redact_message_for_storage",
           "anchor": "def redact_message_for_storage(",
-          "line": 57
+          "line": 61
+        },
+        {
+          "path": "memory_core/model_tool_result.py",
+          "symbol": "sanitize_tool_result",
+          "anchor": "def sanitize_tool_result(",
+          "line": 218
+        },
+        {
+          "path": "memory_core/model_tool_result.py",
+          "symbol": "prepare_session_tool_result",
+          "anchor": "def prepare_session_tool_result(",
+          "line": 93
+        },
+        {
+          "path": "memory_core/session_corpus.py",
+          "symbol": "MemoryCoreSessionCorpus.read_index_entry",
+          "anchor": "    def read_index_entry(",
+          "line": 342
+        },
+        {
+          "path": "memory_core/tools/common.py",
+          "symbol": "format_error_message",
+          "anchor": "def format_error_message(",
+          "line": 85
         }
       ],
       "implementation": "partial",
@@ -3987,6 +4011,156 @@
           "symbol": "recordMemoryArtifactWriteProvenance",
           "anchor": "export async function recordMemoryArtifactWriteProvenance(params: {",
           "line": 132
+        },
+        {
+          "path": "src/agents/embedded-agent-runner/run-loop.ts",
+          "symbol": "turnTaintState",
+          "anchor": "  const turnTaintState = createAgentTurnTaintState(params.initialTurnTainted === true);",
+          "line": 191
+        },
+        {
+          "path": "src/agents/agent-tools.ts",
+          "symbol": "createOpenClawCodingTools",
+          "anchor": "export function createOpenClawCodingTools(",
+          "line": 752
+        },
+        {
+          "path": "src/agents/core-coding-tools.ts",
+          "symbol": "createCoreCodingTools",
+          "anchor": "export function createCoreCodingTools(options: CoreCodingToolsOptions): AnyAgentTool[] {",
+          "line": 185
+        },
+        {
+          "path": "src/agents/agent-tools.before-tool-call.ts",
+          "symbol": "wrapToolWithBeforeToolCallHook",
+          "anchor": "  wrapToolWithBeforeToolCallHook,",
+          "line": 41
+        },
+        {
+          "path": "src/agents/agent-tools.before-tool-call.wrapper.ts",
+          "symbol": "wrapToolWithBeforeToolCallHook",
+          "anchor": "export function wrapToolWithBeforeToolCallHook(",
+          "line": 260
+        },
+        {
+          "path": "src/agents/agent-tools.before-tool-call.diagnostics.ts",
+          "symbol": "recordLoopOutcome",
+          "anchor": "export async function recordLoopOutcome(args: {",
+          "line": 627
+        },
+        {
+          "path": "src/agents/agent-tools.before-tool-call.runtime.ts",
+          "symbol": "beforeToolCallRuntime",
+          "anchor": "export const beforeToolCallRuntime = {",
+          "line": 19
+        },
+        {
+          "path": "src/agents/tool-loop-detection.ts",
+          "symbol": "recordToolCallOutcome",
+          "anchor": "export function recordToolCallOutcome(",
+          "line": 712
+        },
+        {
+          "path": "src/logging/diagnostic-session-state.ts",
+          "symbol": "getDiagnosticSessionState",
+          "anchor": "export function getDiagnosticSessionState(ref: SessionRef): SessionState {",
+          "line": 164
+        },
+        {
+          "path": "src/agents/memory-write-provenance.ts",
+          "symbol": "createMemoryWriteProvenanceObserver",
+          "anchor": "export function createMemoryWriteProvenanceObserver(params: {",
+          "line": 96
+        },
+        {
+          "path": "src/plugin-state/plugin-state-store.ts",
+          "symbol": "createCorePluginStateKeyedStore",
+          "anchor": "export function createCorePluginStateKeyedStore<T>(",
+          "line": 613
+        },
+        {
+          "path": "src/agents/agent-tools.read.ts",
+          "symbol": "createHostWorkspaceWriteTool",
+          "anchor": "export function createHostWorkspaceWriteTool(",
+          "line": 1051
+        },
+        {
+          "path": "src/agents/sessions/tools/write.ts",
+          "symbol": "createWriteTool",
+          "anchor": "export function createWriteTool(",
+          "line": 524
+        },
+        {
+          "path": "src/plugin-sdk/agent-core.ts",
+          "symbol": "runAgentLoop",
+          "anchor": "export { runAgentLoop } from \"../../packages/agent-core/src/index.js\";",
+          "line": 28
+        },
+        {
+          "path": "packages/agent-core/src/index.ts",
+          "symbol": "runAgentLoop",
+          "anchor": "export * from \"./agent-loop.js\";",
+          "line": 4
+        },
+        {
+          "path": "packages/agent-core/src/agent-loop.ts",
+          "symbol": "runAgentLoop",
+          "anchor": "export async function runAgentLoop(",
+          "line": 68
+        },
+        {
+          "path": "packages/agent-core/src/agent-stream-response.ts",
+          "symbol": "streamAgentResponse",
+          "anchor": "export async function streamAgentResponse(",
+          "line": 113
+        },
+        {
+          "path": "packages/llm-core/src/utils/event-stream.ts",
+          "symbol": "createAssistantMessageEventStream",
+          "anchor": "export function createAssistantMessageEventStream(): AssistantMessageEventStream {",
+          "line": 217
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-transcript-message-append.ts",
+          "symbol": "appendTranscriptMessageInTransaction",
+          "anchor": "export function appendTranscriptMessageInTransaction",
+          "line": 139
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-transcript-header.ts",
+          "symbol": "ensureTranscriptHeader",
+          "anchor": "export function ensureTranscriptHeader(",
+          "line": 7
+        },
+        {
+          "path": "src/config/sessions/transcript-header.ts",
+          "symbol": "createSessionTranscriptHeader",
+          "anchor": "export function createSessionTranscriptHeader(",
+          "line": 20
+        },
+        {
+          "path": "src/config/sessions/version.ts",
+          "symbol": "CURRENT_SESSION_VERSION",
+          "anchor": "export const CURRENT_SESSION_VERSION = 4;",
+          "line": 2
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-transcript-anchor.ts",
+          "symbol": "createTranscriptEntryAnchor",
+          "anchor": "export function createTranscriptEntryAnchor(",
+          "line": 56
+        },
+        {
+          "path": "src/config/sessions/session-accessor.sqlite-transcript-store.ts",
+          "symbol": "appendTranscriptEventInTransaction",
+          "anchor": "export function appendTranscriptEventInTransaction(",
+          "line": 154
+        },
+        {
+          "path": "src/agents/sessions/tools/index.ts",
+          "symbol": "createWriteTool",
+          "anchor": "  createWriteTool,",
+          "line": 79
         }
       ],
       "python": [
@@ -4000,7 +4174,7 @@
           "path": "memory_core/redact.py",
           "symbol": "configure_logging_redaction",
           "anchor": "def configure_logging_redaction(",
-          "line": 1870
+          "line": 1871
         },
         {
           "path": "memory_core/consolidation/artifact_provenance.py",
@@ -4013,6 +4187,24 @@
           "symbol": "HostKit.after_turn",
           "anchor": "    def after_turn(",
           "line": 548
+        },
+        {
+          "path": "memory_core/turn_trust.py",
+          "symbol": "TurnTrust",
+          "anchor": "class TurnTrust:",
+          "line": 72
+        },
+        {
+          "path": "memory_core/turn_trust.py",
+          "symbol": "with_assistant_turn_taint",
+          "anchor": "def with_assistant_turn_taint(",
+          "line": 22
+        },
+        {
+          "path": "memory_core/turn_tool_dispatch.py",
+          "symbol": "TurnToolDispatcher.dispatch",
+          "anchor": "    def dispatch(",
+          "line": 55
         }
       ],
       "implementation": "partial",
@@ -4152,7 +4344,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus._is_heartbeat_row",
           "anchor": "    def _is_heartbeat_row(self, raw_text: str, role: str) -> bool:",
-          "line": 440
+          "line": 457
         }
       ],
       "implementation": "partial",
@@ -4649,7 +4841,7 @@
           "path": "memory_core/session_corpus.py",
           "symbol": "MemoryCoreSessionCorpus",
           "anchor": "class MemoryCoreSessionCorpus:",
-          "line": 79
+          "line": 81
         },
         {
           "path": "memory_core/host/kit.py",
@@ -5786,6 +5978,48 @@
       ]
     },
     {
+      "path": "packages/agent-core/src/agent-loop.ts",
+      "sha256": "c16d96af6a900d9a8540955336d43fb66c98810a92aa0693127f1bef35a1164e",
+      "sourceImports": [
+        "./agent-stream-response.js",
+        "./errors.js",
+        "./internal-hooks.js",
+        "./reasoning.js",
+        "./runtime-deps.js",
+        "./tool-execution-context.js",
+        "./turn-interruption.js",
+        "./types.js",
+        "./validation.js",
+        "@openclaw/llm-core",
+        "@openclaw/normalization-core/error-coercion",
+        "@openclaw/normalization-core/record-coerce"
+      ],
+      "exportedDeclarations": [
+        "runAgentLoop",
+        "runAgentLoopContinue"
+      ]
+    },
+    {
+      "path": "packages/agent-core/src/agent-stream-response.ts",
+      "sha256": "51a45aa652f8a7cb6325e2a520c5c7e7668962f9d865ea1ca9404edca6332bea",
+      "sourceImports": [
+        "./harness/session/uuid.js",
+        "./runtime-deps.js",
+        "./stream-steering.js",
+        "./turn-interruption.js",
+        "./types.js",
+        "@openclaw/ai/diagnostics",
+        "@openclaw/ai/transports",
+        "@openclaw/llm-core"
+      ],
+      "exportedDeclarations": [
+        "AgentEventSink",
+        "AsyncToolBatchScheduling",
+        "ExecutedToolCallBatch",
+        "streamAgentResponse"
+      ]
+    },
+    {
       "path": "packages/agent-core/src/harness/messages.ts",
       "sha256": "cfa370ab4c489262dc769f30c6b07ce6b90c974a2c6cb49d8a366a5edaf20d64",
       "sourceImports": [
@@ -5847,6 +6081,28 @@
       ]
     },
     {
+      "path": "packages/agent-core/src/index.ts",
+      "sha256": "a1bcf6fbaf46e7bfba3fa04313b8c66f3da1a1226e6f31b0263db695d7028de2",
+      "sourceImports": [
+        "./agent-loop.js",
+        "./agent.js",
+        "./errors.js",
+        "./harness/compaction/branch-summarization.js",
+        "./harness/compaction/compaction.js",
+        "./harness/env/kill-tree.js",
+        "./harness/messages.js",
+        "./harness/prompt-template-arguments.js",
+        "./harness/session/session.js",
+        "./harness/session/uuid.js",
+        "./harness/types.js",
+        "./harness/utils/truncate.js",
+        "./runtime-deps.js",
+        "./types.js",
+        "./validation.js"
+      ],
+      "exportedDeclarations": []
+    },
+    {
       "path": "packages/ai/src/transports/provider-compaction-replay.ts",
       "sha256": "5e92aa7282a428cadabf793aedbca84e70553a265479cff486a6e414be2ef6da",
       "sourceImports": [
@@ -5886,6 +6142,21 @@
         "SessionParticipantSchema",
         "SessionPerson",
         "SessionPersonSchema"
+      ]
+    },
+    {
+      "path": "packages/llm-core/src/utils/event-stream.ts",
+      "sha256": "c04b8859e2ffe373cf796d997f964b6dddff637711188d4befc1111282942dbd",
+      "sourceImports": [
+        "../types.js"
+      ],
+      "exportedDeclarations": [
+        "AssistantMessageEventStream",
+        "EventStream",
+        "appendAssistantThinking",
+        "createAssistantMessageEventStream",
+        "getEventStreamCompletion",
+        "readAssistantThinkingAppend"
       ]
     },
     {
@@ -6417,6 +6688,131 @@
       ]
     },
     {
+      "path": "src/agents/agent-tools.before-tool-call.diagnostics.ts",
+      "sha256": "9e0aa53a994605b3f7c87dccb62dd95524fd830f7e3b180d3445ef5772991cc1",
+      "sourceImports": [
+        "../infra/diagnostic-error-metadata.js",
+        "../infra/diagnostic-events.js",
+        "../infra/diagnostic-llm-content.js",
+        "../infra/diagnostic-tool-execution-liveness.js",
+        "../infra/diagnostic-trace-context.js",
+        "../infra/map-size.js",
+        "../logging/diagnostic-session-state.js",
+        "../logging/redact.js",
+        "../logging/subsystem.js",
+        "../plugins/tool-metadata.js",
+        "../shared/lazy-runtime.js",
+        "../skills/loading/source.js",
+        "../skills/types.js",
+        "../utils.js",
+        "./agent-tools.before-tool-call.runtime.js",
+        "./agent-tools.before-tool-call.state.js",
+        "./agent-tools.before-tool-call.types.js",
+        "./agent-tools.params.js",
+        "./before-tool-call-metadata.js",
+        "./channel-tool-metadata.js",
+        "./run-termination.js",
+        "./tool-policy.js",
+        "./tool-result-error.js",
+        "./tool-terminal-presentation.js",
+        "./tools/common.js",
+        "./utils/paths.js",
+        "node:os",
+        "node:path"
+      ],
+      "exportedDeclarations": [
+        "beforeToolCallLog",
+        "buildToolContentPrivateData",
+        "emitSkillUsedDiagnostic",
+        "emitToolBlockedSecurityEvent",
+        "finalizeToolTerminalPresentation",
+        "findSkillUsageMatch",
+        "loadBeforeToolCallRuntime",
+        "prepareToolTerminalPresentation",
+        "reconcileLoopCallExecutionParams",
+        "recordLoopOutcome",
+        "rememberPendingTerminalPresentation",
+        "resolveToolDiagnosticIdentity",
+        "resolveToolErrorDiagnostic",
+        "resolveToolResultTerminalDiagnostic",
+        "shouldEmitLoopWarning",
+        "startToolExecutionLiveness",
+        "summarizeToolParams",
+        "unwrapErrorCause"
+      ]
+    },
+    {
+      "path": "src/agents/agent-tools.before-tool-call.runtime.ts",
+      "sha256": "f4d0b4ff0f3ef1cde818d6dc6d07b90af9e09347f554b812453191b62cce98a6",
+      "sourceImports": [
+        "../logging/diagnostic-run-activity.js",
+        "../logging/diagnostic-session-state.js",
+        "../logging/diagnostic-tool-loop.js",
+        "./tool-loop-argument-churn.js",
+        "./tool-loop-call-reconciliation.js",
+        "./tool-loop-detection.js",
+        "./tool-loop-thresholds.js"
+      ],
+      "exportedDeclarations": [
+        "beforeToolCallRuntime"
+      ]
+    },
+    {
+      "path": "src/agents/agent-tools.before-tool-call.ts",
+      "sha256": "6f7f389c3de0a80e3cf8252252e448f5ed46b561fdb81b2463dcd4b0e293b2d4",
+      "sourceImports": [
+        "./agent-tools.before-tool-call.approval.js",
+        "./agent-tools.before-tool-call.diagnostics.js",
+        "./agent-tools.before-tool-call.policy.js",
+        "./agent-tools.before-tool-call.state.js",
+        "./agent-tools.before-tool-call.types.js",
+        "./agent-tools.before-tool-call.wrapper.js",
+        "./before-tool-call-metadata.js"
+      ],
+      "exportedDeclarations": []
+    },
+    {
+      "path": "src/agents/agent-tools.before-tool-call.wrapper.ts",
+      "sha256": "e5291b503723ba40ab621f2d079edbe974c987e6a2b9f121ac2db27fc2b0358c",
+      "sourceImports": [
+        "../infra/diagnostic-events.js",
+        "../infra/diagnostic-llm-content.js",
+        "../infra/diagnostic-trace-context.js",
+        "../infra/map-size.js",
+        "../plugins/tool-metadata.js",
+        "../skills/runtime/run-usage.js",
+        "./agent-tool-metadata.js",
+        "./agent-tool-source-execution-guard.js",
+        "./agent-tools.before-tool-call.decision.js",
+        "./agent-tools.before-tool-call.diagnostics.js",
+        "./agent-tools.before-tool-call.policy.js",
+        "./agent-tools.before-tool-call.state.js",
+        "./agent-tools.before-tool-call.types.js",
+        "./agent-tools.execution-preparer.js",
+        "./agent-tools.execution-validation.js",
+        "./before-tool-call-metadata.js",
+        "./channel-tool-metadata.js",
+        "./code-mode-control-tools.js",
+        "./plugin-runtime-refresh.js",
+        "./runtime/internal-hooks.js",
+        "./tool-mutation.js",
+        "./tool-policy.js",
+        "./tool-result-error.js",
+        "./tools/common.js"
+      ],
+      "exportedDeclarations": [
+        "buildBlockedToolResult",
+        "finalizeBeforeToolCallExecutionParams",
+        "getBeforeToolCallFailureDisposition",
+        "isPreExecutionBlockedToolResult",
+        "prepareBeforeToolCallExecutionParams",
+        "recordAdjustedParamsForToolCall",
+        "recordStructuredReplayTrustForToolCall",
+        "rewrapToolWithBeforeToolCallHook",
+        "wrapToolWithBeforeToolCallHook"
+      ]
+    },
+    {
       "path": "src/agents/agent-tools.memory-flush.ts",
       "sha256": "f14f6a8845fd14168f523d44933f9253911586beb7b98b24126bf63e3a8de482",
       "sourceImports": [
@@ -6482,6 +6878,72 @@
         "wrapSandboxFileToolPath",
         "wrapToolMemoryFlushAppendOnlyWrite",
         "wrapToolWorkspaceRootGuardWithOptions"
+      ]
+    },
+    {
+      "path": "src/agents/agent-tools.ts",
+      "sha256": "bdcad2054268bf84d89439a5473224118c504a3eb36e1961d6454c09f9d4a391",
+      "sourceImports": [
+        "../auto-reply/heartbeat-tool-response.js",
+        "../auto-reply/source-reply-delivery-mode.js",
+        "../infra/event-session-routing.js",
+        "../infra/openclaw-cli-shim.js",
+        "../logger.js",
+        "../plugins/hook-types.js",
+        "../plugins/tool-grant-allowlist.js",
+        "../plugins/tool-metadata.js",
+        "../process/supervisor/index.js",
+        "../secrets/runtime-state.js",
+        "../skills/types.js",
+        "../utils/message-channel.js",
+        "./agent-scope.js",
+        "./agent-tool-metadata.js",
+        "./agent-tools.caller.js",
+        "./agent-tools.finalize.js",
+        "./agent-tools.memory-flush.js",
+        "./agent-tools.message-provider-policy.js",
+        "./agent-tools.model-provider-policy.js",
+        "./agent-tools.options.js",
+        "./agent-tools.ring-zero-context.js",
+        "./agent-tools.types.js",
+        "./apply-patch-policy.js",
+        "./bash-process-registry.js",
+        "./bash-process-scope.js",
+        "./bash-tools.exec-types.js",
+        "./channel-tools.js",
+        "./conversation-capability-profile.js",
+        "./conversation-tool-policy-pipeline.js",
+        "./core-coding-tools.js",
+        "./cron-creator-authority-context.js",
+        "./delegation-capability.js",
+        "./exec-tool-target-pinning.js",
+        "./github-tool-identity.js",
+        "./image-sanitization.js",
+        "./lazy-exec-tool.js",
+        "./local-model-lean.js",
+        "./memory-write-provenance.js",
+        "./openclaw-plugin-tools.js",
+        "./openclaw-tools.js",
+        "./openclaw-tools.requester-yield.js",
+        "./openclaw-tools.swarm.js",
+        "./sandbox/file-mutation-identity.js",
+        "./scheduled-message-invocation.js",
+        "./scheduled-tool-policy.js",
+        "./session-permission-exec-mode.js",
+        "./session-placement-computer.js",
+        "./subagents/subagent-attachment-paths.js",
+        "./tool-fs-policy.js",
+        "./tool-loop-detection-config.js",
+        "./tool-policy-declared-context.js",
+        "./tool-policy-pipeline.js",
+        "./tool-policy.js",
+        "./tool-search.js",
+        "./tools/cron-tool.js",
+        "./tools/session-portal-target.js"
+      ],
+      "exportedDeclarations": [
+        "createOpenClawCodingTools",
+        "createOpenClawCodingToolsInternal"
       ]
     },
     {
@@ -6555,6 +7017,40 @@
         "resolveBootstrapFilesForPreparation",
         "resolveBootstrapFilesForRun",
         "resolveContextInjectionMode"
+      ]
+    },
+    {
+      "path": "src/agents/core-coding-tools.ts",
+      "sha256": "64fb003174fb93c22e8de032006cbc67aadee8bbd565f718846c577808d4902b",
+      "sourceImports": [
+        "../infra/fs-safe.js",
+        "../skills/library/bundle.js",
+        "../skills/types.js",
+        "./agent-tool-metadata.js",
+        "./agent-tools.params.js",
+        "./agent-tools.read.js",
+        "./agent-tools.types.js",
+        "./apply-patch-containment-hint.js",
+        "./apply-patch.js",
+        "./bash-tools.exec-types.js",
+        "./bash-tools.process.js",
+        "./image-sanitization.js",
+        "./lazy-exec-tool.js",
+        "./lazy-process-tool.js",
+        "./memory-write-provenance.js",
+        "./path-policy.js",
+        "./sandbox.js",
+        "./sandbox/fs-paths.js",
+        "./sandbox/workspace-mounts.js",
+        "./sessions/tools/ls.js",
+        "./sessions/tools/read.js",
+        "./tool-result-limits.js",
+        "./workspace-access.js",
+        "node:fs",
+        "node:path"
+      ],
+      "exportedDeclarations": [
+        "createCoreCodingTools"
       ]
     },
     {
@@ -6711,6 +7207,59 @@
         "normalizeAssistantReplayContent",
         "sanitizeSessionHistory",
         "validateReplayTurns"
+      ]
+    },
+    {
+      "path": "src/agents/embedded-agent-runner/run-loop.ts",
+      "sha256": "9c0cda106a202e42a1514cf829428767a02f8b39bde1fe70221641a0556b86d9",
+      "sourceImports": [
+        "../../context-engine/host-compat.js",
+        "../../context-engine/registry.js",
+        "../../context-engine/runtime-settings.js",
+        "../admitted-run-context.js",
+        "../agent-scope.js",
+        "../agent-tools.before-tool-call.js",
+        "../embedded-agent-helpers.js",
+        "../execution-contract.js",
+        "../tool-loop-detection-config.js",
+        "../usage.js",
+        "./logger.js",
+        "./plugin-runtime-refresh.js",
+        "./post-compaction-loop-guard.js",
+        "./replay-state.js",
+        "./run/assistant-failure.js",
+        "./run/attempt-normalization.js",
+        "./run/attempt-recovery.js",
+        "./run/attempt-result.js",
+        "./run/codex-app-server-recovery.js",
+        "./run/compaction-runtime.js",
+        "./run/context-engine-admission.js",
+        "./run/context-recovery-state.js",
+        "./run/execution-context.js",
+        "./run/failover-policy.js",
+        "./run/failover-retry-controller.js",
+        "./run/helpers.js",
+        "./run/idle-timeout-breaker.js",
+        "./run/incomplete-turn-recovery.js",
+        "./run/permission-change.js",
+        "./run/preparation-timing.js",
+        "./run/provider-review-run.js",
+        "./run/retry-budget.js",
+        "./run/retry-limit.js",
+        "./run/run-attempt-dispatch.js",
+        "./run/run-settlement.js",
+        "./run/runtime-preparation.js",
+        "./run/session-prompt-state.js",
+        "./run/settled-turn-finalization.js",
+        "./run/terminal-resolution.js",
+        "./run/terminal-retry-state.js",
+        "./run/terminal-timeout.js",
+        "./run/turn-taint-state.js",
+        "./types.js",
+        "./usage-accumulator.js"
+      ],
+      "exportedDeclarations": [
+        "runPreparedEmbeddedLoop"
       ]
     },
     {
@@ -6911,6 +7460,23 @@
       ]
     },
     {
+      "path": "src/agents/memory-write-provenance.ts",
+      "sha256": "628c004d93b38b06108d426750ca1ef1e8459c108202d0568b18e4c02bfebd13",
+      "sourceImports": [
+        "../infra/errors.js",
+        "../infra/fs-safe.js",
+        "../logger.js",
+        "../memory/memory-artifact-provenance.js",
+        "./agent-tool-source-execution-guard.js",
+        "node:path"
+      ],
+      "exportedDeclarations": [
+        "MemoryWriteProvenanceObserver",
+        "createMemoryWriteProvenanceObserver",
+        "withMemoryWriteProvenance"
+      ]
+    },
+    {
       "path": "src/agents/session-maintenance/coordinator.ts",
       "sha256": "638588d5a22012f1e892932b08eb6df8cc0cfe0423b63b0139348ebb2a330a44",
       "sourceImports": [
@@ -6977,6 +7543,71 @@
       ]
     },
     {
+      "path": "src/agents/sessions/tools/index.ts",
+      "sha256": "c03a89f8258623e2a7df15334be63f92526fd80d404bf3c38debfa4fd8b41e22",
+      "sourceImports": [
+        "../../runtime/index.js",
+        "../extensions/types.js",
+        "./bash-operations.js",
+        "./bash.js",
+        "./edit.js",
+        "./file-mutation-queue.js",
+        "./find.js",
+        "./grep.js",
+        "./ls.js",
+        "./read.js",
+        "./tool-contracts.js",
+        "./tool-definition-wrapper.js",
+        "./truncate.js",
+        "./write.js"
+      ],
+      "exportedDeclarations": [
+        "ToolDef",
+        "ToolName",
+        "ToolsOptions",
+        "allToolNames",
+        "createAllToolDefinitions",
+        "createAllTools",
+        "createCodingToolDefinitions",
+        "createCodingTools",
+        "createReadOnlyToolDefinitions",
+        "createReadOnlyTools",
+        "createTool",
+        "createToolDefinition"
+      ]
+    },
+    {
+      "path": "src/agents/sessions/tools/write.ts",
+      "sha256": "e305091da36b3ed8b9af0d358ed3047592721780b569d65ab587f751eaf20b57",
+      "sourceImports": [
+        "../../../infra/errors.js",
+        "../../agent-tool-source-execution-guard.js",
+        "../../modes/interactive/components/keybinding-hints.js",
+        "../../modes/interactive/theme/theme.js",
+        "../../runtime/index.js",
+        "../../tools/tool-results.js",
+        "../extensions/types.js",
+        "./file-diff.js",
+        "./file-mutation-queue.js",
+        "./file-tool-planning.js",
+        "./file-write-verification.js",
+        "./path-utils.js",
+        "./render-utils.js",
+        "./tool-contracts.js",
+        "./tool-definition-wrapper.js",
+        "./tool-schemas.js",
+        "@earendil-works/pi-tui",
+        "node:fs/promises",
+        "node:path"
+      ],
+      "exportedDeclarations": [
+        "WriteOperations",
+        "WriteToolOptions",
+        "createWriteTool",
+        "createWriteToolDefinition"
+      ]
+    },
+    {
       "path": "src/agents/tool-input-error.ts",
       "sha256": "70582ae2f67d5d23ce514ee93f249e2c659ddf32e7bf70b1692dcadcf03af7bc",
       "sourceImports": [],
@@ -6984,6 +7615,35 @@
         "ToolAuthorizationError",
         "ToolInputError",
         "isTrustedToolInputError"
+      ]
+    },
+    {
+      "path": "src/agents/tool-loop-detection.ts",
+      "sha256": "b917baf4a27decc7fed0ce2d9a34cfd49982e91962f3147d3647169c4ef21066",
+      "sourceImports": [
+        "../config/types.tools.js",
+        "../infra/crypto-digest.js",
+        "../logging/diagnostic-session-state.js",
+        "../logging/subsystem.js",
+        "../utils.js",
+        "./code-mode-tool-outcome.js",
+        "./embedded-agent-messaging.js",
+        "./tool-loop-argument-churn.js",
+        "./tool-loop-call-kind.js",
+        "./tool-loop-no-progress.js",
+        "./tool-loop-thresholds.js",
+        "./tool-loop-write-outcome.js",
+        "./tools/computer-tool-outcome.js",
+        "./tools/progress-card-tool-outcome.js",
+        "@openclaw/normalization-core",
+        "@openclaw/normalization-core/string-coerce"
+      ],
+      "exportedDeclarations": [
+        "UNKNOWN_TOOL_THRESHOLD",
+        "detectToolCallLoop",
+        "hashToolCall",
+        "recordToolCall",
+        "recordToolCallOutcome"
       ]
     },
     {
@@ -8413,6 +9073,24 @@
       ]
     },
     {
+      "path": "src/logging/diagnostic-session-state.ts",
+      "sha256": "e6d387acd8c72764c9f7cfba699a9e3716a2b4d3ddde230329c89987621054d7",
+      "sourceImports": [],
+      "exportedDeclarations": [
+        "SessionRef",
+        "SessionState",
+        "SessionStateValue",
+        "ToolCallRecord",
+        "diagnosticSessionStates",
+        "getDiagnosticSessionState",
+        "isDiagnosticSessionStateCurrent",
+        "peekDiagnosticSessionState",
+        "pruneDiagnosticSessionStates",
+        "resetDiagnosticSessionStateForTest",
+        "retireDiagnosticSessionObservations"
+      ]
+    },
+    {
       "path": "src/logging/redact.ts",
       "sha256": "ecdfdb1e0f4b0f2aa3eb54aad574bb5375ae8da78539ad937b34ba02dd170e7b",
       "sourceImports": [
@@ -8499,6 +9177,23 @@
         "normalizeMemoryArtifactRelativePath",
         "readMemoryArtifactProvenance",
         "recordMemoryArtifactWriteProvenance"
+      ]
+    },
+    {
+      "path": "src/plugin-sdk/agent-core.ts",
+      "sha256": "36923c1bfeef3df3271659521acb32f0769666563c589da864e01c35c0335171",
+      "sourceImports": [
+        "../../packages/agent-core/src/agent.js",
+        "../../packages/agent-core/src/index.js",
+        "../../packages/agent-core/src/runtime-deps.js",
+        "../../packages/llm-core/src/index.js",
+        "../agents/runtime/proxy.js",
+        "../plugins/plugin-instance-scope.js",
+        "./llm.js"
+      ],
+      "exportedDeclarations": [
+        "Agent",
+        "openClawAgentCoreRuntime"
       ]
     },
     {
@@ -8695,6 +9390,35 @@
         "resolveEffectiveSessionToolsVisibility",
         "resolveSandboxSessionToolsVisibility",
         "resolveSessionToolsVisibility"
+      ]
+    },
+    {
+      "path": "src/plugin-state/plugin-state-store.ts",
+      "sha256": "361e7571e9c93efde048462fd967e845c6e68a7a9f7a9c6f9a0823b6cad8b530",
+      "sourceImports": [
+        "../state/openclaw-state-db.js",
+        "./plugin-state-store.comparison.js",
+        "./plugin-state-store.journal.js",
+        "./plugin-state-store.kernel.js",
+        "./plugin-state-store.reads.js",
+        "./plugin-state-store.sqlite.js",
+        "./plugin-state-store.types.js",
+        "./plugin-state-store.validation.js",
+        "./plugin-state-worker-client.js",
+        "./plugin-store-validation.js",
+        "@openclaw/normalization-core/result",
+        "node:util"
+      ],
+      "exportedDeclarations": [
+        "createCorePluginStateKeyedStore",
+        "createCorePluginStateSyncKeyedStore",
+        "createPluginStateKeyedStore",
+        "createPluginStateSyncKeyedStore",
+        "importPluginStateEntriesForDoctor",
+        "pluginStateEntriesInKeyRange",
+        "registerMigratedPluginStateEntry",
+        "registerPluginStateSequencedJournalEntry",
+        "resetPluginStateStoreForTests"
       ]
     },
     {

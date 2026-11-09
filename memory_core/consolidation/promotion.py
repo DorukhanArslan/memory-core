@@ -1064,6 +1064,7 @@ def _commit_promotion(
             entry_text,
             memory_file_max_chars=memory_file_max_chars,
             max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
+            identity=identity,
         )
         if deferred_reason:
             for candidate in to_append:
@@ -1531,6 +1532,8 @@ def _append_to_memory(
     section: str,
     memory_file_max_chars: int = DEFAULT_MEMORY_FILE_MAX_CHARS,
     max_prior_entry_loss_fraction: float = DEFAULT_DEEP_DREAMING_MAX_PRIOR_ENTRY_LOSS_FRACTION,
+    *,
+    identity: RuntimeIdentity | None = None,
 ) -> tuple[tuple[str, ...], str | None]:
     """Write ``section`` below the budget-compacted MEMORY.md.
 
@@ -1553,6 +1556,7 @@ def _append_to_memory(
         new_section=section,
         budget_chars=budget_chars,
         max_prior_entry_loss_fraction=max(0.0, min(1.0, max_prior_entry_loss_fraction)),
+        identity=identity,
     )
     if budget_chars > 0 and utf16_len(content) > budget_chars:
         return (), f"MEMORY.md budget exceeded ({utf16_len(content)} > {budget_chars} chars)"

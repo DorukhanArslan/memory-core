@@ -31,9 +31,10 @@ from memory_core.bootstrap._js import JS_SPACE, js_trim, locale_compare, utf16_l
 from memory_core.runtime_identity import (
     MEMORY_CORE_RUNTIME_IDENTITY,
     OPENCLAW_COMPAT_RUNTIME_IDENTITY,
+    RuntimeIdentity,
 )
 
-# Both marker prefixes count (markers.py): files written in either runtime-identity mode.
+# Legacy calls without an explicit identity recognize both historical marker prefixes.
 _PREFIX_ALTERNATION = "|".join(
     re.escape(identity.promotion_marker_prefix)
     for identity in (MEMORY_CORE_RUNTIME_IDENTITY, OPENCLAW_COMPAT_RUNTIME_IDENTITY)
@@ -78,11 +79,19 @@ _ENTRY_MARKER_RE = re.compile(
 )
 
 
+def _entry_marker_re(identity: RuntimeIdentity | None) -> re.Pattern[str]:
+    if identity is None:
+        return _ENTRY_MARKER_RE
+    return re.compile(
+        rf"^<!--{JS_SPACE}*{re.escape(identity.promotion_marker_prefix)}.*-->{JS_SPACE}*\Z", re.IGNORECASE
+    )
+
+
 def _is_blank(line: str) -> bool:
     return js_trim(line) == ""
 
 
-def _is_generated_promotion_block(lines: list[str]) -> bool:
+def _is_generated_promotion_block(lines: list[str], entry_marker_re: re.Pattern[str]) -> bool:
     """``isGeneratedPromotionBlock``: only marker + bullet pairs (and subsection headings)."""
     saw_entry = False
     index = 1
@@ -95,7 +104,7 @@ def _is_generated_promotion_block(lines: list[str]) -> bool:
             index += 1
             while index < len(lines) and _is_blank(lines[index]):
                 index += 1
-        if not _ENTRY_MARKER_RE.match(lines[index] if index < len(lines) else ""):
+        if not entry_marker_re.match(lines[index] if index < len(lines) else ""):
             return False
         # A marker owns only the single bullet emitted with it; any other body shape is mixed
         # user content that compaction must not delete.
@@ -106,38 +115,41 @@ def _is_generated_promotion_block(lines: list[str]) -> bool:
     return saw_entry
 
 
-def _starts_generated_promotion_subsection(lines: list[str], index: int) -> bool:
+def _starts_generated_promotion_subsection(lines: list[str], index: int, entry_marker_re: re.Pattern[str]) -> bool:
     if not _SUBSECTION_HEADING_RE.match(lines[index]):
         return False
     for line in lines[index + 1 :]:
         if _is_blank(line):
             continue
-        return _ENTRY_MARKER_RE.match(line) is not None
+        return entry_marker_re.match(line) is not None
     return False
 
 
-def _take_setext_heading_lines(lines: list[str]) -> list[str] | None:
+def _take_setext_heading_lines(lines: list[str], entry_marker_re: re.Pattern[str]) -> list[str] | None:
     start = len(lines)
     while start > 1 and not _is_blank(lines[start - 1]):
         start -= 1
     if start == len(lines):
         return None
     heading_lines = lines[start:]
-    if any(_ENTRY_MARKER_RE.match(line) for line in heading_lines):
+    if any(entry_marker_re.match(line) for line in heading_lines):
         return None
     del lines[start:]
     return heading_lines
 
 
-def parse_memory_blocks(content: str) -> list[MemoryBlock]:
+def parse_memory_blocks(content: str, *, identity: RuntimeIdentity | None = None) -> list[MemoryBlock]:
     """Port of ``parseMemoryBlocks`` (memory-budget.ts at v2026.9.6).
 
     A block starts at any ATX heading; a ``## Promoted From Short-Term Memory (DATE)`` block counts
     as generated only when its whole body is marker + bullet entries (with ``### Global`` /
     ``### Project:`` subsections), a setext heading line ends it, anything else is preserved.
+    An explicit identity owns only its literal promotion-marker prefix; omitting it retains
+    the legacy recognition of both built-in runtime prefixes.
     """
     if not content:
         return []
+    entry_marker_re = _entry_marker_re(identity)
     lines = _LINE_SPLIT_RE.split(content)
     blocks: list[MemoryBlock] = []
     current_lines: list[str] = []
@@ -149,8 +161,8 @@ def parse_memory_blocks(content: str) -> list[MemoryBlock]:
         if not current_lines:
             return
         text = "\n".join(current_lines)
-        if current_kind == "promotion" and current_date and _is_generated_promotion_block(current_lines):
-            entry_count = sum(1 for line in current_lines if _ENTRY_MARKER_RE.match(line))
+        if current_kind == "promotion" and current_date and _is_generated_promotion_block(current_lines, entry_marker_re):
+            entry_count = sum(1 for line in current_lines if entry_marker_re.match(line))
             blocks.append(MemoryBlock("promotion", text, current_date, entry_count))
         else:
             blocks.append(MemoryBlock("preserved", text))
@@ -160,13 +172,13 @@ def parse_memory_blocks(content: str) -> list[MemoryBlock]:
 
     for index, line in enumerate(lines):
         if current_kind == "promotion" and _SETEXT_UNDERLINE_RE.match(line):
-            heading_lines = _take_setext_heading_lines(current_lines)
+            heading_lines = _take_setext_heading_lines(current_lines, entry_marker_re)
             if heading_lines is not None:
                 flush()
                 current_lines = [*heading_lines, line]
                 continue
         continues_promotion_body = current_kind == "promotion" and _starts_generated_promotion_subsection(
-            lines, index
+            lines, index, entry_marker_re
         )
         if _ATX_HEADING_RE.match(line) and not continues_promotion_body:
             flush()
@@ -193,6 +205,7 @@ def compact_memory_for_budget(
     new_section: str,
     budget_chars: int | float,
     max_prior_entry_loss_fraction: float | None = None,
+    identity: RuntimeIdentity | None = None,
 ) -> CompactMemoryResult:
     """Port of ``compactMemoryForBudget``.
 
@@ -200,7 +213,8 @@ def compact_memory_for_budget(
     ``new_section`` fits ``budget_chars`` minus the 21-char writer reserve, never removing more
     than ``max_prior_entry_loss_fraction`` of the generated entries (default 1). Non-promotion
     content is never dropped; when the budget cannot be met within the loss bound the caller owns
-    the final fit check. ``budget_chars <= 0`` returns the memory unchanged.
+    the final fit check. ``identity`` selects owned markers as in :func:`parse_memory_blocks`.
+    ``budget_chars <= 0`` returns the memory unchanged.
     """
     if budget_chars <= 0:
         return CompactMemoryResult(existing_memory, ())
@@ -209,7 +223,7 @@ def compact_memory_for_budget(
     if utf16_len(existing_memory) + new_length <= effective_budget:
         return CompactMemoryResult(existing_memory, ())
 
-    blocks = parse_memory_blocks(existing_memory)
+    blocks = parse_memory_blocks(existing_memory, identity=identity)
     promotion_entries = sorted(
         (
             (index, block.date or "", utf16_len(block.text), block.entry_count)
@@ -250,6 +264,7 @@ def build_budgeted_memory_append(
     new_section: str,
     budget_chars: int | float,
     max_prior_entry_loss_fraction: float | None = None,
+    identity: RuntimeIdentity | None = None,
 ) -> tuple[str, tuple[str, ...]]:
     """``buildBudgetedMemoryAppend``: the complete post-promotion file and the dropped dates."""
     compaction = compact_memory_for_budget(
@@ -257,6 +272,7 @@ def build_budgeted_memory_append(
         new_section=new_section,
         budget_chars=budget_chars,
         max_prior_entry_loss_fraction=max_prior_entry_loss_fraction,
+        identity=identity,
     )
     header = "" if js_trim(compaction.compacted) else "# Long-Term Memory\n\n"
     base = (

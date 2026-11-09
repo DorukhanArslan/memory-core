@@ -596,5 +596,6 @@ def build_bootstrap_discovery_cases():
     for suffix, scenario in scenarios:
         cases.append((suffix, {"kind": "workspace-bootstrap", "nowMs": 1794182400000, "layout": "openclaw", **scenario}))
     return [{"id": "bootstrap-discovery-" + suffix, "operation": "bootstrap-discovery-runtime", "requirement": "prompt.bootstrap-discovery",
-             "input": {**value, "packagedTemplates": deepcopy(_PACKAGED_TEMPLATES)}, "covers": []}
+             "input": {**value, "packagedTemplates": deepcopy(_PACKAGED_TEMPLATES)}, "covers": [],
+             **({"driverScope": "builtin-workspace-memory-classifier"} if suffix == "unsupported-configured-classification" else {})}
             for suffix, value in cases]

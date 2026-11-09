@@ -983,4 +983,5 @@ class HostKit:
             truncation_warning_mode=self._truncation_warning_mode,
             seen_truncation_signatures=session.seen_truncation_signatures,
             identity=self._identity,
+            artifact_provenance=self._artifact_provenance,
         )

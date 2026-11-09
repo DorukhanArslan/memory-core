@@ -1023,10 +1023,15 @@ class ReleaseOracleExecution:
                 raise RuntimeOracleError("The actual declared workspace/file/index/recall/checkpoint owners did not execute.")
             validate_workspace_isolation_workers(worker_imports)
         if operation == "bootstrap-discovery-runtime":
-            from equivalence.bootstrap_discovery_bindings import BASELINE_COMPILED_ARTIFACTS
+            from equivalence.bootstrap_discovery_bindings import BASELINE_COMPILED_ARTIFACTS, CLASSIFICATION_REQUIRED_ARTIFACTS
 
             if any(("node_modules/openclaw", owner) not in loaded for owner in BASELINE_COMPILED_ARTIFACTS):
                 raise RuntimeOracleError("The genuine bootstrap setup, loader, policy, state, hook and selection owners did not execute.")
+            scope = case.get("driverScope")
+            if scope not in {None, "builtin-workspace-memory-classifier"}:
+                raise RuntimeOracleError("The bootstrap caller returned an undeclared classifier execution scope.")
+            if scope is not None and any(("node_modules/openclaw", owner) not in loaded for owner in CLASSIFICATION_REQUIRED_ARTIFACTS):
+                raise RuntimeOracleError("The configured bootstrap profile omitted its actual memory classifier, physical path or provenance store owners.")
         if required_owner is not None and ("node_modules/openclaw", required_owner) not in loaded:
             message = ("The actual native runtime owner did not execute."
                        if operation in {"exact-path-runtime", "importance-project-runtime"}

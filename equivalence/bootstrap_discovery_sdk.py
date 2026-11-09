@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from contextlib import contextmanager
 import dataclasses
 import hashlib
 import json
@@ -16,6 +17,7 @@ import traceback
 
 from equivalence.bootstrap_discovery_bindings import TEMPLATE_ARTIFACTS
 from equivalence.get_contract import map_get_fixture_paths
+from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -30,6 +32,8 @@ def _observe(value):
         return str(value)
     if isinstance(value, bytes):
         return {"type": "bytes", "hex": value.hex()}
+    if isinstance(value, MemoryArtifactProvenanceStore):
+        return {"type": type(value).__qualname__, "fields": _observe(vars(value))}
     if isinstance(value, dict):
         return {str(key): _observe(item) for key, item in value.items()}
     if isinstance(value, (tuple, list)):
@@ -37,6 +41,30 @@ def _observe(value):
     if isinstance(value, (set, frozenset)):
         return sorted(value)
     return value
+
+
+@contextmanager
+def _observe_classification(raw):
+    """Read-only return observation of the actual nested production owners."""
+    from memory_core.bootstrap.classification import classify_workspace_memory_paths
+
+    owners = {classify_workspace_memory_paths.__code__: "classify_workspace_memory_paths",
+              MemoryArtifactProvenanceStore.read.__code__: "MemoryArtifactProvenanceStore.read"}
+    previous = sys.getprofile()
+
+    def observer(frame, event, value):
+        if event == "return" and frame.f_code in owners:
+            arguments = {name: frame.f_locals[name] for name in frame.f_code.co_varnames[:frame.f_code.co_argcount + frame.f_code.co_kwonlyargcount]}
+            raw.setdefault("classificationCalls", []).append({"owner": owners[frame.f_code],
+                "request": _observe(arguments), "result": _observe(value), "returnedNone": value is None})
+        if previous is not None:
+            previous(frame, event, value)
+
+    sys.setprofile(observer)
+    try:
+        yield
+    finally:
+        sys.setprofile(previous)
 
 
 def _error(error, *, raw=False, seen=None):
@@ -169,6 +197,7 @@ def _phase(request):
         os.link(source, path)
         raw["writes"].append({"operation": "hardlink", "path": str(path), "source": str(source)})
     public_steps = []
+    provenance = MemoryArtifactProvenanceStore(root / "state" / "bootstrap-artifact-provenance.sqlite")
     for step in value["steps"]:
         label = step["label"]
         write(step.get("writes", {}), label)
@@ -206,8 +235,15 @@ def _phase(request):
                 arguments = {"root": workspace, "layout": layout, "session_kind": run["sessionKind"],
                              "setup_completed": completed, "context_mode": run.get("contextMode", "full"), "warn": warnings.append}
                 arguments.update({key: item for key, item in run.items() if key in {"config", "bootstrapUserProfileId"}})
+                if "config" in run:
+                    arguments["artifact_provenance"] = provenance
+
+                def invoke_filter():
+                    with _observe_classification(raw):
+                        return filter_bootstrap_files(run_loaded, **arguments)
+
                 files, error = call(label, "filter_bootstrap_files", {key: item for key, item in arguments.items() if key != "warn"},
-                                    lambda: filter_bootstrap_files(run_loaded, **arguments))
+                                    invoke_filter)
             runs.append({"request": deepcopy(run), **({"error": _error(error)} if error else {"files": [_wire_file(file) for file in files]}),
                          "warnings": warnings})
         state, state_error = call(label, "read_workspace_setup_state", {"root": workspace}, lambda: read_workspace_setup_state(workspace))
@@ -221,6 +257,13 @@ def _phase(request):
                              **({"loadError": _error(load_error)} if load_error else {"loaded": [_wire_file(file) for file in loaded]}),
                              "runs": runs, "bootstrapStatus": {"error": _error(status_error)} if status_error else status,
                              "setupCompleted": {"error": _error(completed_error)} if completed_error else completed})
+    raw["artifactProvenance"] = {"path": str(provenance.path), "initialized": provenance.path.exists()}
+    if provenance.path.exists():
+        records, error = call("final-observation", "MemoryArtifactProvenanceStore.list",
+                              {"workspace_dir": workspace, "store": provenance}, lambda: provenance.list(workspace))
+        raw["artifactProvenance"].update({"error": _error(error, raw=True)} if error else {"records": _observe(records)})
+    raw["hostState"] = _tree(root / "state")
+    raw["hostStateEntries"] = [str(path.relative_to(root / "state")) for path in (root / "state").rglob("*")]
     return {"result": map_get_fixture_paths({"provider": "none", "steps": public_steps}, root), "raw": raw}
 
 

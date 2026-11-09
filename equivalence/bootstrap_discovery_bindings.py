@@ -297,11 +297,109 @@ TEMPLATE_ARTIFACTS = {'AGENTS.md': {'path': 'docs/reference/templates/AGENTS.md'
                   'sourcePath': 'docs/reference/templates/BOOTSTRAP.md',
                   'sourceSha256': 'bfc99ba9511b171dd09e769ce436cffff07f2175a2f8170853c439c5948c7b5a'}}
 
-BASELINE_COMPILED_ARTIFACTS = tuple(path for path in COMPILED_HASHES
-    if path != "dist/memory-runtime-BzdCLKPx.mjs")
-CONDITIONAL_COMPILED_ARTIFACTS = {
-    "configuredAutomaticMemoryClassification": ("dist/memory-runtime-BzdCLKPx.mjs",),
-}
+
+# The configured builtin profile executes real path and recorded-origin owners.
+CLASSIFICATION_SOURCE_HASHES = {'extensions/memory-core/index.ts': '407649ff3005ec692a1c3d15e7e599692e693bf3e6ccbdc7e4aa18755deddd89',
+ 'extensions/memory-core/src/workspace-path-classifier.ts': 'd5448712cebf1238e313c1af0df3257fe9c7c7a553b61de524aa26db71b14f71',
+ 'extensions/memory-core/src/memory/memory-path-provenance.ts': '11e0adfcf2069d535b9fc3b9b625a5b65fd64dda4b97e4fa2ba9bcf5fc24a0af',
+ 'src/memory/memory-artifact-provenance.ts': '68f4d030c3d6025e390065c296a74f94d46b177497e03655e7820e26215fb373',
+ 'src/plugin-sdk/memory-core-host-runtime-core.ts': '9d0fc4e1f1ec1f4c4a140a2a5b8cb63246c18091274cc8ffa51b5274b03a653b',
+ 'src/memory-host-sdk/host/types.ts': '0ad7459b0bc2beaab8dc490662b2643c16585da7761b325fa4b61f42467145a0',
+ 'packages/memory-host-sdk/src/host/types.ts': '737b555fc517671b927bcbab30334ffbd20c3690e02fa72595eeaacbddf06e4a',
+ 'src/plugin-state/plugin-state-store.ts': '361e7571e9c93efde048462fd967e845c6e68a7a9f7a9c6f9a0823b6cad8b530',
+ 'src/plugins/config-state.ts': '6b5c7c59fd033869a9f9b66527fa7f7926439375f656cbe933dd787c2a39d6b0',
+ 'src/plugins/config-normalization-shared.ts': '6a24b8f8b8ddb2771e6402ef68316ec23322f2ac87e8c2ceaf4695028c582eca',
+ 'src/plugins/slots.ts': '724aa32cf22eaf653c76ba43c34577ea3c02f7e026e89b6828bbaa0adc72bedb'}
+CLASSIFICATION_SOURCE_ANCHORS = {'extensions/memory-core/index.ts': ('function createLazyMemoryRuntime(host: MemoryCoreRuntimeHost): '
+                                     'MemoryPluginRuntime {',),
+ 'extensions/memory-core/src/workspace-path-classifier.ts': ('export const classifyWorkspaceMemoryPaths: '
+                                                             'ClassifyWorkspaceMemoryPaths = async (params) =>',),
+ 'extensions/memory-core/src/memory/memory-path-provenance.ts': ('export async function '
+                                                                 'resolveMemoryPathClassification(params: {',),
+ 'src/memory/memory-artifact-provenance.ts': ('export async function readMemoryArtifactProvenance(params: {',
+                                              'function normalizeStoredProvenance('),
+ 'src/plugin-sdk/memory-core-host-runtime-core.ts': ('  readMemoryArtifactProvenance,',),
+ 'src/memory-host-sdk/host/types.ts': ('export * from "../../../packages/memory-host-sdk/src/host/types.js";',),
+ 'packages/memory-host-sdk/src/host/types.ts': ('export function isMemoryOriginEligibleForAutomaticInjection(',),
+ 'src/plugin-state/plugin-state-store.ts': ('export function createCorePluginStateKeyedStore<T>(',),
+ 'src/plugins/config-state.ts': ('export const normalizePluginsConfig = (',),
+ 'src/plugins/config-normalization-shared.ts': ('export function normalizePluginsConfigWithResolverCore(',),
+ 'src/plugins/slots.ts': ('export function resolveSlotSelection(slotKey: PluginSlotKey, value: unknown): '
+                          'SlotSelection {',)}
+CLASSIFICATION_COMPILED_HASHES = {'dist/extensions/memory-core/index.js': 'ead9aeb06b76504ba8ab9cb50a03c1425d18cbb936285c47f5ae7cf25e2877f8',
+ 'dist/workspace-path-classifier-nZNRErpg.mjs': '7829eab10d8bc0f98146740dc13374cc7296aae0ff170a78da1de8e79300ddd6',
+ 'dist/workspace-path-classifier-279hOw9K.mjs': '5d5343078f99e4f98a0e3fa0d364bb7a446fdf09f7ec5e74944dbef0c56d647f',
+ 'dist/memory-path-provenance-C84vBRrO.mjs': '1b1fb934b147bd044121cc42764adadd8e06482e34dee7abf4aa71e15ca771c1',
+ 'dist/memory-artifact-provenance-DhnyWiV1.mjs': 'd9058a906197fbec520df32a63257e4bb24b084223aa35871c64e71d1e8c464c',
+ 'dist/plugin-sdk/memory-core-host-runtime-core.js': 'a786f0dc9b4bb96173e04ca2e2b07802d6b46319c9a2b3ab5c138fa7298d74cd',
+ 'dist/types-DTVBdCzw.mjs': '14598f9947a85bf691d345dc54c32899c8931afc580e45f143918afe8b54db50',
+ 'dist/plugin-state-store-BPUaLoVD.mjs': '4d010227d5baea72f1dfc1e117efe2cc1eb596eeab579e6c92c047abf75f7efc'}
+CLASSIFICATION_COMPILED_ANCHORS = {'dist/extensions/memory-core/index.js': ('function createLazyMemoryRuntime(host) {',),
+ 'dist/workspace-path-classifier-nZNRErpg.mjs': ('export { classifyWorkspaceMemoryPaths };',),
+ 'dist/workspace-path-classifier-279hOw9K.mjs': ('const classifyWorkspaceMemoryPaths = async (params) =>',),
+ 'dist/memory-path-provenance-C84vBRrO.mjs': ('async function resolveMemoryPathClassification(params) {',),
+ 'dist/memory-artifact-provenance-DhnyWiV1.mjs': ('async function readMemoryArtifactProvenance(params) {',),
+ 'dist/plugin-sdk/memory-core-host-runtime-core.js': ('readMemoryArtifactProvenance, readPositiveIntegerParam',),
+ 'dist/types-DTVBdCzw.mjs': ('function isMemoryOriginEligibleForAutomaticInjection(originClass) {',),
+ 'dist/plugin-state-store-BPUaLoVD.mjs': ('function createCorePluginStateKeyedStore(options) {',)}
+CLASSIFICATION_SOURCE_LINKS = (('src/agents/bootstrap-files.ts',
+  '../memory-host-sdk/host/types.js',
+  ('isMemoryOriginEligibleForAutomaticInjection',),
+  'import'),
+ ('extensions/memory-core/src/workspace-path-classifier.ts',
+  './memory/memory-path-provenance.js',
+  ('resolveMemoryPathClassification',),
+  'import'),
+ ('extensions/memory-core/src/memory/memory-path-provenance.ts',
+  'openclaw/plugin-sdk/memory-core-host-runtime-core',
+  ('readMemoryArtifactProvenance',),
+  'import'),
+ ('src/plugin-sdk/memory-core-host-runtime-core.ts',
+  '../memory/memory-artifact-provenance.js',
+  ('readMemoryArtifactProvenance', 'listMemoryArtifactProvenance'),
+  'export'),
+ ('src/memory/memory-artifact-provenance.ts',
+  '../plugin-state/plugin-state-store.js',
+  ('createCorePluginStateKeyedStore',),
+  'import'),
+ ('src/plugins/memory-runtime.ts', './config-state.js', ('normalizePluginsConfig',), 'import'),
+ ('src/plugins/config-state.ts',
+  './config-normalization-shared.js',
+  ('normalizePluginsConfigWithResolverCore',),
+  'import'),
+ ('src/plugins/config-normalization-shared.ts',
+  './slots.js',
+  ('normalizeSlotValue', 'resolveSlotSelection'),
+  'import'))
+CLASSIFICATION_COMPILED_LINKS = (('dist/bootstrap-files-CgqY-7GK.mjs',
+  'import { r as isMemoryOriginEligibleForAutomaticInjection } from "./types-DTVBdCzw.mjs";'),
+ ('dist/extensions/memory-core/index.js', 'import("../../workspace-path-classifier-nZNRErpg.mjs")'),
+ ('dist/workspace-path-classifier-nZNRErpg.mjs',
+  'import { t as classifyWorkspaceMemoryPaths } from "./workspace-path-classifier-279hOw9K.mjs";'),
+ ('dist/workspace-path-classifier-279hOw9K.mjs',
+  'import { t as resolveMemoryPathClassification } from "./memory-path-provenance-C84vBRrO.mjs";'),
+ ('dist/memory-path-provenance-C84vBRrO.mjs',
+  'import { i as readMemoryArtifactProvenance } from "./memory-artifact-provenance-DhnyWiV1.mjs";'),
+ ('dist/memory-artifact-provenance-DhnyWiV1.mjs',
+  'import { t as createCorePluginStateKeyedStore } from "./plugin-state-store-BPUaLoVD.mjs";'),
+ ('dist/plugin-sdk/memory-core-host-runtime-core.js',
+  'import { i as readMemoryArtifactProvenance, n as listMemoryArtifactProvenance } from '
+  '"../memory-artifact-provenance-DhnyWiV1.mjs";'))
+SOURCE_HASHES.update(CLASSIFICATION_SOURCE_HASHES)
+SOURCE_ANCHORS.update(CLASSIFICATION_SOURCE_ANCHORS)
+COMPILED_HASHES.update(CLASSIFICATION_COMPILED_HASHES)
+COMPILED_ANCHORS.update(CLASSIFICATION_COMPILED_ANCHORS)
+SOURCE_LINKS += CLASSIFICATION_SOURCE_LINKS
+COMPILED_LINKS += CLASSIFICATION_COMPILED_LINKS
+
+CLASSIFICATION_NONBASELINE_ARTIFACTS = ("dist/memory-runtime-BzdCLKPx.mjs", *(path for path in CLASSIFICATION_COMPILED_HASHES if path != "dist/types-DTVBdCzw.mjs"))
+# The public facade is authenticated as an available export. The actual bundled
+# caller imports the reader implementation directly, so do not invent a load of
+# an unused facade to claim execution.
+CLASSIFICATION_REQUIRED_ARTIFACTS = tuple(path for path in CLASSIFICATION_NONBASELINE_ARTIFACTS
+    if path != "dist/plugin-sdk/memory-core-host-runtime-core.js")
+BASELINE_COMPILED_ARTIFACTS = tuple(path for path in COMPILED_HASHES if path not in CLASSIFICATION_NONBASELINE_ARTIFACTS)
+CONDITIONAL_COMPILED_ARTIFACTS = {"configuredAutomaticMemoryClassification": CLASSIFICATION_REQUIRED_ARTIFACTS}
 
 
 class BootstrapDiscoveryBindingError(ValueError):
@@ -382,8 +480,8 @@ def prepare_bootstrap_discovery_bindings(checkout: Path, runtime_root: Path) -> 
             "conditionalCompiledArtifacts": {key: list(value) for key, value in CONDITIONAL_COMPILED_ARTIFACTS.items()},
             "releaseDependencyAuthenticationRequired": True,
             "fullWorkspaceLifecycleEquivalenceClaimed": False,
-            "branchCoverageNotClaimed": ["configuredAutomaticMemoryClassification", "personalUserProfileOverlay",
-                "remoteWorkspaceAccess", "registeredBootstrapHookMutation", "purpose", "runtime-managed-implicit"],
+            "branchCoverageNotClaimed": ["thirdPartyRegisteredMemoryRuntime", "personalUserProfileOverlay",
+                "remoteWorkspaceAccess", "registeredBootstrapHookMutation"],
         }
     except BootstrapDiscoveryBindingError:
         raise

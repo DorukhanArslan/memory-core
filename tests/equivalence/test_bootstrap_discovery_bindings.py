@@ -95,7 +95,15 @@ _EXPECTED_LINKS = (('src/agents/workspace.ts',
  ('src/agents/bootstrap-cache.ts',
   './workspace.js',
   ('loadWorkspaceBootstrapFiles', 'workspaceFileSourceIdentitiesMatch'),
-  'import'))
+  'import'),
+ ('src/agents/bootstrap-files.ts', '../memory-host-sdk/host/types.js', ('isMemoryOriginEligibleForAutomaticInjection',), 'import'),
+ ('extensions/memory-core/src/workspace-path-classifier.ts', './memory/memory-path-provenance.js', ('resolveMemoryPathClassification',), 'import'),
+ ('extensions/memory-core/src/memory/memory-path-provenance.ts', 'openclaw/plugin-sdk/memory-core-host-runtime-core', ('readMemoryArtifactProvenance',), 'import'),
+ ('src/plugin-sdk/memory-core-host-runtime-core.ts', '../memory/memory-artifact-provenance.js', ('readMemoryArtifactProvenance', 'listMemoryArtifactProvenance'), 'export'),
+ ('src/memory/memory-artifact-provenance.ts', '../plugin-state/plugin-state-store.js', ('createCorePluginStateKeyedStore',), 'import'),
+ ('src/plugins/memory-runtime.ts', './config-state.js', ('normalizePluginsConfig',), 'import'),
+ ('src/plugins/config-state.ts', './config-normalization-shared.js', ('normalizePluginsConfigWithResolverCore',), 'import'),
+ ('src/plugins/config-normalization-shared.ts', './slots.js', ('normalizeSlotValue', 'resolveSlotSelection'), 'import'))
 
 
 def _sha(raw):
@@ -118,7 +126,7 @@ def owner_trees(tmp_path, monkeypatch):
         path.write_bytes(raw)
     for relative, anchors in bindings.COMPILED_ANCHORS.items():
         declarations = [declaration for module, declaration in bindings.COMPILED_LINKS if module == relative]
-        raw = ("// Labelled non-executing release declaration fixture.\n" + "\n".join([*declarations, *anchors]) + "\n").encode()
+        raw = ("// Labelled non-executing release declaration fixture.\n" + "\n".join(dict.fromkeys([*declarations, *anchors])) + "\n").encode()
         compiled_bytes[relative] = raw
         path = runtime / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -161,7 +169,7 @@ def _prepare(trees):
 
 def test_reviewed_graph_and_three_original_exports_remain_explicit():
     assert (len(bindings.SOURCE_HASHES), len(bindings.COMPILED_HASHES), len(bindings.SOURCE_LINKS),
-            len(bindings.COMPILED_LINKS)) == (29, 22, 22, 12)
+            len(bindings.COMPILED_LINKS)) == (40, 30, 30, 19)
     assert bindings.SOURCE_LINKS == _EXPECTED_LINKS
     assert bindings.CANONICAL_BOOTSTRAP_FILES == ("AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "BOOTSTRAP.md", "MEMORY.md")
     assert "src/agents/workspace-bootstrap-publish.ts" in bindings.SOURCE_HASHES
@@ -172,7 +180,7 @@ def test_reviewed_graph_and_three_original_exports_remain_explicit():
 
 def test_binding_retains_complete_owners_and_templates_without_claiming_execution(owner_trees):
     result = _prepare(owner_trees)
-    assert (len(result["sourceBindings"]), len(result["compiledBindings"])) == (29, 22)
+    assert (len(result["sourceBindings"]), len(result["compiledBindings"])) == (40, 30)
     assert result["sourceBuildReproduced"] is False and result["sourceFallbackAllowed"] is False
     assert result["covers"] == [] and result["fullWorkspaceLifecycleEquivalenceClaimed"] is False
     assert result["entrypoints"] == {
@@ -182,12 +190,17 @@ def test_binding_retains_complete_owners_and_templates_without_claiming_executio
     }
     assert result["stateEntrypoints"]["close"] == {"path": "dist/openclaw-state-db-cache-IdIaBoUp.mjs", "export": "a"}
     assert result["conditionalCompiledArtifacts"] == {
-        "configuredAutomaticMemoryClassification": ["dist/memory-runtime-BzdCLKPx.mjs"]}
+        "configuredAutomaticMemoryClassification": ["dist/memory-runtime-BzdCLKPx.mjs",
+            "dist/extensions/memory-core/index.js", "dist/workspace-path-classifier-nZNRErpg.mjs",
+            "dist/workspace-path-classifier-279hOw9K.mjs", "dist/memory-path-provenance-C84vBRrO.mjs",
+            "dist/memory-artifact-provenance-DhnyWiV1.mjs", "dist/plugin-state-store-BPUaLoVD.mjs"]}
     assert "dist/memory-runtime-BzdCLKPx.mjs" not in result["requiredCompiledArtifacts"]
     for template in result["templateArtifacts"].values():
         assert set(template) == {"path", "bytes", "sha256", "sourcePath", "sourceSha256"}
         assert template["sha256"] == template["sourceSha256"]
-    assert {"purpose", "runtime-managed-implicit", "configuredAutomaticMemoryClassification"} <= set(result["branchCoverageNotClaimed"])
+    assert {"thirdPartyRegisteredMemoryRuntime", "remoteWorkspaceAccess"} <= set(result["branchCoverageNotClaimed"])
+    assert "dist/plugin-sdk/memory-core-host-runtime-core.js" not in result["requiredCompiledArtifacts"]
+    assert "dist/plugin-sdk/memory-core-host-runtime-core.js" not in result["conditionalCompiledArtifacts"]["configuredAutomaticMemoryClassification"]
 
 
 @pytest.mark.parametrize("failure", ("pin", "dirty", "root"))

@@ -29,7 +29,11 @@ def test_fixed_literal_packet_has_no_expected_outputs_or_coverage_credit():
     cases = build_bootstrap_discovery_cases()
     assert len(cases) == 11 and len({case["id"] for case in cases}) == 11
     for case in cases:
-        assert set(case) == {"id", "operation", "input", "covers", "requirement"}
+        expected = {"id", "operation", "input", "covers", "requirement"}
+        if case["id"].endswith("unsupported-configured-classification"):
+            expected.add("driverScope")
+            assert case["driverScope"] == "builtin-workspace-memory-classifier"
+        assert set(case) == expected
         assert case["covers"] == [] and case["operation"] == "bootstrap-discovery-runtime"
         assert case["requirement"] == "prompt.bootstrap-discovery"
         assert not any("setup" in step for step in case["input"]["steps"])
@@ -112,17 +116,20 @@ def test_default_layout_extension_and_created_directories_are_never_dropped(capt
     assert {row["path"] for row in observation["snapshots"][0]["workspace"] if row["kind"] == "directory"} >= {"user", "workspace"}
 
 
-@pytest.mark.parametrize("suffix,keyword,owner", [
-    ("unsupported-configured-classification", "config", "filter_bootstrap_files"),
-])
-def test_unsupported_intents_execute_the_real_sdk_signature(captures, suffix, keyword, owner):
-    observation = _observation(captures, suffix)
-    call = next(call for call in observation["calls"] if call["owner"] == owner and "error" in call)
-    assert call["error"]["name"] == "TypeError"
-    assert keyword in call["error"]["message"] and "unexpected keyword argument" in call["error"]["message"]
-    assert "traceback" in call["error"] and "args" in call["error"]
-    assert keyword in call["request"]
-    assert "seed_bootstrap" not in call["request"]
+def test_configured_context_calls_real_classification_and_artifact_store_owners(captures):
+    observation = _observation(captures, "unsupported-configured-classification")
+    call = next(call for call in observation["calls"] if call["owner"] == "filter_bootstrap_files")
+    assert "config" in call["request"] and "error" not in call
+    assert call["request"]["artifact_provenance"]["type"] == "MemoryArtifactProvenanceStore"
+    classified = next(call for call in observation["classificationCalls"] if call["owner"] == "classify_workspace_memory_paths")
+    assert classified["result"] == [{"relativePath": "USER.md", "originClass": "agent"},
+                                    {"relativePath": "MEMORY.md", "originClass": "agent"}]
+    reads = [call for call in observation["classificationCalls"] if call["owner"] == "MemoryArtifactProvenanceStore.read"]
+    assert len(reads) == 2 and all(call["result"] is None for call in reads)
+    assert {call["request"]["relative_path"] for call in reads} == {"USER.md", "MEMORY.md"}
+    assert observation["artifactProvenance"]["initialized"] is True
+    assert observation["artifactProvenance"]["records"] == []
+    assert observation["hostState"] and observation["hostStateEntries"]
 
 
 @pytest.mark.parametrize("suffix,keyword", [

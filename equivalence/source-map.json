@@ -2914,6 +2914,24 @@
           "symbol": "resolveBootstrapFilesForRun",
           "anchor": "export async function resolveBootstrapFilesForRun(",
           "line": 305
+        },
+        {
+          "path": "extensions/memory-core/src/workspace-path-classifier.ts",
+          "symbol": "classifyWorkspaceMemoryPaths",
+          "anchor": "export const classifyWorkspaceMemoryPaths:",
+          "line": 10
+        },
+        {
+          "path": "extensions/memory-core/src/memory/memory-path-provenance.ts",
+          "symbol": "resolveMemoryPathClassification",
+          "anchor": "export async function resolveMemoryPathClassification(",
+          "line": 16
+        },
+        {
+          "path": "src/memory/memory-artifact-provenance.ts",
+          "symbol": "readMemoryArtifactProvenance",
+          "anchor": "export async function readMemoryArtifactProvenance(",
+          "line": 198
         }
       ],
       "python": [
@@ -2927,18 +2945,25 @@
           "path": "memory_core/bootstrap/files.py",
           "symbol": "load_workspace_bootstrap_files",
           "anchor": "def load_workspace_bootstrap_files(",
-          "line": 256
+          "line": 258
         },
         {
           "path": "memory_core/bootstrap/context.py",
           "symbol": "build_workspace_context",
           "anchor": "def build_workspace_context(",
-          "line": 129
+          "line": 133
+        },
+        {
+          "path": "memory_core/bootstrap/classification.py",
+          "symbol": "classify_workspace_memory_paths",
+          "anchor": "def classify_workspace_memory_paths(",
+          "line": 62
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python loads and filters an explicit layout/session kind. The host must supply native run kind, file-access capability and canonical-workspace decisions; native hook-driven bootstrap file resolution is not performed by build_workspace_context."
+        "Python loads and filters an explicit layout/session kind. The host must supply native run kind, file-access capability and canonical-workspace decisions; native hook-driven bootstrap file resolution is not performed by build_workspace_context.",
+        "The built-in bootstrap classifier composes physical path containment, the concrete shared artifact-provenance store and the index path classifier before session filters; no callback supplies classifications. Default SDK extension and legacy fail-closed behavior remain explicit ordinary differences."
       ]
     },
     {
@@ -3054,7 +3079,7 @@
       "implementation": "partial",
       "notes": [
         "Runtime markers default to Memory Core identity; native marker behavior requires the explicit OpenClaw compatibility identity.",
-        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1–9999."
+        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1\u20139999."
       ]
     },
     {
@@ -5818,6 +5843,20 @@
       ]
     },
     {
+      "path": "extensions/memory-core/src/memory/memory-path-provenance.ts",
+      "sha256": "11e0adfcf2069d535b9fc3b9b625a5b65fd64dda4b97e4fa2ba9bcf5fc24a0af",
+      "sourceImports": [
+        "node:fs/promises",
+        "node:path",
+        "openclaw/plugin-sdk/file-access-runtime",
+        "openclaw/plugin-sdk/memory-core-host-engine-storage",
+        "openclaw/plugin-sdk/memory-core-host-runtime-core"
+      ],
+      "exportedDeclarations": [
+        "resolveMemoryPathClassification"
+      ]
+    },
+    {
       "path": "extensions/memory-core/src/memory/mmr.ts",
       "sha256": "ffcf8296b74cefbc684bf7f98525ccaa394b0b54de8545074f7b9e5e553da320",
       "sourceImports": [
@@ -6168,6 +6207,18 @@
         "createMemoryGetTool",
         "createMemorySearchTool",
         "testing"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/src/workspace-path-classifier.ts",
+      "sha256": "d5448712cebf1238e313c1af0df3257fe9c7c7a553b61de524aa26db71b14f71",
+      "sourceImports": [
+        "./memory/memory-path-provenance.js",
+        "node:path",
+        "openclaw/plugin-sdk/memory-core-host-runtime-core"
+      ],
+      "exportedDeclarations": [
+        "classifyWorkspaceMemoryPaths"
       ]
     },
     {

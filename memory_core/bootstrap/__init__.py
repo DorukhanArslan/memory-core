@@ -110,6 +110,10 @@ from memory_core.bootstrap.startup import (
     resolve_bare_session_reset_prompt_state,
     should_apply_startup_context,
 )
+from memory_core.bootstrap.classification import (
+    UnsupportedBootstrapMemoryRuntimeError,
+    classify_workspace_memory_paths,
+)
 
 __all__ = [
     "BARE_SESSION_RESET_PROMPT_BASE",
@@ -144,6 +148,7 @@ __all__ = [
     "WorkspaceSetupState",
     "WorkspaceStateMigrationError",
     "WorkspaceStateMigrationRequiredError",
+    "UnsupportedBootstrapMemoryRuntimeError",
     "analyze_bootstrap_budget",
     "append_cron_style_current_time_line",
     "apply_context_mode_filter",
@@ -158,6 +163,7 @@ __all__ = [
     "build_startup_context",
     "build_workspace_context",
     "clamp_to_budget",
+    "classify_workspace_memory_paths",
     "filter_bootstrap_files",
     "filter_bootstrap_files_for_session",
     "filter_completed_bootstrap_file",

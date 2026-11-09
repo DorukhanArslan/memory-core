@@ -125,6 +125,16 @@ A `.memory-core` that is not a directory reads as no state; writing the state th
 
 `build_workspace_context` applies upstream's run pipeline:
 
+- Automatic memory provenance: optional `config` selects the built-in memory
+  classifier; a host can also supply its concrete `artifact_provenance` store.
+  The classifier resolves real paths, rejects escapes and consults the canonical
+  file's recorded trust before selecting USER.md and MEMORY.md. Only `owner` and
+  `agent` origins are eligible. Classification runs before session and lightweight
+  filters. A store failure excludes the candidates and reports a warning.
+  Disabling search does not disable this provenance owner. `HostKit` forwards the
+  same store its writer and index use. Third-party plugin runtimes are not
+  replaced with an invented built-in implementation.
+
 - Loading: USER.md and MEMORY.md (and the extension file) are skipped unless the
   directory lists the exact name. A missing file renders `[MISSING] Expected at:
   <path>`; a file the guarded read refuses (any final symlink, a hard link, a
@@ -189,8 +199,8 @@ Python cannot UTF-8 encode a lone surrogate (the startup cut in `build_startup_c
 - The `agent:bootstrap` hook, `bootstrap-extra-files` globs (so
   `WorkspaceLayout.can_read` allows only the layout's root files) and the per-session
   snapshot and file caches.
-- The personal `users/<profile-id>/USER.md` overlay, the automatic-memory provenance
-  filter and the per-project curated MEMORY.md filter.
+- The personal `users/<profile-id>/USER.md` overlay, third-party registered memory
+  runtimes and the per-project curated MEMORY.md filter.
 - The transcript scan behind `hasCompletedBootstrapTurn`: the host passes
   `has_completed_bootstrap_turn` and persists the marker when
   `record_completed_bootstrap_turn` is set.

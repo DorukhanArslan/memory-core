@@ -15,7 +15,7 @@ Ports, at the parity pin v2026.9.6:
   MEMORY.md privacy filter for subagent, cron, group and channel sessions
   (``filterRootMemoryBootstrapFiles``, d06fc25a0c5, #119198);
 - the run pipeline of ``resolveBootstrapFilesForRun`` (``src/agents/bootstrap-files.ts``):
-  session filter, completed-BOOTSTRAP filter, lightweight context mode (no bootstrap files at
+  configured automatic-memory provenance classification, session filter, completed-BOOTSTRAP filter, lightweight context mode (no bootstrap files at
   all; the heartbeat monitor scratch is injected by the heartbeat runner), path dedupe;
 - ``resolveBootstrapMode`` (``src/agents/bootstrap-mode.ts``) and the contextInjection decision
   of ``resolveAttemptBootstrapContext``
@@ -24,8 +24,7 @@ Ports, at the parity pin v2026.9.6:
 Not ported: the ``agent:bootstrap`` hook and ``bootstrap-extra-files`` globs, the per-session
 snapshot cache and the workspace file cache, the authenticated personal
 ``users/<profile-id>/USER.md`` overlay (``workspace-personal-bootstrap.ts``; memory-core's
-``user/`` folder is a separate extension), the automatic-memory provenance filter
-(``resolveIneligibleAutomaticMemoryFiles``, needs the memory runtime's origin classifier),
+``user/`` folder is a separate extension), third-party registered memory runtimes,
 remote workspace access, the transient-read retries, and the transcript scan behind
 ``hasCompletedBootstrapTurn`` (the host passes that answer in). OS read errors other than
 the ones :func:`read_workspace_bootstrap_file` names get upstream's generic fallback reason
@@ -38,13 +37,16 @@ import errno
 import os
 import re
 import stat
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from memory_core.bootstrap._js import JS_SPACE, js_trim, truncate_utf16_safe
 from memory_core.bootstrap.layout import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
+
+if TYPE_CHECKING:
+    from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 
 MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES = 2 * 1024 * 1024
 # workspace.ts loadWorkspaceBootstrapFiles: the unreadable reason is capped at 300 UTF-16 units.
@@ -437,15 +439,27 @@ def filter_bootstrap_files(
     setup_completed: bool = False,
     context_mode: BootstrapContextMode = "full",
     warn: Callable[[str], None] | None = None,
+    config: Mapping[str, Any] | None = None,
+    artifact_provenance: MemoryArtifactProvenanceStore | None = None,
 ) -> list[WorkspaceBootstrapFile]:
     """The ``resolveBootstrapFilesForRun`` filter chain, in upstream order.
+
+    The built-in classifier uses actual physical paths and the supplied artifact
+    provenance store when ``config`` selects it or the host explicitly supplies
+    that store. It runs before the session filter, as the original caller does.
+    No search manager or model is needed. Unavailable runtimes skip classification;
+    classification failures exclude the candidates and report a warning.
 
     Session filter (with ``root`` as the session workspace), completed-BOOTSTRAP filter,
     context mode, then the path dedupe. Upstream repeats the session and completed filters
     after its bootstrap hooks; memory-core has no hooks, so the second pass changes nothing.
     ``warn`` receives the path-dedupe warnings, like upstream's ``warn`` option.
     """
-    filtered = filter_bootstrap_files_for_session(files, session_kind, layout, root=root)
+    from memory_core.bootstrap.classification import filter_automatic_bootstrap_memory
+
+    automatic = filter_automatic_bootstrap_memory(files, root=root, config=config,
+        artifact_provenance=artifact_provenance, warn=warn)
+    filtered = filter_bootstrap_files_for_session(automatic, session_kind, layout, root=root)
     filtered = filter_completed_bootstrap_file(
         filtered, setup_completed=setup_completed, root=root, layout=layout
     )

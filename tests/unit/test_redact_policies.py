@@ -121,7 +121,8 @@ def test_pattern_parsing_and_classification():
     assert compile_redact_pattern("(a+)+b").reason == "unsafe-nested-repetition"
     assert compile_redact_pattern("([").reason == "invalid-regex"
     assert compile_redact_pattern("/a/gg").reason == "invalid-regex"
-    assert compile_redact_pattern("/\\p{L}/u").reason == "unsupported-syntax"
+    assert compile_redact_pattern("/\\p{L}/u").reason is None
+    assert compile_redact_pattern("/\\p{Lu}/u").reason == "unsupported-syntax"
     assert compile_redact_pattern("  CUST-\\d+ ").reason is None
 
 

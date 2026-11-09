@@ -80,3 +80,11 @@ Valid JavaScript regex behavior unsupported by the SDK remains an ordinary visib
 difference. Native raw-input WeakMap identity reuse also remains different from
 the SDK's uncached raw dictionaries; prepared output reuse is supported. Neither
 diagnostic establishes complete redaction parity while those differences remain.
+
+Configured patterns under `u` support exactly six Letter property aliases: `L`,
+`Letter`, `gc=L`, `gc=Letter`, `General_Category=L` and
+`General_Category=Letter`. The generated ranges come from the approved Node
+24.16.0 / ICU 78.3 / Unicode 17 engine. A `\P` token materializes the complement
+before the existing case-folding stage; an outer negated character class keeps
+its different semantics. Other properties, `v` sets, mixed case-folding behavior
+and repeated-capture reset differences remain visible diagnostics.

@@ -102,6 +102,7 @@ const internal = await import(sourceUrl("src/logging/redact-internal-state.ts"))
 const registry = await import(sourceUrl("src/logging/secret-redaction-registry.ts"));
 const logger = await import(sourceUrl("src/logging/logger.ts"));
 const transcript = await import(sourceUrl("src/agents/transcript-redact.ts"));
+const configRegex = await import(sourceUrl("src/security/config-regex.ts"));
 const reset = globalThis[Symbol.for("openclaw.secretRedactionRegistryTestApi")].resetSecretRedactionRegistryForTest;
 const results = [];
 for (const testCase of request.cases) {
@@ -119,6 +120,11 @@ for (const testCase of request.cases) {
       structuredTool: redact.redactSecrets(input.value), structuredModel: redact.redactModelVisibleSecrets(input.value),
       transcript: transcript.redactTranscriptMessage(input.message, { logging }),
       policy: internal.captureModelVisibleRedactionPolicy(logging),
+      ...(input.directRegex ? { directCompiler: (() => {
+        const compiled = configRegex.compileConfigRegex(input.directRegex.source, input.directRegex.flags);
+        return compiled && { pattern: compiled.pattern, flags: compiled.flags, reason: compiled.reason,
+          accepted: Boolean(compiled.regex) };
+      })() } : {}),
     } });
   } catch (error) { results.push({ id: testCase.id, covers: [], ok: false, error: { name: error.name, message: error.message } }); }
 }

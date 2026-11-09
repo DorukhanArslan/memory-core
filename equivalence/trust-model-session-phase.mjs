@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { mock } from "node:test";
+import crypto from "node:crypto";
 
 const request = JSON.parse(await fs.readFile(process.argv[2], "utf8"));
 const { input, phase, directory, runtimeRoot } = request;
@@ -26,6 +27,9 @@ mock.timers.enable({ apis: ["Date"], now: input.nowMs });
 const raw = { phase, pid: process.pid, ppid: process.ppid, request, clock: {
   owner: "node:test", apis: ["Date"], nowMs: Date.now(), dateConstructorReplaced: Date !== originalDate,
   setTimeoutUnchanged: setTimeout === originalTimeout }, events: [], contexts: [], executions: [], persisted: [] };
+raw.runtime = { execPath: await fs.realpath(process.execPath), nodeVersion: process.version,
+  icuVersion: process.versions.icu, unicodeVersion: process.versions.unicode,
+  sha256: crypto.createHash("sha256").update(await fs.readFile(process.execPath)).digest("hex") };
 const encode = (value) => JSON.parse(JSON.stringify(value, (_key, item) => typeof item === "function"
   ? { $type: "function", name: item.name, source: String(item) } : item));
 const imp = (file) => import(pathToFileURL(path.join(runtimeRoot, file)).href);

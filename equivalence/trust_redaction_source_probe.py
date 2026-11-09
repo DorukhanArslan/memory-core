@@ -69,6 +69,17 @@ def cases() -> list[dict]:
     add("unicode-literal-odd-hint-boundaries", "prefix:a" + "𐐀" * 8 + "b", patterns=["/(prefix:)(a𐐀+b)/gu"])
     add("unicode-literal-lone-surrogate", "prefix:" + "\ud800" * 22, patterns=[r"/(prefix:)(\ud800+)/gu"])
     add("nonunicode-literal-astral-hint", "prefix:" + "𐐀" * 22, patterns=["/(prefix:)((?:𐐀)+)/g"])
+    for alias in ("L", "Letter", "gc=L", "gc=Letter", "General_Category=L", "General_Category=Letter"):
+        add("letter-alias-" + alias.replace("=", "-"), "CUST:" + "𐐀" * 22 + " end", patterns=[rf"/(CUST:)(\p{{{alias}}}+)/gu"])
+    add("letter-complement-before-fold", "REF:ι REF:123", patterns=[r"/(REF:)(\P{Letter}+)/giu"])
+    add("letter-class-and-outer-negation", "REF:Ab_19 REF:123", patterns=[r"/(REF:)([\p{L}0-9_]+)/giu", r"/(REF:)([^\p{Letter}]+)/gu"])
+    add("letter-invalid-range-stays-invalid", "REF:a REF:z", patterns=[r"/(REF:)([a-\p{L}]+)/gu"])
+    result[-1]["input"]["directRegex"] = {"source": r"[a-\p{L}]", "flags": "gu"}
+    add("letter-mixed-i-engine-diagnostic", "aİ aı aI ai", patterns=[r"/\p{L}i/giu"])
+    add("letter-repeated-capture-engine-diagnostic", "a1", patterns=[r"/(?:(\d)|(\p{L})){2}/gu"])
+    add("unsupported-valid-general-property", "AAA aaa", patterns=[r"/\p{Lu}+/gu"])
+    add("unsupported-valid-v-direct-compiler", "ABC abc 123")
+    result[-1]["input"]["directRegex"] = {"source": r"[\p{ASCII}&&\p{Letter}]+", "flags": "gv"}
     return result
 
 
@@ -76,6 +87,7 @@ def sdk(request: dict) -> dict:
     import memory_core
     from memory_core import redact, secret_registry
     from memory_core.model_tool_result import capture_model_visible_redaction_policy
+    from memory_core.redact_user_patterns import compile_config_regex
     from memory_core.session_transcript_append import redact_message_for_storage
 
     if not Path(memory_core.__file__).resolve().is_relative_to(ROOT):
@@ -93,6 +105,11 @@ def sdk(request: dict) -> dict:
             secret_registry.register_secret_value_for_redaction(secret)
         try:
             policy = asdict(capture_model_visible_redaction_policy(config))
+            extra = {}
+            if value.get("directRegex"):
+                compiled = compile_config_regex(value["directRegex"]["source"], value["directRegex"]["flags"])
+                extra["directCompiler"] = ({"pattern": compiled.pattern, "flags": compiled.flags,
+                    "reason": compiled.reason, "accepted": compiled.regex is not None} if compiled else None)
             output.append({"id": case["id"], "covers": [], "ok": True, "result": {
                 "explicitSensitiveText": redact.redact_sensitive_text(value["text"], mode=value["mode"],
                     **({"patterns": value["patterns"]} if "patterns" in value else {})),
@@ -103,6 +120,7 @@ def sdk(request: dict) -> dict:
                 "transcript": redact_message_for_storage(value["message"], config),
                 "policy": {"patterns": list(policy["patterns"]), "fullContext": policy["full_context"],
                            "registryRevision": policy["registry_revision"]},
+                **extra,
             }})
         except Exception as error:
             output.append({"id": case["id"], "covers": [], "ok": False,

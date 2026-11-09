@@ -57,6 +57,16 @@ def cases() -> list[dict]:
             {"type": "image_url", "image_url": {"url": "DATA:image/jpeg;base64,iVBORw0KGgo=\n"}},
         ], "details": {"status": "complete"}}, {}),
         ("ordinary-prototype-key", {"content": [{"type": "text", "text": "complete"}], "details": {"__proto__": "literal", "password": "fixture-secret"}}, {}),
+        ("configured-letter-live-and-persistence", {"content": [{"type": "text", "text": "CUST:" + "𐐀" * 22}],
+         "details": {"note": "CUST:" + "𐐀" * 22}}, {"patterns": [r"/(CUST:)(\p{L}+)/gu"]}),
+        ("configured-letter-complement-before-fold", {"content": [{"type": "text", "text": "REF:ι REF:123"}],
+         "details": {"note": "REF:ι REF:123"}}, {"patterns": [r"/(REF:)(\P{Letter}+)/giu"]}),
+        ("configured-letter-character-class", {"content": [{"type": "text", "text": "MATCH:Ab_19"}],
+         "details": {"note": "MATCH:Ab_19"}}, {"patterns": [r"/(MATCH:)([\p{General_Category=L}0-9_]+)/giu"]}),
+        ("configured-letter-mixed-i-engine-diagnostic", {"content": [{"type": "text", "text": "CASE:aİ CASE:aı CASE:aI CASE:ai"}],
+         "details": {"note": "CASE:aİ CASE:aı CASE:aI CASE:ai"}}, {"patterns": [r"/(CASE:)(\p{L}i)/giu"]}),
+        ("configured-letter-capture-reset-engine-diagnostic", {"content": [{"type": "text", "text": "CAP:a1"}],
+         "details": {"note": "CAP:a1"}}, {"patterns": [r"/(CAP:)(?:(\d)|(\p{L})){2}/gu"]}),
     ]
     output = []
     for name, result, extra in fixtures:
@@ -136,15 +146,25 @@ def _owned_identity() -> dict:
         filename: hashlib.sha256((ROOT / filename).read_bytes()).hexdigest() for filename in files}}
 
 
-def run(checkout: Path, cache: Path, node: Path, output: Path) -> dict:
+def run(checkout: Path, cache: Path, node: Path, output: Path, selected_case_ids: list[str] | None = None) -> dict:
     output.mkdir(parents=True, exist_ok=False)
     target = json.loads((ROOT / "equivalence/reference.json").read_text())
     reference = _validate_reference(checkout, node, target)
     runtime = prepare_release_runtime(checkout, cache)
-    before = _owned_identity()
+    def node_identity():
+        versions = json.loads(subprocess.run([str(node), "--eval", "process.stdout.write(JSON.stringify({nodeVersion:process.version,icuVersion:process.versions.icu,unicodeVersion:process.versions.unicode}))"],
+            check=True, capture_output=True, text=True, timeout=10).stdout)
+        return {"execPath": str(node.resolve()), "sha256": hashlib.sha256(node.read_bytes()).hexdigest(), **versions}
+
+    before = {**_owned_identity(), "node": node_identity()}
     observations = []
     env = {"PATH": str(node.parent) + os.pathsep + os.defpath, "LANG": "C.UTF-8", "TZ": "UTC"}
-    for case in cases():
+    available = cases()
+    if selected_case_ids and (len(set(selected_case_ids)) != len(selected_case_ids)
+            or not set(selected_case_ids) <= {case["id"] for case in available}):
+        raise ValueError("The selected diagnostic case is not in the fixed case catalog")
+    selected = [case for case in available if not selected_case_ids or case["id"] in selected_case_ids]
+    for case in selected:
         directory = output / case["id"]
         directory.mkdir()
         phases = []
@@ -167,16 +187,19 @@ def run(checkout: Path, cache: Path, node: Path, output: Path) -> dict:
                 if completed.returncode:
                     raise RuntimeError(f"The retained {side} {phase} session process failed for {case['id']}")
                 results[side] = json.loads((directory / f"{side}-{phase}.stdout.json").read_text())
+                if side == "native" and results[side]["raw"].get("runtime") != before["node"]:
+                    raise RuntimeError("The native session process used a different executable or Unicode runtime")
             left, right = results["native"]["result"], results["sdk"]["result"]
             phases.append({"phase": phase, "equal": left == right, "differingFields": [
                 key for key in left.keys() | right.keys() if left.get(key) != right.get(key)],
                 "processesDistinct": results["native"]["raw"]["pid"] != results["sdk"]["raw"]["pid"]})
         observations.append({"id": case["id"], "covers": [], "phases": phases})
-    after = _owned_identity()
+    after = {**_owned_identity(), "node": node_identity()}
     if before != after or runtime != prepare_release_runtime(checkout, cache) or reference != _validate_reference(checkout, node, target):
         raise RuntimeError("The original runtime, source or SDK changed during session diagnostics")
     report = {"profile": "actual-AgentSession-and-SDK-host-settlement", "covers": [], "awardedPoints": 0,
               "reference": reference, "runtime": runtime, "before": before, "after": after, "cases": observations,
+              "availableCases": [case["id"] for case in available], "selectedCases": [case["id"] for case in selected],
               "identityDiagnostic": "Native original-input WeakMap reuse and SDK uncached raw dictionaries remain a separate visible mismatch; value matches do not establish identity parity."}
     (output / "report.json").write_text(json.dumps(report, indent=2))
     return report
@@ -185,13 +208,14 @@ def run(checkout: Path, cache: Path, node: Path, output: Path) -> dict:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sdk-input", type=Path)
+    parser.add_argument("--case", action="append", dest="selected_case_ids")
     for option in ("checkout", "runtime-cache", "node", "output"):
         parser.add_argument("--" + option, type=Path)
     args = parser.parse_args()
     if args.sdk_input:
         print(json.dumps(sdk_phase(json.loads(args.sdk_input.read_text()))))
         return
-    report = run(args.checkout.resolve(), args.runtime_cache.resolve(), args.node.resolve(), args.output.resolve())
+    report = run(args.checkout.resolve(), args.runtime_cache.resolve(), args.node.resolve(), args.output.resolve(), args.selected_case_ids)
     phases = [phase for case in report["cases"] for phase in case["phases"]]
     print(json.dumps({"matchedPhases": sum(phase["equal"] for phase in phases), "totalPhases": len(phases), "awardedPoints": 0}))
 

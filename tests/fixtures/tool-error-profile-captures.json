@@ -1,0 +1,621 @@
+{
+  "capture": "Four retained actual original shared formatter and complete whole-tool envelopes, from the corrected frozen diagnostic; no fields or carrier strings changed.",
+  "referenceCommit": "bcfc88812a35243893585dbeca87ca41b48272ca",
+  "observations": [
+    {
+      "id": "error-registered-surfaces",
+      "input": {
+        "registeredSecrets": [
+          "demo key\"\\suffix!"
+        ],
+        "error": {
+          "message": "request demo key\"\\suffix! serialized demo key\\\"\\\\suffix!",
+          "cause": {
+            "message": "transport demo%20key%22%5Csuffix!",
+            "code": "ECONNRESET"
+          }
+        }
+      },
+      "native": {
+        "covers": [],
+        "result": {
+          "formatter": "request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET",
+          "get": {
+            "content": [
+              {
+                "type": "text",
+                "text": {
+                  "path": "topic",
+                  "text": "",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET",
+                  "error": "request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET"
+                }
+              }
+            ],
+            "details": {
+              "path": "topic",
+              "text": "",
+              "corpora": [
+                {
+                  "corpus": "wiki",
+                  "outcome": "unavailable",
+                  "error": "request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET"
+                }
+              ],
+              "warning": "Wiki corpus unavailable: request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET",
+              "error": "request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET"
+            }
+          },
+          "search": {
+            "content": [
+              {
+                "type": "text",
+                "text": {
+                  "results": [],
+                  "citations": "auto",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET",
+                  "error": "request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET"
+                }
+              }
+            ],
+            "details": {
+              "results": [],
+              "citations": "auto",
+              "corpora": [
+                {
+                  "corpus": "wiki",
+                  "outcome": "unavailable",
+                  "error": "request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET"
+                }
+              ],
+              "warning": "Wiki corpus unavailable: request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET",
+              "error": "request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET"
+            }
+          }
+        },
+        "raw": {
+          "formatter": "request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET",
+          "nativeEnvelopes": [
+            {
+              "tool": "get",
+              "envelope": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "{\n  \"path\": \"topic\",\n  \"text\": \"\",\n  \"corpora\": [\n    {\n      \"corpus\": \"wiki\",\n      \"outcome\": \"unavailable\",\n      \"error\": \"request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET\"\n    }\n  ],\n  \"warning\": \"Wiki corpus unavailable: request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET\",\n  \"error\": \"request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET\"\n}"
+                  }
+                ],
+                "details": {
+                  "path": "topic",
+                  "text": "",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET",
+                  "error": "request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET"
+                }
+              }
+            },
+            {
+              "tool": "search",
+              "envelope": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "{\n  \"results\": [],\n  \"citations\": \"auto\",\n  \"corpora\": [\n    {\n      \"corpus\": \"wiki\",\n      \"outcome\": \"unavailable\",\n      \"error\": \"request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET\"\n    }\n  ],\n  \"warning\": \"Wiki corpus unavailable: request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET\",\n  \"error\": \"request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET\"\n}"
+                  }
+                ],
+                "details": {
+                  "results": [],
+                  "citations": "auto",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET",
+                  "error": "request *** serialized demo k\u2026fix! | transport demo%2\u2026fix! | ECONNRESET"
+                }
+              }
+            }
+          ],
+          "requests": [
+            {
+              "tool": "get",
+              "query": {
+                "lookup": "topic",
+                "agentId": "main"
+              }
+            },
+            {
+              "tool": "search",
+              "query": {
+                "query": "topic",
+                "agentId": "main"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "error-configured-tool-boundaries",
+      "input": {
+        "registeredSecrets": [
+          "demo-supplement-credential"
+        ],
+        "patterns": [
+          "([",
+          "(a+)+b",
+          "CUST-\\d+"
+        ],
+        "error": {
+          "message": "provider CUST-1234 demo-supplement-credential"
+        }
+      },
+      "native": {
+        "covers": [],
+        "result": {
+          "formatter": "provider *** demo-s\u2026tial",
+          "get": {
+            "content": [
+              {
+                "type": "text",
+                "text": {
+                  "path": "topic",
+                  "text": "",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "provider *** demo-s\u2026tial"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: provider *** demo-s\u2026tial",
+                  "error": "provider *** demo-s\u2026tial"
+                }
+              }
+            ],
+            "details": {
+              "path": "topic",
+              "text": "",
+              "corpora": [
+                {
+                  "corpus": "wiki",
+                  "outcome": "unavailable",
+                  "error": "provider *** demo-s\u2026tial"
+                }
+              ],
+              "warning": "Wiki corpus unavailable: provider *** demo-s\u2026tial",
+              "error": "provider *** demo-s\u2026tial"
+            }
+          },
+          "search": {
+            "content": [
+              {
+                "type": "text",
+                "text": {
+                  "results": [],
+                  "citations": "auto",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "provider *** demo-s\u2026tial"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: provider *** demo-s\u2026tial",
+                  "error": "provider *** demo-s\u2026tial"
+                }
+              }
+            ],
+            "details": {
+              "results": [],
+              "citations": "auto",
+              "corpora": [
+                {
+                  "corpus": "wiki",
+                  "outcome": "unavailable",
+                  "error": "provider *** demo-s\u2026tial"
+                }
+              ],
+              "warning": "Wiki corpus unavailable: provider *** demo-s\u2026tial",
+              "error": "provider *** demo-s\u2026tial"
+            }
+          }
+        },
+        "raw": {
+          "formatter": "provider *** demo-s\u2026tial",
+          "nativeEnvelopes": [
+            {
+              "tool": "get",
+              "envelope": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "{\n  \"path\": \"topic\",\n  \"text\": \"\",\n  \"corpora\": [\n    {\n      \"corpus\": \"wiki\",\n      \"outcome\": \"unavailable\",\n      \"error\": \"provider *** demo-s\u2026tial\"\n    }\n  ],\n  \"warning\": \"Wiki corpus unavailable: provider *** demo-s\u2026tial\",\n  \"error\": \"provider *** demo-s\u2026tial\"\n}"
+                  }
+                ],
+                "details": {
+                  "path": "topic",
+                  "text": "",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "provider *** demo-s\u2026tial"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: provider *** demo-s\u2026tial",
+                  "error": "provider *** demo-s\u2026tial"
+                }
+              }
+            },
+            {
+              "tool": "search",
+              "envelope": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "{\n  \"results\": [],\n  \"citations\": \"auto\",\n  \"corpora\": [\n    {\n      \"corpus\": \"wiki\",\n      \"outcome\": \"unavailable\",\n      \"error\": \"provider *** demo-s\u2026tial\"\n    }\n  ],\n  \"warning\": \"Wiki corpus unavailable: provider *** demo-s\u2026tial\",\n  \"error\": \"provider *** demo-s\u2026tial\"\n}"
+                  }
+                ],
+                "details": {
+                  "results": [],
+                  "citations": "auto",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "provider *** demo-s\u2026tial"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: provider *** demo-s\u2026tial",
+                  "error": "provider *** demo-s\u2026tial"
+                }
+              }
+            }
+          ],
+          "requests": [
+            {
+              "tool": "get",
+              "query": {
+                "lookup": "topic",
+                "agentId": "main"
+              }
+            },
+            {
+              "tool": "search",
+              "query": {
+                "query": "topic",
+                "agentId": "main"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "error-default-patterns",
+      "input": {
+        "error": {
+          "message": "provider token=abcdefghijklmnopqrstuvwxyz"
+        }
+      },
+      "native": {
+        "covers": [],
+        "result": {
+          "formatter": "provider token=abcdef\u2026wxyz",
+          "get": {
+            "content": [
+              {
+                "type": "text",
+                "text": {
+                  "path": "topic",
+                  "text": "",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "provider token=abcdef\u2026wxyz"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: provider token=abcdef\u2026wxyz",
+                  "error": "provider token=abcdef\u2026wxyz"
+                }
+              }
+            ],
+            "details": {
+              "path": "topic",
+              "text": "",
+              "corpora": [
+                {
+                  "corpus": "wiki",
+                  "outcome": "unavailable",
+                  "error": "provider token=abcdef\u2026wxyz"
+                }
+              ],
+              "warning": "Wiki corpus unavailable: provider token=abcdef\u2026wxyz",
+              "error": "provider token=abcdef\u2026wxyz"
+            }
+          },
+          "search": {
+            "content": [
+              {
+                "type": "text",
+                "text": {
+                  "results": [],
+                  "citations": "auto",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "provider token=abcdef\u2026wxyz"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: provider token=abcdef\u2026wxyz",
+                  "error": "provider token=abcdef\u2026wxyz"
+                }
+              }
+            ],
+            "details": {
+              "results": [],
+              "citations": "auto",
+              "corpora": [
+                {
+                  "corpus": "wiki",
+                  "outcome": "unavailable",
+                  "error": "provider token=abcdef\u2026wxyz"
+                }
+              ],
+              "warning": "Wiki corpus unavailable: provider token=abcdef\u2026wxyz",
+              "error": "provider token=abcdef\u2026wxyz"
+            }
+          }
+        },
+        "raw": {
+          "formatter": "provider token=abcdef\u2026wxyz",
+          "nativeEnvelopes": [
+            {
+              "tool": "get",
+              "envelope": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "{\n  \"path\": \"topic\",\n  \"text\": \"\",\n  \"corpora\": [\n    {\n      \"corpus\": \"wiki\",\n      \"outcome\": \"unavailable\",\n      \"error\": \"provider token=abcdef\u2026wxyz\"\n    }\n  ],\n  \"warning\": \"Wiki corpus unavailable: provider token=abcdef\u2026wxyz\",\n  \"error\": \"provider token=abcdef\u2026wxyz\"\n}"
+                  }
+                ],
+                "details": {
+                  "path": "topic",
+                  "text": "",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "provider token=abcdef\u2026wxyz"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: provider token=abcdef\u2026wxyz",
+                  "error": "provider token=abcdef\u2026wxyz"
+                }
+              }
+            },
+            {
+              "tool": "search",
+              "envelope": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "{\n  \"results\": [],\n  \"citations\": \"auto\",\n  \"corpora\": [\n    {\n      \"corpus\": \"wiki\",\n      \"outcome\": \"unavailable\",\n      \"error\": \"provider token=abcdef\u2026wxyz\"\n    }\n  ],\n  \"warning\": \"Wiki corpus unavailable: provider token=abcdef\u2026wxyz\",\n  \"error\": \"provider token=abcdef\u2026wxyz\"\n}"
+                  }
+                ],
+                "details": {
+                  "results": [],
+                  "citations": "auto",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "provider token=abcdef\u2026wxyz"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: provider token=abcdef\u2026wxyz",
+                  "error": "provider token=abcdef\u2026wxyz"
+                }
+              }
+            }
+          ],
+          "requests": [
+            {
+              "tool": "get",
+              "query": {
+                "lookup": "topic",
+                "agentId": "main"
+              }
+            },
+            {
+              "tool": "search",
+              "query": {
+                "query": "topic",
+                "agentId": "main"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "error-contained-cause-diagnostic",
+      "input": {
+        "error": {
+          "message": "request failed: transport failed",
+          "cause": {
+            "message": "transport failed",
+            "code": "ECONNRESET"
+          }
+        }
+      },
+      "native": {
+        "covers": [],
+        "result": {
+          "formatter": "request failed: transport failed | ECONNRESET",
+          "get": {
+            "content": [
+              {
+                "type": "text",
+                "text": {
+                  "path": "topic",
+                  "text": "",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "request failed: transport failed | ECONNRESET"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: request failed: transport failed | ECONNRESET",
+                  "error": "request failed: transport failed | ECONNRESET"
+                }
+              }
+            ],
+            "details": {
+              "path": "topic",
+              "text": "",
+              "corpora": [
+                {
+                  "corpus": "wiki",
+                  "outcome": "unavailable",
+                  "error": "request failed: transport failed | ECONNRESET"
+                }
+              ],
+              "warning": "Wiki corpus unavailable: request failed: transport failed | ECONNRESET",
+              "error": "request failed: transport failed | ECONNRESET"
+            }
+          },
+          "search": {
+            "content": [
+              {
+                "type": "text",
+                "text": {
+                  "results": [],
+                  "citations": "auto",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "request failed: transport failed | ECONNRESET"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: request failed: transport failed | ECONNRESET",
+                  "error": "request failed: transport failed | ECONNRESET"
+                }
+              }
+            ],
+            "details": {
+              "results": [],
+              "citations": "auto",
+              "corpora": [
+                {
+                  "corpus": "wiki",
+                  "outcome": "unavailable",
+                  "error": "request failed: transport failed | ECONNRESET"
+                }
+              ],
+              "warning": "Wiki corpus unavailable: request failed: transport failed | ECONNRESET",
+              "error": "request failed: transport failed | ECONNRESET"
+            }
+          }
+        },
+        "raw": {
+          "formatter": "request failed: transport failed | ECONNRESET",
+          "nativeEnvelopes": [
+            {
+              "tool": "get",
+              "envelope": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "{\n  \"path\": \"topic\",\n  \"text\": \"\",\n  \"corpora\": [\n    {\n      \"corpus\": \"wiki\",\n      \"outcome\": \"unavailable\",\n      \"error\": \"request failed: transport failed | ECONNRESET\"\n    }\n  ],\n  \"warning\": \"Wiki corpus unavailable: request failed: transport failed | ECONNRESET\",\n  \"error\": \"request failed: transport failed | ECONNRESET\"\n}"
+                  }
+                ],
+                "details": {
+                  "path": "topic",
+                  "text": "",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "request failed: transport failed | ECONNRESET"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: request failed: transport failed | ECONNRESET",
+                  "error": "request failed: transport failed | ECONNRESET"
+                }
+              }
+            },
+            {
+              "tool": "search",
+              "envelope": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "{\n  \"results\": [],\n  \"citations\": \"auto\",\n  \"corpora\": [\n    {\n      \"corpus\": \"wiki\",\n      \"outcome\": \"unavailable\",\n      \"error\": \"request failed: transport failed | ECONNRESET\"\n    }\n  ],\n  \"warning\": \"Wiki corpus unavailable: request failed: transport failed | ECONNRESET\",\n  \"error\": \"request failed: transport failed | ECONNRESET\"\n}"
+                  }
+                ],
+                "details": {
+                  "results": [],
+                  "citations": "auto",
+                  "corpora": [
+                    {
+                      "corpus": "wiki",
+                      "outcome": "unavailable",
+                      "error": "request failed: transport failed | ECONNRESET"
+                    }
+                  ],
+                  "warning": "Wiki corpus unavailable: request failed: transport failed | ECONNRESET",
+                  "error": "request failed: transport failed | ECONNRESET"
+                }
+              }
+            }
+          ],
+          "requests": [
+            {
+              "tool": "get",
+              "query": {
+                "lookup": "topic",
+                "agentId": "main"
+              }
+            },
+            {
+              "tool": "search",
+              "query": {
+                "query": "topic",
+                "agentId": "main"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

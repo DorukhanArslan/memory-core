@@ -46,6 +46,8 @@ from memory_core.bootstrap._js import (
 from memory_core.config import MemoryConfig
 from memory_core.project_name import DISPLAY_NAME
 from memory_core.index.cjk_chars import truncate_utf16_safe
+from memory_core.index._js_exp import exp as _js_exp
+from memory_core.index._js_log1p import log1p as _js_log1p
 from memory_core.consolidation._util import (
     DAY_MS,
     clamp_score,
@@ -1295,7 +1297,7 @@ def _candidate_components(
         if math.isfinite(recency_half_life_days) and recency_half_life_days > 0
         else DEFAULT_RECENCY_HALF_LIFE_DAYS
     )
-    recency = math.exp(-(math.log(2) / half_life_days) * age_days)
+    recency = _js_exp(-(math.log(2) / half_life_days) * age_days)
     concept_tags = [value for value in entry.get("conceptTags", []) if isinstance(value, str)]
     consolidation = max(
         _calculate_consolidation_component(recall_days),
@@ -1303,7 +1305,7 @@ def _candidate_components(
     )
     key = str(entry.get("key") or "")
     return {
-        "frequency": clamp_score(math.log1p(max(0, signal_count)) / math.log1p(10)),
+        "frequency": clamp_score(_js_log1p(max(0, signal_count)) / _js_log1p(10)),
         "relevance": clamp_score(avg_score),
         "diversity": clamp_score(max(0, context_diversity) / 5),
         "recency": clamp_score(recency),
@@ -1353,15 +1355,15 @@ def _recency_component(age_days: float, half_life_days: float) -> float:
         return 1.0
     if not math.isfinite(half_life_days) or half_life_days <= 0:
         return 1.0
-    return math.exp(-(math.log(2) / half_life_days) * age_days)
+    return _js_exp(-(math.log(2) / half_life_days) * age_days)
 
 
 def _phase_signal_boost(entry: Any, now_ms: int = 0) -> float:
     """``calculatePhaseSignalBoost``: log-scaled light and REM hits, decayed by their age."""
     if not isinstance(entry, dict):
         return 0.0
-    light_strength = clamp_score(math.log1p(max(0, to_int(entry.get("lightHits"), 0))) / math.log1p(6))
-    rem_strength = clamp_score(math.log1p(max(0, to_int(entry.get("remHits"), 0))) / math.log1p(6))
+    light_strength = clamp_score(_js_log1p(max(0, to_int(entry.get("lightHits"), 0))) / _js_log1p(6))
+    rem_strength = clamp_score(_js_log1p(max(0, to_int(entry.get("remHits"), 0))) / _js_log1p(6))
     light_age = _phase_signal_age_days(entry.get("lastLightAt"), now_ms)
     rem_age = _phase_signal_age_days(entry.get("lastRemAt"), now_ms)
     light_recency = 0.0 if light_age is None else clamp_score(_recency_component(light_age, 14))
@@ -1394,7 +1396,7 @@ def _calculate_consolidation_component(recall_days: list[str]) -> float:
     if len(parsed) <= 1:
         return 0.2
     span_days = max(0.0, (parsed[-1] - parsed[0]) / DAY_MS)
-    spacing = clamp_score(math.log1p(len(parsed) - 1) / math.log1p(4))
+    spacing = clamp_score(_js_log1p(len(parsed) - 1) / _js_log1p(4))
     span = clamp_score(span_days / 7)
     return clamp_score(0.55 * spacing + 0.45 * span)
 

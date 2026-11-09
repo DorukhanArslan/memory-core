@@ -158,3 +158,14 @@ def test_rank_exposes_six_score_components_and_retains_phase_boost_in_evaluation
     base_score = sum(PROMOTION_COMPONENT_WEIGHTS[key] * value
                      for key, value in candidate.components.items())
     assert candidate.score == pytest.approx(base_score + evaluation.components["phaseBoost"])
+
+
+def test_frequency_only_score_keeps_the_original_binary64_threshold_decision(tmp_path: Path):
+    config = _workspace(tmp_path, recallCount=2, dailyCount=0, totalScore=1.5)
+    weights = {**RELEVANCE_ONLY, "frequency": 1, "relevance": 0}
+    # Adjacent representable scores change admission, with no tolerance at the
+    # frequency-only score gate.
+    assert _rank(config, weights=weights, min_score=0.4581569099913262) == []
+    candidates = _rank(config, weights=weights, min_score=0.45815690999132613)
+    assert len(candidates) == 1
+    assert candidates[0].components["frequency"] == 0.45815690999132613

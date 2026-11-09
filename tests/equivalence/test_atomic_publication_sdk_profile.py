@@ -20,13 +20,24 @@ def _case(suffix):
     return next(case for case in build_atomic_publication_cases() if case["id"].endswith("." + suffix))
 
 
-def test_literal_atomic_catalog_keeps_the_original_three_domains_and_no_credit():
+def test_literal_atomic_catalog_keeps_the_exact_reviewed_condition_mapping():
     cases = build_atomic_publication_cases()
     assert len(cases) == len({case["id"] for case in cases}) == 41
     assert {case["operation"] for case in cases} == {
         "atomic-commit-runtime", "atomic-append-runtime", "atomic-bootstrap-runtime",
     }
-    assert all(case["requirement"] == "storage.atomic-writes" and case["covers"] == [] for case in cases)
+    outcomes_only = {
+        "ordinary-replace", "bootstrap-missing", "bootstrap-existing", "append-existing-newline",
+        "append-existing-without-newline", "append-leading-newline", "append-missing",
+        "cooperating-checked-replacements", "exclusive-bootstrap-winner-during-staging",
+    }
+    assert all(case["requirement"] == "storage.atomic-writes" for case in cases)
+    assert {case["id"].removeprefix("storage.atomic-writes.") for case in cases if len(case["covers"]) == 1} == outcomes_only
+    assert all(case["covers"] == ["storage.atomic-writes.outcomes"] + (
+        [] if case["id"].removeprefix("storage.atomic-writes.") in outcomes_only else ["storage.atomic-writes.boundaries"]
+    ) for case in cases)
+    assert sum("storage.atomic-writes.outcomes" in case["covers"] for case in cases) == 41
+    assert sum("storage.atomic-writes.boundaries" in case["covers"] for case in cases) == 32
     cases[0]["input"]["request"]["content"] = "changed caller fixture"
     assert build_atomic_publication_cases()[0]["input"]["request"]["content"] != "changed caller fixture"
 

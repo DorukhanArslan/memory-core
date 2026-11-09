@@ -1,4 +1,4 @@
-"""Literal, initially uncredited atomic publication comparison fixtures."""
+"""Literal atomic publication fixtures with independently reviewed metadata."""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -41,8 +41,11 @@ def _case(name, kind="commit", *, initial=_INITIAL, content=_REPLACEMENT, mode=0
              "parentMode": parent_mode, "umask": 0o022, "request": request, "faults": list(faults)}
     if concurrency is not None:
         value["concurrency"] = concurrency
+    covers = ["storage.atomic-writes.outcomes"]
+    if faults or parent_mode == 0o555:
+        covers.append("storage.atomic-writes.boundaries")
     return {"id": f"storage.atomic-writes.{name}", "requirement": "storage.atomic-writes",
-            "operation": _OPERATIONS[kind], "input": value, "covers": [],
+            "operation": _OPERATIONS[kind], "input": value, "covers": covers,
             "driverScope": _SCOPE, "normalizationPolicy": _POLICY}
 
 

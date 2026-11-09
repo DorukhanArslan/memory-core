@@ -1,8 +1,10 @@
 # Atomic publication proof profile
 
-This is a proposed, bounded profile for the two original `storage.atomic-writes`
-acceptance conditions. It grants no coverage. Production at `67e3051` remains
-frozen while original observations and paired differences are retained.
+This is the bounded profile for the two original `storage.atomic-writes`
+acceptance conditions. Independently reviewed case metadata is staged after the
+successful protected packet. Main acceptance still requires the fresh combined
+gate. The original production baseline at `67e3051`, observations and paired
+differences remain identifiable in the retained history.
 
 The earlier development packet remains at
 `/workspace/scratch/memory-core-atomic-publication/.equivalence-results/atomic-c-final-development/packet.json`:
@@ -185,6 +187,8 @@ rename results. Original boundaries require injected write, flush, fsync and
 publication failures with surviving-file inspection. No source/helper fixture,
 development packet, or path-only result can close either condition alone.
 
-All new case `covers` lists remain empty until a protected paired formal packet
-passes, independent whole-condition review approves an exact mapping, and the
-combined candidate's required regression and package gates complete.
+The successful protected packet and its earlier reports retain their original
+empty `covers` lists. After independent whole-condition review, the default
+catalog stages 41 outcome mappings and 32 boundary mappings. This metadata does
+not award points in main before the combined candidate's required regression,
+fresh comparison and package gates complete. See `ATOMIC_PUBLICATION_CLOSEOUT.md`.

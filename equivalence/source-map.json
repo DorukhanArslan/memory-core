@@ -213,7 +213,7 @@
           "path": "memory_core/bootstrap/lifecycle.py",
           "symbol": "_write_file_if_missing",
           "anchor": "def _write_file_if_missing(path: Path, content: str) -> bool:",
-          "line": 290
+          "line": 297
         },
         {
           "path": "memory_core/consolidation/promotion.py",
@@ -234,7 +234,11 @@
         "The retained first protected packet matched 33/41 with eight ordinary full-field differences. The second attempt retained a blocked return-versus-process-exit timing assumption. No historical report was rewritten, and its missing collector post-exit tree was not reconstructed. The corrected third protected packet matched 41/41 with zero blocked cases and no errors.",
         "Independent review approved staging 41 original outcome mappings and 32 original boundary mappings for the exact Linux/default-NAPI operation-return profile. This source inventory assigns no behavior credit itself; main acceptance awaits the fresh combined gate and required regression/package checks. See equivalence/ATOMIC_PUBLICATION_CLOSEOUT.md for report identity and exact mapping.",
         "Actual original Promise settlements and complete return trees are independently bound by an immutable trusted preload checkpoint; genuine exit cleanup IO and anchored post-process trees remain separate observations. Receipt tokens require the allocated actor/fd generation and actual prepared post-sync fstat, with every original physical value retained. Source-build reproduction remains false.",
-        "The SDK uses Linux renameat2(RENAME_NOREPLACE) or Darwin renameatx_np(RENAME_EXCL), failing before staging when the ABI is unavailable. Darwin execution, SDK/reference exit-registry interchangeability, restart behavior, providers/index managers/workers and full agent-tool orchestration are unclaimed."
+        "The SDK uses Linux renameat2(RENAME_NOREPLACE) or Darwin renameatx_np(RENAME_EXCL), failing before staging when the ABI is unavailable. Darwin execution, SDK/reference exit-registry interchangeability, restart behavior, providers/index managers/workers and full agent-tool orchestration are unclaimed.",
+        "The real curator and forget callers use a shared checked publication owner with preimage checks, exclusive temporary creation, preserved regular-file modes and post-rename identity verification. Curator source admission remains stricter than the generic writer; it never opts into promotion-only in-place repair.",
+        "The actual promotion caller opts into permission fallback, restores the old bytes after an in-place write/sync failure, and deep consolidation retains real reserved lineage after dispatched publication errors. Rooted daily append preserves partial bytes and plain errors, private exclusive bootstrap creation stages all bytes before visibility, and existing bootstrap entries remain unchanged.",
+        "Development probes retain complete errors, causes, FsSafe categories, surviving bytes/modes and physical receipts. Append and replacement parent-directory fsync are best-effort; retained-directory bootstrap staging ignores only parent-sync EPERM and exposes a real published receipt on other post-publication sync failures. This distinction replaces the earlier broad parent-fsync assumption.",
+        "Genuine per-process kernel EFBIG, literal write/fsync faults, checked concurrent replacements and exclusive creation during staging are development observations only. Physical receipt bigint identities/timestamps/temp names remain noninterchangeable in the retained full-error comparison. Broader cleanup/close, indeterminate bootstrap publication, authenticated whole-condition proof and caller reconciliation for plain partial append remain unverified; no acceptance credit is assigned."
       ]
     },
     {
@@ -2929,6 +2933,24 @@
           "symbol": "resolveBootstrapFilesForRun",
           "anchor": "export async function resolveBootstrapFilesForRun(",
           "line": 305
+        },
+        {
+          "path": "extensions/memory-core/src/workspace-path-classifier.ts",
+          "symbol": "classifyWorkspaceMemoryPaths",
+          "anchor": "export const classifyWorkspaceMemoryPaths:",
+          "line": 10
+        },
+        {
+          "path": "extensions/memory-core/src/memory/memory-path-provenance.ts",
+          "symbol": "resolveMemoryPathClassification",
+          "anchor": "export async function resolveMemoryPathClassification(",
+          "line": 16
+        },
+        {
+          "path": "src/memory/memory-artifact-provenance.ts",
+          "symbol": "readMemoryArtifactProvenance",
+          "anchor": "export async function readMemoryArtifactProvenance(",
+          "line": 198
         }
       ],
       "python": [
@@ -2936,24 +2958,31 @@
           "path": "memory_core/bootstrap/lifecycle.py",
           "symbol": "initialize_agent_workspace",
           "anchor": "def initialize_agent_workspace(",
-          "line": 417
+          "line": 424
         },
         {
           "path": "memory_core/bootstrap/files.py",
           "symbol": "load_workspace_bootstrap_files",
           "anchor": "def load_workspace_bootstrap_files(",
-          "line": 256
+          "line": 258
         },
         {
           "path": "memory_core/bootstrap/context.py",
           "symbol": "build_workspace_context",
           "anchor": "def build_workspace_context(",
-          "line": 129
+          "line": 133
+        },
+        {
+          "path": "memory_core/bootstrap/classification.py",
+          "symbol": "classify_workspace_memory_paths",
+          "anchor": "def classify_workspace_memory_paths(",
+          "line": 62
         }
       ],
       "implementation": "partial",
       "notes": [
-        "Python loads and filters an explicit layout/session kind. The host must supply native run kind, file-access capability and canonical-workspace decisions; native hook-driven bootstrap file resolution is not performed by build_workspace_context."
+        "Python loads and filters an explicit layout/session kind. The host must supply native run kind, file-access capability and canonical-workspace decisions; native hook-driven bootstrap file resolution is not performed by build_workspace_context.",
+        "The built-in bootstrap classifier composes physical path containment, the concrete shared artifact-provenance store and the index path classifier before session filters; no callback supplies classifications. Default SDK extension and legacy fail-closed behavior remain explicit ordinary differences."
       ]
     },
     {
@@ -3069,7 +3098,7 @@
       "implementation": "partial",
       "notes": [
         "Runtime markers default to Memory Core identity; native marker behavior requires the explicit OpenClaw compatibility identity.",
-        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1\u20139999."
+        "Current-time formatting takes an explicit host 12/24-hour format and uses UTC for blank or unknown zones; native code detects host format and falls back to the host zone. Python dates also stop at years 1–9999."
       ]
     },
     {
@@ -5877,6 +5906,20 @@
       ]
     },
     {
+      "path": "extensions/memory-core/src/memory/memory-path-provenance.ts",
+      "sha256": "11e0adfcf2069d535b9fc3b9b625a5b65fd64dda4b97e4fa2ba9bcf5fc24a0af",
+      "sourceImports": [
+        "node:fs/promises",
+        "node:path",
+        "openclaw/plugin-sdk/file-access-runtime",
+        "openclaw/plugin-sdk/memory-core-host-engine-storage",
+        "openclaw/plugin-sdk/memory-core-host-runtime-core"
+      ],
+      "exportedDeclarations": [
+        "resolveMemoryPathClassification"
+      ]
+    },
+    {
       "path": "extensions/memory-core/src/memory/mmr.ts",
       "sha256": "ffcf8296b74cefbc684bf7f98525ccaa394b0b54de8545074f7b9e5e553da320",
       "sourceImports": [
@@ -6227,6 +6270,18 @@
         "createMemoryGetTool",
         "createMemorySearchTool",
         "testing"
+      ]
+    },
+    {
+      "path": "extensions/memory-core/src/workspace-path-classifier.ts",
+      "sha256": "d5448712cebf1238e313c1af0df3257fe9c7c7a553b61de524aa26db71b14f71",
+      "sourceImports": [
+        "./memory/memory-path-provenance.js",
+        "node:path",
+        "openclaw/plugin-sdk/memory-core-host-runtime-core"
+      ],
+      "exportedDeclarations": [
+        "classifyWorkspaceMemoryPaths"
       ]
     },
     {

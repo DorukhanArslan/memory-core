@@ -342,6 +342,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                 if len(cases) == 1 and cases[0]["operation"] in ATOMIC_PUBLICATION_PROFILES:
                     context_options["atomic_profile"] = prepare_atomic_publication_profile(cases[0]["operation"], node)
                     context_options["atomic_case"] = prepare_atomic_case_binding(cases[0])
+                if len(cases) == 1 and cases[0]["operation"] == "bootstrap-discovery-runtime":
+                    from equivalence.bootstrap_discovery_profile import prepare_bootstrap_discovery_profile
+
+                    context_options["bootstrap_profile"] = prepare_bootstrap_discovery_profile(node)
                 execution = resources.enter_context(ReleaseOracleExecution(
                     release_runtime, _adapter_identity(), **context_options))
                 # Only this reviewed preload is supplied. User Node options,
@@ -538,6 +542,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "model-session-runtime", "model-tool-result-runtime", "trust-worker-runtime", "model-tool-error-runtime",
             "entry-memory-publication-runtime", "entry-session-publication-runtime", "entry-provider-preparation-runtime",
             "atomic-commit-runtime", "atomic-append-runtime", "atomic-bootstrap-runtime",
+            "bootstrap-discovery-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -820,6 +825,16 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
 
                 report["atomicPublicationRuntimeBindings"] = prepare_atomic_publication_bindings(checkout, Path(runtime_config["runtimeRoot"]))
                 report["atomicPublicationNodeAuthority"] = prepare_model_node_authority(node)
+            bootstrap_runtime = any(case["operation"] == "bootstrap-discovery-runtime" for case in runtime_cases)
+            if bootstrap_runtime:
+                from equivalence.bootstrap_discovery_bindings import prepare_bootstrap_discovery_bindings
+                from equivalence.bootstrap_discovery_profile import prepare_bootstrap_node_authority
+
+                try:
+                    report["bootstrapDiscoveryRuntimeBindings"] = prepare_bootstrap_discovery_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                    report["bootstrapDiscoveryNodeAuthority"] = prepare_bootstrap_node_authority(node)
+                except (OSError, ValueError):
+                    raise HarnessError("bootstrap-discovery-owner-unavailable", "The original whole bootstrap callers or approved executable could not be verified.") from None
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -856,6 +871,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                     raise ValueError("Atomic source/artifact/profile or executable authority changed.")
                 if new_model_operations and prepare_model_node_authority(node) != report["modelNodeAuthority"]:
                     raise ValueError("The approved model boundary executable changed.")
+                if bootstrap_runtime and (
+                    prepare_bootstrap_discovery_bindings(checkout, Path(runtime_config["runtimeRoot"])) != report["bootstrapDiscoveryRuntimeBindings"]
+                    or prepare_bootstrap_node_authority(node) != report["bootstrapDiscoveryNodeAuthority"]
+                ):
+                    raise ValueError("Bootstrap source, artifact, template or executable authority changed.")
                 if flush_runtime and prepare_flush_runtime_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]),
                 ) != report["flushRuntimeBindings"]:

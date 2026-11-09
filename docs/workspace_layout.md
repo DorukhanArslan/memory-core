@@ -86,11 +86,28 @@ Two presets ship; `DEFAULT_WORKSPACE_LAYOUT` is `MEMORY_CORE_WORKSPACE_LAYOUT`.
    setup complete and delete BOOTSTRAP.md. When BOOTSTRAP.md was seeded and is gone
    (the agent deleted it), mark setup complete.
 
+`templates` remains the host baseline used to detect setup completion. To seed an
+approved role, pass `creation_templates` with AGENTS.md, SOUL.md or IDENTITY.md.
+Those creation bytes are preserved exactly. Setup detection keeps using the
+baseline profile templates. Existing files remain unchanged.
+
+`purpose` prefixes AGENTS.md with approved task instructions. Repeating the same
+purpose is safe; a conflicting existing file or a simultaneous creation role raises
+`WorkspaceBootstrapSeedConflictError` and preserves the existing bytes.
+
+`ensure_bootstrap_files=False` creates the directory and optional purpose
+instructions without seeding other files or changing setup state. This differs
+from the existing `seed_bootstrap=False` extension. For a runtime-owned implicit
+workspace, `provisioning="runtime-managed-implicit"` creates only the directory and
+skips setup reads. Its result has `state=None` and `bootstrap_status=None` because
+those facts were not read. `bootstrap_pending` is the ensure decision; it is false
+for both modes even if a later status query finds an existing pending BOOTSTRAP.md.
+
 Setup state. Upstream keeps it in its shared SQLite state database; memory-core keeps
 `{version, bootstrapSeededAt, setupCompletedAt}` in `.memory-core/workspace-state.json`
 (documented deviation). Upstream's retired JSON state (`openclaw-workspace-state.json`,
-`.openclaw/workspace-state.json`, or an interrupted doctor claim of either) makes every
-lifecycle call raise `WorkspaceStateMigrationRequiredError`, as upstream refuses the
+`.openclaw/workspace-state.json`, or an interrupted doctor claim of either) makes
+state-reading lifecycle calls raise `WorkspaceStateMigrationRequiredError`, as upstream refuses the
 workspace until `openclaw doctor --fix`; `migrate_legacy_workspace_state(root)` ports
 doctor's strict import (imports the first source unless memory-core already has state,
 archives each source beside itself as `<source>.migrated.<sha256>.<uuid>`, removes it).
@@ -107,6 +124,16 @@ A `.memory-core` that is not a directory reads as no state; writing the state th
 ## Per-turn filters
 
 `build_workspace_context` applies upstream's run pipeline:
+
+- Automatic memory provenance: optional `config` selects the built-in memory
+  classifier; a host can also supply its concrete `artifact_provenance` store.
+  The classifier resolves real paths, rejects escapes and consults the canonical
+  file's recorded trust before selecting USER.md and MEMORY.md. Only `owner` and
+  `agent` origins are eligible. Classification runs before session and lightweight
+  filters. A store failure excludes the candidates and reports a warning.
+  Disabling search does not disable this provenance owner. `HostKit` forwards the
+  same store its writer and index use. Third-party plugin runtimes are not
+  replaced with an invented built-in implementation.
 
 - Loading: USER.md and MEMORY.md (and the extension file) are skipped unless the
   directory lists the exact name. A missing file renders `[MISSING] Expected at:
@@ -168,13 +195,12 @@ Python cannot UTF-8 encode a lone surrogate (the startup cut in `build_startup_c
 
 - Workspace attestations, the `WorkspaceVanishedError` guard and doctor's attestation
   sources.
-- `git init` for brand-new workspaces, the `ensureBootstrapFiles: false` and
-  runtime-managed modes, the custom-agent `purpose`.
+- `git init` for brand-new workspaces and remote workspace access.
 - The `agent:bootstrap` hook, `bootstrap-extra-files` globs (so
   `WorkspaceLayout.can_read` allows only the layout's root files) and the per-session
   snapshot and file caches.
-- The personal `users/<profile-id>/USER.md` overlay, the automatic-memory provenance
-  filter and the per-project curated MEMORY.md filter.
+- The personal `users/<profile-id>/USER.md` overlay, third-party registered memory
+  runtimes and the per-project curated MEMORY.md filter.
 - The transcript scan behind `hasCompletedBootstrapTurn`: the host passes
   `has_completed_bootstrap_turn` and persists the marker when
   `record_completed_bootstrap_turn` is set.

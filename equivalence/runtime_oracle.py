@@ -116,6 +116,9 @@ _OPERATIONS = {
     "atomic-bootstrap-runtime": (
         "atomic-publication-runtime.mjs", "dist/workspace-C0LMBmap.mjs", False,
     ),
+    "bootstrap-discovery-runtime": (
+        "bootstrap-discovery-runtime.mjs", "dist/workspace-C0LMBmap.mjs", False,
+    ),
 }
 
 MODEL_RUNTIME_OPERATIONS = frozenset({"model-session-runtime", "model-tool-result-runtime",
@@ -646,7 +649,7 @@ class ReleaseOracleExecution:
     def __init__(self, config: dict, adapter_hashes: dict[str, str], *, fixture_captures: bool = False,
                  turn_taint_source: dict | None = None, model_node_runtime: dict | None = None,
                  entry_profile: dict | None = None, atomic_profile: dict | None = None,
-                 atomic_case: dict | None = None):
+                 atomic_case: dict | None = None, bootstrap_profile: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
@@ -655,6 +658,7 @@ class ReleaseOracleExecution:
         self.entry_profile = deepcopy(entry_profile)
         self.atomic_profile = deepcopy(atomic_profile)
         self.atomic_case = deepcopy(atomic_case)
+        self.bootstrap_profile = deepcopy(bootstrap_profile)
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
@@ -663,7 +667,7 @@ class ReleaseOracleExecution:
         try:
             if self.entry_profile is not None:
                 self.entry_profile = validate_entry_provenance_profile(self.entry_profile)
-                if self.model_node_runtime is not None or self.turn_taint_source is not None or self.fixture_captures or self.atomic_profile is not None:
+                if self.model_node_runtime is not None or self.turn_taint_source is not None or self.fixture_captures or self.atomic_profile is not None or self.bootstrap_profile is not None:
                     raise RuntimeOracleError("Entry provenance cannot borrow model, source-owner or fixture-source capabilities.")
             if self.atomic_profile is not None:
                 self.atomic_profile = validate_atomic_publication_profile(self.atomic_profile)
@@ -671,7 +675,7 @@ class ReleaseOracleExecution:
                 if self.atomic_case["operation"] != self.atomic_profile["operation"]:
                     raise RuntimeOracleError("The atomic return checkpoint cannot borrow a different case owner.")
                 if any((self.entry_profile is not None, self.model_node_runtime is not None,
-                        self.turn_taint_source is not None, self.fixture_captures)):
+                        self.turn_taint_source is not None, self.fixture_captures, self.bootstrap_profile is not None)):
                     raise RuntimeOracleError("Atomic publication cannot borrow model, entry, source or fixture capabilities.")
             elif self.atomic_case is not None:
                 raise RuntimeOracleError("An atomic case binding cannot escape its approved original-owner capability.")
@@ -679,6 +683,13 @@ class ReleaseOracleExecution:
                 from equivalence.model_runtime_authority import validate_model_node_authority
 
                 self.model_node_runtime = validate_model_node_authority(self.model_node_runtime)
+            if self.bootstrap_profile is not None:
+                from equivalence.bootstrap_discovery_profile import validate_bootstrap_discovery_profile
+
+                if any((self.fixture_captures, self.turn_taint_source is not None, self.model_node_runtime is not None,
+                        self.entry_profile is not None, self.atomic_profile is not None)):
+                    raise RuntimeOracleError("The compiled bootstrap profile cannot borrow model, entry, atomic, source or fixture-capture capabilities.")
+                self.bootstrap_profile = validate_bootstrap_discovery_profile(self.bootstrap_profile)
             if self.turn_taint_source is not None:
                 from equivalence.turn_trust_source_authority import validate_turn_taint_source_authority
 
@@ -750,6 +761,8 @@ class ReleaseOracleExecution:
                 self._context["approvedNodeRuntime"] = self.atomic_profile["nodeRuntime"]
                 self._context["atomicPublicationProfile"] = self.atomic_profile
                 self._context["atomicCaseBinding"] = self.atomic_case
+            if self.bootstrap_profile is not None:
+                self._context["bootstrapDiscoveryProfile"] = self.bootstrap_profile
             if self.fixture_captures:
                 fixture = str((ROOT / "equivalence/flush-execution.mjs").resolve())
                 if fixture not in self._locals:
@@ -923,6 +936,14 @@ class ReleaseOracleExecution:
                 raise RuntimeOracleError("Entry memory, session and provider-preparation profiles cannot impersonate one another.")
         if (self.model_node_runtime is not None) is not (operation in MODEL_RUNTIME_OPERATIONS):
             raise RuntimeOracleError("The approved model binary capability is restricted to its declared compiled boundary profiles.")
+        if (self.bootstrap_profile is not None) is not (operation == "bootstrap-discovery-runtime"):
+            raise RuntimeOracleError("Only the declared bootstrap caller may use its approved executable capability.")
+        if self.bootstrap_profile is not None:
+            from equivalence.bootstrap_discovery_profile import validate_bootstrap_discovery_profile
+
+            validate_bootstrap_discovery_profile(self.bootstrap_profile)
+            if case.get("input", {}).get("kind") != self.bootstrap_profile["inputKind"]:
+                raise RuntimeOracleError("A different bootstrap input kind cannot borrow the compiled caller profile.")
         if (self.turn_taint_source is not None) is not (operation == "turn-trust-runtime"):
             raise RuntimeOracleError("The single source-owner capability is restricted to the declared mixed turn-trust profile.")
         if self.turn_taint_source is not None:
@@ -959,6 +980,8 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("The real turn-trust caller did not complete its registered execution and persistence flow.")
         if operation in {*MODEL_RUNTIME_OPERATIONS, *ENTRY_PROVENANCE_PROFILES, *ATOMIC_PUBLICATION_PROFILES} and not row["ok"]:
             raise RuntimeOracleError("The real model boundary caller did not complete its declared original execution and output transport.")
+        if operation == "bootstrap-discovery-runtime" and not row["ok"]:
+            raise RuntimeOracleError("The genuine compiled bootstrap caller did not complete its full observation flow.")
         if _digest(_regular(self.context_path, MAX_TRACE_BYTES)) != self._context_digest:
             raise RuntimeOracleError("The owned release execution configuration changed.")
         for path, digest in self._locals.items():
@@ -974,6 +997,7 @@ class ReleaseOracleExecution:
         atomic_lifecycle_events = []
         reference_source_imports = []
         entry_trace_files = []
+        bootstrap_trace_files = []
         for trace in traces:
             filename = _TRACE.fullmatch(trace.name)
             if filename is None:
@@ -982,6 +1006,8 @@ class ReleaseOracleExecution:
             if self.entry_profile is not None:
                 entry_trace_files.append({"name": trace.name, "bytes": len(raw), "sha256": _digest(raw),
                                           "text": raw.decode("utf-8")})
+            if self.bootstrap_profile is not None:
+                bootstrap_trace_files.append({"name": trace.name, "bytes": len(raw), "sha256": _digest(raw), "text": raw.decode("utf-8")})
             total += len(raw)
             if total > MAX_TRACE_BYTES or not raw.endswith(b"\n"):
                 raise RuntimeOracleError("Release thread traces are excessive or incomplete.")
@@ -1011,6 +1037,11 @@ class ReleaseOracleExecution:
                               **({"entryProfile": first["entryProfile"]} if self.entry_profile is not None else {})})
             if self.atomic_profile is not None:
                 bootstrap[-1]["atomicProfile"] = first["atomicProfile"]
+            if self.bootstrap_profile is not None:
+                if (first.get("bootstrapProfile") != self.bootstrap_profile
+                        or first.get("runtime") != self.bootstrap_profile["nodeRuntime"]):
+                    raise RuntimeOracleError("A bootstrap process or worker used an unapproved executable or profile.")
+                bootstrap[-1].update(runtime=deepcopy(first["runtime"]), bootstrapProfile=deepcopy(first["bootstrapProfile"]))
             if thread == 0:
                 process_parents[pid] = first.get("ppid")
             for event in events[1:]:
@@ -1108,6 +1139,16 @@ class ReleaseOracleExecution:
             if any(("node_modules/openclaw", owner) not in loaded for owner in REQUIRED_LOADED_ARTIFACTS):
                 raise RuntimeOracleError("The actual declared workspace/file/index/recall/checkpoint owners did not execute.")
             validate_workspace_isolation_workers(worker_imports)
+        if operation == "bootstrap-discovery-runtime":
+            from equivalence.bootstrap_discovery_bindings import BASELINE_COMPILED_ARTIFACTS, CLASSIFICATION_REQUIRED_ARTIFACTS
+
+            if any(("node_modules/openclaw", owner) not in loaded for owner in BASELINE_COMPILED_ARTIFACTS):
+                raise RuntimeOracleError("The genuine bootstrap setup, loader, policy, state, hook and selection owners did not execute.")
+            scope = case.get("driverScope")
+            if scope not in {None, "builtin-workspace-memory-classifier"}:
+                raise RuntimeOracleError("The bootstrap caller returned an undeclared classifier execution scope.")
+            if scope is not None and any(("node_modules/openclaw", owner) not in loaded for owner in CLASSIFICATION_REQUIRED_ARTIFACTS):
+                raise RuntimeOracleError("The configured bootstrap profile omitted its actual memory classifier, physical path or provenance store owners.")
         required_key = required_owner if isinstance(required_owner, tuple) else ("node_modules/openclaw", required_owner)
         if required_owner is not None and required_key not in loaded:
             message = ("The actual native runtime owner did not execute."
@@ -1260,6 +1301,21 @@ class ReleaseOracleExecution:
             validate_model_tool_error_raw(row, case, diagnostic, evidence.parent, runtime_root=self.config["runtimeRoot"],
                 bootstrap=bootstrap, release_by_pid=release_by_pid, local_by_pid=local_by_pid,
                 process_parents=process_parents, worker_imports=worker_imports)
+        bootstrap_transport = None
+        if operation == "bootstrap-discovery-runtime":
+            from equivalence.bootstrap_discovery_evidence import validate_bootstrap_discovery_raw
+
+            bootstrap_transport = {"kind": "actual-bootstrap-discovery-validator-inputs", "adapterRoot": str(ROOT),
+                "runtimeRoot": self.config["runtimeRoot"], "profile": deepcopy(self.bootstrap_profile),
+                "row": deepcopy(row), "case": deepcopy(case), "bootstrap": deepcopy(bootstrap),
+                "processParents": deepcopy(process_parents),
+                "releaseByPid": {str(pid): sorted(paths) for pid, paths in release_by_pid.items()},
+                "localByPid": {str(pid): sorted(paths) for pid, paths in local_by_pid.items()},
+                "rawProcessWorkerTraces": bootstrap_trace_files}
+            validate_bootstrap_discovery_raw(row, case, diagnostic, evidence.parent, runtime_root=self.config["runtimeRoot"],
+                bootstrap=bootstrap, release_by_pid=release_by_pid, local_by_pid=local_by_pid,
+                process_parents=process_parents)
+            diagnostic = _json(raw)
         if operation == "transcript-boundary-runtime":
             from equivalence.transcript_boundary_evidence import validate_transcript_boundary_raw
 
@@ -1375,6 +1431,8 @@ class ReleaseOracleExecution:
             answer["releaseTrace"]["atomicReturnLifecycle"] = atomic_transport
         if entry_transport is not None:
             answer["releaseTrace"]["entryProvenanceTransport"] = entry_transport
+        if bootstrap_transport is not None:
+            answer["releaseTrace"]["bootstrapDiscoveryTransport"] = bootstrap_transport
         if self.turn_taint_source is not None:
             if len(reference_source_imports) != 1:
                 raise RuntimeOracleError("The mixed profile must actually load its sole original source owner exactly once.")

@@ -266,6 +266,9 @@ def build_cases(*, include_prospective: bool = False) -> list[dict[str, Any]]:
     from equivalence.atomic_publication_cases import build_atomic_publication_cases
 
     cases.extend(build_atomic_publication_cases())
+    from equivalence.bootstrap_discovery_fixtures import build_bootstrap_discovery_cases
+
+    cases.extend(build_bootstrap_discovery_cases())
     if include_prospective:
         from equivalence.flush_contract import build_prospective_flush_contract_cases
         from equivalence.session_projection import build_prospective_session_projection_cases
@@ -303,6 +306,10 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.tool_error_profile import run_tool_error_profile
 
         return run_tool_error_profile(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "bootstrap-discovery-runtime":
+        from equivalence.bootstrap_discovery_sdk import run_bootstrap_discovery
+
+        return run_bootstrap_discovery(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "turn-trust-runtime":
         from equivalence.turn_trust_runtime import run_turn_trust
 

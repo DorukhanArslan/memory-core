@@ -16,8 +16,12 @@ matters for host strings that already carry a lone surrogate.
 from __future__ import annotations
 
 import os
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from memory_core.consolidation.artifact_provenance import MemoryArtifactProvenanceStore
 
 from memory_core.bootstrap._js import js_to_well_formed, js_trim
 from memory_core.bootstrap.budget import (
@@ -146,6 +150,8 @@ def build_workspace_context(
     seen_truncation_signatures: Iterable[str] = (),
     path_style: str = "absolute",
     identity: RuntimeIdentity = MEMORY_CORE_RUNTIME_IDENTITY,
+    config: Mapping[str, Any] | None = None,
+    artifact_provenance: MemoryArtifactProvenanceStore | None = None,
 ) -> WorkspaceContext:
     """Load, filter, budget and render a workspace's bootstrap files.
 
@@ -197,6 +203,8 @@ def build_workspace_context(
         setup_completed=setup_completed,
         context_mode=context_mode,
         warn=filter_warnings.append,
+        config=config,
+        artifact_provenance=artifact_provenance,
     )
     excluded = frozenset((exclude_files,) if isinstance(exclude_files, str) else exclude_files)
     if excluded:

@@ -10,6 +10,7 @@ const request = JSON.parse(fs.readFileSync(0, "utf8"));
 if (!Array.isArray(request.cases) || request.cases.length !== 1) throw Error("Use one fresh release process per case");
 if (context.providerMode !== "none") throw Error("Only provider-none release comparisons are supported");
 const operations = {
+  "bootstrap-discovery-runtime": ["bootstrap-discovery-runtime.mjs", "runBootstrapDiscoveryRuntime"],
   "importance-project-runtime": ["importance-project-runtime.mjs", "runImportanceProjectRuntime"],
   "exact-path-runtime": ["exact-path-runtime.mjs", "runExactPathRuntime"],
   "index-lifecycle-runtime": ["index-lifecycle.mjs", "runIndexLifecycle"],
@@ -44,6 +45,14 @@ for (const testCase of request.cases) {
   const evidenceDirectory = path.join(context.evidenceDirectory, caseHash);
   fs.mkdirSync(evidenceDirectory, { recursive: true });
   try {
+    const bootstrapProfile = context.bootstrapDiscoveryProfile;
+    if ((bootstrapProfile !== undefined) !== (testCase.operation === "bootstrap-discovery-runtime")) {
+      throw Error("The bootstrap executable capability is restricted to its exact compiled caller before import");
+    }
+    if (bootstrapProfile !== undefined &&
+        (bootstrapProfile.operation !== testCase.operation || testCase.input?.kind !== bootstrapProfile.inputKind)) {
+      throw Error("A different operation or input kind cannot borrow the bootstrap caller before import");
+    }
     const binding = operations[testCase.operation];
     if (!Object.hasOwn(operations, testCase.operation)) throw Error("Unsupported release oracle operation");
     const adapter = await import(new URL(binding[0], import.meta.url).href);

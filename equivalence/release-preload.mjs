@@ -22,7 +22,7 @@ if (context.entryProvenanceProfile !== undefined) {
     "entry-session-publication-runtime": "session-projection", "entry-provider-preparation-runtime": "prepared-provider" };
   if (!profile || Object.keys(profile).sort().join() !== "inputKind,kind,nodeRuntime,operation" ||
       profile.kind !== "approved-entry-provenance-profile" || !Object.hasOwn(kinds, profile.operation) ||
-      profile.inputKind !== kinds[profile.operation] ||
+      profile.inputKind !== kinds[profile.operation] || context.bootstrapDiscoveryProfile !== undefined ||
       JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
       (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved compiled entry provenance profile capability");
@@ -36,10 +36,31 @@ if (context.atomicPublicationProfile !== undefined) {
       profile.inputKind !== kinds[profile.operation] ||
       JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
       !context.atomicCaseBinding || context.atomicCaseBinding.operation !== profile.operation ||
-      context.entryProvenanceProfile !== undefined ||
+      context.entryProvenanceProfile !== undefined || context.bootstrapDiscoveryProfile !== undefined ||
       (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
     throw Error("Unapproved atomic original-owner profile capability");
   }
+}
+const bootstrapProfile = context.bootstrapDiscoveryProfile;
+let bootstrapRuntime;
+if (bootstrapProfile !== undefined) {
+  const approved = { nodeVersion: "v24.16.0", icuVersion: "78.3", unicodeVersion: "17.0",
+    sha256: "b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd" };
+  const identity = bootstrapProfile?.nodeRuntime;
+  if (JSON.stringify(Object.keys(bootstrapProfile ?? {}).sort()) !== JSON.stringify(["inputKind", "kind", "nodeRuntime", "operation"]) ||
+      bootstrapProfile.kind !== "approved-bootstrap-discovery-profile" || bootstrapProfile.operation !== "bootstrap-discovery-runtime" ||
+      bootstrapProfile.inputKind !== "workspace-bootstrap" || !identity ||
+      context.approvedNodeRuntime !== undefined || context.entryProvenanceProfile !== undefined ||
+      context.atomicPublicationProfile !== undefined || context.atomicCaseBinding !== undefined ||
+      JSON.stringify(Object.keys(identity).sort()) !== JSON.stringify(["execPath", "icuVersion", "nodeVersion", "sha256", "unicodeVersion"]) ||
+      (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
+    throw Error("Unapproved compiled bootstrap execution scope");
+  }
+  bootstrapRuntime = { execPath: fs.realpathSync(process.execPath), nodeVersion: process.version,
+    icuVersion: process.versions.icu, unicodeVersion: process.versions.unicode,
+    sha256: hash(fs.readFileSync(process.execPath)) };
+  if (Object.entries(approved).some(([key, value]) => identity[key] !== value) ||
+      Object.entries(bootstrapRuntime).some(([key, value]) => identity[key] !== value)) throw Error("Unapproved bootstrap Node/ICU/Unicode executable");
 }
 const permitted = new Map();
 for (const entry of context.allowedLocal) {
@@ -94,7 +115,8 @@ if (context.approvedNodeRuntime !== undefined) {
 trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: hash(rawContext), preloadSha256: own.sha256,
         fetchDenied: true, providerMode: "none", ...(approvedNodeRuntime ? { runtime: approvedNodeRuntime } : {}),
         ...(context.entryProvenanceProfile ? { entryProfile: context.entryProvenanceProfile } : {}),
-        ...(context.atomicPublicationProfile ? { atomicProfile: context.atomicPublicationProfile } : {}) });
+        ...(context.atomicPublicationProfile ? { atomicProfile: context.atomicPublicationProfile } : {}),
+        ...(bootstrapProfile ? { runtime: bootstrapRuntime, bootstrapProfile } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.
 // This executes in every worker as well as the parent, before native imports.

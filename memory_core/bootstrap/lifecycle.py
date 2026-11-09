@@ -30,10 +30,9 @@ Deviations (also listed in docs/parity_matrix.md › Workspace bootstrap files):
 - Templates come from the host (``templates``), default to empty strings, and never carry
   OpenClaw template wording. They pass through upstream's front-matter stripping like
   ``loadTemplate`` output.
-- Not ported: workspace attestations and the ``WorkspaceVanishedError`` guard, the custom
-  agent ``purpose`` instructions, ``git init`` for brand-new workspaces, the
-  ``ensureBootstrapFiles: false`` and ``runtime-managed-implicit`` modes, remote workspace
-  access. ``seed_bootstrap=False`` is a memory-core extension for hosts without a bootstrap
+- Not ported: workspace attestations and the ``WorkspaceVanishedError`` guard,
+  ``git init`` for brand-new workspaces, and remote workspace access.
+  ``seed_bootstrap=False`` is a memory-core extension for hosts without a bootstrap
   ritual: where upstream would write BOOTSTRAP.md, memory-core marks setup complete instead (an
   existing BOOTSTRAP.md is still honoured).
 - One ``now_ms`` stamps every timestamp of a call (upstream calls ``new Date()`` per
@@ -57,8 +56,8 @@ from pathlib import Path
 from typing import Literal
 
 from memory_core.bootstrap._js import JS_WHITESPACE, js_json_stringify, js_trim, js_utf8_encode
-from memory_core.bootstrap.files import exact_workspace_entry_exists
-from memory_core.bootstrap.layout import DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
+from memory_core.bootstrap.files import exact_workspace_entry_exists, read_workspace_bootstrap_file
+from memory_core.bootstrap.layout import AGENTS_FILENAME, DEFAULT_WORKSPACE_LAYOUT, WorkspaceLayout
 from memory_core.project_name import PACKAGE_NAME, STATE_DIRNAME
 
 WORKSPACE_STATE_VERSION = 1
@@ -107,7 +106,10 @@ class WorkspaceInitResult:
 
     ``created_files`` and ``created_dirs`` name what this call created, in
     creation order. ``bootstrap_removed`` is true when completion evidence made
-    the reconcile step delete BOOTSTRAP.md.
+    the reconcile step delete BOOTSTRAP.md. ``bootstrap_pending`` is the ensure
+    decision, which can differ from a separate bootstrap status query when
+    seeding was disabled. Directory-only implicit provisioning skips state and
+    status reads, so both fields are ``None`` for that new mode.
     """
 
     root: Path
@@ -115,8 +117,13 @@ class WorkspaceInitResult:
     created_dirs: tuple[str, ...]
     bootstrap_seeded: bool
     bootstrap_removed: bool
-    state: WorkspaceSetupState
-    bootstrap_status: BootstrapStatus
+    state: WorkspaceSetupState | None
+    bootstrap_status: BootstrapStatus | None
+    bootstrap_pending: bool = False
+
+
+class WorkspaceBootstrapSeedConflictError(RuntimeError):
+    """Approved creation instructions conflict with a preserved workspace file."""
 
 
 def strip_template_front_matter(content: str) -> str:
@@ -419,6 +426,10 @@ def initialize_agent_workspace(
     *,
     layout: WorkspaceLayout = DEFAULT_WORKSPACE_LAYOUT,
     templates: Mapping[str, str] | None = None,
+    creation_templates: Mapping[str, str] | None = None,
+    purpose: str | None = None,
+    provisioning: Literal["standard", "runtime-managed-implicit"] = "standard",
+    ensure_bootstrap_files: bool = True,
     seed_bootstrap: bool = True,
     skip_optional: bool | Collection[str] = False,
     now_ms: int | None = None,
@@ -431,7 +442,19 @@ def initialize_agent_workspace(
     (``True`` = all) or setup is already complete. MEMORY.md is never seeded, and
     neither are the retired TOOLS.md and HEARTBEAT.md. Existing files are never overwritten. ``templates`` maps file names
     to host-supplied text; every file defaults to an empty template, so a
-    workspace initialized without templates gets empty files.
+    workspace initialized without templates gets empty files. ``templates`` is the
+    host's baseline for setup detection. ``creation_templates`` overrides only the
+    creation-time AGENTS.md, SOUL.md and IDENTITY.md bytes and never changes that
+    baseline. Existing files are preserved. ``purpose`` adds approved instructions
+    to AGENTS.md and refuses a conflicting existing file or creation template.
+
+    ``ensure_bootstrap_files=False`` provisions the directory and, when supplied,
+    purpose instructions without seeding other files or changing setup state.
+    ``provisioning="runtime-managed-implicit"`` provisions only the directory and
+    skips setup reads as well as all bootstrap writes. Its result has ``state``
+    and ``bootstrap_status`` set to ``None`` because those owners were not called.
+    ``bootstrap_pending`` reports this ensure call's decision independently of
+    a later status query; both provisioning modes report ``False``.
 
     BOOTSTRAP.md is written (from ``templates["BOOTSTRAP.md"]``, default empty)
     only when the state has neither ``bootstrapSeededAt`` nor
@@ -454,10 +477,43 @@ def initialize_agent_workspace(
     canonical state first and fails the same way).
     """
     root_path = _root_path(root)
+    purpose = js_trim(purpose) if purpose is not None else None
+    if purpose and creation_templates is not None:
+        raise WorkspaceBootstrapSeedConflictError(
+            "A custom agent purpose requires a local workspace without a bundled role."
+        )
+    if provisioning == "runtime-managed-implicit":
+        root_path.mkdir(parents=True, exist_ok=True)
+        return WorkspaceInitResult(root_path, (), (), False, False, None, None, False)
     assert_no_unmigrated_workspace_state(root_path)
     root_path.mkdir(parents=True, exist_ok=True)
     stamp = _iso_from_ms(now_ms if now_ms is not None else time.time() * 1000)
     resolved = _resolve_templates(layout, templates)
+    created_files: list[str] = []
+
+    def publish_instructions(content: str) -> bool:
+        text = f"# Agent purpose\n\n{purpose}\n\n{content}" if purpose else content
+        target = root_path / AGENTS_FILENAME
+        created = _write_file_if_missing(target, text)
+        if purpose and not created:
+            loaded = read_workspace_bootstrap_file(target, root_path)
+            if loaded.status != "ok" or loaded.content != text:
+                raise WorkspaceBootstrapSeedConflictError(
+                    "Existing AGENTS.md was preserved. Choose a new workspace to seed the approved custom purpose."
+                )
+        return created
+
+    if not ensure_bootstrap_files:
+        if purpose and publish_instructions(resolved.get(AGENTS_FILENAME, "")):
+            created_files.append(AGENTS_FILENAME)
+        return WorkspaceInitResult(root_path, tuple(created_files), (), False, False,
+            read_workspace_setup_state(root_path), bootstrap_status(root_path, layout), False)
+
+    creation = dict(resolved)
+    for name in ("AGENTS.md", "SOUL.md", "IDENTITY.md"):
+        override = (creation_templates or {}).get(name)
+        if override is not None:
+            creation[name] = override
 
     if skip_optional is True:
         skipped = set(layout.optional_files)
@@ -471,11 +527,11 @@ def initialize_agent_workspace(
     if is_workspace_setup_completed(root_path):
         skipped.update(layout.optional_files)
 
-    created_files: list[str] = []
     for name in layout.seed_order:
         if name in layout.optional_files and name in skipped:
             continue
-        if _write_file_if_missing(root_path / name, resolved[name]):
+        created = publish_instructions(creation[name]) if name == AGENTS_FILENAME else _write_file_if_missing(root_path / name, creation[name])
+        if created:
             created_files.append(name)
 
     created_dirs: list[str] = []
@@ -542,6 +598,7 @@ def initialize_agent_workspace(
         bootstrap_removed=bootstrap_removed,
         state=state,
         bootstrap_status=bootstrap_status(root_path, layout),
+        bootstrap_pending=not bool(state.setup_completed_at) and bootstrap_exists,
     )
 
 

@@ -1,0 +1,10 @@
+{
+  "kind": "unchanged-first-formal-bootstrap-discovery-report",
+  "sourceCommit": "6aa5adbcd073bed813f7dabb39e3057c47cbd05b",
+  "bytes": 78619748,
+  "sha256": "29457ad9966b0a12539a95b23e50d23d0e22e73b78811b4affeb8080ebbf654e",
+  "gzipBytes": 3878197,
+  "gzipSha256": "ef5ac156be743fe1ebe11675af9dbb5293598474bbca57754706c1895426ed3e",
+  "coverageCredit": false,
+  "purpose": "Replay the actual recorded native caller arguments and observations; source and package execution remain collector-owned."
+}

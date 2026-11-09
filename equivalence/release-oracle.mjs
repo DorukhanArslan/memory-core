@@ -34,6 +34,8 @@ const operations = {
   "entry-memory-publication-runtime": ["entry-provenance-runtime.mjs", "runEntryMemoryPublicationRuntime"],
   "entry-session-publication-runtime": ["entry-provenance-runtime.mjs", "runEntrySessionPublicationRuntime"],
   "entry-provider-preparation-runtime": ["entry-provenance-runtime.mjs", "runEntryProviderPreparationRuntime"],
+  "memory-budget-runtime": ["memory-budget-runtime.mjs", "runMemoryBudgetRuntime"],
+  "memory-budget-apply-runtime": ["memory-budget-runtime.mjs", "runMemoryBudgetRuntime"],
 };
 const results = [];
 for (const testCase of request.cases) {
@@ -54,4 +56,6 @@ for (const testCase of request.cases) {
     results.push({ id: testCase.id, ok: false, error: { type: error.name, message: error.message } });
   }
 }
-process.stdout.write(JSON.stringify({kind: "official-release-runtime-comparison", results, sources: []}) + "\n");
+await new Promise((resolve, reject) => process.stdout.write(
+  JSON.stringify({kind: "official-release-runtime-comparison", results, sources: []}) + "\n", "utf8",
+  (error) => error ? reject(error) : resolve()));

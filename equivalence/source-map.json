@@ -219,7 +219,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_append_to_memory",
           "anchor": "def _append_to_memory(",
-          "line": 1529
+          "line": 1530
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
@@ -3368,13 +3368,13 @@
           "path": "memory_core/memory_budget.py",
           "symbol": "compact_memory_for_budget",
           "anchor": "def compact_memory_for_budget(",
-          "line": 190
+          "line": 202
         },
         {
           "path": "memory_core/memory_budget.py",
           "symbol": "build_budgeted_memory_append",
           "anchor": "def build_budgeted_memory_append(",
-          "line": 247
+          "line": 261
         },
         {
           "path": "memory_core/consolidation/promotion.py",
@@ -3384,7 +3384,9 @@
         }
       ],
       "implementation": "present",
-      "notes": []
+      "notes": [
+        "The budget parser/compactor accepts an explicit RuntimeIdentity; compatibility mode owns only the original promotion prefix, while omitted identity preserves legacy dual-prefix behavior. The real promotion caller propagates its writing identity. Pending protected comparisons retain whole helper/apply outputs and do not yet establish either acceptance point."
+      ]
     },
     {
       "id": "compaction.context-assembly",
@@ -3660,7 +3662,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "build_promotion_applied_event",
           "anchor": "def build_promotion_applied_event(",
-          "line": 1189
+          "line": 1190
         }
       ],
       "implementation": "present",

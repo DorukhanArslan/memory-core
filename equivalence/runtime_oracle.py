@@ -19,6 +19,7 @@ from typing import Any
 
 from equivalence.release_runtime import ReleaseRuntimeError, validate_release_sources
 from equivalence.entry_provenance_profile import ENTRY_PROVENANCE_PROFILES, validate_entry_provenance_profile
+from equivalence.memory_budget_profile import MEMORY_BUDGET_PROFILES, validate_memory_budget_profile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -105,6 +106,8 @@ _OPERATIONS = {
     "entry-provider-preparation-runtime": (
         "entry-provenance-runtime.mjs", "dist/manager-index-preparation-wXpJtJiU.mjs", False,
     ),
+    "memory-budget-runtime": ("memory-budget-runtime.mjs", "dist/memory-budget-BodJnew-.mjs", False),
+    "memory-budget-apply-runtime": ("memory-budget-runtime.mjs", "dist/short-term-promotion-MX1vHJuE.mjs", False),
 }
 
 MODEL_RUNTIME_OPERATIONS = frozenset({"model-session-runtime", "model-tool-result-runtime",
@@ -634,19 +637,25 @@ class ReleaseOracleExecution:
 
     def __init__(self, config: dict, adapter_hashes: dict[str, str], *, fixture_captures: bool = False,
                  turn_taint_source: dict | None = None, model_node_runtime: dict | None = None,
-                 entry_profile: dict | None = None):
+                 entry_profile: dict | None = None, memory_budget_profile: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
         self.turn_taint_source = deepcopy(turn_taint_source)
         self.model_node_runtime = deepcopy(model_node_runtime)
         self.entry_profile = deepcopy(entry_profile)
+        self.memory_budget_profile = deepcopy(memory_budget_profile)
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
 
     def __enter__(self):
         try:
+            if self.memory_budget_profile is not None:
+                self.memory_budget_profile = validate_memory_budget_profile(self.memory_budget_profile)
+                if (self.entry_profile is not None or self.model_node_runtime is not None
+                        or self.turn_taint_source is not None or self.fixture_captures):
+                    raise RuntimeOracleError("Memory budget cannot borrow entry, model, source or fixture-source capabilities.")
             if self.entry_profile is not None:
                 self.entry_profile = validate_entry_provenance_profile(self.entry_profile)
                 if self.model_node_runtime is not None or self.turn_taint_source is not None or self.fixture_captures:
@@ -722,6 +731,9 @@ class ReleaseOracleExecution:
             if self.entry_profile is not None:
                 self._context["approvedNodeRuntime"] = self.entry_profile["nodeRuntime"]
                 self._context["entryProvenanceProfile"] = self.entry_profile
+            if self.memory_budget_profile is not None:
+                self._context["approvedNodeRuntime"] = self.memory_budget_profile["nodeRuntime"]
+                self._context["memoryBudgetProfile"] = self.memory_budget_profile
             if self.fixture_captures:
                 fixture = str((ROOT / "equivalence/flush-execution.mjs").resolve())
                 if fixture not in self._locals:
@@ -878,6 +890,13 @@ class ReleaseOracleExecution:
         case = cases[0]
         row = result["results"][0]
         operation = case.get("operation")
+        if (self.memory_budget_profile is not None) is not (operation in MEMORY_BUDGET_PROFILES):
+            raise RuntimeOracleError("Memory-budget capability is restricted to its two compiled profiles.")
+        if self.memory_budget_profile is not None:
+            validate_memory_budget_profile(self.memory_budget_profile)
+            if (self.memory_budget_profile["operation"] != operation
+                    or self.memory_budget_profile["inputKind"] != case.get("input", {}).get("kind")):
+                raise RuntimeOracleError("Budget helper and actual promotion-apply profiles cannot impersonate one another.")
         if (self.entry_profile is not None) is not (operation in ENTRY_PROVENANCE_PROFILES):
             raise RuntimeOracleError("The entry capability is restricted to its three explicit compiled profiles.")
         if self.entry_profile is not None:
@@ -920,7 +939,7 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("Release memory fixtures require provider none.")
         if operation == "turn-trust-runtime" and not row["ok"]:
             raise RuntimeOracleError("The real turn-trust caller did not complete its registered execution and persistence flow.")
-        if operation in {*MODEL_RUNTIME_OPERATIONS, *ENTRY_PROVENANCE_PROFILES} and not row["ok"]:
+        if operation in {*MODEL_RUNTIME_OPERATIONS, *ENTRY_PROVENANCE_PROFILES, *MEMORY_BUDGET_PROFILES} and not row["ok"]:
             raise RuntimeOracleError("The real model boundary caller did not complete its declared original execution and output transport.")
         if _digest(_regular(self.context_path, MAX_TRACE_BYTES)) != self._context_digest:
             raise RuntimeOracleError("The owned release execution configuration changed.")
@@ -940,7 +959,7 @@ class ReleaseOracleExecution:
             if filename is None:
                 raise RuntimeOracleError("A release thread trace has an invalid identity.")
             raw = _regular(trace, MAX_SINGLE_TRACE_BYTES)
-            if self.entry_profile is not None:
+            if self.entry_profile is not None or self.memory_budget_profile is not None:
                 entry_trace_files.append({"name": trace.name, "bytes": len(raw), "sha256": _digest(raw),
                                           "text": raw.decode("utf-8")})
             total += len(raw)
@@ -958,14 +977,18 @@ class ReleaseOracleExecution:
                     or first.get("preloadSha256") != self._preload_digest
                     or first.get("fetchDenied") is not True or first.get("providerMode") != "none"):
                 raise RuntimeOracleError("Runtime thread bootstrap protection was not attested.")
-            node_authority = self.model_node_runtime or (self.entry_profile["nodeRuntime"] if self.entry_profile is not None else None)
+            node_authority = (self.model_node_runtime or (self.entry_profile["nodeRuntime"] if self.entry_profile is not None else None)
+                              or (self.memory_budget_profile["nodeRuntime"] if self.memory_budget_profile is not None else None))
             if node_authority is not None and first.get("runtime") != node_authority:
                 raise RuntimeOracleError("The actual native process or worker omitted its approved model binary authority.")
             if self.entry_profile is not None and first.get("entryProfile") != self.entry_profile:
                 raise RuntimeOracleError("The actual entry process or worker omitted its exact compiled profile authority.")
+            if self.memory_budget_profile is not None and first.get("budgetProfile") != self.memory_budget_profile:
+                raise RuntimeOracleError("The actual budget process or worker omitted its exact compiled profile authority.")
             bootstrap.append({"pid": pid, "threadId": thread, "isMainThread": thread == 0,
                               **({"runtime": first["runtime"]} if node_authority is not None else {}),
-                              **({"entryProfile": first["entryProfile"]} if self.entry_profile is not None else {})})
+                              **({"entryProfile": first["entryProfile"]} if self.entry_profile is not None else {}),
+                              **({"budgetProfile": first["budgetProfile"]} if self.memory_budget_profile is not None else {})})
             if thread == 0:
                 process_parents[pid] = first.get("ppid")
             for event in events[1:]:
@@ -1123,6 +1146,20 @@ class ReleaseOracleExecution:
         if not isinstance(diagnostic, list):
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
         entry_transport = None
+        budget_transport = None
+        if operation in MEMORY_BUDGET_PROFILES:
+            from equivalence.memory_budget_evidence import validate_memory_budget_raw
+
+            budget_transport = {"kind": "actual-memory-budget-validator-inputs", "adapterRoot": str(ROOT),
+                "runtimeRoot": self.config["runtimeRoot"], "profile": deepcopy(self.memory_budget_profile),
+                "bootstrap": deepcopy(bootstrap), "processParents": deepcopy(process_parents),
+                "releaseByPid": {str(pid): sorted(paths) for pid, paths in release_by_pid.items()},
+                "localByPid": {str(pid): sorted(paths) for pid, paths in local_by_pid.items()},
+                "workerImports": deepcopy(worker_imports), "rawProcessWorkerTraces": deepcopy(entry_trace_files),
+                "actualReturnedRow": deepcopy(row)}
+            validate_memory_budget_raw(row, case, diagnostic, evidence.parent, runtime_root=self.config["runtimeRoot"],
+                bootstrap=bootstrap, release_by_pid=release_by_pid, local_by_pid=local_by_pid,
+                worker_imports=worker_imports, process_parents=process_parents)
         if operation in ENTRY_PROVENANCE_PROFILES:
             from equivalence.entry_provenance_evidence import validate_entry_provenance_raw
             from equivalence.entry_provenance_bindings import COMPILED_HASHES as ENTRY_ARTIFACTS
@@ -1290,9 +1327,11 @@ class ReleaseOracleExecution:
                                   "networkFetchDenied": True, "provider": "none",
                                   "nativeBinaryPolicy": "all artifact bytes authenticated before and after execution"}
         answer["runtimeDiagnostics"] = [{"id": case["id"], "sha256": _digest(raw),
-                                          "rawSnapshots": _json(raw) if self.entry_profile is not None else diagnostic}]
+                                          "rawSnapshots": _json(raw) if self.entry_profile is not None or self.memory_budget_profile is not None else diagnostic}]
         if entry_transport is not None:
             answer["releaseTrace"]["entryProvenanceTransport"] = entry_transport
+        if budget_transport is not None:
+            answer["releaseTrace"]["memoryBudgetTransport"] = budget_transport
         if self.turn_taint_source is not None:
             if len(reference_source_imports) != 1:
                 raise RuntimeOracleError("The mixed profile must actually load its sole original source owner exactly once.")

@@ -327,6 +327,8 @@ def validate_release_sources(
         "dist/session-manager-a8MFS1Kk.mjs",
         "dist/embedded-agent-tool-results-Bhhd5B_V.mjs",
         "dist/manager-index-preparation-wXpJtJiU.mjs",
+        "dist/memory-budget-BodJnew-.mjs",
+        "dist/short-term-promotion-MX1vHJuE.mjs",
     }:
         raise ReleaseRuntimeError("The compiled reference requires a reviewed runtime entry.")
     if ("node_modules/openclaw", required_entry) not in seen:

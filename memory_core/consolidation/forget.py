@@ -47,7 +47,6 @@ import json
 import math
 import os
 import re
-import secrets
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -56,6 +55,11 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+from memory_core.atomic_publication import (
+    MemoryWriteConflictError as MemoryWriteConflictError,
+    commit_memory_content as _publish_memory_content,
+    hash_memory_content as _hash_memory_content,
+)
 from memory_core.bootstrap._js import (
     JS_IU_WORD_CLASS,
     JS_SPACE_CLASS,
@@ -576,31 +580,15 @@ def purge_memory_index(store: Any, plan: IndexPlan) -> bool:
 # --- files ---------------------------------------------------------------------------------
 
 
-class MemoryWriteConflictError(Exception):
-    """A file changed between the plan and its rewrite."""
-
-
 def hash_memory_content(content: str) -> str:
     return hashlib.sha256(js_utf8_encode(content)).hexdigest()
 
 
 def commit_memory_content(path: Path, *, expected_content: str, content: str | None, label: str) -> None:
     """``commitMemoryContent``: replace (or, with ``None``, remove) a file only if it still holds ``expected_content``."""
-    try:
-        current = path.read_bytes().decode("utf-8", errors="replace")
-    except FileNotFoundError:
-        current = ""
-    if current != expected_content:
-        raise MemoryWriteConflictError(f"{label} changed before the memory forget rewrite could commit")
-    if content is None:
-        path.unlink(missing_ok=True)
-        return
-    temporary = path.with_name(f".{path.name}.forget.{os.getpid()}.{secrets.token_hex(4)}.tmp")
-    temporary.write_bytes(content.encode("utf-8", "surrogatepass"))
-    try:
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    _publish_memory_content(path, expected_content=expected_content, expected_hash=_hash_memory_content(expected_content),
+                            content=content, temp_prefix=f".{path.name}.forget",
+                            conflict_message=f"{label} changed before the memory forget rewrite could commit")
 
 
 def _read_text(path: Path) -> str:

@@ -16,6 +16,18 @@ const context = JSON.parse(rawContext);
 if (context.schemaVersion !== 1 || context.providerMode !== "none" || context.fetchPolicy !== "deny") {
   throw Error("Unsupported release execution policy");
 }
+if (context.entryProvenanceProfile !== undefined) {
+  const profile = context.entryProvenanceProfile;
+  const kinds = { "entry-memory-publication-runtime": "published-memory",
+    "entry-session-publication-runtime": "session-projection", "entry-provider-preparation-runtime": "prepared-provider" };
+  if (!profile || Object.keys(profile).sort().join() !== "inputKind,kind,nodeRuntime,operation" ||
+      profile.kind !== "approved-entry-provenance-profile" || !Object.hasOwn(kinds, profile.operation) ||
+      profile.inputKind !== kinds[profile.operation] ||
+      JSON.stringify(profile.nodeRuntime) !== JSON.stringify(context.approvedNodeRuntime) ||
+      (context.approvedReferenceSources ?? []).length || (context.fixtureSourceCaptures ?? []).length) {
+    throw Error("Unapproved compiled entry provenance profile capability");
+  }
+}
 const permitted = new Map();
 for (const entry of context.allowedLocal) {
   permitted.set(fs.realpathSync(entry.path), { kind: "oracle", path: fs.realpathSync(entry.path), sha256: entry.sha256 });
@@ -67,7 +79,8 @@ if (context.approvedNodeRuntime !== undefined) {
   }
 }
 trace({ event: "bootstrap", isMainThread, ppid: process.ppid, contextSha256: hash(rawContext), preloadSha256: own.sha256,
-        fetchDenied: true, providerMode: "none", ...(approvedNodeRuntime ? { runtime: approvedNodeRuntime } : {}) });
+        fetchDenied: true, providerMode: "none", ...(approvedNodeRuntime ? { runtime: approvedNodeRuntime } : {}),
+        ...(context.entryProvenanceProfile ? { entryProfile: context.entryProvenanceProfile } : {}) });
 // Native workers can log directly while retiring after the result is ready.
 // Reserve stdout for the runner's single process.stdout.write JSON envelope.
 // This executes in every worker as well as the parent, before native imports.

@@ -7,6 +7,13 @@ from copy import deepcopy
 import random
 
 
+ENTRY_PROVENANCE_OPERATIONS = {
+    "published-memory": "entry-memory-publication-runtime",
+    "session-projection": "entry-session-publication-runtime",
+    "prepared-provider": "entry-provider-preparation-runtime",
+}
+
+
 def embedding_byte_limit_inputs():
     texts = [[], [97] * 33, [0x6F22, 0x5B57] * 4, [0xD83D, 0xDE00, 97] * 4,
              [97, 0xD800, 98, 0xDC00, 99], [0xD800, 0xDC00, 0xD800, 0xDC00],
@@ -71,7 +78,7 @@ def build_entry_provenance_cases():
                  "events": [*deepcopy(events), {"type": "reset", "id": "bad-reset", "firstKeptEntryId": "missing"}]},
         ]}))
     return [{"id": "entry-provenance-" + name, "requirement": "chunking.entry-provenance", "covers": [],
-             "operation": "entry-provenance-runtime", "input": deepcopy(value),
+             "operation": ENTRY_PROVENANCE_OPERATIONS[value["kind"]], "input": deepcopy(value),
              "driverScope": "Actual original preparation/publication owners and real SDK reindex over literal memory/session inputs. "
                 "Memory and session phases use genuine public provider-none manager get/dirty/sync/close. The provider case uses the "
                 "original exported text preparation and source-index kernel with literal external vectors; SDK calls its actual generic embedder. "

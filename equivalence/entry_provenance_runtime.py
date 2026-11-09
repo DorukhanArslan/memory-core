@@ -14,17 +14,32 @@ from equivalence.get_contract import map_get_fixture_paths
 
 
 def _physical(store, *, catalog=False):
-    with (store._connect() if catalog else store.connect()) as db:
+    db = store._connect() if catalog else store.connect()
+    try:
+        db.execute("PRAGMA query_only = ON")
+        db.execute("BEGIN DEFERRED")
         cursor = db.execute("SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name")
         schema = [dict(zip(("type", "name", "tbl_name", "sql"), row, strict=True)) for row in cursor]
+        schema_count = db.execute("SELECT COUNT(*) FROM sqlite_schema").fetchone()[0]
         tables = []
         for row in schema:
             if row["type"] != "table":
                 continue
             cursor = db.execute('SELECT * FROM "' + row["name"].replace('"', '""') + '"')
             names = [item[0] for item in cursor.description]
-            tables.append({"name": row["name"], "rows": [dict(zip(names, values, strict=True)) for values in cursor]})
-    return {"schema": schema, "tables": tables}
+            values = cursor.fetchall()
+            row_count = db.execute('SELECT COUNT(*) FROM "' + row["name"].replace('"', '""') + '"').fetchone()[0]
+            columns_cursor = db.execute('PRAGMA table_info("' + row["name"].replace('"', '""') + '")')
+            column_names = [item[0] for item in columns_cursor.description]
+            columns = [dict(zip(column_names, item, strict=True)) for item in columns_cursor]
+            tables.append({"name": row["name"], "rowCount": row_count, "columns": columns, "rows": [dict(zip(names, (
+                {"type": "bytes", "hex": bytes(value).hex()} if isinstance(value, (bytes, bytearray, memoryview)) else value
+                for value in item), strict=True)) for item in values]})
+        return {"schema": schema, "schemaCount": schema_count, "tables": tables,
+                "snapshotTransaction": {"mode": "deferred", "active": db.in_transaction}}
+    finally:
+        db.rollback()
+        db.close()
 
 
 def _logical(store):

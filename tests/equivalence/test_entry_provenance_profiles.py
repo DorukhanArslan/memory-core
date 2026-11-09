@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from equivalence.entry_provenance_fixtures import build_entry_provenance_cases
+from equivalence.entry_provenance_fixtures import ENTRY_PROVENANCE_OPERATIONS, build_entry_provenance_cases
 from equivalence.entry_provenance_runtime import run_entry_provenance
 
 
@@ -26,9 +26,15 @@ def _capture():
 def test_fixed_catalog_retains_all_three_real_boundaries_without_registration_or_credit():
     cases = build_entry_provenance_cases()
     capture = _capture()
-    assert cases == [row["case"] for row in capture["observations"]]
+    # Historical uncredited captures used one umbrella routing label. Preserve
+    # every literal fact while registering three mutually scoped operations.
+    original_cases = deepcopy([row["case"] for row in capture["observations"]])
+    for case in original_cases:
+        assert case["operation"] == "entry-provenance-runtime"
+        case["operation"] = ENTRY_PROVENANCE_OPERATIONS[case["input"]["kind"]]
+    assert cases == original_cases
     assert len(cases) == 3 and all(case["covers"] == [] for case in cases)
-    assert all(case["operation"] == "entry-provenance-runtime" for case in cases)
+    assert {case["operation"] for case in cases} == set(ENTRY_PROVENANCE_OPERATIONS.values())
     assert all("No provider loop/transport" in case["driverScope"] for case in cases)
     changed = deepcopy(cases)
     changed[0]["input"]["files"]["MEMORY.md"] = "changed"

@@ -18,6 +18,7 @@ import tempfile
 from typing import Any
 
 from equivalence.release_runtime import ReleaseRuntimeError, validate_release_sources
+from equivalence.entry_provenance_profile import ENTRY_PROVENANCE_PROFILES, validate_entry_provenance_profile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -94,6 +95,15 @@ _OPERATIONS = {
     ),
     "model-tool-error-runtime": (
         "model-tool-error-runtime.mjs", "dist/tools-DotaQGXh.mjs", False,
+    ),
+    "entry-memory-publication-runtime": (
+        "entry-provenance-runtime.mjs", "dist/extensions/memory-core/manager-runtime.js", True,
+    ),
+    "entry-session-publication-runtime": (
+        "entry-provenance-runtime.mjs", "dist/extensions/memory-core/manager-runtime.js", True,
+    ),
+    "entry-provider-preparation-runtime": (
+        "entry-provenance-runtime.mjs", "dist/manager-index-preparation-wXpJtJiU.mjs", False,
     ),
 }
 
@@ -623,18 +633,24 @@ class ReleaseOracleExecution:
     """One fresh provider-none process with a trusted preload inherited by workers."""
 
     def __init__(self, config: dict, adapter_hashes: dict[str, str], *, fixture_captures: bool = False,
-                 turn_taint_source: dict | None = None, model_node_runtime: dict | None = None):
+                 turn_taint_source: dict | None = None, model_node_runtime: dict | None = None,
+                 entry_profile: dict | None = None):
         self.config = deepcopy(config)
         self.adapter_hashes = dict(adapter_hashes)
         self.fixture_captures = fixture_captures
         self.turn_taint_source = deepcopy(turn_taint_source)
         self.model_node_runtime = deepcopy(model_node_runtime)
+        self.entry_profile = deepcopy(entry_profile)
         self.env: dict[str, str] = {}
         self._temporary = None
         self._entered = False
 
     def __enter__(self):
         try:
+            if self.entry_profile is not None:
+                self.entry_profile = validate_entry_provenance_profile(self.entry_profile)
+                if self.model_node_runtime is not None or self.turn_taint_source is not None or self.fixture_captures:
+                    raise RuntimeOracleError("Entry provenance cannot borrow model, source-owner or fixture-source capabilities.")
             if self.model_node_runtime is not None:
                 from equivalence.model_runtime_authority import validate_model_node_authority
 
@@ -703,6 +719,9 @@ class ReleaseOracleExecution:
             }
             if self.model_node_runtime is not None:
                 self._context["approvedNodeRuntime"] = self.model_node_runtime
+            if self.entry_profile is not None:
+                self._context["approvedNodeRuntime"] = self.entry_profile["nodeRuntime"]
+                self._context["entryProvenanceProfile"] = self.entry_profile
             if self.fixture_captures:
                 fixture = str((ROOT / "equivalence/flush-execution.mjs").resolve())
                 if fixture not in self._locals:
@@ -859,6 +878,12 @@ class ReleaseOracleExecution:
         case = cases[0]
         row = result["results"][0]
         operation = case.get("operation")
+        if (self.entry_profile is not None) is not (operation in ENTRY_PROVENANCE_PROFILES):
+            raise RuntimeOracleError("The entry capability is restricted to its three explicit compiled profiles.")
+        if self.entry_profile is not None:
+            validate_entry_provenance_profile(self.entry_profile)
+            if self.entry_profile["operation"] != operation or self.entry_profile["inputKind"] != case.get("input", {}).get("kind"):
+                raise RuntimeOracleError("Entry memory, session and provider-preparation profiles cannot impersonate one another.")
         if (self.model_node_runtime is not None) is not (operation in MODEL_RUNTIME_OPERATIONS):
             raise RuntimeOracleError("The approved model binary capability is restricted to its declared compiled boundary profiles.")
         if (self.turn_taint_source is not None) is not (operation == "turn-trust-runtime"):
@@ -895,7 +920,7 @@ class ReleaseOracleExecution:
             raise RuntimeOracleError("Release memory fixtures require provider none.")
         if operation == "turn-trust-runtime" and not row["ok"]:
             raise RuntimeOracleError("The real turn-trust caller did not complete its registered execution and persistence flow.")
-        if operation in MODEL_RUNTIME_OPERATIONS and not row["ok"]:
+        if operation in {*MODEL_RUNTIME_OPERATIONS, *ENTRY_PROVENANCE_PROFILES} and not row["ok"]:
             raise RuntimeOracleError("The real model boundary caller did not complete its declared original execution and output transport.")
         if _digest(_regular(self.context_path, MAX_TRACE_BYTES)) != self._context_digest:
             raise RuntimeOracleError("The owned release execution configuration changed.")
@@ -909,11 +934,15 @@ class ReleaseOracleExecution:
         loaded, bootstrap, worker_imports, local_imports, captures = {}, [], [], set(), {}
         release_by_pid, local_by_pid, process_parents = {}, {}, {}
         reference_source_imports = []
+        entry_trace_files = []
         for trace in traces:
             filename = _TRACE.fullmatch(trace.name)
             if filename is None:
                 raise RuntimeOracleError("A release thread trace has an invalid identity.")
             raw = _regular(trace, MAX_SINGLE_TRACE_BYTES)
+            if self.entry_profile is not None:
+                entry_trace_files.append({"name": trace.name, "bytes": len(raw), "sha256": _digest(raw),
+                                          "text": raw.decode("utf-8")})
             total += len(raw)
             if total > MAX_TRACE_BYTES or not raw.endswith(b"\n"):
                 raise RuntimeOracleError("Release thread traces are excessive or incomplete.")
@@ -929,10 +958,14 @@ class ReleaseOracleExecution:
                     or first.get("preloadSha256") != self._preload_digest
                     or first.get("fetchDenied") is not True or first.get("providerMode") != "none"):
                 raise RuntimeOracleError("Runtime thread bootstrap protection was not attested.")
-            if self.model_node_runtime is not None and first.get("runtime") != self.model_node_runtime:
+            node_authority = self.model_node_runtime or (self.entry_profile["nodeRuntime"] if self.entry_profile is not None else None)
+            if node_authority is not None and first.get("runtime") != node_authority:
                 raise RuntimeOracleError("The actual native process or worker omitted its approved model binary authority.")
+            if self.entry_profile is not None and first.get("entryProfile") != self.entry_profile:
+                raise RuntimeOracleError("The actual entry process or worker omitted its exact compiled profile authority.")
             bootstrap.append({"pid": pid, "threadId": thread, "isMainThread": thread == 0,
-                              **({"runtime": first["runtime"]} if self.model_node_runtime is not None else {})})
+                              **({"runtime": first["runtime"]} if node_authority is not None else {}),
+                              **({"entryProfile": first["entryProfile"]} if self.entry_profile is not None else {})})
             if thread == 0:
                 process_parents[pid] = first.get("ppid")
             for event in events[1:]:
@@ -1089,6 +1122,45 @@ class ReleaseOracleExecution:
         diagnostic = _json(raw)
         if not isinstance(diagnostic, list):
             raise RuntimeOracleError("Native lifecycle diagnostics must retain raw snapshot rows.")
+        entry_transport = None
+        if operation in ENTRY_PROVENANCE_PROFILES:
+            from equivalence.entry_provenance_evidence import validate_entry_provenance_raw
+            from equivalence.entry_provenance_bindings import COMPILED_HASHES as ENTRY_ARTIFACTS
+            from equivalence.session_admission_runtime_bindings import MEMORY_INDEX_WORKER_ARTIFACTS
+
+            if any(("node_modules/openclaw", owner) not in loaded for owner in ENTRY_ARTIFACTS):
+                raise RuntimeOracleError("The original entry preparation/publication/hash/limit/annotation owners did not execute.")
+            entry_pid = diagnostic[0].get("pid") if diagnostic and isinstance(diagnostic[0], dict) else None
+            if operation != "entry-provider-preparation-runtime":
+                by_thread = {}
+                for item in worker_imports:
+                    if item["pid"] == entry_pid:
+                        by_thread.setdefault(item["threadId"], set()).add(item["path"])
+                if not any(set(MEMORY_INDEX_WORKER_ARTIFACTS) <= paths for paths in by_thread.values()):
+                    raise RuntimeOracleError("Public entry publication requires its actual memory-index wrapper and implementation in one protected worker.")
+            if operation == "entry-session-publication-runtime":
+                from equivalence.transcript_boundary_runtime_bindings import (
+                    REQUIRED_BOUNDARY_ARTIFACTS, SQLITE_BOUNDARY_ARTIFACTS, TRANSCRIPT_WORKER_ARTIFACTS,
+                    TRANSCRIPT_WORKER_PARENT_ARTIFACTS,
+                )
+
+                if not set((*REQUIRED_BOUNDARY_ARTIFACTS, *SQLITE_BOUNDARY_ARTIFACTS,
+                            *TRANSCRIPT_WORKER_PARENT_ARTIFACTS)) <= release_by_pid.get(entry_pid, set()):
+                    raise RuntimeOracleError("Session entry publication omitted its actual SQLite/source/provenance/reset reader owners.")
+                if not any(item["pid"] == entry_pid and item["path"] in TRANSCRIPT_WORKER_ARTIFACTS for item in worker_imports):
+                    raise RuntimeOracleError("The declared worker-backed session projection did not execute its genuine protected transcript reader.")
+
+            # Preserve the actual caller observations BEFORE delegating to any
+            # profile guard; these are never recreated from known owner lists.
+            entry_transport = {"kind": "actual-entry-profile-validator-inputs", "adapterRoot": str(ROOT),
+                "runtimeRoot": self.config["runtimeRoot"], "profile": deepcopy(self.entry_profile),
+                "bootstrap": deepcopy(bootstrap), "processParents": deepcopy(process_parents),
+                "releaseByPid": {str(pid): sorted(paths) for pid, paths in release_by_pid.items()},
+                "localByPid": {str(pid): sorted(paths) for pid, paths in local_by_pid.items()},
+                "workerImports": deepcopy(worker_imports), "rawProcessWorkerTraces": deepcopy(entry_trace_files)}
+            validate_entry_provenance_raw(row, case, diagnostic, evidence.parent, runtime_root=self.config["runtimeRoot"],
+                bootstrap=bootstrap, release_by_pid=release_by_pid, local_by_pid=local_by_pid,
+                worker_imports=worker_imports, process_parents=process_parents)
         if operation in {"model-session-runtime", "model-tool-result-runtime"}:
             from equivalence.model_runtime_evidence import validate_model_session_raw, validate_model_tool_result_raw
 
@@ -1218,7 +1290,9 @@ class ReleaseOracleExecution:
                                   "networkFetchDenied": True, "provider": "none",
                                   "nativeBinaryPolicy": "all artifact bytes authenticated before and after execution"}
         answer["runtimeDiagnostics"] = [{"id": case["id"], "sha256": _digest(raw),
-                                          "rawSnapshots": diagnostic}]
+                                          "rawSnapshots": _json(raw) if self.entry_profile is not None else diagnostic}]
+        if entry_transport is not None:
+            answer["releaseTrace"]["entryProvenanceTransport"] = entry_transport
         if self.turn_taint_source is not None:
             if len(reference_source_imports) != 1:
                 raise RuntimeOracleError("The mixed profile must actually load its sole original source owner exactly once.")

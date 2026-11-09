@@ -5,10 +5,27 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { mock } from "node:test";
 import { mapGetFixturePaths } from "./get-contract-runtime.mjs";
+import { modelRuntimeIdentity } from "./model-runtime-observation.mjs";
+
+export async function runEntryMemoryPublicationRuntime(input, runtimeConfig) {
+  if (input.kind !== "published-memory") throw Error("The memory publication profile requires its own literal input kind");
+  return runEntryProvenanceRuntime(input, runtimeConfig);
+}
+export async function runEntrySessionPublicationRuntime(input, runtimeConfig) {
+  if (input.kind !== "session-projection") throw Error("The session publication profile requires its own literal input kind");
+  return runEntryProvenanceRuntime(input, runtimeConfig);
+}
+export async function runEntryProviderPreparationRuntime(input, runtimeConfig) {
+  if (input.kind !== "prepared-provider") throw Error("The preparation/kernel profile requires its own literal input kind");
+  return runEntryProvenanceRuntime(input, runtimeConfig);
+}
 
 function physical(db) {
   const schema = db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name").all();
-  return { schema, tables: schema.filter(row => row.type === "table").map(row => ({ name: row.name,
+  return { schema, schemaCount: db.prepare("SELECT COUNT(*) AS count FROM sqlite_schema").get().count,
+    tables: schema.filter(row => row.type === "table").map(row => ({ name: row.name,
+    rowCount: db.prepare('SELECT COUNT(*) AS count FROM "' + row.name.replaceAll('"', '""') + '"').get().count,
+    columns: db.prepare('PRAGMA table_info("' + row.name.replaceAll('"', '""') + '")').all(),
     rows: db.prepare('SELECT * FROM "' + row.name.replaceAll('"', '""') + '"').all().map(row =>
       Object.fromEntries(Object.entries(row).map(([key, value]) => [key,
         value instanceof Uint8Array ? { type: "bytes", hex: Buffer.from(value).toString("hex") } : value]))) })) };
@@ -27,6 +44,14 @@ function logical(db, decode) {
     paths: db.prepare("SELECT path,source FROM memory_index_paths_fts ORDER BY source,path").all() };
 }
 
+function readSnapshot(db, decode, runReadTransaction) {
+  return runReadTransaction(db, () => {
+    const snapshot = { state: logical(db, decode), physical: physical(db) };
+    snapshot.physical.snapshotTransaction = { mode: "deferred", active: db.isTransaction };
+    return snapshot;
+  });
+}
+
 export async function runEntryProvenanceRuntime(input, runtimeConfig) {
   if (!["published-memory", "prepared-provider", "session-projection"].includes(input.kind))
     throw Error("An explicit bounded entry-provenance profile is required");
@@ -43,10 +68,13 @@ export async function runEntryProvenanceRuntime(input, runtimeConfig) {
       sources: input.kind === "session-projection" ? ["sessions"] : ["memory"], rememberAcrossConversations: true,
       experimental: { sessionMemory: true }, store: { vector: { enabled: false } } } } };
   await fs.writeFile(process.env.OPENCLAW_CONFIG_PATH, JSON.stringify(cfg));
-  const now = input.nowMs ?? input.steps[0].nowMs, originalDate = Date, originalTimeout = setTimeout;
+  const now = input.nowMs ?? input.steps[0].nowMs, originalDate = Date, originalTimeout = setTimeout,
+    originalPerformanceNow = performance.now;
   mock.timers.enable({ apis: ["Date"], now });
-  const raw = { kind: input.kind, fixtureBase: base, input, config: cfg, pid: process.pid, calls: [], snapshots: [], preparations: [], providerCalls: [],
-    clock: { owner: "node:test", apis: ["Date"], nowMs: Date.now(), dateConstructorReplaced: Date !== originalDate, setTimeoutUnchanged: setTimeout === originalTimeout } };
+  const raw = { kind: input.kind, fixtureBase: base, input, config: cfg, pid: process.pid, ppid: process.ppid,
+    runtime: modelRuntimeIdentity(), calls: [], snapshots: [], preparations: [], providerCalls: [],
+    clock: { owner: "node:test", apis: ["Date"], nowMs: Date.now(), dateConstructorReplaced: Date !== originalDate,
+      setTimeoutUnchanged: setTimeout === originalTimeout, performanceNowUnchanged: performance.now === originalPerformanceNow } };
   const imp = file => import(pathToFileURL(path.join(runtimeConfig.runtimeRoot, file)).href);
   let manager, clearConfig, closeManagers;
   async function write(files) {
@@ -64,6 +92,7 @@ export async function runEntryProvenanceRuntime(input, runtimeConfig) {
     const { createPluginStateKeyedStore } = await imp("dist/plugin-sdk/plugin-state-store-runtime.js");
     configureMemoryCoreDreamingState(options => createPluginStateKeyedStore("memory-core", options));
     const storage = await imp("dist/plugin-sdk/memory-core-host-engine-storage.js");
+    const { r: runReadTransaction } = await imp("dist/sqlite-transaction-BHOCk0oF.mjs");
     const sessions = await imp("dist/plugin-sdk/session-store-runtime.js"), accessor = await imp("dist/session-accessor-CiKKTlbe.mjs");
     const scope = item => ({ agentId: "main", storePath: sessions.resolveStorePath(undefined, { agentId: "main" }), sessionKey: item.sessionKey ?? input.sessionKey, sessionId: item.entry?.sessionId ?? item.sessionId ?? input.sessionId });
     for (const item of input.sessions ?? []) {
@@ -90,11 +119,14 @@ export async function runEntryProvenanceRuntime(input, runtimeConfig) {
       const { t: Kernel } = await imp("dist/manager-source-index-kernel-D-njga00.mjs");
       const sql = await imp("dist/plugin-sdk/sqlite-runtime.js");
       const header = { entry: { path: entry.path, hash: prepared.contentHash, mtimeMs: entry.mtimeMs, size: entry.size }, source: "memory", model: input.provider.model, now, vectorReady: false };
-      raw.calls.push({ operation: "replaceRows", header, chunks: structuredClone(prepared.chunks), embeddings });
-      sql.runSqliteImmediateTransactionSync(manager.db, () => new Kernel(manager.db, { vector: manager.vector, fts: manager.fts }).replaceRows(header,
+      const publication = { operation: "replaceRows", header, chunks: structuredClone(prepared.chunks), embeddings };
+      raw.calls.push(publication);
+      const replaced = sql.runSqliteImmediateTransactionSync(manager.db, () => new Kernel(manager.db, { vector: manager.vector, fts: manager.fts }).replaceRows(header,
         prepared.chunks.map((chunk, index) => ({ chunk, embedding: embeddings[index] }))));
-      const state = logical(manager.db, storage.decodeMemoryEmbedding);
-      raw.snapshots.push({ state, physical: physical(manager.db) });
+      Object.assign(publication, replaced === undefined ? { returnedUndefined: true } : { result: replaced });
+      const snapshot = readSnapshot(manager.db, storage.decodeMemoryEmbedding, runReadTransaction);
+      const state = snapshot.state;
+      raw.snapshots.push(snapshot);
       const fragments = prepared.chunks.map(chunk => {
         const persisted = state.chunks.find(row => row.startLine === chunk.startLine && row.endLine === chunk.endLine && row.hash === chunk.hash && row.text === chunk.text);
         if (!persisted) throw Error("An actual prepared fragment lost its published canonical identity");
@@ -117,7 +149,8 @@ export async function runEntryProvenanceRuntime(input, runtimeConfig) {
       const request = { reason: "entry-provenance-fixture", force: step.force ?? false,
         ...(step.syncSessions ? { sessions: step.syncSessions } : {}) };
       const result = await manager.sync(request); raw.calls.push({ operation: "sync", request, returnedUndefined: result === undefined, label: step.label });
-      const state = logical(manager.db, storage.decodeMemoryEmbedding), sources = [];
+      const observed = readSnapshot(manager.db, storage.decodeMemoryEmbedding, runReadTransaction);
+      const state = observed.state, sources = [];
       if (input.kind === "session-projection") {
         for (const source of await manager.listSessionCorpusEntries()) {
           const options = manager.buildSessionEntryOptions(source), entry = await engine.buildSessionEntry(source.sessionFile, options);
@@ -126,7 +159,7 @@ export async function runEntryProvenanceRuntime(input, runtimeConfig) {
         }
       }
       const snapshot = { label: step.label, state, sources };
-      steps.push(snapshot); raw.snapshots.push({ ...snapshot, physical: physical(manager.db) });
+      steps.push(snapshot); raw.snapshots.push({ ...snapshot, physical: observed.physical });
     }
     return mapGetFixturePaths({ provider: "none", steps }, base);
   } finally {

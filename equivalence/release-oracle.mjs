@@ -31,6 +31,9 @@ const operations = {
   "model-tool-result-runtime": ["model-tool-result-runtime.mjs", "runModelToolResultRuntime"],
   "trust-worker-runtime": ["trust-worker-profile-runtime.mjs", "runTrustWorkerRuntime"],
   "model-tool-error-runtime": ["model-tool-error-runtime.mjs", "runModelToolErrorRuntime"],
+  "entry-memory-publication-runtime": ["entry-provenance-runtime.mjs", "runEntryMemoryPublicationRuntime"],
+  "entry-session-publication-runtime": ["entry-provenance-runtime.mjs", "runEntrySessionPublicationRuntime"],
+  "entry-provider-preparation-runtime": ["entry-provenance-runtime.mjs", "runEntryProviderPreparationRuntime"],
 };
 const results = [];
 for (const testCase of request.cases) {

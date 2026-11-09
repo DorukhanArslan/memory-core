@@ -1,5 +1,6 @@
 """Pinned entry preparation/publication owners, without acceptance registration."""
 from pathlib import Path
+import hashlib
 
 from equivalence.reference_bindings import _git
 from equivalence.importance_project_runtime_bindings import prepare_importance_project_runtime_bindings
@@ -70,12 +71,41 @@ COMPILED_ANCHORS = {'dist/manager-index-preparation-wXpJtJiU.mjs': ('function pr
  'dist/curated-annotations-DM9mz8Th.mjs': ('function extractCuratedEntryRecallMetadata(',),
  'dist/hash-CAMhNIP1.mjs': ('function hashText(',)}
 
+# The persistent vector codec is binary64 LE, independently of vector-index
+# extension blobs. Authenticate the exact original writer/reader owner chain.
+SOURCE_HASHES.update({
+    "packages/memory-host-sdk/src/host/embedding-vector.ts": "515e3d73f9e6adff455f6f3db477d253fac0a10e44b53179d47683d101068de9",
+    "src/plugin-sdk/memory-core-host-engine-storage.ts": "77459d8b9de13ebc1aa1974313807e9575f35300663e6f6a392a131a794c478a",
+    "packages/memory-host-sdk/src/engine-storage.ts": "8c9e64c08acf587dd3312f4df3a874b423bdc52ea85ff6fabdd1377e2ac12a2a",
+    "packages/memory-host-sdk/src/host/internal.ts": "f45f4006c1f92c6364059532c9ba309533b68c4cd7a6d7516fd017caa9330591",
+    "src/infra/sqlite-transaction.ts": "7b4caf5b30e1eb6626ffce2ae90583fa979c8289fdd0128ce29acc00448f253f",
+})
+SOURCE_ANCHORS.update({
+    "packages/memory-host-sdk/src/host/embedding-vector.ts": ("export function encodeMemoryEmbedding(", "export function decodeMemoryEmbedding(",
+        "    view.setFloat64(index * 8, coordinate, true);", "    const coordinate = view.getFloat64(offset, true);"),
+    "src/plugin-sdk/memory-core-host-engine-storage.ts": ("  decodeMemoryEmbedding,",),
+    "packages/memory-host-sdk/src/engine-storage.ts": ("  decodeMemoryEmbedding,",),
+    "packages/memory-host-sdk/src/host/internal.ts": ("  decodeMemoryEmbedding,",),
+    "src/infra/sqlite-transaction.ts": ("export function runSqliteDeferredTransactionSync<T>(",),
+})
+COMPILED_HASHES.update({
+    "dist/embedding-vector-CGPWflQ5.mjs": "cf7b100f10b60ef0d820e89c60852681561015c14a40cde91dafeb56ec0802b5",
+    "dist/plugin-sdk/memory-core-host-engine-storage.js": "891f0843e05f82b108632913979ff7b208eb510ea0003a3a18f96be0bedd5f34",
+    "dist/sqlite-transaction-BHOCk0oF.mjs": "25193a2a2e8945bf0c433c52e333665adb4333e6cf66de46d22dd8341387ef52",
+})
+COMPILED_ANCHORS.update({
+    "dist/embedding-vector-CGPWflQ5.mjs": ("function encodeMemoryEmbedding(", "function decodeMemoryEmbedding(",
+        "view.setFloat64(index * 8, coordinate, true)", "view.getFloat64(offset, true)"),
+    "dist/plugin-sdk/memory-core-host-engine-storage.js": ('import { i as parseEmbedding, n as decodeMemoryEmbedding, r as encodeMemoryEmbedding, t as cosineSimilarity } from "../embedding-vector-CGPWflQ5.mjs";',),
+    "dist/sqlite-transaction-BHOCk0oF.mjs": ("function runSqliteDeferredTransactionSync(db, operation, options) {", "runSqliteDeferredTransactionSync as r"),
+})
+
 
 def prepare_entry_provenance_bindings(checkout: Path, runtime_root: Path) -> dict:
     if _git(checkout, "rev-parse", "HEAD").decode().strip() != REFERENCE_COMMIT:
         raise ValueError("Entry provenance requires the exact unchanged pinned source commit")
     sources, source_evidence = _owners(checkout, SOURCE_HASHES, SOURCE_ANCHORS, committed=True)
-    _, compiled_evidence = _owners(runtime_root, COMPILED_HASHES, COMPILED_ANCHORS, committed=False)
+    compiled_sources, compiled_evidence = _owners(runtime_root, COMPILED_HASHES, COMPILED_ANCHORS, committed=False)
     links = [
         ("extensions/memory-core/src/memory/manager-index-preparation.ts", "openclaw/plugin-sdk/memory-core-host-engine-indexing",
          ("chunkMarkdown", "extractCuratedEntryRecallMetadata", "enforceEmbeddingMaxInputTokens", "hashText", "remapChunkLines", "stripMemoryAnnotationCarriers"), "import"),
@@ -87,14 +117,35 @@ def prepare_entry_provenance_bindings(checkout: Path, runtime_root: Path) -> dic
         ("packages/memory-host-sdk/src/host/embedding-chunk-limits.ts", "./embedding-input-limits.js", ("estimateUtf8Bytes", "splitTextToUtf8ByteLimit"), "import"),
         ("packages/memory-host-sdk/src/host/embedding-chunk-limits.ts", "./embedding-model-limits.js", ("resolveEmbeddingMaxInputTokens",), "import"),
         ("packages/memory-host-sdk/src/host/embedding-input-limits.ts", "@openclaw/normalization-core/utf16-slice", ("avoidTrailingHighSurrogateBreak",), "import"),
+        ("extensions/memory-core/src/memory/manager-chunk-writer.ts", "openclaw/plugin-sdk/memory-core-host-engine-indexing", ("encodeMemoryEmbedding",), "import"),
+        ("src/plugin-sdk/memory-core-host-engine-indexing.ts", "../../packages/memory-host-sdk/src/host/embedding-vector.js", ("encodeMemoryEmbedding",), "export"),
+        ("src/plugin-sdk/memory-core-host-engine-storage.ts", "../../packages/memory-host-sdk/src/engine-storage.js", ("encodeMemoryEmbedding", "decodeMemoryEmbedding"), "export"),
+        ("packages/memory-host-sdk/src/engine-storage.ts", "./host/internal.js", ("encodeMemoryEmbedding", "decodeMemoryEmbedding"), "export"),
+        ("packages/memory-host-sdk/src/host/internal.ts", "./embedding-vector.js", ("encodeMemoryEmbedding", "decodeMemoryEmbedding"), "export"),
     ]
+    compiled_links = []
+    for module, declaration in (
+        ("dist/manager-source-index-kernel-D-njga00.mjs", 'import { r as encodeMemoryEmbedding } from "./embedding-vector-CGPWflQ5.mjs";'),
+        ("dist/plugin-sdk/memory-core-host-engine-storage.js", 'import { i as parseEmbedding, n as decodeMemoryEmbedding, r as encodeMemoryEmbedding, t as cosineSimilarity } from "../embedding-vector-CGPWflQ5.mjs";'),
+    ):
+        text = compiled_sources[module]
+        if text.count(declaration) != 1:
+            raise ValueError("The original persistent vector writer/reader import chain changed")
+        compiled_links.append({"path": module, "declaration": declaration,
+            "line": text[:text.index(declaration)].count("\n") + 1,
+            "declarationSha256": hashlib.sha256(declaration.encode()).hexdigest()})
     return {"kind": "official-release-entry-provenance-owners", "referenceCommit": REFERENCE_COMMIT,
             "sourceBuildReproduced": False, "sourceFallbackAllowed": False, "covers": [],
             "sourceBindings": source_evidence, "compiledBindings": compiled_evidence,
+            "compiledImportLinks": compiled_links,
+            "persistentVectorCodec": {"format": "IEEE-754-binary64", "byteOrder": "little", "bytesPerCoordinate": 8,
+                "rawSqlBlobBytesRetained": True, "vectorIndexBlobInterchangeClaimed": False},
             "sourceImportLinks": [_named_link(sources, module, specifier, names, kind=kind)
                                   for module, specifier, names, kind in links],
             "preparedEntrypoint": {"path": "dist/manager-index-preparation-wXpJtJiU.mjs", "export": "t"},
             "publicationEntrypoint": {"path": "dist/manager-source-index-kernel-D-njga00.mjs", "export": "t"},
+            "physicalSnapshotEntrypoint": {"path": "dist/sqlite-transaction-BHOCk0oF.mjs", "export": "r",
+                "readOnlyStatements": True, "logicalAndPhysicalNativeReadTogether": True},
             "runtimeAuthorities": {
                 "publicManager": prepare_importance_project_runtime_bindings(checkout, runtime_root),
                 "persistedSessions": prepare_session_admission_runtime_bindings(checkout, runtime_root),

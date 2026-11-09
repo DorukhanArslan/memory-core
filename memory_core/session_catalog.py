@@ -231,6 +231,44 @@ def _window_entry(row: sqlite3.Row) -> dict[str, Any]:
     return entry
 
 
+def _project_session_participants(
+    db: sqlite3.Connection, agent: str, session_key: str, entry: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project current-entry side facts from the actual participant table.
+
+    Native canonical entry reads discard authored participant projections. The
+    optional read projection supplies identities/count only when real rows exist;
+    aggregate counters and timestamps remain on the separate record API.
+    """
+    projected = {key: value for key, value in entry.items() if key not in {"participants", "participantCount"}}
+    participants = [{"identity": _read_participant_identity(row["identity_namespace"], row["actor_id"])}
+                    for row in db.execute(
+                        "SELECT identity_namespace,actor_id FROM memory_session_participants "
+                        "WHERE agent=? AND session_key=? ORDER BY first_prompted_at,actor_id,identity_namespace",
+                        (agent, session_key),
+                    )]
+    if participants:
+        projected["participants"] = participants
+        projected["participantCount"] = len(participants)
+    return projected
+
+
+def _clear_rotated_session_generation_fields(
+    previous: Mapping[str, Any], replacement: dict[str, Any],
+) -> None:
+    """Apply the public session-store upsert's persisted rotation clear patch."""
+    if not any(field in replacement and replacement[field] != previous.get(field, UNSET)
+               for field in ("sessionId", "lifecycleRevision")):
+        return
+    # SESSION_ENTRY_PRIVATE_CLEAR_PATCH + MAIN_SESSION_RECOVERY_CLEAR_PATCH.
+    # Delivery adoption identity deliberately remains outside the recovery clear.
+    for field in ("activeWriterRunId", "lastRunId", "lifecycleRunId", "mainRestartRecovery",
+                  "pendingProjectGitUrl", "pendingWorktree", "sessionDiffBaselineCapture",
+                  "transcriptByteCompactionLatch", "restartRecoveryRuns"):
+        replacement.pop(field, None)
+    replacement["abortedLastRun"] = False
+
+
 @dataclass(frozen=True)
 class SessionTranscriptInstance:
     agent_id: str
@@ -463,9 +501,10 @@ class MemorySessionCatalog:
         session_key = self._session_key(session_key)
         agent = self._scope(agent_id)
         with closing(self._connect()) as db:
+            db.execute("BEGIN")
             row = db.execute("SELECT entry_json FROM memory_session_nodes WHERE agent=? AND session_key=?",
                              (agent, session_key)).fetchone()
-            return json.loads(row[0]) if row is not None else None
+            return _project_session_participants(db, agent, session_key, json.loads(row[0])) if row is not None else None
 
     def _changed(self, db: sqlite3.Connection) -> None:
         db.execute("UPDATE memory_session_catalog_state SET revision=revision+1 WHERE agent=?", (self.agent_id,))
@@ -506,6 +545,8 @@ class MemorySessionCatalog:
             ).fetchone()
             previous_entry = json.loads(previous[0]) if previous is not None else {}
             previous_id = previous_entry.get("sessionId")
+            if previous is not None:
+                _clear_rotated_session_generation_fields(previous_entry, data)
             if self._memory_uri is not None and is_incognito_session_key(session_key) and "createdAt" not in data:
                 previous_updated = previous_entry.get("updatedAt")
                 data["createdAt"] = previous_updated if previous_updated is not None else self._clock()
@@ -1020,7 +1061,9 @@ class MemorySessionCatalog:
         """
         with closing(self._connect()) as db:
             db.execute("BEGIN")
-            current_entries = {row["session_key"]: json.loads(row["entry_json"]) for row in db.execute(
+            current_entries = {row["session_key"]: _project_session_participants(
+                db, self.agent_id, row["session_key"], json.loads(row["entry_json"]),
+            ) for row in db.execute(
                 "SELECT session_key,entry_json FROM memory_session_nodes WHERE agent=?", (self.agent_id,),
             )}
             sql = "SELECT * FROM memory_session_windows WHERE agent=?"
@@ -1153,7 +1196,7 @@ class MemorySessionCatalog:
             context = build_session_context(visible)
             llm_messages = convert_to_llm(context["messages"])
             return {
-                "entry": json.loads(active[0]) if active is not None else None,
+                "entry": _project_session_participants(db, agent, session_key, json.loads(active[0])) if active is not None else None,
                 "instanceEntry": json.loads(window["entry_json"]), "events": events,
                 "visibleEvents": visible, "context": context, "llmMessages": llm_messages,
                 "historyPrelude": [is_session_history_prelude(message) for message in context["messages"]],

@@ -266,7 +266,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_append_to_memory",
           "anchor": "def _append_to_memory(",
-          "line": 1556
+          "line": 1577
         },
         {
           "path": "memory_core/consolidation/llm_consolidation.py",
@@ -3457,7 +3457,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_commit_promotion",
           "anchor": "def _commit_promotion(",
-          "line": 945
+          "line": 979
         }
       ],
       "implementation": "present",
@@ -3683,13 +3683,13 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "rank_short_term_promotion_candidates",
           "anchor": "def rank_short_term_promotion_candidates(",
-          "line": 777
+          "line": 781
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "evaluate_short_term_promotion_candidates",
           "anchor": "def evaluate_short_term_promotion_candidates(",
-          "line": 827
+          "line": 831
         },
         {
           "path": "memory_core/consolidation/recall.py",
@@ -3765,19 +3765,19 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_plan_apply_stage",
           "anchor": "def _plan_apply_stage(",
-          "line": 615
+          "line": 619
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "_commit_promotion",
           "anchor": "def _commit_promotion(",
-          "line": 945
+          "line": 979
         },
         {
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "build_promotion_applied_event",
           "anchor": "def build_promotion_applied_event(",
-          "line": 1214
+          "line": 1235
         }
       ],
       "implementation": "present",
@@ -4936,7 +4936,7 @@
           "path": "memory_core/consolidation/promotion.py",
           "symbol": "evaluate_short_term_promotion_candidates",
           "anchor": "def evaluate_short_term_promotion_candidates(",
-          "line": 827
+          "line": 831
         },
         {
           "path": "memory_core/index/identity.py",

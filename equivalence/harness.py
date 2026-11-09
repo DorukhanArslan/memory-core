@@ -372,6 +372,10 @@ def _oracle(node: Path, script: Path, checkout: Path, cases: list[dict], timeout
                     from equivalence.promotion_ranking_bindings import prepare_promotion_ranking_profile
 
                     context_options["promotion_profile"] = prepare_promotion_ranking_profile(node)
+                if len(cases) == 1 and cases[0]["operation"] == "promotion-apply-reconcile-runtime":
+                    from equivalence.promotion_apply_profile import prepare_promotion_apply_profile
+
+                    context_options["promotion_apply_profile"] = prepare_promotion_apply_profile(node)
                 execution = resources.enter_context(ReleaseOracleExecution(
                     release_runtime, _adapter_identity(), **context_options))
                 # Only this reviewed preload is supplied. User Node options,
@@ -570,7 +574,7 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
             "atomic-commit-runtime", "atomic-append-runtime", "atomic-bootstrap-runtime",
             "bootstrap-discovery-runtime",
             "memory-budget-runtime", "memory-budget-apply-runtime",
-            "promotion-ranking-runtime",
+            "promotion-ranking-runtime", "promotion-apply-reconcile-runtime",
         }
         runtime_cases = [case for case in cases if case["operation"] in runtime_operations]
         source_cases = [case for case in cases if case["operation"] not in runtime_operations]
@@ -881,6 +885,13 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                 report["promotionRankingRuntimeBindings"] = prepare_promotion_ranking_bindings(
                     checkout, Path(runtime_config["runtimeRoot"]))
                 report["promotionRankingProfile"] = prepare_promotion_ranking_profile(node)
+            if any(case["operation"] == "promotion-apply-reconcile-runtime" for case in runtime_cases):
+                from equivalence.promotion_apply_bindings import prepare_promotion_apply_bindings
+                from equivalence.promotion_apply_profile import prepare_promotion_apply_profile
+
+                report["promotionApplyRuntimeBindings"] = prepare_promotion_apply_bindings(
+                    checkout, Path(runtime_config["runtimeRoot"]))
+                report["promotionApplyProfile"] = prepare_promotion_apply_profile(node)
             observed_release = {}
             for case in runtime_cases:
                 # The real manager retains global state owners. Each distinct
@@ -924,6 +935,11 @@ def run_suite(*, checkout: Path, node: Path, smoke: bool = False,
                             != report["promotionRankingRuntimeBindings"]
                             or prepare_promotion_ranking_profile(node) != report["promotionRankingProfile"]):
                         raise ValueError("Promotion rank source, artifact or executable authority changed.")
+                if "promotionApplyRuntimeBindings" in report:
+                    if (prepare_promotion_apply_bindings(checkout, Path(runtime_config["runtimeRoot"]))
+                            != report["promotionApplyRuntimeBindings"]
+                            or prepare_promotion_apply_profile(node) != report["promotionApplyProfile"]):
+                        raise ValueError("Promotion apply source, artifact or distinct capability changed.")
                 if new_model_operations and prepare_model_node_authority(node) != report["modelNodeAuthority"]:
                     raise ValueError("The approved model boundary executable changed.")
                 if bootstrap_runtime and (

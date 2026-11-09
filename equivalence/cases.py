@@ -300,6 +300,10 @@ def run_python(case: dict[str, Any]) -> Any:
         from equivalence.memory_budget_runtime import run_memory_budget
 
         return run_memory_budget(arguments, evidence_directory=case.get("_diagnosticDirectory"))
+    if operation == "promotion-apply-reconcile-runtime":
+        from equivalence.promotion_apply_runtime import run_promotion_apply_reconcile
+
+        return run_promotion_apply_reconcile(arguments, evidence_directory=case.get("_diagnosticDirectory"))
     if operation == "promotion-ranking-runtime":
         from equivalence.promotion_ranking_runtime import run_promotion_ranking
 
